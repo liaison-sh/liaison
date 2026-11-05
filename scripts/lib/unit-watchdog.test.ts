@@ -5,14 +5,14 @@ import { silenceLimitMs, tailLines, watchSilence } from "./unit-watchdog"
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 describe("silenceLimitMs", () => {
-  it("is three per-test timeouts", () => {
-    expect(silenceLimitMs(60_000)).toBe(180_000)
+  it("is five per-test timeouts", () => {
+    expect(silenceLimitMs(60_000)).toBe(300_000)
   })
 
   it("takes an override, and ignores one that is not a positive number", () => {
     expect(silenceLimitMs(60_000, "90000")).toBe(90_000)
-    expect(silenceLimitMs(60_000, "soon")).toBe(180_000)
-    expect(silenceLimitMs(60_000, "0")).toBe(180_000)
+    expect(silenceLimitMs(60_000, "soon")).toBe(300_000)
+    expect(silenceLimitMs(60_000, "0")).toBe(300_000)
   })
 })
 

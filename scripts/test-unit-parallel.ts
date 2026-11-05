@@ -179,25 +179,6 @@ const results: Result[] = []
 let completed = 0
 let bailed = false
 
-async function readStream(
-  stream: ReadableStream<Uint8Array>,
-  onChunk: (text: string) => void,
-): Promise<string> {
-  const reader = stream.getReader()
-  const decoder = new TextDecoder()
-  const chunks: string[] = []
-  try {
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      const text = decoder.decode(value, { stream: true })
-      chunks.push(text)
-      onChunk(text)
-    }
-  } catch {}
-  return chunks.join("")
-}
-
 function shardEnv(shardId: number, token: number): Record<string, string> {
   const db = shardDb(shardId)
   const childEnv: Record<string, string> = {
@@ -240,6 +221,12 @@ async function runUnitOnShard(files: string[], shardId: number, token: number): 
   // errors come from, kept per file even when the batch's stdout is shared.
   const reporter = ["--reporter=junit", `--reporter-outfile=${report}`]
   const t = Date.now()
+  // To files, never pipes. The logger's sync destination spins on EAGAIN inside
+  // Atomics.wait, where no test timeout can fire, so a pipe this process stopped
+  // draining wedged the test process for good, and it held every file's output in
+  // memory besides. A file has no back pressure and no reader to wait for.
+  const outFile = path.join(REPORT_DIR, `s${shardId}_${token}.out`)
+  const errFile = path.join(REPORT_DIR, `s${shardId}_${token}.err`)
   const proc = Bun.spawn({
     cmd: [
       "bun",
@@ -252,28 +239,36 @@ async function runUnitOnShard(files: string[], shardId: number, token: number): 
     ],
     cwd: API,
     env: shardEnv(shardId, token),
-    stdout: "pipe",
-    stderr: "pipe",
+    stdin: "ignore",
+    stdout: Bun.file(outFile),
+    stderr: Bun.file(errFile),
   })
-  let tail = ""
+  const readOutput = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : "")
+  const outputBytes = () =>
+    [outFile, errFile].reduce((sum, f) => sum + (existsSync(f) ? statSync(f).size : 0), 0)
   const watch = watchSilence(SILENCE_LIMIT_MS, (silentMs) => {
+    const said = tailLines(`${readOutput(outFile)}\n${readOutput(errFile)}`, 20)
     process.stdout.write(
       `\n! wedged: no output for ${Math.round(silentMs / 1000)}s, killing shard ${shardId}'s process ` +
-        `(${files.join(" ")}). It last said:\n${tailLines(tail, 20)}\n`,
+        `(${files.join(" ")}). It last said:\n${said}\n`,
     )
     proc.kill("SIGKILL")
   })
-  const onChunk = (text: string) => {
-    watch.touch()
-    tail = (tail + text).slice(-8192)
-  }
-  const [out, err] = await Promise.all([
-    readStream(proc.stdout, onChunk),
-    readStream(proc.stderr, onChunk),
-  ])
-  watch.stop()
+  let seenBytes = 0
+  const sizePoll = setInterval(() => {
+    const bytes = outputBytes()
+    if (bytes !== seenBytes) watch.touch()
+    seenBytes = bytes
+  }, 1000)
   const exitCode = await proc.exited
+  clearInterval(sizePoll)
+  watch.stop()
   const ms = Date.now() - t
+  // A passing process's output is never shown, so it never comes into memory.
+  const out = exitCode === 0 ? "" : readOutput(outFile)
+  const err = exitCode === 0 ? "" : readOutput(errFile)
+  rmSync(outFile, { force: true })
+  rmSync(errFile, { force: true })
   const base = { shard: shardId, token, out, err, batch: files.length }
   const suites = existsSync(report)
     ? parseJunitSuites(readFileSync(report, "utf8"), (f) =>

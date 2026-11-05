@@ -9,11 +9,11 @@
 // row is wedged. It is killed, and it counts as a failure that names what it
 // was doing.
 
-/** Silence that means wedged: three per-test timeouts, overridable for one slow test. */
+/** Silence that means wedged: five per-test timeouts, overridable for one slow test. */
 export function silenceLimitMs(perTestTimeoutMs: number, override?: string): number {
   const explicit = Number(override)
   if (Number.isFinite(explicit) && explicit > 0) return explicit
-  return perTestTimeoutMs * 3
+  return perTestTimeoutMs * 5
 }
 
 export type SilenceWatch = {

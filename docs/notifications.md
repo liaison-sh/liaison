@@ -77,10 +77,9 @@ when email goes out; the email column decides what goes in it, and cadence "off"
 
 An inbox with **Notify on new ticket** switched on (off by default, [Tickets](apps/tickets.md#hear-about-new-tickets))
 raises one `tickets:ticket.created` item for each new ticket, for the holders of `tickets:inboxes:admin`. It
-belongs to the tickets tasks and knowledge group, so by default it reaches the feed and the email digest, not
-the phone or the computer. To be interrupted, a person switches phone and computer on for that row, which also
-turns them on for everything else in the group, such as another app's new orders. It is not urgent, so quiet
-hours apply, and many at once reach the person as one summary.
+belongs to the same row as approvals, because switching the setting on means someone wants to hear at once, so
+by default it reaches the phone, the computer and the digest. It is not urgent, so quiet hours apply, and many
+at once reach the person as one summary.
 
 ## The router
 

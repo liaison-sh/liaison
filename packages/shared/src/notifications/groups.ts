@@ -34,6 +34,7 @@ export type NotificationGroupId = (typeof NOTIFICATION_GROUP_IDS)[number]
  * `new_email` kind the mail producer adds.
  */
 export type NotificationKind =
+  | "tickets:ticket.created"
   | AttentionKind
   | "knowledge_review"
   | "new_email"
@@ -96,7 +97,7 @@ export const NOTIFICATION_GROUPS: readonly NotificationGroup[] = [
     labelKey: "notifications.groups.approvals",
     label: "Approvals and access requests",
     // What only you (or your role) can decide: a direct ask.
-    kinds: ["approval_pending", "scope_request", "admin_action", "routine_mailbox_wait"],
+    kinds: ["approval_pending", "scope_request", "admin_action", "routine_mailbox_wait", "tickets:ticket.created"],
   },
   {
     // The outcome of your own request: news for the inbox, never an

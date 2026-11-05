@@ -1,0 +1,88 @@
+name: tmp-unit-probe
+on:
+  push:
+    branches: [fix/release-unit-tests]
+    paths: [".github/workflows/tmp-unit-probe.yml"]
+permissions:
+  contents: read
+jobs:
+  alone:
+    strategy:
+      fail-fast: false
+      matrix:
+        envfile: [".env.example", ".env.test.example"]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      TEST_MEM_RESERVE_MB: "2048"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+      - run: bun install --frozen-lockfile
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client redis-tools libxml2-utils
+      - name: Write .env.test
+        env:
+          ENVFILE: ${{ matrix.envfile }}
+        run: |
+          set -euo pipefail
+          cp "$ENVFILE" .env.test
+          if [ "$ENVFILE" = ".env.example" ]; then
+            sed -i 's#^DATABASE_URL=.*#DATABASE_URL=postgres://liaison_app:liaison_app@localhost:5432/liaison_test#' .env.test
+            sed -i 's#^NODE_ENV=.*#NODE_ENV=test#' .env.test
+            echo "MEILISEARCH_API_KEY=dev-master-key" >> .env.test
+          else
+            sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|; s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=$(openssl rand -hex 32)|" .env.test
+          fi
+      - run: bun run infra:up
+      - run: bun run scripts/bootstrap-test-env.ts
+      - name: Files alone
+        run: |
+          mkdir -p logs/alone
+          while read -r f; do
+            n=$(echo "$f" | tr '/' '_')
+            s=$(date +%s)
+            timeout -k 10 200 bun run scripts/test-run.ts unit --file "apps/api/$f" > "logs/alone/$n.log" 2>&1 && rc=0 || rc=$?
+            echo "rc=$rc $(( $(date +%s) - s ))s $f"
+          done < .github/tmp-probe-files.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: alone-${{ matrix.envfile }}
+          path: logs/alone/
+  stall:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      TEST_MEM_RESERVE_MB: "2048"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+      - run: bun install --frozen-lockfile
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client redis-tools libxml2-utils
+      - name: Write .env.test
+        run: |
+          set -euo pipefail
+          cp .env.example .env.test
+          sed -i 's#^DATABASE_URL=.*#DATABASE_URL=postgres://liaison_app:liaison_app@localhost:5432/liaison_test#' .env.test
+          sed -i 's#^NODE_ENV=.*#NODE_ENV=test#' .env.test
+          echo "MEILISEARCH_API_KEY=dev-master-key" >> .env.test
+      - run: bun run infra:up
+      - run: bun run scripts/bootstrap-test-env.ts
+      - name: Tail solos through the sharded runner
+        run: |
+          mkdir -p logs/stall
+          ( for i in $(seq 1 12); do sleep 60; echo "=== ps minute $i"; ps -eo pid,ppid,etimes,stat,wchan:16,rss,args --forest | grep -E 'bun|sh ' | grep -v grep | cut -c1-200; done ) > logs/stall/ps.log 2>&1 &
+          LOG_DIR=$PWD/logs/stall TEST_UNIT_SHARDS=4 timeout -k 10 720 bun run scripts/with-test-lock.ts -- bun run scripts/test-unit-parallel.ts --retries=0 -- $(cat .github/tmp-probe-tail.txt) 2>&1 | tee logs/stall/run.log; echo "rc=${PIPESTATUS[0]}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: stall
+          path: logs/stall/

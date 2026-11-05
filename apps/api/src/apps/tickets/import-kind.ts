@@ -377,8 +377,8 @@ async function importTicket(
     },
     { actorType: "system", userId: ctx.actorUserId },
     // Its privileged reads run on this transaction, not a second connection
-    // that would wait behind the batch's own locks.
-    { privilegedTx: tx },
+    // that would wait behind the batch's own locks. An import is history, not news.
+    { privilegedTx: tx, notNews: true },
   )
   if ("error" in result) {
     throw new Error(`createTicket failed: ${result.error.code} — ${result.error.message}`)

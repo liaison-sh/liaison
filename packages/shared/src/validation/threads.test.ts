@@ -13,6 +13,7 @@ import {
   searchQuerySchema,
   sendMessageSchema,
   THREAD_MESSAGE_MAX_CHARS,
+  THREAD_TITLE_MAX_CHARS,
   updateThreadSchema,
 } from "./threads"
 
@@ -327,6 +328,30 @@ describe("channel title normalisation", () => {
     expect(normalizeChannelTitle("#\u200B#\uFEFF general\u200B")).toBe("general")
     expect(normalizeChannelTitle("\u200B#\u200F")).toBe("")
     expect(normalizeChannelTitle("a\u200Db")).toBe("a\u200Db")
+  })
+
+  it("keeps the same result around astral characters and unpaired surrogates", () => {
+    expect(normalizeChannelTitle("a\u{E0001}")).toBe("a")
+    expect(normalizeChannelTitle("a\u{1F600}")).toBe("a\u{1F600}")
+    expect(normalizeChannelTitle("a\u{1F600}\u200B \t")).toBe("a\u{1F600}")
+    expect(normalizeChannelTitle("a\uDC00")).toBe("a\uDC00")
+    expect(normalizeChannelTitle("a\uD83D")).toBe("a\uD83D")
+    expect(normalizeChannelTitle("   ")).toBe("")
+  })
+
+  it("stays fast on a long title, whatever its whitespace", () => {
+    const long = `a${"\t".repeat(1_000_000)}b`
+    const started = performance.now()
+    expect(normalizeChannelTitle(long)).toBe(long)
+    expect(normalizeChannelTitle(`a${"\t".repeat(1_000_000)}`)).toBe("a")
+    expect(performance.now() - started).toBeLessThan(500)
+  })
+
+  it("caps the title at THREAD_TITLE_MAX_CHARS", () => {
+    const base = { participantIds: ["00000000-0000-4000-8000-000000000001"] }
+    const atCap = "a".repeat(THREAD_TITLE_MAX_CHARS)
+    expect(createThreadSchema.safeParse({ ...base, title: atCap }).success).toBe(true)
+    expect(createThreadSchema.safeParse({ ...base, title: `${atCap}a` }).success).toBe(false)
   })
 
   it("leaves the title to the server, which knows whether the room is a channel", () => {

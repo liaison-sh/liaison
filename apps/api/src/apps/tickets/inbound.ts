@@ -72,6 +72,26 @@ export function isRecentForAcknowledgement(raw: ParsedEmail, now = Date.now()): 
   return Number.isFinite(at) && Math.abs(now - at) <= ACK_MAX_MESSAGE_AGE_MS
 }
 
+/** Mail older than this is history when a mailbox catches up: no new-ticket notice. */
+export const NEW_TICKET_NOTICE_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000
+
+/**
+ * Whether a ticket opened from this mail is news for a "Notify on new ticket"
+ * inbox. Not a first (backfill) sync's history, and not a thread we opened by
+ * writing first. Deliberately wider than the acknowledgement's window: staff
+ * still want to hear of mail that waited out an outage. An undated message counts.
+ */
+export function isNewTicketNews(
+  raw: ParsedEmail,
+  direction: MessageDirection,
+  backfill: boolean,
+  now = Date.now(),
+): boolean {
+  if (backfill || direction !== "inbound") return false
+  const at = Date.parse(raw.receivedAt ?? raw.sentAt ?? "")
+  return !Number.isFinite(at) || now - at <= NEW_TICKET_NOTICE_MAX_AGE_MS
+}
+
 export type MatcherResult =
   | { outcome: "appended"; ticketId: string; messageId: string }
   | { outcome: "created"; ticketId: string; messageId: string }
@@ -902,6 +922,7 @@ async function createNewTicket(
       },
     },
     { actorType: "system", userId: "00000000-0000-0000-0000-000000000000" } as never,
+    { notNews: !isNewTicketNews(raw, direction, ctx.noAcknowledgement === true) },
   )
   if ("error" in result) {
     // A concurrent delivery of the same provider message id can lose the race

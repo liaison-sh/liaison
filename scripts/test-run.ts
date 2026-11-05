@@ -932,6 +932,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // deploy/rolling-deploy.sh against a docker shim: migrate, start new
             // beside old, wait ready, only then drain old; never a bare `up`.
             "deploy/rolling-deploy.test.ts",
+            "deploy/quickstart.test.ts",
             "scripts/lib/deploy-counters.test.ts",
             // deploy/backup.sh carries every key stored data needs, in step with the code.
             "scripts/backup-secrets.test.ts",

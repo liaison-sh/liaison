@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { THREAD_MESSAGE_MAX_CHARS, THREAD_TITLE_MAX_CHARS } from "@liaison/shared"
 import { z } from "zod"
 import { sql } from "~/db"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
@@ -543,6 +544,18 @@ describe("kernel tool registration", () => {
     expect(reply!.description).not.toMatch(/always confirm|explicit approval/i)
   })
 
+  it("caps thread titles and first messages like the REST routes do", () => {
+    const params = (tool: string) => toolRegistry.get([ORG_ID, "kernel", tool])!.params as z.ZodType
+    const ok = (tool: string, value: unknown) => params(tool).safeParse(value).success
+    const title = "a".repeat(THREAD_TITLE_MAX_CHARS)
+    const message = "a".repeat(THREAD_MESSAGE_MAX_CHARS)
+    expect(ok("threads_create", { participantIds: [], title, initialMessage: message })).toBe(true)
+    expect(ok("threads_create", { participantIds: [], title: `${title}a` })).toBe(false)
+    expect(ok("threads_create", { participantIds: [], initialMessage: `${message}a` })).toBe(false)
+    expect(ok("create_pinned_thread", { title })).toBe(true)
+    expect(ok("create_pinned_thread", { title: `${title}a` })).toBe(false)
+  })
+
   it("registers contact-mutation tools as user trust boundaries (taint-gated)", () => {
     const write = toolRegistry.get([ORG_ID, "kernel", "contacts_write"])
     const merge = toolRegistry.get([ORG_ID, "kernel", "contacts_merge"])
@@ -617,7 +630,8 @@ describe("kernel tool registration", () => {
       // (P1-T12-fix: recorded as a read, it refused the next notify_user).
       "notify_user",
       "open_app",
-      // Its answer is the report's own ticket or draft id, never an org record.
+      // Its answer is the report's own ticket or draft id. Still parks after outside
+      // text (externalEffect); this only keeps its scope out of the turn's taint.
       "report_bug",
       // Reads the tool registry and the scope catalog, never an org record.
       "routine_tool_scopes",

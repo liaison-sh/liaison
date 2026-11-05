@@ -142,6 +142,7 @@ Type `object`, optional.
 | `tickets.inboxes[].name` | `string` | no |  |  |
 | `tickets.inboxes[].fromDisplayName` | `string` | no |  |  |
 | `tickets.inboxes[].defaultTeam` | `string` | no |  | The team every ticket arriving on this inbox inherits (`inbound.ts` -&gt; `team: inbox.default_team`). Without it inbound tickets land team-less. |
+| `tickets.inboxes[].notifyNewTicket` | `boolean` | no |  | Each new ticket raises an attention item for the holders of tickets:inboxes:admin. Absent leaves the stored value as is (default off). |
 | `tickets.inboxes[].default` | `boolean` | no |  | The inbox that tickets created without an explicit inbox land in. |
 
 ## apps

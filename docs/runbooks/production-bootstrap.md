@@ -520,9 +520,15 @@ the server, and a failed migration stops the container before it serves traffic.
 4. Wait for `/healthz` to report the new version with every dependency `ok`
    (the same loop as step 4 of [Initial provisioning](#initial-provisioning)).
 
+To follow the nightly channel instead of releases, see
+[Choose a channel](../admin/upgrades.md#choose-a-channel).
+
 If the app does not come up, read `docker compose logs app`. When a migration
 failed, set `LIAISON_IMAGE` back to the previous tag, then restore the backup
 with `./deploy/restore.sh <archive> --force` (see [Restore drill](#restore-drill)).
+An image older than the database's schema refuses to start, so going back to an
+earlier image always goes through that restore
+([Migrations only go forward](../admin/upgrades.md#migrations-only-go-forward)).
 
 ## Incident playbook
 

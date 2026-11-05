@@ -134,8 +134,8 @@ liaison erase-user <userId>
   - `mail/gmail` connects a Mail app mailbox and nothing else.
   - `tickets/gmail` connects a ticket inbox. The server creates the inbox for
     the authorized address; the command then applies the matching
-    `tickets.inboxes` entry's `name`, `fromDisplayName`, `defaultTeam` and
-    `default`. If the inbox has not appeared yet, re-run `config apply`.
+    `tickets.inboxes` entry's `name`, `fromDisplayName`, `defaultTeam`,
+    `notifyNewTicket` and `default`. If the inbox has not appeared yet, re-run `config apply`.
 - **`guide <google|shopify|imap>`**: read only. Prints the setup steps the
   agent gives for this server and workspace, with the values computed here
   (redirect URIs, scopes, client IDs): `google --email <addr>` classifies the
@@ -212,7 +212,8 @@ liaison erase-user <userId>
   web form or another system, with `--mint-key` for an ingest key), update an
   inbox's email identity (`--reply-via`, `--from-name`, `--reply-to`,
   `--signature-html`, `--signature-text`, `--ack-enabled`, `--ack-body`,
-  `--sla-promise`, `--attention-cutoff`), or move a ticket. Mailbox inboxes are
+  `--sla-promise`, `--attention-cutoff`), switch `--notify-new-ticket` on or
+  off, or move a ticket. Mailbox inboxes are
   not created here: they come from `tickets.inboxes` or `connect tickets/gmail`.
 - **`tickets backfill-attachments`**: re-fetch Gmail attachments missing from
   inbound ticket messages of the last `--days` (default 90).
@@ -499,6 +500,7 @@ tickets:
       name: "Support"                   # optional; inbox display name
       fromDisplayName: "Acme Support"   # optional; sender name on replies
       defaultTeam: "Tier 1"             # optional; team every inbound ticket gets
+      notifyNewTicket: true             # optional; alert inbox admins on each new ticket
       default: true                     # optional; where tickets without an inbox land
     - address: sales-desk@acme.example
       provider: imap

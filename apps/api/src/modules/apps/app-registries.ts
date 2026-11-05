@@ -939,7 +939,12 @@ export type AttentionRecipientSpec =
   | { kind: "participants"; path: string; excludeActor?: boolean }
   | { kind: "mentions"; path: string }
   | { kind: "actor" }
-  | { kind: "scope_holders"; scope: string; dimensionFilter?: Record<string, unknown> }
+  | {
+      kind: "scope_holders"
+      scope: string
+      dimensionFilter?: Record<string, unknown>
+      excludeActor?: boolean
+    }
 
 export type AttentionTranslation = {
   event: string

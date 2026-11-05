@@ -8,6 +8,8 @@
 #   migrate          migrate and reconcile, then exit: the one-shot step a
 #                    rolling deploy runs once, before it starts new processes.
 #                    Non-zero when a migration or a catalog app install fails.
+#                    Both refuse an image older than the database's schema
+#                    (src/db/schema-guard.ts), with or without the migration.
 #   anything else    run as given (one-off CLI containers: `docker compose run
 #                    app bun ...`).
 #
@@ -57,6 +59,11 @@ migrate() {
   return "$status"
 }
 
+# The check migrate.ts runs under its lease, for a start that skips the migration.
+schema_guard() {
+  (cd "$APP_DIR/apps/api" && LIAISON_ONESHOT=1 MIGRATION_DATABASE_URL="${MIGRATION_DATABASE_URL:-${DATABASE_URL:-}}" bun src/db/schema-guard.ts)
+}
+
 # Fail-soft on a server start: without --strict, reconcile-catalog-boot.ts exits 0.
 reconcile() {
   (cd "$APP_DIR/apps/api" && LIAISON_ONESHOT=1 bun src/db/reconcile-catalog-boot.ts)
@@ -77,6 +84,8 @@ esac
 
 if [ "${LIAISON_MIGRATE_ON_START:-true}" != "false" ]; then
   migrate
+else
+  schema_guard
 fi
 reconcile
 cd "$APP_DIR"

@@ -23,6 +23,7 @@
  *                                [--signature-html <html>] [--signature-text <text>]
  *                                [--ack-enabled true|false] [--ack-body <text>]
  *                                [--sla-promise <phrase>]
+ *                                [--notify-new-ticket true|false]
  *   liaison tickets inbox update --id <inboxId> [--org <slug>]
  *                                [--reply-via <mailboxInboxId>]
  *                                [--from-name <name>] [--reply-to <email>]
@@ -30,6 +31,7 @@
  *                                [--ack-enabled true|false] [--ack-body <text>]
  *                                [--sla-promise <phrase>]
  *                                [--attention-cutoff <iso>|now|none]
+ *                                [--notify-new-ticket true|false]
  *   liaison tickets inbox move   --ticket <id> --to-inbox <inboxId> [--org <slug>]
  */
 import { sql as drizzleSql } from "drizzle-orm"
@@ -113,6 +115,10 @@ function emailIdentityParams(argv: string[]): Record<string, unknown> {
   if (ackBody !== undefined) params.ackBodyText = ackBody
   const slaPromise = arg("--sla-promise", argv)
   if (slaPromise !== undefined) params.slaPromisePhrase = slaPromise
+  // Notify on new ticket: each new ticket raises an attention item for the
+  // holders of tickets:inboxes:admin.
+  const notifyNewTicket = arg("--notify-new-ticket", argv)
+  if (notifyNewTicket !== undefined) params.notifyNewTicket = notifyNewTicket !== "false"
   // Attention cutoff: tickets whose activity predates it raise no automatic
   // attention items. Set after a historical import ("now"), clear with "none".
   const attentionCutoff = arg("--attention-cutoff", argv)
@@ -161,6 +167,7 @@ export async function runTicketsInbox(argv: string[]): Promise<TicketsInboxResul
       ackBodyText: i.ack_body_text,
       slaPromisePhrase: i.sla_promise_phrase,
       suppressAttention: i.suppress_attention,
+      notifyNewTicket: i.notify_new_ticket,
       attentionCutoffAt: i.attention_cutoff_at,
       isDefaultForCreate: i.is_default_for_create,
       archivedAt: i.archived_at,
@@ -235,7 +242,8 @@ export async function runTicketsInbox(argv: string[]): Promise<TicketsInboxResul
     if (Object.keys(params).length === 1) {
       return usage(
         "update requires at least one of: --reply-via --from-name --reply-to --signature-html " +
-          "--signature-text --ack-enabled --ack-body --sla-promise --attention-cutoff",
+          "--signature-text --ack-enabled --ack-body --sla-promise --attention-cutoff " +
+          "--notify-new-ticket",
       )
     }
     const updated = (await withPrivilegedDb(orgId, "cli-inbox-update", (tx) =>

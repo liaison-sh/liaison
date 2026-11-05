@@ -25,16 +25,34 @@ export const QUOTE_EXCERPT_MAX_CHARS = 500
  * an agent chat's title); the web dialog shows the same result as a preview.
  */
 export function normalizeChannelTitle(raw: string): string {
-  return raw
-    .normalize("NFKC")
-    .replace(/^[\s#\p{Cf}]+/u, "")
-    .replace(/[\s\p{Cf}]+$/u, "")
+  return trimEndSpaceAndFormat(raw.normalize("NFKC").replace(/^[\s#\p{Cf}]+/u, ""))
 }
+
+const SPACE_OR_FORMAT = /^[\s\p{Cf}]$/u
+
+/** `text` without trailing whitespace and format marks, walking back one code
+ *  point at a time so the cost stays linear whatever the text holds. */
+function trimEndSpaceAndFormat(text: string): string {
+  let end = text.length
+  while (end > 0) {
+    const unit = text.charCodeAt(end - 1)
+    const isLowSurrogate = unit >= 0xdc00 && unit <= 0xdfff
+    const prev = end > 1 ? text.charCodeAt(end - 2) : 0
+    const start = isLowSurrogate && prev >= 0xd800 && prev <= 0xdbff ? end - 2 : end - 1
+    if (!SPACE_OR_FORMAT.test(text.slice(start, end))) break
+    end = start
+  }
+  return text.slice(0, end)
+}
+
+/** The longest thread title, on every surface that takes one: the REST routes
+ *  and the agent tools. */
+export const THREAD_TITLE_MAX_CHARS = 200
 
 /** The wire form of a thread title. Whether it is a channel name (normalised,
  *  refused when it collapses to nothing) is the server's to decide: it knows
  *  the room's type. An empty string stays empty (untitled). */
-const channelTitleSchema = z.string().max(200)
+const channelTitleSchema = z.string().max(THREAD_TITLE_MAX_CHARS)
 
 export const createThreadSchema = z
   .object({

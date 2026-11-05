@@ -597,6 +597,25 @@ growth, and it is how your app should too.
 
 ---
 
+## 12. Tell people about an event
+
+An app raises items in the attention feed from its own events, in `attention.translations` of the manifest. Each person's notification settings then decide the channels.
+
+```json
+{
+  "event": "ticket:create",
+  "kind": "tickets:ticket.created",
+  "urgency": 40,
+  "when": { "op": "eq", "path": "data.notifyNewTicket", "value": true },
+  "summary": "New ticket in {{data.inboxName}}: {{data.subject}}",
+  "recipients": { "kind": "scope_holders", "scope": "tickets:inboxes:admin", "excludeActor": true }
+}
+```
+
+- `when` keeps the translation to the events that match it (`eq`, `in`, `exists`, `and`, `or`, `not` on a path of the event).
+- `recipients.kind` is `field`, `participants`, `mentions`, `actor` or `scope_holders`. `excludeActor` (on `participants` and `scope_holders`) leaves out the person who caused the event.
+- `resolveWhen` makes the translation end an item instead of raising one, for an event that means the condition is over: `{ "always": true }`, or `{ "field": ..., "equals": ... }`.
+
 ## See also
 
 - [`docs/app-package-format.md`](app-package-format.md) — the `.liaisonapp` spec

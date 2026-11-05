@@ -233,10 +233,13 @@ jobs:
   # by `act`'s local artifact server, so the operator dry run can never
   # exercise an artifact hand-off. The manifest is a pure, deterministic
   # function of the checked-out tree, so each build job regenerates it from
-  # its own fresh checkout. (The release-notes -> publish hand-off below
-  # does use artifacts, but only in the non-dry-run path.)
+  # its own fresh checkout (.github/actions/build-image). (The release-notes
+  # -> publish hand-off below does use artifacts, but only in the non-dry-run
+  # path.)
 
   # ----- Per-arch native image builds -----
+  # The steps are the shared composite action (.github/actions/build-image), a
+  # local step `act` runs; nightly.yml builds through it too.
   build-amd64:
     needs: release-prep
     runs-on: ubuntu-latest
@@ -245,46 +248,23 @@ jobs:
       contents: read
       packages: write
     outputs:
-      digest: ${{ steps.build.outputs.digest }}
+      digest: ${{ steps.image.outputs.digest }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.4.x"
-      - name: Write release manifest
-        # No `bun install` first: the script only imports node:crypto/fs/path,
-        # so it needs nothing from node_modules — see release-prep's note on
-        # why this is regenerated here rather than handed down as an artifact.
-        env:
-          GIT_TAG: ${{ github.ref_name }}
-        run: bun run scripts/build-release-manifest.ts
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
-        if: env.LIAISON_RELEASE_DRY_RUN != '1'
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build (+ push unless dry run) amd64
-        id: build
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        id: image
+        uses: ./.github/actions/build-image
         with:
-          context: .
-          file: apps/api/Dockerfile
-          platforms: linux/amd64
-          push: ${{ env.LIAISON_RELEASE_DRY_RUN != '1' }}
-          load: ${{ env.LIAISON_RELEASE_DRY_RUN == '1' }}
+          version: ${{ github.ref_name }}
+          platform: linux/amd64
           # Intermediate per-arch tag, combined into the public multi-arch
           # tags by the `publish` job below — not part of the published tag
           # contract itself.
           tags: ${{ env.IMAGE }}:${{ github.ref_name }}-amd64
-          build-args: LIAISON_VERSION=${{ github.ref_name }}
-          labels: |
-            org.opencontainers.image.source=https://github.com/mathieufro/liaison
-            org.opencontainers.image.licenses=FSL-1.1-ALv2
-            org.opencontainers.image.description=Liaison self-hosted agent-native business OS
+          push: ${{ env.LIAISON_RELEASE_DRY_RUN != '1' }}
+          load: ${{ env.LIAISON_RELEASE_DRY_RUN == '1' }}
 
   # ----- Native arm64 build (skipped in the dry run: "builds one arch") -----
   build-arm64:
@@ -295,40 +275,19 @@ jobs:
       contents: read
       packages: write
     outputs:
-      digest: ${{ steps.build.outputs.digest }}
+      digest: ${{ steps.image.outputs.digest }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.4.x"
-      - name: Write release manifest
-        env:
-          GIT_TAG: ${{ github.ref_name }}
-        run: bun run scripts/build-release-manifest.ts
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
-        if: env.LIAISON_RELEASE_DRY_RUN != '1'
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build + push arm64
         if: env.LIAISON_RELEASE_DRY_RUN != '1'
-        id: build
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        id: image
+        uses: ./.github/actions/build-image
         with:
-          context: .
-          file: apps/api/Dockerfile
-          platforms: linux/arm64
-          push: true
+          version: ${{ github.ref_name }}
+          platform: linux/arm64
           tags: ${{ env.IMAGE }}:${{ github.ref_name }}-arm64
-          build-args: LIAISON_VERSION=${{ github.ref_name }}
-          labels: |
-            org.opencontainers.image.source=https://github.com/mathieufro/liaison
-            org.opencontainers.image.licenses=FSL-1.1-ALv2
-            org.opencontainers.image.description=Liaison self-hosted agent-native business OS
 
   # ----- Release notes + pinned compose (read-only; runs repo scripts) -----
   # Kept out of `publish` so no repo-controlled script runs in the job that
@@ -370,6 +329,8 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-assets
+          # .env.example is a hidden file: upload-artifact drops those otherwise.
+          include-hidden-files: true
           path: |
             deploy/docker-compose.yml
             deploy/.env.example

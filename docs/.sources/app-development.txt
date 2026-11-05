@@ -32,3 +32,7 @@ indexFields bodyFields (own row, column.key for a JSON column) and bodyFrom (chi
 A change to indexFields rebuilds the search index at the next start (shape fingerprint) -> apps/api/src/modules/search/index-shape.ts:155-180
 A tool refuses a call by returning refuseTool(code, message); the agent gets the message, the status is the code's 4xx or 422, never a 5xx -> packages/app-sdk/src/errors.ts:62-110 ; apps/api/src/modules/apps/execute-tool.ts:3291-3330
 A refusal logs as a warning, an unclassified failure stays a 500 error -> apps/api/src/lib/failure-severity.ts:1-15 ; apps/api/src/modules/agent/tools/tool-bridge.ts:640-660
+Attention translations in the manifest: event, kind, urgency, when, summary, recipients -> apps/api/src/modules/apps/manifest-schema.ts:1187
+excludeActor on scope_holders recipients -> apps/api/src/modules/apps/manifest-schema.ts:1273
+Predicate operators for when -> apps/api/src/modules/attention/predicates.ts:2
+resolveWhen ends an item -> apps/api/src/modules/apps/manifest-schema.ts:1238

@@ -60,11 +60,61 @@ const ENTITIES: Record<string, string> = {
  * No DOM parse: it runs once per message per change, for a 90 character label.
  */
 export function threadMapPlainText(html: string | null | undefined): string {
-  return (html ?? "")
-    .replace(/<(style|script|head|title)\b[\s\S]*?<\/\1>/gi, "")
-    .replace(/<br\s*\/?>|<\/(p|div|li|tr|h[1-6]|blockquote)>/gi, "\n")
-    .replace(/<[^>]*>/g, "")
-    .replace(/&(nbsp|amp|lt|gt|quot|apos|#39);/g, (m) => ENTITIES[m] ?? m)
+  const lined = stripRawBlocks(html ?? "").replace(
+    /<br\s*\/?>|<\/(p|div|li|tr|h[1-6]|blockquote)>/gi,
+    "\n",
+  )
+  return stripTags(lined).replace(/&(nbsp|amp|lt|gt|quot|apos|#39);/g, (m) => ENTITIES[m] ?? m)
+}
+
+const RAW_BLOCK_OPEN = /<(style|script|head|title)\b/gi
+const RAW_BLOCK_CLOSE: Record<string, RegExp> = {
+  style: /<\/style>/gi,
+  script: /<\/script>/gi,
+  head: /<\/head>/gi,
+  title: /<\/title>/gi,
+}
+
+/** `html` without its style, script, head and title blocks. Mail bodies are outside
+ *  text of any shape, so the cost must stay linear: each kind's next closing tag is
+ *  remembered, and the search for it only ever moves forward. */
+function stripRawBlocks(html: string): string {
+  const nextClose = new Map<string, { start: number; end: number } | null>()
+  let out = ""
+  let copied = 0
+  for (const open of html.matchAll(RAW_BLOCK_OPEN)) {
+    if (open.index < copied) continue
+    const name = open[1].toLowerCase()
+    const from = open.index + open[0].length
+    let close = nextClose.get(name)
+    if (close === undefined || (close !== null && close.start < from)) {
+      const closeRe = RAW_BLOCK_CLOSE[name]
+      closeRe.lastIndex = from
+      const found = closeRe.exec(html)
+      close = found ? { start: found.index, end: found.index + found[0].length } : null
+      nextClose.set(name, close)
+    }
+    if (close === null) continue
+    out += html.slice(copied, open.index)
+    copied = close.end
+  }
+  return out + html.slice(copied)
+}
+
+/** `text` without its tags: each `<` through the next `>`. With no `>` left, nothing
+ *  after that point can be a tag, so the scan ends there and stays linear. */
+function stripTags(text: string): string {
+  let out = ""
+  let at = 0
+  while (true) {
+    const open = text.indexOf("<", at)
+    if (open === -1) break
+    const close = text.indexOf(">", open + 1)
+    if (close === -1) break
+    out += text.slice(at, open)
+    at = close + 1
+  }
+  return out + text.slice(at)
 }
 
 /**

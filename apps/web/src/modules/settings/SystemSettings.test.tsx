@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const state = vi.hoisted(() => ({
   running: "dev",
   securityUpdate: false,
+  channel: undefined as "release" | "nightly" | undefined,
+  latest: undefined as string | undefined,
   team: null as unknown,
   put: null as unknown as ReturnType<typeof vi.fn>,
 }))
@@ -13,6 +15,15 @@ vi.mock("~/modules/shell/ApiContext", () => ({
   useApi: () => ({
     get: vi.fn(async (path: string) => {
       if (path === "/admin/version-check") {
+        if (state.channel) {
+          return {
+            running: state.running,
+            channel: state.channel,
+            latest: state.latest,
+            updateAvailable: false,
+            enabled: true,
+          }
+        }
         return state.securityUpdate
           ? {
               running: state.running,
@@ -64,8 +75,30 @@ describe("SystemSettings: the running version", () => {
   beforeEach(() => {
     state.running = "dev"
     state.securityUpdate = false
+    state.channel = undefined
+    state.latest = undefined
     state.team = team()
     state.put = vi.fn()
+  })
+
+  it("a nightly instance shows its channel with the Running and Latest values", async () => {
+    state.running = "nightly-20261105-abc1234"
+    state.channel = "nightly"
+    state.latest = "nightly-20261106"
+    render(() => <SystemSettings />)
+    expect(await screen.findByTestId("system-version-channel")).toHaveTextContent("Nightly")
+    expect(screen.getByTestId("system-version-running")).toHaveTextContent(
+      /^nightly-20261105-abc1234$/,
+    )
+    expect(screen.getByTestId("system-version-latest")).toHaveTextContent(/^nightly-20261106$/)
+  })
+
+  it("a release instance says Release", async () => {
+    state.running = "v1.4.0"
+    state.channel = "release"
+    state.latest = "v1.4.0"
+    render(() => <SystemSettings />)
+    expect(await screen.findByTestId("system-version-channel")).toHaveTextContent("Release")
   })
 
   it("a build of main reads as the branch and its commit", async () => {

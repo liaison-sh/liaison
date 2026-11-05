@@ -7,8 +7,10 @@
 import { describe, expect, it } from "bun:test"
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 import path from "node:path"
+import { MAX_RAW_SQL_CHARS } from "@liaison/db-core"
 import { HTTPException } from "hono/http-exception"
 import { z } from "zod"
+import databaseManifest from "~/apps/database/app.manifest.json"
 import { validateParamsForTool } from "./execute-tool"
 
 // A manifest tool: `isManifestHandler` keys on a `{ bundlePath, exportName }`
@@ -37,6 +39,25 @@ function invalidMessage(tool: any, rawParams: unknown): string {
   }
   throw new Error("expected validateParamsForTool to throw")
 }
+
+describe("database db_query length limit", () => {
+  const tool = manifestTool(databaseManifest.tools.db_query.params)
+
+  it("declares the same limit the SQL guard enforces", () => {
+    expect(databaseManifest.tools.db_query.params.properties.sql.maxLength).toBe(MAX_RAW_SQL_CHARS)
+  })
+
+  it("takes a query at the limit and refuses a longer one, naming the field and the limit", () => {
+    expect(() => validate(tool, { sql: "a".repeat(MAX_RAW_SQL_CHARS) })).not.toThrow()
+    let message = ""
+    try {
+      validate(tool, { sql: "a".repeat(MAX_RAW_SQL_CHARS + 1) })
+    } catch (err) {
+      message = (err as HTTPException).message
+    }
+    expect(message).toContain(`"sql" must NOT have more than ${MAX_RAW_SQL_CHARS} characters`)
+  })
+})
 
 describe("validateParamsForTool — manifest (ajv) error messages", () => {
   const schema = {

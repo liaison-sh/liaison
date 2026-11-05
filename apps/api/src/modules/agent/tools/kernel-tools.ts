@@ -16,6 +16,7 @@ import {
   NODE_IMPORT_MODES,
   NODE_LEVELS,
   THREAD_MESSAGE_MAX_CHARS,
+  THREAD_TITLE_MAX_CHARS,
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { z } from "zod"
@@ -1116,8 +1117,8 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     requiredScopes: ["kernel:threads:write"],
     params: z.object({
       participantIds: z.array(z.string().uuid()),
-      title: z.string().optional(),
-      initialMessage: z.string().optional(),
+      title: z.string().max(THREAD_TITLE_MAX_CHARS).optional(),
+      initialMessage: z.string().max(THREAD_MESSAGE_MAX_CHARS).optional(),
       forceCreate: z
         .boolean()
         .optional()
@@ -2955,7 +2956,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description: `Create an org-wide pinned thread visible in every member's sidebar (e.g. Announcements).`,
     requiredScopes: ["kernel:threads:admin"],
-    params: z.object({ title: z.string().min(1) }),
+    params: z.object({ title: z.string().min(1).max(THREAD_TITLE_MAX_CHARS) }),
     handler: handleCreatePinnedThread as (p: unknown, c: any) => Promise<unknown>,
     writesToTable: "kernel.threads",
   })

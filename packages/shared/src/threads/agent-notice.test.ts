@@ -16,6 +16,31 @@ const GEMINI_CAP =
 const LEGACY = `⚠️ I couldn't complete that response — the AI provider returned an error:\n\n${GEMINI_CAP}`
 
 describe("agent notice", () => {
+  const STOPPED = "⚠️ I stopped before writing a final answer"
+
+  it("reads the first stop reason that has a value", () => {
+    expect(agentNoticeDetail(`${STOPPED} (stop reason: length).`)).toBe("stop reason: length.")
+    expect(agentNoticeDetail(`${STOPPED} (this run's limit is 5 steps).`)).toBe(
+      "this run's limit is 5 steps.",
+    )
+    expect(agentNoticeDetail(`${STOPPED} (stop reason: ) (stop reason: length).`)).toBe(
+      "stop reason: length.",
+    )
+    expect(agentNoticeDetail(`${STOPPED} (stop reason: a (b) c).`)).toBe("stop reason: a (b.")
+    expect(agentNoticeDetail(`${STOPPED} (stop reason: length`)).toBeNull()
+    expect(agentNoticeDetail(`${STOPPED} (other: length).`)).toBeNull()
+    expect(
+      agentNoticeDetail(`${STOPPED} (stop reason: open. I completed 2 tool calls before stopping`),
+    ).toBe("I completed 2 tool calls before stopping.")
+  })
+
+  it("stays fast on a long message, whatever it holds", () => {
+    const started = performance.now()
+    expect(agentNoticeDetail(`${STOPPED} ${"(stop reason: ".repeat(75_000)}`)).toBeNull()
+    expect(agentNoticeDetail(`${STOPPED} ${"(stop reason: )".repeat(70_000)}`)).toBeNull()
+    expect(performance.now() - started).toBeLessThan(500)
+  })
+
   it("classifies the provider's text", () => {
     expect(classifyProviderError(GEMINI_CAP)).toBe("provider_quota")
     expect(classifyProviderError("insufficient_quota")).toBe("provider_quota")

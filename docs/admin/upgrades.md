@@ -52,7 +52,7 @@ LIAISON_IMAGE=ghcr.io/mathieufro/liaison:nightly-20270115
 
 Without `LIAISON_RELEASE_CHANNEL`, an instance is on `release`. Any other value stops it at startup. Pin a dated tag on a server, so a restart never changes the version by surprise.
 
-The channel's GitHub pre-release, `nightly-YYYYMMDD`, carries the matching `docker-compose.yml` and `.env.example`, and lists the commits since the previous nightly. The newest 14 pre-releases are kept. Images are not removed with them, so a pinned nightly can still be pulled after its pre-release is gone.
+The channel's GitHub pre-release, `nightly-YYYYMMDD`, carries the matching `docker-compose.yml` and `.env.example` (GitHub names that asset `default.env.example`; save it as `.env.example`), and lists the commits since the previous nightly. The newest 14 pre-releases are kept. Images are not removed with them, so a pinned nightly can still be pulled after its pre-release is gone.
 
 To check a signature:
 

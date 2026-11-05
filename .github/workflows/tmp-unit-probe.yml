@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        list: ["tmp-probe-head.txt", "tmp-probe-tail.txt"]
+        list: ["tmp-probe-cli.txt"]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -27,16 +27,14 @@ jobs:
           sudo apt-get install -y --no-install-recommends postgresql-common
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt-get install -y --no-install-recommends postgresql-client-17 redis-tools libxml2-utils
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
       - name: Write .env.test
         env:
           CFG: debuglog
         run: |
           set -euo pipefail
-          cp .env.example .env.test
-          sed -i 's#^DATABASE_URL=.*#DATABASE_URL=postgres://liaison_app:liaison_app@localhost:5432/liaison_test#' .env.test
-          sed -i 's#^NODE_ENV=.*#NODE_ENV=test#' .env.test
-          echo "MEILISEARCH_API_KEY=dev-master-key" >> .env.test
-          if [ "$CFG" = warnlog ]; then sed -i 's#^LOG_LEVEL=.*#LOG_LEVEL=warn#' .env.test; fi
+          cp .env.test.example .env.test
+          sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|; s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=$(openssl rand -hex 32)|" .env.test
       - run: bun run infra:up
       - run: bun run scripts/bootstrap-test-env.ts
       - name: Runner on writer and friends

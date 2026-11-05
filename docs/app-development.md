@@ -597,16 +597,7 @@ growth, and it is how your app should too.
 
 ---
 
-## See also
-
-- [`docs/app-package-format.md`](app-package-format.md) — the `.liaisonapp` spec
-- [`docs/app-sandbox.md`](app-sandbox.md) — the sandbox runtime internals
-- [`docs/sdk-gaps.md`](sdk-gaps.md) — the SDK gap log
-- [`docs/database-connector.md`](database-connector.md) — the `database` connector (read-only DB access for the agent) — a host-side bridge-extension app in the same in-tree shape as `gitlab`, built because raw DB sockets are a structural SDK gap (see the gap log entry)
-- [`docs/api-connector.md`](api-connector.md): the `api-connector` app (an HTTP API described by an adapter file, for a CRM or ERP), same in-tree host-side bridge shape; adapters are written with the `api-connector-authoring` skill
-- `apps/api/src/apps/example/` — the reference app
-
-## Tell people about an event
+## 12. Tell people about an event
 
 An app raises items in the attention feed from its own events, in `attention.translations` of the manifest. Each person's notification settings then decide the channels.
 
@@ -624,3 +615,12 @@ An app raises items in the attention feed from its own events, in `attention.tra
 - `when` keeps the translation to the events that match it (`eq`, `in`, `exists`, `and`, `or`, `not` on a path of the event).
 - `recipients.kind` is `field`, `participants`, `mentions`, `actor` or `scope_holders`. `excludeActor` (on `participants` and `scope_holders`) leaves out the person who caused the event.
 - `resolveWhen` makes the translation end an item instead of raising one, for an event that means the condition is over: `{ "always": true }`, or `{ "field": ..., "equals": ... }`.
+
+## See also
+
+- [`docs/app-package-format.md`](app-package-format.md) — the `.liaisonapp` spec
+- [`docs/app-sandbox.md`](app-sandbox.md) — the sandbox runtime internals
+- [`docs/sdk-gaps.md`](sdk-gaps.md) — the SDK gap log
+- [`docs/database-connector.md`](database-connector.md) — the `database` connector (read-only DB access for the agent) — a host-side bridge-extension app in the same in-tree shape as `gitlab`, built because raw DB sockets are a structural SDK gap (see the gap log entry)
+- [`docs/api-connector.md`](api-connector.md): the `api-connector` app (an HTTP API described by an adapter file, for a CRM or ERP), same in-tree host-side bridge shape; adapters are written with the `api-connector-authoring` skill
+- `apps/api/src/apps/example/` — the reference app

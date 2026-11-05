@@ -44,7 +44,7 @@ With it on, each new ticket in that inbox raises one attention item for the peop
 - The person who opens a ticket by hand is not told about it. The other admins are.
 - The item leaves the feed once someone replies to the ticket, snoozes it or closes it.
 
-Each person hears about it through their own notification settings. By default it lands in the attention feed and the email digest, under **Tickets, tasks and knowledge**. To get it on the phone and the computer, switch those on for that row, which also turns them on for the rest of the row, see [Notifications](../notifications.md#new-tickets).
+Each person hears about it through their own notification settings. By default it reaches the phone, the computer and the digest, under the same row as approvals. Quiet hours apply, and many at once arrive as one summary.
 
 ## Find tickets
 

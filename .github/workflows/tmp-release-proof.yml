@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+name: tmp-release-proof
+on:
+  push:
+    branches: [fix/release-guards]
+    paths: [".github/workflows/tmp-release-proof.yml"]
+permissions:
+  contents: read
+jobs:
+  # The release job's setup and its guards and root steps, on the final tree, in the
+  # state the unit step leaves, plus only the unit files that changed since the last
+  # full hosted run.
+  narrow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TEST_MEM_RESERVE_MB: "2048"
+      LIAISON_TEST_SLOTS: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+      - run: bun install --frozen-lockfile
+      - run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y --no-install-recommends postgresql-client-17 redis-tools libxml2-utils
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+      - run: |
+          set -euo pipefail
+          cp .env.test.example .env.test
+          sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|; s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=$(openssl rand -hex 32)|" .env.test
+      - run: bun run infra:up
+      - run: bun run scripts/build-app-catalog.ts --out-dir "$RUNNER_TEMP/catalog" 2>&1 | tail -3; ls -la bundled-apps/invoicing/node_modules/@liaison
+      - run: bun run scripts/test-run.ts unit --file src/infra/leadership.test.ts
+      - run: bun run scripts/test-run.ts unit --file src/apps/tickets/notify-new-ticket.test.ts
+      - run: bun run test:guards
+      - run: bun run test:root

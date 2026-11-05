@@ -22,7 +22,7 @@ import { invitations, passwordResets, sessions, users } from "~/db/schema/kernel
 import { schemaRef } from "~/db/schema-ref"
 import { sendSystemEmailObserved, systemEmailLeavesThisInstance } from "~/infra/email"
 import { renderBrandedEmail } from "~/infra/email-layout"
-import { claimEmailOutageProbe, readEmailOutage } from "~/infra/email-outage"
+import { emailOutageHoldsBackSend, readEmailOutage } from "~/infra/email-outage"
 import { parseOriginAllowlist } from "~/lib/app-origins"
 import {
   CryptoContext,
@@ -415,12 +415,6 @@ auth.post("/login", zValidator("json", loginSchema), async (c) => {
 /** Mail state unreadable: as if the provider were fine, the send will say. */
 const mailOutageNow = () => readEmailOutage().catch(() => null)
 
-/** During an outage: true for every request but the minute's probe. */
-async function mailOutageHoldsBack(): Promise<boolean> {
-  if ((await mailOutageNow()) === null) return false
-  return !(await claimEmailOutageProbe().catch(() => false))
-}
-
 // ── Passwordless magic-link (primary login) ────────────────────────────────
 // Request mints one challenge delivered by email as BOTH a 6-digit code and a
 // clickable link; verify accepts either. Works for every account regardless of
@@ -462,20 +456,20 @@ auth.post("/magic-link/request", zValidator("json", magicLinkRequestSchema), asy
     throw new HTTPException(503, { message: "Service temporarily unavailable" })
   }
 
-  // The provider is refusing mail: nothing to promise anybody, except the one request a minute
-  // that tries again (see infra/email-outage.ts).
-  if (await mailOutageHoldsBack()) {
-    await padToResponseFloor(magicStartedAt)
-    throw new EmailProviderUnavailableError()
-  }
+  // The provider is refusing mail: the answer below is the refusal, for any address, and only
+  // the minute's one send tries (see infra/email-outage.ts). Nobody's attempt counts meanwhile,
+  // or those who keep trying would be locked out when mail is back.
+  const outageAtStart = await mailOutageNow()
 
   const result = await requestMagicLink(email, signInOrgSlug(c, orgSlug))
 
   // Record per-email attempt to throttle repeated requests (same as reset).
-  try {
-    await recordFailedAttempt(redis, `magic:${email.toLowerCase()}`, ip)
-  } catch (err) {
-    log.warn({ err }, "brute-force record failed for magic-link")
+  if (!outageAtStart) {
+    try {
+      await recordFailedAttempt(redis, `magic:${email.toLowerCase()}`, ip)
+    } catch (err) {
+      log.warn({ err }, "brute-force record failed for magic-link")
+    }
   }
 
   // Uniform response — never reveals whether the email exists, by body or by timing.
@@ -755,7 +749,11 @@ auth.post("/totp/step-up", async (c) => {
     })
   } catch (err) {
     log.error({ err, userId }, "Failed to send TOTP step-up code")
-    if (await mailOutageNow()) throw new EmailProviderUnavailableError()
+    if (await mailOutageNow()) {
+      // No code went out, so no cooldown stands in the way of the next try.
+      if (purpose && cooldown > 0) await redis.del(stepUpResendCooldownKey(userId, purpose))
+      throw new EmailProviderUnavailableError()
+    }
   }
   return success(c, cooldown > 0 ? { sent: true, retryAfterSeconds: cooldown } : { sent: true })
 })
@@ -1210,16 +1208,15 @@ auth.post("/password-reset/request", zValidator("json", passwordResetRequestSche
     throw new HTTPException(503, { message: "Service temporarily unavailable" })
   }
 
-  if (await mailOutageHoldsBack()) {
-    await padToResponseFloor(startedAt)
-    throw new EmailProviderUnavailableError()
-  }
+  const outageAtStart = await mailOutageNow()
 
   // The same resolution login and magic-link use: an explicit orgSlug scopes to
   // one org, a bare email must be unambiguous across orgs, and only an active
   // account is reset. Anything else gets the same uniform answer and no mail.
+  // While the provider refuses mail, so does all but the minute's one send (infra/email-outage.ts).
   const resolved = await resolveUser(email, signInOrgSlug(c, orgSlug))
-  const user = resolved?.status === "active" ? resolved : null
+  const user =
+    resolved?.status === "active" && !(await emailOutageHoldsBackSend()) ? resolved : null
 
   if (user) {
     const token = generateToken()
@@ -1271,11 +1268,14 @@ auth.post("/password-reset/request", zValidator("json", passwordResetRequestSche
   }
 
   // Always record per-email attempt to prevent reset request bombing regardless of email validity.
-  // Timing uniformity is maintained by always returning the same response.
-  try {
-    await recordFailedAttempt(redis, `reset:${email.toLowerCase()}`, ip)
-  } catch (err) {
-    log.warn({ err }, "brute-force record failed for password reset")
+  // Timing uniformity is maintained by always returning the same response. Not while mail is off:
+  // those who keep trying would be locked out when it is back.
+  if (!outageAtStart) {
+    try {
+      await recordFailedAttempt(redis, `reset:${email.toLowerCase()}`, ip)
+    } catch (err) {
+      log.warn({ err }, "brute-force record failed for password reset")
+    }
   }
 
   await padToResponseFloor(startedAt)

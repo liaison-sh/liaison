@@ -35,6 +35,7 @@ import {
 import { listMailProviders } from "~/modules/mail/provider-settings"
 import { markOrgDeleting } from "~/modules/org/purge/deleting"
 import { purgeOrg } from "~/modules/org/purge/purge-org"
+import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { seedOrgRow } from "~/seed/factories/org/rows"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -433,6 +434,28 @@ describe("POST /api/cloud/orgs creates the org (S7)", () => {
 describe("POST /api/cloud/orgs while another attempt is creating the same org", () => {
   beforeEach(async () => {
     await sql`DELETE FROM kernel.cloud_request_outcomes`
+  })
+
+  test("an attempt that died after the org's commit is finished by the resume, its apps and views included", async () => {
+    const ownerEmail = "died@acme.test"
+    const slug = "died-org"
+    // The org committed; what ensureOrg does after that never ran. Its default views stand for
+    // the tail: they are the one part nothing else heals later.
+    const { orgId } = await ensureOrg({ slug, name: "Died", credits: { initial: "0" } })
+    await sql`DELETE FROM kernel.saved_views WHERE org_id = ${orgId}`
+    expect(await claimOutcome(CLOUD_CREATE_ORG_ENDPOINT, slug, ownerEmail)).toEqual({
+      kind: "claimed",
+      resumed: false,
+    })
+    await sql`
+      UPDATE kernel.cloud_request_outcomes SET claimed_at = now() - interval '1 hour'
+      WHERE endpoint = ${CLOUD_CREATE_ORG_ENDPOINT} AND idem_key = ${slug}`
+    const { res } = await send("/api/cloud/orgs", orgBody({ slug, ownerEmail }))
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { orgId: string }).orgId).toBe(orgId)
+    const [{ count: after }] = await sql`
+      SELECT count(*)::int AS count FROM kernel.saved_views WHERE org_id = ${orgId}`
+    expect(after).toBeGreaterThan(0)
   })
 
   test("a retry joins the running create and answers its reply, not 503", async () => {

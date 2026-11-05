@@ -5,6 +5,7 @@ import { withSystemDb } from "~/db/privileged"
 import { organizations, users } from "~/db/schema/kernel"
 import { sendSystemEmailObserved } from "~/infra/email"
 import { renderBrandedEmail } from "~/infra/email-layout"
+import { emailOutageHoldsBackSend } from "~/infra/email-outage"
 import { generateNumericCode, generateToken, hashToken } from "~/lib/crypto"
 import { authLogger as log } from "~/lib/logger"
 import { orgHostsEnabled, orgPublicBaseUrl } from "~/lib/org-public-url"
@@ -206,6 +207,12 @@ export async function requestMagicLink(
   if (issued === 1) await redis.expire(issuedKey, CHALLENGE_WINDOW_SECONDS)
   if (issued > MAX_CHALLENGES_PER_USER) {
     log.warn({ userId: user.id, issued }, "Magic-link challenge cap reached for account")
+    return { challengeId }
+  }
+
+  // The provider is refusing mail: same answer, and this request cost the account nothing.
+  if (await emailOutageHoldsBackSend()) {
+    await redis.decr(issuedKey)
     return { challengeId }
   }
 

@@ -282,7 +282,13 @@ describe("passwordless magic-link login", () => {
       return (await body(res)).error
     }
 
+    // The test env's floor is 0, and the answer is read at the floor: without one it races the
+    // send it does not wait for. Production's is 400 ms.
+    const flooredEnv = env as { AUTH_ENUMERATION_FLOOR_MS: number }
+    const savedFloor = flooredEnv.AUTH_ENUMERATION_FLOOR_MS
+
     beforeAll(async () => {
+      flooredEnv.AUTH_ENUMERATION_FLOOR_MS = 150
       const orgs = await sql<{ org_id: string }[]>`
         SELECT org_id FROM kernel.users WHERE email = ${MAGIC_EMAIL}`
       for (const { org_id: orgId } of orgs) {
@@ -302,6 +308,7 @@ describe("passwordless magic-link login", () => {
       setSystemEmailProvider(provider)
     })
     afterAll(async () => {
+      flooredEnv.AUTH_ENUMERATION_FLOOR_MS = savedFloor
       setSystemEmailProvider(null)
       await _clearEmailOutage()
     })
@@ -343,16 +350,98 @@ describe("passwordless magic-link login", () => {
       await redis.del("system-email:outage-probe")
       await refused(await request("outage@test.com"))
       expect(calls).toBe(2)
-      // An unknown address as the probe: nothing is sent, nothing changes, the same answer.
+      // An unknown address asks while the probe is free: nothing is sent, the same answer, and
+      // the probe is still free for the next request that can send.
       await redis.del("system-email:outage-probe")
       await refused(await request("nobody-here@test.com"))
       expect(calls).toBe(2)
+      expect(await redis.get("system-email:outage-probe")).toBeNull()
       answer = () => new Response(JSON.stringify({ id: "m1" }), { status: 200 })
       await redis.del("system-email:outage-probe")
       await clearRedisPatterns(["magic:*", "magic-rate:*", "bruteforce:*"])
       expect((await request("outage@test.com")).status).toBe(200)
       expect(await readEmailOutage()).toBeNull()
       expect((await request("nobody-here@test.com")).status).toBe(200)
+    })
+
+    describe("only a request about to send takes the minute's probe", () => {
+      const PROBE = "system-email:outage-probe"
+      const inOutage = async () => {
+        await refused(await request("outage@test.com"))
+        await clearRedisPatterns(["magic:*", "magic-rate:*", "bruteforce:*"])
+        await redis.del(PROBE)
+        calls = 0
+      }
+      const firstUserId = async (email: string) => {
+        const [row] = await sql<
+          { id: string }[]
+        >`SELECT id FROM kernel.users WHERE email = ${email} LIMIT 1`
+        return String(row?.id)
+      }
+
+      it("made-up addresses, however many, leave it for the person who can use it", async () => {
+        await inOutage()
+        for (const n of [1, 2, 3]) await refused(await request(`nobody-${n}@test.com`))
+        expect(await redis.get(PROBE)).toBeNull()
+        expect(calls).toBe(0)
+        await refused(await request("outage@test.com"))
+        expect(calls).toBe(1)
+        expect(await redis.get(PROBE)).toBe("1")
+      })
+
+      it("an inactive account does not take it", async () => {
+        const orgs = await sql<{ org_id: string }[]>`
+          SELECT org_id FROM kernel.users WHERE email = 'outage@test.com'`
+        for (const { org_id: orgId } of orgs) {
+          await withPrivilegedDb(orgId, "test-magic-link-outage-inactive", (tx) =>
+            tx
+              .insert(users)
+              .values({ orgId, email: "outage-off@test.com", name: "Off", status: "deactivated" })
+              .onConflictDoNothing(),
+          )
+        }
+        await inOutage()
+        await refused(await request("outage-off@test.com"))
+        expect(await redis.get(PROBE)).toBeNull()
+        expect(calls).toBe(0)
+      })
+
+      it("an account past its issue cap does not take it, and one held back spends none of its cap", async () => {
+        await inOutage()
+        const issuedKey = `magic:issued:${await firstUserId("outage@test.com")}`
+        await redis.set(issuedKey, "5", "EX", 600)
+        await refused(await request("outage@test.com"))
+        expect(await redis.get(PROBE)).toBeNull()
+        expect(calls).toBe(0)
+        // Under the cap, probe already taken: this request sends nothing, so it counts for nothing.
+        await redis.set(issuedKey, "2", "EX", 600)
+        await redis.set(PROBE, "1", "EX", 60)
+        await refused(await request("outage@test.com"))
+        expect(calls).toBe(0)
+        expect(await redis.get(issuedKey)).toBe("2")
+      })
+
+      it("password reset: an unknown address leaves it, a known one takes it and tries", async () => {
+        await inOutage()
+        const reset = (email: string) => post("/api/auth/password-reset/request", { email })
+        await refused(await reset("nobody-here@test.com"))
+        expect(await redis.get(PROBE)).toBeNull()
+        expect(calls).toBe(0)
+        await refused(await reset("outage@test.com"))
+        expect(await redis.get(PROBE)).toBe("1")
+        expect(calls).toBe(1)
+        // The next one is held back, with the same answer.
+        await refused(await reset("outage@test.com"))
+        expect(calls).toBe(1)
+      })
+
+      it("nobody's attempt is counted against them while mail is off", async () => {
+        await inOutage()
+        for (let i = 0; i < 8; i++) await refused(await request("nobody-here@test.com"))
+        expect((await refused(await request("nobody-here@test.com")))?.code).toBe(
+          "EMAIL_PROVIDER_UNAVAILABLE",
+        )
+      })
     })
 
     it("one address refused by the provider says nothing about the provider", async () => {
@@ -388,6 +477,11 @@ describe("passwordless magic-link login", () => {
 
 describe("what counts as the provider refusing", () => {
   const smtp = (over: Record<string, unknown>) => Object.assign(new Error("smtp"), over)
+  // nodemailer's own shape for a refused envelope.
+  const rcpt = (responseCode: number, response: string) =>
+    smtp({ code: "EENVELOPE", command: "RCPT TO", responseCode, response })
+  const mailFrom = (responseCode: number, response: string) =>
+    smtp({ code: "EENVELOPE", command: "MAIL FROM", responseCode, response })
   it.each([
     [new EmailRateLimitError(1000, "daily_quota_exceeded"), "quota"],
     [new EmailRateLimitError(1000, "monthly_quota_exceeded"), "quota"],
@@ -413,15 +507,30 @@ describe("what counts as the provider refusing", () => {
       }),
       "quota",
     ],
+    // One recipient: a full mailbox or a greylist at RCPT, a full mailbox after the data.
+    [rcpt(452, "452 4.2.2 The email account that you tried to reach is over quota"), null],
+    [rcpt(452, "452 Mailbox quota exceeded"), null],
+    [rcpt(451, "451 4.7.1 Greylisting in action, please come back later"), null],
+    [rcpt(450, "450 4.2.0 Recipient address rejected: Greylisted"), null],
+    [rcpt(452, "452 4.5.3 Too many recipients"), null],
+    [rcpt(550, "550 no such user"), null],
     [
       smtp({
-        code: "EENVELOPE",
-        responseCode: 452,
-        response: "452 4.3.1 Insufficient system storage",
+        code: "EMESSAGE",
+        responseCode: 552,
+        response: "552 5.2.2 Mailbox size limit exceeded",
       }),
-      "unreachable",
+      null,
     ],
-    [smtp({ code: "EENVELOPE", responseCode: 421, response: "421 try later" }), "unreachable"],
+    // The whole sender or server, whichever stage says it.
+    [rcpt(421, "421 4.7.0 try later"), "unreachable"],
+    [rcpt(452, "452 4.3.1 Insufficient system storage"), "unreachable"],
+    [rcpt(550, "550 5.4.5 Daily user sending limit exceeded"), "quota"],
+    [mailFrom(452, "452 4.3.1 Insufficient system storage"), "unreachable"],
+    [mailFrom(451, "451 4.3.0 Temporary failure"), "unreachable"],
+    [mailFrom(454, "454 Throttling failure: Daily message quota exceeded"), "quota"],
+    [smtp({ code: "EMESSAGE", responseCode: 451, response: "451 local error" }), "unreachable"],
+    [smtp({ code: "EENVELOPE", command: "API" }), null],
     [new Error("anything else"), null],
   ] as const)("%#", (err, kind) => {
     expect(emailFailureOutage(err)?.kind ?? null).toBe(kind)

@@ -544,22 +544,39 @@ export function emailFailureOutage(err: unknown): { kind: EmailOutageKind; detai
     const key = /invalid_api_key|missing_api_key|restricted_api_key/.exec(err.message)
     return key ? { kind: "credentials", detail: key[0] } : null
   }
-  // A nodemailer failure: `code` for the connection, `responseCode` and `response` for the server.
-  const smtp = err as { code?: unknown; responseCode?: unknown; response?: unknown } | null
+  // A nodemailer failure: `code` for the connection, `responseCode` and `response` for the server,
+  // `command` for the stage it answered.
+  const smtp = err as {
+    code?: unknown
+    command?: unknown
+    responseCode?: unknown
+    response?: unknown
+  } | null
   if (!smtp || typeof smtp !== "object") return null
   const code = typeof smtp.code === "string" ? smtp.code : ""
   const reply = typeof smtp.responseCode === "number" ? smtp.responseCode : 0
   const text = typeof smtp.response === "string" ? smtp.response : ""
-  if (/quota|sending limit|limit exceeded|sending paused/i.test(text)) {
-    return { kind: "quota", detail: `smtp ${reply}` }
-  }
   if (code === "EAUTH" || reply === 535 || reply === 534) {
     return { kind: "credentials", detail: `smtp ${code || reply}` }
   }
   if (["ECONNECTION", "ETIMEDOUT", "ESOCKET", "EDNS", "ETLS"].includes(code)) {
     return { kind: "unreachable", detail: `smtp ${code}` }
   }
-  if (reply === 421 || reply === 451 || reply === 452 || reply === 454) {
+  if (reply === 421) return { kind: "unreachable", detail: "smtp 421" }
+  // One mailbox or address, at any stage (x.1 and x.2 of RFC 3463, or plainly worded):
+  // a server that checks its own users can say it after the data as well.
+  if (/\b[45]\.[12]\.\d{1,3}\b|mailbox|over quota/i.test(text)) return null
+  if (code === "EENVELOPE" && smtp.command === "RCPT TO") {
+    // The reply is about this recipient (a greylist, a limit of theirs), unless it names the sender.
+    if (/sending limit|sending paused|(daily|message|sending|send) quota/i.test(text)) {
+      return { kind: "quota", detail: `smtp ${reply}` }
+    }
+    return /\b4\.3\.1\b/.test(text) ? { kind: "unreachable", detail: "smtp 4.3.1" } : null
+  }
+  if (/quota|sending limit|limit exceeded|sending paused/i.test(text)) {
+    return { kind: "quota", detail: `smtp ${reply}` }
+  }
+  if (reply === 451 || reply === 452 || reply === 454) {
     return { kind: "unreachable", detail: `smtp ${reply}` }
   }
   return null

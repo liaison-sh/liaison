@@ -7,9 +7,11 @@
 //
 // A send is only attempted for a known address, so the state must not move on
 // what an unknown address did:
-//  - while it is set, every request gets the same refusal and sends nothing;
-//  - once a minute one request goes through as a probe. Whatever its address
-//    does, it is answered from the state afterwards: still set, the same refusal;
+//  - while it is set, every request gets the same refusal;
+//  - once a minute one send goes through as a probe. Only a send about to happen
+//    takes the probe, so an address with no account cannot use it up and hold the
+//    state open for the people who could get through. The request is answered from
+//    the state afterwards: still set, the same refusal;
 //  - only an accepted send clears it, so the first mail after the provider is
 //    back ends the outage for all.
 // What an observer can still learn: one request's answer at the very start of an
@@ -69,9 +71,18 @@ export async function readEmailOutage(): Promise<EmailOutage | null> {
   return JSON.parse(raw) as EmailOutage
 }
 
-/** True for at most one caller per minute: that request tries a send during an outage. */
-export async function claimEmailOutageProbe(): Promise<boolean> {
-  return (await redis.set(PROBE_KEY, "1", "EX", PROBE_EVERY_SECONDS, "NX")) !== null
+/**
+ * Asked right before a system mail a person waits on. During an outage: true for
+ * every send but the minute's probe. Mail state unreadable: as if the provider
+ * were fine, the send will say.
+ */
+export async function emailOutageHoldsBackSend(): Promise<boolean> {
+  try {
+    if ((await readEmailOutage()) === null) return false
+    return (await redis.set(PROBE_KEY, "1", "EX", PROBE_EVERY_SECONDS, "NX")) === null
+  } catch {
+    return false
+  }
 }
 
 /** Test isolation. */

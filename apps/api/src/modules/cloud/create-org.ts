@@ -5,8 +5,8 @@
 // outcome store, which also serialises two creations of one slug:
 //  - the slug is checked first: held by another owner, or by an org this API did
 //    not create → 409, nothing written;
-//  - `ensureOrg` is used to create only, never to update (a retry never renames);
-//  - then, each step idempotent so a resumed attempt completes the org: the
+//  - then, each step idempotent so a resumed attempt completes the org: `ensureOrg`
+//    with what follows its commit (apps, login provider, default views), the
 //    owner as an active passwordless admin, the tier for the plan and the caps.
 // The stored reply never expires (a late retry must still get its 200, and the
 // slug check alone would answer 409); deleting the org (modules/org/purge)
@@ -128,17 +128,15 @@ export async function createCloudOrg(
     return { status: 409, reply: { ok: false, code: CLOUD_ERROR_CODES.slugTaken } }
   }
 
-  const orgId =
-    bySlug?.id ??
-    (
-      await ensureOrg({
-        id: req.orgId,
-        slug: req.slug,
-        name: req.name,
-        locale: req.locale,
-        credits: { initial: req.includedCredits ?? "0" },
-      })
-    ).orgId
+  // On a resumed claim too: what follows the org's commit in there (its apps, the login provider,
+  // the default views) is the slow part, so that is where a create dies. Idempotent by slug.
+  const { orgId } = await ensureOrg({
+    id: req.orgId,
+    slug: req.slug,
+    name: req.name,
+    locale: req.locale,
+    credits: { initial: req.includedCredits ?? "0" },
+  })
 
   await ensureUser({
     orgId,

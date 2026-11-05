@@ -2189,9 +2189,9 @@ const logFile = path.join(runDir, "output.log")
 // from a previous shape) was the source of multiple flake classes.
 const NEEDS_CLEAN_SUBSTRATE = CLEAN_SUBSTRATE_SUITES
 // Suites with no substrate at all: no database to prepare, no preflight (see
-// the preflight note below). `root` is file reads and small spawns, so a hosted
-// runner with no services and no .env.test can run it.
-const NO_SUBSTRATE = new Set(["desktop", "desktop-ui", "root"])
+// the preflight note below). `root` and `guards` are file reads and small spawns,
+// so a hosted runner with no services and no .env.test can run them.
+const NO_SUBSTRATE = new Set(["desktop", "desktop-ui", "root", "guards"])
 let cleanup: Promise<void> = Promise.resolve()
 if (NEEDS_CLEAN_SUBSTRATE.has(suite)) {
   console.log(

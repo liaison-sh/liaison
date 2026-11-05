@@ -373,8 +373,8 @@ describe("after the notice", () => {
 })
 
 describe("the channels it reaches by default", () => {
-  it("is the 'Tickets, tasks and knowledge' row: feed and digest, no phone or computer", () => {
-    expect(groupForKind(KIND)).toBe("work")
-    expect(DEFAULT_GRID.work).toEqual({ in_app: true, desktop: false, push: false, email: true })
+  it("is the 'Approvals and access requests' row: feed, computer, phone and digest", () => {
+    expect(groupForKind(KIND)).toBe("approvals")
+    expect(DEFAULT_GRID.approvals).toEqual({ in_app: true, desktop: true, push: true, email: true })
   })
 })

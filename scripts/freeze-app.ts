@@ -15,6 +15,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -59,9 +60,11 @@ export interface FreezeResult {
    * Every repo file whose bytes reach the package, `/`-separated and relative to
    * `repoRoot`, sorted: the bundlers' inputs that put code in an output (the app's
    * own sources and the workspace packages it inlines, e.g. `packages/app-sdk`)
-   * and the files copied verbatim. Installed npm dependencies are left out. The
-   * bundled-app version guard (scripts/check-bundled-app-version.ts) reads it, so
-   * a change to any of these files is a change to the package.
+   * and the files copied verbatim. A workspace package the bundlers read from the
+   * app's installed copy is reported at its `packages/` path (see `workspaceFileOf`).
+   * Installed npm dependencies are left out. The bundled-app version guard
+   * (scripts/check-bundled-app-version.ts) reads it, so a change to any of these
+   * files is a change to the package.
    */
   sources: string[]
 }
@@ -78,10 +81,54 @@ const LOADERS = {
   json: "json",
 } as const
 
-/** Serve `overrides` (absolute path → contents) to a Bun or esbuild build in place of the disk. */
-function overlayPlugin(overrides: ReadonlyMap<string, string>, refuseJsx: boolean) {
+/** Workspace packages by name: `@liaison/host` -> `packages/host-sdk`. */
+function readWorkspacePackages(repoRoot: string): ReadonlyMap<string, string> {
+  const packages = new Map<string, string>()
+  const packagesDir = join(repoRoot, "packages")
+  if (!existsSync(packagesDir)) return packages
+  for (const dir of readdirSync(packagesDir)) {
+    const manifestPath = join(packagesDir, dir, "package.json")
+    if (!existsSync(manifestPath)) continue
+    const { name } = JSON.parse(readFileSync(manifestPath, "utf8")) as { name?: string }
+    if (name) packages.set(name, `packages/${dir}`)
+  }
+  return packages
+}
+
+/**
+ * The `packages/` file an installed path stands for, or null when it is a real npm
+ * dependency. scripts/build-bundled-app.sh runs `bun install` in the app, which
+ * installs its `file:` dependencies as copies under `bundled-apps/<app>/node_modules/`,
+ * and from then on the bundlers read those instead of `packages/`. Which of the two
+ * happens depends only on whether that checkout has built the app.
+ */
+function workspaceFileOf(
+  installedPath: string,
+  workspacePackages: ReadonlyMap<string, string>,
+): string | null {
+  const parts = installedPath.split("/")
+  const after = parts.slice(parts.lastIndexOf("node_modules") + 1)
+  const dir = workspacePackages.get(after.slice(0, 2).join("/"))
+  return dir ? [dir, ...after.slice(2)].join("/") : null
+}
+
+/**
+ * Serve `overrides` (absolute path -> contents) to a Bun or esbuild build in place of
+ * the disk, and `copies` the same way (a path from `node_modules/` on -> contents) for
+ * a file the bundlers reach through an app's installed copy.
+ */
+function overlayPlugin(
+  overrides: ReadonlyMap<string, string>,
+  copies: ReadonlyMap<string, string>,
+  refuseJsx: boolean,
+) {
   const escapeRe = (k: string) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-  const filter = new RegExp(`^(?:${[...overrides.keys()].map(escapeRe).join("|")})$`)
+  const filter = new RegExp(
+    `^(?:${[
+      ...[...overrides.keys()].map(escapeRe),
+      ...[...copies.keys()].map((k) => `.*/${escapeRe(k)}`),
+    ].join("|")})$`,
+  )
   return {
     name: "liaison-source-overlay",
     setup(build: {
@@ -99,7 +146,9 @@ function overlayPlugin(overrides: ReadonlyMap<string, string>, refuseJsx: boolea
         if (!loader || (refuseJsx && (loader === "tsx" || loader === "jsx"))) {
           throw new Error(`cannot overlay ${args.path}`)
         }
-        const contents = overrides.get(args.path)
+        const contents =
+          overrides.get(args.path) ??
+          copies.get(args.path.slice(args.path.lastIndexOf("/node_modules/") + 1))
         if (contents === undefined) throw new Error(`no overlay for ${args.path}`)
         return { contents, loader }
       })
@@ -114,6 +163,7 @@ function bundleSources(
   outputs: BundleOutputs | undefined,
   pathBase: string,
   repoRoot: string,
+  workspacePackages: ReadonlyMap<string, string>,
 ): string[] {
   if (!outputs) throw new Error("the bundler returned no metafile")
   const root = realpathSync(repoRoot)
@@ -123,10 +173,24 @@ function bundleSources(
       if (info.bytesInOutput <= 0) continue
       const abs = resolve(pathBase, input)
       if (!existsSync(abs)) continue // a plugin's virtual module
-      const rel = relative(root, realpathSync(abs)).split("\\").join("/")
+      const real = realpathSync(abs)
+      const rel = relative(root, real).split("\\").join("/")
       if (rel.startsWith("../") || isAbsolute(rel)) continue
-      if (rel.split("/").includes("node_modules")) continue
-      out.push(rel)
+      if (!rel.split("/").includes("node_modules")) {
+        out.push(rel)
+        continue
+      }
+      const source = workspaceFileOf(rel, workspacePackages)
+      if (!source) continue // an npm dependency
+      // A package built from a copy older than its source would carry code nobody
+      // reviewed under this version, and hide a shared change from the version guard.
+      const sourceAbs = join(root, source)
+      if (!existsSync(sourceAbs) || !readFileSync(real).equals(readFileSync(sourceAbs))) {
+        throw new Error(
+          `${rel} differs from ${source}: the installed copy is stale. Run \`bun install\` in the app's directory.`,
+        )
+      }
+      out.push(source)
     }
   }
   return out
@@ -142,13 +206,20 @@ export async function freezeApp(opts: FreezeOptions): Promise<FreezeResult> {
 
   const raw = JSON.parse(readFileSync(manifestPath, "utf8"))
   const sources = new Set<string>()
+  const workspacePackages = readWorkspacePackages(repoRoot)
   const overrides = new Map<string, string>()
+  const copies = new Map<string, string>()
   for (const [rel, contents] of opts.sourceOverrides ?? []) {
     overrides.set(resolve(realpathSync(repoRoot), rel), contents)
+    for (const [name, dir] of workspacePackages) {
+      if (rel.startsWith(`${dir}/`)) {
+        copies.set(`node_modules/${name}/${rel.slice(dir.length + 1)}`, contents)
+      }
+    }
   }
-  const bunPlugins = overrides.size > 0 ? [overlayPlugin(overrides, false)] : []
+  const bunPlugins = overrides.size > 0 ? [overlayPlugin(overrides, copies, false)] : []
   // First, so it answers before the Solid transform's own onLoad.
-  const esbuildPlugins = overrides.size > 0 ? [overlayPlugin(overrides, true)] : []
+  const esbuildPlugins = overrides.size > 0 ? [overlayPlugin(overrides, copies, true)] : []
   const appSource = (name: string) =>
     relative(realpathSync(repoRoot), realpathSync(join(appDir, name)))
       .split("\\")
@@ -202,7 +273,14 @@ export async function freezeApp(opts: FreezeOptions): Promise<FreezeResult> {
       throw new Error(`Bundle failed: ${detail}`)
     }
     // Bun.build reports metafile paths relative to the process's cwd.
-    for (const p of bundleSources(build.metafile?.outputs, process.cwd(), repoRoot)) sources.add(p)
+    for (const p of bundleSources(
+      build.metafile?.outputs,
+      process.cwd(),
+      repoRoot,
+      workspacePackages,
+    )) {
+      sources.add(p)
+    }
 
     // Phase 16 Task A6 — verify every webhook's `handler` AND `verify` export
     // resolves to a callable in the built bundle. Fails freeze with a clear
@@ -264,7 +342,14 @@ export async function freezeApp(opts: FreezeOptions): Promise<FreezeResult> {
         metafile: true,
       })
       // esbuild reports metafile paths relative to absWorkingDir.
-      for (const p of bundleSources(uiBuild.metafile?.outputs, repoRoot, repoRoot)) sources.add(p)
+      for (const p of bundleSources(
+        uiBuild.metafile?.outputs,
+        repoRoot,
+        repoRoot,
+        workspacePackages,
+      )) {
+        sources.add(p)
+      }
 
       // The host serves `solid-js{,/web,/store}` to plugin bundles through the
       // literal-export shims under apps/web/public/_app-runtime/. An ESM named
@@ -324,8 +409,14 @@ export async function freezeApp(opts: FreezeOptions): Promise<FreezeResult> {
             : "<bun.build returned no logs — entry resolution or transformer failure>"
           throw new Error(`pdf template '${tpl.kind}' bundle failed: ${detail}`)
         }
-        for (const p of bundleSources(templateBuild.metafile?.outputs, process.cwd(), repoRoot))
+        for (const p of bundleSources(
+          templateBuild.metafile?.outputs,
+          process.cwd(),
+          repoRoot,
+          workspacePackages,
+        )) {
           sources.add(p)
+        }
         let js = await templateBuild.outputs[0].text()
         // Resolve the LOCAL binding Bun.build exported as `renderTemplate`.
         // Handles a direct export (`export { renderTemplate }`), an alias

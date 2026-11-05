@@ -102,7 +102,9 @@ async function assertCommitted(
 ): Promise<void> {
   let state: MoveState
   try {
-    state = await (deps.moveState ?? (async (o: string, t: string) => (await askControlPlane(o, t)).state))(orgId, transferId)
+    state = await (
+      deps.moveState ?? (async (o: string, t: string) => (await askControlPlane(o, t)).state)
+    )(orgId, transferId)
   } catch (err) {
     // A self-hosted instance has nobody to arbitrate. A managed one always
     // asks: a missing identity or endpoint there is a broken cell, and serving

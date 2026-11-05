@@ -2,6 +2,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 import { app } from "~/app"
 import { sql } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
+import { users } from "~/db/schema/kernel"
 import type { EmailMessage, EmailProvider } from "~/infra/email"
 import {
   ConsoleEmailProvider,
@@ -281,9 +283,16 @@ describe("passwordless magic-link login", () => {
     }
 
     beforeAll(async () => {
-      await sql`INSERT INTO kernel.users (org_id, email, name, status)
-        SELECT org_id, ${"outage@test.com"}, 'Outage', 'active' FROM kernel.users WHERE email = ${MAGIC_EMAIL}
-        ON CONFLICT DO NOTHING`
+      const orgs = await sql<{ org_id: string }[]>`
+        SELECT org_id FROM kernel.users WHERE email = ${MAGIC_EMAIL}`
+      for (const { org_id: orgId } of orgs) {
+        await withPrivilegedDb(orgId, "test-magic-link-outage-user", (tx) =>
+          tx
+            .insert(users)
+            .values({ orgId, email: "outage@test.com", name: "Outage", status: "active" })
+            .onConflictDoNothing(),
+        )
+      }
     })
     beforeEach(async () => {
       await clearRedisPatterns(["magic:*", "magic-rate:*", "bruteforce:*"])

@@ -22,6 +22,7 @@ import {
 import { app } from "~/app"
 import { sql } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
+import { oauthProviders } from "~/db/schema/kernel"
 import {
   JobsTestAccess,
   jobsSkippedOrgSuspendedCount,
@@ -367,9 +368,16 @@ describe("the login page of a managed workspace", () => {
     ((await (await onHost(origin, "/api/auth/oauth/providers")).json()) as { data: unknown[] }).data
   async function withGoogle(slug: string): Promise<Org> {
     const org = await setUpOrg(slug)
-    await sql`INSERT INTO kernel.oauth_providers
-      (org_id, name, issuer_url, client_id, client_secret_encrypted, scopes)
-      VALUES (${org.id}, 'Google', 'https://accounts.google.com', 'cid', 'sealed', '{}')`
+    await withPrivilegedDb(org.id, "test-suspension-oauth-provider", (tx) =>
+      tx.insert(oauthProviders).values({
+        orgId: org.id,
+        name: "Google",
+        issuerUrl: "https://accounts.google.com",
+        clientId: "cid",
+        clientSecretEncrypted: "sealed",
+        scopes: "{}",
+      }),
+    )
     return org
   }
 

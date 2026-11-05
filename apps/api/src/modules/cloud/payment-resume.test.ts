@@ -13,6 +13,8 @@ import { afterAll, beforeEach, describe, expect, spyOn, test } from "bun:test"
 import { randomUUID } from "node:crypto"
 import type { CloudBillingPushRequest } from "@liaison/control-plane-contract"
 import { sql } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
+import { routines, users } from "~/db/schema/kernel"
 import { EMBEDDING_BACKFILL_JOB } from "~/infra/jobs/embedding-backfill"
 import * as jobs from "~/infra/jobs/jobs"
 import { applyBillingPush, rerunMissedOneShots } from "~/modules/cloud/billing"
@@ -32,6 +34,50 @@ async function newOrg(): Promise<string> {
   orgs.push(id)
   await seedOrgRow({ id, name: "Resume org", slug: `resume-${id.slice(0, 8)}` })
   return id
+}
+
+async function addOwner(orgId: string): Promise<string> {
+  const [owner] = await withPrivilegedDb(orgId, "test-resume-owner", (tx) =>
+    tx
+      .insert(users)
+      .values({ orgId, email: `owner-${orgId.slice(0, 8)}@example.test`, name: "Owner" })
+      .returning({ id: users.id }),
+  )
+  return owner!.id
+}
+
+interface RoutineRow {
+  name: string
+  kind?: string
+  cron?: string
+  timezone?: string
+  runAt?: string
+  lastRunAt?: string
+  status?: string
+}
+
+async function addRoutine(orgId: string, ownerUserId: string, row: RoutineRow): Promise<string> {
+  const [added] = await withPrivilegedDb(orgId, "test-resume-routine", (tx) =>
+    tx
+      .insert(routines)
+      .values({
+        orgId,
+        ownerUserId,
+        name: row.name,
+        description: "d",
+        kind: row.kind ?? "scheduled",
+        cron: row.cron,
+        timezone: row.timezone,
+        runAt: row.runAt ? new Date(row.runAt) : undefined,
+        lastRunAt: row.lastRunAt ? new Date(row.lastRunAt) : undefined,
+        prompt: "p",
+        scopes: [],
+        status: row.status ?? "active",
+        createdByActorType: "user",
+      })
+      .returning({ id: routines.id }),
+  )
+  return added!.id
 }
 
 let version = 1
@@ -67,22 +113,22 @@ afterAll(async () => {
 describe("one-shot routines on payment resumed", () => {
   test("only a due one-shot that never ran starts again", async () => {
     const orgId = await newOrg()
-    const [owner] = await sql<{ id: string }[]>`INSERT INTO kernel.users (org_id, email, name)
-      VALUES (${orgId}, ${`owner-${orgId.slice(0, 8)}@example.test`}, 'Owner') RETURNING id`
-    const add = async (
+    const owner = await addOwner(orgId)
+    const add = (
       name: string,
       kind: string,
       runAt: string | null,
       lastRunAt: string | null,
       status = "active",
-    ) => {
-      const [row] = await sql<{ id: string }[]>`INSERT INTO kernel.routines
-        (org_id, owner_user_id, name, description, kind, cron, timezone, run_at, last_run_at, prompt, scopes,
-         visibility, status, created_by_actor_type)
-        VALUES (${orgId}, ${owner!.id}, ${name}, 'd', ${kind}, ${kind === "recurring" ? "0 8 * * *" : null}, ${kind === "recurring" ? "UTC" : null},
-                ${runAt}, ${lastRunAt}, 'p', '{}', 'personal', ${status}, 'user') RETURNING id`
-      return row!.id
-    }
+    ) =>
+      addRoutine(orgId, owner, {
+        name,
+        kind,
+        ...(kind === "recurring" ? { cron: "0 8 * * *", timezone: "UTC" } : {}),
+        ...(runAt ? { runAt } : {}),
+        ...(lastRunAt ? { lastRunAt } : {}),
+        status,
+      })
     const now = new Date("2026-11-05T12:00:00.000Z")
     const missed = await add("missed", "scheduled", "2026-11-05T11:00:00.000Z", null)
     await add("future", "scheduled", "2026-11-05T13:00:00.000Z", null)
@@ -115,14 +161,8 @@ describe("one-shot routines on payment resumed", () => {
 
 describe("the push's own wiring (no test double for the resume)", () => {
   async function dueOneShot(orgId: string): Promise<string> {
-    const [owner] = await sql<{ id: string }[]>`INSERT INTO kernel.users (org_id, email, name)
-      VALUES (${orgId}, ${`owner-${orgId.slice(0, 8)}@example.test`}, 'Owner') RETURNING id`
-    const [row] = await sql<{ id: string }[]>`INSERT INTO kernel.routines
-      (org_id, owner_user_id, name, description, kind, cron, timezone, run_at, last_run_at, prompt, scopes,
-       visibility, status, created_by_actor_type)
-      VALUES (${orgId}, ${owner!.id}, 'due', 'd', 'scheduled', null, null, '2026-01-01T00:00:00.000Z', null,
-              'p', '{}', 'personal', 'active', 'user') RETURNING id`
-    return row!.id
+    const owner = await addOwner(orgId)
+    return addRoutine(orgId, owner, { name: "due", runAt: "2026-01-01T00:00:00.000Z" })
   }
   const realPush = async (orgId: string, status: CloudBillingPushRequest["status"]) => {
     const res = await applyBillingPush(
@@ -168,11 +208,7 @@ describe("the push's own wiring (no test double for the resume)", () => {
     await dueOneShot(orgId)
     const [{ owner_user_id: owner }] = await sql<{ owner_user_id: string }[]>`
       SELECT owner_user_id FROM kernel.routines WHERE org_id = ${orgId}`
-    await sql`INSERT INTO kernel.routines
-      (org_id, owner_user_id, name, description, kind, cron, timezone, run_at, last_run_at, prompt, scopes,
-       visibility, status, created_by_actor_type)
-      VALUES (${orgId}, ${owner}, 'due 2', 'd', 'scheduled', null, null, '2026-01-01T00:00:00.000Z', null,
-              'p', '{}', 'personal', 'active', 'user')`
+    await addRoutine(orgId, owner, { name: "due 2", runAt: "2026-01-01T00:00:00.000Z" })
     await realPush(orgId, "past_due")
     let ticks = 0
     const tick = spyOn(jobs, "enqueueAppJobForServer").mockImplementation(async () => {

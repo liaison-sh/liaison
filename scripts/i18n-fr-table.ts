@@ -8,6 +8,8 @@
  * by the generator and intentionally absent here.
  */
 export const FR: Record<string, string> = {
+  "We can't send email right now. Try again later, or sign in with your password if you have one.":
+    "Nous ne pouvons pas envoyer d'e-mails pour le moment. R\u00e9essayez plus tard, ou connectez-vous avec votre mot de passe si vous en avez un.",
   "Which looks most like your company?": "Qu'est-ce qui ressemble le plus à votre entreprise ?",
   "What does your company do? (optional)": "Que fait votre entreprise ? (facultatif)",
   "We picked a few scenarios for that. Change them as you like.":

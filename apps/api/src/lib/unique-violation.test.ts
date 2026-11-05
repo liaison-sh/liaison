@@ -91,8 +91,16 @@ describe("unique-violation: matching an index under every name it really carries
   })
 
   it("kernel.routines (org_id, owner_user_id, name): both names report a routine name_conflict", async () => {
-    const migrated = await uniqueIndexNamesOn("kernel", "routines", ["org_id", "owner_user_id", "name"])
-    const cloned = await uniqueIndexNamesOn(PROBE_SCHEMA, "routines", ["org_id", "owner_user_id", "name"])
+    const migrated = await uniqueIndexNamesOn("kernel", "routines", [
+      "org_id",
+      "owner_user_id",
+      "name",
+    ])
+    const cloned = await uniqueIndexNamesOn(PROBE_SCHEMA, "routines", [
+      "org_id",
+      "owner_user_id",
+      "name",
+    ])
     expect(migrated.length).toBe(1)
     expect(cloned.length).toBe(1)
     for (const name of [...migrated, ...cloned]) {

@@ -1,0 +1,36 @@
+name: tmp-after-probe
+on:
+  push:
+    branches: [fix/release-unit-tests]
+    paths: [".github/workflows/tmp-after-probe.yml"]
+permissions:
+  contents: read
+jobs:
+  after:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TEST_MEM_RESERVE_MB: "2048"
+      LIAISON_TEST_SLOTS: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+      - run: bun install --frozen-lockfile
+      - run: |
+          sudo apt-get install -y --no-install-recommends postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y --no-install-recommends postgresql-client-17 redis-tools libxml2-utils
+      - run: |
+          cp .env.test.example .env.test
+          sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|; s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=$(openssl rand -hex 32)|" .env.test
+      - run: bun run infra:up
+      - name: guards
+        run: |
+          s=$(date +%s); bun run test:guards > /tmp/g.log 2>&1 && rc=0 || rc=$?; echo "GUARDS rc=$rc $(( $(date +%s)-s ))s"; sed 's/\x1b\[[0-9;]*m//g' /tmp/g.log | grep -vE '^\{"level"' | grep -E '^✗|^\(fail\)|^error:| pass$| fail$|Expected|Received|Ran ' | head -40 | cut -c1-180
+      - name: root
+        run: |
+          s=$(date +%s); bun run test:root > /tmp/r.log 2>&1 && rc=0 || rc=$?; echo "ROOT rc=$rc $(( $(date +%s)-s ))s"; sed 's/\x1b\[[0-9;]*m//g' /tmp/r.log | grep -vE '^\{"level"' | grep -E '^✗|^\(fail\)|^error:| pass$| fail$|Expected|Received|Ran ' | head -60 | cut -c1-180

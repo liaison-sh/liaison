@@ -76,8 +76,9 @@ regexes = [
 
 [[allowlists]]
 description = "Control plane contract signing vectors (JSON fixtures shared with the control plane)"
+targetRules = ["generic-api-key"]
 condition = "AND"
-paths = ['''^packages/control-plane-contract/vectors/[a-z0-9-]+\.json$''']
+paths = ['''(^|/)packages/control-plane-contract/vectors/[a-z0-9-]+\.json$''']
 regexTarget = "secret"
 regexes = [
   '''^a3a546870cf3be25cc3262ca470ba13b052fb2c0025acd01aba7ccdb948ef10b$''',

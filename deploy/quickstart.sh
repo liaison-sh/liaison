@@ -281,6 +281,14 @@ wait_healthy() {
     sleep 2
   done
   err "timed out after $((attempts * 2))s waiting for ${url} to become healthy."
+  # A refused start (for example an image older than the database schema)
+  # prints one FATAL line and restarts; surface it instead of making the
+  # reader dig through the logs.
+  local fatal
+  fatal="$(docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" logs --no-log-prefix --tail 50 app 2>/dev/null | grep -m1 '^FATAL:' || true)"
+  if [ -n "${fatal}" ]; then
+    err "The app refused to start: ${fatal}"
+  fi
   err "Inspect the logs with:"
   err "  docker compose -p ${PROJECT_NAME} -f ${COMPOSE_FILE} logs"
   exit 1

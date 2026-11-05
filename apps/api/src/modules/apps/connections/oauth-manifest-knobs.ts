@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { manifestRegExp } from "~/lib/manifest-regex"
+import { manifestRegExp, wholeValueSource } from "~/lib/manifest-regex"
 /**
  * Two OAuth connection knobs a manifest declares, kept free of any provider:
  *
@@ -63,7 +63,7 @@ export const RESERVED_AUTHORIZE_PARAMS: ReadonlySet<string> = new Set([
  * own alternatives (`^a|.*$` must not match anything).
  */
 export function wholeValuePattern(pattern: string): RegExp {
-  return manifestRegExp(`^(?:${pattern})$`)
+  return manifestRegExp(wholeValueSource(pattern))
 }
 
 const MAX_CONFIG_PARAM_LENGTH = 200

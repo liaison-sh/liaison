@@ -29,6 +29,7 @@
     "check:db-connection-import": "bun run scripts/lint-db-connection-import.ts",
     "docs:build": "bun run scripts/docs/build.ts",
     "docs:gen": "bun run scripts/docs/gen-reference.ts",
+    "manifest-regex:prove": "bun run scripts/gen-manifest-regex-proven.ts",
     "check:button-width": "bun run scripts/lint-button-width.ts",
     "i18n:fr": "bun run scripts/i18n-gen-fr.ts",
     "i18n:fr:check": "bun run scripts/i18n-gen-fr.ts --check",

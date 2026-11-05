@@ -121,10 +121,10 @@ jobs:
   unit-tests:
     needs: gate
     runs-on: ubuntu-latest
-    # Twice the job's measured time on a hosted runner: about 23 minutes (unit
-    # 20, guards and root 2). A wedged test process is the runner's to kill and
-    # name (scripts/lib/unit-watchdog.ts), so this limit never hides one.
-    timeout-minutes: 45
+    # Twice the job's slower measured run on a hosted runner, 28 minutes (unit
+    # took 20 and 27). A wedged test process is the runner's to kill and name
+    # (scripts/lib/unit-watchdog.ts), so this limit never hides one.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

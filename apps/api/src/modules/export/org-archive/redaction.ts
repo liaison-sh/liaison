@@ -95,6 +95,7 @@ export const KEPT_COLUMNS: Readonly<Record<string, string>> = {
     "drift check over config values that are never a secret",
   "kernel.contact_addresses.verified_at": "a timestamp",
   "kernel.contact_addresses.verified_by": "who checked the address, not a verifier",
+  "app_boxtal.short_code_sync.state": STATUS,
   "kernel.agent_turns.state": STATUS,
   "kernel.demo_world_marks.state": STATUS,
   "kernel.device_flow_requests.state": STATUS,

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { and, eq } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
 import { oauthProviders } from "~/db/schema/kernel"
 import { CryptoContext, decryptSecret, encryptSecret } from "~/lib/crypto"
@@ -60,6 +60,8 @@ export async function ensureGoogleLoginProvider(
   }
 
   const wrote = await withPrivilegedDb(orgId, "ensure-google-login-provider", async (tx) => {
+    // An org's create and its first sign-in can land here together; no unique key says one row.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`liaison:google-login:${orgId}`}))`)
     const [existing] = await tx
       .select({
         id: oauthProviders.id,

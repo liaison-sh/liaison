@@ -40,6 +40,7 @@ function sandbox(): { root: string; log: string; env: NodeJS.ProcessEnv } {
 step="$*"
 case "$step" in
   *migrate.ts*) step=migrate ;;
+  *schema-guard.ts*) step=guard ;;
   *reconcile-catalog-boot.ts*) step=reconcile ;;
   *index.ts*) step=server ;;
 esac
@@ -47,6 +48,7 @@ echo "$step|MIG=\${MIGRATION_DATABASE_URL-unset}" >> "${log}"
 if [ "$step" = server ] && [ -n "\${PROBE:-}" ]; then exec "\${REAL_BUN}" "\${PROBE}"; fi
 if [ "$step" = migrate ] && [ -n "\${PROBE_MIGRATE:-}" ]; then exec "\${REAL_BUN}" "\${PROBE_MIGRATE}"; fi
 if [ "$step" = migrate ] && [ -n "\${FAIL_MIGRATE:-}" ]; then exit 3; fi
+if [ "$step" = guard ] && [ -n "\${FAIL_GUARD:-}" ]; then exit 1; fi
 if [ "$step" = reconcile ] && [ -n "\${FAIL_RECONCILE:-}" ]; then
   case "$*" in *--strict*) exit 1 ;; *) exit 0 ;; esac
 fi
@@ -82,11 +84,19 @@ describe("image entrypoint", () => {
     ])
   })
 
-  it("LIAISON_MIGRATE_ON_START=false skips the migration and still reconciles and serves", () => {
+  it("LIAISON_MIGRATE_ON_START=false skips the migration, still checks the schema, reconciles and serves", () => {
     const { log, env } = sandbox()
     const r = runEntrypoint({ ...env, LIAISON_MIGRATE_ON_START: "false" })
     expect(r.status).toBe(0)
-    expect(calls(log).map((l) => l.split("|")[0])).toEqual(["reconcile", "server"])
+    expect(calls(log)[0]).toBe("guard|MIG=postgres://migrator@db/liaison")
+    expect(calls(log).map((l) => l.split("|")[0])).toEqual(["guard", "reconcile", "server"])
+  })
+
+  it("an image older than the schema stops a start without the migration: no reconcile, no server", () => {
+    const { log, env } = sandbox()
+    const r = runEntrypoint({ ...env, LIAISON_MIGRATE_ON_START: "false", FAIL_GUARD: "1" })
+    expect(r.status).not.toBe(0)
+    expect(calls(log).map((l) => l.split("|")[0])).toEqual(["guard"])
   })
 
   it("`migrate` migrates and reconciles, then exits without starting the server", () => {

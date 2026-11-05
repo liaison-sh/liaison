@@ -60,6 +60,31 @@ bun run test:unit    # Backend + frontend unit tests
 See [README.md](README.md) for the full list of scripts and the project
 structure.
 
+## Releases (maintainers)
+
+There are two channels ([docs](docs/admin/upgrades.md#choose-a-channel)).
+`.github/workflows/nightly.yml` publishes a nightly once a day, unattended, from the
+newest `main` commit whose `ci` run is green. One nightly per UTC day: its tag
+`nightly-YYYYMMDD` never moves, so a newer commit waits for the next day's run.
+`gh workflow run nightly.yml` starts one by hand, under the same rules.
+
+To promote a nightly to a release:
+
+1. Let the nightly run on the maintainers' instances first. That soak is the
+   difference between the channels.
+2. Find its commit: `git rev-parse "nightly-YYYYMMDD^{commit}"`. For a nightly
+   already pruned, use the short sha in the version it reports.
+3. Tag that commit, annotated: `git tag -a vX.Y.Z <commit> -m "vX.Y.Z"` (add
+   `-m "Security: yes"` for a [security fix](docs/admin/upgrades.md#mark-a-release-as-a-security-fix)),
+   then `git push origin vX.Y.Z`.
+4. Approve the `release` environment when `release.yml` asks. It publishes `:vX.Y.Z`,
+   `:latest` and the GitHub Release.
+
+The release's notes are the top section of `docs/release-notes.md` in the tagged
+commit, not in `main`. Land that section before the nightly you mean to promote is
+cut: a later commit would not be in the tag, and the release would repeat the
+previous notes.
+
 ## Secret scanning
 
 A commit pushed to a pull request stays public for good, even after a force

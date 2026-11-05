@@ -1,0 +1,327 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# The nightly channel: once a day, build the newest commit of main whose `ci`
+# run is green, publish it as `ghcr.io/mathieufro/liaison:nightly` and
+# `:nightly-YYYYMMDD`, sign it, and publish a GitHub pre-release `nightly-YYYYMMDD`
+# carrying the pinned compose file and `.env.example`. A nightly is one per UTC
+# day: its tag never moves. Later on the same day, a newer green commit waits
+# for the next run.
+#
+# It never touches `:latest`, `:stable` or the `vX.Y.Z` tags, and never marks a
+# release as latest: those belong to release.yml, which promotes a nightly's
+# commit by tagging it. The gate is `ci` on main, so nothing here runs tests or
+# `bun install`. There is no reviewer on publish: it runs every night unattended,
+# and an operator chooses this channel knowing that (docs/admin/upgrades.md).
+#
+# Retention: `prune` keeps the newest 14 pre-releases and their tags. Images are
+# NOT pruned. An operator going back to the release channel stays on their
+# nightly until a release includes it, for however long that takes, and has to
+# be able to pull it again. Public GHCR storage costs nothing.
+#
+# The per-architecture build is the composite action release.yml uses. The local
+# action comes from the workflow's own commit (the sparse checkout at the
+# workspace root), since the commit being built may be older than this file.
+name: nightly
+
+on:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+# Least privilege: read-only by default, and each job declares what it needs.
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/mathieufro/liaison
+
+jobs:
+  # ----- What to build, if anything -----
+  resolve:
+    # Not on forks (they cannot push this image), and never from a branch: a
+    # signature names the workflow's ref, and only main may publish a nightly.
+    if: github.repository == 'mathieufro/liaison' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      build: ${{ steps.pick.outputs.build }}
+      sha: ${{ steps.pick.outputs.sha }}
+      tag: ${{ steps.pick.outputs.tag }}
+      version: ${{ steps.pick.outputs.version }}
+      previous: ${{ steps.pick.outputs.previous }}
+    steps:
+      - name: Pick the newest green commit of main
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          sha=$(gh api "repos/$GH_REPO/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=1" --jq '.workflow_runs[0].head_sha // ""')
+          if [ -z "$sha" ]; then
+            echo "::error::no green ci run on main"
+            exit 1
+          fi
+          on_main=$(gh api "repos/$GH_REPO/compare/$sha...main" --jq .status)
+          case "$on_main" in
+            ahead | identical) ;;
+            *)
+              echo "::error::$sha, the newest green ci run, is not on main ($on_main)"
+              exit 1
+              ;;
+          esac
+
+          day=$(date -u +%Y%m%d)
+          tag="nightly-$day"
+          version="$tag-${sha:0:7}"
+          previous=$(gh api --paginate "repos/$GH_REPO/git/matching-refs/tags/nightly-" --jq '.[].ref' |
+            sed 's#^refs/tags/##' | grep -E '^nightly-[0-9]{8}$' | sort | tail -n 1 || true)
+
+          build=true
+          if [ -n "$previous" ]; then
+            since=$(gh api "repos/$GH_REPO/compare/$previous...$sha" --jq .status)
+            if [ "$since" = identical ] || [ "$since" = behind ]; then
+              echo "$sha is already in $previous: nothing to publish."
+              build=false
+            elif [ "$previous" = "$tag" ]; then
+              echo "$tag already exists and its tag never moves: $sha goes out in the next run."
+              build=false
+            fi
+          fi
+          {
+            echo "build=$build"
+            echo "sha=$sha"
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "previous=$previous"
+          } >> "$GITHUB_OUTPUT"
+          echo "build=$build sha=$sha version=$version previous=${previous:-none}" >> "$GITHUB_STEP_SUMMARY"
+
+  # ----- Per-arch native image builds -----
+  build-amd64:
+    needs: resolve
+    if: needs.resolve.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.image.outputs.digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          sparse-checkout: .github/actions
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: src
+          persist-credentials: false
+      - name: Build + push amd64
+        id: image
+        uses: ./.github/actions/build-image
+        with:
+          version: ${{ needs.resolve.outputs.version }}
+          platform: linux/amd64
+          context: src
+          # Intermediate rolling tag, merged by `publish`: not a published tag.
+          tags: ${{ env.IMAGE }}:nightly-amd64
+
+  build-arm64:
+    needs: resolve
+    if: needs.resolve.outputs.build == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.image.outputs.digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          sparse-checkout: .github/actions
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: src
+          persist-credentials: false
+      - name: Build + push arm64
+        id: image
+        uses: ./.github/actions/build-image
+        with:
+          version: ${{ needs.resolve.outputs.version }}
+          platform: linux/arm64
+          context: src
+          tags: ${{ env.IMAGE }}:nightly-arm64
+
+  # ----- Notes + pinned compose (read-only) -----
+  # Kept out of `publish`, like release.yml's release-notes: the outputs travel
+  # as an artifact to the job that holds the write permissions.
+  notes:
+    needs: resolve
+    if: needs.resolve.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
+      # The same rewrite release.yml does, plus the channel's default, so a
+      # downloaded file already points at this nightly and says it is one.
+      - name: Pin compose to this nightly
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          sed -i "s#liaison:v0.1.0}#liaison:${TAG}}#" deploy/docker-compose.yml
+          grep -q "liaison:${TAG}}" deploy/docker-compose.yml \
+            || { echo "FAIL: compose image tag not rewritten to ${TAG}"; exit 1; }
+          sed -i 's#LIAISON_RELEASE_CHANNEL:-release}#LIAISON_RELEASE_CHANNEL:-nightly}#' deploy/docker-compose.yml
+          grep -q 'LIAISON_RELEASE_CHANNEL:-nightly}' deploy/docker-compose.yml \
+            || { echo "FAIL: compose channel default not rewritten"; exit 1; }
+      - name: Write the notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          PREVIOUS: ${{ needs.resolve.outputs.previous }}
+        run: |
+          set -euo pipefail
+          line='"- \(.sha[0:7]) \(.commit.message | split("\n")[0])"'
+          {
+            echo "Nightly build of \`main\` at \`$SHA\`, whose \`ci\` run is green. It has had no soak."
+            echo
+            echo "- Image: \`$IMAGE:$TAG\` (also \`$IMAGE:$VERSION\`, and \`$IMAGE:nightly\` until the next one)"
+            echo "- Reports the version \`$VERSION\`"
+            echo "- Migrations only go forward. Read [the channels](https://github.com/$GH_REPO/blob/main/docs/admin/upgrades.md#choose-a-channel) before you switch."
+            echo
+            if [ -n "$PREVIOUS" ]; then
+              echo "## Commits since $PREVIOUS"
+              echo
+              gh api "repos/$GH_REPO/compare/$PREVIOUS...$SHA" --jq ".commits | reverse | .[] | $line"
+            else
+              echo "## Latest commits"
+              echo
+              gh api "repos/$GH_REPO/commits?sha=$SHA&per_page=20" --jq ".[] | $line"
+            fi
+          } > NOTES.md
+      - name: Upload assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: nightly-assets
+          # .env.example is a hidden file: upload-artifact drops those otherwise.
+          include-hidden-files: true
+          path: |
+            deploy/docker-compose.yml
+            deploy/.env.example
+            NOTES.md
+          if-no-files-found: error
+
+  # ----- Merge into one multi-arch manifest, sign, publish the pre-release -----
+  # The ONLY job with id-token and release write. It checks out nothing and
+  # installs nothing, so the only code it runs is pinned third-party actions
+  # plus docker, cosign and gh. `:nightly` moves only once the image is signed,
+  # and the pre-release (which instances read) comes last.
+  publish:
+    needs: [resolve, notes, build-amd64, build-arm64]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    steps:
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge amd64 + arm64 into the dated tags
+        id: merge
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          AMD64: ${{ needs.build-amd64.outputs.digest }}
+          ARM64: ${{ needs.build-arm64.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create \
+            --tag "${IMAGE}:${TAG}" \
+            --tag "${IMAGE}:${VERSION}" \
+            "${IMAGE}@${AMD64}" \
+            "${IMAGE}@${ARM64}"
+          DIGEST=$(docker buildx imagetools inspect "${IMAGE}:${TAG}" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      - name: cosign sign the multi-arch manifest
+        env:
+          DIGEST: ${{ steps.merge.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+
+      - name: Move the nightly tag
+        env:
+          DIGEST: ${{ steps.merge.outputs.digest }}
+        run: docker buildx imagetools create --tag "${IMAGE}:nightly" "${IMAGE}@${DIGEST}"
+
+      - name: Download assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nightly-assets
+
+      - name: Publish the pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          gh release create "$TAG" \
+            --target "$SHA" \
+            --title "$TAG" \
+            --notes-file NOTES.md \
+            --prerelease \
+            --latest=false \
+            deploy/docker-compose.yml \
+            deploy/.env.example
+
+  # ----- Keep the newest 14 nightly pre-releases and tags -----
+  prune:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      KEEP: "14"
+    steps:
+      - name: Delete the older ones
+        run: |
+          set -euo pipefail
+          older() { grep -E '^nightly-[0-9]{8}$' | sort -r | tail -n "+$((KEEP + 1))" || true; }
+          for tag in $(gh api --paginate "repos/$GH_REPO/releases" --jq '.[] | select(.prerelease) | .tag_name' | older); do
+            echo "deleting the pre-release $tag"
+            gh release delete "$tag" --cleanup-tag --yes
+          done
+          # A tag whose release is gone (deleted by hand) would stay forever.
+          for tag in $(gh api --paginate "repos/$GH_REPO/git/matching-refs/tags/nightly-" --jq '.[].ref' | sed 's#^refs/tags/##' | older); do
+            echo "deleting the tag $tag"
+            gh api -X DELETE "repos/$GH_REPO/git/refs/tags/$tag"
+          done

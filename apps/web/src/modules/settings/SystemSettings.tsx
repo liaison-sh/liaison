@@ -9,6 +9,7 @@ import { LiaisonTeamSection } from "./LiaisonTeamSection"
 
 interface VersionCheckBody {
   running: string
+  channel?: "release" | "nightly"
   latest?: string
   latestUrl?: string
   updateAvailable: boolean
@@ -73,6 +74,20 @@ const SystemSettings: Component = () => {
         <Show when={versionCheck()}>
           {(v) => (
             <section class="flex flex-col gap-2 rounded border p-4" data-testid="system-version">
+              <Show when={v().channel}>
+                {(channel) => (
+                  <div class="flex items-baseline gap-2">
+                    <span class="text-sm text-muted-foreground">
+                      {i18n.t("kernel.settingsUi.channel")}
+                    </span>
+                    <span class="text-sm" data-testid="system-version-channel">
+                      {channel() === "nightly"
+                        ? i18n.t("kernel.settingsUi.channelNightly")
+                        : i18n.t("kernel.settingsUi.channelRelease")}
+                    </span>
+                  </div>
+                )}
+              </Show>
               <div class="flex items-baseline gap-2">
                 <span class="text-sm text-muted-foreground">
                   {i18n.t("kernel.settingsUi.running")}
@@ -86,7 +101,9 @@ const SystemSettings: Component = () => {
                   <span class="text-sm text-muted-foreground">
                     {i18n.t("kernel.settingsUi.latest")}
                   </span>
-                  <code class="text-sm">{v().latest}</code>
+                  <code class="text-sm" data-testid="system-version-latest">
+                    {v().latest}
+                  </code>
                   <Show when={v().stale}>
                     <span class="text-xs text-amber-600" data-testid="version-stale">
                       {i18n.t("kernel.settingsUi.stale")}

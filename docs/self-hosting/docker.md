@@ -84,6 +84,16 @@ You can point Liaison at Amazon S3, Cloudflare R2 or any S3-compatible endpoint 
 | `BASE_URL`, `ALLOWED_ORIGINS` | The URL people reach Liaison at |
 | `DEVICE_FLOW_CLIENTS` | Allowed device-flow client IDs. Keep `mcp-cli`. The desktop app is allowed whenever this is set |
 
+### Version
+
+The channels are explained in [Upgrade Liaison](../admin/upgrades.md#choose-a-channel). `./deploy/quickstart.sh --channel nightly` sets both of these for you.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `LIAISON_IMAGE` | The compose file's pinned tag | The image the stack runs |
+| `LIAISON_RELEASE_CHANNEL` | `release` | `release` or `nightly`: what **Settings › System** compares the running version against |
+| `LIAISON_ALLOW_OLDER_IMAGE` | `false` | Emergency only, not supported: start an image older than the database's schema instead of refusing |
+
 ### Network
 
 | Variable | Default | What it does |

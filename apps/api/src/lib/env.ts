@@ -69,6 +69,9 @@ export const INSTANCE_CLIENT_ENV_PAIRS = [
   ["SHOPIFY_APP_CLIENT_ID", "SHOPIFY_APP_CLIENT_SECRET"],
 ] as const
 
+export const RELEASE_CHANNELS = ["release", "nightly"] as const
+export type ReleaseChannel = (typeof RELEASE_CHANNELS)[number]
+
 export const envSchema = z
   .object({
     PORT: z.coerce.number().default(3000),
@@ -1168,6 +1171,13 @@ export const envSchema = z
     // Phase 14: release version injected at build time. Used by /healthz and
     // System settings. "dev" when running locally without an image build.
     LIAISON_VERSION: z.string().default("dev"),
+    // The update channel Settings > System compares the running version against
+    // (modules/admin/version-check.ts). It picks nothing by itself: the image an
+    // instance runs is LIAISON_IMAGE. docs/admin/upgrades.md explains both.
+    LIAISON_RELEASE_CHANNEL: z.preprocess(
+      unsetIfEmpty,
+      z.enum(RELEASE_CHANNELS).default("release"),
+    ),
     // Step-scoped parallel approval bundling. Off by default. When on, every
     // gated approval created within one agent step shares the same bundle_id;
     // the bundle is reactively discovered at execute time, not pre-declared.

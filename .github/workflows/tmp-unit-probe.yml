@@ -7,6 +7,7 @@ permissions:
   contents: read
 jobs:
   alone:
+    if: ${{ false }}
     strategy:
       fail-fast: false
       matrix:
@@ -54,7 +55,6 @@ jobs:
           name: alone-${{ matrix.envfile }}
           path: logs/alone/
   stall:
-    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -67,7 +67,7 @@ jobs:
         with:
           bun-version: "1.4.x"
       - run: bun install --frozen-lockfile
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client redis-tools libxml2-utils
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client redis-tools libxml2-utils gdb
       - name: Write .env.test
         run: |
           set -euo pipefail
@@ -80,8 +80,8 @@ jobs:
       - name: Tail solos through the sharded runner
         run: |
           mkdir -p logs/stall
-          ( for i in $(seq 1 12); do sleep 60; echo "=== ps minute $i"; ps -eo pid,ppid,etimes,stat,wchan:16,rss,args --forest | grep -E 'bun|sh ' | grep -v grep | cut -c1-200; done ) > logs/stall/ps.log 2>&1 &
-          LOG_DIR=$PWD/logs/stall TEST_UNIT_SHARDS=4 timeout -k 10 720 bun run scripts/with-test-lock.ts -- bun run scripts/test-unit-parallel.ts --retries=0 -- $(cat .github/tmp-probe-tail.txt) 2>&1 | tee logs/stall/run.log; echo "rc=${PIPESTATUS[0]}"
+          ( for i in 1 2 3 4 5 6; do sleep 40; echo "=== snapshot $i"; for p in $(pgrep -f 'bun test --env-file'); do age=$(ps -o etimes= -p $p); [ "$age" -gt 70 ] || continue; echo "--- pid $p age $age: $(tr '\0' ' ' < /proc/$p/cmdline | sed 's/.*xml //')"; sudo gdb -q -batch -p $p -ex 'thread apply all bt 14' 2>/dev/null | grep -E '^Thread|^#' | cut -c1-120 | head -120; done; done ) > logs/stall/gdb.log 2>&1 &
+          LOG_DIR=$PWD/logs/stall TEST_UNIT_SHARDS=4 TEST_UNIT_SILENCE_MS=100000 timeout -k 10 500 bun run scripts/with-test-lock.ts -- bun run scripts/test-unit-parallel.ts --retries=0 -- $(cat .github/tmp-probe-tail.txt) 2>&1 | tee logs/stall/run.log; echo "rc=${PIPESTATUS[0]}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

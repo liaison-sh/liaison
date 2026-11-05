@@ -59,6 +59,7 @@ import { cloneDatabase, dropTestDatabase, dropTrash, ensureTemplate } from "./li
 import { formatFailures, type JunitFailure, parseJunitSuites } from "./lib/unit-junit"
 import { formatPhaseSplit, planRetries } from "./lib/unit-retry"
 import { mergeTimings, readTimings, timingsHistoryPath } from "./lib/unit-timings"
+import { silenceLimitMs, tailLines, watchSilence } from "./lib/unit-watchdog"
 
 const ROOT = path.resolve(import.meta.dir, "..")
 const API = path.join(ROOT, "apps/api")
@@ -82,6 +83,7 @@ const BATCH = Math.max(
   1,
   Math.floor(Number(flag("batch") ?? process.env.TEST_UNIT_BATCH ?? 8)) || 1,
 )
+const SILENCE_LIMIT_MS = silenceLimitMs(Number(TIMEOUT_MS), process.env.TEST_UNIT_SILENCE_MS)
 const REPORT_DIR = mkdtempSync(path.join(tmpdir(), "liaison-unit-junit-"))
 // Per-file wall times from earlier runs, shared by every worktree of the
 // checkout (scripts/lib/unit-timings.ts): they order the queue longest first and
@@ -177,7 +179,10 @@ const results: Result[] = []
 let completed = 0
 let bailed = false
 
-async function readStream(stream: ReadableStream<Uint8Array>): Promise<string> {
+async function readStream(
+  stream: ReadableStream<Uint8Array>,
+  onChunk: (text: string) => void,
+): Promise<string> {
   const reader = stream.getReader()
   const decoder = new TextDecoder()
   const chunks: string[] = []
@@ -185,7 +190,9 @@ async function readStream(stream: ReadableStream<Uint8Array>): Promise<string> {
     for (;;) {
       const { done, value } = await reader.read()
       if (done) break
-      chunks.push(decoder.decode(value, { stream: true }))
+      const text = decoder.decode(value, { stream: true })
+      chunks.push(text)
+      onChunk(text)
     }
   } catch {}
   return chunks.join("")
@@ -248,7 +255,23 @@ async function runUnitOnShard(files: string[], shardId: number, token: number): 
     stdout: "pipe",
     stderr: "pipe",
   })
-  const [out, err] = await Promise.all([readStream(proc.stdout), readStream(proc.stderr)])
+  let tail = ""
+  const watch = watchSilence(SILENCE_LIMIT_MS, (silentMs) => {
+    process.stdout.write(
+      `\n! wedged: no output for ${Math.round(silentMs / 1000)}s, killing shard ${shardId}'s process ` +
+        `(${files.join(" ")}). It last said:\n${tailLines(tail, 20)}\n`,
+    )
+    proc.kill("SIGKILL")
+  })
+  const onChunk = (text: string) => {
+    watch.touch()
+    tail = (tail + text).slice(-8192)
+  }
+  const [out, err] = await Promise.all([
+    readStream(proc.stdout, onChunk),
+    readStream(proc.stderr, onChunk),
+  ])
+  watch.stop()
   const exitCode = await proc.exited
   const ms = Date.now() - t
   const base = { shard: shardId, token, out, err, batch: files.length }

@@ -899,6 +899,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // Which failed unit files the sharded runner retries (never one whose
             // failure already reproduced alone) and its wall-clock split.
             "scripts/lib/unit-retry.test.ts",
+            // The silence watchdog that kills and names a wedged unit process.
+            "scripts/lib/unit-watchdog.test.ts",
             // The junit report the sharded runner reads: per file, which tests failed and why.
             "scripts/lib/unit-junit.test.ts",
             // Where the sharded runner keeps its per-file timings (shared by every

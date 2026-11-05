@@ -6,14 +6,13 @@ on:
 permissions:
   contents: read
 jobs:
-  alone:
-    if: ${{ false }}
+  matrix:
     strategy:
       fail-fast: false
       matrix:
-        envfile: [".env.example", ".env.test.example"]
+        cfg: [plain, junit, pool, shardenv, nodeenv, pipeonly]
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 20
     env:
       TEST_MEM_RESERVE_MB: "2048"
     steps:
@@ -24,70 +23,45 @@ jobs:
         with:
           bun-version: "1.4.x"
       - run: bun install --frozen-lockfile
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client redis-tools libxml2-utils
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client-17 redis-tools libxml2-utils
       - name: Write .env.test
+        run: |
+          set -euo pipefail
+          cp .env.test.example .env.test
+          sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|; s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=$(openssl rand -hex 32)|" .env.test
+      - run: bun run infra:up
+      - run: bun run scripts/bootstrap-test-env.ts
+      - name: Files
         env:
-          ENVFILE: ${{ matrix.envfile }}
+          CFG: ${{ matrix.cfg }}
         run: |
-          set -euo pipefail
-          cp "$ENVFILE" .env.test
-          if [ "$ENVFILE" = ".env.example" ]; then
-            sed -i 's#^DATABASE_URL=.*#DATABASE_URL=postgres://liaison_app:liaison_app@localhost:5432/liaison_test#' .env.test
-            sed -i 's#^NODE_ENV=.*#NODE_ENV=test#' .env.test
-            echo "MEILISEARCH_API_KEY=dev-master-key" >> .env.test
+          mkdir -p logs/m
+          cat > /tmp/one.sh <<'EOS'
+          #!/bin/bash
+          # inside with-test-lock: namespace env is set
+          cd apps/api
+          f="$1"; n=$(echo "$f" | tr '/' '_')
+          args=(--env-file=../../.env.test --timeout 60000)
+          case "$CFG" in
+            junit) args+=(--reporter=junit --reporter-outfile=/tmp/x.xml) ;;
+            pool) export DB_POOL_MAX=8 DB_ACQUIRE_TIMEOUT_MS=10000 ;;
+            shardenv) export WORKER_ID=0 REDIS_PREFIX="${LIAISON_TEST_NS:-liaison}:s0_7:" MEILI_INDEX_PREFIX="${LIAISON_TEST_NS:-liaison}-s0_" ;;
+            nodeenv) unset NODE_ENV ;;
+          esac
+          s=$(date +%s)
+          if [ "$CFG" = pipeonly ]; then
+            timeout -k 5 170 bun test "${args[@]}" "./$f" > >(cat > "../../logs/m/$n.out") 2> >(cat > "../../logs/m/$n.err"); rc=$?
           else
-            sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|; s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=$(openssl rand -hex 32)|" .env.test
+            timeout -k 5 170 bun test "${args[@]}" "./$f" > "../../logs/m/$n.out" 2>&1; rc=$?
           fi
-      - run: bun run infra:up
-      - run: bun run scripts/bootstrap-test-env.ts
-      - name: Files alone
-        run: |
-          mkdir -p logs/alone
-          while read -r f; do
-            n=$(echo "$f" | tr '/' '_')
-            s=$(date +%s)
-            timeout -k 10 200 bun run scripts/test-run.ts unit --file "$f" > "logs/alone/$n.log" 2>&1 && rc=0 || rc=$?
-            echo "rc=$rc $(( $(date +%s) - s ))s $f"
-          done < .github/tmp-probe-files.txt
+          echo "$CFG rc=$rc $(( $(date +%s) - s ))s $f NODE_ENV=${NODE_ENV:-unset} DB=$(echo "${DATABASE_URL:-}" | sed 's#.*/##')"
+          EOS
+          chmod +x /tmp/one.sh
+          for f in src/cli/cli-smoke.test.ts src/modules/export/org-archive/writer.test.ts src/infra/events/agent-turn-audit-identity.integration.test.ts; do
+            bun run scripts/with-test-lock.ts -- /tmp/one.sh "$f" 2>&1 | grep -E "^$CFG rc=|rror" | head -5
+          done
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
-          name: alone-${{ matrix.envfile }}
-          path: logs/alone/
-  stall:
-    strategy:
-      fail-fast: false
-      matrix:
-        list: ["tmp-probe-head.txt", "tmp-probe-tail.txt"]
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      TEST_MEM_RESERVE_MB: "2048"
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.4.x"
-      - run: bun install --frozen-lockfile
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client redis-tools libxml2-utils gdb
-      - name: Write .env.test
-        run: |
-          set -euo pipefail
-          cp .env.example .env.test
-          sed -i 's#^DATABASE_URL=.*#DATABASE_URL=postgres://liaison_app:liaison_app@localhost:5432/liaison_test#' .env.test
-          sed -i 's#^NODE_ENV=.*#NODE_ENV=test#' .env.test
-          echo "MEILISEARCH_API_KEY=dev-master-key" >> .env.test
-      - run: bun run infra:up
-      - run: bun run scripts/bootstrap-test-env.ts
-      - name: Tail solos through the sharded runner
-        run: |
-          mkdir -p logs/stall
-          ( for i in 1 2 3 4 5 6 7 8; do sleep 120; echo "=== snapshot $i"; for p in $(pgrep -f 'bun test --env-file'); do age=$(ps -o etimes= -p $p); [ "$age" -gt 240 ] || continue; echo "--- pid $p age $age: $(tr '\0' ' ' < /proc/$p/cmdline | sed 's/.*xml //')"; sudo gdb -q -batch -p $p -ex 'thread apply all bt 14' 2>/dev/null | grep -E '^Thread|^#' | cut -c1-120 | head -120; done; done ) > logs/stall/gdb.log 2>&1 &
-          LOG_DIR=$PWD/logs/stall TEST_UNIT_SHARDS=4 TEST_UNIT_SILENCE_MS=420000 timeout -k 10 1200 bun run scripts/with-test-lock.ts -- bun run scripts/test-unit-parallel.ts --retries=0 -- $(cat .github/${{ matrix.list }}) 2>&1 | tee logs/stall/run.log; echo "rc=${PIPESTATUS[0]}"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
-        with:
-          name: stall-${{ matrix.list }}
-          path: logs/stall/
+          name: m-${{ matrix.cfg }}
+          path: logs/m/

@@ -23,10 +23,6 @@ jobs:
           sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|; s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=$(openssl rand -hex 32)|" .env.test
       - run: bun run infra:up
       - run: bun run scripts/bootstrap-test-env.ts
-      - name: The CPU limit test, sampled
+      - name: The whole file # with dumps off
         run: |
-          ( for i in $(seq 1 60); do sleep 1; for p in $(pgrep -f 'pdf-form-worker'); do echo "t=$i pid=$p $(ps -o stat=,time=,rss=,wchan:20= -p $p) $(awk '{print "ut="$14" st="$15}' /proc/$p/stat) $(grep -E 'VmData|VmRSS' /proc/$p/status | tr -s ' \t' ' ' | tr '\n' ' ') $(tr '\0' ' ' </proc/$p/limits 2>/dev/null | grep -E 'cpu time' | tr -s ' ')"; done; done ) > /tmp/samples.log 2>&1 &
-          S=$!
-          ( sleep 2; while ! p=$(pgrep -f 'pdf-form-worker' | head -1); do sleep 0.2; done; timeout 45 sudo strace -f -c -p "$p" -o /tmp/strace.txt ) &
-          bun run scripts/test-run.ts unit --file src/modules/documents/pdf-form.test.ts --test "the kernel's CPU limit kills" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -vE '^\{"level"' | tail -25 | cut -c1-200
-          sleep 3; kill $S 2>/dev/null || true; head -40 /tmp/samples.log | cut -c1-170; head -24 /tmp/strace.txt || true
+          bun run scripts/test-run.ts unit --file src/modules/documents/pdf-form.test.ts 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -vE '^\{"level"' | grep -E '✗|\(fail\)|^ *[0-9]+ (pass|fail)$|Expected|Received|unit exited' | cut -c1-170

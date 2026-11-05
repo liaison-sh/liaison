@@ -18,6 +18,7 @@ import { type PdfFormRequest, runPdfFormRequest } from "./pdf-form-core"
 exitWhenOrphaned()
 
 /** RLIMIT_DATA, the same number on Linux and macOS. */
+const PR_SET_DUMPABLE = 4
 const RLIMIT_DATA = 2
 
 /**
@@ -45,6 +46,28 @@ function capDataSegment(headroom: number): void {
   }
 }
 
+/**
+ * No core dump on Linux. SIGXCPU dumps core by default, and `ulimit -c 0` does not
+ * stop a dump the host pipes to a handler (core_pattern `|...`, the kernel does not
+ * apply the limit there): the isolate's memory, the customer's document included,
+ * goes to that handler, and the process stays alive until it ends (15 s measured).
+ */
+function refuseCoreDumps(): void {
+  if (process.platform !== "linux") return
+  const libc = dlopen("libc.so.6", {
+    prctl: {
+      args: [FFIType.i32, FFIType.u64, FFIType.u64, FFIType.u64, FFIType.u64],
+      returns: FFIType.i32,
+    },
+  })
+  try {
+    if (libc.symbols.prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) !== 0) throw new Error("prctl failed")
+  } finally {
+    libc.close()
+  }
+}
+
+refuseCoreDumps()
 capDataSegment(Number(process.argv[2]))
 
 function isRequest(msg: unknown): msg is PdfFormRequest {

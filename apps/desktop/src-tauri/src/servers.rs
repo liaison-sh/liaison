@@ -34,6 +34,7 @@ use std::io;
 use std::path::Path;
 #[cfg(test)]
 use std::path::PathBuf;
+use std::sync::{Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -369,6 +370,21 @@ pub fn forget_agent_tokens_at(dir: &Path, address: &str) {
     forget_keyed_entries_at(dir, MCP_TOKEN_FILE, Some("agents"), address);
 }
 
+/// EVERY READ-MODIFY-WRITE OF THE REFRESH TOKEN FILE HOLDS THIS LOCK. The page
+/// files the current server's rotation (a command thread) while a notification
+/// channel files another server's (`server_listeners.rs`, a runtime thread),
+/// and both rewrite the whole map: unserialised, the one that read first wrote
+/// back the token the other had just replaced. For the current server that is
+/// the token the server has already spent, and presenting it at the next
+/// launch is a reuse the server answers by ending the session.
+static REFRESH_TOKENS_LOCK: Mutex<()> = Mutex::new(());
+
+fn refresh_tokens_lock() -> MutexGuard<'static, ()> {
+    // A writer that panicked left the file whole (writes are replaced whole),
+    // so the lock is still good to take.
+    REFRESH_TOKENS_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 fn refresh_tokens_document(dir: &Path) -> serde_json::Map<String, serde_json::Value> {
     // A file still in the single token shape has not been migrated, which only
     // happens when the list was written by hand: its token belongs to nobody.
@@ -393,6 +409,7 @@ pub fn stored_refresh_token_at(dir: &Path, address: &str) -> Option<String> {
 }
 
 fn take_refresh_token_at(dir: &Path, address: &str) -> Option<String> {
+    let _lock = refresh_tokens_lock();
     let token = stored_refresh_token_at(dir, address);
     let mut map = refresh_tokens_document(dir);
     if map.remove(address).is_some() {
@@ -430,6 +447,7 @@ pub fn store_refresh_token_for_at(dir: &Path, server: &str, token: &str) -> Resu
     if !same_server(&current, server) {
         return Err(NOT_CURRENT_SERVER.into());
     }
+    let _lock = refresh_tokens_lock();
     let mut map = refresh_tokens_document(dir);
     if trimmed.is_empty() {
         if map.remove(&current).is_none() {
@@ -458,6 +476,7 @@ pub fn store_background_refresh_token_at(dir: &Path, address: &str, token: &str)
     if list.current.as_deref() == Some(address) {
         return Err("the current server's token belongs to the page".into());
     }
+    let _lock = refresh_tokens_lock();
     let mut map = refresh_tokens_document(dir);
     map.insert(address.to_string(), serde_json::Value::String(trimmed.into()));
     write_refresh_tokens(dir, map).map_err(|error| error.to_string())
@@ -836,6 +855,57 @@ mod servers_tests {
         assert!(!same_server(A, B));
         assert!(!same_server("http://localhost:3000", "http://localhost:3001"));
         assert!(!same_server("javascript:alert(1)", "javascript:alert(1)"));
+    }
+
+    /// THE PAGE AND THE NOTIFICATION CHANNELS SHARE ONE FILE. The page files the
+    /// current server's rotation while a channel files another server's, each
+    /// on its own thread. A write that truncated the file before rewriting it,
+    /// and a read-modify-write that was not serialised, let one writer read a
+    /// half written (or old) map and write it back: the current server's token
+    /// went back to the one it had just spent, the next launch presented that
+    /// spent token, and the server treated it as a stolen one.
+    #[test]
+    fn concurrent_rotations_of_two_servers_never_lose_either_token() {
+        let dir = scratch_dir("concurrent-rotations");
+        add_server_at(&dir, A, None).unwrap();
+        add_server_at(&dir, B, None).unwrap();
+        switch_current_at(&dir, A).unwrap();
+        store_refresh_token_for_at(&dir, A, "rt-a-0").unwrap();
+        store_background_refresh_token_at(&dir, B, "rt-b-0").unwrap();
+
+        const ROUNDS: usize = 400;
+        let page_dir = dir.clone();
+        let page = std::thread::spawn(move || {
+            for round in 1..=ROUNDS {
+                store_refresh_token_for_at(&page_dir, A, &format!("rt-a-{round}")).unwrap();
+                // The page reads its token back before every refresh.
+                assert!(
+                    refresh_token_for_at(&page_dir, A).is_some(),
+                    "the current server's token vanished in round {round}"
+                );
+            }
+        });
+        let channel_dir = dir.clone();
+        let channel = std::thread::spawn(move || {
+            for round in 1..=ROUNDS {
+                store_background_refresh_token_at(&channel_dir, B, &format!("rt-b-{round}"))
+                    .unwrap();
+            }
+        });
+        page.join().expect("the page's rotations");
+        channel.join().expect("the channel's rotations");
+
+        assert_eq!(
+            stored_refresh_token_at(&dir, A),
+            Some(format!("rt-a-{ROUNDS}")),
+            "the current server's last rotation was overwritten"
+        );
+        assert_eq!(
+            stored_refresh_token_at(&dir, B),
+            Some(format!("rt-b-{ROUNDS}")),
+            "the background server's last rotation was overwritten"
+        );
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[cfg(unix)]

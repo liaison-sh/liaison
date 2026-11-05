@@ -694,6 +694,12 @@ export async function refreshSession(
       )
       return !!user && (user as { status?: string }).status === "active"
     }
+    // THE SCOPE IS THE FAMILY, NEVER THE USER. A spent token comes back far
+    // more often from the user's own device (an app relaunched with a stale
+    // store, a restored backup) than from a thief, so ending it may sign out
+    // only the sign-in that token belongs to. The user's other sign-ins (a
+    // browser, a phone, another computer) are families of their own and keep
+    // their sessions (refresh-lost-response-routes.test.ts pins it).
     const revokeFamily = async (reason: string): Promise<RefreshDecision> => {
       const revoked = await tx
         .delete(sessions)

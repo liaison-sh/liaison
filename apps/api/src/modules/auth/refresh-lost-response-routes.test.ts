@@ -220,6 +220,28 @@ describe("a refresh whose response was lost", () => {
     expect((await refresh(second.cookie)).status).toBe(401)
   })
 
+  it("ends only the replayed token's own sign-in: the user's other devices stay signed in", async () => {
+    // A device presents a token rotated hours ago (a relaunched app whose
+    // store kept the spent one). Only that device's family is ended; a browser
+    // or phone signed in separately is another family and keeps its session.
+    const otherDevice = await login()
+    const first = await login()
+    const second = await pairOf(await refresh(first.cookie))
+    await useAccess(second.accessToken)
+    await age(first.cookie, 2 * 60 * 60_000)
+
+    const replay = await refresh(first.cookie)
+    expect(replay.status).toBe(401)
+    expect((await refresh(second.cookie)).status).toBe(401)
+
+    const live = await liveSessions()
+    expect(live).toHaveLength(1)
+    const survivor = await row(otherDevice.cookie)
+    expect(survivor?.family_id).toBeDefined()
+    expect(live[0]?.family_id).toBe(survivor?.family_id ?? "missing")
+    expect((await refresh(otherDevice.cookie)).status).toBe(200)
+  })
+
   it("treats a replay after the successor was refreshed as theft", async () => {
     const first = await login()
     const second = await pairOf(await refresh(first.cookie))

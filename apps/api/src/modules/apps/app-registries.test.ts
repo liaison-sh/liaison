@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { afterEach, describe, expect, it } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import {
   agentInstructionsRegistry,
   appCapabilitiesRegistry,
@@ -52,6 +52,14 @@ describe("tool registry — extended fields", () => {
 })
 
 describe("orgHasCapability — kernel-universal vs app-declared", () => {
+  // The registries are process-global and the unit runner batches files into
+  // one process: any earlier file that registered an app for its own org
+  // (registerApps -> registerSingleApp records the app's capabilities, e.g.
+  // app-access-no-loss.test.ts) leaves entries behind. These cases are about an
+  // EMPTY registry, so they set that state up rather than inherit it.
+  beforeEach(() => {
+    resetAppRegistries()
+  })
   afterEach(() => {
     resetAppRegistries()
   })

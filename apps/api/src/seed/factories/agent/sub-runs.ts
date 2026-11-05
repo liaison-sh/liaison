@@ -7,12 +7,13 @@
 // Privileged raw insert, by category: history. A finished sub run is written
 // by the spawn (the queued row and its hidden thread, in one privileged
 // transaction) and then by the run itself; a run that finished last week has
-// no other writer. Deterministic ids for the run and its hidden thread, so a
+// no other writer. The hidden thread goes through the spawn's own helper
+// (`insertSubrunThread`), so it has the shape a real spawn gives it. Deterministic ids for the run and its hidden thread, so a
 // re-run rewrites nothing.
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { agentRuns } from "~/db/schema/kernel/sub-agent-runs"
-import { threads } from "~/db/schema/kernel/threads"
+import { insertSubrunThread } from "~/modules/agent/subruns/subrun-thread"
 import type { SeedContext } from "~/seed/context"
 
 export interface SubRunSeed {
@@ -44,20 +45,15 @@ export async function seedSubRuns(
       const runId = ctx.id("sub-run", r.key)
       const threadId = ctx.id("sub-run-thread", r.key)
       const finishedAt = new Date(r.startedAt.getTime() + r.durationMs)
-      await tx
-        .insert(threads)
-        .values({
-          id: threadId,
-          orgId: ctx.orgId,
-          handle: `subrun-${threadId.slice(0, 12)}`,
-          title: `${r.subagentType}: ${r.prompt.slice(0, 60)}`,
-          type: "subrun",
-          hiddenFromList: true,
-          createdBy: r.requester.userId,
-          createdAt: r.startedAt,
-          updatedAt: finishedAt,
-        })
-        .onConflictDoNothing({ target: threads.id })
+      await insertSubrunThread(tx, {
+        id: threadId,
+        orgId: ctx.orgId,
+        subagentType: r.subagentType,
+        description: r.prompt,
+        createdBy: r.requester.userId,
+        createdAt: r.startedAt,
+        updatedAt: finishedAt,
+      })
       await tx
         .insert(agentRuns)
         .values({

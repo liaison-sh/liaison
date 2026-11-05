@@ -45,7 +45,8 @@ describe("DocumentsList rowHref (Phase 17 — list → detail navigation)", () =
 
   it("wires the credit-notes sidebar segment to type='credit_note' (0.5.0)", () => {
     expect(source).toMatch(/"credit-notes":\s*"credit_note"/)
-    expect(source).toMatch(/"credit-notes":\s*"credit notes"/)
+    // The footer noun carries singular and plural forms (0.20.19).
+    expect(source).toMatch(/"credit-notes":\s*\{\s*one:\s*"credit note",\s*other:\s*"credit notes"\s*\}/)
   })
 
   // ── Payment column (feature 1 — list surfaces a synced Shopify invoice's

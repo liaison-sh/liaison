@@ -50,6 +50,7 @@ import { messageVisibilityFacts } from "~/services/security/visibility"
 import { assertOutputSchemaCompiles } from "./finalize-tool"
 import { loadSubAgentDefinition } from "./sub-agent-definitions"
 import { awaitSubRunResult, markParentIfSubRunReadOutsideText } from "./subrun-await"
+import { insertSubrunThread } from "./subrun-thread"
 
 const log = rootLogger.child({ module: "spawn-agent" })
 
@@ -382,18 +383,13 @@ export async function spawnAgent(params: SpawnAgentParams): Promise<SpawnAgentHa
 
   // 7) Persist hidden thread + agent_runs row in a single privileged tx.
   const result = await withPrivilegedDb(orgId, "spawn-agent-persist", async (tx) => {
-    const [hiddenThread] = await tx
-      .insert(kernelThreads)
-      .values({
-        orgId,
-        handle: `subrun-${crypto.randomUUID().slice(0, 12)}`,
-        title: `${subagentType}: ${params.description.slice(0, 60)}`,
-        type: "subrun",
-        hiddenFromList: true,
-        createdBy: creatorUserId,
-        tainted: parentTainted,
-      })
-      .returning({ id: kernelThreads.id })
+    const hiddenThreadId = await insertSubrunThread(tx, {
+      orgId,
+      subagentType,
+      description: params.description,
+      createdBy: creatorUserId,
+      tainted: parentTainted,
+    })
 
     const runId = crypto.randomUUID()
     const rootRunId = parentRun.rootRunId ?? parentRun.id ?? runId
@@ -405,7 +401,7 @@ export async function spawnAgent(params: SpawnAgentParams): Promise<SpawnAgentHa
         orgId,
         parentRunId: parentRun.id,
         rootRunId,
-        threadId: hiddenThread.id,
+        threadId: hiddenThreadId,
         parentThreadId: parentRun.threadId,
         // A11 (X11): the agent the SPAWNING turn acted as, from the same
         // captured frame the card event below names. The run's own terminal
@@ -454,7 +450,7 @@ export async function spawnAgent(params: SpawnAgentParams): Promise<SpawnAgentHa
           kind: "sub_run",
           subRun: {
             runId,
-            hiddenThreadId: hiddenThread.id,
+            hiddenThreadId,
             agentType: subagentType,
             label: params.description.slice(0, 60),
             status: "queued",
@@ -514,7 +510,7 @@ export async function spawnAgent(params: SpawnAgentParams): Promise<SpawnAgentHa
           kind: "sub_run",
           subRun: {
             runId,
-            hiddenThreadId: hiddenThread.id,
+            hiddenThreadId,
             agentType: subagentType,
             label: params.description.slice(0, 60),
             status: "queued",
@@ -536,7 +532,7 @@ export async function spawnAgent(params: SpawnAgentParams): Promise<SpawnAgentHa
 
     return {
       run: row,
-      hiddenThreadId: hiddenThread.id,
+      hiddenThreadId,
       parentCardMessageId: cardMsg.id,
     }
   })

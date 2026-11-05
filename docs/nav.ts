@@ -109,6 +109,7 @@ export const NAV: NavSection[] = [
       { id: "self-hosting/docker", url: "self-hosting/docker" },
       { id: "runbooks/production-bootstrap", url: "self-hosting/production" },
       { id: "runbooks/deploy-effects", url: "self-hosting/deploy-effects" },
+      { id: "runbooks/org-transfer", url: "self-hosting/move-an-org" },
       { id: "self-hosting/pools", url: "self-hosting/pools" },
       { id: "self-hosting/liaison-team", url: "self-hosting/liaison-team" },
       { id: "provisioning-cli", url: "self-hosting/config-as-code" },

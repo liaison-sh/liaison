@@ -30,6 +30,7 @@ import {
   resolveChannels,
 } from "~/modules/notifications/router"
 import { isSeededWrite } from "~/modules/notifications/seeded"
+import { movingOrgIds } from "~/modules/org/transfer-state/state"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 
 const log = rootLogger.child({ module: "attention-state-materializer" })
@@ -402,7 +403,11 @@ export async function runStateMaterializeTick(
 ): Promise<{ enqueued: number; deduped: number; coalesced: number; idle: number }> {
   const epoch = ctx?.firedAt
   if (epoch === undefined) throw new Error("state materializer tick has no scheduled fire time")
-  const orgIds = await (partial.listOrgsWithActiveUsers ?? defaultListOrgsWithActiveUsers)()
+  // An org being moved keeps its attention state as it is until the move ends.
+  const moving = new Set(await movingOrgIds())
+  const orgIds = (
+    await (partial.listOrgsWithActiveUsers ?? defaultListOrgsWithActiveUsers)()
+  ).filter((orgId) => !moving.has(orgId))
   // Marks up to now are this tick's; later ones wait for the next tick.
   const readUpTo = Date.now()
   let changed: Set<string> | null

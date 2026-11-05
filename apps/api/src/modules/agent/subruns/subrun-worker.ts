@@ -90,6 +90,11 @@ import {
 } from "~/modules/agent/tools/tool-bridge"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { primeOrgApps } from "~/modules/apps/org-apps"
+import {
+  SKIPPED_MOVING,
+  sweepSkippingMoving,
+  writeUnlessMoving,
+} from "~/modules/org/transfer-state/skip-moving"
 import { resolveActingAgentIdForWrite } from "~/modules/threads/message"
 
 const log = rootLogger.child({ module: "subrun-worker" })
@@ -929,27 +934,31 @@ export async function runSubRun(
  * reapers.
  */
 export async function sweepStuckSubRuns(): Promise<void> {
+  // An org being moved keeps its runs as they are until the move ends.
   // `started_at` is set when the worker marks the run `running`; if it is
   // somehow null (a row that reached `running` without a start timestamp), fall
   // back to `created_at` so the row is still eligible for reclamation. The
   // budget compared against is the row's own `timeout_ms` (milliseconds).
-  const stale = await withSystemDb("subrun-stuck-sweep-scan", (db) =>
-    db
-      .select({
-        id: agentRuns.id,
-        orgId: agentRuns.orgId,
-        timeoutMs: agentRuns.timeoutMs,
-        parentRunId: agentRuns.parentRunId,
-        parentThreadId: agentRuns.parentThreadId,
-      })
-      .from(agentRuns)
-      .where(
-        and(
-          eq(agentRuns.status, "running"),
-          drizzleSql`COALESCE(${agentRuns.startedAt}, ${agentRuns.createdAt}) < now() - make_interval(secs => ${agentRuns.timeoutMs} / 1000.0)`,
-        ),
-      )
-      .limit(100),
+  const stale = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("subrun-stuck-sweep-scan", (db) =>
+      db
+        .select({
+          id: agentRuns.id,
+          orgId: agentRuns.orgId,
+          timeoutMs: agentRuns.timeoutMs,
+          parentRunId: agentRuns.parentRunId,
+          parentThreadId: agentRuns.parentThreadId,
+        })
+        .from(agentRuns)
+        .where(
+          and(
+            eq(agentRuns.status, "running"),
+            notMoving(agentRuns.orgId),
+            drizzleSql`COALESCE(${agentRuns.startedAt}, ${agentRuns.createdAt}) < now() - make_interval(secs => ${agentRuns.timeoutMs} / 1000.0)`,
+          ),
+        )
+        .limit(100),
+    ),
   )
 
   for (const row of stale) {
@@ -957,19 +966,21 @@ export async function sweepStuckSubRuns(): Promise<void> {
       // Race-safe terminalize: only flip rows still `running`. A worker that
       // completed (or another sweep tick) in the same window leaves the row
       // terminal, the UPDATE matches nothing, and we skip publish/emit for it.
-      const updated = await withPrivilegedDb(row.orgId, "subrun-stuck-sweep-fail", (tx) =>
-        tx
-          .update(agentRuns)
-          .set({
-            status: "failed",
-            errorCode: "timeout",
-            errorMessage: `Sub-run reclaimed by stuck-run sweep after exceeding ${row.timeoutMs}ms in running`,
-            finishedAt: new Date(),
-          })
-          .where(and(eq(agentRuns.id, row.id), eq(agentRuns.status, "running")))
-          .returning({ id: agentRuns.id }),
+      const updated = await writeUnlessMoving(row.orgId, () =>
+        withPrivilegedDb(row.orgId, "subrun-stuck-sweep-fail", (tx) =>
+          tx
+            .update(agentRuns)
+            .set({
+              status: "failed",
+              errorCode: "timeout",
+              errorMessage: `Sub-run reclaimed by stuck-run sweep after exceeding ${row.timeoutMs}ms in running`,
+              finishedAt: new Date(),
+            })
+            .where(and(eq(agentRuns.id, row.id), eq(agentRuns.status, "running")))
+            .returning({ id: agentRuns.id }),
+        ),
       )
-      if (updated.length === 0) continue
+      if (updated === SKIPPED_MOVING || updated.length === 0) continue
 
       const error = {
         code: "timeout",

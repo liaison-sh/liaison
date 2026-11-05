@@ -215,7 +215,7 @@ export async function connectGuide(
   }
   // Any other connection: the steps its client card shows (connection-setup.ts).
   const [app = "", connection = ""] = refKey.split("/", 2)
-  const setup = appConnectionSetup(orgId, app, connection)
+  const setup = await appConnectionSetup(orgId, app, connection)
   if (!setup) return { refuse: false, lines: [] }
   if (setup.family === "google") {
     return {

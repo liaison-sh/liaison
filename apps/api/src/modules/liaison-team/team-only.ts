@@ -37,6 +37,8 @@ import {
 import { appsLogger as log } from "~/lib/logger"
 import { serverT } from "~/modules/i18n/server-i18n"
 import { liaisonTeamEndpoint, outboxHousekeeping } from "~/modules/liaison-team/outbox"
+import { sweepSkippingMoving } from "~/modules/org/transfer-state/skip-moving"
+import { movingOrgIds } from "~/modules/org/transfer-state/state"
 
 const K = () => drizzleSql.raw(`"${schemaRef("kernel")}"`)
 
@@ -153,14 +155,18 @@ export async function sweepTeamOnly(
   const at = now.getTime()
   const maxAge = new Date(at - STAGED_MAX_AGE_MS).toISOString()
   const grace = new Date(at - STAGED_UNCLAIMED_GRACE_MS).toISOString()
+  // An org being moved keeps its staged files as they are until the move ends.
   // A file is done when no row still to be sent names it, and either some row
   // named it (all ended) or nothing claimed it within the grace. A row's data is
   // purged 7 days after it ended, so the 8-day cap also covers a lost reference.
-  const done = extractRows<{ id: string; storage_key: string }>(
-    await withSystemDb("liaison-team:sweep-staged-files", (tx) =>
-      tx.execute(drizzleSql`
+  // The sweep covers the select and the delete of that one page of files.
+  const filesDeleted = await sweepSkippingMoving(async (notMoving) => {
+    const done = extractRows<{ id: string; storage_key: string }>(
+      await withSystemDb("liaison-team:sweep-staged-files", (tx) =>
+        tx.execute(drizzleSql`
         SELECT f.id, f.storage_key FROM ${K()}.files f
          WHERE f.app = 'kernel' AND f.entity_type = ${STAGED_ENTITY_TYPE}
+           AND ${notMoving(drizzleSql.raw("f.org_id"))}
            AND (f.created_at < ${maxAge}::timestamptz
                 OR (NOT EXISTS (
                       SELECT 1 FROM ${K()}.control_plane_outbox o
@@ -173,15 +179,16 @@ export async function sweepTeamOnly(
                             WHERE o.type = 'bug-report-attachment'
                               AND o.data->>'fileId' = f.id::text))))
          LIMIT 200`),
-    ),
-  )
-  let filesDeleted = 0
-  try {
-    await removeFiles(done, deps)
-    filesDeleted = done.length
-  } catch (err) {
-    log.warn({ err, files: done.length }, "staged bug report files could not be deleted")
-  }
+      ),
+    )
+    try {
+      await removeFiles(done, deps)
+      return done.length
+    } catch (err) {
+      log.warn({ err, files: done.length }, "staged bug report files could not be deleted")
+      return 0
+    }
+  })
   return { filesDeleted, noticesRaised: await raiseUndeliveredNotices(now) }
 }
 
@@ -228,8 +235,11 @@ async function raiseUndeliveredNotices(now: Date): Promise<number> {
     ),
   )
   let raised = 0
+  // A notice for an org being moved waits for the move to end (unnoticed rows are rescanned).
+  const moving = new Set(await movingOrgIds())
   for (const row of ended) {
     const orgId = typeof row.data.local?.orgId === "string" ? row.data.local.orgId : null
+    if (orgId && moving.has(orgId)) continue
     const description =
       typeof row.data.report?.description === "string" ? row.data.report.description : ""
     if (orgId) {

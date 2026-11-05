@@ -8,6 +8,7 @@ import type { AppEnv } from "~/app"
 import { withSystemDb } from "~/db/privileged"
 import { deviceFlowRequests } from "~/db/schema/kernel"
 import { env } from "~/lib/env"
+import { requestPublicBaseUrl } from "~/lib/org-public-url"
 import { redis } from "~/lib/redis"
 import { getClientIp } from "~/lib/request-context"
 import { success } from "~/lib/response"
@@ -111,7 +112,7 @@ mcpDeviceGrant.post("/initiate", zValidator("json", initiateSchema), async (c) =
   return success(c, {
     deviceCode,
     userCode,
-    verificationUri: `${env.BASE_URL}/auth/device?code=${userCode}`,
+    verificationUri: `${requestPublicBaseUrl(c)}/auth/device?code=${userCode}`,
     expiresIn: DEVICE_CODE_EXPIRY_SECONDS,
     interval: DEVICE_POLL_INTERVAL_SECONDS,
   })

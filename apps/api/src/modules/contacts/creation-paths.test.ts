@@ -103,6 +103,9 @@ describe("contact creation paths", () => {
       "modules/apps/context.ts": [
         "appContactAudience(appBridgeManifest(orgId, appName)?.capabilities)",
       ],
+      // The seed engine's contacts factory: the tier's spec chooses org or the
+      // seeding actor's own (resolveContacts' `audience`), seeded orgs only.
+      "seed/factories/people/contacts.ts": ["target"],
     })
   })
 
@@ -123,6 +126,9 @@ describe("contact creation paths", () => {
         "modules/mail/sender-contacts.ts",
         // Seeds fixtures for demo orgs only (never a real org).
         ...inserters.filter((f) => f.startsWith("modules/demo/")),
+        // The seed engine's bulk volume writer (load tier): raw multi-row SQL
+        // into a seeded org, never a real one.
+        "seed/bulk/volume.ts",
       ].sort(),
     )
     // A ticket's audience contact is inserted by kernel.ensure_audience_contact

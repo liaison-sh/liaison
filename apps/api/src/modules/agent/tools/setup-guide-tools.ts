@@ -30,6 +30,7 @@ import type { RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { organizations, users } from "~/db/schema/kernel"
 import { env } from "~/lib/env"
+import { oauthRedirectBaseUrl, orgPublicBaseUrl } from "~/lib/org-public-url"
 import { captureActingAgentId } from "~/modules/agent/runtime/run-context"
 import { SINK_KERNEL_MESSAGES } from "~/modules/agent/scopes/scope-taint"
 import { resolveAgentAuthorLabel } from "~/modules/agent/tools/chat-tools"
@@ -444,7 +445,7 @@ export async function handleShopifyAppToml(
       },
     }
   }
-  const callbackUrl = `${env.BASE_URL.replace(/\/+$/, "")}${CONNECTIONS_CALLBACK_PATH}`
+  const callbackUrl = `${oauthRedirectBaseUrl().replace(/\/+$/, "")}${CONNECTIONS_CALLBACK_PATH}`
   const client = await resolveOAuthClient(ctx.orgId, "shopify:shop")
   if (client.source === "instance") {
     // An org client always overrides the instance's, so a person who wants their
@@ -469,8 +470,9 @@ export async function handleShopifyAppToml(
   // A protected scope the org opted in to (full order history) is listed too:
   // Shopify grants only the scopes the released configuration names.
   const protectedScopes = await shopifyOptedInProtectedScopes(ctx.orgId, connection)
-  const toml = shopifyAppToml(env.BASE_URL, connection, {
+  const toml = shopifyAppToml(await orgPublicBaseUrl(ctx.orgId), connection, {
     clientId: params.clientId,
+    redirectBaseUrl: oauthRedirectBaseUrl(),
     protectedScopes,
   })
   const stored = await handleFilesUploadUrl(

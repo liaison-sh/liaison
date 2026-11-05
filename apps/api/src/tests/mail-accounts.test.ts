@@ -208,6 +208,90 @@ describe("mail accounts integration", () => {
     expect(account.ownerId).toBeNull()
   })
 
+  it("an org holds several shared mailboxes: another address is another account, the same address rotates", async () => {
+    const { withPrivilegedDb } = await import("~/db/privileged")
+    const orgSave = (email: string, password: string) =>
+      withPrivilegedDb(TEST_ORG_ID, "test-org-conn", async (tx) =>
+        createCredentialConnection(tx as any, TEST_ORG_ID, USER_A_ID, "mail", "imap", {
+          identifier: email,
+          ownerType: "org",
+          credentials: {
+            email,
+            username: email,
+            password,
+            imapHost: "imap.example.com",
+            imapPort: "993",
+            smtpHost: "smtp.example.com",
+            smtpPort: "465",
+          },
+        }),
+      )
+    const first = await orgSave("shared-a@example.com", "one")
+    const second = await orgSave("shared-b@example.com", "two")
+    expect(second.id).not.toBe(first.id)
+    const rotated = await orgSave("shared-a@example.com", "three")
+    expect(rotated.id).toBe(first.id)
+  })
+
+  it("an org mailbox is the same mailbox whatever the address's case: the row rotates and keeps its stored address", async () => {
+    const { withPrivilegedDb } = await import("~/db/privileged")
+    const orgSave = (email: string, password: string) =>
+      withPrivilegedDb(TEST_ORG_ID, "test-org-conn-case", async (tx) =>
+        createCredentialConnection(tx as any, TEST_ORG_ID, USER_A_ID, "mail", "imap", {
+          identifier: email,
+          ownerType: "org",
+          credentials: {
+            email,
+            username: email,
+            password,
+            imapHost: "imap.example.com",
+            imapPort: "993",
+            smtpHost: "smtp.example.com",
+            smtpPort: "465",
+          },
+        }),
+      )
+    // A row saved before the match ignored case, in the case it was typed in.
+    const old = await orgSave("Support-Case@Example.com", "one")
+    const rotated = await orgSave("support-case@example.com", "two")
+    expect(rotated.id).toBe(old.id)
+    // Mail's account and its token lookup hold the stored spelling.
+    expect(rotated.identifier).toBe("Support-Case@Example.com")
+    const rows = await sql<{ identifier: string }[]>`
+      SELECT identifier FROM kernel.connected_accounts
+      WHERE org_id = ${TEST_ORG_ID} AND lower(identifier) = 'support-case@example.com' AND status = 'active'`
+    expect(rows.map((r) => r.identifier)).toEqual(["Support-Case@Example.com"])
+  })
+
+  it("a member cannot hold, in another case, a mailbox the org holds", async () => {
+    const { withPrivilegedDb } = await import("~/db/privileged")
+    const creds = (email: string) => ({
+      email,
+      username: email,
+      password: "p",
+      imapHost: "imap.example.com",
+      imapPort: "993",
+      smtpHost: "smtp.example.com",
+      smtpPort: "465",
+    })
+    await withPrivilegedDb(TEST_ORG_ID, "test-org-conn-case", async (tx) =>
+      createCredentialConnection(tx as any, TEST_ORG_ID, USER_A_ID, "mail", "imap", {
+        identifier: "desk-case@example.com",
+        ownerType: "org",
+        credentials: creds("desk-case@example.com"),
+      }),
+    )
+    await expect(
+      withPrivilegedDb(TEST_ORG_ID, "test-user-conn-case", async (tx) =>
+        createCredentialConnection(tx as any, TEST_ORG_ID, USER_A_ID, "mail", "imap", {
+          identifier: "Desk-Case@example.com",
+          ownerType: "user",
+          credentials: creds("Desk-Case@example.com"),
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "connection_held_by_other_owner" })
+  })
+
   it("generic listConnections filters out org-owned app connections", async () => {
     const { withPrivilegedDb } = await import("~/db/privileged")
     const { listConnections } = await import("~/modules/apps/connections/service")

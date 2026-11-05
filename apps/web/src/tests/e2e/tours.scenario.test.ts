@@ -19,6 +19,7 @@ import { randomUUID } from "node:crypto"
 import { effectiveBeats, findTour } from "@liaison/shared"
 import { api } from "@liaison/test-helpers"
 import type { Locator, Page } from "@playwright/test"
+import toursEn from "../../../../../packages/shared/src/i18n/locales/en/tours.json"
 import { CryptoContext, encryptSecret } from "../../../../api/src/lib/crypto"
 import {
   type GmailHttpFixture,
@@ -51,8 +52,8 @@ const tour = findTour(TOUR_ID)
 if (!tour) throw new Error(`${TOUR_ID} is not a shipped tour`)
 // This org has no API connector: the customer-card beat is not in its list.
 const BEATS = effectiveBeats(tour, { installedApps: [], isDemo: false }).map((b) => b.id)
-const ASK_TEXT =
-  "Draft a reply to this customer. Use what we know about them: their customer record and their past tickets."
+// The words Do it for me types: the tour's own copy, so the spec follows it.
+const ASK_TEXT = toursEn.tickets.basics.askDraft.text
 const DRAFT_TEXT = "Hello, thanks for writing. Your order left our warehouse this morning."
 const NOTE_TEXT = "Checked the history: this looks like a first contact."
 const PHONE_NOTE_TEXT = "Summary for the team: what the customer asks and what we already know."
@@ -173,7 +174,17 @@ test.describe("guided tours against the real server", () => {
     test.setTimeout(300_000)
     const orgId = world.org.id
     const base = `http://localhost:${env.ports[1]}`
-    expect(BEATS).toEqual(["inbox", "open", "ask-draft", "review", "note", "yourself", "routine"])
+    // approve-note shows only when the note asked first (basics.ts whenHeld).
+    expect(BEATS).toEqual([
+      "inbox",
+      "open",
+      "ask-draft",
+      "review",
+      "note",
+      "approve-note",
+      "yourself",
+      "routine",
+    ])
     await grantSupportScopes(env, orgId, qa.admin.id)
     const ticket = await ticketOnGmailInbox(env, orgId, qa.admin.id, "cli")
     gmail.reset()

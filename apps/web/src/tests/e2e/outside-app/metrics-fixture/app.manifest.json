@@ -38,6 +38,7 @@
         "label": "Metrics",
         "singleton": true,
         "urlPattern": "/metrics-fixture",
+        "preserveSubRoutes": true,
         "referenceable": false
       }
     }

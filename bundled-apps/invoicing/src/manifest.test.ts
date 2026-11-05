@@ -1455,7 +1455,12 @@ describe("invoicing manifest", () => {
     // company and the customer before a found VAT number is used, and the buyer_vat_id_required
     // refusal names the company of the matched Shopify order's earlier invoice (no placeholder).
     // 0.20.30: the document and editor actions sit at the top of the panel, clear of the chat dock.
-    expect(m.version).toBe("0.20.30")
+    // 0.20.31: drafts_create and drafts_update (conditionalGate) run a stage-time preflight (the
+    // same draft run, stopped before the write) and declare approval summarizers; a draft's lines
+    // and notes are validated before any approval is parked. The app's own install resolves the
+    // control-plane contract through an override (the shared package depends on it by workspace
+    // protocol).
+    expect(m.version).toBe("0.20.31")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

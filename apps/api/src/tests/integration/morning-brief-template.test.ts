@@ -239,7 +239,8 @@ beforeAll(async () => {
     if (!url.includes("api.anthropic.com")) return realFetch(input as never, init)
     const body = JSON.parse(String(init?.body ?? "{}"))
     const system = JSON.stringify(body.system ?? "")
-    if (!Array.isArray(body.tools) || !system.includes("You are Personal agent (")) {
+    // The owner's personal agent is named after them ("Elodie's agent").
+    if (!Array.isArray(body.tools) || !system.includes("You are Elodie's agent (")) {
       return step({ type: "text", text: "side call" })
     }
     if (!hasToolResult(body)) {

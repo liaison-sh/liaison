@@ -77,13 +77,13 @@ describe("Plan settings tab — edition-conditional visibility", () => {
     mockApiClient({
       "/billing/state": {
         mode: "managed",
+        plan: "base",
         tier: "team",
         status: "active",
-        billingPortalUrl: "x",
-        checkoutUrl: "y",
-        includedCredits: "0",
-        periodEnd: "2026-01-01",
-        stale: false,
+        periodEnd: "2026-06-19T00:00:00.000Z",
+        includedCredits: "500",
+        previewEndsAt: null,
+        autoTopUp: { enabled: false, thresholdCredits: 10, amountCredits: 50 },
       },
     })
     const { createApiClient } = await import("~/lib/api-client")

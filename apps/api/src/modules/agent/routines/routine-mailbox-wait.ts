@@ -171,14 +171,23 @@ export async function expireMailboxWaits(orgId: string, routineId?: string): Pro
 /** Every org's lapsed waits, for the scheduled sweep. */
 export async function sweepExpiredMailboxWaits(): Promise<number> {
   const { withSystemDb } = await import("~/db/privileged")
-  const orgs = await withSystemDb("routine-mailbox-wait-orgs", (db) =>
-    db
-      .selectDistinct({ orgId: routineRuns.orgId })
-      .from(routineRuns)
-      .where(eq(routineRuns.status, "waiting_mailbox")),
+  // An org being moved keeps its runs as they are until the move ends.
+  const { sweepSkippingMoving, writeUnlessMoving } = await import(
+    "~/modules/org/transfer-state/skip-moving"
+  )
+  const orgs = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("routine-mailbox-wait-orgs", (db) =>
+      db
+        .selectDistinct({ orgId: routineRuns.orgId })
+        .from(routineRuns)
+        .where(and(eq(routineRuns.status, "waiting_mailbox"), notMoving(routineRuns.orgId))),
+    ),
   )
   let expired = 0
-  for (const { orgId } of orgs) expired += await expireMailboxWaits(orgId)
+  for (const { orgId } of orgs) {
+    const n = await writeUnlessMoving(orgId, () => expireMailboxWaits(orgId))
+    if (typeof n === "number") expired += n
+  }
   return expired
 }
 

@@ -17,7 +17,7 @@
 import { createHash } from "node:crypto"
 import {
   bugReportForwardSchema,
-  CONTRACT_VERSION,
+  INSTANCE_ENVELOPE_VERSION,
   MAX_BUG_REPORT_ENVELOPE_BYTES,
   MAX_FORWARD_ATTACHMENT_BYTES,
   type MessageData,
@@ -227,7 +227,7 @@ export function buildBugReportForward(args: {
 function envelopeBytes(data: BugReportForwardData): number {
   return Buffer.byteLength(
     JSON.stringify({
-      v: CONTRACT_VERSION,
+      v: INSTANCE_ENVELOPE_VERSION,
       type: "bug-report",
       messageId: "00000000-0000-4000-8000-000000000000",
       instanceId: "00000000-0000-4000-8000-000000000000",

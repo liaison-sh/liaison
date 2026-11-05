@@ -22,12 +22,13 @@
 // resolve to one save and one "already saved".
 
 import { connectFailureReason } from "@liaison/shared"
-import { and, eq, isNull, lt } from "drizzle-orm"
+import { and, eq, isNull, lt, notInArray } from "drizzle-orm"
 import { HTTPException } from "hono/http-exception"
 import type { PrivilegedDb, RlsClient, RlsTx } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { agents, type SecretRequest, secretRequests, users } from "~/db/schema/kernel"
 import { rootLogger } from "~/lib/logger"
+import { movingOrgIds } from "~/modules/org/transfer-state/state"
 import { newStoredSecret, readStoredSecretState } from "~/modules/secret-requests/stored"
 import {
   canSubmitRequest,
@@ -337,11 +338,19 @@ export async function cancelSecretRequest(args: CancelSecretRequestArgs): Promis
 
 /** The sweep: every pending request past its expiry becomes expired, across orgs. */
 export async function expireSecretRequests(now = new Date()): Promise<{ expired: number }> {
+  // An org being moved is left alone until the move ends (unreadable state: throw, retry).
+  const moving = await movingOrgIds()
   return withSystemDb("secret-request-expiry", async (db) => {
     const rows = await db
       .update(secretRequests)
       .set({ status: "expired", completedAt: now })
-      .where(and(eq(secretRequests.status, "pending"), lt(secretRequests.expiresAt, now)))
+      .where(
+        and(
+          eq(secretRequests.status, "pending"),
+          lt(secretRequests.expiresAt, now),
+          moving.length > 0 ? notInArray(secretRequests.orgId, moving) : undefined,
+        ),
+      )
       .returning()
     for (const row of rows) await queueUpdate(db, row, null)
     return { expired: rows.length }

@@ -69,7 +69,14 @@ import {
   summarizeProformaCreateAndIssue,
 } from "./summarizers"
 import { BUYER_VIES_TIMEOUT_MS, compatibleNames, documentsIssuePreview, hasCompanyLegalForm, sameAddress, sameFullAddress } from "./buyer-vat"
-import { draftsCreateTool, documentsUpdatePreflight, documentsUpdatePreview, quoteIssuePreflight } from "./mutations"
+import {
+  draftsCreatePreflight,
+  draftsCreateTool,
+  draftsUpdatePreflight,
+  documentsUpdatePreflight,
+  documentsUpdatePreview,
+  quoteIssuePreflight,
+} from "./mutations"
 import { summarizeDocumentUpdate } from "./summarizers"
 import type { ReadsFetch } from "./reads"
 import { createMockDb, type MockDb } from "./test-db"
@@ -382,6 +389,47 @@ function issuedDocs(db: MockDb): Array<Record<string, unknown>> {
 }
 
 // ── Drafts ────────────────────────────────────────────────────────────────
+
+describe("drafts preflight (stage-time, conditionalGate)", () => {
+  const base = {
+    type: "invoice" as const,
+    ...BUYER_DRAFT_EINVOICE,
+    counterparty_contact_id: "contact-1",
+    issuer_profile_id: "iss-1",
+    currency: "USD",
+    items: sampleDraftItems,
+  }
+
+  test("drafts_create: refuses what the insert would refuse, accepts the rest, and writes nothing", async () => {
+    const { ctx, db } = makeCtx()
+    expect(await draftsCreatePreflight(ctx, { ...base, notes: "x".repeat(5000) })).toMatchObject({
+      error: { code: expect.any(String) },
+    })
+    expect(await draftsCreatePreflight(ctx, { ...base, type: "nope" as "invoice" })).toMatchObject({
+      error: { code: "invalid_type" },
+    })
+    expect(await draftsCreatePreflight(ctx, base)).toEqual({ ok: true })
+    expect(draftDocs(db)).toHaveLength(0)
+    await draftsCreate(ctx, { ...base, shopify_order_id: "#2001" })
+    expect(await draftsCreatePreflight(ctx, { ...base, shopify_order_id: "#2001" })).toMatchObject({
+      error: { code: "already_invoiced" },
+    })
+    expect(draftDocs(db)).toHaveLength(1)
+  })
+
+  test("drafts_update: a missing draft and over-long notes are refused at staging; the draft is unchanged", async () => {
+    const { ctx, db } = makeCtx()
+    const { draft_id } = await draftsCreate(ctx, base)
+    expect(await draftsUpdatePreflight(ctx, { draft_id: "00000000-0000-4000-8000-000000000000", patch: {} })).toMatchObject({
+      error: { code: "not_found" },
+    })
+    expect(await draftsUpdatePreflight(ctx, { draft_id, patch: { notes: "x".repeat(5000) } })).toMatchObject({
+      error: { code: expect.any(String) },
+    })
+    expect(await draftsUpdatePreflight(ctx, { draft_id, patch: { notes: "Contract 42" } })).toEqual({ ok: true })
+    expect(draftDocs(db).find((d) => d.id === draft_id)?.notes ?? null).toBeNull()
+  })
+})
 
 describe("drafts.create", () => {
   test("inserts a draft and returns its id", async () => {

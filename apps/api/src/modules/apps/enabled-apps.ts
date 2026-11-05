@@ -3,6 +3,11 @@ import { eq, sql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import { organizations } from "~/db/schema/kernel"
+import {
+  appVisibleToOrg,
+  assertAppVisibleToOrg,
+  filterAppsVisibleToOrg,
+} from "~/modules/apps/app-org-scope"
 import { manifestRegistry } from "~/modules/apps/app-registries"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { getOrgAppState } from "~/modules/apps/org-apps"
@@ -12,7 +17,7 @@ import { getOrgAppState } from "~/modules/apps/org-apps"
  * No request-path enforcement reads it; security stays scopes + RLS.
  */
 export async function getEnabledApps(orgId: string): Promise<string[]> {
-  return withSystemDb("enabled-apps-read", async (db) => {
+  const names = await withSystemDb("enabled-apps-read", async (db) => {
     const [row] = await db
       .select({ settings: organizations.settings })
       .from(organizations)
@@ -20,9 +25,12 @@ export async function getEnabledApps(orgId: string): Promise<string[]> {
     const raw = (row?.settings as Record<string, unknown> | undefined)?.enabledApps
     return Array.isArray(raw) ? (raw as string[]) : []
   })
+  // Another org's custom app is never enabled here (app-org-scope.ts).
+  return filterAppsVisibleToOrg(names, orgId, (n) => n)
 }
 
 export async function isAppRegistered(orgId: string, appName: string): Promise<boolean> {
+  if (!(await appVisibleToOrg(appName, orgId))) return false
   await ensureAppsForOrg(orgId)
   return manifestRegistry.get([orgId, appName]) !== undefined
 }
@@ -70,6 +78,7 @@ export async function recordAppOn(orgId: string, appName: string): Promise<void>
  * `changed` vs `unchanged` accurately rather than always reporting a change.
  */
 export async function enableApp(orgId: string, appName: string): Promise<boolean> {
+  await assertAppVisibleToOrg(appName, orgId)
   // The search settings already cover the whole catalog (the setup step applies
   // them), so enabling an app for one org changes nothing there.
   return writeEnabledApp(orgId, appName)

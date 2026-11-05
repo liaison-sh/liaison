@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { createHmac } from "node:crypto"
+import type { Context } from "hono"
 import * as jose from "jose"
 import { env } from "~/lib/env"
+import { hostBindingEnabled } from "~/lib/org-host"
+import { effectiveRequest } from "~/lib/request-context"
 
 /**
  * Capability token for the bundle URL of an installed (non-first-party) app.
@@ -28,10 +31,15 @@ function bundleTokenKey(): Uint8Array {
   )
 }
 
-export async function signUiBundleToken(name: string, version: string): Promise<string> {
+export async function signUiBundleToken(
+  name: string,
+  version: string,
+  /** With org hosts: the host the URL is handed out on; the bundle loads there only. */
+  host?: string | null,
+): Promise<string> {
   const windowStart = Math.floor(Date.now() / 1000 / WINDOW_SECONDS) * WINDOW_SECONDS
   return (
-    new jose.SignJWT({ name, version })
+    new jose.SignJWT({ name, version, ...(host ? { host } : {}) })
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt(windowStart)
       // Valid for two windows so a URL handed out at the end of one still loads.
@@ -45,14 +53,22 @@ export async function verifyUiBundleToken(
   token: string | undefined,
   name: string,
   version: string,
+  /** With org hosts: the request's host, which must be the one the token names. */
+  host?: string | null,
 ): Promise<boolean> {
   if (!token) return false
   try {
     const { payload } = await jose.jwtVerify(token, bundleTokenKey(), {
       audience: AUDIENCE,
     })
+    if (host !== undefined && (!host || payload.host !== host)) return false
     return payload.name === name && payload.version === version
   } catch {
     return false
   }
+}
+
+/** The host a bundle token is bound to on this request: undefined without org hosts. */
+export function boundHost(c: Context): string | null | undefined {
+  return hostBindingEnabled() ? effectiveRequest(c).host : undefined
 }

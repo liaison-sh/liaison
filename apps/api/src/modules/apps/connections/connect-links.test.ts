@@ -124,6 +124,27 @@ describe("one-time connect links", () => {
     expect(ttl).toBeLessThanOrEqual(30 * 60)
   })
 
+  it("the link is on the org's host with org hosts, and the web origin's link without", async () => {
+    const [org] = await sql<{ slug: string }[]>`
+      SELECT slug FROM kernel.organizations WHERE id = ${orgId}`
+    const saved = env.LIAISON_ORG_HOST_TEMPLATE
+    try {
+      env.LIAISON_ORG_HOST_TEMPLATE = undefined
+      const off = await mintForMember()
+      const webOrigin =
+        env.ALLOWED_ORIGINS.split(",")
+          .map((o) => o.trim())
+          .find((o) => o && o !== "*") ?? "http://localhost:5173"
+      expect(off.url).toBe(`${webOrigin}/connect/link?token=${off.token}`)
+
+      env.LIAISON_ORG_HOST_TEMPLATE = "https://{slug}.example.com"
+      const on = await mintForMember()
+      expect(on.url).toBe(`https://${org.slug}.example.com/connect/link?token=${on.token}`)
+    } finally {
+      env.LIAISON_ORG_HOST_TEMPLATE = saved
+    }
+  })
+
   it("is refused without a session", async () => {
     const link = await mintForMember()
     const res = await post("/links/redeem", { token: link.token })
@@ -433,15 +454,16 @@ describe("one-time connect links", () => {
         actor: { kind: "cli" },
         forced: true,
       })
-      // The disconnect event names the system (the CLI), not a member who did nothing.
+      // The disconnect event names the system (the CLI), not a member who did nothing:
+      // a system event with no actor id (connectionEventActor).
       const events = (await sql`
         SELECT payload FROM kernel.pending_events
          WHERE org_id = ${orgId} AND payload->>'entityId' = ${t.id}
            AND payload->>'action' = 'disconnect'`) as Array<{
-        payload: { actorId?: string; actorType?: string }
+        payload: { actorId?: string | null; actorType?: string }
       }>
-      expect(events.map((e) => [e.payload.actorId, e.payload.actorType])).toEqual([
-        ["system", "system"],
+      expect(events.map((e) => [e.payload.actorId ?? null, e.payload.actorType])).toEqual([
+        [null, "system"],
       ])
       const [row] = (await sql`
         SELECT status FROM kernel.connected_accounts WHERE id = ${t.id}`) as Array<{

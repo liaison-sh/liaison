@@ -10,6 +10,7 @@ import type { OrgUsage, OrgUsageEntry } from "@liaison/shared"
 import { type Component, createResource, For, Show } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
+import { billingMode } from "./BillingState"
 
 type Row = {
   id: "seats" | "mailboxes" | "storage" | "jobs"
@@ -80,7 +81,9 @@ const OrgUsageSection: Component = () => {
   return (
     <div data-testid="org-usage" class="flex flex-col gap-3">
       <p data-testid="org-usage-help" class="text-sm text-text-secondary">
-        {i18n.t("kernel.orgUsage.help")}
+        {i18n.t(
+          billingMode() === "managed" ? "kernel.orgUsage.helpManaged" : "kernel.orgUsage.help",
+        )}
       </p>
       <Show when={usage.error}>
         <p data-testid="org-usage-load-failed" class="text-sm text-text-secondary">

@@ -42,6 +42,7 @@ import { organizations } from "~/db/schema/kernel/organizations"
 import { unregisterAppJobHandlers } from "~/infra/jobs/jobs"
 import { appsLogger as log } from "~/lib/logger"
 import { publishRedis, REDIS_PREFIX, redisSub } from "~/lib/redis"
+import { appOwnerOrg, appVisibleToOrg } from "~/modules/apps/app-org-scope"
 import {
   initializedOrgRuntimes,
   registeredAppVersions,
@@ -141,14 +142,23 @@ async function readPointer(name: string): Promise<Pointer | null> {
 
 async function writePointer(name: string, pointer: Pointer): Promise<void> {
   await withSystemDb("app-activation-swap", async (db) => {
+    // The owner of an org-private app comes with its version's row (0264):
+    // NULL for an instance app.
+    const [owned] = await db
+      .select({ orgId: appsInstalled.orgId })
+      .from(appsInstalled)
+      .where(and(eq(appsInstalled.name, name), eq(appsInstalled.version, pointer.version)))
+      .limit(1)
+    const orgId = owned?.orgId ?? null
     await db
       .insert(appsActiveVersion)
-      .values({ name, version: pointer.version, previousVersion: pointer.previousVersion })
+      .values({ name, version: pointer.version, previousVersion: pointer.previousVersion, orgId })
       .onConflictDoUpdate({
         target: appsActiveVersion.name,
         set: {
           version: pointer.version,
           previousVersion: pointer.previousVersion,
+          orgId,
           updatedAt: new Date(),
         },
       })
@@ -310,6 +320,9 @@ async function orgsNotJudging(name: string, orgIds: string[]): Promise<Set<strin
  * where the app is on, else the instance operator's org.
  */
 async function gateOrgs(name: string): Promise<string[]> {
+  // An org's custom app runs in that org alone: it is judged there.
+  const owner = await appOwnerOrg(name)
+  if (owner !== null) return [owner]
   const live = await liveInitializedOrgs()
   if (live.length > 0) return live
   const [on] = await withSystemDb("app-activation-probe-org", (db) =>
@@ -383,7 +396,11 @@ async function switchAndJudge(
       message: `${name} ${desc.version}: its interface bundle is missing`,
     }
   }
-  const orgIds = await gateOrgs(name)
+  // An org's custom app is switched (and judged) in its own org only.
+  const orgIds: string[] = []
+  for (const orgId of await gateOrgs(name)) {
+    if (await appVisibleToOrg(name, orgId)) orgIds.push(orgId)
+  }
   const off = await orgsNotJudging(name, orgIds)
   const tools = Object.keys(((desc as { tools?: Record<string, unknown> }).tools ?? {}) as object)
   let failure: GateFailure | null = null
@@ -1165,6 +1182,10 @@ export async function orgAppProblems(
       .where(eq(apps.orgId, orgId)),
   )
   const out = new Map<string, { code: string; message: string }>()
-  for (const r of rows) if (r.code) out.set(r.name, { code: r.code, message: r.message ?? "" })
+  for (const r of rows) {
+    if (r.code && (await appVisibleToOrg(r.name, orgId))) {
+      out.set(r.name, { code: r.code, message: r.message ?? "" })
+    }
+  }
   return out
 }

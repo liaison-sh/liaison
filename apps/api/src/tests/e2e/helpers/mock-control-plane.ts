@@ -3,6 +3,7 @@ import {
   type BillingStateReply,
   billingStateReplySchema,
   CONTRACT_VERSION,
+  INSTANCE_ENVELOPE_VERSION,
   INSTANCE_HEADER,
   MESSAGE_TYPES,
   type MessageType,
@@ -207,6 +208,11 @@ export async function startFakeControlPlane(
     const type = endpoint as MessageType
     const parsed = messageSchemas[type].safeParse(body)
     if (!parsed.success) return answer(400, reject(REJECTION_CODES.invalidMessage))
+    // A control plane that predates contract v2 accepts only `v: 1` on the
+    // version-1 message types, so an instance must keep stamping those with 1.
+    if ((body as { v?: unknown }).v !== INSTANCE_ENVELOPE_VERSION) {
+      return answer(400, reject(REJECTION_CODES.invalidMessage))
+    }
     const msg = parsed.data as { messageId: string; instanceId: string; data: { nonce?: string } }
     if (headers[INSTANCE_HEADER] !== msg.instanceId) {
       return answer(401, { error: { message: "Invalid signature" } })

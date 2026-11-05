@@ -100,3 +100,30 @@ describe("Voice dictation setting", () => {
     expect(get).toHaveBeenCalledTimes(2)
   })
 })
+
+describe("voice dictation on a managed cell (S18)", () => {
+  it("shows credits per minute, never a price", async () => {
+    setup(() => ({
+      available: [
+        {
+          key: "or:whisper",
+          label: "Whisper large v3",
+          provider: "OpenRouter",
+          creditsPerMinute: 0.0062,
+        },
+        {
+          key: "or:voxtral",
+          label: "Voxtral mini",
+          provider: "OpenRouter",
+          creditsPerMinute: 0.002,
+        },
+      ],
+      current: null,
+      default: "or:voxtral",
+    }))
+    await waitFor(() => expect(screen.getAllByTestId("ai-models-voice-option")).toHaveLength(2))
+    expect(option("or:whisper").textContent).toContain("0.0062")
+    expect(option("or:whisper").textContent).toMatch(/credits/)
+    expect(option("or:whisper").textContent).not.toMatch(/\$|USD|€/)
+  })
+})

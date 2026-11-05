@@ -28,6 +28,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   quoted_price_required: 400,
   content_code_required: 400,
   no_items: 400,
+  // pick_shipment_address: a choice other than "order" or "verified".
+  invalid_choice: 400,
   // set_customs: a unit value that is not a positive number.
   invalid_unit_value: 400,
   // Boxtal refused the route's own data (an invalid postal code for the country).
@@ -64,6 +66,12 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   approval_not_withdrawn: 409,
   confirm_required: 409,
   pending_approval: 409,
+  // The order's ship-to and the customer's verified address differ: the label is held until
+  // someone picks one (address_differs); a pick on a row with nothing to pick, or against a
+  // verified address that moved since the row was read (re-read and pick again).
+  address_differs: 409,
+  address_choice_not_needed: 409,
+  address_choice_stale: 409,
   // Social: the platform's API exposes no like for this item (like_item's
   // stage-time preflight). An expected refusal the agent acts on, not a fault:
   // it answered 500 and read as a server error.
@@ -89,6 +97,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   shopify_error: 502,
   // Shopify could not be read, or its fulfil/cancel call threw (fulfillment.ts).
   shopify_unreachable: 502,
+  // The order's address could not be read from Shopify just now, so nothing was bought.
+  order_unreadable: 502,
   unexpected: 502,
   proforma_failed: 502,
   proforma_not_issued: 502,
@@ -135,6 +145,15 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   no_issuer_profile: 422,
   no_recipient: 422,
   counterparty_incomplete: 422,
+  // The intra-EU buyer-VAT guard (buyer-vat.ts): VIES says the VAT number is not valid, a
+  // business buyer has no VAT number, or the consumer declaration contradicts the evidence.
+  vat_id_invalid: 422,
+  buyer_vat_id_required: 422,
+  buyer_is_consumer_refused: 422,
+  buyer_status_contradiction: 400,
+  // deferred_tax_override on a park already resolved, or parked on something other than a tax review.
+  already_resolved: 409,
+  not_a_tax_review: 409,
   over_credit: 422,
   draft_order_sync_skipped: 422,
   // E-invoicing issue gate: buyer data the regime needs is missing or unconfirmed.

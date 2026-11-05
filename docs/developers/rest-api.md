@@ -73,7 +73,7 @@ Keep a key without allowed origins on your server only.
 
 ### Errors
 
-Errors come back as `{"error": {"code": "…", "message": "…"}}`. A missing, unknown or revoked key answers `401` with `invalid_api_key`. A body that does not validate answers `400` with `validation_failed` and the details. When Tickets is turned off for the org, the endpoints answer `503` (`app_disabled`).
+Errors come back as `{"error": {"code": "…", "message": "…"}}`. A missing, unknown or revoked key answers `401` with `invalid_api_key`. A body that does not validate answers `400` with `validation_failed` and the details. When Tickets is turned off for the org, the endpoints answer `503` (`app_disabled`). On a managed instance whose subscription is suspended or closed, they answer `403` (`org_suspended`, with `accessUntil` and `contact`), as the `/api` routes do.
 
 ## The `/api` routes
 
@@ -86,6 +86,12 @@ Responses follow one envelope:
 { "data": [ … ], "meta": { "page": 1, "limit": 50, "total": 120 } }
 { "error": { "message": "Contact not found", "code": "…" } }
 ```
+
+On a managed instance, two refusals come from the workspace's subscription rather than the request:
+
+- `402` with `code: "payment_required"`: a call that spends AI or web usage while the renewal payment failed. Pay the open invoice in **Settings › Billing**.
+- `403` with `code: "org_suspended"`, plus `accessUntil` (until when admins can still export and pay, or `null`) and `contact` (the billing address, or `null`): the subscription is suspended or closed. While suspended, an admin's own session keeps the billing and export routes; every other call is refused.
+- `503` with `code: "org_moving"`, `retryAfterSeconds` and a `Retry-After` header (2 seconds): the organization is being moved to another server. For a few seconds writes are refused while reads still answer; just before, only the calls that start an agent turn (a chat or thread message) are refused. Retry after the delay: the same call then goes to the server the organization now lives on. The websocket closes with code `4005` and reconnects the same way.
 
 For automation, prefer the tools made for it:
 

@@ -2,15 +2,21 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 import { randomUUID } from "node:crypto"
 import { existsSync } from "node:fs"
+import { utimes } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { _setEdition } from "~/lib/edition"
 import { startFixtureServer } from "~/modules/apps/sandbox/__test-helpers__/bulk-blob-fixtures"
 import {
   _resetOrgBulkBlobs,
+  BulkBlobTestAccess,
   blobPath,
+  bulkBlobScope,
   deleteBlob,
+  deleteOrgCustomBulkBlobs,
   fetchToBlob,
   iterateJsonl,
+  sweepIdleCustomBulkBlobs,
 } from "~/modules/apps/sandbox/bulk-blob"
 
 // Per-suite isolation (HERMETIC — the suite asserts exact per-org quota math, so
@@ -193,5 +199,68 @@ describe("deleteBlob", () => {
   it("is idempotent — deleting a missing blob is a no-op", async () => {
     await deleteBlob(ORG_OK, "this-blob-does-not-exist")
     // No throw expected.
+  })
+})
+
+// An org's custom app (managed edition): its own scope, its own quota, a cap
+// over all custom apps on the server, and an idle lifetime.
+describe("custom apps", () => {
+  const ORG = randomUUID()
+  const OTHER = randomUUID()
+  const APP = "crm-o12345678"
+  const bytes = (n: number) =>
+    (async () => new Response(`${"x".repeat(n - 1)}\n`)) as unknown as typeof fetch
+
+  beforeEach(() => {
+    _setEdition("managed")
+    BulkBlobTestAccess.setCustomLimits({
+      quotaBytes: 1000,
+      cellQuotaBytes: 1500,
+      idleTtlMs: 60_000,
+    })
+  })
+  afterAll(async () => {
+    await deleteOrgCustomBulkBlobs(ORG)
+    await deleteOrgCustomBulkBlobs(OTHER)
+    BulkBlobTestAccess.setCustomLimits(null)
+    _setEdition(null)
+  })
+
+  it("keeps a custom app's blobs in their own scope; catalog apps keep the org's", () => {
+    expect(bulkBlobScope(ORG, APP)).toBe(`custom--${ORG}--${APP}`)
+    expect(bulkBlobScope(ORG, "shopify")).toBe(ORG)
+    _setEdition("self_hosted")
+    expect(bulkBlobScope(ORG, APP)).toBe(ORG)
+  })
+
+  it("refuses past the app's quota and past the server's custom-app cap", async () => {
+    const scope = bulkBlobScope(ORG, APP)
+    await fetchToBlob(scope, "https://x.example/a", {}, bytes(800))
+    await expect(fetchToBlob(scope, "https://x.example/b", {}, bytes(400))).rejects.toThrow(
+      "quota exceeded",
+    )
+    // Another org's custom app: its own quota, but the server cap (1500) is shared.
+    const other = bulkBlobScope(OTHER, APP)
+    await fetchToBlob(other, "https://x.example/c", {}, bytes(600))
+    await expect(fetchToBlob(other, "https://x.example/d", {}, bytes(200))).rejects.toThrow(
+      "quota exceeded",
+    )
+  })
+
+  it("deletes blobs idle past their lifetime, and the purge removes the org's", async () => {
+    const scope = bulkBlobScope(ORG, APP)
+    await deleteOrgCustomBulkBlobs(ORG)
+    await deleteOrgCustomBulkBlobs(OTHER)
+    const { blobId } = await fetchToBlob(scope, "https://x.example/e", {}, bytes(100))
+    const path = blobPath(scope, blobId)
+    expect(existsSync(path)).toBe(true)
+    expect(await sweepIdleCustomBulkBlobs()).toBe(0)
+    const old = new Date(Date.now() - 120_000)
+    await utimes(path, old, old)
+    expect(await sweepIdleCustomBulkBlobs()).toBe(1)
+    expect(existsSync(path)).toBe(false)
+    const again = await fetchToBlob(scope, "https://x.example/f", {}, bytes(100))
+    await deleteOrgCustomBulkBlobs(ORG)
+    expect(existsSync(blobPath(scope, again.blobId))).toBe(false)
   })
 })

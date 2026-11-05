@@ -11,6 +11,8 @@ Mail brings your Gmail or IMAP/SMTP mailboxes into Liaison. You read and answer 
 
 Mailboxes are managed in **Settings › Apps › Mail**, under **Your email accounts**.
 
+Until a mailbox is connected, the **Mail** tab shows "Connect an email account to get started" and a **Connect an Account** button that opens this settings page.
+
 ### Connect Gmail
 
 1. Open **Settings › Apps › Mail**.
@@ -18,7 +20,7 @@ Mailboxes are managed in **Settings › Apps › Mail**, under **Your email acco
 3. Sign in with Google and approve the requested access (read, modify and send mail).
 4. If your mailbox is private, set a mailbox password when asked (see [Choose how your mailbox is encrypted](#choose-how-your-mailbox-is-encrypted)). A transparent mailbox asks for nothing and starts syncing at once.
 
-Gmail needs the workspace's Google client. If it is not set up, the page says so and a mail admin sees an **Open Mail Setup** link. An admin with `kernel:org:admin` sets the client under **Gmail & Google sign-in** on the same page. It is the same Google client as Google sign-in. A mail admin can also turn Gmail off for the workspace with the **Gmail mailboxes** toggle under **Mailbox types**. While it is off, no Gmail mailbox connects: the agent asks an admin to turn it on (a configuration change they approve) before it shows a Connect card. The page updates by itself when the toggle changes, the Google client is saved or a mailbox connects, including when the change was made from a conversation with the agent.
+Gmail needs the workspace's Google client. If it is not set up, the page says so and a mail admin sees an **Open Mail Setup** link, which scrolls to **Mailbox types** and puts the focus on the **Gmail mailboxes** toggle. An admin with `kernel:org:admin` sets the client under **Gmail & Google sign-in** on the same page. It is the same Google client as Google sign-in. A mail admin can also turn Gmail off for the workspace with the **Gmail mailboxes** toggle under **Mailbox types**. On a self-hosted server the toggle starts off; a managed (Liaison Cloud) workspace starts with it on, since the service provides the Google client. While it is off, no Gmail mailbox connects: the agent asks an admin to turn it on (a configuration change they approve) before it shows a Connect card. The page updates by itself when the toggle changes, the Google client is saved or a mailbox connects, including when the change was made from a conversation with the agent.
 
 You can also ask the agent to connect your Gmail: it shows a Connect card in the conversation that does the same steps.
 
@@ -62,6 +64,8 @@ A mail admin (`mail:accounts:admin`) sees **Organization-owned accounts** on the
 
 1. Click **Connect shared Gmail** or **Connect shared IMAP/SMTP**.
 2. Once connected, click **Manage access** on the mailbox row to choose which roles can use it. Access is granted per mailbox through the `mail:inbox` dimension in [roles](../admin/roles.md) and [dimensions](../admin/dimensions.md).
+
+An organization's IMAP mailbox is checked on schedule whether or not anyone is signed in, so mail-driven work runs overnight too. A personal IMAP mailbox is checked on schedule only while someone who can read it is online. Connecting a second address adds a second shared mailbox; re-entering the password of an address, in any upper or lower case, updates its mailbox.
 
 ### One owner per address
 

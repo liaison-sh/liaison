@@ -288,6 +288,26 @@ describe("Login on a demo deployment", () => {
     expect(screen.queryByTestId("auth-card")).toBeNull()
   })
 
+  it("offers no account creation where nobody can sign in", async () => {
+    _resetBranding()
+    await ensureBrandingLoaded(
+      (async () =>
+        ({
+          ok: true,
+          json: async () => ({ data: { orgName: "Closed", flags: { noAccountEntry: true } } }),
+        }) as unknown as Response) as unknown as typeof fetch,
+    )
+    renderWithRouter()
+    expect(screen.getByTestId("auth-card")).toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: /create an account/i })).toBeNull()
+  })
+
+  it("offers it everywhere else", async () => {
+    await serverSays(false)
+    renderWithRouter()
+    expect(screen.getByRole("link", { name: /create an account/i })).toBeInTheDocument()
+  })
+
   it("keeps an ordinary sign in one click away", async () => {
     await serverSays(true)
     renderWithRouter()
@@ -306,6 +326,33 @@ describe("Login on a demo deployment", () => {
     await waitFor(() => expect(screen.getByPlaceholderText("••••••••")).toBeInTheDocument())
     expect(screen.queryByRole("button", { name: /continue with email/i })).toBeNull()
     expect(screen.queryByRole("button", { name: /email code/i })).toBeNull()
+  })
+
+  it("says mail can't go out, stays on the email step, and never claims a code was sent", async () => {
+    await serverSays(false)
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) =>
+      String(input).includes("/magic-link/request")
+        ? jsonResponse(
+            {
+              error: {
+                message: "We can't send email right now.",
+                code: "EMAIL_PROVIDER_UNAVAILABLE",
+              },
+            },
+            403,
+          )
+        : emptyProviders(),
+    )
+    renderWithRouter()
+    fireEvent.input(screen.getByPlaceholderText("you@company.com"), {
+      target: { value: "owner@test.com" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: /continue with email/i }))
+    await waitFor(() =>
+      expect(screen.getByTestId("email-provider-unavailable")).toBeInTheDocument(),
+    )
+    expect(screen.getByPlaceholderText("you@company.com")).toBeInTheDocument()
+    expect(screen.queryByText(/code/i)).toBeNull()
   })
 
   it("opens the password form with the reason when the server refuses to send a code", async () => {

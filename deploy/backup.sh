@@ -72,6 +72,10 @@ KEEP=""
 #                                      the Google Picker of the Drive client's
 #                                      project: without them a moved instance
 #                                      drops Drive's picked-files mode
+#   META_APP_ID / META_APP_SECRET      the instance Meta app (managed edition):
+#                                      pages are subscribed to that app, and the
+#                                      server's Meta callback token derives from
+#                                      its secret
 #   APNS_KEY_PATH / _KEY_ID / _TEAM_ID / _BUNDLE_ID
 #                                      iOS push: device tokens are bound to the
 #                                      team and bundle, and the .p8 key file
@@ -87,6 +91,7 @@ CARRIED_CONFIG=(GOOGLE_OAUTH_CLIENT_ID GOOGLE_OAUTH_CLIENT_SECRET GMAIL_OAUTH_CL
   GOOGLE_DRIVE_OAUTH_CLIENT_ID GOOGLE_DRIVE_OAUTH_CLIENT_SECRET GOOGLE_MARKETING_OAUTH_CLIENT_ID
   GOOGLE_MARKETING_OAUTH_CLIENT_SECRET SHOPIFY_APP_CLIENT_ID SHOPIFY_APP_CLIENT_SECRET
   GOOGLE_PICKER_API_KEY GOOGLE_CLOUD_PROJECT_NUMBER
+  META_APP_ID META_APP_SECRET
   APNS_KEY_PATH APNS_KEY_ID APNS_TEAM_ID APNS_BUNDLE_ID)
 
 print_help() {

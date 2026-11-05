@@ -213,9 +213,9 @@ describe("connected accounts service", () => {
     )
   })
 
-  it("builds OAuth callback redirects against the frontend origin", () => {
+  it("builds OAuth callback redirects against the frontend origin", async () => {
     const params = new URLSearchParams({ oauth_error: "access_denied" })
-    expect(getFrontendRedirectUrl("/settings/mail/accounts", params)).toBe(
+    expect(await getFrontendRedirectUrl(null, "/settings/mail/accounts", params)).toBe(
       "http://localhost:5173/settings/mail/accounts?oauth_error=access_denied",
     )
   })

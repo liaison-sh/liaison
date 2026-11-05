@@ -13,6 +13,7 @@ import {
   type ListedObject,
 } from "~/infra/storage/object-storage"
 import { filesLogger as log } from "~/lib/logger"
+import { movingOrgIds } from "~/modules/org/transfer-state/state"
 
 const GRACE_WINDOW_MS = 24 * 60 * 60 * 1000
 const DELETE_BATCH_SIZE = 500
@@ -190,7 +191,11 @@ export async function processOrphanGc(
     const r = await tx.execute<{ id: string }>(sql`SELECT id FROM ${K}.organizations`)
     return r as unknown as { id: string }[]
   })
+  // An org being moved keeps its objects: on the target they arrive before the
+  // rows that reference them, so a pass now would delete them as orphans.
+  const moving = new Set(await movingOrgIds())
   for (const row of rows) {
+    if (moving.has(row.id)) continue
     try {
       await runOrphanGcForOrg(row.id)
     } catch (err) {

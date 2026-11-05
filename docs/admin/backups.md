@@ -30,7 +30,7 @@ The archive holds:
 | `roles.sql` | The database roles and memberships, without passwords |
 | `objects/` | Every object in the object-store bucket, with an index |
 | `data.tar.gz` | The app's data directory, `deploy/data` (installed app packages, push key files) |
-| `secrets.env` | `JWT_SECRET`, `ENCRYPTION_KEY`, `BYOK_ENCRYPTION_KEY`, `VAPID_*` when set, and the deployment's OAuth clients and iOS push settings when set |
+| `secrets.env` | `JWT_SECRET`, `ENCRYPTION_KEY`, `BYOK_ENCRYPTION_KEY`, `VAPID_*` when set, and the deployment's OAuth clients, Meta app and iOS push settings when set |
 | `manifest.json` | Image and version, migration highwater, timestamp, counts and checksums |
 
 The search index is not copied: a restore rebuilds it from the database. Everything else in `deploy/.env` (URLs, ports, database and object-store passwords, SMTP, platform model keys) belongs to the host and stays there.
@@ -94,7 +94,7 @@ An agent can also export everything held on one contact, for a data-subject requ
 
 A whole-org export is one zip archive with every record and every file of one organization: what you take with you when you move or close it. It is not a backup you can restore.
 
-- **From the app:** open **Settings › Organization › Export organization** and click **Export organization**. It needs `kernel:org:admin`. The archive is built in the background; you get a notification when it is ready, and it appears in the list with its size and a **Download** button. Each download link is valid 5 minutes; ask for a new one any time. The link points at the object store only when browsers can reach it (`OBJECT_STORAGE_BROWSER_DIRECT=true`); otherwise, the default, the server streams the archive itself.
+- **From the app:** open **Settings › Organization › Export organization** and click **Export organization**. It needs `kernel:org:admin`. The archive is built in the background; you get a notification when it is ready, and it appears in the list with its size and a **Download** button. Each download link is valid 5 minutes, and where each org has its own address, it works on that address only; ask for a new one any time. The link points at the object store only when browsers can reach it (`OBJECT_STORAGE_BROWSER_DIRECT=true`); otherwise, the default, the server streams the archive itself.
 - **From the CLI:** `liaison org export <org slug or id> [--wait]`. See [Provisioning CLI](../provisioning-cli.md).
 
 Only one export of an organization runs at a time. An archive is kept 7 days, then deleted.

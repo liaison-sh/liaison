@@ -28,8 +28,10 @@ function sourceFiles(dir: string): string[] {
 }
 
 // Snake-case literals in a `code: …` / `code = …` expression that are not codes
-// (a status compared in a ternary, a typeof check, a sort direction, a field name).
-const NOT_A_CODE = new Set(["error", "asc", "desc", "tool_error", "phone", "string"])
+// (a status compared in a ternary, a typeof check, a sort direction, a field name,
+// boxtal's local envelope for a thrown kernel call, which only becomes a sync result's
+// error text, product-attributes.ts).
+const NOT_A_CODE = new Set(["error", "asc", "desc", "tool_error", "phone", "string", "failed"])
 
 function declaredCodes(dir: string): string[] {
   const codes = new Set<string>()
@@ -43,6 +45,10 @@ function declaredCodes(dir: string): string[] {
       for (const lit of m[1]!.matchAll(/"([a-z][a-z0-9]*(?:_[a-z0-9]+)*)"/g)) {
         if (!NOT_A_CODE.has(lit[1]!)) codes.add(lit[1]!)
       }
+    }
+    // A local refuse("code", ...) helper takes the code positionally (buyer-vat.ts).
+    for (const m of text.matchAll(/\brefuse\(\s*"([a-z][a-z0-9]*(?:_[a-z0-9]+)*)"/g)) {
+      if (!NOT_A_CODE.has(m[1]!)) codes.add(m[1]!)
     }
   }
   return [...codes].sort()
@@ -65,6 +71,15 @@ describe("statusForToolError: every deliberate app code is a non-500", () => {
       })
     }
   }
+
+  it("the buyer-VAT guard's refusals are 4xx, found by the positional refuse() scan", () => {
+    const codes = declaredCodes(join(REPO, "bundled-apps", "invoicing", "src"))
+    for (const code of ["vat_id_invalid", "buyer_vat_id_required", "buyer_is_consumer_refused"]) {
+      expect(codes).toContain(code)
+      expect(statusForToolError(code)).toBe(422)
+    }
+    expect(statusForToolError("buyer_status_contradiction")).toBe(400)
+  })
 
   it("tickets ref resolver codes are client errors", () => {
     expect(statusForToolError("invalid_params")).toBe(400)

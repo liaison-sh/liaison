@@ -346,6 +346,11 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
     "const scope = section.scope",
     REASONS.SETTINGS,
   ],
+  [
+    "apps/web/src/modules/settings/app-page/AppSettingsPage.tsx",
+    "const values = loaded(section.scope)",
+    REASONS.SETTINGS,
+  ],
   // App management (S20, S21): whether an app owns scopes, the workspace's `*`
   // holders, and a listing's permissions in the catalog's words.
   [

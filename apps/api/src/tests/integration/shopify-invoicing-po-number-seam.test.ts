@@ -248,6 +248,15 @@ describe("shopify -> invoicing PO number seam (real webhook -> real outbox -> re
       })}::jsonb
       WHERE org_id = ${ORG} AND name = 'shopify'`
 
+    // The webhook route accepts a delivery only from a shop this org has
+    // CONNECTED (the shop-domain check of bundled-apps/shopify/src/webhooks.ts):
+    // the org's active `shop` account, as the OAuth callback leaves it.
+    await sql`DELETE FROM app_shopify.install_metadata WHERE org_id = ${ORG}`
+    await sql`DELETE FROM kernel.connected_accounts WHERE org_id = ${ORG} AND app_name = 'shopify'`
+    await sql`INSERT INTO kernel.connected_accounts
+      (org_id, app_name, connection_name, owner_type, provider_type, identifier, status, created_by)
+      VALUES (${ORG}, 'shopify', 'shop', 'org', 'oauth2', ${SHOP_DOMAIN}, 'active', ${USER})`
+
     issuerProfileId = await insertIssuerProfile()
     await seedConfirmedBuyers()
   }, 60_000)
@@ -261,6 +270,8 @@ describe("shopify -> invoicing PO number seam (real webhook -> real outbox -> re
     await sql`DELETE FROM app_invoicing.deferred_events WHERE org_id = ${ORG}`
     await sql`DELETE FROM app_invoicing.counterparty_identities WHERE org_id = ${ORG}`
     await sql`DELETE FROM app_shopify.webhook_deliveries WHERE org_id = ${ORG}`
+    await sql`DELETE FROM app_shopify.install_metadata WHERE org_id = ${ORG}`
+    await sql`DELETE FROM kernel.connected_accounts WHERE org_id = ${ORG} AND app_name = 'shopify'`
     await releaseTestLock()
   }, 60_000)
 

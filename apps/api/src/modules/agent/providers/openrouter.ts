@@ -2,6 +2,7 @@
 import { DEMO_BOX_KEY_REASONING_LEVEL } from "@liaison/shared"
 import { createOpenRouter } from "@openrouter/ai-sdk-provider"
 import type { LanguageModel } from "ai"
+import { isManagedEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
 import { fetchWithPinnedHost } from "~/lib/outbound-fetch"
@@ -37,6 +38,46 @@ export function openRouterBaseURL(): string {
  * somewhere else.
  */
 export const OPENROUTER_ROUTING = { data_collection: "deny", require_parameters: true } as const
+
+/**
+ * The routing of a managed cell's side calls (S31, A45): embeddings, media
+ * analysis and the web-search completion name zero data retention themselves.
+ * `withManagedZdr` adds it to every managed request whatever its builder said.
+ */
+export function managedZdrRouting() {
+  return { ...OPENROUTER_ROUTING, zdr: true } as const
+}
+
+/**
+ * ZERO DATA RETENTION ON A MANAGED CELL. The privacy notice promises it on every
+ * AI call, so each request says so itself and the promise does not rest on the
+ * OpenRouter account's setting alone. Every way out passes here: `openRouterFetch`
+ * (REST), `createOpenRouterModel` (the SDK) and `openRouterThreadFetch` (a thread's
+ * own call); a new one is refused by the guard in openrouter-zdr.test.ts. A body
+ * without a `model` is not a model call. A self-hosted request is unchanged: the
+ * data policy of OPENROUTER_ROUTING is what that instance's owner gets.
+ */
+export function withManagedZdr(body: unknown): unknown {
+  if (!isManagedEdition() || !body || typeof body !== "object" || !("model" in body)) return body
+  const b = body as Record<string, unknown>
+  const provider = b.provider && typeof b.provider === "object" ? b.provider : {}
+  return { ...b, provider: { ...provider, zdr: true } }
+}
+
+/** `withManagedZdr` on each request a fetch sends. */
+function managedZdrFetch(inner: typeof fetch): typeof fetch {
+  const f = async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    if (!isManagedEdition() || typeof init?.body !== "string") return inner(input, init)
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(init.body)
+    } catch {
+      return inner(input, init)
+    }
+    return inner(input, { ...init, body: JSON.stringify(withManagedZdr(parsed)) })
+  }
+  return Object.assign(f, { preconnect: fetch.preconnect })
+}
 
 /**
  * A chat request body (one with `messages`) with the org's blocked hosts kept
@@ -282,12 +323,14 @@ export function createOpenRouterModel(
   // A thread's requests stay on the upstream host it first landed on.
   // No thread: the org's blocked hosts still stay out of the routing.
   const orgId = opts.orgId ?? null
-  const base = opts.sessionId
-    ? providerPinFetch(guarded, opts.sessionId, undefined, undefined, {
-        orgId,
-        ...(opts.onTurnRequest ? { onSent: opts.onTurnRequest } : {}),
-      })
-    : blockedHostsFetch(guarded, orgId)
+  const base = managedZdrFetch(
+    opts.sessionId
+      ? providerPinFetch(guarded, opts.sessionId, undefined, undefined, {
+          orgId,
+          ...(opts.onTurnRequest ? { onSent: opts.onTurnRequest } : {}),
+        })
+      : blockedHostsFetch(guarded, orgId),
+  )
   const watched = opts.onUnreportedGeneration
     ? unreportedGenerationFetch(base, opts.onUnreportedGeneration)
     : base
@@ -317,7 +360,7 @@ export function openRouterThreadFetch(
   orgId: string | null = null,
 ): typeof fetch {
   const guarded: typeof fetch = isDemoBoxKey(apiKey) ? boxKeyGuardedFetch() : fetch
-  return providerPinFetch(guarded, threadId, undefined, undefined, { orgId })
+  return managedZdrFetch(providerPinFetch(guarded, threadId, undefined, undefined, { orgId }))
 }
 
 /**
@@ -343,7 +386,7 @@ export async function openRouterFetch(
   // A box key request names a priced model or never leaves (see the guard).
   // A GET on the box key (the catalogue) carries no model and spends nothing.
   // A chat request never goes to a blocked host, whichever caller built it.
-  let body = await withBlockedHosts(init.body, init.orgId ?? null)
+  let body = withManagedZdr(await withBlockedHosts(init.body, init.orgId ?? null))
   if (init.apiKey && isDemoBoxKey(init.apiKey) && body !== undefined) {
     body = assertBoxKeyRequest(body)
   }

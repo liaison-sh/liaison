@@ -7,7 +7,7 @@
 import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { prepSetAddressChoice } from "./address-choice"
+import { prepSetAddressChoice, prepSetAddressChoicePreflight } from "./address-choice"
 import { deriveDraftFacts } from "./draft-cache"
 import { type GoldenCase, type GoldenShopifyAddress, goldenCases } from "./__fixtures__/address-golden"
 import { docId, goldenCtx } from "./__fixtures__/address-harness"
@@ -122,6 +122,25 @@ describe("address differs: the label is held until a person picks", () => {
     const c = differsCase({ book: [verifiedRow({ street1: "Werkstrasse 6" })] })
     const { ctx } = goldenCtx(c)
     await expect(prepSetAddressChoice(ctx, { document_ref: docId(c), choice: "order" })).rejects.toThrow(/Nothing to pick/)
+  })
+
+  it("the stage-time preflight refuses what the pick would refuse, and writes nothing", async () => {
+    const same = differsCase({ book: [verifiedRow({ street1: "Werkstrasse 6" })] })
+    const a = goldenCtx(same)
+    expect(await prepSetAddressChoicePreflight(a.ctx, { document_ref: docId(same), choice: "order" })).toMatchObject({
+      error: { code: "address_choice_not_needed" },
+    })
+    expect(
+      await prepSetAddressChoicePreflight(a.ctx, { document_ref: docId(same), choice: "nope" as "order" }),
+    ).toMatchObject({ error: { code: "invalid_choice" } })
+    const c = differsCase()
+    const b = goldenCtx(c)
+    expect(
+      await prepSetAddressChoicePreflight(b.ctx, { document_ref: docId(c), choice: "verified", address_id: "stale-id" }),
+    ).toMatchObject({ error: { code: "address_choice_stale" } })
+    expect(await prepSetAddressChoicePreflight(b.ctx, { document_ref: docId(c), choice: "verified" })).toEqual({ ok: true })
+    // Read-only: the label is still held after an accepted preflight (no pick was stored).
+    expect(await createShipmentPreflight(b.ctx, stageParams(c))).toMatchObject({ error: { code: "address_differs" } })
   })
 
   it("the prep row carries the comparison only when there is a verified address", async () => {

@@ -54,6 +54,8 @@ APP_PORT -> deploy/.env.example:39
 APP_BIND -> deploy/.env.example:44
 TRUSTED_PROXY_HOPS >= 1 behind proxy -> deploy/.env.example:45
 TRUSTED_PROXY_CIDRS -> apps/api/src/lib/env.ts:85
+LIAISON_EDGE_MODE direct/signed -> apps/api/src/lib/request-context.ts:206
+LIAISON_EDGE_SECRET signed headers -> apps/api/src/lib/request-context.ts:167
 Passwordless needs mail; unset logs emails -> deploy/.env.example:70
 SMTP_PORT 587 STARTTLS, 465 needs SMTP_SECURE -> deploy/.env.example:74
 SMTP_USER/PASS/SECURE -> deploy/.env.example:77
@@ -83,9 +85,9 @@ All roles share one Postgres and Redis; lease key in Redis -> apps/api/src/infra
 api role: no job workers, never leader -> apps/api/src/lib/process-role.ts:15
 api role never contends for the lease -> apps/api/src/infra/leadership.ts:168
 api role is never leader (isLeader fail-closed) -> apps/api/src/infra/leadership.ts:79
-Only api/all serve the API, worker a health-only server -> apps/api/src/index.ts:307
-readyz answers 200 only after boot complete -> apps/api/src/index.ts:393
-An API process first sets up the orgs with a live WebSocket, up to LIAISON_READY_WARM_MS (30 s, 0 skips) -> apps/api/src/index.ts:376-388 ; apps/api/src/modules/apps/ready-warm.ts:27-87 ; apps/api/src/lib/env.ts:811 ; apps/api/src/infra/websocket-state/redis.ts:195-212
+Only api/all serve the API, worker a health-only server -> apps/api/src/index.ts:322
+readyz answers 200 only after boot complete -> apps/api/src/index.ts:408
+An API process first sets up the orgs with a live WebSocket, up to LIAISON_READY_WARM_MS (30 s, 0 skips) -> apps/api/src/index.ts:391-388 ; apps/api/src/modules/apps/ready-warm.ts:27-87 ; apps/api/src/lib/env.ts:811 ; apps/api/src/infra/websocket-state/redis.ts:195-212
 Several worker processes run jobs at once (jobs gate per node) -> apps/api/src/infra/leadership.ts:12
 Singleton: outbox drain -> apps/api/src/infra/events/outbox-worker.ts:403
 Singleton: legacy kernel queue move -> apps/api/src/infra/jobs/legacy-kernel-queue.ts:191
@@ -132,7 +134,7 @@ LIVE_INSTANCE_TTL_MS default 30000 -> apps/api/src/lib/env.ts:791
 LIVE_INSTANCE_HEARTBEAT_MS default 10000 -> apps/api/src/lib/env.ts:793
 LIVE_SWEEP_INTERVAL_MS default 10000 -> apps/api/src/lib/env.ts:795
 Entries of an instance without a record do not count -> apps/api/src/infra/websocket-state/redis.ts:68
-Leader sweep of dead instances -> apps/api/src/index.ts:337
+Leader sweep of dead instances -> apps/api/src/index.ts:352
 Record back after a lapse: own entries rewritten -> apps/api/src/infra/instance-registry.ts:289
 Live-state Redis calls bounded at 1 s -> apps/api/src/infra/websocket-state/redis.ts:216
 Stream cap take bounded at 1 s -> apps/api/src/modules/agent/stream-slots.ts:125
@@ -171,7 +173,7 @@ Taint reset waits while another run is live on the thread, on any process -> app
 Credit balance update through the event bus to every process's sockets -> apps/api/src/modules/agent/credits/credit-service.ts:294-297 ; apps/api/src/infra/events/event-subscribers.ts:605
 Same correlationId posted once, second send gets the posted message, other payload 422 -> apps/api/src/modules/threads/routes.ts:885-914 ; apps/api/src/lib/idempotency.ts:3-19
 Mailbox answer forwarded to the minting process, never through Redis -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:3-30 ; apps/api/src/modules/agent/routes.ts:1022-1029
-Internal listener on its own port, one route, everything else 404 -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:226-229 ; apps/api/src/index.ts:79-83
+Internal listener on its own port, one route, everything else 404 -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:226-229 ; apps/api/src/index.ts:81-83
 Signature key derived from JWT_SECRET -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:70-75
 LIAISON_INTERNAL_PORT default 0, any free port -> apps/api/src/lib/env.ts:796-800 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:380-394
 LIAISON_INTERNAL_HOST unset: hostname, 127.0.0.1 if it does not resolve -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:341-371
@@ -199,7 +201,7 @@ A job past its budget is aborted and moved back to its queue without spending an
 Outbox, pools and connections close, exit 0 -> apps/api/src/lib/shutdown-phases.ts:93 ; apps/api/src/lib/shutdown-phases.ts:169 ; apps/api/src/lib/shutdown-phases.ts:180 ; apps/api/src/lib/shutdown.ts:271
 Process exits at SHUTDOWN_HARD_DEADLINE_MS -> apps/api/src/lib/shutdown.ts:264-268 ; apps/api/src/lib/env.ts:818
 Unset: computed from the budgets, 58 s with the defaults -> apps/api/src/lib/shutdown-budget.ts:84-101 ; scripts/compose-shutdown-budget.test.ts:68
-Boot logs the budgets (Shutdown budgets, hardDeadlineMs) -> apps/api/src/index.ts:97
+Boot logs the budgets (Shutdown budgets, hardDeadlineMs) -> apps/api/src/index.ts:99
 Compose: stop_grace_period 65 s, hard deadline 58 s -> deploy/docker-compose.yml:335 ; deploy/docker-compose.yml:358-360
 Grace ≥ hard + 5 s (65 s for the defaults; docker/k8s settings) -> scripts/compose-shutdown-budget.test.ts:58 ; apps/api/src/lib/env.ts:811-817
 Fixed grace: set SHUTDOWN_HARD_DEADLINE_MS under it, drains are clamped -> apps/api/src/lib/shutdown.ts:100-121
@@ -213,8 +215,8 @@ Signed start needs a @load.invalid address -> apps/api/src/modules/demo/routes.t
 Synthetic workspace's verification code counted, not sent -> apps/api/src/modules/demo/demo-verification.ts:220
 Load workspace's agent turns on the scripted load model -> apps/api/src/modules/agent/providers/provider.ts:211
 Key at least 32 characters -> apps/api/src/lib/env.ts:234
-Refused together with ENABLE_LOAD_TEST_ENDPOINT -> apps/api/src/lib/env.ts:1052
-In production only on a demo box -> apps/api/src/lib/env.ts:1060-1062
+Refused together with ENABLE_LOAD_TEST_ENDPOINT -> apps/api/src/lib/env.ts:1057
+In production only on a demo box -> apps/api/src/lib/env.ts:1065-1062
 Signed starts take the warm pool like visitors -> apps/api/src/modules/demo/routes.ts:856
 Signed starts have their own hourly lane and workspace cap, apart from visitors -> apps/api/src/modules/demo/routes.ts:281
 Synthetic per-hour and max-orgs defaults 60 and 500 -> apps/api/src/lib/env.ts:338
@@ -248,14 +250,15 @@ Rolling pools planned from DB_CELL_MAX_CONNECTIONS (compose: POSTGRES_MAX_CONNEC
 Fair job queues: half the slots across job hosts under contention, all alone; over-cap jobs wait without a retry; JOB_ORG_FAIRNESS=off; /diag jobs.fairness (admitted, denied, parked, promoted, busyOrgs, waitP95Ms, degraded) and jobs.fanout byJob -> apps/api/src/infra/jobs/fairness.ts:389-455 ; apps/api/src/infra/jobs/jobs.ts:655-665 ; apps/api/src/lib/env.ts:684 ; apps/api/src/infra/jobs/fairness.ts:702-728 ; apps/api/src/modules/monitor/index.ts:168-228
 /diag jobs.fairness denied (lifetime, each parks its job), promoted, parkedNow -> apps/api/src/infra/jobs/fairness.ts (readQueueFairness)
 Compose passes the integration, push, storage and rate-limit variables -> deploy/docker-compose.yml:502
-SYSTEM_RESEND_API_KEY system mail key -> apps/api/src/lib/env.ts:1039
+SYSTEM_RESEND_API_KEY system mail key -> apps/api/src/lib/env.ts:1044
 EXA_API_KEY platform web search key -> apps/api/src/modules/agent/credits/platform-key-env.ts:12
 Sign-in callback /api/auth/oauth/callback -> apps/api/src/modules/connection-guides/paths.ts:7
 Connections callback /api/connections/callback -> apps/api/src/modules/connection-guides/paths.ts:5
 Picker keys -> apps/api/src/lib/env.ts:798
 With Resend the from domain must be DKIM/SPF verified -> apps/api/CLAUDE.md
 A process forgets a deleted org within 5 minutes -> apps/api/src/modules/apps/org-runtime-release.ts:46 ; apps/api/src/modules/apps/org-runtime-release.ts:179
-LIAISON_ORG_RUNTIME_IDLE_MINUTES (default 60, 0 never) forgets an idle org, set up again at next use -> apps/api/src/lib/env.ts:978 ; apps/api/src/modules/apps/org-runtime-release.ts:150
+LIAISON_ORG_RUNTIME_IDLE_MINUTES (default 60, 0 never) forgets an idle org, set up again at next use -> apps/api/src/lib/env.ts:1114 ; apps/api/src/modules/apps/org-runtime-release.ts:162
+LIAISON_ORG_RUNTIME_MAX_ORGS (default 2000, 0 no cap) forgets the least recently used org with no live work, not moving -> apps/api/src/lib/env.ts:1123 ; apps/api/src/modules/apps/org-runtime-release.ts:180 ; apps/api/src/modules/apps/app-registries.ts:113 ; apps/api/src/middleware/auth.ts:168 ; apps/api/src/lib/server.ts:649
 MAILBOX_ENCRYPTION_DEFAULT is a default; unset is decided once and stored -> apps/api/src/lib/env.ts:771 ; apps/api/src/modules/mailbox-crypto/encryption-mode.ts:93
 MAILBOX_ENCRYPTION_ALLOW_MANAGED=false locks private -> apps/api/src/lib/env.ts:778 ; apps/api/src/modules/mailbox-crypto/encryption-mode.ts:182
 LIAISON_OPENROUTER_IGNORE_HOSTS instance default, OpenInference, empty allows every host -> apps/api/src/lib/env.ts:561
@@ -266,5 +269,8 @@ LIAISON_TRUSTED_APP_PUBLISHERS passed -> deploy/docker-compose.yml:616
 Image ships cosign, TUF_ROOT under /tmp -> apps/api/Dockerfile:148
 LIAISON_DEMO_WAREHOUSE opts the demo seed into the warehouse; needs the warehouse DSN, else the seed fails -> apps/api/src/lib/env.ts:305-315 ; apps/api/src/seed/tiers/demo/seed-warehouse.ts:73-78 ; deploy/docker-compose.yml:479-481
 Launch run re-asks a 202 being prepared with the same key; report counts 202_preparing -> qa/load/a9-deploy-under-load.js:347-362 ; scripts/lib/deploy-under-load.ts:464-467
+GMAIL_PUSH_AUDIENCE, GMAIL_PUSH_SERVICE_ACCOUNT: push subscription audience and service account -> apps/api/src/lib/env.ts:1022
+Mail and Tickets verify with them when an org set none -> apps/api/src/modules/apps/instance-config-defaults.ts:22
+CONTROL_PLANE_URL/API_KEY both or neither; without LIAISON_EDITION the server refuses to start -> apps/api/src/lib/env.ts:1573 ; apps/api/src/lib/managed-boot.ts:197 ; apps/api/src/index.ts:126 ; deploy/.env.example:225
 Mail encryption variables are set in deploy/.env and passed to the app by compose -> deploy/docker-compose.yml:559 ; deploy/docker-compose.yml:560
 hard deadline watchdog: a Worker kills the process 3 s past the hard deadline when the main thread is wedged, fatal line first -> apps/api/src/lib/shutdown.ts:57-63 ; apps/api/src/lib/shutdown.ts:285-288 ; apps/api/src/lib/shutdown-watchdog.ts:11-30

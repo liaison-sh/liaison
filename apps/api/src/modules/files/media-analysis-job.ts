@@ -7,6 +7,7 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { registerJobWorker } from "~/infra/jobs/jobs"
 import { getObjectBuffer as defaultGetObjectBuffer } from "~/infra/storage/object-storage"
+import { isManagedEdition } from "~/lib/edition"
 import { filesLogger as log } from "~/lib/logger"
 import {
   finalizeUsage as defaultFinalizeUsage,
@@ -23,6 +24,7 @@ import {
   MAX_OUTPUT_TOKENS,
   MEDIA_ANALYSIS_MODEL_ID,
   MEDIA_MAX_BYTES,
+  managedMediaTooLargeMessage,
   VIDEO_END_OFFSET_SECONDS,
   VIDEO_FPS,
 } from "~/modules/agent/media/media-analysis-constants"
@@ -145,6 +147,14 @@ export async function processMediaAnalysisJob(
   // a row whose whole point is to carry nothing derived from the content.
   if (await isEncryptedAttachment(orgId, fileId)) {
     logDerivativeSkip("media-analysis", fileId, orgId)
+    return
+  }
+
+  // A managed cell never takes the Gemini Files-API slow path (A45: no Google
+  // key on a cell, nothing outside OpenRouter's zero-retention routing). A job
+  // queued before the switch, or by any other path, stops with the limit.
+  if (isManagedEdition()) {
+    await persistError(managedMediaTooLargeMessage())
     return
   }
 

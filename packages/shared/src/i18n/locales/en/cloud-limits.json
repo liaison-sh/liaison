@@ -1,0 +1,53 @@
+{
+  "suspended": {
+    "title": "Workspace suspended",
+    "sentence": "This workspace is suspended because its subscription ended or a payment failed.",
+    "adminUntil": "As an admin you can export the data and pay in Billing until {{date}}.",
+    "contact": "Billing questions:",
+    "export": "Export your data",
+    "billing": "Billing",
+    "reload": "Reload",
+    "signOut": "Sign out"
+  },
+  "sender": {
+    "title": "Email sender",
+    "help": "Invitations, digests and survey emails go out from your own domain once it is verified. Sign-in emails always come from the service's own address.",
+    "fallback": "Until a domain is verified, these emails are sent as \"{{org}} via Liaison\".",
+    "domainLabel": "Domain",
+    "domainPlaceholder": "mail.example.com",
+    "add": "Add domain",
+    "recordsHelp": "Add these DNS records at your DNS host, then press Verify. DNS changes can take a few minutes to an hour.",
+    "verifiedHelp": "Verified: your organization's emails now go out from this domain.",
+    "recordType": "Type",
+    "recordName": "Name",
+    "recordValue": "Value",
+    "recordPriority": "Priority",
+    "copy": "Copy",
+    "copied": "Copied",
+    "verify": "Verify",
+    "remove": "Remove domain",
+    "statusNotStarted": "Not checked yet",
+    "statusPending": "Waiting for DNS",
+    "statusVerified": "Verified",
+    "statusFailed": "Verification failed",
+    "domainLimit": "This domain cannot be added right now; we have been told.",
+    "domainInvalid": "This is not a domain that can send email.",
+    "domainTaken": "This domain is already used by another organization.",
+    "unavailable": "The email sender settings are unavailable right now. Try again shortly."
+  },
+  "billing": {
+    "pastDue": "Payment failed: pay the open invoice to keep using AI features.",
+    "ended": "Your subscription has ended, so AI features are off. You can still export your data.",
+    "openInvoice": "Open invoice: {{amount}}. Pay it before {{date}}.",
+    "payOpenInvoice": "Pay the open invoice",
+    "paymentRequired": "AI features are paused until the open invoice is paid. An admin can pay it in Billing.",
+    "outOfCredits": "You are out of credits, so the assistant has stopped until more are added. Everything else keeps working. An admin can buy credits in Billing.",
+    "openBilling": "Open Billing"
+  },
+  "caps": {
+    "seatLimitReached": "This organization uses all the seats its plan includes. Move to a plan with more in Billing, or an admin can deactivate someone first.",
+    "mailboxLimitReached": "This organization uses all the shared mailboxes its plan includes. Move to a plan with more in Billing, or an admin can disconnect one first.",
+    "customAppLimitReached": "This organization uses all the custom apps its plan includes. Remove one first, or move to a plan with more.",
+    "auditDaysLimitReached": "The plan keeps the audit log for fewer days. Choose a shorter retention."
+  }
+}

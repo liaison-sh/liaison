@@ -107,7 +107,12 @@ const ORG_STATE_NOT_NAMED_BY_ORG: ReadonlyArray<{
 export async function countOrgRedisKeys(orgId: string): Promise<number> {
   let n = 0
   for (const purge of ORG_STATE_NOT_NAMED_BY_ORG) n += await purge.count(orgId)
-  for await (const keys of orgRedisKeys(orgId)) n += keys.length
+  // The transfer ack record is each live process's note of the org's state and
+  // expires by itself; a process still holding the org's last state rewrites it
+  // after a purge deleted it, so it never counts as something the purge left.
+  const ackSuffix = `org-transfer:ack:${orgId}`
+  for await (const keys of orgRedisKeys(orgId))
+    n += keys.filter((k) => !k.endsWith(ackSuffix)).length
   return n
 }
 

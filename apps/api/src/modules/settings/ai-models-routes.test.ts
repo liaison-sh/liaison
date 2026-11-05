@@ -26,7 +26,8 @@ import { resolveModelForPreCheck } from "~/modules/agent/credits/credit-meter"
 import { OPENROUTER_CATALOGUE_CACHE_KEY } from "~/modules/agent/credits/openrouter-catalogue"
 import { refreshOpenRouterPrices } from "~/modules/agent/credits/openrouter-price-job"
 import { signAccessToken } from "~/modules/auth/jwt"
-import { testCallRateLimitKey } from "~/modules/settings/ai-models-routes"
+import { isNoZeroRetentionRefusal, testCallRateLimitKey } from "~/modules/settings/ai-models-routes"
+import { clearTestCreditPricing, setTestCreditPricing } from "~/tests/helpers/credit-pricing"
 import {
   type OpenAICompatibleStub,
   STUB_OPENROUTER_CATALOGUE,
@@ -325,23 +326,51 @@ describe("AI models API", () => {
     expect(res.status).toBe(412)
   })
 
-  it("on the managed edition a test call refuses the platform key (412 byok_required)", async () => {
+  it("on the managed edition a test call runs on the platform key, metered to the org's credits (A33)", async () => {
     process.env.OPENROUTER_API_KEY = "sk-or-platform"
     _setEdition("managed")
-    const chats = () => stub.requests.filter((r) => r.path === "/api/v1/chat/completions").length
-    const before = chats()
+    const usageRows = async () =>
+      (
+        await sql`SELECT type, amount::text, raw_cost_usd::text AS usd, usd_eur_rate::text AS fx
+          FROM kernel.credit_transactions WHERE org_id = ${ORG_ID} AND description = 'Model test call'`
+      ).map((r) => ({ ...r }))
+    await sql`INSERT INTO kernel.credit_balances (org_id, included_balance, purchased_balance, currency)
+      VALUES (${ORG_ID}, '0', '0', 'EUR') ON CONFLICT (org_id) DO NOTHING`
+    await setTestCreditPricing()
     try {
+      // No credits: refused before any call.
+      const chats = () => stub.requests.filter((r) => r.path === "/api/v1/chat/completions").length
+      const before = chats()
+      const broke = await call("POST", "/api/settings/ai/openrouter/models", {
+        upstreamId: "deepseek/deepseek-v4.1-flash",
+      })
+      expect(broke.status).toBe(402)
+      expect(broke.json.error.code).toBe("insufficient_credits")
+      expect(chats()).toBe(before)
+
+      await sql`UPDATE kernel.credit_balances SET included_balance = '5' WHERE org_id = ${ORG_ID}`
       const res = await call("POST", "/api/settings/ai/openrouter/models", {
         upstreamId: "deepseek/deepseek-v4.1-flash",
       })
-      expect(res.status).toBe(412)
-      expect(res.json.error.code).toBe("byok_required")
-      expect(res.json.error.message).toContain("own OpenRouter key")
-      expect(chats()).toBe(before)
-      expect((await orgModels()).added ?? []).toEqual([])
+      expect(res.status).toBe(201)
+      // The managed reply carries a multiplier, never the provider's prices (S18).
+      expect(JSON.stringify(res.json)).not.toMatch(/CostPerM/)
+      expect(res.json.data).toHaveProperty("multiplier")
+      expect(stub.requests.at(-1)?.authorization).toBe("Bearer sk-or-platform")
+      const rows = await usageRows()
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ type: "usage", fx: "1.250000" })
+      expect(Number(rows[0].amount)).toBeLessThan(0)
+      expect(Number(rows[0].usd)).toBeGreaterThan(0)
     } finally {
       delete process.env.OPENROUTER_API_KEY
       _setEdition(null)
+      await clearTestCreditPricing()
+      await sql`UPDATE kernel.organizations
+        SET settings = jsonb_set(settings, '{ai,models,added}', '[]'::jsonb) WHERE id = ${ORG_ID}`
+      await sql`DELETE FROM kernel.credit_transactions WHERE org_id = ${ORG_ID}`
+      await sql`DELETE FROM kernel.credit_balances WHERE org_id = ${ORG_ID}`
+      await redis.del(testCallRateLimitKey(ORG_ID))
     }
   })
 
@@ -428,6 +457,62 @@ describe("AI models API", () => {
       stub.options.catalogue = STUB_OPENROUTER_CATALOGUE
       await redis.del(OPENROUTER_CATALOGUE_CACHE_KEY)
     }
+  })
+
+  describe("a managed cell: a model with no zero-retention endpoint", () => {
+    beforeAll(async () => {
+      _setEdition("managed")
+      await setTestCreditPricing()
+    })
+    afterAll(async () => {
+      await clearTestCreditPricing()
+      _setEdition(null)
+    })
+
+    const add = async (message: string) => {
+      stub.options.failWith = { status: 404, message }
+      try {
+        return await call("POST", "/api/settings/ai/openrouter/models", {
+          upstreamId: "deepseek/deepseek-v4.1-flash",
+        })
+      } finally {
+        stub.options.failWith = undefined
+      }
+    }
+
+    it.each([
+      "No endpoints found matching your data policy (Zero data retention). Configure: https://openrouter.ai/settings/privacy",
+      "ZDR violation: this model has no zero data retention endpoint",
+      "No endpoints available matching your guardrail restrictions and data policy.",
+    ])("%s is refused in plain words", async (message) => {
+      const res = await add(message)
+      expect(res.status).toBe(422)
+      expect(res.json.error.code).toBe("model_no_zdr")
+      expect(res.json.error.message).toBe(
+        "This model has no provider that keeps zero data, so it cannot be used here.",
+      )
+      expect((await orgModels()).added ?? []).toEqual([])
+    })
+
+    it("any other failure keeps the provider's message", async () => {
+      const res = await add("Provider returned error")
+      expect(res.status).toBe(422)
+      expect(res.json.error.code).toBe("test_call_failed")
+      expect(res.json.error.message).toContain("Provider returned error")
+    })
+
+    it("the test call itself asks for zero retention", async () => {
+      const before = stub.requests.length
+      await add("Provider returned error")
+      const calls = stub.requests.slice(before).filter((r) => r.path === "/api/v1/chat/completions")
+      expect(calls.length).toBeGreaterThan(0)
+      for (const c of calls) expect(c.body.provider).toMatchObject({ zdr: true })
+    })
+  })
+
+  it("OpenRouter's words for no zero-retention endpoint, and only those", () => {
+    expect(isNoZeroRetentionRefusal("ZDR violation")).toBe(true)
+    expect(isNoZeroRetentionRefusal("rate limited")).toBe(false)
   })
 
   it("a failed test call adds nothing and says why (422)", async () => {

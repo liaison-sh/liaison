@@ -110,6 +110,11 @@ import {
   type SessionStatusChange,
   type SessionWaitingRequest,
 } from "~/modules/node-sessions/waiting-hook"
+import {
+  SKIPPED_MOVING,
+  sweepSkippingMoving,
+  writeUnlessMoving,
+} from "~/modules/org/transfer-state/skip-moving"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { isMessageVisible } from "~/services/security/visibility"
 import { isSimulatedNode, type NodeRow } from "./credentials"
@@ -2764,57 +2769,68 @@ export async function sweepNodeLeases(): Promise<{
   settledRuns: number
   staleSessions: number
 }> {
-  const requeued = await withSystemDb("nodes:lease-sweep-requeue", (db) =>
-    db
-      .update(nodeJobs)
-      .set({
-        status: "queued",
-        nodeId: null,
-        leaseHolder: null,
-        leaseExpiresAt: null,
-        claimedAt: null,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(nodeJobs.status, "running"),
-          lt(nodeJobs.leaseExpiresAt, sql`now()`),
-          isNull(nodeJobs.startedAt),
-          notOnSimulatedNode,
-        ),
-      )
-      .returning(),
+  // An org being moved keeps its jobs and runs as they are until the move ends
+  // (the session, orphan-run and connection sweeps below filter the same way).
+  // Each statement is one short sweep; what follows per job is that org's own write.
+  const requeued = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("nodes:lease-sweep-requeue", (db) =>
+      db
+        .update(nodeJobs)
+        .set({
+          status: "queued",
+          nodeId: null,
+          leaseHolder: null,
+          leaseExpiresAt: null,
+          claimedAt: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(nodeJobs.status, "running"),
+            lt(nodeJobs.leaseExpiresAt, sql`now()`),
+            isNull(nodeJobs.startedAt),
+            notOnSimulatedNode,
+            notMoving(nodeJobs.orgId),
+          ),
+        )
+        .returning(),
+    ),
   )
   for (const job of requeued) {
-    nodeTurnRequeued(job)
-    await releaseJobConnection(job)
-    await settleJobSession(job, "queued", { from: ["running", "waiting", "paused"] })
-    if (!job.backlog) await offerJob(job).catch(() => 0)
+    await writeUnlessMoving(job.orgId, async () => {
+      nodeTurnRequeued(job)
+      await releaseJobConnection(job)
+      await settleJobSession(job, "queued", { from: ["running", "waiting", "paused"] })
+      if (!job.backlog) await offerJob(job).catch(() => 0)
+    })
   }
-  const interrupted = await withSystemDb("nodes:lease-sweep-interrupt", (db) =>
-    db
-      .update(nodeJobs)
-      .set({
-        status: "interrupted",
-        leaseHolder: null,
-        leaseExpiresAt: null,
-        errorCode: "lease_expired",
-        error: "The computer stopped answering while the job was running.",
-        finishedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(nodeJobs.status, "running"),
-          lt(nodeJobs.leaseExpiresAt, sql`now()`),
-          sql`${nodeJobs.startedAt} IS NOT NULL`,
-          // A session's run is paused, never interrupted, by a lapse (G5):
-          // lifecycle.ts sweeps those.
-          sql`NOT EXISTS (SELECT 1 FROM ${K()}.node_sessions s WHERE s.job_id = ${nodeJobs.id})`,
-          notOnSimulatedNode,
-        ),
-      )
-      .returning(),
+  const interrupted = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("nodes:lease-sweep-interrupt", (db) =>
+      db
+        .update(nodeJobs)
+        .set({
+          status: "interrupted",
+          leaseHolder: null,
+          leaseExpiresAt: null,
+          errorCode: "lease_expired",
+          error: "The computer stopped answering while the job was running.",
+          finishedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(nodeJobs.status, "running"),
+            lt(nodeJobs.leaseExpiresAt, sql`now()`),
+            sql`${nodeJobs.startedAt} IS NOT NULL`,
+            // A session's run is paused, never interrupted, by a lapse (G5):
+            // lifecycle.ts sweeps those.
+            sql`NOT EXISTS (SELECT 1 FROM ${K()}.node_sessions s WHERE s.job_id = ${nodeJobs.id})`,
+            notOnSimulatedNode,
+            notMoving(nodeJobs.orgId),
+          ),
+        )
+        .returning(),
+    ),
   )
   try {
     await sweepSessionLeases()
@@ -2822,15 +2838,17 @@ export async function sweepNodeLeases(): Promise<{
     log.warn({ err }, "session lease sweep failed")
   }
   for (const job of interrupted) {
-    nodeTurnEnded(job, "ended")
-    await releaseJobConnection(job)
-    // P1 mapping: an interrupted run fails its session (L4 resumes it in P3).
-    await settleJobSession(job, "failed", {
-      from: LIVE_SESSION_STATUSES,
-      error: job.error ?? "The computer stopped answering while the job was running.",
-      code: "lease_expired",
+    await writeUnlessMoving(job.orgId, async () => {
+      nodeTurnEnded(job, "ended")
+      await releaseJobConnection(job)
+      // P1 mapping: an interrupted run fails its session (L4 resumes it in P3).
+      await settleJobSession(job, "failed", {
+        from: LIVE_SESSION_STATUSES,
+        error: job.error ?? "The computer stopped answering while the job was running.",
+        code: "lease_expired",
+      })
+      await notifyInterrupted(job)
     })
-    await notifyInterrupted(job)
   }
   let settledRuns = 0
   try {
@@ -2872,32 +2890,40 @@ const ORPHAN_RUN_MIN_AGE = sql`now() - interval '5 minutes'`
  * `run_completed` and status events as a normal finish.
  */
 async function settleOrphanedRoutineRuns(): Promise<number> {
-  const rows = await withSystemDb("nodes:lease-sweep-orphan-runs", (db) =>
-    db
-      .select({
-        runId: routineRuns.id,
-        orgId: routineRuns.orgId,
-        routineId: routineRuns.routineId,
-        ranAt: routineRuns.ranAt,
-        ownerUserId: routines.ownerUserId,
-        jobStatus: nodeJobs.status,
-        jobError: nodeJobs.error,
-        jobCreatedAt: nodeJobs.createdAt,
-        jobFinishedAt: nodeJobs.finishedAt,
-        jobUpdatedAt: nodeJobs.updatedAt,
-      })
-      .from(routineRuns)
-      .innerJoin(routines, eq(routines.id, routineRuns.routineId))
-      .leftJoin(
-        nodeJobs,
-        and(
-          eq(nodeJobs.sourceRef, sql`${routineRuns.id}::text`),
-          eq(nodeJobs.orgId, routineRuns.orgId),
-        ),
-      )
-      .where(and(eq(routineRuns.status, "dispatched"), lt(routineRuns.ranAt, ORPHAN_RUN_MIN_AGE)))
-      .orderBy(asc(routineRuns.ranAt))
-      .limit(500),
+  const rows = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("nodes:lease-sweep-orphan-runs", (db) =>
+      db
+        .select({
+          runId: routineRuns.id,
+          orgId: routineRuns.orgId,
+          routineId: routineRuns.routineId,
+          ranAt: routineRuns.ranAt,
+          ownerUserId: routines.ownerUserId,
+          jobStatus: nodeJobs.status,
+          jobError: nodeJobs.error,
+          jobCreatedAt: nodeJobs.createdAt,
+          jobFinishedAt: nodeJobs.finishedAt,
+          jobUpdatedAt: nodeJobs.updatedAt,
+        })
+        .from(routineRuns)
+        .innerJoin(routines, eq(routines.id, routineRuns.routineId))
+        .leftJoin(
+          nodeJobs,
+          and(
+            eq(nodeJobs.sourceRef, sql`${routineRuns.id}::text`),
+            eq(nodeJobs.orgId, routineRuns.orgId),
+          ),
+        )
+        .where(
+          and(
+            eq(routineRuns.status, "dispatched"),
+            lt(routineRuns.ranAt, ORPHAN_RUN_MIN_AGE),
+            notMoving(routineRuns.orgId),
+          ),
+        )
+        .orderBy(asc(routineRuns.ranAt))
+        .limit(500),
+    ),
   )
   // One run can carry several jobs over time (a re-run reuses the row, a
   // coalesce replaces it): any job still going means the run is not orphaned.
@@ -2920,17 +2946,20 @@ async function settleOrphanedRoutineRuns(): Promise<number> {
       : latest.jobStatus === "done"
         ? { ok: true }
         : { ok: false, error: latest.jobError ?? endedJobReason(latest.jobStatus!) }
-    await settleRoutineRunForJob(
-      {
-        orgId: first.orgId,
-        routineId: first.routineId,
-        sourceRef: runId,
-        ownerUserId: first.ownerUserId,
-        createdAt: latest?.jobCreatedAt ?? first.ranAt,
-        finishedAt: latest?.jobFinishedAt ?? latest?.jobUpdatedAt ?? null,
-      },
-      outcome,
+    const done = await writeUnlessMoving(first.orgId, () =>
+      settleRoutineRunForJob(
+        {
+          orgId: first.orgId,
+          routineId: first.routineId,
+          sourceRef: runId,
+          ownerUserId: first.ownerUserId,
+          createdAt: latest?.jobCreatedAt ?? first.ranAt,
+          finishedAt: latest?.jobFinishedAt ?? latest?.jobUpdatedAt ?? null,
+        },
+        outcome,
+      ),
     )
+    if (done === SKIPPED_MOVING) continue
     settled += 1
   }
   return settled

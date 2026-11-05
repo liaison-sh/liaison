@@ -84,6 +84,7 @@ const READERS: Record<string, string> = {
   "modules/connection-guides/plan.ts":
     "CLI, agent turn or request: each caller sets the org up first",
   "modules/demo/world/commerce-order.ts": ENSURES,
+  "modules/documents/print.ts": ENSURES,
   "modules/files/service.ts": REQUEST,
   "modules/mcp-client/projector.ts": SETUP,
   "modules/mcp/node-session-connection.ts": MCP,

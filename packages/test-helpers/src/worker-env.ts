@@ -278,6 +278,9 @@ export function buildServerSpawnEnv(opts: {
     // initiate with arbitrary clientIds; production deployments override this
     // with an explicit comma-separated list.
     DEVICE_FLOW_CLIENTS: "*",
+    // Sandboxed apps' EU VIES VAT checks are answered by the test stand-in
+    // (apps/api/src/modules/apps/sandbox/bridge/test-vies.ts), never the live service.
+    LIAISON_TEST_VIES_STUB: "1",
     // Forward AI provider API keys for agent runtime E2E tests
     ...(process.env.OPENAI_API_KEY && { OPENAI_API_KEY: process.env.OPENAI_API_KEY }),
     ...(process.env.LIAISON_ANTHROPIC_API_KEY && {

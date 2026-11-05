@@ -878,3 +878,56 @@ export function summarizeDeferredTaxOverride(
   })
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────
+// drafts_create / drafts_update (conditionalGate): a card for when the kernel parks the call
+// itself (an org approval policy, a tainted turn). The handler's own consumer-declaration card
+// is built in mutations/drafts.ts.
+// ─────────────────────────────────────────────────────────────────────────
+
+interface DraftCreateParams {
+  type?: string
+  counterparty_name?: string | null
+  counterparty_country?: string | null
+  currency?: string | null
+  shopify_order_number?: string | null
+  po_number?: string | null
+  buyer_is_consumer?: boolean | null
+  items?: CardLineItem[]
+}
+
+export function summarizeDraftCreate(params: DraftCreateParams): Promise<ApprovalSummaryShape> {
+  const typeLabel = docTypeLabel(params.type)
+  const customer = text(params.counterparty_name, 80)
+  const currency = (typeof params.currency === "string" && params.currency) || "EUR"
+  const items = Array.isArray(params.items) ? params.items : []
+  const total = items.length > 0 ? money(linesTotal(items), currency) : null
+  const order = orderName(params.shopify_order_number)
+  const po = text(params.po_number, 60)
+  const country = text(params.counterparty_country, 4)
+  return done({
+    kind: "drafts_create",
+    title: `Create a ${typeLabel} draft${customer ? ` for ${customer}` : ""}`,
+    subtitle: "A draft is unnumbered and can still be edited or discarded",
+    lines: [
+      ...(params.buyer_is_consumer === true ? ["The agent declares this buyer a private consumer"] : []),
+      `Document: ${capitalize(typeLabel)} draft`,
+      ...(customer ? [`Customer: ${customer}${country ? ` (${country})` : ""}`] : []),
+      ...(total ? [`Lines total: ${total} (before tax)`] : []),
+      ...(order ? [`Order: ${order}`] : []),
+      ...(po ? [`PO number: ${po}`] : []),
+      ...lineTexts(items, currency, 3),
+    ],
+  })
+}
+
+/** drafts_update: the documents_update card over the draft (context = documents_get on it). */
+export async function summarizeDraftUpdate(
+  params: { draft_id?: string; patch?: Record<string, unknown> | null },
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
+  const patch = params.patch && typeof params.patch === "object" ? params.patch : {}
+  const card = await summarizeDocumentUpdate({ ...patch, id: params.draft_id }, _ctx, meta)
+  return { ...card, kind: "drafts_update" }
+}

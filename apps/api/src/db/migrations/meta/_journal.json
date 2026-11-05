@@ -1828,6 +1828,69 @@
       "when": 1900002860000,
       "tag": "0259_thread_notify_all_posts",
       "breakpoints": true
+    },
+    {
+      "idx": 261,
+      "version": "7",
+      "when": 1900002910000,
+      "tag": "0260_cloud_request_outcomes",
+      "breakpoints": true
+    },
+    {
+      "idx": 262,
+      "version": "7",
+      "when": 1900002960000,
+      "tag": "0261_org_billing_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 263,
+      "version": "7",
+      "when": 1900003010000,
+      "tag": "0262_credit_usage_usd",
+      "breakpoints": true
+    },
+    {
+      "idx": 264,
+      "version": "7",
+      "when": 1900003060000,
+      "tag": "0263_org_billing_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 265,
+      "version": "7",
+      "when": 1900003110000,
+      "tag": "0264_apps_installed_org",
+      "breakpoints": true
+    },
+    {
+      "idx": 266,
+      "version": "7",
+      "when": 1900003160000,
+      "tag": "0265_apps_installed_disabled",
+      "breakpoints": true
+    },
+    {
+      "idx": 267,
+      "version": "7",
+      "when": 1900003210000,
+      "tag": "0266_org_transfer_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 268,
+      "version": "7",
+      "when": 1900003260000,
+      "tag": "0267_org_transfer_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 269,
+      "version": "7",
+      "when": 1900003310000,
+      "tag": "0268_credit_transactions_arrived_via",
+      "breakpoints": true
     }
   ]
 }

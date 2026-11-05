@@ -49,6 +49,8 @@ export const magicLinkVerifySchema = z
       .optional(),
     /** Opaque secret carried by the emailed magic link. */
     token: z.string().min(1).optional(),
+    /** The person clicked "Continue" on a handoff link (a link alone shows who and where first). */
+    confirm: z.literal(true).optional(),
   })
   .refine((d) => (d.code === undefined) !== (d.token === undefined), {
     message: "Provide exactly one of code or token",

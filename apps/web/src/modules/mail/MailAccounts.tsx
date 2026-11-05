@@ -34,6 +34,10 @@ import { MailboxSecuritySettings } from "~/modules/mailbox/MailboxSecuritySettin
 import { fetchKeyring } from "~/modules/mailbox/mailbox-api"
 import { isMailboxUnlocked } from "~/modules/mailbox/mailbox-store"
 import { requestMailboxReset, requestMailboxUnlock } from "~/modules/mailbox/mailbox-unlock-bus"
+import {
+  revealSettingsSection,
+  settingsSectionHref,
+} from "~/modules/settings/app-page/reveal-section"
 import { capLimitMessage } from "~/modules/settings/cap-limit-message"
 import { DisconnectConfirmDialog } from "~/modules/settings/DisconnectConfirmDialog"
 import { connectWithOAuth } from "~/modules/settings/oauth-connect"
@@ -95,7 +99,10 @@ export const MailAccounts: Component = () => {
   const gmailConfigured = () => gmailProvider()?.integrationConfigured === true
   const gmailEnabled = () => gmailProvider()?.enabled === true
   const gmailAvailable = () => gmailEnabled() && gmailConfigured()
-  const mailSetupHref = "/settings/apps/mail"
+  // "Open Mail Setup" lands on the Gmail switch (the Mailbox types section of
+  // this same settings page): a plain link to the page would do nothing here.
+  const mailSetupHref = settingsSectionHref("mail", "providers")
+  const revealMailSetup = () => revealSettingsSection("mail", "providers")
 
   const gmailAvailability = () => {
     const provider = gmailProvider()
@@ -983,7 +990,12 @@ export const MailAccounts: Component = () => {
             </button>
             <p class="mt-3 text-xs text-text-secondary">{gmailAvailability().message}</p>
             <Show when={gmailAvailability().ctaLabel}>
-              <A href={mailSetupHref} class="mt-2 inline-block text-xs text-accent hover:underline">
+              <A
+                href={mailSetupHref}
+                onClick={revealMailSetup}
+                data-testid="mail-open-setup"
+                class="mt-2 inline-block text-xs text-accent hover:underline"
+              >
                 {gmailAvailability().ctaLabel}
               </A>
             </Show>
@@ -1025,7 +1037,12 @@ export const MailAccounts: Component = () => {
             <div class="text-xs text-text-secondary">
               {gmailAvailability().message}{" "}
               <Show when={gmailAvailability().ctaLabel}>
-                <A href={mailSetupHref} class="text-accent hover:underline">
+                <A
+                  href={mailSetupHref}
+                  onClick={revealMailSetup}
+                  data-testid="mail-open-setup-shared"
+                  class="text-accent hover:underline"
+                >
                   {gmailAvailability().ctaLabel}
                 </A>
               </Show>
@@ -1120,6 +1137,7 @@ export const MailAccounts: Component = () => {
                         </p>
                       </Show>
                       <A
+                        data-testid="mail-shared-account-manage-access"
                         href={`/settings/admin/roles?dimension=${encodeURIComponent("mail:inbox")}&value=${encodeURIComponent(account.id)}`}
                         class="text-[12px] text-accent hover:underline"
                       >

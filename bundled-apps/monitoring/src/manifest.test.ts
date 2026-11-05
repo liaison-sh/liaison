@@ -70,7 +70,9 @@ describe("monitoring app.manifest.json", () => {
     // 0.4.2: the fork's incident refs and comments (0.4.1) with the declarative
     // settings page (manifest `settings`, upstream 0.3.6).
     // 0.4.8: every HUMAN setup step says its own minutes.
-    expect(MANIFEST.version).toBe("0.4.10")
+    // 0.4.11: the app's own install resolves the control-plane contract through an override
+    // (the shared package depends on it by workspace protocol); no change to what it does.
+    expect(MANIFEST.version).toBe("0.4.11")
   })
 
   // The declarative settings page (/settings/apps/monitoring): the detailed

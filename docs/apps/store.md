@@ -49,9 +49,9 @@ The file has no webhook subscriptions: Liaison subscribes to the store's webhook
 1. In the Shopify Dev Dashboard, create an app and note its client ID and secret.
 2. Add `https://<your-liaison-host>/api/connections/callback` to the app's redirect URLs. It must match your instance's `BASE_URL` exactly, or Shopify answers `redirect_uri_mismatch`. List every scope Liaison needs in the app's scopes, leave optional scopes empty and turn **Use legacy install flow** off: Shopify grants a store only the scopes of the released version.
 3. In Liaison, open **Settings › Shopify › Store connection** and click **Connect**.
-4. If the app has no OAuth client yet, fill in **Client ID** and **Client secret**.
+4. If the app has no OAuth client yet, fill in **Client ID** and **Client secret**. When a client is already configured, the dialog asks for none.
 5. Fill in **shop** with your store domain. `acme` and `acme.myshopify.com` both work.
-6. Click **Connect via OAuth**, review the Admin API permissions on the Shopify screen and approve them. Shopify sends you back and the connection is made. No token is copied by hand.
+6. Click **Connect via OAuth** (just **Connect** when a client is already configured), review the Admin API permissions on the Shopify screen and approve them. Shopify sends you back and the connection is made. No token is copied by hand.
 7. Request **Read all orders** in the Partner Dashboard, as in step 3 above. Once Shopify has approved it, tell the agent: it turns on **Full order history** (`fullOrderHistory`) for you (an approval card in the app; with a coding agent, `apps[].settings.fullOrderHistory: true` and `liaison config apply`). Add `read_all_orders` to the app's scopes and release that version, then reconnect the store and approve.
 
 Connect the store for the whole organization, not as a personal account. A personal connection returns `not_connected` to everyone else and to agents acting for someone else. See [Connect apps](../connecting-apps.md).

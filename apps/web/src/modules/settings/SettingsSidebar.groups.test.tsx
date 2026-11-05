@@ -173,6 +173,7 @@ describe("settings column, row by row, per viewer (A7)", () => {
       ai: ["kernel:ai-models", "kernel:agent-behavior", "kernel:usage", "kernel:plan"],
       workspace: [
         "kernel:org",
+        "kernel:billing",
         "kernel:documents",
         "kernel:users",
         "kernel:roles",

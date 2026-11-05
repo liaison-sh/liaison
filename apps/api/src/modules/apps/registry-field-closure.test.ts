@@ -69,6 +69,9 @@ const HOST_ONLY_FIELDS: Record<string, string> = {
   outboundWebRead: KERNEL_TOOLS,
   // A function of the call's params (gated for some params only): cannot cross the package boundary.
   gatedWhen: KERNEL_TOOLS,
+  // Who reads an agent post into a kernel thread (threads_reply, threads_create): a function of
+  // the call's params, set by the kernel thread tools only (scope-taint.ts, rule 11).
+  taintPostAudience: KERNEL_TOOLS,
   // Whether a routine create/update grants scopes: such a call is never auto-approved.
   grantsScopes: SKILL_TOOLS,
   // A personal MCP connection's tools belong to the person who connected it.

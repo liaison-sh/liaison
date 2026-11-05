@@ -5,6 +5,8 @@ import type { LocaleDict } from "../dictionaries"
 
 import en_Api_connector from "./en/api-connector.json"
 import en_Calendar from "./en/calendar.json"
+import en_Cloud_billing from "./en/cloud-billing.json"
+import en_Cloud_limits from "./en/cloud-limits.json"
 import en_Contacts from "./en/contacts.json"
 import en_Database from "./en/database.json"
 import en_First_run from "./en/first-run.json"
@@ -20,6 +22,8 @@ import en_Tickets from "./en/tickets.json"
 import en_Tours from "./en/tours.json"
 import fr_Api_connector from "./fr/api-connector.json"
 import fr_Calendar from "./fr/calendar.json"
+import fr_Cloud_billing from "./fr/cloud-billing.json"
+import fr_Cloud_limits from "./fr/cloud-limits.json"
 import fr_Contacts from "./fr/contacts.json"
 import fr_Database from "./fr/database.json"
 import fr_First_run from "./fr/first-run.json"
@@ -43,6 +47,8 @@ export const GENERATED_DICTIONARIES: Record<
   en: {
     "api-connector": en_Api_connector as LocaleDict,
     calendar: en_Calendar as LocaleDict,
+    "cloud-billing": en_Cloud_billing as LocaleDict,
+    "cloud-limits": en_Cloud_limits as LocaleDict,
     contacts: en_Contacts as LocaleDict,
     database: en_Database as LocaleDict,
     "first-run": en_First_run as LocaleDict,
@@ -60,6 +66,8 @@ export const GENERATED_DICTIONARIES: Record<
   fr: {
     "api-connector": fr_Api_connector as LocaleDict,
     calendar: fr_Calendar as LocaleDict,
+    "cloud-billing": fr_Cloud_billing as LocaleDict,
+    "cloud-limits": fr_Cloud_limits as LocaleDict,
     contacts: fr_Contacts as LocaleDict,
     database: fr_Database as LocaleDict,
     "first-run": fr_First_run as LocaleDict,

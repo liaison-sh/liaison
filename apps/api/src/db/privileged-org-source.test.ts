@@ -133,12 +133,6 @@ const REVIEWED_SYSTEM_ROUTES: Record<string, string> = {
   "apps/api/src/modules/auth/routes.ts#POST /register": "pre-auth: registration",
   "apps/api/src/modules/auth/routes.ts#POST /totp/verify":
     "the pending-2FA token names the user; the org is that user's own row",
-  "apps/api/src/modules/billing-admin/index.ts#createBillingAdminRoutes.PATCH /org/:orgId/tier":
-    "static operator key (managed edition only)",
-  "apps/api/src/modules/billing-admin/index.ts#createBillingAdminRoutes.POST /credits":
-    "static operator key (managed edition only)",
-  "apps/api/src/modules/billing-admin/index.ts#createBillingAdminRoutes.POST /credits/reset":
-    "static operator key (managed edition only)",
   "apps/api/src/modules/branding/routes.ts#GET /branding": "public org name and branding by slug",
   "apps/api/src/modules/mcp/device-grant-routes.ts#DELETE /:deviceCode":
     "the device code is the capability",

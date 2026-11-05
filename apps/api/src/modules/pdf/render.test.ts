@@ -117,6 +117,9 @@ describe("pdf.render (K2)", () => {
   test("an org created after registration renders from the persisted templates", async () => {
     const appId = `pdflazy${randomUUID().slice(0, 8)}`
     const kind = `${appId}:test_v1`
+    // The org first: creating a test org truncates the org tables, and
+    // apps_installed carries an org column (org-private apps) since 0264.
+    const { id: orgId } = await createTestOrg()
     await withSystemDb("test-pdf-lazy", async (db) => {
       await db.execute(sql`INSERT INTO kernel.apps_installed
         (name, version, source_url, sha256, installed_by, pdf_templates)
@@ -126,7 +129,6 @@ describe("pdf.render (K2)", () => {
         VALUES (${appId}, '1.0.0')`)
     })
     try {
-      const { id: orgId } = await createTestOrg()
       const { page_count } = await renderPdf(null, {
         orgId,
         callingAppId: appId,

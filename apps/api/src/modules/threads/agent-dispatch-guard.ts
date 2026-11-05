@@ -9,7 +9,9 @@
 // the dedupe is a scan of siblings under one parent. That is why the same
 // module covers a plain human `@mention` chain and an `agents_ask` chain
 // alike: they are the same rows.
+
 import type { ClientSurface } from "@liaison/shared"
+import { PAYMENT_REQUIRED_CODE } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type RlsClient } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
@@ -344,6 +346,10 @@ export async function reportAgentTurnFailure(params: {
     params.error instanceof Error && params.error.message.trim().length > 0
       ? params.error.message
       : AGENT_TURN_FAILED_FALLBACK
+  // A refusal the client acts on keeps its code on the frame: an unpaid
+  // renewal (402 `payment_required`) shows the Billing link.
+  const errCode = (params.error as { code?: unknown } | null)?.code
+  const code = errCode === PAYMENT_REQUIRED_CODE ? PAYMENT_REQUIRED_CODE : undefined
 
   try {
     const { recordAgentStreamEvent } = await import("~/modules/agent/runtime/stream-registry")
@@ -354,7 +360,7 @@ export async function reportAgentTurnFailure(params: {
       threadId,
       orgId,
       "error",
-      { message, ...(replyRootId ? { replyRootId } : {}) },
+      { message, ...(code ? { code } : {}), ...(replyRootId ? { replyRootId } : {}) },
       { requesterId: actorUserId, agentId: params.agentId ?? null },
     ).catch((err: unknown) => {
       turnFailureLog.warn({ err, threadId, agentId }, "Recording the failed turn failed")
@@ -374,6 +380,7 @@ export async function reportAgentTurnFailure(params: {
         threadId,
         agentId: agentId ?? null,
         message,
+        ...(code ? { code } : {}),
         ...(replyRootId ? { replyRootId } : {}),
         ...frame,
       },

@@ -28,11 +28,15 @@ See [Invite and manage users](users.md#set-how-people-sign-in), [Connect a compu
 | **Models** | Provider API keys, which models are switched on, the model **Auto** runs, the **Default reasoning level** for turns that set none, **Blocked hosts** (OpenRouter hosts your requests never go to), **Voice dictation** (the dictation model, which needs an OpenRouter or Google key) and **Conversation history** (when long conversations are summarised) | `kernel:org:admin` |
 | **Agent behavior** | **Agent safety** (**Ask for approval after outside content**), **Media analysis** (which attachments agents look inside: tickets, email, images, videos) | `kernel:org:admin` |
 | **Usage** | Model usage and transactions | `kernel:billing:read` |
-| **Plan** | The subscription plan, on a managed instance only | `kernel:org:admin` |
+| **Plan** | The subscription plan, its status and the end of the current period, on a managed instance only | `kernel:org:admin` |
 
 **Ask for approval after outside content** is on by default and recommended. Once a conversation has read text from outside the organization (an inbound email, a web page, a tool result), the agent's actions that leave the organization and its writes to memory and Knowledge wait for a person's approval, unless an auto-approve policy covers them. If you turn it off, anyone who can email you or publish a page the agent reads may be able to steer what it sends or saves.
 
 A provider key saved on **Models** also answers an agent that asked for that key on a card in a conversation: the card reads saved and the agent carries on.
+
+On a managed instance, models run on the service's own keys: adding a provider key or a model server is refused.
+
+On a managed instance, AI use is counted in credits, not money. **Usage** shows the **Credits left** (included and purchased) and how much of this period's credits is used, as a percentage. Amounts in the chart and the transactions are credits. **AI models** and the model picker show each model's cost against Auto (**Cost vs Auto**, for example ≈ 1.4× or ≈ 3×), and voice dictation shows credits per minute. The provider keys and own server sections are hidden.
 
 See [Choose models](../agents/models.md) and [Approve what agents do](../agents/approvals.md).
 
@@ -41,6 +45,7 @@ See [Choose models](../agents/models.md) and [Approve what agents do](../agents/
 | Page | What you change | Scope |
 |---|---|---|
 | **Organization** | **Details**: **Organization name**, **Timezone**, **Default locale**. **Usage and limits**: seats, mailboxes, storage and background jobs this hour, each used of its limit or unlimited (read only). **Export your data**: a copy of the organization's data. **Export organization**: the whole organization as one archive. **Imports**: the import runs and **Undo** | `kernel:org:admin` (export your data: `kernel:users:admin`; imports: `kernel:imports:read`, undo: `kernel:imports:undo`) |
+| **Billing** | The plan and next invoice, **Change plan**, the payment card, **Invoices** (PDF), **Buy credits**, **Automatic top-up** and **Cancel subscription**, on a managed instance only | `kernel:org:admin` |
 | **Documents** | The organization's document templates: rich text templates and uploaded PDF forms, their fields, and a preview | `kernel:org:admin` |
 | **Users** | Invitations, roles per person, deactivation | `kernel:users:admin` |
 | **Roles & access** | **Roles**, **Access requests**, **Data access** | `kernel:users:admin` |
@@ -49,12 +54,50 @@ See [Choose models](../agents/models.md) and [Approve what agents do](../agents/
 
 See [Invite and manage users](users.md), [Set up roles](roles.md) and [Control data visibility with dimensions](dimensions.md).
 
+### Pay for a managed workspace
+
+On a managed instance, **Settings › Billing** holds everything about paying for the workspace:
+
+- **Plan**: the current plan, when it renews and the next invoice. **Switch to** another plan: a larger plan applies once its prorated invoice is paid, a smaller one at the end of the period. A switch to a plan too small for what the workspace uses is refused, with the limits it would break.
+- **Payment card**: **Change card** opens a secure payment form inside the page. Card details and payment confirmations (such as a bank's 3-D Secure check) are only ever typed there.
+- **Buy credits**: any whole number of credits from the minimum the page shows, at the price it shows. Bought credits are used after the plan's own.
+- **Automatic top-up**: buys credits with the card when the balance falls below a threshold, at most once an hour. If a payment fails or the bank asks for a confirmation, it turns off and admins are told.
+- **Invoices**: every invoice and credit note, with **Download PDF**.
+- **Cancel subscription**: ends it at the end of the period; **Resume subscription** undoes that until then.
+
+### When a payment fails or the subscription ends
+
+On a managed instance, the workspace follows the state of its subscription:
+
+- **Payment failed**: AI use (chat, titles, side calls), web search and dictation stop with a message to pay the open invoice in **Settings › Billing**; a conversation shows it with an **Open Billing** link. Everything else keeps working. Once the invoice is paid they work again.
+- **Suspended** (the invoice stayed unpaid, or the subscription ended): only admins can sign in, and only to use **Settings › Billing** and to export the organization, until the date the refusal names. Everyone else is refused, and so are apps connected through MCP or the API and live updates. The workspace's background jobs and incoming webhooks pause; exports and deletion still run. Paying the open invoice restores everything, and paused routines run again at their next time.
+- **Closed**: nobody can sign in, admins included. The workspace and its data are deleted afterwards, never sooner than 25 days after it was closed.
+
+While a payment has failed, **Settings › Billing** opens with **Payment failed: pay the open invoice to keep using AI features.**, the amount and the date to pay it by. **Pay the open invoice** opens the secure payment form on that invoice. **Buy credits** and **Automatic top-up** are hidden until it is paid.
+
+Once the workspace is suspended or closed, every screen shows **Workspace suspended**, with the billing contact to write to. An admin who still has access also gets **Export your data** and **Billing** on that page, and **Reload** to return to the workspace once the invoice is paid.
+
+Export the organization while it is suspended: [Export the whole organization](#export-the-whole-organization).
+
 ### See your organization's limits
 
 1. Open **Settings › Organization**.
 2. Under **Usage and limits**, each row shows what the organization uses: **Seats** (active people), **Mailboxes** (connected addresses), **Storage** (stored files) and **Background jobs this hour**, as used of the limit, or unlimited.
 
+On a managed instance the plan also limits the organization's custom apps (apps an admin installs for this organization only, which no other organization sees; deleting the organization removes them; see [Custom apps](../app-development.md#9-installing-on-a-deployed-liaison)) and how long its audit log is kept: audit entries older than the plan's number of days are deleted every night. An admin may keep them for fewer days (`settings.auditRetentionDays` in `PATCH /api/org`), never more; a longer choice is refused.
+
 Limits are set by whoever runs the server; you cannot change them here. A row at its limit says **Limit reached**. You get a notification when a limit reaches 80 % and 100 %, once per crossing: it comes again only after use has dropped back under 80 %. A notification that could not be sent is sent at the next change in use. The notification is written in the organization's default language. For **Storage**, the 80 % notification asks you to upgrade or free space, otherwise new files will be refused once storage is full; at the limit, files from people and agents are refused, while incoming mail attachments and legal records such as issued invoices are still kept. Background work past its hourly limit waits for the next hour; nothing is lost. How the limits work: [Limit an organization](../provisioning-cli.md#limit-an-organization).
+
+### Send email from your own domain
+
+On a managed instance, an admin can have the organization's invitations, notification digests and survey emails sent from the organization's own domain.
+
+1. Open **Settings › Organization**.
+2. Under **Email sender**, type the domain (for example `mail.example.com`) and click **Add domain**.
+3. Add each DNS record of the table (**Type**, **Name**, **Value**, **Priority**) at your DNS host. **Copy** copies a name or a value.
+4. Click **Verify**. DNS changes can take a few minutes to an hour; click **Verify** again until the status reads **Verified**.
+
+Until a domain is verified, these emails are sent as "<organization> via Liaison". Sign-in codes, sign-in links and password resets always come from the service's own address, whatever the organization's domain. **Remove domain** goes back to the "via Liaison" sender. A domain already used by another organization is refused, and so is a domain that cannot be added right now: the service's operator is told.
 
 ### Export the organization's data
 
@@ -141,7 +184,7 @@ Document rules say which templates a record needs, by SKU, destination country o
 
 ## Configure an app (Apps)
 
-Each installed app has one row under **Apps**, for example **Mail**, **Tickets** or **Calendar**. An app whose package is no longer on the server (an app retired in favour of another) has no row: **Settings › App store** lists it under **Installed** as **Retired, no longer available**, with **Remove** to take it out of the workspace. The app's page holds its own settings, such as Mail's connected mailboxes or Tickets' inboxes and categories. See the page for each app, starting with [Mail](../apps/mail.md) and [Tickets](../apps/tickets.md), and the [app settings reference](../reference/app-settings.md). On **Google Drive**, a Drive account connected in picked mode lists, in its **Connection** section, the files and folders picked for Liaison, each with a remove button, and **Choose files** ([Google Drive](../apps/google-drive.md#choose-the-files-liaison-sees)). The organization's Drive connection shows **Shared drives the team sees**, with **Choose shared drives** for an admin ([Google Drive](../apps/google-drive.md#share-the-organizations-shared-drives)).
+Each installed app has one row under **Apps**, for example **Mail**, **Tickets** or **Calendar**. An app whose package is no longer on the server (an app retired in favour of another) has no row: **Settings › App store** lists it under **Installed** as **Retired, no longer available**, with **Remove** to take it out of the workspace. The app's page holds its own settings, such as Mail's connected mailboxes or Tickets' inboxes and categories. See the page for each app, starting with [Mail](../apps/mail.md) and [Tickets](../apps/tickets.md), and the [app settings reference](../reference/app-settings.md). A link to `/settings/apps/<app>?section=<id>` opens the page on that section, with the focus on its first control. On **Google Drive**, a Drive account connected in picked mode lists, in its **Connection** section, the files and folders picked for Liaison, each with a remove button, and **Choose files** ([Google Drive](../apps/google-drive.md#choose-the-files-liaison-sees)). The organization's Drive connection shows **Shared drives the team sees**, with **Choose shared drives** for an admin ([Google Drive](../apps/google-drive.md#share-the-organizations-shared-drives)).
 
 Each app the workspace has on shows how it runs in **Settings › App store**: **Running**, **Failed to load** or **Upgrade failed**, with the reason under its name. The server operator can roll an installed app back to its previous version from its listing. See [Upgrades](upgrades.md#roll-an-app-back).
 

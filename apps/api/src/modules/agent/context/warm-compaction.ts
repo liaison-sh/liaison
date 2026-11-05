@@ -394,15 +394,13 @@ type CreditGate = (
 
 /** The side calls' own gate: a demo org's budget reserves it and pays for it (credit-meter.ts). */
 const defaultCreditGate: CreditGate = async (orgId, modelKey) => {
-  const { preCheck, settleReservedDemoSideCall } = await import(
-    "~/modules/agent/credits/credit-meter"
-  )
+  const { preCheck, meterSideCall } = await import("~/modules/agent/credits/credit-meter")
   const creditCheck = await preCheck(orgId, modelKey)
   if (!creditCheck.allowed) return { allowed: false }
   return {
     allowed: true,
     providerKey: creditCheck.providerKey,
-    settle: (usage, meta) => settleReservedDemoSideCall(orgId, creditCheck, usage, meta),
+    settle: (usage, meta) => meterSideCall(orgId, creditCheck, usage, meta),
   }
 }
 let creditGateOverride: CreditGate | null = null

@@ -41,6 +41,7 @@ import { type EffectLedgerRow, effectLedger } from "~/db/schema/kernel"
 import { INSTANCE_ID } from "~/infra/instance-id"
 import { isInstanceLive } from "~/infra/instance-registry"
 import { rootLogger } from "~/lib/logger"
+import { sweepSkippingMoving } from "~/modules/org/transfer-state/skip-moving"
 
 const log = rootLogger.child({ module: "effect-once" })
 
@@ -447,21 +448,33 @@ export async function pruneEffectLedger(
 ): Promise<{ deleted: number; abandoned: number }> {
   const cutoff = sql`now() - make_interval(days => ${days})`
   const unknownCutoff = sql`now() - make_interval(days => ${unknownDays})`
-  return withSystemDb("effect-once:retention", async (tx) => {
-    const deleted = await tx
-      .delete(effectLedger)
-      .where(
-        or(
-          and(eq(effectLedger.state, "done"), lt(effectLedger.doneAt, cutoff)),
-          and(eq(effectLedger.state, "unknown"), lt(effectLedger.claimedAt, unknownCutoff)),
-        ),
-      )
-      .returning({ key: effectLedger.key })
-    const abandoned = await tx
-      .update(effectLedger)
-      .set({ state: "unknown" })
-      .where(and(eq(effectLedger.state, "pending"), lt(effectLedger.claimedAt, cutoff)))
-      .returning({ key: effectLedger.key })
-    return { deleted: deleted.length, abandoned: abandoned.length }
-  })
+  // An org being moved keeps its rows as they are until the move ends.
+  return sweepSkippingMoving((notMoving) =>
+    withSystemDb("effect-once:retention", async (tx) => {
+      const deleted = await tx
+        .delete(effectLedger)
+        .where(
+          and(
+            or(
+              and(eq(effectLedger.state, "done"), lt(effectLedger.doneAt, cutoff)),
+              and(eq(effectLedger.state, "unknown"), lt(effectLedger.claimedAt, unknownCutoff)),
+            ),
+            notMoving(effectLedger.orgId),
+          ),
+        )
+        .returning({ key: effectLedger.key })
+      const abandoned = await tx
+        .update(effectLedger)
+        .set({ state: "unknown" })
+        .where(
+          and(
+            eq(effectLedger.state, "pending"),
+            lt(effectLedger.claimedAt, cutoff),
+            notMoving(effectLedger.orgId),
+          ),
+        )
+        .returning({ key: effectLedger.key })
+      return { deleted: deleted.length, abandoned: abandoned.length }
+    }),
+  )
 }

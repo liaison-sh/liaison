@@ -14,6 +14,7 @@
 // to inactive so `runDiscoverySync`/`runWatchPoller` skip them. This is distinct
 // from the per-APP uninstall pause (kernel `pauseAppRoutinesForOrg`, Task A12).
 
+import { clearMetaPageIds } from "./meta-pages"
 import type { Platform } from "./adapters/types"
 import type { SocialToolCtx } from "./ctx"
 
@@ -192,5 +193,7 @@ export async function onConnectionDisconnected(event: ConnectionEvent, ctx: Soci
     for (const r of rows) {
       await ctx.db.update("sync_state", r.id, { active: false })
     }
+    // The server-wide Meta callback routes this account's Pages no more (meta-pages.ts).
+    if (platform === "facebook") await clearMetaPageIds(ctx, accountExternalId)
   }
 }

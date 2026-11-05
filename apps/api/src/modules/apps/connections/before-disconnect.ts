@@ -115,6 +115,7 @@ const defaultExecutor: HookExecutor = async ({
     bridge,
     timeoutMs: HOOK_TIMEOUT_MS,
     priority: "background",
+    appId: appName,
   })
 }
 

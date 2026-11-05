@@ -9,4 +9,11 @@ describe("dev proxy", () => {
     expect(proxy["/webhooks"]).toEqual({ target: "http://localhost:3000", changeOrigin: true })
     expect(proxy["/api"].target).toBe("http://localhost:3000")
   })
+
+  it("forwards the page's own host when asked, so an org-host server sees this origin", () => {
+    const proxy = devProxyFor("http://localhost:3000", { preserveHost: true })
+    expect(proxy["/api"]).toEqual({ target: "http://localhost:3000", changeOrigin: false })
+    expect(proxy["/webhooks"].changeOrigin).toBe(false)
+    expect(proxy["/ws"]).toEqual({ target: "http://localhost:3000", ws: true })
+  })
 })

@@ -96,7 +96,7 @@ export const drivePickerRoutes = new Hono<AppEnv>()
         identifier: account.identifier,
         ...(body.origin ? { origin: body.origin } : {}),
       })
-      return success(c, { url: pickerPageUrl(ticket) })
+      return success(c, { url: await pickerPageUrl(actor.orgId, ticket) })
     } catch (err) {
       const mapped = errorBody(err)
       if (mapped) return c.json(mapped.body, mapped.status)

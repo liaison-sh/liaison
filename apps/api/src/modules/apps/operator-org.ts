@@ -9,14 +9,17 @@
 // org, the instance operator's:
 //
 //   - `LIAISON_OPERATOR_ORG_ID` when the operator set it;
-//   - otherwise the instance's first org (the one created at bootstrap).
+//   - otherwise the instance's first org (the one created at bootstrap), except
+//     in the managed edition, where only the setting names it (no org is the
+//     operator without it; the server refuses to boot without it anyway).
 //
 // A demo visitor's org is never the operator, whatever the configuration says
 // short of naming it explicitly.
 //
 // A single-org self-host is not restricted: any admin holding `kernel:apps:admin`
-// manages apps, as always. Per-org app installs are the planned design for the
-// hosted (SaaS) offering; this gate stands in for them until then.
+// manages apps, as always. In the managed edition an org admin may also install
+// a custom app for their own org only (install-routes.ts `/custom/install`,
+// app-org-scope.ts); everything instance-wide stays behind this gate.
 import { asc } from "drizzle-orm"
 import { createMiddleware } from "hono/factory"
 import { HTTPException } from "hono/http-exception"
@@ -38,6 +41,7 @@ export function resetOperatorOrgCache(): void {
  *  deleted. */
 export async function resolveOperatorOrgId(opts: { fresh?: boolean } = {}): Promise<string | null> {
   if (env.LIAISON_OPERATOR_ORG_ID) return env.LIAISON_OPERATOR_ORG_ID
+  if (isManagedEdition()) return null
   if (!opts.fresh && cached && Date.now() - cached.at < TTL_MS) return cached.orgId
   const [first] = await withSystemDb("operator-org", (db) =>
     db

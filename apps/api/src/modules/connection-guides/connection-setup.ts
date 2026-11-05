@@ -142,7 +142,10 @@ export function guideCommandFor(app: string, connection: string, family: Connect
 }
 
 export function connectionSetup(input: {
+  /** The base of the webhook URLs a person registers (the org's). */
   baseUrl: string
+  /** The base of the OAuth redirect URI, when not `baseUrl`. */
+  redirectBaseUrl?: string
   /** The org's id (webhook URLs carry it); a placeholder in generated docs. */
   orgId: string
   app: string
@@ -175,7 +178,11 @@ export function connectionSetup(input: {
     ...(decl.setupGuide?.summary ? { summary: decl.setupGuide.summary } : {}),
     steps: (decl.setupGuide?.steps ?? []).map(normalizeSetupStep),
     ...(decl.setupGuide?.docsUrl ? { docsUrl: decl.setupGuide.docsUrl } : {}),
-    ...(oauth ? { redirectUri: `${base}${CONNECTIONS_CALLBACK_PATH}` } : {}),
+    ...(oauth
+      ? {
+          redirectUri: `${(input.redirectBaseUrl ?? base).replace(/\/+$/, "")}${CONNECTIONS_CALLBACK_PATH}`,
+        }
+      : {}),
     ...(oauth ? { scopes: [...(decl.scopes ?? [])] } : {}),
     ...(oauth && decl.authorizeConfigParams
       ? { appSettings: Object.values(decl.authorizeConfigParams).map((p) => p.configKey) }

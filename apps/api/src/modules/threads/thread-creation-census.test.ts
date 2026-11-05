@@ -56,6 +56,13 @@ const ALLOWLIST: AllowlistEntry[] = [
       "agent's own turns write into; it seats no human DM partner and is never surfaced as a chat.",
   },
   {
+    file: "seed/factories/agent/sub-runs.ts",
+    function: "seedSubRuns",
+    note:
+      "The seed engine's copy of the hidden sub-run anchor (type: 'subrun', hiddenFromList: true) " +
+      "spawnAgent writes, for the sub-runs a seeded world shows. Seed data only, never a chat.",
+  },
+  {
     file: "modules/mcp/connection-thread.ts",
     function: "ensureConnectionThread",
     note:
@@ -377,7 +384,8 @@ export async function planEphemeralHiddenAgentChat(orgId: string): Promise<void>
     // (execute-tool.ts x2), a hidden sub-run thread
     // (spawn-agent.ts), a hidden MCP connection anchor
     // (connection-thread.ts) or a hidden bulk-dispatch origin bucket
-    // (bulk-dispatch.ts). The QA seed harness lives outside src. There is no
+    // (bulk-dispatch.ts), or the seed engine's copy of the sub-run anchor
+    // (seed/factories/agent/sub-runs.ts). The QA seed harness lives outside src. There is no
     // OTHER "open a discussion thread for entity X" generic creator left in
     // the tree: if one is added, its insert or insertThreadWithParticipants
     // call surfaces above as an unlisted site. This list is intentionally
@@ -395,6 +403,7 @@ export async function planEphemeralHiddenAgentChat(orgId: string): Promise<void>
         "modules/threads/thread.ts",
         "modules/agent/routines/routine-worker.ts",
         "modules/agent/subruns/spawn-agent.ts",
+        "seed/factories/agent/sub-runs.ts",
       ].sort(),
     )
   })

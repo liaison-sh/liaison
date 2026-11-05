@@ -85,6 +85,7 @@ import type { DurableEventContext } from "~/infra/events/durable-consumers"
 import { registerDurableEventConsumer } from "~/infra/events/durable-consumers"
 import { registerJobWorker } from "~/infra/jobs/jobs"
 import { effectiveIndexName, ensureMeiliVectorStore, getMeili } from "~/infra/search/client"
+import { isManagedEdition } from "~/lib/edition"
 import { offlineSideCalls } from "~/lib/env"
 import { searchLogger as log } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
@@ -1049,7 +1050,70 @@ function noteEmbeddingLegOff(orgId: string, reason: string): null {
 
 /** Test-only: has this org been told yet? */
 export function embeddingLegOffLoggedFor(orgId: string): boolean {
-  return loggedEmbeddingLegOff.has(orgId)
+  return loggedEmbeddingLegOff.has(orgId) || managedRefusalLoggedAt.has(orgId)
+}
+
+/**
+ * When a managed org's embed batch was last refused and said so. A refusal
+ * (payment required, no balance) is a state that ends, so it is logged once
+ * per org per hour rather than once per process.
+ */
+const managedRefusalLoggedAt = new Map<string, number>()
+const MANAGED_REFUSAL_LOG_EVERY_MS = 60 * 60 * 1000
+
+function noteManagedEmbeddingRefused(orgId: string, reason: string, code?: string): void {
+  const last = managedRefusalLoggedAt.get(orgId)
+  const now = Date.now()
+  if (last !== undefined && now - last < MANAGED_REFUSAL_LOG_EVERY_MS) return
+  managedRefusalLoggedAt.set(orgId, now)
+  log.info({ orgId, reason, code }, "embedding_leg_off")
+}
+
+/**
+ * A managed cell's embedder (S31): OpenRouter, the cell's key, zero data
+ * retention, the same Google model and width as the self-hosted path (so the
+ * shared index's embedder width never changes). Each batch passes the side-call
+ * gate first (`resolveKey` refuses while payment is required, D17; `spendGate`
+ * checks the balance), so an embedder built while the org was active stops
+ * spending the moment it is not; a refused batch embeds nothing and the
+ * documents stay keyword only. Each batch is ONE usage row (P3R-18), billed to
+ * a real org user (`systemWorkUserId`).
+ */
+function managedOrgEmbedder(orgId: string, modelId: string): Embedder {
+  const upstreamId = `google/${modelId}`
+  return {
+    modelId,
+    dimensions: embeddingDimensionsFor(modelId),
+    async embed(texts: string[]) {
+      const [{ managedSideCallGate, systemWorkUserId }, { openRouterEmbed }, { finalizeUsage }] =
+        await Promise.all([
+          import("~/modules/agent/credits/managed-side-call"),
+          import("~/modules/agent/providers/openrouter-embeddings"),
+          import("~/modules/agent/credits/credit-meter"),
+        ])
+      const gate = await managedSideCallGate(orgId, upstreamId)
+      if (!gate.allowed) {
+        noteManagedEmbeddingRefused(orgId, gate.reason, gate.billingCode)
+        return { vectors: [], tokens: 0 }
+      }
+      const result = await openRouterEmbed({ apiKey: gate.key, upstreamId, texts, orgId })
+      recordEmbeddingTokens(orgId, result.tokens)
+      await finalizeUsage(orgId, {
+        model: gate.model,
+        inputTokens: result.tokens,
+        outputTokens: 0,
+        ...(result.costUsd !== undefined ? { providerCostUsd: result.costUsd } : {}),
+        keySource: gate.keySource,
+        // No acting user: a real org user, never the system sentinel.
+        userId: (await systemWorkUserId(orgId)) ?? "system",
+        // A side call inside whatever is running: it took no reservation.
+        releaseReservation: false,
+        description: "Search embeddings",
+        metadata: { feature: "embedding", texts: texts.length },
+      }).catch((err) => log.error({ err, orgId }, "Could not meter an embedding batch"))
+      return { vectors: result.vectors, tokens: result.tokens }
+    },
+  }
 }
 
 const embedderCache = new Map<string, Embedder | null>()
@@ -1066,6 +1130,7 @@ const embedderCache = new Map<string, Embedder | null>()
 export function invalidateOrgEmbedder(orgId: string): void {
   embedderCache.delete(orgId)
   loggedEmbeddingLegOff.delete(orgId)
+  managedRefusalLoggedAt.delete(orgId)
 }
 
 /**
@@ -1088,6 +1153,16 @@ export async function resolveOrgEmbedder(orgId: string): Promise<Embedder | null
   const settings = await withPrivilegedDb(orgId, "embedder:org-settings", (tx) =>
     getOrgKernelSettings(tx, orgId, orgKernelSettingsSchema),
   )
+  const modelId =
+    (settings.ai as { embeddingModelId?: string | null } | undefined)?.embeddingModelId ||
+    DEFAULT_EMBEDDING_MODEL_ID
+  // A managed cell embeds on OpenRouter (S31); whether a batch may spend is
+  // decided per batch, so the embedder itself is always there.
+  if (isManagedEdition()) {
+    const embedder = managedOrgEmbedder(orgId, modelId)
+    embedderCache.set(orgId, embedder)
+    return embedder
+  }
   // `isProviderUsable`, not `isProviderConfigured`: on a demo box the key in the
   // environment is refused for a visitor org, so the old check passed,
   // `resolveKey` threw, and the null below was cached for the life of the
@@ -1108,9 +1183,6 @@ export async function resolveOrgEmbedder(orgId: string): Promise<Embedder | null
     embedderCache.set(orgId, null)
     return noteEmbeddingLegOff(orgId, "reserved_demo_org")
   }
-  const modelId =
-    (settings.ai as { embeddingModelId?: string | null } | undefined)?.embeddingModelId ||
-    DEFAULT_EMBEDDING_MODEL_ID
 
   let apiKey: string
   try {
@@ -1498,6 +1570,7 @@ export const MessageIndexerTestAccess = {
   /** Test-only: drop the memoised embedders (a settings change invalidates them). */
   resetEmbedderCache(): void {
     embedderCache.clear()
+    managedRefusalLoggedAt.clear()
     loggedEmbeddingLegOff.clear()
     embedderSettingsApplied.clear()
     embedderDeclareFailedAt.clear()

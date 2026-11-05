@@ -32,10 +32,16 @@ export interface PrepSetAddressChoiceResult {
   address_check: AddressCheck | null
 }
 
-export async function prepSetAddressChoice(
+/**
+ * Every check prep_set_address_choice makes before it stores a pick, in one place: the handler
+ * runs it, and so does the stage-time preflight (which skips the grid cache refresh, its only
+ * write), so a pick the handler would refuse is refused before a person is asked to approve it.
+ */
+async function resolveAddressChoice(
   ctx: BoxtalToolCtx,
   input: PrepSetAddressChoiceInput,
-): Promise<PrepSetAddressChoiceResult> {
+  opts: { preflight: boolean },
+) {
   const documentRef = typeof input?.document_ref === "string" ? input.document_ref.trim() : ""
   if (!documentRef) {
     throw new ToolError("prep_set_address_choice needs the row's document_ref.", { code: "invalid_input", retryable: false })
@@ -54,7 +60,7 @@ export async function prepSetAddressChoice(
   const orderKey = await orderKeyForDocumentRef(ctx, documentRef)
   const parsedKey = parseOrderKey(orderKey)
   const orderId = parsedKey?.kind === "order" ? parsedKey.id : null
-  if (orderId) await refreshCachedShipTo(ctx, documentRef, orderId)
+  if (orderId && !opts.preflight) await refreshCachedShipTo(ctx, documentRef, orderId)
   const check = first.address_check
   if (check?.order_read === "failed") {
     throw new ToolError(ORDER_UNREADABLE_MESSAGE, { code: "order_unreadable", retryable: true })
@@ -72,7 +78,34 @@ export async function prepSetAddressChoice(
       { code: "address_choice_stale", retryable: false },
     )
   }
+  return { documentRef, pick, orderKey, orderId, check, verifiedId }
+}
 
+/**
+ * prep_set_address_choice STAGE-TIME preflight (manifest `preflight`): the handler's own checks
+ * (a known row, a valid choice, a readable order, addresses that really differ, the verified
+ * address still the one compared against). Read-only.
+ */
+export async function prepSetAddressChoicePreflight(
+  ctx: BoxtalToolCtx,
+  input: PrepSetAddressChoiceInput,
+): Promise<{ ok: true } | { error: { code: string; message: string; retryable: boolean } }> {
+  try {
+    await resolveAddressChoice(ctx, input, { preflight: true })
+    return { ok: true }
+  } catch (err) {
+    if (err instanceof ToolError) return { error: { code: err.code, message: err.message, retryable: err.retryable === true } }
+    throw err
+  }
+}
+
+export async function prepSetAddressChoice(
+  ctx: BoxtalToolCtx,
+  input: PrepSetAddressChoiceInput,
+): Promise<PrepSetAddressChoiceResult> {
+  const { documentRef, pick, orderKey, orderId, check, verifiedId } = await resolveAddressChoice(ctx, input, {
+    preflight: false,
+  })
   const record: AddressChoiceRecord = {
     pick,
     address_id: pick === "verified" ? verifiedId : null,

@@ -25,6 +25,9 @@ interface Manifest {
   }
 }
 
+/** What an org section without its own adminScope is administered by (settings-schema-from-manifest.ts). */
+const DEFAULT_ORG_ADMIN_SCOPE = "kernel:apps:admin"
+
 const CONNECTORS: Array<{ manifest: Manifest; adminScope?: string; status?: string }> = [
   {
     manifest: gitlab as Manifest,
@@ -57,7 +60,9 @@ describe.each(CONNECTORS)("connector $manifest.name", ({ manifest, adminScope, s
 
   it("its org sections are administered by the app's accounts scope (or the default)", () => {
     for (const s of manifest.settings?.sections ?? []) {
-      if (s.scope === "org") expect(s.adminScope).toBe(adminScope)
+      // The default may also be spelled out (database's report-access section).
+      if (s.scope === "org")
+        expect(s.adminScope ?? DEFAULT_ORG_ADMIN_SCOPE).toBe(adminScope ?? DEFAULT_ORG_ADMIN_SCOPE)
     }
   })
 

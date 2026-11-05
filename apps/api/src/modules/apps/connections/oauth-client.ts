@@ -12,6 +12,8 @@
  *   for every other connection, its own `oauth_providers` row `<app>:<connection>`.
  * - Instance client: the environment pair the table below names for the
  *   connection. A connection the table does not name has no instance client.
+ *   The Facebook connections' pair (META_APP_ID + META_APP_SECRET) is the
+ *   managed cell's shared Meta app and applies in the managed edition only.
  *
  * `resolveOAuthClient` says which source applies and the client id, never the
  * secret: guides, setup state and cards use it to decide whether a person has a
@@ -24,6 +26,7 @@ import { and, eq } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
 import { connectedAccounts, oauthProviders } from "~/db/schema/kernel"
 import { CryptoContext, decryptSecret } from "~/lib/crypto"
+import { isManagedEdition } from "~/lib/edition"
 import { encryptionKey, env } from "~/lib/env"
 import { getOrgKernelSettings } from "~/lib/settings"
 
@@ -63,9 +66,19 @@ export interface InstanceClientEnv {
   GOOGLE_MARKETING_OAUTH_CLIENT_SECRET?: string
   SHOPIFY_APP_CLIENT_ID?: string
   SHOPIFY_APP_CLIENT_SECRET?: string
+  META_APP_ID?: string
+  META_APP_SECRET?: string
 }
 
-type EnvPair = { id: keyof InstanceClientEnv; secret: keyof InstanceClientEnv }
+/** `managedOnly`: the pair is the managed cell's shared app, never a self-hosted default. */
+type EnvPair = {
+  id: keyof InstanceClientEnv
+  secret: keyof InstanceClientEnv
+  managedOnly?: boolean
+}
+
+/** The cell's shared Meta app (Facebook login): Facebook, and Instagram through Facebook login. */
+const CELL_META_ENV: EnvPair = { id: "META_APP_ID", secret: "META_APP_SECRET", managedOnly: true }
 
 const GOOGLE_WORKSPACE_ENV: EnvPair = {
   id: "GMAIL_OAUTH_CLIENT_ID",
@@ -89,6 +102,8 @@ const INSTANCE_CLIENT_ENV: Readonly<Record<string, EnvPair>> = {
   "ads:merchant": GOOGLE_MARKETING_ENV,
   "social:google": GOOGLE_MARKETING_ENV,
   "shopify:shop": { id: "SHOPIFY_APP_CLIENT_ID", secret: "SHOPIFY_APP_CLIENT_SECRET" },
+  "social:facebook": CELL_META_ENV,
+  "social:instagram_unified": CELL_META_ENV,
 }
 
 /** The connections an instance can provide a client for (docs, tests). */
@@ -100,7 +115,7 @@ export function instanceOAuthClient(
   source: InstanceClientEnv = env,
 ): { clientId: string; clientSecret: string } | null {
   const pair = INSTANCE_CLIENT_ENV[connectionKey]
-  if (!pair) return null
+  if (!pair || (pair.managedOnly && !isManagedEdition())) return null
   const clientId = source[pair.id]
   const clientSecret = source[pair.secret]
   return clientId && clientSecret ? { clientId, clientSecret } : null

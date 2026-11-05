@@ -18,6 +18,8 @@ Liaison speaks the [Model Context Protocol](https://modelcontextprotocol.io/) (M
 | Access token | A bearer token that lives 15 minutes and works only on `/mcp` |
 | Discovery | `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server` and `/.well-known/mcp` |
 
+On a server where each org has its own address (`LIAISON_ORG_HOST_TEMPLATE`, see [Liaison team](../self-hosting/liaison-team.md#each-org-on-its-own-address)), the endpoint and the discovery documents are on the org's address, and a token works there only.
+
 An API key does not work on `/mcp`, and an MCP token does not work on the `/api` routes. See [Use the HTTP API](rest-api.md).
 
 ## Connect Claude Code or Claude Desktop
@@ -56,7 +58,7 @@ Any other MCP client that supports Streamable HTTP and OAuth works the same way:
 
 ## What a connected client can do
 
-- **Use Liaison's tools.** The tool list is the Liaison catalog for your scopes, with names such as `mail__reply`, `tickets__search` or `kernel__skill_read`. A tool whose scope you lack is absent from the list, and records outside your grants come back empty.
+- **Use Liaison's tools.** The tool list is the Liaison catalog for your scopes, with names such as `mail__reply`, `tickets__search` or `kernel__skill_read`. A tool whose scope you lack is absent from the list, and records outside your grants come back empty. Another organization's custom app (managed instances) never appears, and a call to it is refused as an unknown tool.
 - **Find tools.** Two extra tools help with the large catalog: `liaison_tool_search` finds a tool by task keywords, and `liaison_call_tool` runs a tool by name, including one granted after the session started. Called without arguments, it returns the tool's schema.
 - **Follow your org's skills.** The connection's instructions list the skills you can see, so the client reads them before it drafts customer-facing text.
 - **Reach your org's agents** by name, when the connection is allowed to ask them.
@@ -76,6 +78,10 @@ Tools from outside MCP servers connected to Liaison are offered to the client to
 The client loses access at its next call. A token is checked against the connection and your current permissions on every call, so a removed scope or a deactivated account takes effect at once.
 
 Changing or resetting your password ends every connected client as well as every sign-in: each one must connect again.
+
+On a managed instance whose subscription is suspended or closed, every call answers `403` `org_suspended` and no new token is issued. Clients work again once the subscription is paid.
+
+While the organization is being moved to another server, calls that change something answer `503` `org_moving` with `Retry-After: 2` for a few seconds (reads still answer). Retry after the delay.
 
 ## Connect a headless client with a device code
 

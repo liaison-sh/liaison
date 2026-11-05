@@ -401,7 +401,7 @@ async function defaultFlush(
   region: RegionMessage[],
 ): Promise<boolean> {
   const { orgId, threadId } = payload
-  const { preCheck, selectSideCallModelForOrg, settleReservedDemoSideCall } = await import(
+  const { preCheck, selectSideCallModelForOrg, meterSideCall } = await import(
     "~/modules/agent/credits/credit-meter"
   )
   // EVERY HOLD THIS PATH TAKES IS CLOSED HERE. A demo visitor's pre check
@@ -410,7 +410,7 @@ async function defaultFlush(
   // Before, nothing closed it: each checkpoint advance of a visitor's thread
   // left a hold that expired counted at its full worst cost with no model call
   // behind it (live demo, 2026-10-27: 2 x 28,381 µEUR on one visitor).
-  let credit: Parameters<typeof settleReservedDemoSideCall>[1] | null = null
+  let credit: Parameters<typeof meterSideCall>[1] | null = null
   try {
     const { runMemoryFlush, summaryRequiredScopes } = await import(
       "~/modules/agent/context/compaction"
@@ -483,7 +483,7 @@ async function defaultFlush(
     // Idempotent once the flush settled its meter; otherwise a sent request
     // with no usage stays at its max, an unsent one is released, and the
     // reserved org's turn reservation is handed back.
-    if (credit) await settleReservedDemoSideCall(orgId, credit, null)
+    if (credit) await meterSideCall(orgId, credit, null)
   }
 }
 
@@ -708,11 +708,11 @@ async function extractCandidates(
 ): Promise<unknown[]> {
   if (factExtractorOverride) return factExtractorOverride(region)
   const { orgId } = payload
-  const { preCheck, selectSideCallModelForOrg, settleReservedDemoSideCall } = await import(
+  const { preCheck, selectSideCallModelForOrg, meterSideCall } = await import(
     "~/modules/agent/credits/credit-meter"
   )
   // Closed in `finally` on every path: settled at what it cost, or released.
-  let credit: Parameters<typeof settleReservedDemoSideCall>[1] | null = null
+  let credit: Parameters<typeof meterSideCall>[1] | null = null
   let usage: unknown = null
   let providerMetadata: unknown
   try {
@@ -755,7 +755,7 @@ async function extractCandidates(
     log.warn({ err, orgId }, "Fact extraction produced nothing usable")
     return []
   } finally {
-    if (credit) await settleReservedDemoSideCall(orgId, credit, usage, providerMetadata)
+    if (credit) await meterSideCall(orgId, credit, usage, providerMetadata)
   }
 }
 
@@ -995,11 +995,11 @@ async function summarizeRegion(
 ): Promise<string | null> {
   if (summarizerOverride) return summarizerOverride(region)
   const { orgId } = payload
-  const { preCheck, selectSideCallModelForOrg, settleReservedDemoSideCall } = await import(
+  const { preCheck, selectSideCallModelForOrg, meterSideCall } = await import(
     "~/modules/agent/credits/credit-meter"
   )
   // Closed in `finally` on every path: settled at what it cost, or released.
-  let credit: Parameters<typeof settleReservedDemoSideCall>[1] | null = null
+  let credit: Parameters<typeof meterSideCall>[1] | null = null
   let usage: unknown = null
   let providerMetadata: unknown
   try {
@@ -1052,7 +1052,7 @@ async function summarizeRegion(
     log.error({ err, orgId }, "Episode summarization failed, no episode written")
     return null
   } finally {
-    if (credit) await settleReservedDemoSideCall(orgId, credit, usage, providerMetadata)
+    if (credit) await meterSideCall(orgId, credit, usage, providerMetadata)
   }
 }
 

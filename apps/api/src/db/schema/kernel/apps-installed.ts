@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+import { sql } from "drizzle-orm"
 import { index, jsonb, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core"
 import { kernel } from "./organizations"
 
@@ -23,8 +24,9 @@ export interface InstalledPdfTemplate {
   source: string
 }
 
-// Runtime-installed apps (`.liaisonapp` packages). Instance-wide, not per-org —
-// matches how bundled apps work today.
+// Runtime-installed apps (`.liaisonapp` packages). Instance-wide (`orgId` NULL),
+// except an org-private custom app of the managed edition, whose rows carry the
+// one org that may see and run it (modules/apps/app-org-scope.ts, 0264).
 //
 // The composite (name, version) primary key lets multiple versions of one app
 // coexist in the table. This is required for atomic upgrade swap: the install
@@ -70,16 +72,26 @@ export const appsInstalled = kernel.table(
      * install root. NULL on rows installed before it was recorded.
      */
     manifestSchema: jsonb("manifest_schema").$type<{ schema: unknown }>(),
+    /** The org an org-private custom app belongs to; NULL = an instance app (0264). */
+    orgId: uuid("org_id"),
+    // The operator disabled this custom app (0265, modules/cloud/custom-app-disable.ts):
+    // nothing runs it until the operator enables it again. NULL = not disabled.
+    disabledAt: timestamp("disabled_at", { withTimezone: true }),
+    disabledReason: text("disabled_reason"),
   },
-  (table) => [primaryKey({ columns: [table.name, table.version] })],
+  (table) => [
+    primaryKey({ columns: [table.name, table.version] }),
+    index("apps_installed_org_id_idx").on(table.orgId).where(sql`org_id IS NOT NULL`),
+  ],
 )
 
 // One row per app names the currently-active (registered) version and the one
 // that ran before it. The server keeps both versions' files and `apps_installed`
 // rows (older ones are pruned), so a failed activation switches back to
 // `previousVersion` and an operator can roll back to it. Written only by the
-// activation service (activation.ts). `orgId` is reserved for per-org installs
-// and is always NULL: installs are instance-wide (migration 0212).
+// activation service (activation.ts). `orgId` is copied from the active
+// version's `apps_installed` row: NULL for an instance app, the owning org for
+// an org-private custom app (0264).
 export const appsActiveVersion = kernel.table("apps_active_version", {
   name: text("name").primaryKey(),
   version: text("version").notNull(),

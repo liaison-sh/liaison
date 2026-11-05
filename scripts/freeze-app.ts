@@ -15,6 +15,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -125,11 +126,55 @@ function bundleSources(
       if (!existsSync(abs)) continue // a plugin's virtual module
       const rel = relative(root, realpathSync(abs)).split("\\").join("/")
       if (rel.startsWith("../") || isAbsolute(rel)) continue
-      if (rel.split("/").includes("node_modules")) continue
+      if (rel.split("/").includes("node_modules")) {
+        // An app's own `bun install` copies its `file:` workspace deps into its
+        // node_modules; those bytes are still the workspace package's files.
+        const workspace = workspaceSource(rel, root)
+        if (workspace) out.push(workspace)
+        continue
+      }
       out.push(rel)
     }
   }
   return out
+}
+
+/**
+ * Where the app's own install copied the workspace file at `abs` (absolute,
+ * real path): `<appDir>/node_modules/@liaison/<pkg>/<file>` when the root
+ * workspace link `node_modules/@liaison/<pkg>` points at the file's package and
+ * the copy exists; null otherwise (the build then reads the workspace file).
+ */
+function workspaceCopy(abs: string, repoRoot: string, appDir: string): string | null {
+  const links = join(repoRoot, "node_modules", "@liaison")
+  if (!existsSync(links)) return null
+  for (const pkg of readdirSync(links)) {
+    const pkgDir = realpathSync(join(links, pkg))
+    if (!abs.startsWith(`${pkgDir}/`)) continue
+    const copy = join(appDir, "node_modules", "@liaison", pkg, abs.slice(pkgDir.length + 1))
+    return existsSync(copy) ? realpathSync(copy) : null
+  }
+  return null
+}
+
+/**
+ * The repo path of the workspace file a `node_modules/@liaison/<pkg>/<file>` copy
+ * stands for, through the root workspace link `node_modules/@liaison/<pkg>`;
+ * null for a third-party module or a file the workspace package does not hold.
+ */
+function workspaceSource(rel: string, root: string): string | null {
+  const match = rel.match(/(?:^|\/)node_modules\/@liaison\/([^/]+)\/(.+)$/)
+  if (!match) return null
+  const [, pkg, file] = match
+  if (file.split("/").includes("node_modules")) return null
+  const link = join(root, "node_modules", "@liaison", pkg)
+  if (!existsSync(link)) return null
+  const target = join(realpathSync(link), file)
+  if (!existsSync(target)) return null
+  const repoRel = relative(root, realpathSync(target)).split("\\").join("/")
+  if (repoRel.startsWith("../") || isAbsolute(repoRel)) return null
+  if (repoRel.split("/").includes("node_modules")) return null
+  return repoRel
 }
 
 export async function freezeApp(opts: FreezeOptions): Promise<FreezeResult> {
@@ -144,7 +189,11 @@ export async function freezeApp(opts: FreezeOptions): Promise<FreezeResult> {
   const sources = new Set<string>()
   const overrides = new Map<string, string>()
   for (const [rel, contents] of opts.sourceOverrides ?? []) {
-    overrides.set(resolve(realpathSync(repoRoot), rel), contents)
+    const abs = resolve(realpathSync(repoRoot), rel)
+    overrides.set(abs, contents)
+    // The app's own install may hold a copy of the workspace file; the build reads that one.
+    const copy = workspaceCopy(abs, repoRoot, appDir)
+    if (copy) overrides.set(copy, contents)
   }
   const bunPlugins = overrides.size > 0 ? [overlayPlugin(overrides, false)] : []
   // First, so it answers before the Solid transform's own onLoad.

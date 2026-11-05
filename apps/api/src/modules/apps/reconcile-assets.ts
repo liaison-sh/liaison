@@ -13,6 +13,7 @@ import {
   registerEventRoutineSubscription,
 } from "~/infra/jobs/event-routine-subscriber"
 import { isScopeSubset } from "~/modules/agent/subruns/sub-agent-definitions"
+import { appVisibleToOrg } from "~/modules/apps/app-org-scope"
 
 export interface SeededSkillDecl {
   name: string
@@ -44,6 +45,8 @@ export async function reconcileDefaultDisabledSkills(
   appName: string,
   skills: SeededSkillDecl[],
 ): Promise<void> {
+  // Another org's custom app seeds nothing here (app-org-scope.ts).
+  if (!(await appVisibleToOrg(appName, orgId))) return
   await withPrivilegedDb(orgId, "reconcile-default-disabled-skills", async (tx) => {
     // First-install gate: if the marker exists, seeding already happened once —
     // the user owns the toggle state thereafter. Strictly no-op.
@@ -109,6 +112,7 @@ export async function reconcileAgents(
   agents: Record<string, AgentDecl>,
   appGrantedScopes: string[],
 ): Promise<void> {
+  if (!(await appVisibleToOrg(appName, orgId))) return
   for (const [agentType, def] of Object.entries(agents)) {
     if (!isScopeSubset(def.scopeCeiling, appGrantedScopes)) {
       throw new Error(
@@ -196,6 +200,7 @@ export async function pauseAppRoutinesForOrg(orgId: string, appName: string): Pr
  * in-process reinstall.
  */
 export async function resumeAppRoutinesForOrg(orgId: string, appName: string): Promise<void> {
+  if (!(await appVisibleToOrg(appName, orgId))) return
   const resumed = await withPrivilegedDb(orgId, "resume-app-routines", async (tx) =>
     tx
       .update(routines)

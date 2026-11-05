@@ -35,6 +35,23 @@ describe("env schema", () => {
     expect(result.data.TRUSTED_PROXY_HOPS).toBe(0)
   })
 
+  test("LIAISON_OPERATOR_ORG_ID is kept in lowercase: org ids compare as strings", () => {
+    const { envSchema } = require("~/lib/env")
+    const base = {
+      JWT_SECRET: "a".repeat(32),
+      ENCRYPTION_KEY: "ab".repeat(32),
+      BASE_URL: "http://localhost:3000",
+      ALLOWED_ORIGINS: "http://localhost:5173",
+    }
+    const parsed = envSchema.safeParse({
+      ...base,
+      LIAISON_OPERATOR_ORG_ID: "7D1F3A52-9C4E-4B8A-8F61-2B0E5C9D4A17",
+    })
+    expect(parsed.data.LIAISON_OPERATOR_ORG_ID).toBe("7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17")
+    const blank = envSchema.safeParse({ ...base, LIAISON_OPERATOR_ORG_ID: "" })
+    expect(blank.data.LIAISON_OPERATOR_ORG_ID).toBeUndefined()
+  })
+
   test("REQUEST_TIMEOUT_MS + DB_CONNECT_TIMEOUT default to the production ceilings and coerce from strings", () => {
     const { envSchema } = require("~/lib/env")
     const base = {

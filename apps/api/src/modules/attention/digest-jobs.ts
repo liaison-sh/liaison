@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { groupForKind, type NotificationGrid, resolveLocale } from "@liaison/shared"
-import { sql } from "drizzle-orm"
+import { type SQL, sql } from "drizzle-orm"
 import type { PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
@@ -17,8 +17,8 @@ import {
 } from "~/infra/email"
 import { registerScheduledJob } from "~/infra/jobs/jobs"
 import { EffectInFlight } from "~/lib/effect-once"
-import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
+import { orgPublicBaseUrl } from "~/lib/org-public-url"
 import {
   attentionTextRedacted,
   dispatchAttentionLive,
@@ -26,6 +26,8 @@ import {
 } from "~/modules/notifications/dispatch"
 import { type RouterDecision, resolveChannels } from "~/modules/notifications/router"
 import { readNotificationChannels } from "~/modules/notifications/settings"
+import { getOrgSenderTransport, type OrgSender } from "~/modules/org/email-from"
+import { sweepSkippingMoving, writeUnlessMoving } from "~/modules/org/transfer-state/skip-moving"
 import {
   buildIdempotencyKey,
   type DigestCadence,
@@ -77,23 +79,28 @@ export interface DigestDeps {
     cadence: DigestCadence
   }) => Promise<void>
   provider: EmailProvider
-  baseUrl: string
+  /** The org's own sender in the managed edition (S29); null keeps `provider` and its From. */
+  orgSender?: (orgId: string) => Promise<OrgSender | null>
+  /** Overrides the links' base (tests). Unset: the user's org's (orgPublicBaseUrl). */
+  baseUrl?: string
   now: Date
 }
 
 // Rule 5, read once, read everywhere: the digest carries only what is still
 // unread when it is sent. A row read on any device since it was queued is
 // retired from the digest (`suppressed`) instead of mailed, and both selects
-// below skip it.
-const RETIRE_READ_ROWS = sql`
+// below skip it. An org being moved keeps its rows as they are (notMoving).
+const retireReadRows = (notMoving: SQL) => sql`
   UPDATE ${K}.attention_events
   SET digest_state = 'suppressed'
   WHERE digest_state = 'pending'
-    AND read_at IS NOT NULL`
+    AND read_at IS NOT NULL
+    AND ${notMoving}`
 
 // Cadence 'off' is "every email cell off" (S9): such a user receives no
 // digest at all, urgent included, whatever state a row was left in.
-const PENDING_QUERY = sql`
+// An org being moved keeps its attention rows as they are until the move ends.
+const pendingQuery = (notMoving: SQL) => sql`
   SELECT a.id, a.org_id, a.user_id, a.app, a.entity_type, a.entity_id, a.kind, a.urgency,
          a.summary, a.is_urgent, a.occurred_at, a.metadata->>'threadId' AS thread_id,
          a.metadata->'requiredScopes' AS required_scopes
@@ -106,6 +113,7 @@ const PENDING_QUERY = sql`
     AND NOT COALESCE((a.metadata->>'quiet')::boolean, false)
     AND a.digest_eligible_at <= now()
     AND COALESCE(p.digest_cadence, 'daily') <> 'off'
+    AND ${notMoving}
   ORDER BY a.user_id, a.occurred_at`
 
 function rowToPending(row: Record<string, unknown>): PendingAttentionRow {
@@ -127,28 +135,32 @@ function rowToPending(row: Record<string, unknown>): PendingAttentionRow {
 }
 
 async function defaultFetchUrgent(): Promise<PendingAttentionRow[]> {
-  return withPrivilegedDb(
-    "00000000-0000-0000-0000-000000000000",
-    "digest:fetch-urgent",
-    async (tx: PrivilegedDb) => {
-      await tx.execute(RETIRE_READ_ROWS)
-      const rows = (await tx.execute(PENDING_QUERY)) as unknown as Record<string, unknown>[]
-      return rows.map(rowToPending)
-    },
-  )
+  return sweepSkippingMoving((notMoving) => {
+    const query = pendingQuery(notMoving(sql.raw("a.org_id")))
+    return withPrivilegedDb(
+      "00000000-0000-0000-0000-000000000000",
+      "digest:fetch-urgent",
+      async (tx: PrivilegedDb) => {
+        await tx.execute(retireReadRows(notMoving(sql.raw("org_id"))))
+        const rows = (await tx.execute(query)) as unknown as Record<string, unknown>[]
+        return rows.map(rowToPending)
+      },
+    )
+  })
 }
 
 async function defaultFetchCadencePending(
   cadence: "immediate" | "hourly" | "daily",
 ): Promise<PendingAttentionRow[]> {
-  return withPrivilegedDb(
-    "00000000-0000-0000-0000-000000000000",
-    `digest:fetch-${cadence}`,
-    async (tx: PrivilegedDb) => {
-      // Users without a `user_preferences` row inherit the default cadence
-      // ('daily', the column default): a LEFT JOIN + COALESCE keeps the two in sync.
-      await tx.execute(RETIRE_READ_ROWS)
-      const rows = (await tx.execute(sql`
+  return sweepSkippingMoving((notMoving) =>
+    withPrivilegedDb(
+      "00000000-0000-0000-0000-000000000000",
+      `digest:fetch-${cadence}`,
+      async (tx: PrivilegedDb) => {
+        await tx.execute(retireReadRows(notMoving(sql.raw("org_id"))))
+        // Users without a `user_preferences` row inherit the default cadence
+        // ('daily', the column default): a LEFT JOIN + COALESCE keeps the two in sync.
+        const rows = (await tx.execute(sql`
         SELECT a.id, a.org_id, a.user_id, a.app, a.entity_type, a.entity_id, a.kind,
                a.urgency, a.summary, a.is_urgent, a.occurred_at,
                a.metadata->>'threadId' AS thread_id,
@@ -161,9 +173,11 @@ async function defaultFetchCadencePending(
           AND NOT COALESCE((a.metadata->>'quiet')::boolean, false)
           AND a.digest_eligible_at <= now()
           AND COALESCE(p.digest_cadence, 'daily') = ${cadence}
+          AND ${notMoving(sql.raw("a.org_id"))}
         ORDER BY a.user_id, a.occurred_at`)) as unknown as Record<string, unknown>[]
-      return rows.map(rowToPending)
-    },
+        return rows.map(rowToPending)
+      },
+    ),
   )
 }
 
@@ -400,7 +414,8 @@ function fullDeps(partial: Partial<DigestDeps> = {}): DigestDeps {
     setLastDailySent: partial.setLastDailySent ?? defaultSetLastDailySent,
     emitDigestFailureAlert: partial.emitDigestFailureAlert ?? defaultEmitDigestFailureAlert,
     provider: partial.provider ?? getSystemEmailProvider(),
-    baseUrl: partial.baseUrl ?? env.BASE_URL ?? "http://localhost:5173",
+    orgSender: partial.orgSender ?? getOrgSenderTransport,
+    ...(partial.baseUrl ? { baseUrl: partial.baseUrl } : {}),
     now: partial.now ?? new Date(),
   }
 }
@@ -422,7 +437,7 @@ async function sendBatch(
 ): Promise<SendOutcome> {
   const message: EmailMessage = renderDigestEmail({
     rows,
-    baseUrl: deps.baseUrl,
+    baseUrl: deps.baseUrl ?? (await orgPublicBaseUrl(user.orgId)),
     now: deps.now,
     toAddress: user.email,
     locale: user.language,
@@ -438,7 +453,9 @@ async function sendBatch(
     // hand-back finds the key done and does not mail the same rows again. An
     // `unknown` outcome (an earlier run died mid-send) is not re-sent either:
     // at most once, and the rows are marked sent.
-    await sendDigestMailOnce(user.orgId, deps.provider, message)
+    const orgSender = deps.orgSender ? await deps.orgSender(user.orgId) : null
+    if (orgSender) message.from = orgSender.from
+    await sendDigestMailOnce(user.orgId, orgSender?.provider ?? deps.provider, message)
     return { sent: true, retryable: false }
   } catch (err) {
     if (err instanceof EffectInFlight) {
@@ -510,24 +527,28 @@ export async function runDigestUrgentOnce(
   const rows = await deps.fetchUrgentPending()
   const groups = groupByUser(rows)
   for (const [userId, userRows] of groups) {
-    const user = await deps.loadUser(userId)
-    if (!user?.email) {
-      // User has no deliverable email address — suppress rows so they don't
-      // accumulate indefinitely in the pending queue.
-      log.debug({ userId }, "digest: user has no email address, suppressing attention rows")
-      await deps.markRowsSuppressed(userRows.map((r) => r.id))
-      continue
-    }
-    const { send, drop } = partitionByGrid(userRows, user)
-    if (drop.length > 0) await deps.markRowsSuppressed(drop.map((r) => r.id))
-    if (send.length === 0) continue
-    const outcome = await sendBatch("urgent", send, user, deps, attempt)
-    if (outcome.sent) {
-      await deps.markRowsSent(send.map((r) => r.id))
-    } else if (outcome.retryable) {
-      setRateLimited(outcome.retryAfterMs)
-      return
-    }
+    const step = await writeUnlessMoving(userRows[0]!.orgId, async (): Promise<"next" | "stop"> => {
+      const user = await deps.loadUser(userId)
+      if (!user?.email) {
+        // User has no deliverable email address — suppress rows so they don't
+        // accumulate indefinitely in the pending queue.
+        log.debug({ userId }, "digest: user has no email address, suppressing attention rows")
+        await deps.markRowsSuppressed(userRows.map((r) => r.id))
+        return "next"
+      }
+      const { send, drop } = partitionByGrid(userRows, user)
+      if (drop.length > 0) await deps.markRowsSuppressed(drop.map((r) => r.id))
+      if (send.length === 0) return "next"
+      const outcome = await sendBatch("urgent", send, user, deps, attempt)
+      if (outcome.sent) {
+        await deps.markRowsSent(send.map((r) => r.id))
+      } else if (outcome.retryable) {
+        setRateLimited(outcome.retryAfterMs)
+        return "stop"
+      }
+      return "next"
+    })
+    if (step === "stop") return
   }
 }
 
@@ -542,30 +563,34 @@ async function runCadenceOnce(
   const rows = await deps.fetchCadencePending(cadence)
   const groups = groupByUser(rows)
   for (const [userId, userRows] of groups) {
-    const user = await deps.loadUser(userId)
-    if (!user?.email) {
-      // User has no deliverable email address — suppress rows so they don't
-      // accumulate indefinitely in the pending queue.
-      log.debug({ userId }, "digest: user has no email address, suppressing attention rows")
-      await deps.markRowsSuppressed(userRows.map((r) => r.id))
-      continue
-    }
-    if (cadence === "daily") {
-      if (!shouldFireDailyDigest(deps.now, user.timezone, user.lastDailySentAt)) continue
-    }
-    const { send, drop } = partitionByGrid(userRows, user)
-    if (drop.length > 0) await deps.markRowsSuppressed(drop.map((r) => r.id))
-    if (send.length === 0) continue
-    const outcome = await sendBatch(cadence, send, user, deps, attempt)
-    if (outcome.sent) {
-      await deps.markRowsSent(send.map((r) => r.id))
-      if (cadence === "daily") {
-        await deps.setLastDailySent(userId, deps.now)
+    const step = await writeUnlessMoving(userRows[0]!.orgId, async (): Promise<"next" | "stop"> => {
+      const user = await deps.loadUser(userId)
+      if (!user?.email) {
+        // User has no deliverable email address — suppress rows so they don't
+        // accumulate indefinitely in the pending queue.
+        log.debug({ userId }, "digest: user has no email address, suppressing attention rows")
+        await deps.markRowsSuppressed(userRows.map((r) => r.id))
+        return "next"
       }
-    } else if (outcome.retryable) {
-      setRateLimited(outcome.retryAfterMs)
-      return
-    }
+      if (cadence === "daily") {
+        if (!shouldFireDailyDigest(deps.now, user.timezone, user.lastDailySentAt)) return "next"
+      }
+      const { send, drop } = partitionByGrid(userRows, user)
+      if (drop.length > 0) await deps.markRowsSuppressed(drop.map((r) => r.id))
+      if (send.length === 0) return "next"
+      const outcome = await sendBatch(cadence, send, user, deps, attempt)
+      if (outcome.sent) {
+        await deps.markRowsSent(send.map((r) => r.id))
+        if (cadence === "daily") {
+          await deps.setLastDailySent(userId, deps.now)
+        }
+      } else if (outcome.retryable) {
+        setRateLimited(outcome.retryAfterMs)
+        return "stop"
+      }
+      return "next"
+    })
+    if (step === "stop") return
   }
 }
 

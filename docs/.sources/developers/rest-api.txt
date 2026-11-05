@@ -1,11 +1,11 @@
 /api routes use authMiddleware: Bearer access token only -> apps/api/src/middleware/auth.ts:16-26
 MCP tokens refused on /api -> apps/api/src/middleware/auth.ts:28-40
 Access token lifetime 15 minutes -> apps/api/src/modules/auth/jwt.ts:42
-authMw composed for /api routes -> apps/api/src/app.ts:576-584
+authMw composed for /api routes -> apps/api/src/app.ts:577-584
 API keys are tickets keys (app_tickets.api_keys) for the ticket-create webhook -> apps/api/src/cli/provisioners/api-keys.ts:2-4
 Key accepted only by the public ticket routes (classifyTier) -> apps/api/src/modules/webhooks/tickets-public.ts:401-455
 Authorization: Bearer or ApiKey, sha256 lookup -> apps/api/src/modules/webhooks/tickets-public.ts:409-415
-Public routes mounted at /webhooks -> apps/api/src/app.ts:1172
+Public routes mounted at /webhooks -> apps/api/src/app.ts:1159
 Create routes generic and per inbox -> apps/api/src/modules/webhooks/tickets-public.ts:1336-1346
 Attachment routes -> apps/api/src/modules/webhooks/tickets-public.ts:666-674
 No OpenAPI document (only a test fixture CRM has one) -> apps/api/src/apps/api-connector/__fixtures__/fixture-crm/openapi.json:1
@@ -40,3 +40,10 @@ Error envelope message + code -> apps/api/src/middleware/error-handler.ts:85
 API key provisioning in the CLI -> docs/provisioning-cli.md:269
 access token refused once its session ends -> apps/api/src/middleware/auth.ts:49
 sign-out revokes the session's access tokens -> apps/api/src/modules/auth/auth.ts:839
+402 payment_required -> apps/api/src/modules/cloud/suspension.ts:95
+403 org_suspended with accessUntil and contact -> apps/api/src/middleware/error-handler.ts:81
+Admin session keeps billing and export routes while suspended -> apps/api/src/modules/cloud/suspension.ts:108
+Public tickets endpoints answer 403 org_suspended while suspended or closed (managed) -> apps/api/src/modules/webhooks/tickets-public.ts:81 ; apps/api/src/modules/cloud/suspension.ts:174
+503 org_moving with retryAfterSeconds and Retry-After 2 s while the org moves -> apps/api/src/modules/org/transfer-state/gate.ts:33 ; packages/control-plane-contract/src/moves.ts:86
+Frozen refuses writes, reads served; draining refuses turn-starting calls -> apps/api/src/modules/org/transfer-state/gate.ts:55 ; apps/api/src/modules/org/transfer-state/gate.ts:63
+Websocket closes 4005 and the client retries every 2 s -> apps/web/src/primitives/createWebSocket.ts:496 ; packages/control-plane-contract/src/moves.ts:96

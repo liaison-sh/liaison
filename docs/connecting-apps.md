@@ -133,6 +133,22 @@ before the user ever reaches your app.
 There is one callback for all apps; the `state` parameter carries which app,
 connection, org, user and owner-type the flow belongs to.
 
+### One redirect host for several org hosts
+
+A deployment that serves each org on its own host (`LIAISON_ORG_HOST_TEMPLATE`)
+can send every provider to one central host instead: set
+`LIAISON_OAUTH_REDIRECT_BASE` (for example `https://auth.example.com`). The
+redirect URI is then `${LIAISON_OAUTH_REDIRECT_BASE}/api/connections/callback`
+for connections and `${LIAISON_OAUTH_REDIRECT_BASE}/api/auth/oauth/callback`
+for sign-in, the one URI to register with each provider. The code exchange sends
+the same URI. The `state` starts with the org's slug and a dot
+(`acme.<random>`), so whatever serves the central host can send the browser on
+to `acme`'s own host, where the flow started; the callback there refuses a state
+that names another org or has no slug. Every setup guide (Google, Shopify, Meta
+and the rest) shows the central URI when the variable is set. MCP server
+sign-ins keep the org's own host: their clients are registered per connection,
+so no single URI is needed. Unset, everything uses `BASE_URL` as above.
+
 ### Set up a Google OAuth client
 
 The agent guides an administrator through it (kernel skill `google-setup`).
@@ -171,7 +187,11 @@ the workspace's own client, a connection that was never connected with it (the
 client was set up for Gmail, Calendar was turned on later) first has its APIs
 turned on and its scopes added in that client's project; Gmail push stays
 optional. When the server provides a shared
-Gmail push topic (`GMAIL_PUBSUB_TOPIC`), the Pub/Sub step is dropped too. The
+Gmail push topic (`GMAIL_PUBSUB_TOPIC`), the Pub/Sub step is dropped too. On a
+managed server that topic lives in the project of the server's own Google client,
+and Gmail publishes only to a topic in the calling client's project: a workspace
+on its own Google client keeps the Pub/Sub step and creates the topic in its own
+project. The
 scopes and APIs the tool lists cover only the connections that still need a
 client. Once the workspace has its own Google client, a connection that takes a
 client of its own (Google Drive, YouTube) is left out of these steps and named
@@ -200,6 +220,12 @@ disconnected; the same address counts once. Past the limit, connecting a new
 address is refused with `MAILBOX_LIMIT_REACHED` (409, or the connect failure of
 the same name after an OAuth consent); reconnecting a connected address always
 works.
+
+In the managed edition the limit is the plan's shared mailboxes: only the mailboxes
+the organization owns count. A person's own mailbox never counts, and each
+person can connect one; a second personal address is refused with
+`PERSONAL_MAILBOX_LIMIT_REACHED` (409). The same address for another app is the
+same mailbox.
 
 ### Which path an address takes
 
@@ -290,8 +316,14 @@ One resolver picks every connection's client
 | Google Drive | `GOOGLE_DRIVE_OAUTH_CLIENT_ID` / `GOOGLE_DRIVE_OAUTH_CLIENT_SECRET` |
 | Google Ads, Merchant Center (Ads), YouTube (Social) | `GOOGLE_MARKETING_OAUTH_CLIENT_ID` / `GOOGLE_MARKETING_OAUTH_CLIENT_SECRET` |
 | Shopify | `SHOPIFY_APP_CLIENT_ID` / `SHOPIFY_APP_CLIENT_SECRET` |
+| Facebook, Instagram through Facebook login (Social), managed edition only | `META_APP_ID` / `META_APP_SECRET` |
 
 A workspace that brings its own client always overrides the instance's.
+On a managed server, while a workspace uses the server's Google client or Meta
+app, the server's Gmail push values (topic, audience, service account) and its
+Meta app secret and callback are the ones the apps use: a value the workspace
+stored for one of them is ignored, and setting one is refused
+(`cell_config_locked`). A workspace on its own client keeps its own values.
 `GOOGLE_OAUTH_*` is the sign-in client, never an app connection's.
 
 When the instance provides a connection's client, the setup skips client
@@ -356,6 +388,12 @@ upsert, so they cannot drift):
   manifest, and 400s if the connection is not `type: oauth2` — so a typo can't
   create a dangling client row.
 - **Settings → the app → OAuth client dialog** — same upsert, admin-gated.
+  When a client is already configured (the org's or the instance's), the
+  connect dialog shows one **Connect** button and a sentence naming whose
+  account gets connected (yours, or the organization's); the client fields
+  sit behind **Use your own OAuth client**, which replaces the client. With
+  no client configured, the fields show up front. On a managed instance whose
+  client the instance provides, the dialog never offers the fields.
 
 Read it back with `GET …/oauth-client` (secret is never returned).
 
@@ -651,6 +689,7 @@ accident, and disconnect the one you did not mean to add.
 | 403 "Admin scope required" on connect/disconnect | org-mode connect without `<app>:accounts:admin` | Grant the scope or connect user-owned. |
 | App silently uninitialised after connecting | post-connect event lost | `POST /api/connections/:appName/:connectionName/reconcile`. |
 | "requires re-authorization" / repeated 401s | refresh token revoked/expired at provider | Disconnect and reconnect. |
+| Callback answers `503` `org_moving` | the organization was being moved to another server at that moment | Connect again a few seconds later. |
 | MCP device flow 403 on initiate | `clientId` not in `DEVICE_FLOW_CLIENTS` | Add it to the env (or `*`). |
 | Connect succeeds, account is `active`, **but nothing happens** (no tickets / no events / no files) | Connected the **wrong app's** connection for the same provider (§7) | Connect the app that owns the outcome, e.g. `tickets/gmail` not `mail/gmail`. Disconnect the stray one. |
 

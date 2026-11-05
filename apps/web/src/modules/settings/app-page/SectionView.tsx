@@ -24,6 +24,7 @@ import { FieldBlock } from "./fields"
 import { ListBlock } from "./ListBlock"
 import { useAppPage } from "./page-context"
 import { labelOf, unitSetTool } from "./page-model"
+import { settingsSectionElementId } from "./reveal-section"
 import type { SaveOutcome, UnitSaveOutcome } from "./settings-api"
 import { isSupportedSettingsBlock } from "./supported"
 import { TreeBlock } from "./TreeBlock"
@@ -166,6 +167,8 @@ export const SectionView: Component<SectionViewProps> = (props) => {
 
   return (
     <section
+      id={settingsSectionElementId(props.app, props.section.id)}
+      tabIndex={-1}
       aria-labelledby={headingId()}
       data-testid={`settings-section-${props.section.id}`}
       class={props.compact ? "mt-5 first:mt-0" : "mt-9 first:mt-0"}

@@ -2,9 +2,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { createHash, randomUUID } from "node:crypto"
 import { sql } from "drizzle-orm"
-import { withPrivilegedDb } from "~/db/privileged"
+import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { CryptoContext, decryptSecret } from "~/lib/crypto"
 import { env } from "~/lib/env"
+import { readIdentityBootState } from "~/lib/managed-boot"
+import { deleteIdentity } from "~/modules/liaison-team/identity"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { seedContext } from "~/seed/context"
 import { seedBaseAgent } from "~/seed/factories/agent/agents"
@@ -842,6 +844,22 @@ describe("/api/_test/seed", () => {
       TIMEOUT_MS,
     )
   })
+  describe("liaison team factories", () => {
+    test(
+      "liaisonTeam.identity leaves a registered identity the managed boot accepts",
+      async () => {
+        const app = await buildTestApp()
+        try {
+          const res = await seed(app, undefined, "liaisonTeam.identity", {})
+          expect(res.status).toBe(200)
+          expect(await readIdentityBootState()).toBe("registered")
+        } finally {
+          await withSystemDb("seed-route-test:identity", (tx) => deleteIdentity(tx))
+        }
+      },
+      TIMEOUT_MS,
+    )
+  })
   describe("agent factories", () => {
     test(
       "pricing.catalog seeds the models and the rate; credits.balance sets exact amounts",
@@ -873,6 +891,40 @@ describe("/api/_test/seed", () => {
         expect(counts?.rate).toBe(1)
         expect(Number(counts?.included)).toBe(2)
         expect(Number(counts?.purchased)).toBe(1.25)
+      },
+      TIMEOUT_MS,
+    )
+
+    test(
+      "billing.state writes the pushed billing state; a repeat call is a newer push",
+      async () => {
+        const org = await createTestOrg()
+        const app = await buildTestApp()
+        const first = await seed(app, org.id, "billing.state", { plan: "base" })
+        expect(first.status).toBe(200)
+        const again = await seed(app, org.id, "billing.state", {
+          plan: "pro",
+          status: "past_due",
+          periodEnd: "2030-01-01T00:00:00.000Z",
+          includedCredits: 250,
+        })
+        expect(again.status).toBe(200)
+        const [state] = await withPrivilegedDb(org.id, "seed-route-test:billing", async (tx) =>
+          rowsOf<{ plan: string; status: string; version: number; credits: string; end: string }>(
+            await tx.execute(
+              sql`SELECT plan, status, version::int AS version, included_credits::text AS credits,
+                         to_char(period_end AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS end
+                    FROM kernel.org_billing_state WHERE org_id = ${org.id}::uuid`,
+            ),
+          ),
+        )
+        expect(state).toMatchObject({
+          plan: "pro",
+          status: "past_due",
+          version: 2,
+          end: "2030-01-01",
+        })
+        expect(Number(state?.credits)).toBe(250)
       },
       TIMEOUT_MS,
     )

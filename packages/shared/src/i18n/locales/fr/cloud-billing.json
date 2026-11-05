@@ -1,0 +1,111 @@
+{
+  "nav": "Facturation",
+  "title": "Facturation",
+  "intro": "Votre offre, votre carte de paiement, vos factures et vos crédits.",
+  "unavailable": "La facturation est indisponible pour le moment. Réessayez dans un instant.",
+  "retry": "Réessayer",
+  "notOnThisServer": "Ce serveur n'a pas de facturation : les offres, factures et crédits relèvent de Liaison Cloud.",
+  "plan": {
+    "title": "Offre",
+    "name": {
+      "preview": "Preview",
+      "base": "Base",
+      "pro": "Pro"
+    },
+    "status": {
+      "active": "Active",
+      "past_due": "Paiement en retard",
+      "suspended": "Suspendue",
+      "closed": "Clôturée"
+    },
+    "renews": "Renouvellement le {{date}}",
+    "previewEnds": "La période Preview se termine le {{date}}",
+    "cancelAt": "Se termine le {{date}}. Votre espace reste disponible jusque-là.",
+    "nextInvoice": "Prochaine facture : {{amount}} le {{date}}",
+    "noNextInvoice": "Aucune facture à venir.",
+    "pendingUpgrade": "Passage à {{plan}} en attente de paiement.",
+    "pendingDowngrade": "Passage à {{plan}} le {{date}}.",
+    "changeNotApplied": "Le passage à {{plan}} n'a pas été appliqué : le paiement n'a pas abouti.",
+    "confirmPayment": "Confirmer le paiement",
+    "paymentAction": "Un paiement de {{amount}} attend votre confirmation.",
+    "change": "Changer d'offre",
+    "current": "Offre actuelle",
+    "switchTo": "Passer à {{plan}}",
+    "includedCredits": "{{credits}} crédits inclus chaque mois",
+    "changed": "Votre offre est maintenant {{plan}}.",
+    "scheduled": "Votre offre passe à {{plan}} le {{date}}.",
+    "capsExceeded": "Cette offre est trop petite pour votre usage actuel : {{caps}}. Réduisez-le d'abord, puis changez d'offre.",
+    "cap": {
+      "seats": "membres",
+      "sharedMailboxes": "boîtes partagées",
+      "mailboxes": "boîtes mail",
+      "storageGb": "stockage",
+      "customApps": "applications personnalisées",
+      "auditDays": "historique d'audit"
+    },
+    "changePending": "Un autre changement d'offre est déjà en cours.",
+    "samePlan": "C'est déjà votre offre."
+  },
+  "card": {
+    "title": "Carte de paiement",
+    "onFile": "{{brand}} se terminant par {{last4}}, expire le {{month}}/{{year}}",
+    "none": "Aucune carte enregistrée.",
+    "change": "Changer de carte",
+    "add": "Ajouter une carte",
+    "updated": "Votre carte est enregistrée."
+  },
+  "credits": {
+    "title": "Crédits",
+    "left": "{{credits}} crédits restants",
+    "usedPercent": "{{percent}} % des crédits du mois utilisés"
+  },
+  "topUp": {
+    "title": "Acheter des crédits",
+    "description": "Les crédits achetés sont utilisés après ceux de votre offre et n'expirent pas à la fin du mois.",
+    "amount": "Crédits",
+    "minimum": "Au moins {{min}} crédits.",
+    "price": "{{price}} hors taxes",
+    "buy": "Acheter {{credits}} crédits",
+    "paid": "{{credits}} crédits ajoutés.",
+    "belowMinimum": "Achetez au moins {{min}} crédits.",
+    "failed": "Le paiement n'est pas passé. Vérifiez votre carte et réessayez."
+  },
+  "autoTopUp": {
+    "title": "Recharge automatique",
+    "description": "Achetez des crédits automatiquement avec votre carte quand votre solde baisse. Au plus une fois par heure.",
+    "enabled": "Recharger automatiquement",
+    "threshold": "Quand les crédits passent sous",
+    "amount": "Acheter ce nombre de crédits",
+    "save": "Enregistrer",
+    "saved": "Recharge automatique enregistrée.",
+    "lastFailure": "La dernière recharge automatique a échoué le {{date}} ; elle a été désactivée. Vérifiez votre carte, puis réactivez-la."
+  },
+  "invoices": {
+    "title": "Factures",
+    "none": "Aucune facture pour le moment.",
+    "download": "Télécharger le PDF",
+    "creditNote": "Avoir",
+    "status": {
+      "open": "Ouverte",
+      "paid": "Payée",
+      "void": "Annulée",
+      "uncollectible": "Impayée"
+    },
+    "tooLarge": "Cette facture est trop volumineuse pour être téléchargée ici. Elle vous a été envoyée par e-mail.",
+    "downloadFailed": "La facture n'a pas pu être téléchargée. Réessayez dans un instant."
+  },
+  "cancel": {
+    "title": "Résilier l'abonnement",
+    "description": "Votre abonnement prend fin à la fin de la période en cours. Vous pouvez le reprendre d'ici là.",
+    "action": "Résilier en fin de période",
+    "confirm": "Résilier votre abonnement à la fin de la période ?",
+    "resume": "Reprendre l'abonnement",
+    "resumed": "Votre abonnement continue."
+  },
+  "frame": {
+    "title": "Paiement sécurisé",
+    "loading": "Ouverture du formulaire de paiement sécurisé…",
+    "close": "Fermer",
+    "failed": "Le formulaire de paiement n'a pas pu s'ouvrir. Réessayez dans un instant."
+  }
+}

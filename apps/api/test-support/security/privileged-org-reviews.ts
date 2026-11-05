@@ -23,6 +23,10 @@ export const TRUSTED_SOURCES: Record<string, string> = {
     "operator CLI: the org the operator names by slug, or the only org (cli/lib/resolve-org-id.ts)",
   resolveExportOrgId:
     "operator CLI (liaison org export): the org the operator names by id (checked to exist in kernel.organizations) or by slug through resolveOrgId (cli/org-export.ts)",
+  moving:
+    "the freeze resolver's own rows: OrgTransferView's snapshot of the kernel.organizations rows whose transfer_state is set (readMovingOrgs, org/transfer-state/state.ts), each org id the row's own id and each action bound to that org and its transfer id (resolver.ts resolveOverdueMoves)",
+  parseOrgTransferArgs:
+    "operator CLI (liaison org transfer): the org id (a uuid) the operator passes on the box; purge-source then refuses unless that org's row is `moved` under the same transfer id (cli/org-transfer.ts, modules/org/transfer/purge.ts)",
   loadOrgToDelete:
     "operator CLI (liaison org delete): the kernel.organizations row the operator names by id or slug on the box; null when there is none (cli/org-delete.ts)",
   resolveMember:
@@ -145,8 +149,6 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
     "websocket frame handler: conn.orgId was set from the ticket verified at upgrade",
   "apps/api/src/modules/agent/context/checkpoint.ts#loadFrozenCore":
     "exported, never called in the server sources (no production path)",
-  "apps/api/src/modules/agent/credits/credit-service.ts#broadcastBalanceUpdate":
-    "exported, never called in the server sources (no production path)",
   "apps/api/src/modules/agent/directory/routing.ts#resolveRoute":
     "exported, never called in the server sources (no production path)",
   "apps/api/src/modules/agent/routines/routine-report.ts#readTickFinalReply":
@@ -207,6 +209,14 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
     "backfill job's privileged default: called with the org of the user being backfilled",
   "apps/api/src/modules/mailbox-crypto/purge.ts#runPrivileged":
     "purge job's privileged default: called with the org being purged",
+  "apps/api/src/modules/cloud/attention.ts#computeCloudBillingAttentionItems":
+    "attention computer registered by name: called for the org being computed",
+  "apps/api/src/modules/cloud/billing-status.ts#orgBillingStatus":
+    "the billing status the control plane pushed for one org (managed edition), read by every gate that must refuse a suspended org (requests, jobs, inbound webhooks, the cell callbacks, a private app bundle, the delete timer's fence): it returns that org's status word and period end only, and each caller passes the org it is about to act for",
+  "apps/api/src/modules/agent/credits/managed-side-call.ts#systemWorkUserId":
+    "the user a managed side call's usage row is attributed to: called through a dynamic import by message-indexer.ts (managedOrgEmbedder) with the org whose content it indexes; reads one user id of that org",
+  "apps/api/src/modules/cloud/billing.ts#applyBillingPush":
+    "signed control plane push: the org is the one the verified request names (path and body must agree, modules/cloud/verify.ts)",
   "apps/api/src/modules/mailbox-keys/attention.ts#computeMailboxEnrollmentAttentionItems":
     "attention computer registered by name: called for the org being computed",
   "apps/api/src/modules/mailbox-keys/reset.ts#resetMailbox":
@@ -231,6 +241,12 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
  * The caller trace stops at a call made from one of them.
  */
 export const REVIEWED_ORIGINS: Record<string, string> = {
+  "apps/api/src/modules/org/transfer/import.ts#importOrg":
+    "an org transfer import: the org named by the bundle header the source agent streams over the operator's private channel (a uuid); the purge runs only on this instance's own copy of that org, `incoming` under the header's transfer id (or a `moved` copy the header's arrivedVia proves), and purgeTransferCopy re-checks that row",
+  "apps/api/src/modules/org/transfer/agent-target.ts#TargetAgent.run":
+    "the org transfer target agent, reached only over the operator's private ssh channel (its stdin): the org is the uuid of the session's one `hello` (a second is refused), and `abort` purges only while that org's row is `incoming` under the session's own transfer id",
+  "apps/api/src/modules/cloud/credits.ts#applyCreditGrant":
+    "signed control plane credit grant: the org is the one the verified request names (path and body must agree, modules/cloud/verify.ts), checked to exist before any credit",
   "apps/api/src/seed/factories/support/ticket.ts#createOneTicket":
     "the /api/_test/seed route's factories (test-support/seed/factories.ts, mounted only in test builds; no product caller): the org a browser test names in its request, the one its lane seeded",
   "apps/api/src/seed/factories/support/ticket.ts#closeTickets":
@@ -327,6 +343,8 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "sweep: approval rows stuck in approving; each reaped in its own row's org",
   "apps/api/src/modules/search/reindex.ts#runReindex":
     "reindex sweep: every org id (listOrgIds); each org's documents streamed in that org",
+  "apps/api/src/modules/search/reindex.ts#setUpOrgsOf":
+    "rebuild replay: the org each noted live index write carries, recorded by the index writer from the write's own org (replayTouched)",
   "apps/api/src/apps/mail/search-enrichment.ts#<module>":
     "index batch grouped by each item's own payload org (search-enrichment.ts:300-308)",
   "apps/api/src/cli/agent/ask.ts#runAgentAsk": "operator CLI: the org chosen with resolveOrgId",
@@ -340,8 +358,6 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
   "apps/api/src/cli/slack/import.ts#runSlackImport": "operator CLI: the import's target org",
   "apps/api/src/cli/setup/crawl-site.ts#pageTitle":
     "setup CLI: no org involved (a regex match of the crawled page title reached the name-based trace)",
-  "apps/api/src/modules/billing-admin/index.ts#createBillingAdminRoutes.POST /credits/reset":
-    "billing control plane: static operator key (managed edition only); the org is the one the operator names",
   "apps/api/src/modules/mail/routes.ts#POST /drafts/:id/send":
     "orgId is c.get('orgId'); the spread body (sendDraftBody, mail/routes.ts:49) declares no orgId and zod drops unknown keys",
   "apps/api/src/modules/node-sessions/routes-me.ts#POST /":
@@ -350,8 +366,16 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "public ticket intake: the URL org only scopes the lookup; an API key of that org (classifyTier) or the org's enabled public form is the authority, behind the pre-auth throttle",
   "apps/api/src/modules/webhooks/tickets-public.ts#handleAttachmentUpload":
     "public ticket intake: the URL org only scopes the lookup; an API key of that org (classifyTier) is the authority, behind the pre-auth throttle",
-  "apps/api/src/modules/webhooks/routes.ts#POST /:orgId/:appName/:endpointName":
-    "the registration found under the URL key carries the org; the signature is verified before the handler",
+  "apps/api/src/modules/cloud/create-org.ts#createCloudOrg":
+    "signed control plane org creation (modules/cloud/verify.ts): the org is the one this request just created or found by its own requested slug (an idempotent retry), and every write after it (plan, mail provider, default models) is pinned to that org",
+  "apps/api/src/modules/cloud/routes.ts#PUT /orgs/:id/mail-sender":
+    "signed control plane push (modules/cloud/verify.ts): the body's org must equal the path's or the route answers 400 before any read",
+  "apps/api/src/modules/cloud/routes.ts#PUT /orgs/:id/custom-apps/:name/state":
+    "signed control plane push (modules/cloud/verify.ts): the body's org and app must equal the path's or the route answers 400 before any read",
+  "apps/api/src/modules/agent/credits/managed-side-call.ts#managedSideCallGate":
+    "the managed side-call gate, handed on as a value: media-analysis-tool.ts calls it (deps.managedSideCallGate) with ctx.orgId, the run's org, and message-indexer.ts (managedOrgEmbedder, dynamic import) with the org whose content it indexes",
+  "apps/api/src/modules/webhooks/routes.ts#dispatchVerifiedWebhook":
+    "an inbound delivery already verified (by the app's verifier on POST /:orgId/:appName/:endpointName, or by the kernel on the server's own Meta callback): the handler runs for the registration's own org, found under [orgId, app, endpoint], and the payload is the provider's body, which names no org the dispatch uses",
   "apps/api/src/modules/webhooks/org-setup.ts#setUpOrgForInboundWebhook":
     "unauthenticated /webhooks/:orgId/* first touch (app.ts): the path org only picks which org gets the setup any first touch runs; awaitOrgApps skips a non-UUID or an id no organization row carries, returns at once for a registered org, and writes only that org's own idempotent, stamp-gated setup; nothing is returned, and each route's own capability check (signature, verify token, API key or public form) still guards everything after it",
   "apps/api/src/modules/apps/org-apps.ts#pathOrgAppState":
@@ -432,8 +456,6 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "the user and org the invite registration just created",
   "apps/api/src/modules/auth/routes.ts#POST /password-reset/request":
     "the user the reset address resolves to in the named org; the mail goes to that user only",
-  "apps/api/src/modules/billing-admin/index.ts#createBillingAdminRoutes.POST /credits":
-    "billing control plane: static operator key (managed edition only); the org is the one the operator names",
   "apps/api/src/modules/demo/api-connector/connection.ts#installDemoApiConnectorConnection":
     "demo seeding: called for the demo org being seeded",
   "apps/api/src/modules/contacts/erasure.ts#release":
@@ -510,7 +532,7 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "sandbox worker pool: a nested dispatch from a running handler, for the org of that run",
   "apps/api/src/modules/attention/translator.ts#route":
     "attention translator: the event's own org (event.orgId) and the routed user",
-  "apps/api/src/modules/auth/auth.ts#refreshSession":
+  "apps/api/src/modules/auth/auth.ts#refreshSessionUnder":
     "the session row the refresh token named, in that session's org",
   "apps/api/src/modules/demo/demo-reset.ts#reapExpiredDemoOrgs":
     "demo sweep: expired demo org rows found by the reaper",
@@ -626,6 +648,8 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
  * `file#name` → who calls what they keep, with which org.
  */
 export const REVIEWED_REGISTRIES: Record<string, string> = {
+  "apps/api/src/modules/org/transfer-state/resolver.ts#setIncomingOrgPurge":
+    "keeps the one incoming-copy purge (org/transfer/purge.ts); resolveOverdueMoves calls it with the org and transfer id of an `incoming` transfer-state row past its freeze deadline that the control plane reports aborted (resolver.ts), and the purge re-checks that row first",
   "apps/api/src/modules/apps/approval-summarizers.ts#registerApprovalSummarizer":
     "kept per [orgId, app, tool] (approval-summarizers.ts:42-48); the approval pipeline calls it for an approval of that org",
 }

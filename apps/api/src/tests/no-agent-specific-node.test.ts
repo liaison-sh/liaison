@@ -14,7 +14,7 @@
 //   sub-agent-definitions.ts and its test, the sub-agent dispatch prompt and
 //   kernel-tools.ts, and the tests that use a `researcher` sub-agent as their
 //   example (the sub-agent chat surface, the access-change gates, the approval
-//   card's sub-agent crumb);
+//   card's sub-agent crumb, the lively seed's activity plan);
 // - this file (A51), whose own text names the pattern.
 // The 0127 migration that created the templates is history and is excluded.
 import { describe, expect, test } from "bun:test"
@@ -33,6 +33,7 @@ const ALLOWED = new Set([
   "apps/api/src/modules/agent/subruns/spawn-agent-chat-surface.test.ts",
   "apps/api/src/modules/agent/tools/access-change-gates.test.ts",
   "apps/web/src/modules/approvals/ApprovalCard.test.tsx",
+  "apps/api/src/seed/tiers/lively/activity-plan.test.ts",
   "apps/api/src/tests/no-agent-specific-node.test.ts",
 ])
 

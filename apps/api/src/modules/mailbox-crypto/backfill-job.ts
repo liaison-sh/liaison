@@ -41,6 +41,11 @@ import { registerJobWorker, registerScheduledJob } from "~/infra/jobs/jobs"
 import { hasLeadershipMonitorStarted } from "~/infra/leadership"
 import { jobsLogger as log } from "~/lib/logger"
 import { sealMailFields } from "~/modules/mailbox-crypto/mail-writer"
+import {
+  SKIPPED_MOVING,
+  sweepSkippingMoving,
+  writeUnlessMoving,
+} from "~/modules/org/transfer-state/skip-moving"
 
 const K = drizzleSql.raw(`"${schemaRef("kernel")}"`)
 const MAIL = drizzleSql.raw(`"${schemaRef("app_mail")}"`)
@@ -464,15 +469,19 @@ export async function usersNeedingBackfill(
   deps: BackfillDeps = {},
 ): Promise<Array<{ userId: string; orgId: string }>> {
   const run = runPrivileged(deps)
-  return run("00000000-0000-0000-0000-000000000000", "mailbox-backfill:scan", async (tx) =>
-    extractRows<{ user_id: string; org_id: string }>(
-      await tx.execute(drizzleSql`
+  // An org being moved keeps its mailbox rows as they are until the move ends.
+  return sweepSkippingMoving((notMoving) =>
+    run("00000000-0000-0000-0000-000000000000", "mailbox-backfill:scan", async (tx) =>
+      extractRows<{ user_id: string; org_id: string }>(
+        await tx.execute(drizzleSql`
         SELECT DISTINCT i.user_id::text AS user_id, i.org_id::text AS org_id
           FROM ${K}.user_mailbox_identities i
           LEFT JOIN ${K}.mailbox_migration_state s ON s.user_id = i.user_id
          WHERE i.status = 'active'
+           AND ${notMoving(drizzleSql.raw("i.org_id"))}
            AND s.backfill_completed_at IS NULL`),
-    ).map((r) => ({ userId: r.user_id, orgId: r.org_id })),
+      ).map((r) => ({ userId: r.user_id, orgId: r.org_id })),
+    ),
   )
 }
 
@@ -480,7 +489,10 @@ export async function runMailboxBackfillSweep(deps: BackfillDeps = {}): Promise<
   const users = await usersNeedingBackfill(deps)
   for (const user of users) {
     try {
-      const result = await runMailboxBackfillForUser(user.userId, user.orgId, deps)
+      const result = await writeUnlessMoving(user.orgId, () =>
+        runMailboxBackfillForUser(user.userId, user.orgId, deps),
+      )
+      if (result === SKIPPED_MOVING) continue
       log.info(
         {
           userId: user.userId,
@@ -537,6 +549,13 @@ export async function registerMailboxBackfillWorker(
         "would not run under the singleton gate. Register it from index.ts, immediately after startLeadership().",
     )
   }
+  await registerMailboxBackfillJobs(deps)
+}
+
+/** The registrations alone, without the leadership assertion (the job audit registers them). */
+export async function registerMailboxBackfillJobs(
+  deps: BackfillRegistrationDeps = {},
+): Promise<void> {
   const register = deps.registerScheduled ?? registerScheduledJob
   await register("kernel", MAILBOX_BACKFILL_JOB_NAME, MAILBOX_BACKFILL_CRON, async () =>
     runMailboxBackfillSweep(),

@@ -20,8 +20,10 @@ import type { AppEnv } from "~/app"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { invitations, passwordResets, sessions, users } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
-import { getSystemEmailProvider, systemEmailLeavesThisInstance } from "~/infra/email"
+import { sendSystemEmailObserved, systemEmailLeavesThisInstance } from "~/infra/email"
 import { renderBrandedEmail } from "~/infra/email-layout"
+import { claimEmailOutageProbe, readEmailOutage } from "~/infra/email-outage"
+import { parseOriginAllowlist } from "~/lib/app-origins"
 import {
   CryptoContext,
   decryptSecret,
@@ -31,10 +33,20 @@ import {
   hashPassword,
   hashToken,
 } from "~/lib/crypto"
+import { isManagedEdition } from "~/lib/edition"
 import { encryptionKey, env } from "~/lib/env"
 import { authLogger as log } from "~/lib/logger"
+import {
+  hostAllowsOrg,
+  hostBindingEnabled,
+  orgIdForSlug,
+  refreshOriginAllowed,
+  requestHostBinding,
+  signInOrgSlug,
+} from "~/lib/org-host"
+import { orgPublicBaseUrl } from "~/lib/org-public-url"
 import { redis } from "~/lib/redis"
-import { getClientIp } from "~/lib/request-context"
+import { effectiveRequest, getClientIp } from "~/lib/request-context"
 import {
   clearRefreshTokenCookie,
   getRefreshTokenFromCookie,
@@ -75,6 +87,7 @@ import {
 } from "~/modules/auth/auth"
 import { invalidateAuthCache } from "~/modules/auth/auth-state"
 import {
+  EmailProviderUnavailableError,
   EmailSignInUnavailableError,
   requestMagicLink,
   resolveUser,
@@ -147,12 +160,43 @@ export const auth = new Hono<AppEnv>()
 const MAX_WRONG_TOTP_CODES_PER_DAY = 10
 const MAX_WRONG_PASSWORDS_PER_DAY = 30
 
+/**
+ * Whether a one-time token's org may redeem it on this request's host. Without
+ * org hosts nothing is bound (no lookup). An unknown token passes: the redeem
+ * path answers it as it always did.
+ */
+async function tokenOrgAllowedHere(
+  c: Context<AppEnv>,
+  kind: "invitation" | "password-reset",
+  token: string,
+): Promise<boolean> {
+  if (!hostBindingEnabled()) return true
+  const tokenHash = hashToken(token)
+  const [row] = await withSystemDb(`${kind}-host-check`, (tx) =>
+    kind === "invitation"
+      ? tx
+          .select({ orgId: invitations.orgId })
+          .from(invitations)
+          .where(eq(invitations.tokenHash, tokenHash))
+          .limit(1)
+      : tx
+          .select({ orgId: passwordResets.orgId })
+          .from(passwordResets)
+          .where(eq(passwordResets.tokenHash, tokenHash))
+          .limit(1),
+  )
+  return !row || (await hostAllowsOrg(c, row.orgId))
+}
+
 auth.post("/register", zValidator("json", registerSchema), async (c) => {
   const body = c.req.valid("json")
   const ip = getClientIp(c)
 
   const bootstrapped = await isBootstrapped()
   if (!bootstrapped) {
+    // The managed edition provisions its operator org and admin from the CLI:
+    // the web bootstrap does not exist there.
+    if (isManagedEdition()) throw new HTTPException(404, { message: "Not found" })
     // Rate-limit bootstrap registration per IP to prevent rapid org creation
     // Skipped in test environment to avoid cross-test interference
     if (env.NODE_ENV !== "test") {
@@ -192,6 +236,12 @@ auth.post("/register", zValidator("json", registerSchema), async (c) => {
     throw new HTTPException(400, { message: "Invitation required" })
   }
 
+  // Under host binding an invitation is redeemed on its org's own host only
+  // (the session it opens would be refused anywhere else); elsewhere it reads
+  // as invalid and is not spent.
+  if (!(await tokenOrgAllowedHere(c, "invitation", body.inviteToken))) {
+    throw new HTTPException(400, { message: "Invalid or expired invitation" })
+  }
   const result = await inviteRegister(body.inviteToken, body.password, body.name)
   if (!result.success) {
     throw new HTTPException(400, { message: result.error })
@@ -213,6 +263,9 @@ auth.post("/register", zValidator("json", registerSchema), async (c) => {
 // Validate invite token (unauthenticated — called by Register page before showing the form)
 auth.get("/invites/:token/validate", async (c) => {
   const token = c.req.param("token")
+  if (!(await tokenOrgAllowedHere(c, "invitation", token))) {
+    throw new HTTPException(404, { message: "Invalid or expired invitation" })
+  }
   const tokenHash = hashToken(token)
   const [invite] = await withSystemDb("invite-validate", (tx) =>
     tx
@@ -244,6 +297,10 @@ auth.get("/bootstrap-state", async (c) => {
 
 auth.post("/login", zValidator("json", loginSchema), async (c) => {
   const { email, password, orgSlug } = c.req.valid("json")
+  // The org the host names, decided before any password is checked: a slug
+  // that disagrees with the host (400) or a host that names no org (404) is
+  // not a wrong password and spends none of the account's daily allowance.
+  const signInSlug = signInOrgSlug(c, orgSlug)
 
   // Brute-force protection (read-only — does not increment counters)
   // Fail-closed: Redis failure blocks login to prevent brute-force bypass
@@ -273,7 +330,7 @@ auth.post("/login", zValidator("json", loginSchema), async (c) => {
   }
 
   try {
-    const result = await login(email, password, orgSlug)
+    const result = await login(email, password, signInSlug)
 
     // TOTP challenge — don't reset brute-force counters yet (reset after TOTP completes)
     if ("totpRequired" in result) {
@@ -355,6 +412,15 @@ auth.post("/login", zValidator("json", loginSchema), async (c) => {
   }
 })
 
+/** Mail state unreadable: as if the provider were fine, the send will say. */
+const mailOutageNow = () => readEmailOutage().catch(() => null)
+
+/** During an outage: true for every request but the minute's probe. */
+async function mailOutageHoldsBack(): Promise<boolean> {
+  if ((await mailOutageNow()) === null) return false
+  return !(await claimEmailOutageProbe().catch(() => false))
+}
+
 // ── Passwordless magic-link (primary login) ────────────────────────────────
 // Request mints one challenge delivered by email as BOTH a 6-digit code and a
 // clickable link; verify accepts either. Works for every account regardless of
@@ -396,7 +462,14 @@ auth.post("/magic-link/request", zValidator("json", magicLinkRequestSchema), asy
     throw new HTTPException(503, { message: "Service temporarily unavailable" })
   }
 
-  const result = await requestMagicLink(email, orgSlug)
+  // The provider is refusing mail: nothing to promise anybody, except the one request a minute
+  // that tries again (see infra/email-outage.ts).
+  if (await mailOutageHoldsBack()) {
+    await padToResponseFloor(magicStartedAt)
+    throw new EmailProviderUnavailableError()
+  }
+
+  const result = await requestMagicLink(email, signInOrgSlug(c, orgSlug))
 
   // Record per-email attempt to throttle repeated requests (same as reset).
   try {
@@ -407,6 +480,7 @@ auth.post("/magic-link/request", zValidator("json", magicLinkRequestSchema), asy
 
   // Uniform response — never reveals whether the email exists, by body or by timing.
   await padToResponseFloor(magicStartedAt)
+  if (await mailOutageNow()) throw new EmailProviderUnavailableError()
   return success(c, {
     challengeId: result.challengeId,
     message: "If the email matches an account, a sign-in code has been sent",
@@ -414,7 +488,7 @@ auth.post("/magic-link/request", zValidator("json", magicLinkRequestSchema), asy
 })
 
 auth.post("/magic-link/verify", zValidator("json", magicLinkVerifySchema), async (c) => {
-  const { challengeId, code, token } = c.req.valid("json")
+  const { challengeId, code, token, confirm } = c.req.valid("json")
   const ip = getClientIp(c)
 
   // Light per-IP guard against challenge/code sweeping (the service also caps
@@ -431,7 +505,17 @@ auth.post("/magic-link/verify", zValidator("json", magicLinkVerifySchema), async
   }
 
   try {
-    const result = await verifyMagicLink({ challengeId, code, token })
+    // The host the request came to: a challenge bound to an org's host is
+    // refused anywhere else (a handoff link, and emailed links with org hosts).
+    // The host the client asked for, as the edge reports it (signed edge mode
+    // carries it in a header; the request URL then names the cell origin).
+    const host = effectiveRequest(c).host ?? undefined
+    const result = await verifyMagicLink({ challengeId, code, token, host, confirm })
+
+    // A handoff link before "Continue": who and where, no session yet.
+    if ("confirmRequired" in result) {
+      return success(c, result)
+    }
 
     // TOTP challenge — hand off to the existing second-factor step.
     if ("totpRequired" in result) {
@@ -474,6 +558,14 @@ auth.post("/refresh", async (c) => {
   ) {
     throw new HTTPException(400, { message: "Refresh header is for app origins only" })
   }
+  // Host binding (lib/org-host.ts): a refresh comes from this org's own origin
+  // (or a shell's, or a non-browser client with no Origin), and rotates only a
+  // session of this host's org. A no-op without org hosts.
+  if (!refreshOriginAllowed(c, parseOriginAllowlist(env.LIAISON_APP_ORIGINS))) {
+    throw new HTTPException(403, { message: "Refresh from another origin" })
+  }
+  const binding = requestHostBinding(c)
+  const expectedOrgId = binding.kind === "org" ? await orgIdForSlug(binding.slug) : undefined
   const refreshToken = presentedRefreshToken(c, bodyToken)
   if (!refreshToken) throw new HTTPException(401, { message: "No refresh token" })
   // A SPENT TOKEN IS JUDGED BY ITS SUCCESSOR (auth.ts refreshSession has the
@@ -491,7 +583,10 @@ auth.post("/refresh", async (c) => {
   //  - otherwise (successor used, another client, past the window): reuse of
   //    a spent token, the whole family is revoked and the answer is 401.
   try {
-    const tokens = await refreshSession(refreshToken, { userAgent: c.req.header("User-Agent") })
+    const tokens = await refreshSession(refreshToken, {
+      userAgent: c.req.header("User-Agent"),
+      ...(binding.kind === "org" ? { expectedOrgId } : {}),
+    })
     return respondWithTokens(c, tokens)
   } catch (err) {
     // A concurrent refresh of the same browser won the rotation: its fresh
@@ -649,7 +744,7 @@ auth.post("/totp/step-up", async (c) => {
     footer: copy.footer,
   })
   try {
-    await getSystemEmailProvider().send({
+    await sendSystemEmailObserved({
       to: user.email,
       from: emailConfig.from,
       replyTo: emailConfig.replyTo,
@@ -660,6 +755,7 @@ auth.post("/totp/step-up", async (c) => {
     })
   } catch (err) {
     log.error({ err, userId }, "Failed to send TOTP step-up code")
+    if (await mailOutageNow()) throw new EmailProviderUnavailableError()
   }
   return success(c, cooldown > 0 ? { sent: true, retryAfterSeconds: cooldown } : { sent: true })
 })
@@ -1114,10 +1210,15 @@ auth.post("/password-reset/request", zValidator("json", passwordResetRequestSche
     throw new HTTPException(503, { message: "Service temporarily unavailable" })
   }
 
+  if (await mailOutageHoldsBack()) {
+    await padToResponseFloor(startedAt)
+    throw new EmailProviderUnavailableError()
+  }
+
   // The same resolution login and magic-link use: an explicit orgSlug scopes to
   // one org, a bare email must be unambiguous across orgs, and only an active
   // account is reset. Anything else gets the same uniform answer and no mail.
-  const resolved = await resolveUser(email, orgSlug)
+  const resolved = await resolveUser(email, signInOrgSlug(c, orgSlug))
   const user = resolved?.status === "active" ? resolved : null
 
   if (user) {
@@ -1138,7 +1239,7 @@ auth.post("/password-reset/request", zValidator("json", passwordResetRequestSche
       })
     })
 
-    const resetUrl = `${env.BASE_URL}/reset-password/confirm?token=${token}`
+    const resetUrl = `${await orgPublicBaseUrl(user.orgId)}/reset-password/confirm?token=${token}`
     const emailConfig = await getOrgEmailConfig(user.orgId)
     const subject = "Reset your password"
     const { html, text } = renderBrandedEmail({
@@ -1156,17 +1257,15 @@ auth.post("/password-reset/request", zValidator("json", passwordResetRequestSche
     })
     // Not awaited (see padToResponseFloor): waiting for the mail server would
     // tell a caller which addresses have an account.
-    void getSystemEmailProvider()
-      .send({
-        to: email.toLowerCase(), // the lookup matched on exactly this address
-        from: emailConfig.from,
-        replyTo: emailConfig.replyTo,
-        subject,
-        html,
-        text,
-        template: "auth.password-reset",
-      })
-      .catch((err) => log.error({ err, userId: user.id }, "Failed to send password reset email"))
+    void sendSystemEmailObserved({
+      to: email.toLowerCase(), // the lookup matched on exactly this address
+      from: emailConfig.from,
+      replyTo: emailConfig.replyTo,
+      subject,
+      html,
+      text,
+      template: "auth.password-reset",
+    }).catch((err) => log.error({ err, userId: user.id }, "Failed to send password reset email"))
 
     log.info({ userId: user.id }, "Password reset token generated")
   }
@@ -1180,11 +1279,17 @@ auth.post("/password-reset/request", zValidator("json", passwordResetRequestSche
   }
 
   await padToResponseFloor(startedAt)
+  if (await mailOutageNow()) throw new EmailProviderUnavailableError()
   return success(c, { message: "If the email exists, a reset link has been sent" })
 })
 
 auth.post("/password-reset/confirm", zValidator("json", passwordResetConfirmSchema), async (c) => {
   const { token, newPassword } = c.req.valid("json")
+  // Under host binding a reset link works on its org's own host only, and is
+  // not spent anywhere else.
+  if (!(await tokenOrgAllowedHere(c, "password-reset", token))) {
+    throw new HTTPException(400, { message: "Invalid or expired token" })
+  }
   const tokenHash = hashToken(token)
 
   let endedIds: string[] = []

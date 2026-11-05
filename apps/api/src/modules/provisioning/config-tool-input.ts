@@ -276,7 +276,7 @@ const SECTION_SCHEMAS = {
       mailboxes: z
         .array(toolMailboxSchema)
         .optional()
-        .refine((list) => atMostOneImapPerOwner(list ?? [], (m) => m.owner ?? ""), {
+        .refine((list) => atMostOneImapPerOwner(list ?? [], (m) => m.owner), {
           message: IMAP_ONE_PER_OWNER_MESSAGE,
         }),
     })
@@ -287,9 +287,6 @@ const SECTION_SCHEMAS = {
       inboxes: z
         .array(toolInboxSchema)
         .optional()
-        .refine((list) => atMostOneImapPerOwner(list ?? [], () => ""), {
-          message: IMAP_ONE_PER_OWNER_MESSAGE,
-        })
         .refine((list) => (list ?? []).filter((i) => i.default === true).length <= 1, {
           message: "at most one inbox can be the default",
         }),

@@ -272,8 +272,12 @@
         "vitest": "^4.1.11",
       },
       "peerDependencies": {
+        "@liaison/host": "*",
         "solid-js": "^1",
       },
+      "optionalPeers": [
+        "@liaison/host",
+      ],
     },
     "packages/control-plane-contract": {
       "name": "@liaison/control-plane-contract",
@@ -316,6 +320,7 @@
     "packages/shared": {
       "name": "@liaison/shared",
       "dependencies": {
+        "@liaison/control-plane-contract": "workspace:*",
         "cron-parser": "^5.10.1",
         "marked": "^18.0.14",
         "zod": "^4.6.7",

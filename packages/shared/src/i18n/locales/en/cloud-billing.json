@@ -1,0 +1,111 @@
+{
+  "nav": "Billing",
+  "title": "Billing",
+  "intro": "Your plan, payment card, invoices and credits.",
+  "unavailable": "Billing is unavailable right now. Try again shortly.",
+  "retry": "Try again",
+  "notOnThisServer": "This server has no billing: plans, invoices and credits belong to Liaison Cloud.",
+  "plan": {
+    "title": "Plan",
+    "name": {
+      "preview": "Preview",
+      "base": "Base",
+      "pro": "Pro"
+    },
+    "status": {
+      "active": "Active",
+      "past_due": "Payment overdue",
+      "suspended": "Suspended",
+      "closed": "Closed"
+    },
+    "renews": "Renews on {{date}}",
+    "previewEnds": "Preview ends on {{date}}",
+    "cancelAt": "Ends on {{date}}. Your workspace stays available until then.",
+    "nextInvoice": "Next invoice: {{amount}} on {{date}}",
+    "noNextInvoice": "No upcoming invoice.",
+    "pendingUpgrade": "Switch to {{plan}} waiting for payment.",
+    "pendingDowngrade": "Switches to {{plan}} on {{date}}.",
+    "changeNotApplied": "The change to {{plan}} was not applied: the payment was not completed.",
+    "confirmPayment": "Confirm payment",
+    "paymentAction": "A payment of {{amount}} needs your confirmation.",
+    "change": "Change plan",
+    "current": "Current plan",
+    "switchTo": "Switch to {{plan}}",
+    "includedCredits": "{{credits}} credits included each month",
+    "changed": "Your plan is now {{plan}}.",
+    "scheduled": "Your plan switches to {{plan}} on {{date}}.",
+    "capsExceeded": "This plan is too small for your current usage: {{caps}}. Reduce it first, then switch.",
+    "cap": {
+      "seats": "members",
+      "sharedMailboxes": "shared mailboxes",
+      "mailboxes": "mailboxes",
+      "storageGb": "storage",
+      "customApps": "custom apps",
+      "auditDays": "audit history"
+    },
+    "changePending": "Another plan change is already in progress.",
+    "samePlan": "This is already your plan."
+  },
+  "card": {
+    "title": "Payment card",
+    "onFile": "{{brand}} ending in {{last4}}, expires {{month}}/{{year}}",
+    "none": "No card on file.",
+    "change": "Change card",
+    "add": "Add a card",
+    "updated": "Your card was saved."
+  },
+  "credits": {
+    "title": "Credits",
+    "left": "{{credits}} credits left",
+    "usedPercent": "{{percent}}% of this month's credits used"
+  },
+  "topUp": {
+    "title": "Buy credits",
+    "description": "Credits you buy are used after the ones your plan includes and do not expire at the end of the month.",
+    "amount": "Credits",
+    "minimum": "At least {{min}} credits.",
+    "price": "{{price}} excluding VAT",
+    "buy": "Buy {{credits}} credits",
+    "paid": "{{credits}} credits added.",
+    "belowMinimum": "Buy at least {{min}} credits.",
+    "failed": "The payment did not go through. Check your card and try again."
+  },
+  "autoTopUp": {
+    "title": "Automatic top-up",
+    "description": "Buy credits automatically with your card when your balance runs low. At most once an hour.",
+    "enabled": "Top up automatically",
+    "threshold": "When credits fall below",
+    "amount": "Buy this many credits",
+    "save": "Save",
+    "saved": "Automatic top-up saved.",
+    "lastFailure": "The last automatic top-up failed on {{date}}, so it was turned off. Check your card, then turn it back on."
+  },
+  "invoices": {
+    "title": "Invoices",
+    "none": "No invoices yet.",
+    "download": "Download PDF",
+    "creditNote": "Credit note",
+    "status": {
+      "open": "Open",
+      "paid": "Paid",
+      "void": "Void",
+      "uncollectible": "Unpaid"
+    },
+    "tooLarge": "This invoice is too large to download here. It was sent to you by email.",
+    "downloadFailed": "The invoice could not be downloaded. Try again shortly."
+  },
+  "cancel": {
+    "title": "Cancel subscription",
+    "description": "Your subscription ends at the end of the current period. You can resume it until then.",
+    "action": "Cancel at period end",
+    "confirm": "Cancel your subscription at the end of the period?",
+    "resume": "Resume subscription",
+    "resumed": "Your subscription continues."
+  },
+  "frame": {
+    "title": "Secure payment",
+    "loading": "Opening the secure payment form…",
+    "close": "Close",
+    "failed": "The payment form could not be opened. Try again shortly."
+  }
+}

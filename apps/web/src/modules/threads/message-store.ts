@@ -90,6 +90,8 @@ export interface MessageMetadata {
    *  left, a demo's spend gate): the row is the one place the refusal shows
    *  (turn-refusal.ts). */
   turnRefusal?: boolean
+  /** A refused turn whose way out is Billing (unpaid renewal, no credits left). */
+  billingRefusal?: string
   /** D22: a node answer posted back to the asking thread. The job thread it
    *  came from, and the node owner, the one reader who can open it. */
   nodeResultThreadId?: string

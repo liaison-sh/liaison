@@ -58,12 +58,6 @@ const APPROVE = `${APP}:approve`
  * the row it writes (INSERT ... RETURNING is checked against the read policy).
  */
 const REQUESTER_GRANTS = [READ, WRITE, APPROVE, "kernel:threads:read", "kernel:threads:write"]
-/**
- * REQUESTER_GRANTS as a turn's scope taint records them: every scope lands on
- * its catalogued read sibling, and this fixture app's own write and approve
- * scopes, which have none, are dropped (scope-taint-read-projection.test.ts).
- */
-const REQUESTER_TAINT = ["kernel:threads:read", READ]
 
 /** The human who decides. Holds the approve scope; the proposing actor does not. */
 function approver(): UserContext {
@@ -346,26 +340,33 @@ describe("a gated call from a sandboxed app records the real proposing scopes (F
     expect(await messagesVisibleTo(LACKER, [])).toContain(await messageIdOf(body))
   })
 
-  it("a sandboxed proposal whose turn is undeterminable records NOTHING, so the re-entry falls back to the requester's scope set", async () => {
+  it("a sandboxed proposal whose turn is undeterminable is refused before any approval exists", async () => {
     // A frame with no accumulator and no effective scope, reached with no caller
-    // scopes either: nothing can answer what this turn read. FX4's contract is
-    // to record SQL NULL -- never `[]` -- so the re-entry over-tags with the
-    // requester's own scope set instead of publishing the write to the room.
+    // scopes either: nothing can answer what this turn read, so the turn is
+    // tainted with scopes that could not be determined. An approval of a tainted
+    // turn must be decided by someone holding the taint, and nobody holds an
+    // undeterminable taint: the call is refused outright (scope-taint rule 8,
+    // SCOPE_TAINT_NO_DECIDER_MESSAGE) rather than parked with NULL scopes for an
+    // approver who could never safely decide it. Nothing is written or parked.
     const body = "written by a re-entry whose proposing turn could not be determined"
-    const approvalId = await proposeViaSandbox(frameOf({}), body)
+    const [{ n: before }] = (await sql`SELECT count(*)::int AS n FROM kernel.approval_requests
+      WHERE org_id = ${ORG}`) as unknown as [{ n: number }]
+    const bridge = bridgeFor({ frame: frameOf({}) })
+    const env = await runContextStore.exit(
+      async () =>
+        JSON.parse(
+          await bridge.executeTool!(`${APP}:postScoped`, JSON.stringify({ body })),
+        ) as Envelope,
+    )
 
-    expect(await storedScopesOf(approvalId)).toBeNull()
-
-    await decideApproval({
-      orgId: ORG,
-      requestId: approvalId,
-      actor: approver(),
-      decision: "approve",
-    })
-
-    // The requester's scope set, as a turn's taint records it (its read projection).
-    expect(await messageTag(body)).toEqual(REQUESTER_TAINT)
-    expect(await messagesVisibleTo(LACKER, [])).not.toContain(await messageIdOf(body))
+    expect(env.blocked).toBeUndefined()
+    expect(env.error?.code).toBe("E_SCOPE_TAINT_BLOCKED")
+    expect(env.error?.message).toContain("scopes could not be determined")
+    expect(env.error?.message).toContain("No approval was created")
+    const [{ n: after }] = (await sql`SELECT count(*)::int AS n FROM kernel.approval_requests
+      WHERE org_id = ${ORG}`) as unknown as [{ n: number }]
+    expect(after).toBe(before)
+    expect(await messageTag(body)).toBeUndefined()
   })
 
   it("outside any turn a sandboxed proposal still records the empty assertion", async () => {

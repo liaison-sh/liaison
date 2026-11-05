@@ -1,0 +1,53 @@
+{
+  "suspended": {
+    "title": "Espace de travail suspendu",
+    "sentence": "Cet espace de travail est suspendu car son abonnement a pris fin ou un paiement a échoué.",
+    "adminUntil": "En tant qu'administrateur, vous pouvez exporter les données et payer dans Facturation jusqu'au {{date}}.",
+    "contact": "Questions de facturation :",
+    "export": "Exporter vos données",
+    "billing": "Facturation",
+    "reload": "Recharger",
+    "signOut": "Se déconnecter"
+  },
+  "sender": {
+    "title": "Expéditeur des e-mails",
+    "help": "Les invitations, résumés et enquêtes partent de votre propre domaine dès qu'il est vérifié. Les e-mails de connexion viennent toujours de l'adresse du service.",
+    "fallback": "Tant qu'aucun domaine n'est vérifié, ces e-mails partent au nom de « {{org}} via Liaison ».",
+    "domainLabel": "Domaine",
+    "domainPlaceholder": "mail.exemple.fr",
+    "add": "Ajouter le domaine",
+    "recordsHelp": "Ajoutez ces enregistrements DNS chez votre hébergeur DNS, puis cliquez sur Vérifier. La prise en compte peut prendre de quelques minutes à une heure.",
+    "verifiedHelp": "Vérifié : les e-mails de votre organisation partent désormais de ce domaine.",
+    "recordType": "Type",
+    "recordName": "Nom",
+    "recordValue": "Valeur",
+    "recordPriority": "Priorité",
+    "copy": "Copier",
+    "copied": "Copié",
+    "verify": "Vérifier",
+    "remove": "Retirer le domaine",
+    "statusNotStarted": "Pas encore vérifié",
+    "statusPending": "En attente du DNS",
+    "statusVerified": "Vérifié",
+    "statusFailed": "Échec de la vérification",
+    "domainLimit": "Ce domaine ne peut pas être ajouté pour le moment ; nous avons été prévenus.",
+    "domainInvalid": "Ce n'est pas un domaine qui peut envoyer des e-mails.",
+    "domainTaken": "Ce domaine est déjà utilisé par une autre organisation.",
+    "unavailable": "Les réglages de l'expéditeur sont indisponibles pour le moment. Réessayez dans un instant."
+  },
+  "billing": {
+    "pastDue": "Le paiement a échoué : réglez la facture en attente pour continuer à utiliser les fonctions d'IA.",
+    "ended": "Votre abonnement est terminé : les fonctions d'IA sont arrêtées. Vous pouvez encore exporter vos données.",
+    "openInvoice": "Facture en attente : {{amount}}. Réglez-la avant le {{date}}.",
+    "payOpenInvoice": "Régler la facture en attente",
+    "paymentRequired": "Les fonctions d'IA sont suspendues jusqu'au paiement de la facture en attente. Un administrateur peut la régler dans Facturation.",
+    "outOfCredits": "Vous n'avez plus de crédits : l'assistant s'arrête jusqu'à la recharge. Tout le reste continue de fonctionner. Un administrateur peut acheter des crédits dans Facturation.",
+    "openBilling": "Ouvrir Facturation"
+  },
+  "caps": {
+    "seatLimitReached": "Cette organisation utilise toutes les places de son offre. Passez à une offre qui en compte davantage dans Facturation, ou un admin peut d'abord désactiver quelqu'un.",
+    "mailboxLimitReached": "Cette organisation utilise toutes les boîtes mail partagées de son offre. Passez à une offre qui en compte davantage dans Facturation, ou un admin peut d'abord en déconnecter une.",
+    "customAppLimitReached": "Cette organisation utilise toutes les applications personnalisées de son offre. Supprimez-en une d'abord, ou passez à une offre qui en compte davantage.",
+    "auditDaysLimitReached": "L'offre conserve le journal d'audit moins longtemps. Choisissez une durée plus courte."
+  }
+}

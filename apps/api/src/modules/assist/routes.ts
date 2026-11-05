@@ -73,7 +73,10 @@ assistRoutes.post("/proofread", zValidator("json", proofreadSchema), async (c) =
   } catch (err) {
     if (err instanceof ProofreadError) {
       // err.status is already `400 | 402 | 500` — no loose cast needed.
-      return c.json({ error: { message: err.message } }, err.status)
+      return c.json(
+        { error: { message: err.message, ...(err.code ? { code: err.code } : {}) } },
+        err.status,
+      )
     }
     log.error({ err, orgId }, "proofread failed")
     throw err

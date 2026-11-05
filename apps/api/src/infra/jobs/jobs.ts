@@ -50,6 +50,8 @@ import {
   isOrgDeletingAsync,
   isOrgMissingAsync,
 } from "~/modules/apps/org-apps"
+import { orgSuspendedOrClosed } from "~/modules/cloud/billing-status"
+import { beginOrgActivity, orgTransferStateOf } from "~/modules/org/transfer-state/state"
 import { assertEnqueueAllowed, bindBackpressureClient } from "./backpressure"
 import {
   type FairEntry,
@@ -98,6 +100,49 @@ export class OrgUnderMaintenanceJobError extends Error {
   constructor(orgId: string, queueName: string, jobName: string) {
     super(`org ${orgId} is under maintenance; refusing to run ${queueName}:${jobName}`)
     this.name = "OrgUnderMaintenanceJobError"
+  }
+}
+
+/**
+ * The job of an org that is moving to another instance (modules/org/
+ * transfer-state/): never run here and never completed. The worker puts it
+ * back as delayed with its data (`moveToDelayed`), so it runs once the move is
+ * over, here if the move was aborted, or on the target after the export.
+ */
+export class OrgTransferHeldJobError extends Error {
+  constructor(
+    readonly orgId: string,
+    readonly delayMs: number,
+    queueName: string,
+    jobName: string,
+  ) {
+    super(`org ${orgId} is moving; ${queueName}:${jobName} is held`)
+    this.name = "OrgTransferHeldJobError"
+  }
+}
+
+/** How long a held job waits before it is looked at again. */
+export const TRANSFER_HELD_JOB_DELAY_MS = 5_000
+/** Once the org has moved away its jobs only wait for the export to take them. */
+export const TRANSFER_MOVED_JOB_DELAY_MS = 30_000
+
+let jobsHeldOrgTransfer = 0
+/** Org jobs put back because their org was moving. */
+export function jobsHeldOrgTransferCount(): number {
+  return jobsHeldOrgTransfer
+}
+
+/**
+ * The delay to hold the org's job for, or null to run it. A state that cannot
+ * be read holds it too (fail closed, nothing is run or lost).
+ */
+async function transferHoldMs(orgId: string): Promise<number | null> {
+  try {
+    const rec = await orgTransferStateOf(orgId)
+    if (rec === null) return null
+    return rec.state === "moved" ? TRANSFER_MOVED_JOB_DELAY_MS : TRANSFER_HELD_JOB_DELAY_MS
+  } catch {
+    return TRANSFER_HELD_JOB_DELAY_MS
   }
 }
 
@@ -670,6 +715,17 @@ function ensureWorker(queueName: string): void {
         await job.moveToDelayed(Date.now() + (closingQueues ? 0 : GATED_JOB_REQUEUE_MS), token)
         throw new DelayedError()
       }
+      // An org moving to another instance (modules/org/transfer-state/): its
+      // job is put back, kept, unrun and without spending an attempt.
+      const movingOrg = orgOfJobData(job.data)
+      if (movingOrg && token) {
+        const holdMs = await transferHoldMs(movingOrg)
+        if (holdMs !== null) {
+          jobsHeldOrgTransfer++
+          await job.moveToDelayed(Date.now() + holdMs, token)
+          throw new DelayedError()
+        }
+      }
       // Fairness (fairness.ts): an org's job over its share of the queue is
       // parked, unrun and without spending an attempt; its org's next
       // release promotes it, and its timer is the safety net.
@@ -725,6 +781,13 @@ function ensureWorker(queueName: string): void {
         }
       } catch (err) {
         if (err instanceof DelayedError) throw err
+        // The org started moving between the check above and the dispatch's.
+        if (err instanceof OrgTransferHeldJobError && token) {
+          jobsHeldOrgTransfer++
+          await job.moveToDelayed(Date.now() + err.delayMs, token)
+          await uncountFanoutRun(job.id, job.attemptsMade)
+          throw new DelayedError()
+        }
         if (entry?.handedBack) {
           await uncountFanoutRun(job.id, job.attemptsMade)
           throw new DelayedError()
@@ -1007,6 +1070,29 @@ type DispatchedJob = Pick<Job, "id" | "name" | "data" | "attemptsMade" | "repeat
   Partial<Pick<Job, "timestamp" | "opts" | "processedOn">>
 
 /** Jobs dropped at start because their org was deleted or is being deleted; read by metrics/tests. */
+/**
+ * The org jobs that still run while a managed org is suspended or closed
+ * (D24): its exports (the admins' 30-day window), its deletion and purges,
+ * and the cloud billing and reporting jobs. Pinned by a test.
+ */
+export const SUSPENDED_ORG_EXEMPT_JOBS: ReadonlySet<string> = new Set([
+  "org-export",
+  "org-export-sweep",
+  "org-delete",
+  "mailbox-purge",
+  "files-delete-object",
+  "files-orphan-gc",
+  "cloud-usage-report",
+  "control-plane-outbox",
+  "control-plane-heartbeat",
+])
+
+let jobsSkippedOrgSuspended = 0
+/** Org jobs skipped because the org was suspended or closed for billing. */
+export function jobsSkippedOrgSuspendedCount(): number {
+  return jobsSkippedOrgSuspended
+}
+
 let jobsDroppedOrgMissing = 0
 export function jobsDroppedOrgMissingCount(): number {
   return jobsDroppedOrgMissing
@@ -1048,11 +1134,15 @@ function processJob(
 ): Promise<void> {
   // The turns the job runs are recorded against it (job-origin.ts, S10), and
   // the fairness token it holds frames the jobs it enqueues (fairness.ts).
+  // An org's running job is counted until it settles: a move's freeze waits
+  // for the org's to reach zero on every process.
+  const orgId = orgOfJobData(job.data)
+  const end = orgId ? beginOrgActivity(orgId, "jobs") : null
   return runAsJob(
     jobOriginRef(queueName, job),
     () => processJobInOrigin(queueName, appName, job, signal),
     fair,
-  )
+  ).finally(() => end?.())
 }
 
 async function processJobInOrigin(
@@ -1123,6 +1213,12 @@ async function processJobInOrigin(
       if (isOrgUnderMaintenance(orgId)) {
         throw new OrgUnderMaintenanceJobError(orgId, queueName, job.name)
       }
+      // An org moving to another instance (draining, frozen, incoming or
+      // moved): the job is held, never run nor completed (the worker puts it
+      // back as delayed). No exemption: unlike a suspended org, every job of
+      // a moving org writes rows the move is copying.
+      const holdMs = await transferHoldMs(orgId)
+      if (holdMs !== null) throw new OrgTransferHeldJobError(orgId, holdMs, queueName, job.name)
       // A deleted org's job can do nothing but fail: dropped quietly, and the
       // scheduler behind it removed. So is the job of an org whose deletion
       // has started (`deleting_at`, modules/org/purge/): it would write into
@@ -1138,6 +1234,20 @@ async function processJobInOrigin(
             : "job dropped: its org is being deleted",
         )
         await removeSchedulerOfJob(queueName, job)
+        return
+      }
+      // A managed org suspended or closed for billing (modules/cloud/
+      // suspension.ts, D24): its job is skipped and counted, its scheduler
+      // KEPT, so a routine fires again on its next tick after the org pays.
+      // Export, deletion, purge and billing jobs still run. A no-op, without
+      // a query, on a self-hosted instance. Fail-closed: an unreadable status
+      // throws and BullMQ retries.
+      if (!SUSPENDED_ORG_EXEMPT_JOBS.has(job.name) && (await orgSuspendedOrClosed(orgId))) {
+        jobsSkippedOrgSuspended++
+        log.info(
+          { queue: queueName, jobId: job.id, jobName: job.name, app: appName, orgId },
+          "job skipped: the org is suspended",
+        )
         return
       }
       // The workers start before every org's apps are registered (index.ts):
@@ -1326,6 +1436,14 @@ function schedulerPriorityOpt(route: JobRoute): { priority?: number } {
   return priority ? { priority } : {}
 }
 
+/** Scheduled jobs whose payload carries no org: cross-org sweeps (the transfer hold cannot key on them). */
+const orglessScheduledJobs = new Set<string>()
+
+/** `app:job` keys of the registered scheduled jobs without an org in their payload. */
+export function listOrglessScheduledJobs(): string[] {
+  return [...orglessScheduledJobs].sort()
+}
+
 export async function registerScheduledJob(
   appName: string,
   jobName: string,
@@ -1346,6 +1464,10 @@ export async function registerScheduledJob(
   },
 ): Promise<string> {
   registerJobWorker(appName, jobName, handler, { txMode: opts?.txMode })
+  const scheduledOrgId = opts?.data?.orgId
+  if (typeof scheduledOrgId !== "string" || scheduledOrgId === "") {
+    orglessScheduledJobs.add(handlerKey(appName, jobName))
+  }
   const route = resolveJobQueue(appName, jobName)
   const queue = getQueue(route.queueName)
 
@@ -1488,6 +1610,268 @@ export async function listOrgQueuedJobs(
     )
   }
   return { jobs, truncatedQueues }
+}
+
+// ── Org jobs on a move (modules/org/transfer/, plan R1.5) ────────────────────
+
+/** One queued job of an org as a move carries it to the target. */
+export interface TransferredJob {
+  queue: string
+  id: string
+  name: string
+  data: unknown
+  /** Ms until it is due (0: due now). */
+  delayMs: number
+  attempts: number | null
+  backoff: unknown
+  priority: number | null
+  /** Its logical (deduplication) id, kept so the target dedups as the source did. */
+  dedupId: string | null
+}
+
+/** One job scheduler of an org as a move carries it. */
+export interface TransferredScheduler {
+  queue: string
+  id: string
+  name: string
+  pattern: string | null
+  every: number | null
+  tz: string | null
+  data: unknown
+  opts: Record<string, unknown>
+}
+
+/** Above this many queued jobs the org's move is refused (paged to the end, never cut). */
+export const TRANSFER_MAX_JOBS = 50_000
+/**
+ * Every list and set a queued job sits in. BullMQ moves a job between them in
+ * one script, so at any instant each job id is in exactly one of them.
+ */
+const TRANSFER_JOB_LISTS = [
+  "wait",
+  "paused",
+  "prioritized",
+  "delayed",
+  "active",
+  "waiting-children",
+]
+/** One script call returns every id of the queue's lists, read in one atomic step. */
+const QUEUE_IDS_SCRIPT = `
+local out = {}
+for _, k in ipairs(KEYS) do
+  local t = redis.call('TYPE', k)['ok']
+  if t == 'list' then
+    for _, id in ipairs(redis.call('LRANGE', k, 0, -1)) do out[#out + 1] = id end
+  elseif t == 'zset' then
+    for _, id in ipairs(redis.call('ZRANGE', k, 0, -1)) do out[#out + 1] = id end
+  end
+end
+return out`
+const TRANSFER_JOB_FETCH = 1000
+
+export class TransferJobsRefused extends Error {
+  constructor(message: string) {
+    super(`org transfer jobs: ${message}`)
+    this.name = "TransferJobsRefused"
+  }
+}
+
+/**
+ * Every queued job (waiting, paused, prioritized, delayed, active, waiting
+ * for children; every queue, read whole) and every job scheduler of the org, for the target to re-add after
+ * the commit. Jobs a scheduler made are left out (the scheduler makes them
+ * again on the target). Read only. Refuses past `TRANSFER_MAX_JOBS` rather
+ * than carry a cut list.
+ */
+export async function exportOrgJobs(
+  orgId: string,
+  opts: { now?: number; maxJobs?: number } = {},
+): Promise<{ jobs: TransferredJob[]; schedulers: TransferredScheduler[] }> {
+  if (!ORG_UUID_RE.test(orgId)) throw new Error("exportOrgJobs: not an org uuid")
+  const now = opts.now ?? Date.now()
+  const max = opts.maxJobs ?? TRANSFER_MAX_JOBS
+  const queueNames = await queueNamesWith(":meta", "hash")
+  // A moving org's jobs churn (a worker picks each one up and puts it back as
+  // delayed every few seconds), so a paged read of the lists one after another
+  // can miss a job in transit. The ids of each queue are read in ONE script
+  // instead: BullMQ moves a job between its lists atomically too, so that read
+  // holds every job of the queue exactly once. A job's payload never changes,
+  // so the org's jobs are then picked out and read outside the script.
+  const found = new Map<string, TransferredJob>()
+  for (const queueName of queueNames) {
+    const ids = (await redis.eval(
+      QUEUE_IDS_SCRIPT,
+      TRANSFER_JOB_LISTS.length,
+      ...TRANSFER_JOB_LISTS.map((l) => `${bullPrefix}:${queueName}:${l}`),
+    )) as string[]
+    const queue = getQueue(queueName)
+    for (let i = 0; i < ids.length; i += TRANSFER_JOB_FETCH) {
+      const chunk = ids.slice(i, i + TRANSFER_JOB_FETCH)
+      const pipe = redis.pipeline()
+      for (const id of chunk) pipe.hget(`${bullPrefix}:${queueName}:${id}`, "data")
+      const datas = (await pipe.exec()) ?? []
+      for (let j = 0; j < chunk.length; j++) {
+        const raw = datas[j]?.[1]
+        // A cheap filter first: only a payload naming the org is parsed.
+        if (typeof raw !== "string" || !raw.includes(orgId)) continue
+        const id = chunk[j] as string
+        const job = await queue.getJob(id)
+        if (!job || (job.data as { orgId?: unknown } | undefined)?.orgId !== orgId) continue
+        const key = `${queueName}\u0000${job.id}`
+        if (found.has(key)) continue
+        let due = (job.timestamp ?? now) + (job.delay ?? 0)
+        if (job.repeatJobKey) {
+          // A job a scheduler made. The tick the scheduler already made for
+          // the future is left out: the target's scheduler makes it again.
+          // A tick that fell due while the org was moving (held, never run)
+          // is carried and runs once on the target: its fire time is the
+          // last part of its id.
+          const fire = Number(String(job.id).split(":").pop())
+          if (!Number.isFinite(fire) || fire > now) continue
+          due = now
+        }
+        if (found.size >= max) {
+          throw new TransferJobsRefused(`the org has more than ${max} queued jobs`)
+        }
+        const dedup = (job.opts as { deduplication?: { id?: unknown } }).deduplication?.id
+        found.set(key, {
+          queue: queueName,
+          id: String(job.id),
+          name: job.name,
+          data: job.data,
+          delayMs: Math.max(0, due - now),
+          attempts: job.opts.attempts ?? null,
+          backoff: job.opts.backoff ?? null,
+          priority: job.opts.priority ?? null,
+          dedupId: typeof dedup === "string" ? dedup : null,
+        })
+      }
+    }
+  }
+  const jobs = [...found.values()]
+  const schedulers: TransferredScheduler[] = []
+  for (const queueName of await queueNamesWith(":repeat", "zset")) {
+    for (const s of await getQueue(queueName).getJobSchedulers(0, -1)) {
+      const id = s.key ?? s.id ?? ""
+      const data = s.template?.data as { orgId?: unknown } | undefined
+      if (!id.includes(orgId) && data?.orgId !== orgId) continue
+      schedulers.push({
+        queue: queueName,
+        id,
+        name: s.name,
+        pattern: s.pattern ?? null,
+        every: s.every ?? null,
+        tz: s.tz ?? null,
+        data: s.template?.data ?? {},
+        opts: (s.template?.opts ?? {}) as Record<string, unknown>,
+      })
+    }
+  }
+  return { jobs, schedulers }
+}
+
+/** The BullMQ id a carried job gets on the target (no ':' allowed in custom ids). */
+export function transferredJobId(transferId: string, id: string): string {
+  return `xfer-${transferId}-${id.replace(/[^A-Za-z0-9_.-]/g, "_")}`
+}
+
+/**
+ * Re-add the carried jobs and schedulers on this instance (the target, after
+ * the commit). Every job keeps an id derived from the transfer and its source
+ * id (an add whose id exists adds nothing). A job can still be added twice
+ * once it ran and was evicted, and a re-upsert brings back a deleted
+ * scheduler, so a caller that may call again passes `track`: what an earlier
+ * call added is skipped.
+ */
+export async function readdOrgJobs(
+  transferId: string,
+  carried: { jobs: TransferredJob[]; schedulers: TransferredScheduler[] },
+  track: {
+    /** Keys (`readdedKey`) an earlier call already added: skipped. */
+    added?: ReadonlySet<string>
+    /** Told the keys of what was just added, before the next is added. */
+    onAdded?: (keys: string[]) => Promise<void>
+  } = {},
+): Promise<{ jobs: number; schedulers: number }> {
+  const skip = (key: string) => track.added?.has(key) === true
+  let schedulers = 0
+  for (const s of carried.schedulers) {
+    const key = readdedKey("scheduler", s.queue, s.id)
+    if (skip(key)) continue
+    schedulers += 1
+    await getQueue(s.queue).upsertJobScheduler(
+      s.id,
+      {
+        ...(s.pattern ? { pattern: s.pattern } : {}),
+        ...(s.every ? { every: s.every } : {}),
+        ...(s.tz ? { tz: s.tz } : {}),
+      },
+      { name: s.name, data: s.data, opts: s.opts as JobsOptions },
+    )
+    await track.onAdded?.([key])
+  }
+  const byQueue = new Map<string, FairEntry[]>()
+  const keysOf = new Map<string, string[]>()
+  let jobs = 0
+  for (const j of carried.jobs) {
+    const key = readdedKey("job", j.queue, j.id)
+    if (skip(key)) continue
+    jobs += 1
+    keysOf.set(j.queue, [...(keysOf.get(j.queue) ?? []), key])
+    const list = byQueue.get(j.queue) ?? []
+    list.push({
+      name: j.name,
+      data: j.data,
+      opts: {
+        jobId: transferredJobId(transferId, j.id),
+        ...(j.dedupId ? { deduplication: { id: j.dedupId } } : {}),
+        ...(j.priority ? { priority: j.priority } : {}),
+        attempts: j.attempts ?? 3,
+        backoff: (j.backoff as JobsOptions["backoff"]) ?? { type: "exponential", delay: 1000 },
+        removeOnComplete: 100,
+        removeOnFail: 1000,
+        ...(j.delayMs > 0 ? { delay: j.delayMs } : {}),
+      },
+    })
+    byQueue.set(j.queue, list)
+  }
+  for (const [queueName, list] of byQueue) {
+    // Re-added jobs already passed the cap where they were made: never delayed again.
+    await fairEnqueue(getQueue(queueName), list, { scheduled: true })
+    await track.onAdded?.(keysOf.get(queueName) ?? [])
+  }
+  log.info({ transferId, jobs, schedulers }, "org transfer: jobs and schedulers re-added")
+  return { jobs, schedulers }
+}
+
+/** What `readdOrgJobs` reports as added, to skip it on a later call. */
+export function readdedKey(kind: "job" | "scheduler", queue: string, id: string): string {
+  return `${kind}:${queue}:${id}`
+}
+
+/**
+ * Remove the carried jobs and the org's schedulers from this instance (the
+ * source, after the commit: they run on the target now). A job no longer
+ * there is skipped; a job of the org enqueued after the export is left (the
+ * `moved` org holds it and the hold's purge drops it).
+ */
+export async function removeTransferredJobs(
+  orgId: string,
+  carried: { jobs: Array<Pick<TransferredJob, "queue" | "id">> },
+): Promise<{ jobs: number; schedulers: number }> {
+  // Schedulers first: BullMQ refuses to remove a job a scheduler made while
+  // its scheduler exists (a carried, held tick).
+  const schedulers = await removeOrgJobSchedulers(orgId)
+  let jobs = 0
+  for (const j of carried.jobs) {
+    const queue = getQueue(j.queue)
+    const job = await queue.getJob(j.id)
+    if (!job || (job.data as { orgId?: unknown } | undefined)?.orgId !== orgId) continue
+    await job.remove()
+    await forgetFairJob(queue.name, orgId, job.id)
+    jobs += 1
+  }
+  return { jobs, schedulers }
 }
 
 /** Remove a previously-registered scheduler by its id. Safe to call for

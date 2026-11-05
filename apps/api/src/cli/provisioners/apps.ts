@@ -30,6 +30,7 @@
 
 import { ConfigError } from "~/cli/config/parse"
 import type { ProvisioningConfig } from "~/cli/config/schema"
+import { requireActor } from "~/cli/provisioners/admin"
 import { applyAppConfig, assertAppConfigAllowed } from "~/cli/provisioners/app-config"
 import {
   applyAppSettings,
@@ -326,6 +327,7 @@ async function applyApps(
         ctx.log(`app '${app.name}': already installed (v${state.installedVersion})`)
         unchanged.push(`apps.${app.name}.installed`)
       } else {
+        requireActor(ctx, `apps: installing catalog app '${app.name}'`)
         const install = ctx.toolPath ? installFromCatalog : installCatalogApp
         await install({
           orgId: ctx.orgId,

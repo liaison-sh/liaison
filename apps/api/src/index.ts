@@ -42,6 +42,11 @@ import { setWsManager, WebSocketManager } from "~/infra/websocket"
 import { env, validateControlPlaneEnv } from "~/lib/env"
 import { loadHarnessEnabled } from "~/lib/load-harness"
 import { rootLogger } from "~/lib/logger"
+import {
+  assertManagedBoot,
+  legacyControlPlaneBootProblem,
+  managedBootRequired,
+} from "~/lib/managed-boot"
 import { registerProcessHandlers } from "~/lib/process-handlers"
 import { currentRole, hostsJobs, isLeaderEligible, servesApi } from "~/lib/process-role"
 import { markBootComplete } from "~/lib/readiness"
@@ -110,6 +115,25 @@ rootLogger.info({ role, instanceId: INSTANCE_ID }, "Process role")
   }
   if (verdict === "refuse") {
     // The fatal line is the operator's only evidence: let the async log write land.
+    rootLogger.flush()
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    process.exit(1)
+  }
+}
+
+// The legacy control-plane pair alone once switched managed on without the
+// checks below; it no longer does, so such a server boots self-hosted and says
+// what to set (lib/managed-boot.ts).
+const legacyControlPlane = legacyControlPlaneBootProblem()
+if (legacyControlPlane) rootLogger.warn(legacyControlPlane)
+
+// The managed edition refuses to boot without its operator org, org host
+// template, control plane endpoint and installed identity (lib/managed-boot.ts).
+if (managedBootRequired()) {
+  try {
+    await assertManagedBoot()
+  } catch (err) {
+    rootLogger.fatal({ err }, (err as Error).message)
     rootLogger.flush()
     await new Promise((resolve) => setTimeout(resolve, 200))
     process.exit(1)
@@ -265,7 +289,7 @@ const onUpgrade = async (req: Request): Promise<WsData | null> => {
   const ticket = url.searchParams.get("ticket")
 
   if (ticket) {
-    const payload = await consumeWsTicket(redis, ticket)
+    const payload = await consumeWsTicket(redis, ticket, req)
     if (payload) {
       // The org's apps before its first frame (a no-op once it is registered).
       // A failed registration does not refuse the socket: its next demand retries.

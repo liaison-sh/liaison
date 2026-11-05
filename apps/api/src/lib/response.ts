@@ -59,7 +59,15 @@ export function refreshCookieSpec(isProd: boolean): { name: string; path: string
     ? { name: "__Host-liaison_rt", path: "/" }
     : { name: "liaison_rt", path: "/api/auth" }
 }
-const REFRESH_COOKIE = refreshCookieSpec(IS_PROD)
+/**
+ * Whether cookies are `__Host-` (Secure, Path=/, no Domain): in production, and
+ * wherever orgs have their own hosts (LIAISON_ORG_HOST_TEMPLATE), so one org's
+ * host can never plant or read a cookie of another's. Read per call.
+ */
+export function hostOnlyCookies(): boolean {
+  return IS_PROD || Boolean(env.LIAISON_ORG_HOST_TEMPLATE)
+}
+const refreshCookie = () => refreshCookieSpec(hostOnlyCookies())
 /** The pre-`__Host-` production cookie, cleared wherever the new one is written. */
 const LEGACY_REFRESH_COOKIE =
   "liaison_rt=; HttpOnly; Secure; SameSite=Strict; Path=/api/auth; Max-Age=0"
@@ -67,7 +75,7 @@ const LEGACY_REFRESH_COOKIE =
 export function setRefreshTokenCookie(c: Context, refreshToken: string): void {
   c.header(
     "Set-Cookie",
-    `${REFRESH_COOKIE.name}=${refreshToken}; HttpOnly; ${IS_PROD ? "Secure; " : ""}SameSite=Strict; Path=${REFRESH_COOKIE.path}; Max-Age=${REFRESH_TOKEN_MAX_AGE}`,
+    `${refreshCookie().name}=${refreshToken}; HttpOnly; ${hostOnlyCookies() ? "Secure; " : ""}SameSite=Strict; Path=${refreshCookie().path}; Max-Age=${REFRESH_TOKEN_MAX_AGE}`,
   )
   if (IS_PROD) c.header("Set-Cookie", LEGACY_REFRESH_COOKIE, { append: true })
 }
@@ -75,7 +83,7 @@ export function setRefreshTokenCookie(c: Context, refreshToken: string): void {
 export function clearRefreshTokenCookie(c: Context): void {
   c.header(
     "Set-Cookie",
-    `${REFRESH_COOKIE.name}=; HttpOnly; ${IS_PROD ? "Secure; " : ""}SameSite=Strict; Path=${REFRESH_COOKIE.path}; Max-Age=0`,
+    `${refreshCookie().name}=; HttpOnly; ${hostOnlyCookies() ? "Secure; " : ""}SameSite=Strict; Path=${refreshCookie().path}; Max-Age=0`,
   )
   if (IS_PROD) c.header("Set-Cookie", LEGACY_REFRESH_COOKIE, { append: true })
 }
@@ -101,7 +109,7 @@ export function readCookie(cookie: string | undefined, name: string): string | u
  */
 export function getRefreshTokenFromCookie(
   cookie: string | undefined,
-  name: string = REFRESH_COOKIE.name,
+  name: string = refreshCookie().name,
 ): string | undefined {
   return readCookie(cookie, name)
 }

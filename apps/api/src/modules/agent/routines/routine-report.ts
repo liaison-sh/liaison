@@ -38,6 +38,11 @@ import {
 import { rootLogger } from "~/lib/logger"
 import { persistAgentTurn } from "~/modules/agent/runtime/persist-agent-turn"
 import { normalizeRequiredScopes } from "~/modules/agent/scopes/write-required-scopes"
+import {
+  SKIPPED_MOVING,
+  sweepSkippingMoving,
+  writeUnlessMoving,
+} from "~/modules/org/transfer-state/skip-moving"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { sendMessage } from "~/modules/threads/message"
 import { createOrGetAgentDm } from "~/modules/threads/thread"
@@ -597,26 +602,32 @@ export async function settleRunStarted(
  */
 export async function settleStaleRunLines(now: Date = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - STALE_RUN_LINE_MS)
-  const destinations = await withSystemDb("routine-run-line-sweep", async (db) =>
-    extractRows<{ org_id: string; routine_id: string; thread_id: string }>(
-      await db.execute(sql`
+  // An org being moved keeps its routines and runs as they are until the move ends.
+  const destinations = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("routine-run-line-sweep", async (db) =>
+      extractRows<{ org_id: string; routine_id: string; thread_id: string }>(
+        await db.execute(sql`
         SELECT org_id::text, id::text AS routine_id, report_thread_id::text AS thread_id
           FROM ${routines}
-         WHERE report_thread_id IS NOT NULL`),
+         WHERE report_thread_id IS NOT NULL AND ${notMoving(sql.raw("org_id"))}`),
+      ),
     ),
   )
   let settled = 0
   for (const d of destinations) {
     try {
-      settled += await settleRunLines(
-        d.org_id,
-        sql`thread_id = ${d.thread_id}::uuid
+      const n = await writeUnlessMoving(d.org_id, () =>
+        settleRunLines(
+          d.org_id,
+          sql`thread_id = ${d.thread_id}::uuid
             AND metadata->'routineRun'->>'routineId' = ${d.routine_id}
             AND ${notOnAComputer}
             AND COALESCE((metadata->'routineRun'->>'resumedAt')::timestamptz, created_at)
                 < ${cutoff.toISOString()}::timestamptz`,
-        "failed",
+          "failed",
+        ),
       )
+      if (n !== SKIPPED_MOVING) settled += n
     } catch (err) {
       log.warn({ err, routineId: d.routine_id }, "Stale routine run lines not settled")
     }

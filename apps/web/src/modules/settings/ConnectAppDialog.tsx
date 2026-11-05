@@ -2,8 +2,10 @@
 // Generic credential-connect form for app connections. Drives entirely off a
 // connection's public-safe config (T2 `GET /api/apps/:appName/connections`):
 // renders one input per `credentialFields[]` for `type:"credentials"`
-// connections, or a "Connect via OAuth" button for `type:"oauth2"`. There are
-// no per-app branches beyond that split — the form is generic. Content-only:
+// connections, or an OAuth connect action for `type:"oauth2"`: one Connect
+// button when a client is already configured (replacing it is an opt-in
+// disclosure), the client fields up front when none is. There are no per-app
+// branches beyond that split — the form is generic. Content-only:
 // the parent (the connect dialog host) wraps it in <Dialog>/<Dialog.Content>.
 
 import { type Component, createSignal, For, onMount, Show } from "solid-js"
@@ -19,6 +21,7 @@ import { addToast } from "~/modules/shell/toast-store"
 import { Button } from "~/ui/Button"
 import { Input } from "~/ui/Input"
 import { type AppConnectionConfig, appsStore, type OAuthClientStatus } from "./apps-store"
+import { billingMode } from "./BillingState"
 import { connectWithOAuth } from "./oauth-connect"
 import { SetupGuidePopover } from "./SetupGuidePopover"
 
@@ -84,6 +87,22 @@ export const ConnectAppDialog: Component<ConnectAppDialogProps> = (props) => {
   // The app supplies (or refuses) its own client: no client fields at all.
   const appManagedClient = () => clientStatus()?.appManaged === true
   const appClientRefused = () => appManagedClient() && !clientStatus()?.configured
+  // A client is already in place (the org's own, the deployment's, or the
+  // app's): connecting needs nothing typed, so the dialog is one Connect action.
+  const clientReady = () => clientStatus()?.configured === true
+  // A managed instance provides its client: nobody replaces the deployment's
+  // client from here (an org-level client stays replaceable).
+  const clientLocked = () => billingMode() === "managed" && clientStatus()?.source === "deployment"
+  const [ownClientOpen, setOwnClientOpen] = createSignal(false)
+  // The client fields: up front when no client exists (once the status has
+  // loaded), behind the disclosure when one does, never for an app-managed or
+  // a locked client.
+  const showClientFields = () => {
+    const status = clientStatus()
+    if (!status || appManagedClient()) return false
+    if (!status.configured) return true
+    return ownClientOpen() && !clientLocked()
+  }
 
   onMount(() => {
     if (!isOAuth() || !props.api) return
@@ -132,9 +151,10 @@ export const ConnectAppDialog: Component<ConnectAppDialogProps> = (props) => {
       setError("API unavailable")
       return
     }
-    // A client the app resolves itself is never typed here (it would be ignored).
-    const id = appManagedClient() ? "" : clientId().trim()
-    const secret = appManagedClient() ? "" : clientSecret()
+    // A client the app resolves itself is never typed here (it would be ignored),
+    // nor one hidden behind a closed disclosure.
+    const id = showClientFields() ? clientId().trim() : ""
+    const secret = showClientFields() ? clientSecret() : ""
     // A client must exist: either already configured, or provide BOTH now.
     if (!clientStatus()?.configured && !(id && secret)) {
       setError("Enter the OAuth app's client ID and client secret first.")
@@ -263,36 +283,40 @@ export const ConnectAppDialog: Component<ConnectAppDialogProps> = (props) => {
         when={props.connConfig.type === "credentials"}
         fallback={
           <div class="flex flex-col gap-3" data-testid="connect-oauth-form">
-            <Show
-              when={!appManagedClient()}
-              fallback={
-                <Show
-                  when={!appClientRefused()}
-                  fallback={
-                    <p data-testid="oauth-client-unavailable" class="text-xs text-text-secondary">
-                      {clientStatus()?.reason ?? i18n.t("kernel.settingsUi.oauthClientUnavailable")}
-                    </p>
-                  }
-                >
-                  <p data-testid="oauth-client-app-managed" class="text-xs text-text-secondary">
-                    {i18n.t("kernel.settingsUi.oauthClientProvidedByApp", {
-                      hint: clientStatus()?.clientIdHint ?? "",
-                    })}
+            <Show when={appManagedClient()}>
+              <Show
+                when={!appClientRefused()}
+                fallback={
+                  <p data-testid="oauth-client-unavailable" class="text-xs text-text-secondary">
+                    {clientStatus()?.reason ?? i18n.t("kernel.settingsUi.oauthClientUnavailable")}
                   </p>
-                </Show>
-              }
-            >
+                }
+              >
+                <p data-testid="oauth-client-app-managed" class="text-xs text-text-secondary">
+                  {i18n.t("kernel.settingsUi.oauthClientProvidedByApp", {
+                    hint: clientStatus()?.clientIdHint ?? "",
+                  })}
+                </p>
+              </Show>
+            </Show>
+            <Show when={clientReady() && !appManagedClient()}>
+              <p data-testid="oauth-connect-account" class="text-sm text-text-secondary">
+                {mode() === "org"
+                  ? i18n.t("kernel.settingsUi.oauthConnectAccountOrg", { app: appName() })
+                  : i18n.t("kernel.settingsUi.oauthConnectAccountPersonal", { app: appName() })}
+              </p>
+            </Show>
+            <Show when={clientStatus()?.configured === false && !appManagedClient()}>
               <p class="text-xs text-text-secondary">
                 {i18n.t("kernel.settingsUi.provideThisAppSOauthClient")}
-                <Show when={clientStatus()?.configured}>
-                  {" "}
-                  <span data-testid="oauth-client-configured" class="text-accent">
-                    {i18n.t("kernel.settingsUi.aClientIsAlreadyConfigured")}
-                    {clientStatus()?.clientId ? ` (${clientStatus()?.clientId})` : ""}
-                    {i18n.t("kernel.settingsUi.leaveTheFieldsBlankToReuse")}
-                  </span>
-                </Show>
               </p>
+            </Show>
+            <Show when={showClientFields()}>
+              <Show when={clientReady()}>
+                <p data-testid="oauth-client-replace-hint" class="text-xs text-text-secondary">
+                  {i18n.t("kernel.settingsUi.oauthReplaceClientHint")}
+                </p>
+              </Show>
               <Input
                 data-testid="oauth-client-id"
                 type="text"
@@ -328,8 +352,22 @@ export const ConnectAppDialog: Component<ConnectAppDialogProps> = (props) => {
               disabled={submitting() || appClientRefused()}
               onClick={() => void connectOAuth()}
             >
-              {i18n.t("kernel.settingsUi.connectViaOauth")}
+              {clientReady()
+                ? i18n.t("kernel.common.connect")
+                : i18n.t("kernel.settingsUi.connectViaOauth")}
             </Button>
+            <Show
+              when={clientReady() && !appManagedClient() && !clientLocked() && !ownClientOpen()}
+            >
+              <button
+                type="button"
+                data-testid="oauth-client-replace-toggle"
+                class="self-start text-xs text-text-secondary underline hover:text-text"
+                onClick={() => setOwnClientOpen(true)}
+              >
+                {i18n.t("kernel.settingsUi.oauthUseOwnClient")}
+              </button>
+            </Show>
           </div>
         }
       >

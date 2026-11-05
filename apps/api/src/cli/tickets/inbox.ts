@@ -38,7 +38,7 @@ import { kernelRel } from "~/apps/tickets/schema-refs"
 import { resolveOrgId } from "~/cli/lib/resolve-org-id"
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
-import { env } from "~/lib/env"
+import { orgPublicBaseUrl } from "~/lib/org-public-url"
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000"
 
@@ -57,8 +57,8 @@ function usage(message: string): TicketsInboxResult {
   return { exitCode: 2, report: { error: message }, message }
 }
 
-function ingestUrl(orgId: string, inboxId: string): string {
-  return `${env.BASE_URL.replace(/\/$/, "")}/webhooks/${orgId}/inboxes/${inboxId}/tickets/create`
+function ingestUrl(base: string, orgId: string, inboxId: string): string {
+  return `${base.replace(/\/$/, "")}/webhooks/${orgId}/inboxes/${inboxId}/tickets/create`
 }
 
 async function resolveActorUserId(orgId: string): Promise<string> {
@@ -141,6 +141,7 @@ export async function runTicketsInbox(argv: string[]): Promise<TicketsInboxResul
     return { exitCode: 2, report: { error: resolved.message }, message: resolved.message }
   const orgId = resolved.orgId
   const actor = { actorType: "user" as const, userId: await resolveActorUserId(orgId) }
+  const base = await orgPublicBaseUrl(orgId)
 
   if (sub === "list") {
     const list = (await withPrivilegedDb(orgId, "cli-inbox-list", (tx) =>
@@ -164,7 +165,7 @@ export async function runTicketsInbox(argv: string[]): Promise<TicketsInboxResul
       attentionCutoffAt: i.attention_cutoff_at,
       isDefaultForCreate: i.is_default_for_create,
       archivedAt: i.archived_at,
-      ingestUrl: i.kind === "api" ? ingestUrl(orgId, String(i.id)) : null,
+      ingestUrl: i.kind === "api" ? ingestUrl(base, orgId, String(i.id)) : null,
     }))
     return { exitCode: 0, report: { inboxes } }
   }
@@ -222,7 +223,7 @@ export async function runTicketsInbox(argv: string[]): Promise<TicketsInboxResul
         id: inboxId,
         kind: created.kind,
         name: created.name,
-        ingestUrl: created.kind === "api" ? ingestUrl(orgId, inboxId) : null,
+        ingestUrl: created.kind === "api" ? ingestUrl(base, orgId, inboxId) : null,
         ...(apiKey ? { apiKey } : {}),
       },
     }

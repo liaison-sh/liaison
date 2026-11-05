@@ -1,12 +1,21 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
+import { OUT_OF_CREDITS_CODE, PAYMENT_REQUIRED_CODE } from "@liaison/shared"
 import { z } from "zod"
 import { app } from "~/app"
 import { sql } from "~/db"
+import * as eventBus from "~/infra/events/event-bus"
 import { _setEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
+import { redis } from "~/lib/redis"
+import { CREDIT_PRICING_MISSING_MESSAGE } from "~/modules/agent/credits/credit-cost"
+import * as creditMeter from "~/modules/agent/credits/credit-meter"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { signAccessToken } from "~/modules/auth/jwt"
+import { clearOrgBillingStatusCache } from "~/modules/cloud/billing-status"
+import { PaymentRequiredError } from "~/modules/cloud/suspension"
+import { reportAgentTurnFailure } from "~/modules/threads/agent-dispatch-guard"
+import { clearTestCreditPricing, setTestCreditPricing } from "~/tests/helpers/credit-pricing"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const ORIG_ANTHROPIC_KEY = process.env.LIAISON_ANTHROPIC_API_KEY
@@ -43,6 +52,8 @@ describe("agent integration", () => {
     await acquireTestLock()
     // Agent billing (deduction, 402) is managed-edition behaviour — exercise it.
     _setEdition("managed")
+    // A managed cell meters nothing without a pushed rate (A39).
+    await setTestCreditPricing()
     await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${ORG_ID}, 'IntegrationOrg', 'integration-org')`
     await sql`INSERT INTO kernel.users (id, org_id, email, name) VALUES (${USER_ID}, ${ORG_ID}, 'integration@test.com', 'Int User')`
     await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by) VALUES (${THREAD_ID}, ${ORG_ID}, 'int-agent-chat', 'agent_chat', ${USER_ID})`
@@ -75,6 +86,7 @@ describe("agent integration", () => {
   })
 
   afterAll(async () => {
+    await clearTestCreditPricing()
     _setEdition(null)
     toolRegistry.deleteByPrefix([ORG_ID])
     await releaseTestLock()
@@ -218,11 +230,116 @@ describe("agent integration", () => {
         await sql`SELECT * FROM kernel.messages WHERE thread_id = ${zeroThreadId} AND author_type = 'system'`
       expect(msgs.length).toBeGreaterThanOrEqual(1)
       expect(msgs[0].content).toContain("usage")
+      // Coded, so the client links the refusal to Billing (MessageRow).
+      expect(msgs[0].metadata?.billingRefusal).toBe(OUT_OF_CREDITS_CODE)
     } finally {
       if (ORIG_ANTHROPIC_KEY !== undefined)
         process.env.LIAISON_ANTHROPIC_API_KEY = ORIG_ANTHROPIC_KEY
       else delete process.env.LIAISON_ANTHROPIC_API_KEY
     }
+  })
+
+  describe("a managed refusal keeps its own reason", () => {
+    let n = 0
+    // A fresh org with credits left, one refused turn through the real route.
+    const refusedTurn = async (
+      setUp: (orgId: string) => Promise<void> | void = () => {},
+      balance = "5.00000000",
+    ) => {
+      n += 1
+      const suffix = String(n).padStart(4, "0")
+      const orgId = `00000000-0000-4000-8000-0000af31${suffix}`
+      const userId = `00000000-0000-4000-8000-0000af32${suffix}`
+      const threadId = `00000000-0000-4000-8000-0000af33${suffix}`
+      await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${orgId}, ${`Refusal ${n}`}, ${`refusal-${n}`})`
+      await sql`INSERT INTO kernel.users (id, org_id, email, name) VALUES (${userId}, ${orgId}, ${`refusal-${n}@test.com`}, 'Refusal User')`
+      await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by) VALUES (${threadId}, ${orgId}, ${`refusal-chat-${n}`}, 'agent_chat', ${userId})`
+      await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id) VALUES (${threadId}, ${userId}, ${orgId})`
+      await sql`INSERT INTO kernel.credit_balances (org_id, included_balance, purchased_balance, currency) VALUES (${orgId}, ${balance}, '0.00000000', 'EUR')`
+      await setUp(orgId)
+      const bearer = await signAccessToken(
+        {
+          userId,
+          orgId,
+          name: "Refusal",
+          authVersion: 1,
+          permissionVersion: 1,
+          scopes: ["*"],
+          dimensionGrants: {},
+        },
+        env.JWT_SECRET,
+      )
+      process.env.LIAISON_ANTHROPIC_API_KEY = "sk-test-key"
+      try {
+        const res = await app.request("/api/agent/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${bearer}` },
+          body: JSON.stringify({ threadId, content: "Hello" }),
+        })
+        const rows = await sql<{ content: string; metadata: Record<string, unknown> | null }[]>`
+          SELECT content, metadata FROM kernel.messages
+          WHERE thread_id = ${threadId} AND author_type = 'system'`
+        expect(rows).toHaveLength(1)
+        return { status: res.status, row: rows[0]! }
+      } finally {
+        if (ORIG_ANTHROPIC_KEY !== undefined)
+          process.env.LIAISON_ANTHROPIC_API_KEY = ORIG_ANTHROPIC_KEY
+        else delete process.env.LIAISON_ANTHROPIC_API_KEY
+      }
+    }
+    const notOutOfCredits = (row: {
+      content: string
+      metadata: Record<string, unknown> | null
+    }) => {
+      expect(row.metadata?.turnRefusal).toBe(true)
+      expect(row.metadata?.billingRefusal).toBeUndefined()
+    }
+
+    it("zero balance: says out of credits, and links to Billing", async () => {
+      const { status, row } = await refusedTurn(undefined, "0.00000000")
+      expect(status).toBe(402)
+      expect(row.metadata?.billingRefusal).toBe(OUT_OF_CREDITS_CODE)
+    })
+
+    it("deduction breaker open: the billing issue, not a request to pay", async () => {
+      const { status, row } = await refusedTurn(async (orgId) => {
+        await redis.set(`agent:credit-deduct-fail:${orgId}`, "3", "EX", 60)
+      })
+      expect(status).toBe(402)
+      expect(row.content).toContain("billing system issue")
+      notOutOfCredits(row)
+    })
+
+    it("no pushed credit rate: the outage, not a request to pay", async () => {
+      await clearTestCreditPricing()
+      try {
+        const { row } = await refusedTurn()
+        expect(row.content).toBe(CREDIT_PRICING_MISSING_MESSAGE)
+        notOutOfCredits(row)
+      } finally {
+        await setTestCreditPricing()
+      }
+    })
+
+    it.each([
+      ["no model Auto can run", "Every model is switched off for this organization."],
+      ["an unpriced model on the platform key", "This model has no fixed price."],
+    ])("%s: the row says so", async (_name, reason) => {
+      const spy = spyOn(creditMeter, "preCheck").mockResolvedValue({
+        allowed: false,
+        status: 400,
+        persistSystemMessage: true,
+        reason,
+      })
+      try {
+        const { status, row } = await refusedTurn()
+        expect(status).toBe(400)
+        expect(row.content).toBe(reason)
+        notOutOfCredits(row)
+      } finally {
+        spy.mockRestore()
+      }
+    })
   })
 
   // A turn whose model is not available to the org runs on the org's Auto
@@ -354,5 +471,77 @@ describe("agent integration", () => {
     const txns =
       await sql`SELECT * FROM kernel.credit_transactions WHERE org_id = ${ORG_ID} LIMIT 10`
     expect(Array.isArray(txns)).toBe(true)
+  })
+
+  // D17: an unpaid renewal refuses the turn with 402 payment_required (never a
+  // 500), says so in the thread with the code on the system row, and the
+  // thread path's Failed frame carries the code, so the client offers Billing.
+  it("an unpaid renewal: 402 payment_required, coded system row and stream frame", async () => {
+    const orgId = "00000000-0000-4000-8000-000000af0007"
+    const userId = "00000000-0000-4000-8000-000000af0008"
+    const threadId = "00000000-0000-4000-8000-000000af0009"
+    await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${orgId}, 'PastDueOrg', 'past-due-int-org')`
+    await sql`INSERT INTO kernel.users (id, org_id, email, name) VALUES (${userId}, ${orgId}, 'past-due@test.com', 'Past Due')`
+    await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by) VALUES (${threadId}, ${orgId}, 'past-due-chat', 'agent_chat', ${userId})`
+    await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id) VALUES (${threadId}, ${userId}, ${orgId})`
+    await sql`INSERT INTO kernel.credit_balances (org_id, included_balance, purchased_balance, currency) VALUES (${orgId}, '10.00000000', '0.00000000', 'EUR')`
+    await sql`INSERT INTO kernel.org_billing_state
+      (org_id, version, plan, status, period_end, included_credits, caps, auto_top_up)
+      VALUES (${orgId}, 1, 'base', 'past_due', now() + interval '20 days', 100, '{}'::jsonb,
+        ${JSON.stringify({ enabled: false, thresholdCredits: 10, amountCredits: 50 })}::jsonb)`
+    clearOrgBillingStatusCache()
+    const pastDueToken = await signAccessToken(
+      {
+        userId,
+        orgId,
+        name: "Past Due",
+        authVersion: 1,
+        permissionVersion: 1,
+        scopes: ["*"],
+        dimensionGrants: {},
+      },
+      env.JWT_SECRET,
+    )
+    process.env.LIAISON_ANTHROPIC_API_KEY = "sk-test-key"
+    try {
+      const res = await app.request("/api/agent/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${pastDueToken}` },
+        body: JSON.stringify({ threadId, content: "Hello" }),
+      })
+      expect(res.status).toBe(402)
+      const body = (await res.json()) as { error: { code: string } }
+      expect(body.error.code).toBe(PAYMENT_REQUIRED_CODE)
+      const rows = await sql<{ metadata: Record<string, unknown> | null }[]>`
+        SELECT metadata FROM kernel.messages WHERE thread_id = ${threadId} AND author_type = 'system'`
+      expect(rows.length).toBeGreaterThanOrEqual(1)
+      for (const r of rows) expect(r.metadata?.billingRefusal).toBe(PAYMENT_REQUIRED_CODE)
+
+      const frames: Array<Record<string, unknown>> = []
+      const spy = spyOn(eventBus, "broadcastEphemeral").mockImplementation((async (e: {
+        data: Record<string, unknown>
+      }) => {
+        frames.push(e.data)
+      }) as never)
+      try {
+        await reportAgentTurnFailure({
+          orgId,
+          threadId,
+          actorUserId: userId,
+          agentId: null,
+          error: new PaymentRequiredError(),
+        })
+      } finally {
+        spy.mockRestore()
+      }
+      expect(frames).toHaveLength(1)
+      expect(frames[0]?.code).toBe(PAYMENT_REQUIRED_CODE)
+    } finally {
+      await sql`DELETE FROM kernel.org_billing_state WHERE org_id = ${orgId}`
+      clearOrgBillingStatusCache()
+      if (ORIG_ANTHROPIC_KEY !== undefined)
+        process.env.LIAISON_ANTHROPIC_API_KEY = ORIG_ANTHROPIC_KEY
+      else delete process.env.LIAISON_ANTHROPIC_API_KEY
+    }
   })
 })

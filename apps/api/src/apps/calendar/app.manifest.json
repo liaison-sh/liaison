@@ -45,7 +45,7 @@
           {
             "who": "human",
             "minutes": 1,
-            "text": "Click **Connect via OAuth** here — you are redirected to Google's consent screen.",
+            "text": "Click **Connect** here — you are redirected to Google's consent screen.",
             "place": "liaison"
           },
           {

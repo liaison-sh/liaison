@@ -1,4 +1,4 @@
-MCP endpoint mounted at /mcp behind mcpAuthMiddleware -> apps/api/src/app.ts:1216-1221
+MCP endpoint mounted at /mcp behind mcpAuthMiddleware -> apps/api/src/app.ts:1203-1221
 Streamable HTTP, stateless, POST -> apps/api/src/modules/mcp/transport-routes.ts:23-33
 /.well-known/mcp: streamable-http, endpoint, auth methods oauth2 + device_code -> apps/api/src/modules/mcp/oauth-server-routes.ts:63-70
 OAuth metadata: DCR, auth code, refresh token, device code, PKCE S256 -> apps/api/src/modules/mcp/oauth-server-routes.ts:45-60
@@ -42,10 +42,15 @@ Sections marked by audience in one source -> apps/api/src/modules/agent/context/
 Teammates are messaged in a Liaison conversation, not by email -> apps/api/src/modules/agent/prompts/system.md:12-15
 First call to an app's tool brings back its working guide -> apps/api/src/modules/mcp/app-guide-surfacing.ts:30
 transparent mailbox read at once over MCP; private through the window -> apps/api/src/modules/mcp/mcp-mailbox-plaintext.ts:189
+MCP endpoint and discovery on the org address; token bound to it -> apps/api/src/modules/mcp/mcp-auth-middleware.ts:40 ; apps/api/src/modules/mcp/oauth-server-routes.ts:1
 password change or reset ends every MCP connection; old tokens refused -> apps/api/src/modules/auth/auth.ts:885 ; apps/api/src/modules/auth/routes.ts:1203 ; apps/api/src/modules/mcp/connection-service.ts:242
+MCP token refused 403 org_suspended -> apps/api/src/modules/mcp/mcp-auth-middleware.ts:50
+No new token while suspended -> apps/api/src/modules/mcp/connection-service.ts:126
+Another organization's custom app is never listed; a call is refused as an unknown tool -> apps/api/src/modules/mcp/tool-projection.ts:193-196 ; apps/api/src/modules/apps/execute-tool.ts:3420-3429
 full-access approval (no agent binding) needs a fresh emailed code, a password is refused -> apps/api/src/modules/mcp/oauth-server-routes.ts:582-586 ; apps/api/src/modules/mcp/full-access-step-up.ts:47-60 ; apps/api/src/modules/auth/step-up.ts:99
 agent-bound approval and silent re-consent need no step-up -> apps/api/src/modules/mcp/oauth-server-routes.ts:515-540
 device approval: full-access MCP grant needs confirmation and an emailed code, emailed by the card itself once per page view -> apps/api/src/modules/auth/device-flow-routes.ts:349-354 ; apps/web/src/modules/auth/DeviceApproval.tsx:216-222 ; packages/shared/src/i18n/locales/en/kernel.json:1195-1202
 device approval labels -> packages/shared/src/i18n/locales/en/kernel.json:1155-1166
 emailed code purpose and email copy -> apps/api/src/modules/auth/step-up.ts:31-38 ; apps/api/src/modules/auth/step-up.ts:165-178
+503 org_moving with Retry-After while the org moves (MCP middleware gate) -> apps/api/src/modules/mcp/mcp-auth-middleware.ts:65 ; apps/api/src/modules/org/transfer-state/gate.ts:33
 MCP tool schemas omit __mailbox parameters; a call that sets them has them dropped -> apps/api/src/modules/agent/tools/tool-bridge.ts:335 ; apps/api/src/modules/mcp/tool-call.ts:310 ; apps/api/src/modules/agent/tools/host-only-params.ts:15

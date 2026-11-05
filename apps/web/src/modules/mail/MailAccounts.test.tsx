@@ -226,8 +226,34 @@ describe("MailAccounts", () => {
     expect(screen.getByTestId("mail-connect-shared-gmail")).toBeDisabled()
     expect(screen.getAllByRole("link", { name: /open mail setup/i })[0]).toHaveAttribute(
       "href",
-      "/settings/apps/mail",
+      "/settings/apps/mail?section=providers",
     )
+  })
+
+  it("Open Mail Setup on the page it lives on scrolls to the Gmail switch and focuses it", async () => {
+    // The Mailbox types section of the same settings page, as SectionView renders it.
+    const section = document.createElement("section")
+    section.id = "settings-section-mail-providers"
+    section.tabIndex = -1
+    const toggle = document.createElement("button")
+    toggle.setAttribute("data-testid", "settings-input-gmail")
+    section.appendChild(toggle)
+    document.body.appendChild(section)
+    const scrolled = vi.fn()
+    section.scrollIntoView = scrolled
+    try {
+      renderMailAccounts()
+      fireEvent.click(await screen.findByTestId("mail-open-setup"))
+      expect(scrolled).toHaveBeenCalledTimes(1)
+      expect(document.activeElement).toBe(toggle)
+
+      toggle.blur()
+      fireEvent.click(screen.getByTestId("mail-open-setup-shared"))
+      expect(scrolled).toHaveBeenCalledTimes(2)
+      expect(document.activeElement).toBe(toggle)
+    } finally {
+      section.remove()
+    }
   })
 
   it("refreshes when the Gmail switch flips and when a mailbox connects elsewhere, without a reload", async () => {
@@ -297,7 +323,7 @@ describe("MailAccounts", () => {
     ).toHaveLength(2)
     expect(screen.getAllByRole("link", { name: /open mail setup/i })[0]).toHaveAttribute(
       "href",
-      "/settings/apps/mail",
+      "/settings/apps/mail?section=providers",
     )
   })
 

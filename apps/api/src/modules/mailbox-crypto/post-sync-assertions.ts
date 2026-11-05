@@ -22,6 +22,7 @@
 
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
+import { withReleasedSavepoint } from "~/db/savepoint"
 import { schemaRef } from "~/db/schema-ref"
 import type { AppEvent } from "~/infra/events/event-bus"
 import { appsLogger as log } from "~/lib/logger"
@@ -36,6 +37,8 @@ export interface SqlExecutor {
    * bare pool handle, so the notification below is best effort by construction.
    */
   queueEvent?(event: AppEvent): Promise<unknown>
+  /** A savepoint of this transaction (Drizzle's nested transaction). */
+  transaction?<T>(fn: (savepoint: SqlExecutor) => Promise<T>): Promise<T>
 }
 
 /**
@@ -462,37 +465,45 @@ $shred$`),
         result.noticesSkippedForMissingOrg.push(account.id)
         continue
       }
-      // SAVEPOINT per notice. The outbox insert carries an org FK, and a stale
-      // account row whose org is gone would otherwise abort the whole
-      // registration transaction on a failed courtesy message. The schema
-      // assertions above are the part that must not be lost.
-      await tx.execute(drizzleSql.raw("SAVEPOINT mailbox_enrollment_notice"))
+      // A released savepoint per notice. The outbox insert carries an org FK,
+      // and a stale account row whose org is gone would otherwise abort the
+      // whole registration transaction on a failed courtesy message. The schema
+      // assertions above are the part that must not be lost. The driver's
+      // savepoint, not a raw SAVEPOINT: postgres.js rethrows a scope's failed
+      // query when the scope ends, even one the caller caught.
+      const notice: AppEvent = {
+        app: "kernel",
+        entity: "agent_notification",
+        action: "create",
+        entityId: crypto.randomUUID(),
+        data: {
+          summary:
+            `New mail for ${account.email_address} is paused. Liaison is switching personal ` +
+            "mailboxes to encryption only you can unlock, and this mailbox needs you to set " +
+            "that up before mail can arrive again. Nothing has been lost: messages stay at " +
+            "your provider until you finish.",
+          urgency: 80,
+          targetUserIds: [account.owner_id],
+          // Fully qualified: bare "settings" is ambiguous (invoicing has its own).
+          link: { tabType: "kernel:settings", entityId: "security" },
+        },
+        actorId: null,
+        actorType: "system",
+        orgId: account.org_id,
+        timestamp: new Date().toISOString(),
+      }
       try {
-        await tx.queueEvent({
-          app: "kernel",
-          entity: "agent_notification",
-          action: "create",
-          entityId: crypto.randomUUID(),
-          data: {
-            summary:
-              `New mail for ${account.email_address} is paused. Liaison is switching personal ` +
-              "mailboxes to encryption only you can unlock, and this mailbox needs you to set " +
-              "that up before mail can arrive again. Nothing has been lost: messages stay at " +
-              "your provider until you finish.",
-            urgency: 80,
-            targetUserIds: [account.owner_id],
-            // Fully qualified: bare "settings" is ambiguous (invoicing has its own).
-            link: { tabType: "kernel:settings", entityId: "security" },
-          },
-          actorId: null,
-          actorType: "system",
-          orgId: account.org_id,
-          timestamp: new Date().toISOString(),
-        })
-        await tx.execute(drizzleSql.raw("RELEASE SAVEPOINT mailbox_enrollment_notice"))
+        if (tx.transaction) {
+          const host = tx as SqlExecutor & Required<Pick<SqlExecutor, "transaction">>
+          await withReleasedSavepoint(host, async (sp) => {
+            if (!sp.queueEvent) throw new Error("the savepoint carries no outbox")
+            await sp.queueEvent(notice)
+          })
+        } else {
+          await tx.queueEvent(notice)
+        }
         result.ownersNotified.push(account.owner_id)
       } catch (err) {
-        await tx.execute(drizzleSql.raw("ROLLBACK TO SAVEPOINT mailbox_enrollment_notice"))
         // A failed notice must never abort the schema assertion that is holding
         // the mailbox safe. The banner on the mail surface is the durable half.
         log.warn({ err, accountId: account.id }, "Mailbox enrollment notice could not be queued")

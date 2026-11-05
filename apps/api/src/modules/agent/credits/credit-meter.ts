@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+import type { CloudUnitItem } from "@liaison/control-plane-contract"
 import {
   type AddedModel,
   type AiModelsSettings,
@@ -6,7 +7,9 @@ import {
   DEMO_BOX_KEY_REASONING_LEVEL,
   getReasoningCapability,
   type OrgKernelSettings,
+  OUT_OF_CREDITS_CODE,
   orgKernelSettingsSchema,
+  PAYMENT_REQUIRED_CODE,
   type ReasoningLevel,
   tierAtLeast,
 } from "@liaison/shared"
@@ -22,6 +25,14 @@ import { rootLogger } from "~/lib/logger"
 import { redis } from "~/lib/redis"
 import { getOrgKernelSettings } from "~/lib/settings"
 import { UUID_RE } from "~/lib/uuid"
+import {
+  CREDIT_PRICING_MISSING,
+  CREDIT_PRICING_MISSING_MESSAGE,
+  cellCreditPricing,
+  creditsForEur,
+  creditsForUnits,
+  requireCellCreditPricing,
+} from "~/modules/agent/credits/credit-cost"
 import { checkBalance, deductCredits } from "~/modules/agent/credits/credit-service"
 import {
   CHAT_MODEL_PROVIDERS,
@@ -40,6 +51,12 @@ import { selectAutoModel } from "~/modules/agent/providers/provider"
 import type { AddedModelReasoningCaps } from "~/modules/agent/providers/reasoning"
 import type { StepTokenCap } from "~/modules/agent/providers/step-token-cap"
 import { readProviderCostUsd, readStepUsage } from "~/modules/agent/providers/step-usage"
+import { maybeRequestAutoTopUp } from "~/modules/cloud/auto-topup-trigger"
+import {
+  assertPaymentNotRequired,
+  PaymentRequiredError,
+  paymentRequired,
+} from "~/modules/cloud/suspension"
 import { demoVisitorSpendState } from "~/modules/demo/demo-alerts"
 import {
   acquireVisitorTurnSlot,
@@ -213,7 +230,7 @@ type PreCheckSuccess = {
   providerKey: string
   /**
    * A visitor demo org's call on the box key: its per-step reservations. The
-   * caller settles it (`finalizeUsage({ demo })`, `settleReservedDemoSideCall`)
+   * caller settles it (`finalizeUsage({ demo })`, `meterSideCall`)
    * and a turn asks it for the next step (`stepFinished`).
    */
   demo?: DemoStepMeter
@@ -233,6 +250,16 @@ type PreCheckFailure = {
   reason: string
   /** A demo spend refusal's code (`demo_*`), for the client. */
   code?: DemoSpendCode
+  /**
+   * A billing refusal's code: `credit_rate_missing` when the cell has no pushed
+   * rate (A39), `payment_required` while the org's renewal is unpaid (D17),
+   * `out_of_credits` when the balance is spent. Every other refusal carries no
+   * code and speaks for itself through `reason`.
+   */
+  billingCode?:
+    | typeof CREDIT_PRICING_MISSING
+    | typeof PAYMENT_REQUIRED_CODE
+    | typeof OUT_OF_CREDITS_CODE
 }
 
 export type PreCheckResult = PreCheckSuccess | PreCheckFailure
@@ -351,6 +378,12 @@ export async function resolveKey(
     return { key: boxKey, source: "liaison" }
   }
   await assertDemoPlatformKeyAllowed(orgId)
+
+  // A managed org past due, suspended or closed spends nothing on the platform
+  // key (D17): every paid call resolves its key here, so this one refusal
+  // covers chat, side calls (titles, link ingest, media, embeddings), web
+  // search and dictation. BYOK never applies in the managed edition (A33).
+  if (isManagedEdition()) await assertPaymentNotRequired(orgId)
 
   const envVar = ENV_KEY_MAP[provider]
   const envKey = envVar ? process.env[envVar] : undefined
@@ -1159,6 +1192,18 @@ export async function resolveModelForPreCheck(
   let auto = opts.turn
     ? await selectAutoModelForOrg(orgId, "pre-check-auto", settings)
     : await selectSideCallModelForOrg(orgId, "pre-check-auto")
+  if (!auto && opts.turn && !aiModelsOf(settings).autoModelKey) {
+    // A managed org whose creation could not add the server's default models
+    // (OpenRouter's catalogue was unreachable then): add them now. Imported
+    // lazily, like the OpenRouter default below.
+    const { ensureManagedDefaultModelsOnDemand } = await import("~/modules/cloud/default-models")
+    if (await ensureManagedDefaultModelsOnDemand(orgId)) {
+      settings = await withPrivilegedDb(orgId, "pre-check-settings", (tx) =>
+        getOrgKernelSettings(tx, orgId, orgKernelSettingsSchema),
+      )
+      auto = await selectAutoModelForOrg(orgId, "pre-check-auto", settings)
+    }
+  }
   if (!auto && opts.turn) {
     // A workspace whose only key is OpenRouter's, keyed before its key's save
     // made OpenRouter's default model Auto: do that now (openrouter-default.ts),
@@ -1263,6 +1308,38 @@ async function visitorBoxKeyPreCheck(
   }
 }
 
+/**
+ * An UNMETERED side call's model and key (a self-hosted title or extraction:
+ * no credits, so no spend gate that could refuse it). The model is resolved
+ * exactly as a turn's and a metered side call's are (`resolveModelForPreCheck`
+ * then `lookupModelInfo`), so it carries the id the provider expects
+ * (`upstreamId`: `deepseek/...` for the added model `openrouter/deepseek/...`)
+ * and a custom server's address and key. Building the call from the bare Auto
+ * selection ({ provider, modelId }) sent the org's model key upstream instead,
+ * which OpenRouter refuses. Throws with the reason when there is no model or
+ * no key.
+ */
+export async function resolveUnmeteredSideCall(
+  orgId: string,
+  modelId: string,
+): Promise<{ model: ModelInfo; providerKey: string; orgId: string }> {
+  const resolved = await resolveModelForPreCheck(orgId, modelId)
+  if ("allowed" in resolved) throw new Error(resolved.reason)
+  const { key } = await resolveKey(orgId, resolved.model)
+  return { model: resolved.model, providerKey: key, orgId }
+}
+
+/** The refusal of a paid call while the org's renewal is unpaid (D17). */
+function paymentRequiredRefusal(err: PaymentRequiredError): PreCheckFailure {
+  return {
+    allowed: false,
+    status: 402,
+    persistSystemMessage: true,
+    reason: err.message,
+    billingCode: PAYMENT_REQUIRED_CODE,
+  }
+}
+
 export async function preCheck(
   orgId: string,
   modelId?: string | null,
@@ -1291,6 +1368,7 @@ export async function preCheck(
     keyResult = await resolveKey(orgId, model)
   } catch (err) {
     if (err instanceof DemoSpendRefusedError) return demoRefusal(err)
+    if (err instanceof PaymentRequiredError) return paymentRequiredRefusal(err)
     if (err instanceof DemoKeyRequiredError) {
       return {
         allowed: false,
@@ -1379,6 +1457,11 @@ export async function spendGate(
     return null
   }
 
+  // 3b'. An unpaid renewal (D17): no platform-key spend until the open invoice
+  //      is paid. `resolveKey` refuses first on most paths; this keeps a caller
+  //      that resolved its key earlier (a dictation's second model) from spending.
+  if (await paymentRequired(orgId)) return paymentRequiredRefusal(new PaymentRequiredError())
+
   // 3c. Circuit breaker: if credit deduction has been failing persistently for
   //     this org, hard-block further turns rather than serve them free (silent
   //     revenue bypass). This is the natural enforcement point — the gate runs
@@ -1394,6 +1477,18 @@ export async function spendGate(
       persistSystemMessage: true,
       reason:
         "Agent usage is temporarily unavailable due to a billing system issue. Please try again shortly or contact support.",
+    }
+  }
+
+  // 3d. No pushed rate, no metered usage (A39): refused, never billed at a
+  //     guessed factor. `cellCreditPricing` logs the alert line.
+  if (!(await cellCreditPricing("spend-gate"))) {
+    return {
+      allowed: false,
+      status: 503,
+      persistSystemMessage: true,
+      reason: CREDIT_PRICING_MISSING_MESSAGE,
+      billingCode: CREDIT_PRICING_MISSING,
     }
   }
 
@@ -1438,6 +1533,7 @@ export async function spendGate(
       status: 402,
       persistSystemMessage: true,
       reason: "Out of agent usage",
+      billingCode: OUT_OF_CREDITS_CODE,
     }
   }
 
@@ -1699,20 +1795,26 @@ export class DemoStepMeter {
 }
 
 /**
- * Settle a side call (a checkpoint brief, a memory consolidation) that took a
- * `preCheck` and, unlike a turn, never reached `finalizeUsage`.
+ * METER A SIDE CALL: a model call made for an org outside the agent loop (a
+ * checkpoint brief, a memory flush, fact extraction, an episode summary, an
+ * auto-title, a web extraction) that took a `preCheck`. The one place such a
+ * call's usage reaches `finalizeUsage`; `model-call-metering.guard.test.ts` refuses a
+ * file that calls a model without reaching a metering entry point.
  *
- * For the reserved demo org that gap mattered twice: its tokens were spent on
- * the deployment's key and never landed in the ledger its ceiling sums, and the
- * reservation `preCheck` took stayed held until its TTL. So for that org the
- * call is finalized like a turn (an unbilled `byok_usage` row, reservation
- * released), or, when it produced nothing, its reservation is simply released.
- * A demo VISITOR org's call is finalized the same way on either key (an unbilled
- * usage row; on the box key its reservation settled at OpenRouter's reported cost,
- * `providerMetadata`). Every other org returns without a query on a normal
- * deployment, keeping these calls exactly as unmetered as they were.
+ * - Managed edition: every org's call is metered like a turn. On the cell's key
+ *   that is a billed `usage` row (the org's allowance, and the daily usage
+ *   report), attributed to the acting user or, with none, a real org user. A
+ *   live rehearsal found these calls spending on the cell's key unbilled: the
+ *   org's usage was about half of what the provider billed the key.
+ * - The reserved demo org: finalized too (an unbilled row its ceiling sums,
+ *   and the reservation `preCheck` took released), or, when the call produced
+ *   nothing, the reservation is simply released.
+ * - A demo VISITOR org: finalized on either key (an unbilled usage row; on the
+ *   box key its reservation settled at OpenRouter's reported cost).
+ * - Any other org on a self-hosted instance: nothing to meter (no credits),
+ *   and no query.
  */
-export async function settleReservedDemoSideCall(
+export async function meterSideCall(
   orgId: string,
   credit: {
     model: FinalizeParams["model"]
@@ -1721,6 +1823,12 @@ export async function settleReservedDemoSideCall(
   },
   usage: unknown,
   providerMetadata?: unknown,
+  opts: {
+    /** The acting user, when there is one. */
+    userId?: string | null
+    /** The call's reported USD cost summed over its steps (wins over `providerMetadata`). */
+    providerCostUsd?: number
+  } = {},
 ): Promise<void> {
   // A demo VISITOR's side call is metered like a turn, on either key: its reservation (box
   // key) is settled at what OpenRouter reported, and the org's usage gets its row. Settling
@@ -1732,14 +1840,23 @@ export async function settleReservedDemoSideCall(
     await credit.demo?.finish()
     return
   }
-  if (!visitor && !(await isReservedDemoOrg(orgId))) return
+  const managed = isManagedEdition()
+  if (!visitor && !managed && !(await isReservedDemoOrg(orgId))) return
   if (!usage) {
     await releaseDemoTurnReservation(orgId)
     return
   }
   try {
     const u = readStepUsage(usage)
-    const cost = readProviderCostUsd(providerMetadata)
+    const cost = opts.providerCostUsd ?? readProviderCostUsd(providerMetadata)
+    const userId =
+      opts.userId && UUID_RE.test(opts.userId)
+        ? opts.userId
+        : managed
+          ? await (await import("~/modules/agent/credits/managed-side-call")).systemWorkUserId(
+              orgId,
+            )
+          : null
     await finalizeUsage(orgId, {
       model: credit.model,
       inputTokens: u.inputTokens ?? 0,
@@ -1749,11 +1866,18 @@ export async function settleReservedDemoSideCall(
       ...(u.cacheWrite5mTokens !== undefined ? { cacheWrite5mTokens: u.cacheWrite5mTokens } : {}),
       ...(cost !== undefined ? { providerCostUsd: cost } : {}),
       keySource: credit.keySource,
-      userId: "system",
+      userId: userId ?? "system",
       ...(credit.demo ? { demo: credit.demo } : {}),
     })
   } catch (err) {
-    log.warn({ err, orgId }, "failed to settle a demo side call")
+    // Loud, and counted like a failed deduction: a lasting fault here leaves
+    // every side call of the org free and unreported, so it trips the same
+    // breaker (preCheck then refuses) instead of passing as a warning.
+    const failures = await recordDeductionFailure(orgId)
+    log.error(
+      { err, orgId, model: credit.model.modelId, failures, alert: "side_call_meter_failed" },
+      "Failed to meter a side call: its usage row was not written",
+    )
     // The usage row failed; the reservation must still close (idempotent once settled).
     await credit.demo?.finish()
   }
@@ -1794,6 +1918,12 @@ interface FinalizeParams {
    * `providerCostUsd` (OpenRouter) still wins over it.
    */
   fixedCostUsd?: number
+  /**
+   * A fixed-price item (D15): on a billed managed call its credits are
+   * `quantity` x the item's pushed credit price, never the raw cost x rate.
+   * The row still keeps the raw cost. Ignored where nothing is billed.
+   */
+  unit?: { item: CloudUnitItem; quantity: number }
   /** Extra fields for the usage event (a transcription's seconds). */
   metadata?: Record<string, unknown>
   /** The usage row's description, when the model and tokens do not say what it was. */
@@ -1888,33 +2018,33 @@ export function cacheHitRatio(
 // price, which the estimate uses, overstated cache-heavy turns about fourfold.
 const PROVIDER_REPORTED_COST = new Set(["openrouter"])
 
-/**
- * The provider's reported cost in EUR (else the caller's fixed USD cost, converted), or null
- * when the cost must be estimated from the tokens: neither given, or no exchange rate.
- */
-async function reportedCostEur(
-  provider: string,
-  providerCostUsd: number | undefined,
-  fixedCostUsd?: number,
-): Promise<number | null> {
-  const reported = PROVIDER_REPORTED_COST.has(provider) ? usableUsd(providerCostUsd) : null
-  const usd = reported ?? usableUsd(fixedCostUsd)
-  if (usd === null) return null
-  return usdToEur(provider, usd)
-}
-
-function usableUsd(v: number | undefined): number | null {
-  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null
-}
-
-async function usdToEur(provider: string, providerCostUsd: number): Promise<number | null> {
+/** The USD per EUR rate now, or null when there is none (the cost is then estimated). */
+async function usdEurRateOrNull(provider: string): Promise<number | null> {
   try {
     // Dollars divide by the rate (USD per EUR), as the catalogue's prices do.
-    return providerCostUsd / (await currentUsdEurRate())
+    const rate = await currentUsdEurRate()
+    return Number.isFinite(rate) && rate > 0 ? rate : null
   } catch (err) {
     log.warn({ err, provider }, "no USD to EUR rate: pricing the call from its tokens instead")
     return null
   }
+}
+
+/**
+ * The provider's reported cost in USD (else the caller's fixed USD cost), or
+ * null when the cost must be estimated from the tokens.
+ */
+function reportedCostUsd(
+  provider: string,
+  providerCostUsd: number | undefined,
+  fixedCostUsd?: number,
+): number | null {
+  const reported = PROVIDER_REPORTED_COST.has(provider) ? usableUsd(providerCostUsd) : null
+  return reported ?? usableUsd(fixedCostUsd)
+}
+
+function usableUsd(v: number | undefined): number | null {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null
 }
 
 export async function finalizeUsage(
@@ -1963,11 +2093,12 @@ export async function finalizeUsage(
   // system actor instead of throwing on the uuid cast.
   const actorUserId = userId && UUID_RE.test(userId) ? userId : null
 
-  const reported = await reportedCostEur(
-    model.provider,
-    params.providerCostUsd,
-    params.fixedCostUsd,
-  )
+  const reportedUsd = reportedCostUsd(model.provider, params.providerCostUsd, params.fixedCostUsd)
+  // The rate is looked up when it is needed: a reported USD cost to convert,
+  // or the managed edition, whose rows all keep their USD cost (A34).
+  const usdEurRate =
+    reportedUsd !== null || isManagedEdition() ? await usdEurRateOrNull(model.provider) : null
+  const reported = reportedUsd !== null && usdEurRate !== null ? reportedUsd / usdEurRate : null
   const rawCost =
     reported ??
     computeRawInputCost(
@@ -1983,8 +2114,14 @@ export async function finalizeUsage(
     model.source === "litellm_sync" &&
     model.updatedAt &&
     Date.now() - new Date(model.updatedAt).getTime() > 7 * 24 * 60 * 60 * 1000
-  const margin = isStale ? 1.25 : 1.2
-  const creditCost = rawCost * margin
+  // The row's USD cost: what the provider reported, else the EUR estimate back
+  // in USD at the same rate (A34). Null only when there is no rate at all.
+  const rawCostUsd =
+    reported !== null ? reportedUsd : usdEurRate !== null ? rawCost * usdEurRate : null
+  const usdFields = {
+    rawCostUsd: rawCostUsd === null ? null : rawCostUsd.toFixed(8),
+    usdEurRate: usdEurRate === null ? null : usdEurRate.toFixed(6),
+  }
 
   // Usage is metered-and-deducted only on a managed instance using a Liaison
   // key. BYOK keys — and ALL usage on a self-hosted instance — are recorded for
@@ -2015,6 +2152,7 @@ export async function finalizeUsage(
         inputTokens,
         outputTokens,
         rawCost: rawCost.toFixed(8),
+        ...usdFields,
         ...(params.description ? { description: params.description } : {}),
       })
       await tx.queueEvent({
@@ -2040,12 +2178,24 @@ export async function finalizeUsage(
     return { creditCost: "0" }
   }
 
+  // Billed: credits = raw EUR x the cell's credit rate, read per call so a
+  // pushed rate applies without a restart (S21), x the stale factor; a
+  // fixed-price item costs its pushed credit price (D15). No pushed rate: the
+  // gate refused the call, so reaching here means it vanished mid-call; that
+  // counts as a failed deduction (the breaker) below, never a guessed factor.
+  let creditCost = 0
+
   try {
-    const { balanceAfter } = await deductCredits(orgId, {
+    const pricing = await requireCellCreditPricing("finalize-usage")
+    creditCost = params.unit
+      ? creditsForUnits(pricing, params.unit.item, params.unit.quantity)
+      : creditsForEur(rawCost, pricing.rate, Boolean(isStale))
+    const { balanceAfter, transactionId } = await deductCredits(orgId, {
       model: model.modelId,
       inputTokens,
       outputTokens,
       rawCost: rawCost.toFixed(8),
+      ...usdFields,
       creditCost: creditCost.toFixed(8),
       userId: actorUserId,
       ...(params.description ? { description: params.description } : {}),
@@ -2054,6 +2204,12 @@ export async function finalizeUsage(
     // Successful deduction clears any prior consecutive-failure streak so the
     // circuit breaker only ever reflects a *persistent* problem.
     await resetDeductionFailures(orgId)
+    await maybeRequestAutoTopUp({
+      orgId,
+      transactionId,
+      balanceAfter: Number(balanceAfter),
+      amount: creditCost,
+    })
 
     // Low-balance threshold events
     // Approximate original balance as balanceAfter + creditCost

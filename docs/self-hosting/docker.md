@@ -92,6 +92,8 @@ You can point Liaison at Amazon S3, Cloudflare R2 or any S3-compatible endpoint 
 | `APP_BIND` | `127.0.0.1` | Interface the port is published on |
 | `TRUSTED_PROXY_HOPS` | `1` | Reverse-proxy hops in front of the app. Must be at least 1 behind a proxy, or rate limits see one client |
 | `TRUSTED_PROXY_CIDRS` | empty | Extra networks allowed to send `X-Forwarded-For` |
+| `LIAISON_EDGE_MODE` | empty | Only behind an edge that serves one host per workspace. `direct`: the edge keeps the Host, and the client address is `CF-Connecting-IP` from a tunnel connector on the same machine. `signed`: the edge sends the host and client address in signed `x-liaison-*` headers |
+| `LIAISON_EDGE_SECRET` | empty | The secret those headers are signed with (`signed` mode, at least 32 characters) |
 
 ### Email
 
@@ -172,6 +174,7 @@ All optional. Compose passes each of them to the app from `deploy/.env`.
 | `GOOGLE_OAUTH_RESTRICTED_SCOPES_VERIFIED` | `true` once Google verified the instance Google clients for restricted scopes |
 | `GOOGLE_OAUTH_INTERNAL_DOMAINS` | The Google Workspace domains (comma-separated) whose own Cloud project holds the instance Google clients with the consent screen's audience set to **Internal**: addresses there connect without a Trusted mark |
 | `GMAIL_PUBSUB_TOPIC` | A Pub/Sub topic Gmail push publishes to for every organization |
+| `GMAIL_PUSH_AUDIENCE`, `GMAIL_PUSH_SERVICE_ACCOUNT` | That topic's push subscription: the https URL it posts to (its OIDC audience) and the service account it signs as. Mail and Tickets check push tokens with them when an organization set none of its own |
 | `GOOGLE_PICKER_API_KEY`, `GOOGLE_CLOUD_PROJECT_NUMBER` | The Google Picker, to choose Drive files one by one |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Browser push. See [Notifications](../notifications.md) |
 | `APNS_*`, `FCM_PROJECT_ID`, `FCM_SERVICE_ACCOUNT_PATH` | Phone push. See [Notifications](../notifications.md) |
@@ -180,6 +183,7 @@ All optional. Compose passes each of them to the app from `deploy/.env`.
 | `RATE_LIMIT_DEFAULT`, `RATE_LIMIT_PER_USER` | Requests per minute per IP, and per signed-in person |
 | `NOTIFICATIONS_DEFAULT_QUIET_HOURS` | `on` (default): people who never set work hours get quiet hours from 20:00 to 08:00 on weekdays and all weekend. `off`: they are notified at any time. See [Notifications](../notifications.md) |
 | `LIAISON_TEAM_ENDPOINT` | Where this server shares what an admin opts into with the Liaison team. Unset: the team's endpoint; empty: sharing is not available. See [Share with the Liaison team](liaison-team.md) |
+| `CONTROL_PLANE_URL`, `CONTROL_PLANE_API_KEY` | Both or neither. They do not make the server managed: set without `LIAISON_EDITION`, the server runs self-hosted and logs a warning saying what to set |
 | `LIAISON_REQUIRE_APP_SIGNATURE`, `LIAISON_TRUSTED_APP_PUBLISHERS` | Runtime app installs: signatures are required by default, and the trusted publisher is one cosign certificate-identity regex matched against the whole identity. The image ships cosign; verifying needs outbound HTTPS to Sigstore (`tuf-repo-cdn.sigstore.dev`) |
 
 For every variable, see the [environment reference](../reference/env.md).
@@ -198,7 +202,7 @@ To know whether a process should receive traffic, ask `/readyz`:
 curl http://127.0.0.1:3000/readyz
 ```
 
-It answers 200 once the process has finished booting and is not shutting down, and 503 before that and while it drains. A process that serves the API counts as booted only after it has set up the organizations whose people have the app open (a live WebSocket on any process), for up to `LIAISON_READY_WARM_MS` (30 s, `0` skips it): during a deploy those people reconnect to it first, and they would otherwise wait while their organization is set up. A process sets up no other organization when it starts, so its start time stays the same however many organizations the instance holds: each one is set up the first time something needs it (a request, a job, an event). A process forgets a deleted organization within 5 minutes; it also forgets one nothing has used for `LIAISON_ORG_RUNTIME_IDLE_MINUTES` minutes (default `60`, `0` never), so its memory follows the organizations used recently rather than every one it ever served, and sets it up again at its next use. The setup step (`migrate`, and the start of each container) applies the files policy and search settings from the installed apps. The body is the same either way: `status` (`starting`, `ready` or `draining`), `role`, `instanceId` (this process, this boot) and `leader` (whether it runs the singletons right now). It needs no token and checks no dependency, so a load balancer can poll it every second. `/healthz` does not change.
+It answers 200 once the process has finished booting and is not shutting down, and 503 before that and while it drains. A process that serves the API counts as booted only after it has set up the organizations whose people have the app open (a live WebSocket on any process), for up to `LIAISON_READY_WARM_MS` (30 s, `0` skips it): during a deploy those people reconnect to it first, and they would otherwise wait while their organization is set up. A process sets up no other organization when it starts, so its start time stays the same however many organizations the instance holds: each one is set up the first time something needs it (a request, a job, an event). A process forgets a deleted organization within 5 minutes; it also forgets one nothing has used for `LIAISON_ORG_RUNTIME_IDLE_MINUTES` minutes (default `60`, `0` never), so its memory follows the organizations used recently rather than every one it ever served, and sets it up again at its next use. It also keeps at most `LIAISON_ORG_RUNTIME_MAX_ORGS` organizations set up (default `2000`, about 0.35 MB each; `0` no cap): past it, it forgets the least recently used one that nothing is using right now (no request, open socket, job, event or agent turn, and not being moved), and sets it up again at its next use. The setup step (`migrate`, and the start of each container) applies the files policy and search settings from the installed apps. The body is the same either way: `status` (`starting`, `ready` or `draining`), `role`, `instanceId` (this process, this boot) and `leader` (whether it runs the singletons right now). It needs no token and checks no dependency, so a load balancer can poll it every second. `/healthz` does not change.
 
 ## Run several processes
 

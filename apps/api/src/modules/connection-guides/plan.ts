@@ -32,7 +32,7 @@ import {
   shopifySetupGuide,
 } from "@liaison/shared"
 import { withPrivilegedDb } from "~/db/privileged"
-import { env } from "~/lib/env"
+import { oauthRedirectBaseUrl, orgPublicBaseUrl } from "~/lib/org-public-url"
 import { connectionConfigRegistry, webhookHandlers } from "~/modules/apps/app-registries"
 import { resolveOAuthClient } from "~/modules/apps/connections/oauth-client"
 import { loadOptedInScopes, protectedScopesOf } from "~/modules/apps/connections/protected-scopes"
@@ -208,7 +208,7 @@ export async function shopifyDashboardPlan(
   const client = await resolveOAuthClient(orgId, "shopify:shop")
   const values: ShopifyDashboardValues = {
     clientSource: client.source,
-    ...shopifyAppValues(env.BASE_URL, connection),
+    ...shopifyAppValues(await orgPublicBaseUrl(orgId), connection, oauthRedirectBaseUrl()),
     protectedScopes: (connection.protectedScopes ?? []).map((p) => p.scope),
     surface,
   }
@@ -243,7 +243,7 @@ export async function shopifyCliPlan(
     }
   }
   const client = await resolveOAuthClient(orgId, "shopify:shop")
-  const callbackUrl = `${env.BASE_URL.replace(/\/+$/, "")}${CONNECTIONS_CALLBACK_PATH}`
+  const callbackUrl = `${oauthRedirectBaseUrl().replace(/\/+$/, "")}${CONNECTIONS_CALLBACK_PATH}`
   const guide = shopifySetupGuide(
     {
       clientSource: client.source,
@@ -255,7 +255,13 @@ export async function shopifyCliPlan(
     t,
   )
   const protectedScopes = await shopifyOptedInProtectedScopes(orgId, connection)
-  return { guide, toml: shopifyAppToml(env.BASE_URL, connection, { protectedScopes }) }
+  return {
+    guide,
+    toml: shopifyAppToml(await orgPublicBaseUrl(orgId), connection, {
+      redirectBaseUrl: oauthRedirectBaseUrl(),
+      protectedScopes,
+    }),
+  }
 }
 
 /** The webhook endpoint names an app registered for this org. */
@@ -271,15 +277,16 @@ export function appWebhookEndpoints(orgId: string, app: string): string[] {
  * the client card, `liaison guide <app>/<connection>` and `liaison connect`
  * show (connection-setup.ts). Null when the app has no such connection.
  */
-export function appConnectionSetup(
+export async function appConnectionSetup(
   orgId: string,
   app: string,
   connection: string,
-): ConnectionSetup | null {
+): Promise<ConnectionSetup | null> {
   const decl = connectionConfigRegistry.get([orgId, app, connection])
   if (!decl) return null
   return connectionSetup({
-    baseUrl: env.BASE_URL,
+    baseUrl: await orgPublicBaseUrl(orgId),
+    redirectBaseUrl: oauthRedirectBaseUrl(),
     orgId,
     app,
     connection,

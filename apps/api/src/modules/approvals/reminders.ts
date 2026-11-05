@@ -54,11 +54,16 @@ import { withRlsContext } from "~/db/rls"
 import { messages, users } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import { enqueueAppJob, enqueueAppJobForServer } from "~/infra/jobs/jobs"
-import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
+import { orgPublicBaseUrl } from "~/lib/org-public-url"
 import { getOrCreatePersonalAgentId } from "~/modules/agent/directory/personal-agent"
 import { apiViewer, authorityFacts } from "~/modules/approvals/authority"
 import { approvalActionPhrase, deriveApprovalTitle } from "~/modules/approvals/payload-title"
+import {
+  SKIPPED_MOVING,
+  sweepSkippingMoving,
+  writeUnlessMoving,
+} from "~/modules/org/transfer-state/skip-moving"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { sendMessage } from "~/modules/threads/message"
 import { createOrGetAgentDm } from "~/modules/threads/thread"
@@ -279,6 +284,7 @@ export async function remindUserOfWaitingApprovals(args: {
   const { frequency, hours, rows, names, agentId, perms } = prep
 
   const viewer = apiViewer(userId, perms.scopes)
+  const base = await orgPublicBaseUrl(orgId)
   const items: ReminderItem[] = rows.slice(0, MAX_LISTED).map((r) => {
     const facts: ApprovalAuthorityFacts = authorityFacts(r)
     const canDecide = canDecidePure(facts, viewer, { sharedSurface: isSharedSurfaceFacts(facts) })
@@ -289,7 +295,7 @@ export async function remindUserOfWaitingApprovals(args: {
       kind: approvalActionPhrase(r.tool_name),
       title: titleOf(r),
       ageHours: r.age_hours,
-      link: `${env.BASE_URL}/threads/${r.thread_id}`,
+      link: `${base}/threads/${r.thread_id}`,
       canDecide,
       ...(r.origin === "mcp" ? { origin: "mcp" as const } : {}),
       ...(canDecide
@@ -342,7 +348,7 @@ export async function remindUserOfWaitingApprovals(args: {
       agentId,
       count: rows.length,
       items,
-      approvalsLink: `${env.BASE_URL}/approvals`,
+      approvalsLink: `${base}/approvals`,
     }
     const message = await sendMessage(tx, {
       // The person's own requests, in their own conversation with their agent.
@@ -392,16 +398,20 @@ type Cursor = { orgId: string; userId: string }
  * interval; nobody who turned reminders off), after `cursor` in (org, person) order.
  */
 async function scanCandidates(cursor: Cursor | null): Promise<Candidate[]> {
-  const result: unknown = await withSystemDb("approval-reminder-scan", (db) =>
-    db.execute(drizzleSql`
+  // An org being moved is not reminded until the move ends (it writes the reminder line).
+  const result: unknown = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("approval-reminder-scan", (db) =>
+      db.execute(drizzleSql`
       SELECT DISTINCT ar.org_id, ar.requested_by
         FROM ${K}.approval_requests ar
         LEFT JOIN ${K}.agents a ON a.id = ar.agent_id AND a.org_id = ar.org_id
         LEFT JOIN ${K}.user_preferences up ON up.user_id = ar.requested_by
        WHERE ${qualifying(PERSON_INTERVAL_HOURS)}
+         AND ${notMoving(drizzleSql.raw("ar.org_id"))}
          ${cursor ? drizzleSql`AND (ar.org_id, ar.requested_by) > (${cursor.orgId}::uuid, ${cursor.userId}::uuid)` : drizzleSql``}
        ORDER BY ar.org_id, ar.requested_by
        LIMIT ${PAGE_SIZE}`),
+    ),
   )
   return extractRows<Candidate>(result)
 }
@@ -422,12 +432,14 @@ export async function runApprovalReminderSweep(
     for (const c of batch) {
       candidates++
       try {
-        const res = await remindUserOfWaitingApprovals({
-          orgId: c.org_id,
-          userId: c.requested_by,
-          ...(opts.startTurn ? { startTurn: opts.startTurn } : {}),
-        })
-        if (res.status === "sent") sent++
+        const res = await writeUnlessMoving(c.org_id, () =>
+          remindUserOfWaitingApprovals({
+            orgId: c.org_id,
+            userId: c.requested_by,
+            ...(opts.startTurn ? { startTurn: opts.startTurn } : {}),
+          }),
+        )
+        if (res !== SKIPPED_MOVING && res.status === "sent") sent++
       } catch (err) {
         log.error({ err, orgId: c.org_id, userId: c.requested_by }, "approval reminder failed")
       }

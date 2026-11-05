@@ -310,9 +310,17 @@ test.describe("projects visual", () => {
     const sidebar = page.getByTestId("projects-sidebar")
     await expect(sidebar).toBeVisible({ timeout: 10_000 })
     await expect
-      .poll(async () => await sidebar.locator('[data-testid^="projects-sidebar.row-"]').count(), {
-        timeout: 10_000,
-      })
+      .poll(
+        async () =>
+          await sidebar
+            .locator(
+              '[data-testid^="projects-sidebar.row-"]:not([data-testid^="projects-sidebar.row-key-"])',
+            )
+            .count(),
+        {
+          timeout: 10_000,
+        },
+      )
       .toBe(5)
 
     await settle(page)
@@ -566,9 +574,17 @@ test.describe("projects visual", () => {
     const sidebar = page.getByTestId("projects-sidebar")
     await expect(sidebar).toBeVisible({ timeout: 15_000 })
     await expect
-      .poll(async () => await sidebar.locator('[data-testid^="projects-sidebar.row-"]').count(), {
-        timeout: 10_000,
-      })
+      .poll(
+        async () =>
+          await sidebar
+            .locator(
+              '[data-testid^="projects-sidebar.row-"]:not([data-testid^="projects-sidebar.row-key-"])',
+            )
+            .count(),
+        {
+          timeout: 10_000,
+        },
+      )
       .toBe(5)
 
     // Light up two filters so the active-state styling is captured.

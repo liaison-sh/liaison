@@ -241,3 +241,45 @@ describe("/api/admin/liaison-team", () => {
     expect((await put(admin, { instanceId: "x" })).status).toBe(400)
   })
 })
+
+describe("/api/admin/liaison-team in the managed edition (LIAISON_EDITION=managed)", () => {
+  const savedEdition = env.LIAISON_EDITION
+  const setEditionEnv = (v: "managed" | "self_hosted" | undefined) => {
+    ;(env as { LIAISON_EDITION?: string }).LIAISON_EDITION = v
+  }
+  beforeEach(() => {
+    _setEdition(null)
+    setEditionEnv("managed")
+  })
+  afterEach(() => {
+    setEditionEnv(savedEdition)
+  })
+
+  it("sharing reads as forced on, with nothing stored and nothing queued", async () => {
+    const operator = await minimal.adminSession((await createTestOrg()).id)
+    setOperator(operator.orgId)
+    const { data } = (await (await get(operator)).json()) as Body
+    expect(data.register.enabled).toBe(true)
+    expect(data.forwardBugReports.enabled).toBe(true)
+    const queued = await sql`SELECT type FROM kernel.control_plane_outbox`
+    expect(queued.length).toBe(0)
+  })
+
+  it("a tenant admin gets 403 on PUT", async () => {
+    const operator = await minimal.adminSession((await createTestOrg()).id)
+    const tenant = await foreignAdmin()
+    setOperator(operator.orgId)
+    expect((await put(tenant, { register: false })).status).toBe(403)
+  })
+
+  it("the operator cannot turn it off either (403), and nothing is queued", async () => {
+    const operator = await minimal.adminSession((await createTestOrg()).id)
+    setOperator(operator.orgId)
+    const res = await put(operator, { register: false })
+    expect(res.status).toBe(403)
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe("MANAGED_EDITION")
+    expect((await put(operator, { register: true })).status).toBe(403)
+    const queued = await sql`SELECT type FROM kernel.control_plane_outbox`
+    expect(queued.length).toBe(0)
+  })
+})

@@ -7,6 +7,7 @@
 // `watched_object`s, ingests their child activity, and adapts each watch's
 // cadence (hot/warm/cool/decayed) via `adaptCadence`.
 
+import { refreshMetaPageIds } from "./meta-pages"
 import {
   adaptCadence,
   META_POLLS_PER_TICK,
@@ -282,6 +283,11 @@ export async function runDiscoverySync(
     return { ingested: 0, unitsConsumed: 0 }
   }
   await clearMissingToken(ctx, state)
+  // The Pages a server-wide Meta callback routes here are re-checked against
+  // Meta on every discovery tick (meta-pages.ts); a failed check changes nothing.
+  if (adapter.platform === "facebook") {
+    await refreshMetaPageIds(ctx, accountExternalId, { force: true, token: accessToken, now })
+  }
   // Monitor terms scope keyword-search discovery (currently only consulted by
   // the YouTube adapter); loading is cheap so it happens unconditionally
   // rather than gating on adapter.platform === "youtube" here (keeps the

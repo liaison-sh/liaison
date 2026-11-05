@@ -14,6 +14,7 @@ import {
   postDualSystemMessages,
 } from "~/modules/approvals/event-data"
 import { hasLandedEffect, promoteLandedEffect } from "~/modules/approvals/handler-protocol"
+import { sweepSkippingMoving, writeUnlessMoving } from "~/modules/org/transfer-state/skip-moving"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 
 const K = drizzleSql.raw(schemaRef("kernel"))
@@ -31,22 +32,26 @@ interface StaleRow {
 }
 
 export async function runApprovingReaper() {
-  const result = await withSystemDb("approving-reaper-scan", (db) =>
-    db.execute(drizzleSql`
+  // An org being moved keeps its approvals as they are until the move ends.
+  const result = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("approving-reaper-scan", (db) =>
+      db.execute(drizzleSql`
       SELECT id, org_id, tool_name, thread_id, originating_thread_id, notify_user_ids,
              requested_by, current_payload,
              (metadata ? 'reaperFlaggedAt') AS operator_flagged
       FROM ${K}.approval_requests
       WHERE status = 'approving'
+        AND ${notMoving(drizzleSql.raw("org_id"))}
         AND approving_started_at < now() - make_interval(secs => ${APPROVING_WEDGE_GRACE_MS / 1000}::double precision)
       LIMIT 100
     `),
+    ),
   )
   const stale = extractRows<StaleRow>(result)
 
   for (const row of stale) {
     try {
-      await reapOne(row)
+      await writeUnlessMoving(row.org_id, () => reapOne(row))
     } catch (err) {
       log.error({ err, requestId: row.id }, "Approving reaper failed for row")
     }
@@ -240,12 +245,15 @@ interface StaleDeferredRow {
  * or absent) are eligible for reaping.
  */
 export async function runDeferredStepReaper(): Promise<void> {
-  const result = await withSystemDb("deferred-step-reaper-scan", (db) =>
-    db.execute(drizzleSql`
+  // An org being moved keeps its approvals as they are until the move ends.
+  const result = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("deferred-step-reaper-scan", (db) =>
+      db.execute(drizzleSql`
       SELECT d.id, d.org_id, d.thread_id, d.originating_thread_id, d.requested_by
       FROM ${K}.approval_requests d
       JOIN ${K}.approval_requests h ON h.id = d.depends_on_id
       WHERE d.status = 'deferred'
+        AND ${notMoving(drizzleSql.raw("d.org_id"))}
         AND h.status IN ('approved', 'denied', 'expired', 'cancelled', 'withdrawn')
         AND h.decided_at < now() - make_interval(secs => ${APPROVING_WEDGE_GRACE_MS / 1000}::double precision)
         AND NOT EXISTS (
@@ -255,37 +263,40 @@ export async function runDeferredStepReaper(): Promise<void> {
         )
       LIMIT 100
     `),
+    ),
   )
   const stale = extractRows<StaleDeferredRow>(result)
 
   for (const row of stale) {
     try {
-      await withPrivilegedDb(row.org_id, "deferred-step-reaper-cancel", async (tx) => {
-        const cancelled = extractRows<{ id: string }>(
-          await tx.execute(drizzleSql`
+      await writeUnlessMoving(row.org_id, async () => {
+        await withPrivilegedDb(row.org_id, "deferred-step-reaper-cancel", async (tx) => {
+          const cancelled = extractRows<{ id: string }>(
+            await tx.execute(drizzleSql`
             UPDATE ${K}.approval_requests
             SET status = 'cancelled'
             WHERE id = ${row.id} AND status = 'deferred'
             RETURNING id
           `),
-        )[0]
-        if (!cancelled) return
-        await emitApprovalStateChange(tx, {
-          // Fixed text, no handler output.
-          requiredScopes: [],
-          orgId: row.org_id,
-          requestId: row.id,
-          threadId: row.thread_id,
-          originatingThreadId: row.originating_thread_id,
-          requesterId: row.requested_by,
-          actorUserId: row.requested_by,
-          actorType: "system",
-          content: "Cancelled (cascade did not complete).",
-          metadata: { type: "approval-decision", decision: "cancelled" },
+          )[0]
+          if (!cancelled) return
+          await emitApprovalStateChange(tx, {
+            // Fixed text, no handler output.
+            requiredScopes: [],
+            orgId: row.org_id,
+            requestId: row.id,
+            threadId: row.thread_id,
+            originatingThreadId: row.originating_thread_id,
+            requesterId: row.requested_by,
+            actorUserId: row.requested_by,
+            actorType: "system",
+            content: "Cancelled (cascade did not complete).",
+            metadata: { type: "approval-decision", decision: "cancelled" },
+          })
         })
+        // A routine run waiting on this step carries on (approval-result-turn.ts).
+        await enqueueRoutineDecisionTurn(row.org_id, row.id)
       })
-      // A routine run waiting on this step carries on (approval-result-turn.ts).
-      await enqueueRoutineDecisionTurn(row.org_id, row.id)
     } catch (err) {
       log.error({ err, requestId: row.id }, "Deferred-step reaper failed for row")
     }

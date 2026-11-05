@@ -39,6 +39,8 @@ export interface ShopifyAppTomlOptions {
   clientId?: string
   /** The app's name in Shopify. */
   name?: string
+  /** The base of the redirect URL, when not the app URL's (shopifyAppValues). */
+  redirectBaseUrl?: string
   /** Protected scopes the org opted in to (connections/protected-scopes.ts
    *  `loadOptedInScopes`): listed with the scopes. Any other protected scope stays out. */
   protectedScopes?: readonly string[]
@@ -69,22 +71,26 @@ export interface ShopifyAppValues {
 }
 
 /** The Shopify app's settings for this server, from the manifest's `shop`
- *  connection: what the file holds and the Dev Dashboard guide shows.
- *  `optedInProtected`: the protected scopes the org opted in to, added after the
- *  base scopes (a scope the connection does not declare protected is ignored). */
+ *  connection: what the file holds and the Dev Dashboard guide shows. The app
+ *  URL is on `baseUrl`; the redirect URL on `redirectBaseUrl`, the base the
+ *  OAuth flow sends as its redirect_uri. `optedInProtected`: the protected scopes
+ *  the org opted in to, added after the base scopes (a scope the connection does
+ *  not declare protected is ignored). */
 export function shopifyAppValues(
   baseUrl: string,
   connection: ShopifyConnectionManifest,
+  redirectBaseUrl: string = baseUrl,
   optedInProtected: readonly string[] = [],
 ): ShopifyAppValues {
   const base = baseUrl.replace(/\/+$/, "")
+  const redirectBase = redirectBaseUrl.replace(/\/+$/, "")
   const isProtected = new Set((connection.protectedScopes ?? []).map((p) => p.scope))
   const baseScopes = (connection.scopes ?? []).filter((s) => !isProtected.has(s))
   if (baseScopes.length === 0) throw new Error("The Shopify connection declares no scopes")
   if (!connection.apiVersion) throw new Error("The Shopify connection declares no apiVersion")
   return {
     appUrl: base,
-    redirectUrls: [`${base}${CONNECTIONS_CALLBACK_PATH}`],
+    redirectUrls: [`${redirectBase}${CONNECTIONS_CALLBACK_PATH}`],
     scopes: [
       ...baseScopes,
       ...[...isProtected].filter((s) => optedInProtected.includes(s) && !baseScopes.includes(s)),
@@ -98,7 +104,7 @@ export function shopifyAppToml(
   connection: ShopifyConnectionManifest,
   options: ShopifyAppTomlOptions = {},
 ): string {
-  const v = shopifyAppValues(baseUrl, connection, options.protectedScopes)
+  const v = shopifyAppValues(baseUrl, connection, options.redirectBaseUrl, options.protectedScopes)
   const lines = [
     `# Shopify app configuration for Liaison at ${v.appUrl}.`,
     "# Generated from the Shopify app's manifest: keep the scopes and URLs as they are.",

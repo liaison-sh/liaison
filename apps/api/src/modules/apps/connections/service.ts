@@ -14,6 +14,14 @@ import { appsLogger as log } from "~/lib/logger"
 import { manifestRegExp } from "~/lib/manifest-regex"
 import { connectBindingMatches } from "~/lib/oauth-browser-binding"
 import {
+  oauthStateForOrg,
+  oauthStatePrefixed,
+  oauthStateSlug,
+  stateSlugFitsHost,
+} from "~/lib/oauth-state"
+import { bindingAllowsOrg, type HostBinding, orgIdForSlug } from "~/lib/org-host"
+import { oauthRedirectBaseUrl, orgAppBaseUrl, orgPublicBaseUrl } from "~/lib/org-public-url"
+import {
   fetchWithRedirectValidation,
   UnsafeOutboundUrlError,
   validateOutboundUrl,
@@ -264,20 +272,24 @@ function connectCardRefOf(value: unknown): ConnectCardRef | null {
  * code (connect-failures.ts), worded by the page or the card; never the text
  * the provider or the callback produced.
  */
-export function connectCardReturnUrl(card: ConnectCardRef, failure?: { error: string }): string {
+export async function connectCardReturnUrl(
+  orgId: string,
+  card: ConnectCardRef,
+  failure?: { error: string },
+): Promise<string> {
   const params = new URLSearchParams()
   const reason = failure ? connectFailureReason(failure.error) : null
   if (card.display === "popup") {
     params.set("result", reason ? "failed" : "connected")
     if (reason) params.set("reason", reason)
-    return `${env.BASE_URL}${CONNECT_DONE_PATH}?${params.toString()}`
+    return `${await orgPublicBaseUrl(orgId)}${CONNECT_DONE_PATH}?${params.toString()}`
   }
   if (reason) {
     // The card that started it shows the failure, with Retry, and cleans the URL.
     params.set("connect_request", card.requestId)
     params.set("oauth_error", reason)
   }
-  return getFrontendRedirectUrl(`/threads/${encodeURIComponent(card.threadId)}`, params)
+  return getFrontendRedirectUrl(orgId, `/threads/${encodeURIComponent(card.threadId)}`, params)
 }
 /** Cookie carrying the hash of the connect state, scoped to the callback path. */
 export const CONNECT_BINDING_COOKIE = "__connect_state"
@@ -545,8 +557,6 @@ export async function announceTakenOverAccounts(
     })
   }
 }
-
-const DEFAULT_FRONTEND_ORIGIN = "http://localhost:5173"
 
 /**
  * Declarative OAuth URL template-variable normalization.
@@ -832,12 +842,13 @@ async function loadMailAuthorizedConnectedAccounts(
   )
 }
 
-function getFrontendRedirectUrl(pathname: string, params?: URLSearchParams): string {
-  const frontendOrigin =
-    env.ALLOWED_ORIGINS.split(",")
-      .map((origin) => origin.trim())
-      .find((origin) => origin && origin !== "*") ?? DEFAULT_FRONTEND_ORIGIN
-  const url = new URL(pathname, frontendOrigin)
+/** A web-app page of the org (orgAppBaseUrl); with no org known, of the instance's web origin. */
+async function getFrontendRedirectUrl(
+  orgId: string | null,
+  pathname: string,
+  params?: URLSearchParams,
+): Promise<string> {
+  const url = new URL(pathname, await orgAppBaseUrl(orgId))
   // Merged into the path's own query: a connector's `?open=<app>` survives an error.
   for (const [k, v] of params ?? []) url.searchParams.set(k, v)
   return url.toString()
@@ -1371,9 +1382,25 @@ export async function createCredentialConnection(
   //
   // A multiInstance connection adds the identifier to the key: its identifier
   // is the account's admin-chosen slug, so each slug is its own account and a
-  // re-post replaces only that one.
+  // re-post replaces only that one. So does an ORG mailbox: an org holds several
+  // shared mailboxes and its address names each one, while a person's own
+  // mailbox stays one row that a re-connect rotates.
+  //
+  // A mailbox's address is the same mailbox in any case (the cap and the CLI
+  // already compare it lowercased), so its matches here ignore case. A match
+  // keeps the row's stored spelling: Mail's account and its token lookups hold
+  // that spelling and compare it exactly.
+  const isMailbox = isMailboxConnection(connectionName)
+  const keyedByAddress = isMailbox && resolvedOwnerId === null
+  const sameIdentifier = isMailbox
+    ? drizzleSql`lower(${connectedAccounts.identifier}) = lower(${input.identifier})`
+    : eq(connectedAccounts.identifier, input.identifier)
   const existing = await tx
-    .select({ id: connectedAccounts.id, status: connectedAccounts.status })
+    .select({
+      id: connectedAccounts.id,
+      status: connectedAccounts.status,
+      identifier: connectedAccounts.identifier,
+    })
     .from(connectedAccounts)
     .where(
       and(
@@ -1384,19 +1411,23 @@ export async function createCredentialConnection(
         resolvedOwnerId === null
           ? isNull(connectedAccounts.ownerId)
           : eq(connectedAccounts.ownerId, resolvedOwnerId),
-        ...(multiInstance ? [eq(connectedAccounts.identifier, input.identifier)] : []),
+        ...(multiInstance || keyedByAddress ? [sameIdentifier] : []),
       ),
     )
     .limit(1)
+  const storedIdentifier =
+    keyedByAddress && existing[0]?.identifier ? existing[0].identifier : input.identifier
 
   // The org's mailbox cap (modules/org/caps.ts), under its mailboxes lock: a
   // new mailbox, or a disconnected one coming back, must fit. Re-entering the
   // credentials of a connected mailbox is an update and is never refused.
-  if (
-    isMailboxConnection(connectionName) &&
-    (!existing[0] || existing[0].status === "disconnected")
-  ) {
-    await assertMailboxRoom(tx, orgId, input.identifier)
+  if (isMailbox && (!existing[0] || existing[0].status === "disconnected")) {
+    await assertMailboxRoom(
+      tx,
+      orgId,
+      input.identifier,
+      resolvedOwnerId === null ? { type: "org" } : { type: "user", userId: resolvedOwnerId },
+    )
   }
 
   // ONE ACTIVE ACCOUNT PER IDENTIFIER, WHOEVER OWNS IT (a credentials
@@ -1417,6 +1448,7 @@ export async function createCredentialConnection(
     db
       .select({
         id: connectedAccounts.id,
+        identifier: connectedAccounts.identifier,
         ownerType: connectedAccounts.ownerType,
         ownerId: connectedAccounts.ownerId,
         ownerName: users.name,
@@ -1428,7 +1460,7 @@ export async function createCredentialConnection(
           eq(connectedAccounts.orgId, orgId),
           eq(connectedAccounts.appName, appName),
           eq(connectedAccounts.connectionName, connectionName),
-          eq(connectedAccounts.identifier, input.identifier),
+          sameIdentifier,
           eq(connectedAccounts.status, "active"),
         ),
       )
@@ -1487,7 +1519,7 @@ export async function createCredentialConnection(
         ownerId: h.ownerId,
         appName,
         connectionName,
-        identifier: input.identifier,
+        identifier: h.identifier,
       })),
     })
   }
@@ -1497,7 +1529,7 @@ export async function createCredentialConnection(
         .update(connectedAccounts)
         .set({
           providerType: "credentials",
-          identifier: input.identifier,
+          identifier: storedIdentifier,
           displayName: input.displayName ?? null,
           credentialsEncrypted: encryptedCredentials,
           status: "active",
@@ -1572,7 +1604,7 @@ export async function createCredentialConnection(
       ownerType: resolvedOwnerType,
       ownerId: resolvedOwnerId,
       providerType: "credentials",
-      identifier: input.identifier,
+      identifier: storedIdentifier,
       status: "active",
       // Public origin where the kernel webhook routes are reachable from
       // third-party APIs — credentials-connection apps (e.g. Boxtal) need this
@@ -2124,7 +2156,8 @@ export async function startOAuthFlow(
   const ownerId = ownerType === "org" ? null : (opts?.ownerId ?? userId)
 
   // Generate a random state token and store in Redis
-  const stateToken = randomBytes(32).toString("base64url")
+  // With a central redirect host it names the org (lib/oauth-state.ts).
+  const stateToken = await oauthStateForOrg(orgId, randomBytes(32).toString("base64url"))
   await redis.set(
     `${OAUTH_STATE_PREFIX}:${stateToken}`,
     JSON.stringify({
@@ -2155,7 +2188,7 @@ export async function startOAuthFlow(
   opts?.onState?.(stateToken)
 
   // Build the authorization URL
-  const redirectUri = `${env.BASE_URL}/api/connections/callback`
+  const redirectUri = connectionsRedirectUri()
   const params = new URLSearchParams({
     client_id: provider.clientId,
     redirect_uri: redirectUri,
@@ -2630,6 +2663,11 @@ interface OAuthStateRecord {
   connectLink?: string | null
 }
 
+/** The redirect_uri of every connector flow: the authorize URL and the code exchange send the same. */
+export function connectionsRedirectUri(): string {
+  return `${oauthRedirectBaseUrl()}/api/connections/callback`
+}
+
 /** Retrieves and consumes a state (single use). */
 async function consumeOAuthState(state: string): Promise<OAuthStateRecord> {
   const rawState = await redis.getdel(`${OAUTH_STATE_PREFIX}:${state}`)
@@ -2699,8 +2737,23 @@ export async function receiveOAuthCallback(
   callbackParams?: Record<string, string | undefined>,
   /** The request's Cookie header: proves the callback is the initiating browser. */
   cookieHeader?: string,
+  /** The callback's host binding (lib/org-host.ts): a flow of org A completes only on A's host. */
+  hostBinding?: HostBinding,
 ): Promise<OAuthCallbackOutcome> {
+  // Checked before the state is spent: another org's state (or one missing its
+  // org prefix) stays for its own browser to finish on its own host.
+  if (!stateSlugFitsHost(state, hostBinding ?? { kind: "unbound" })) {
+    throw new OAuthBrowserMismatchError()
+  }
   const record = await consumeOAuthState(state)
+  if (hostBinding && !(await bindingAllowsOrg(hostBinding, record.orgId))) {
+    throw new OAuthBrowserMismatchError()
+  }
+  // The prefix must name the org the flow was started for.
+  const stateSlug = oauthStatePrefixed() ? oauthStateSlug(state) : null
+  if (stateSlug !== null && (await orgIdForSlug(stateSlug)) !== record.orgId) {
+    throw new OAuthBrowserMismatchError()
+  }
   // An app turned Off for the workspace while the person was at the provider
   // connects nothing (S19, A6): a readable refusal, not a silent grant.
   if (!(await isAppActiveForOrgAsync(record.orgId, record.appName))) {
@@ -2770,6 +2823,26 @@ export async function redeemShellConnect(input: {
 
 /** Exchanges the provider's code and stores the connection the state describes. */
 async function completeOAuthGrant(
+  record: OAuthStateRecord,
+  code: string,
+  callbackParams?: Record<string, string | undefined>,
+): Promise<string> {
+  // The grant writes the org's connection: counted as a live write first (a
+  // freeze landing meanwhile sees it), then gated. An org moving to another
+  // instance stores no new connection here (503 `org_moving`; the person
+  // retries once the move is over).
+  const { assertOrgAcceptsWrites } = await import("~/modules/org/transfer-state/gate")
+  const { beginOrgActivity } = await import("~/modules/org/transfer-state/state")
+  const end = beginOrgActivity(record.orgId, "writes")
+  try {
+    await assertOrgAcceptsWrites(record.orgId)
+    return await storeOAuthGrant(record, code, callbackParams)
+  } finally {
+    end()
+  }
+}
+
+async function storeOAuthGrant(
   record: OAuthStateRecord,
   code: string,
   callbackParams?: Record<string, string | undefined>,
@@ -2868,7 +2941,7 @@ async function completeOAuthGrant(
   }
 
   // Exchange authorization code for tokens
-  const redirectUri = `${env.BASE_URL}/api/connections/callback`
+  const redirectUri = connectionsRedirectUri()
   let tokenResponse: Response
   try {
     tokenResponse = await fetchWithRedirectValidation(
@@ -3136,7 +3209,16 @@ async function completeOAuthGrant(
     // disconnect and an alert to that member, announceTakenOverAccounts).
     // The org's mailbox cap (modules/org/caps.ts), under its mailboxes lock. A
     // reconnect of a connected address replaces its row below and adds nothing.
-    if (isMailboxConnection(connectionName)) await assertMailboxRoom(tx, orgId, identifier)
+    if (isMailboxConnection(connectionName)) {
+      await assertMailboxRoom(
+        tx,
+        orgId,
+        identifier,
+        resolvedOwnerType === "org" || !resolvedOwnerId
+          ? { type: "org" }
+          : { type: "user", userId: resolvedOwnerId },
+      )
+    }
 
     const takenOver =
       resolvedOwnerType === "org" && !ownersCoexist
@@ -3368,7 +3450,9 @@ async function completeOAuthGrant(
     cardRequestId: card?.requestId ?? null,
   })
 
-  return card ? connectCardReturnUrl(card) : getFrontendRedirectUrl(appSettingsPath(orgId, appName))
+  return card
+    ? connectCardReturnUrl(orgId, card)
+    : getFrontendRedirectUrl(orgId, appSettingsPath(orgId, appName))
 }
 
 export { getFrontendRedirectUrl }

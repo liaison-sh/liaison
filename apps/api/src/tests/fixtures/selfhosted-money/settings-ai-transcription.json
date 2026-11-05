@@ -1,0 +1,26 @@
+{
+  "data": {
+    "available": [
+      {
+        "key": "openrouter/openai/whisper-large-v3-turbo",
+        "label": "Whisper large v3 turbo",
+        "provider": "openrouter",
+        "pricePerMinuteUsd": 0.0001998
+      },
+      {
+        "key": "openrouter/qwen/qwen3-asr-1.7b",
+        "label": "Qwen3 ASR 1.7B",
+        "provider": "openrouter",
+        "pricePerMinuteUsd": 0.00045
+      },
+      {
+        "key": "openrouter/qwen/qwen3-asr-0.6b",
+        "label": "Qwen3 ASR 0.6B",
+        "provider": "openrouter",
+        "pricePerMinuteUsd": 0.0001998
+      }
+    ],
+    "current": null,
+    "default": "openrouter/qwen/qwen3-asr-1.7b"
+  }
+}

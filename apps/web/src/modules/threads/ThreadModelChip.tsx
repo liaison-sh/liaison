@@ -9,7 +9,7 @@ import { shellTier } from "~/modules/shell/shell-tier"
 interface BalanceState {
   included: string
   purchased: string
-  currency: string
+  currency?: string
   tier?: string
 }
 

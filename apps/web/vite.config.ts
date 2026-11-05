@@ -20,7 +20,9 @@ const apiTarget = process.env.VITE_API_TARGET ?? "http://localhost:3000"
  * module with imports, which a blob module worker cannot resolve, so the dev
  * boot starts it from its own URL instead (crypto-worker-boot.ts).
  */
-const devProxy = devProxyFor(apiTarget)
+const devProxy = devProxyFor(apiTarget, {
+  preserveHost: process.env.VITE_PROXY_PRESERVE_HOST === "1",
+})
 
 /**
  * `vite build --mode native` is the build the mobile app wraps

@@ -22,6 +22,7 @@ import type {
   ProvisionPlan,
   ProvisionResult,
 } from "~/cli/provisioners/types"
+import { isManagedEdition } from "~/lib/edition"
 import { canManageInstanceApps } from "~/modules/apps/operator-org"
 import { liaisonTeamEndpoint } from "~/modules/liaison-team/outbox"
 import {
@@ -76,11 +77,12 @@ async function verifyRequest(ctx: ProvisionContext, section: Section): Promise<L
   return stored
 }
 
-/** True when applying `section` changes a switch or records a first answer. */
+/** True when applying `section` changes a switch or records a first answer. The managed
+ *  edition's switches are fixed on: only asking for something else is a change (refused). */
 function sharingWouldChange(stored: LiaisonTeamSharing, section: Section): boolean {
   const w = desiredSharing(stored, section)
   return (
-    stored.decidedAt === null ||
+    (stored.decidedAt === null && !isManagedEdition()) ||
     w.register !== stored.register ||
     w.forwardBugReports !== stored.forwardBugReports
   )

@@ -559,7 +559,11 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.2: a carrier order id no longer reaches the uuid row-id lookup (print_pack,
     // ready_set_packed, import_label_document), and print_pack renders an issued invoice's missing
     // PDF on demand instead of failing the invoice job.
-    expect(m.version).toBe("0.23.2")
+    // 0.23.3: prep_set_address_choice runs its checks as a stage-time preflight, so an agent's
+    // pick the handler would refuse is refused before it is parked for a person; the app's own
+    // install resolves the control-plane contract through an override (the shared package
+    // depends on it by workspace protocol).
+    expect(m.version).toBe("0.23.3")
     expect(m.packageFormat).toBe(1)
   })
 

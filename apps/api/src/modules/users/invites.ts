@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { and, eq, isNull } from "drizzle-orm"
 import type { RlsClient } from "~/db"
-import { invitations, organizations, roleScopeGrants, roles, users } from "~/db/schema/kernel"
+import { invitations, roleScopeGrants, roles, users } from "~/db/schema/kernel"
 import { getSystemEmailProvider, recipientDomain } from "~/infra/email"
 import { renderBrandedEmail } from "~/infra/email-layout"
 import { generateToken, hashToken } from "~/lib/crypto"
-import { env } from "~/lib/env"
 import { authLogger as log } from "~/lib/logger"
+import { orgPublicBaseUrl } from "~/lib/org-public-url"
 import { assertSeatRoomSoft } from "~/modules/org/caps"
-import { getOrgEmailConfig } from "~/modules/org/email-from"
+import {
+  getOrgDisplayName,
+  getOrgEmailConfig,
+  getOrgSenderTransport,
+} from "~/modules/org/email-from"
 import { hasScope } from "~/modules/permissions/permissions"
 import { actorCoversRoleDimensions } from "~/modules/permissions/roles"
 
@@ -131,16 +135,14 @@ export async function createInvitation(
     data: { email: normalizedEmail },
   })
 
-  const inviteUrl = `${env.BASE_URL}/register?token=${token}`
+  const inviteUrl = `${await orgPublicBaseUrl(orgId)}/register?token=${token}`
 
-  const [org] = await db
-    .select({ name: organizations.name })
-    .from(organizations)
-    .where(eq(organizations.id, orgId))
-    .limit(1)
-  const orgName = (org?.name ?? "Liaison").replace(/[\r\n\t]/g, " ").trim()
+  const orgName = await getOrgDisplayName(orgId)
 
   const emailConfig = await getOrgEmailConfig(orgId)
+  // Managed edition: the org's own verified sender, else "<Org> via Liaison"
+  // (S29). Null elsewhere: the self-hosted send is unchanged.
+  const orgSender = await getOrgSenderTransport(orgId)
   const subject = `You're invited to ${orgName}`
   const { html, text } = renderBrandedEmail({
     subject,
@@ -154,9 +156,9 @@ export async function createInvitation(
     footer: ["If you weren't expecting this invitation, you can safely ignore this email."],
   })
   try {
-    await getSystemEmailProvider().send({
+    await (orgSender?.provider ?? getSystemEmailProvider()).send({
       to: normalizedEmail,
-      from: emailConfig.from,
+      from: orgSender?.from ?? emailConfig.from,
       replyTo: emailConfig.replyTo,
       subject,
       html,

@@ -5,11 +5,12 @@ Connect an Account heading -> packages/shared/src/i18n/locales/en/mail.json:10
 Connect Gmail button -> packages/shared/src/i18n/locales/en/mail.json:122
 Gmail OAuth requests gmail.modify and gmail.send -> apps/api/src/apps/mail/app.manifest.json:103
 Personal mailbox is private, mailbox password is not the login password -> packages/shared/src/i18n/locales/en/mail.json:157
-Open Mail Setup link for mail admins when Google client missing -> apps/web/src/modules/mail/MailAccounts.tsx:87
+Open Mail Setup link for mail admins when Google client missing -> apps/web/src/modules/mail/MailAccounts.tsx:104
+Open Mail Setup scrolls to Mailbox types and focuses the Gmail mailboxes toggle -> apps/web/src/modules/mail/MailAccounts.tsx:105 ; apps/web/src/modules/settings/app-page/reveal-section.ts:19
 Gmail & Google sign-in section, adminScope kernel:org:admin -> apps/api/src/apps/mail/app.manifest.json:1687
 Google client is same as Google sign-in -> packages/shared/src/i18n/locales/en/mail.json:183
-Mailbox types section, Gmail mailboxes toggle, mail:accounts:admin -> apps/api/src/apps/mail/app.manifest.json:1661
-Gmail mailboxes toggle label -> apps/api/src/apps/mail/app.manifest.json:1667
+Mailbox types section, Gmail mailboxes toggle, mail:accounts:admin -> apps/api/src/apps/mail/app.manifest.json:1704
+Gmail mailboxes toggle label -> apps/api/src/apps/mail/app.manifest.json:1717
 Connect IMAP/SMTP button -> packages/shared/src/i18n/locales/en/mail.json:12
 IMAP presets Fastmail, Yahoo, iCloud -> apps/web/src/modules/mail/MailAccounts.tsx:754
 IMAP form fields email, host, port, username, password -> apps/api/src/apps/mail/app.manifest.json:133
@@ -137,6 +138,8 @@ Routines and agents can't read private mail while you're offline: runs wait (Run
 The agent reads private mail from any open page of an unlocked window, Mail need not be open -> apps/web/src/modules/shell/Shell.tsx:1167 ; apps/web/src/modules/mailbox/MailboxAgentHost.tsx:1
 Mailbox limit refusal shown on Gmail and IMAP connect -> apps/web/src/modules/mail/MailAccounts.tsx:152 ; apps/web/src/modules/settings/cap-limit-message.ts:10 ; packages/shared/src/i18n/locales/en/kernel.json:5617
 No Sync Now on a personal mailbox awaiting encryption setup -> apps/web/src/modules/mail/MailAccounts.tsx:733
+Mail tab without a mailbox: Connect an email account to get started + Connect an Account button opening Settings > Apps > Mail -> apps/web/src/modules/mail/MailInbox.tsx:680 ; apps/web/src/modules/mail/MailInbox.tsx:695 ; packages/shared/src/i18n/locales/en/mail.json:11
+Gmail mailboxes toggle starts off self-hosted, on for a managed workspace when the deployment provides the Google client -> apps/api/src/modules/mail/provider-settings.ts:71 ; apps/api/src/modules/cloud/create-org.ts:113
 Any unlocked app of the user answers another app's turn, silently, with the request's answer token -> apps/web/src/modules/mailbox/mailbox-agent-runtime.ts:176 ; apps/web/src/modules/mailbox/mailbox-agent-runtime.ts:289 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:496
 A locked app stays silent on another app's turn -> apps/web/src/modules/mailbox/mailbox-agent-runtime.ts:199 ; apps/web/src/modules/mailbox/mailbox-agent-runtime.ts:290
 A locked answer never settles while an unlocked app may still answer; a usable answer settles at once -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-registry.ts:205 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-registry.ts:398
@@ -171,3 +174,5 @@ private mailbox: a video can't be analysed yet -> apps/api/src/modules/agent/med
 attachment of the user's own mail is opened by the browser for the turn -> apps/web/src/modules/mailbox/agent-plaintext-responder.ts:286
 locked mailbox refused plainly -> apps/web/src/modules/mailbox/agent-plaintext-responder.ts:301
 25 MB cap -> apps/api/src/modules/agent/mailbox-plaintext/answer-limits.ts:8
+org IMAP mailbox polled on schedule with nobody online; a personal one waits -> apps/api/src/apps/mail/handlers.ts:4886
+mailbox address matches its row in any case; another address is another mailbox -> apps/api/src/modules/apps/connections/service.ts:1394

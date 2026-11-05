@@ -11,6 +11,7 @@ import {
   emitApprovalStateChange,
   lockedUpdateApproval,
 } from "~/modules/approvals/event-data"
+import { sweepSkippingMoving, writeUnlessMoving } from "~/modules/org/transfer-state/skip-moving"
 
 const K = drizzleSql.raw(schemaRef("kernel"))
 
@@ -63,19 +64,24 @@ export async function runApprovalExpiry(payload: { orgId: string; requestId: str
 }
 
 export async function runApprovalExpirySweep() {
+  // An org being moved keeps its approvals as they are until the move ends.
   // Include 'deferred' steps — they can also reach their expires_at deadline
   // while waiting for a bundle head to resolve.
-  const expiring = await withSystemDb("approval-expiry-sweep-scan", (db) =>
-    db.execute(drizzleSql`
+  const expiring = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("approval-expiry-sweep-scan", (db) =>
+      db.execute(drizzleSql`
       SELECT id, org_id FROM ${K}.approval_requests
-      WHERE status IN ('pending', 'deferred') AND expires_at <= now()
+      WHERE status IN ('pending', 'deferred') AND expires_at <= now() AND ${notMoving(drizzleSql.raw("org_id"))}
       LIMIT 200
     `),
+    ),
   )
   const rows = extractRows<{ id: string; org_id: string }>(expiring)
   for (const r of rows) {
     try {
-      await runApprovalExpiry({ orgId: r.org_id, requestId: r.id })
+      await writeUnlessMoving(r.org_id, () =>
+        runApprovalExpiry({ orgId: r.org_id, requestId: r.id }),
+      )
     } catch (err) {
       log.error({ err, requestId: r.id }, "Expiry sweep failed for request")
     }

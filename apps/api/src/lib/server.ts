@@ -2,7 +2,12 @@
 import { createHash } from "node:crypto"
 import { existsSync, readFileSync } from "node:fs"
 import { join, normalize, resolve, sep } from "node:path"
-import { DEMO_WORKSPACE_EXPIRED_CODE, DEMO_WORKSPACE_EXPIRED_WS_CLOSE } from "@liaison/shared"
+import {
+  DEMO_WORKSPACE_EXPIRED_CODE,
+  DEMO_WORKSPACE_EXPIRED_WS_CLOSE,
+  ORG_MOVING_CODE,
+  ORG_MOVING_WS_CLOSE,
+} from "@liaison/shared"
 import type { Server, WebSocketHandler } from "bun"
 import { and, sql as drizzleSql, eq } from "drizzle-orm"
 import { extractRows } from "~/db"
@@ -14,18 +19,26 @@ import { bounded } from "~/infra/websocket-state/redis"
 import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
 import { parseMailboxStatusFrame } from "~/lib/mailbox-status-frame"
+import { rawRequestHostBinding } from "~/lib/org-host"
 import { readiness, setDraining } from "~/lib/readiness"
 import { redis } from "~/lib/redis"
-import { getClientIpFromHeaders } from "~/lib/request-context"
+import { effectiveRequestFromRaw } from "~/lib/request-context"
 import { msSinceShutdownBegan, registerShutdownPhase, shutdownBudgets } from "~/lib/shutdown"
 import { AFTER_DRAIN_DEADLINE_MS, SHUTDOWN_ORDER } from "~/lib/shutdown-budget"
 import { webShellHeaders } from "~/middleware/security-headers"
+import { holdOrgRuntime } from "~/modules/apps/app-registries"
 import { isOrgEndedAsync, onOrgEnded } from "~/modules/apps/org-apps"
 import { watchSession } from "~/modules/auth/session-revocation"
 import { announceSetupToken } from "~/modules/auth/setup-token"
 import { isWsAuthStillValid } from "~/modules/auth/ws-ticket"
+import { ORG_SUSPENDED_CLOSE, orgRefusesNonSessionCredentials } from "~/modules/cloud/suspension"
 import { isDemoOrgExpiredNow } from "~/modules/demo/demo-expiry"
 import { maintenancePage } from "~/modules/maintenance/page"
+import {
+  orgTransferStateOf,
+  orgTransferView,
+  refusesSockets,
+} from "~/modules/org/transfer-state/state"
 import { hasScope } from "~/modules/permissions/permissions"
 
 /**
@@ -72,6 +85,8 @@ export interface WsData {
   presenceRefreshedAt?: number
   /** Ends the node socket's liveness watch (walk D9), set once a node binds. */
   stopNodeWatch?: () => void
+  /** Ends the socket's hold on its org's runtime (the org runtime cap), set in `open`. */
+  unholdOrgRuntime?: () => void
 }
 
 // Server-initiated WS heartbeat. Cloudflare drops idle proxied WebSockets at
@@ -429,6 +444,17 @@ async function orgEndedForSocket(orgId: string): Promise<boolean> {
   }
 }
 
+/** The org refuses sockets now (moving); unreadable refuses too (the client retries). */
+async function orgMovingForSocket(orgId: string): Promise<boolean> {
+  try {
+    const record = await orgTransferStateOf(orgId)
+    return record !== null && refusesSockets(record.state)
+  } catch (err) {
+    rootLogger.warn({ err, orgId }, "WS org move state unreadable; refusing the socket")
+    return true
+  }
+}
+
 export function createServer(app: FetchApp, options: ApiServerOptions): Promise<Server<WsData>>
 export function createServer(
   app: FetchApp,
@@ -464,6 +490,15 @@ async function createApiServer(app: FetchApp, options: ApiServerOptions) {
   onOrgEnded((orgId) => {
     wsManager.closeConnectionsForOrg(orgId)
   })
+  // An org moving to another instance (modules/org/transfer-state/): once it
+  // is frozen, incoming or moved its sockets close with ORG_MOVING_WS_CLOSE
+  // and the client reconnects every few seconds (to wherever the org is then
+  // served). Every process applies it from its own view of the moving orgs.
+  orgTransferView.onChange((orgId, record) => {
+    if (record && refusesSockets(record.state)) {
+      wsManager.closeConnectionsForOrg(orgId, ORG_MOVING_WS_CLOSE, ORG_MOVING_CODE)
+    }
+  })
   const publicDir =
     options.publicDir ??
     (process.env.LIAISON_PUBLIC_DIR || resolve(new URL("../../public", import.meta.url).pathname))
@@ -485,7 +520,7 @@ async function createApiServer(app: FetchApp, options: ApiServerOptions) {
       // production image stays protected.
       if (env.NODE_ENV !== "test" && !env.ENABLE_LOAD_TEST_ENDPOINT) {
         const socketAddr = server.requestIP?.(req)?.address ?? null
-        const ip = getClientIpFromHeaders(req.headers, socketAddr)
+        const ip = effectiveRequestFromRaw(req, socketAddr).clientIp
         const wsRateKey = `ws:rate:${ip}`
         // Bounded: when Redis does not answer, the limiter fails open (the
         // ticket check that follows needs Redis anyway) and says so.
@@ -552,11 +587,15 @@ async function createApiServer(app: FetchApp, options: ApiServerOptions) {
     // (production image) and the path is NOT a backend route. HEAD answers as
     // GET does (RFC 9110 9.3.2; Bun.serve drops the body of a HEAD answer and
     // keeps its Content-Length). Uptime monitors probe `/` with HEAD, and it
-    // used to fall through to the API router's 404.
+    // used to fall through to the API router's 404. A host that names no org
+    // (lib/org-host.ts: the cell's own names, a tunnel host, an IP) serves no
+    // web app: those requests go to the app, whose non-org host gate answers
+    // 404 for everything outside its short allowlist.
     if (
       publicDirAvailable &&
       (req.method === "GET" || req.method === "HEAD") &&
-      !isBackendPath(url.pathname)
+      !isBackendPath(url.pathname) &&
+      rawRequestHostBinding(req, server.requestIP(req)?.address ?? null).kind !== "non-org"
     ) {
       const asset = await serveStaticAsset(publicDir, url.pathname, req.headers)
       if (asset) return asset
@@ -573,6 +612,12 @@ async function createApiServer(app: FetchApp, options: ApiServerOptions) {
       const data = ws.data
       if (!data.authorized) {
         ws.close(4001, "Unauthorized")
+        return
+      }
+      // A moving org opens no socket: the client retries every few seconds.
+      if (await orgMovingForSocket(data.orgId)) {
+        data.authorized = false
+        ws.close(ORG_MOVING_WS_CLOSE, ORG_MOVING_CODE)
         return
       }
       // A ticket minted just before the org's deletion started opens nothing.
@@ -600,6 +645,8 @@ async function createApiServer(app: FetchApp, options: ApiServerOptions) {
         }
       }
       data.lastHeardAt = Date.now()
+      // An open socket keeps its org set up in this process (the runtime cap).
+      data.unholdOrgRuntime = holdOrgRuntime(data.orgId)
       // Server-side heartbeat (see WS_HEARTBEAT_INTERVAL_MS above).
       data.heartbeat = setInterval(() => {
         try {
@@ -775,6 +822,10 @@ async function createApiServer(app: FetchApp, options: ApiServerOptions) {
                 // for the demo door instead of refreshing a dead session.
                 if (await isDemoOrgExpiredNow(conn.orgId)) {
                   ws.close(DEMO_WORKSPACE_EXPIRED_WS_CLOSE, DEMO_WORKSPACE_EXPIRED_CODE)
+                } else if (await orgRefusesNonSessionCredentials(conn.orgId)) {
+                  // A managed org suspended or closed for billing: the client
+                  // shows the suspended page instead of refreshing.
+                  ws.close(ORG_SUSPENDED_CLOSE.code, ORG_SUSPENDED_CLOSE.reason)
                 } else {
                   ws.close(4010, "session_invalidated")
                 }
@@ -859,6 +910,8 @@ async function createApiServer(app: FetchApp, options: ApiServerOptions) {
       data.stopNodeWatch = undefined
       data.stopSessionWatch?.()
       data.stopSessionWatch = undefined
+      data.unholdOrgRuntime?.()
+      data.unholdOrgRuntime = undefined
       // Decided atomically with the removal, across the cell; without an
       // answer from Redis, from this replica's own sockets (P2-3).
       const { userStillOnline } = await wsManager.removeConnection(ws as any)

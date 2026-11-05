@@ -110,6 +110,22 @@ describe("MessageList after a failed turn", () => {
     expect(screen.getByText("No messages yet. Start the conversation!")).toBeTruthy()
   })
 
+  it("an unpaid renewal (payment_required) says so with a link to Billing", async () => {
+    loadMessagesIntoStore(THREAD, [userRow])
+    handleWsAgentStreamEvent("error", {
+      threadId: THREAD,
+      message: "Usage is paused until the open invoice is paid.",
+      code: "payment_required",
+      agentId: "a1",
+    })
+    renderList()
+    const notice = await waitFor(() => screen.getByTestId("payment-required-notice"))
+    expect(notice.textContent).toContain("AI features are paused until the open invoice is paid.")
+    expect(screen.getByTestId("payment-required-billing-link").getAttribute("href")).toBe(
+      "/settings/billing",
+    )
+  })
+
   it("renders the load failure, with the retry that recovers the rows", async () => {
     loadMessagesIntoStore(THREAD, [])
     await loadMessages(

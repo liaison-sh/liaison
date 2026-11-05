@@ -51,7 +51,7 @@ import {
   upsertJobScheduler,
 } from "~/infra/jobs/jobs"
 import { rootLogger } from "~/lib/logger"
-import { isUniqueViolationOn, SKILL_NAME_UNIQUE_INDEX } from "~/lib/unique-violation"
+import { isUniqueViolationOn, ROUTINE_NAME_UNIQUE_INDEX, SKILL_NAME_UNIQUE_INDEX } from "~/lib/unique-violation"
 import { scopesMissingFromCeiling } from "~/modules/agent/directory/ceiling-guard"
 import { isMentionableAgent } from "~/modules/agent/directory/listing"
 import { getOrCreatePersonalAgentId } from "~/modules/agent/directory/personal-agent"
@@ -3141,7 +3141,9 @@ export async function handleCreateRoutine(
     reportThreadId = await resolveReportThreadId(ctx.orgId, params.reportThreadId, ownerUserId)
     if (!reportThreadId) return invalidReportThreadError()
   }
-  const row = await withPrivilegedDb(ctx.orgId, "routines-create", async (tx) => {
+  let row: typeof routinesTbl.$inferSelect | undefined
+  try {
+  row = await withPrivilegedDb(ctx.orgId, "routines-create", async (tx) => {
     // D9/A15: every routine is owned by a named agent — the agent the request
     // named (already authorised above), else the RUN-AS user's personal agent
     // (mirrors handleCreateSkill; created on demand if their signup/invite flow
@@ -3187,6 +3189,15 @@ export async function handleCreateRoutine(
     if (inserted) await queueRoutineCreated(tx, ctx, inserted)
     return inserted
   })
+  } catch (err) {
+    // The owner already has a routine of this name: a conflict to report, not a 500.
+    if (isUniqueViolationOn(err, ROUTINE_NAME_UNIQUE_INDEX)) {
+      return {
+        error: { code: "name_conflict", message: `A routine named '${params.name}' already exists for this owner.` },
+      }
+    }
+    throw err
+  }
   if (row && params.reportThreadId === undefined && !row.reportThreadId) {
     row.reportThreadId = await applyDefaultReportThread(ctx.orgId, row)
   }

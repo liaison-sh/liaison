@@ -159,6 +159,7 @@ async function invokeManifestProvider(
       exportName: reg.handler,
       params: { actor: aliasedActor },
       bridge,
+      appId: appName,
     }) as Promise<AttentionItem[]>
   }
   // A trusted provider runs the part of its bundle the provider needs (the

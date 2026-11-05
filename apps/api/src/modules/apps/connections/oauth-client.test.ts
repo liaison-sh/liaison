@@ -9,6 +9,7 @@ import { randomUUID } from "node:crypto"
 import { Hono } from "hono"
 import type { AppEnv } from "~/app"
 import { sql } from "~/db/connection"
+import { _setEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
 import { connectionConfigRegistry } from "~/modules/apps/app-registries"
 import {
@@ -151,6 +152,49 @@ for (const p of PROVIDERS) {
     })
   })
 }
+
+// The cell's shared Meta app (managed edition): every workspace's Facebook
+// connection (and Instagram through Facebook login) uses it, unless the
+// workspace brought its own Meta app.
+describe("the cell's Meta app (managed edition)", () => {
+  const metaEnv = env as { META_APP_ID?: string; META_APP_SECRET?: string }
+  const prior = { id: metaEnv.META_APP_ID, secret: metaEnv.META_APP_SECRET }
+  beforeEach(() => {
+    metaEnv.META_APP_ID = "cell-meta-app-id"
+    metaEnv.META_APP_SECRET = "cell-meta-app-secret"
+  })
+  afterEach(() => {
+    metaEnv.META_APP_ID = prior.id
+    metaEnv.META_APP_SECRET = prior.secret
+    _setEdition(null)
+  })
+
+  for (const key of ["social:facebook", "social:instagram_unified"]) {
+    it(`${key}: the cell's Meta app when the org has none; the org's own wins`, async () => {
+      _setEdition("managed")
+      expect(await resolveOAuthClient(orgId, key)).toEqual({
+        source: "instance",
+        clientId: "cell-meta-app-id",
+      })
+      expect(await resolveOAuthClientCredentials(orgId, key)).toEqual({
+        source: "instance",
+        clientId: "cell-meta-app-id",
+        clientSecret: "cell-meta-app-secret",
+      })
+      await saveOrgClient(key, "org-meta-id", "org-meta-secret")
+      expect(await resolveOAuthClient(orgId, key)).toEqual({
+        source: "org",
+        clientId: "org-meta-id",
+      })
+    })
+  }
+
+  it("self-hosted: the variables are no instance client", async () => {
+    _setEdition("self_hosted")
+    expect(await resolveOAuthClient(orgId, "social:facebook")).toEqual({ source: "none" })
+    expect(instanceOAuthClient("social:facebook")).toBeNull()
+  })
+})
 
 describe("instance clients", () => {
   it("a half-set pair is no client", () => {

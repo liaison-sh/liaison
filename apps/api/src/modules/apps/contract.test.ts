@@ -34,6 +34,17 @@ describe("app contract validation", () => {
     expect(result.success).toBe(true)
   })
 
+  it("accepts a snake_case table name, as the manifest path does", () => {
+    const schema = { external_records: { fields: { name: "string" } } }
+    expect(validateAppDescriptor({ name: "test", version: "1.0.0", schema }).success).toBe(true)
+    expect(validateAppManifest({ name: "test", version: "1.0.0", schema }).success).toBe(true)
+  })
+
+  it("rejects an uppercase table name", () => {
+    const schema = { Records: { fields: { name: "string" } } }
+    expect(validateAppDescriptor({ name: "test", version: "1.0.0", schema }).success).toBe(false)
+  })
+
   it("rejects tool scope not prefixed with app name", () => {
     const result = validateAppDescriptor({
       name: "test",

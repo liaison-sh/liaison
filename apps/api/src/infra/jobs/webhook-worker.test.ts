@@ -7,6 +7,7 @@ import { sql } from "~/db/connection"
 import { processWebhookRetry, WebhookWorkerTestAccess } from "~/infra/jobs/webhook-worker"
 import { webhookHandlers } from "~/modules/apps/app-registries"
 import { forgetOrgApps, rememberOrgAppStates } from "~/modules/apps/org-apps"
+import { initSandboxPool } from "~/modules/apps/sandbox/pool"
 
 const RORG = "00000000-0000-0000-0000-0000000000b1"
 const RAPP = "shopify"
@@ -208,4 +209,59 @@ describe("webhook retry key reconstruction", () => {
     // Clean up
     webhookHandlers.delete([ORG_ID, APP, ENDPOINT])
   })
+})
+
+describe("webhook retry worker: a handler's declared budget (S11)", () => {
+  const savedBase = process.env.LIAISON_SANDBOX_TIMEOUT_MS
+  const savedMax = process.env.LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS
+  const job = { orgId: RORG, appName: RAPP, endpointName: RENDPOINT, payload: {} }
+  const register = (exportName: string, timeoutMs?: number, path = bundlePath) =>
+    webhookHandlers.set([RORG, RAPP, RENDPOINT], {
+      handler: { bundlePath: path, exportName, trusted: true },
+      verify: { bundlePath, exportName: "verify" },
+      appName: RAPP,
+      orgId: RORG,
+      _manifest: { name: RAPP } as never,
+      ...(timeoutMs ? { timeoutMs } : {}),
+    })
+
+  beforeEach(() => {
+    process.env.LIAISON_SANDBOX_TIMEOUT_MS = "200"
+  })
+  afterEach(() => {
+    webhookHandlers.delete([RORG, RAPP, RENDPOINT])
+    WebhookWorkerTestAccess.setManifestExecutor(async () => undefined)
+    if (savedBase === undefined) delete process.env.LIAISON_SANDBOX_TIMEOUT_MS
+    else process.env.LIAISON_SANDBOX_TIMEOUT_MS = savedBase
+    if (savedMax === undefined) delete process.env.LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS
+    else process.env.LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS = savedMax
+  })
+
+  it("passes the resolved budget to the executor; nothing declared stays the default", async () => {
+    const seen: (number | undefined)[] = []
+    WebhookWorkerTestAccess.setManifestExecutor(async (opts) => {
+      seen.push(opts.timeoutMs)
+      return undefined
+    })
+    register("ordersWebhook", 18_000)
+    await processWebhookRetry(job)
+    process.env.LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS = "4000"
+    await processWebhookRetry(job)
+    register("ordersWebhook")
+    await processWebhookRetry(job)
+    expect(seen).toEqual([18_000, 4_000, undefined])
+  })
+
+  it("the real sandbox stops a spinning retry at the declared budget", async () => {
+    const spinPath = join(tmpDir, "spin.js")
+    writeFileSync(spinPath, "globalThis.spin = async () => { while (true) {} }\n")
+    await initSandboxPool()
+    WebhookWorkerTestAccess.setManifestExecutor()
+    register("spin", 1_500, spinPath)
+    const started = Date.now()
+    await expect(processWebhookRetry(job)).rejects.toThrow()
+    const took = Date.now() - started
+    expect(took).toBeGreaterThanOrEqual(1_400)
+    expect(took).toBeLessThan(10_000)
+  }, 20_000)
 })

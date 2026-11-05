@@ -11,7 +11,6 @@ import {
   routines,
   sessions,
 } from "~/db/schema/kernel"
-import { schemaRef } from "~/db/schema-ref"
 import {
   AGENT_SIDE_THREAD_REAPER_CRON,
   runAgentSideThreadReaper,
@@ -47,6 +46,7 @@ import {
   type ApprovalReminderTurnPayload,
 } from "~/modules/approvals/reminders"
 import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
+import { sweepSkippingMoving } from "~/modules/org/transfer-state/skip-moving"
 import type { SetupKickoffPayload } from "~/modules/provisioning/setup-kickoff"
 import type { ScopeDecisionTurnPayload } from "~/modules/scope-requests/announce"
 import type {
@@ -418,12 +418,15 @@ export const ATTENTION_EVENTS_RETENTION_BATCH_SIZE = 5000
 
 export async function runAttentionEventsRetention(): Promise<{ deleted: number }> {
   let totalDeleted = 0
+  // An org being moved keeps its rows as they are until the move ends.
   for (;;) {
-    const result = await withSystemDb("attention-events-retention", (db) =>
-      db.execute(sql`
+    const result = await sweepSkippingMoving((notMoving) =>
+      withSystemDb("attention-events-retention", (db) =>
+        db.execute(sql`
         WITH doomed AS (
           SELECT id FROM ${attentionEvents}
           WHERE read_at IS NOT NULL
+            AND ${notMoving(sql`org_id`)}
             AND read_at < NOW() - MAKE_INTERVAL(days => ${ATTENTION_EVENTS_RETENTION_DAYS})
           LIMIT ${ATTENTION_EVENTS_RETENTION_BATCH_SIZE}
         )
@@ -432,6 +435,7 @@ export async function runAttentionEventsRetention(): Promise<{ deleted: number }
         WHERE ae.id = doomed.id
         RETURNING ae.id
       `),
+      ),
     )
     const rows = extractRows(result)
     totalDeleted += rows.length
@@ -786,17 +790,20 @@ export function productionRoutineTickDeps(
 export async function registerKernelJobs(): Promise<void> {
   // Device flow expiry: expire pending requests past their deadline
   await registerScheduledJob("kernel", "check-device-flow-expiry", "*/5 * * * *", async () => {
-    const result = await withSystemDb("device-flow-expiry", (db) =>
-      db
-        .update(deviceFlowRequests)
-        .set({ state: "expired" })
-        .where(
-          and(
-            eq(deviceFlowRequests.state, "pending"),
-            lt(deviceFlowRequests.expiresAt, new Date()),
-          ),
-        )
-        .returning({ id: deviceFlowRequests.id }),
+    const result = await sweepSkippingMoving((notMoving) =>
+      withSystemDb("device-flow-expiry", (db) =>
+        db
+          .update(deviceFlowRequests)
+          .set({ state: "expired" })
+          .where(
+            and(
+              eq(deviceFlowRequests.state, "pending"),
+              lt(deviceFlowRequests.expiresAt, new Date()),
+              notMoving(deviceFlowRequests.orgId),
+            ),
+          )
+          .returning({ id: deviceFlowRequests.id }),
+      ),
     )
     log.debug({ count: result.length }, "Expired device flow requests")
   })
@@ -815,37 +822,24 @@ export async function registerKernelJobs(): Promise<void> {
   })
 
   await registerScheduledJob("kernel", "cleanup-expired-sessions", "0 3 * * *", async () => {
-    const result = await withSystemDb("cleanup-sessions", (db) =>
-      db.delete(sessions).where(lt(sessions.expiresAt, new Date())).returning({ id: sessions.id }),
+    const result = await sweepSkippingMoving((notMoving) =>
+      withSystemDb("cleanup-sessions", (db) =>
+        db
+          .delete(sessions)
+          .where(and(lt(sessions.expiresAt, new Date()), notMoving(sessions.orgId)))
+          .returning({ id: sessions.id }),
+      ),
     )
     if (result.length > 0) {
       log.info({ count: result.length }, "Cleaned up expired sessions")
     }
   })
 
-  // Audit log retention: enforce per-org retention daily at 4 AM
-  // Single CTE avoids loading all orgs into memory and N+1 deletes
+  // Audit log retention, daily at 4 AM: one DELETE over every org
+  // (modules/org/audit-retention.ts; managed orgs keep what their plan sold).
   await registerScheduledJob("kernel", "audit-log-retention", "0 4 * * *", async () => {
-    const K = sql.raw(schemaRef("kernel"))
-    const result = await withSystemDb("audit-retention", (db) =>
-      db.execute(sql`
-        WITH deleted AS (
-          DELETE FROM ${K}.audit_log al
-          USING ${K}.organizations o
-          WHERE al.org_id = o.id
-            AND al.timestamp < NOW() - MAKE_INTERVAL(days => COALESCE((o.settings->>'auditRetentionDays')::int, 90))
-          RETURNING al.org_id
-        )
-        SELECT org_id, COUNT(*)::int AS cnt FROM deleted GROUP BY org_id
-      `),
-    )
-    const rows = extractRows(result)
-    for (const row of rows) {
-      log.info(
-        { orgId: (row as any).org_id, count: (row as any).cnt },
-        "Audit log retention cleanup",
-      )
-    }
+    const { purgeExpiredAuditLog } = await import("~/modules/org/audit-retention")
+    await purgeExpiredAuditLog()
   })
 
   // Agent side thread reaper — hourly. An all agent thread that has been quiet
@@ -1217,6 +1211,12 @@ export async function registerKernelJobs(): Promise<void> {
     // even once the endpoint is unset.
     const { sweepTeamOnly } = await import("~/modules/liaison-team/team-only")
     await sweepTeamOnly(new Date())
+  })
+  // Daily usage report (modules/cloud/usage-report.ts), managed edition only:
+  // yesterday's billed provider cost per org, in USD, after 00:10 UTC.
+  await registerScheduledJob("kernel", "cloud-usage-report", "15 0 * * *", async () => {
+    const { sendDailyUsageReports } = await import("~/modules/cloud/usage-report")
+    await sendDailyUsageReports(new Date())
   })
   // Liaison team heartbeat (modules/liaison-team/heartbeat.ts) — every 10
   // minutes it checks whether this server's daily minute (derived from its

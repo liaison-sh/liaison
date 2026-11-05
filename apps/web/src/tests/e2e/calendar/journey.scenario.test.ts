@@ -186,7 +186,18 @@ test.describe("Calendar — UI journey + visual baselines", () => {
     // is a fixed-size leaf, so it's a stable pixel baseline regardless of
     // how many sibling connection rows exist.
     if (PIXEL_BASELINES) {
-      await expect(reauthBanner).toHaveScreenshot("settings-reauth.png", {
+      // Cropped to whole pixels: the rows above it put the banner at a
+      // fractional offset that differs from run to run, and an element shot
+      // then came out 48 or 49 px tall for the same pixels.
+      const box = await reauthBanner.boundingBox()
+      expect(box).not.toBeNull()
+      await expect(page).toHaveScreenshot("settings-reauth.png", {
+        clip: {
+          x: Math.floor(box!.x),
+          y: Math.floor(box!.y),
+          width: Math.floor(box!.width),
+          height: Math.floor(box!.height),
+        },
         // Text-only element: subpixel antialiasing differs across runners (Strobe vs direct).
         maxDiffPixelRatio: 0.08,
       })

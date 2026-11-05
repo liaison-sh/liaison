@@ -96,13 +96,13 @@ describe("liaison tour start (in process)", () => {
     expect(await start(s)).toBe(0)
     expect(s.out).toEqual([
       `tour ${TOUR.id} started for ${email}: Sample tour`,
-      `deep link: ${tourDeepLink(TOUR.id)}`,
+      `deep link: ${await tourDeepLink(orgId, TOUR.id)}`,
       "beat 1/3 Your apps",
       "beat 2/3 Post a message",
       "beat 3/3 Your tickets",
       "completed, skipped 1",
     ])
-    expect(tourDeepLink(TOUR.id)).toEndWith("/?tour=kernel.sample")
+    expect(await tourDeepLink(orgId, TOUR.id)).toEndWith("/?tour=kernel.sample")
     const row = await withPrivilegedDb(orgId, "t", (tx) =>
       readProgressRow(tx, { orgId, userId, tourId: TOUR.id }),
     )
@@ -121,7 +121,7 @@ describe("liaison tour start (in process)", () => {
     const s = scripted([() => move({ status: "abandoned" })], { openClient: true })
     expect(await start(s)).toBe(3)
     expect(s.out).toContain("open tab detected: the tour opens there now")
-    expect(s.out).toContain(`deep link: ${tourDeepLink(TOUR.id)}`)
+    expect(s.out).toContain(`deep link: ${await tourDeepLink(orgId, TOUR.id)}`)
     expect(s.out.at(-1)).toBe("abandoned at beat 1/3")
   })
 

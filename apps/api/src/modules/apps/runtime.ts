@@ -17,10 +17,17 @@ import {
 } from "~/infra/events/event-bus"
 import { registerJobWorker, unregisterAppJobHandlers } from "~/infra/jobs/jobs"
 import { withPinnedJobSlot } from "~/infra/jobs/pinned-jobs-gate"
+import { isManagedEdition } from "~/lib/edition"
 import { appsLogger as log } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import { describeDbError } from "~/lib/transient-db-error"
 import { derivedSinkReadScope } from "~/modules/agent/scopes/taint-read-scopes"
+import {
+  appVisibleToOrg,
+  filterAppsVisibleToOrg,
+  firstAppStatus,
+  isOrgPrivateApp,
+} from "~/modules/apps/app-org-scope"
 // --- In-process registries ---
 import {
   type ApprovalSummarizer,
@@ -97,6 +104,7 @@ import {
   validateIdentifier,
 } from "~/modules/apps/ddl"
 import { hostApiIncompatibility } from "~/modules/apps/host-api"
+import { resolveOperatorOrgId } from "~/modules/apps/operator-org"
 import { isAppActiveForOrgAsync, noteAppRegistered } from "~/modules/apps/org-apps"
 import {
   pauseAppRoutinesForOrg,
@@ -112,6 +120,7 @@ import {
   namespaceSchemaFor,
 } from "~/modules/apps/settings-schema-from-manifest"
 import { reviewTriggerBody } from "~/modules/apps/trigger-review"
+import { orgSuspendedOrClosed } from "~/modules/cloud/billing-status"
 import { BUILTIN_EXPORT_HANDLERS } from "~/modules/export/builtin-handlers"
 import { BUILTIN_IMPORT_KINDS } from "~/modules/imports/builtin-kinds"
 import { type ImportKindDecl, importKindRestrictionErrors } from "~/modules/imports/kind-schema"
@@ -144,7 +153,7 @@ import {
   type BridgeExtensionFactory,
 } from "~/modules/apps/sandbox/bridge-extensions"
 import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { createRpcBridge, createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { createSandboxRpcBridge, createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { orgSetupLockSql } from "~/modules/apps/setup-stamp"
 import { invalidateDimensionCatalog } from "~/modules/permissions/dimension-catalog"
 import {
@@ -331,7 +340,7 @@ export function buildJobBridge(
       bridgeOptions as never,
     )
   }
-  return createRpcBridge(
+  return createSandboxRpcBridge(
     appName,
     actorId,
     jobOrgId,
@@ -695,7 +704,11 @@ export async function registerApps(
   // setup (org-registry-guard.ts).
   orgsRegistering.set(orgId, (orgsRegistering.get(orgId) ?? 0) + 1)
   try {
-    return await registerAppsMarked(descriptors, orgId, opts)
+    // The tenant boundary (app-org-scope.ts): another org's custom app never
+    // enters this org's registries, so none of its tools, views, routes,
+    // webhooks, MCP tools, jobs or event subscriptions exist here.
+    const visible = await filterAppsVisibleToOrg(descriptors, orgId, (d) => d.name)
+    return await registerAppsMarked(visible, orgId, opts)
   } finally {
     const depth = (orgsRegistering.get(orgId) ?? 1) - 1
     if (depth > 0) orgsRegistering.set(orgId, depth)
@@ -1647,6 +1660,16 @@ export function gateEventOnAppState(
 ): (event: any) => Promise<void> {
   return async (event: any) => {
     const eventOrgId: string = event?.orgId ?? registeringOrgId
+    // An org-private app hears its own org's events only (app-org-scope.ts),
+    // and none while that org is suspended or closed.
+    if (!(await appVisibleToOrg(appName, eventOrgId))) {
+      log.debug({ app: appName, orgId: eventOrgId }, "event skipped: another org's custom app")
+      return
+    }
+    if ((await isOrgPrivateApp(appName)) && (await orgSuspendedOrClosed(eventOrgId))) {
+      log.debug({ app: appName, orgId: eventOrgId }, "event skipped: the org is suspended")
+      return
+    }
     if (!(await isAppActiveForOrgAsync(eventOrgId, appName))) {
       log.debug({ app: appName, orgId: eventOrgId }, "event skipped: the app is Off for the org")
       return
@@ -1767,9 +1790,23 @@ async function writeOrgAppRows(
     everyMemberScopes.map((s) => drizzleSql`${s}`),
     drizzleSql`, `,
   )}]::text[]`
+  const instanceInstalled = isManagedEdition()
+    ? extractRows(
+        await tx.execute(drizzleSql`
+          SELECT 1 FROM ${drizzleSql.raw(`${schemaRef("kernel")}.apps_installed`)}
+           WHERE name = ${desc.name} AND org_id IS NULL LIMIT 1`),
+      ).length > 0
+    : false
+  const managed = isManagedEdition()
+  const firstStatus = firstAppStatus({
+    managed,
+    // Managed, the setting alone names the operator: this reads no database.
+    isOperatorOrg: managed && orgId === (await resolveOperatorOrgId()),
+    instanceInstalled,
+  })
   const appsUpsert = await tx.execute(drizzleSql`
     INSERT INTO ${appsTable} (id, org_id, name, version, status, schema_hash, every_member_scopes, created_at, updated_at)
-    VALUES (gen_random_uuid(), ${orgId}, ${desc.name}, ${desc.version}, 'active', ${schemaHash}, ${everyMemberArray}, now(), now())
+    VALUES (gen_random_uuid(), ${orgId}, ${desc.name}, ${desc.version}, ${firstStatus}, ${schemaHash}, ${everyMemberArray}, now(), now())
     ON CONFLICT (org_id, name) DO UPDATE
       SET version = EXCLUDED.version,
           -- The workspace's On/Off/removed state survives every re-register and
@@ -2057,6 +2094,9 @@ async function registerSingleApp(
     serializeDdl?: RegisterAppsOptions["serializeDdl"]
   } = {},
 ): Promise<boolean> {
+  // The lowest registration step refuses another org's custom app too, whatever
+  // path reached it (boot, first touch, activation, reload): app-org-scope.ts.
+  if (!(await appVisibleToOrg(desc.name, orgId))) return false
   const registrationKey = `${orgId}:${desc.name}`
   let oldVersion: OldVersionSnapshot | null = null
   if (opts.swap) {
@@ -3113,10 +3153,10 @@ async function registerSingleApp(
                 const { getWorkerPool, initWorkerPool } = await import(
                   "~/modules/apps/sandbox/worker-pool"
                 )
-                const { createRpcBridge } = await import("~/modules/apps/sandbox/rpc-bridge")
+                const { createSandboxRpcBridge } = await import("~/modules/apps/sandbox/rpc-bridge")
                 const source = await loadBundle(pollBundlePath)
                 const runPoll = async (tx: unknown) => {
-                  const bridge = createRpcBridge(
+                  const bridge = createSandboxRpcBridge(
                     pollAppName,
                     `system:${pollAppName}:poll`,
                     pollCtx.orgId,
@@ -3131,6 +3171,7 @@ async function registerSingleApp(
                     bridge,
                     timeoutMs: 60_000,
                     priority: "background",
+                    appId: pollAppName,
                   })
                 }
                 // The poll job hands over a privileged transaction. An app the
@@ -3598,6 +3639,7 @@ async function registerSingleApp(
                   bridge,
                   timeoutMs: 30_000,
                   priority: "background",
+                  appId: appName,
                 })
               }
 
@@ -3767,6 +3809,7 @@ async function registerSingleApp(
                   priority: "background",
                   // One app's jobs hold at most half the background workers.
                   backgroundGroup: `job:${appName}`,
+                  appId: appName,
                 })
                 if (desc.webhookHealth?.probe === jobName) {
                   await recordUpstreamProbeResult(appName, jobOrgId, jobName, result)
@@ -3819,6 +3862,7 @@ async function registerSingleApp(
                   priority: "background",
                   // One app's jobs hold at most half the background workers.
                   backgroundGroup: `job:${appName}`,
+                  appId: appName,
                 })
               }
               registerJobWorker(desc.name, jobName, sandboxHandler, { txMode: jobTxMode(jobDef) })
@@ -3853,6 +3897,7 @@ async function registerSingleApp(
             ...(typeof def.bodyLimitBytes === "number"
               ? { bodyLimitBytes: def.bodyLimitBytes }
               : {}),
+            ...(typeof def.timeoutMs === "number" ? { timeoutMs: def.timeoutMs } : {}),
             ...(manifestForBridge ? { _manifest: manifestForBridge } : {}),
             ...(def.requiresUserActor === true ? { requiresUserActor: true } : {}),
           })
@@ -3958,6 +4003,7 @@ async function registerSingleApp(
                 params: payload,
                 bridge,
                 timeoutMs,
+                appId: appNameLocal,
               })) as unknown
             }
             return (await executeInSandbox({

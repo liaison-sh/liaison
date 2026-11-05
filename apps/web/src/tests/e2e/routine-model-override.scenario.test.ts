@@ -114,7 +114,8 @@ test.describe("Agent App: Routine model override", () => {
     await page.getByTestId("reasoning-level-medium").click()
     await expect(page.getByTestId("reasoning-level-medium")).toHaveAttribute("aria-pressed", "true")
 
-    await page.getByTestId("routine-edit-save").click()
+    // The chat dock may cover part of Save (intended): click its visible top-left corner.
+    await page.getByTestId("routine-edit-save").click({ position: { x: 6, y: 4 } })
     await expect(page.getByTestId("routine-edit-form")).not.toBeVisible({ timeout: 10_000 })
 
     // Persisted immediately in the (non-reloaded) view.

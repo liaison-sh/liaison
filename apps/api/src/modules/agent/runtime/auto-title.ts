@@ -3,9 +3,16 @@ import { generateText } from "ai"
 import { and, eq } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
 import { threads } from "~/db/schema/kernel"
+import { isManagedEdition } from "~/lib/edition"
 import { offlineSideCalls } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
-import { resolveKey, selectSideCallModelForOrg } from "~/modules/agent/credits/credit-meter"
+import {
+  meterSideCall,
+  type PreCheckResult,
+  preCheck,
+  resolveUnmeteredSideCall,
+  selectSideCallModelForOrg,
+} from "~/modules/agent/credits/credit-meter"
 import { resolveSideCallModel } from "~/modules/agent/providers/side-call-model"
 import { isReservedDemoOrg, isVisitorDemoOrg } from "~/modules/demo/demo-spend"
 
@@ -69,10 +76,9 @@ async function generateTitleWithLLM(
   userMessage: string,
   agentReply: string,
 ): Promise<string> {
-  // The reserved App Review org titles its chats by heuristic. This call is
-  // deliberately unmetered and resolves the deployment's key outside
-  // `preCheck`, so for the one demo org that spends our key under a ceiling it
-  // would be spend the ceiling never sees. No query on a normal deployment.
+  // The reserved App Review org titles its chats by heuristic: a title is not
+  // worth a share of the one demo ceiling App Review lives under. No query on
+  // a normal deployment.
   if (await isReservedDemoOrg(orgId)) return heuristicTitle(userMessage)
   // A demo VISITOR org reaches the box key only through a reservation, and
   // this side call has none: its title comes from the first message too.
@@ -86,35 +92,61 @@ async function generateTitleWithLLM(
     return heuristicTitle(userMessage)
   }
 
-  let keyResult: { key: string; source: string }
-  try {
-    keyResult = await resolveKey(orgId, cheapModel.provider)
-  } catch {
-    log.warn(
-      { orgId, provider: cheapModel.provider },
-      "No API key for auto-title — falling back to heuristic",
-    )
-    return heuristicTitle(userMessage)
+  // Managed: metered like every side call (`meterSideCall`), the title is a
+  // billed call of the org's allowance, and the pre check refuses it (heuristic
+  // title) while the org has no credits or payment is required. Self-hosted:
+  // no credits, so the call runs on the org's key as it always did, with no
+  // pre check that could refuse it.
+  let creditCheck: Extract<PreCheckResult, { allowed: true }> | null = null
+  let unmetered: Awaited<ReturnType<typeof resolveUnmeteredSideCall>> | null = null
+  if (isManagedEdition()) {
+    const checked = await preCheck(orgId, cheapModel.modelId)
+    if (!checked.allowed) {
+      log.warn(
+        { orgId, provider: cheapModel.provider, reason: checked.reason },
+        "Auto-title model call refused — falling back to heuristic",
+      )
+      return heuristicTitle(userMessage)
+    }
+    creditCheck = checked
+  } else {
+    try {
+      unmetered = await resolveUnmeteredSideCall(orgId, cheapModel.modelId)
+    } catch (err) {
+      log.warn(
+        { err, orgId, provider: cheapModel.provider, modelId: cheapModel.modelId },
+        "No model or key for auto-title — falling back to heuristic",
+      )
+      return heuristicTitle(userMessage)
+    }
   }
-
-  const model = await resolveSideCallModel({ model: cheapModel, providerKey: keyResult.key })
 
   const truncatedUser = userMessage.slice(0, 500)
   const truncatedReply = agentReply.slice(0, 500)
 
-  // Auto-title uses the cheapest auto-eligible model and is intentionally not
-  // credit-metered — it's a platform cost, not a user-initiated request.
-  const result = await generateText({
-    model,
-    system:
-      "Generate a short chat title (3-8 words, no quotes, no punctuation at the end). The title should capture what the conversation is about. Return ONLY the title, nothing else.",
-    messages: [
-      {
-        role: "user" as const,
-        content: `User: ${truncatedUser}\n\nAssistant: ${truncatedReply}`,
-      },
-    ],
-  })
+  let usage: unknown = null
+  let providerMetadata: unknown
+  let result: Awaited<ReturnType<typeof generateText>>
+  try {
+    const credit = creditCheck ?? unmetered
+    if (!credit) return heuristicTitle(userMessage)
+    const model = await resolveSideCallModel(credit)
+    result = await generateText({
+      model,
+      system:
+        "Generate a short chat title (3-8 words, no quotes, no punctuation at the end). The title should capture what the conversation is about. Return ONLY the title, nothing else.",
+      messages: [
+        {
+          role: "user" as const,
+          content: `User: ${truncatedUser}\n\nAssistant: ${truncatedReply}`,
+        },
+      ],
+    })
+    usage = result.usage ?? {}
+    providerMetadata = result.providerMetadata
+  } finally {
+    if (creditCheck) await meterSideCall(orgId, creditCheck, usage, providerMetadata)
+  }
 
   let title = result.text.trim()
   // Strip wrapping quotes if the model adds them

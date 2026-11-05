@@ -49,7 +49,9 @@ import {
 } from "./reads"
 import {
   draftsCreateTool,
+  draftsCreatePreflight,
   draftsUpdateTool,
+  draftsUpdatePreflight,
   draftsDiscard,
   invoiceIssue,
   invoiceCreateAndIssue,
@@ -266,6 +268,14 @@ export const draftsUpdateHandler = (
   params: Parameters<typeof draftsUpdateTool>[1],
   ctx: Parameters<typeof draftsUpdateTool>[0],
 ) => draftsUpdateTool(ctx, params)
+export const draftsCreatePreflightHandler = (
+  params: Parameters<typeof draftsCreatePreflight>[1],
+  ctx: Parameters<typeof draftsCreatePreflight>[0],
+) => draftsCreatePreflight(ctx, params)
+export const draftsUpdatePreflightHandler = (
+  params: Parameters<typeof draftsUpdatePreflight>[1],
+  ctx: Parameters<typeof draftsUpdatePreflight>[0],
+) => draftsUpdatePreflight(ctx, params)
 export const draftsDiscardHandler = (
   params: Parameters<typeof draftsDiscard>[1],
   ctx: Parameters<typeof draftsDiscard>[0],

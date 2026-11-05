@@ -188,16 +188,21 @@ async function enqueueBackfillStep(
   orgId: string,
   cursor: string | null,
   batchSize?: number,
+  opts: { delay?: number } = {},
 ): Promise<void> {
   await enqueueAppJob(
     QUEUE_APP,
     EMBEDDING_BACKFILL_JOB,
     { orgId, batchSize } satisfies EmbeddingBackfillPayload,
-    { jobId: backfillStepId(orgId, cursor) },
+    { jobId: backfillStepId(orgId, cursor), ...opts },
   )
 }
 
 /** Start (or join) the org's backfill chain at its persisted cursor. */
-export async function enqueueEmbeddingBackfill(orgId: string, batchSize?: number): Promise<void> {
-  await enqueueBackfillStep(orgId, await readBackfillCursor(orgId), batchSize)
+export async function enqueueEmbeddingBackfill(
+  orgId: string,
+  batchSize?: number,
+  opts: { delay?: number } = {},
+): Promise<void> {
+  await enqueueBackfillStep(orgId, await readBackfillCursor(orgId), batchSize, opts)
 }

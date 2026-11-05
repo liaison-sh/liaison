@@ -28,7 +28,10 @@ describe("social manifest (B1)", () => {
     // 0.6.53: reply, DM and like approvals use their summarizers again (the comment, the post, a link).
     // 0.6.54: an upstream timeout during the DM sync logs a warning with a reason, not an error;
     // six deferred syncs in a row log one error.
-    expect(manifest.version).toBe("0.6.54")
+    // 0.6.55: in the managed edition, Meta webhook setup points at the server-level callback routed per org.
+    // 0.6.56: the app's own install resolves the control-plane contract through an override
+    // (the shared package depends on it by workspace protocol); no change to what it does.
+    expect(manifest.version).toBe("0.6.56")
     expect(manifest.packageFormat).toBe(1)
   })
 

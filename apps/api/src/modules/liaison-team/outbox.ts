@@ -37,7 +37,12 @@
 
 import { createHash, randomUUID } from "node:crypto"
 import {
-  CONTRACT_VERSION,
+  CELL_BILLING_ENDPOINT,
+  CELL_BILLING_ERROR_CODES,
+  CELL_BILLING_MESSAGE_TYPES,
+  type CellBillingMessageType,
+  cellBillingMessageSchemas,
+  INSTANCE_ENVELOPE_VERSION,
   INSTANCE_HEADER,
   MAX_FORWARD_ATTACHMENT_BYTES,
   type MessageType,
@@ -53,6 +58,7 @@ import { extractRows, type PrivilegedDb } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { getObjectBuffer } from "~/infra/storage/object-storage"
+import { isManagedEdition } from "~/lib/edition"
 import { env, LIAISON_TEAM_DISABLED } from "~/lib/env"
 import { appsLogger as log } from "~/lib/logger"
 import {
@@ -89,6 +95,16 @@ export type OutboxStatus = "pending" | "sending" | "delivered" | "refused" | "ca
 
 type Db = Pick<PrivilegedDb, "execute" | "select" | "insert" | "delete">
 
+/** A row's message: a v1 instance message, or a v2 money message to the `cell-billing` webhook. */
+export type OutboxMessageType = MessageType | CellBillingMessageType
+
+const CELL_BILLING_TYPES: ReadonlySet<string> = new Set(CELL_BILLING_MESSAGE_TYPES)
+
+/** Is this a money message (contract v2, posted to `<endpoint>/cell-billing`)? */
+export function isCellBillingType(type: string): type is CellBillingMessageType {
+  return CELL_BILLING_TYPES.has(type)
+}
+
 /** The control plane base URL, or null when sharing is not available (LIAISON_TEAM_ENDPOINT=""). */
 export function liaisonTeamEndpoint(): string | null {
   const v = env.LIAISON_TEAM_ENDPOINT
@@ -98,7 +114,7 @@ export function liaisonTeamEndpoint(): string | null {
 /** Queue one message in the caller's (privileged) transaction. */
 export async function enqueue(
   db: Pick<PrivilegedDb, "execute">,
-  type: MessageType,
+  type: OutboxMessageType,
   data: Record<string, unknown>,
   opts: { dependsOn?: string; now?: Date } = {},
 ): Promise<{ id: string; messageId: string }> {
@@ -211,8 +227,16 @@ function retryAfterSeconds(headers: Headers, now: Date): number | undefined {
 }
 
 /** What a reply means for the row that was sent (Protocol, Response handling). */
+/**
+ * A usage report refused by the control plane's trust check (the cell record
+ * or the org's tenancy being changed) is tried this many times in all, on the
+ * usual backoff, before it is recorded as refused: such a refusal can heal.
+ */
+export const USAGE_REPORT_TRUST_RETRIES = 8
+const USAGE_REPORT_RETRIED_CODES = new Set(["unpinned_instance", "tenant_not_on_cell"])
+
 export function classifyReply(
-  row: { type: string; messageId: string },
+  row: { type: string; messageId: string; attempts?: number },
   reply: SendReply,
   ctx: { now: Date; clockOffsetMs: number },
 ): ReplyOutcome {
@@ -222,6 +246,33 @@ export function classifyReply(
   if (status === 200) {
     const data = (body as { data?: unknown } | null)?.data as Record<string, unknown> | undefined
     if (data && typeof data === "object") {
+      // A money message's reply is the answer itself: `{ok:true, ...}`, or a
+      // final `{ok:false, code}` (Control decided), except `billing_unavailable`,
+      // which asks to try again later.
+      if (isCellBillingType(row.type) && typeof data.ok === "boolean") {
+        if (data.ok || data.code !== CELL_BILLING_ERROR_CODES.billingUnavailable) {
+          // A usage report has no answer but `ok`: any other final answer means the
+          // control plane did not record it, which must show as refused (with its
+          // code), never as delivered.
+          if (!data.ok && row.type === "usage.report") {
+            const why = typeof data.code === "string" ? data.code.slice(0, 200) : "refused"
+            if (
+              USAGE_REPORT_RETRIED_CODES.has(why) &&
+              (row.attempts ?? 0) + 1 < USAGE_REPORT_TRUST_RETRIES
+            ) {
+              return { kind: "transient", error: `200 ${why}` }
+            }
+            return { kind: "refused", error: `200 ${why}` }
+          }
+          return { kind: "delivered" }
+        }
+        return {
+          kind: "transient",
+          error: "200 billing_unavailable",
+          retryAfterSeconds:
+            typeof data.retryAfterSeconds === "number" ? data.retryAfterSeconds : undefined,
+        }
+      }
       if (row.type === "register") {
         const reg = registeredReply.safeParse(data)
         if (reg.success) return { kind: "delivered", instanceKey: reg.data.instanceKey }
@@ -291,7 +342,7 @@ export function classifyReply(
 
 interface ClaimedRow {
   id: string
-  type: MessageType
+  type: OutboxMessageType
   messageId: string
   data: Record<string, unknown>
   attempts: number
@@ -405,7 +456,7 @@ export async function claimDue(now: Date): Promise<ClaimedRow[]> {
     const onlyRegister = !identity || identity.state === "pending"
     const rows = extractRows<{
       id: string
-      type: MessageType
+      type: OutboxMessageType
       message_id: string
       data: Record<string, unknown>
       attempts: number
@@ -505,15 +556,18 @@ async function sendRow(
     }
     data = loaded.data
   }
+  const cellBilling = isCellBillingType(row.type)
   const envelope = {
-    v: CONTRACT_VERSION,
+    v: cellBilling ? 2 : INSTANCE_ENVELOPE_VERSION,
     type: row.type,
     messageId: row.messageId,
     instanceId: identity.instanceId,
     ts: new Date(now.getTime() + identity.clockOffsetMs).toISOString(),
     data,
   }
-  const parsed = messageSchemas[row.type]?.safeParse(envelope)
+  const parsed = isCellBillingType(row.type)
+    ? cellBillingMessageSchemas[row.type].safeParse(envelope)
+    : messageSchemas[row.type]?.safeParse(envelope)
   if (!parsed?.success) {
     const error = `invalid_local_message: ${parsed?.error.message ?? `unknown type ${row.type}`}`
     log.error(
@@ -533,7 +587,8 @@ async function sendRow(
 
   let reply: SendReply
   try {
-    const res = await (opts.fetch ?? fetch)(`${endpoint}/${row.type}`, {
+    const path = cellBilling ? CELL_BILLING_ENDPOINT : row.type
+    const res = await (opts.fetch ?? fetch)(`${endpoint}/${path}`, {
       method: "POST",
       headers,
       body: rawBody,
@@ -765,7 +820,12 @@ async function applyOutcome(
         const longEnough =
           now.getTime() - Date.parse(since) >= AUTH_FAILING_REREGISTER_MS &&
           row.attempts + 1 >= AUTH_FAILING_REREGISTER_ATTEMPTS
-        if (same && longEnough && same.state !== "retiring") {
+        if (
+          same &&
+          longEnough &&
+          same.state !== "retiring" &&
+          !refuseReregisterWhenManaged("auth_failing_24h")
+        ) {
           await update(now_, outcome.error)
           await reregister(tx, now, "auth_failing_24h")
           return
@@ -781,7 +841,9 @@ async function applyOutcome(
         if (row.type === "register") {
           // The register row itself goes again, under a new id and messageId.
           await update(drizzleSql`${now_}, message_id = ${randomUUID()}::uuid`, outcome.error)
-          if (same) await writeIdentity(tx, mintIdentity())
+          if (same && !refuseReregisterWhenManaged(outcome.error)) {
+            await writeIdentity(tx, mintIdentity())
+          }
           return
         }
         if (row.type === "deregister") {
@@ -800,6 +862,11 @@ async function applyOutcome(
           await update(drizzleSql`status = 'cancelled', attempts = attempts + 1`, outcome.error)
           return
         }
+        if (refuseReregisterWhenManaged(outcome.error)) {
+          // No new identity is coming: back off like any transient failure.
+          await update(transient(), outcome.error)
+          return
+        }
         await update(now_, outcome.error)
         if (same) await reregister(tx, now, outcome.error)
         return
@@ -809,11 +876,27 @@ async function applyOutcome(
 }
 
 /**
+ * The managed edition's identity is provisioned and pinned by the control
+ * plane's operator: it never re-mints or registers itself. Where a self-hosted
+ * server would, it logs an error for the operator (re-provision the identity)
+ * and keeps the identity; true when it refused.
+ */
+function refuseReregisterWhenManaged(reason: string): boolean {
+  if (!isManagedEdition()) return false
+  log.error(
+    { reason },
+    "Liaison team: the control plane no longer accepts this server's identity; the managed edition never registers itself, re-provision the identity",
+  )
+  return true
+}
+
+/**
  * Register again under a new identity: the old one is forgotten, every
  * waiting non-register row stays and is sent under the new id once it is
  * registered.
  */
 async function reregister(tx: Db, now: Date, reason: string): Promise<void> {
+  if (refuseReregisterWhenManaged(reason)) return
   const at = now.toISOString()
   await tx.execute(drizzleSql`
     UPDATE ${K()}.control_plane_outbox

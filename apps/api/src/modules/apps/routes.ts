@@ -18,6 +18,7 @@ import {
   readAppConfig,
   writeAppConfigKey,
 } from "~/modules/apps/app-config"
+import { appVisibleToOrg } from "~/modules/apps/app-org-scope"
 import {
   dimensionDefRegistry,
   entityRegistry,
@@ -31,7 +32,7 @@ import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { getInstallTrust } from "~/modules/apps/install-trust"
 import { isAppUnavailableFor, primeOrgApps, unavailableAppsFor } from "~/modules/apps/org-apps"
-import { signUiBundleToken } from "~/modules/apps/ui-bundle-token"
+import { boundHost, signUiBundleToken } from "~/modules/apps/ui-bundle-token"
 import { invokeAppExport, toHttpException } from "~/modules/export/invoke-export"
 import { hasScope } from "~/modules/permissions/permissions"
 import { listSlotPanels } from "~/modules/slots/registry"
@@ -277,6 +278,7 @@ appRoutes.get("/manifests", async (c) => {
   for (const [, entry] of manifestRegistry.entriesOf(orgId)) {
     if (entry.name === "kernel") continue // kernel is not a manifest app; its data is hardcoded on the frontend
     if (isAppUnavailableFor(orgId, entry.name, userId)) continue // Off, removed or restricted away
+    if (!(await appVisibleToOrg(entry.name, orgId))) continue // another org's custom app
     if (!isVisible(entry.name)) continue // per-user surface visibility — see header comment
     // An installed app's interface is JS that runs in this page's origin with the
     // user's session. It is listed only when the platform (first-party), the
@@ -295,7 +297,7 @@ appRoutes.get("/manifests", async (c) => {
         // A non-first-party bundle is fetched with a token bound to this app and version.
         const version = /\/([^/]+)\/ui\.js$/.exec(uiBundleUrl)?.[1]
         if (version) {
-          const t = await signUiBundleToken(entry.name, version)
+          const t = await signUiBundleToken(entry.name, version, boundHost(c))
           uiBundleUrl = `${uiBundleUrl}?t=${encodeURIComponent(t)}`
         }
       }

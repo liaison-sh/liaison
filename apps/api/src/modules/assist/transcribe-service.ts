@@ -20,7 +20,11 @@ import type {
   TranscribeAudioType,
   TranscribeResponse,
 } from "@liaison/shared"
-import { DICTATION_SEGMENT_SECONDS, dictationErrorCodeSchema } from "@liaison/shared"
+import {
+  DICTATION_SEGMENT_SECONDS,
+  dictationErrorCodeSchema,
+  OUT_OF_CREDITS_CODE,
+} from "@liaison/shared"
 import { generateText } from "ai"
 import { rootLogger } from "~/lib/logger"
 import { finalizeUsage, resolveKey, spendGate } from "~/modules/agent/credits/credit-meter"
@@ -30,6 +34,7 @@ import {
   registerBoxKeyModel,
 } from "~/modules/agent/providers/openrouter"
 import { resolveSideCallModel } from "~/modules/agent/providers/side-call-model"
+import { PaymentRequiredError } from "~/modules/cloud/suspension"
 import {
   type DemoReservation,
   releaseReservation,
@@ -116,6 +121,8 @@ const STATUS: Record<DictationErrorCode, 402 | 403 | 413 | 415 | 422 | 429 | 502
   rate_limited: 429,
   no_transcription_model: 503,
   insufficient_credits: 402,
+  credit_rate_missing: 503,
+  payment_required: 402,
   demo_key_required: 503,
   upstream_failed: 502,
   demo_verification_required: 403,
@@ -135,6 +142,8 @@ const MESSAGE_KEY: Record<DictationErrorCode, string> = {
   rate_limited: "kernel.dictationErrors.rateLimited",
   no_transcription_model: "kernel.dictationErrors.noModel",
   insufficient_credits: "kernel.dictationErrors.insufficientCredits",
+  credit_rate_missing: "kernel.dictationErrors.billingUnavailable",
+  payment_required: "kernel.dictationErrors.paymentRequired",
   demo_key_required: "kernel.dictationErrors.demoKeyRequired",
   upstream_failed: "kernel.dictationErrors.upstreamFailed",
   demo_verification_required: "kernel.demo.refusal.demo_verification_required",
@@ -204,6 +213,8 @@ interface ProviderTranscript {
   costUsd: number | undefined
   /** The cost computed from the provider's own usage numbers, USD (Gemini's tokens). */
   estimatedCostUsd?: number
+  /** The seconds the provider heard, read off its usage when it reports no duration (Gemini). */
+  heardSeconds?: number
 }
 
 /** Gemini audio: 32 tokens per second of audio (Google's documented rate). */
@@ -348,7 +359,11 @@ async function callOpenRouter(call: ProviderCall): Promise<ProviderTranscript> {
 /** Gemini audio input (the Google-only fallback): the recording as a file part. */
 async function callGemini(call: ProviderCall): Promise<ProviderTranscript> {
   const model = await resolveSideCallModel({
-    model: { provider: "google", modelId: call.model.upstreamId },
+    model: {
+      provider: "google",
+      modelId: call.model.upstreamId,
+      upstreamId: call.model.upstreamId,
+    },
     providerKey: call.apiKey,
   })
   const result = await generateText({
@@ -379,6 +394,7 @@ async function callGemini(call: ProviderCall): Promise<ProviderTranscript> {
     text: result.text,
     seconds: null,
     costUsd: undefined,
+    heardSeconds: input / GEMINI_AUDIO_TOKENS_PER_SECOND,
     estimatedCostUsd:
       (input / GEMINI_AUDIO_TOKENS_PER_SECOND) * call.model.pricePerSecondUsd +
       (output * GEMINI_FLASH_LITE_OUTPUT_USD_PER_M) / 1_000_000,
@@ -513,6 +529,8 @@ export async function transcribe(
       throw demoTranscribeError(err)
     } else if (err instanceof DemoKeyRequiredError) {
       throw new TranscribeError("demo_key_required")
+    } else if (err instanceof PaymentRequiredError) {
+      throw new TranscribeError("payment_required")
     } else {
       throw new TranscribeError("no_transcription_model")
     }
@@ -531,6 +549,7 @@ export async function transcribe(
   const settleHold = spend.settleStep ?? settleStep
   const releaseHold = spend.releaseReservation ?? releaseReservation
   let visitorRefusal: TranscribeError | null = null
+  let billingRefusal: TranscribeError | null = null
 
   // 2-4, per upstream call: the spend gate every paid call passes (credit-meter
   //    `spendGate`: demo ceiling, breaker, balance; it takes the reservation the
@@ -569,6 +588,10 @@ export async function transcribe(
         { orgId, model: model.key, reason: block.reason },
         "transcription refused by the spend gate",
       )
+      // A spent balance is the default refusal below (`insufficient_credits`).
+      if (block.billingCode && block.billingCode !== OUT_OF_CREDITS_CODE) {
+        billingRefusal = new TranscribeError(block.billingCode)
+      }
       const held = reservations.get(model)
       if (held) {
         reservations.delete(model)
@@ -616,7 +639,7 @@ export async function transcribe(
   // failed). An explicit admin choice (no hedge) is kept as it is.
   const firstModel = visitorBoxKey && plan.hedge ? plan.hedge : plan.model
   if (!(await start(firstModel))) {
-    throw visitorRefusal ?? new TranscribeError("insufficient_credits")
+    throw visitorRefusal ?? billingRefusal ?? new TranscribeError("insufficient_credits")
   }
   const primary = attempts[0] as Attempt
 
@@ -655,6 +678,13 @@ export async function transcribe(
   }
   const outcomes = await Promise.all(attempts.map((a) => a.settled))
   const heard = winner?.transcript.seconds ?? boundedSeconds
+  // A managed cell bills the dictation once, at the pushed per-minute credit
+  // price (D15) for what the winner heard; a hedge's second call is ours.
+  const dictated = winner?.transcript.seconds ?? winner?.transcript.heardSeconds ?? boundedSeconds
+  const unitOf = (attempt: Attempt) => ({
+    item: "dictationMinute" as const,
+    quantity: attempt === winner?.attempt ? dictated / 60 : 0,
+  })
 
   // 5. Meter what each provider did, whatever happens to the answer next: every
   //    call that returned a transcript (both, when both did), at what its
@@ -702,6 +732,7 @@ export async function transcribe(
           inputTokens: 0,
           outputTokens: 0,
           fixedCostUsd: heard * attempt.model.pricePerSecondUsd,
+          unit: unitOf(attempt),
           metadata: { kind: "transcription", seconds: heard, estimated: true, hedgeLoser: true },
           description: `transcription (cut off), about ${Math.round(heard)} s`,
           keySource: key.source,
@@ -738,6 +769,7 @@ export async function transcribe(
           : outcome.transcript.estimatedCostUsd !== undefined
             ? { fixedCostUsd: outcome.transcript.estimatedCostUsd }
             : { fixedCostUsd: boundedSeconds * attempt.model.pricePerSecondUsd }),
+        unit: unitOf(attempt),
         metadata: { kind: "transcription", seconds, ...(reported ? {} : { estimated: true }) },
         description: seconds !== null ? `transcription, ${seconds} s` : "transcription",
         keySource: key.source,

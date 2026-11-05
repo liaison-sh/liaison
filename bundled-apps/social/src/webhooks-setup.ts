@@ -14,6 +14,14 @@
 // The fields are exactly what the parser reads (facebook adapter `parseWebhook`): `feed` changes
 // (comments, read from the change values, so `include_values=true`) and `messages` (Messenger).
 //
+// Managed edition (the host answers `cellMetaCallbackUrl`): one Meta app serves every workspace
+// on every server and has ONE app-level callback, so it points at the server's own
+// `/webhooks/_cell/meta`, which routes each delivery by Page id to the workspaces holding that
+// Page, using the Page ids recorded here on the Facebook account. The server answers the
+// handshake with its own token (`cellMetaVerifyToken`). A callback already pointing at ANOTHER
+// server's `/webhooks/_cell/meta` is never overwritten (the last setup would win): refused, nothing
+// written.
+//
 // Idempotent: a subscription that already matches is left alone and reported `unchanged`; a Page
 // already subscribed to both fields is not posted again, and a Page's other subscribed fields are
 // kept. A Page that fails is reported with its Graph error, never dropped.
@@ -23,6 +31,9 @@ import type { SocialToolCtx } from "./ctx"
 
 export const META_APP_SECRET_KEY = "socialMetaAppSecret"
 export const VERIFY_TOKEN_KEY = "webhookVerifyToken"
+/** Managed edition: the cell's own Meta callback and its handshake token (instance config). */
+export const CELL_CALLBACK_KEY = "cellMetaCallbackUrl"
+export const CELL_VERIFY_TOKEN_KEY = "cellMetaVerifyToken"
 export const WEBHOOK_FIELDS = ["feed", "messages"] as const
 const WEBHOOK_ENDPOINT = "meta"
 
@@ -99,6 +110,17 @@ interface Prereqs {
   accounts: string[]
   callbackUrl: string
   appSecret: string
+  /** Managed edition: the server's handshake token (the workspace mints none). */
+  cellVerifyToken: string | null
+}
+
+const CELL_META_SUFFIX = "/webhooks/_cell/meta"
+
+async function cellCallback(ctx: SetupCtx): Promise<{ url: string; verifyToken: string } | null> {
+  const url = await ctx.config.get(CELL_CALLBACK_KEY)
+  const token = await ctx.config.get(CELL_VERIFY_TOKEN_KEY)
+  if (typeof url !== "string" || !url || typeof token !== "string" || !token) return null
+  return { url, verifyToken: token }
 }
 
 /** Everything knowable before an approval: a connected account, the callback, the app secret. */
@@ -111,6 +133,17 @@ async function prerequisites(params: { callback_base_url?: string }, ctx: SetupC
   if (accounts.length === 0) {
     return fail("not_connected", "No Facebook account is connected: connect Facebook in Settings, Social first.")
   }
+  const appSecret = await ctx.config.get(META_APP_SECRET_KEY)
+  const cell = await cellCallback(ctx)
+  if (cell) {
+    if (!/^https:\/\/[^/\s]+\/webhooks\/_cell\/meta$/.test(cell.url)) {
+      return fail("callback_base_url_missing", `The server's Meta callback is not an https address: ${cell.url}`)
+    }
+    if (typeof appSecret !== "string" || !appSecret) {
+      return fail("app_secret_missing", "The Meta app secret is not stored: reconnect Facebook.")
+    }
+    return { accounts, callbackUrl: cell.url, appSecret, cellVerifyToken: cell.verifyToken }
+  }
   const stored = rows.map((r) => metadataOf(r.metadata)[BASE_URL_METADATA_KEY]).find((v) => typeof v === "string" && v)
   const base = String(params?.callback_base_url || stored || "").replace(/\/+$/, "")
   if (!/^https:\/\/[^/\s]+/.test(base)) {
@@ -119,7 +152,6 @@ async function prerequisites(params: { callback_base_url?: string }, ctx: SetupC
       "The instance's public HTTPS address is not known: reconnect Facebook, or pass callback_base_url (the https address Liaison is reached at).",
     )
   }
-  const appSecret = await ctx.config.get(META_APP_SECRET_KEY)
   if (typeof appSecret !== "string" || !appSecret) {
     return fail(
       "app_secret_missing",
@@ -130,7 +162,12 @@ async function prerequisites(params: { callback_base_url?: string }, ctx: SetupC
   // without it ("/webhooks/undefined/...") would be refused by Meta or route nowhere.
   const orgId = ctx.orgId || (ctx.getOrgId ? await ctx.getOrgId() : "")
   if (!orgId) return fail("org_unknown", "The organization of this install is not known to the app host.")
-  return { accounts, callbackUrl: `${base}/webhooks/${orgId}/social/${WEBHOOK_ENDPOINT}`, appSecret }
+  return {
+    accounts,
+    callbackUrl: `${base}/webhooks/${orgId}/social/${WEBHOOK_ENDPOINT}`,
+    appSecret,
+    cellVerifyToken: null,
+  }
 }
 
 /**
@@ -175,7 +212,7 @@ export async function webhooksSetupPreflight(
 export async function webhooksSetup(params: { callback_base_url?: string }, ctx: SetupCtx): Promise<SetupResult | SetupError> {
   const pre = await prerequisites(params, ctx)
   if ("status" in pre) return pre
-  const { accounts, callbackUrl, appSecret } = pre
+  const { accounts, callbackUrl, appSecret, cellVerifyToken } = pre
 
   const firstToken = await resolveAccessToken(ctx, "facebook", accounts[0] as string)
   if (!firstToken) {
@@ -195,10 +232,21 @@ export async function webhooksSetup(params: { callback_base_url?: string }, ctx:
     const have = new Set(fieldNames(page?.fields))
     const matches =
       page?.callback_url === callbackUrl && page?.active !== false && WEBHOOK_FIELDS.every((f) => have.has(f))
+    if (
+      cellVerifyToken !== null &&
+      typeof page?.callback_url === "string" &&
+      page.callback_url !== callbackUrl &&
+      page.callback_url.endsWith(CELL_META_SUFFIX)
+    ) {
+      return fail(
+        "meta_callback_other_cell",
+        `The Meta app's page webhooks already go to another server (${page.callback_url}); one Meta app has one callback, so this server cannot take them over. Nothing was changed.`,
+      )
+    }
     if (matches) {
       appStatus = "unchanged"
     } else {
-      const verifyToken = await ensureVerifyToken(ctx)
+      const verifyToken = cellVerifyToken ?? (await ensureVerifyToken(ctx))
       await graph(ctx, `${FB_BASE}/${appId}/subscriptions`, {
         method: "POST",
         body: {
@@ -282,6 +330,8 @@ export async function webhooksSetup(params: { callback_base_url?: string }, ctx:
     }
   }
 
+  if (cellVerifyToken !== null) await recordPageIds(ctx, pages)
+
   const failed = pages.filter((p) => p.status === "failed").length
   if (failed > 0) ctx.logger?.warn?.("social: webhooks_setup left Pages unsubscribed", { failed })
   return {
@@ -290,5 +340,27 @@ export async function webhooksSetup(params: { callback_base_url?: string }, ctx:
     app: { app_id: appId, status: appStatus, fields: [...WEBHOOK_FIELDS] },
     pages,
     failed_pages: failed,
+  }
+}
+
+/**
+ * Managed edition: the Page ids each Facebook account subscribed (or already had), on its
+ * sync_state rows, so the server's Meta callback can route a delivery to this workspace.
+ */
+async function recordPageIds(ctx: SetupCtx, pages: PageResult[]): Promise<void> {
+  const byAccount = new Map<string, string[]>()
+  for (const p of pages) {
+    if (p.status === "failed" || !p.page_id) continue
+    byAccount.set(p.account_external_id, [...(byAccount.get(p.account_external_id) ?? []), p.page_id])
+  }
+  for (const [account, ids] of byAccount) {
+    const rows = (await ctx.db.findMany("sync_state", {
+      where: { platform: "facebook", account_external_id: account },
+    })) as Array<{ id: string; metadata?: unknown }>
+    for (const row of rows) {
+      await ctx.db.update("sync_state", row.id, {
+        metadata: { ...metadataOf(row.metadata), meta_page_ids: [...new Set(ids)].sort() },
+      })
+    }
   }
 }

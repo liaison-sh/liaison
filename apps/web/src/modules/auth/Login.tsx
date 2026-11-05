@@ -49,7 +49,7 @@ import {
   serverAddress,
 } from "~/modules/desktop/desktop-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
-import { demoMode } from "~/modules/shell/branding-store"
+import { demoMode, noAccountEntry } from "~/modules/shell/branding-store"
 import { Button } from "~/ui/Button"
 import { Input } from "~/ui/Input"
 
@@ -115,6 +115,7 @@ const Login: Component = () => {
   const passwordWasReset = searchParams.reset === "success"
   const [loading, setLoading] = createSignal(false)
   const [providersUnreachable, setProvidersUnreachable] = createSignal(false)
+  const [mailUnavailable, setMailUnavailable] = createSignal(false)
 
   /**
    * P6d-T15: THE DESKTOP'S TWO STEPS, IN THIS CARD.
@@ -449,6 +450,7 @@ const Login: Component = () => {
     if (loading()) return
     setError("")
     setNotice("")
+    setMailUnavailable(false)
     setLoading(true)
     try {
       const res = await api.post<MagicRequestResponse>(authApiPath("/magic-link/request"), {
@@ -464,6 +466,11 @@ const Login: Component = () => {
         // form with the email kept, and say why.
         setStep("password")
         setError(i18n.t("kernel.auth.emailSignInUnavailable"))
+        return
+      }
+      if (err instanceof ApiError && err.code === "EMAIL_PROVIDER_UNAVAILABLE") {
+        // The same for every address: mail can't go out now, so no code screen to wait on.
+        setMailUnavailable(true)
         return
       }
       reportError(err)
@@ -649,6 +656,11 @@ const Login: Component = () => {
               <Show when={error()}>
                 <p class="text-xs text-error">{error()}</p>
               </Show>
+              <Show when={mailUnavailable()}>
+                <p data-testid="email-provider-unavailable" class="text-xs text-error">
+                  {i18n.t("kernel.auth.emailProviderUnavailable")}
+                </p>
+              </Show>
               <Button fullWidth type="submit" loading={loading()}>
                 {i18n.t("kernel.auth.continueWithEmail")}
               </Button>
@@ -717,7 +729,7 @@ const Login: Component = () => {
               >
                 {i18n.t("kernel.auth.signInWithPassword")}
               </button>
-              <Show when={!inNativeMobileShell()}>
+              <Show when={!inNativeMobileShell() && !noAccountEntry()}>
                 <A
                   href="/register"
                   class="text-[12.5px] text-accent-muted hover:text-accent transition-colors duration-150"

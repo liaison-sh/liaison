@@ -52,6 +52,15 @@ const REVIEWED: Record<string, string> = {
   // org that has no caps yet (caps are set by the operator afterwards).
   "modules/auth/auth.ts#bootstrapRegister":
     "first admin of the instance's first org, before any cap exists",
+  // A template's PDF row: its bytes passed the quota check in putTemplateObject
+  // before they were stored, in the same create or replace.
+  "modules/documents/service.ts#insertTemplateFile":
+    "bytes checked against the storage cap by putTemplateObject before storing",
+  // Test seed factories: bare rows with a known id for a test, never a person's
+  // or an agent's write (the product's paths are the ones under test).
+  "seed/factories/org/rows.ts#seedUserRows": "test seed rows, not a product write",
+  "seed/factories/org/platform-rows.ts#seedConnectedAccountRow":
+    "test seed rows, not a product write",
 }
 
 /**

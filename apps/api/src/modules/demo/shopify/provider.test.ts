@@ -29,6 +29,10 @@ import { forgetDemoShopifyStore } from "./replica"
 import { DEMO_SHOP_DOMAIN, DEMO_SHOPIFY_SENTINEL_TOKEN } from "./sentinel"
 
 const SHOP_URL = `https://${DEMO_SHOP_DOMAIN}/admin/api/2026-04/graphql.json`
+// A customer's own store. The fixed demo shop above is the seeded fixture
+// connection, which never reaches Shopify on any box (fixture-credential.ts), so
+// "goes out as it always did" is proved on a store that is not the fixture.
+const REAL_SHOP_URL = "https://customer-store.myshopify.com/admin/api/2026-04/graphql.json"
 // A host no demo provider answers (Boxtal has its own demo carrier now, so a
 // Boxtal URL is fixture-answered rather than refused).
 const OTHER_URL = "https://api.carrier.example/v1/shipments"
@@ -61,8 +65,9 @@ async function graphql(
   userId: string,
   operationName: string,
   variables: Record<string, unknown> = {},
+  url: string = SHOP_URL,
 ): Promise<any> {
-  const raw = await sandboxFetch(orgId, userId)(SHOP_URL, {
+  const raw = await sandboxFetch(orgId, userId)(url, {
     query: `query ${operationName} { placeholder }`,
     operationName,
     variables,
@@ -129,8 +134,8 @@ describe("the demo Shopify provider's gate", () => {
 
   it("OFF: with demo mode off, a marked org's Shopify call goes out as it always did", async () => {
     DemoModeTestAccess.set(false)
-    const result = await graphql(demoOrgId, demoUserId, "OrdersSearch", { first: 5 })
-    expect(onTheWire).toEqual([SHOP_URL])
+    const result = await graphql(demoOrgId, demoUserId, "OrdersSearch", { first: 5 }, REAL_SHOP_URL)
+    expect(onTheWire).toEqual([REAL_SHOP_URL])
     expect(result.data.shop.name).toBe("REAL STORE")
   })
 
@@ -156,8 +161,14 @@ describe("the demo Shopify provider's gate", () => {
     const before = env.LIAISON_DEMO_SHOPIFY_FIXTURES
     env.LIAISON_DEMO_SHOPIFY_FIXTURES = true
     try {
-      const result = await graphql(normalOrgId, normalUserId, "OrdersSearch", { first: 5 })
-      expect(onTheWire).toEqual([SHOP_URL])
+      const result = await graphql(
+        normalOrgId,
+        normalUserId,
+        "OrdersSearch",
+        { first: 5 },
+        REAL_SHOP_URL,
+      )
+      expect(onTheWire).toEqual([REAL_SHOP_URL])
       expect(result.data.shop.name).toBe("REAL STORE")
     } finally {
       env.LIAISON_DEMO_SHOPIFY_FIXTURES = before
@@ -166,8 +177,14 @@ describe("the demo Shopify provider's gate", () => {
 
   it("OFF: with demo mode on, an UNMARKED org's Shopify call goes out as it always did", async () => {
     DemoModeTestAccess.set(true)
-    const result = await graphql(normalOrgId, normalUserId, "OrdersSearch", { first: 5 })
-    expect(onTheWire).toEqual([SHOP_URL])
+    const result = await graphql(
+      normalOrgId,
+      normalUserId,
+      "OrdersSearch",
+      { first: 5 },
+      REAL_SHOP_URL,
+    )
+    expect(onTheWire).toEqual([REAL_SHOP_URL])
     expect(result.data.shop.name).toBe("REAL STORE")
   })
 

@@ -10,7 +10,7 @@
  * `start` writes the member's progress row (back to the first beat, active,
  * source cli) and queues `kernel/tour:start` for them in the same transaction.
  * The CLI never hosts jobs: the running server's outbox worker delivers the
- * frame to the member's open tabs. The deep link `<BASE_URL>/?tour=<id>` is
+ * frame to the member's open tabs. The deep link `<org base URL>/?tour=<id>` is
  * always printed (it starts the tour on open), with a note when an open tab or
  * desktop app was seen. Then it polls the row every 2 s and prints one line per
  * beat reached, ending on the outcome:
@@ -25,7 +25,7 @@ import { resolveMember } from "~/cli/lib/resolve-member"
 import { resolveOrgId } from "~/cli/lib/resolve-org-id"
 import { withPrivilegedDb } from "~/db/privileged"
 import { organizations, users } from "~/db/schema/kernel"
-import { env } from "~/lib/env"
+import { orgPublicBaseUrl } from "~/lib/org-public-url"
 import { serverT } from "~/modules/i18n/server-i18n"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { runConversationId } from "~/modules/tours/conversation"
@@ -86,8 +86,8 @@ async function memberLocale(orgId: string, userId: string): Promise<ShippedLocal
   })
 }
 
-export function tourDeepLink(tourId: string): string {
-  return `${env.BASE_URL.replace(/\/+$/, "")}/?tour=${encodeURIComponent(tourId)}`
+export async function tourDeepLink(orgId: string, tourId: string): Promise<string> {
+  return `${(await orgPublicBaseUrl(orgId)).replace(/\/+$/, "")}/?tour=${encodeURIComponent(tourId)}`
 }
 
 function beatLine(
@@ -161,7 +161,7 @@ export async function runTourStart(
     openClient = false
   }
   if (openClient) io.out("open tab detected: the tour opens there now")
-  io.out(`deep link: ${tourDeepLink(tour.id)}`)
+  io.out(`deep link: ${await tourDeepLink(orgId, tour.id)}`)
 
   const deadline = io.now() + opts.timeoutSeconds * 1000
   let lastLine = ""

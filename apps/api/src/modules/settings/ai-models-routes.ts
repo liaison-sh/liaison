@@ -38,13 +38,17 @@ import {
   setOrgHistorySettings,
 } from "~/modules/agent/context/history-settings"
 import { mutateAiModels, setProviderKeyEntry } from "~/modules/agent/credits/ai-models-store"
+import { cellCreditPricing, creditsForUnits } from "~/modules/agent/credits/credit-cost"
 import {
+  finalizeUsage,
   isModelKeyAvailable,
   isProviderUsable,
   providerLabelOf,
   resolveKey,
   selectAutoModelForOrg,
 } from "~/modules/agent/credits/credit-meter"
+import { checkBalance } from "~/modules/agent/credits/credit-service"
+import { withMultiplier } from "~/modules/agent/credits/managed-money"
 import {
   customModelKey,
   customServerKeyName,
@@ -172,6 +176,24 @@ function addedView(entry: AddedModel, models: AiModelsSettings, available: boole
   }
 }
 
+/**
+ * An added model as a write route answers it: the page's own row, with a
+ * multiplier against Auto instead of prices on a managed cell (S18), as the
+ * page's GET serves it.
+ */
+async function addedReply(
+  orgId: string,
+  entry: AddedModel,
+  settings: OrgKernelSettings,
+  available: boolean,
+) {
+  const row = addedView(entry, { ...settings.ai?.models }, available)
+  if (!isManagedEdition()) return row
+  const autoKey = await resolvedAutoKey(orgId, settings)
+  const auto = autoKey === entry.key ? row : autoKey ? await autoPriceOf(autoKey, settings) : null
+  return withMultiplier(row, auto)
+}
+
 /** Does `key` name a model this org has (a native row or an added entry)? */
 function knownKey(
   key: string,
@@ -190,6 +212,37 @@ async function resolvedAutoKey(orgId: string, settings: OrgKernelSettings): Prom
   return (await selectAutoModelForOrg(orgId, "ai-models-auto", settings))?.modelId ?? null
 }
 
+/** Auto's model's list prices (a native row or an added entry), for the multiplier. */
+async function autoPriceOf(
+  autoKey: string,
+  settings: OrgKernelSettings,
+): Promise<{ inputCostPerM: string | null; outputCostPerM: string | null } | null> {
+  const entry = findAddedModel(settings.ai?.models ?? {}, autoKey)
+  if (entry) return { inputCostPerM: entry.inputCostPerM, outputCostPerM: entry.outputCostPerM }
+  const row = (await nativeRows()).find((r) => r.modelId === autoKey)
+  return row ? { inputCostPerM: row.inputCostPerM, outputCostPerM: row.outputCostPerM } : null
+}
+
+/**
+ * Voice dictation's models as the page shows them: USD per minute on a
+ * self-hosted server, credits per minute on a managed cell (S18): the pushed
+ * `dictationMinute` credit price (D15), the same for every model, absent while
+ * the cell has no pushed pricing.
+ */
+async function transcriptionView(orgId: string) {
+  const view = await transcriptionSettingsView(orgId)
+  if (!isManagedEdition()) return view
+  const pricing = await cellCreditPricing("transcription-view")
+  const perMinute = pricing ? creditsForUnits(pricing, "dictationMinute", 1) : null
+  return {
+    ...view,
+    available: view.available.map(({ pricePerMinuteUsd: _list, ...m }) => ({
+      ...m,
+      ...(perMinute !== null ? { creditsPerMinute: perMinute } : {}),
+    })),
+  }
+}
+
 /** The test calls' rate limit: per org, `TEST_CALL_LIMIT` an hour. */
 const TEST_CALL_LIMIT = 10
 const TEST_CALL_WINDOW_SECONDS = 60 * 60
@@ -199,6 +252,16 @@ const testCallBucket = (orgId: string) => `ai-models-test-call:${orgId}`
  * The key of an org's test-call bucket as the prefixed `redis` client names it
  * (tests reset it): `bucketKey` carries REDIS_PREFIX itself, the client adds it.
  */
+/**
+ * OpenRouter's words when no endpoint of a model meets zero data retention:
+ * asked for per request ("No endpoints found matching your data policy (Zero data
+ * retention)"), or refused by the account's setting ("ZDR violation"). A change in
+ * its wording falls back to the provider's own message, which is harmless.
+ */
+export function isNoZeroRetentionRefusal(reason: string): boolean {
+  return /ZDR violation|data policy|zero data retention/i.test(reason)
+}
+
 export function testCallRateLimitKey(orgId: string): string {
   return bucketKey(testCallBucket(orgId), TEST_CALL_WINDOW_SECONDS).slice(REDIS_PREFIX.length)
 }
@@ -298,22 +361,26 @@ export const aiModelsRoutes = new Hono<AppEnv>()
     for (const entry of models.added ?? []) {
       added.push(addedView(entry, models, await isModelKeyAvailable(orgId, entry.key, settings)))
     }
+    const resolvedKey = await resolvedAutoKey(orgId, settings)
+    const all = [...native, ...added]
+    // Managed: a multiplier against Auto's model instead of prices (S18).
+    const auto = all.find((m) => m.key === resolvedKey) ?? null
     return success(c, {
       providers,
       servers: (models.servers ?? []).map((sv) => serverView(sv, settings)),
       auto: {
         modelKey: models.autoModelKey ?? null,
-        resolvedKey: await resolvedAutoKey(orgId, settings),
+        resolvedKey,
       },
       defaultReasoningLevel: models.defaultReasoningLevel ?? null,
       blockedHosts: blockedHostsView(models),
-      models: [...native, ...added],
+      models: isManagedEdition() ? all.map((m) => withMultiplier(m, auto)) : all,
     })
   })
 
   // ── Voice dictation's transcription model (S7) ───────────────────────────
   .get("/transcription", async (c) => {
-    return success(c, await transcriptionSettingsView(c.get("orgId")))
+    return success(c, await transcriptionView(c.get("orgId")))
   })
   .patch("/transcription", zValidator("json", transcriptionSettingsPatchSchema), async (c) => {
     const orgId = c.get("orgId")
@@ -325,7 +392,7 @@ export const aiModelsRoutes = new Hono<AppEnv>()
         422,
       )
     }
-    return success(c, await transcriptionSettingsView(orgId))
+    return success(c, await transcriptionView(orgId))
   })
 
   // ── Conversation history: summarize after N tokens, warm-cache compaction ─
@@ -526,18 +593,22 @@ export const aiModelsRoutes = new Hono<AppEnv>()
         throw err
       }
       const added = new Set((settings.ai?.models?.added ?? []).map((m) => m.key))
+      const managed = isManagedEdition()
+      const autoKey = managed ? await resolvedAutoKey(orgId, settings) : null
+      const auto = autoKey ? await autoPriceOf(autoKey, settings) : null
       const rows = filterCatalogue(catalogue, {
         q: q ?? "",
         toolsOnly: toolsOnly !== "false",
         limit: 200,
       }).map((m) => {
         const reason = notAddableReason(m)
-        return {
+        const row = {
           ...m,
           added: added.has(openRouterModelKey(m.upstreamId)),
           addable: reason === null,
           ...(reason ? { notAddableReason: reason } : {}),
         }
+        return managed ? withMultiplier(row, auto) : row
       })
       return success(c, { models: rows })
     },
@@ -558,16 +629,23 @@ export const aiModelsRoutes = new Hono<AppEnv>()
       if (findAddedModel(settings.ai?.models ?? {}, key)) {
         return c.json(errorBody("This model is already in your list.", "already_added"), 409)
       }
-      // On the managed service a test call is the org's spend, never ours.
+      // On the managed service the test call runs on the cell's own key and
+      // is metered to the org's credits like any call (A33): it needs credits.
       const { key: apiKey, source } = await resolveKey(orgId, "openrouter")
-      if (isManagedEdition() && source === "liaison") {
-        return c.json(
-          errorBody(
-            "A test call runs on your own OpenRouter key. Add your own OpenRouter key first.",
-            "byok_required",
-          ),
-          412,
+      const metered = isManagedEdition() && source === "liaison"
+      if (metered) {
+        const balance = await withPrivilegedDb(orgId, "ai-models-test-call-balance", (tx) =>
+          checkBalance(tx, orgId),
         )
+        if (!balance.allowed) {
+          return c.json(
+            errorBody(
+              "No credits left for the test call. Add credits first.",
+              "insufficient_credits",
+            ),
+            402,
+          )
+        }
       }
       let catalogue: Awaited<ReturnType<typeof getOpenRouterCatalogue>>
       try {
@@ -597,7 +675,37 @@ export const aiModelsRoutes = new Hono<AppEnv>()
         orgId,
       })
       const test = await runModelTestCall(model, { orgId, key })
-      if (!test.ok) return c.json(errorBody(test.reason, "test_call_failed"), 422)
+      if (metered && test.ok) {
+        await finalizeUsage(orgId, {
+          model: {
+            provider: "openrouter",
+            modelId: key,
+            // Priced: an unpriced model was refused above.
+            inputCostPerM: cat.inputCostPerM ?? "0",
+            outputCostPerM: cat.outputCostPerM ?? "0",
+          },
+          inputTokens: test.usage.inputTokens,
+          outputTokens: test.usage.outputTokens,
+          description: "Model test call",
+          releaseReservation: false,
+          keySource: "liaison",
+          userId: c.get("userId"),
+        })
+      }
+      if (!test.ok) {
+        // A managed cell's account allows zero-data-retention endpoints only: say that, not the
+        // provider's routing error.
+        const noZdr = isManagedEdition() && isNoZeroRetentionRefusal(test.reason)
+        return c.json(
+          errorBody(
+            noZdr
+              ? "This model has no provider that keeps zero data, so it cannot be used here."
+              : test.reason,
+            noZdr ? "model_no_zdr" : "test_call_failed",
+          ),
+          422,
+        )
+      }
       if (!test.toolCalled) {
         return c.json(
           errorBody(
@@ -621,7 +729,7 @@ export const aiModelsRoutes = new Hono<AppEnv>()
         return c.json(errorBody("This model is already in your list.", "already_added"), 409)
       }
       log.info({ orgId, key }, "openrouter model added")
-      return success(c, addedView(entry, { ...settings.ai?.models }, true), undefined, 201)
+      return success(c, await addedReply(orgId, entry, settings, true), undefined, 201)
     },
   )
 
@@ -752,6 +860,7 @@ export const aiModelsRoutes = new Hono<AppEnv>()
           apiKey,
           baseURL: server.baseURL,
         })
+        // unmetered-model-call: the org's own model server, on its own key (its bill, not the instance's)
         test = await runModelTestCall(model, { orgId, key })
       } catch (err) {
         if (err instanceof ModelServerError) {
@@ -795,7 +904,10 @@ export const aiModelsRoutes = new Hono<AppEnv>()
       }
       return success(
         c,
-        { ...addedView(entry, models, true), test: { toolCalled: test.toolCalled } },
+        {
+          ...(await addedReply(orgId, entry, settings, true)),
+          test: { toolCalled: test.toolCalled },
+        },
         undefined,
         201,
       )

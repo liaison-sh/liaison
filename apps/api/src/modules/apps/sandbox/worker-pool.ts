@@ -14,6 +14,7 @@ import { join } from "node:path"
 import type { Subprocess } from "bun"
 import { sandboxCancelledError } from "~/lib/failure-severity"
 import { appsLogger as log } from "~/lib/logger"
+import { sandboxTenantKey } from "~/modules/apps/custom-app-name"
 import { typedBridgeFailure } from "./bridge-rejection"
 import { QUICKJS_HOST_JSC_ENV, resolveSandboxMemoryLimit } from "./pool"
 
@@ -91,6 +92,45 @@ const DEFAULT_POOL_REPORT_INTERVAL_MS =
   Number(process.env.SANDBOX_POOL_REPORT_INTERVAL_MS) || 30_000
 
 export type ExecPriority = "interactive" | "background"
+
+// TENANT BUDGET (managed edition). Every org's custom apps share this pool with
+// every other org's apps, and a sandboxed handler holds a worker and an open
+// Postgres transaction for its whole run. Without a share, one tenant's busy
+// loop (a webhook driven from the internet, a flood of its own events) holds
+// every worker and every other org's webhooks, events, jobs and tool calls wait.
+// So the executions of one org's custom apps (keyed by the app name's org key,
+// custom-app-name.ts) run at most CUSTOM_APP_MAX_CONCURRENT_PER_ORG at once;
+// more wait in a short per-org line, and past it are refused at once with
+// SandboxTenantBusyError (429). Nested hops (a custom tool calling a tool) are
+// not counted: their caller already holds the org's slot, and parking them
+// would deadlock it. Catalog, in-tree and instance apps keep their path.
+export const CUSTOM_APP_MAX_CONCURRENT_PER_ORG = 2
+/** How many more of one org's custom-app executions may wait for its slots. */
+export const CUSTOM_APP_MAX_QUEUED_PER_ORG = 8
+/** How long one of them waits before it is refused. */
+export const CUSTOM_APP_QUEUE_WAIT_MS = 5_000
+
+export const SANDBOX_TENANT_BUSY_CODE = "custom_app_busy"
+/** The Retry-After of a SandboxTenantBusyError: one queue wait. */
+export const SANDBOX_TENANT_RETRY_AFTER_SECONDS = Math.ceil(CUSTOM_APP_QUEUE_WAIT_MS / 1000)
+
+/** 429: the org's custom apps already use their share of the sandbox. */
+export class SandboxTenantBusyError extends Error {
+  readonly status = 429
+  readonly code = SANDBOX_TENANT_BUSY_CODE
+  readonly retryAfterSeconds: number
+  constructor(retryAfterSeconds: number) {
+    super(
+      "This organization's custom apps are using all of their share of the app sandbox. Retry shortly.",
+    )
+    this.name = "SandboxTenantBusyError"
+    this.retryAfterSeconds = retryAfterSeconds
+  }
+}
+
+interface TenantWaiter {
+  admit: () => void
+}
 
 // How many nested acquires ONE parent execution may hold open at once. A
 // sandboxed handler that fans its cross-app hops out with `Promise.all` makes
@@ -242,6 +282,10 @@ export interface WorkerPoolOptions {
    * (nested) dispatches. See resolveMaxNestedOverflow.
    */
   maxNestedOverflow?: number
+  /** Tenant budget overrides (tests); see CUSTOM_APP_MAX_CONCURRENT_PER_ORG. */
+  tenantMaxConcurrent?: number
+  tenantMaxQueued?: number
+  tenantQueueWaitMs?: number
 }
 
 export interface WorkerExecOptions {
@@ -332,7 +376,10 @@ export interface WorkerExecOptions {
    *    mid-mutation); this only stops work that has not started yet.
    */
   signal?: AbortSignal
-  /** App id, for saturation/hold-time log fields when available. */
+  /**
+   * The app whose code runs. Also decides the tenant budget: an org's custom
+   * app on a managed cell counts against its org's share (sandboxTenantKey).
+   */
   appId?: string
   /** Tool name, for saturation/hold-time log fields when available. */
   toolName?: string
@@ -399,6 +446,15 @@ interface QueuedRequest {
 
 // -- Pool --------------------------------------------------------------------
 
+/** The runtime's own shape, not a handler's text that happens to say it (any tenant could retire workers). */
+function isRuntimeOutOfMemory(error: unknown, errorName: unknown): boolean {
+  const message = String(error ?? "")
+  return (
+    (errorName === "InternalError" && message === "out of memory") ||
+    message.endsWith("InternalError: out of memory")
+  )
+}
+
 export class SandboxWorkerPool {
   private workers: WorkerHandle[] = []
   private queue: QueuedRequest[] = []
@@ -435,8 +491,16 @@ export class SandboxWorkerPool {
   private readonly idleRssSampleIntervalMs: number
   private idleSampler: ReturnType<typeof setInterval> | null = null
   private idleSampling = false
+  private readonly tenantInFlight = new Map<string, number>()
+  private readonly tenantWaiters = new Map<string, TenantWaiter[]>()
+  private readonly tenantMaxConcurrent: number
+  private readonly tenantMaxQueued: number
+  private readonly tenantQueueWaitMs: number
 
   constructor(opts: WorkerPoolOptions = {}) {
+    this.tenantMaxConcurrent = opts.tenantMaxConcurrent ?? CUSTOM_APP_MAX_CONCURRENT_PER_ORG
+    this.tenantMaxQueued = opts.tenantMaxQueued ?? CUSTOM_APP_MAX_QUEUED_PER_ORG
+    this.tenantQueueWaitMs = opts.tenantQueueWaitMs ?? CUSTOM_APP_QUEUE_WAIT_MS
     this.idleRssSampleIntervalMs =
       opts.idleRssSampleIntervalMs ?? DEFAULT_IDLE_RSS_SAMPLE_INTERVAL_MS
     this.maxSize = opts.maxSize ?? DEFAULT_MAX_SIZE
@@ -574,7 +638,79 @@ export class SandboxWorkerPool {
     if (opts.nested === true) return this.executeNested(opts)
 
     const priority: ExecPriority = opts.priority ?? "interactive"
-    return this.acquire(opts, priority, false)
+    const tenant = sandboxTenantKey(opts.appId)
+    if (!tenant) return this.acquire(opts, priority, false)
+    await this.admitTenant(tenant, opts.signal)
+    try {
+      return await this.acquire(opts, priority, false)
+    } finally {
+      this.releaseTenant(tenant)
+    }
+  }
+
+  /** Executions of each tenant holding (or about to take) a worker, and waiting. */
+  tenantStats(): Record<string, { inFlight: number; waiting: number }> {
+    const out: Record<string, { inFlight: number; waiting: number }> = {}
+    for (const [k, n] of this.tenantInFlight) out[k] = { inFlight: n, waiting: 0 }
+    for (const [k, w] of this.tenantWaiters) {
+      out[k] = { inFlight: out[k]?.inFlight ?? 0, waiting: w.length }
+    }
+    return out
+  }
+
+  /** Take one of the tenant's slots: at once, after a short wait, or a 429. */
+  private admitTenant(tenant: string, signal: AbortSignal | undefined): Promise<void> {
+    const held = this.tenantInFlight.get(tenant) ?? 0
+    if (held < this.tenantMaxConcurrent) {
+      this.tenantInFlight.set(tenant, held + 1)
+      return Promise.resolve()
+    }
+    const waiters = this.tenantWaiters.get(tenant) ?? []
+    const retryAfter = Math.max(1, Math.ceil(this.tenantQueueWaitMs / 1000))
+    if (waiters.length >= this.tenantMaxQueued) {
+      log.warn({ tenant, held, waiting: waiters.length }, "custom app sandbox share full: refused")
+      return Promise.reject(new SandboxTenantBusyError(retryAfter))
+    }
+    return new Promise<void>((resolve, reject) => {
+      const leave = () => {
+        clearTimeout(timer)
+        signal?.removeEventListener("abort", onAbort)
+        const list = this.tenantWaiters.get(tenant)
+        const i = list?.indexOf(entry) ?? -1
+        if (list && i !== -1) list.splice(i, 1)
+        if (list && list.length === 0) this.tenantWaiters.delete(tenant)
+      }
+      const entry: TenantWaiter = {
+        admit: () => {
+          leave()
+          resolve()
+        },
+      }
+      const onAbort = () => {
+        leave()
+        reject(new Error("Sandbox request cancelled by caller"))
+      }
+      const timer = setTimeout(() => {
+        leave()
+        log.warn({ tenant }, "custom app sandbox share: waited too long, refused")
+        reject(new SandboxTenantBusyError(retryAfter))
+      }, this.tenantQueueWaitMs)
+      signal?.addEventListener("abort", onAbort, { once: true })
+      waiters.push(entry)
+      this.tenantWaiters.set(tenant, waiters)
+    })
+  }
+
+  /** Hand the slot to the tenant's next waiter, or give it back. */
+  private releaseTenant(tenant: string): void {
+    const next = this.tenantWaiters.get(tenant)?.[0]
+    if (next) {
+      next.admit() // the slot passes on: the count is unchanged
+      return
+    }
+    const held = (this.tenantInFlight.get(tenant) ?? 1) - 1
+    if (held > 0) this.tenantInFlight.set(tenant, held)
+    else this.tenantInFlight.delete(tenant)
   }
 
   /**
@@ -1401,17 +1537,24 @@ export class SandboxWorkerPool {
           // dispatcher off it; the shutdown-driven exit flows through
           // handleWorkerExit, which removes it and spawns a fresh replacement.
           const rssBytes = typeof message.rssBytes === "number" ? message.rssBytes : 0
+          // Out of memory in the runtime every execution of this worker shares: the next
+          // execution would fail the same way, so the worker does not serve another.
+          const heapExhausted =
+            message.type === "error" && isRuntimeOutOfMemory(message.error, message.errorName)
           if (
             !this.shutdownCalled &&
-            (rssBytes > this.maxWorkerRssBytes || worker.execCount >= this.maxExecsPerWorker)
+            (heapExhausted ||
+              rssBytes > this.maxWorkerRssBytes ||
+              worker.execCount >= this.maxExecsPerWorker)
           ) {
-            log.info(
+            log[heapExhausted ? "warn" : "info"](
               {
                 workerId: worker.id,
                 rssMb: Math.round(rssBytes / 1024 / 1024),
                 execs: worker.execCount,
+                heapExhausted,
               },
-              "Recycling sandbox worker (RSS/exec threshold)",
+              "Recycling sandbox worker (RSS/exec threshold or heap exhausted)",
             )
             worker.busy = true
             worker.recycling = true

@@ -21,6 +21,10 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `LIAISON_CLI_LOG_LEVEL` | `string` |  | no | Pino level of a `liaison` CLI run. Unset: "warn", so a command's output is not preceded by the server's startup lines (lib/logger.ts). |
 | `NODE_ENV` | `"development" \| "production" \| "test"` | `"development"` | no |  |
 | `BASE_URL` | `string (URL)` | `"http://localhost:3000"` | no |  |
+| `LIAISON_ORG_HOST_TEMPLATE` | `string` |  | no | One host per org: an http(s) URL holding `{slug}` once, in its host, with no path and no trailing slash (`https://{slug}.example.com`). Set, every absolute link the server builds for an org (mails, connect links, guides, file links) uses the org's host (lib/org-public-url.ts). Unset, those links use BASE_URL. |
+| `LIAISON_PAY_FRAME_ORIGIN` | `string` |  | no | The managed edition's payment frame: the https origin (no path, no trailing slash) of the page that takes card details for the Billing page, embedded in an iframe. It feeds the frame-src of the CSP and the origin a message from the frame must come from. Required when LIAISON_EDITION=managed (the server refuses to start without it, lib/managed-boot.ts); unused otherwise. |
+| `LIAISON_MANAGED_DEFAULT_MODELS` | `string` |  | no | The managed edition's default models: comma-separated OpenRouter model ids (`deepseek/deepseek-v4.1-flash`) that a new org gets enabled when its control plane creates it (POST /api/cloud/orgs), the first one as Auto, so the org's first chat has a model. Admins add or remove models afterwards. Required when LIAISON_EDITION=managed (lib/managed-boot.ts); unused otherwise. |
+| `LIAISON_OAUTH_REDIRECT_BASE` | `string` |  | no | One host every OAuth provider redirects to: an http(s) origin with no path or trailing slash (`https://auth.example.com`). Set, the redirect_uri of sign-in and connector flows is `<this>/api/auth/oauth/callback` and `<this>/api/connections/callback` (one exact URI to register per provider), and the OAuth `state` starts with the org's slug and a dot, so whatever serves this host can send the browser on to the org's own host, where the flow completes. Setup guides show these URIs. Unset, both use BASE_URL and the state is a bare random token. |
 | `ALLOWED_ORIGINS` | `string` | `"http://localhost:5173"` | no |  |
 | `LIAISON_APP_ORIGINS` | `string` | `"capacitor://localhost,tauri://localhost,http://tauri.localhost"` | no | The wrapped desktop and mobile shells' own origins (lib/app-origins.ts). Separate from ALLOWED_ORIGINS because these are the SHELLS' fixed schemes, identical on every deployment, while ALLOWED_ORIGINS names this deployment's web app. Set it empty to refuse the apps outright. |
 | `TRUSTED_PROXY_HOPS` | `number` | `0` | no |  |
@@ -28,6 +32,8 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `LIAISON_MIN_CLIENT_IOS` | `string` | `"1.0.34"` | no | The oldest iOS app version this server supports (`1.0.<build>`), published at GET /api/client-policy. |
 | `LIAISON_MIN_CLIENT_ANDROID` | `string` | `"0.0.0"` | no | The oldest Android app version this server supports, published at GET /api/client-policy. 0.0.0 sets no minimum. |
 | `TRUSTED_PROXY_CIDRS` | `string` | `""` | no | Extra networks (comma-separated CIDRs) whose direct connections may carry X-Forwarded-For, beyond loopback and the private ranges that are always trusted (lib/request-context.ts). Only needed when a proxy reaches the app from a public address, e.g. a CDN connecting straight to the app port. |
+| `LIAISON_EDGE_MODE` | `"direct" \| "signed"` |  | no | How the request's host and client address are read when an edge proxy sits in front (lib/request-context.ts `effectiveRequest`). Unset: the Host header and X-Forwarded-For per TRUSTED_PROXY_HOPS, as always. `direct`: the edge preserves the Host, and the client address is CF-Connecting-IP when the connection comes from a tunnel connector on loopback. `signed`: the edge rewrites the host and passes the original host and client address in signed `x-liaison-*` headers (LIAISON_EDGE_SECRET); unsigned or stale ones are ignored. |
+| `LIAISON_EDGE_SECRET` | `string` |  | no | The secret the edge signs `x-liaison-host` / `x-liaison-client-ip` with (LIAISON_EDGE_MODE=signed). At least 32 characters. |
 | `DEVICE_FLOW_CLIENTS` | `string` | `""` | no |  |
 | `DEVICE_FLOW_ALLOW_UNSCOPED` | `boolean` | `false` | no | Accept /api/auth/device-flow/initiate requests that declare no scopes. Off by default: an unscoped device session is a full session as whoever approves it. Turn on only for a first-party client that needs everything; the approver must then confirm "full access" explicitly. |
 | `EXPOSE_REFRESH_TOKEN_IN_BODY` | `boolean` | `false` | no |  |
@@ -137,7 +143,14 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `SHOPIFY_APP_CLIENT_ID` | `string` |  | no | A Shopify app for every workspace's store: used for OAuth and, as Shopify signs webhooks with the app's secret, for webhook HMAC verification. Its redirect URL is ${BASE_URL}/api/connections/callback; webhook subscriptions stay per workspace. Distribute it as a custom app (custom distribution). An app listed on the Shopify App Store (public distribution) must answer Shopify's mandatory compliance webhooks (customers/data_request, customers/redact, shop/redact), which Liaison does not implement yet. |
 | `SHOPIFY_APP_CLIENT_SECRET` | `string` |  | no |  |
 | `GMAIL_PUBSUB_TOPIC` | `string` |  | no | A Cloud Pub/Sub topic Gmail push publishes to for every workspace (projects/&lt;project&gt;/topics/&lt;topic&gt;). Set: Tickets watches Gmail with it and the setup guide drops its Pub/Sub step. Unset: poll-only. |
-| `CONTROL_PLANE_URL` | `string (URL)` |  | no | Control-plane integration (Phase 14, Track D). Both must be set or unset. No kernel-enforced minimum on the key; operators are advised to use `openssl rand -hex 32` (documented in deploy/.env.example). Empty strings (compose ${VAR:-} defaults) are treated as unset. |
+| `GMAIL_PUSH_AUDIENCE` | `string (URL)` |  | no | The OIDC audience of the instance topic's push subscription: the https URL it posts to. The Mail and Tickets apps verify Gmail push tokens against it when a workspace set none of its own. In the managed edition the subscription posts to this server's /webhooks/_cell/gmail-push and the server refuses to start with GMAIL_PUBSUB_TOPIC but without this and GMAIL_PUSH_SERVICE_ACCOUNT. |
+| `GMAIL_PUSH_SERVICE_ACCOUNT` | `string (email)` |  | no | The service account the push subscription signs its OIDC tokens as (--push-auth-service-account); checked with GMAIL_PUSH_AUDIENCE. |
+| `META_APP_SECRET` | `string` |  | no | Managed edition: the app secret of the Meta app every workspace's Facebook connection uses. It verifies deliveries to this server's /webhooks/_cell/meta (X-Hub-Signature-256), which reach each workspace by Page id. Unset: no server-level Meta callback. |
+| `META_APP_ID` | `string` |  | no | Managed edition: the app id of that same Meta app. With META_APP_SECRET it is the OAuth client of every workspace's Facebook connection (and of Instagram through Facebook login) when the workspace has no Meta app of its own. Unset: each workspace brings its own. |
+| `LIAISON_CELL_PUBLIC_ADDRESSES` | `string` |  | no | This server's own public IPv4/IPv6 addresses, comma-separated. An organization's custom app (managed edition) can never fetch them: traffic from the host to its own public address skips the cloud firewall and reaches any port published on all interfaces. Unset: only its host names (BASE_URL, ALLOWED_ORIGINS, the org host template) are refused that way. |
+| `LIAISON_TEST_CELL` | `boolean` | `false` | no | A throwaway test server. Only then may an org transfer agent inject a fault (`liaison org transfer agent --fail-at`): elsewhere the CLI and the agent refuse it. Never set on a server that holds real organizations. |
+| `LIAISON_EDITION` | `"self_hosted" \| "managed"` |  | no | The instance edition (lib/edition.ts). `managed` turns on the managed edition and makes the server refuse to boot without the settings it needs (lib/managed-boot.ts). Unset = self-hosted (a server that sets the legacy control-plane pair below without it refuses to start). |
+| `CONTROL_PLANE_URL` | `string (URL)` |  | no | Control-plane integration (Phase 14, Track D). Both must be set or unset. The pair no longer switches the managed edition on: set alone, without LIAISON_EDITION, the server refuses to start (lib/managed-boot.ts). No kernel-enforced minimum on the key; operators are advised to use `openssl rand -hex 32` (documented in deploy/.env.example). Empty strings (compose ${VAR:-} defaults) are treated as unset. |
 | `CONTROL_PLANE_API_KEY` | `string` |  | no |  |
 | `NOTIFICATIONS_DEFAULT_QUIET_HOURS` | `"on" \| "off"` | `process.env.NODE_ENV === "test" ? "off" : "on"` | no | Quiet hours by default (notification etiquette rule 8): until a person sets their own work hours, phone and computer stay silent from 20:00 to 08:00 on weekdays and all weekend. `off` keeps people without hours notified at any time. Off under NODE_ENV=test, so tests do not depend on the wall clock; tests of the rule set it on the router context. |
 | `LIAISON_TEAM_ENDPOINT` | `LIAISON_TEAM_DISABLED \| string (URL)` | `process.env.NODE_ENV === "test" ? LIAISON_TEAM_DISABLED : DEFAULT_LIAISON_TEAM_ENDPOINT` | no | Where this server sends what an admin chose to share with the Liaison team (registration, a daily heartbeat, forwarded bug reports): the base URL of the control plane's endpoints, one path segment per message type. Nothing is sent until an admin turns sharing on (Settings &gt; System). Empty string = sharing is not available on this server. Unset = the Liaison team's own endpoint (empty under NODE_ENV=test, so no test reaches it). |
@@ -147,6 +160,7 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `LIAISON_ROLE` | `"all" \| "api" \| "worker"` | `"all"` | no | What this process serves. `all` (default) = one container does everything: HTTP + WebSocket API, BullMQ job workers and the singletons (outbox drain), as a single-container self-host runs. `api` = HTTP + WebSocket only, no job workers, never the singleton leader. `worker` = BullMQ job workers and the singletons (behind the leader lease), with a health-only HTTP server. Any other value refuses boot. The CLI ignores it. |
 | `LIAISON_READY_WARM_MS` | `number` | `30000` | no | How long a serving process may spend, before /readyz answers 200, registering the apps of the orgs with a live socket in the cell (the orgs a deploy's reconnecting sockets bring it first). Past it the process turns ready and the rest register on demand. 0 skips it. |
 | `LIAISON_ORG_RUNTIME_IDLE_MINUTES` | `number` | `60` | no | Minutes after which an org nothing has touched in this process (no request, job or event) has its in-memory setup released; its next touch sets it up again (in memory only: its rows are set up already). Default 60, so a process's memory follows the orgs used in the last hour, not every org it ever served; 0 keeps every org set up for the process's life. |
+| `LIAISON_ORG_RUNTIME_MAX_ORGS` | `number` | `2000` | no | At most this many orgs set up in memory in one process. Past it, the least recently touched org with no live work in the process (no request, socket, job, event or agent turn, and not moving) is released as an idle one is, and set up again at its next touch. Default 2000 (about 0.35 MB per org, so about 700 MB at the cap); 0 sets no cap. |
 | `SHUTDOWN_EDGE_GRACE_MS` | `number` | `SHUTDOWN_BUDGET_DEFAULTS.edgeGraceMs` | no | The shutdown budgets (lib/shutdown.ts), in ms from the SIGTERM. Keep the container's stop grace period above the hard deadline below, or the runtime kills the process mid-drain. How long the listener keeps accepting connections after /readyz turned 503, so the edge sees it first (its 1 s probe marks the process down). Default 2000. |
 | `SHUTDOWN_HTTP_DRAIN_MS` | `number` | `SHUTDOWN_BUDGET_DEFAULTS.httpDrainMs` | no | How long in-flight HTTP requests (not streams) may run before they are cut. Default 20000. |
 | `SHUTDOWN_TURN_DRAIN_MS` | `number` | `SHUTDOWN_BUDGET_DEFAULTS.turnDrainMs` | no | How long running agent turns may run on before the process stops. Default 20000. |
@@ -171,7 +185,7 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `LIAISON_APPS_DIR` | `string` |  | no |  |
 | `LIAISON_APP_REGISTRY_URL` | `string` |  | no | Remote app registry: the https URL of an `index.json` of store listings and package URLs (modules/apps/catalog-sources.ts), shown in the App store beside the image's baked catalog. Unset = baked catalog only. |
 | `LIAISON_ATTACHMENT_ALLOW_EXTENSIONS` | `string` |  | no | Comma-separated extensions (no dots, e.g. "exe,pkg,dmg") to SUBTRACT from the file-attachment executable/script denylist (`modules/files/attach.ts` `BLOCKED_EXTENSIONS`/`BLOCKED_MIME_TYPES`), for files staff authored only (a member's upload, an operator import). A file from outside (an inbound attachment, an integration import, a copy of either, the in-app agent's own upload) keeps the full denylist. |
-| `LIAISON_OPERATOR_ORG_ID` | `string (UUID)` |  | no | Installed apps are instance-wide, but `kernel:apps:admin` is org-scoped. On a multi-tenant instance (demo mode, managed edition) runtime app management (install, upgrade, uninstall, interface approval) is confined to the instance operator's org: this id when set, otherwise the instance's first org (modules/apps/operator-org.ts). Unused on a single-org self-host. |
+| `LIAISON_OPERATOR_ORG_ID` | `string (UUID)` |  | no | Installed apps are instance-wide, but `kernel:apps:admin` is org-scoped. On a multi-tenant instance (demo mode, managed edition) runtime app management (install, upgrade, uninstall, interface approval) is confined to the instance operator's org: this id when set, otherwise the instance's first org (modules/apps/operator-org.ts). Unused on a single-org self-host. Org ids are compared as strings, so the id is kept in the database's own lowercase. |
 | `BYOK_ENCRYPTION_KEY` | `string` |  | no | BYOK encryption key — 32 bytes expressed as 64 hex chars |
 | `MONITOR_TOKEN` | `string` | `""` | no | Bearer token guarding GET /diag (monitoring watchdog, ops/monitor/ in the monorepo). Empty default allowed in non-production; the production guard below rejects empty. |
 | `MEILISEARCH_HOST` | `string` | `"http://localhost:7700"` | no | Phase 10: MeiliSearch |
@@ -236,13 +250,13 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | Name | Read in |
 | --- | --- |
 | `ALLOW_PRIVATE_MAIL_HOSTS` | `apps/api/src/modules/apps/sandbox/host-validation.ts:20`, `apps/api/src/modules/apps/sandbox/smtp-bridge.ts:139` |
-| `APP_REGISTRATION_CONCURRENCY` | `apps/api/src/modules/apps/init.ts:775` |
-| `APP_WORKER_MAX_EXECS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:68` |
-| `APP_WORKER_MAX_RSS_MB` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:67` |
-| `APP_WORKER_POOL_MAX` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:27` |
-| `APP_WORKER_POOL_RESERVED_INTERACTIVE` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:57` |
-| `BULK_BLOB_DIR` | `apps/api/src/modules/apps/sandbox/bulk-blob.ts:73` |
-| `BULK_BLOB_QUOTA_BYTES` | `apps/api/src/modules/apps/sandbox/bulk-blob.ts:66` |
+| `APP_REGISTRATION_CONCURRENCY` | `apps/api/src/modules/apps/init.ts:789` |
+| `APP_WORKER_MAX_EXECS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:69` |
+| `APP_WORKER_MAX_RSS_MB` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:68` |
+| `APP_WORKER_POOL_MAX` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:28` |
+| `APP_WORKER_POOL_RESERVED_INTERACTIVE` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:58` |
+| `BULK_BLOB_DIR` | `apps/api/src/modules/apps/sandbox/bulk-blob.ts:169` |
+| `BULK_BLOB_QUOTA_BYTES` | `apps/api/src/modules/apps/sandbox/bulk-blob.ts:162` |
 | `BUN_INSTALL` | `apps/desktop/sidecar/build.ts:193` |
 | `BUN_INSTALL_CACHE_DIR` | `apps/desktop/sidecar/build.ts:191` |
 | `CLAMAV_HOST` | `apps/api/src/lib/clamav.ts:38` |
@@ -250,15 +264,15 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `CLAUDE_SECURESTORAGE_CONFIG_DIR` | `apps/desktop/sidecar/config-isolation.ts:17`, `apps/desktop/sidecar/config-isolation.ts:22` |
 | `DRIVE_API_BASE_URL` | `apps/api/src/apps/google-drive/drive-rest.ts:33` |
 | `DRIVE_UPLOAD_API_BASE_URL` | `apps/api/src/apps/google-drive/drive-rest.ts:37` |
-| `EVENT_ROUTINE_COALESCE_MS` | `apps/api/src/infra/jobs/event-routine-subscriber.ts:47`, `apps/api/src/modules/agent/tools/skills-routines-tools.ts:4989` |
+| `EVENT_ROUTINE_COALESCE_MS` | `apps/api/src/infra/jobs/event-routine-subscriber.ts:47`, `apps/api/src/modules/agent/tools/skills-routines-tools.ts:5000` |
 | `GITLAB_API_BASE_URL` | `apps/api/src/apps/gitlab/gitlab-rest.ts:23` |
 | `GS_BIN` | `apps/api/src/modules/pdf/render.ts:376` |
 | `INBOUND_TRUSTED_AUTHSERV_IDS` | `apps/api/src/lib/email/sender-auth.ts:44` |
 | `LIAISON_ALLOW_PRIVATE_API_CONNECTOR_HOSTS` | `apps/api/src/apps/api-connector/adapter-policy.ts:25` |
 | `LIAISON_ALLOW_PRIVATE_MODEL_SERVERS` | `apps/api/src/modules/agent/providers/model-server.ts:33` |
 | `LIAISON_APP_CATALOG_DIR` | `apps/api/src/modules/apps/catalog.ts:75`, `apps/api/src/modules/permissions/scope-registry.ts:81` |
-| `LIAISON_APP_PRIVATE_HOSTS` | `apps/api/src/modules/apps/sandbox/bridge/shared.ts:193` |
-| `LIAISON_BUNDLED_APPS_FROM_SOURCE` | `apps/api/src/modules/apps/sandbox/bundle-loader.ts:25` |
+| `LIAISON_APP_PRIVATE_HOSTS` | `apps/api/src/modules/apps/sandbox/bridge/shared.ts:195` |
+| `LIAISON_BUNDLED_APPS_FROM_SOURCE` | `apps/api/src/modules/apps/sandbox/bundle-loader.ts:51` |
 | `LIAISON_CLI_OPERATOR` | `apps/api/src/cli/agent/ask.ts:168` |
 | `LIAISON_DATABASE_ADAPTER` | `apps/api/src/apps/database/bridge.ts:1198` |
 | `LIAISON_DATABASE_ADAPTER_PATH` | `apps/api/src/apps/database/bridge.ts:1196` |
@@ -267,44 +281,44 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/apps/database/bridge.ts:374`, `apps/api/src/apps/database/bridge.ts:394` |
 | `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/apps/database/bridge.ts:383` |
 | `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:154` |
-| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1420` |
+| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1577` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
-| `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:469`, `apps/api/src/modules/apps/app-frame.ts:35` |
-| `LIAISON_SANDBOX_FETCH_TIMEOUT_MS` | `apps/api/src/modules/apps/sandbox/bridge/egress.ts:48` |
-| `LIAISON_TRUSTED_SUMMARIZER_APPS` | `apps/api/src/modules/apps/runtime.ts:1268` |
-| `LIAISON_WEB_TOOLS_ALLOW_PRIVATE` | `apps/api/src/modules/agent/tools/web-tools.ts:149`, `apps/api/src/modules/agent/tools/web-tools.ts:242` |
-| `MAIL_INGEST_STALE_SEC` | `apps/api/src/modules/monitor/index.ts:302` |
+| `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:504`, `apps/api/src/modules/apps/app-frame.ts:35` |
+| `LIAISON_SANDBOX_FETCH_TIMEOUT_MS` | `apps/api/src/modules/apps/sandbox/bridge/egress.ts:49` |
+| `LIAISON_TRUSTED_SUMMARIZER_APPS` | `apps/api/src/modules/apps/runtime.ts:1281` |
+| `LIAISON_WEB_TOOLS_ALLOW_PRIVATE` | `apps/api/src/modules/agent/tools/web-tools.ts:160`, `apps/api/src/modules/agent/tools/web-tools.ts:253` |
+| `MAIL_INGEST_STALE_SEC` | `apps/api/src/modules/monitor/index.ts:305` |
 | `MAILBOX_DECRYPT_WAIT_BUDGET_MS` | `apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:101` |
-| `MAINTENANCE_FLAG_PATH` | `apps/api/src/lib/server.ts:150`, `apps/api/src/middleware/maintenance.ts:23` |
-| `MAINTENANCE_VERSION_PATH` | `apps/api/src/lib/server.ts:157`, `apps/api/src/middleware/maintenance.ts:27` |
+| `MAINTENANCE_FLAG_PATH` | `apps/api/src/lib/server.ts:165`, `apps/api/src/middleware/maintenance.ts:23` |
+| `MAINTENANCE_VERSION_PATH` | `apps/api/src/lib/server.ts:172`, `apps/api/src/middleware/maintenance.ts:27` |
 | `MCP_MAILBOX_WAIT_MS` | `apps/api/src/modules/mcp/mcp-mailbox-plaintext.ts:57` |
 | `MCP_MAX_RESPONSE_BYTES` | `apps/api/src/modules/mcp-client/call.ts:485` |
 | `MCP_MAX_TOOLS_PER_CONNECTION` | `apps/api/src/modules/mcp-client/projector.ts:51` |
 | `MCP_RATE_CAP_PER_MINUTE_DEFAULT` | `apps/api/src/modules/mcp-client/call.ts:369` |
 | `MCP_TOOL_LIST_BACKFILL_WAIT_MS` | `apps/api/src/modules/mcp-client/index.ts:537` |
-| `MEDIA_TRANSFER_HOST_WHITELIST` | `apps/api/src/modules/agent/media/media-analysis-constants.ts:100` |
-| `MIGRATION_DATABASE_URL` | `apps/api/src/cli/export-full.ts:74`, `apps/api/src/db/migrate.ts:395`, `apps/api/src/db/reconcile-catalog-boot.ts:67` and 1 more |
+| `MEDIA_TRANSFER_HOST_WHITELIST` | `apps/api/src/modules/agent/media/media-analysis-constants.ts:121` |
+| `MIGRATION_DATABASE_URL` | `apps/api/src/cli/export-full.ts:74`, `apps/api/src/cli/org-transfer.ts:244`, `apps/api/src/db/migrate.ts:395` and 2 more |
 | `MIGRATION_DATABASE_URL_TEST` | `apps/api/src/cli/export-full.ts:74` |
 | `NESTED_PRIVILEGED_STRICT` | `apps/api/src/db/privileged.ts:203` |
-| `OPENROUTER_API_KEY` | `apps/api/src/modules/agent/credits/credit-meter.ts:347`, `apps/api/src/modules/agent/providers/openrouter.ts:127` |
-| `OPENROUTER_BASE_URL` | `apps/api/src/modules/agent/providers/openrouter.ts:29` |
+| `OPENROUTER_API_KEY` | `apps/api/src/modules/agent/credits/credit-meter.ts:374`, `apps/api/src/modules/agent/providers/openrouter.ts:168` |
+| `OPENROUTER_BASE_URL` | `apps/api/src/modules/agent/providers/openrouter.ts:30` |
 | `OPENROUTER_HOST_MAX_TTFT_MS` | `apps/api/src/modules/agent/providers/openrouter-host-speed.ts:66` |
 | `OPENROUTER_HOST_MIN_TOKENS_PER_SECOND` | `apps/api/src/modules/agent/providers/openrouter-host-speed.ts:67` |
 | `OPENROUTER_HOST_SPEED_MIN_SAMPLES` | `apps/api/src/modules/agent/providers/openrouter-host-speed.ts:68` |
 | `ORG_MAINTENANCE_FLAG_PATH` | `apps/api/src/middleware/org-maintenance.ts:25` |
 | `QA_DRIVE_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/knowledge.ts:79` |
 | `QA_GMAIL_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/rows.ts:462` |
-| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:505`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
-| `ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:61` |
-| `ROUTINE_EVENT_RECONCILE_MAX_RETRIES` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:64` |
+| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:551`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
+| `ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:62` |
+| `ROUTINE_EVENT_RECONCILE_MAX_RETRIES` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:65` |
 | `ROUTINE_OVERLAP_DEFER_DELAY_MS` | `apps/api/src/infra/jobs/kernel-jobs.ts:69` |
 | `ROUTINE_OVERLAP_MAX_DEFERRALS` | `apps/api/src/infra/jobs/kernel-jobs.ts:73` |
-| `SANDBOX_BOOT_RAMP_MS` | `apps/api/src/index.ts:360` |
-| `SANDBOX_POOL_REPORT_INTERVAL_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:91` |
-| `SANDBOX_QUEUE_WAIT_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:88` |
-| `SANDBOX_WORKER_HOLD_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:89` |
-| `TICKETS_GMAIL_PUSH_ISSUER` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1292`, `apps/api/src/modules/webhooks/routes.ts:274` |
-| `TICKETS_GMAIL_PUSH_JWKS_URL` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1293`, `apps/api/src/modules/webhooks/routes.ts:273` |
+| `SANDBOX_BOOT_RAMP_MS` | `apps/api/src/index.ts:384` |
+| `SANDBOX_POOL_REPORT_INTERVAL_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:92` |
+| `SANDBOX_QUEUE_WAIT_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:89` |
+| `SANDBOX_WORKER_HOLD_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:90` |
+| `TICKETS_GMAIL_PUSH_ISSUER` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1292`, `apps/api/src/modules/webhooks/routes.ts:181`, `apps/api/src/modules/webhooks/routes.ts:416` |
+| `TICKETS_GMAIL_PUSH_JWKS_URL` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1293`, `apps/api/src/modules/webhooks/routes.ts:182`, `apps/api/src/modules/webhooks/routes.ts:415` |
 | `TICKETS_GMAIL_SYNC_SINCE` | `apps/api/src/apps/tickets/sync.ts:310` |
 | `VITE_API_BASE` | `apps/web/src/lib/env.ts:10` |
 | `VITE_API_TARGET` | `apps/web/src/lib/env.ts:68` |

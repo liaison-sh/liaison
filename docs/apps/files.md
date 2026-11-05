@@ -26,6 +26,8 @@ Some file types are refused everywhere: executables and scripts such as `.exe`, 
 
 Attachments are downloaded, not displayed as web pages, so an HTML or SVG file cannot run in Liaison.
 
+Where each org has its own address, a download link works on that address only.
+
 An attachment of a transparent personal mailbox opens for the mailbox's owner only, like the mail itself. See [Mail](mail.md#choose-how-your-mailbox-is-encrypted).
 
 ## Remove a file
@@ -38,7 +40,7 @@ Ask, for example, "Attach the signed quote to my reply to orders@resonantaudiola
 
 An attached file is a copy, and the copy keeps who attached it. A copy made by an app's webhook or background job, with no person behind it, records no uploader.
 
-With `kernel:files:analyze`, an agent can also analyze an image, video or PDF attachment, for example to read the line items of a supplier invoice.
+With `kernel:files:analyze`, an agent can also analyze an image, video or PDF attachment, for example to read the line items of a supplier invoice. On a managed instance the file is analyzed in one request of at most 60 MB; a larger video is refused with "This file is too large to analyse here (max 60 MB)."
 
 ## Scopes
 

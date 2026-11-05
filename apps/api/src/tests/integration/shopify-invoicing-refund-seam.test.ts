@@ -55,6 +55,8 @@ function bundledDescriptor(name: string): Record<string, unknown> {
 }
 
 const ORG = "00000000-0000-4000-8000-0000000f6001"
+const USER = "00000000-0000-4000-8000-0000000f6002"
+const SHOP_DOMAIN = "seam-test-store.myshopify.com"
 
 const counterparty = {
   name: "Seam Buyer SARL",
@@ -177,7 +179,7 @@ async function postRefundWebhook(payload: Record<string, unknown>, webhookId: st
       "content-type": "application/json",
       "x-shopify-hmac-sha256": signBody(body),
       "x-shopify-webhook-id": webhookId,
-      "x-shopify-shop-domain": "seam-test-store.myshopify.com",
+      "x-shopify-shop-domain": SHOP_DOMAIN,
     },
     body,
   })
@@ -193,6 +195,9 @@ describe("shopify -> invoicing refund_line_items seam (real webhook -> real outb
 
     await sql`INSERT INTO kernel.organizations (id, name, slug)
       VALUES (${ORG}, 'Refund Seam Org', 'refund-seam-org')
+      ON CONFLICT (id) DO NOTHING`
+    await sql`INSERT INTO kernel.users (id, org_id, email, password_hash, name, status)
+      VALUES (${USER}, ${ORG}, 'refund-seam@test.com', 'hash', 'Refund Seam Tester', 'active')
       ON CONFLICT (id) DO NOTHING`
 
     await initSandboxPool()
@@ -217,6 +222,15 @@ describe("shopify -> invoicing refund_line_items seam (real webhook -> real outb
       })}::jsonb
       WHERE org_id = ${ORG} AND name = 'shopify'`
 
+    // The webhook route accepts a delivery only from a shop this org has
+    // CONNECTED (the shop-domain check of bundled-apps/shopify/src/webhooks.ts):
+    // the org's active `shop` account, as the OAuth callback leaves it.
+    await sql`DELETE FROM app_shopify.install_metadata WHERE org_id = ${ORG}`
+    await sql`DELETE FROM kernel.connected_accounts WHERE org_id = ${ORG} AND app_name = 'shopify'`
+    await sql`INSERT INTO kernel.connected_accounts
+      (org_id, app_name, connection_name, owner_type, provider_type, identifier, status, created_by)
+      VALUES (${ORG}, 'shopify', 'shop', 'org', 'oauth2', ${SHOP_DOMAIN}, 'active', ${USER})`
+
     issuerProfileId = await insertIssuerProfile()
     // A rerun starts from the same state even when an earlier run's cleanup did not complete.
     await sql`DELETE FROM app_invoicing.einvoicing_settings WHERE org_id = ${ORG}`
@@ -240,6 +254,8 @@ describe("shopify -> invoicing refund_line_items seam (real webhook -> real outb
     await sql`DELETE FROM app_invoicing.counterparty_identities WHERE org_id = ${ORG}`
     await sql`DELETE FROM app_invoicing.einvoicing_settings WHERE org_id = ${ORG}`
     await sql`DELETE FROM app_shopify.webhook_deliveries WHERE org_id = ${ORG}`
+    await sql`DELETE FROM app_shopify.install_metadata WHERE org_id = ${ORG}`
+    await sql`DELETE FROM kernel.connected_accounts WHERE org_id = ${ORG} AND app_name = 'shopify'`
     await releaseTestLock()
   }, 60_000)
 

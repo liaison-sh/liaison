@@ -985,6 +985,10 @@ export const appManifestJsonSchema = {
               minimum: 1024,
               maximum: 10 * 1024 * 1024,
             },
+            // Sandbox budget for one run of this handler, like a tool's: a handler that makes
+            // several provider calls (a payment) outlives the prod default of 5 s. At most 29 s:
+            // a provider is waiting, within the 30 s request ceiling (webhooks/manifest-execution.ts).
+            timeoutMs: { type: "integer", minimum: 1000, maximum: 29000 },
           },
           required: ["handler", "verify"],
         },

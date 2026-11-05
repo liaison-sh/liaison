@@ -20,9 +20,32 @@ import {
   type MutationsCtx,
   type DraftRow,
   type DraftInsert,
+  type PreflightResult,
   VALID_TYPES,
   normaliseNotesOrThrow,
+  toPreflightResult,
 } from "./shared"
+
+/**
+ * How a draft call runs: `tool` (the agent's call, may park an approval), `direct` (in-app
+ * callers, never park) or `preflight` (the stage-time check: every validation the call makes,
+ * then stop before any write or approval).
+ */
+type DraftRunMode = "tool" | "direct" | "preflight"
+
+/** What a `preflight` run returns once every validation passed: the buyer facts it resolved. */
+type PreflightPassed = { preflight: "passed"; buyer: BuyerVatFacts | null }
+
+/**
+ * Map a draft validation's thrown `code: message` error onto the kernel's preflight contract.
+ * An error without a code is not a validation outcome (a fault), so it propagates.
+ */
+function thrownToPreflight(err: unknown): PreflightResult {
+  const message = err instanceof Error ? err.message : String(err)
+  const m = /^([a-z][a-z0-9_]*):\s*([\s\S]*)$/.exec(message)
+  if (!m) throw err
+  return { error: { code: m[1] as string, message: m[2] as string } }
+}
 
 // ── Drafts ────────────────────────────────────────────────────────────────
 
@@ -169,17 +192,38 @@ type DraftCreated = { draft_id: string } & ReturnType<typeof serializeDraftRow>
  * approval card first (parkConsumerDeclaration).
  */
 export async function draftsCreateTool(ctx: MutationsCtx, input: DraftsCreateInput): Promise<DraftCreated | DraftParked> {
-  return createDraft(ctx, input, true)
+  const r = await createDraft(ctx, input, "tool")
+  if ("preflight" in r) throw new Error("drafts_create: a tool run returned a preflight result")
+  return r
+}
+
+/**
+ * drafts_create's stage-time check (manifest `preflight`): the same createDraft run, stopped
+ * before the insert and before any approval is parked, so a call the handler would refuse is
+ * refused before a person is asked to decide it. Read-only.
+ */
+export async function draftsCreatePreflight(ctx: MutationsCtx, input: DraftsCreateInput): Promise<PreflightResult> {
+  try {
+    const r = await createDraft(ctx, input, "preflight")
+    return toPreflightResult({ ok: true, buyer: "preflight" in r ? r.buyer : null })
+  } catch (err) {
+    return thrownToPreflight(err)
+  }
 }
 
 /** Create a draft, for in-app callers that hold no approval to park (the tool runs draftsCreateTool). */
 export async function draftsCreate(ctx: MutationsCtx, input: DraftsCreateInput): Promise<DraftCreated> {
-  const r = await createDraft(ctx, input, false)
+  const r = await createDraft(ctx, input, "direct")
   if ("status" in r) throw new Error("approval_required: this draft needs a person's approval")
+  if ("preflight" in r) throw new Error("drafts_create: a direct run returned a preflight result")
   return r
 }
 
-async function createDraft(ctx: MutationsCtx, input: DraftsCreateInput, park: boolean): Promise<DraftCreated | DraftParked> {
+async function createDraft(
+  ctx: MutationsCtx,
+  input: DraftsCreateInput,
+  mode: DraftRunMode,
+): Promise<DraftCreated | DraftParked | PreflightPassed> {
   if (!VALID_TYPES.includes(input.type)) {
     throw new Error(`invalid_type: ${input.type}`)
   }
@@ -246,12 +290,8 @@ async function createDraft(ctx: MutationsCtx, input: DraftsCreateInput, park: bo
     buyer_is_consumer: input.buyer_is_consumer === true,
   })
   const counterpartyVatId = guarded.vat
-  const parked = park
-    ? await parkConsumerDeclaration(ctx, "invoicing:drafts_create", guarded.facts, input.counterparty_name ?? null, input)
-    : consumerDeclaredAgainstEvidence(guarded.facts) && !ctx.approval
-      ? { status: "pending_approval" as const, approval_id: null }
-      : null
-  if (parked) return parked
+  // Lines and notes are validated BEFORE any approval is parked: a person must never approve a
+  // draft whose lines or notes the insert then refuses.
   const normalisedItems = normaliseDraftLines(input.items ?? [])
   const draftLines =
     input.type === "credit_note"
@@ -261,6 +301,15 @@ async function createDraft(ctx: MutationsCtx, input: DraftsCreateInput, park: bo
           counterparty_country,
           has_vat_id: !!counterpartyVatId,
         })
+  const notes = normaliseNotesOrThrow(input.notes) ?? null
+  if (mode === "preflight") return { preflight: "passed", buyer: guarded.facts }
+  const parked =
+    mode === "tool"
+      ? await parkConsumerDeclaration(ctx, "invoicing:drafts_create", guarded.facts, input.counterparty_name ?? null, input)
+      : consumerDeclaredAgainstEvidence(guarded.facts) && !ctx.approval
+        ? { status: "pending_approval" as const, approval_id: null }
+        : null
+  if (parked) return parked
   const draft = await insertDraftRow(ctx.db, {
     type: input.type,
     counterparty_contact_id: input.counterparty_contact_id,
@@ -299,7 +348,7 @@ async function createDraft(ctx: MutationsCtx, input: DraftsCreateInput, park: bo
     po_number: input.po_number ?? null,
     // Normalised at the boundary (trim, blank -> null, length cap): the draft is what the
     // issue path copies onto the document, so a bad value must never get this far.
-    notes: normaliseNotesOrThrow(input.notes) ?? null,
+    notes,
     customer_kind: input.customer_kind ?? null,
     operation_category: input.operation_category ?? null,
     billing_line1: input.billing_line1 ?? null,
@@ -352,7 +401,25 @@ export async function draftsUpdateTool(
   ctx: MutationsCtx,
   input: Parameters<typeof draftsUpdate>[1],
 ): Promise<DraftUpdated | DraftParked> {
-  return updateDraft(ctx, input, true)
+  const r = await updateDraft(ctx, input, "tool")
+  if ("preflight" in r) throw new Error("drafts_update: a tool run returned a preflight result")
+  return r
+}
+
+/**
+ * drafts_update's stage-time check (manifest `preflight`): the same updateDraft run, stopped
+ * before the write and before any approval is parked. Read-only.
+ */
+export async function draftsUpdatePreflight(
+  ctx: MutationsCtx,
+  input: Parameters<typeof draftsUpdate>[1],
+): Promise<PreflightResult> {
+  try {
+    const r = await updateDraft(ctx, input, "preflight")
+    return toPreflightResult({ ok: true, buyer: "preflight" in r ? r.buyer : null })
+  } catch (err) {
+    return thrownToPreflight(err)
+  }
 }
 
 /** Update a draft, for in-app callers that hold no approval to park (the tool runs draftsUpdateTool). */
@@ -363,8 +430,9 @@ export async function draftsUpdate(
     patch: Partial<Omit<DraftInsert, "lines">> & { lines?: DraftLineInput[]; buyer_is_consumer?: boolean | null }
   },
 ): Promise<DraftUpdated> {
-  const r = await updateDraft(ctx, input, false)
+  const r = await updateDraft(ctx, input, "direct")
   if ("status" in r) throw new Error("approval_required: this draft change needs a person's approval")
+  if ("preflight" in r) throw new Error("drafts_update: a direct run returned a preflight result")
   return r
 }
 
@@ -378,10 +446,17 @@ async function updateDraft(
     draft_id: string
     patch: Partial<Omit<DraftInsert, "lines">> & { lines?: DraftLineInput[]; buyer_is_consumer?: boolean | null }
   },
-  park: boolean,
-): Promise<DraftUpdated | DraftParked> {
+  mode: DraftRunMode,
+): Promise<DraftUpdated | DraftParked | PreflightPassed> {
   const { lines, buyer_is_consumer: buyerIsConsumerPatch, ...header } = input.patch
   let patch: Partial<DraftInsert> = header
+  let buyerFacts: BuyerVatFacts | null = null
+  // Validated before any approval is parked (see createDraft).
+  if ("notes" in header) normaliseNotesOrThrow(header.notes)
+  if (lines) normaliseDraftLines(lines)
+  if (mode === "preflight" && !(await getDraft(ctx.db, input.draft_id))) {
+    throw new Error(`not_found: draft ${input.draft_id}`)
+  }
   // A change to who the buyer is re-runs the intra-EU business-buyer guard on the merged draft.
   const BUYER_KEYS = [
     "counterparty_contact_id",
@@ -420,13 +495,17 @@ async function updateDraft(
         buyer_is_consumer: consumer,
       })
       facts = guarded.facts
+      buyerFacts = facts
       const vat = guarded.vat
       if (vat && !pick("counterparty_vat_id")) patch = { ...patch, counterparty_vat_id: vat }
-      const parked = park
-        ? await parkConsumerDeclaration(ctx, "invoicing:drafts_update", facts, pick("counterparty_name"), input)
-        : consumerDeclaredAgainstEvidence(facts) && !ctx.approval
-          ? { status: "pending_approval" as const, approval_id: null }
-          : null
+      const parked =
+        mode === "preflight"
+          ? null
+          : mode === "tool"
+            ? await parkConsumerDeclaration(ctx, "invoicing:drafts_update", facts, pick("counterparty_name"), input)
+            : consumerDeclaredAgainstEvidence(facts) && !ctx.approval
+              ? { status: "pending_approval" as const, approval_id: null }
+              : null
       if (parked) return parked
     }
     const hadEvidence = "buyer_is_consumer_evidence" in refs
@@ -474,6 +553,7 @@ async function updateDraft(
         : normalised
     patch = { ...patch, lines: netLines }
   }
+  if (mode === "preflight") return { preflight: "passed", buyer: buyerFacts }
   return serializeDraftRow(await updateDraftRow(ctx.db, input.draft_id, patch))
 }
 

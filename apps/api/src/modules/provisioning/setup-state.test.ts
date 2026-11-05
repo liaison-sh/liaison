@@ -119,6 +119,17 @@ describe("computeSetupState: the Liaison team item", () => {
     expect(no.next).toBe("aiKey")
   })
 
+  test("a managed org has no model-key step: it runs on the server's key", async () => {
+    _setEdition("managed")
+    try {
+      const state = await computeSetupState(orgId)
+      expect(state.items.map((i) => i.key)).not.toContain("aiKey")
+      expect(state.next).not.toBe("aiKey")
+    } finally {
+      _setEdition(null)
+    }
+  })
+
   // Discriminator: R17, a demo visitor's setup agent never asks.
   test("absent for an org that is not the operator's on a demo instance", async () => {
     const OTHER = "00000000-0000-4000-8000-0000000bad02"

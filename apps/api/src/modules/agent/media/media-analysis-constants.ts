@@ -10,6 +10,27 @@ import type { OrgKernelSettings } from "@liaison/shared"
 /** The Gemini model used for all media analysis (seeded in model-pricing-seed). */
 export const MEDIA_ANALYSIS_MODEL_ID = "gemini-flash-lite-latest"
 
+/**
+ * The OpenRouter model a managed cell analyses media on (S31): the current
+ * flash-lite with a zero-data-retention endpoint, the family the Gemini alias
+ * above resolves to. Live probe 2026-11-03: images, PDFs (`file` part), video
+ * and audio inline, all under `zdr: true`.
+ */
+export const MANAGED_MEDIA_ANALYSIS_UPSTREAM_ID = "google/gemini-3.5-flash-lite"
+
+/**
+ * The largest media a managed cell analyses, inline (A45). A managed cell has
+ * no Gemini Files-API slow path, so anything larger is refused with this
+ * limit. The 2026-11-03 probe sent a 64.5 MB video inline (about 86 MB of
+ * base64) without error; the limit keeps headroom under that.
+ */
+export const MANAGED_INLINE_MEDIA_MAX_BYTES = 60 * 1024 * 1024
+
+/** The refusal a managed cell gives for media above its inline limit. */
+export function managedMediaTooLargeMessage(): string {
+  return `This file is too large to analyse here (max ${MANAGED_INLINE_MEDIA_MAX_BYTES / (1024 * 1024)} MB).`
+}
+
 /** Cached analysis is reusable for 7 days when the context hash matches. */
 export const ANALYSIS_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 

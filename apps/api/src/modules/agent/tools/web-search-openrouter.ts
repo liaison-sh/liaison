@@ -12,7 +12,9 @@
 // The model is the cheapest one that reliably carries the plugin, and
 // `max_tokens` is tiny: the text it writes is thrown away, so every output
 // token past the first few is money for nothing.
+import { isManagedEdition } from "~/lib/edition"
 import {
+  managedZdrRouting,
   OPENROUTER_ROUTING,
   openRouterFetch,
   registerBoxKeyModel,
@@ -77,14 +79,19 @@ export class OpenRouterSearchError extends Error {
   }
 }
 
-/** The request body, pinned: model, plugin, engine, routing, usage accounting. */
+/**
+ * The request body, pinned: model, plugin, engine, routing, usage accounting.
+ * A managed cell's search completion also asks for zero data retention (S31);
+ * the search itself runs at the pinned engine, which ZDR does not cover, so
+ * its retention is stated in the privacy notes.
+ */
 export function buildOpenRouterWebSearchRequest(query: string, maxResults: number) {
   return {
     model: OPENROUTER_WEB_SEARCH_MODEL,
     messages: [{ role: "user", content: query }],
     plugins: [{ id: "web", engine: "exa", max_results: maxResults }],
     max_tokens: SEARCH_MAX_TOKENS,
-    provider: { ...OPENROUTER_ROUTING },
+    provider: isManagedEdition() ? managedZdrRouting() : { ...OPENROUTER_ROUTING },
     usage: { include: true },
   }
 }

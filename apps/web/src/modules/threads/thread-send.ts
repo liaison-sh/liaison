@@ -12,6 +12,7 @@
 //   stream frames say it ended (or the surface unmounts);
 // - the refusal copy a failed send shows.
 
+import { PAYMENT_REQUIRED_CODE } from "@liaison/shared"
 import type { ApiClient } from "~/lib/api-client"
 import { ApiError } from "~/lib/api-error"
 import { beginMailboxAgentTurn, endMailboxAgentTurn } from "~/modules/mailbox/mailbox-agent-runtime"
@@ -97,10 +98,12 @@ export function sendFailureToast(
   }
   const code = err instanceof ApiError ? err.code : undefined
   const message =
-    code === "reply_root_deleted"
-      ? t("kernel.replyThreads.rootDeleted")
-      : code === "quote_not_found" || code === "quote_excerpt_mismatch"
-        ? t("kernel.replyThreads.quoteRefused")
-        : t("kernel.sendMessageFailed")
+    code === PAYMENT_REQUIRED_CODE
+      ? t("cloud-limits.billing.paymentRequired")
+      : code === "reply_root_deleted"
+        ? t("kernel.replyThreads.rootDeleted")
+        : code === "quote_not_found" || code === "quote_excerpt_mismatch"
+          ? t("kernel.replyThreads.quoteRefused")
+          : t("kernel.sendMessageFailed")
   return { message, type: "error" }
 }

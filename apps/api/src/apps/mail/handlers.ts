@@ -4880,7 +4880,10 @@ async function imapIncrementalSync(
       continue
     }
 
-    if (!payload.accountId) {
+    // A person's mailbox waits until someone who can read it is online. An org's
+    // shared mailbox does not: IMAP has no push, so nothing else would bring its
+    // mail in, and mail-driven work (a routine, a ticket) has nobody to wait for.
+    if (!payload.accountId && account.owner_type !== "org") {
       const isOnline = JSON.parse(await ctx.hasOnlineUsers(account.id))
       if (!isOnline) continue
     }

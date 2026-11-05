@@ -149,10 +149,10 @@ describe("createRpcBridge", () => {
     )
   })
 
-  // BL-254 — a failed db_insert must NOT poison the surrounding tool transaction. The INSERT is wrapped
-  // in a SAVEPOINT so a constraint violation (e.g. a 23505 unique-key race on a read-then-insert upsert)
-  // rolls back to the savepoint, leaving the tx usable for the handler's own recovery (re-read → UPDATE)
-  // instead of cascading into 25P02 "current transaction is aborted".
+  // BL-254 — a failed db_insert must NOT poison the surrounding transaction. The INSERT runs in a
+  // DRIVER savepoint (`txDb.transaction`): a raw SAVEPOINT statement is not enough, postgres.js
+  // rethrows a caught failed query when its transaction scope ends. The behavioural proof against a
+  // real database is modules/webhooks/caught-db-error.test.ts.
   const sqlTextOf = (q: unknown): string =>
     (q as { toQuery: (cfg: unknown) => { sql: string } }).toQuery({
       escapeName: (n: string) => `"${n}"`,
@@ -161,23 +161,27 @@ describe("createRpcBridge", () => {
       casing: { getColumnCasing: (c: string) => c },
     }).sql
 
-  it("db_insert wraps the INSERT in a SAVEPOINT and RELEASEs it on success", async () => {
+  it("db_insert runs the INSERT inside a driver savepoint (txDb.transaction)", async () => {
     mockExecute.mockClear()
+    mockTx.transaction.mockClear()
     mockExecute.mockImplementation(async () => [{ id: "row-1" }])
     const bridge = createRpcBridge(TEST_APP, TEST_USER, TEST_ORG, mockTx as any, manifest as any)
     await bridge.db_insert("items", '{"title":"ok"}')
     const stmts = (mockExecute.mock.calls as any[]).map((c) => sqlTextOf(c[0]))
-    expect(
-      stmts.some((s) => /SAVEPOINT app_db_insert/i.test(s) && !/ROLLBACK|RELEASE/i.test(s)),
-    ).toBe(true)
     expect(stmts.some((s) => /INSERT INTO/i.test(s))).toBe(true)
-    expect(stmts.some((s) => /RELEASE SAVEPOINT app_db_insert/i.test(s))).toBe(true)
-    expect(stmts.some((s) => /ROLLBACK TO SAVEPOINT/i.test(s))).toBe(false)
+    // No raw savepoint around the INSERT itself: only the anchor that releases
+    // the driver's savepoint once the insert is done (db/savepoint.ts).
+    expect(stmts.filter((s) => /SAVEPOINT/i.test(s))).toEqual([
+      "SAVEPOINT liaison_released_sp",
+      "RELEASE SAVEPOINT liaison_released_sp",
+    ])
+    expect(mockTx.transaction).toHaveBeenCalledTimes(1)
     mockExecute.mockImplementation(async () => [])
   })
 
-  it("db_insert ROLLBACKs to the savepoint (not the whole tx) when the INSERT throws, and rethrows with pg detail", async () => {
+  it("db_insert rethrows a failed INSERT from its savepoint with pg detail", async () => {
     mockExecute.mockClear()
+    mockTx.transaction.mockClear()
     mockExecute.mockImplementation(async (q?: unknown) => {
       const sql = q ? sqlTextOf(q) : ""
       if (/INSERT INTO/i.test(sql)) {
@@ -193,10 +197,8 @@ describe("createRpcBridge", () => {
     })
     const bridge = createRpcBridge(TEST_APP, TEST_USER, TEST_ORG, mockTx as any, manifest as any)
     await expect(bridge.db_insert("items", '{"title":"dupe"}')).rejects.toThrow(/23505/)
-    const stmts = (mockExecute.mock.calls as any[]).map((c) => sqlTextOf(c[0]))
-    expect(stmts.some((s) => /SAVEPOINT app_db_insert/i.test(s))).toBe(true)
-    // The failed insert rolled back ONLY to the savepoint — the tx stays usable.
-    expect(stmts.some((s) => /ROLLBACK TO SAVEPOINT app_db_insert/i.test(s))).toBe(true)
+    // The INSERT ran in the savepoint, which the driver rolls back alone.
+    expect(mockTx.transaction).toHaveBeenCalledTimes(1)
     mockExecute.mockImplementation(async () => [])
   })
 

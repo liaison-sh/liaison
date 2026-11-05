@@ -3,8 +3,8 @@ import { NODE_TURN_CREDENTIAL_HEADER } from "@liaison/shared"
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"
 import { Hono } from "hono"
 import type { AppEnv } from "~/app"
-import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
+import { requestPublicBaseUrl } from "~/lib/org-public-url"
 import {
   loadOwnerAttachedSkills,
   renderOwnerSkillsBlock,
@@ -41,7 +41,7 @@ mcpTransport.post("/", async (c) => {
   const ownerId = c.get("userId")
   if (!connectionId || !orgId || !ownerId) {
     return c.json({ error: "invalid_token" }, 401, {
-      "WWW-Authenticate": `Bearer resource_metadata="${env.BASE_URL}/.well-known/oauth-protected-resource"`,
+      "WWW-Authenticate": `Bearer resource_metadata="${requestPublicBaseUrl(c)}/.well-known/oauth-protected-resource"`,
     })
   }
   // The connection thread's untrusted-content mark: a handshake clears it only after the

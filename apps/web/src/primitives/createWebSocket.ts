@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { DEMO_WORKSPACE_EXPIRED_WS_CLOSE } from "@liaison/shared"
+import {
+  DEMO_WORKSPACE_EXPIRED_WS_CLOSE,
+  ORG_MOVING_CODE,
+  ORG_MOVING_RETRY_AFTER_SECONDS,
+  ORG_MOVING_WS_CLOSE,
+  ORG_SUSPENDED_WS_CLOSE,
+} from "@liaison/shared"
 import { createSignal, onCleanup } from "solid-js"
 import type { EnsureFreshToken } from "~/lib/auth-refresh"
 import { clientHeaders } from "~/lib/client-version"
@@ -10,6 +16,7 @@ import {
 } from "~/lib/demo-expired"
 import { absoluteApiBase, webSocketOrigin } from "~/lib/env"
 import { log } from "~/lib/logger"
+import { noteIfOrgSuspended, orgSuspended } from "~/lib/org-suspended"
 import { noteServerBack, noteServerRestarting } from "~/lib/server-pause"
 import { type ConnectivitySource, connectivitySource } from "~/primitives/createConnectivity"
 
@@ -121,6 +128,14 @@ export function reconnectDelay(attempt: number, random: () => number = Math.rand
   const base = Math.min(1000 * 2 ** (attempt - 1), MAX_BACKOFF_MS)
   return Math.round(base * (0.7 + random() * 0.6))
 }
+/**
+ * An org moving to another server (close ORG_MOVING_WS_CLOSE, or a 503
+ * `org_moving` ticket refusal): the client retries every
+ * ORG_MOVING_RETRY_MS, without growing the backoff, for ORG_MOVING_WINDOW_MS,
+ * so it is back within seconds of the move ending. It never signs out.
+ */
+export const ORG_MOVING_RETRY_MS = ORG_MOVING_RETRY_AFTER_SECONDS * 1000
+export const ORG_MOVING_WINDOW_MS = 60_000
 const LAST_EVENT_ID_PREFIX = "liaison:lastEventId"
 const WS_TICKET_TIMEOUT_MS = 8_000
 
@@ -148,10 +163,22 @@ const EXPECTED_CLOSE_CODES: ReadonlySet<number> = new Set([
   SERVICE_RESTART_CLOSE,
   4001,
   DEMO_WORKSPACE_EXPIRED_WS_CLOSE,
+  ORG_SUSPENDED_WS_CLOSE,
+  ORG_MOVING_WS_CLOSE,
   4008,
   4010,
   4029,
 ])
+
+/** A 503 whose body names the moving org (`org_moving`). */
+async function isOrgMovingRefusal(res: Response): Promise<boolean> {
+  try {
+    const json = (await res.clone().json()) as { error?: { code?: unknown } }
+    return json?.error?.code === ORG_MOVING_CODE
+  } catch {
+    return false
+  }
+}
 
 class WsTicketError extends Error {
   constructor(readonly status: number) {
@@ -188,6 +215,8 @@ export function createWebSocket(options: CreateWebSocketOptions) {
   let pingInterval: ReturnType<typeof setInterval> | null = null
   let pongTimeout: ReturnType<typeof setTimeout> | null = null
   let reconnectAttempt = 0
+  /** Until when reconnects follow the moving org's fixed retry (epoch ms). */
+  let orgMovingUntil = 0
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let manualClose = false
   let connecting = false
@@ -290,6 +319,11 @@ export function createWebSocket(options: CreateWebSocketOptions) {
     if (!res.ok) {
       // An ended demo workspace leaves for the demo door (lib/demo-expired.ts).
       await noteIfDemoWorkspaceExpired(res)
+      // A suspended org's page is the suspended view (lib/org-suspended.ts).
+      await noteIfOrgSuspended(res)
+      if (res.status === 503 && (await isOrgMovingRefusal(res))) {
+        orgMovingUntil = Date.now() + ORG_MOVING_WINDOW_MS
+      }
       throw new WsTicketError(res.status)
     }
     const body = await res.json()
@@ -358,6 +392,7 @@ export function createWebSocket(options: CreateWebSocketOptions) {
           // The server is answering again after a restart (lib/server-pause.ts).
           noteServerBack()
           reconnectAttempt = 0
+          orgMovingUntil = 0
           wsLog.info("WebSocket connected")
           debug("socket:open")
 
@@ -446,6 +481,25 @@ export function createWebSocket(options: CreateWebSocketOptions) {
             return
           }
 
+          // The org was suspended: the close carries no details, the ticket
+          // refusal does (its 403 body names the billing contact). Ask for one
+          // ticket now; its refusal puts the page on the suspended view and no
+          // reconnect follows (lib/org-suspended.ts).
+          if (e.code === ORG_SUSPENDED_WS_CLOSE) {
+            reconnectAttempt = 0
+            scheduleReconnect({ now: true })
+            return
+          }
+
+          // The org is moving to another server: retry every few seconds
+          // for a minute, with the same token (nothing to refresh).
+          if (e.code === ORG_MOVING_WS_CLOSE) {
+            orgMovingUntil = Date.now() + ORG_MOVING_WINDOW_MS
+            reconnectAttempt = 0
+            scheduleReconnect()
+            return
+          }
+
           if (e.code === 4001 || e.code === 4010) {
             // 4001 = token rejected, 4010 = permissions changed — refresh and retry
             wsLog.info(
@@ -516,6 +570,8 @@ export function createWebSocket(options: CreateWebSocketOptions) {
   function scheduleReconnect(opts: { now?: boolean; jitterMs?: number } = {}) {
     // An ended demo workspace is left, not reconnected to (lib/demo-expired.ts).
     if (demoWorkspaceEnded()) return
+    // A suspended org is not reconnected to either (lib/org-suspended.ts).
+    if (orgSuspended()) return
     // Idempotency guard: if a reconnect is already scheduled or a connect is
     // in progress (covering the async ticket-fetch gap), do not spawn another.
     // A live socket needs none either (a late `online` event after a probe
@@ -546,10 +602,13 @@ export function createWebSocket(options: CreateWebSocketOptions) {
     }
 
     setWsStatus("reconnecting")
+    const moving = Date.now() < orgMovingUntil
     const delay = opts.now
       ? Math.round(Math.random() * (opts.jitterMs ?? 0))
-      : reconnectDelay(reconnectAttempt)
-    if (!opts.now) reconnectAttempt++
+      : moving
+        ? ORG_MOVING_RETRY_MS
+        : reconnectDelay(reconnectAttempt)
+    if (!opts.now && !moving) reconnectAttempt++
 
     wsLog.debug({ delay, attempt: reconnectAttempt }, "Scheduling reconnect")
     debug(`reconnect:scheduled:${delay}`)

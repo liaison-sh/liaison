@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+import { bindingAllowsOrg, hostBindingEnabled, rawRequestHostBinding } from "~/lib/org-host"
+import { effectiveRequestFromRaw } from "~/lib/request-context"
 import { isOrgDeletingAsync } from "~/modules/apps/org-apps"
 import { isUserAuthCurrent } from "~/modules/auth/auth-state"
 import { isSessionRevoked } from "~/modules/auth/session-revocation"
@@ -14,6 +16,8 @@ export interface TicketPayload {
   permissionVersion: number
   /** The sign-in session the ticket was minted from, when it had one. */
   sid?: string
+  /** With org hosts: the host the ticket was minted on; it opens a socket there only. */
+  host?: string
 }
 
 /** Parse and validate a WS ticket payload from Redis. Returns null if invalid. */
@@ -38,6 +42,7 @@ export function parseTicketPayload(raw: string): TicketPayload | null {
         authVersion: parsed.authVersion,
         permissionVersion: parsed.permissionVersion,
         ...(typeof parsed.sid === "string" && parsed.sid.length > 0 ? { sid: parsed.sid } : {}),
+        ...(typeof parsed.host === "string" && parsed.host.length > 0 ? { host: parsed.host } : {}),
       }
     }
   } catch {
@@ -49,12 +54,22 @@ export function parseTicketPayload(raw: string): TicketPayload | null {
 export async function consumeWsTicket(
   redisClient: { getdel: (key: string) => Promise<string | null> },
   ticket: string,
+  /** The upgrade request: with org hosts, its host must be the one the ticket was minted on. */
+  req?: Request,
 ): Promise<TicketPayload | null> {
   const raw = await redisClient.getdel(`ws-ticket:${ticket}`)
   if (!raw) return null
 
   const payload = parseTicketPayload(raw)
   if (!payload) return null
+  // Host binding (lib/org-host.ts): a ticket opens a socket only on the host it
+  // was minted on, and only if that host serves the ticket's org.
+  if (hostBindingEnabled()) {
+    if (!req) return null
+    const host = effectiveRequestFromRaw(req, null).host
+    if (!payload.host || payload.host !== host) return null
+    if (!(await bindingAllowsOrg(rawRequestHostBinding(req, null), payload.orgId))) return null
+  }
   // A ticket minted just before its session ended opens nothing.
   if (payload.sid && isSessionRevoked(payload.sid)) return null
 

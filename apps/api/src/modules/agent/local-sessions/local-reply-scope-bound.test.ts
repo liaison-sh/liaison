@@ -29,6 +29,7 @@ import { recordLocalRecallScopes } from "~/modules/agent/local-sessions/local-co
 import { localReplyScope } from "~/modules/agent/local-sessions/local-session-routes"
 import type { RunContext } from "~/modules/agent/runtime/run-context"
 import { runContextStore } from "~/modules/agent/runtime/run-context"
+import { projectTaintScopesForOrg } from "~/modules/agent/scopes/taint-read-scopes"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { ALL_DEFERRED_TOOLS_UNLOCKED, buildToolSet } from "~/modules/agent/tools/tool-bridge"
 import { toolRegistry } from "~/modules/apps/app-registries"
@@ -212,7 +213,10 @@ describe("a local or node reply is stamped with what the turn could read", () =>
     await redis.del(mcpTurnTaintKey(orgId, agentId), mcpTurnTaintMarksKey(orgId, agentId))
     const stamp = await localReplyScope(orgId, threadId, ownerId, ["*"], agentId, turnStartedAt)
     // The admin's effective scope in its own DM: everything, which covers the lost read.
-    expect(stamp).toContain("*")
+    // A stamp never carries `*`: the wildcard is written as every read scope it covers.
+    expect(stamp).toContain(MAIL_READ)
+    expect(stamp).not.toContain("*")
+    expect(stamp).toEqual(expect.arrayContaining(projectTaintScopesForOrg(["*"], orgId)))
   })
 
   it("a taint set that expired under the turn: the day-long ledger answers exactly (fix8 M2)", async () => {

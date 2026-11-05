@@ -35,6 +35,7 @@ import { useI18n } from "~/modules/i18n/i18n-context"
 import { modelsFor, nodeForRun } from "~/modules/nodes/nodes-store"
 import { myNodeRuntimeIn, setThreadNodeRuntime } from "~/modules/nodes/thread-node-runtime"
 import { billingMode } from "~/modules/settings/BillingState"
+import { formatMultiplier } from "~/modules/settings/credits-format"
 import { useOptionalApi } from "~/modules/shell/ApiContext"
 import { addToast } from "~/modules/shell/toast-store"
 import { PopupMenu } from "~/ui/PopupMenu"
@@ -55,7 +56,7 @@ export const MODEL_GROUP_NODE_KEY = "kernel.agentForms.modelGroupNode"
 interface BalanceState {
   included: string
   purchased: string
-  currency: string
+  currency?: string
   tier?: string
 }
 
@@ -340,6 +341,17 @@ export default function ModelSelector(props: ModelSelectorProps) {
                     {model.id === null
                       ? (props.defaultEntryLabel ?? autoEntryLabel())
                       : model.label}
+                    {/* Managed: the cost against Auto, never a price (S18). */}
+                    <Show when={model.id !== null && formatMultiplier(model.multiplier)}>
+                      {(shown) => (
+                        <span
+                          class="ml-2 text-[11px] tabular-nums text-text-tertiary"
+                          data-testid={`model-multiplier-${model.id}`}
+                        >
+                          {shown()}
+                        </span>
+                      )}
+                    </Show>
                   </PopupMenu.Item>
                 )}
               </For>

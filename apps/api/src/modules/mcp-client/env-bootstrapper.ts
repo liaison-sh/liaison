@@ -16,6 +16,7 @@ import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { encryptionKey } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
 import { type ParsedConnection, parseEnvConnections } from "~/modules/mcp-client/env-bootstrap"
+import { movingOrgIds } from "~/modules/org/transfer-state/state"
 
 const log = rootLogger.child({ module: "mcp-env-bootstrap" })
 
@@ -135,8 +136,12 @@ export async function runEnvBootstrap(
 ): Promise<void> {
   const parsed = parseEnvConnections(envVars)
   const desiredSlugs = new Set(parsed.map((p) => `${p.orgId}:${p.slug}`))
+  // An org being moved keeps its connections as they are until the move ends
+  // (the next leader acquire applies the env again).
+  const moving = new Set(await movingOrgIds())
 
   for (const conn of parsed) {
+    if (moving.has(conn.orgId)) continue
     const createdBy = await resolveCreatedBy(conn)
     if (!createdBy) {
       log.error(
@@ -201,6 +206,7 @@ export async function runEnvBootstrap(
       .from(mcpConnections)
       .where(eq(mcpConnections.managedBy, "env"))
     for (const row of candidates) {
+      if (moving.has(row.orgId)) continue
       if (!desiredSlugs.has(`${row.orgId}:${row.slug}`)) {
         const newName = row.displayName.startsWith(ORPHAN_PREFIX)
           ? row.displayName

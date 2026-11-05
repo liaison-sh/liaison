@@ -440,6 +440,7 @@ const ThreadHeader: Component<ThreadHeaderProps> = (props) => {
             <FloatingPanel.Trigger
               class="flex h-7 w-7 items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-secondary"
               aria-label={i18n.t("kernel.threadActions")}
+              data-testid="thread-header.actions"
             >
               <MoreHorizontal size={16} />
             </FloatingPanel.Trigger>
@@ -498,6 +499,7 @@ const ThreadHeader: Component<ThreadHeaderProps> = (props) => {
                 <button
                   type="button"
                   data-roving
+                  data-testid="thread-header.mute"
                   class="flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] text-text-secondary outline-none transition-colors hover:bg-surface-hover hover:text-text focus-visible:bg-surface-hover focus-visible:text-text"
                   onClick={() => {
                     props.onToggleMute()

@@ -15,9 +15,20 @@
 //    sentinel are `deactivated`, so none of them count);
 //  - mailboxes: the distinct addresses of the org's mailbox connections
 //    (`gmail` / `imap`, for Mail or Tickets, mail-domains.ts) that are not
-//    disconnected. The same address connected twice is one mailbox;
+//    disconnected. The same address connected twice is one mailbox. In the
+//    managed edition the cap is the plan's shared mailboxes: only ORG-owned
+//    mailboxes count, and a member's personal mailboxes never do; instead each
+//    member may hold one personal mailbox (PERSONAL_MAILBOXES_PER_MEMBER). The
+//    plan usage the control plane checks counts the same set
+//    (billing-managed/usage.ts, orgMailboxAddressesOn);
 //  - storage: the bytes of the org's files (files/service.ts enforces it);
-//  - jobs per hour: infra/jobs/org-job-cap.ts (delays, never refuses).
+//  - jobs per hour: infra/jobs/org-job-cap.ts (delays, never refuses);
+//  - custom apps: the org's own private apps (`countCustomApps`), refused at
+//    the cap under the org lock like a seat (`assertCustomAppRoom`);
+//  - audit days: how long audit rows are kept. In the managed edition the
+//    retention is min(the admin's choice ?? the cap, the cap)
+//    (`effectiveAuditRetentionDays`, org/audit-retention.ts), and an admin's
+//    choice above the cap is refused (AUDIT_DAYS_LIMIT_REACHED).
 //
 // A seat or mailbox is added under an org advisory lock taken in the adding
 // transaction, so the count and the insert are one step: two people accepting
@@ -61,7 +72,8 @@ import {
 import { and, sql as drizzleSql, eq, inArray, ne } from "drizzle-orm"
 import type { PrivilegedDb, RlsClient } from "~/db"
 import { privilegedFrom, withSystemDb } from "~/db/privileged"
-import { connectedAccounts, files, organizations, users } from "~/db/schema/kernel"
+import { appsInstalled, connectedAccounts, files, organizations, users } from "~/db/schema/kernel"
+import { isManagedEdition } from "~/lib/edition"
 import { rootLogger } from "~/lib/logger"
 import { redis } from "~/lib/redis"
 import { MAILBOX_CONNECTIONS } from "~/modules/apps/connections/mail-domains"
@@ -69,23 +81,55 @@ import { type ServerTParams, serverT } from "~/modules/i18n/server-i18n"
 
 const log = rootLogger.child({ service: "org-caps" })
 
-/** A seat or mailbox refused at its cap. Surfaces as 409 with `{limit, used}`. */
+/** Personal mailboxes one member may connect in the managed edition. */
+export const PERSONAL_MAILBOXES_PER_MEMBER = 1
+
+const CAP_LIMIT_CODES = {
+  seats: "SEAT_LIMIT_REACHED",
+  mailboxes: "MAILBOX_LIMIT_REACHED",
+  personalMailboxes: "PERSONAL_MAILBOX_LIMIT_REACHED",
+  customApps: "CUSTOM_APP_LIMIT_REACHED",
+  auditDays: "AUDIT_DAYS_LIMIT_REACHED",
+} as const
+
+function capLimitMessage(kind: keyof typeof CAP_LIMIT_CODES, limit: number): string {
+  switch (kind) {
+    // In the managed edition the plan sets the limit, so the way out is a larger
+    // plan in Billing, never "whoever runs the server" (the customer does not).
+    case "seats":
+      return isManagedEdition()
+        ? `This organization uses all of its ${limit} seats. Move to a plan with more in Billing, or an admin can deactivate someone first.`
+        : `This organization uses all of its ${limit} seats. Whoever runs the server can raise the limit, or an admin can deactivate someone first.`
+    case "mailboxes":
+      return isManagedEdition()
+        ? `This organization uses all of its ${limit} shared mailboxes. Move to a plan with more in Billing, or an admin can disconnect one first.`
+        : `This organization uses all of its ${limit} mailboxes. Whoever runs the server can raise the limit, or an admin can disconnect a mailbox first.`
+    case "personalMailboxes":
+      return "You already have a personal mailbox connected, and each person has one. Disconnect it first, or ask an admin to connect this address as a shared mailbox."
+    case "customApps":
+      return `This organization uses all of its ${limit} custom apps. Remove one first, or move to a plan with more.`
+    case "auditDays":
+      return `This organization's plan keeps the audit log for up to ${limit} days. Choose ${limit} days or fewer.`
+  }
+}
+
+/**
+ * A seat, mailbox or custom app refused at its cap, or an audit retention
+ * chosen above it (`used` is then the days asked for). Surfaces as 409 with
+ * `{limit, used}`.
+ */
 export class CapLimitError extends Error {
   readonly status = 409
-  readonly code: "SEAT_LIMIT_REACHED" | "MAILBOX_LIMIT_REACHED"
+  readonly code: (typeof CAP_LIMIT_CODES)[keyof typeof CAP_LIMIT_CODES]
   readonly details: { limit: number; used: number }
   constructor(
-    readonly kind: "seats" | "mailboxes",
+    readonly kind: keyof typeof CAP_LIMIT_CODES,
     limit: number,
     used: number,
   ) {
-    super(
-      kind === "seats"
-        ? `This organization uses all of its ${limit} seats. Whoever runs the server can raise the limit, or an admin can deactivate someone first.`
-        : `This organization uses all of its ${limit} mailboxes. Whoever runs the server can raise the limit, or an admin can disconnect a mailbox first.`,
-    )
+    super(capLimitMessage(kind, limit))
     this.name = "CapLimitError"
-    this.code = kind === "seats" ? "SEAT_LIMIT_REACHED" : "MAILBOX_LIMIT_REACHED"
+    this.code = CAP_LIMIT_CODES[kind]
     this.details = { limit, used }
   }
 }
@@ -176,7 +220,7 @@ export async function setOrgCaps(
 async function lockCap(
   tx: RlsClient | PrivilegedDb,
   orgId: string,
-  kind: "seats" | "mailboxes",
+  kind: "seats" | "mailboxes" | "customApps",
 ): Promise<void> {
   await tx.execute(
     drizzleSql`SELECT pg_advisory_xact_lock(hashtextextended(${`org-cap:${kind}:${orgId}`}, 0))`,
@@ -192,8 +236,15 @@ export async function countSeats(db: RlsClient | PrivilegedDb, orgId: string): P
   return Number(row?.n ?? 0)
 }
 
+/** Whose mailboxes a count covers: every one, the org's own, or one member's. */
+type MailboxOwners = "all" | "org" | { userId: string }
+
 /** The distinct addresses of the org's connected mailboxes (not disconnected). */
-async function mailboxAddressesOn(db: PrivilegedDb, orgId: string): Promise<Set<string>> {
+async function mailboxAddressesOn(
+  db: PrivilegedDb,
+  orgId: string,
+  owners: MailboxOwners = "all",
+): Promise<Set<string>> {
   const rows = await db
     .selectDistinct({ identifier: connectedAccounts.identifier })
     .from(connectedAccounts)
@@ -202,13 +253,33 @@ async function mailboxAddressesOn(db: PrivilegedDb, orgId: string): Promise<Set<
         eq(connectedAccounts.orgId, orgId),
         inArray(connectedAccounts.connectionName, [...MAILBOX_CONNECTIONS]),
         ne(connectedAccounts.status, "disconnected"),
+        ...(owners === "all"
+          ? []
+          : owners === "org"
+            ? [eq(connectedAccounts.ownerType, "org")]
+            : [
+                eq(connectedAccounts.ownerType, "user"),
+                eq(connectedAccounts.ownerId, owners.userId),
+              ]),
       ),
     )
   return new Set(rows.map((r) => r.identifier.toLowerCase()))
 }
 
+/** The org-owned (shared, support) mailbox addresses: the managed plan's cap. */
+export function orgMailboxAddressesOn(db: PrivilegedDb, orgId: string): Promise<Set<string>> {
+  return mailboxAddressesOn(db, orgId, "org")
+}
+
+/** The mailboxes the cap counts: the org's own in the managed edition, every one otherwise. */
+function cappedMailboxOwners(): MailboxOwners {
+  return isManagedEdition() ? "org" : "all"
+}
+
 export async function mailboxAddresses(orgId: string): Promise<Set<string>> {
-  return withSystemDb("org-caps-mailboxes", (db) => mailboxAddressesOn(db, orgId))
+  return withSystemDb("org-caps-mailboxes", (db) =>
+    mailboxAddressesOn(db, orgId, cappedMailboxOwners()),
+  )
 }
 
 /**
@@ -256,12 +327,29 @@ export async function assertSeatRoomSoft(
  * address already connected (a reconnect, or the same mailbox for another
  * app) adds nothing and always passes. Call it in the transaction that then
  * writes the connection, before the write.
+ *
+ * In the managed edition a member's personal mailbox is outside the org's cap
+ * and limited to PERSONAL_MAILBOXES_PER_MEMBER per member instead; the cap
+ * counts org-owned mailboxes only.
  */
 export async function assertMailboxRoom(
   tx: RlsClient | PrivilegedDb,
   orgId: string,
   identifier: string,
+  owner: { type: "org" } | { type: "user"; userId: string },
 ): Promise<void> {
+  const managed = isManagedEdition()
+  if (managed && owner.type === "user") {
+    await lockCap(tx, orgId, "mailboxes")
+    const mine = await privilegedFrom(tx, orgId, "org-caps-personal-mailboxes", (db) =>
+      mailboxAddressesOn(db, orgId, { userId: owner.userId }),
+    )
+    if (mine.has(identifier.toLowerCase())) return
+    if (mine.size + 1 > PERSONAL_MAILBOXES_PER_MEMBER) {
+      throw new CapLimitError("personalMailboxes", PERSONAL_MAILBOXES_PER_MEMBER, mine.size)
+    }
+    return
+  }
   const limit = capOf(await readOrgCapsOn(tx, orgId), "mailboxes")
   if (limit === null) return
   await lockCap(tx, orgId, "mailboxes")
@@ -270,7 +358,7 @@ export async function assertMailboxRoom(
   // connection under the lock. Read after the lock, so a concurrent connect
   // that held it has committed and is counted.
   const addresses = await privilegedFrom(tx, orgId, "org-caps-mailboxes", (db) =>
-    mailboxAddressesOn(db, orgId),
+    mailboxAddressesOn(db, orgId, managed ? "org" : "all"),
   )
   if (addresses.has(identifier.toLowerCase())) return
   const used = addresses.size
@@ -280,6 +368,86 @@ export async function assertMailboxRoom(
     throw new CapLimitError("mailboxes", limit, used)
   }
   noteCapLevel(orgId, "mailboxes", used + 1, limit)
+}
+
+/**
+ * The org's custom apps (its own private apps, `apps_installed.org_id`, 0252):
+ * distinct names, whatever number of versions each keeps.
+ */
+export async function countCustomApps(
+  db: RlsClient | PrivilegedDb,
+  orgId: string,
+): Promise<number> {
+  const [row] = await db
+    .select({ n: drizzleSql<number>`count(DISTINCT ${appsInstalled.name})::int` })
+    .from(appsInstalled)
+    .where(eq(appsInstalled.orgId, orgId))
+  return Number(row?.n ?? 0)
+}
+
+type CustomAppCounter = (db: RlsClient | PrivilegedDb, orgId: string) => Promise<number>
+let customAppCounter: CustomAppCounter | null = null
+
+/** Test seams on the custom app count. */
+export const OrgCapsTestAccess = {
+  /** Count custom apps with `fn` (null: the real count). */
+  setCustomAppCounter(fn: CustomAppCounter | null): void {
+    customAppCounter = fn
+  },
+}
+
+/**
+ * Check, under the org's custom apps lock, that one more custom app fits. Call
+ * it in the transaction that then installs the app, before the write.
+ */
+export async function assertCustomAppRoom(
+  tx: RlsClient | PrivilegedDb,
+  orgId: string,
+  opts: { caps?: OrgCaps } = {},
+): Promise<void> {
+  const limit = capOf(opts.caps ?? (await readOrgCapsOn(tx, orgId)), "customApps")
+  if (limit === null) return
+  await lockCap(tx, orgId, "customApps")
+  const count = customAppCounter ?? countCustomApps
+  const used = await privilegedFrom(tx, orgId, "org-caps-custom-apps", (db) => count(db, orgId))
+  noteCapLevel(orgId, "customApps", used, limit)
+  if (used + 1 > limit) {
+    noteCapLevel(orgId, "customApps", used + 1, limit)
+    throw new CapLimitError("customApps", limit, used)
+  }
+  noteCapLevel(orgId, "customApps", used + 1, limit)
+}
+
+/** The audit retention when nothing is set (self-hosted, and an uncapped managed org). */
+export const DEFAULT_AUDIT_RETENTION_DAYS = 90
+
+function wholeDays(v: unknown): number | null {
+  return typeof v === "number" && Number.isInteger(v) && v >= 1 ? v : null
+}
+
+/**
+ * How many days of audit rows the org keeps. Managed: min(the admin's choice
+ * ?? the plan's `auditDays`, `auditDays`); the 90-day settings default is not
+ * read when the plan caps it. Self-hosted: `settings.auditRetentionDays`, else
+ * 90, as always. Mirrors the SQL of org/audit-retention.ts.
+ */
+export function effectiveAuditRetentionDays(
+  caps: OrgCaps,
+  settings: Record<string, unknown> | null | undefined,
+): number {
+  const set = settings ?? {}
+  const configured = wholeDays(set.auditRetentionDays)
+  if (!isManagedEdition()) return configured ?? DEFAULT_AUDIT_RETENTION_DAYS
+  const chosen = wholeDays(set.auditRetentionDaysChosen)
+  const cap = capOf(caps, "auditDays")
+  if (cap === null) return chosen ?? configured ?? DEFAULT_AUDIT_RETENTION_DAYS
+  return Math.min(chosen ?? cap, cap)
+}
+
+/** Refuse an audit retention above the plan's cap (managed org settings PATCH). */
+export function assertAuditDaysWithinCap(caps: OrgCaps, days: number): void {
+  const cap = capOf(caps, "auditDays")
+  if (cap !== null && days > cap) throw new CapLimitError("auditDays", cap, days)
 }
 
 /** True when the connection is a mailbox the mailbox cap counts. */
@@ -369,6 +537,8 @@ const CAP_LABEL_KEY: Record<OrgCapKind, string> = {
   mailboxes: "kernel.orgUsage.mailboxes",
   storageGb: "kernel.orgUsage.storage",
   jobsPerHour: "kernel.orgUsage.jobs",
+  customApps: "kernel.orgUsage.customApps",
+  auditDays: "kernel.orgUsage.auditDays",
 }
 
 function uuidFrom(text: string): string {
@@ -393,6 +563,8 @@ export function noticeSummary(
       ? t("kernel.orgUsage.storageUsedOfLimit", { used, limit })
       : t("kernel.orgUsage.usedOfLimit", { used, limit })
   const label = t(CAP_LABEL_KEY[kind])
+  // The managed edition's customer runs no server: the way out is the plan, in Billing.
+  const managed = isManagedEdition()
   const head =
     level >= 100
       ? t("kernel.orgUsage.noticeReached", { label, shown })
@@ -402,9 +574,17 @@ export function noticeSummary(
       ? t("kernel.orgUsage.noticeTailJobs")
       : kind === "storageGb"
         ? level >= 100
-          ? t("kernel.orgUsage.noticeTailStorageFull")
-          : t("kernel.orgUsage.noticeTailStorageNear")
-        : t("kernel.orgUsage.noticeTailOther")
+          ? t(
+              managed
+                ? "kernel.orgUsage.noticeTailStorageFullManaged"
+                : "kernel.orgUsage.noticeTailStorageFull",
+            )
+          : t(
+              managed
+                ? "kernel.orgUsage.noticeTailStorageNearManaged"
+                : "kernel.orgUsage.noticeTailStorageNear",
+            )
+        : t(managed ? "kernel.orgUsage.noticeTailOtherManaged" : "kernel.orgUsage.noticeTailOther")
   return `${head} ${tail}`
 }
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { createHash, timingSafeEqual } from "node:crypto"
-import { APP_DISABLED_CODE } from "@liaison/shared"
+import { APP_DISABLED_CODE, ORG_SUSPENDED_CODE } from "@liaison/shared"
 import { and, asc, eq } from "drizzle-orm"
 import { type Context, Hono } from "hono"
 import { HTTPException } from "hono/http-exception"
@@ -10,17 +10,22 @@ import type { ActorContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
 import { apps, users } from "~/db/schema/kernel"
 import { enqueueAppJob } from "~/infra/jobs/jobs"
+import { withPinnedJobSlot } from "~/infra/jobs/pinned-jobs-gate"
+import { isManagedEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
 import { webhooksLogger as log } from "~/lib/logger"
 import { redis } from "~/lib/redis"
 import { RequestBodyTooLargeError, readRequestTextWithLimit } from "~/lib/request-body"
 import { getClientIp } from "~/lib/request-context"
 import { success } from "~/lib/response"
+import { UUID_RE } from "~/lib/uuid"
+import { appVisibleToOrg } from "~/modules/apps/app-org-scope"
 import {
   isManifestHandler,
   type ManifestHandlerRef,
   webhookHandlers,
 } from "~/modules/apps/app-registries"
+import { cellConfigOverride } from "~/modules/apps/cell-locked-config"
 import { connectionClientSecretForConfigKey } from "~/modules/apps/connections/oauth-client"
 import {
   type ConnectionSecretKeySource,
@@ -28,13 +33,23 @@ import {
 } from "~/modules/apps/connections/service"
 import { createAppContext } from "~/modules/apps/context"
 import { getInstallTrust } from "~/modules/apps/install-trust"
+import { instanceConfigDefault } from "~/modules/apps/instance-config-defaults"
 import { APP_STATE_UNAVAILABLE_CODE, pathOrgAppState } from "~/modules/apps/org-apps"
-import { isBundleLoadError, loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { isBundleLoadError, isSandboxFault, loadBundle } from "~/modules/apps/sandbox/bundle-loader"
+import { createSandboxRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { writeAuditLog } from "~/modules/audit/service"
+import { orgSuspendedOrClosed } from "~/modules/cloud/billing-status"
+import {
+  createCellWebhookRoutes,
+  gmailOrgsForAddress,
+  metaOrgsForPageIds,
+} from "~/modules/cloud/cell-webhooks"
 import { ORG_DELETED_CODE } from "~/modules/org/purge/deleting"
+import { assertOrgAcceptsWrites } from "~/modules/org/transfer-state/gate"
+import { assertCustomAppWebhookRate } from "~/modules/webhooks/custom-app-webhook-limit"
 import { recordWebhookAccepted, recordWebhookRejected } from "~/modules/webhooks/ingest-health"
-import { executeManifestWebhook } from "~/modules/webhooks/manifest-execution"
+import { deliveryBudget, executeManifestWebhook } from "~/modules/webhooks/manifest-execution"
+import { setUpOrgForInboundWebhook } from "~/modules/webhooks/org-setup"
 import {
   normalizeReplayTtlSeconds,
   parseWebhookVerificationResult,
@@ -120,14 +135,133 @@ async function dropIfAppOff(
   return c.json({ ok: true, dropped: APP_DISABLED_CODE }, 200)
 }
 
+/** Deliveries dropped per org because the org was suspended or closed for billing. */
+const webhooksDroppedOrgSuspended = new Map<string, number>()
+export function webhooksDroppedOrgSuspendedCount(orgId: string): number {
+  return webhooksDroppedOrgSuspended.get(orgId) ?? 0
+}
+
+/**
+ * A delivery to a managed org suspended or closed for billing (D24): 200 and
+ * dropped, logged and counted per org, so the provider keeps the subscription
+ * and the org's integrations work again once it pays. Not replayed on resume.
+ * 410 stays for an org being deleted (above). A no-op, without a query, on a
+ * self-hosted instance.
+ */
+async function dropIfOrgSuspended(
+  c: Context<AppEnv>,
+  orgId: string,
+  appName: string,
+  endpointName: string,
+): Promise<Response | null> {
+  if (!(await orgSuspendedOrClosed(orgId))) return null
+  if (webhooksDroppedOrgSuspended.size > 10_000) webhooksDroppedOrgSuspended.clear()
+  webhooksDroppedOrgSuspended.set(orgId, webhooksDroppedOrgSuspendedCount(orgId) + 1)
+  log.info({ orgId, app: appName, endpointName }, "webhook dropped: the org is suspended")
+  return c.json({ ok: true, dropped: ORG_SUSPENDED_CODE }, 200)
+}
+
+// The server-level callbacks of the managed edition (one Gmail push subscription,
+// one Meta app callback per server), fanned out to the orgs they concern
+// (cloud/cell-webhooks.ts). Self-hosted: 404.
+webhookRoutes.route(
+  "/_cell",
+  createCellWebhookRoutes({
+    managed: isManagedEdition,
+    gmailPush: () => ({
+      audience: env.GMAIL_PUSH_AUDIENCE,
+      serviceAccount: env.GMAIL_PUSH_SERVICE_ACCOUNT,
+    }),
+    metaAppSecret: () => env.META_APP_SECRET,
+    verifyOidc: async (token, expectedAudience, expectedServiceAccount) => {
+      const { verifyGoogleOidcJwt } = await import("~/modules/webhooks/google-oidc")
+      return verifyGoogleOidcJwt(token, {
+        expectedAudience,
+        expectedServiceAccount,
+        issuer: process.env.TICKETS_GMAIL_PUSH_ISSUER,
+        jwksUrl: process.env.TICKETS_GMAIL_PUSH_JWKS_URL,
+      })
+    },
+    gmailOrgsFor: gmailOrgsForAddress,
+    metaOrgsForPages: metaOrgsForPageIds,
+    suspended: orgSuspendedOrClosed,
+    // The org's own endpoint, the whole path: its verifier checks the token again.
+    forward: async (orgId, appName, endpointName, req) => {
+      await setUpOrgForInboundWebhook(orgId)
+      return webhookRoutes.request(`/${orgId}/${appName}/${endpointName}`, {
+        method: "POST",
+        headers: req.headers,
+        body: req.body,
+      })
+    },
+    dispatchVerified: (c, orgId, appName, endpointName, req) =>
+      dispatchKernelVerified(c as Context<AppEnv>, orgId, appName, endpointName, req),
+  }),
+)
+
+/**
+ * A delivery the kernel verified itself (the server's Meta callback): the org's
+ * app-off, suspension and deletion drops, then the same dispatch as an
+ * app-verified delivery. Never throws: an HTTP error becomes its response, so one
+ * org's failure does not stop the others'.
+ */
+async function dispatchKernelVerified(
+  c: Context<AppEnv>,
+  orgId: string,
+  appName: string,
+  endpointName: string,
+  req: { rawBody: string; replayKey: string },
+): Promise<Response> {
+  try {
+    await assertOrgAcceptsWrites(orgId)
+    await setUpOrgForInboundWebhook(orgId)
+    const dropped = await dropIfAppOff(c, orgId, appName, endpointName)
+    if (dropped) return dropped
+    const suspended = await dropIfOrgSuspended(c, orgId, appName, endpointName)
+    if (suspended) return suspended
+    const registration = webhookHandlers.get([orgId, appName, endpointName])
+    if (!registration) return c.json({ error: { message: "Unknown webhook endpoint" } }, 404)
+    return await dispatchVerifiedWebhook(c, {
+      webhookOrgId: orgId,
+      appName,
+      endpointName,
+      registration,
+      rawBody: req.rawBody,
+      outcome: { replayKey: req.replayKey },
+    })
+  } catch (err) {
+    if (err instanceof HTTPException) return err.getResponse()
+    log.error({ err, orgId, appName, endpointName }, "kernel-verified webhook dispatch failed")
+    return c.json({ error: { message: "Webhook handler error" } }, 500)
+  }
+}
+
+// An org moving to another instance (modules/org/transfer-state/): every
+// delivery to it answers 503 `org_moving` with `Retry-After` while it is
+// frozen, incoming or moved, so the provider retries (the router forwards
+// the retry to wherever the org is served). Draining orgs still take them.
+webhookRoutes.use("/:orgId/:appName/:endpointName", async (c, next) => {
+  const orgId = c.req.param("orgId")
+  if (UUID_RE.test(orgId)) await assertOrgAcceptsWrites(orgId)
+  await next()
+})
+
 webhookRoutes.post("/:orgId/:appName/:endpointName", async (c) => {
   const webhookOrgId = c.req.param("orgId")
   const appName = c.req.param("appName")
   const endpointName = c.req.param("endpointName")
   const handlerKey: [string, string, string] = [webhookOrgId, appName, endpointName]
 
+  // Another org's custom app has no endpoint under this org (app-org-scope.ts).
+  if (!(await appVisibleToOrg(appName, webhookOrgId))) {
+    throw new HTTPException(404, { message: "Unknown webhook endpoint" })
+  }
+  // An org's custom app: a per-minute budget before any sandbox work (S5-2).
+  await assertCustomAppWebhookRate(webhookOrgId, appName)
   const dropped = await dropIfAppOff(c, webhookOrgId, appName, endpointName)
   if (dropped) return dropped
+  const suspended = await dropIfOrgSuspended(c, webhookOrgId, appName, endpointName)
+  if (suspended) return suspended
 
   const registration = webhookHandlers.get(handlerKey)
   if (!registration) {
@@ -181,6 +315,7 @@ webhookRoutes.post("/:orgId/:appName/:endpointName", async (c) => {
       }
       const source = await loadBundle(handlerRef.bundlePath)
       verificationResult = await executeManifestWebhook({
+        appName,
         handlerRef,
         bundleSource: source,
         params: requestData,
@@ -195,6 +330,9 @@ webhookRoutes.post("/:orgId/:appName/:endpointName", async (c) => {
                 ? (JSON.parse(rawConfig) as Record<string, unknown>)
                 : (rawConfig as Record<string, unknown> | null | undefined)
             const value = config?.[key]
+            // A key the managed cell owns answers the cell's value (cell-locked-config.ts).
+            const cell = await cellConfigOverride(appOrgId, appName, key, value)
+            if (cell !== undefined) return cell
             if (value === undefined || value === null) {
               // No copy stored at connect (a provider that signs with the app's
               // client secret, Shopify): the connection's current client, the
@@ -202,12 +340,16 @@ webhookRoutes.post("/:orgId/:appName/:endpointName", async (c) => {
               // stored copy wins when present: it is the secret of the client
               // that minted the store's connection and created its subscriptions.
               try {
-                return await connectionClientSecretForConfigKey(
+                const clientSecret = await connectionClientSecretForConfigKey(
                   appOrgId,
                   appName,
                   key,
                   manifestConnections,
                 )
+                // Else the instance's answer for every workspace (e.g. the Gmail
+                // push audience of the server's shared topic), as `config_get` in
+                // the app sandbox gives it.
+                return clientSecret ?? instanceConfigDefault(appName, key)
               } catch (err) {
                 log.warn(
                   { err, orgId: appOrgId, appName },
@@ -305,6 +447,11 @@ webhookRoutes.post("/:orgId/:appName/:endpointName", async (c) => {
       )
       throw new HTTPException(503, { message: "Webhook handler unavailable" })
     }
+    if (isSandboxFault(err)) {
+      // The verifier never answered: a server fault the provider should retry, not a bad signature.
+      log.warn({ err, appName, endpointName }, "Webhook verifier lost its sandbox")
+      throw new HTTPException(503, { message: "Webhook handler unavailable" })
+    }
     log.warn({ err, appName, endpointName }, "Webhook verification execution failed")
     verificationResult = false
   }
@@ -366,6 +513,39 @@ webhookRoutes.post("/:orgId/:appName/:endpointName", async (c) => {
     })
   }
 
+  return dispatchVerifiedWebhook(c, {
+    webhookOrgId,
+    appName,
+    endpointName,
+    registration,
+    rawBody,
+    outcome,
+  })
+})
+
+type WebhookRegistration = NonNullable<ReturnType<typeof webhookHandlers.get>>
+
+/**
+ * Everything after a delivery's verification: replay claim, handler scopes, the
+ * acting identity, the handler run in the background pool, status mapping and
+ * retries, the audit row. Shared by the per-org endpoint (the app's verifier
+ * accepted) and the server-level callbacks (cloud/cell-webhooks.ts: the kernel
+ * verified the provider's signature once for the whole server).
+ */
+async function dispatchVerifiedWebhook(
+  c: Context<AppEnv>,
+  args: {
+    webhookOrgId: string
+    appName: string
+    endpointName: string
+    registration: WebhookRegistration
+    rawBody: string
+    outcome: { replayKey: string; replayTtlSeconds?: number; scopes?: string[] }
+  },
+): Promise<Response> {
+  const { webhookOrgId, appName, endpointName, registration, rawBody, outcome } = args
+  const appOrgId = registration.orgId
+  const payloadHash = createHash("sha256").update(rawBody).digest("hex")
   // Signature verified: the sender is reaching us and being heard. Recorded here
   // rather than after handler dispatch on purpose — this counter measures the
   // VERIFICATION GATE (the thing that silently closed on Boxtal), not handler
@@ -481,47 +661,64 @@ webhookRoutes.post("/:orgId/:appName/:endpointName", async (c) => {
     // DbAcquireTimeoutError. Webhook retries (webhook-worker.ts) and
     // event-subscription handlers already draw from "jobs"; the primary
     // delivery was the one long-held-across-HTTP path still on the request pool.
-    handlerResult = await withRlsContext(
-      webhookActor,
-      async (tx) => {
-        if (isManifestHandler(registration.handler)) {
-          const handlerRef = registration.handler as ManifestHandlerRef
-          const manifest = registration._manifest ?? {
-            name: appName,
-            schema: {},
-            events: {},
-            connections: {},
-            network: {},
+    //
+    // A handler that declares a budget may hold that connection for up to
+    // 29 s, against 5 s for the rest: it waits for a pinned slot first, as the
+    // retry job does (infra/jobs/pinned-jobs-gate.ts), so a burst of them cannot
+    // starve the jobs pool. The wait is bounded so the run still ends inside the
+    // request ceiling; past it the delivery goes to the retry job below, unrun.
+    const budget = deliveryBudget(registration.timeoutMs, env.REQUEST_TIMEOUT_MS)
+    const runDelivery = () =>
+      withRlsContext(
+        webhookActor,
+        async (tx) => {
+          if (isManifestHandler(registration.handler)) {
+            const handlerRef = registration.handler as ManifestHandlerRef
+            const manifest = registration._manifest ?? {
+              name: appName,
+              schema: {},
+              events: {},
+              connections: {},
+              network: {},
+            }
+            const bridge = createSandboxRpcBridge(
+              appName,
+              webhookUserActorId ?? "system",
+              appOrgId,
+              tx,
+              manifest,
+              handlerScopes,
+              webhookUserActorId ? "user" : "system",
+              undefined,
+              { actor: webhookActor },
+            )
+            const source = await loadBundle(handlerRef.bundlePath)
+            // Pass the hoisted header dict as the 3rd handler arg.
+            return executeManifestWebhook({
+              appName,
+              handlerRef,
+              bundleSource: source,
+              params: payload,
+              bridge,
+              extraArgs: [headerDict],
+              ...(budget ? { timeoutMs: budget.timeoutMs } : {}),
+            })
           }
-          const bridge = createRpcBridge(
-            appName,
-            webhookUserActorId ?? "system",
-            appOrgId,
-            tx,
-            manifest,
-            handlerScopes,
-            webhookUserActorId ? "user" : "system",
-            undefined,
-            { actor: webhookActor },
+          const ctx = createAppContext(appName, "system", appOrgId, tx)
+          return (registration.handler as (payload: unknown, ctx: any) => Promise<unknown>)(
+            payload,
+            ctx,
           )
-          const source = await loadBundle(handlerRef.bundlePath)
-          // Pass the hoisted header dict as the 3rd handler arg.
-          return executeManifestWebhook({
-            handlerRef,
-            bundleSource: source,
-            params: payload,
-            bridge,
-            extraArgs: [headerDict],
-          })
-        }
-        const ctx = createAppContext(appName, "system", appOrgId, tx)
-        return (registration.handler as (payload: unknown, ctx: any) => Promise<unknown>)(
-          payload,
-          ctx,
+        },
+        { pool: "jobs" },
+      )
+    handlerResult = budget
+      ? await withPinnedJobSlot(
+          `webhook:${appName}`,
+          runDelivery,
+          AbortSignal.timeout(budget.slotWaitMs),
         )
-      },
-      { pool: "jobs" },
-    )
+      : await runDelivery()
   } catch (err) {
     // The handler threw (vs. returning a status). Treat as transient: release
     // the replay claim and schedule the kernel retry. Surface 500 so providers
@@ -632,7 +829,7 @@ webhookRoutes.post("/:orgId/:appName/:endpointName", async (c) => {
   // delivery did); a handler that returns no body, or a non-JSON one, keeps the
   // default acknowledgement.
   return success(c, extractHandlerJsonBody(handlerResult) ?? { received: true })
-})
+}
 
 const MAX_REJECTION_MESSAGE_LENGTH = 500
 
@@ -700,6 +897,9 @@ webhookRoutes.get("/:orgId/:appName/:endpointName", async (c) => {
   const presented = q.get("hub.verify_token")
   if (mode !== "subscribe" || challenge === null) {
     return c.json({ error: { message: "Method not allowed", code: "METHOD_NOT_ALLOWED" } }, 405)
+  }
+  if (!(await appVisibleToOrg(c.req.param("appName"), c.req.param("orgId")))) {
+    throw new HTTPException(404, { message: "Unknown webhook endpoint" })
   }
   const droppedChallenge = await dropIfAppOff(
     c,

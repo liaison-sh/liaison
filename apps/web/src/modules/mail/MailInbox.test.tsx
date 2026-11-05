@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-li
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { mailboxStore, resetMailboxStore } from "~/modules/mailbox/mailbox-store"
 import { MAILBOX_UNLOCK_EVENT } from "~/modules/mailbox/mailbox-unlock-bus"
+import { openTab } from "~/modules/shell/tab-store"
 import { MailInbox } from "./MailInbox"
 
 interface MockConversation {
@@ -20,6 +21,7 @@ interface MockConversation {
 }
 
 const mailInboxState = vi.hoisted(() => ({
+  accountsLoaded: true,
   accounts: [] as Array<{
     id: string
     unreadCount: number
@@ -42,6 +44,7 @@ const mailInboxState = vi.hoisted(() => ({
 }))
 
 function resetInboxState(): void {
+  mailInboxState.accountsLoaded = true
   mailInboxState.accounts = [{ id: "acc-1", unreadCount: 0, ownerType: "org" }]
   mailInboxState.api = {
     get: vi.fn().mockResolvedValue({ data: [] }),
@@ -107,6 +110,7 @@ vi.mock("~/modules/mail/mail-conversation-store", () => ({
   },
 }))
 vi.mock("~/modules/mail/mail-account-store", () => ({
+  accountsLoaded: () => mailInboxState.accountsLoaded,
   allAccounts: () => mailInboxState.accounts,
   getAccount: (id: string) => mailInboxState.accounts.find((account) => account.id === id),
   loadAccounts: vi.fn(),
@@ -242,6 +246,33 @@ describe("MailInbox — search filter", () => {
     expect(screen.getByTestId("mail-empty-state-connect")).toBeTruthy()
     expect(screen.queryByTestId("mail-inbox-search")).toBeNull()
     expect(screen.queryByText("No conversations")).toBeNull()
+  })
+
+  test("the no-mailbox empty state waits until the account list has loaded", () => {
+    mailInboxState.accountsLoaded = false
+    mailInboxState.accounts = []
+    mailInboxState.store.ids = []
+    mailInboxState.store.byId = {}
+
+    render(() => <MailInbox entityId="inbox" />)
+    expect(screen.queryByTestId("mail-empty-state-connect")).toBeNull()
+  })
+
+  test("the no-mailbox empty state's Connect an Account button opens the mail accounts settings", async () => {
+    mailInboxState.accounts = []
+    mailInboxState.store.ids = []
+    mailInboxState.store.byId = {}
+
+    render(() => <MailInbox entityId="inbox" />)
+    const empty = screen.getByTestId("mail-empty-state-connect")
+    expect(empty.textContent).toContain("Connect an email account to get started")
+    const button = screen.getByTestId("mail-empty-state-connect-button")
+    expect(button.tagName).toBe("BUTTON")
+    expect(button.textContent).toBe("Connect an Account")
+    await fireEvent.click(button)
+    expect(vi.mocked(openTab)).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "kernel:settings", routePath: "/settings/apps/mail" }),
+    )
   })
 
   test("renders Claim button on unassigned shared-inbox row", () => {

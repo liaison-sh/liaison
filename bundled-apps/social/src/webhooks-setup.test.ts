@@ -11,7 +11,14 @@ import { facebookAdapter } from "./adapters/facebook"
 import { onConnectionEstablished } from "./connection"
 import type { SocialToolCtx } from "./ctx"
 import { createMockDb, type MockDb } from "./test-db"
-import { VERIFY_TOKEN_KEY, WEBHOOK_FIELDS, webhooksSetup, webhooksSetupPreflight } from "./webhooks-setup"
+import {
+  CELL_CALLBACK_KEY,
+  CELL_VERIFY_TOKEN_KEY,
+  VERIFY_TOKEN_KEY,
+  WEBHOOK_FIELDS,
+  webhooksSetup,
+  webhooksSetupPreflight,
+} from "./webhooks-setup"
 
 const APP_ID = "app-77"
 const SECRET = "meta-secret"
@@ -26,7 +33,16 @@ interface Call {
 }
 
 /** A stateful fake of the Graph endpoints the tool touches. */
-function fakeGraph(opts: { failPage?: string; pages?: Array<{ id: string; name: string }> } = {}) {
+function fakeGraph(
+  opts: {
+    failPage?: string
+    pages?: Array<{ id: string; name: string }>
+    /** The instance's cell callback and verify token (managed edition). */
+    cell?: { callback: string; verifyToken: string }
+    /** The app-level callback Meta already holds. */
+    currentCallback?: string
+  } = {},
+) {
   const pages = opts.pages ?? [
     { id: "P1", name: "Kestrel" },
     { id: "P2", name: "Resonant Audio Labs" },
@@ -36,8 +52,18 @@ function fakeGraph(opts: { failPage?: string; pages?: Array<{ id: string; name: 
     pageSubs: {} as Record<string, string[]>,
     verifyTokenAtSubscribe: null as unknown,
   }
+  if (opts.currentCallback) {
+    state.appSub = {
+      object: "page",
+      callback_url: opts.currentCallback,
+      fields: WEBHOOK_FIELDS.map((name) => ({ name })),
+      active: true,
+    }
+  }
   const calls: Call[] = []
-  let config: Record<string, unknown> = {}
+  let config: Record<string, unknown> = opts.cell
+    ? { [CELL_CALLBACK_KEY]: opts.cell.callback, [CELL_VERIFY_TOKEN_KEY]: opts.cell.verifyToken }
+    : {}
   const fetch = async (url: string, init?: { method?: string; headers?: Record<string, string>; body?: unknown }) => {
     const u = new URL(url)
     const path = u.pathname.replace(/^\/v\d+\.\d+/, "")
@@ -53,7 +79,7 @@ function fakeGraph(opts: { failPage?: string; pages?: Array<{ id: string; name: 
       if (method === "GET") return ok({ data: state.appSub ? [state.appSub] : [] })
       // Meta checks the callback with the hub.challenge handshake before it accepts.
       state.verifyTokenAtSubscribe = config[VERIFY_TOKEN_KEY] ?? null
-      if (body?.verify_token !== config[VERIFY_TOKEN_KEY]) {
+      if (body?.verify_token !== (config[CELL_VERIFY_TOKEN_KEY] ?? config[VERIFY_TOKEN_KEY])) {
         return { status: 400, headers: {}, body: JSON.stringify({ error: { code: 2200, message: "Callback verification failed" } }) }
       }
       state.appSub = {
@@ -254,5 +280,65 @@ describe("webhooks_setup", () => {
     const pre = await webhooksSetupPreflight({}, ctx)
     expect("error" in pre && pre.error.code).toBe("not_connected")
     expect(g.calls).toEqual([])
+  })
+})
+
+// Managed edition (A25, A47): one Meta app serves every workspace on every cell, and it has ONE
+// app-level callback, so it points at the cell's /webhooks/_cell/meta, which routes deliveries by
+// Page id; until an edge callback exists, exactly one cell carries Meta.
+describe("webhooks_setup on a managed cell", () => {
+  const CELL = { callback: "https://cell-a.example.test/webhooks/_cell/meta", verifyToken: "cell-token" }
+
+  test("subscribes the app to the cell callback with the cell's verify token, whatever base is passed", async () => {
+    const g = fakeGraph({ cell: CELL })
+    const { ctx } = await seededCtx(g)
+    const r = await webhooksSetup({ callback_base_url: "https://elsewhere.example.com" }, ctx)
+    if (!("pages" in r)) throw new Error(JSON.stringify(r))
+    expect(r.status).toBe("completed")
+    expect(r.callback_url).toBe(CELL.callback)
+    expect(g.state.appSub?.callback_url).toBe(CELL.callback)
+    // The workspace's own verify token is not minted: the cell answers the handshake.
+    expect(g.getConfig()[VERIFY_TOKEN_KEY]).toBeUndefined()
+  })
+
+  test("records the subscribed Page ids on the account, which the cell routes deliveries by", async () => {
+    const g = fakeGraph({ cell: CELL })
+    const { ctx, db } = await seededCtx(g)
+    await webhooksSetup({}, ctx)
+    const rows = (await db.findMany("sync_state", { where: { platform: "facebook", account_external_id: "U1" } })) as Array<{
+      metadata?: Record<string, unknown>
+    }>
+    expect(rows.length).toBeGreaterThan(0)
+    for (const row of rows) expect(row.metadata?.meta_page_ids).toEqual(["P1", "P2"])
+  })
+
+  test("refuses, writing nothing, when the app's callback points at another cell", async () => {
+    const g = fakeGraph({ cell: CELL, currentCallback: "https://cell-b.example.test/webhooks/_cell/meta" })
+    const { ctx } = await seededCtx(g)
+    const r = await webhooksSetup({}, ctx)
+    expect("error" in r && r.error.code).toBe("meta_callback_other_cell")
+    expect(writes(g.calls)).toEqual([])
+    expect(g.state.appSub?.callback_url).toBe("https://cell-b.example.test/webhooks/_cell/meta")
+  })
+
+  test("takes the app over from a workspace-host callback (the pre-cell layout)", async () => {
+    const g = fakeGraph({ cell: CELL, currentCallback: `${BASE}/webhooks/org-9/social/meta` })
+    const { ctx } = await seededCtx(g)
+    const r = await webhooksSetup({}, ctx)
+    if (!("pages" in r)) throw new Error(JSON.stringify(r))
+    expect(r.app.status).toBe("subscribed")
+    expect(g.state.appSub?.callback_url).toBe(CELL.callback)
+  })
+
+  test("self-hosted (no cell callback): the workspace callback and no Page ids recorded", async () => {
+    const g = fakeGraph()
+    const { ctx, db } = await seededCtx(g)
+    const r = await webhooksSetup({}, ctx)
+    if (!("pages" in r)) throw new Error(JSON.stringify(r))
+    expect(r.callback_url).toBe(CALLBACK)
+    const rows = (await db.findMany("sync_state", { where: { platform: "facebook" } })) as Array<{
+      metadata?: Record<string, unknown>
+    }>
+    for (const row of rows) expect(row.metadata?.meta_page_ids).toBeUndefined()
   })
 })

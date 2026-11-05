@@ -20,9 +20,105 @@ import { createReadStream, existsSync, promises as fsp, type ReadStream } from "
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { createInterface } from "node:readline"
+import { appsLogger as log } from "~/lib/logger"
+import { sandboxTenantKey } from "~/modules/apps/custom-app-name"
 
 const DEFAULT_QUOTA_BYTES = 1_073_741_824 // 1 GiB
 const DEFAULT_BATCH_SIZE = 50
+
+// An org's custom app (managed edition) is a tenant's code on a shared disk:
+// its blobs live in their own scope (`custom--<org>--<app>`), with a smaller
+// quota of their own, a cap over every custom app's blobs on the server
+// together, and an idle lifetime past which they are deleted even if the app
+// never deletes them. Catalog and instance apps keep the per-org rule above.
+export const CUSTOM_APP_BULK_QUOTA_BYTES = 256 * 1024 * 1024
+export const CUSTOM_APP_BULK_CELL_QUOTA_BYTES = 4 * 1_073_741_824
+export const CUSTOM_APP_BULK_IDLE_TTL_MS = 60 * 60_000
+const CUSTOM_SCOPE_PREFIX = "custom--"
+
+/**
+ * The scope (directory) an app's blobs live in for `orgId`: the org itself for
+ * catalog and instance apps, `custom--<org>--<app>` for an org's custom app.
+ */
+export function bulkBlobScope(orgId: string, appName: string): string {
+  return sandboxTenantKey(appName) ? `${CUSTOM_SCOPE_PREFIX}${orgId}--${appName}` : orgId
+}
+
+const isCustomScope = (scope: string) => scope.startsWith(CUSTOM_SCOPE_PREFIX)
+
+let customLimits = {
+  quotaBytes: CUSTOM_APP_BULK_QUOTA_BYTES,
+  cellQuotaBytes: CUSTOM_APP_BULK_CELL_QUOTA_BYTES,
+  idleTtlMs: CUSTOM_APP_BULK_IDLE_TTL_MS,
+}
+
+/** Test seams on the custom-app bulk limits. */
+export const BulkBlobTestAccess = {
+  /** Smaller custom-app limits. `null` restores the defaults. */
+  setCustomLimits(limits: Partial<typeof customLimits> | null): void {
+    customLimits = {
+      quotaBytes: limits?.quotaBytes ?? CUSTOM_APP_BULK_QUOTA_BYTES,
+      cellQuotaBytes: limits?.cellQuotaBytes ?? CUSTOM_APP_BULK_CELL_QUOTA_BYTES,
+      idleTtlMs: limits?.idleTtlMs ?? CUSTOM_APP_BULK_IDLE_TTL_MS,
+    }
+  },
+}
+
+/** Every custom-app scope directory on this server. */
+async function customScopeDirs(): Promise<string[]> {
+  try {
+    const entries = await fsp.readdir(baseDir(), { withFileTypes: true })
+    return entries
+      .filter((e) => e.isDirectory() && e.name.startsWith(CUSTOM_SCOPE_PREFIX))
+      .map((e) => join(baseDir(), e.name))
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return []
+    throw err
+  }
+}
+
+/**
+ * Delete every custom-app blob not written or read for the idle lifetime, and
+ * the scope directories left empty. Returns the number of files deleted.
+ */
+export async function sweepIdleCustomBulkBlobs(now = Date.now()): Promise<number> {
+  let removed = 0
+  for (const dir of await customScopeDirs()) {
+    const entries = await fsp.readdir(dir, { withFileTypes: true }).catch(() => [])
+    let left = 0
+    for (const e of entries) {
+      if (!e.isFile()) continue
+      const path = join(dir, e.name)
+      const st = await fsp.stat(path).catch(() => null)
+      if (!st) continue
+      if (now - Math.max(st.mtimeMs, st.atimeMs) > customLimits.idleTtlMs) {
+        await fsp.unlink(path).catch(() => {})
+        removed++
+      } else {
+        left++
+      }
+    }
+    if (left === 0) await fsp.rmdir(dir).catch(() => {})
+  }
+  if (removed > 0) log.info({ removed }, "idle custom-app bulk blobs deleted")
+  return removed
+}
+
+let sweeper: ReturnType<typeof setInterval> | null = null
+
+/** The idle sweep runs in every process that wrote a custom-app blob. */
+function ensureCustomSweeper(): void {
+  if (sweeper) return
+  sweeper = setInterval(
+    () => {
+      void sweepIdleCustomBulkBlobs().catch((err: unknown) =>
+        log.warn({ err }, "custom-app bulk blob sweep failed"),
+      )
+    },
+    Math.max(60_000, Math.floor(customLimits.idleTtlMs / 4)),
+  )
+  if (typeof sweeper.unref === "function") sweeper.unref()
+}
 
 // Per-org serialisation: prevents two concurrent fetchToBlob calls for the
 // same org from reading the same `dirSizeBytes` snapshot before either write
@@ -141,11 +237,34 @@ async function _fetchToBlobLocked(
   fetchImpl: typeof fetch,
 ): Promise<BulkBlobFetchResult> {
   const orgDir = join(baseDir(), orgKey)
-  await ensureDir(orgDir)
-  const existingSize = await dirSizeBytes(orgDir)
-  const cap = quotaBytes()
-  if (existingSize >= cap) {
-    throw new Error(`Bulk blob quota exceeded: ${existingSize}/${cap} bytes already used`)
+  const custom = isCustomScope(orgKey)
+  let existingSize: number
+  let cap: number
+  if (custom) {
+    ensureCustomSweeper()
+    await sweepIdleCustomBulkBlobs()
+    await ensureDir(orgDir)
+    const own = await dirSizeBytes(orgDir)
+    let all = 0
+    for (const dir of await customScopeDirs()) all += await dirSizeBytes(dir)
+    // The tighter of the app's own quota and what the server cap leaves.
+    const room = Math.min(customLimits.quotaBytes - own, customLimits.cellQuotaBytes - all)
+    existingSize = own
+    cap = own + Math.max(0, room)
+    if (room <= 0) {
+      throw new Error(
+        own >= customLimits.quotaBytes
+          ? `Bulk blob quota exceeded: ${own}/${customLimits.quotaBytes} bytes already used`
+          : "Bulk blob quota exceeded: this server's space for custom apps is full",
+      )
+    }
+  } else {
+    await ensureDir(orgDir)
+    existingSize = await dirSizeBytes(orgDir)
+    cap = quotaBytes()
+    if (existingSize >= cap) {
+      throw new Error(`Bulk blob quota exceeded: ${existingSize}/${cap} bytes already used`)
+    }
   }
 
   const blobId = randomUUID()
@@ -243,6 +362,16 @@ export async function* iterateJsonl(
 export async function deleteBlob(orgId: string, blobId: string): Promise<void> {
   const path = blobPath(orgId, blobId)
   if (existsSync(path)) await fsp.unlink(path).catch(() => {})
+}
+
+/** Remove every custom-app blob of `orgId` (the org purge). */
+export async function deleteOrgCustomBulkBlobs(orgId: string): Promise<void> {
+  const prefix = `${CUSTOM_SCOPE_PREFIX}${orgId}--`.replace(/[^a-zA-Z0-9-]/g, "_")
+  for (const dir of await customScopeDirs()) {
+    if (dir.slice(baseDir().length + 1).startsWith(prefix)) {
+      await fsp.rm(dir, { recursive: true, force: true })
+    }
+  }
 }
 
 /** Test helper — wipe everything under a given org's bulk-blob dir. */

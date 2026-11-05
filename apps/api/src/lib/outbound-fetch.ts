@@ -153,6 +153,12 @@ export interface PinnedFetchOptions extends RedirectValidationOptions {
    * accept falls back to the caller's base options.
    */
   privateAllowedFor?: (url: URL) => boolean
+  /**
+   * Addresses the caller may never reach, whatever the other options allow
+   * (this server's own public addresses for a tenant's code): checked on every
+   * hop's pinned address. Return a reason to refuse it.
+   */
+  refuseAddress?: (address: string, url: URL) => string | null
 }
 
 function hopOptions<T extends PinnedFetchOptions>(opts: T, url: URL): T {
@@ -289,6 +295,8 @@ export async function fetchWithPinnedHost(
     if (!allowPrivateLookup && !allowPrivateNotMetadata && isPrivateIp(pinned.address)) {
       throw new UnsafeOutboundUrlError("Outbound URL must not resolve to a private network")
     }
+    const refused = opts.refuseAddress?.(pinned.address, currentUrl)
+    if (refused) throw new UnsafeOutboundUrlError(refused)
 
     const hopInit: RuntimeFetchInit = {
       ...init,

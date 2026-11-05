@@ -25,6 +25,63 @@ function unwrap(body: unknown): Record<string, unknown> {
 }
 
 test.describe("Invoicing: credit notes", () => {
+  test("an intra-EU buyer VAT number VIES says is invalid is refused with a 422 and the reason", async ({
+    env,
+    world,
+    qa,
+  }) => {
+    expect(existsSync(INVOICING_BUNDLE)).toBe(true)
+    const installed = await installInvoicingApp({
+      serverUrl: env.serverUrl,
+      token: qa.admin.token,
+      orgId: world.org.id,
+      bundlePath: INVOICING_BUNDLE,
+      issuerCountry: "FR",
+      additionalContacts: [
+        {
+          country: "DE",
+          name: "Invalid VAT Kunde",
+          email: "invalid-vat@e2e.test",
+          customerKind: "individual",
+        },
+      ],
+    })
+    const resp = await api(env.serverUrl, "/api/apps/invoicing/tools/invoice_create_and_issue", {
+      method: "POST",
+      token: qa.admin.token,
+      body: {
+        params: {
+          counterparty: {
+            contact_id: installed.additionalContactIds[0],
+            legal_name: "Invalid VAT Kunde GmbH",
+            country: "DE",
+            // Unregistered in the VIES stand-in: VIES answers "invalid".
+            vat_id: "DE123456789",
+            address: "Hauptstrasse 5, 10115 Berlin, Germany",
+            email: "invalid-vat@e2e.test",
+          },
+          issuer_profile_id: installed.primaryIssuerProfileId,
+          currency: "EUR",
+          incoterm: "DAP",
+          items: [
+            {
+              position: 1,
+              description: "Tessera II unit",
+              quantity: "1",
+              unit_price_minor: "59900",
+              product_source: null,
+              external_id: null,
+            },
+          ],
+        },
+      },
+    })
+    expect(resp.status, JSON.stringify(resp.body)).toBe(422)
+    const error = ((resp.body ?? {}) as { error?: { code?: string; message?: string } }).error
+    expect(error?.code).toBe("vat_id_invalid")
+    expect(error?.message).toContain("DE123456789 is NOT valid")
+  })
+
   test("issuing a partial credit note against an invoice: CN numbering, negative totals, original linkage, UI surfaces", async ({
     page,
     env,
@@ -54,7 +111,8 @@ test.describe("Invoicing: credit notes", () => {
       contact_id: contactId,
       legal_name: "Credit Note Kunde GmbH",
       country: "DE",
-      vat_id: "DE123456789",
+      // Valid in the test stack's VIES stand-in (LIAISON_TEST_VIES_STUB, sandbox/bridge/test-vies.ts).
+      vat_id: "DE298765432",
       address: "Hauptstrasse 5, 10115 Berlin, Germany",
       email: "credit-note@e2e.test",
     }

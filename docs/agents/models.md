@@ -42,7 +42,7 @@ You need `kernel:org:admin`.
 2. Under **Auto**, choose what **Auto runs**. The default option is the cheapest model with a key.
 3. Under **Default reasoning level**, choose the **Reasoning level** for turns that set none: **Off**, **Low**, **Medium** or **High**. It applies to conversations, routines, agents and sub-agents without their own level, and to **Auto**. A level set on a conversation or routine still wins. A model that cannot run the chosen level runs at its own default (a model that cannot switch reasoning off never runs **Off**). **Built-in default** clears the setting.
 4. Under **Models switched on**, use the switch on each row to turn a model on or off. Every picker in the product lists exactly these models, for members, agents and routines.
-5. The table shows the **Model**, the price **In / out per M** tokens, the **Context** size and chips: **tools**, **no tools**, **reasoning** and **Auto**.
+5. The table shows the **Model**, the price **In / out per M** tokens, the **Context** size and chips: **tools**, **no tools**, **reasoning** and **Auto**. On a managed instance the price column is **Cost vs Auto**: what a turn costs in credits compared with Auto, from the list price of 3 input tokens for 1 output token, shown as ≈ 1.4× below 2× and as a whole number from 2× (≈ 3×). The model picker shows the same figure.
 
 Auto cannot run a model that is switched off or has no key. The page then says which model Auto runs instead. To switch off the model Auto runs, first pick another model for Auto.
 
@@ -66,7 +66,7 @@ OpenRouter gives access to many models with one key.
 1. Add an OpenRouter key under **Providers**, as above. Without it the catalogue is empty and says to add one first.
 2. Click **Add from OpenRouter**.
 3. Type in **Search OpenRouter models**. **Tool calling only** is on by default, because agents need tool calling to act. Without it a model can only answer.
-4. Click **Switch on** next to a model. Liaison makes a test call, then adds it.
+4. Click **Switch on** next to a model. Liaison makes a test call, then adds it. On a managed instance the test call runs on the service's key and uses a few of the organization's credits.
 
 A model with no fixed price cannot be added, because OpenRouter prices it per request. OpenRouter requests only go to providers that neither store nor train on your data and that support tool calls. A new conversation starts with the provider that is cheapest for cached input, and providers whose cached input is not at least half price are skipped. Each conversation then stays with the provider that answered its first request, so its prompt cache keeps working. It moves to another provider only when that one is down, failing or rate-limited, and then stays with the next cheapest one. A blocked provider never serves a request (see below).
 

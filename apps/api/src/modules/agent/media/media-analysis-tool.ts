@@ -11,6 +11,7 @@ import {
   getObjectBuffer as defaultGetObjectBuffer,
   headObject as defaultHeadObject,
 } from "~/infra/storage/object-storage"
+import { isManagedEdition } from "~/lib/edition"
 import { wrapExternalContent } from "~/lib/external-content"
 import { filesLogger as log } from "~/lib/logger"
 import { getOrgKernelSettings } from "~/lib/settings"
@@ -19,8 +20,11 @@ import {
   finalizeUsage as defaultFinalizeUsage,
   preCheck as defaultPreCheck,
 } from "~/modules/agent/credits/credit-meter"
+import { managedSideCallGate as defaultManagedSideCallGate } from "~/modules/agent/credits/managed-side-call"
 import {
   analyzeWithGemini as defaultAnalyzeWithGemini,
+  analyzeWithOpenRouter as defaultAnalyzeWithOpenRouter,
+  type MappedTokens,
   type MediaPart,
   redactSecrets,
 } from "~/modules/agent/media/media-analysis-client"
@@ -30,9 +34,12 @@ import {
   DOCUMENT_MAX_BYTES,
   IMAGE_MAX_LONG_EDGE_PX,
   INLINE_VIDEO_MAX_REQUEST_BYTES,
+  MANAGED_INLINE_MEDIA_MAX_BYTES,
+  MANAGED_MEDIA_ANALYSIS_UPSTREAM_ID,
   MEDIA_ANALYSIS_MODEL_ID,
   MEDIA_MAX_BYTES,
   type MediaKind,
+  managedMediaTooLargeMessage,
   resolveMediaAnalysisPermission,
   type SupportedSurface,
   VIDEO_END_OFFSET_SECONDS,
@@ -102,6 +109,10 @@ export interface MediaAnalysisToolDeps {
   headObject: typeof defaultHeadObject
   getObjectBuffer: typeof defaultGetObjectBuffer
   analyzeWithGemini: typeof defaultAnalyzeWithGemini
+  /** The managed edition's model call (S31): OpenRouter, zero data retention. */
+  analyzeWithOpenRouter: typeof defaultAnalyzeWithOpenRouter
+  /** The managed edition's spend gate for that call (D17 refusal, balance). */
+  managedSideCallGate: typeof defaultManagedSideCallGate
   preCheck: typeof defaultPreCheck
   finalizeUsage: typeof defaultFinalizeUsage
   enqueueAppJob: typeof defaultEnqueueAppJob
@@ -123,6 +134,8 @@ export const defaultMediaAnalysisToolDeps: MediaAnalysisToolDeps = {
   headObject: defaultHeadObject,
   getObjectBuffer: defaultGetObjectBuffer,
   analyzeWithGemini: defaultAnalyzeWithGemini,
+  analyzeWithOpenRouter: defaultAnalyzeWithOpenRouter,
+  managedSideCallGate: defaultManagedSideCallGate,
   preCheck: defaultPreCheck,
   finalizeUsage: defaultFinalizeUsage,
   enqueueAppJob: defaultEnqueueAppJob,
@@ -464,7 +477,13 @@ export async function handleAnalyzeMedia(
     // Inline only when the total request stays under the cap; the buffer is the
     // dominant term (prompt + instruction are small).
     const totalRequestBytes = normalized.buffer.byteLength + Buffer.byteLength(systemInstruction)
-    if (totalRequestBytes > INLINE_VIDEO_MAX_REQUEST_BYTES) {
+    // A managed cell has no slow path (A45: no Gemini Files API, no Google key
+    // on a cell): it sends up to its own inline limit and refuses above it.
+    if (isManagedEdition()) {
+      if (totalRequestBytes > MANAGED_INLINE_MEDIA_MAX_BYTES) {
+        return err("too_large", managedMediaTooLargeMessage())
+      }
+    } else if (totalRequestBytes > INLINE_VIDEO_MAX_REQUEST_BYTES) {
       // The slow job reads the stored object and stores its result on the file row: neither is
       // allowed for a private copy (whose video is refused before normalization anyway).
       if (!persistAllowed) {
@@ -538,28 +557,23 @@ async function runInlineModelCall(
   // 8. Credit + model (sync path only). On a billing/config refusal we do NOT
   //    persist analysis_status='error' (spec: "no model call" — a config refusal
   //    is not an analysis-attempt failure; mirrors thumbnail/proofread).
-  const pre = await deps.preCheck(ctx.orgId, MEDIA_ANALYSIS_MODEL_ID)
-  if (!pre.allowed) {
-    return err("precheck_failed", pre.reason)
+  const call = await planModelCall(deps, ctx, parts, systemInstruction)
+  if ("refused" in call) {
+    return err("precheck_failed", call.refused)
   }
 
   const ac = new AbortController()
   const timer = setTimeout(() => ac.abort("timeout"), deps.deadlineMs)
   try {
-    const { summary, usage } = await deps.analyzeWithGemini({
-      providerKey: pre.providerKey,
-      model: pre.model,
-      parts,
-      systemInstruction,
-      signal: ac.signal,
-    })
+    const { summary, usage, costUsd } = await call.run(ac.signal)
     clearTimeout(timer)
 
     await deps.finalizeUsage(ctx.orgId, {
-      model: pre.model,
+      model: call.model,
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
-      keySource: pre.keySource,
+      ...(costUsd !== undefined ? { providerCostUsd: costUsd } : {}),
+      keySource: call.keySource,
       userId: ctx.userId,
     })
 
@@ -612,6 +626,63 @@ async function runInlineModelCall(
     if (persist) await persistError(deps, ctx.orgId, fileId, message)
     log.error({ media: "analyze", code, fileId }, message)
     return err(code, message)
+  }
+}
+
+type MeteredModel = Parameters<typeof defaultFinalizeUsage>[1]["model"]
+
+/** The model call a sync analysis makes, its key and how it is metered; or a refusal. */
+type ModelCallPlan =
+  | {
+      model: MeteredModel
+      keySource: "liaison" | "byok"
+      run: (
+        signal: AbortSignal,
+      ) => Promise<{ summary: string; usage: MappedTokens; costUsd?: number | undefined }>
+    }
+  | { refused: string }
+
+/**
+ * Self-hosted: the Gemini call on the org's (or the deployment's) Google key,
+ * priced from its tokens, as before (S19). Managed (S31): the same prompt on
+ * OpenRouter with the cell's key and zero data retention, gated by the side-call
+ * gate and metered at OpenRouter's reported cost.
+ */
+async function planModelCall(
+  deps: MediaAnalysisToolDeps,
+  ctx: MediaAnalysisCaller,
+  parts: MediaPart[],
+  systemInstruction: string,
+): Promise<ModelCallPlan> {
+  if (isManagedEdition()) {
+    const gate = await deps.managedSideCallGate(ctx.orgId, MANAGED_MEDIA_ANALYSIS_UPSTREAM_ID)
+    if (!gate.allowed) return { refused: gate.reason }
+    return {
+      model: gate.model,
+      keySource: gate.keySource,
+      run: (signal) =>
+        deps.analyzeWithOpenRouter({
+          providerKey: gate.key,
+          parts,
+          systemInstruction,
+          signal,
+          orgId: ctx.orgId,
+        }),
+    }
+  }
+  const pre = await deps.preCheck(ctx.orgId, MEDIA_ANALYSIS_MODEL_ID)
+  if (!pre.allowed) return { refused: pre.reason }
+  return {
+    model: pre.model,
+    keySource: pre.keySource,
+    run: (signal) =>
+      deps.analyzeWithGemini({
+        providerKey: pre.providerKey,
+        model: pre.model,
+        parts,
+        systemInstruction,
+        signal,
+      }),
   }
 }
 

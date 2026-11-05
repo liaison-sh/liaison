@@ -21,6 +21,7 @@ import type { AppEnv } from "~/app"
 import { success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
 import { requireScope } from "~/middleware/require-scope"
+import { assertAppVisibleToOrg } from "~/modules/apps/app-org-scope"
 import {
   addOrgApp,
   disableOrgApp,
@@ -33,6 +34,12 @@ import {
 import type { OrgAppState } from "~/modules/apps/org-apps"
 
 export const orgAppRoutes = new Hono<AppEnv>()
+
+// Another org's custom app is not an app of this workspace (app-org-scope.ts).
+orgAppRoutes.use("/:app/*", async (c, next) => {
+  await assertAppVisibleToOrg(c.req.param("app") ?? "", c.get("orgId"))
+  await next()
+})
 
 function actorOf(userId: string | undefined): OrgAppActor {
   return { actorId: userId ?? null, actorType: "user" }

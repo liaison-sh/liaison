@@ -73,3 +73,46 @@ describe("control plane reply bounds", () => {
     expect(outbox.REPLY_MAX_BYTES).toBeLessThanOrEqual(64 * 1024)
   })
 })
+
+describe("usage report replies", () => {
+  const report = { type: "usage.report", messageId: "00000000-0000-4000-8000-000000000002" }
+  const reply = (data: unknown) => ({ status: 200, headers: new Headers(), body: { data } })
+  it("ok is delivered", () => {
+    expect(classifyReply(report, reply({ ok: true }), ctx)).toEqual({ kind: "delivered" })
+  })
+  it("a final ok:false (a control plane that did not record it) is refused with its code", () => {
+    expect(classifyReply(report, reply({ ok: false, code: "not_implemented" }), ctx)).toEqual({
+      kind: "refused",
+      error: "200 not_implemented",
+    })
+  })
+  it("billing_unavailable stays retryable", () => {
+    expect(classifyReply(report, reply({ ok: false, code: "billing_unavailable" }), ctx).kind).toBe(
+      "transient",
+    )
+  })
+  it("a trust refusal (a cell record being changed) is retried a bounded number of times, then refused", () => {
+    for (const code of ["unpinned_instance", "tenant_not_on_cell"]) {
+      const first = classifyReply({ ...report, attempts: 0 }, reply({ ok: false, code }), ctx)
+      expect(first).toMatchObject({ kind: "transient", error: `200 ${code}` })
+      const late = classifyReply(
+        { ...report, attempts: outbox.USAGE_REPORT_TRUST_RETRIES - 2 },
+        reply({ ok: false, code }),
+        ctx,
+      )
+      expect(late.kind).toBe("transient")
+      const last = classifyReply(
+        { ...report, attempts: outbox.USAGE_REPORT_TRUST_RETRIES - 1 },
+        reply({ ok: false, code }),
+        ctx,
+      )
+      expect(last).toEqual({ kind: "refused", error: `200 ${code}` })
+    }
+  })
+  it("a money message's final ok:false is still its delivered answer", () => {
+    const money = { type: "billing.topup", messageId: "00000000-0000-4000-8000-000000000003" }
+    expect(classifyReply(money, reply({ ok: false, code: "card_declined" }), ctx)).toEqual({
+      kind: "delivered",
+    })
+  })
+})

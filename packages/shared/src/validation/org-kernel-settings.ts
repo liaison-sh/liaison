@@ -411,6 +411,54 @@ export const DEMO_WORKSPACE_EXPIRED_CODE = "demo_workspace_expired"
 /** The websocket close code for an expired demo workspace (reason: the code above). */
 export const DEMO_WORKSPACE_EXPIRED_WS_CLOSE = 4003
 
+/**
+ * The machine code every user credential path answers with while the org is
+ * suspended or closed for billing (managed edition): a 403 whose `error` is an
+ * `OrgSuspendedError`, and the reason of the websocket close. Signed control
+ * plane calls, health and cell webhooks are not user credentials and never get it.
+ */
+export const ORG_SUSPENDED_CODE = "org_suspended"
+
+/** The websocket close code for a suspended org (reason: the code above). */
+export const ORG_SUSPENDED_WS_CLOSE = 4004
+
+/**
+ * An org moving to another instance (`@liaison/control-plane-contract`
+ * moves.ts): the 503 code with its `Retry-After`, and the websocket close the
+ * client answers by reconnecting every `ORG_MOVING_RETRY_AFTER_SECONDS`.
+ */
+export {
+  ORG_MOVING_CODE,
+  ORG_MOVING_RETRY_AFTER_SECONDS,
+  ORG_MOVING_WS_CLOSE,
+  type OrgMovingError,
+  orgMovingErrorSchema,
+} from "@liaison/control-plane-contract"
+
+/**
+ * The `error` object of the 403 `org_suspended` reply (`{ error: OrgSuspendedError }`):
+ * until when admins can still export and pay (null once closed, or when the
+ * control plane did not say), and the billing contact address to show (null
+ * when the control plane did not push one). Both come from the control plane.
+ */
+export const orgSuspendedErrorSchema = z
+  .object({
+    code: z.literal(ORG_SUSPENDED_CODE),
+    accessUntil: z.iso.datetime().nullable(),
+    contact: z.string().max(320).nullable(),
+    message: z.string().optional(),
+  })
+  .strict()
+export type OrgSuspendedError = z.infer<typeof orgSuspendedErrorSchema>
+
+/**
+ * The machine code of a 402 for metered use (AI calls, top-ups) while the org
+ * is past due or suspended: pay the open invoice in Billing first.
+ */
+export const PAYMENT_REQUIRED_CODE = "payment_required"
+/** A managed org's turn refused at zero credits: the row says so with the way to Billing. */
+export const OUT_OF_CREDITS_CODE = "out_of_credits"
+
 /** Has this demo org passed its expiry? False for a non-demo org or a null expiry. */
 export function isDemoOrgExpired(
   org: DemoMarkedOrg | null | undefined,

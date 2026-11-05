@@ -288,6 +288,50 @@ describe("full rebuild: shadow index, atomic swap", () => {
   })
 })
 
+// A rebuild holds one org's runtime at a time (S19: the leader's memory does
+// not grow with the org count): an org it alone set up is released after its
+// stream, an org other work set up stays set up.
+describe("full rebuild: org runtimes", () => {
+  it("releases an org it alone set up, keeps one set up before", async () => {
+    const { rebuildOrgRuntime } = await import("./reindex")
+    const { initializedOrgRuntimes } = await import("~/modules/apps/app-registries")
+    const { awaitOrgApps } = await import("~/modules/apps/init")
+    const { releaseOrgRuntimes } = await import("~/modules/apps/org-runtime-release")
+
+    await releaseOrgRuntimes([ORG], { gone: false })
+    expect(initializedOrgRuntimes.has(ORG)).toBe(false)
+    const release = await rebuildOrgRuntime(ORG)
+    expect(initializedOrgRuntimes.has(ORG)).toBe(true)
+    await release()
+    expect(initializedOrgRuntimes.has(ORG)).toBe(false)
+
+    await awaitOrgApps(ORG)
+    const keep = await rebuildOrgRuntime(ORG)
+    await keep()
+    expect(initializedOrgRuntimes.has(ORG)).toBe(true)
+
+    // Touched by other work while it streamed: stays set up.
+    await releaseOrgRuntimes([ORG], { gone: false })
+    const touched = await rebuildOrgRuntime(ORG)
+    await Bun.sleep(2)
+    await awaitOrgApps(ORG)
+    await touched()
+    expect(initializedOrgRuntimes.has(ORG)).toBe(true)
+  }, 60_000)
+
+  it("a whole rebuild leaves no org set up that it alone set up", async () => {
+    const { runReindex } = await import("./reindex")
+    const { initializedOrgRuntimes } = await import("~/modules/apps/app-registries")
+    const { releaseOrgRuntimes } = await import("~/modules/apps/org-runtime-release")
+    await releaseOrgRuntimes([...initializedOrgRuntimes], { gone: false })
+    expect(initializedOrgRuntimes.size).toBe(0)
+    const r = await runReindex()
+    expect(r.swapped).toBe(true)
+    expect(r.orgs).toBeGreaterThan(0)
+    expect([...initializedOrgRuntimes]).toEqual([])
+  }, 180_000)
+})
+
 // W2 review findings 3 and 4.
 describe("full rebuild: nothing noted is lost, the lock outlives a long org", () => {
   it("a replay that fails after the swap hands its requests to the live queue; a purge still lands", async () => {

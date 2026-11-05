@@ -195,7 +195,7 @@
       }
     ]
   },
-  "version": "0.23.2",
+  "version": "0.23.3",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {
@@ -2416,6 +2416,7 @@
       "description": "Pick which address a prep row's label goes to when the order's own ship-to and the customer's VERIFIED delivery address differ (prep_list shows address_check.state = differs). Until someone picks, create_shipment refuses to stage that row. choice 'order' ships to the order's ship-to, 'verified' to the verified address (pass its id from address_check.verified_address.id as address_id). A person decides this: never pick on your own judgment, ask the operator which one is right. The pick is voided as soon as either address changes, and the row is held again.",
       "requiredScopes": ["boxtal:shipments:write"],
       "handler": "prepSetAddressChoiceHandler",
+      "preflight": "prepSetAddressChoicePreflightHandler",
       "writesToTable": "app_boxtal.prep_order_state",
       "gated": true,
       "noAutoApprove": true,

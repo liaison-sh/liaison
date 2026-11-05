@@ -12,7 +12,8 @@ import {
 import { createAppContext } from "~/modules/apps/context"
 import { isAppOffForPathOrg } from "~/modules/apps/org-apps"
 import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { resolveToolTimeoutMs } from "~/modules/apps/sandbox/executor"
+import { createSandboxRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { executeManifestWebhook } from "~/modules/webhooks/manifest-execution"
 
 const log = rootLogger.child({ module: "webhook-worker" })
@@ -30,6 +31,11 @@ interface WebhookRetryJob {
    * older release carries none and runs unkeyed, as before.
    */
   deliveryId?: unknown
+}
+
+function budgetFor(declared: number | undefined): { timeoutMs?: number } {
+  const timeoutMs = resolveToolTimeoutMs(declared)
+  return timeoutMs ? { timeoutMs } : {}
 }
 
 const DELIVERY_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -144,18 +150,21 @@ async function runInTransaction(
         const handlerRef = reg.handler as ManifestHandlerRef
         const manifest = (reg as any)._manifest
         if (!manifest) throw new Error("manifest webhook handler missing _manifest metadata")
-        const bridge = createRpcBridge(appName, "system", orgId, tx, manifest)
+        const bridge = createSandboxRpcBridge(appName, "system", orgId, tx, manifest)
         const source = await loadBundle(handlerRef.bundlePath)
         // Re-supply the inbound headers persisted at enqueue time. The primary
         // delivery passes them as the 3rd handler arg; without them, header-
         // dependent handlers (e.g. Shopify keys dedup off x-shopify-webhook-id)
         // reject the retry and the side effect is lost permanently.
         await manifestExecutor({
+          appName,
           handlerRef,
           bundleSource: source,
           params: data.payload,
           bridge,
           extraArgs: [data.headers ?? {}],
+          // The same budget as the delivery it retries, through the tools' resolver.
+          ...budgetFor(reg.timeoutMs),
         })
       } else {
         const retryCtx = createAppContext(appName, "system", orgId, tx)

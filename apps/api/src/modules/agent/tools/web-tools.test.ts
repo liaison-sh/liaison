@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn
 import * as aiModule from "ai"
 import { sql } from "~/db"
 import { _setEdition } from "~/lib/edition"
+import { clearTestCreditPricing, setTestCreditPricing } from "~/tests/helpers/credit-pricing"
 
 const ORG_ID = "00000000-0000-0000-0000-000000d70001"
 const USER_ID = "00000000-0000-0000-0000-000000d70002"
@@ -452,6 +453,51 @@ describe("web tools", () => {
         // 0.00736125 USD reported, at 1.25 USD per EUR.
         expect(Number(rows[0].raw_cost)).toBeCloseTo(0.00736125 / 1.25, 8)
       })
+
+      // S31/A45: a managed cell searches on OpenRouter only, even when an Exa
+      // key resolves, and the search completion asks for zero data retention.
+      // Drop the managed branch of resolveWebSearchBackend: the first test gets
+      // Exa. Drop managedZdrRouting from the request: the body has no zdr.
+      it("managed: OpenRouter even with an Exa key, the body carries zdr and the pinned engine", async () => {
+        const { handleWebSearch, resolveWebSearchBackend } = await import("./web-tools")
+        process.env.EXA_API_KEY = "exa-env"
+        process.env.OPENROUTER_API_KEY = "or-env"
+        _setEdition("managed")
+        await setTestCreditPricing()
+        try {
+          expect(await resolveWebSearchBackend(ORG_ID)).toEqual({
+            backend: "openrouter",
+            key: "or-env",
+            source: "liaison",
+          })
+          const result = await handleWebSearch(
+            { query: "european news", numResults: 5 },
+            { userId: USER_ID, orgId: ORG_ID },
+          )
+          if ("error" in result) throw new Error(result.error)
+          expect(result.backend).toBe("openrouter")
+          const body = seen.at(-1)!
+          expect(body.plugins).toEqual([{ id: "web", engine: "exa", max_results: 5 }])
+          expect(body.provider).toMatchObject({ zdr: true, data_collection: "deny" })
+        } finally {
+          _setEdition(null)
+          await clearTestCreditPricing()
+        }
+      })
+
+      it("self-hosted: the search body carries no zdr (S19)", async () => {
+        const { handleWebSearch } = await import("./web-tools")
+        delete process.env.EXA_API_KEY
+        process.env.OPENROUTER_API_KEY = "or-env"
+        const result = await handleWebSearch(
+          { query: "european news", numResults: 5 },
+          { userId: USER_ID, orgId: ORG_ID },
+        )
+        if ("error" in result) throw new Error(result.error)
+        const provider = seen.at(-1)!.provider as Record<string, unknown>
+        expect(provider).toMatchObject({ data_collection: "deny", require_parameters: true })
+        expect(provider.zdr).toBeUndefined()
+      })
     })
 
     // Live-external test — gated behind EXA_LIVE so the standard regression never
@@ -472,11 +518,13 @@ describe("web tools", () => {
         console.log("[TRAIL] Calling Exa with query 'TypeScript runtime Bun'...")
         // Tool-usage billing only happens on a managed instance — exercise that path.
         _setEdition("managed")
+        await setTestCreditPricing()
         const result = await handleWebSearch(
           { query: "TypeScript runtime Bun", numResults: 3 },
           { userId: USER_ID, orgId: ORG_ID },
         )
         _setEdition(null)
+        await clearTestCreditPricing()
         console.log("[TRAIL] Exa response:", JSON.stringify(result, null, 2))
 
         // Must return results, not an error
@@ -699,6 +747,23 @@ describe("web tools", () => {
       expect(result.error).toContain("HTTP 202 and an empty page")
       expect(result.error).toContain("CRAWL_LIVECRAWL_TIMEOUT")
       expect(result.error).toContain("Run web_search for the document")
+    })
+
+    // A45/P3R-23: a managed cell never reads through Exa, even if an Exa key
+    // resolved: the direct-fetch answer is what web_fetch gives.
+    it("managed: a blocked page makes no Exa call and returns the direct-fetch answer", async () => {
+      await stubDirect(403, "")()
+      await stubExa(CACHED)
+      const { handleWebFetch, BLOCKED_SITE_NEXT_STEP } = await import("./web-tools")
+      _setEdition("managed")
+      try {
+        const result = (await handleWebFetch({ url: PAGE_URL }, { orgId: ORG_ID })) as any
+        expect(exaAsked).toEqual([])
+        expect(result.error).toContain("This site blocks automated reading (HTTP 403")
+        expect(result.error).toContain(BLOCKED_SITE_NEXT_STEP)
+      } finally {
+        _setEdition(null)
+      }
     })
 
     it("the fetch guards run first: a blocked domain or a private address never reaches Exa", async () => {

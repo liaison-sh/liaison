@@ -3,11 +3,11 @@ import { timingSafeEqual } from "node:crypto"
 import { and, eq } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import { organizations, users } from "~/db/schema/kernel"
-import { getSystemEmailProvider } from "~/infra/email"
+import { sendSystemEmailObserved } from "~/infra/email"
 import { renderBrandedEmail } from "~/infra/email-layout"
 import { generateNumericCode, generateToken, hashToken } from "~/lib/crypto"
-import { env } from "~/lib/env"
 import { authLogger as log } from "~/lib/logger"
+import { orgHostsEnabled, orgPublicBaseUrl } from "~/lib/org-public-url"
 import { redis } from "~/lib/redis"
 import { issueToken as issueRedisToken } from "~/lib/token-store"
 import { AuthServiceError, createSession } from "~/modules/auth/auth"
@@ -27,6 +27,21 @@ export class EmailSignInUnavailableError extends Error {
   constructor() {
     super("This demo can't send email. Sign in with your password.")
     this.name = "EmailSignInUnavailableError"
+  }
+}
+
+/**
+ * The mail provider is refusing this instance's mail as a whole (infra/email-outage.ts):
+ * no sign-in email can be promised. About the instance, the same for every address.
+ */
+export class EmailProviderUnavailableError extends Error {
+  readonly status = 403
+  readonly code = "EMAIL_PROVIDER_UNAVAILABLE"
+  constructor() {
+    super(
+      "We can't send email right now. Try again later, or sign in with your password if you have one.",
+    )
+    this.name = "EmailProviderUnavailableError"
   }
 }
 
@@ -61,8 +76,28 @@ interface ChallengeRecord {
   userId: string
   orgId: string
   email: string
-  codeHash: string
+  /** Null for a handoff challenge: it has no code, only its link. */
+  codeHash: string | null
   linkTokenHash: string
+  /** The host (`name[:port]`) the challenge may be verified on; absent = any. */
+  host?: string
+  /** A sign-in link handed to the owner by the operator: verified only after a "Continue". */
+  handoff?: boolean
+}
+
+export interface MintChallengeOptions {
+  /** Bind the challenge to this host: verifying it on any other is refused. */
+  host?: string
+  /** A handoff challenge: no code, and the page asks for "Continue" before signing in. */
+  handoff?: boolean
+}
+
+export interface MintedChallenge {
+  challengeId: string
+  linkToken: string
+  /** The 6-digit code, null for a handoff challenge. */
+  code: string | null
+  expiresAt: Date
 }
 
 export interface MagicLinkRequestResult {
@@ -72,6 +107,14 @@ export interface MagicLinkRequestResult {
 export type MagicLinkVerifyResult =
   | { accessToken: string; refreshToken: string; orgId: string; userId: string; admin: boolean }
   | { totpRequired: true; challengeToken: string }
+  | MagicLinkConfirmRequired
+
+/** A valid handoff link before "Continue": who and where, nothing signed in. */
+export interface MagicLinkConfirmRequired {
+  confirmRequired: true
+  workspace: { name: string; slug: string }
+  account: { email: string; name: string }
+}
 
 interface ResolvedUser {
   id: string
@@ -166,30 +209,14 @@ export async function requestMagicLink(
     return { challengeId }
   }
 
-  const code = generateNumericCode(6)
-  const linkToken = generateToken(32)
-  const record: ChallengeRecord = {
-    userId: user.id,
-    orgId: user.orgId,
-    email: email.toLowerCase(),
-    codeHash: hashToken(code),
-    linkTokenHash: hashToken(linkToken),
-  }
+  const base = await orgPublicBaseUrl(user.orgId)
+  // With org hosts, the emailed link works on its org's host only.
+  const minted = await mintChallenge(user, email, {
+    host: orgHostsEnabled() ? new URL(base).host : undefined,
+  })
+  const code = minted.code ?? ""
 
-  // Invalidate any prior in-flight challenge for this user (single active challenge).
-  const priorId = await redis.getdel(`${USER_POINTER_PREFIX}:${user.id}`)
-  if (priorId) {
-    await redis.del(`${CHALLENGE_PREFIX}:${priorId}`, `${ATTEMPTS_PREFIX}:${priorId}`)
-  }
-  await redis.set(
-    `${CHALLENGE_PREFIX}:${challengeId}`,
-    JSON.stringify(record),
-    "EX",
-    CHALLENGE_TTL_SECONDS,
-  )
-  await redis.set(`${USER_POINTER_PREFIX}:${user.id}`, challengeId, "EX", CHALLENGE_TTL_SECONDS)
-
-  const magicUrl = `${env.BASE_URL}/login/magic?challengeId=${encodeURIComponent(challengeId)}&token=${encodeURIComponent(linkToken)}`
+  const magicUrl = `${base}/login/magic?challengeId=${encodeURIComponent(minted.challengeId)}&token=${encodeURIComponent(minted.linkToken)}`
   const emailConfig = await getOrgEmailConfig(user.orgId)
   const subject = `${code} is your Liaison sign-in code`
   const { html, text } = renderBrandedEmail({
@@ -205,22 +232,65 @@ export async function requestMagicLink(
     footer: ["You're receiving this because a sign-in was requested for this email address."],
   })
   // Not awaited: an unknown address skips the send entirely, so waiting for the
-  // mail server would tell a caller which addresses have an account. A failure is
-  // logged, as before; the challenge simply never arrives and the user asks again.
-  void getSystemEmailProvider()
-    .send({
-      to: email,
-      from: emailConfig.from,
-      replyTo: emailConfig.replyTo,
-      subject,
-      html,
-      text,
-      template: "auth.sign-in-code",
-    })
-    .catch((err) => log.error({ err, userId: user.id }, "Failed to send magic-link email"))
+  // mail server would tell a caller which addresses have an account. A provider
+  // refusal becomes the instance's mail state, which the route reads for everybody.
+  void sendSystemEmailObserved({
+    to: email,
+    from: emailConfig.from,
+    replyTo: emailConfig.replyTo,
+    subject,
+    html,
+    text,
+    template: "auth.sign-in-code",
+  }).catch((err) => log.error({ err, userId: user.id }, "Failed to send magic-link email"))
 
   log.info({ userId: user.id }, "Magic-link challenge issued")
-  return { challengeId }
+  return { challengeId: minted.challengeId }
+}
+
+/**
+ * Store a sign-in challenge for `user` (link token and, unless a handoff, a
+ * 6-digit code; both hashed, 10 minutes, single use) and return its secrets.
+ * One active challenge per user: this invalidates the previous one. No rate
+ * cap here: the emailed path caps per account before calling it; a handoff is
+ * a signed operator request.
+ */
+export async function mintChallenge(
+  user: { id: string; orgId: string },
+  email: string,
+  opts: MintChallengeOptions = {},
+): Promise<MintedChallenge> {
+  const challengeId = generateToken(16)
+  const code = opts.handoff ? null : generateNumericCode(6)
+  const linkToken = generateToken(32)
+  const record: ChallengeRecord = {
+    userId: user.id,
+    orgId: user.orgId,
+    email: email.toLowerCase(),
+    codeHash: code === null ? null : hashToken(code),
+    linkTokenHash: hashToken(linkToken),
+    ...(opts.host !== undefined ? { host: opts.host } : {}),
+    ...(opts.handoff ? { handoff: true } : {}),
+  }
+
+  // Invalidate any prior in-flight challenge for this user (single active challenge).
+  const priorId = await redis.getdel(`${USER_POINTER_PREFIX}:${user.id}`)
+  if (priorId) {
+    await redis.del(`${CHALLENGE_PREFIX}:${priorId}`, `${ATTEMPTS_PREFIX}:${priorId}`)
+  }
+  await redis.set(
+    `${CHALLENGE_PREFIX}:${challengeId}`,
+    JSON.stringify(record),
+    "EX",
+    CHALLENGE_TTL_SECONDS,
+  )
+  await redis.set(`${USER_POINTER_PREFIX}:${user.id}`, challengeId, "EX", CHALLENGE_TTL_SECONDS)
+  return {
+    challengeId,
+    linkToken,
+    code,
+    expiresAt: new Date(Date.now() + CHALLENGE_TTL_SECONDS * 1000),
+  }
 }
 
 /** Constant-time comparison of two hex-encoded SHA-256 digests. */
@@ -248,6 +318,10 @@ export async function verifyMagicLink(input: {
   challengeId: string
   code?: string
   token?: string
+  /** The host the request came to; checked against a host-bound challenge. */
+  host?: string
+  /** The person clicked "Continue" on a handoff link. */
+  confirm?: boolean
 }): Promise<MagicLinkVerifyResult> {
   const { challengeId, code, token } = input
   const challengeKey = `${CHALLENGE_PREFIX}:${challengeId}`
@@ -258,6 +332,17 @@ export async function verifyMagicLink(input: {
   try {
     record = JSON.parse(raw) as ChallengeRecord
   } catch {
+    throw new AuthServiceError("Invalid or expired code", 401)
+  }
+
+  // A challenge bound to a host is refused anywhere else, and left intact: a
+  // link opened on the wrong host cannot be burnt from there either.
+  if (record.host !== undefined && input.host !== record.host) {
+    log.warn({ userId: record.userId }, "Magic-link challenge presented on another host")
+    throw new AuthServiceError("Invalid or expired code", 401)
+  }
+  // A handoff has no code: the code path is refused outright.
+  if (record.handoff && token === undefined) {
     throw new AuthServiceError("Invalid or expired code", 401)
   }
 
@@ -273,6 +358,9 @@ export async function verifyMagicLink(input: {
     if (!hashesEqual(hashToken(token), record.linkTokenHash)) {
       throw new AuthServiceError("Invalid or expired code", 401)
     }
+    // A handoff signs in only once the person saw where and as whom, and clicked
+    // "Continue" (no silent login from a link someone else sent them).
+    if (record.handoff && input.confirm !== true) return handoffPreview(record)
     // Link is single-use — consume immediately.
     await burn()
   } else {
@@ -291,7 +379,11 @@ export async function verifyMagicLink(input: {
       log.warn({ userId: record.userId }, "Magic-link code path locked for account")
       throw new AuthServiceError("Too many attempts", 429)
     }
-    if (code === undefined || !hashesEqual(hashToken(code), record.codeHash)) {
+    if (
+      code === undefined ||
+      record.codeHash === null ||
+      !hashesEqual(hashToken(code), record.codeHash)
+    ) {
       // Wrong code: counts against the challenge AND the account, and the
       // challenge stays alive for further attempts within both budgets.
       const wrong = await redis.incr(wrongKey)
@@ -336,4 +428,28 @@ export async function verifyMagicLink(input: {
   }
 
   return createSession(user.id, user.orgId)
+}
+
+/** What a handoff page shows before "Continue": the workspace and the account. */
+async function handoffPreview(record: ChallengeRecord): Promise<MagicLinkConfirmRequired> {
+  const [row] = await withSystemDb("magic-link-handoff-preview", (db) =>
+    db
+      .select({
+        orgName: organizations.name,
+        orgSlug: organizations.slug,
+        email: users.email,
+        name: users.name,
+        status: users.status,
+      })
+      .from(users)
+      .innerJoin(organizations, eq(organizations.id, users.orgId))
+      .where(and(eq(users.id, record.userId), eq(users.orgId, record.orgId)))
+      .limit(1),
+  )
+  if (row?.status !== "active") throw new AuthServiceError("Invalid credentials", 401)
+  return {
+    confirmRequired: true,
+    workspace: { name: row.orgName, slug: row.orgSlug },
+    account: { email: row.email, name: row.name },
+  }
 }

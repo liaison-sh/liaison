@@ -8,6 +8,7 @@ import DesktopUpdateCard from "~/modules/desktop/DesktopUpdateCard"
 import { I18nProvider, useI18n } from "~/modules/i18n/i18n-context"
 import ClientVersionNotice from "~/modules/shell/ClientVersionNotice"
 import CompatModeNotice from "~/modules/shell/CompatModeNotice"
+import { OrgSuspendedRoot } from "~/modules/shell/OrgSuspendedRoot"
 import { Shell } from "~/modules/shell/Shell"
 import WebUpdateBanner from "~/modules/shell/WebUpdateBanner"
 import { webBuildWatcher } from "~/modules/shell/web-update"
@@ -128,7 +129,7 @@ const App: Component = () => {
     <ErrorBoundary fallback={AppErrorFallback}>
       <I18nProvider initialLocale={initialLocale}>
         <Suspense fallback={<AppSuspenseFallback />}>
-          <Router>
+          <Router root={OrgSuspendedRoot}>
             {/* Auth routes — no shell */}
             <Route path="/login" component={Login} />
             <Route path="/login/magic" component={MagicLinkVerify} />

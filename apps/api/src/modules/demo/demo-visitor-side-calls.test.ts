@@ -3,13 +3,13 @@
 // A demo visitor's paid calls OUTSIDE a turn: dictation, and the side calls
 // (compaction, checkpoint briefs, the magic wand, ticket summaries) that all
 // take a `preCheck` and settle through `finalizeUsage({ demo })` or
-// `settleReservedDemoSideCall`. Real gate, real Redis, real ledger; only the
+// `meterSideCall`. Real gate, real Redis, real ledger; only the
 // speech provider is a stub.
 //
 // ── THE MUTATIONS THAT PROVE THESE BITE ────────────────────────────────────
 //  * Drop the visitor reservation from `transcribe`'s `start`: the verified
 //    dictation gets no key (resolveKey refuses) and the test fails.
-//  * Drop the `credit.demo` branch from `settleReservedDemoSideCall`: the side
+//  * Drop the `credit.demo` branch from `meterSideCall`: the side
 //    call's hold is never settled and the ledger stays at 0.
 //  * Drop the `finally` settle from consolidation's `defaultFlush`: a
 //    checkpoint flush that sent nothing keeps its step reservation, and the
@@ -34,8 +34,8 @@ import { REDIS_PREFIX, redis } from "~/lib/redis"
 import { CompactionTestAccess, runMemoryFlush } from "~/modules/agent/context/compaction"
 import {
   finalizeUsage,
+  meterSideCall,
   preCheck,
-  settleReservedDemoSideCall,
   visitorStepBase,
 } from "~/modules/agent/credits/credit-meter"
 import { flushRegion, type RegionMessage } from "~/modules/agent/memory/consolidation"
@@ -240,11 +240,11 @@ describe("a demo visitor's paid calls outside a turn", () => {
     const id = spendOn()
     const used = await preCheck(org, null)
     if (!used.allowed) throw new Error(used.reason)
-    await settleReservedDemoSideCall(org, used, { inputTokens: 1_000, outputTokens: 100 })
+    await meterSideCall(org, used, { inputTokens: 1_000, outputTokens: 100 })
     expect((await snapshot(id)).usedMicroEur).toBe(268 + 108)
     const empty = await preCheck(org, null)
     if (!empty.allowed) throw new Error(empty.reason)
-    await settleReservedDemoSideCall(org, empty, null)
+    await meterSideCall(org, empty, null)
     expect((await snapshot(id)).usedMicroEur).toBe(268 + 108)
     expect(await redis.keys(`${REDIS_PREFIX}demo:b:r:*`)).toEqual([])
   })
@@ -256,7 +256,7 @@ describe("a demo visitor's paid calls outside a turn", () => {
     const credit = await preCheck(org, null)
     if (!credit.allowed) throw new Error(credit.reason)
     const reportedUsd = 0.00123
-    await settleReservedDemoSideCall(
+    await meterSideCall(
       org,
       credit,
       { inputTokens: 100_000, outputTokens: 2_000 },
@@ -289,7 +289,7 @@ describe("a demo visitor's paid calls outside a turn", () => {
     if (!credit.allowed) throw new Error(credit.reason)
     expect(credit.keySource).toBe("byok")
     expect(credit.demo).toBeUndefined()
-    await settleReservedDemoSideCall(
+    await meterSideCall(
       org,
       credit,
       { inputTokens: 5_000, outputTokens: 100 },
@@ -360,7 +360,7 @@ describe("a demo visitor's paid calls outside a turn", () => {
     await generateText({ model, prompt: "brief", maxRetries: 0 }).catch(() => undefined)
     expect(upstream.requests()).toBe(1)
     // The caller read no usage (what checkpoint.ts does on a failure).
-    await settleReservedDemoSideCall(org, credit, null)
+    await meterSideCall(org, credit, null)
     expectHeldInFull((await snapshot(id)).usedMicroEur)
   })
 
@@ -649,6 +649,9 @@ describe("a demo visitor's paid calls outside a turn", () => {
     CompactionTestAccess.setMemoryFlushGenerate(async () => {
       generated++
     })
+    // The summary's pre check, passed on WITHOUT its demo meter (as runCompaction does).
+    const credit = await preCheck(org, null)
+    if (!credit.allowed) throw new Error(credit.reason)
     try {
       const ran = await runMemoryFlush({
         orgId: org,
@@ -658,11 +661,13 @@ describe("a demo visitor's paid calls outside a turn", () => {
         messages: [{ role: "user", content: "remember this" }],
         inputBudgetTokens: 10_000,
         requiredScopes: [],
+        credit: { model: credit.model, keySource: credit.keySource },
       })
       expect(ran).toBe(false)
       expect(generated).toBe(0)
     } finally {
       CompactionTestAccess.setMemoryFlushGenerate()
+      await meterSideCall(org, credit, null)
     }
   })
 })

@@ -7,6 +7,7 @@ import { z } from "zod"
 import type { AppEnv } from "~/app"
 import { withPrivilegedDb } from "~/db/privileged"
 import { organizations } from "~/db/schema/kernel"
+import { isManagedEdition } from "~/lib/edition"
 import { redis } from "~/lib/redis"
 import { success } from "~/lib/response"
 import { getOrgKernelSettings } from "~/lib/settings"
@@ -15,7 +16,7 @@ import { resolveKnownSurfacePermission } from "~/modules/agent/media/media-analy
 import { bumpOrgPermissionVersions, hasSecondFactor } from "~/modules/auth/admin-second-factor"
 import { invalidateAuthCache } from "~/modules/auth/auth-state"
 import { isDemoOrgId } from "~/modules/demo/demo-org"
-import { getOrgUsage } from "~/modules/org/caps"
+import { assertAuditDaysWithinCap, getOrgUsage, readOrgCaps } from "~/modules/org/caps"
 import { hasScope } from "~/modules/permissions/permissions"
 
 export const org = new Hono<AppEnv>()
@@ -62,6 +63,20 @@ export function stripSensitiveSettings(settings: unknown): unknown {
   return redactSecretKeys(out)
 }
 
+/**
+ * The org's pushed sending key (managed edition, `cloudSender.keyCiphertext`,
+ * modules/cloud/mail-sender.ts) never reaches a browser, admins included: it is
+ * the control plane's to rotate, nobody's to read.
+ */
+function withoutCloudSenderKey(settings: unknown): unknown {
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) return settings
+  const all = settings as Record<string, unknown>
+  const sender = all.cloudSender
+  if (!sender || typeof sender !== "object" || Array.isArray(sender)) return settings
+  const { keyCiphertext: _key, ...rest } = sender as Record<string, unknown>
+  return { ...all, cloudSender: rest }
+}
+
 org.get("/", async (c) => {
   const orgId = c.get("orgId")
   const scopes = c.get("scopes") ?? []
@@ -91,7 +106,7 @@ org.get("/", async (c) => {
   if (!hasScope("kernel:org:admin", scopes)) {
     return success(c, { ...orgRow, settings: stripSensitiveSettings(orgRow.settings), demo })
   }
-  return success(c, { ...orgRow, demo })
+  return success(c, { ...orgRow, settings: withoutCloudSenderKey(orgRow.settings), demo })
 })
 
 org.patch("/", zValidator("json", updateOrgSchema), async (c) => {
@@ -135,6 +150,17 @@ org.patch("/", zValidator("json", updateOrgSchema), async (c) => {
       })
     }
   }
+  // The audit retention in the managed edition (S24, P3R-16): the admin's
+  // choice is stored apart (`auditRetentionDaysChosen`), never above the
+  // plan's `auditDays`; the retention job keeps min(choice ?? cap, cap). A
+  // self-hosted org writes `auditRetentionDays` as always.
+  let settingsToMerge: Record<string, unknown> | undefined = updates.settings
+  if (isManagedEdition() && patchSettings.auditRetentionDays !== undefined) {
+    const days = patchSettings.auditRetentionDays
+    assertAuditDaysWithinCap(await readOrgCaps(orgId), days)
+    const { auditRetentionDays: _sold, ...rest } = patchSettings
+    settingsToMerge = { ...rest, auditRetentionDaysChosen: days }
+  }
   let bumpedUserIds: string[] = []
 
   const updated = await withPrivilegedDb(orgId, "org-update", async (tx) => {
@@ -153,7 +179,7 @@ org.patch("/", zValidator("json", updateOrgSchema), async (c) => {
     // An admin choosing the time zone is what makes it the org's clock for
     // quiet hours (notifications/quiet-window.ts); the column default is not.
     const settingsPatch = {
-      ...(updates.settings ?? {}),
+      ...(settingsToMerge ?? {}),
       ...(updates.timezone !== undefined ? { timezoneSet: true } : {}),
     }
     if (Object.keys(settingsPatch).length > 0) {

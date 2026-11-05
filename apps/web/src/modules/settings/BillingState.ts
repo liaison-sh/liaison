@@ -8,15 +8,21 @@ export type BillingState =
       byokEnabled: boolean
     }
   | {
+      // The managed edition: the state the control plane last pushed to this
+      // server, served by the server itself. It carries no payment page URL.
       mode: "managed"
+      plan: "preview" | "base" | "pro"
       tier: string
       status: string
-      billingPortalUrl: string
-      checkoutUrl: string
-      includedCredits: string
       periodEnd: string
-      stale: boolean
-      fetchedAt?: string
+      includedCredits: string
+      previewEndsAt: string | null
+      autoTopUp: {
+        enabled: boolean
+        thresholdCredits: number
+        amountCredits: number
+        lastFailure?: { code: string; at: string }
+      }
     }
   | {
       mode: "managed"

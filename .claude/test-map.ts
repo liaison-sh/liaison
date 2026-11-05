@@ -96,6 +96,12 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   // The socket and other shared reactive primitives: the blip and live-order
   // scenarios (playwright) drive them end to end.
   { glob: "apps/web/src/primitives/**", suites: ["web-unit", "playwright"] },
+  // The root component and its routes: App.test and reserved-web-routes (web-unit),
+  // the testids the tours name (guards), the whole shell in the browser (playwright).
+  { glob: "apps/web/src/App.tsx", suites: ["web-unit", "guards", "playwright"] },
+  // Vite's config: the zod alias zod-jitless.test reads (web-unit), the mobile
+  // build's stand-in alias and plugin checks (mobile), the served bundle (playwright).
+  { glob: "apps/web/vite.config.ts", suites: ["web-unit", "mobile", "playwright"] },
 
   // Shared packages. The SDK's manifest format and the requiredScopes guards
   // (in api-guards) must move together.
@@ -196,6 +202,8 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
 
   // Scripts
   { glob: "scripts/check-bundled-app-purity*", suites: ["unit"] },
+  // The freezer: the bundled-app build round-trips freeze through it.
+  { glob: "scripts/freeze-app*", suites: ["bundled-freeze"] },
   // The test runner and its helpers: the runner's own unit tests (root) and
   // the suite-routing guards that read scripts/test-run.ts (guards).
   { glob: "scripts/test-run*.ts", suites: ["root", "guards"] },
@@ -206,6 +214,32 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   { glob: "scripts/slots.ts", suites: ["root"] },
   { glob: "scripts/lib/**", suites: ["root"] },
   { glob: ".claude/test-map.ts", suites: ["root"] },
+  // The docs map feeds check-docs (its test is in root) and ci-scope (guards).
+  { glob: ".claude/docs-map.ts", suites: ["root", "guards"] },
+  { glob: "scripts/backup-secrets*", suites: ["root"] },
+  // Read only by CI's gitleaks job (.github/workflows/codeql.yml); no test reads it.
+  { glob: ".gitleaks.toml", suites: [] },
+  // A lockfile change can move any dependency of any workspace: every core
+  // suite, plus the frozen bundled-app artifacts that embed their dependencies.
+  {
+    glob: "bun.lock",
+    suites: [
+      "unit",
+      "integration",
+      "integration-extra",
+      "integration-mocked",
+      "e2e-parallel",
+      "security",
+      "web-unit",
+      "playwright",
+      "workspace-packages",
+      "shared",
+      "api-guards",
+      "guards",
+      "root",
+      "bundled-freeze",
+    ],
+  },
   // The api-connector doc generator, its drift test, and the doc + skill it checks.
   { glob: "scripts/api-connector-schema-doc*", suites: ["root"] },
   { glob: "docs/api-connector.md", suites: ["root"] },

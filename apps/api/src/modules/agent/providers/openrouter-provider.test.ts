@@ -66,7 +66,12 @@ describe("OpenRouter provider (S1)", () => {
     expect(bodies.length).toBe(1)
     expect(bodies[0]!.url).toBe("https://openrouter.ai/api/v1/chat/completions")
     expect(bodies[0]!.body.model).toBe("deepseek/deepseek-v4.1-flash")
-    expect(bodies[0]!.body.provider).toEqual({ data_collection: "deny", require_parameters: true })
+    expect(bodies[0]!.body.provider).toEqual({
+      data_collection: "deny",
+      require_parameters: true,
+      // LIAISON_OPENROUTER_IGNORE_HOSTS defaults to OpenInference (env.ts).
+      ignore: ["OpenInference"],
+    })
   })
 
   it("keeps the routing options next to the reasoning options", async () => {
@@ -75,7 +80,12 @@ describe("OpenRouter provider (S1)", () => {
       canDisableReasoning: true,
     })
     const bodies = await captureBody(plan.providerOptions)
-    expect(bodies[0]!.body.provider).toEqual({ data_collection: "deny", require_parameters: true })
+    expect(bodies[0]!.body.provider).toEqual({
+      data_collection: "deny",
+      require_parameters: true,
+      // LIAISON_OPENROUTER_IGNORE_HOSTS defaults to OpenInference (env.ts).
+      ignore: ["OpenInference"],
+    })
     expect(bodies[0]!.body.reasoning).toEqual({ effort: "low" })
   })
 

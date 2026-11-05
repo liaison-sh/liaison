@@ -241,7 +241,7 @@ describe("the one-time picker page", () => {
       const accountId = await driveAccount(alice, "alice3@gmail.com", [DRIVE_FILE])
       const who = { orgId, userId: alice, scopes: SCOPES, dimensionGrants: {}, roles: [] }
       const ticket = await createPickerTicket({ ...who, accountId, identifier: "alice3@gmail.com" })
-      expect(pickerPageUrl(ticket)).toEndWith(`/api/drive-picker/${ticket}`)
+      expect(await pickerPageUrl(orgId, ticket)).toEndWith(`/api/drive-picker/${ticket}`)
 
       // The test account holds no token: the page says to reconnect, with its own policy.
       const first = await page.request(`/api/drive-picker/${ticket}`)

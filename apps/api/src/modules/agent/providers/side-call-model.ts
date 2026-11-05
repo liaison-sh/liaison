@@ -26,7 +26,13 @@ export async function resolveSideCallModel(
     model: {
       provider: string
       modelId: string
-      upstreamId?: string
+      /**
+       * The id the provider is sent (an added OpenRouter model's `deepseek/...`,
+       * never its key `openrouter/deepseek/...`). Required: build the call from a
+       * resolved ModelInfo (`preCheck`, `resolveUnmeteredSideCall`), never from a
+       * bare Auto selection.
+       */
+      upstreamId: string
       baseURL?: string
       stepTokenCap?: StepTokenCap | null
     }

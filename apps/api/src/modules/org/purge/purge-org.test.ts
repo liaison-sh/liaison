@@ -247,6 +247,7 @@ describe("the org purge core", () => {
     expect(steps).toEqual([
       "triggers",
       "disconnect",
+      "custom-apps",
       "rows",
       "search",
       "objects",

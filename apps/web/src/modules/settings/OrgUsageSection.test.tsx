@@ -5,6 +5,7 @@
 import { Route, Router } from "@solidjs/router"
 import { render, screen } from "@solidjs/testing-library"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { BillingStateTestAccess } from "~/modules/settings/BillingState"
 import OrgUsageSection from "~/modules/settings/OrgUsageSection"
 import { ApiProvider } from "~/modules/shell/ApiContext"
 
@@ -63,6 +64,19 @@ describe("OrgUsageSection", () => {
     expect(screen.getByTestId("org-usage-storage-reached")).toBeInTheDocument()
     expect(screen.getByTestId("org-usage-jobs").dataset.state).toBe("at-limit")
     expect(screen.getByTestId("org-usage-jobs-reached")).toBeInTheDocument()
+  })
+
+  it("on a managed workspace the line points at the plan, not at whoever runs the server", async () => {
+    BillingStateTestAccess.setMode("managed")
+    try {
+      renderWith({ data: USAGE })
+      await screen.findByTestId("org-usage-list")
+      const help = screen.getByTestId("org-usage-help").textContent ?? ""
+      expect(help).toContain("Your plan sets these limits")
+      expect(help).not.toContain("whoever runs the server")
+    } finally {
+      BillingStateTestAccess.reset()
+    }
   })
 
   it("is read only and calm: no control, no alarm colour, one line on who sets limits", async () => {

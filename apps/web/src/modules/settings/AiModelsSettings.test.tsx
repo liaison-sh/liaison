@@ -9,6 +9,7 @@ import { ApiError } from "~/lib/api-error"
 import { resetCreditsStore } from "~/modules/agent/credits/credits-store"
 import { I18nProvider } from "~/modules/i18n/i18n-context"
 import AiModelsSettings from "~/modules/settings/AiModelsSettings"
+import { BillingStateTestAccess } from "~/modules/settings/BillingState"
 import { ApiContext } from "~/modules/shell/ApiContext"
 
 const reasoningAll = { allowedLevels: ["off", "low", "medium", "high"], defaultLevel: "off" }
@@ -652,5 +653,42 @@ describe("AI models: voice dictation", () => {
     })
     fireEvent.click(screen.getByTestId("provider-key-save-openai"))
     await waitFor(() => expect(reads()).toBe(2))
+  })
+})
+
+describe("AI models: the managed edition shows multipliers, never money (S18, A33)", () => {
+  const managedPayload = () => {
+    const base = adminPayload()
+    return {
+      ...base,
+      models: base.models.map(({ inputCostPerM: _i, outputCostPerM: _o, ...m }, i) => ({
+        ...m,
+        multiplier: [1, 1.4, 3][i] ?? null,
+      })),
+    }
+  }
+  const managedCatalogue = CATALOGUE.map(({ inputCostPerM: _i, outputCostPerM: _o, ...r }) => ({
+    ...r,
+    multiplier: 3,
+  }))
+  beforeEach(() => BillingStateTestAccess.setMode("managed"))
+  afterEach(() => BillingStateTestAccess.reset())
+
+  it("lists models with ≈ N× against Auto and hides provider keys and own servers", async () => {
+    payload = managedPayload() as unknown as ReturnType<typeof adminPayload>
+    setup({
+      get: (path) =>
+        path.startsWith("/settings/ai/openrouter/catalogue") ? managedCatalogue : undefined,
+    })
+    const table = await screen.findByTestId("ai-models-table")
+    await waitFor(() => expect(table.textContent).toContain("≈ 1.4×"))
+    expect(screen.getByTestId("ai-models-auto-runs").textContent).toContain("≈ 1×")
+    expect(screen.queryByTestId("ai-models-providers")).toBeNull()
+    expect(screen.queryByTestId("ai-models-open-server")).toBeNull()
+    expect(document.body.textContent ?? "").not.toMatch(/API key|with a key/)
+    fireEvent.click(screen.getByTestId("ai-models-open-catalogue"))
+    const row = await screen.findByTestId("catalogue-row-deepseek/deepseek-v4.1-flash")
+    expect(row.textContent).toContain("≈ 3×")
+    expect(document.body.textContent ?? "").not.toMatch(/€|EUR|USD|\$/)
   })
 })

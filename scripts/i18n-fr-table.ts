@@ -27,7 +27,11 @@ export const FR: Record<string, string> = {
   "Usage and limits": "Utilisation et limites",
   "Limits are set by whoever runs the server. You can see them here but not change them.":
     "Les limites sont fixées par la personne qui gère le serveur. Vous les voyez ici sans pouvoir les modifier.",
+  "Your plan sets these limits. To raise them, choose a larger plan in Billing.":
+    "Votre forfait fixe ces limites. Pour les relever, choisissez un forfait supérieur dans Facturation.",
   Seats: "Places",
+  "Custom apps": "Applications personnalisées",
+  "Audit log days": "Jours de journal d'audit",
   "Active people": "Personnes actives",
   Mailboxes: "Boîtes mail",
   "Connected addresses": "Adresses connectées",
@@ -47,6 +51,13 @@ export const FR: Record<string, string> = {
     "{{label}} : {{shown}} utilisés, 80 % de la limite.",
   "Background work past the limit waits for the next hour.":
     "Les tâches de fond au-delà de la limite attendent l'heure suivante.",
+  "The cheapest model": "Le modèle le moins cher",
+  "New files from people and agents are refused until you move to a plan with more storage in Billing or free space.":
+    "Les nouveaux fichiers des personnes et des agents sont refusés jusqu'à ce que vous passiez à une offre avec plus de stockage dans Facturation ou libériez de l'espace.",
+  "Move to a plan with more storage in Billing or free space, otherwise new files will be refused once storage is full.":
+    "Passez à une offre avec plus de stockage dans Facturation ou libérez de l'espace, sinon les nouveaux fichiers seront refusés une fois le stockage plein.",
+  "Your plan sets this limit. A larger plan in Billing raises it.":
+    "Votre offre fixe cette limite. Une offre supérieure dans Facturation la relève.",
   "New files from people and agents are refused until you upgrade your plan or free space (ask whoever runs the server to raise the limit).":
     "Les nouveaux fichiers des personnes et des agents sont refusés jusqu'à ce que vous passiez à une offre supérieure ou libériez de l'espace (demandez à la personne qui gère le serveur de relever la limite).",
   "Upgrade your plan or free space (ask whoever runs the server to raise the limit), otherwise new files will be refused once storage is full.":
@@ -2705,6 +2716,9 @@ export const FR: Record<string, string> = {
   "This sign-in link is invalid or has expired.":
     "Ce lien de connexion n'est pas valide ou a expiré.",
   "Back to sign in": "Retour à la connexion",
+  "Sign in to {{workspace}}": "Se connecter à {{workspace}}",
+  "You are signing in as {{email}}.": "Vous vous connectez en tant que {{email}}.",
+  "Continue only if you asked for this link.": "Continuez uniquement si vous avez demandé ce lien.",
   "Full name": "Nom complet",
   "Create account": "Créer le compte",
   "We'll email you a sign-in code, no password required.":
@@ -5019,6 +5033,7 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.nav.monitoring": "Supervision",
   "kernel.nav.search": "Recherche",
   "kernel.nav.section.dataExport": "Export des données",
+  "kernel.nav.section.billing": "Facturation",
   "kernel.nav.section.dimensionGrants": "Équipe et permissions",
   "kernel.nav.section.mailSetup": "Configuration mail",
   "kernel.permissionModeAuto": "Auto",
@@ -7460,6 +7475,28 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.aiModels.blockedHostsReset": "Rétablir la valeur par défaut",
   "kernel.aiModels.blockedHostsSaveFailed": "Les hôtes bloqués n'ont pas pu être enregistrés.",
   "kernel.aiModels.blockedHostsMax": "{{max}} hôtes au maximum.",
+  "kernel.settingsUi.oauthConnectAccountPersonal":
+    "Vous vous connectez à {{app}} dans votre navigateur. Le compte choisi est connecté pour vous seul.",
+  "kernel.settingsUi.oauthConnectAccountOrg":
+    "Vous vous connectez à {{app}} dans votre navigateur. Le compte choisi est connecté pour toute l'organisation.",
+  "kernel.settingsUi.oauthUseOwnClient": "Utiliser votre propre client OAuth",
+  "kernel.settingsUi.oauthReplaceClientHint":
+    "Saisissez l'ID client et le secret depuis la console développeur du fournisseur. Ils remplacent le client utilisé actuellement par cette application.",
+  "kernel.dictationErrors.billingUnavailable":
+    "La dictée est momentanément indisponible : la configuration de facturation de cet espace de travail est incomplète. Réessayez dans un instant.",
+  "kernel.dictationErrors.paymentRequired":
+    "La dictée est suspendue jusqu'au paiement de la facture en attente. Un administrateur peut la régler dans Facturation.",
+  "kernel.usage.creditsLeft": "Crédits restants",
+  "kernel.usage.creditsAmount": "{{amount}} crédits",
+  "kernel.usage.creditsBreakdown": "{{included}} inclus · {{purchased}} achetés",
+  "kernel.usage.periodUsed": "{{percent}} % des crédits de la période utilisés",
+  "kernel.usage.periodAvailable": "{{used}} crédits utilisés sur {{available}} cette période",
+  "kernel.aiModels.colCost": "Coût par rapport à Auto",
+  "kernel.aiModels.autoRunsCredits": "Actuellement {{model}}, {{multiplier}}",
+  "kernel.aiModels.multiplierHint": "Crédits consommés par un tour, comparés à Auto",
+  "kernel.aiModels.voicePerMinuteCredits": "{{amount}} crédits / min",
+  "kernel.orgUsage.personalMailboxLimitReached":
+    "Vous avez déjà une boîte mail personnelle connectée, et chaque personne en a une. Déconnectez-la d'abord, ou demandez à un administrateur de connecter cette adresse comme boîte partagée.",
   "kernel.deviceApproval.stepUpPrompt":
     "L'accès complet demande une confirmation de plus : un code que nous vous envoyons par mail.",
   "kernel.deviceApproval.stepUpCodeLabel": "Code reçu par mail",

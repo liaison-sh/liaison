@@ -7,10 +7,12 @@ import { join } from "node:path"
 import type { AppRegistryEntry } from "@liaison/app-sdk"
 import { and, eq } from "drizzle-orm"
 import { Hono } from "hono"
+import { createMiddleware } from "hono/factory"
 import { HTTPException } from "hono/http-exception"
 import type { AppEnv } from "~/app"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
+import { isManagedEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
 import { appsLogger as log } from "~/lib/logger"
 import { fetchWithPinnedHost, UnsafeOutboundUrlError } from "~/lib/outbound-fetch"
@@ -24,6 +26,15 @@ import {
   rollbackApp,
 } from "~/modules/apps/activation"
 import {
+  appOwnerOrg,
+  appVisibleToOrg,
+  CustomAppDisabledError,
+  customAppOrgKey,
+  expectedCustomAppName,
+  isCustomAppDisabled,
+  isOrgPrivateApp,
+} from "~/modules/apps/app-org-scope"
+import {
   assertValidAppName,
   installFromCatalog,
   listMergedCatalog,
@@ -36,7 +47,11 @@ import {
   uninstallApp,
 } from "~/modules/apps/install-service"
 import { getInstallTrust, resetInstallTrustCache } from "~/modules/apps/install-trust"
-import { canManageInstanceApps, requireInstanceOperator } from "~/modules/apps/operator-org"
+import {
+  assertCanManageInstanceApps,
+  canManageInstanceApps,
+  requireInstanceOperator,
+} from "~/modules/apps/operator-org"
 import { otherWorkspacesWithApp } from "~/modules/apps/org-app-admin"
 import { peekOrgAppState, primeOrgApps } from "~/modules/apps/org-apps"
 import {
@@ -91,6 +106,41 @@ function resolveSignatureConfig(): { requireSignature: boolean; cosignIdentityRe
   }
   return { requireSignature, cosignIdentityRegex }
 }
+
+/**
+ * The signature rule of an app's upgrade: an org's custom app is the org's own
+ * code under the tenant boundary (app-org-scope.ts), never a trusted
+ * publisher's, so it needs no signature; any other app keeps the instance rule.
+ */
+async function signatureConfigFor(
+  name: string,
+): Promise<{ requireSignature: boolean; cosignIdentityRegex?: string }> {
+  return (await isOrgPrivateApp(name)) ? { requireSignature: false } : resolveSignatureConfig()
+}
+
+/**
+ * The gate of the routes that act on ONE installed app by name. An org's
+ * custom app (A46) is managed by its own org alone: any other org, the
+ * operator's included, gets 404 as if it did not exist. Every other app keeps
+ * the instance-operator rule (`requireInstanceOperator`).
+ */
+const requireAppManager = createMiddleware<AppEnv>(async (c, next) => {
+  const name = c.req.param("name") ?? ""
+  if (await isOrgPrivateApp(name)) {
+    if ((await appOwnerOrg(name)) !== c.get("orgId")) {
+      throw new HTTPException(404, { message: `App '${name}' is not installed` })
+    }
+  } else {
+    await assertCanManageInstanceApps(c.get("orgId"))
+  }
+  await next()
+})
+
+/** The custom app routes exist in the managed edition only (self-hosted: unchanged). */
+const managedOnly = createMiddleware<AppEnv>(async (_c, next) => {
+  if (!isManagedEdition()) throw new HTTPException(404, { message: "Not found" })
+  await next()
+})
 
 /** Fetch a `.liaisonapp` (or its sibling cosign signature) via the shared
  *  outbound-fetch layer — DNS pinning, private-IP block, manual redirect
@@ -213,6 +263,71 @@ installRoutes.post(
   },
 )
 
+// GET /custom/namespace — the name this org's custom apps carry (A46): `<name>-o<orgKey>`.
+installRoutes.get(
+  "/custom/namespace",
+  requireScope("kernel:apps:admin"),
+  managedOnly,
+  async (c) => {
+    const orgId = c.get("orgId")
+    const orgKey = customAppOrgKey(orgId)
+    return success(c, {
+      orgKey,
+      suffix: `-o${orgKey}`,
+      example: expectedCustomAppName("my-app", orgId),
+    })
+  },
+)
+
+// POST /custom/install — an org admin installs (or re-installs, or moves to a
+// newer version of) a custom app for their own org only (managed edition, A46).
+// No instance-operator gate: the app is org-private, held to the org-level
+// declarations, the name rule and the org's `customApps` cap
+// (installAppFromTarball `ownerOrgId`), and invisible to every other org.
+installRoutes.post("/custom/install", requireScope("kernel:apps:admin"), managedOnly, async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as {
+    url?: string
+    grantedScopes?: string[]
+    grantedConnections?: string[]
+    grantedCapabilities?: string[]
+    grantedCrossAppCalls?: string[]
+    approveUiFullAccess?: boolean
+  }
+  if (!body.url) throw new HTTPException(400, { message: "url is required" })
+  const orgId = c.get("orgId")
+  const userId = c.get("userId")
+  const { path, dir } = await downloadTarball(body.url)
+  try {
+    const result = await installAppFromTarball({
+      tarballPath: path,
+      installedBy: userId,
+      grantedScopes: body.grantedScopes ?? [],
+      grantedConnections: body.grantedConnections ?? [],
+      grantedCapabilities: body.grantedCapabilities ?? [],
+      grantedCrossAppCalls: body.grantedCrossAppCalls ?? [],
+      // The interface runs only on this org's own host, approved by this org's admin.
+      approveUiFullAccess: body.approveUiFullAccess === true,
+      requireSignature: false,
+      sourceUrl: body.url,
+      ownerOrgId: orgId,
+    })
+    await withPrivilegedDb(orgId, "custom-app-install-audit", (db) =>
+      writeAuditLog(db, {
+        orgId,
+        actorId: userId,
+        actorType: "user",
+        app: result.name,
+        entityType: "app_install",
+        action: "app.custom.installed",
+        metadata: { version: result.version },
+      }),
+    )
+    return success(c, result)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 // GET /catalog — the App store listings: the first-party apps baked into this image,
 // then a configured registry's (LIAISON_APP_REGISTRY_URL), each with its `source` and
 // installed-state: `{ apps, notice? }`, notice "registry_unreachable" when the registry
@@ -286,7 +401,7 @@ installRoutes.post(
 installRoutes.post(
   "/:name/upgrade/preview",
   requireScope("kernel:apps:admin"),
-  requireInstanceOperator,
+  requireAppManager,
   async (c) => {
     const name = assertValidAppName(c.req.param("name"))
     const active = await withSystemDb("upgrade-preview-row", (db) =>
@@ -304,7 +419,7 @@ installRoutes.post(
         message: `App '${name}' has no update channel — re-install with a new package to update it`,
       })
     }
-    const sig = resolveSignatureConfig()
+    const sig = await signatureConfigFor(name)
     const { path, signaturePath, dir } = await downloadTarball(activeRow.updateUrl)
     try {
       const preview = await previewUpgrade({
@@ -343,7 +458,7 @@ installRoutes.post(
 installRoutes.post(
   "/:name/upgrade/apply",
   requireScope("kernel:apps:admin"),
-  requireInstanceOperator,
+  requireAppManager,
   async (c) => {
     const name = assertValidAppName(c.req.param("name"))
     const body = (await c.req.json().catch(() => ({}))) as {
@@ -367,7 +482,7 @@ installRoutes.post(
     if (!activeRow?.updateUrl) {
       throw new HTTPException(404, { message: `App '${name}' has no update channel` })
     }
-    const sig = resolveSignatureConfig()
+    const sig = await signatureConfigFor(name)
     const { path, signaturePath, dir } = await downloadTarball(activeRow.updateUrl)
     try {
       const result = await applyUpgrade({
@@ -398,7 +513,7 @@ installRoutes.post(
 installRoutes.post(
   "/:name/rollback",
   requireScope("kernel:apps:admin"),
-  requireInstanceOperator,
+  requireAppManager,
   async (c) => {
     const name = assertValidAppName(c.req.param("name"))
     const userId = c.get("userId")
@@ -438,7 +553,7 @@ installRoutes.post(
 installRoutes.post(
   "/:name/ui-approval",
   requireScope("kernel:apps:admin"),
-  requireInstanceOperator,
+  requireAppManager,
   async (c) => {
     const name = assertValidAppName(c.req.param("name"))
     const body = (await c.req.json().catch(() => ({}))) as { approved?: boolean }
@@ -480,24 +595,23 @@ installRoutes.post(
 )
 
 // DELETE /:name — uninstall an app.
-installRoutes.delete(
-  "/:name",
-  requireScope("kernel:apps:admin"),
-  requireInstanceOperator,
-  async (c) => {
-    const name = assertValidAppName(c.req.param("name"))
-    // An app another workspace still has added stays installed (A4): its
-    // admins remove it there first.
-    const others = await otherWorkspacesWithApp(c.get("orgId"), name)
-    if (others > 0) {
-      throw new HTTPException(409, {
-        message: `${name} is still added in ${others} other workspace${others === 1 ? "" : "s"}. It can be uninstalled once ${others === 1 ? "it removes" : "they remove"} it.`,
-      })
-    }
-    await uninstallApp({ name })
-    return success(c, { uninstalled: name })
-  },
-)
+installRoutes.delete("/:name", requireScope("kernel:apps:admin"), requireAppManager, async (c) => {
+  // An app the operator disabled stays until the operator enables it (or the org purge).
+  if (await isCustomAppDisabled(c.req.param("name"))) {
+    throw new CustomAppDisabledError(c.req.param("name"))
+  }
+  const name = assertValidAppName(c.req.param("name"))
+  // An app another workspace still has added stays installed (A4): its
+  // admins remove it there first.
+  const others = await otherWorkspacesWithApp(c.get("orgId"), name)
+  if (others > 0) {
+    throw new HTTPException(409, {
+      message: `${name} is still added in ${others} other workspace${others === 1 ? "" : "s"}. It can be uninstalled once ${others === 1 ? "it removes" : "they remove"} it.`,
+    })
+  }
+  await uninstallApp({ name })
+  return success(c, { uninstalled: name })
+})
 
 /**
  * The publisher an installed app's manifest names (`author`), so the App store
@@ -572,8 +686,11 @@ installRoutes.get("/", requireScope("kernel:apps:admin"), async (c) => {
   }
 
   // One entry per installed app's active version (or each row if no pointer).
+  const orgId = c.get("orgId")
   for (const row of installedRows) {
     if (activeByName.get(row.name) !== row.version) continue
+    // Another org's custom app is not installed, as far as this org can tell.
+    if (!(await appVisibleToOrg(row.name, orgId))) continue
     const shadowed = bundledNames.has(row.name)
     entries.push({
       name: row.name,
@@ -596,7 +713,6 @@ installRoutes.get("/", requireScope("kernel:apps:admin"), async (c) => {
   log.debug({ count: entries.length }, "Listed app registry")
   // The workspace's state of each app (S18): On, Off or removed. The full
   // per-workspace view (access, dependents) is GET /api/org/apps.
-  const orgId = c.get("orgId")
   await primeOrgApps(orgId)
   return success(
     c,

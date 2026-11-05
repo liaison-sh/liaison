@@ -27,9 +27,7 @@ describe("the manifest pattern check", () => {
 
   it("runs on this thread: no Worker and no Atomics.wait", () => {
     const wait = spyOn(Atomics, "wait")
-    expect(manifestRegExp(`^backend-check-${crypto.randomUUID()}[a-z]+$`).test("x")).toBe(
-      false,
-    )
+    expect(manifestRegExp(`^backend-check-${crypto.randomUUID()}[a-z]+$`).test("x")).toBe(false)
     expect(started).toEqual([])
     expect(wait).not.toHaveBeenCalled()
   })

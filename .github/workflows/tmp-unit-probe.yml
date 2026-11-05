@@ -45,7 +45,7 @@ jobs:
           while read -r f; do
             n=$(echo "$f" | tr '/' '_')
             s=$(date +%s)
-            timeout -k 10 200 bun run scripts/test-run.ts unit --file "apps/api/$f" > "logs/alone/$n.log" 2>&1 && rc=0 || rc=$?
+            timeout -k 10 200 bun run scripts/test-run.ts unit --file "$f" > "logs/alone/$n.log" 2>&1 && rc=0 || rc=$?
             echo "rc=$rc $(( $(date +%s) - s ))s $f"
           done < .github/tmp-probe-files.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -54,6 +54,7 @@ jobs:
           name: alone-${{ matrix.envfile }}
           path: logs/alone/
   stall:
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:

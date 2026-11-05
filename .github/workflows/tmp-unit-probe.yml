@@ -6,11 +6,11 @@ on:
 permissions:
   contents: read
 jobs:
-  matrix:
+  wedge:
     strategy:
       fail-fast: false
       matrix:
-        cfg: [plain, junit, pool, shardenv, nodeenv, pipeonly]
+        cfg: [debuglog, warnlog]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -27,45 +27,25 @@ jobs:
           sudo apt-get install -y --no-install-recommends postgresql-common
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt-get install -y --no-install-recommends postgresql-client-17 redis-tools libxml2-utils
-          pg_dump --version
       - name: Write .env.test
-        run: |
-          set -euo pipefail
-          cp .env.test.example .env.test
-          sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|; s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=$(openssl rand -hex 32)|" .env.test
-      - run: bun run infra:up
-      - run: bun run scripts/bootstrap-test-env.ts
-      - name: Files
         env:
           CFG: ${{ matrix.cfg }}
         run: |
-          mkdir -p logs/m
-          cat > /tmp/one.sh <<'EOS'
-          #!/bin/bash
-          # inside with-test-lock: namespace env is set
-          cd apps/api
-          f="$1"; n=$(echo "$f" | tr '/' '_')
-          args=(--env-file=../../.env.test --timeout 60000)
-          case "$CFG" in
-            junit) args+=(--reporter=junit --reporter-outfile=/tmp/x.xml) ;;
-            pool) export DB_POOL_MAX=8 DB_ACQUIRE_TIMEOUT_MS=10000 ;;
-            shardenv) export WORKER_ID=0 REDIS_PREFIX="${LIAISON_TEST_NS:-liaison}:s0_7:" MEILI_INDEX_PREFIX="${LIAISON_TEST_NS:-liaison}-s0_" ;;
-            nodeenv) unset NODE_ENV ;;
-          esac
-          s=$(date +%s)
-          if [ "$CFG" = pipeonly ]; then
-            timeout -k 5 170 bun test "${args[@]}" "./$f" > >(cat > "../../logs/m/$n.out") 2> >(cat > "../../logs/m/$n.err"); rc=$?
-          else
-            timeout -k 5 170 bun test "${args[@]}" "./$f" > "../../logs/m/$n.out" 2>&1; rc=$?
-          fi
-          echo "$CFG rc=$rc $(( $(date +%s) - s ))s $f NODE_ENV=${NODE_ENV:-unset} DB=$(echo "${DATABASE_URL:-}" | sed 's#.*/##')"
-          EOS
-          chmod +x /tmp/one.sh
-          for f in src/cli/cli-smoke.test.ts src/modules/export/org-archive/writer.test.ts src/infra/events/agent-turn-audit-identity.integration.test.ts; do
-            bun run scripts/with-test-lock.ts -- /tmp/one.sh "$f" 2>&1 | grep -E "^$CFG rc=|rror" | head -5
-          done
+          set -euo pipefail
+          cp .env.example .env.test
+          sed -i 's#^DATABASE_URL=.*#DATABASE_URL=postgres://liaison_app:liaison_app@localhost:5432/liaison_test#' .env.test
+          sed -i 's#^NODE_ENV=.*#NODE_ENV=test#' .env.test
+          echo "MEILISEARCH_API_KEY=dev-master-key" >> .env.test
+          if [ "$CFG" = warnlog ]; then sed -i 's#^LOG_LEVEL=.*#LOG_LEVEL=warn#' .env.test; fi
+      - run: bun run infra:up
+      - run: bun run scripts/bootstrap-test-env.ts
+      - name: Runner on writer and friends
+        run: |
+          mkdir -p logs/w
+          ( sleep 75; for p in $(pgrep -f 'bun test --env-file'); do age=$(ps -o etimes= -p $p); [ "$age" -gt 45 ] || continue; echo "--- pid $p age $age: $(tr '\0' ' ' < /proc/$p/cmdline | sed 's/.*xml //')"; for t in /proc/$p/task/*; do echo "$(cat $t/comm) wchan=$(cat $t/wchan) syscall=$(sudo cut -d' ' -f1-3 $t/syscall)"; done; sudo ls -l /proc/$p/fd | awk '{print $9,$10,$11}' | grep -E 'pipe|socket|^[012] ' | head -12; done; docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}}'; free -m | head -3; ss -s | head -3 ) > logs/w/threads.log 2>&1 &
+          LOG_DIR=$PWD/logs/w TEST_UNIT_SHARDS=4 TEST_UNIT_SILENCE_MS=120000 timeout -k 10 500 bun run scripts/with-test-lock.ts -- bun run scripts/test-unit-parallel.ts --retries=0 -- $(cat .github/tmp-probe-tail.txt) 2>&1 | tee logs/w/run.log; echo "rc=${PIPESTATUS[0]}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
-          name: m-${{ matrix.cfg }}
-          path: logs/m/
+          name: w-${{ matrix.cfg }}
+          path: logs/w/

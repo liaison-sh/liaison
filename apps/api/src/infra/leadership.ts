@@ -67,6 +67,8 @@ let patroniLeader = false
 let leaderUrl: string | null = null
 let probeTimeoutMs = DEFAULT_PROBE_TIMEOUT_MS
 let timer: ReturnType<typeof setInterval> | null = null
+// Raised by each stop: a probe in flight then belongs to a run that has ended.
+let probeRun = 0
 let onJobsGateCb: ((open: boolean) => void) | null = null
 let lease: RedisLeaderLease | null = null
 
@@ -195,10 +197,14 @@ export async function startLeadership(opts: StartLeadershipOptions): Promise<voi
     // immediately so the real leader starts without a probe-interval wait.
     patroniLeader = false
     onJobsGateCb?.(false)
-    applyPatroni(await probeOnce())
+    const run = probeRun
+    const applyProbe = (next: boolean) => {
+      if (run === probeRun) applyPatroni(next)
+    }
+    applyProbe(await probeOnce())
     timer = setInterval(() => {
       void probeOnce()
-        .then(applyPatroni)
+        .then(applyProbe)
         .catch((err) => log.error({ err }, "Leadership probe failed"))
     }, intervalMs)
     // Never keep the event loop alive solely for this probe.
@@ -219,6 +225,7 @@ export async function startLeadership(opts: StartLeadershipOptions): Promise<voi
  * awaited, then the lease is released.
  */
 export async function stopLeadership(): Promise<void> {
+  probeRun++
   if (timer) {
     clearInterval(timer)
     timer = null

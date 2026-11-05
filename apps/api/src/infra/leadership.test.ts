@@ -189,6 +189,45 @@ describe("Patroni gate (P1-3)", () => {
     expect(gate[0]).toBe(false)
     expect(await redis.get(key)).toBeNull()
   })
+
+  it("a probe still in flight when leadership stops never reaches the next start", async () => {
+    let requests = 0
+    let release: () => void = () => {}
+    const held = new Promise<void>((r) => {
+      release = r
+    })
+    const server = Bun.serve({
+      port: 0,
+      fetch: async () => {
+        // The first probe answers so the start returns; the next one hangs.
+        if (++requests === 1) return new Response("ok")
+        await held
+        return new Response("not leader", { status: 503 })
+      },
+    })
+    try {
+      await startLeadership({
+        role: "worker",
+        patroni: {
+          url: `http://localhost:${server.port}/leader`,
+          probeIntervalMs: 10,
+          probeTimeoutMs: 5_000,
+        },
+        lease: leaseOpts(newKey()),
+      })
+      await waitFor(() => requests >= 2)
+      await stopLeadership()
+
+      await startLeadership({ role: "worker", lease: leaseOpts(newKey()) })
+      expect(isLeader()).toBe(true)
+      release()
+      await sleep(POLL)
+      expect(isLeader()).toBe(true)
+    } finally {
+      release()
+      server.stop(true)
+    }
+  })
 })
 
 describe("singleton hooks", () => {

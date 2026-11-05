@@ -23,7 +23,11 @@ jobs:
         with:
           bun-version: "1.4.x"
       - run: bun install --frozen-lockfile
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client-17 redis-tools libxml2-utils
+      - run: |
+          sudo apt-get install -y --no-install-recommends postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y --no-install-recommends postgresql-client-17 redis-tools libxml2-utils
+          pg_dump --version
       - name: Write .env.test
         run: |
           set -euo pipefail

@@ -43,11 +43,10 @@ describe("Register", () => {
 
   it("an invite link still opens the form on a server that hides account creation", async () => {
     _resetBranding()
-    await ensureBrandingLoaded(
-      vi.fn(async () =>
-        jsonResponse({ data: { orgName: "Managed", flags: { noAccountEntry: true } } }),
-      ),
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ data: { orgName: "Managed", flags: { noAccountEntry: true } } }),
     )
+    await ensureBrandingLoaded()
     fetchMock.mockResolvedValue(jsonResponse({ data: { email: "new@acme.test" } }))
     window.history.pushState(null, "", "/register?token=invite-token")
     render(() => (

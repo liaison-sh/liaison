@@ -1,0 +1,270 @@
+One image plus Postgres, Redis, MeiliSearch, S3 store -> README.md:12
+Requires Docker, Compose v2, openssl -> deploy/quickstart.sh:9
+Minimum 2 vCPU / 4 GB plus swap; limits sized for 4 vCPU / 8 GB -> deploy/docker-compose.yml:82
+Quickstart command -> deploy/quickstart.sh:6
+Creates deploy/.env from .env.example first run, fills secrets -> deploy/quickstart.sh:10
+Pulls :latest or builds from apps/api/Dockerfile -> deploy/quickstart.sh:12
+Waits for /healthz all ok, prints URL and login -> deploy/quickstart.sh:14
+Register with setup token -> README.md:80
+Flags --port, --pull, --build, --project, --down, --help -> deploy/quickstart.sh:18
+Compose -p -f form -> .claude/skills/setup-liaison/SKILL.md:18
+postgres:17-alpine -> deploy/docker-compose.yml:25
+postgres mem 2g -> deploy/docker-compose.yml:87
+redis:7-alpine -> deploy/docker-compose.yml:98
+redis maxmemory 384mb -> deploy/docker-compose.yml:113
+redis mem 512m -> deploy/docker-compose.yml:127
+Redis pub-sub, rate limiting, BullMQ queues -> README.md:139
+meilisearch v1.10 -> deploy/docker-compose.yml:138
+meili mem 1500m -> deploy/docker-compose.yml:159
+seaweedfs 4.48 -> deploy/docker-compose.yml:183
+objectstore mem 1g -> deploy/docker-compose.yml:240
+objectstore-init creates bucket -> deploy/docker-compose.yml:258
+data-init prepares data dir -> deploy/docker-compose.yml:302
+app image via LIAISON_IMAGE -> deploy/docker-compose.yml:316
+App: REST API, WebSocket, MCP, web app -> README.md:132
+app mem 3g -> deploy/docker-compose.yml:604
+internal network -> deploy/docker-compose.yml:74
+App port binds APP_BIND:APP_PORT, default loopback, plain HTTP behind proxy -> deploy/docker-compose.yml:579
+APP_BIND 0.0.0.0 only for proxy on trusted network -> deploy/docker-compose.yml:582
+S3, R2 or any S3-compatible endpoint -> README.md:142
+Volume postgres_data -> deploy/docker-compose.yml:52
+Volume redis_data -> deploy/docker-compose.yml:118
+Volume meili_data -> deploy/docker-compose.yml:154
+Volume objectstore_data -> deploy/docker-compose.yml:232
+./data at /var/lib/liaison -> deploy/docker-compose.yml:569
+./setup at /setup read-only -> deploy/docker-compose.yml:577
+deploy/data holds app packages, push key files -> deploy/backup.sh:15
+Search index rebuildable from Postgres -> README.md:141
+--down keeps volumes; down -v deletes -> deploy/quickstart.sh:23
+Remove data with down -v -> deploy/quickstart.sh:27
+JWT_SECRET required -> deploy/.env.example:5
+JWT_SECRET role -> deploy/backup.sh:51
+ENCRYPTION_KEY 64 hex -> apps/api/src/lib/env.ts:74
+BYOK_ENCRYPTION_KEY -> deploy/backup.sh:57
+MEILISEARCH_MASTER_KEY -> deploy/docker-compose.yml:146
+MONITOR_TOKEN unlocks detailed healthz -> apps/api/src/modules/healthz/index.ts:315
+POSTGRES_PASSWORD privileged, migrations only -> deploy/docker-compose.yml:33
+LIAISON_APP_PASSWORD runtime RLS role -> deploy/docker-compose.yml:40
+LIAISON_READONLY_PASSWORD database connector -> deploy/docker-compose.yml:44
+Object store admin creds for bucket only; app creds scoped -> deploy/docker-compose.yml:191
+OBJECT_STORAGE_ACCESS_KEY -> deploy/.env.example:153
+BASE_URL, ALLOWED_ORIGINS -> deploy/.env.example:37
+DEVICE_FLOW_CLIENTS keep mcp-cli; desktop admitted -> deploy/.env.example:180
+APP_PORT -> deploy/.env.example:39
+APP_BIND -> deploy/.env.example:44
+TRUSTED_PROXY_HOPS >= 1 behind proxy -> deploy/.env.example:45
+TRUSTED_PROXY_CIDRS -> apps/api/src/lib/env.ts:85
+Passwordless needs mail; unset logs emails -> deploy/.env.example:70
+SMTP_PORT 587 STARTTLS, 465 needs SMTP_SECURE -> deploy/.env.example:74
+SMTP_USER/PASS/SECURE -> deploy/.env.example:77
+RESEND_API_KEY precedence -> deploy/.env.example:80
+EMAIL_FROM default -> deploy/.env.example:82
+SYSTEM_EMAIL_FROM -> deploy/.env.example:83
+LIAISON_CONSOLE_EMAIL_BODIES -> deploy/.env.example:86
+LIAISON_SETUP_TOKEN -> deploy/.env.example:91
+Model keys platform fallback for non-BYOK orgs -> deploy/.env.example:162
+Provider key variables -> deploy/.env.example:168
+GOOGLE_API_KEY media analysis fallback -> deploy/.env.example:170
+OPENROUTER_API_KEY -> deploy/.env.example:174
+healthz detail fields -> apps/api/src/modules/healthz/index.ts:201
+healthz liveness-only for public, detail for local or monitor token -> apps/api/src/modules/healthz/index.ts:328
+Container healthcheck fails on non-ok deps -> deploy/docker-compose.yml:623
+readyz 200 when ready, 503 starting or draining, same body -> apps/api/src/modules/healthz/readyz.ts:12
+readyz status starting, ready, draining -> apps/api/src/lib/readiness.ts:35
+readyz body role, instanceId, leader -> apps/api/src/lib/readiness.ts:36
+readyz needs no token, checks no dependency -> apps/api/src/modules/healthz/readyz.ts:4
+LIAISON_ROLE all, api, worker, default all -> apps/api/src/lib/env.ts:746
+What each role runs -> apps/api/src/lib/process-role.ts:2
+Invalid role stops the process -> apps/api/src/lib/env.ts:745
+Worker answers only /healthz and /readyz, 404 otherwise -> apps/api/src/lib/server.ts:418
+One leader-lease holder runs the singletons -> apps/api/src/lib/env.ts:732
+Default role all = one container runs everything -> apps/api/src/lib/env.ts:740
+All roles share one Postgres and Redis; lease key in Redis -> apps/api/src/infra/leader-lease.ts:30
+api role: no job workers, never leader -> apps/api/src/lib/process-role.ts:15
+api role never contends for the lease -> apps/api/src/infra/leadership.ts:168
+api role is never leader (isLeader fail-closed) -> apps/api/src/infra/leadership.ts:79
+Only api/all serve the API, worker a health-only server -> apps/api/src/index.ts:307
+readyz answers 200 only after boot complete -> apps/api/src/index.ts:393
+An API process first sets up the orgs with a live WebSocket, up to LIAISON_READY_WARM_MS (30 s, 0 skips) -> apps/api/src/index.ts:376-388 ; apps/api/src/modules/apps/ready-warm.ts:27-87 ; apps/api/src/lib/env.ts:811 ; apps/api/src/infra/websocket-state/redis.ts:195-212
+Several worker processes run jobs at once (jobs gate per node) -> apps/api/src/infra/leadership.ts:12
+Singleton: outbox drain -> apps/api/src/infra/events/outbox-worker.ts:403
+Singleton: legacy kernel queue move -> apps/api/src/infra/jobs/legacy-kernel-queue.ts:191
+Singleton: node lease sweep on lease acquire -> apps/api/src/infra/jobs/kernel-jobs.ts:710
+Singleton: demo replay resume -> apps/api/src/modules/demo/replay/resume.ts:47
+Singleton: demo price check -> apps/api/src/modules/demo/demo-alerts.ts:388
+readyz leader field = isLeader -> apps/api/src/lib/readiness.ts:36
+LEADER_LEASE_TTL_MS default 15000 -> apps/api/src/lib/env.ts:750
+LEADER_LEASE_RENEW_MS default 5000 -> apps/api/src/lib/env.ts:752
+LEADER_LEASE_POLL_MS default 1000 -> apps/api/src/lib/env.ts:754
+Contender tries SET NX PX every poll, holder renews every renew -> apps/api/src/infra/leader-lease.ts:119
+Holder stops leading once ttl - renew passed since last confirmed renew -> apps/api/src/infra/leader-lease.ts:126
+Loss order: held false, hooks awaited, then compare-and-delete release -> apps/api/src/infra/leader-lease.ts:163
+Outbox loss hook waits for the in-flight batch -> apps/api/src/infra/events/outbox-worker.ts:397
+SINGLETON_LEADER_URL = local Patroni /leader URL, example -> apps/api/src/lib/env.ts:727
+Patroni probe every 5 s, timeout 2 s -> apps/api/src/infra/leadership.ts:35
+Probe error or timeout counts as not leader -> apps/api/src/infra/leadership.ts:138
+Jobs gate follows Patroni per node -> apps/api/src/infra/leadership.ts:156
+Lease contended only while Patroni leader (replica never holds it) -> apps/api/src/infra/leadership.ts:207
+Singletons need lease AND Patroni leader -> apps/api/src/infra/leadership.ts:79
+Patroni loss: isLeader false, hooks stop at once -> apps/api/src/infra/leadership.ts:147
+Patroni loss: lease released at next renew tick (canContend false) -> apps/api/src/infra/leader-lease.ts:125
+Unset = gate off, node counts as Patroni leader -> apps/api/src/infra/leadership.ts:181
+Restart after crash: old key held until TTL expires (SET NX) -> apps/api/src/infra/leader-lease.ts:151
+Redis outage: renew fails or times out -> lease lost -> apps/api/src/infra/leader-lease.ts:144
+Redis command not answered within renew counts as failed -> apps/api/src/infra/leader-lease.ts:183
+Events persist and deliver once leadership resolves -> apps/api/src/infra/leadership.ts:139
+Still one API process in production: live turns kept per process -> apps/api/src/modules/agent/runtime/stream-registry.ts:14
+Each process writes its WebSocket connections to Redis -> apps/api/src/infra/websocket.ts:723
+Online while a connection is live on any process (first socket is the arrival) -> apps/api/src/lib/server.ts:550
+Closing one tab is no departure while another stays open -> apps/api/src/lib/server.ts:818
+Stream cap counted across processes -> apps/api/src/modules/agent/routes.ts:141
+Stream cap default 2, AGENT_MAX_CONCURRENT_STREAMS overrides -> apps/api/src/modules/agent/routes.ts:72
+AGENT_MAX_CONCURRENT_STREAMS variable -> apps/api/src/lib/env.ts:813-815
+Delivery classes once and per-replica -> apps/api/src/infra/events/event-bus.ts:64
+A peer's copy reaches only per-replica handlers -> apps/api/src/infra/events/event-bus.ts:835
+App event handler runs once -> apps/api/src/modules/apps/runtime.ts:3314
+Event routine tick enqueued once -> apps/api/src/infra/jobs/event-routine-subscriber.ts:217
+Thumbnail enqueue runs once -> apps/api/src/modules/files/thumbnail-job.ts:171
+Handlers serving the process's own connections run per replica -> apps/api/src/infra/events/event-subscribers.ts:605
+Routine change announced to every process -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:2671
+Announce channel, resync every 60 s -> apps/api/src/infra/jobs/event-routine-subscriber.ts:265
+LIVE_INSTANCE_TTL_MS default 30000 -> apps/api/src/lib/env.ts:791
+LIVE_INSTANCE_HEARTBEAT_MS default 10000 -> apps/api/src/lib/env.ts:793
+LIVE_SWEEP_INTERVAL_MS default 10000 -> apps/api/src/lib/env.ts:795
+Entries of an instance without a record do not count -> apps/api/src/infra/websocket-state/redis.ts:68
+Leader sweep of dead instances -> apps/api/src/index.ts:337
+Record back after a lapse: own entries rewritten -> apps/api/src/infra/instance-registry.ts:289
+Live-state Redis calls bounded at 1 s -> apps/api/src/infra/websocket-state/redis.ts:216
+Stream cap take bounded at 1 s -> apps/api/src/modules/agent/stream-slots.ts:125
+Mail access answers none without Redis -> apps/api/src/infra/websocket-state/redis.ts:322
+Mailbox unlock reads locked without Redis -> apps/api/src/infra/websocket-state/redis.ts:373
+Stream cap fails open without Redis -> apps/api/src/modules/agent/stream-slots.ts:143
+Online read from own sockets without Redis -> apps/api/src/infra/websocket.ts:1618
+Settings System shows detail -> apps/api/src/modules/healthz/index.ts:332
+json-file logging 100m x5 -> deploy/docker-compose.yml:28
+CMD: migrate, reconcile catalog, start -> apps/api/Dockerfile:175
+App depends on healthy services and init jobs -> deploy/docker-compose.yml:338
+Failed migration stops container -> docs/runbooks/production-bootstrap.md:496
+LIAISON_DEMO_POOL_SIZE passed to the app, default 5 -> deploy/docker-compose.yml:387
+Read only in demo mode, 0 turns the pool off -> apps/api/src/lib/env.ts:295
+LIAISON_DEMO_SEED_CONCURRENCY passed to the app, default 2 -> deploy/docker-compose.yml:389
+Seeds at once, shared by refill and signups -> apps/api/src/lib/env.ts:304
+Signed artifact used when published for this app, version and source digest and its statement verifies -> scripts/build-app-catalog.ts:9
+Downloads from https://downloads.liaison.sh/apps -> scripts/build-app-catalog.ts:67
+Local unsigned build otherwise; never fails on a fetch error, one line per app -> scripts/build-app-catalog.ts:24
+No pinned key, no artifacts location, unreachable host reasons -> scripts/build-app-catalog.ts:278
+Statement kept in the catalog, served for desktop verification -> apps/api/src/modules/apps/ui-bundle-routes.ts:11
+LIAISON_APP_ARTIFACTS_DIR build arg -> apps/api/Dockerfile:97
+Mirror read instead of the URL when set -> scripts/build-app-catalog.ts:411
+Index ADDed so a new signed release rebuilds the catalog; none or empty skips it -> apps/api/Dockerfile:13
+Index URL ADD -> apps/api/Dockerfile:75
+none builds every app locally, --no-artifacts -> apps/api/Dockerfile:102
+Artifacts read from the index URL's directory -> scripts/build-app-catalog.ts:399
+LIAISON_DEMO_STEP_OUTPUT_TOKENS default 16000, input not capped -> apps/api/src/lib/env.ts:462
+Agent web read limits passed to the app container -> deploy/docker-compose.yml:433-439 ; apps/api/src/lib/env.ts:516-551
+Live turn events in a per-turn Redis stream, numbered by seq -> apps/api/src/modules/agent/runtime/stream-registry.ts:17-28 ; apps/api/src/modules/agent/runtime/stream-registry.ts:182
+Page opening mid-turn reads the turn so far, then follows frames after its seq -> apps/api/src/modules/agent/routes.ts:794 ; apps/api/src/modules/agent/routes.ts:856
+Finished turn stream readable AGENT_TURN_STREAM_TTL_S, default 600 -> apps/api/src/lib/env.ts:810-812 ; apps/api/src/modules/agent/runtime/stream-registry.ts:551
+Stream holds the agent's streamed text, incl. about a decrypted mail, same text saved with the message; Redis on a private network -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:22-32 ; apps/api/src/modules/agent/runtime/stream-registry.ts:17-29
+Registry not answering: stream-state serves no run, view follows live frames -> apps/api/src/modules/agent/routes.ts:801-808
+Taint reset waits while another run is live on the thread, on any process -> apps/api/src/modules/agent/scopes/taint.ts:299 ; apps/api/src/modules/agent/scopes/live-runs.ts:1-17
+Credit balance update through the event bus to every process's sockets -> apps/api/src/modules/agent/credits/credit-service.ts:294-297 ; apps/api/src/infra/events/event-subscribers.ts:605
+Same correlationId posted once, second send gets the posted message, other payload 422 -> apps/api/src/modules/threads/routes.ts:885-914 ; apps/api/src/lib/idempotency.ts:3-19
+Mailbox answer forwarded to the minting process, never through Redis -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:3-30 ; apps/api/src/modules/agent/routes.ts:1022-1029
+Internal listener on its own port, one route, everything else 404 -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:226-229 ; apps/api/src/index.ts:79-83
+Signature key derived from JWT_SECRET -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:70-75
+LIAISON_INTERNAL_PORT default 0, any free port -> apps/api/src/lib/env.ts:796-800 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:380-394
+LIAISON_INTERNAL_HOST unset: hostname, 127.0.0.1 if it does not resolve -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:341-371
+LIAISON_INTERNAL_BIND unset: the advertised name's address here, never every interface -> apps/api/src/lib/env.ts:805-809 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:341-377 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:388-394
+Advertised address not local: bind fails at start, set LIAISON_INTERNAL_BIND=0.0.0.0 and firewall -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:396-403
+At most 2 MiB per call, signature checked before the content is read -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:50-57 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:249-265
+Owner unreachable: 409 WRONG_INSTANCE -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:117-134 ; apps/api/src/modules/agent/routes.ts:1030-1031
+One api process still advised: client network-drop recovery not yet shipped -> apps/api/CLAUDE.md:59
+Several API processes: clients notice a dropped connection within about 10 s -> apps/web/src/primitives/createWebSocket.ts:95
+Clients reload what is open after a reconnect -> apps/web/src/framework/resync.ts:94
+A dead process's turn stops, not picked up elsewhere -> apps/api/src/modules/agent/runtime/stream-registry.ts:941
+Several containers apply each migration once under a lease -> apps/api/src/db/migrate.ts:193-203
+LIAISON_MIGRATE_ON_START=false skips migrate; `run --rm app migrate` -> apps/api/scripts/entrypoint.sh:60-66 ; apps/api/scripts/entrypoint.sh:71-74 ; apps/api/Dockerfile:154-155
+Restart: SIGTERM starts one shutdown sequence -> apps/api/src/lib/shutdown.ts:2-21 ; apps/api/src/lib/shutdown.ts:290-295
+/readyz 503 at once (t0) -> apps/api/src/lib/server.ts:930
+Draining process: a posted message becomes an agent-turn-dispatch job -> apps/api/src/modules/threads/posted-message-dispatch.ts:86-87 ; apps/api/src/infra/jobs/kernel-jobs.ts:621
+Draining process: agent chat taken until the edge grace has passed -> apps/api/src/lib/readiness.ts:50-53 ; apps/api/src/lib/shutdown.ts:195-198
+Draining process past the grace: agent chat 503 RESTARTING, Retry-After 1, nothing saved -> apps/api/src/modules/agent/routes.ts:130-135
+Client retries a 503 RESTARTING once after Retry-After -> apps/web/src/modules/mailbox/job-turn-transport.ts:144-148
+Listener stops at SHUTDOWN_EDGE_GRACE_MS (2 s), WebSockets close 1012 -> apps/api/src/lib/server.ts:936 ; apps/api/src/lib/server.ts:849 ; apps/api/src/lib/shutdown-budget.ts:110
+Web app reconnects within 250 ms after 1012 -> apps/web/src/primitives/createWebSocket.ts:141-142 ; apps/web/src/primitives/createWebSocket.ts:431
+In-flight requests finish under SHUTDOWN_HTTP_DRAIN_MS (20 s), Connection: close -> apps/api/src/lib/server.ts:944-949 ; apps/api/src/lib/server.ts:876 ; apps/api/src/lib/shutdown-budget.ts:111
+Turns and jobs drain under SHUTDOWN_TURN_DRAIN_MS / SHUTDOWN_JOB_DRAIN_MS (20 s each) -> apps/api/src/lib/shutdown-phases.ts:72 ; apps/api/src/infra/jobs/jobs.ts:1347 ; apps/api/src/lib/shutdown-budget.ts:109-114
+A job past its budget is aborted and moved back to its queue without spending an attempt (one ignoring the abort: just before exit) -> apps/api/src/infra/jobs/jobs.ts:599 ; apps/api/src/infra/jobs/jobs.ts:1356 ; apps/api/src/infra/jobs/jobs.ts:1386
+Outbox, pools and connections close, exit 0 -> apps/api/src/lib/shutdown-phases.ts:93 ; apps/api/src/lib/shutdown-phases.ts:169 ; apps/api/src/lib/shutdown-phases.ts:180 ; apps/api/src/lib/shutdown.ts:271
+Process exits at SHUTDOWN_HARD_DEADLINE_MS -> apps/api/src/lib/shutdown.ts:264-268 ; apps/api/src/lib/env.ts:818
+Unset: computed from the budgets, 58 s with the defaults -> apps/api/src/lib/shutdown-budget.ts:84-101 ; scripts/compose-shutdown-budget.test.ts:68
+Boot logs the budgets (Shutdown budgets, hardDeadlineMs) -> apps/api/src/index.ts:97
+Compose: stop_grace_period 65 s, hard deadline 58 s -> deploy/docker-compose.yml:335 ; deploy/docker-compose.yml:358-360
+Grace ≥ hard + 5 s (65 s for the defaults; docker/k8s settings) -> scripts/compose-shutdown-budget.test.ts:58 ; apps/api/src/lib/env.ts:811-817
+Fixed grace: set SHUTDOWN_HARD_DEADLINE_MS under it, drains are clamped -> apps/api/src/lib/shutdown.ts:100-121
+Turn handoff at the drain budget: step boundary, 3 s, model cut, 1.5 s tools -> apps/api/src/lib/shutdown-budget.ts:7-11 ; apps/api/src/lib/shutdown-phases.ts:86-87 ; apps/api/src/modules/agent/runtime/turn-handoff.ts:56-71
+Resume sweep every 10 s singleton; stale after 30 s; write tools once via effect ledger -> apps/api/src/infra/jobs/kernel-jobs.ts:44 ; apps/api/src/modules/agent/runtime/turn-ledger.ts:48 ; apps/api/src/modules/agent/runtime/turn-resume.ts:255 ; apps/api/src/modules/agent/tools/tool-bridge.ts:1021
+Outside effects claimed in the effect ledger, replayed on a second run -> apps/api/src/lib/effect-once.ts:329
+Load harness off unless LOAD_HARNESS_KEY is set -> apps/api/src/lib/load-harness.ts:59
+Harness-signed request on a box without the key answers 404 -> apps/api/src/modules/demo/routes.ts:489
+Signed flood: up to 20 000 synthetic jobs, at most 2 s each, 50 000 outstanding per load org; fan-out report of missed/doubled/coalesced runs, spread, scheduler count and per-org waits; window and orgs in the signed body -> apps/api/src/modules/demo/harness-routes.ts:38-42 ; apps/api/src/modules/demo/harness-routes.ts:103 ; apps/api/src/modules/demo/harness-routes.ts:154 ; apps/api/src/infra/jobs/load-synthetic.ts:24 ; apps/api/src/infra/jobs/fanout-report.ts:168
+Signed start needs a @load.invalid address -> apps/api/src/modules/demo/routes.ts:497
+Synthetic workspace's verification code counted, not sent -> apps/api/src/modules/demo/demo-verification.ts:220
+Load workspace's agent turns on the scripted load model -> apps/api/src/modules/agent/providers/provider.ts:211
+Key at least 32 characters -> apps/api/src/lib/env.ts:234
+Refused together with ENABLE_LOAD_TEST_ENDPOINT -> apps/api/src/lib/env.ts:1052
+In production only on a demo box -> apps/api/src/lib/env.ts:1060-1062
+Signed starts take the warm pool like visitors -> apps/api/src/modules/demo/routes.ts:856
+Signed starts have their own hourly lane and workspace cap, apart from visitors -> apps/api/src/modules/demo/routes.ts:281
+Synthetic per-hour and max-orgs defaults 60 and 500 -> apps/api/src/lib/env.ts:338
+Single app container restart leaves a gap; rolling deploy closes it -> deploy/rolling-deploy.sh:4-28
+Rolling profile: api (LIAISON_ROLE=api, port range API_PORT_RANGE 3001-3004), worker, migrate one-shot -> deploy/docker-compose.yml:676-705 ; deploy/docker-compose.yml:720-737 ; deploy/docker-compose.yml:743-750
+api/worker never migrate on start; 600 s turn/job drains, hard deadline 638 s, grace 11m -> deploy/docker-compose.yml:684-693 ; deploy/docker-compose.yml:723-730 ; scripts/compose-shutdown-budget.test.ts
+/readyz 503 at once, listener and idle keep-alive connections open 5 s (SHUTDOWN_EDGE_GRACE_MS 5000) -> deploy/docker-compose.yml:694-698 ; apps/api/src/lib/server.ts:925-940 ; apps/api/src/lib/shutdown.ts:244-247 ; scripts/compose-shutdown-budget.test.ts
+Two releases run side by side for up to the drain budget; mem_limit 3g per container, six in the overlap (seven with app) -> deploy/rolling-deploy.sh:384-405 ; deploy/docker-compose.yml:636 ; deploy/rolling-deploy.sh:88-92
+Edge: app port + range (keep in step with API_PORT_RANGE), /readyz every 1 s, holds a request that cannot reach a process for 60 s; reached requests never resent, GET included (lb_retry_match matches nothing); JSON access log -> deploy/Caddyfile.rolling.example:9-61 ; scripts/compose-shutdown-budget.test.ts
+Deploy refuses while another runs or old processes still drain (exit 75); re-drains when the drain died; rolls back a deploy killed before its switch -> deploy/rolling-deploy.sh:169-200 ; deploy/rolling-deploy.sh:258-310 ; deploy/rolling-deploy.test.ts
+Migrations and catalog apps once in the new image's migrate service; a failure (incl. a catalog app that did not install) starts and stops nothing -> deploy/rolling-deploy.sh:338-342 ; apps/api/scripts/entrypoint.sh:61-67 ; apps/api/src/db/reconcile-catalog-boot.ts
+Same version with other files fails the install: raise the version -> apps/api/src/modules/apps/version-dir.ts:98-102 ; scripts/check-bundled-app-version.ts
+New api/worker started beside old (--no-recreate --no-deps --scale), API_REPLICAS 2, WORKER_REPLICAS 1; port-range refusal before migrating -> deploy/rolling-deploy.sh:78-92 ; deploy/rolling-deploy.sh:325-333 ; deploy/rolling-deploy.sh:349
+Wait healthy READY_TIMEOUT_S 300; exit or never ready rolls back (new stopped + removed, exit 1) -> deploy/rolling-deploy.sh:79 ; deploy/rolling-deploy.sh:352-382
+Edge settle 2 s, old stopped with full drain budget, removed; background drain to deploy/.rolling/drain.log; --wait-drain -> deploy/rolling-deploy.sh:80-81 ; deploy/rolling-deploy.sh:384-405
+First run beside app treats app as old; plain compose up restarts app on 3000, next deploy drains it and says so -> deploy/rolling-deploy.sh:30-35 ; deploy/rolling-deploy.sh:334 ; deploy/rolling-deploy.sh:395
+Ctrl-C / stop signal / SSH drop: roll back before the switch, keep draining after, release the lock; run under nohup/tmux/systemd-run; stale lock taken over -> deploy/rolling-deploy.sh:243-256 ; deploy/rolling-deploy.sh:169-200 ; deploy/rolling-deploy.sh:23-28
+--infra brings up infrastructure first, not zero-downtime -> deploy/rolling-deploy.sh:313-317
+Version dirs written once (temp dir + rename), different files under an installed version refused -> apps/api/src/modules/apps/version-dir.ts:87-140
+An older release never lowers the active version; runs its own image's version (also when following an activation and after a rollback); logs app_version_ahead -> apps/api/src/modules/apps/catalog.ts:376-381 ; apps/api/src/modules/apps/catalog.ts:391-397 ; apps/api/src/modules/apps/activation.ts:735-760 ; apps/api/src/modules/apps/init.ts:334-338
+Old versions pruned except active, previous and any version a live process uses (Redis list; unreadable = keep all) -> apps/api/src/modules/apps/install-service.ts:611-646 ; apps/api/src/modules/apps/versions-in-use.ts
+Upgrade data check uses the schema recorded at install when the running files are absent -> apps/api/src/modules/apps/install-service.ts:550-566 ; apps/api/src/modules/apps/install-service.ts:724
+deploy-counters: edge 5xx, cut turns (failure_reason process or legacy null / unfinished 15 min; turn and client reasons not counted), effect_duplicate lines; exit 1 when not 0; --app-log - from stdin; DB URL from DEPLOY_COUNTERS_DB_URL only -> scripts/lib/deploy-counters.ts:55-160 ; apps/api/src/db/migrations/0228_agent_turns_failure_reason.sql ; apps/api/src/db/schema/kernel/agent-turns.ts:35-45 ; scripts/deploy-counters.ts:9-21 ; scripts/deploy-counters.ts:50 ; scripts/deploy-counters.ts:69
+Test deploys under load: load-test --deploys --orgs seeds through the signed demo start (pool first), verified with the sunk code from the signed sink read; sessions in the output file (mode 600); same --seed within the signup-key hour = same orgs -> scripts/lib/deploy-under-load.ts:917-934 ; scripts/lib/load-harness-client.ts:150-200 ; apps/api/src/modules/demo/routes.ts ("/harness/orgs/:orgId/sink") ; apps/api/src/modules/demo/routes.ts:351 (SIGNUP_KEY_DONE_TTL_SECONDS)
+Busy orgs without sessions: liaison seed --tier load --orgs N [--volume], synthetic demo marker with expiry (--ttl-hours, default 6), reaped by the demo reaper -> apps/api/src/seed/tiers/load/seed-load.ts:1-30 ; apps/api/src/seed/bulk/volume.ts:1-25 ; apps/api/src/cli/commands.ts ("seed")
+load-test --deploys N / --launch: flags, k6 traffic (pages, API write, live socket, scripted turns with known replies), counters and pass rule, delays during vs outside, errors by type, report.json + summary.txt, exit 1 -> scripts/lib/deploy-under-load.ts ; qa/load/a9-deploy-under-load.js ; scripts/load-test.ts
+Launch scenario: levels / arrival rate, walk, pool hit rate and time to workspace; synthetic caps still apply -> qa/load/a9-deploy-under-load.js (visitor) ; apps/api/src/modules/demo/routes.ts (startVisitorSignup synthetic) ; apps/api/src/lib/env.ts (LIAISON_DEMO_SYNTHETIC_*)
+Signed demo requests skip the per-peer poll budget -> apps/api/src/modules/demo/routes.ts (demoSignupRateLimiter)
+Scheduled app job = one scheduler per app and job (cron fan-out), one run per workspace per tick; rollback script removes the fan-out schedulers after the previous image runs everywhere -> apps/api/src/infra/jobs/fanout-runtime.ts:153 ; apps/api/scripts/cron-fanout-rollback.ts
+Rolling pools planned from DB_CELL_MAX_CONNECTIONS (compose: POSTGRES_MAX_CONNECTIONS, 200) and API_REPLICAS/WORKER_REPLICAS; api 26, worker 34, overlap 172 = 200 - 15 - 13; one release over refuses -> deploy/docker-compose.yml:703-705 ; deploy/docker-compose.yml:751-753 ; apps/api/src/db/pool-plan.ts:40-42 ; apps/api/src/db/pool-boot.ts:55-63 ; scripts/compose-db-connection-budget.test.ts
+Fair job queues: half the slots across job hosts under contention, all alone; over-cap jobs wait without a retry; JOB_ORG_FAIRNESS=off; /diag jobs.fairness (admitted, denied, parked, promoted, busyOrgs, waitP95Ms, degraded) and jobs.fanout byJob -> apps/api/src/infra/jobs/fairness.ts:389-455 ; apps/api/src/infra/jobs/jobs.ts:655-665 ; apps/api/src/lib/env.ts:684 ; apps/api/src/infra/jobs/fairness.ts:702-728 ; apps/api/src/modules/monitor/index.ts:168-228
+/diag jobs.fairness denied (lifetime, each parks its job), promoted, parkedNow -> apps/api/src/infra/jobs/fairness.ts (readQueueFairness)
+Compose passes the integration, push, storage and rate-limit variables -> deploy/docker-compose.yml:502
+SYSTEM_RESEND_API_KEY system mail key -> apps/api/src/lib/env.ts:1039
+EXA_API_KEY platform web search key -> apps/api/src/modules/agent/credits/platform-key-env.ts:12
+Sign-in callback /api/auth/oauth/callback -> apps/api/src/modules/connection-guides/paths.ts:7
+Connections callback /api/connections/callback -> apps/api/src/modules/connection-guides/paths.ts:5
+Picker keys -> apps/api/src/lib/env.ts:798
+With Resend the from domain must be DKIM/SPF verified -> apps/api/CLAUDE.md
+A process forgets a deleted org within 5 minutes -> apps/api/src/modules/apps/org-runtime-release.ts:46 ; apps/api/src/modules/apps/org-runtime-release.ts:179
+LIAISON_ORG_RUNTIME_IDLE_MINUTES (default 60, 0 never) forgets an idle org, set up again at next use -> apps/api/src/lib/env.ts:978 ; apps/api/src/modules/apps/org-runtime-release.ts:150
+MAILBOX_ENCRYPTION_DEFAULT is a default; unset is decided once and stored -> apps/api/src/lib/env.ts:771 ; apps/api/src/modules/mailbox-crypto/encryption-mode.ts:93
+MAILBOX_ENCRYPTION_ALLOW_MANAGED=false locks private -> apps/api/src/lib/env.ts:778 ; apps/api/src/modules/mailbox-crypto/encryption-mode.ts:182
+LIAISON_OPENROUTER_IGNORE_HOSTS instance default, OpenInference, empty allows every host -> apps/api/src/lib/env.ts:561
+LIAISON_OPENROUTER_IGNORE_HOSTS passed by compose -> deploy/docker-compose.yml:619
+An org's own Blocked hosts list replaces the instance default -> apps/api/src/modules/agent/providers/openrouter-blocked-hosts.ts:36
+LIAISON_TEAM_ENDPOINT passed, unset = team endpoint, empty = off -> deploy/docker-compose.yml:611
+LIAISON_TRUSTED_APP_PUBLISHERS passed -> deploy/docker-compose.yml:616
+Image ships cosign, TUF_ROOT under /tmp -> apps/api/Dockerfile:148
+LIAISON_DEMO_WAREHOUSE opts the demo seed into the warehouse; needs the warehouse DSN, else the seed fails -> apps/api/src/lib/env.ts:305-315 ; apps/api/src/seed/tiers/demo/seed-warehouse.ts:73-78 ; deploy/docker-compose.yml:479-481
+Launch run re-asks a 202 being prepared with the same key; report counts 202_preparing -> qa/load/a9-deploy-under-load.js:347-362 ; scripts/lib/deploy-under-load.ts:464-467
+Mail encryption variables are set in deploy/.env and passed to the app by compose -> deploy/docker-compose.yml:559 ; deploy/docker-compose.yml:560
+hard deadline watchdog: a Worker kills the process 3 s past the hard deadline when the main thread is wedged, fatal line first -> apps/api/src/lib/shutdown.ts:57-63 ; apps/api/src/lib/shutdown.ts:285-288 ; apps/api/src/lib/shutdown-watchdog.ts:11-30

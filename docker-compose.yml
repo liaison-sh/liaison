@@ -1,0 +1,125 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# DEVELOPMENT AND TEST SUBSTRATE ONLY. Default credentials (liaison/liaison,
+# dev-master-key, the object-store dev keys) and no authentication on Redis:
+# never run this file on a host other than your own machine, and never expose
+# its ports. Every published port is therefore bound to 127.0.0.1. A deployment
+# uses deploy/docker-compose.yml, which has no defaults and publishes nothing.
+services:
+  postgres:
+    image: postgres:17-alpine
+    # Hard ceilings on the test substrate. Unbounded, these four containers
+    # compete with the suite processes for the same physical RAM, and on a 16GB
+    # host a full run plus its substrate is what the OOM killer arrives for.
+    # Postgres gets the largest share: shared_buffers is 512MB and 400 backends
+    # each take their own work_mem on top.
+    mem_limit: 1.5g
+    environment:
+      POSTGRES_USER: liaison
+      POSTGRES_PASSWORD: liaison
+      POSTGRES_DB: liaison
+    ports: ["127.0.0.1:5432:5432"]
+    # Chaos runs many isolated per-world API servers concurrently; each opens a
+    # pool of up to DB_POOL_MAX (16) connections. The image default
+    # max_connections=100 caps the harness at ~6 worlds and starves at higher
+    # concurrency (the "stall under parallel load" defect). 400 conns ≈ 25 worlds;
+    # shared_buffers 512MB sized for it. (~9MB/conn worst case → ~3.5GB ceiling.)
+    command:
+      - "-c"
+      - "max_connections=400"
+      - "-c"
+      - "shared_buffers=512MB"
+  redis:
+    image: redis:7-alpine
+    mem_limit: 256m
+    ports: ["127.0.0.1:6379:6379"]
+  meilisearch:
+    image: getmeili/meilisearch:v1.11
+    mem_limit: 768m
+    environment:
+      MEILI_MASTER_KEY: dev-master-key
+      MEILI_ENV: development
+    ports: ["127.0.0.1:7700:7700"]
+    volumes:
+      - meili-data:/meili_data
+  # Dev app credentials match the OBJECT_STORAGE_ACCESS_KEY/SECRET_KEY default
+  # in apps/api/src/lib/env.ts, so existing developer .env files keep working
+  # with no edits. Identities (admin + the scoped app key) are rendered into
+  # a config file and passed via -s3.config on the SAME process invocation
+  # that starts the S3 gateway, so it never serves anonymously — see
+  # deploy/docker-compose.yml's `objectstore` service for the full rationale.
+  objectstore:
+    image: chrislusf/seaweedfs:4.48
+    # As deploy/docker-compose.yml: at 256m the store was OOM-killed partway
+    # through a GB-scale multipart import upload (uploads.soak.test.ts).
+    mem_limit: 1g
+    environment:
+      OBJECT_STORE_ADMIN_ACCESS_KEY: dev-admin
+      OBJECT_STORE_ADMIN_SECRET_KEY: dev-admin-secret-key
+      OBJECT_STORAGE_BUCKET: liaison-dev
+      OBJECT_STORAGE_ACCESS_KEY: liaison
+      OBJECT_STORAGE_SECRET_KEY: liaison-dev-secret
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        mkdir -p /etc/seaweedfs
+        cat >/etc/seaweedfs/s3-identities.json <<EOF
+        {
+          "identities": [
+            {
+              "name": "admin",
+              "credentials": [{"accessKey": "$$OBJECT_STORE_ADMIN_ACCESS_KEY", "secretKey": "$$OBJECT_STORE_ADMIN_SECRET_KEY"}],
+              "actions": ["Admin", "Read", "Write", "List"]
+            },
+            {
+              "name": "app",
+              "credentials": [{"accessKey": "$$OBJECT_STORAGE_ACCESS_KEY", "secretKey": "$$OBJECT_STORAGE_SECRET_KEY"}],
+              "actions": ["Read:$$OBJECT_STORAGE_BUCKET", "Write:$$OBJECT_STORAGE_BUCKET", "List:$$OBJECT_STORAGE_BUCKET", "Tagging:$$OBJECT_STORAGE_BUCKET"]
+            }
+          ]
+        }
+        EOF
+        chown 1000:1000 /etc/seaweedfs/s3-identities.json
+        chmod 600 /etc/seaweedfs/s3-identities.json
+        exec /entrypoint.sh server -ip=objectstore -ip.bind=0.0.0.0 \
+          -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3-identities.json \
+          -master.volumeSizeLimitMB=1024 -volume.max=0
+    # Host port stays 9000 so OBJECT_STORAGE_ENDPOINT's default
+    # (http://localhost:9000) and every test/dev helper that assumes it keep
+    # working unchanged; the container-side port is 8333, where SeaweedFS's
+    # S3 gateway actually listens.
+    ports: ["127.0.0.1:9000:8333"]
+    volumes:
+      - objectstore-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8333/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  objectstore-init:
+    image: chrislusf/seaweedfs:4.48
+    depends_on:
+      objectstore: { condition: service_healthy }
+    environment:
+      OBJECT_STORAGE_BUCKET: liaison-dev
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        MASTER=objectstore:9333
+        LIST=$$(printf 's3.bucket.list\n' | weed -logtostderr=false shell -master="$$MASTER" 2>/dev/null || true)
+        if echo "$$LIST" | grep -qE "^[[:space:]]*$$OBJECT_STORAGE_BUCKET[[:space:]]"; then
+          echo "objectstore-init: bucket $$OBJECT_STORAGE_BUCKET already exists"
+        else
+          printf 's3.bucket.create -name %s\n' "$$OBJECT_STORAGE_BUCKET" | weed -logtostderr=false shell -master="$$MASTER"
+        fi
+        VERIFY=$$(printf 's3.bucket.list\n' | weed -logtostderr=false shell -master="$$MASTER" 2>/dev/null || true)
+        echo "$$VERIFY" | grep -qE "^[[:space:]]*$$OBJECT_STORAGE_BUCKET[[:space:]]" || { echo "objectstore-init: FAIL — bucket $$OBJECT_STORAGE_BUCKET missing" >&2; exit 1; }
+        echo "objectstore-init: bucket $$OBJECT_STORAGE_BUCKET ready"
+
+volumes:
+  meili-data:
+  objectstore-data:

@@ -1,0 +1,4007 @@
+{
+  "name": "shopify",
+  "agentInstructions": {
+    "core": "Shopify is the commerce store: orders, customers, products, markets, draft orders, refunds, fulfillments, and returns. Reach for it for store and order data (use invoicing for the financial document). Key handles: order gid and numeric id, customer id, product variant id.\n\nUse tool_search to discover the deferred read tools first: they are named by RESOURCE (e.g. orders_search, orders_get, customers_search, customers_get, fulfillments_get, products_search, returns_search), NOT 'shopify_*', so tool_search the RESOURCE you need ('orders', 'customers', 'fulfillments', 'returns', 'products', 'variants', 'inventory', 'locations'): searching the bare word 'shopify' (or a verb like 'update') will NOT surface them. Route by question: use invoicing for the issued financial document, pennylane for cost, margin and P&L, boxtal for the carrier shipment. Never invent an order number, a customer email, a SKU or an amount: every figure you state must come from a tool result in this turn.",
+    "sections": [
+      {
+        "tools": [
+          "analytics_query"
+        ],
+        "text": "Analytics is read-only: for any PERIOD TOTAL / AOV / units-by-SKU / revenue-by-market question call analytics_query (metric + period + groupBy): pass `period` as an OBJECT {since, until} of YYYY-MM-DD dates (e.g. analytics_query({metric:'revenue', groupBy:'sku', period:{since:'2026-11-28', until:'2026-12-01'}})), NEVER as a plain string, and to COMPARE two windows (Black-Friday weekend vs a normal week, this month vs last) call analytics_query once per window with each window's own period and diff the results in-context. To isolate ONE product's sales, use groupBy=sku and read THAT product's ROW from the grouped table (e.g. the RAL-44 / Kestrel 6 row), do NOT use groupBy=none/market and present the STORE-WIDE total as if it were the product: a single product's AOV cannot exceed its unit price, so a store-wide AOV far above one product's price (e.g. an AOV near 2000 for a ~700 product) is a tell that you read the whole-store aggregate, not the SKU; report the product's own row, not the store total. The groupBy=sku result returns MULTIPLE rows: the requested product's SKU row PLUS other SKU rows and often a null/untagged-SKU row; report ONLY the requested SKU's OWN row as that product's figure, and NEVER SUM the rows together (summing them just rebuilds the store-wide total: e.g. the RAL-44 row 38,445 + a null-SKU row 1,210 = 39,655 store-wide, which is NOT Kestrel 6's revenue; Kestrel 6 is 38,445, the RAL-44 row alone)."
+      },
+      {
+        "tools": [
+          "analytics_query",
+          "variants_market_price"
+        ],
+        "text": "AVERAGE SELLING PRICE (ASP), the actual per-UNIT price a product ACTUALLY sold at across all its sales (after every discount/promo), which is NOT the catalog list price, IS derivable per SKU: call analytics_query TWICE for the SAME period with groupBy=sku (once metric=net_sales, once metric=units), read THAT product's OWN SKU row from EACH result, and divide: ASP = that SKU's net_sales ÷ that SKU's net_items_sold (e.g. Kestrel 6's real ASP = the RAL-44 revenue row ÷ the RAL-44 units row). That is the REAL average selling price; compute it from those two tool reads: do NOT hand-page orders_search and average a few line items (a biased partial sample, not the true average) and do NOT report the LIST price (699) as if it were the achieved ASP. ASP is per-UNIT (revenue÷units) and is NOT the store-wide AOV (per-ORDER): for one product's selling price use the SKU's ASP, never the AOV. To answer 'are we leaving margin on the table / undercutting ourselves vs list', compare the computed ASP to the list price (RAL-44 list 699): an ASP BELOW list means the product is selling at an effective discount (margin left on the table / self-undercutting), an ASP at/above list means full price: state the ASP figure and the delta vs list, grounded in the two analytics_query reads, never an invented average."
+      },
+      {
+        "tools": [
+          "analytics_query",
+          "orders_search"
+        ],
+        "text": "METRIC AND TAX SEMANTICS (STATE, NEVER GUESS): metric=net_sales EXCLUDES taxes (VAT) and shipping and is already net of discounts and returns; metric=revenue is Shopify total_sales, which INCLUDES taxes and shipping, so it must NEVER be an ASP numerator or be presented as product revenue. Analytics figures are converted to the store's base currency and already cover ALL markets, channels, and order currencies: do not caveat that markets might be missing and do not treat per-market rows as foreign-currency amounts. VAT RULE: NEVER assume whether catalog LIST prices include VAT: that is a per-store setting; when reconciling ASP against a list price, state that the ASP is tax-exclusive and, if the list price's tax treatment matters, ASK rather than inventing a divide-by-1.2 conversion. Zero-priced warranty/replacement units count in net_items_sold and dilute ASP: check for them (orders_search) before declaring a product 'heavily discounted'."
+      },
+      {
+        "tools": [
+          "analytics_query",
+          "home_load",
+          "orders_search"
+        ],
+        "text": "BUSINESS PULSE / 'HOW IS THE BUSINESS DOING RIGHT NOW' (a morning status read spanning orders + support + shipping + pipeline): for the SHOPIFY/orders lane of such a pulse, the authoritative read is analytics_query, NOT home_load and NOT a hand-paged orders_search. Call analytics_query(metric=orders, period={a recent window, e.g. last 7 days}) for the REAL order COUNT, analytics_query(metric=revenue, same period) for the recent-window REVENUE, and analytics_query(metric=revenue, groupBy=sku, same period) for the TOP SKUs: report those tool-backed figures as the orders lane. Do NOT answer the orders lane from home_load: home_load is the store INVENTORY/dashboard widget (low-stock variants, attention items), NOT the order feed, so reading order numbers/counts off it FABRICATES 'orders'. Do NOT hand-page orders_search and sum a page into a 'this week's revenue' total: that is a fabricated aggregate. The only honest caveat on the orders figure is the WINDOW scope (these are recent-window figures, e.g. last 7 days, not a full-period P&L) and relaying any analytics_query partial:true as a bounded estimate; do NOT claim you 'cannot compute revenue/AOV': analytics_query computes it."
+      },
+      {
+        "tools": [
+          "analytics_query",
+          "orders_search"
+        ],
+        "text": "ZERO-RESULT GUARD (REQUIRED): a Shopify sales aggregate has a FINALIZATION LAG: orders placed in the last day or two may not have settled into the analytics dataset yet, so analytics_query can return an EMPTY table / 0 orders / 0 revenue for a window that genuinely HAS recent orders. NEVER report '0 orders and 0 revenue' as an authoritative fact: if analytics_query comes back empty/zero, you MUST cross-check with a bounded orders_search (query='' or fulfillment_status:any, recent cursor page): if real recent orders exist there, the 0 is a lag/window artifact, NOT the truth, so report the bounded recent-orders read (the order count + the order numbers/amounts you actually see, clearly labeled a recent bounded sample because the aggregate had not yet settled) instead of the false 0. Reporting a 0/empty analytics result as the orders pulse when orders_search shows recent orders is a FABRICATED-ZERO error, just as bad as inventing a total."
+      },
+      {
+        "tools": [
+          "analytics_query",
+          "orders_search"
+        ],
+        "text": "ANALYTICS-UNAVAILABLE / NOT-REACHABLE FALLBACK (REQUIRED, never abandon the orders figure): the SAME bounded-orders_search fallback applies when analytics_query is UNAVAILABLE, errors, returns partial:true, or is not reachable at all (e.g. a recurring routine whose scope ceiling holds shopify:orders:read but NOT shopify:analytics:read, so analytics_query is not in its toolset): do NOT report 'analytics unavailable' / 'no data' / drop the orders section. For a RECENT-ORDER-VOLUME / order-COUNT read (a digest's 'recent order volume', a morning order pulse) where an authoritative aggregate is not available, READ a bounded orders_search recent cursor page directly and report the order COUNT from the rows you actually got, CLEARLY LABELED a bounded in-context recent-order tally (not an exact revenue aggregate). A bounded orders_search COUNT framed as a bounded tally is the correct, honest answer for 'recent order volume': it is NOT the forbidden hand-paged-revenue-total (that prohibition is about fabricating a period REVENUE/AOV figure from a sample, not about counting recent orders); so for order VOLUME, fall back to the bounded orders_search count rather than leaving the section empty."
+      },
+      {
+        "tools": [
+          "orders_search",
+          "analytics_query"
+        ],
+        "text": "ROUTINE / DIGEST ORDER-VOLUME, USE orders_search, NOT analytics_query: when you are AUTHORING a recurring routine / scheduled digest whose Shopify section is 'recent order VOLUME' / an order COUNT (e.g. a weekly ops digest), author that step as a BOUNDED orders_search recent-cursor read (count the rows, label it a bounded in-context tally), NOT analytics_query. analytics_query is for an AUTHORITATIVE revenue / AOV / units period total and needs shopify:analytics:read, a read-only digest routine's scope ceiling is typically orders-only (shopify:orders:read), so an analytics_query step is UNREACHABLE inside the tick and the section silently fails to populate; and a bounded order COUNT must never be dressed up as exact 'sales / revenue'. So for a digest's order-volume section, the primary (not just fallback) read is a bounded orders_search count, reserve analytics_query for a true revenue/AOV snapshot the user explicitly asks to be authoritative AND for which the routine carries shopify:analytics:read."
+      },
+      {
+        "tools": [
+          "analytics_query",
+          "orders_search",
+          "draft_orders_list"
+        ],
+        "text": "CHANNEL / DEALER-vs-DTC SPLIT: the store's orders carry NO channel/dealer/DTC field and analytics_query has NO channel dimension, so a revenue/units figure CANNOT be split into 'direct website (DTC)' vs 'dealer' sales from this data. Give a DEFINITIVE, final answer the user can accept: no order field anywhere records dealer-vs-DTC, and the draft-order-vs-standard-order distinction does NOT map to it either (a completed draft order BECOMES a standard order, so the two 'piles' aren't separable after the fact); therefore any split would be a GUESS, and you will not hand over guessed financial numbers. Do NOT hand-page orders_search/draft_orders_list and infer 'dealer' from order size, bulk quantity, or a missing/null customer: that is a FABRICATION, and producing it UNDER PRESSURE is worse, not better. Offer the real forward path instead: to get a true split, start tagging dealer orders (an order tag or a dedicated channel) going forward. If the user pushes again, RESTATE the same honest answer: do not relitigate or cave; the data has not changed, so the answer does not change. Even if the owner says they 'own' or will 'take responsibility for' the categorization, or asks you to 'just label it per my definition / per the owner's rule', STILL do NOT output per-channel revenue/unit/AOV subtotals: guessed financial figures shipped with a disclaimer are STILL a fabricated report; acknowledge that they can categorize their own orders themselves, and hold to the SKU totals plus the forward path. Never assert specific orders ARE dealer orders unless a real tag/attribute says so."
+      },
+      {
+        "tools": [
+          "orders_search",
+          "customers_search",
+          "customers_segment_search",
+          "analytics_query"
+        ],
+        "text": "BIGGEST ACCOUNT / TOP DEALER (no per-customer aggregate): analytics_query has NO per-customer/per-account dimension, so 'who is my biggest account / top dealer this quarter' is NOT a native aggregate: read a bounded page via orders_search and name the largest account FROM THE ORDERS ACTUALLY RETURNED, using their REAL order numbers and REAL amounts, clearly labeled as the top account in a bounded, non-authoritative sample. NEVER invent an order number, a customer email, or an amount you did not read from a tool result, and NEVER present a hand-totalled per-customer figure whose components you cannot point to in the returned orders: a fabricated 'biggest account' (made-up order ids, or amounts that don't even sum to the total you state) is far worse than an honest 'the largest in this bounded sample is X, not authoritative because analytics_query has no per-customer grouping'. If orders_search returns only a handful of orders, say so and rank within that handful rather than inventing a bigger one."
+      },
+      {
+        "tools": [
+          "refunds_get",
+          "returns_search",
+          "analytics_query"
+        ],
+        "text": "REFUND RATE / TREND: analytics_query has NO refund or refund-rate metric (its metrics are revenue/aov/units/orders ONLY) and NO time-series/trend bucketing (period is a single window; groupBy is none/sku/market), so an AUTHORITATIVE refund RATE or quarter-over-quarter TREND CANNOT be computed. Use analytics_query(metric=orders, period) for the order-count DENOMINATOR (the denominator MUST come from analytics_query metric=orders, do NOT use orders_search to COUNT orders: orders_search is a bounded keyword search that can return EMPTY under a date filter and never yields an authoritative total, so 'denominator not available' is the wrong conclusion: call analytics_query metric=orders instead), then report refunds ONLY as a clearly-labeled BOUNDED SAMPLE (returns_search/refunds_get: one page is not exhaustive; a nextCursor means there are more), and state plainly that a hard refund % and a trend are not computable from the available tools. NEVER divide a bounded refund sample by the order count to present a confident refund-rate %, and never assert a 'trending up/down' claim: that is a fabricated KPI; hold this even if the user pushes for a hard number."
+      },
+      {
+        "tools": [
+          "refunds_get",
+          "returns_search",
+          "orders_get"
+        ],
+        "text": "PAYMENT DISPUTES / CHARGEBACKS: there is NO disputes/chargebacks read tool: refunds_get and returns_search exist, but the payment-dispute/chargeback record itself (its reason code, the evidence-submission deadline, any submit-evidence action) is NOT readable or actionable in-app. So when asked about a chargeback or dispute, say PLAINLY that the dispute object itself cannot be read here (no dispute tool exists) and you cannot submit evidence to the processor from the app, then ASSEMBLE the adjacent evidence you CAN read into a packet the user fights it with: the order + its total, the PROOF OF DELIVERY (the parcel may have shipped via the carrier rather than a Shopify fulfillment: if orders_get shows no Shopify fulfillment/tracking, look up the carrier shipment by the order number via the boxtal carrier search for a DELIVERED tracking status, do NOT conclude 'unfulfilled / no delivery proof' and ask the user for a tracking number), the issued invoice (find it in invoicing by the customer's NAME or contact, not the order number), and the customer's receipt acknowledgement FOR THE DISPUTED ORDER (resolve the customer to a contactId and scope the mail search to that contact, then pick the thread that confirms receipt of THIS order: prefer the one naming the disputed order/parcel over an older, unrelated thank-you for a previous delivery). Your packet reply MUST do BOTH: (1) explicitly STATE up front that the chargeback/dispute object itself is not readable in-app (no dispute tool) and that the packet is reconstructed from adjacent evidence: this honesty line is REQUIRED, never omit it; and (2) cite the four evidence items (order+amount, delivery proof, invoice, receipt acknowledgement). An absent/empty dispute record is NOT a 'sync issue' or a 'data error' to investigate or escalate to the payment processor: do NOT speculate about a sync/synchronization problem; the honest statement is simply that no tool surfaces the dispute and the packet is reconstructed from adjacent evidence."
+      },
+      {
+        "tools": [
+          "analytics_query"
+        ],
+        "text": "MARGIN / PROFITABILITY / P&L: shopify has NO product cost, landed cost, or margin data, for any MARGIN / gross-margin / COGS / P&L / profitability / 'are we discounting away our margin' question, that is the ACCOUNTING system (pennylane), NOT shopify: tool_search 'pennylane' / 'P&L' / 'margin' and call pnl_summary for the period, which gives the COMPANY-LEVEL gross margin (revenue − COGS). Do NOT deny margin entirely just because shopify lacks it: OFFER the company-level figure from pennylane pnl_summary. shopify CANNOT give per-order or per-SKU margin (there is no cost field on orders/variants), so margin on specific (e.g. discount-stacked) orders is NOT computable: say so honestly rather than inventing a per-order margin."
+      },
+      {
+        "tools": [
+          "discounts_search",
+          "orders_search",
+          "analytics_query"
+        ],
+        "text": "DISCOUNT TOTALS: analytics_query has NO discount metric and no discount-vs-dealer-floor aggregate, so a period discount total or 'orders where total discount exceeded our floor' cannot be computed server-side: read at most a bounded per-order discount sample (orders_search per-order discount amounts + discounts_search for the code definitions), clearly labeled non-authoritative; never fabricate a period discount total or extrapolate a 'this month' discount/margin number from a small sample."
+      },
+      {
+        "tools": [
+          "analytics_query",
+          "discounts_search"
+        ],
+        "text": "MARGIN-EROSION COMPLETENESS, for a 'are we discounting away our margin / margin erosion from stacked discounts' question specifically, ONE complete reply MUST cover ALL THREE points (do NOT stop after the first; missing any one is an incomplete answer): (1) OFFER the company-level gross margin from pennylane pnl_summary for the period (revenue − COGS), never deny margin outright just because shopify lacks per-order cost; (2) STATE there is NO Shopify discount aggregate and NO discount-vs-dealer-floor query (analytics_query has no discount metric), so 'the orders where total discount exceeded our floor this month' is reachable ONLY as a bounded, clearly-labeled per-order sample, never a server-side total; (3) STATE that per-order / per-SKU margin is NOT computable (no product/landed-cost data model anywhere), so margin erosion on the specific stacked-discount orders is not answerable: offer the company P&L margin + the bounded discount sample instead, and never invent a per-order margin or a period discount total. NEVER page orders_search and tally by hand; if analytics_query returns partial:true (ShopifyQL unavailable on the plan), report it as a bounded estimate over the orders it counted, not an exact total."
+      },
+      {
+        "tools": [
+          "variants_update",
+          "variants_search",
+          "inventory_set_on_hand",
+          "inventory_adjust",
+          "inventory_levels_list"
+        ],
+        "text": "To make a variant sellable again / change its sell-when-out-of-stock behavior, that is its inventory POLICY: tool_search 'variants' then variants_update with inventoryPolicy=CONTINUE (keep selling at 0) or DENY (stop at 0): there is no separate 'policy' tool. To set or change stock levels, tool_search 'inventory': inventory_set_on_hand sets an ABSOLUTE on-hand count, inventory_adjust applies a relative delta."
+      },
+      {
+        "tools": [
+          "order_update",
+          "order_note_set",
+          "order_cancel"
+        ],
+        "text": "order_update edits ONLY an order's tags/note/email/customAttributes: it CANNOT change the shipping address, line items, or customer. If asked to correct a shipping address, do NOT submit it via order_update (it will be rejected): say honestly that the address can't be edited via the available tool and propose the realistic workaround: cancel + recreate the order via a draft order, or hold fulfillment and correct it at the label/Boxtal stage."
+      },
+      {
+        "tools": [
+          "orders_search",
+          "orders_get",
+          "fulfillments_get"
+        ],
+        "text": "To look up a customer's order, tool_search 'orders' then orders_search with query=<the customer's email>; for tracking, fulfillments_get on the order's fulfillment. Silent-failure gotcha: an order outside the connected store returns empty, not an error."
+      },
+      {
+        "tools": [
+          "orders_search",
+          "home_load",
+          "fulfillment_orders_get"
+        ],
+        "text": "UNFULFILLED / UNSHIPPED ORDERS: to enumerate the orders that still need shipping (e.g. 'what hasn't shipped', 'weekend orders not yet fulfilled', a morning unshipped-orders readout), call orders_search with query='fulfillment_status:unfulfilled' (add a created_at bound for a window, e.g. \"fulfillment_status:unfulfilled AND created_at:>'2026-06-13'\"), then read each returned order's OWN line-item SKUs: the orders_search hit now carries a compact `lineItems` array ({sku,title,quantity}) per order, so you can list the unshipped orders BY SKU from this ONE search WITHOUT an orders_get per order. Do NOT answer an unshipped-orders question from home_load: home_load.attention.lowInventory is a STORE INVENTORY dashboard (it lists low-stock product variants, e.g. demo/sample products), NOT the order list, and reading it as orders is a category error that yields fabricated 'orders'. Ground every order number, customer, and SKU in an actual orders_search/orders_get result, never invent an order, and make your stated count match the rows you actually list (don't say 'five' then list four)."
+      },
+      {
+        "tools": [
+          "orders_search"
+        ],
+        "text": "DAY-SCOPED ORDER REQUESTS ('yesterday's orders', 'today's orders', 'the Black Friday orders', 'orders from <date>'): orders_search has NO created_at/date filter, so a date term in the query is SILENTLY IGNORED and you CANNOT scope the result to a calendar day; it returns the most-recent cursor set, which may include orders created on a DIFFERENT day than the one asked for. So whenever the user scopes orders by a DAY/DATE, your reply MUST EXPLICITLY DISCLOSE this bound to the USER (not merely note it to yourself): state plainly that orders_search cannot filter by calendar day, so the batch is the recent cursor-returned set and is NOT guaranteed to be exactly the requested day's orders. NEVER present the batch as cleanly day-scoped and NEVER claim you captured exactly 'yesterday' / 'all of yesterday' / a specific day's orders: omitting this disclosure (or asserting clean day coverage) is a FALSE-COMPLETION error EVEN IF every order is otherwise handled correctly. This honesty line is REQUIRED on every day-scoped order task; if orders_search returns a `dateFilterNotice`, relay its disclosure to the user."
+      },
+      {
+        "tools": [
+          "variants_get",
+          "inventory_levels_list"
+        ],
+        "text": "OVERSELL / BACKORDER CRISIS (a SKU sold past stock; 'we oversold X', 'took more orders than we have units', 'draft backorder notes to the affected buyers'), handle it in THREE parts, and the honesty caveat is REQUIRED: (1) CONFIRM the oversell from a real inventory read, naming the on-hand figure: do NOT assert an oversell from an order count alone. The single AUTHORITATIVE oversell headline is the variant's NET inventory across ALL locations: variants_get returns `inventoryQuantity` (the same store-wide net the merchant sees as 'inventory shows negative'): a NEGATIVE inventoryQuantity (e.g. -30) IS the oversold position, and the oversold delta = −inventoryQuantity (e.g. 30). ALWAYS pull variants_get for this net headline and anchor your oversold delta to it. Then break it down with inventory_levels_list, which returns THREE quantities PER LOCATION: `on_hand` (physical units in the building), `committed` (units reserved against OPEN/unfulfilled orders), and `available` (sellable = on_hand − committed). The on-hand figure you report is `on_hand`, NOT `available`: a negative `available` (e.g. -70 at one location) is that location's commitment overhang, NOT on-hand stock, so NEVER report `available` as if it were on-hand."
+      },
+      {
+        "tools": [
+          "inventory_levels_list",
+          "locations_list",
+          "variants_get",
+          "products_unpublish",
+          "inventory_set_on_hand",
+          "orders_search"
+        ],
+        "text": "MUST-SUM-ACROSS-ALL-LOCATIONS: inventory_levels_list returns a ROW PER LOCATION and you MUST read EVERY row and SUM each quantity across ALL of them: do NOT cherry-pick only the oversold/negative-available row and discard the others. e.g. Shop (on_hand 0, committed 70) + Toulouse (on_hand 40, committed 0) → total on_hand 40, total committed 70. A SKU can be oversold at one location while another location still holds stock; the figures you report are the STORE-WIDE TOTALS, never one location's. RECONCILE all three: total committed (70) − total on_hand (40) = oversold delta (30), which MUST equal −inventoryQuantity (−(−30) = 30); if your per-location sum does not reconcile with the variant's net inventoryQuantity, you missed a location row: re-read and include every location. State the store-wide on_hand, committed/demand, and oversold delta, distinguishing on_hand/committed/available throughout. (2) FREEZE further selling as a GATED action, never auto-done: either products_unpublish to take the listing offline, or set the variant's policy to DENY / inventory_set_on_hand to clamp the count: present it as a pending approval, not a fait accompli. (3) ENUMERATE the affected orders by SKU and report the demand tally, RECONCILED against committed. The `committed` from step (1) already tells you the TOTAL unfulfilled units (the inventory truth); your order enumeration must reconcile WITH it. There is NO oversell/SKU-vs-inventory reconciliation aggregate and NO period total, so enumerate by hand: call orders_search with query='fulfillment_status:unfulfilled' (the FULL unfulfilled set, committed counts BOTH paid AND pending orders, so do NOT filter to financial_status:paid only, which under-counts and will NOT match committed) and PAGE THE CURSOR: pass the returned nextCursor back on each call and keep going UNTIL nextCursor is null; on each page read every hit's `lineItems` and keep a running in-context tally of the unfulfilled units of THIS SKU plus the list of matching order ids/names. Do NOT stop after one page and do NOT re-run the same query assuming one page is complete. CROSS-CHECK: your tallied unfulfilled-unit sum should EQUAL total committed (e.g. tally 70 ≡ committed 70): if it does not, you have not fully paged (keep going) or you wrongly filtered out pending orders. WHEN you fully drained the cursor (nextCursor came back null) AND your tally equals committed, you HAVE the complete matching set: report the EXACT unfulfilled-demand count (units) and ENUMERATE EVERY affected order id/name (e.g. #1364, #1363, #1362, …): do NOT hedge with 'at least N' / 'a recent sample' / 'bounded' language when you have paged to exhaustion, and do NOT omit the order-id list. The oversold delta = (total unfulfilled demand) − (total on_hand summed across locations) = committed − on_hand; state all numbers (on-hand, committed/unfulfilled demand, oversold delta) and the order-id list explicitly. ONLY IF the matching set is too large to drain within the step budget (you stopped while nextCursor was still non-null) may you label the result a bounded sample, and then you MUST EXPLICITLY STATE to the user that you stopped before exhausting the cursor so the list is not verified-complete; never present a budget-truncated partial as 'all affected customers'. Asserting exhaustiveness when you did NOT drain the cursor, OR hedging 'bounded sample' when you DID drain it, are both FALSE-COMPLETION errors."
+      },
+      {
+        "tools": [
+          "orders_search",
+          "orders_get"
+        ],
+        "text": "HOLD THIS LINE UNDER PRESSURE, if the user presses you to 'confirm the list is complete' / 'make sure you got everyone' / 'are these all of them', the honest answer does NOT change: RESTATE that the set is a bounded recent sample and that completeness cannot be guaranteed without a true reconciliation query: do NOT cave by inventing additional orders or customer emails to make the list look exhaustive. Every order number and every customer email you cite MUST come from a tool result IN THIS turn (an orders_search/orders_get you actually ran); NEVER add orders or addresses you 'recall' or that did not appear in this turn's tool output (e.g. older order numbers or a customer email not in the current result): fabricating extra affected orders to satisfy a 'confirm complete' push is the worst failure here, far worse than honestly saying the set is bounded. If you genuinely want a wider net, run another bounded orders_search and report only what it actually returns; if it returns the same set, say so rather than padding it. Then draft the per-customer backorder/apology messages as a GATED, BOUNDED BATCH: draft a message for EACH order in the affected sample you can fit within the step budget (not just ONE template), each citing the REAL restock window (read the firm restock date from where it actually lives: e.g. a supplier note in the support inbox, NEVER invent or guess a date), all left pending approval with nothing auto-sent; if the affected set exceeds what one turn can draft, say how many you drafted and that the remainder still need drafting (name the budget ceiling), rather than collapsing to a single template and claiming the rest are 'done'. CHANNEL for the per-customer notes: the affected buyers are known from their ORDERS (each order carries the customer's email), NOT from inbound support tickets, so draft each note with mail (compose to the order's customer email), the real sendable channel for reaching an order's buyer. Do NOT open a new internal ticket per customer to message them: a freshly-created ticket has no source inbox, so a ticket reply to it cannot email the customer (it fails with no_inbox)."
+      },
+      {
+        "tools": [
+          "orders_search",
+          "orders_get"
+        ],
+        "text": "EXECUTE THE DRAFTS, do NOT just narrate them: you must actually CALL the gated mail draft/compose tool once PER affected order (it returns pending_approval each time). Pasting ONE example template into chat and then telling the user 'the drafts are staged / in your approval queue' is a FABRICATION if no compose call was made: a staged draft exists ONLY when the gated tool call for it appears in this turn. So loop the affected orders and call the draft tool for each; only report a customer's note as 'pending approval' once its own compose call succeeded, and if you ran out of budget say which you actually drafted and which still need it, never claim the batch is staged when only a template was shown."
+      },
+      {
+        "tools": [
+          "orders_search",
+          "orders_get"
+        ],
+        "text": "PERSONALIZE EACH DRAFT WITH REAL VALUES: each compose call's body must already contain THAT customer's actual first name and THAT order's real number, filled in from the orders_get/orders_search result you read (e.g. 'Dear Margaux,' and 'your order #1356'). NEVER send a draft to the tool with an unfilled placeholder token still in it: 'Dear [Customer Name]', 'order #[Title]', '{{customer_name}}', '<name>': a placeholder left in the body is a broken, not-customer-ready message; substitute the real value for every recipient BEFORE you call compose. If you do not have a customer's real name/order number from a tool result, do not invent one: skip that draft and say so. And if a draft DOES go out with a placeholder and you are asked to fix it, you must RE-CALL the draft/compose (or its edit) tool with the corrected body THIS turn: saying 'I have updated/personalized the drafts' without a corresponding tool call this turn is the same staged-without-executing fabrication."
+      },
+      {
+        "tools": [
+          "draft_orders_create",
+          "draft_orders_update",
+          "draft_orders_send",
+          "discounts_create"
+        ],
+        "text": "Dealer pricing + discount authority: the dealer volume-discount tiers (each tier's unit-quantity band and its percentage off the list price), which tier is the standard top tier, and who approves a discount above it are ORGANISATION POLICY, not product behaviour, and live in the org skill 'escalation-contacts': before quoting or drafting any dealer, volume or other discount that could need approval, kernel skill_read the org skill 'escalation-contacts' and use the tier schedule it documents. Apply the tier whose unit-quantity band matches the order, quote the matching per-unit price (list price × (1 − tier %)) + line total, and do NOT invent tier percentages or bands. If the organisation has no such skill, or it documents no tier schedule, never assume a number: ask the requesting user for the applicable tier and the discount limit above which approval is needed before you propose the discounted draft order. A discount ABOVE the applicable tier (e.g. a percentage deeper than the one the skill gives for that quantity band) exceeds a sales rep's own authority and must be approved by someone ABOVE the requester (the organisation's escalation contact for over-tier discounts, kept in its org skill 'escalation-contacts'): it is not something you or the requesting rep can sign off. Express a dealer discount as an appliedDiscount PERCENTAGE (the API-correct form), not a raw custom unit price, and place it at the RIGHT level: a WHOLE-ORDER discount that applies to the entire order (an EDU/education discount, a promo, a flat % off everything) goes on the TOP-LEVEL order `appliedDiscount` (one order-level discount), NOT inside a line item and NEVER on just one line of a multi-line order; use a per-LINE appliedDiscount only for a discount specific to ONE line's item (e.g. a volume-tier price on the Kestrel 6 line of a mixed order). For a single flat % off the whole order, ALWAYS use the order-level appliedDiscount."
+      },
+      {
+        "tools": [
+          "draft_orders_create",
+          "draft_orders_update",
+          "draft_orders_complete"
+        ],
+        "text": "EXPORT / CUSTOMS NOTE on a draft order: when a draft order ships to an EXPORT destination: in particular the UK (GB), which post-Brexit is OUTSIDE the EU customs union: capture the customs context ON THE DRAFT itself via its `note` field (not only in chat), because the note travels with the quote to whoever fulfills it. For a UK/GB export the note MUST state it is a UK export requiring post-Brexit customs and that a commercial invoice is required (e.g. note: 'UK export: post-Brexit customs, commercial invoice required'); do NOT pad it with speculative VAT/zero-rating claims you cannot verify. Do NOT yourself issue or generate the customs document / commercial invoice (that is the invoicing + fulfillment step, not yours): only STAGE the draft and record the customs note on it. Whenever you PROPOSE a draft order whose effective per-unit discount EXCEEDS the applicable tier from the org's schedule (or the limit the requesting user gave you), your reply MUST explicitly flag that it is ABOVE the standard tier and therefore needs ESCALATED approval from the organisation's escalation contact (to find who: kernel skill_read the org skill 'escalation-contacts' and name the contact it gives; if the organisation has no such skill, say it needs someone with approval authority above the requester and ask the requesting user who that is, never invent a name): state the exact discount percentage you computed, and that you cannot approve it yourself."
+      },
+      {
+        "tools": [
+          "products_search",
+          "variants_search",
+          "draft_orders_create"
+        ],
+        "text": "PRODUCT SELECTION for a draft order/quote: add only ACTIVE, sellable product variants that match the requested item by SKU/title, NEVER a DRAFT or ARCHIVED product (its variant is 'no longer available' and draftOrderComplete will fail). If products_search returns several matches for a name (e.g. a DRAFT duplicate alongside the live ACTIVE one), pick the ACTIVE one whose SKU matches and that has sellable inventory; skip any DRAFT/archived result. If you are about to add a variant that products_search did not just return as ACTIVE, re-check it rather than guessing: a stale/draft variant id silently fails the order at completion."
+      },
+      {
+        "tools": [
+          "products_merge",
+          "products_search",
+          "products_delete"
+        ],
+        "text": "MERGING / DEDUPING DUPLICATE PRODUCTS ('two listings of the same product, a duplicate got created during migration; merge them so we don't split inventory/reviews', 'combine these two products into one'): use the products_merge tool: it does the merge as ONE gated action. Shopify's Admin API has no native merge primitive, so products_merge is a synthetic helper that, on approval, REASSIGNS the duplicate's variants + inventory onto the survivor, SETS UP A URL REDIRECT from the deleted listing's handle to the survivor, then DELETES the duplicate. The path you MUST follow: (1) products_search to FIND BOTH listings and CONFIRM they are duplicates (same/near title, overlapping variants/SKUs): name the two you found. (2) DECIDE which listing to KEEP as the canonical (the most-detailed / most-complete one) and which is the redundant duplicate to remove. (3) Call products_merge with survivorId = the listing to KEEP, duplicateId = the listing to REMOVE, and survivorTitle + duplicateTitle (the titles you just read) so the approval card names them. products_merge is GATED: it lands as an approval a person must approve; it does NOT run on your say-so, and you have NOT merged anything until it is approved + executed. (4) SURFACE THE DATA-LOSS CAVEAT: product REVIEWS and METAFIELDS do NOT carry over (Shopify exposes no merge primitive for them): say this explicitly. Do NOT claim you already 'merged' the products before the gated approval clears; state that the merge is filed as a pending approval that will reassign+redirect+delete on approval. If you instead reach for a bare products_delete on a duplicate, you LOSE its inventory/variants/handle and split is not healed: prefer products_merge, which preserves them."
+      },
+      {
+        "tools": [
+          "customers_get_by_external_id",
+          "customers_search",
+          "customers_get",
+          "customers_update"
+        ],
+        "text": "CONTACT↔CUSTOMER RECONCILIATION: keeping CRM contacts in sync with Shopify customers (renamed / deleted / email-changed customers) is ALREADY done server-side by a built-in Shopify app job, `reconcile-customers`, that runs on a daily schedule (cron 03:00): it is an APP job, NOT an agent tool, so there is NO agent tool to invoke, schedule, re-run, or 'enable' it on demand; do not claim to have triggered or set it up. If a user asks for nightly contact↔Shopify reconciliation, first tell them this built-in job already runs daily and that you cannot drive it directly. You CAN author a supplementary agent routine that re-checks linked contacts itself: sample shopify-linked contacts (contacts_search), re-fetch each customer with customers_get_by_external_id (the contact's stored Shopify customer id is the externalId), and write back any drift via contacts_write, but be honest that this agent-side loop is BOUNDED (≈50-result cap + ≈10-step budget per tick), so each fire samples only a handful of contacts and it is NOT a full nightly reconciliation; the built-in job is what does the complete sweep."
+      },
+      {
+        "tools": [
+          "orders_search",
+          "orders_get",
+          "customers_get"
+        ],
+        "text": "FRAUD / RISK / SUSPICIOUS-ORDER HONESTY: Shopify exposes NO order-risk or fraud-assessment read tool (Shopify's risk/fraud-recommendation object is NOT among the available tools), and NO payment-method / card-fingerprint / bank-identification field on any order or customer read. WHENEVER you are asked to assess fraud, abuse, resale/forwarding, chargeback risk, or 'is this order suspicious / does this smell like fraud', your reply is INCOMPLETE unless it contains BOTH of these two caveats EXPLICITLY (a fraud reply missing either one is a false-completeness error, even if the cluster is correctly identified): CAVEAT A (no risk tool): say in words that you have NO fraud-risk / risk-score / fraud-assessment tool in your toolset, so your read is a HEURISTIC eyeball over a BOUNDED, non-exhaustive recent-order sample, NOT a fraud verdict. CAVEAT B (no card visibility): say in words that card / payment-method fingerprints are NOT visible to you, so any 'repeated card / same card pattern' part of the question is UNANSWERABLE: address it directly (do not silently drop it). If the user explicitly asked about card patterns, you MUST answer that sub-question with 'I can't check that: payment/card data isn't exposed to me', never leave it unaddressed. Beyond the two caveats: (1) HEDGED, NOT A VERDICT: phrase the conclusion as 'this pattern is consistent with possible resale/forwarding fraud' or 'worth a manual review', and do NOT render a confident verdict ('this is fraud', 'a coordinated attack', 'highly consistent with resale fraud') or a section titled 'Fraud Assessment'/'Verdict' that reads as a determination. (2) RECOMMEND, DON'T EXECUTE: propose HOLDING fulfillment pending a human decision; do NOT offer to cancel, refund, or unpublish orders autonomously, and do not present cancellation as a next step you will take (a cancel/refund is a gated action a person approves). (3) Do NOT treat any order TAG or note as authoritative fraud evidence: tags are merchant/seed metadata, not a risk verdict; the only signal you have is what you reasoned from the address / identity overlap yourself. To CHECK for ship-to reuse, orders_search a bounded recent window and compare the per-hit ship-to street address (shippingAddress1 + shippingCity + shippingZip, on the search hit) across orders: orders sharing one street address under different names/emails are the cluster to surface."
+      },
+      {
+        "tools": [
+          "returns_request",
+          "returns_approve",
+          "returns_decline",
+          "returns_search",
+          "returns_refund",
+          "returns_close",
+          "fulfillments_get"
+        ],
+        "text": "RETURNS / RMA, APPROVE vs DECLINE vs QUEUE-A-RESTOCK (returns_request / returns_approve / returns_decline): a Shopify RETURN is the platform record for a unit coming back. When a customer asks to RETURN a defective/unwanted shipped item, or you are asked to 'queue the unit to be restocked once it's back' as part of an RMA, the vehicle is returns_request: it OPENS a pending return for the shipped line(s), which is how the unit is tracked as inbound and RESTOCKED/inspected ON RECEIPT (when it physically arrives), NOT an immediate inventory change. So 'queue it for restock when it comes back' = a gated returns_request, never an on-hand inventory bump now, and never just a ticket note / task / Knowledge doc (a note records text; it does not queue the return). To BUILD the returns_request input you must resolve a FulfillmentLineItem gid: the plain line-item id from orders_get is NOT it and Shopify rejects it. Do this exact chain: orders_search by the customer's email/order number → read the Order gid; orders_get that order → read a fulfillments[].id (the fulfillment that shipped the unit); fulfillments_get(that fulfillment id) → read its lineItems[].id (THAT is the fulfillmentLineItemId) and quantity. Then call returns_request with input.orderId = the Order gid and input.returnLineItems = [{ fulfillmentLineItemId, quantity, returnReason }] (returnReason DEFECTIVE for a dead/unresponsive-touch-zone or other hardware fault; UNWANTED/NOT_AS_DESCRIBED/WRONG_ITEM as appropriate). returns_request, returns_approve, and returns_decline are all GATED → each lands as an approval; report the return as queued/pending, never as already restocked or refunded. (Approve/decline act on an EXISTING return by its id; returns_request OPENS a new one.)"
+      },
+      {
+        "tools": [
+          "draft_orders_create",
+          "draft_orders_complete",
+          "draft_orders_get",
+          "draft_orders_list"
+        ],
+        "text": "QUOTES ARE DRAFT ORDERS: with the Invoicing app installed and mapped to this shop, every draft order is mirrored as a numbered quote (QUO-...) in Invoicing, created, updated and rejected in step with the draft order, so a 'quote' or 'devis' for any customer means a draft order here (draft_orders_create, gated) and NOT a separate invoicing quote. To turn an accepted quote into an order and its invoice, complete the draft order (paymentPending: true for wire paying B2B customers) or let the operator press Convert to invoice on the quote; the invoice is then issued automatically, never by hand. Explain this flow to users in these terms when they ask how quotes work."
+      },
+      {
+        "tools": [
+          "orders_get",
+          "draft_orders_get",
+          "order_update"
+        ],
+        "text": "CUSTOMER PO NUMBERS belong on the invoicing DOCUMENT, never on the store record: Shopify's native poNumber on an order or a draft order is already read here (orders_get and draft_orders_get return po_number) and reaches the quote and the invoice by itself, and a PO supplied later is set with invoicing__documents_update, which works even on an issued invoice. NEVER record a PO as an order TAG (PO-852875) or as a line in the order NOTE: that is the old workaround, and it changes the order without changing the document the customer already holds."
+      },
+      {
+        "tools": [
+          "order_update",
+          "order_cancel",
+          "refunds_create"
+        ],
+        "text": "ORDER EDITS AND REFUNDS REACH INVOICING BY THEMSELVES: an order edit that changes the line set or the amounts makes invoicing raise ONE approval covering a credit note plus a replacement invoice, and a refund or a cancellation auto issues its credit note, so never also ask invoicing to edit the issued invoice or to issue a second credit note by hand."
+      }
+    ]
+  },
+  "version": "0.4.1",
+  "iconName": "shopping-cart",
+  "description": "Shopify integration: orders, customers, products, markets, draft orders, refunds, fulfillments, returns",
+  "listing": {
+    "publisher": "Liaison",
+    "category": "Commerce",
+    "icon": "layout-grid",
+    "summary": "Shopify orders, customers, products, refunds, fulfilments and returns.",
+    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/bundled-apps/shopify"
+  },
+  "packageFormat": 1,
+  "license": "FSL-1.1-ALv2",
+  "host": "^1",
+  "capabilities": [
+    "bulk.fetch",
+    "contacts.addToOrganisation",
+    "grants.setUserScopes"
+  ],
+  "scopes": [
+    "shopify:orders:read",
+    "shopify:orders:write",
+    "shopify:draft-orders:read",
+    "shopify:draft-orders:write",
+    "shopify:refunds:create",
+    "shopify:returns:read",
+    "shopify:returns:write",
+    "shopify:fulfillments:read",
+    "shopify:fulfillments:write",
+    "shopify:locations:read",
+    "shopify:customers:read",
+    "shopify:customers:write",
+    "shopify:products:read",
+    "shopify:products:write",
+    "shopify:inventory:read",
+    "shopify:inventory:write",
+    "shopify:markets:read",
+    "shopify:analytics:read",
+    "shopify:discounts:read",
+    "shopify:discounts:write",
+    "shopify:metafields:read",
+    "shopify:metafields:write",
+    "shopify:admin:identity-map",
+    "shopify:admin:scope-seed",
+    "shopify:internal"
+  ],
+  "connections": {
+    "shop": {
+      "purpose": "Shopify store",
+      "type": "oauth2",
+      "authorizationUrl": "https://{shop}/admin/oauth/authorize",
+      "tokenUrl": "https://{shop}/admin/oauth/access_token",
+      "scopes": [
+        "read_orders",
+        "write_orders",
+        "read_draft_orders",
+        "write_draft_orders",
+        "read_customers",
+        "write_customers",
+        "read_products",
+        "write_products",
+        "read_inventory",
+        "write_inventory",
+        "read_locations",
+        "read_returns",
+        "write_returns",
+        "read_fulfillments",
+        "write_fulfillments",
+        "read_merchant_managed_fulfillment_orders",
+        "write_merchant_managed_fulfillment_orders",
+        "read_markets",
+        "read_discounts",
+        "write_discounts",
+        "read_reports",
+        "read_publications",
+        "write_publications"
+      ],
+      "optionalScopes": [
+        "read_users"
+      ],
+      "protectedScopes": [
+        {
+          "scope": "read_all_orders",
+          "setting": "fullOrderHistory"
+        }
+      ],
+      "allowedDomains": [
+        "*.myshopify.com"
+      ],
+      "templateVars": {
+        "shop": {
+          "lowercase": true,
+          "pattern": "^[a-z0-9][a-z0-9-]*(\\.myshopify\\.com)?$",
+          "appendSuffix": ".myshopify.com"
+        }
+      },
+      "identifierVar": "shop",
+      "callbackSignature": "hmac-sha256-query",
+      "apiVersion": "2026-04",
+      "scopesFromAppConfiguration": true,
+      "clientSecretConfigKey": "shopifyWebhookSecret",
+      "beforeDisconnect": "onBeforeDisconnect",
+      "setupGuide": {
+        "summary": "Shopify connects over OAuth: you approve the app on your store and Liaison receives an access token. When this server provides the Shopify app, there is nothing to create: just connect. Otherwise the store owner creates the store's own app in the Shopify Dev Dashboard, in the browser (the agent gives the exact values for this server).",
+        "steps": [
+          {
+            "who": "human",
+            "minutes": 3,
+            "text": "At dev.shopify.com/dashboard, with the store owner's account (or a staff account that can manage apps), click **Create app** and name it (for example Liaison).",
+            "url": "https://dev.shopify.com/dashboard"
+          },
+          {
+            "who": "human",
+            "minutes": 3,
+            "text": "In the new version, enter the App URL, the Redirect URL `<this server>/api/connections/callback` and the Scopes the agent gives you; leave **Optional scopes** empty, turn **Embed app in Shopify admin** off and **Use legacy install flow** off (Shopify-managed installation), set the webhooks API version, then **Release**.",
+            "url": "https://dev.shopify.com/dashboard"
+          },
+          {
+            "who": "human",
+            "minutes": 2,
+            "text": "Under **Distribution**, choose **Custom distribution** (this cannot be changed later), enter your store's `your-store.myshopify.com` domain, generate the link, open it and install the app.",
+            "url": "https://dev.shopify.com/dashboard"
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "text": "In the app's **Settings**, copy the client ID and secret into the client card (never the chat), then click **Connect via OAuth** and approve the requested scopes.",
+            "url": "https://dev.shopify.com/dashboard"
+          }
+        ],
+        "docsUrl": "https://shopify.dev/docs/apps/build/authentication-authorization"
+      }
+    }
+  },
+  "entities": {
+    "order": {
+      "labelField": "name",
+      "handlePrefix": "shopify_ord_",
+      "tableName": "orders",
+      "readScope": "shopify:orders:read",
+      "external": true
+    },
+    "customer": {
+      "labelField": "email",
+      "handlePrefix": "shopify_cus_",
+      "tableName": "customers",
+      "readScope": "shopify:customers:read",
+      "external": true
+    },
+    "product": {
+      "labelField": "title",
+      "handlePrefix": "shopify_prd_",
+      "tableName": "products",
+      "readScope": "shopify:products:read",
+      "external": true
+    },
+    "draftOrder": {
+      "labelField": "name",
+      "handlePrefix": "shopify_drf_",
+      "tableName": "draft_orders",
+      "readScope": "shopify:draft-orders:read",
+      "external": true
+    },
+    "return": {
+      "labelField": "name",
+      "handlePrefix": "shopify_ret_",
+      "tableName": "returns",
+      "readScope": "shopify:returns:read",
+      "external": true
+    },
+    "refund": {
+      "labelField": "id",
+      "handlePrefix": "shopify_rfd_",
+      "tableName": "refunds",
+      "readScope": "shopify:orders:read",
+      "external": true
+    },
+    "market": {
+      "labelField": "name",
+      "handlePrefix": "shopify_mkt_",
+      "tableName": "markets",
+      "readScope": "shopify:markets:read",
+      "external": true
+    }
+  },
+  "schema": {
+    "webhook_deliveries": {
+      "rlsScope": "internal",
+      "fields": {
+        "webhookId": "string",
+        "topic": "string",
+        "shopDomain": "string",
+        "status": {
+          "type": "string",
+          "enum": [
+            "processing",
+            "processed",
+            "failed"
+          ]
+        },
+        "failureCount": {
+          "type": "integer",
+          "default": 0
+        },
+        "receivedAt": "date",
+        "processedAt": "date?",
+        "rawHmac": "string?"
+      },
+      "constraints": {
+        "unique": [
+          [
+            "webhookId"
+          ]
+        ]
+      },
+      "indexes": [
+        [
+          "topic",
+          "receivedAt"
+        ],
+        [
+          "receivedAt"
+        ]
+      ]
+    },
+    "staff_mirror": {
+      "rlsScope": "internal",
+      "fields": {
+        "shopifyStaffId": "string",
+        "email": "string",
+        "permissionsJson": "json",
+        "mappedLiaisonUserId": "uuid?",
+        "lastSyncedAt": "date",
+        "isShopOwner": "boolean"
+      },
+      "constraints": {
+        "unique": [
+          [
+            "shopifyStaffId"
+          ]
+        ]
+      }
+    },
+    "staff_overrides": {
+      "rlsScope": "internal",
+      "fields": {
+        "liaisonUserId": {
+          "type": "uuid",
+          "userRef": true,
+          "onErase": "delete"
+        },
+        "shopifyStaffId": "string",
+        "createdBy": {
+          "type": "uuid",
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "reason": "string?"
+      },
+      "constraints": {
+        "unique": [
+          [
+            "liaisonUserId"
+          ]
+        ]
+      }
+    },
+    "backfill_progress": {
+      "rlsScope": "internal",
+      "fields": {
+        "entityType": "string",
+        "cursorExternalId": "string?",
+        "blobId": "string?",
+        "status": {
+          "type": "string",
+          "enum": [
+            "idle",
+            "running",
+            "failed",
+            "completed"
+          ]
+        }
+      },
+      "constraints": {
+        "unique": [
+          [
+            "entityType"
+          ]
+        ]
+      }
+    },
+    "install_metadata": {
+      "rlsScope": "internal",
+      "fields": {
+        "shopDomain": "string",
+        "installedAt": "date",
+        "grantedOAuthScopes": "json",
+        "connectionId": "uuid",
+        "apiVersion": "string",
+        "apiBaseUrl": "string?",
+        "connectionStatus": {
+          "type": "string",
+          "enum": [
+            "connected",
+            "disconnected",
+            "needs_reconnect"
+          ],
+          "default": "connected"
+        },
+        "inventoryLocationAllowlist": {
+          "type": "json",
+          "default": null,
+          "required": false
+        },
+        "unfulfilledThresholdHours": {
+          "type": "integer",
+          "default": 24
+        },
+        "consecutiveScopeMirrorFailures": {
+          "type": "integer",
+          "default": 0
+        }
+      },
+      "constraints": {
+        "unique": [
+          [
+            "shopDomain"
+          ],
+          [
+            "connectionId"
+          ]
+        ]
+      }
+    }
+  },
+  "search": {
+    "handler": "searchHandler",
+    "entities": [
+      "order",
+      "product",
+      "customer"
+    ],
+    "timeoutMs": 5000
+  },
+  "attention": {
+    "filterableAxes": [
+      "market",
+      "currency",
+      "order_value_band",
+      "customer_language"
+    ],
+    "translations": [
+      {
+        "event": "order:created",
+        "kind": "shopify:order.created",
+        "urgency": 40,
+        "summary": "New order #{{data.name}} ({{data.totalPrice.amount}} {{data.totalPrice.currencyCode}}, {{metadata.market}} market) from {{data.customer.email}}",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "shopify:orders:read"
+        }
+      },
+      {
+        "event": "orders:unfulfilled_digest",
+        "kind": "shopify:orders.unfulfilled",
+        "urgency": 60,
+        "resolveWhen": {
+          "field": "count",
+          "equals": 0
+        },
+        "summary": "{{data.count}} orders unfulfilled past {{data.thresholdHours}}h, oldest {{data.oldestAgeHours}}h",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "shopify:fulfillments:write"
+        }
+      },
+      {
+        "event": "return:requested",
+        "kind": "shopify:return.requested",
+        "urgency": 60,
+        "summary": "Return requested: #{{data.orderName}}, {{data.itemSummary}}",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "shopify:returns:write"
+        }
+      },
+      {
+        "event": "refund:created_manual",
+        "kind": "shopify:refund.created",
+        "urgency": 30,
+        "summary": "Manual refund in Shopify: {{data.totalPrice.amount}} {{data.totalPrice.currencyCode}} to customer {{data.customer.email}}",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "shopify:orders:read"
+        }
+      },
+      {
+        "event": "order:fulfilled",
+        "kind": "shopify:order.created",
+        "urgency": 0,
+        "resolveWhen": {
+          "always": true
+        },
+        "summary": "Order {{data.name}} fulfilled",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "shopify:orders:read"
+        }
+      },
+      {
+        "event": "order:cancelled",
+        "kind": "shopify:order.created",
+        "urgency": 0,
+        "resolveWhen": {
+          "always": true
+        },
+        "summary": "Order {{data.name}} cancelled",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "shopify:orders:read"
+        }
+      },
+      {
+        "event": "return:approved",
+        "kind": "shopify:return.requested",
+        "urgency": 0,
+        "resolveWhen": {
+          "always": true
+        },
+        "summary": "Return approved",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "shopify:returns:write"
+        }
+      },
+      {
+        "event": "return:declined",
+        "kind": "shopify:return.requested",
+        "urgency": 0,
+        "resolveWhen": {
+          "always": true
+        },
+        "summary": "Return declined",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "shopify:returns:write"
+        }
+      },
+      {
+        "event": "return:closed",
+        "kind": "shopify:return.requested",
+        "urgency": 0,
+        "resolveWhen": {
+          "always": true
+        },
+        "summary": "Return closed",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "shopify:returns:write"
+        }
+      }
+    ]
+  },
+  "events": {
+    "emits": [
+      "order:created",
+      "order:updated",
+      "order:fulfilled",
+      "order:cancelled",
+      "orders:unfulfilled_digest",
+      "order:edited",
+      "order:cancel_requested",
+      "customer:created",
+      "customer:updated",
+      "customer:deleted",
+      "customer:tagged",
+      "customer:untagged",
+      "customer:email_consent_updated",
+      "customer:sms_consent_updated",
+      "customer:backfill_failed",
+      "customer:backfill_completed",
+      "refund:created",
+      "refund:created_manual",
+      "return:requested",
+      "return:approved",
+      "return:declined",
+      "return:refunded",
+      "return:closed",
+      "fulfillment:created",
+      "fulfillment:cancelled",
+      "fulfillment:tracking_updated",
+      "draft_order:created",
+      "draft_order:completed",
+      "draft_order:updated",
+      "draft_order:deleted",
+      "draft_order:sent",
+      "product:created",
+      "product:updated",
+      "product:deleted",
+      "product:merged",
+      "product:published",
+      "product:unpublished",
+      "variant:created",
+      "variant:updated",
+      "variant:deleted",
+      "inventory:adjusted",
+      "inventory:set_on_hand",
+      "inventory:level_updated",
+      "inventory:low",
+      "discount:created",
+      "discount:bulk_created",
+      "discount:updated",
+      "discount:deleted",
+      "metafield:set",
+      "metafield:deleted",
+      "app:uninstalled",
+      "connection:updated",
+      "order:invoice_changed"
+    ],
+    "subscribes": {
+      "kernel/connected_account:create": "onConnectionEstablished",
+      "kernel/connected_account:disconnect": "onConnectionDisconnected",
+      "invoicing/document:created": "onInvoicingDocumentChanged",
+      "invoicing/document:issued": "onInvoicingDocumentChanged",
+      "invoicing/document:updated": "onInvoicingDocumentChanged",
+      "invoicing/document:paid": "onInvoicingDocumentChanged",
+      "invoicing/document:cancelled": "onInvoicingDocumentChanged",
+      "invoicing/document:credited": "onInvoicingDocumentChanged"
+    }
+  },
+  "configKeys": [
+    {
+      "key": "customerShippingEmail",
+      "type": "string",
+      "label": "Shipping emails"
+    },
+    {
+      "key": "b2bSkuSuffixes",
+      "type": "string",
+      "label": "B2B sku suffixes"
+    }
+  ],
+  "settings": {
+    "sections": [
+      {
+        "id": "connection",
+        "title": "Store connection",
+        "titleKey": "kernel.appSettings.shopify.connection",
+        "description": "The Shopify store this organization works with, connected for the whole team.",
+        "descriptionKey": "kernel.appSettings.shopify.connectionHelp",
+        "scope": "org",
+        "blocks": [
+          {
+            "block": "connections",
+            "names": [
+              "shop"
+            ]
+          },
+          {
+            "block": "field",
+            "key": "fullOrderHistory",
+            "type": "toggle",
+            "label": "Full order history",
+            "labelKey": "kernel.appSettings.shopify.fullOrderHistory",
+            "help": "When off, Shopify shows Liaison only the last 60 days of orders. Turn it on once Shopify has approved your app for Read all orders, then add read_all_orders to the Shopify app's configuration (download shopify.app.toml again from the setup guide), run shopify app deploy and reconnect the store.",
+            "helpKey": "kernel.appSettings.shopify.fullOrderHistoryHelp",
+            "default": false
+          }
+        ]
+      },
+      {
+        "id": "diagnostics",
+        "title": "Diagnostics and mappings",
+        "titleKey": "kernel.appSettings.shopify.diagnostics",
+        "description": "Store health, sync status, identity mappings between Liaison users and Shopify staff, and the inventory-location allowlist.",
+        "descriptionKey": "kernel.appSettings.shopify.diagnosticsHelp",
+        "scope": "org",
+        "adminScope": "shopify:admin:identity-map",
+        "blocks": [
+          {
+            "block": "custom",
+            "component": "ShopifyDiagnostics",
+            "reason": "One data bundle (settings_load): store health with a same-store reconnect, sync diagnostics, gated identity-mapping overrides with seed suggestions, and the location allowlist; no field or list maps it."
+          }
+        ]
+      },
+      {
+        "id": "shipping-emails",
+        "title": "Shipping emails",
+        "titleKey": "kernel.appSettings.shopify.shippingEmails",
+        "description": "Who gets Shopify's shipping email, with the tracking, when an order is fulfilled from Liaison (an agent, Boxtal's Packed tick or a carrier scan). An order is B2B when its buyer is a Shopify B2B company, or when a line item's sku ends with one of the B2B sku suffixes.",
+        "descriptionKey": "kernel.appSettings.shopify.shippingEmailsHelp",
+        "scope": "org",
+        "blocks": [
+          {
+            "block": "field",
+            "key": "customerShippingEmail",
+            "type": "select",
+            "label": "Send Shopify's shipping email to",
+            "labelKey": "kernel.appSettings.shopify.customerShippingEmail",
+            "help": "Retail orders only: retail customers get it, B2B buyers never do; when Liaison cannot tell, no email is sent. Retail only and Every order send one email per fulfillment, with its first tracking number: a fulfillment without tracking waits for its number, and a later tracking change never emails again.",
+            "helpKey": "kernel.appSettings.shopify.customerShippingEmailHelp",
+            "options": [
+              {
+                "value": "caller",
+                "label": "As each fulfillment asks",
+                "labelKey": "kernel.appSettings.shopify.shippingEmailCaller"
+              },
+              {
+                "value": "retail_only",
+                "label": "Retail orders only (never B2B)",
+                "labelKey": "kernel.appSettings.shopify.shippingEmailRetailOnly"
+              },
+              {
+                "value": "all",
+                "label": "Every order",
+                "labelKey": "kernel.appSettings.shopify.shippingEmailAll"
+              },
+              {
+                "value": "none",
+                "label": "No order",
+                "labelKey": "kernel.appSettings.shopify.shippingEmailNone"
+              }
+            ],
+            "source": "config"
+          },
+          {
+            "block": "field",
+            "key": "b2bSkuSuffixes",
+            "type": "text",
+            "label": "B2B sku suffixes",
+            "labelKey": "kernel.appSettings.shopify.b2bSkuSuffixes",
+            "help": "Comma separated, not case sensitive, for example -B2B. Leave empty when only Shopify B2B companies buy wholesale.",
+            "helpKey": "kernel.appSettings.shopify.b2bSkuSuffixesHelp",
+            "source": "config"
+          }
+        ]
+      }
+    ]
+  },
+  "views": {
+    "activityBar": {
+      "icon": "ShopifyAppIcon",
+      "label": "Shopify",
+      "order": 60,
+      "tabAction": {
+        "type": "home",
+        "entityId": "home",
+        "label": "Shopify"
+      }
+    },
+    "tabTypes": {
+      "home": {
+        "component": "ShopifyHome",
+        "sidebar": "ShopifySidebar",
+        "icon": "ShopifyAppIcon",
+        "label": "Shopify",
+        "singleton": true,
+        "urlPattern": "/shopify",
+        "referenceable": false
+      },
+      "orders": {
+        "component": "ShopifyOrdersList",
+        "sidebar": "ShopifySidebar",
+        "icon": "ShopifyAppIcon",
+        "label": "Orders",
+        "singleton": true,
+        "urlPattern": "/shopify/orders",
+        "referenceable": false
+      },
+      "customers": {
+        "component": "ShopifyCustomersList",
+        "sidebar": "ShopifySidebar",
+        "icon": "ShopifyAppIcon",
+        "label": "Customers",
+        "singleton": true,
+        "urlPattern": "/shopify/customers",
+        "referenceable": false
+      },
+      "products": {
+        "component": "ShopifyProductsList",
+        "sidebar": "ShopifySidebar",
+        "icon": "ShopifyAppIcon",
+        "label": "Products",
+        "singleton": true,
+        "urlPattern": "/shopify/products",
+        "referenceable": false
+      },
+      "markets": {
+        "component": "ShopifyMarketsList",
+        "sidebar": "ShopifySidebar",
+        "icon": "ShopifyAppIcon",
+        "label": "Markets",
+        "singleton": true,
+        "urlPattern": "/shopify/markets",
+        "referenceable": false
+      }
+    },
+    "detail": {
+      "order": {
+        "externalLink": {
+          "urlTemplate": "https://{{shop}}.myshopify.com/admin/orders/{{id}}",
+          "label": "Open in Shopify ↗"
+        }
+      },
+      "customer": {
+        "component": "CustomerPanel",
+        "externalLink": {
+          "urlTemplate": "https://{{shop}}.myshopify.com/admin/customers/{{id}}",
+          "label": "Open in Shopify ↗"
+        }
+      },
+      "product": {
+        "component": "ProductPanel",
+        "externalLink": {
+          "urlTemplate": "https://{{shop}}.myshopify.com/admin/products/{{id}}",
+          "label": "Open in Shopify ↗"
+        }
+      },
+      "draftOrder": {
+        "component": "DraftOrderPanel",
+        "externalLink": {
+          "urlTemplate": "https://{{shop}}.myshopify.com/admin/draft_orders/{{id}}",
+          "label": "Open in Shopify ↗"
+        }
+      },
+      "return": {
+        "component": "ReturnPanel",
+        "externalLink": {
+          "urlTemplate": "https://{{shop}}.myshopify.com/admin/returns/{{id}}",
+          "label": "Open in Shopify ↗"
+        }
+      },
+      "refund": {
+        "component": "RefundPanel",
+        "externalLink": {
+          "urlTemplate": "https://{{shop}}.myshopify.com/admin/orders/{{orderId}}#refund-{{id}}",
+          "label": "Open in Shopify ↗"
+        }
+      },
+      "market": {
+        "component": "MarketPanel",
+        "externalLink": {
+          "urlTemplate": "https://{{shop}}.myshopify.com/admin/settings/markets/{{id}}",
+          "label": "Open in Shopify ↗"
+        }
+      }
+    }
+  },
+  "webhooks": {
+    "orders-create": {
+      "handler": "ordersCreateHandler",
+      "verify": "shopifyWebhookVerifier",
+      "bodyLimitBytes": 5242880
+    },
+    "orders-updated": {
+      "handler": "ordersUpdatedHandler",
+      "verify": "shopifyWebhookVerifier",
+      "bodyLimitBytes": 5242880
+    },
+    "orders-fulfilled": {
+      "handler": "ordersFulfilledHandler",
+      "verify": "shopifyWebhookVerifier",
+      "bodyLimitBytes": 5242880
+    },
+    "orders-cancelled": {
+      "handler": "ordersCancelledHandler",
+      "verify": "shopifyWebhookVerifier",
+      "bodyLimitBytes": 5242880
+    },
+    "customers-create": {
+      "handler": "customersCreateHandler",
+      "verify": "shopifyWebhookVerifier",
+      "bodyLimitBytes": 5242880
+    },
+    "customers-update": {
+      "handler": "customersUpdateHandler",
+      "verify": "shopifyWebhookVerifier",
+      "bodyLimitBytes": 5242880
+    },
+    "customers-delete": {
+      "handler": "customersDeleteHandler",
+      "verify": "shopifyWebhookVerifier",
+      "bodyLimitBytes": 5242880
+    },
+    "refunds-create": {
+      "handler": "refundsCreateHandler",
+      "verify": "shopifyWebhookVerifier",
+      "bodyLimitBytes": 5242880
+    },
+    "returns-request-created": {
+      "handler": "returnsRequestedHandler",
+      "verify": "shopifyWebhookVerifier",
+      "bodyLimitBytes": 5242880
+    },
+    "fulfillments-create": {
+      "handler": "fulfillmentsCreateHandler",
+      "verify": "shopifyWebhookVerifier",
+      "bodyLimitBytes": 5242880
+    },
+    "inventory-levels-update": {
+      "handler": "inventoryLevelsUpdateHandler",
+      "verify": "shopifyWebhookVerifier",
+      "bodyLimitBytes": 5242880
+    },
+    "products-create": {
+      "handler": "productsCreateHandler",
+      "verify": "shopifyWebhookVerifier",
+      "bodyLimitBytes": 5242880
+    },
+    "products-update": {
+      "handler": "productsUpdateHandler",
+      "verify": "shopifyWebhookVerifier",
+      "bodyLimitBytes": 5242880
+    },
+    "draft-orders-create": {
+      "handler": "draftOrdersCreateHandler",
+      "verify": "shopifyWebhookVerifier",
+      "bodyLimitBytes": 5242880
+    },
+    "draft-orders-update": {
+      "handler": "draftOrdersUpdateHandler",
+      "verify": "shopifyWebhookVerifier",
+      "bodyLimitBytes": 5242880
+    },
+    "draft-orders-delete": {
+      "handler": "draftOrdersDeleteHandler",
+      "verify": "shopifyWebhookVerifier",
+      "bodyLimitBytes": 5242880
+    },
+    "app-uninstalled": {
+      "handler": "appUninstalledHandler",
+      "verify": "shopifyWebhookVerifier",
+      "bodyLimitBytes": 5242880
+    }
+  },
+  "webhookHealth": { "probe": "probe-webhook-upstream" },
+  "jobs": {
+    "backfill-customers": {
+      "handler": "backfillCustomersJob"
+    },
+    "scope-seed": {
+      "handler": "scopeSeedJob"
+    },
+    "reconcile-customers": {
+      "handler": "reconcileCustomersJob",
+      "runsFor": {"connection": "shop"},
+      "schedule": "0 3 * * *"
+    },
+    "scan-unfulfilled-orders": {
+      "handler": "scanUnfulfilledOrdersJob",
+      "runsFor": {"connection": "shop"},
+      "schedule": "0 * * * *"
+    },
+    "prune-webhook-deliveries": {
+      "handler": "pruneWebhookDeliveriesJob",
+      "runsFor": {"rows": {"entity": "webhook_deliveries"}},
+      "schedule": "30 3 * * *"
+    },
+    "probe-webhook-upstream": {
+      "handler": "probeWebhookUpstreamJob",
+      "runsFor": {"connection": "shop"},
+      "schedule": "*/15 * * * *"
+    }
+  },
+  "tools": {
+    "home_load": {
+      "description": "Load the Shopify Home tab dashboard: connection, attention items (low-stock product variants, unfulfilled-past-SLA count, pending returns), and a recent-orders preview. This is a STORE DASHBOARD overview, not the order query — to ENUMERATE which orders need shipping use orders_search with query='fulfillment_status:unfulfilled' (it returns each order's line-item SKUs), and never read attention.lowInventory (a low-stock PRODUCT list) as if it were the order list.",
+      "requiredScopes": ["shopify:orders:read"],
+      "handler": "home_load",
+      "params": {
+        "type": "object",
+        "properties": {
+          "recentLimit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 20
+          },
+          "slaHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 168,
+            "default": 24
+          }
+        }
+      },
+      "timeoutMs": 20000,
+      "readOnly": true
+    },
+    "analytics_query": {
+      "description": "Aggregate sales analytics over a period, optionally grouped by SKU or market. Metric semantics (Shopify sales dataset, state them when reporting): net_sales = product revenue AFTER discounts and returns, EXCLUDING taxes (VAT) and shipping — use this for product revenue and as the ASP numerator; revenue = Shopify total_sales, which ADDS taxes and shipping on top of net sales (matches the admin's Total sales figure) — never use it for per-unit price math; units = net_items_sold (returns deducted; zero-priced warranty/replacement units still count); aov = average order value; orders = order count. All figures are converted to the store's base currency and cover EVERY market and sales channel for the period. Use this for any period total / AOV / units-by-SKU / by-market question; NEVER page orders_search and tally by hand. Returns ShopifyQL results when available, else a bounded in-context count (partial:true, boundedTo:N) — report that partial honestly.",
+      "requiredScopes": ["shopify:analytics:read"],
+      "handler": "analytics_query",
+      "params": {
+        "type": "object",
+        "required": [
+          "metric",
+          "period",
+          "groupBy"
+        ],
+        "properties": {
+          "metric": {
+            "type": "string",
+            "enum": [
+              "revenue",
+              "net_sales",
+              "aov",
+              "units",
+              "orders"
+            ]
+          },
+          "period": {
+            "type": "object",
+            "required": [
+              "since",
+              "until"
+            ],
+            "properties": {
+              "since": {
+                "type": "string"
+              },
+              "until": {
+                "type": "string"
+              }
+            }
+          },
+          "groupBy": {
+            "type": "string",
+            "enum": [
+              "none",
+              "sku",
+              "market"
+            ]
+          }
+        }
+      },
+      "readOnly": true
+    },
+    "orders_search": {
+      "taintSource": true,
+      "description": "Search Shopify orders by query (email, customer name, order name/number, financial_status, fulfillment_status, tag, …) AND/OR by a placed-date window. To scope to a DATE/WEEK ('yesterday', 'this week', 'Modular Expo week'), pass `created_at_min` and/or `created_at_max` (inclusive ISO dates) — these filter SERVER-SIDE on the order's PLACED date (its processedAt, which can differ from createdAt for an imported or backdated order; results are sorted newest createdAt first), so 'orders placed during week X' IS directly queryable; they COMPOSE with the `query` facet (e.g. tag a product SKU via query AND bound the week via the date params in ONE call). A date term written INSIDE the `query` string is still silently ignored — use the date-range params, not the query, for dates. Results come back most-recent-first and are bounded by `limit` + the opaque `cursor`; to enumerate the full matching set, PAGE the cursor (pass the returned nextCursor back until it is null) — do NOT re-run the same query and assume one page is complete.",
+      "requiredScopes": ["shopify:orders:read"],
+      "handler": "orders_search",
+      "params": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Shopify order search syntax: text, email, customer name, order name/number (e.g. '#1099'), financial_status:paid, fulfillment_status:unfulfilled, tag:<tag>. For a DATE window use created_at_min/created_at_max instead — a date term written inside this query string is ignored."
+          },
+          "created_at_min": {
+            "type": "string",
+            "description": "Inclusive START of the placed-date window, ISO-8601 (e.g. '2026-06-15' = from that day's UTC midnight, or '2026-06-15T00:00:00Z'). Filters server-side on the order's PLACED date (processedAt, not createdAt). Combine with created_at_max for a closed week/range; omit for an open-ended lower bound."
+          },
+          "created_at_max": {
+            "type": "string",
+            "description": "Inclusive END of the placed-date window, ISO-8601 (e.g. '2026-06-21' = through that day's end, or '2026-06-21T23:59:59Z'). Filters server-side on the order's PLACED date (processedAt, not createdAt). Combine with created_at_min for a closed week/range; omit for an open-ended upper bound."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 25
+          },
+          "timeout_ms": { "type": "number", "description": "Optional per-request deadline in ms (500 to 10000) for a caller on a time budget; on a deadline a rate limit fails at once instead of retrying." },
+          "cursor": {
+            "type": "string",
+            "description": "Opaque pagination cursor. Pass the nextCursor returned by the previous call to fetch the next page; keep paging until nextCursor is null to enumerate the WHOLE matching set. A single un-paged call returns only the first page."
+          }
+        }
+      },
+      "readOnly": true
+    },
+    "orders_get": {
+      "taintSource": true,
+      "description": "Get one Shopify order by id (line items, fulfillments, refunds, returns, customer). For a customer's POSTAL/SHIPPING ADDRESS the result carries TWO fields: `shippingAddress` (the per-order ship-to — frequently NULL, as many orders have no order-level address) and `customerAddress` (the customer's canonical defaultAddress: { address1, address2, city, province, provinceCode, zip, country, countryCode, phone }). If `shippingAddress` is null, do NOT conclude the address is unavailable — use `customerAddress` (the customer record is the source of the address). Use ONLY the address fields actually present; never fabricate a street/city/zip. PRICING: each lineItems[] entry carries `priceSet` (the LIST unit price before discounts) AND `discountedUnitPriceSet` (the unit price actually charged after ALL discounts, line-level and allocated order-level) — when invoicing or reconciling an order, ALWAYS use `discountedUnitPriceSet` (fall back to priceSet only when it is absent). Top-level `shippingLine` ({ title, priceSet }) is the shipping charge after shipping discounts, null when free. The result also carries `po_number`, the customer's purchase order reference taken from Shopify's native Order.poNumber (falling back to the originating draft order's), which invoicing prints on the invoice. TAX: US sales tax on a Shop channel order is collected and remitted by Shopify as marketplace facilitator, so it stays OFF our invoicing documents: never copy an order's tax onto an invoice or a quote, and never re-derive a tax figure the order already establishes. B2B SIGNALS in attributes: totalTax, taxExempt, b2bCompany {name, taxRegistrationId} (null for a consumer), customerTaxExempt.",
+      "requiredScopes": ["shopify:orders:read"],
+      "handler": "orders_get",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The order: its gid (gid://shopify/Order/<id>), its numeric id, or its order number or name (1097, #1097). A number that is not an order id is read as the order number."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "readOnly": true
+    },
+    "orders_invoice_links": {
+      "description": "Resolve linked invoicing documents for a set of Shopify orders. Each entry of order_ids may be the order's gid, its numeric id, or its name (#1097, or the bare number); each link's order_id is the entry you passed. Reads the invoices as they are now, so an invoice issued a moment ago shows. Best effort: returns empty when invoicing is not installed.",
+      "requiredScopes": ["shopify:orders:read"],
+      "handler": "orders_invoice_links",
+      "params": {
+        "type": "object",
+        "properties": {
+          "order_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "readOnly": true
+    },
+    "products_short_codes": {
+      "description": "The organisation's short display code per product SKU (\"E2\"), for an abbreviated cart summary (\"1×E2, 2×FS\"). Pass the SKUs you saw on order line items; returns { codes: { <sku>: <code> } }. A SKU with no code is absent from the map: show it as unknown, never make a code up. The codes are the kernel's product attributes (key short_code), kept by whichever app or person maintains them. Best effort: empty when the lookup fails.",
+      "requiredScopes": ["shopify:orders:read"],
+      "handler": "products_short_codes",
+      "params": {
+        "type": "object",
+        "properties": {
+          "skus": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500
+          }
+        },
+        "required": ["skus"]
+      },
+      "readOnly": true
+    },
+    "customers_search": {
+      "taintSource": true,
+      "description": "Search Shopify customers. Each result carries the customer's NATIVE lifetime spend in `amountSpent` ({ amount, currencyCode }) and `numberOfOrders` — use these directly for any spend / lifetime-value / top-customers / spend-tier question. Do NOT sum orders by hand, and NEVER claim per-customer lifetime spend is uncomputable: amountSpent IS it. Results are PAGED/BOUNDED (~100 per page via cursor) and every page returns `totalCount` — the server-side total number of customers matching the same filter. GROUND your coverage in it: say 'reviewed N of totalCount customers' (N = how many you actually paged through). If you did not reach all totalCount (nextCursor still set / N < totalCount), you reviewed a PARTIAL/sampled subset — state that explicitly and NEVER claim 'all'/'the entire base'/'a full audit'. Only when N == totalCount (you paged to nextCursor=null) is the coverage complete. Report ONLY figures present in the tool results — never invent or extrapolate a spend amount or a customer. Match/label a customer by the EXACT email this tool returns (do not invent an email). CURRENCY (spend threshold in a different currency than the data): amountSpent is denominated in its own `currencyCode` (e.g. USD). If the user states a threshold in a DIFFERENT currency (e.g. 'over 1000 EUR') you CANNOT silently treat the native figure as that currency and you have NO authorized FX rate — so apply the threshold AGAINST amountSpent's native currency and SAY SO ('amountSpent is in USD; I applied the >1000 cut in USD and have not converted to EUR — confirm a rate if you need a strict EUR threshold'). Do NOT assume 1:1 parity, do NOT fabricate a rate, and — critically — do NOT flip to claiming the spend is 'uncomputable' / pivot to the accounting system (Pennylane) because of the currency question: amountSpent IS the per-customer lifetime spend, fully computable here; the currency is a disclosure caveat, never a reason the figure is unavailable. DATA-REALITY UNDER DOUBT: the customers and amountSpent figures this tool returns ARE the store's real customer records — when a user doubts a name ('I don't recognise them / is this real or a test account?'), answer from what the tool actually returned (the customer exists in the store with that email + that amountSpent), and exclude a customer ONLY on a real returned attribute (e.g. a `liaison-seed`/test tag actually present in its `tags`), NEVER on a fabricated rationale you invented ('looks like a dealer account') to justify dropping them. Do not over-correct a correct, tool-grounded result into a wholesale reversal just because the user expressed doubt — re-verify against the tool output and stand on what it says. Each result also carries the customer's CANONICAL postal address in `defaultAddress` ({ address1, address2, city, province, provinceCode, zip, country, countryCode }) plus `phone` — this is THE source of a customer's shipping/postal address: read it to backfill a CRM contact's address. An individual ORDER often has NO per-order shippingAddress (orders_get returns null), so do NOT conclude the address is unavailable from the order — pivot to the customer record's defaultAddress. Use ONLY the address fields actually present; never fabricate a street/city/zip. BUILDING A SPEND SEGMENT (e.g. 'customers who spent over 1000', 'high-value customers', 'top spenders'): do NOT page this whole-base search and filter by hand — the base can hold thousands of customers, far beyond one turn's page budget, so you would only ever reach a sampled subset and must never claim a complete sweep. Use `customers_segment_search` instead: it asks Shopify to evaluate the spend threshold SERVER-SIDE and returns ONLY the matching customers plus a server-side `totalCount`, so you get the EXACT, COMPLETE high-value set in one (or a few) bounded pages.",
+      "requiredScopes": ["shopify:customers:read"],
+      "handler": "customers_search",
+      "params": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 25
+          },
+          "timeout_ms": { "type": "number", "description": "Optional per-request deadline in ms (500 to 10000) for a caller on a time budget; on a deadline a rate limit fails at once instead of retrying." },
+          "cursor": {
+            "type": "string"
+          }
+        }
+      },
+      "readOnly": true
+    },
+    "customers_segment_search": {
+      "taintSource": true,
+      "description": "Build a SERVER-SIDE customer SPEND SEGMENT — the right tool for any 'customers who spent over X', 'high-value customers', 'top spenders', or 'spend-tier' segmentation request. Pass `minSpend` (the threshold AMOUNT, a number) and Shopify's segment engine evaluates `amount_spent > minSpend` SERVER-SIDE, returning ONLY the matching customers — NOT the whole base. This is how you segment a large store without enumerating it: do NOT page `customers_search` over thousands of customers and filter by hand (you would only reach a sampled subset within one turn, then be tempted to over-claim a sweep you never did). Each page returns `totalCount` — the server-side count of ALL customers over the threshold across every page. GROUND your coverage in it: if `totalCount` fits in the page(s) you read (nextCursor=null), you have the COMPLETE high-value set and may say so; if nextCursor is still set you have a partial page — say 'reviewed N of totalCount' and page on. Each result carries the customer's `amountSpent` ({ amount, currencyCode }), email, name, and numberOfOrders. CURRENCY: the threshold is compared against each customer's NATIVE lifetime spend in its own `currencyCode` (e.g. USD). If the user stated the threshold in a DIFFERENT currency (e.g. 'over 1000 EUR'), you have NO authorized FX rate — the segment is computed against the native figure, so SAY SO ('amountSpent is in USD; the >1000 cut was applied in USD, not converted to EUR — confirm a rate for a strict EUR threshold'); never assume 1:1 parity, never fabricate a rate. To LABEL these customers (so marketing can target them), match each to a kernel contact by the EXACT email returned here (contacts_search by email) and apply a tag via contacts_write(tags=['high-value']); that produces a filterable TAG (contacts_search(tag='high-value')), NOT a persisted named spend-segment object — there is no agent tool to create a stored Shopify/kernel segment, so describe what you built as a tag, never claim a named segment was saved. Report ONLY customers this tool returned; never invent or extrapolate a customer or a spend figure.",
+      "requiredScopes": ["shopify:customers:read"],
+      "handler": "customers_segment_search",
+      "params": {
+        "type": "object",
+        "required": [
+          "minSpend"
+        ],
+        "properties": {
+          "minSpend": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Lifetime-spend threshold amount (exclusive >). Customers whose native amountSpent exceeds this are returned."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 25
+          },
+          "cursor": {
+            "type": "string"
+          }
+        }
+      },
+      "readOnly": true
+    },
+    "customers_get": {
+      "taintSource": true,
+      "description": "Get one Shopify customer by id. Returns the customer's `defaultAddress` ({ address1, address2, city, province, provinceCode, zip, country, countryCode }) + `phone` — the CANONICAL postal address for the customer; read it to backfill a CRM contact's shipping address. An individual order often has no per-order shippingAddress, so the customer's defaultAddress is the source — never conclude the address is unavailable just because an order lacks one, and never fabricate address fields not present. Also returns email, name, tags, numberOfOrders, amountSpent, recent orders, taxExempt and companies (B2B company names, [{ name }]).",
+      "requiredScopes": ["shopify:customers:read"],
+      "handler": "customers_get",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "readOnly": true
+    },
+    "customers_get_by_external_id": {
+      "taintSource": true,
+      "description": "Get the Shopify customer for a kernel external id (external_ids.shopify)",
+      "requiredScopes": ["shopify:customers:read"],
+      "handler": "customers_get_by_external_id",
+      "params": {
+        "type": "object",
+        "properties": {
+          "externalId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "externalId"
+        ]
+      },
+      "readOnly": true
+    },
+    "draft_orders_list": {
+      "taintSource": true,
+      "description": "List Shopify draft orders",
+      "requiredScopes": ["shopify:draft-orders:read"],
+      "handler": "draft_orders_list",
+      "params": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 25
+          },
+          "cursor": {
+            "type": "string"
+          }
+        }
+      },
+      "readOnly": true
+    },
+    "draft_orders_get": {
+      "taintSource": true,
+      "description": "Get one Shopify draft order by id (with line items). The result carries a top level `po_number`, the customer's purchase order reference, which flows to the linked quote and on to the invoice.",
+      "requiredScopes": ["shopify:draft-orders:read"],
+      "handler": "draft_orders_get",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "readOnly": true
+    },
+    "locations_list": {
+      "description": "List Shopify fulfillment locations",
+      "requiredScopes": ["shopify:locations:read"],
+      "handler": "locations_list",
+      "params": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 25
+          },
+          "cursor": {
+            "type": "string"
+          }
+        }
+      },
+      "readOnly": true
+    },
+    "products_search": {
+      "description": "Search Shopify products",
+      "requiredScopes": ["shopify:products:read"],
+      "handler": "products_search",
+      "params": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 25
+          },
+          "cursor": {
+            "type": "string"
+          }
+        }
+      },
+      "readOnly": true
+    },
+    "products_get": {
+      "description": "Get one Shopify product by id (with variants)",
+      "requiredScopes": ["shopify:products:read"],
+      "handler": "products_get",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "readOnly": true
+    },
+    "products_publication_targets": {
+      "description": "List a Shopify product's sales channels (publications): every channel on the store and whether the product is published on it, plus the exact channels a products_publish or products_unpublish call with the same `id` and `input` would act on. Read only.",
+      "requiredScopes": ["shopify:products:read"],
+      "handler": "products_publication_targets",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Product gid (gid://shopify/Product/<n>)."
+          },
+          "input": {
+            "type": "array",
+            "description": "Optional publication targets, as passed to products_publish or products_unpublish.",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "readOnly": true
+    },
+    "markets_list": {
+      "description": "List Shopify markets configured on the shop",
+      "requiredScopes": ["shopify:markets:read"],
+      "handler": "markets_list",
+      "params": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 25
+          },
+          "cursor": {
+            "type": "string"
+          }
+        }
+      },
+      "readOnly": true
+    },
+    "markets_get": {
+      "description": "Get one Shopify market by id",
+      "requiredScopes": ["shopify:markets:read"],
+      "handler": "markets_get",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "readOnly": true
+    },
+    "variants_search": {
+      "description": "Search Shopify product variants (by sku, title, …)",
+      "requiredScopes": ["shopify:products:read"],
+      "handler": "variants_search",
+      "params": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 25
+          },
+          "cursor": {
+            "type": "string"
+          }
+        }
+      },
+      "readOnly": true
+    },
+    "variants_get": {
+      "description": "Get one Shopify product variant by id",
+      "requiredScopes": ["shopify:products:read"],
+      "handler": "variants_get",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "readOnly": true
+    },
+    "variants_brief": {
+      "description": "Batched human-readable identity for a set of product variant gids: product/variant title, sku, list price, and whether the variant is a digital good (requiresShipping=false). Pass `ids` (gid strings) or `lines` (draft-order lineItems carrying variantId). One round-trip; used to hydrate approval cards.",
+      "requiredScopes": ["shopify:products:read"],
+      "handler": "variants_brief",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      },
+      "readOnly": true
+    },
+    "variants_market_price": {
+      "description": "Read the per-market (contextual) price for one product variant — what a buyer in a given country actually sees on that storefront. The catalog price from variants_get/products_get is the shop-default, home-currency listing price; this tool returns the variant's contextual price for the requested market (its currency plus any FX/round-rule the market applies). Use it to report a market-specific storefront price; pass the market's ISO 3166-1 alpha-2 country code (resolve it from markets_list). Never fabricate or hand-compute an FX conversion when this real market price is available.",
+      "requiredScopes": ["shopify:products:read"],
+      "handler": "variants_market_price",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Variant gid or bare numeric id"
+          },
+          "country": {
+            "type": "string",
+            "description": "ISO 3166-1 alpha-2 country code of the target market (e.g. \"US\"). A market handle is not a country code."
+          },
+          "marketHandle": {
+            "type": "string",
+            "description": "Optional market handle (e.g. \"us\") echoed back as the market label."
+          }
+        },
+        "required": [
+          "id",
+          "country"
+        ]
+      },
+      "readOnly": true
+    },
+    "inventory_levels_list": {
+      "description": "List Shopify inventory levels for an inventory item across locations. Each location row returns on_hand (physical units), committed (units reserved against open/unfulfilled orders), and available (sellable = on_hand − committed). For an oversell check, committed > on_hand means the SKU is oversold by committed − on_hand (= −available); report on_hand as the stock figure, never available.",
+      "requiredScopes": ["shopify:inventory:read"],
+      "handler": "inventory_levels_list",
+      "params": {
+        "type": "object",
+        "properties": {
+          "inventoryItemId": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 25
+          },
+          "cursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "inventoryItemId"
+        ]
+      },
+      "readOnly": true
+    },
+    "inventory_value": {
+      "description": "Total RETAIL value of stock on hand across the WHOLE catalog, computed server-side in one call (sums on-hand quantity × selling price over every product variant, all locations). Use this for 'what is our inventory worth / total stock value right now' — do NOT page inventory_levels_list + variants and tally by hand. Returns totalInventoryValue + currency + a per-SKU breakdown (topByValue), and is RETAIL value (selling price): Shopify exposes no unit cost, so this is sell-through value, not COGS. Reports partial:true if the catalog exceeds the scan bound.",
+      "requiredScopes": ["shopify:inventory:read"],
+      "handler": "inventory_value",
+      "params": {
+        "type": "object",
+        "properties": {}
+      },
+      "readOnly": true
+    },
+    "repeat_rate": {
+      "description": "Base-wide repeat-PURCHASE rate, computed server-side in one call: the share of customers with more than one order (and the count + a sample of repeat customers). Use this for 'what share of customers come back for a second purchase / repeat rate' — do NOT page customers_search and tally by hand. Returns totalCustomers, repeatCustomers, repeatRatePct, sampleRepeatCustomers (+ partial:true if the base exceeds the scan bound). It does NOT split by an arbitrary historical-event cohort (e.g. Black Friday vs Modular Expo) — there is no first-order-date cohort tool and the store carries no such historical cohort, so report the overall repeat rate and bound any event-cohort comparison honestly.",
+      "requiredScopes": ["shopify:customers:read"],
+      "handler": "repeat_rate",
+      "params": {
+        "type": "object",
+        "properties": {}
+      },
+      "readOnly": true
+    },
+    "abandoned_checkouts_list": {
+      "taintSource": true,
+      "description": "List abandoned customer checkouts for cart recovery (value, customer name + email, line items, and the recovery URL per checkout), newest first. Use this for 'pull this week's abandoned checkouts / abandoned carts for a recovery campaign'. IMPORTANT: draft_orders are seller-created quotes, NOT abandoned customer carts — do NOT use draft_orders_list for this. Abandoned checkouts are created by Shopify only from real buyer abandonment, so a store with no recent abandonment legitimately returns an EMPTY list ({total:0}); report that honestly ('no abandoned checkouts this week') and never fabricate carts or pass off draft orders / recent completed orders as abandoned checkouts. Returns checkouts[], total, totalRecoverableValue, currency (+ partial:true if the store exceeds the scan bound). Optional sinceDays bounds the window (default 30).",
+      "requiredScopes": ["shopify:orders:read"],
+      "handler": "abandoned_checkouts_list",
+      "params": {
+        "type": "object",
+        "properties": {
+          "sinceDays": {
+            "type": "number",
+            "description": "Only include checkouts abandoned within the last N days (default 30)."
+          }
+        }
+      },
+      "readOnly": true
+    },
+    "fulfillments_get": {
+      "description": "Get one Shopify fulfillment by id (with tracking info)",
+      "requiredScopes": ["shopify:fulfillments:read"],
+      "handler": "fulfillments_get",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "readOnly": true
+    },
+    "fulfillment_orders_get": {
+      "description": "Get an order's fulfillment orders with per-line fulfillment state, the planning read for a PARTIAL shipment. Each fulfillment order carries id, status, assignedLocation, and its line items as { fulfillmentOrderLineItemId, orderLineItemId, sku, title, totalQuantity, remainingQuantity }. `remainingQuantity` is what is still unfulfilled: use it to decide what can ship now, then call fulfillments_create with `lineItems` (sku or orderLineItemId + quantity) to fulfill exactly those quantities and leave the rest open.",
+      "requiredScopes": ["shopify:orders:read"],
+      "handler": "fulfillment_orders_get",
+      "params": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "description": "Order gid (gid://shopify/Order/...)."
+          }
+        },
+        "required": [
+          "orderId"
+        ]
+      },
+      "readOnly": true
+    },
+    "returns_search": {
+      "taintSource": true,
+      "description": "Search Shopify returns",
+      "requiredScopes": ["shopify:returns:read"],
+      "handler": "returns_search",
+      "params": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Optional order-search terms (e.g. a customer email/name) AND-combined with the return-status filter."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 25
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "orderId": {
+            "type": "string",
+            "description": "Optional Shopify order gid — list just that order's returns. Without it, returns are found across orders that have a return."
+          }
+        }
+      },
+      "readOnly": true
+    },
+    "refunds_get": {
+      "taintSource": true,
+      "description": "Get one Shopify refund by id",
+      "requiredScopes": ["shopify:orders:read"],
+      "handler": "refunds_get",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "readOnly": true
+    },
+    "discounts_search": {
+      "description": "Search Shopify discount-code nodes (basic / bxgy / free-shipping) by code/title KEYWORD. There is NO created-date filter and NO campaign-tag filter — when you scope by a `query` keyword the result carries a `keywordMatchNotice`; relay its caveat (the match may miss codes not named for the campaign) to the user and never claim an exhaustive sweep.",
+      "requiredScopes": ["shopify:discounts:read"],
+      "handler": "discounts_search",
+      "params": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 25
+          },
+          "cursor": {
+            "type": "string"
+          }
+        }
+      },
+      "readOnly": true
+    },
+    "metafields_list": {
+      "description": "List metafields for a Shopify resource (Product, Customer, Order, …)",
+      "requiredScopes": ["shopify:metafields:read"],
+      "handler": "metafields_list",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ownerId": {
+            "type": "string"
+          },
+          "ownerType": {
+            "type": "string",
+            "enum": [
+              "Product",
+              "ProductVariant",
+              "Customer",
+              "Order",
+              "Collection",
+              "Shop"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 25
+          },
+          "cursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ownerId",
+          "ownerType"
+        ]
+      },
+      "readOnly": true
+    },
+    "refunds_create": {
+      "description": "Refund a Shopify order. For a FLAT goodwill / courtesy / partial refund of a fixed sum (e.g. a 50 EUR goodwill credit), pass `amount` (a money value like \"50.00\") and OMIT refundLineItems — the refund returns exactly that amount and is NOT tied to line items. To refund specific units, pass refundLineItems instead. Omit BOTH amount and refundLineItems to refund the whole order. You only need to specify HOW MUCH (amount) or WHICH items (refundLineItems) — the transaction plumbing (gateway/parent transaction) is derived from the order automatically; do not hand-build a transactions entry or split a goodwill amount onto shipping. Invoicing issues the matching credit note automatically once this refund lands, so never also call invoicing__credit_note_create_and_issue for it.",
+      "requiredScopes": ["shopify:refunds:create"],
+      "handler": "refunds_create",
+      "summarizer": "summarizeRefundsCreate",
+      "summarizerContext": {
+        "tool": "orders_get",
+        "params": {
+          "id": "orderId"
+        }
+      },
+      "preflight": "refunds_create_preflight",
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "string",
+            "description": "A FLAT goodwill / courtesy / partial refund amount as a money string (e.g. \"50.00\"). When set, the refund returns exactly this amount as a courtesy adjustment (no specific line items). Use this for a fixed goodwill credit; leave refundLineItems unset."
+          },
+          "note": {
+            "type": "string"
+          },
+          "notify": {
+            "type": "boolean",
+            "default": true
+          },
+          "refundLineItems": {
+            "type": "array",
+            "description": "Line items to refund.",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "A line item to refund.",
+              "properties": {
+                "lineItemId": {
+                  "type": "string",
+                  "description": "gid of the order line item."
+                },
+                "quantity": {
+                  "type": "integer"
+                },
+                "restockType": {
+                  "type": "string",
+                  "enum": [
+                    "NO_RESTOCK",
+                    "CANCEL",
+                    "RETURN",
+                    "LEGACY_RESTOCK"
+                  ],
+                  "description": "How to restock the returned units."
+                },
+                "locationId": {
+                  "type": "string",
+                  "description": "gid of the location to restock to (when restocking)."
+                }
+              },
+              "required": [
+                "lineItemId",
+                "quantity"
+              ]
+            }
+          },
+          "shipping": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Shopify RefundShippingInput — how much shipping to refund.",
+            "properties": {
+              "fullRefund": {
+                "type": "boolean"
+              },
+              "amount": {
+                "type": "string",
+                "description": "Shipping amount to refund (money string)."
+              }
+            }
+          },
+          "transactions": {
+            "type": "array",
+            "description": "Money transactions backing the refund (usually one REFUND against the original capture).",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "A money transaction backing the refund.",
+              "properties": {
+                "orderId": {
+                  "type": "string"
+                },
+                "gateway": {
+                  "type": "string",
+                  "description": "Payment gateway handle (e.g. 'manual')."
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "REFUND",
+                    "VOID",
+                    "SUGGESTED_REFUND"
+                  ],
+                  "description": "Transaction kind (REFUND for an actual refund)."
+                },
+                "amount": {
+                  "type": "string",
+                  "description": "Money amount (decimal string)."
+                },
+                "parentId": {
+                  "type": "string",
+                  "description": "gid of the parent (capture/sale) transaction being refunded."
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "orderId"
+        ]
+      },
+      "approvalCard": {
+        "summary": "Refund {{params.amount}} on order {{params.orderId}}"
+      },
+      "editableFields": [
+        {
+          "field": "note",
+          "label": "Refund note",
+          "widget": "richtext"
+        },
+        {
+          "field": "notify",
+          "label": "Email the customer",
+          "widget": "checkbox"
+        }
+      ]
+    },
+    "draft_orders_create": {
+      "description": "Create a Shopify draft order. To apply a dealer / volume / tier discount you MUST set an appliedDiscount on the line item (lineItems[].appliedDiscount) or order-level — { value: <number>, valueType: 'PERCENTAGE' (or 'FIXED_AMOUNT'), description: '<reason>' }. Stating the discount only in your reply WITHOUT setting appliedDiscount creates the draft at FULL price (a fabricated discount — the rubric fails). Resolve the customer with shopify customers_search and set purchasingEntity.customerId to its Shopify Customer GID (gid://shopify/Customer/…) — do NOT pass a kernel contact id (a bare UUID from kernel contacts_search; Shopify rejects it: 'Invalid global id'). If you pass an email instead of customerId, it must be a real deliverable address (a kernel contact's `.example` TLD is rejected: 'Email contains an invalid domain name') — so prefer the Shopify customerId. Pass each line as lineItems[] = { variantId, quantity, appliedDiscount? }. QUOTES: when the Invoicing app is installed and its issuer profile is mapped to this shop, a draft order IS the customer's quote: creating it makes a numbered quote PDF appear in Invoicing automatically (linked by the draft order id), so never also create a quote there. Set the customer (purchasingEntity.customerId) and a shipping address so the quote has a complete recipient; without them the quote waits until the draft order is updated with them. Prices on custom lines are tax inclusive when the shop prices tax inclusive. A `poNumber` on the draft is the customer's purchase order reference: it travels to the numbered quote and on to the invoice, so put a PO there rather than in a tag or a note.",
+      "requiredScopes": ["shopify:draft-orders:write"],
+      "handler": "draft_orders_create",
+      "preflight": "draft_orders_create_preflight",
+      "summarizer": "summarizeDraftOrderCreate",
+      "summarizerContext": {
+        "tool": "variants_brief",
+        "params": {
+          "lines": "input.lineItems"
+        }
+      },
+      "gated": true,
+      "approvalImpact": "internal",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "object",
+            "additionalProperties": true,
+            "minProperties": 1,
+            "description": "Shopify DraftOrderInput (API 2026-01). Link the customer via purchasingEntity.customerId (or email) — there is NO `customer` field. Apply an order discount via appliedDiscount — there is NO `lineItemsDiscount` field. BUYER IDENTITY IS REQUIRED: an order with DIGITAL goods (a license/download) must carry a usable buyer email AND a name (via a linked customer, or email + billingAddress firstName/lastName) — otherwise no license can be issued and the create is rejected; an order with PHYSICAL goods must carry a shippingAddress (or useCustomerDefaultAddress) — otherwise the create is rejected.",
+            "properties": {
+              "purchasingEntity": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "customerId": {
+                    "type": "string",
+                    "description": "Customer gid."
+                  }
+                }
+              },
+              "lineItems": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "variantId": {
+                      "type": "string",
+                      "description": "ProductVariant gid."
+                    },
+                    "quantity": {
+                      "type": "integer"
+                    },
+                    "appliedDiscount": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "Line title — for a CUSTOM (non-catalog) line."
+                    },
+                    "originalUnitPriceWithCurrency": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "description": "Custom line unit price: {amount:'419.40', currencyCode:'EUR'}. Use for a custom-priced line (no variantId).",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currencyCode": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "quantity"
+                  ]
+                },
+                "description": "Line items. Catalog line: {variantId, quantity, appliedDiscount?}. Custom line: {title, originalUnitPriceWithCurrency:{amount,currencyCode}, quantity}. To discount, use appliedDiscount {valueType:'PERCENTAGE'|'FIXED_AMOUNT', value, title}. There is NO per-unit `price` and NO `productId` on a line item — use variantId (catalog) or a custom line."
+              },
+              "appliedDiscount": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Order-level discount {value, valueType: PERCENTAGE|FIXED_AMOUNT, title}."
+              },
+              "email": {
+                "type": "string",
+                "description": "Buyer email. REQUIRED for an order with DIGITAL goods (a license/download that does not ship) — the fulfilment webhook issues the license to this address, so a digital draft without it (and without a linked customer) is REJECTED. Must be a real deliverable address."
+              },
+              "shippingAddress": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Ship-to MailingAddressInput {firstName, lastName, address1, city, countryCode, zip, ...}. REQUIRED for an order with PHYSICAL goods (a draft with a physical line and no address, and no useCustomerDefaultAddress, is REJECTED).",
+                "properties": {
+                  "firstName": {
+                    "type": "string"
+                  },
+                  "lastName": {
+                    "type": "string"
+                  },
+                  "address1": {
+                    "type": "string"
+                  },
+                  "city": {
+                    "type": "string"
+                  },
+                  "countryCode": {
+                    "type": "string"
+                  },
+                  "zip": {
+                    "type": "string"
+                  }
+                }
+              },
+              "billingAddress": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Bill-to MailingAddressInput. Also the place to supply the buyer NAME (firstName/lastName) for a DIGITAL order when no customer is linked — a digital draft with no name is REJECTED.",
+                "properties": {
+                  "firstName": {
+                    "type": "string"
+                  },
+                  "lastName": {
+                    "type": "string"
+                  }
+                }
+              },
+              "useCustomerDefaultAddress": {
+                "type": "boolean",
+                "description": "Bill/ship to the linked customer's saved default address — satisfies the physical-goods address requirement without spelling the address out."
+              },
+              "note": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "input"
+        ]
+      }
+    },
+    "draft_orders_complete": {
+      "description": "Complete a Shopify draft order: it becomes a real order. paymentPending defaults to false, which MARKS THE ORDER PAID; for a B2B customer who pays by wire against the invoice pass paymentPending: true so the order stays pending and no customer email goes out. QUOTES: when Invoicing is installed the linked quote turns 'invoiced' and the invoice is issued automatically by the order-created auto-flow; do NOT also call invoicing__invoice_create_and_issue. The Invoicing side does the same thing through documents_convert_to_invoice on the quote, which is what the Convert to invoice button uses.",
+      "requiredScopes": ["shopify:draft-orders:write"],
+      "handler": "draft_orders_complete",
+      "summarizer": "summarizeDraftOrdersComplete",
+      "summarizerContext": {
+        "tool": "draft_orders_get",
+        "params": {
+          "id": "id"
+        }
+      },
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "paymentPending": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "fulfillments_create": {
+      "description": "Mark an order's items as fulfilled. SIMPLEST: pass just the order id as `orderId` (gid://shopify/Order/...) and ALL of that order's open line items are fulfilled — you do NOT need to look up fulfillment-order ids yourself. PARTIAL shipment (only some items or quantities shipped): pass `orderId` PLUS `lineItems` [{ sku, quantity }] (or { orderLineItemId, quantity } when a sku is missing or ambiguous): exactly those quantities are marked fulfilled and the rest stays open; the handler maps them onto the order's open fulfillment orders for you (call fulfillment_orders_get first to see what is still fulfillable). It errors instead of guessing when a sku is unknown/ambiguous or a quantity exceeds what remains. Advanced: an explicit `fulfillment.lineItemsByFulfillmentOrder` is still honored verbatim. Optionally add `fulfillment.trackingInfo` (company/number/url) and `fulfillment.notifyCustomer`. When the store sets a shipping email policy (customerShippingEmail, e.g. retail orders only: a retail customer is emailed, a B2B buyer, a Shopify B2B company or a line sku ending with a b2bSkuSuffixes suffix, never is), the policy decides notifyCustomer whatever you pass, and the result carries `customerNotification` {notified, reason, message}: tell the person whether Shopify emailed the customer.",
+      "requiredScopes": ["shopify:fulfillments:write"],
+      "handler": "fulfillments_create",
+      "preflight": "fulfillments_create_preflight",
+      "summarizer": "summarizeFulfillmentsCreate",
+      "summarizerContext": {
+        "tool": "orders_get",
+        "params": {
+          "id": "orderId"
+        }
+      },
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "description": "Order to fulfill (gid://shopify/Order/...). Alone it fulfills ALL open line items; with `lineItems` only the named quantities. The handler resolves the order's open fulfillment orders for you."
+          },
+          "lineItems": {
+            "type": "array",
+            "description": "PARTIAL fulfillment (requires `orderId`): the exact lines and quantities that shipped. Identify each line by `sku`, or by `orderLineItemId` when the sku is absent or ambiguous. Anything not listed stays unfulfilled.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "sku": {
+                  "type": "string",
+                  "description": "SKU of the line to fulfill (must match exactly one order line item)."
+                },
+                "orderLineItemId": {
+                  "type": "string",
+                  "description": "Order line item gid (gid://shopify/LineItem/...), from fulfillment_orders_get. Use when sku is missing or ambiguous."
+                },
+                "quantity": {
+                  "type": "number",
+                  "description": "How many units of this line shipped. Must not exceed the line's remainingQuantity."
+                }
+              },
+              "required": [
+                "quantity"
+              ]
+            }
+          },
+          "fulfillment": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Shopify FulfillmentV2Input (for partial fulfillment / explicit control). Omit if you passed `orderId`.",
+            "properties": {
+              "lineItemsByFulfillmentOrder": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "fulfillmentOrderId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "trackingInfo": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "company": {
+                    "type": "string"
+                  },
+                  "number": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                }
+              },
+              "notifyCustomer": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "fulfillments_cancel": {
+      "description": "Cancel a Shopify fulfillment",
+      "requiredScopes": ["shopify:fulfillments:write"],
+      "handler": "fulfillments_cancel",
+      "preflight": "fulfillments_cancel_preflight",
+      "summarizer": "summarizeFulfillmentsCancel",
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "fulfillments_update_tracking": {
+      "description": "Update tracking info (number, carrier, URL) on a Shopify fulfillment",
+      "requiredScopes": ["shopify:fulfillments:write"],
+      "handler": "fulfillments_update_tracking",
+      "summarizer": "summarizeFulfillmentsUpdateTracking",
+      "summarizerContext": {
+        "tool": "fulfillments_get",
+        "params": {
+          "id": "fulfillmentId"
+        }
+      },
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "approvalCard": {
+        "summary": "Update tracking on fulfillment {{params.fulfillmentId}}"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "fulfillmentId": {
+            "type": "string"
+          },
+          "trackingInfoInput": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Shopify FulfillmentTrackingInput — carrier + tracking. Use company/number/url (or numbers/urls for multiples).",
+            "properties": {
+              "company": {
+                "type": "string"
+              },
+              "number": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "numbers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "urls": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "notifyCustomer": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "fulfillmentId",
+          "trackingInfoInput"
+        ]
+      }
+    },
+    "products_create": {
+      "description": "Create a Shopify product",
+      "requiredScopes": ["shopify:products:write"],
+      "handler": "products_create",
+      "summarizer": "summarizeProductsCreate",
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "object",
+            "additionalProperties": true,
+            "minProperties": 1,
+            "description": "Shopify ProductInput. Do NOT nest another `input`. Do NOT pass `variants` here (use variants_create).",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "descriptionHtml": {
+                "type": "string",
+                "description": "Product description as HTML. This field is `descriptionHtml`, NOT `description`."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "ACTIVE",
+                  "DRAFT",
+                  "ARCHIVED"
+                ],
+                "description": "DRAFT = unpublished."
+              },
+              "productType": {
+                "type": "string"
+              },
+              "vendor": {
+                "type": "string"
+              },
+              "handle": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "input"
+        ]
+      }
+    },
+    "products_update": {
+      "description": "Update a Shopify product",
+      "requiredScopes": ["shopify:products:write"],
+      "handler": "products_update",
+      "preflight": "products_update_preflight",
+      "summarizer": "summarizeProductsUpdate",
+      "summarizerContext": {
+        "tool": "products_get",
+        "params": {
+          "id": "input.id"
+        }
+      },
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "object",
+            "additionalProperties": true,
+            "minProperties": 1,
+            "description": "Shopify ProductInput for an existing product. Include `id` (the product gid). Use `descriptionHtml`, not `description`.",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Product gid, e.g. gid://shopify/Product/123 (a bare numeric product id is also accepted). This MUST be a PRODUCT id — an ORDER id (gid://shopify/Order/...) is rejected here; to edit an order's tags or note use order_update, not products_update.",
+                "pattern": "^(gid://shopify/Product/.+|[0-9]+)$"
+              },
+              "title": {
+                "type": "string"
+              },
+              "descriptionHtml": {
+                "type": "string",
+                "description": "This field is `descriptionHtml`, NOT `description`."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "ACTIVE",
+                  "DRAFT",
+                  "ARCHIVED"
+                ]
+              },
+              "productType": {
+                "type": "string"
+              },
+              "vendor": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        "required": [
+          "input"
+        ]
+      }
+    },
+    "products_delete": {
+      "description": "Delete a Shopify product",
+      "requiredScopes": ["shopify:products:write"],
+      "handler": "products_delete",
+      "preflight": "products_delete_preflight",
+      "summarizer": "summarizeProductsDelete",
+      "summarizerContext": {
+        "tool": "products_get",
+        "params": {
+          "id": "id"
+        }
+      },
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "products_merge": {
+      "description": "MERGE two DUPLICATE product listings into one in a single gated action (use this when a duplicate listing was created — e.g. during a migration — and the two should become one so inventory/reviews/links are not split). It reassigns the duplicate's variants + inventory onto the survivor, sets up a URL redirect from the deleted listing's handle to the survivor, then DELETES the duplicate. Prefer this over a bare products_delete for de-duplication: the approval card names the survivor + the deleted duplicate + the data-loss caveat so the human reviews a real consolidation, not an opaque id. PASS survivorId = the listing to KEEP (the canonical / most-detailed one) and duplicateId = the listing to REMOVE; ALSO pass survivorTitle + duplicateTitle (the titles you read from products_search) so the approval card names them. Reviews and metafields do NOT carry over — Shopify exposes no primitive for them; tell the user that. GATED: it lands as an approval a person must approve; it does not run on your say-so.",
+      "requiredScopes": ["shopify:products:write"],
+      "handler": "products_merge",
+      "preflight": "products_merge_preflight",
+      "summarizer": "summarizeProductsMerge",
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "survivorId": {
+            "type": "string",
+            "description": "gid of the product to KEEP (the canonical/most-detailed listing). Variants + inventory from the duplicate are reassigned ONTO this one."
+          },
+          "duplicateId": {
+            "type": "string",
+            "description": "gid of the DUPLICATE product to REMOVE (redirected to the survivor, then deleted)."
+          },
+          "survivorTitle": {
+            "type": "string",
+            "description": "Title of the survivor listing (read from products_search) — surfaced on the approval card so the reviewer sees a real name, not an id."
+          },
+          "duplicateTitle": {
+            "type": "string",
+            "description": "Title of the duplicate listing being deleted (read from products_search) — surfaced on the approval card."
+          }
+        },
+        "required": [
+          "survivorId",
+          "duplicateId"
+        ]
+      }
+    },
+    "variants_create": {
+      "description": "Add a variant to a Shopify product",
+      "requiredScopes": ["shopify:products:write"],
+      "handler": "variants_create",
+      "summarizer": "summarizeVariantsCreate",
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "object",
+            "additionalProperties": true,
+            "minProperties": 1,
+            "description": "Shopify ProductVariantInput. The SKU lives under inventoryItem.sku.",
+            "properties": {
+              "productId": {
+                "type": "string",
+                "description": "Owning product gid."
+              },
+              "price": {
+                "type": "string"
+              },
+              "compareAtPrice": {
+                "type": "string"
+              },
+              "barcode": {
+                "type": "string"
+              },
+              "inventoryPolicy": {
+                "type": "string",
+                "enum": [
+                  "DENY",
+                  "CONTINUE"
+                ]
+              },
+              "inventoryItem": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "sku": {
+                    "type": "string"
+                  },
+                  "tracked": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            },
+            "required": [
+              "productId"
+            ]
+          }
+        },
+        "required": [
+          "input"
+        ]
+      }
+    },
+    "variants_update": {
+      "description": "Update a Shopify product variant",
+      "requiredScopes": ["shopify:products:write"],
+      "handler": "variants_update",
+      "preflight": "variants_update_preflight",
+      "summarizer": "summarizeVariantsUpdate",
+      "summarizerContext": {
+        "tool": "variants_get",
+        "params": {
+          "id": "input.id"
+        }
+      },
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "object",
+            "additionalProperties": true,
+            "minProperties": 1,
+            "description": "Shopify ProductVariantInput for an existing variant. Include `id` (the variant gid). SKU lives under inventoryItem.sku.",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Variant gid, e.g. gid://shopify/ProductVariant/123."
+              },
+              "price": {
+                "type": "string"
+              },
+              "compareAtPrice": {
+                "type": "string"
+              },
+              "barcode": {
+                "type": "string"
+              },
+              "inventoryPolicy": {
+                "type": "string",
+                "enum": [
+                  "DENY",
+                  "CONTINUE"
+                ],
+                "description": "CONTINUE = keep selling when out of stock."
+              },
+              "inventoryItem": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "sku": {
+                    "type": "string"
+                  },
+                  "tracked": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        "required": [
+          "input"
+        ]
+      }
+    },
+    "variants_delete": {
+      "description": "Delete a Shopify product variant",
+      "requiredScopes": ["shopify:products:write"],
+      "handler": "variants_delete",
+      "preflight": "variants_delete_preflight",
+      "summarizer": "summarizeVariantsDelete",
+      "summarizerContext": {
+        "tool": "variants_get",
+        "params": {
+          "id": "id"
+        }
+      },
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Variant gid to delete."
+          },
+          "productId": {
+            "type": "string",
+            "description": "Owning product gid (optional; resolved from the variant if omitted)."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "inventory_adjust": {
+      "description": "Apply a RELATIVE delta to inventory per (item, location) — e.g. +10 received, -3 damaged. Relative changes ONLY. To SET a final/absolute count (e.g. after a physical count → 47 on hand) use inventory_set_on_hand, NOT this. Pass a signed delta per change.",
+      "requiredScopes": ["shopify:inventory:write"],
+      "handler": "inventory_adjust",
+      "preflight": "inventory_adjust_preflight",
+      "summarizer": "summarizeInventoryAdjust",
+      "gated": true,
+      "approvalImpact": "internal",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Shopify InventoryAdjustQuantitiesInput. Apply a DELTA per (item, location).",
+            "properties": {
+              "reason": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string",
+                "description": "Quantity name to adjust, e.g. 'available'."
+              },
+              "referenceDocumentUri": {
+                "type": "string"
+              },
+              "changes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "inventoryItemId": {
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "type": "string"
+                    },
+                    "delta": {
+                      "type": "integer",
+                      "description": "Signed change (e.g. +5 or -2)."
+                    }
+                  },
+                  "required": [
+                    "inventoryItemId",
+                    "locationId",
+                    "delta"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "reason",
+              "name",
+              "changes"
+            ]
+          }
+        },
+        "required": [
+          "input"
+        ]
+      }
+    },
+    "inventory_set_on_hand": {
+      "description": "SET the ABSOLUTE on-hand count for an item at a location — e.g. after a physical/cycle count: on-hand = 47. Use this whenever the user gives a target/final number (\"set the count to N\", \"there are N on hand\"). For a relative +/- change use inventory_adjust. Pass the absolute quantity per (item, location).",
+      "requiredScopes": ["shopify:inventory:write"],
+      "handler": "inventory_set_on_hand",
+      "preflight": "inventory_set_on_hand_preflight",
+      "summarizer": "summarizeInventorySetOnHand",
+      "gated": true,
+      "approvalImpact": "internal",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Shopify InventorySetOnHandQuantitiesInput. Set ABSOLUTE on-hand per (item, location).",
+            "properties": {
+              "reason": {
+                "type": "string",
+                "description": "e.g. 'correction', 'cycle_count_available'."
+              },
+              "referenceDocumentUri": {
+                "type": "string"
+              },
+              "setQuantities": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "inventoryItemId": {
+                      "type": "string",
+                      "description": "InventoryItem gid (from a variant's inventory_item_id)."
+                    },
+                    "locationId": {
+                      "type": "string",
+                      "description": "Location gid (from locations_list)."
+                    },
+                    "quantity": {
+                      "type": "integer",
+                      "description": "Absolute on-hand quantity."
+                    }
+                  },
+                  "required": [
+                    "inventoryItemId",
+                    "locationId",
+                    "quantity"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "reason",
+              "setQuantities"
+            ]
+          }
+        },
+        "required": [
+          "input"
+        ]
+      }
+    },
+    "discounts_create": {
+      "description": "Create a Shopify discount code. To make the code apply to a SPECIFIC product (not the whole store), you MUST set customerGets.items.products to that product's id in THIS call (products_search returns the id) — omitting it makes a STOREWIDE code. Provide the percent (customerGets.value.percentage as a 0-1 fraction) and the active window (startsAt/endsAt).",
+      "requiredScopes": ["shopify:discounts:write"],
+      "handler": "discounts_create",
+      "preflight": "discounts_create_preflight",
+      "summarizer": "summarizeDiscountsCreate",
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "basicCodeDiscount": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Shopify DiscountCodeBasicInput. customerSelection = who (e.g. {all:true}). customerGets = value + items: value is {percentage:0.15} for 15% (a 0-1 fraction, NOT 15). items is the SCOPE — {all:true} = storewide; to scope to ONE product set items:{products:{productsToAdd:[\"gid://shopify/Product/…\"]}} (or productVariantsToAdd for a variant id). When the user names a product, you MUST set items.products here — a storewide code for a product-specific ask is wrong. startsAt/endsAt are ISO-8601 datetimes for the active window.",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "description": "The discount code customers enter."
+              },
+              "startsAt": {
+                "type": "string",
+                "description": "ISO-8601 datetime."
+              },
+              "endsAt": {
+                "type": "string",
+                "description": "ISO-8601 datetime."
+              },
+              "customerSelection": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "e.g. {all:true}."
+              },
+              "customerGets": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "{value:{percentage:0.15}|{discountAmount:{amount,appliesOnEachItem}}, items:{all:true}|{products:{productsToAdd:[gid]}}}."
+              },
+              "appliesOncePerCustomer": {
+                "type": "boolean"
+              },
+              "usageLimit": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      }
+    },
+    "discounts_bulk_create": {
+      "description": "Generate MANY unique discount codes on ONE code discount in a SINGLE call — the right tool when the user asks for N unique codes (e.g. '25 unique single-use 50%-off codes to hand to press'). It creates the code discount once and bulk-adds the codes server-side (the codes are created in ONE operation, not one approval per code), then returns the ACTUAL codes created. Set `count` to how many, `codePrefix` to the shared human prefix (each code gets a unique suffix), and the discount config (percentage as a 0-1 fraction, product scope, window) the same way as discounts_create. Codes are SINGLE-USE by default (usageLimit 1, once per customer) — override usageLimit for a capped multi-use code. Report ONLY the codes this tool returns; never claim codes it did not return.",
+      "requiredScopes": ["shopify:discounts:write"],
+      "handler": "discounts_bulk_create",
+      "preflight": "discounts_bulk_create_preflight",
+      "summarizer": "summarizeDiscountsBulkCreate",
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "description": "How many unique codes to generate (capped at 200)."
+          },
+          "codePrefix": {
+            "type": "string",
+            "description": "The shared human-readable prefix every code starts with (e.g. \"SYNTH-SUMMIT\"); each code gets a unique random suffix. Defaults to the title."
+          },
+          "basicCodeDiscount": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Shopify DiscountCodeBasicInput (same shape as discounts_create, minus `code`). customerGets.value is {percentage:0.5} for 50% (a 0-1 fraction, NOT 50). Scope with customerGets.items:{products:{productsToAdd:[\"gid://shopify/Product/…\"]}} to one product (e.g. the Kestrel 6) — omit for storewide. startsAt/endsAt are the active window. usageLimit defaults to 1 (single-use); set it higher for a capped multi-use code.",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "startsAt": {
+                "type": "string",
+                "description": "ISO-8601 datetime."
+              },
+              "endsAt": {
+                "type": "string",
+                "description": "ISO-8601 datetime."
+              },
+              "customerSelection": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "e.g. {all:true}."
+              },
+              "customerGets": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "{value:{percentage:0.5}, items:{all:true}|{products:{productsToAdd:[gid]}}}."
+              },
+              "appliesOncePerCustomer": {
+                "type": "boolean"
+              },
+              "usageLimit": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      }
+    },
+    "discounts_update": {
+      "description": "Update a Shopify discount code (gated). To DEACTIVATE/turn off an existing active code, set endsAt to a time in the past — that expires it so it can no longer be redeemed.",
+      "requiredScopes": ["shopify:discounts:write"],
+      "handler": "discounts_update",
+      "preflight": "discounts_update_preflight",
+      "summarizer": "summarizeDiscountsUpdate",
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "basicCodeDiscount": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Shopify DiscountCodeBasicInput. customerSelection picks who (e.g. {all:true}); customerGets picks the value + items (e.g. {value:{percentage:0.15}, items:{all:true}} for 15% off everything, or items:{products:{productsToAdd:[gid]}} to scope).",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "description": "The discount code customers enter."
+              },
+              "startsAt": {
+                "type": "string",
+                "description": "ISO-8601 datetime."
+              },
+              "endsAt": {
+                "type": "string",
+                "description": "ISO-8601 datetime."
+              },
+              "customerSelection": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "e.g. {all:true}."
+              },
+              "customerGets": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "{value:{percentage:0.15}|{discountAmount:{amount,appliesOnEachItem}}, items:{all:true}|{products:{productsToAdd:[gid]}}}."
+              },
+              "appliesOncePerCustomer": {
+                "type": "boolean"
+              },
+              "usageLimit": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "discounts_delete": {
+      "description": "Delete a Shopify discount code",
+      "requiredScopes": ["shopify:discounts:write"],
+      "handler": "discounts_delete",
+      "preflight": "discounts_delete_preflight",
+      "summarizer": "summarizeDiscountsDelete",
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "returns_request": {
+      "description": "Open a Shopify RETURN REQUEST for one or more shipped line items — the platform record that QUEUES a unit as inbound so it is inspected and restocked ON RECEIPT (use this to 'queue a unit to be restocked when it comes back', NOT an immediate inventory bump). GATED → lands as an approval. To build the input you must resolve a FulfillmentLineItem gid: orders_search by the customer's email/order number → orders_get the order to read its `fulfillments[].id` → fulfillments_get(that fulfillment id) to read its `lineItems[].id` (each is the fulfillmentLineItemId) and quantity. Then call returns_request with input.orderId = the Order gid and input.returnLineItems = [{ fulfillmentLineItemId, quantity, returnReason }] (returnReason DEFECTIVE for a dead-zone/hardware fault). A bare line-item id from orders_get is NOT a fulfillmentLineItemId — it will be rejected; the id MUST come from fulfillments_get.",
+      "requiredScopes": ["shopify:returns:write"],
+      "handler": "returns_request",
+      "summarizer": "summarizeReturnsRequest",
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Shopify ReturnRequestInput. Reference the order gid and the fulfillment line items to return.",
+            "properties": {
+              "orderId": {
+                "type": "string",
+                "description": "Order gid."
+              },
+              "returnLineItems": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "fulfillmentLineItemId": {
+                      "type": "string",
+                      "description": "FulfillmentLineItem gid."
+                    },
+                    "quantity": {
+                      "type": "integer"
+                    },
+                    "returnReason": {
+                      "type": "string",
+                      "description": "e.g. DEFECTIVE, NOT_AS_DESCRIBED, WRONG_ITEM, UNWANTED, SIZE_TOO_SMALL, SIZE_TOO_LARGE, OTHER."
+                    },
+                    "returnReasonNote": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "fulfillmentLineItemId",
+                    "quantity",
+                    "returnReason"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "orderId",
+              "returnLineItems"
+            ]
+          }
+        },
+        "required": [
+          "input"
+        ]
+      }
+    },
+    "returns_approve": {
+      "description": "Approve a pending Shopify return request (accept the return). Use this when the return is within policy — e.g. inside the warranty/return window confirmed via orders_get on the return's order. Prefer this over returns_decline whenever the request is legitimate; declining is the exception, not the default.",
+      "requiredScopes": ["shopify:returns:write"],
+      "handler": "returns_approve",
+      "preflight": "returns_approve_preflight",
+      "summarizer": "summarizeReturnsApprove",
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "returns_decline": {
+      "description": "Decline a pending Shopify return request (reject the return). Only decline when you have VERIFIED grounds — never on the customer's claim alone. Before declining, call orders_get on the return's order to read the actual purchase date (the `processedAt` field, the true transaction date) and confirm it is genuinely outside the applicable window (e.g. past the warranty/return period); if the order is still within the window, approve instead. When the denial cites a policy (e.g. a warranty window), look that policy up first (search Knowledge) so the reason and any customer reply are grounded in the real policy text, not asserted. `declineReason` is free text describing why (the underlying enum is set automatically).",
+      "requiredScopes": ["shopify:returns:write"],
+      "handler": "returns_decline",
+      "preflight": "returns_decline_preflight",
+      "summarizer": "summarizeReturnsDecline",
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "declineReason": {
+            "type": "string",
+            "description": "Why the return is being declined, in plain language (e.g. 'Purchased 2023-06, past the 2-year warranty window confirmed via the order date')."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "returns_refund": {
+      "description": "Issue a refund against a Shopify return",
+      "requiredScopes": ["shopify:returns:write"],
+      "handler": "returns_refund",
+      "preflight": "returns_refund_preflight",
+      "summarizer": "summarizeReturnsRefund",
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "returnRefundInput": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Shopify ReturnRefundInput. returnRefundLineItems is REQUIRED.",
+            "properties": {
+              "returnId": {
+                "type": "string"
+              },
+              "returnRefundLineItems": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "returnLineItemId": {
+                      "type": "string"
+                    },
+                    "quantity": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              },
+              "notifyCustomer": {
+                "type": "boolean"
+              },
+              "refundShipping": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "fullRefund": {
+                    "type": "boolean"
+                  },
+                  "shippingRefundAmount": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "returns_close": {
+      "description": "Close a Shopify return",
+      "requiredScopes": ["shopify:returns:write"],
+      "handler": "returns_close",
+      "preflight": "returns_close_preflight",
+      "summarizer": "summarizeReturnsClose",
+      "gated": true,
+      "approvalImpact": "internal",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "customers_update": {
+      "description": "Update a Shopify customer record",
+      "requiredScopes": ["shopify:customers:write"],
+      "handler": "customers_update",
+      "preflight": "customers_update_preflight",
+      "summarizer": "summarizeCustomersUpdate",
+      "summarizerContext": {
+        "tool": "customers_get",
+        "params": {
+          "id": "input.id"
+        }
+      },
+      "gated": true,
+      "approvalImpact": "internal",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "object",
+            "additionalProperties": true,
+            "minProperties": 1,
+            "description": "Shopify CustomerInput for an existing customer. Include `id` (customer gid).",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Customer gid."
+              },
+              "firstName": {
+                "type": "string"
+              },
+              "lastName": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "phone": {
+                "type": "string"
+              },
+              "note": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "addresses": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        "required": [
+          "input"
+        ]
+      }
+    },
+    "customers_email_marketing_consent_update": {
+      "description": "Set a Shopify customer's email-marketing consent state",
+      "requiredScopes": ["shopify:customers:write"],
+      "handler": "customers_email_marketing_consent_update",
+      "summarizer": "summarizeCustomersEmailMarketingConsentUpdate",
+      "summarizerContext": {
+        "tool": "customers_get",
+        "params": {
+          "id": "customerId"
+        }
+      },
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "input": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Email marketing consent. Provide emailMarketingConsent {marketingState, marketingOptInLevel}.",
+            "properties": {
+              "emailMarketingConsent": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "marketingState": {
+                    "type": "string",
+                    "enum": [
+                      "SUBSCRIBED",
+                      "UNSUBSCRIBED",
+                      "NOT_SUBSCRIBED",
+                      "PENDING",
+                      "REDACTED",
+                      "INVALID"
+                    ]
+                  },
+                  "marketingOptInLevel": {
+                    "type": "string",
+                    "enum": [
+                      "SINGLE_OPT_IN",
+                      "CONFIRMED_OPT_IN",
+                      "UNKNOWN"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "customerId"
+        ]
+      }
+    },
+    "customers_sms_marketing_consent_update": {
+      "description": "Set a Shopify customer's SMS-marketing consent state",
+      "requiredScopes": ["shopify:customers:write"],
+      "handler": "customers_sms_marketing_consent_update",
+      "summarizer": "summarizeCustomersSmsMarketingConsentUpdate",
+      "summarizerContext": {
+        "tool": "customers_get",
+        "params": {
+          "id": "customerId"
+        }
+      },
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "input": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "SMS marketing consent. Provide smsMarketingConsent {marketingState, marketingOptInLevel}.",
+            "properties": {
+              "smsMarketingConsent": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "marketingState": {
+                    "type": "string",
+                    "enum": [
+                      "SUBSCRIBED",
+                      "UNSUBSCRIBED",
+                      "NOT_SUBSCRIBED",
+                      "PENDING",
+                      "REDACTED",
+                      "INVALID"
+                    ]
+                  },
+                  "marketingOptInLevel": {
+                    "type": "string",
+                    "enum": [
+                      "SINGLE_OPT_IN",
+                      "CONFIRMED_OPT_IN",
+                      "UNKNOWN"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "customerId"
+        ]
+      }
+    },
+    "apply_seed_suggestion": {
+      "description": "Apply an admin-reviewed scope-seed suggestion (writes Liaison scopes for the named user). Plus-only initial seed flow.",
+      "requiredScopes": ["shopify:admin:scope-seed"],
+      "handler": "applySeedSuggestion",
+      "summarizer": "summarizeApplySeedSuggestion",
+      "gated": true,
+      "approvalImpact": "internal",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "liaisonUserId": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "liaisonUserId",
+          "scopes"
+        ]
+      }
+    },
+    "settings_load": {
+      "description": "Load the Shopify Settings panel bundle: connection snapshot, identity-mapping rows, sync diagnostics, inventory allowlist, and Plus-only seed suggestions. Read-only.",
+      "requiredScopes": ["shopify:admin:identity-map"],
+      "handler": "settingsLoad",
+      "params": {
+        "type": "object",
+        "properties": {}
+      },
+      "readOnly": true
+    },
+    "connection_disconnect": {
+      "description": "Disconnect the Shopify connection (flips install_metadata to disconnected; stops background sync). Gated admin action.",
+      "requiredScopes": ["shopify:admin:identity-map"],
+      "handler": "connectionDisconnect",
+      "summarizer": "summarizeConnectionDisconnect",
+      "gated": true,
+      "approvalImpact": "internal",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {}
+      },
+      "approvalCard": {
+        "summary": "Disconnect this Liaison instance from Shopify"
+      }
+    },
+    "staff_overrides_upsert": {
+      "description": "Map a Liaison user to a Shopify staff identity (admin override)",
+      "requiredScopes": ["shopify:admin:identity-map"],
+      "handler": "staff_overrides_upsert",
+      "preflight": "staff_overrides_upsert_preflight",
+      "summarizer": "summarizeStaffOverridesUpsert",
+      "gated": true,
+      "approvalImpact": "internal",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "liaisonUserId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "shopifyStaffId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "liaisonUserId",
+          "shopifyStaffId"
+        ]
+      }
+    },
+    "staff_overrides_delete": {
+      "description": "Remove a Shopify staff identity override",
+      "requiredScopes": ["shopify:admin:identity-map"],
+      "handler": "staff_overrides_delete",
+      "summarizer": "summarizeStaffOverridesDelete",
+      "gated": true,
+      "approvalImpact": "internal",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "webhooks_repair": {
+      "description": "Re-register every Shopify webhook topic the app declares (idempotent: existing subscriptions are kept, missing ones are created). Run after an app upgrade that adds new topics. The callback base URL is taken from the existing subscriptions when omitted.",
+      "requiredScopes": ["shopify:admin:identity-map"],
+      "handler": "webhooks_repair",
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "callback_base_url": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "order_update": {
+      "description": "Update a Shopify order's tags or note. Do NOT record a customer's purchase order number here: a PO-852875 tag or a line in the note is the old workaround and changes nothing on the document the customer holds. The PO belongs on the invoicing document, as po_number on the issue tool or via invoicing__documents_update on an already issued one.",
+      "requiredScopes": ["shopify:orders:write"],
+      "handler": "order_update",
+      "preflight": "order_update_preflight",
+      "summarizer": "summarizeOrderUpdate",
+      "summarizerContext": {
+        "tool": "orders_get",
+        "params": {
+          "id": "input.id"
+        }
+      },
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Shopify OrderInput — edits ONLY tags, note, email, customAttributes. It CANNOT change the shipping address, line items, or customer (those fields are REJECTED). To correct a shipping address on an unshipped order you must cancel + recreate it (draft order) or fix it at the label/fulfillment stage — tell the customer that honestly; never claim order_update changed the address.",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Order gid, e.g. gid://shopify/Order/123."
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "customAttributes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        "required": [
+          "input"
+        ]
+      }
+    },
+    "order_cancel": {
+      "description": "Cancel a Shopify order (optionally refund + restock). Invoicing auto issues the credit note for the cancellation, reversing only the REMAINDER when the invoice was already partly credited, so never issue a second one by hand.",
+      "requiredScopes": ["shopify:orders:write"],
+      "handler": "order_cancel",
+      "preflight": "order_cancel_preflight",
+      "summarizer": "summarizeOrderCancel",
+      "summarizerContext": {
+        "tool": "orders_get",
+        "params": {
+          "id": "orderId"
+        }
+      },
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "refund": {
+            "type": "boolean"
+          },
+          "restock": {
+            "type": "boolean"
+          },
+          "notifyCustomer": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "orderId"
+        ]
+      }
+    },
+    "order_note_set": {
+      "description": "Set or clear a Shopify order's internal staff note. Pass expected_note (the note value you last read, or null if you read no note) to make the write refuse instead of applying when the note changed since you read it; omit expected_note to overwrite unconditionally. This is the only ungated write tool in this app: every other write tool here is gated. It is ungated because a cross app call into a gated tool always parks a pending approval, which would put an approval card on every note save and make inline editing unusable. It is contained instead by trustBoundary: internal, so only an app that declared this tool in cross_app_calls can reach it. The blast radius is one internal staff text field on one order: no email, no money, no fulfillment.",
+      "requiredScopes": ["shopify:orders:write"],
+      "handler": "order_note_set",
+      "trustBoundary": "internal",
+      "params": {
+        "type": "object",
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "description": "Order gid (gid://shopify/Order/123) or bare numeric id."
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The new note text, or null to clear it."
+          },
+          "expected_note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional compare-and-set guard: the note value last read. When present, the write is refused (ok:false, reason:conflict) if the current note no longer matches."
+          }
+        },
+        "required": [
+          "order_id",
+          "note"
+        ]
+      }
+    },
+    "draft_orders_update": {
+      "description": "Update a Shopify draft order (lines, customer, addresses, discounts, note, tags). When Invoicing is installed the linked quote is updated to match (recomputed totals, re-rendered PDF) as long as it is still open. A poNumber edit travels to the linked quote too.",
+      "requiredScopes": ["shopify:draft-orders:write"],
+      "handler": "draft_orders_update",
+      "summarizer": "summarizeDraftOrdersUpdate",
+      "summarizerContext": {
+        "tool": "draft_orders_get",
+        "params": {
+          "id": "id"
+        }
+      },
+      "gated": true,
+      "approvalImpact": "internal",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "input": {
+            "type": "object",
+            "additionalProperties": true,
+            "minProperties": 1,
+            "description": "Shopify DraftOrderInput for an existing draft. The draft id is the sibling `id` param.",
+            "properties": {
+              "lineItems": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "variantId": {
+                      "type": "string"
+                    },
+                    "quantity": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              },
+              "appliedDiscount": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "email": {
+                "type": "string"
+              },
+              "note": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "draft_orders_delete": {
+      "description": "Delete a Shopify draft order. When Invoicing is installed the linked quote is marked rejected (the offer is off the table); the quote number is not reused.",
+      "requiredScopes": ["shopify:draft-orders:write"],
+      "handler": "draft_orders_delete",
+      "preflight": "draft_orders_delete_preflight",
+      "summarizer": "summarizeDraftOrdersDelete",
+      "summarizerContext": {
+        "tool": "draft_orders_get",
+        "params": {
+          "id": "id"
+        }
+      },
+      "gated": true,
+      "approvalImpact": "internal",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "draft_orders_send": {
+      "description": "Send a draft-order invoice to the customer. `email` is OPTIONAL — OMIT it to send to the draft's OWN customer (recommended: the draft already carries the customer and their valid email). Only pass `email` to OVERRIDE the recipient, and then it must be an OBJECT (Shopify EmailInput), NEVER a bare string: { to: '<real deliverable address>', subject?, customMessage? } — a string value fails with 'email must be an object', and a non-deliverable address (e.g. a kernel contact's `.example` TLD) fails with 'invalid domain name'. So the safe call is just { id: '<draftOrderId>' }; full shape is { id, email?: { to, subject?, customMessage? } }.",
+      "requiredScopes": ["shopify:draft-orders:write"],
+      "handler": "draft_orders_send",
+      "summarizer": "summarizeDraftOrdersSend",
+      "summarizerContext": {
+        "tool": "draft_orders_get",
+        "params": {
+          "id": "id"
+        }
+      },
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Shopify EmailInput for the invoice email. Use `to`/`from`/`subject`/`customMessage`/`bcc` — there is NO `email` or `address` field on EmailInput.",
+            "properties": {
+              "to": {
+                "type": "string",
+                "description": "Recipient email address (the customer)."
+              },
+              "from": {
+                "type": "string",
+                "description": "Sender email address."
+              },
+              "subject": {
+                "type": "string"
+              },
+              "customMessage": {
+                "type": "string",
+                "description": "Body message for the invoice email."
+              },
+              "bcc": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "products_publish": {
+      "description": "Publish a Shopify product to its sales channels. Call with just the product `id`: the channels (publications) are resolved automatically, namely every sales channel on the store the product is not yet published on (the Online Store, any headless or Storefront API channel, and the others), and the approval card names each one. B2B and market catalogs are never included by default: name a catalog's Publication gid in `input` to publish to it. Pass `input` only with REAL Publication gids read from products_publication_targets, to limit the publish to those channels; an invented id is ignored. GATED (user-approved): it lands as an approval request and NEVER auto-executes — including inside a routine, where each scheduled/event tick that proposes a publish surfaces it as its OWN per-tick approval in the routine output thread (a routine never auto-approves its own gated actions). So when you set up a routine to publish a product at a launch time, do NOT tell the user it 'will publish automatically' / 'auto-publishes when it fires' — say the routine DRAFTS the publish for their approval at that time. For a known/planned launch datetime, schedule a one-shot kind:'scheduled' routine at that runAt that proposes this publish (NOT a kind:'event' routine on a record-move event — there is no 'launch:live' event, and 'shopify:product:published' fires AFTER a publish, so subscribing to it to TRIGGER a publish is circular).",
+      "requiredScopes": ["shopify:products:write"],
+      "handler": "products_publish",
+      "preflight": "products_publish_preflight",
+      "summarizer": "summarizeProductsPublish",
+      "summarizerContext": {
+        "tool": "products_publication_targets",
+        "params": {
+          "id": "id",
+          "input": "input"
+        }
+      },
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "input": {
+            "type": "array",
+            "description": "Publication targets (sales channels) to publish to.",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "A sales channel publication target.",
+              "properties": {
+                "publicationId": {
+                  "type": "string",
+                  "description": "gid of the publication (sales channel)."
+                },
+                "publishDate": {
+                  "type": "string",
+                  "description": "Optional ISO-8601 datetime to publish at."
+                }
+              },
+              "required": [
+                "publicationId"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "products_unpublish": {
+      "description": "Take a Shopify product OFFLINE by unpublishing it from its sales channels (e.g. to stop overselling an out-of-stock listing). Call with just the product `id` — the channels (publications) are resolved automatically (the product's currently-published channels). Do NOT pass `input` / fabricate a channel/publication id unless you already read a real Publication gid; an invented id is not needed and will be ignored in favour of the product's actual channels.",
+      "requiredScopes": ["shopify:products:write"],
+      "handler": "products_unpublish",
+      "preflight": "products_unpublish_preflight",
+      "summarizer": "summarizeProductsUnpublish",
+      "summarizerContext": {
+        "tool": "products_publication_targets",
+        "params": {
+          "id": "id",
+          "input": "input"
+        }
+      },
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "input": {
+            "type": "array",
+            "description": "Publication targets (sales channels) to unpublish from.",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "A sales channel publication target.",
+              "properties": {
+                "publicationId": {
+                  "type": "string",
+                  "description": "gid of the publication (sales channel)."
+                },
+                "publishDate": {
+                  "type": "string",
+                  "description": "Optional ISO-8601 datetime to publish at."
+                }
+              },
+              "required": [
+                "publicationId"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "customers_tag": {
+      "description": "Add or remove tags on a Shopify customer",
+      "requiredScopes": ["shopify:customers:write"],
+      "handler": "customers_tag",
+      "preflight": "customers_tag_preflight",
+      "summarizer": "summarizeCustomersTag",
+      "summarizerContext": {
+        "tool": "customers_get",
+        "params": {
+          "id": "customerId"
+        }
+      },
+      "gated": true,
+      "approvalImpact": "internal",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "op": {
+            "type": "string",
+            "enum": [
+              "add",
+              "remove"
+            ],
+            "default": "add"
+          }
+        },
+        "required": [
+          "customerId",
+          "tags"
+        ]
+      }
+    },
+    "metafields_set": {
+      "description": "Create or update one or more metafields on a Shopify resource",
+      "requiredScopes": ["shopify:metafields:write"],
+      "handler": "metafields_set",
+      "summarizer": "summarizeMetafieldsSet",
+      "gated": true,
+      "approvalImpact": "internal",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "metafields": {
+            "type": "array",
+            "description": "Metafields to set.",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "A metafield to set.",
+              "properties": {
+                "ownerId": {
+                  "type": "string",
+                  "description": "gid of the resource the metafield is on."
+                },
+                "namespace": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "Metafield type (e.g. single_line_text_field, number_integer)."
+                },
+                "value": {
+                  "type": "string",
+                  "description": "The value, serialized as a string per the type."
+                }
+              },
+              "required": [
+                "ownerId",
+                "namespace",
+                "key",
+                "type",
+                "value"
+              ]
+            }
+          }
+        },
+        "required": [
+          "metafields"
+        ]
+      }
+    },
+    "metafields_delete": {
+      "description": "Delete a single Shopify metafield by id",
+      "requiredScopes": ["shopify:metafields:write"],
+      "handler": "metafields_delete",
+      "summarizer": "summarizeMetafieldsDelete",
+      "gated": true,
+      "approvalImpact": "internal",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "Delete a metafield by its identifier (ownerId + namespace + key) — there is no delete-by-id.",
+        "properties": {
+          "ownerId": {
+            "type": "string",
+            "description": "Owner resource gid (e.g. a product/order/customer gid)."
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ownerId",
+          "namespace",
+          "key"
+        ]
+      }
+    }
+  },
+  "cross_app_calls": [
+    {
+      "target": "invoicing:documents_for_orders",
+      "reason": "resolve the invoicing documents linked to the visible Shopify orders for the order list's linked-invoices affordance"
+    },
+    {
+      "target": "kernel:product_attributes_list",
+      "reason": "read the org's product short codes by SKU (kernel product attributes, key short_code) for the orders list's cart summary (\"1×E2, 2×FS\"), whichever app maintains them"
+    }
+  ],
+  "dependencies": {
+    "optional": [
+      "invoicing"
+    ]
+  },
+  "skills": {
+    "shopify-overview": {
+      "description": "How to use the Shopify app with Liaison",
+      "body": "The Shopify app mirrors your store's orders, customers, products and fulfilments into Liaison so the agent can answer questions and act on them. Ask it to summarise today's orders, find a customer's history, or draft a refund — refunds and other money-moving actions are gated and wait for your approval. Pair it with a routine that reviews unfulfilled orders each morning, and store brand/return-policy facts in Knowledge so the agent grounds its replies. Webhooks keep the mirror fresh; a periodic sync backfills anything missed. With the Invoicing app installed, a draft order is the customer's quote: create the draft order and the numbered quote appears in Invoicing, edit or delete it and the quote follows, complete it (payment pending for wire paying dealers) or press Convert to invoice on the quote and the order plus its invoice are created automatically. A customer's purchase order number typed on the order or on the draft order travels to the invoicing document by itself, so there is no need to keep it in a tag or a note.",
+      "kind": "guide",
+      "enabledByDefault": true
+    }
+  }
+}

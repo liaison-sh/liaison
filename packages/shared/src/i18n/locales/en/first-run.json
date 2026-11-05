@@ -1,0 +1,27 @@
+{
+  "kickoff": {
+    "title": "Set up your space",
+    "intro": "Your agent sets this workspace up with you here, one step at a time. It first asks which features you want, then starts with the basics: your mailbox, Google sign-in, the support inbox and imports from your other tools. Each step says how long it takes, and you can skip any of them and come back any time.",
+    "keyFirst": "First, an AI model key: your agent needs one to answer. Type it into the card below; the agent never sees it.",
+    "demoTitle": "Want to see it working first?",
+    "demoBody": "Open your own temporary copy of a sample company at {{host}}, pick what you want to see, and follow its guided scenarios. Nothing to install.",
+    "demoLink": "Open the demo"
+  },
+  "checklist": {
+    "title": "Setup",
+    "asOf": "As of {{time}}",
+    "optional": "optional",
+    "done": "Done",
+    "notDone": "Not yet",
+    "item": {
+      "aiKey": "AI model key",
+      "apps": "Apps",
+      "mail": "Mail",
+      "team": "Team",
+      "knowledge": "Company knowledge",
+      "import": "Import from another tool",
+      "roles": "Roles",
+      "connector": "API connection"
+    }
+  }
+}

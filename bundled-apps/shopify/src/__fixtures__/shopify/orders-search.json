@@ -1,0 +1,493 @@
+{
+  "data": {
+    "orders": {
+      "edges": [
+        {
+          "node": {
+            "id": "gid://shopify/Order/12768070893734",
+            "name": "#1015",
+            "email": "maria@example.com",
+            "displayFinancialStatus": "PAID",
+            "displayFulfillmentStatus": "UNFULFILLED",
+            "createdAt": "2026-05-26T22:51:33Z",
+            "currentTotalPriceSet": {
+              "presentmentMoney": {
+                "amount": "29.0",
+                "currencyCode": "USD"
+              },
+              "shopMoney": {
+                "amount": "29.0",
+                "currencyCode": "USD"
+              }
+            },
+            "customer": {
+              "id": "gid://shopify/Customer/24929660240038",
+              "email": "maria@example.com",
+              "firstName": "Maria",
+              "lastName": "Garcia"
+            },
+            "lineItems": {
+              "edges": [
+                {
+                  "node": {
+                    "id": "gid://shopify/LineItem/36942160330918",
+                    "title": "Cable Set",
+                    "quantity": 1,
+                    "variant": {
+                      "id": "gid://shopify/ProductVariant/56534768418982",
+                      "sku": null
+                    },
+                    "originalUnitPriceSet": {
+                      "presentmentMoney": {
+                        "amount": "29.0",
+                        "currencyCode": "USD"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Order/12768070795430",
+            "name": "#1014",
+            "email": "alex@example.com",
+            "displayFinancialStatus": "PAID",
+            "displayFulfillmentStatus": "UNFULFILLED",
+            "createdAt": "2026-05-26T22:51:30Z",
+            "currentTotalPriceSet": {
+              "presentmentMoney": {
+                "amount": "447.0",
+                "currencyCode": "USD"
+              },
+              "shopMoney": {
+                "amount": "447.0",
+                "currencyCode": "USD"
+              }
+            },
+            "customer": {
+              "id": "gid://shopify/Customer/24929660108966",
+              "email": "alex@example.com",
+              "firstName": "Alex",
+              "lastName": "Müller"
+            },
+            "lineItems": {
+              "edges": [
+                {
+                  "node": {
+                    "id": "gid://shopify/LineItem/36942160101542",
+                    "title": "Field Preamp",
+                    "quantity": 3,
+                    "variant": {
+                      "id": "gid://shopify/ProductVariant/56534768386214",
+                      "sku": null
+                    },
+                    "originalUnitPriceSet": {
+                      "presentmentMoney": {
+                        "amount": "149.0",
+                        "currencyCode": "USD"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Order/12768070697126",
+            "name": "#1013",
+            "email": "sophie@example.com",
+            "displayFinancialStatus": "PAID",
+            "displayFulfillmentStatus": "UNFULFILLED",
+            "createdAt": "2026-05-26T22:51:27Z",
+            "currentTotalPriceSet": {
+              "presentmentMoney": {
+                "amount": "178.0",
+                "currencyCode": "USD"
+              },
+              "shopMoney": {
+                "amount": "178.0",
+                "currencyCode": "USD"
+              }
+            },
+            "customer": {
+              "id": "gid://shopify/Customer/24929660043430",
+              "email": "sophie@example.com",
+              "firstName": "Sophie",
+              "lastName": "Bernard"
+            },
+            "lineItems": {
+              "edges": [
+                {
+                  "node": {
+                    "id": "gid://shopify/LineItem/36942160036006",
+                    "title": "Foot Switch",
+                    "quantity": 2,
+                    "variant": {
+                      "id": "gid://shopify/ProductVariant/56534768353446",
+                      "sku": null
+                    },
+                    "originalUnitPriceSet": {
+                      "presentmentMoney": {
+                        "amount": "89.0",
+                        "currencyCode": "USD"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Order/12768070631590",
+            "name": "#1012",
+            "email": "jean@example.com",
+            "displayFinancialStatus": "PAID",
+            "displayFulfillmentStatus": "UNFULFILLED",
+            "createdAt": "2026-05-26T22:51:23Z",
+            "currentTotalPriceSet": {
+              "presentmentMoney": {
+                "amount": "59.0",
+                "currencyCode": "USD"
+              },
+              "shopMoney": {
+                "amount": "59.0",
+                "currencyCode": "USD"
+              }
+            },
+            "customer": {
+              "id": "gid://shopify/Customer/24929659945126",
+              "email": "jean@example.com",
+              "firstName": "Jean",
+              "lastName": "Martin"
+            },
+            "lineItems": {
+              "edges": [
+                {
+                  "node": {
+                    "id": "gid://shopify/LineItem/36942160003238",
+                    "title": "Foam Windscreen",
+                    "quantity": 1,
+                    "variant": {
+                      "id": "gid://shopify/ProductVariant/56534768320678",
+                      "sku": null
+                    },
+                    "originalUnitPriceSet": {
+                      "presentmentMoney": {
+                        "amount": "59.0",
+                        "currencyCode": "USD"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Order/12768070566054",
+            "name": "#1011",
+            "email": "marie@example.com",
+            "displayFinancialStatus": "PAID",
+            "displayFulfillmentStatus": "UNFULFILLED",
+            "createdAt": "2026-05-26T22:51:20Z",
+            "currentTotalPriceSet": {
+              "presentmentMoney": {
+                "amount": "897.0",
+                "currencyCode": "USD"
+              },
+              "shopMoney": {
+                "amount": "897.0",
+                "currencyCode": "USD"
+              }
+            },
+            "customer": {
+              "id": "gid://shopify/Customer/24929659846822",
+              "email": "marie@example.com",
+              "firstName": "Marie",
+              "lastName": "Dupont"
+            },
+            "lineItems": {
+              "edges": [
+                {
+                  "node": {
+                    "id": "gid://shopify/LineItem/36942159872166",
+                    "title": "Kestrel Pocket Recorder",
+                    "quantity": 3,
+                    "variant": {
+                      "id": "gid://shopify/ProductVariant/56534768255142",
+                      "sku": null
+                    },
+                    "originalUnitPriceSet": {
+                      "presentmentMoney": {
+                        "amount": "299.0",
+                        "currencyCode": "USD"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Order/12768070434982",
+            "name": "#1010",
+            "email": "hiroshi@example.com",
+            "displayFinancialStatus": "PAID",
+            "displayFulfillmentStatus": "UNFULFILLED",
+            "createdAt": "2026-05-26T22:51:17Z",
+            "currentTotalPriceSet": {
+              "presentmentMoney": {
+                "amount": "58.0",
+                "currencyCode": "USD"
+              },
+              "shopMoney": {
+                "amount": "58.0",
+                "currencyCode": "USD"
+              }
+            },
+            "customer": {
+              "id": "gid://shopify/Customer/24929660633254",
+              "email": "hiroshi@example.com",
+              "firstName": "Hiroshi",
+              "lastName": "Sato"
+            },
+            "lineItems": {
+              "edges": [
+                {
+                  "node": {
+                    "id": "gid://shopify/LineItem/36942159577254",
+                    "title": "Cable Set",
+                    "quantity": 2,
+                    "variant": {
+                      "id": "gid://shopify/ProductVariant/56534768418982",
+                      "sku": null
+                    },
+                    "originalUnitPriceSet": {
+                      "presentmentMoney": {
+                        "amount": "29.0",
+                        "currencyCode": "USD"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Order/12768070336678",
+            "name": "#1009",
+            "email": "aki@example.com",
+            "displayFinancialStatus": "PAID",
+            "displayFulfillmentStatus": "UNFULFILLED",
+            "createdAt": "2026-05-26T22:51:13Z",
+            "currentTotalPriceSet": {
+              "presentmentMoney": {
+                "amount": "149.0",
+                "currencyCode": "USD"
+              },
+              "shopMoney": {
+                "amount": "149.0",
+                "currencyCode": "USD"
+              }
+            },
+            "customer": {
+              "id": "gid://shopify/Customer/24929660567718",
+              "email": "aki@example.com",
+              "firstName": "Aki",
+              "lastName": "Tanaka"
+            },
+            "lineItems": {
+              "edges": [
+                {
+                  "node": {
+                    "id": "gid://shopify/LineItem/36942159315110",
+                    "title": "Field Preamp",
+                    "quantity": 1,
+                    "variant": {
+                      "id": "gid://shopify/ProductVariant/56534768386214",
+                      "sku": null
+                    },
+                    "originalUnitPriceSet": {
+                      "presentmentMoney": {
+                        "amount": "149.0",
+                        "currencyCode": "USD"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Order/12768070271142",
+            "name": "#1008",
+            "email": "michael@example.com",
+            "displayFinancialStatus": "PAID",
+            "displayFulfillmentStatus": "UNFULFILLED",
+            "createdAt": "2026-05-26T22:51:10Z",
+            "currentTotalPriceSet": {
+              "presentmentMoney": {
+                "amount": "267.0",
+                "currencyCode": "USD"
+              },
+              "shopMoney": {
+                "amount": "267.0",
+                "currencyCode": "USD"
+              }
+            },
+            "customer": {
+              "id": "gid://shopify/Customer/24929660469414",
+              "email": "michael@example.com",
+              "firstName": "Michael",
+              "lastName": "Williams"
+            },
+            "lineItems": {
+              "edges": [
+                {
+                  "node": {
+                    "id": "gid://shopify/LineItem/36942159216806",
+                    "title": "Foot Switch",
+                    "quantity": 3,
+                    "variant": {
+                      "id": "gid://shopify/ProductVariant/56534768353446",
+                      "sku": null
+                    },
+                    "originalUnitPriceSet": {
+                      "presentmentMoney": {
+                        "amount": "89.0",
+                        "currencyCode": "USD"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Order/12768070172838",
+            "name": "#1007",
+            "email": "sarah@example.com",
+            "displayFinancialStatus": "PAID",
+            "displayFulfillmentStatus": "UNFULFILLED",
+            "createdAt": "2026-05-26T22:51:07Z",
+            "currentTotalPriceSet": {
+              "presentmentMoney": {
+                "amount": "118.0",
+                "currencyCode": "USD"
+              },
+              "shopMoney": {
+                "amount": "118.0",
+                "currencyCode": "USD"
+              }
+            },
+            "customer": {
+              "id": "gid://shopify/Customer/24929660403878",
+              "email": "sarah@example.com",
+              "firstName": "Sarah",
+              "lastName": "Johnson"
+            },
+            "lineItems": {
+              "edges": [
+                {
+                  "node": {
+                    "id": "gid://shopify/LineItem/36942159151270",
+                    "title": "Foam Windscreen",
+                    "quantity": 2,
+                    "variant": {
+                      "id": "gid://shopify/ProductVariant/56534768320678",
+                      "sku": null
+                    },
+                    "originalUnitPriceSet": {
+                      "presentmentMoney": {
+                        "amount": "59.0",
+                        "currencyCode": "USD"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Order/12768070140070",
+            "name": "#1006",
+            "email": "john@example.com",
+            "displayFinancialStatus": "PAID",
+            "displayFulfillmentStatus": "UNFULFILLED",
+            "createdAt": "2026-05-26T22:51:04Z",
+            "currentTotalPriceSet": {
+              "presentmentMoney": {
+                "amount": "299.0",
+                "currencyCode": "USD"
+              },
+              "shopMoney": {
+                "amount": "299.0",
+                "currencyCode": "USD"
+              }
+            },
+            "customer": {
+              "id": "gid://shopify/Customer/24929660305574",
+              "email": "john@example.com",
+              "firstName": "John",
+              "lastName": "Smith"
+            },
+            "lineItems": {
+              "edges": [
+                {
+                  "node": {
+                    "id": "gid://shopify/LineItem/36942159118502",
+                    "title": "Kestrel Pocket Recorder",
+                    "quantity": 1,
+                    "variant": {
+                      "id": "gid://shopify/ProductVariant/56534768255142",
+                      "sku": null
+                    },
+                    "originalUnitPriceSet": {
+                      "presentmentMoney": {
+                        "amount": "299.0",
+                        "currencyCode": "USD"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "pageInfo": {
+        "hasNextPage": true,
+        "endCursor": "eyJsYXN0X2lkIjoxMjc2ODA3MDE0MDA3MCwibGFzdF92YWx1ZSI6MTc3OTgzNTg2NDAwMH0="
+      }
+    }
+  },
+  "extensions": {
+    "cost": {
+      "requestedQueryCost": 42,
+      "actualQueryCost": 26,
+      "throttleStatus": {
+        "maximumAvailable": 20000,
+        "currentlyAvailable": 19974,
+        "restoreRate": 1000
+      }
+    }
+  }
+}

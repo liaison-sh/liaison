@@ -1,0 +1,1833 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1775340600000,
+      "tag": "0000_initial",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1775427000000,
+      "tag": "0001_ticket_api_inboxes",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1775513400000,
+      "tag": "0002_knowledge_document_sharing",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1775599800000,
+      "tag": "0003_knowledge_edit_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1775686200000,
+      "tag": "0004_knowledge_role_sharing",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1782950400000,
+      "tag": "0005_thread_updated_at_trigger",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783036800000,
+      "tag": "0006_system_managed_full_member_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783123200000,
+      "tag": "0007_digest_cadence_opt_in",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783209600000,
+      "tag": "0008_knowledge_sharing_search_convergence",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783296000000,
+      "tag": "0009_inbox_email_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783382400000,
+      "tag": "0010_message_ack_marker",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783468800000,
+      "tag": "0011_inbox_suppress_attention",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1783555200000,
+      "tag": "0012_deferred_events_org_guc_nullif",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1783641600000,
+      "tag": "0013_projects_tasks_external_ref",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1783728000000,
+      "tag": "0014_tickets_search_trgm_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1783814400000,
+      "tag": "0015_reconcile_inbox_identity_ack",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1783900800000,
+      "tag": "0016_inbox_attention_cutoff",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1783987200000,
+      "tag": "0017_routine_agent_model_override",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793987200000,
+      "tag": "0018_approval_ticket_scope_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1794000000000,
+      "tag": "0019_tickets_text_match_fn",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1794000001000,
+      "tag": "0020_approval_mail_scope_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1794000002000,
+      "tag": "0021_bug_report_sla_exempt",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1794000003000,
+      "tag": "0022_guard_connected_accounts_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1900000000000,
+      "tag": "0023_tickets_list_perf_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1900000001000,
+      "tag": "0024_threads_agent_discovered_tools",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1900000002000,
+      "tag": "0025_project_status_default_colors",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1900000003000,
+      "tag": "0026_backfill_synced_doc_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1900000004000,
+      "tag": "0027_messages_admin_override",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1900000005000,
+      "tag": "0028_approval_resource_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1900000006000,
+      "tag": "0029_skill_domains_and_scoped_approvals",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1900000007000,
+      "tag": "0030_user_avatar_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1900000008000,
+      "tag": "0031_mcp_surfaced_skills",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1900000014000,
+      "tag": "0037_digest_default_daily",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1900000015000,
+      "tag": "0038_home_card_layout",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1900000018000,
+      "tag": "0032_mailbox_ciphertext_storage_external",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1900000019000,
+      "tag": "0033_mailbox_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1900000020000,
+      "tag": "0034_mailbox_invariant_helper",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1900000021000,
+      "tag": "0035_drafts_plaintext_nullable",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1900000022000,
+      "tag": "0036_mail_accounts_pending_enrollment",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1900000023000,
+      "tag": "0039_files_encryption_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1900000024000,
+      "tag": "0040_mailbox_ack_replay_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1900000025000,
+      "tag": "0041_mailbox_identity_wrapped_privates",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1900000026000,
+      "tag": "0042_mailbox_purge_ran_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1900000027000,
+      "tag": "0043_project_task_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1900000028000,
+      "tag": "0044_empty_org_guc_nullif_contacts_categories_tickets",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1900000029000,
+      "tag": "0045_invoicing_po_number",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1900000030000,
+      "tag": "0046_tickets_inboxes_default_invariant",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1900000031000,
+      "tag": "0047_invoicing_notes",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1900001000000,
+      "tag": "0045_kernel_agents",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1900001001000,
+      "tag": "0046_skills_owner_agent",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1900001002000,
+      "tag": "0047_skills_rls_owner_agent",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1900001003000,
+      "tag": "0048_routines_owner_agent",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1900001004000,
+      "tag": "0049_agent_skill_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1900001005000,
+      "tag": "0050_agent_knowledge_pointers",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1900001006000,
+      "tag": "0051_agents_handle_immutable",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1900001007000,
+      "tag": "0052_agents_write_authority_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1900001008000,
+      "tag": "0053_agents_owner_rename_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1900001009000,
+      "tag": "0054_agents_owner_user_cascade",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1900001010000,
+      "tag": "0055_agent_memory_rekey",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1900001011000,
+      "tag": "0056_agent_memory_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1900001012000,
+      "tag": "0057_agent_memory_legacy_bridge",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1900001013000,
+      "tag": "0058_agent_migration_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1900001014000,
+      "tag": "0059_p2b_visibility_disclosure",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1900001015000,
+      "tag": "0060_messages_select_required_scopes",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1900001016000,
+      "tag": "0061_audit_log_agent_turn",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1900001017000,
+      "tag": "0062_disclosure_list_real_users",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1900001018000,
+      "tag": "0063_approval_requests_agent_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1900001019000,
+      "tag": "0064_knowledge_documents_required_scopes",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1900001020000,
+      "tag": "0065_required_scopes_no_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1900001021000,
+      "tag": "0066_messages_required_scopes_no_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1900001022000,
+      "tag": "0067_approval_requests_proposing_turn_scopes",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1900001023000,
+      "tag": "0068_scope_disclosure_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1900001024000,
+      "tag": "0069_scope_disclosure_policy_tighten_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1900001025000,
+      "tag": "0070_audit_log_agent_org_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1900001026000,
+      "tag": "0071_approval_requests_agent_org_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1900001027000,
+      "tag": "0072_agent_org_fk_class",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1900001028000,
+      "tag": "0073_mcp_connections_agent_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1900001029000,
+      "tag": "0074_agent_runs_agent_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1900001030000,
+      "tag": "0075_thread_participants_agent_membership",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1900001031000,
+      "tag": "0076_threads_discoverable_messages_author_agent",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1900001032000,
+      "tag": "0077_threads_select_discoverable",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1900001033000,
+      "tag": "0078_thread_participants_type_matches_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1900001034000,
+      "tag": "0079_thread_participants_type_vocabulary",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1900001035000,
+      "tag": "0080_messages_agent_author_named",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1900001036000,
+      "tag": "0081_agent_memory_tree_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1900001037000,
+      "tag": "0082_agent_thread_checkpoints",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1900001038000,
+      "tag": "0083_agent_memory_path_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1900001039000,
+      "tag": "0084_agent_thread_checkpoints_membership",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1900001040000,
+      "tag": "0085_agent_thread_checkpoints_flushed_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1900001041000,
+      "tag": "0086_agent_memory_stale_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1900001042000,
+      "tag": "0087_messages_parent_message_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1900001043000,
+      "tag": "0088_push_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1900001044000,
+      "tag": "0089_durable_consumer_marks",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1900001045000,
+      "tag": "0090_agent_local_claims",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1900001046000,
+      "tag": "0091_agent_local_claim_holder",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1900001047000,
+      "tag": "0092_agent_local_claims_agent_org_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1900001048000,
+      "tag": "0093_skills_unique_unowned_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1900001049000,
+      "tag": "0094_thread_briefs",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1900001050000,
+      "tag": "0095_search_document_clusters",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1900001051000,
+      "tag": "0096_agents_definition_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1900001052000,
+      "tag": "0097_thread_topic_description",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1900001053000,
+      "tag": "0098_scope_requests_agent_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1900001054000,
+      "tag": "0099_hide_approval_threads",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1900001055000,
+      "tag": "0100_personal_agent_display_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1900001056000,
+      "tag": "0101_base_agent_common_ceiling",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1900001057000,
+      "tag": "0102_agent_migration_ledger_previous_values",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1900001058000,
+      "tag": "0103_user_language_nullable",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1900001059000,
+      "tag": "0104_approval_select_trailing_wildcard",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1900001060000,
+      "tag": "0105_approval_agent_from_routine_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1900001061000,
+      "tag": "0106_projects_checklist",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1900001062000,
+      "tag": "0107_push_tokens_environment",
+      "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1900001063000,
+      "tag": "0108_notification_channels",
+      "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1900001064000,
+      "tag": "0109_scope_requests_agent_org_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1900001065000,
+      "tag": "0110_auto_approve_policies_admin_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1900001066000,
+      "tag": "0111_user_favorite_emoji",
+      "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1900001067000,
+      "tag": "0112_reply_threads",
+      "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1900001068000,
+      "tag": "0113_task_number_counter_repair",
+      "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1900001069000,
+      "tag": "0114_session_scope_ceiling",
+      "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1900001070000,
+      "tag": "0115_user_agent_mail_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1900001071000,
+      "tag": "0116_mail_external_id_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1900001072000,
+      "tag": "0117_resource_sharing",
+      "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1900001073000,
+      "tag": "0118_mail_unique_external_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1900001074000,
+      "tag": "0119_drop_mail_sensitivity_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1900001075000,
+      "tag": "0120_agents_rename_only_pooled_guc",
+      "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1900001076000,
+      "tag": "0121_notification_deliveries",
+      "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1900001077000,
+      "tag": "0122_notification_receipts_devices",
+      "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1900001078000,
+      "tag": "0123_browser_push_endpoint_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 127,
+      "version": "7",
+      "when": 1900001079000,
+      "tag": "0124_contact_groups",
+      "breakpoints": true
+    },
+    {
+      "idx": 128,
+      "version": "7",
+      "when": 1900001080000,
+      "tag": "0125_mcp_personal_connection_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 129,
+      "version": "7",
+      "when": 1900001081000,
+      "tag": "0126_routine_token_budget",
+      "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1900001082000,
+      "tag": "0127_local_nodes",
+      "breakpoints": true
+    },
+    {
+      "idx": 131,
+      "version": "7",
+      "when": 1900001083000,
+      "tag": "0128_notification_device_credentials_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1900001084000,
+      "tag": "0129_routine_runs_on",
+      "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "7",
+      "when": 1900001085000,
+      "tag": "0130_node_interactive",
+      "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "7",
+      "when": 1900001086000,
+      "tag": "0131_routine_event_filter_approver",
+      "breakpoints": true
+    },
+    {
+      "idx": 135,
+      "version": "7",
+      "when": 1900001087000,
+      "tag": "0132_routine_source_kernel",
+      "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1900001088000,
+      "tag": "0133_mcp_personal_scope_member_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1900001089000,
+      "tag": "0134_mcp_member_roles_connection_read",
+      "breakpoints": true
+    },
+    {
+      "idx": 138,
+      "version": "7",
+      "when": 1900001090000,
+      "tag": "0135_mcp_member_roles_rule_fix",
+      "breakpoints": true
+    },
+    {
+      "idx": 139,
+      "version": "7",
+      "when": 1900001091000,
+      "tag": "0136_routine_inferred_scopes",
+      "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1900001092000,
+      "tag": "0137_thread_participant_seat_origin",
+      "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1900001093000,
+      "tag": "0138_mention_seat_backfill_ms",
+      "breakpoints": true
+    },
+    {
+      "idx": 142,
+      "version": "7",
+      "when": 1900001094000,
+      "tag": "0139_auto_eligible_per_provider",
+      "breakpoints": true
+    },
+    {
+      "idx": 143,
+      "version": "7",
+      "when": 1900001095000,
+      "tag": "0140_node_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1900001096000,
+      "tag": "0141_node_sessions_parallel",
+      "breakpoints": true
+    },
+    {
+      "idx": 145,
+      "version": "7",
+      "when": 1900001097000,
+      "tag": "0142_tickets_api_keys_settings_admin",
+      "breakpoints": true
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1900001098000,
+      "tag": "0143_migration_ledger_read_grant",
+      "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1900001099000,
+      "tag": "0144_device_flow_request_context",
+      "breakpoints": true
+    },
+    {
+      "idx": 148,
+      "version": "7",
+      "when": 1900001100000,
+      "tag": "0145_app_install_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 149,
+      "version": "7",
+      "when": 1900001101000,
+      "tag": "0146_ticket_requester_sender_auth",
+      "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1900001102000,
+      "tag": "0147_agent_memory_write_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 151,
+      "version": "7",
+      "when": 1900001103000,
+      "tag": "0148_auto_approve_untrusted_turns",
+      "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "7",
+      "when": 1900001104000,
+      "tag": "0149_role_assignment_backstop",
+      "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1900001105000,
+      "tag": "0150_memory_untrusted_provenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 154,
+      "version": "7",
+      "when": 1900001106000,
+      "tag": "0151_knowledge_untrusted_provenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 155,
+      "version": "7",
+      "when": 1900001107000,
+      "tag": "0152_drop_untrusted_provenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 156,
+      "version": "7",
+      "when": 1900001108000,
+      "tag": "0153_mcp_remove_stdio_transport",
+      "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1900001109000,
+      "tag": "0154_trusted_senders",
+      "breakpoints": true
+    },
+    {
+      "idx": 158,
+      "version": "7",
+      "when": 1900001110000,
+      "tag": "0155_invoicing_original_document_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 159,
+      "version": "7",
+      "when": 1900001111000,
+      "tag": "0156_messages_payload_edit_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 160,
+      "version": "7",
+      "when": 1900001120000,
+      "tag": "0157_routine_runs_trigger",
+      "breakpoints": true
+    },
+    {
+      "idx": 161,
+      "version": "7",
+      "when": 1900001130000,
+      "tag": "0158_push_tokens_multi_server",
+      "breakpoints": true
+    },
+    {
+      "idx": 162,
+      "version": "7",
+      "when": 1900001140000,
+      "tag": "0159_routine_runs_event_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 163,
+      "version": "7",
+      "when": 1900001150000,
+      "tag": "0160_node_sessions_round2",
+      "breakpoints": true
+    },
+    {
+      "idx": 164,
+      "version": "7",
+      "when": 1900001160000,
+      "tag": "0161_node_sessions_autonomy",
+      "breakpoints": true
+    },
+    {
+      "idx": 165,
+      "version": "7",
+      "when": 1900001170000,
+      "tag": "0162_node_sessions_import",
+      "breakpoints": true
+    },
+    {
+      "idx": 166,
+      "version": "7",
+      "when": 1900001180000,
+      "tag": "0163_node_sessions_import_worktree",
+      "breakpoints": true
+    },
+    {
+      "idx": 167,
+      "version": "7",
+      "when": 1900001190000,
+      "tag": "0164_demo_leads",
+      "breakpoints": true
+    },
+    {
+      "idx": 168,
+      "version": "7",
+      "when": 1900001200000,
+      "tag": "0165_demo_leads_opted_out_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 169,
+      "version": "7",
+      "when": 1900001210000,
+      "tag": "0166_routine_report_thread",
+      "breakpoints": true
+    },
+    {
+      "idx": 170,
+      "version": "7",
+      "when": 1900001220000,
+      "tag": "0167_approval_select_taint_audience",
+      "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "when": 1900001230000,
+      "tag": "0168_scope_requests_dedup_per_agent",
+      "breakpoints": true
+    },
+    {
+      "idx": 172,
+      "version": "7",
+      "when": 1900001240000,
+      "tag": "0169_ticket_reads_drop_redundant_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 173,
+      "version": "7",
+      "when": 1900001250000,
+      "tag": "0170_thread_node_settings_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 174,
+      "version": "7",
+      "when": 1900001260000,
+      "tag": "0171_can_read_ticket_mirrors_ticket_select",
+      "breakpoints": true
+    },
+    {
+      "idx": 175,
+      "version": "7",
+      "when": 1900001270000,
+      "tag": "0172_agent_thread_checkpoints_tainted",
+      "breakpoints": true
+    },
+    {
+      "idx": 176,
+      "version": "7",
+      "when": 1900001280000,
+      "tag": "0173_user_preferences_dictation_auto_clean",
+      "breakpoints": true
+    },
+    {
+      "idx": 177,
+      "version": "7",
+      "when": 1900001290000,
+      "tag": "0174_tour_progress",
+      "breakpoints": true
+    },
+    {
+      "idx": 178,
+      "version": "7",
+      "when": 1900001300000,
+      "tag": "0175_request_role_app_table_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 179,
+      "version": "7",
+      "when": 1900001310000,
+      "tag": "0176_shareable_resource_types_read_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 180,
+      "version": "7",
+      "when": 1900001320000,
+      "tag": "0177_threads_taint_cleared_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 181,
+      "version": "7",
+      "when": 1900001330000,
+      "tag": "0178_request_login_split",
+      "breakpoints": true
+    },
+    {
+      "idx": 182,
+      "version": "7",
+      "when": 1900001340000,
+      "tag": "0179_demo_leads_verification",
+      "breakpoints": true
+    },
+    {
+      "idx": 183,
+      "version": "7",
+      "when": 1900001350000,
+      "tag": "0180_demo_spend",
+      "breakpoints": true
+    },
+    {
+      "idx": 184,
+      "version": "7",
+      "when": 1900001360000,
+      "tag": "0181_nodes_simulated",
+      "breakpoints": true
+    },
+    {
+      "idx": 185,
+      "version": "7",
+      "when": 1900001370000,
+      "tag": "0182_demo_world_marks",
+      "breakpoints": true
+    },
+    {
+      "idx": 186,
+      "version": "7",
+      "when": 1900001380000,
+      "tag": "0183_clear_disconnected_secrets",
+      "breakpoints": true
+    },
+    {
+      "idx": 187,
+      "version": "7",
+      "when": 1900001390000,
+      "tag": "0184_rls_org_context",
+      "breakpoints": true
+    },
+    {
+      "idx": 188,
+      "version": "7",
+      "when": 1900001400000,
+      "tag": "0185_rls_user_context",
+      "breakpoints": true
+    },
+    {
+      "idx": 189,
+      "version": "7",
+      "when": 1900001410000,
+      "tag": "0186_rls_context_once",
+      "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "7",
+      "when": 1900001420000,
+      "tag": "0187_mcp_oauth_state_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 191,
+      "version": "7",
+      "when": 1900001430000,
+      "tag": "0188_mcp_oauth_state_plan",
+      "breakpoints": true
+    },
+    {
+      "idx": 192,
+      "version": "7",
+      "when": 1900001440000,
+      "tag": "0189_ticket_category_depth_deferred",
+      "breakpoints": true
+    },
+    {
+      "idx": 193,
+      "version": "7",
+      "when": 1900001450000,
+      "tag": "0190_app_status_removed",
+      "breakpoints": true
+    },
+    {
+      "idx": 194,
+      "version": "7",
+      "when": 1900001460000,
+      "tag": "0191_org_app_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 195,
+      "version": "7",
+      "when": 1900001470000,
+      "tag": "0192_hidden_apps_to_off",
+      "breakpoints": true
+    },
+    {
+      "idx": 196,
+      "version": "7",
+      "when": 1900001480000,
+      "tag": "0193_app_access_denied",
+      "breakpoints": true
+    },
+    {
+      "idx": 197,
+      "version": "7",
+      "when": 1900001490000,
+      "tag": "0194_app_every_member_scopes",
+      "breakpoints": true
+    },
+    {
+      "idx": 198,
+      "version": "7",
+      "when": 1900001500000,
+      "tag": "0195_demo_world_mark_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 199,
+      "version": "7",
+      "when": 1900001510000,
+      "tag": "0196_synced_confidential_org_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 200,
+      "version": "7",
+      "when": 1900001520000,
+      "tag": "0197_mcp_tools_reviewed_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 201,
+      "version": "7",
+      "when": 1900001530000,
+      "tag": "0198_mcp_connection_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 202,
+      "version": "7",
+      "when": 1900001540000,
+      "tag": "0199_thread_outside_text_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 203,
+      "version": "7",
+      "when": 1900001550000,
+      "tag": "0200_mcp_tool_list",
+      "breakpoints": true
+    },
+    {
+      "idx": 204,
+      "version": "7",
+      "when": 1900001580000,
+      "tag": "0203_import_uploads",
+      "breakpoints": true
+    },
+    {
+      "idx": 205,
+      "version": "7",
+      "when": 1900001590000,
+      "tag": "0204_import_transforms",
+      "breakpoints": true
+    },
+    {
+      "idx": 206,
+      "version": "7",
+      "when": 1900001600000,
+      "tag": "0205_personal_agent_handle",
+      "breakpoints": true
+    },
+    {
+      "idx": 207,
+      "version": "7",
+      "when": 1900001610000,
+      "tag": "0206_secret_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 208,
+      "version": "7",
+      "when": 1900001620000,
+      "tag": "0207_import_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 209,
+      "version": "7",
+      "when": 1900001630000,
+      "tag": "0208_import_external_refs",
+      "breakpoints": true
+    },
+    {
+      "idx": 210,
+      "version": "7",
+      "when": 1900001640000,
+      "tag": "0209_rls_ctx_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 211,
+      "version": "7",
+      "when": 1900001650000,
+      "tag": "0210_scope_checks_fail_closed",
+      "breakpoints": true
+    },
+    {
+      "idx": 212,
+      "version": "7",
+      "when": 1900001660000,
+      "tag": "0211_scope_grants_match_app",
+      "breakpoints": true
+    },
+    {
+      "idx": 213,
+      "version": "7",
+      "when": 1900001670000,
+      "tag": "0212_app_versions_rollback",
+      "breakpoints": true
+    },
+    {
+      "idx": 214,
+      "version": "7",
+      "when": 1900001680000,
+      "tag": "0213_public_schema_usage",
+      "breakpoints": true
+    },
+    {
+      "idx": 215,
+      "version": "7",
+      "when": 1900001690000,
+      "tag": "0214_secret_requests_oauth_connect",
+      "breakpoints": true
+    },
+    {
+      "idx": 216,
+      "version": "7",
+      "when": 1900001700000,
+      "tag": "0215_approval_handles_per_org",
+      "breakpoints": true
+    },
+    {
+      "idx": 217,
+      "version": "7",
+      "when": 1900001710000,
+      "tag": "0216_contact_discussion",
+      "breakpoints": true
+    },
+    {
+      "idx": 218,
+      "version": "7",
+      "when": 1900001720000,
+      "tag": "0217_connected_accounts_oauth_client",
+      "breakpoints": true
+    },
+    {
+      "idx": 219,
+      "version": "7",
+      "when": 1900001730000,
+      "tag": "0218_agents_ceiling_restriction",
+      "breakpoints": true
+    },
+    {
+      "idx": 220,
+      "version": "7",
+      "when": 1900001740000,
+      "tag": "0219_routine_posts_to",
+      "breakpoints": true
+    },
+    {
+      "idx": 221,
+      "version": "7",
+      "when": 1900001750000,
+      "tag": "0220_secret_requests_required_scopes",
+      "breakpoints": true
+    },
+    {
+      "idx": 222,
+      "version": "7",
+      "when": 1900001760000,
+      "tag": "0221_agents_avatar_color",
+      "breakpoints": true
+    },
+    {
+      "idx": 223,
+      "version": "7",
+      "when": 1900001770000,
+      "tag": "0222_routine_runs_waiting_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 224,
+      "version": "7",
+      "when": 1900001780000,
+      "tag": "0223_org_app_setup_stamp",
+      "breakpoints": true
+    },
+    {
+      "idx": 225,
+      "version": "7",
+      "when": 1900001790000,
+      "tag": "0224_session_rotation_lineage",
+      "breakpoints": true
+    },
+    {
+      "idx": 226,
+      "version": "7",
+      "when": 1900001800000,
+      "tag": "0225_agent_turns",
+      "breakpoints": true
+    },
+    {
+      "idx": 227,
+      "version": "7",
+      "when": 1900001810000,
+      "tag": "0226_effect_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 228,
+      "version": "7",
+      "when": 1900001820000,
+      "tag": "0227_apps_installed_manifest_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 229,
+      "version": "7",
+      "when": 1900001830000,
+      "tag": "0228_agent_turns_failure_reason",
+      "breakpoints": true
+    },
+    {
+      "idx": 230,
+      "version": "7",
+      "when": 1900001840000,
+      "tag": "0229_mailbox_server_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 231,
+      "version": "7",
+      "when": 1900001850000,
+      "tag": "0230_routines_edited_by",
+      "breakpoints": true
+    },
+    {
+      "idx": 232,
+      "version": "7",
+      "when": 1900001860000,
+      "tag": "0231_instance_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 233,
+      "version": "7",
+      "when": 1900001870000,
+      "tag": "0232_routine_runs_waiting_mailbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 234,
+      "version": "7",
+      "when": 1900001880000,
+      "tag": "0233_org_exports",
+      "breakpoints": true
+    },
+    {
+      "idx": 235,
+      "version": "7",
+      "when": 1900001890000,
+      "tag": "0234_privileged_only_revokes",
+      "breakpoints": true
+    },
+    {
+      "idx": 236,
+      "version": "7",
+      "when": 1900001900000,
+      "tag": "0235_organizations_deleting_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 237,
+      "version": "7",
+      "when": 1900001910000,
+      "tag": "0236_org_deletions_legal_archives",
+      "breakpoints": true
+    },
+    {
+      "idx": 238,
+      "version": "7",
+      "when": 1900001920000,
+      "tag": "0237_organizations_caps",
+      "breakpoints": true
+    },
+    {
+      "idx": 239,
+      "version": "7",
+      "when": 1900001930000,
+      "tag": "0238_mcp_connection_access_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 240,
+      "version": "7",
+      "when": 1900001940000,
+      "tag": "0239_connected_accounts_owner_type_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 241,
+      "version": "7",
+      "when": 1900001950000,
+      "tag": "0240_routine_runs_mailbox_wait_dismissed",
+      "breakpoints": true
+    },
+    {
+      "idx": 242,
+      "version": "7",
+      "when": 1900002000000,
+      "tag": "0241_secret_requests_select_context_once",
+      "breakpoints": true
+    },
+    {
+      "idx": 243,
+      "version": "7",
+      "when": 1900002010000,
+      "tag": "0242_projects_task_labels",
+      "breakpoints": true
+    },
+    {
+      "idx": 244,
+      "version": "7",
+      "when": 1900002060000,
+      "tag": "0243_config_applied_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 245,
+      "version": "7",
+      "when": 1900002110000,
+      "tag": "0244_control_plane_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 246,
+      "version": "7",
+      "when": 1900002160000,
+      "tag": "0245_fk_purge_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 247,
+      "version": "7",
+      "when": 1900002210000,
+      "tag": "0246_rls_enter_one_pass",
+      "breakpoints": true
+    },
+    {
+      "idx": 248,
+      "version": "7",
+      "when": 1900002260000,
+      "tag": "0247_sleep_functions_app_roles_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 249,
+      "version": "7",
+      "when": 1900002310000,
+      "tag": "0248_projects_task_created_by_agent",
+      "breakpoints": true
+    },
+    {
+      "idx": 250,
+      "version": "7",
+      "when": 1900002360000,
+      "tag": "0249_messages_select_scope_cover",
+      "breakpoints": true
+    },
+    {
+      "idx": 251,
+      "version": "7",
+      "when": 1900002410000,
+      "tag": "0250_projects_group",
+      "breakpoints": true
+    },
+    {
+      "idx": 252,
+      "version": "7",
+      "when": 1900002460000,
+      "tag": "0251_person_activity_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 253,
+      "version": "7",
+      "when": 1900002510000,
+      "tag": "0252_messages_required_scopes_wildcard_repair",
+      "breakpoints": true
+    },
+    {
+      "idx": 254,
+      "version": "7",
+      "when": 1900002560000,
+      "tag": "0253_contact_addresses",
+      "breakpoints": true
+    },
+    {
+      "idx": 255,
+      "version": "7",
+      "when": 1900002610000,
+      "tag": "0254_product_attributes",
+      "breakpoints": true
+    },
+    {
+      "idx": 256,
+      "version": "7",
+      "when": 1900002660000,
+      "tag": "0255_document_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 257,
+      "version": "7",
+      "when": 1900002710000,
+      "tag": "0256_document_template_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 258,
+      "version": "7",
+      "when": 1900002760000,
+      "tag": "0257_channel_titles_normalised",
+      "breakpoints": true
+    },
+    {
+      "idx": 259,
+      "version": "7",
+      "when": 1900002810000,
+      "tag": "0258_imported_channel_titles_normalised",
+      "breakpoints": true
+    },
+    {
+      "idx": 260,
+      "version": "7",
+      "when": 1900002860000,
+      "tag": "0259_thread_notify_all_posts",
+      "breakpoints": true
+    }
+  ]
+}

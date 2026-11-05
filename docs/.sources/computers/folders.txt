@@ -1,0 +1,73 @@
+Folders tab title -> packages/shared/src/i18n/locales/en/kernel.json:5003
+Folders hint: agents open these folders and git repos directly inside -> packages/shared/src/i18n/locales/en/kernel.json:5004
+Computer page tabs Folders Agents Settings -> packages/shared/src/i18n/locales/en/kernel.json:4991
+Home folder or above never used -> packages/shared/src/i18n/locales/en/kernel.json:4613
+Home folder refused when adding -> packages/shared/src/i18n/locales/en/kernel.json:4621
+Hidden or system folder never shared -> packages/shared/src/i18n/locales/en/kernel.json:4631
+Computer refuses hidden or system or outside search places -> packages/shared/src/i18n/locales/en/kernel.json:4630
+Repos get own worktree and branch -> packages/shared/src/i18n/locales/en/kernel.json:4596
+Server never gets or returns a folder path -> apps/api/src/modules/nodes/routes.ts:18
+Agents see display paths and opaque candidate ids -> packages/shared/src/node-folders.ts:11
+Add a folder button -> packages/shared/src/i18n/locales/en/kernel.json:5005
+Add dialog title -> packages/shared/src/i18n/locales/en/kernel.json:5073
+Add dialog body: read and change files -> packages/shared/src/i18n/locales/en/kernel.json:5074
+Find it by name -> packages/shared/src/i18n/locales/en/kernel.json:5076
+Search button -> packages/shared/src/i18n/locales/en/kernel.json:4659
+Add Added Cannot be added -> packages/shared/src/i18n/locales/en/kernel.json:5079
+Choose it on the computer picker only on the computer -> packages/shared/src/i18n/locales/en/kernel.json:5088
+Choose button -> packages/shared/src/i18n/locales/en/kernel.json:5089
+Confirm add question and body -> packages/shared/src/i18n/locales/en/kernel.json:4663
+Offline computer folders can change when back -> packages/shared/src/i18n/locales/en/kernel.json:4654
+Folders when last seen -> packages/shared/src/i18n/locales/en/kernel.json:4655
+Where Add a folder looks, inside More -> apps/web/src/modules/settings/computers/ComputerFoldersTab.tsx:610
+Search up to 4 levels, follows links, names only -> packages/shared/src/i18n/locales/en/kernel.json:5012
+Default place is home folder ~ -> packages/shared/src/i18n/locales/en/kernel.json:5013
+Add a place -> packages/shared/src/i18n/locales/en/kernel.json:5014
+Confirm Allow for search place -> packages/shared/src/i18n/locales/en/kernel.json:4626
+Search place confirm title -> packages/shared/src/i18n/locales/en/kernel.json:4624
+Place above home refused -> packages/shared/src/i18n/locales/en/kernel.json:4669
+Documents Desktop Downloads skipped -> packages/shared/src/i18n/locales/en/kernel.json:5084
+Also look there -> packages/shared/src/i18n/locales/en/kernel.json:5085
+Search took too long -> packages/shared/src/i18n/locales/en/kernel.json:4627
+OS read denied: Open System Settings and Check again -> packages/shared/src/i18n/locales/en/kernel.json:4628
+Repositories on node scan section -> packages/shared/src/i18n/locales/en/kernel.json:5016
+Scan for repos -> packages/shared/src/i18n/locales/en/kernel.json:5018
+Scan again -> packages/shared/src/i18n/locales/en/kernel.json:5019
+Share selected count -> packages/shared/src/i18n/locales/en/kernel.json:5025
+Share many up to 100 -> packages/shared/src/node-folders.ts:46
+Scan refusals -> packages/shared/src/i18n/locales/en/kernel.json:4856
+Home refusal text -> packages/shared/src/i18n/locales/en/kernel.json:5027
+Hidden refusal text -> packages/shared/src/i18n/locales/en/kernel.json:5028
+Shared marker -> packages/shared/src/i18n/locales/en/kernel.json:5024
+Repositories you can access section -> packages/shared/src/i18n/locales/en/kernel.json:5033
+Find repos I can access -> packages/shared/src/i18n/locales/en/kernel.json:5035
+gh and glab asked -> packages/shared/src/i18n/locales/en/kernel.json:5034
+Private chip -> packages/shared/src/i18n/locales/en/kernel.json:5040
+On this computer chip -> packages/shared/src/i18n/locales/en/kernel.json:5045
+Share and Clone and share -> packages/shared/src/i18n/locales/en/kernel.json:5043
+gh missing instruction -> packages/shared/src/i18n/locales/en/kernel.json:5050
+Filter by name -> packages/shared/src/i18n/locales/en/kernel.json:5039
+Clone a repository section in the Add a folder dialog -> apps/web/src/modules/settings/computers/AddFolderDialog.tsx:391
+Clone uses computer's own git login -> packages/shared/src/i18n/locales/en/kernel.json:4635
+Repository URL field and placeholder -> packages/shared/src/i18n/locales/en/kernel.json:4637
+Folder name field rules -> packages/shared/src/i18n/locales/en/kernel.json:4646
+URL forms accepted -> packages/shared/src/i18n/locales/en/kernel.json:4645
+Clone button -> packages/shared/src/i18n/locales/en/kernel.json:4640
+Clone confirm body clones into Liaison Node/repos/name -> packages/shared/src/i18n/locales/en/kernel.json:4642
+Cloning progress and done -> packages/shared/src/i18n/locales/en/kernel.json:4644
+Too large over 2 GB -> packages/shared/src/i18n/locales/en/kernel.json:4633
+Clone errors auth host not found -> packages/shared/src/i18n/locales/en/kernel.json:4648
+clone URL forms https ssh user@host:path -> apps/api/src/modules/agent/tools/kernel-tools.ts:1419
+Work that needs no folder, under More, desktop app only -> apps/web/src/modules/settings/computers/ComputerFoldersTab.tsx:703
+More holds search places and the work folder -> apps/web/src/modules/settings/computers/ComputerFoldersTab.tsx:8
+Work folder default Liaison Node -> packages/shared/src/i18n/locales/en/kernel.json:4592
+Change work folder; blocked while session runs -> packages/shared/src/i18n/locales/en/kernel.json:5069
+Work folder refusal -> packages/shared/src/i18n/locales/en/kernel.json:5070
+Remove folder -> packages/shared/src/i18n/locales/en/kernel.json:4615
+Missing on disk -> packages/shared/src/i18n/locales/en/kernel.json:4617
+find_repos_on_my_computer read-only -> apps/api/src/modules/agent/tools/kernel-tools.ts:1316
+list_my_remote_repos -> apps/api/src/modules/agent/tools/kernel-tools.ts:1330
+share_folder_on_my_computer gated owner-approved -> apps/api/src/modules/agent/tools/kernel-tools.ts:1281
+Agents search only in own private conversation -> apps/api/src/modules/agent/tools/kernel-tools.ts:1308
+Candidate ids last one hour, single use -> apps/api/src/modules/nodes/folder-requests.ts:42
+Owner REST routes are session-only -> apps/api/src/modules/nodes/folder-routes.ts:5

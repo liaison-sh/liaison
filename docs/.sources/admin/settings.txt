@@ -1,0 +1,132 @@
+Five groups You, AI, Workspace, Apps, Connectors -> apps/web/src/modules/settings/settings-nav-groups.ts:23
+Group labels -> packages/shared/src/i18n/locales/en/kernel.json:1564
+Viewer sees only sections their access allows -> apps/web/src/modules/settings/settings-nav-groups.ts:116
+Profile section -> apps/web/src/framework/bootstrap.ts:510
+Profile picture, 5 MB, formats -> packages/shared/src/i18n/locales/en/kernel.json:1790
+Display name -> packages/shared/src/i18n/locales/en/kernel.json:1799
+Language English/French/org default -> packages/shared/src/i18n/locales/en/kernel.json:1778
+Theme System/Light/Dark -> packages/shared/src/i18n/locales/en/kernel.json:1782
+Profile timezone -> apps/web/src/modules/settings/ProfileSettings.tsx:398
+Security section -> apps/web/src/framework/bootstrap.ts:522
+Change password, Enable 2FA, Delete account, Sign-in methods -> apps/web/src/modules/settings/SecuritySettings.tsx:153
+Notifications section -> apps/web/src/framework/bootstrap.ts:533
+Notifications intro -> packages/shared/src/i18n/locales/en/kernel.json:3809
+Email digest -> packages/shared/src/i18n/locales/en/kernel.json:3825
+Computers section, replaced This computer and Nodes -> apps/web/src/framework/bootstrap.ts:542
+Connected tools section -> apps/web/src/framework/bootstrap.ts:592
+Connected tools intro -> packages/shared/src/i18n/locales/en/kernel.json:2543
+Models section kernel:org:admin -> apps/web/src/framework/bootstrap.ts:603
+Models label -> packages/shared/src/i18n/locales/en/kernel.json:1636
+Provider keys and Auto in Models -> packages/shared/src/i18n/locales/en/kernel.json:5187
+Default reasoning level in Models -> packages/shared/src/i18n/locales/en/kernel.json:5393
+Voice dictation, needs OpenRouter or Google key -> packages/shared/src/i18n/locales/en/kernel.json:5243
+Voice dictation empty state -> packages/shared/src/i18n/locales/en/kernel.json:5247
+Agent behavior section kernel:org:admin -> apps/web/src/framework/bootstrap.ts:614
+Agent behavior holds agent safety and media analysis -> apps/web/src/modules/settings/AgentBehaviorSettings.tsx:9
+Outside content / Media analysis labels -> packages/shared/src/i18n/locales/en/kernel.json:5310
+Media analysis help -> packages/shared/src/i18n/locales/en/kernel.json:5313
+Media analysis Tickets/Email/Images/Videos -> packages/shared/src/i18n/locales/en/kernel.json:1529
+Ask for approval after outside content -> packages/shared/src/i18n/locales/en/kernel.json:5154
+On recommended behaviour -> packages/shared/src/i18n/locales/en/kernel.json:5155
+Off note -> packages/shared/src/i18n/locales/en/kernel.json:5156
+Default standard protection -> apps/web/src/modules/settings/AdminAgentSafetySettings.tsx:6
+Usage section kernel:billing:read -> apps/web/src/framework/bootstrap.ts:624
+Plan section managed only -> apps/web/src/framework/bootstrap.ts:634
+Organization section kernel:org:admin -> apps/web/src/framework/bootstrap.ts:646
+Details, Export your data -> packages/shared/src/i18n/locales/en/kernel.json:5314
+Organization name, Default locale -> packages/shared/src/i18n/locales/en/kernel.json:2258
+Timezone -> packages/shared/src/i18n/locales/en/kernel.json:1900
+Export scope kernel:users:admin -> apps/web/src/modules/settings/OrganizationSettings.tsx:16
+Users section -> apps/web/src/framework/bootstrap.ts:656
+Roles & access section -> apps/web/src/framework/bootstrap.ts:675
+App store section kernel:apps:admin -> apps/web/src/framework/bootstrap.ts:694
+System section kernel:org:admin -> apps/web/src/framework/bootstrap.ts:706
+Export: Apps to export, Format JSON/CSV, From/To, Export -> packages/shared/src/i18n/locales/en/kernel.json:804
+Export downloads liaison-export.zip -> apps/web/src/modules/settings/AdminDataExport.tsx:70
+Some apps were skipped -> packages/shared/src/i18n/locales/en/kernel.json:813
+System Running/Latest/Update available/Release notes -> packages/shared/src/i18n/locales/en/kernel.json:2441
+Update available, Release notes, Dependencies, migration head -> packages/shared/src/i18n/locales/en/kernel.json:2275
+Update checks via GitHub, disable -> packages/shared/src/i18n/locales/en/kernel.json:2282
+One row per app under Apps -> apps/web/src/modules/settings/settings-nav-groups.ts:4
+Connectors page: cards per connector and org MCP servers -> apps/web/src/framework/bootstrap.ts:716
+Org MCP server page has Who can use it, same picker as app access -> apps/web/src/modules/mcp-manager/McpAccessSection.tsx
+Same picker component as app access -> apps/web/src/modules/settings/app-management/AccessPicker.tsx
+Imports section in Settings > Organization, kernel:imports:read -> apps/web/src/modules/settings/OrganizationSettings.tsx:17
+Run list: status, counts created/skipped/failed, source, Undo on a finished run -> apps/web/src/modules/settings/imports/ImportsSettings.tsx:108
+An import upload resumes after a dropped connection, sending only the missing parts -> apps/web/src/modules/imports/upload-client.ts:201
+After repeated failures the upload stops and stays resumable -> apps/web/src/modules/imports/upload-client.ts:199
+Choosing the same file again continues the stopped upload -> apps/web/src/modules/settings/imports/NewImport.tsx:90
+Undo keeps a record changed or answered after the import, with its rows -> apps/api/src/modules/imports/undo.ts:8
+A person or contact the run created stays while something uses it -> apps/api/src/modules/imports/undo.ts:16
+Undo needs kernel:imports:undo -> apps/api/src/modules/imports/routes.ts:10
+Only the run's starter or an admin, with the kinds' write scopes, may undo or cancel -> apps/api/src/modules/imports/authority.ts:4
+A stalled run is failed after ten minutes and becomes undoable -> apps/api/src/modules/imports/sweep.ts:21
+imported skill scopes within the importer -> apps/api/src/modules/imports/kernel-kinds/agents.ts:123
+imported routine scopes within importer and owner -> apps/api/src/modules/imports/kernel-kinds/agents.ts:267
+imported routines arrive switched off -> apps/api/src/modules/imports/kernel-kinds/agents.ts:301
+a shared routine needs kernel:apps:admin -> apps/api/src/modules/imports/kernel-kinds/agents.ts:15
+a routine imported for someone else is personal -> apps/api/src/modules/imports/kernel-kinds/agents.ts:253
+agent imports and their previews are import runs (a preview is a dry run) -> apps/api/src/modules/agent/tools/import-tools.ts:864
+the person who asked the agent for a run may undo or cancel it -> apps/api/src/modules/imports/authority.ts:70
+New import section: files, transform, source label, Preview, Start import -> apps/web/src/modules/settings/imports/NewImport.tsx:51
+uploads in parts -> apps/web/src/modules/imports/upload-client.ts:42
+preview writes nothing; start runs as the person -> apps/api/src/modules/imports/routes.ts:110
+over 5% refused cannot be started -> apps/web/src/modules/settings/imports/NewImport.tsx:17
+previews not in the run list -> apps/api/src/modules/imports/routes.ts:110
+labels New import, Export files, Transform, Source label, Preview, Start import -> packages/shared/src/i18n/locales/en/kernel.json:5631
+Unknown settings block or field type drawn as an update placeholder -> apps/web/src/modules/settings/app-page/SectionView.tsx:117
+Placeholder copy -> packages/shared/src/i18n/locales/en/kernel.json:2644
+A key saved on Models settles an agent's pending key card -> apps/api/src/modules/settings/ai-keys-routes.ts:167
+App store states Running, Failed to load, Upgrade failed -> apps/web/src/modules/settings/app-store/AppStorePage.tsx:71
+Reason under the app's name -> apps/web/src/modules/settings/app-store/AppStorePage.tsx:479
+Operator rolls back from the listing -> apps/web/src/modules/settings/app-store/AppStoreDetail.tsx:162
+Google client provided by this deployment, a saved client replaces it -> packages/shared/src/i18n/locales/en/mail.json:100
+workspace client first, then the server's -> apps/api/src/modules/settings/google-integration.ts:46
+Imported routine posts in the owner's chat with their personal agent -> apps/api/src/modules/imports/kernel-kinds/agents.ts:320
+Google client card refetches on mail:provider -> apps/web/src/modules/settings/GoogleClientCard.tsx:52
+A restart stops an import after its batch, back to queued, re-run skips written records -> apps/api/src/modules/imports/runner.ts:448 ; apps/api/src/modules/imports/runner.ts:571-573 ; apps/api/src/modules/imports/runs.ts:134-148 ; apps/api/src/modules/imports/job.ts:100-101
+Conversation history on Models -> packages/shared/src/i18n/locales/en/kernel.json:5464
+Drive account in picked mode lists picked items with remove and Choose files -> apps/web/src/modules/settings/app-page/ConnectionsBlock.tsx:491
+Shared drives card on org Drive connection -> apps/web/src/modules/settings/app-page/ConnectionsBlock.tsx:502
+Choose shared drives label -> packages/shared/src/i18n/locales/en/google-drive.json:44
+Connect your account page, Transparent or private mailbox? -> apps/web/src/modules/settings/ConnectLink.tsx:1
+Export organization block, kernel:org:admin -> apps/web/src/modules/settings/OrganizationSettings.tsx:18
+Export organization labels, Download, Expired -> packages/shared/src/i18n/locales/en/kernel.json:5573
+Button off while an export runs -> apps/web/src/modules/settings/OrgExportSection.tsx:1
+Org deletion is operator CLI only, after a downloaded export -> apps/api/src/cli/org-delete.ts:256
+Usage and limits block, read only, kernel:org:admin -> apps/web/src/modules/settings/OrganizationSettings.tsx:35
+Usage rows Seats, Mailboxes, Storage, Background jobs this hour; unlimited; Limit reached; set by whoever runs the server -> packages/shared/src/i18n/locales/en/kernel.json:5599
+Notification at 80 % and 100 % -> apps/api/src/modules/org/caps.ts:405
+Background work past limit waits -> apps/api/src/infra/jobs/org-job-cap.ts:6
+connect link page: refused connect says Nothing was connected and why -> apps/web/src/modules/settings/ConnectLink.tsx:1 ; packages/shared/src/i18n/locales/en/kernel.json:5856
+Unsent cap notification retried at the next change -> apps/api/src/modules/org/caps.ts:486
+Export Download downloads, the page stays -> apps/web/src/modules/settings/OrgExportSection.tsx:94
+Export size in the reader's units -> apps/web/src/modules/settings/OrgExportSection.tsx:161 ; apps/web/src/modules/files/file-icons.ts:115
+Blocked hosts in Models -> packages/shared/src/i18n/locales/en/kernel.json:5509
+Liaison team section: two switches off by default, forwarding needs registration -> apps/web/src/modules/settings/LiaisonTeamSection.tsx:124 ; apps/api/src/modules/liaison-team/settings.ts:127
+Fields sent: version, edition, users, server id -> packages/shared/src/i18n/locales/en/kernel.json:1622
+State Off/Registering/Registered/Leaving/Error with the last error -> apps/web/src/modules/settings/LiaisonTeamSection.tsx:67
+Server id and outbox counts for the operator only; other orgs cannot change the switches -> apps/api/src/modules/liaison-team/routes.ts:35 ; apps/api/src/modules/liaison-team/routes.ts:47
+Sharing not available without an endpoint -> apps/api/src/modules/liaison-team/settings.ts:134
+An import's attached file counts toward the storage limit; at the limit the record fails with STORAGE_QUOTA_EXCEEDED -> apps/api/src/modules/imports/runner.ts:1138 ; apps/api/src/modules/imports/runner.ts:1551
+Notification once per crossing, re-armed under 80 %; storage wording upgrade or free space; mail sync and legal records kept at the limit -> apps/api/src/modules/org/caps.ts:471 ; apps/api/src/modules/org/caps.ts:406 ; apps/api/src/modules/files/service.ts:353
+Cap notification written in the org default language -> apps/api/src/modules/org/caps.ts:411 ; apps/api/src/modules/org/caps.ts:436
+Approval reminders in Notifications: daily by default, every 3 days, weekly or off -> apps/web/src/modules/settings/NotificationSettings.tsx:152 ; packages/shared/src/i18n/locales/en/kernel.json:4298
+Liaison team section: third switch, team-only, needs forwarding -> apps/web/src/modules/settings/LiaisonTeamSection.tsx:181 ; apps/api/src/modules/liaison-team/settings.ts:153
+Settings > Documents: org admins only, under Workspace -> apps/web/src/framework/bootstrap.ts:671 ; apps/api/src/app.ts:874
+List columns Name, Kind, Record type, In use/Turned off, Updated; archived templates left out -> apps/web/src/modules/settings/documents/DocumentsSettings.tsx:1 ; apps/api/src/modules/documents/service.ts:271
+Members who read files print with the templates -> apps/api/src/modules/documents/routes.ts:1
+Agent hint and copyable prompt -> packages/shared/src/i18n/locales/en/kernel.json:6108 ; apps/web/src/modules/settings/documents/DocumentsSettings.tsx:1
+New template: Rich text or Upload a PDF form; encrypted/XFA refused inline -> packages/shared/src/i18n/locales/en/kernel.json:6135 ; packages/shared/src/i18n/locales/en/kernel.json:6158 ; apps/web/src/modules/settings/documents/documents-api.ts:131
+Archive template: leaves every list, no longer prints -> packages/shared/src/i18n/locales/en/kernel.json:6117 ; apps/api/src/modules/documents/print.ts:868
+Content tab blocks, move/delete, Insert field at the cursor, list line fields of one item, image upload onto the template -> apps/web/src/modules/settings/documents/RichTextEditor.tsx:1 ; apps/web/src/modules/settings/documents/documents-api.ts:235 ; apps/web/src/modules/settings/documents/documents-api.ts:182
+Refused content: message under the blocks and the named block marked -> apps/web/src/modules/settings/documents/RichTextEditor.tsx:239 ; apps/api/src/modules/documents/routes.ts:1
+Fields & mapping: record field, fixed value, image or nothing; Placeholder when empty -> apps/web/src/modules/settings/documents/FieldMapping.tsx:1 ; packages/shared/src/i18n/locales/en/kernel.json:6161
+Preview: Sample values (each field shows its name) or A record; saved template, nothing stored; blanks listed -> apps/api/src/modules/documents/routes.ts:109 ; apps/api/src/modules/documents/print.ts:824 ; packages/shared/src/i18n/locales/en/kernel.json:6167 ; packages/shared/src/i18n/locales/en/kernel.json:6119
+Missing value prints a grey placeholder; a list longer than the room is refused -> apps/api/src/modules/documents/rich-text.ts:53 ; apps/api/src/modules/documents/rich-text.ts:47
+Rules tab: rules that include this template, AND across conditions, any-of within; add/edit/delete/switch inline -> apps/web/src/modules/settings/documents/RulesTab.tsx:1 ; packages/shared/src/i18n/locales/en/kernel.json:6203 ; apps/api/src/modules/documents/rules.ts:1
+How each kind reaches you, Interrupt, Inbox only, Off -> packages/shared/src/i18n/locales/en/kernel.json:4389 ; apps/web/src/modules/settings/notification-settings/KindModesSection.tsx:12
+Off is muted everywhere and kept unread but quiet in the inbox -> apps/api/src/modules/notifications/router.ts:320
+Default quiet hours 20:00-08:00 weekdays and all weekend, once the time zone is known -> apps/api/src/modules/notifications/quiet-window.ts:29
+Muted conversations, Unmute, Channels that notify you of every message, Mentions only -> apps/web/src/modules/settings/notification-settings/ConversationsSection.tsx:106
+On call edited by admins, admins by default -> apps/web/src/modules/settings/notification-settings/OnCallSection.tsx:70 ; apps/api/src/modules/notifications/on-call.ts:25

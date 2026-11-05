@@ -1,0 +1,157 @@
+Three agent kinds with chips (Role agent, Personal agent, System agent) -> packages/shared/src/i18n/locales/en/kernel.json:227
+Personal agent chip label -> packages/shared/src/i18n/locales/en/kernel.json:228
+System agent chip label -> packages/shared/src/i18n/locales/en/kernel.json:229
+Handle shown on the agent page, kind chip, runs-on label -> apps/web/src/modules/agent/AgentPage.tsx:566
+Personal agent created with the account -> apps/api/src/modules/agent/directory/definition-routes.ts:1455
+Default name Personal agent -> packages/shared/src/agents/personal-agent-name.ts:14
+System agent is the base agent @base -> apps/api/src/modules/agent/directory/base-agent.ts:8
+System agent purpose text: the workspace's base agent -> packages/shared/src/i18n/locales/en/kernel.json:356
+No Message button for the system agent -> apps/web/src/modules/agent/AgentPage.tsx:392
+Message button label -> packages/shared/src/i18n/locales/en/kernel.json:232
+System agent cannot be archived -> apps/api/src/modules/agent/directory/base-agent.ts:14
+Your agent marker in the list -> packages/shared/src/i18n/locales/en/kernel.json:234
+Agents sidebar search placeholder and groups (agents, skills, routines, memory) -> packages/shared/src/i18n/locales/en/kernel.json:239
+agents_ask: the other agent answers with its own access limited to person and conversation -> apps/api/src/modules/agent/tools/kernel-tools.ts:1025
+agents_invite brings another agent in, speaks only when mentioned -> apps/api/src/modules/agent/tools/kernel-tools.ts:1456
+Effective scope channel: ceiling intersected with every human member -> apps/api/src/modules/agent/scopes/effective-scope.ts:5
+Effective scope DM: ceiling intersected with requester -> apps/api/src/modules/agent/scopes/effective-scope.ts:6
+Routine run scope drift pauses routine -> apps/api/src/modules/agent/routines/routine-worker.ts:18
+Withheld capabilities message title -> packages/shared/src/i18n/locales/en/kernel.json:1992
+Continue in a DM action -> packages/shared/src/i18n/locales/en/kernel.json:1993
+Runs on: Liaison label -> packages/shared/src/i18n/locales/en/kernel.json:231
+Runs on: this computer label -> packages/shared/src/i18n/locales/en/kernel.json:230
+Runs on: Liaison and your computer label -> packages/shared/src/i18n/locales/en/kernel.json:359
+Where turns run menu and the three options -> packages/shared/src/i18n/locales/en/kernel.json:3346
+Liaison runtime option -> packages/shared/src/i18n/locales/en/kernel.json:1477
+This machine option -> packages/shared/src/i18n/locales/en/kernel.json:3340
+My computer option -> packages/shared/src/i18n/locales/en/kernel.json:3350
+This machine description -> packages/shared/src/i18n/locales/en/kernel.json:3343
+My computer description: works while away, approve from anywhere -> packages/shared/src/i18n/locales/en/kernel.json:3351
+Routine report posted as owner agent labelled Routine name -> apps/api/src/modules/agent/routines/routine-report.ts:12
+Approval requester naming: role/system agent named, personal agent acts as person -> apps/api/src/modules/approvals/requester.ts:33
+Access request filed by an agent reads via agent name -> apps/web/src/modules/admin-scope-requests/AdminScopeRequests.tsx:58
+Audit log records acting agent -> apps/api/src/db/schema/kernel/audit-log.ts:28
+audit_search tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:2184
+Device approval says which agent the client acts as -> packages/shared/src/i18n/locales/en/kernel.json:1027
+Gated tool creates approval request instead of running -> apps/api/src/modules/apps/execute-tool.ts:1050
+Approvals card on Home -> packages/shared/src/i18n/locales/en/kernel.json:1116
+Approvals screen is the phone surface -> apps/web/src/framework/bootstrap.ts:459
+Edit offered only when the tool exposes editable fields -> apps/web/src/modules/approvals/ApprovalCard.tsx:1386
+Liaison runtime cannot touch files or run scripts -> packages/shared/src/i18n/locales/en/kernel.json:3344
+Approve and Reject buttons -> packages/shared/src/i18n/locales/en/kernel.json:471
+Reject label -> packages/shared/src/i18n/locales/en/kernel.json:472
+Decision lines posted in conversation -> packages/shared/src/i18n/locales/en/kernel.json:481
+Outside-content hold -> apps/api/src/modules/agent/scopes/taint.ts:107
+spawn_agent starts fresh-context sub-agent, needs kernel:agents:spawn -> apps/api/src/modules/agent/tools/kernel-tools.ts:2494
+Agent tabs overview skills routines memory knowledge activity settings -> apps/web/src/modules/agent/AgentPage.tsx:128
+Memory tab visibility -> apps/web/src/modules/agent/AgentPage.tsx:440
+Activity and Settings tabs only for administer rights -> apps/web/src/modules/agent/AgentPage.tsx:441
+Overview shows purpose, charter, capabilities, channels -> packages/shared/src/i18n/locales/en/kernel.json:257
+Skills tab groups agent skills and app skills -> packages/shared/src/i18n/locales/en/kernel.json:242
+Routines tab New routine -> packages/shared/src/i18n/locales/en/kernel.json:315
+Activity tab entries -> packages/shared/src/i18n/locales/en/kernel.json:2204
+Agent posts labelled with agent name, Routine name, or User's agent for external MCP client -> apps/api/src/modules/agent/tools/chat-tools.ts:93
+Agent posts never impersonate the human -> apps/api/src/modules/agent/tools/chat-tools.ts:91
+threads_reply tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:980
+threads_create tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:943
+agents_invite tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:1453
+agents_ask tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:1023
+spawn_agent tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:2485
+Agent reads with the asker's shares and roles, in a thread mention as in a DM -> apps/api/src/modules/agent/runtime/agent-service.ts:2900
+Approved action result reaches the agent's next turn -> apps/api/src/modules/agent/context/system-event-replay.ts:84
+A conversation other people read gets the shared-conversation section -> apps/api/src/modules/agent/context/context.ts:1889
+Reply written for everyone in it, failure as one plain sentence -> apps/api/src/modules/agent/context/shared-thread-audience.ts:88
+Shared conversation persists only the final answer, not the notes between steps -> apps/api/src/modules/agent/runtime/shared-thread-reply.ts:56
+Direct conversation keeps each step's note -> apps/api/src/modules/agent/runtime/shared-thread-reply.ts:55
+While it works in a shared conversation, others see its steps but not its notes; the answer arrives once written -> apps/api/src/modules/agent/runtime/shared-thread-reply.ts:89
+A step's notes are dropped when it calls a tool -> apps/api/src/modules/agent/runtime/shared-thread-reply.ts:94
+Direct conversation streams every line as written -> apps/api/src/modules/agent/runtime/shared-thread-reply.ts:88
+Each note drawn where it was written -> apps/web/src/modules/threads/MessageRow.tsx:414
+Import card in the conversation for import_start and import_status -> apps/web/src/modules/agent/ToolCallRow.tsx:231
+Card counts, refused records, report and Undo -> apps/web/src/modules/imports/ImportRunCard.tsx:1
+Card appears once the approval's run exists, updates on import_run events -> apps/web/src/modules/imports/import-run-store.ts:1
+First admin sign-in of a new workspace starts the setup card -> apps/api/src/modules/auth/auth.ts:549
+Only administrators, not demo workspaces, not where a message was written -> apps/api/src/modules/provisioning/setup-kickoff.ts:88
+Not in a demo workspace -> apps/api/src/modules/provisioning/setup-kickoff.ts:89
+Pinned for the admin only (their own pin) -> apps/api/src/modules/provisioning/setup-kickoff.ts:176
+Heading Set up your space -> packages/shared/src/i18n/locales/en/first-run.json:3
+Checklist items and their labels -> packages/shared/src/i18n/locales/en/first-run.json:17
+Items in order, three optional -> apps/api/src/modules/provisioning/setup-state.ts:36
+Optional items -> apps/api/src/modules/provisioning/setup-state.ts:48
+As of time on the checklist -> packages/shared/src/i18n/locales/en/first-run.json:12
+Key card when no model key is usable -> apps/api/src/modules/provisioning/setup-kickoff.ts:250
+Agent's first turn when a key is usable -> apps/api/src/modules/provisioning/setup-kickoff.ts:291
+Demo offer wording -> packages/shared/src/i18n/locales/en/first-run.json:7
+LIAISON_DEMO_URL, off removes the offer -> apps/api/src/lib/env.ts:499
+One step per message -> apps/api/src/modules/agent/prompts/kernel/setup-guide.md:13
+Checklist read again after each step -> apps/api/src/modules/agent/prompts/kernel/setup-guide.md:21
+Skip leaves a step out -> apps/api/src/modules/agent/prompts/kernel/setup-guide.md:23
+setup_state result drawn as the checklist -> apps/web/src/modules/agent/ToolCallRow.tsx:242
+Non-admin: canConfigure false, nothing proposed -> apps/api/src/modules/agent/tools/setup-state-tool.ts:22
+New for 14 days after creation (LIAISON_SETUP_KICKOFF_ORG_MAX_AGE_DAYS) -> apps/api/src/lib/env.ts:535
+Workspace age checked first -> apps/api/src/modules/provisioning/setup-kickoff.ts:97
+Card posted by the admin's agent, so it reads unread -> apps/api/src/modules/provisioning/setup-kickoff.ts:278
+A key saved in Settings settles the pending key request -> apps/api/src/modules/settings/ai-keys-routes.ts:167
+Reply language: the message when clear, else earlier messages, else the language setting -> apps/api/src/modules/agent/context/reply-language.ts:103
+Language setting: the person's choice, else the org default -> apps/api/src/modules/agent/context/context.ts:1330
+Saved credentials reported as credentials saved; first sync pending -> apps/api/src/modules/agent/context/system-event-replay.ts:68
+config_mail state: credentials saved; first sync pending -> apps/api/src/modules/agent/tools/config-tools.ts:218
+Connect a system with no app: adapter save card, key on the secret card, test -> apps/api/src/apps/api-connector/authoring-tools.ts:303
+Announced action with no tool call gets one more try in the same turn -> apps/api/src/modules/agent/runtime/agent-service.ts:2450
+The second try calls the tool or says plainly what it cannot do -> apps/api/src/modules/agent/runtime/announced-action-claim.ts:171
+An offer that waits for the person is left alone -> apps/api/src/modules/agent/runtime/announced-action-claim.ts:87
+A second try that calls no tool yet reports an action keeps the first answer -> apps/api/src/modules/agent/runtime/agent-service.ts:2509
+A dropped second try is never shown; a fixed line says nothing was run -> packages/shared/src/i18n/locales/en/kernel.json:3402
+A card the answer points at must be open in the conversation -> apps/api/src/modules/agent/runtime/card-claim.ts:113
+Card claim with no open card gets one more try -> apps/api/src/modules/agent/runtime/agent-service.ts:2458
+Each turn reads the conversation's imports as they stand -> apps/api/src/modules/agent/context/import-run-state.ts:54
+A step on your computer shows what it acts on next to its name -> apps/web/src/modules/agent/ToolCallRow.tsx:188
+agents_ask: the answer is posted under the question -> apps/api/src/modules/agent/tools/coordination-tools.ts:416
+agents_ask: an asked agent that cannot answer still replies and says why -> apps/api/src/modules/agent/tools/coordination-tools.ts:350
+agents_ask: an answer slower than the wait is handed over and posted later -> apps/api/src/modules/agent/tools/coordination-tools.ts:148
+text written before a tool answer that the result contradicts is dropped from the stored reply -> apps/api/src/modules/agent/runtime/false-approval-guard.ts:160
+Failed turn shows a short line then the error itself, no stack or key -> packages/shared/src/threads/agent-notice.ts:87
+Failed turn text stored with its detail -> packages/shared/src/threads/agent-notice.ts:103
+Conversation shows the detail under the line -> apps/web/src/modules/threads/MessageList.tsx:423
+Partial answer stays, error follows it -> apps/api/src/modules/agent/runtime/agent-service.ts:2886
+Previews and notifications show the short line only -> apps/api/src/modules/attention/digest.ts:114
+Follow a running turn from any page; mid-turn open shows text and tool calls so far, then keeps up -> apps/api/src/modules/agent/routes.ts:794-856 ; apps/api/src/modules/agent/runtime/stream-registry.ts:3-15
+Turn activity readable ten minutes after it ends (AGENT_TURN_STREAM_TTL_S 600) -> apps/api/src/lib/env.ts:805-807
+Live frames applied in seq order, repeats dropped -> apps/web/src/modules/threads/message-store.ts:2274
+A gap reseeds the turn from the server -> apps/web/src/modules/threads/message-store.ts:2404
+The reply is not drawn twice at handover -> apps/web/src/modules/threads/message-store.ts:405
+The answer drawn where it was written -> apps/web/src/modules/agent/AgentTurnBlock.tsx:338
+Restart: running turns get time to finish; a turn asked within the edge grace still starts; after it no new turn, chat refused with nothing saved -> apps/api/src/lib/shutdown-phases.ts:72-79 ; apps/api/src/modules/agent/runtime/active-turns.ts:17-27 ; apps/api/src/lib/readiness.ts:50-53 ; apps/api/src/modules/agent/routes.ts:130-135 ; apps/api/src/modules/threads/posted-message-dispatch.ts:86-87
+Past the drain: the turn stops at its step boundary and is handed off and resumed elsewhere -> apps/api/src/lib/shutdown-phases.ts:86-87 ; apps/api/src/modules/agent/runtime/turn-handoff.ts:56-71 ; apps/api/src/modules/agent/runtime/turn-resume.ts:135
+Crash: a stale turn of a gone process is taken over (30 s heartbeat, 10 s sweep) -> apps/api/src/modules/agent/runtime/turn-ledger.ts:48 ; apps/api/src/infra/jobs/kernel-jobs.ts:44 ; apps/api/src/modules/agent/runtime/turn-resume.ts:255
+Steps done not re-run; a write is not done twice; outcome unknown -> apps/api/src/modules/agent/tools/tool-bridge.ts:1021-1032 ; apps/api/src/modules/agent/tools/tool-bridge.ts:111 ; apps/api/src/modules/agent/runtime/tool-effect-key.ts:44-67
+Permissions re-read, never wider than at start; deactivated stops the turn; interrupted line -> apps/api/src/modules/agent/runtime/turn-resume.ts:166-182 ; apps/api/src/modules/agent/runtime/turn-resume.ts:94-95 ; apps/api/src/modules/agent/runtime/turn-resume.ts:239
+Why a turn did not finish (failure_reason: process / turn / client), so an operator checks an upgrade cut no turn -> apps/api/src/modules/agent/runtime/turn-resume.ts:121 ; apps/api/src/modules/agent/runtime/turn-resume.ts:208 ; apps/api/src/modules/agent/runtime/turn-ledger.ts:388 ; apps/api/src/modules/agent/runtime/agent-service.ts:3811 ; apps/api/src/modules/agent/runtime/agent-service.ts:4029 ; apps/api/src/db/migrations/0228_agent_turns_failure_reason.sql
+Resumed turn keeps its model and reasoning level; a change applies from the next turn -> apps/api/src/modules/agent/runtime/agent-service.ts:2678-2679 ; apps/api/src/modules/agent/runtime/agent-service.ts:4143-4151
+A colleague is messaged in a Liaison conversation, email only outside the organization or on request -> apps/api/src/modules/agent/prompts/system.md:12-15 ; apps/api/src/modules/agent/tools/kernel-tools.ts:975
+drive_picker tool call draws the Choose files card -> apps/web/src/modules/agent/ToolCallRow.tsx:291
+agents_ask answers without adding the agent; an agent's ask or mention seats it as a guest only -> apps/api/src/modules/threads/agent-dispatch-guard.ts:935-954 ; apps/api/src/modules/agent/tools/kernel-tools.ts:1063-1067
+agents_invite asks first (gated, never auto-approved): "X wants to add Y to this discussion", Add / Don't add, then "X added Y" -> apps/api/src/modules/agent/tools/kernel-tools.ts:1493-1521 ; apps/api/src/modules/agent/tools/coordination-tools.ts:938-967 ; packages/shared/src/i18n/locales/en/kernel.json:2318 ; packages/shared/src/i18n/locales/en/kernel.json:2335-2336
+Setup agent asks which features first, basics first (model key, mailbox and Google sign-in, support inbox, team, knowledge, imports), one human action per message with its time and skip, personal or shared per mailbox, a menu after the basics -> apps/api/src/modules/agent/prompts/kernel/setup-guide.md:11-26
+Agent reminds the person of their own requests waiting more than a day -> apps/api/src/modules/agent/context/system-event-replay.ts:258
+Agent checks each request is still current before writing -> apps/api/src/modules/agent/context/system-event-replay.ts:132
+Reminder reply is unprompted so it reaches notifications -> apps/api/src/modules/agent/runtime/agent-service.ts:4144
+Approval reminders frequency chosen in Settings, Notifications -> packages/shared/src/i18n/locales/en/kernel.json:4298 ; apps/api/src/modules/approvals/reminders.ts:131
+Team-only bug report card under report_bug, sent only by the reporter -> apps/web/src/modules/agent/ToolCallRow.tsx:128 ; apps/web/src/modules/bug-report/BugReportDraftCard.tsx
+Personal agent messages labelled "<Name>'s agent" after the owner -> packages/shared/src/agents/personal-agent-name.ts:42 ; apps/api/src/modules/threads/message.ts:389 ; apps/api/src/modules/agent/tools/chat-tools.ts:96
+Agent writes memory only when asked to remember, or corrected; never copies app data, never as part of a task -> apps/api/src/modules/agent/prompts/agent-charter.md:16 ; apps/api/src/modules/agent/tools/kernel-tools.ts:649
+Quiet-conversation memory reads only messages people typed, saves nothing after a declined memory approval -> apps/api/src/modules/agent/memory/consolidation.ts:186 ; apps/api/src/modules/agent/memory/consolidation.ts:197
+Private mail read: any unlocked app of the user decrypts, wait 45 s for a few messages -> apps/web/src/modules/mailbox/mailbox-agent-runtime.ts:289 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:104
+Each message past five adds 3 s -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:111
+A locked app never answers in place of an unlocked one -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-registry.ts:205
+None unlocked: locked on all your open Liaison apps -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:87
+Other people are never asked -> apps/api/src/infra/websocket.ts:2047
+Provider stops answering mid-step: the step runs again from the last finished one, up to twice, 1 s then 3 s apart -> apps/api/src/modules/agent/runtime/agent-service.ts:911 ; apps/api/src/modules/agent/runtime/agent-service.ts:3748 ; apps/api/src/modules/agent/runtime/turn-resume.ts:81
+The cut step's text is dropped and its frames rewound; finished steps' writes are not re-run -> apps/api/src/modules/agent/runtime/agent-service.ts:3609 ; apps/api/src/modules/agent/runtime/turn-resume.ts:283
+Still no answer: the reply says the AI service stopped responding, say "continue" -> packages/shared/src/threads/agent-notice.ts:64
+Turn stopped by its time limit keeps the text and says it ran out of time -> apps/api/src/modules/agent/runtime/agent-service.ts:4180 ; apps/api/src/modules/agent/runtime/agent-service.ts:4367
+Turn stopped only when one step makes no progress for 5 minutes, at the latest after 20 minutes; an explicit budget is one wall-clock limit -> apps/api/src/modules/agent/runtime/turn-deadline.ts:17 ; apps/api/src/modules/agent/runtime/agent-service.ts:480 ; apps/api/src/modules/agent/runtime/agent-service.ts:2933 ; apps/api/src/modules/agent/runtime/agent-service.ts:3556
+Request raised in the conversation you are reading does not notify you -> apps/api/src/modules/attention/state-materializer.ts:342
+Finished turn notifies the person once, held back while that conversation is on screen -> apps/api/src/modules/push/fanout-consumer.ts:806 ; apps/api/src/modules/agent/runtime/agent-service.ts:4452
+A refused, failed or stopped turn notifies like a finished one -> apps/api/src/modules/agent/runtime/agent-service.ts:1897 ; apps/api/src/modules/agent/runtime/turn-resume.ts:145
+An app's post in a direct conversation notifies like a direct message -> apps/api/src/modules/push/fanout-consumer.ts:796

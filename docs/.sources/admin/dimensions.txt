@@ -1,0 +1,32 @@
+Dimension matching per type -> apps/api/src/modules/permissions/dimensions.ts:16
+Dimensions enforced in RLS policies -> apps/api/src/modules/permissions/rls-generator.ts:59
+Mail Inbox dimension, membership, manageHref -> apps/api/src/apps/mail/app.manifest.json:228
+Mail conversations/messages follow mailbox (accountId) -> apps/api/src/apps/mail/app.manifest.json:318
+Calendar access dimension -> apps/api/src/apps/calendar/app.manifest.json:80
+Tickets Team dimension and values -> apps/api/src/apps/tickets/app.manifest.json:290
+Tickets Sensitivity level and order -> apps/api/src/apps/tickets/app.manifest.json:302
+Ticket messages inherit team and sensitivity from ticket -> apps/api/src/apps/tickets/app.manifest.json:448
+Catalog key is app:key -> apps/api/src/modules/permissions/dimension-catalog.ts:8
+Membership: unclassified NULL visible to scope holders; value must be granted -> apps/api/src/modules/permissions/rls-generator.ts:70
+Level: clearance up to max granted; no grant = lowest band; NULL = lowest -> apps/api/src/modules/permissions/rls-generator.ts:91
+Global and key wildcard -> apps/api/src/modules/permissions/rls-generator.ts:60
+Admin role gets wildcard dimension grant at org creation -> apps/api/src/modules/provisioning/ensure-org.ts:96
+Wildcard cannot be granted via API -> apps/api/src/modules/permissions/roles.ts:445
+Union of role and user dimension grants -> apps/api/src/modules/permissions/permissions.ts:57
+User detail: Which teams and sensitivity levels -> apps/web/src/modules/settings/AdminUserDetail.tsx:396
+Manage in link for manageHref dimensions -> apps/web/src/modules/settings/DimensionPanels.tsx:180
+Data access section in Roles & access -> apps/web/src/modules/settings/RolesAccessSettings.tsx:47
+Data access is per-teammate picker -> apps/web/src/modules/settings/dimension-grants/DimensionGrantPage.tsx:123
+Checkbox for membership -> apps/web/src/modules/settings/dimension-grants/DimensionGrantPage.tsx:175
+Radio for level -> apps/web/src/modules/settings/dimension-grants/DimensionGrantPage.tsx:199
+from role values disabled -> apps/web/src/modules/settings/dimension-grants/DimensionGrantPage.tsx:185
+Cannot grant values you do not hold -> apps/api/src/modules/permissions/roles.ts:452
+Own mail inbox revoke confirm -> apps/web/src/modules/settings/dimension-grants/DimensionGrantPage.tsx:98
+Revoke inbox access text -> packages/shared/src/i18n/locales/en/kernel.json:2428
+Revoke access button -> packages/shared/src/i18n/locales/en/kernel.json:2429
+Effective permissions loaded at token issuance/refresh -> apps/api/src/modules/permissions/permissions.ts:72
+list_dimensions tool, kernel:users:admin -> apps/api/src/modules/agent/tools/kernel-tools.ts:2382
+grant_dimension_value tool, gated -> apps/api/src/modules/agent/tools/kernel-tools.ts:2392
+Role dimension grants inherited -> apps/api/src/modules/permissions/roles-routes.ts:247
+POST /:roleId/dimensions route -> apps/api/src/modules/permissions/roles-routes.ts:153
+Admin roles routes mounted at /api/admin/roles -> apps/api/src/app.ts:699

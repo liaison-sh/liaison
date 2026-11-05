@@ -1,0 +1,22 @@
+{
+  "name": "@liaison/calls-app",
+  "version": "0.1.0",
+  "description": "Liaison calls knowledge connector — signed transcript-segment ingest into per-call knowledge documents",
+  "license": "FSL-1.1-ALv2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@liaison/app-sdk": "file:../../packages/app-sdk",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "latest"
+  },
+  "overrides": {
+    "@liaison/shared": "file:../../packages/shared"
+  }
+}

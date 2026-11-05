@@ -1,0 +1,27 @@
+Org Drive connection reads only picked shared drives, guide step -> packages/shared/src/setup-guides.ts:264
+Org Drive attention item until picked -> apps/api/src/apps/google-drive/shared-drives.ts:256
+Reconnect keeps picked shared drives -> apps/api/src/modules/apps/connections/service.ts:2930
+Token and read scope from one lookup -> apps/api/src/modules/apps/connections/service.ts:1809
+authorizeConfigParams read from app config, anchored pattern, refused start missing_setting -> apps/api/src/modules/apps/connections/oauth-manifest-knobs.ts:54
+kernel-set authorize params cannot come from config -> apps/api/src/modules/apps/connections/oauth-manifest-knobs.ts:32
+config params appended to the authorize URL -> apps/api/src/modules/apps/connections/service.ts:2159
+missing_setting refusal -> apps/api/src/modules/apps/connections/service.ts:2066
+guide lists the app setting before connecting -> apps/api/src/modules/connection-guides/connection-setup.ts:227
+identifierFromUserinfoPath, accountNameField, choice by id or name, never picks one of several -> apps/api/src/modules/apps/connections/oauth-manifest-knobs.ts:129
+several accounts connect nothing and are named -> apps/api/src/modules/apps/connections/service.ts:327
+cross-field manifest rules -> apps/api/src/modules/apps/connections/oauth-manifest-knobs.ts:154
+expiry reminder 14 days ahead for tokens that cannot renew -> apps/api/src/modules/apps/connections/attention.ts:198
+connect links: hash stored, 30 min, single use, member only -> apps/api/src/modules/apps/connections/connect-links.ts:119
+disconnect by address: org admin scope, personal owner, --force audited -> apps/api/src/modules/apps/connections/disconnect-account.ts:1
+Standard or private mailbox trade-off, one sentence each -> packages/shared/src/setup-guides.ts:56 ; apps/api/src/cli/connect/index.ts:415 ; .claude/skills/setup-liaison/SKILL.md:488 ; apps/api/src/modules/agent/prompts/kernel/setup-guide.md:26 ; packages/shared/src/i18n/locales/en/mail.json:153
+setup_state left counts chosen features only, alternatives, menu -> apps/api/src/modules/connection-guides/setup-features.ts:198
+Mailbox limit: gmail/imap any app until disconnected, same address once, MAILBOX_LIMIT_REACHED, reconnect allowed, OAuth callback failure -> apps/api/src/modules/org/caps.ts:218 ; apps/api/src/modules/apps/connections/service.ts:3083 ; apps/api/src/app.ts:1054
+refused link connect: back to the link page with the reason, recorded for the CLI -> apps/api/src/app.ts:982 ; apps/web/src/modules/settings/ConnectLink.tsx:1 ; packages/shared/src/i18n/locales/en/kernel.json:5856
+connect --for stops with the reason and exit 1 -> apps/api/src/cli/connect/index.ts:454
+org and personal rows of one account only where the connection declares it (Drive) -> apps/api/src/modules/apps/connections/service.ts:3077 ; apps/api/src/apps/google-drive/app.manifest.json:35
+connect --for stops with exit 1 once the link expires unused (server-side status); a redeemed link keeps the wait -> apps/api/src/cli/connect/index.ts:471 ; apps/api/src/modules/apps/connections/connect-links.ts:127
+optionalScopes never written to a generated provider app configuration -> apps/api/src/modules/connection-guides/shopify-app-toml.ts:16
+protectedScopes listed in the generated file once the org turned setting on -> apps/api/src/modules/apps/connections/protected-scopes.ts:7
+scopesFromAppConfiguration manifest field -> apps/api/src/modules/apps/manifest-schema.ts:280
+attention: add to the app's configuration, release, then reconnect -> apps/api/src/modules/apps/connections/attention.ts:344
+Dev Dashboard values: scopes and API version with Shopify-managed installation -> packages/shared/src/setup-guides.ts:860

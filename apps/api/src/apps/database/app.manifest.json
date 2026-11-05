@@ -1,0 +1,279 @@
+{
+  "name": "database",
+  "version": "1.1.2",
+  "kind": "connector",
+  "description": "Read-only connector for a deployment's own database, for troubleshooting and support: licenses/subscriptions, moderation surfaces (tickets/knowledge/mail), instance health.",
+  "listing": {
+    "publisher": "Liaison",
+    "category": "Developer",
+    "icon": "server",
+    "summary": "Read-only access to your deployment's own database for troubleshooting and support.",
+    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/apps/api/src/apps/database"
+  },
+  "trusted": false,
+  "license": "FSL-1.1-ALv2",
+  "dependencies": {
+    "required": ["kernel"]
+  },
+  "connections": {
+    "database": {
+      "type": "credentials",
+      "purpose": "Operational database",
+      "allowedDomains": [],
+      "credentialFields": [
+        {
+          "name": "connectionString",
+          "type": "password",
+          "label": "Postgres DSN (direct mode: leave gateUrl/gateToken empty)",
+          "required": false
+        },
+        {
+          "name": "gateUrl",
+          "type": "text",
+          "label": "liaison-db-gate URL (gate mode: leave connectionString empty)",
+          "required": false
+        },
+        {
+          "name": "gateToken",
+          "type": "password",
+          "label": "liaison-db-gate bearer token (gate mode)",
+          "required": false
+        }
+      ],
+      "setupGuide": {
+        "summary": "Connect either a direct Postgres DSN (same machine/network, or a hardened public endpoint) OR a liaison-db-gate URL+token (recommended for cross-network / grumpy-devops setups). Exactly one mode — never both.",
+        "steps": [
+          {
+            "who": "agent",
+            "text": "Rung 0/1 (same machine or private network): mint a read-only role with `scripts/db-readonly-role.ts --create` and paste its DSN into connectionString."
+          },
+          {
+            "who": "agent",
+            "text": "Rung 2 (db-gate, recommended for anything crossing an untrusted network): stand up the liaison/db-gate sidecar next to your database with a catalog.yaml and a minted bearer token, then paste its URL into gateUrl and the token into gateToken."
+          },
+          {
+            "who": "agent",
+            "text": "Rung 3 (public Postgres endpoint): connectionString with TLS required — the connector refuses plaintext to any non-local resolved IP."
+          },
+          {
+            "who": "agent",
+            "text": "After connecting, db_probe runs automatically and reports any write/EXECUTE grants beyond the read-only allow-list — review its warnings before relying on this connection."
+          }
+        ],
+        "docsUrl": "docs/database-connector.md"
+      }
+    },
+    "warehouse": {
+      "type": "credentials",
+      "purpose": "Read-only warehouse",
+      "optional": true,
+      "allowedDomains": [],
+      "credentialFields": [
+        {
+          "name": "connectionString",
+          "type": "password",
+          "label": "Postgres or Redshift DSN for a read-only role (direct mode only)",
+          "required": true
+        },
+        {
+          "name": "dialect",
+          "type": "text",
+          "label": "postgres (default) or redshift",
+          "required": false
+        },
+        {
+          "name": "statementTimeoutMs",
+          "type": "text",
+          "label": "Statement timeout in ms, 1000 to 300000 (default 10000). Agent tool calls cap it at 55000",
+          "required": false
+        }
+      ],
+      "setupGuide": {
+        "summary": "A second, direct-only database connection for raw read-only SELECT (an analytics warehouse or a replica). Agents target it with db_query / db_describe / db_probe connection: \"warehouse\". The default connection is untouched.",
+        "steps": [
+          {
+            "who": "human",
+            "minutes": 5,
+            "text": "Create a role that holds only USAGE + SELECT on the schemas agents may read.",
+            "place": "own"
+          },
+          {
+            "who": "agent",
+            "text": "Paste its DSN into connectionString (TLS is required for any public-resolving host: add sslmode=require)."
+          },
+          {
+            "who": "agent",
+            "text": "Set dialect to redshift for Amazon Redshift; leave it empty for Postgres."
+          },
+          {
+            "who": "human",
+            "minutes": 2,
+            "text": "Grant database:query:read only to the roles or agents that should use it: every tool call on the warehouse (describe and probe included) requires that scope.",
+            "place": "liaison"
+          }
+        ],
+        "docsUrl": "docs/database-connector.md"
+      }
+    }
+  },
+  "tools": {
+    "db_list_reads": {
+      "readOnly": true,
+      "description": "List the named, curated reads this database connector's catalog offers — call this first to discover what's available.",
+      "requiredScopes": ["database:reads:read"],
+      "trustBoundary": "user",
+      "handler": "dbListReads",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "db_read": {
+      "readOnly": true,
+      "description": "Run a named, parameterized curated read from the catalog (see db_list_reads). Column output is restricted to the read's declared allow-list.",
+      "requiredScopes": ["database:reads:read"],
+      "trustBoundary": "user",
+      "handler": "dbRead",
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Read name from db_list_reads"
+          },
+          "params": {
+            "type": "object",
+            "description": "Named parameters the read declares"
+          }
+        },
+        "required": ["name"]
+      }
+    },
+    "db_describe": {
+      "readOnly": true,
+      "description": "List the tables the connected role can SELECT (name and column count), or describe one table's columns and types (secret columns filtered out). connection \"warehouse\" requires database:query:read.",
+      "requiredScopes": ["database:reads:read"],
+      "trustBoundary": "user",
+      "handler": "dbDescribe",
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "table": {
+            "type": "string",
+            "description": "schema.table: returns that table's columns and types. Omit to list tables without their columns"
+          },
+          "schema": {
+            "type": "string",
+            "description": "Without table: list only this schema's tables"
+          },
+          "search": {
+            "type": "string",
+            "description": "Without table: list only tables whose schema.table contains this text (case-insensitive)"
+          },
+          "connection": {
+            "type": "string",
+            "enum": ["default", "warehouse"],
+            "description": "Which connection to use: \"default\" (the org's database connection, the default) or \"warehouse\" (the second, direct connection, when configured)"
+          }
+        }
+      }
+    },
+    "db_probe": {
+      "readOnly": true,
+      "description": "Run the connect-time safety probe on demand: reports unexpected write grants, dangerous EXECUTE grants, and catalog drift (gate mode). connection \"warehouse\" requires database:query:read.",
+      "requiredScopes": ["database:reads:read"],
+      "trustBoundary": "user",
+      "handler": "dbProbe",
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "connection": {
+            "type": "string",
+            "enum": ["default", "warehouse"],
+            "description": "Which connection to use: \"default\" (the org's database connection, the default) or \"warehouse\" (the second, direct connection, when configured)"
+          }
+        }
+      }
+    },
+    "db_query": {
+      "readOnly": true,
+      "description": "Run a raw, single-statement, SELECT-only SQL query against the connected database. Enabled by default; a deployment can disable it with LIAISON_DATABASE_ALLOW_RAW_QUERY=false. Same read-only role/grant restrictions as curated reads: nothing outside the allow-list is visible.",
+      "requiredScopes": ["database:query:read"],
+      "trustBoundary": "user",
+      "handler": "dbQuery",
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "sql": {
+            "type": "string",
+            "description": "A single SELECT (or WITH ... SELECT) statement"
+          },
+          "connection": {
+            "type": "string",
+            "enum": ["default", "warehouse"],
+            "description": "Which connection to use: \"default\" (the org's database connection, the default) or \"warehouse\" (the second, direct connection, when configured)"
+          }
+        },
+        "required": ["sql"]
+      }
+    }
+  },
+  "roles": {
+    "member": {
+      "description": "Database connector reader: curated reads only",
+      "scopes": ["database:reads:read"]
+    },
+    "admin": {
+      "description": "Database connector administrator: curated reads plus raw query (when the deployment opts in)",
+      "extends": "member",
+      "scopes": ["database:query:read"]
+    }
+  },
+  "events": {
+    "subscribes": {
+      "kernel/connected_account:create": "onDatabaseConnected"
+    }
+  },
+  "settings": {
+    "sections": [
+      {
+        "id": "connection",
+        "title": "Connection",
+        "titleKey": "database.connectionTitle",
+        "description": "Read-only connector for this deployment's own database: license lookups, moderation surfaces, instance health.",
+        "descriptionKey": "database.settingsDescription",
+        "scope": "org",
+        "blocks": [
+          {
+            "block": "connections",
+            "names": ["database", "warehouse"],
+            "status": {
+              "tool": "db_probe"
+            }
+          }
+        ]
+      },
+      {
+        "id": "report-access",
+        "title": "Report access",
+        "titleKey": "database.reportAccess.title",
+        "description": "Who may run the curated reads of each domain of the connected catalog.",
+        "descriptionKey": "database.reportAccess.description",
+        "scope": "org",
+        "adminScope": "kernel:apps:admin",
+        "blocks": [
+          {
+            "block": "custom",
+            "component": "DatabaseReportAccess",
+            "reason": "One row per catalog domain with its reads, a tier picker showing the catalog default, and role or person pickers for confidential and restricted domains, saved as one map: no declarative block lists catalog domains or picks roles and people."
+          }
+        ]
+      }
+    ]
+  },
+  "agentInstructions": "Read-only access to a connected SQL database for troubleshooting and answering questions. The SCHEMA is DEPLOYMENT-SPECIFIC — do NOT assume any table or column names exist (there is no generic \"licenses\", \"organizations\", or \"orders\" table unless discovery shows one). Discover first, then query:\n1. db_describe() with NO argument lists every table you can actually read (schema.table and its column count; narrow with schema or search). db_describe(table: \"schema.table\") returns that table's columns and types. Secret/credential columns are excluded by the database role, so anything it lists is safe to select. ALWAYS start here to learn the real shape before answering.\n2. db_query(sql) runs any read-only SELECT — this is the primary tool for real questions (lookups, filters, joins, aggregates, \"latest N\"). Base your SQL on what db_describe returned. Only a single-statement SELECT/WITH is allowed; writes, DDL, multiple statements, and dangerous functions are rejected. A query that runs past the time limit is cancelled on the database and returns statement_timeout: do not rerun it unchanged, narrow it (filter by hub and date range, aggregate) first. Example shape: SELECT <cols> FROM <schema.table> WHERE <...> ORDER BY <...> LIMIT <n>.\n3. db_list_reads() / db_read(name, params) expose CURATED named reads IF this deployment shipped an adapter with them. They may be absent or may not match this database — if db_list_reads is empty or a db_read errors, ignore it and use db_describe + db_query.\n\nEverything is strictly read-only and safe by construction: writes are impossible, and secret/credential columns (tokens, password hashes, signed licenses, API secrets) are not granted — selecting one returns a permission error rather than data, which simply means that column is off-limits; pick the readable columns db_describe showed you. If the database is not connected, surface the not_connected error — never fabricate data. Ground every answer in db_describe + a real db_query; do not guess at schema.\n\nSome deployments configure a second connection, \"warehouse\" (an analytics warehouse or a replica). db_describe, db_query and db_probe take an optional connection param: omit it for the default database, pass connection: \"warehouse\" to target the warehouse. Describe the warehouse with db_describe(connection: \"warehouse\") before querying it; curated reads (db_list_reads / db_read) exist only on the default connection."
+}

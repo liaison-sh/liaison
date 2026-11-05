@@ -1,0 +1,37 @@
+{
+  "data": {
+    "locations": {
+      "edges": [
+        {
+          "node": {
+            "id": "gid://shopify/Location/83457343654",
+            "name": "My Custom Location",
+            "address": {
+              "countryCode": "CA"
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Location/83457310886",
+            "name": "Shop location",
+            "address": {
+              "countryCode": "US"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "extensions": {
+    "cost": {
+      "requestedQueryCost": 6,
+      "actualQueryCost": 3,
+      "throttleStatus": {
+        "maximumAvailable": 20000,
+        "currentlyAvailable": 19997,
+        "restoreRate": 1000
+      }
+    }
+  }
+}

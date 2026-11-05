@@ -1,0 +1,325 @@
+threads_list tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:760
+threads_search tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:900
+threads_read tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:914
+threads_create tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:943
+threads_reply tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:980
+agents_ask tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1023
+agents_invite tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1453
+users_search tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1520
+create_pinned_thread tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2216
+open_app tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2770
+files_list tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:776
+files_read tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:791
+files_upload_url tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:805
+files_upload_confirm tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:841
+files_merge_pdfs tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:857
+analyze_media tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:873
+web_search tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:287
+web_fetch tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:679
+web_watch tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:731
+watch_state tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:718
+user_memory_get tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:448
+user_memory_set tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:466
+user_memory_delete tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:511
+memory_view tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:546
+memory_create tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:566
+memory_str_replace tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:579
+memory_insert tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:592
+memory_delete tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:605
+memory_rename tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:618
+memory_search tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:631
+memory_open tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:642
+memory_episode tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:653
+contacts_search tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1471
+contacts_read tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1535
+contacts_write tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1558
+contacts_export tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1585
+contacts_find_duplicates tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1612
+contacts_merge tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1630
+contacts_share tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1682
+contacts_groups_list tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1735
+contacts_group_members tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1747
+contacts_group_create tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1768
+contacts_group_rename tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1782
+contacts_group_delete tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1796
+contacts_group_add tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1814
+contacts_group_remove tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1828
+contacts_addresses_list tool: scope and read only -> apps/api/src/modules/agent/tools/kernel-tools.ts:1913
+contacts_address_upsert tool: scope, gated, always unverified -> apps/api/src/modules/agent/tools/kernel-tools.ts:1929
+contacts_address_verify tool: scope, gated, noAutoApprove -> apps/api/src/modules/agent/tools/kernel-tools.ts:1960-1970
+product_attributes_list tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2131
+product_attributes_upsert tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2152
+document_rules_list tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2227
+document_rules_match tool: scope and read only -> apps/api/src/modules/agent/tools/kernel-tools.ts:2243
+document_rules_upsert tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2269
+document_rules_delete tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2301
+document rule conditions (sku, countryIso2, carrier): all must hold, any listed value satisfies one -> apps/api/src/modules/documents/rules.ts:95
+short_code key, at most 12 characters -> apps/api/src/modules/product-attributes/service.ts:27
+skill_search tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1620
+skill_read tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1638
+list_skills tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1649
+create_skill tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5206
+update_skill tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5263
+delete_skill tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5312
+toggle_app_skill tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5334
+list_routines tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1665
+list_routine_events tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1677
+routine_tool_scopes tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5357
+create_routine tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5372
+update_routine tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5422
+delete_routine tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5446
+run_routine_now tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5463
+enable_routine_template tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5552
+reset_routine_to_template tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5591
+approvals_list tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2201
+approval_update_payload tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1844
+approval_withdraw tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1863
+outside_text_sources tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1893
+outside_text_clear tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1905
+policy_get tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5491
+policy_set tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5502
+approval_policy_get tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5520
+approval_policy_set tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5531
+tool_search tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1929
+list_locked_capabilities tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1948
+request_scope tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1966
+roles_list tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2121
+get_role tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2135
+create_role tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2046
+edit_role tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2068
+delete_role tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2101
+users_list tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2145
+describe_user_access tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2159
+list_scopes tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2171
+invite_user tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2316
+assign_role tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2346
+remove_user_from_role tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2365
+grant_user_scope tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2417
+list_dimensions tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2384
+grant_dimension_value tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2394
+merge_imported_user_preview tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2448
+merge_imported_user tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2459
+enable_app tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1985
+apps_set_enabled tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2002
+apps_set_access tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2020
+audit_search tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2184
+export tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2269
+data_subject_export tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2286
+capture_business_knowledge tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2226
+notify_user tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1692
+notifications_get tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1722
+notifications_set tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1733
+notification_rules_set tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1744
+thread_mute_set tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1755
+report_bug tool: scope (every member holds it) and approval flag -> apps/api/src/modules/bug-reports/tool.ts:258 ; apps/api/src/modules/permissions/every-member-scopes.ts:23
+spawn_agent tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2485
+subagent_list tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2626
+subagent_get tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2654
+subagent_create tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2541
+subagent_delete tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2669
+run_on_my_computer tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1043
+computer_session_list tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1136
+computer_session_read tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1146
+computer_session_send tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1153
+computer_session_stop tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1168
+computer_session_answer tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1175
+computer_session_settings tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1203
+share_folder_on_my_computer tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1281
+find_repos_on_my_computer tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1316
+list_my_remote_repos tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1330
+clone_repo_on_my_computer tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1419
+computer_session_import_list tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1351
+computer_session_import tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1387
+Deferred tools loaded by search -> apps/api/src/modules/agent/tools/tool-bridge.ts:537
+MCP tool sdk name mcp__slug_tool -> apps/api/src/modules/mcp-client/naming.ts:7
+Every app tool is deferred for an agent audience -> apps/api/src/modules/agent/directory/common-base-scopes.ts:15
+tool_search needs kernel:threads:read, otherwise no app tools -> apps/api/src/modules/agent/directory/common-base-scopes.ts:16
+tool_search select:name syntax -> apps/api/src/modules/agent/tools/kernel-tools.ts:1934
+Locked capability list then request_scope -> apps/api/src/modules/agent/tools/kernel-result-hints.ts:86
+Gated tools park as approval requests -> apps/api/src/modules/apps/execute-tool.ts:1050
+requiresHumanTurn: parks when untrusted or not typed -> apps/api/src/modules/agent/tools/kernel-tools.ts:1098
+Owner-only decision for computer tools -> apps/api/src/modules/agent/tools/kernel-tools.ts:1270
+Routine, other agents, MCP refused for session tools -> apps/api/src/modules/agent/tools/kernel-tools.ts:1252
+Autonomy change takes run_on_my_computer's gate -> apps/api/src/modules/agent/tools/kernel-tools.ts:1225
+subagent_create gated only when overwriting -> apps/api/src/modules/agent/tools/kernel-tools.ts:2547
+Outside content makes outward tools approvals -> packages/shared/src/i18n/locales/en/kernel.json:5155
+Memory writes wait after outside content -> packages/shared/src/i18n/locales/en/kernel.json:5155
+web_search appears only with a search key (Exa or OpenRouter) -> apps/api/src/modules/agent/tools/kernel-tools.ts:311
+Exa key from EXA_API_KEY -> apps/api/src/modules/agent/credits/platform-key-env.ts:12
+web_search over OpenRouter web plugin -> apps/api/src/modules/agent/tools/web-search-openrouter.ts:5
+web_fetch extract mode ignores page instructions -> apps/api/src/modules/agent/tools/kernel-tools.ts:681
+Web tools need kernel:agent:web -> apps/api/src/modules/permissions/scope-catalog.ts:96
+memory files by type user feedback project reference -> apps/api/src/modules/agent/tools/kernel-tools.ts:568
+Memory index MEMORY.md line -> apps/api/src/modules/agent/tools/kernel-tools.ts:568
+Memory tab visibility -> apps/web/src/modules/agent/AgentPage.tsx:440
+Memory tools act on the acting agent's own tree -> apps/api/src/modules/agent/tools/kernel-tools.ts:326
+App tools run in sandbox -> docs/app-sandbox.md:3
+deactivateUser tool: scope and approval flag -> apps/api/src/modules/apps/kernel-bulk.ts:66
+web_search registered only when a search key resolves -> apps/api/src/modules/agent/tools/kernel-tools.ts:319
+MCP server tool naming mcp__<slug>_<tool> -> apps/api/src/modules/mcp-client/naming.ts:191
+MCP tools the person may not use are not listed, not even locked -> apps/api/src/modules/agent/tools/tool-bridge.ts:1177-1180
+list_locked_capabilities skips MCP tools -> apps/api/src/modules/agent/tools/tool-bridge.ts:1028-1032
+A tool failing non-retryably in three steps is refused for the rest of the run -> apps/api/src/modules/agent/tools/tool-bridge.ts:278
+Parallel calls of one step count as one step -> apps/api/src/modules/agent/tools/tool-bridge.ts:287
+The refusal without executing -> apps/api/src/modules/agent/tools/tool-bridge.ts:353
+config_export tool: scope and approval flag -> apps/api/src/modules/agent/tools/config-tools.ts:465
+config_plan tool: scope and approval flag -> apps/api/src/modules/agent/tools/config-tools.ts:450
+config_roles tool: scope and approval flag -> apps/api/src/modules/agent/tools/config-tools.ts:370
+config_email tool: scope and approval flag -> apps/api/src/modules/agent/tools/config-tools.ts:376
+config_users tool: scope and approval flag -> apps/api/src/modules/agent/tools/config-tools.ts:382
+config_mail tool: scope and approval flag -> apps/api/src/modules/agent/tools/config-tools.ts:388
+config_tickets tool: scope and approval flag -> apps/api/src/modules/agent/tools/config-tools.ts:394
+config_apps tool: scope and approval flag -> apps/api/src/modules/agent/tools/config-tools.ts:400
+config_apiConnectors tool: scope and approval flag -> apps/api/src/modules/agent/tools/config-tools.ts:406
+config_knowledge tool: scope and approval flag -> apps/api/src/modules/agent/tools/config-tools.ts:412
+config_agents tool: scope and approval flag -> apps/api/src/modules/agent/tools/config-tools.ts:418
+config_invoicing tool: scope and approval flag -> apps/api/src/modules/agent/tools/config-tools.ts:424
+config tools act as the approver and check the section scopes -> apps/api/src/modules/agent/tools/config-tools.ts:196
+Connected systems named in the prompt on every page -> apps/api/src/modules/agent/context/context.ts:1812
+CRM write phrasings find connector_write -> apps/api/src/modules/agent/context/connected-systems.ts:134
+request_secret tool: scope and approval flag -> apps/api/src/modules/agent/tools/secret-request-tools.ts:86
+Card posts to the target's own route, org-owned credentials -> apps/web/src/modules/secret-request/SecretRequestToolCard.tsx:69
+Save marks the request saved only when a new secret is stored -> apps/api/src/modules/secret-requests/service.ts:202
+New stored secret compared with the baseline -> apps/api/src/modules/secret-requests/stored.ts:180
+Provider key hint is the last 4 characters -> apps/api/src/modules/secret-requests/stored.ts:72
+Agent told it was saved, with the hint -> apps/api/src/modules/secret-requests/announce.ts:104
+API key shown once -> packages/shared/src/i18n/locales/en/secret-request.json:48
+Who may save the card -> apps/api/src/modules/secret-requests/targets.ts:197
+Read-only card text -> packages/shared/src/i18n/locales/en/secret-request.json:51
+Cancel by requester or admin -> apps/api/src/modules/secret-requests/service.ts:247
+Expiry after 24 hours -> apps/api/src/modules/secret-requests/service.ts:38
+Replace it confirms a takeover of a member's personal account -> packages/shared/src/i18n/locales/en/secret-request.json:59
+Org save of a member's account is refused until takeOver -> apps/api/src/modules/apps/connections/service.ts:259
+The former owner is told -> apps/api/src/modules/attention/kernel-translations.ts:229
+Card says who asked -> packages/shared/src/i18n/locales/en/secret-request.json:56
+Person can clear the mark from the globe -> apps/api/src/modules/threads/routes.ts:417
+import_kinds tool: scope and approval flag -> apps/api/src/modules/agent/tools/import-tools.ts:828
+import_reference tool: scope and approval flag -> apps/api/src/modules/agent/tools/import-tools.ts:840
+import_transform_save tool: scope and approval flag -> apps/api/src/modules/agent/tools/import-tools.ts:852
+import_preview tool: scope and approval flag, writes no record -> apps/api/src/modules/agent/tools/import-tools.ts:864
+import_start tool: scope, gated, never auto-approved -> apps/api/src/modules/agent/tools/import-tools.ts:878
+import_status tool: scope and approval flag -> apps/api/src/modules/agent/tools/import-tools.ts:904
+import_cancel tool: scope and approval flag -> apps/api/src/modules/agent/tools/import-tools.ts:917
+import_undo tool: scope, gated -> apps/api/src/modules/agent/tools/import-tools.ts:931
+the shipped examples: Jira Software, JSM, Freshdesk XML, Slack export, invoice CSV example -> apps/api/src/modules/imports/reference/references.ts:27
+preview reads the first batches or pages -> apps/api/src/modules/agent/tools/import-tools.ts:81
+the import runs as the approver -> apps/api/src/modules/agent/tools/import-tools.ts:615
+refused above 5% refused records -> apps/api/src/modules/agent/tools/import-tools.ts:78
+a preview is good for a day -> apps/api/src/modules/agent/tools/import-tools.ts:80
+only the person who made a preview can start it -> apps/api/src/modules/agent/tools/import-tools.ts:278
+transform bridge: only four host methods, no network, files or database -> apps/api/src/modules/imports/transforms/bridge.ts:30
+API reads bound to the connection's base URL, credentials host-side -> apps/api/src/apps/api-connector/transport.ts:857
+attachments up to 2 GB and ten minutes each -> apps/api/src/modules/imports/transform-run.ts:158
+within the storage quota, missing files listed -> apps/api/src/modules/imports/transform-run.ts:850
+approval card: per kind counts and one sample as outside text -> apps/api/src/modules/agent/tools/import-tools.ts:880
+approval card: transform author, size, hash, change since last version -> apps/api/src/modules/agent/tools/import-tools.ts:851
+the requester may cancel and propose undo -> apps/api/src/modules/imports/authority.ts:70
+a transform attaches only files of the import -> apps/api/src/modules/imports/transform-run.ts:921
+approval binds the connection's adapter and credentials -> apps/api/src/modules/agent/tools/import-tools.ts:253
+connections may send literal headers -> packages/api-connector-core/src/schema.ts:435
+the import card under import_start and import_status, live, survives reload -> apps/web/src/modules/imports/ImportRunCard.tsx:20
+import_sample tool: scope and approval flag -> apps/api/src/modules/agent/tools/import-tools.ts:594
+setup_state tool: scope and approval flag -> apps/api/src/modules/agent/tools/setup-state-tool.ts:45
+google_setup tool: scope kernel:threads:read, read-only, no approval -> apps/api/src/modules/agent/tools/setup-guide-tools.ts:199
+shopify_app_toml tool: scope kernel:threads:write, posts the file, no approval -> apps/api/src/modules/agent/tools/setup-guide-tools.ts:221
+Jira asks for the site; a missing connection is named with its adapter save -> apps/api/src/modules/agent/tools/import-tools.ts:467
+IMAP card shows approved settings read-only, asks only for the secret -> apps/api/src/modules/secret-requests/routes.ts:147
+Settings come from the approved config call only -> apps/api/src/modules/secret-requests/approved-settings.ts:51
+Unknown kind names the providing app and the catalog install -> apps/api/src/modules/agent/tools/import-tools.ts:201
+google_setup reports each connection's client source; instance means connect only -> apps/api/src/modules/agent/tools/setup-guide-tools.ts:100
+shopify_app_toml posts no file when the server provides the Shopify app -> apps/api/src/modules/agent/tools/setup-guide-tools.ts:163
+Connect card kind, app, connection and mode -> apps/api/src/modules/secret-requests/targets.ts:137
+Connect with Google or Shopify button -> packages/shared/src/i18n/locales/en/secret-request.json:68
+Provider named from the authorize URL -> apps/api/src/modules/secret-requests/routes.ts:252
+Shopify store domain asked on the card -> apps/api/src/modules/secret-requests/routes.ts:246
+Popup opened in the click -> apps/web/src/modules/secret-request/SecretRequestToolCard.tsx:395
+Blocked popup runs the sign-in in the same tab -> apps/web/src/modules/secret-request/SecretRequestToolCard.tsx:416
+Same tab returns to the conversation -> apps/api/src/modules/apps/connections/service.ts:238
+Popup page closes itself -> apps/api/src/modules/apps/connections/connect-done-page.ts:33
+Desktop and mobile run the shell flow -> apps/web/src/modules/secret-request/SecretRequestToolCard.tsx:444
+Grant settles the card from the stored account -> apps/api/src/modules/secret-requests/connect-settle.ts:45
+Connected state read from connected accounts -> apps/api/src/modules/secret-requests/stored.ts:166
+Agent told connected with the account -> apps/api/src/modules/secret-requests/announce.ts:61
+Connected card text -> packages/shared/src/i18n/locales/en/secret-request.json:78
+Personal connect only by the person asked for -> apps/api/src/modules/secret-requests/targets.ts:351
+Waiting text for a personal connect -> packages/shared/src/i18n/locales/en/secret-request.json:79
+Store domain field -> packages/shared/src/i18n/locales/en/secret-request.json:44
+Google client connections (Gmail, Calendar) -> apps/api/src/modules/secret-requests/targets.ts:173
+Client card before the Connect card -> apps/api/src/modules/secret-requests/pending-cards.ts:82
+Config change hands both cards in order -> apps/api/src/modules/secret-requests/pending-cards.ts:98
+A personal Settings connect settles that person's card -> apps/api/src/modules/secret-requests/connect-settle.ts:68
+contacts_write gated -> apps/api/src/modules/agent/tools/kernel-tools.ts:1580
+Same-tab failure shown on the card with Try again -> apps/web/src/modules/secret-request/connect-popup.ts:39
+Try again label -> packages/shared/src/i18n/locales/en/secret-request.json:96
+Card completed only by its own grant's account -> apps/api/src/modules/secret-requests/connect-settle.ts:64
+Personal cards keyed per person -> apps/api/src/modules/secret-requests/targets.ts:323
+A gated write on a tainted turn always parks, a policy does not answer it -> apps/api/src/modules/apps/execute-tool.ts:4988
+An ungated tool waiting only on scoped data is decided by any holder of every scope read, the requester included -> apps/api/src/modules/apps/execute-tool.ts:4743
+threads_reply contactId: a contact's discussion -> apps/api/src/modules/agent/tools/kernel-tools.ts:1003-1008
+setup_state lists permissions a connected account lacks pending provider approval -> apps/api/src/modules/provisioning/setup-state.ts:88
+shopify_app_toml steps include requesting Read all orders after the deploy, answer to paste -> packages/shared/src/setup-guides.ts:191
+config_apps sets app settings -> apps/api/src/modules/provisioning/config-tool-input.ts:228
+request_secret: any member connects their own account (mode personal) -> apps/api/src/modules/agent/tools/secret-request-tools.ts:143
+Asking for the same card twice shows it once -> apps/api/src/modules/agent/tools/secret-request-tools.ts:77
+A card is a request: nothing saved or connected until completed -> apps/api/src/modules/agent/tools/secret-request-tools.ts:77
+A connected claim with nothing connected is corrected -> apps/api/src/modules/agent/runtime/card-claim.ts:183
+An approved card appears under the result line -> apps/web/src/modules/threads/MessageRow.tsx:952
+A refused sign-in in the window shows its reason on the card -> apps/api/src/modules/secret-requests/service.ts:397
+A card filed after reading data is shown only to people who can read it -> apps/api/src/db/migrations/0220_secret_requests_required_scopes.sql:19
+web_fetch and web_search never wait; limits on web reads apply -> apps/api/src/modules/apps/execute-tool.ts:4019,4491 ; apps/api/src/modules/agent/tools/web-read-guardrails.ts:166,194
+web_fetch: org's own allowlist and blocklist, empty allowlist allows every public host, demo orgs included; private addresses refused -> apps/api/src/modules/agent/tools/web-tools.ts:824-828,847
+same tool list for the whole conversation; later tools stay out of it -> apps/api/src/modules/agent/runtime/agent-service.ts:2305
+later tool's description and parameters arrive in the conversation -> apps/api/src/modules/agent/context/guide-notes.ts:64
+call_tool tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1987
+call_tool argument error names the tool and its parameters -> apps/api/src/modules/agent/tools/call-tool.ts:33
+IMAP card for a @gmail.com address with no approved change shows Gmail's servers -> apps/api/src/modules/secret-requests/routes.ts:208 ; apps/api/src/modules/secret-requests/approved-settings.ts:99-110
+Setup step links open in a new tab -> apps/web/src/modules/secret-request/SecretRequestToolCard.tsx:217-227
+Speculative loads (recent apps, the page's app) are listed by name and purpose only -> apps/api/src/modules/agent/runtime/agent-service.ts:2246,2271,2520 ; apps/api/src/modules/agent/context/guide-notes.ts:97 ; apps/api/src/modules/agent/providers/fixed-tool-list.ts:227
+Schema arrives after a tool_search naming the tool or a first call -> apps/api/src/modules/agent/tools/tool-search.ts:122,193 ; apps/api/src/modules/agent/tools/call-tool.ts:80 ; apps/api/src/modules/agent/runtime/agent-service.ts:3083
+First call with fitting arguments runs; otherwise the answer shows the parameters -> apps/api/src/modules/agent/tools/call-tool.ts:34,85
+web_fetch reads a refused page (403, 429, 503, empty page, script-filled page) through Exa when an Exa key resolves -> apps/api/src/modules/agent/tools/web-tools.ts:683,714,895,932
+web_fetch result notes it came from Exa's copy -> apps/api/src/modules/agent/tools/web-tools.ts:807
+web_fetch Exa read runs only after the allowlist, blocklist and private-address guards; 404 not retried -> apps/api/src/modules/agent/tools/web-tools.ts:860,895,901
+web_fetch tells the agent the site blocks automated reading when the page still cannot be read (no Exa copy, or no Exa key), and to find the document on another site through web_search -> apps/api/src/modules/agent/tools/web-tools.ts:690,704,799,895,932
+web_fetch Exa read billed like one web search -> apps/api/src/modules/agent/tools/web-tools.ts:802
+web_fetch 404 tells the agent to search for the real address instead of guessing -> apps/api/src/modules/agent/tools/web-tools.ts:697,901
+web_fetch leaves out navigation, menus, language picker, page header and footer, sidebars and cookie banner -> apps/api/src/modules/agent/tools/page-main-content.ts:19,54 ; apps/api/src/modules/agent/tools/web-tools.ts:919
+web_fetch returns the whole page when stripping leaves too little -> apps/api/src/modules/agent/tools/page-main-content.ts:113,114
+Same page fetched again in the turn returns a note pointing to the earlier result, which stays whole -> apps/api/src/modules/agent/tools/web-fetch-repeat.ts:69,72 ; apps/api/src/modules/agent/tools/tool-bridge.ts:1168
+First web result carries the full research instructions, later ones a short untrusted-content note -> apps/api/src/modules/agent/tools/kernel-result-hints.ts:96,98,127,128
+drive_picker shows the Choose files card -> apps/api/src/modules/agent/tools/setup-guide-tools.ts:500
+Connect card for Drive shows the picker card -> apps/web/src/modules/secret-request/SecretRequestToolCard.tsx:654
+oauth_connect identifier: the address being connected -> apps/api/src/modules/secret-requests/targets.ts:134
+One card per message, mailbox before Drive -> apps/api/src/modules/agent/tools/setup-guide-tools.ts:94
+Drive card alone, picker only once Drive is connected -> apps/api/src/modules/agent/tools/setup-guide-tools.ts:207
+agents_ask without adding; agents_invite gated -> apps/api/src/modules/agent/tools/kernel-tools.ts:1063-1067 ; apps/api/src/modules/agent/tools/kernel-tools.ts:1493-1521
+connect refused until the app setting is set (missing_setting) -> apps/api/src/modules/secret-requests/routes.ts:321
+mailbox_setup kernel tool -> apps/api/src/modules/agent/tools/setup-guide-tools.ts:566
+connect_link_send, connection_disconnect -> apps/api/src/modules/agent/tools/connection-tools.ts:1
+config_setup records chosen features; setup_state left = chosen features + menu -> apps/api/src/modules/agent/tools/config-tools.ts:644 ; apps/api/src/modules/agent/tools/setup-state-tool.ts:70
+config_liaisonTeam -> apps/api/src/modules/agent/tools/config-tools.ts:705
+Kernel tool request decided by its own scope -> packages/shared/src/approvals/authority.ts:128
+Administrative kernel tools decided by kernel:approve -> apps/api/src/modules/agent/tools/kernel-tools.ts:2190
+notifications_set also sets the approval reminder frequency -> apps/api/src/modules/notifications/agent-tools.ts:395
+memory_create not for a skill or toolkit change -> apps/api/src/modules/agent/tools/kernel-tools.ts:649
+report_bug prepares the report in team-only mode, sent from its card -> apps/api/src/modules/bug-reports/tool.ts:103
+App files on the apps media surface, same model and credits -> apps/api/src/modules/agent/media/media-analysis-constants.ts:123 ; apps/api/src/modules/agent/media/media-analysis-tool.ts:277
+Chained step after more reads parks, widening its own pending request -> apps/api/src/modules/apps/execute-tool.ts:6000
+Agent post or new thread some people cannot see waits for approval; card counts them -> apps/api/src/modules/apps/execute-tool.ts:3910 ; apps/api/src/modules/agent/tools/kernel-tools.ts:1050 ; apps/api/src/modules/agent/tools/kernel-tools.ts:1120 ; apps/api/src/modules/agent/scopes/scope-taint.ts:607
+Documents and templates section: the tools, their scopes and gates -> apps/api/src/modules/agent/tools/kernel-tools.ts:2237-2393
+Preview with sample values marked SAMPLE on every page, without a record -> apps/api/src/modules/documents/preview.ts:203-230 ; apps/api/src/modules/documents/preview.ts:410
+Preview visible to the caller alone, expires after 24 hours -> apps/api/src/modules/documents/preview.ts:62 ; apps/api/src/db/schema/kernel/file-upload-sessions.ts:36-38
+Printing takes no values, the record comes from its app; blanks print grey and are listed -> apps/api/src/modules/agent/tools/document-tools.ts:199-210 ; apps/api/src/modules/documents/print.ts:3-22
+mail_attachment_read tool: scopes, read only, description -> apps/api/src/modules/agent/tools/kernel-tools.ts:1038
+mail_attachment_read: ordinary attachment through the analyze_media path -> apps/api/src/modules/agent/media/mail-attachment-read.ts:154
+mail_attachment_read: sealed attachment asked of the browser (mail.attachment request) -> apps/api/src/modules/agent/media/mail-attachment-read.ts:183
+mail_attachment_read: locked mailbox error -> apps/api/src/modules/agent/media/mail-attachment-read.ts:192
+mail_attachment_read: content delivered as the turn's context block, not stored -> apps/api/src/modules/agent/media/mail-attachment-read.ts:208
+mail_attachment_read: 25 MB cap -> apps/api/src/modules/agent/mailbox-plaintext/answer-limits.ts:8
+mail_attachment_read: no stored summary, no slow job for a private copy -> apps/api/src/modules/agent/media/media-analysis-tool.ts:470
+private mailbox's video can't be analysed yet (needs a temp file) -> apps/api/src/modules/agent/media/media-analysis-tool.ts:370 ; apps/api/src/modules/agent/media/media-normalize.ts:373
+long Office file read up to a size limit, text says it was cut -> apps/api/src/modules/agent/media/office-text.ts:42-45
+analyze_media refuses a private mailbox's attachment, points to mail_attachment_read -> apps/api/src/modules/agent/media/media-analysis-tool.ts:265
+Word, Excel, PowerPoint read as text without a model call -> apps/api/src/modules/agent/media/media-analysis-tool.ts:390
+mail surface defaults: documents on, images and videos off -> apps/api/src/modules/agent/media/media-analysis-constants.ts:156
+shopify_app_toml: managed installation, file posted again after full order history or a missing scope -> apps/api/src/modules/agent/tools/setup-guide-tools.ts:663

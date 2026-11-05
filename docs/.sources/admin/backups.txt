@@ -1,0 +1,83 @@
+One archive restores here or elsewhere -> docs/runbooks/production-bootstrap.md:352
+./deploy/backup.sh command -> deploy/backup.sh:7
+Archive path, mode 600 in mode 700 dir, read-back check -> docs/runbooks/production-bootstrap.md:360
+Host needs only Docker, tar, gzip -> docs/runbooks/production-bootstrap.md:385
+--keep N -> deploy/backup.sh:25
+--keep never removes hand-named archives -> docs/runbooks/production-bootstrap.md:388
+--project NAME -> deploy/backup.sh:26
+--dir PATH; shared dir refused -> deploy/backup.sh:27
+-h/--help -> deploy/backup.sh:28
+Archive contents table -> deploy/backup.sh:9
+secrets.env contents -> deploy/backup.sh:17
+Search index not copied, rebuilt -> deploy/backup.sh:22
+Other .env values stay with host -> docs/runbooks/production-bootstrap.md:375
+Archive holds data keys; keep private; encrypt -> docs/runbooks/production-bootstrap.md:378
+Never keep dump apart from keys -> docs/runbooks/production-bootstrap.md:381
+Cron, no prompt, stdout path, non-zero on failure, no overlap -> docs/runbooks/production-bootstrap.md:385
+Cron example 03:15 keep 14 -> docs/runbooks/production-bootstrap.md:394
+Copy off host with age and rclone -> docs/runbooks/production-bootstrap.md:403
+Managed S3 versioning or replication -> docs/runbooks/production-bootstrap.md:409
+Restore drill before live and every few months -> docs/runbooks/production-bootstrap.md:414
+Fresh stack, same release or newer -> docs/runbooks/production-bootstrap.md:416
+restore.sh command -> docs/runbooks/production-bootstrap.md:423
+--base-url sets BASE_URL and ALLOWED_ORIGINS -> deploy/restore.sh:24
+--force -> deploy/restore.sh:26
+--project -> deploy/restore.sh:27
+Refuses newer backup; older migrated up -> docs/runbooks/production-bootstrap.md:440
+Refuses stack with organizations unless --force -> deploy/restore.sh:13
+Keeps .env.before-restore-<timestamp> -> deploy/restore.sh:15
+Restores roles, db, objects, data dir; starts, reindexes, verifies -> deploy/restore.sh:17
+Prints DNS, OAuth redirect, webhooks to change -> deploy/restore.sh:385
+Sign in and open threads and files -> docs/runbooks/production-bootstrap.md:430
+move.sh for trial to server -> docs/runbooks/production-bootstrap.md:458
+Settings export: apps, format JSON/CSV, Export -> packages/shared/src/i18n/locales/en/kernel.json:804
+Export needs kernel:users:admin -> apps/web/src/modules/settings/OrganizationSettings.tsx:16
+liaison export --full --output; DDL-privileged connection -> apps/api/src/cli/commands.ts:391
+ENCRYPTION_KEY 64 hex chars -> apps/api/src/lib/env.ts:74
+ENCRYPTION_KEY covers stored secrets -> deploy/backup.sh:54
+BYOK_ENCRYPTION_KEY org model keys -> deploy/backup.sh:57
+JWT_SECRET signs tokens, file links, MCP tokens -> deploy/backup.sh:51
+Whole-org export: Settings button, kernel:org:admin -> apps/web/src/modules/settings/OrganizationSettings.tsx:18
+Org export routes behind kernel:org:admin -> apps/api/src/app.ts:750
+Archive built in background job, notification on completion -> apps/api/src/modules/attention/kernel-translations.ts:283
+Download link valid 5 minutes -> apps/api/src/modules/export/org-archive/routes.ts:28
+CLI org export [--wait] -> apps/api/src/cli/commands.ts:633
+One export per org at a time -> apps/api/src/db/migrations/0233_org_exports.sql:48
+Kept 7 days then deleted -> apps/api/src/modules/export/org-archive/store.ts:30
+Expiry sweep deletes the object -> apps/api/src/infra/jobs/kernel-jobs.ts:462
+manifest.json, data/<schema>.<table>.ndjson, files.ndjson -> apps/api/src/modules/export/org-archive/writer.ts:466
+files/<file id>/<name> entries -> apps/api/src/modules/export/org-archive/writer.ts:427
+Encoding base64 / string / ISO UTC -> apps/api/src/modules/export/org-archive/writer.ts:479
+Tables incl. empty ones, catalog-driven -> apps/api/src/modules/export/org-archive/catalog.ts:150
+Left out (null) secrets list -> apps/api/src/modules/export/org-archive/redaction.ts:29
+Encrypted content exported as stored, counted -> apps/api/src/modules/export/org-archive/writer.ts:489
+Not a snapshot -> apps/api/src/modules/export/org-archive/writer.ts:475
+4 GB / 65,000 entries limit -> apps/api/src/modules/export/org-archive/zip-stream.ts:25
+Delete an organization: liaison org delete, operator CLI -> apps/api/src/cli/commands.ts:649
+Operator org refused, no override -> apps/api/src/cli/org-delete.ts:200
+Running export refused -> apps/api/src/cli/org-delete.ts:212
+Export under 24 h, downloaded or --export-to -> apps/api/src/cli/org-delete.ts:62
+--export-to saves to a new local file -> apps/api/src/cli/org-delete.ts:339
+--without-export-i-accept-losing-the-org-data -> apps/api/src/cli/org-delete.ts:63
+LEGAL_ARCHIVE_RECIPIENT unset refuses unless --no-legal-archive -> apps/api/src/cli/org-delete.ts:304
+--yes <slug> or typed slug -> apps/api/src/cli/org-delete.ts:375
+--dry-run changes nothing -> apps/api/src/cli/org-delete.ts:519
+Ledger then mark deleting (410, jobs dropped) -> apps/api/src/cli/org-delete.ts:588
+Worker writes the archive and purges -> apps/api/src/modules/org/delete/job.ts:145
+Re-run resumes; --abort before the purge -> apps/api/src/cli/org-delete.ts:452
+Legal tables: immutable or legalRetention -> apps/api/src/modules/org/delete/legal-archive.ts:257
+legalRetention on einvoice_transmissions -> bundled-apps/invoicing/app.manifest.json:482
+Issued invoices and credit notes and their lines (legalRetention where/parent) -> bundled-apps/invoicing/app.manifest.json:628 ; bundled-apps/invoicing/app.manifest.json:929 ; apps/api/src/modules/org/delete/legal-archive.ts:166
+Missing file object listed in manifest.json -> apps/api/src/modules/org/delete/legal-archive.ts:601
+Unrecorded archive deleted by the daily job a day later -> apps/api/src/modules/org/delete/legal-archive.ts:777
+Files attached to legal rows -> apps/api/src/modules/org/delete/legal-archive.ts:388
+Audit log in the archive -> apps/api/src/modules/org/delete/legal-archive.ts:618
+manifest.json -> apps/api/src/modules/org/delete/legal-archive.ts:624
+age encryption to the recipient -> apps/api/src/modules/org/delete/legal-archive.ts:644
+legal-archives/<org id>/<time>.tar.age -> apps/api/src/modules/org/delete/legal-archive.ts:534
+LEGAL_ARCHIVE_RECIPIENT env var -> apps/api/src/lib/env.ts:794
+LEGAL_ARCHIVE_RETENTION_YEARS default 10 -> apps/api/src/lib/env.ts:810
+Daily deletion past retention -> apps/api/src/modules/org/delete/legal-archive.ts:538
+Org export link: presigned only with OBJECT_STORAGE_BROWSER_DIRECT, else the server streams it -> apps/api/src/modules/export/org-archive/routes.ts:147 ; apps/api/src/infra/storage/delivery.ts:36
+Compose passes LEGAL_ARCHIVE_RECIPIENT and LEGAL_ARCHIVE_RETENTION_YEARS to app and worker -> deploy/docker-compose.yml:642 ; deploy/docker-compose.yml:779
+data_subject_export file counts toward the storage limit, STORAGE_QUOTA_EXCEEDED and nothing saved at the limit -> apps/api/src/modules/export/data-subject-export-tool.ts:513

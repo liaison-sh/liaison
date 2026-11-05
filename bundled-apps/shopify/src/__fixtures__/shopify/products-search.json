@@ -1,0 +1,128 @@
+{
+  "data": {
+    "products": {
+      "edges": [
+        {
+          "node": {
+            "id": "gid://shopify/Product/15332594811046",
+            "title": "Kestrel Pocket Recorder",
+            "vendor": "example-store",
+            "status": "ACTIVE",
+            "totalInventory": 0,
+            "variants": {
+              "edges": [
+                {
+                  "node": {
+                    "id": "gid://shopify/ProductVariant/56534768255142",
+                    "sku": null,
+                    "price": "299.00",
+                    "inventoryQuantity": -6
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Product/15332594876582",
+            "title": "Foam Windscreen",
+            "vendor": "example-store",
+            "status": "ACTIVE",
+            "totalInventory": 0,
+            "variants": {
+              "edges": [
+                {
+                  "node": {
+                    "id": "gid://shopify/ProductVariant/56534768320678",
+                    "sku": null,
+                    "price": "59.00",
+                    "inventoryQuantity": -6
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Product/15332594909350",
+            "title": "Foot Switch",
+            "vendor": "example-store",
+            "status": "ACTIVE",
+            "totalInventory": 0,
+            "variants": {
+              "edges": [
+                {
+                  "node": {
+                    "id": "gid://shopify/ProductVariant/56534768353446",
+                    "sku": null,
+                    "price": "89.00",
+                    "inventoryQuantity": -6
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Product/15332594942118",
+            "title": "Field Preamp",
+            "vendor": "example-store",
+            "status": "ACTIVE",
+            "totalInventory": 0,
+            "variants": {
+              "edges": [
+                {
+                  "node": {
+                    "id": "gid://shopify/ProductVariant/56534768386214",
+                    "sku": null,
+                    "price": "149.00",
+                    "inventoryQuantity": -6
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Product/15332594974886",
+            "title": "Cable Set",
+            "vendor": "example-store",
+            "status": "ACTIVE",
+            "totalInventory": 0,
+            "variants": {
+              "edges": [
+                {
+                  "node": {
+                    "id": "gid://shopify/ProductVariant/56534768418982",
+                    "sku": null,
+                    "price": "29.00",
+                    "inventoryQuantity": -6
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "pageInfo": {
+        "hasNextPage": false,
+        "endCursor": "eyJsYXN0X2lkIjoxNTMzMjU5NDk3NDg4NiwibGFzdF92YWx1ZSI6MTUzMzI1OTQ5NzQ4ODZ9"
+      }
+    }
+  },
+  "extensions": {
+    "cost": {
+      "requestedQueryCost": 22,
+      "actualQueryCost": 12,
+      "throttleStatus": {
+        "maximumAvailable": 20000,
+        "currentlyAvailable": 19988,
+        "restoreRate": 1000
+      }
+    }
+  }
+}

@@ -1,0 +1,24 @@
+---
+name: kernel-config
+type: agent_instructions
+description: Configuring the org through the config tools: read first, one section at a time, secrets through kernel__request_secret cards, files never as params
+tools: kernel__config_*, kernel__request_secret
+---
+
+Configure the org with the `kernel__config_<section>` tools; connect a system no app covers (a CRM, ERP, HubSpot, any HTTP API) with `api-connector__connector_adapter_save`. Find them with `kernel__tool_search`.
+
+The sections are roles, email, users, mail, tickets, apps, apiConnectors, knowledge, agents and invoicing: the same data as a `liaison config apply` file.
+
+- Read before you change: call `kernel__config_export` first and edit what it returns. `kernel__config_plan` shows what a change would do without changing anything.
+- Propose one section at a time. Each call becomes an approval card listing the plan; a person approves it. Never say a change is done until its result says so. If it answers "the plan changed since approval", show the new plan and propose again.
+- Say only what your tool results show. Ask the person to approve only a card a call of yours returned as waiting for approval in this conversation; never mention a request you did not create. While a card waits, say it waits: "the Mail app is installed" comes after its approved result says so, never before.
+- The tool's schema shows each section's keys and entry shapes. A refusal names what was wrong, the expected keys and an example: fix the data from it and call again.
+- Secrets never go in a tool call: no passwords, client secrets, API keys or connection credentials. Leave them out; the entry comes back as pending credentials with an `askWith` call. Make that `kernel__request_secret` call: it shows a card where the person types the secret, and you never see it. When the conversation says it was saved, call the section again.
+- OAuth connections (Gmail, Google Calendar, Shopify, any app that signs in at a provider) are connected on a card too, never from Settings and never with `liaison connect`. A config result's pending OAuth entry carries the cards in order: the OAuth client card first when the connection has none yet (kind `google_integration_client` for Gmail and Google Calendar, `oauth_client` for the others), then the consent card (kind `oauth_connect`). Call them in that order. On the consent card the person presses Connect and signs in at the provider; Shopify asks them for the store's domain there. You never see a code or a token: the conversation says which account was connected.
+- A person's own account (their own Gmail, their own calendar): call `kernel__request_secret` with kind `oauth_connect`, the app and connection, and mode `personal`, in that person's conversation. Only they can complete it. An account the organization shares (a support inbox, the store) takes mode `org`, completed by someone who administers that connection.
+- Connect a system no app covers ("connect our HubSpot", a CRM, an ERP, an API with a token): read the guide with `api-connector__connector_adapter_reference`, save the adapter with `api-connector__connector_adapter_save` (a person approves it), ask for its credentials with `kernel__request_secret` (kind `api_connector_credentials`, the adapter's identifier), then test a read with `api-connector__connector_adapter_test`. An MCP connection is only for a system that offers an MCP server. Never ask the person to call a tool themselves.
+- Saved is not working: call a mailbox or a connection connected or live only after a status read shows it working. Right after its password is saved, a mailbox is "credentials saved; first sync pending" until the app's account list shows it synced without an error; an API connection works once a test read answered.
+- A model provider key and a new Liaison API key are not config sections: ask for them with `kernel__request_secret` directly (kind `byok` with the provider, kind `api_key` with a label). The person creates the API key on the card and copies it there; never ask them to paste a key into the chat.
+- A company's legal identifiers (SIREN, SIRET, VAT number, IBAN, BIC, tax id) come from the person: a value they typed, or a file they attached. One they never gave is refused; ask them to type it. When a number is refused, ask the person for the right one instead of trying another. The address, legal form and share capital are not checked, but the card shows them: take them from the person too, never make them up.
+- Files: a document or a logo is uploaded first and passed by id (`contentFileId`, `logoFileId`), or a document is written inline in `content`. Never pass a path on the server.
+- A refusal names the scope the approving person lacks, or the field to fix: fix the field and call again, or relay a missing scope in plain words; never retry unchanged.

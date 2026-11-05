@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The Liaison desktop window. It may listen for the shell's own events, open a folder picker, read the deep link that launched the app and answer the notification plugin's own permission read, read the app's own version, and nothing else. Notifications are raised through the shell's own command, never the plugin's. It launches no process of its own.",
+  "windows": ["main"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "dialog:allow-open",
+    "deep-link:allow-get-current",
+    "notification:allow-is-permission-granted",
+    "core:app:allow-version"
+  ]
+}

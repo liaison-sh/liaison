@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  International cotation fixture: the carrier offers a real Boxtal cotation returns
+  for an EXPORT route (sender country != recipient country, e.g. FR -> JP/US/GB/CH).
+  Domestic-only French parcel services do NOT serve international destinations, so the
+  cotation surfaces the international, customs-capable services instead: UPS, FedEx and
+  DPD international. Used by the boxtal sandbox mock whenever the cotation request's
+  `destinataire.pays` differs from `expediteur.pays` (see boxtal-mock-fetch.ts
+  cotationXmlFor).
+
+  CHEAPEST-vs-ETA TRAP (load-bearing for boxtal-synth-summit-spike-carrier-cost-
+  optimization — "pick the cheapest carrier that still ARRIVES WITHIN 5 BUSINESS
+  DAYS"). Collection is 2026-06-02 (a Tuesday) for all three offers, so business days
+  from collection are unambiguous:
+    - DPD   41.30 EUR -> delivery 2026-06-12 (~7 business days)  ABSOLUTE CHEAPEST but
+      TOO SLOW (exceeds 5 business days) -> the WRONG pick (the documented trap).
+    - UPS   48.90 EUR -> delivery 2026-06-05 (3 business days)   CHEAPEST WITHIN the
+      5-business-day deadline -> the CORRECT per-order pick.
+    - FedEx 54.20 EUR -> delivery 2026-06-04 (2 business days)   fastest, priciest.
+  A weak model that ignores the ETA constraint and picks the absolute cheapest (DPD)
+  gets the documented FAIL. Do NOT flatten this ordering (make the cheapest also the
+  fastest, or move DPD within 5 business days) — it stops the scenario discriminating
+  an ETA-aware choice. The invariants are asserted in
+  scripts/chaos/seed-boxtal-synth-summit.test.ts.
+-->
+<cotation>
+  <shipment>
+    <offer>
+      <mode>COM</mode>
+      <operator>
+        <code>UPSE</code>
+        <label>UPS</label>
+      </operator>
+      <service>
+        <code>ExpressSaver</code>
+        <label>UPS Express Saver (International)</label>
+      </service>
+      <price>
+        <currency>EUR</currency>
+        <tax-exclusive>48.90</tax-exclusive>
+        <tax-inclusive>58.68</tax-inclusive>
+      </price>
+      <collection>
+        <date>2026-06-02</date>
+        <type>
+          <code>PICKUP</code>
+          <label>Collecte</label>
+        </type>
+      </collection>
+      <delivery>
+        <date>2026-06-05</date>
+        <type>
+          <code>DELIVERY</code>
+          <label>Livraison a domicile</label>
+        </type>
+      </delivery>
+    </offer>
+    <offer>
+      <mode>COM</mode>
+      <operator>
+        <code>FEDX</code>
+        <label>FedEx</label>
+      </operator>
+      <service>
+        <code>InternationalPriority</code>
+        <label>FedEx International Priority</label>
+      </service>
+      <price>
+        <currency>EUR</currency>
+        <tax-exclusive>54.20</tax-exclusive>
+        <tax-inclusive>65.04</tax-inclusive>
+      </price>
+      <collection>
+        <date>2026-06-02</date>
+        <type>
+          <code>PICKUP</code>
+          <label>Collecte</label>
+        </type>
+      </collection>
+      <delivery>
+        <date>2026-06-04</date>
+        <type>
+          <code>DELIVERY</code>
+          <label>Livraison a domicile</label>
+        </type>
+      </delivery>
+    </offer>
+    <offer>
+      <mode>COM</mode>
+      <operator>
+        <code>DPDI</code>
+        <label>DPD</label>
+      </operator>
+      <service>
+        <code>InternationalClassic</code>
+        <label>DPD International Classic</label>
+      </service>
+      <price>
+        <currency>EUR</currency>
+        <tax-exclusive>41.30</tax-exclusive>
+        <tax-inclusive>49.56</tax-inclusive>
+      </price>
+      <collection>
+        <date>2026-06-02</date>
+        <type>
+          <code>PICKUP</code>
+          <label>Collecte</label>
+        </type>
+      </collection>
+      <delivery>
+        <date>2026-06-12</date>
+        <type>
+          <code>DELIVERY</code>
+          <label>Livraison a domicile</label>
+        </type>
+      </delivery>
+    </offer>
+  </shipment>
+</cotation>

@@ -1,0 +1,17 @@
+Effects claimed in the ledger before the call, replayed when done -> apps/api/src/lib/effect-once.ts:381
+Pending claim deadline 600 s by default -> apps/api/src/lib/effect-once.ts:48
+Done entries kept 30 days, unknown a year, pending past 30 days turned unknown -> apps/api/src/lib/effect-once.ts:426-470
+effect-ledger-retention daily at 04:27 -> apps/api/src/infra/jobs/kernel-jobs.ts:653
+Unknown claims logged effect_unknown -> apps/api/src/lib/effect-once.ts:419
+Digest mail through the ledger -> apps/api/src/infra/email.ts:109
+Push fanout claimed per event and device -> apps/api/src/modules/push/fanout-consumer.ts:575
+Webhook retry keyed by its retry id, re-run when unknown (rolled back) -> apps/api/src/infra/jobs/webhook-worker.ts:101-109
+Desktop fallback claim before the send -> apps/api/src/modules/notifications/desktop-emitter.ts:119
+E-invoice deposit claimed; in doubt marked unknown, definite refusal released -> bundled-apps/invoicing/src/einvoicing/transmit.ts:584-603
+Booking looked up by idempotency key before booking -> bundled-apps/pennylane/src/einvoicing/book.ts:87
+Deferred auto-email claimed per document, never resent once unknown -> bundled-apps/invoicing/src/handlers/deferred-dispatch.ts:56 ; bundled-apps/invoicing/src/handlers/deferred-dispatch.ts:99
+A person's send closes the auto-email parks -> bundled-apps/invoicing/src/mutations/send-to-customer.ts:182
+App keys scoped to the app -> apps/api/src/modules/apps/sandbox/bridge/effects.ts:39
+Job list from the job, schedule and consumer registrations and app manifests -> apps/api/src/infra/jobs/kernel-jobs.ts:1
+Outcome in doubt marked unknown by the caller -> apps/api/src/lib/effect-once.ts:270
+Approval poll resumes a bundle only on its awaiting_output CAS -> apps/api/src/modules/approvals/poll-output.ts:90

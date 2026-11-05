@@ -1,0 +1,10 @@
+Conversation Number,Subject,Status,Customer Name,Customer Email,Thread Type,Thread Author,Body,Created At
+1001,Order arrived damaged,closed,Paula Customer,paula@contoso.example,customer,Paula Customer,"The box was crushed, the stand is bent.",2026-09-01 08:00:00
+1001,Order arrived damaged,closed,Paula Customer,paula@contoso.example,message,Sam Support,"Sorry about that, a replacement ships today.",2026-09-01 09:30:00
+1001,Order arrived damaged,closed,Paula Customer,paula@contoso.example,note,Sam Support,Courier claim filed.,2026-09-01 09:35:00
+1002,Invoice address change,active,Tomas Buyer,tomas@northwind.example,customer,Tomas Buyer,"Please put our new address on the invoice, thanks.",2026-09-03 11:00:00
+1003,Where is my refund?,pending,Leila Client,leila@adatum.example,customer,Leila Client,"I returned the item two weeks ago.",2026-09-05 14:00:00
+1003,Where is my refund?,pending,Leila Client,leila@adatum.example,message,Sam Support,"Could you send the return tracking number?",2026-09-05 15:00:00
+1004,"Firmware question, model X2",closed,Omar User,omar@fabrikam.example,customer,Omar User,"Does 2.1 fix the pairing bug?",2026-09-07 10:00:00
+1004,"Firmware question, model X2",closed,Omar User,omar@fabrikam.example,message,Sam Support,"Yes, 2.1 fixes it; update from the app.",2026-09-07 10:20:00
+1004,"Firmware question, model X2",closed,Omar User,omar@fabrikam.example,customer,Omar User,"Updated, it works now.",2026-09-07 12:00:00

@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# Happy DOM is registered ONCE, for every test in this package, from a preload.
+# Registering it inside a test file works exactly until a second file does the
+# same: the registrator refuses a second call, and the suite fails in whichever
+# file bun happened to load second, which has nothing to do with either test.
+[test]
+preload = ["./src/test-setup.ts"]

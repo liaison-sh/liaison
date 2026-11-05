@@ -1,0 +1,74 @@
+Users page in Workspace group at /settings/admin/users -> apps/web/src/framework/bootstrap.ts:656
+Users page requires kernel:users:admin -> apps/web/src/framework/bootstrap.ts:662
+admin role holds every scope (*) -> apps/api/src/modules/permissions/default-roles.ts:30
+Workspace group label -> packages/shared/src/i18n/locales/en/kernel.json:1566
+Invite user button -> packages/shared/src/i18n/locales/en/kernel.json:2345
+Invite dialog Email address field -> apps/web/src/modules/settings/AdminUsers.tsx:373
+Invite dialog Role field -> apps/web/src/modules/settings/AdminUsers.tsx:379
+Cannot assign role beyond own permissions -> packages/shared/src/i18n/locales/en/kernel.json:2355
+Send invitation button -> packages/shared/src/i18n/locales/en/kernel.json:2357
+Invite posts email and roleId only -> apps/web/src/modules/settings/AdminUsers.tsx:140
+Invite email Accept invitation, expires in 7 days -> apps/api/src/modules/users/invites.ts:146
+Invite expiry 7 days -> apps/api/src/modules/users/invites.ts:107
+Existing user: view existing user link -> apps/web/src/modules/settings/AdminUsers.tsx:421
+Invite routes require kernel:users:admin -> apps/api/src/app.ts:691
+Console email bodies on local trial -> .claude/skills/setup-liaison/SKILL.md:144
+config apply report users[].inviteUrl -> .claude/skills/setup-liaison/SKILL.md:282
+Click a user opens detail -> apps/web/src/modules/settings/AdminUsers.tsx:268
+Identity section, Name field -> apps/web/src/modules/settings/AdminUserDetail.tsx:244
+Identity label -> packages/shared/src/i18n/locales/en/kernel.json:2371
+What can this user do? -> packages/shared/src/i18n/locales/en/kernel.json:2374
+Click a role to grant or revoke -> packages/shared/src/i18n/locales/en/kernel.json:2372
+Revoke role removes role from user -> apps/web/src/modules/settings/AdminUserDetail.tsx:166
+Which teams and sensitivity levels, on top of role grants -> packages/shared/src/i18n/locales/en/kernel.json:2375
+Roles & access page -> apps/web/src/framework/bootstrap.ts:675
+Deactivate button in row (active users) -> apps/web/src/modules/settings/AdminUsers.tsx:311
+Deactivate user dialog -> packages/shared/src/i18n/locales/en/kernel.json:2358
+Deactivated: status deactivated, sessions deleted -> apps/api/src/modules/users/service.ts:374
+Nothing it owns is deleted, can reactivate -> apps/api/src/modules/apps/kernel-bulk.ts:51
+Last administrator cannot be deactivated -> apps/api/src/modules/users/service.ts:365
+Cannot change status of user with more authority -> apps/api/src/modules/users/service.ts:305
+Bulk selection checkboxes -> apps/web/src/modules/settings/AdminUsers.tsx:256
+Bulk action Deactivate users, agent tool bulkDeactivateUsers -> apps/api/src/modules/apps/kernel-bulk.ts:15
+kernel:deactivateUser gated, approval by a person -> apps/api/src/modules/apps/kernel-bulk.ts:62
+Reactivate button in row -> apps/web/src/modules/settings/AdminUsers.tsx:331
+Reactivate user dialog, regain access -> packages/shared/src/i18n/locales/en/kernel.json:2362
+No admin delete UI: user detail only assigns/removes roles and identity -> apps/web/src/modules/settings/AdminUserDetail.tsx:166
+Delete my account section in Security -> apps/web/src/modules/settings/SecuritySettings.tsx:211
+Delete my account heading -> packages/shared/src/i18n/locales/en/kernel.json:3536
+What is deleted -> packages/shared/src/i18n/locales/en/kernel.json:3541
+What stays -> packages/shared/src/i18n/locales/en/kernel.json:3543
+6-digit code to confirm -> packages/shared/src/i18n/locales/en/kernel.json:3545
+Only admin cannot delete -> packages/shared/src/i18n/locales/en/kernel.json:3553
+Imported authors explainer, cannot sign in or be reactivated -> packages/shared/src/i18n/locales/en/kernel.json:2351
+Slack import creates placeholder users -> apps/api/src/cli/slack/import.ts:52
+Imported tab -> packages/shared/src/i18n/locales/en/kernel.json:2350
+Link to a person button -> apps/web/src/modules/settings/AdminUsers.tsx:324
+Link to a person label -> packages/shared/src/i18n/locales/en/kernel.json:2533
+Person field, Link and merge -> packages/shared/src/i18n/locales/en/kernel.json:2536
+Merge moves everything, removes imported account, cannot undo -> packages/shared/src/i18n/locales/en/kernel.json:2535
+Continue with email -> packages/shared/src/i18n/locales/en/kernel.json:2926
+6-digit code expires in 10 minutes -> packages/shared/src/i18n/locales/en/kernel.json:2923
+Sign in with a password -> packages/shared/src/i18n/locales/en/kernel.json:2927
+Change password in Security -> apps/web/src/modules/settings/SecuritySettings.tsx:153
+Sign-in methods section in Security for kernel:org:admin -> apps/web/src/modules/settings/SecuritySettings.tsx:214
+SIGN_IN_METHODS_SCOPE = kernel:org:admin -> apps/web/src/modules/settings/SignInMethodsSection.tsx:16
+Email sign-in link always on -> packages/shared/src/i18n/locales/en/kernel.json:5319
+Single sign-on, SsoProviders -> apps/web/src/modules/settings/SignInMethodsSection.tsx:46
+Add SSO Provider, OIDC -> packages/shared/src/i18n/locales/en/kernel.json:15
+Google credentials card -> apps/web/src/modules/settings/GoogleClientCard.tsx:108
+Require two-step verification for administrators -> packages/shared/src/i18n/locales/en/kernel.json:5294
+Authenticator app code at sign-in -> packages/shared/src/i18n/locales/en/kernel.json:5295
+Enable 2FA -> packages/shared/src/i18n/locales/en/kernel.json:2405
+First admin sign-in of a new workspace opens the setup conversation -> apps/api/src/modules/auth/auth.ts:549
+session lasts 30 days from last renewal -> apps/api/src/modules/auth/auth.ts:383
+lost renewal answer, 3 minute retry window -> apps/api/src/modules/auth/auth.ts:584
+reused old renewal token ends the sign-in's sessions -> apps/api/src/modules/auth/auth.ts:748
+Seat limit: agents/deactivated take no seat; invite, accept, SSO first sign-in, reactivate refused SEAT_LIMIT_REACHED with limit and used -> apps/api/src/modules/org/caps.ts:180 ; apps/api/src/modules/users/invites.ts:108 ; apps/api/src/modules/auth/auth.ts:242 ; apps/api/src/modules/auth/oauth-routes.ts:959 ; apps/api/src/modules/users/service.ts:430
+deactivation revokes the sessions' access tokens -> apps/api/src/modules/users/service.ts:395
+open real-time connections of an ended session close -> apps/api/src/lib/server.ts:558
+step-up: password or emailed code per action, code bound to its purpose, 10 minutes, account deletion code only -> apps/api/src/modules/auth/step-up.ts:28 ; apps/api/src/modules/auth/step-up.ts:85 ; apps/api/src/modules/auth/routes.ts:601
+password change or reset ends sessions and MCP connections -> apps/api/src/modules/auth/auth.ts:886 ; apps/api/src/modules/auth/routes.ts:1204
+password change or reset stops push to registered phones and browsers -> apps/api/src/modules/auth/auth.ts:889 ; apps/api/src/modules/auth/routes.ts:1206 ; apps/api/src/modules/push/end-user-push.ts:30
+deactivation stops push to registered phones and browsers -> apps/api/src/modules/users/service.ts:386
+step-up for a full-access MCP connection (OAuth consent or device approval, no agent binding), emailed code only, sent when the page opens -> apps/api/src/modules/mcp/full-access-step-up.ts:52 ; apps/api/src/modules/auth/step-up.ts:99 ; apps/api/src/modules/auth/device-flow-routes.ts:353 ; apps/api/src/modules/mcp/oauth-server-routes.ts:584 ; apps/api/src/modules/mcp/oauth-server-routes.ts:411

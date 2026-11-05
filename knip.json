@@ -1,0 +1,153 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignoreExportsUsedInFile": true,
+  "ignoreBinaries": [
+    "cosign",
+    "xattr",
+    "makensis",
+    "psql",
+    "sandbox-exec",
+    "mkfifo",
+    "xmllint"
+  ],
+  "ignore": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/migrations/**",
+    "apps/mobile/ios/**",
+    "apps/mobile/android/**",
+    "apps/desktop/src-tauri/target/**",
+    "apps/web/src/modules/sessions/__fixtures__/**",
+    "apps/desktop/sidecar/vendor/**"
+  ],
+  "workspaces": {
+    ".": {
+      "ignoreDependencies": [
+        "drizzle-orm",
+        "k6",
+        "@liaison/app-ui",
+        "zod"
+      ],
+      "entry": [
+        "scripts/templates/app-template/manifest-descriptor.ts",
+        "scripts/templates/app-template-web/index.ts",
+        "scripts/templates/app-template-web/Panel.tsx",
+        "scripts/with-test-lock.ts",
+        "scripts/test-unit-parallel.ts",
+        "scripts/test-e2e-parallel.ts",
+        "scripts/build-app-catalog.ts",
+        "scripts/app-signing/*.ts",
+        "scripts/gen-app-runtime-shims.ts",
+        "scripts/bench/*.ts",
+        "scripts/qa-coverage-verify.ts",
+        "scripts/spec-coverage.ts",
+        "scripts/refresh-demo-email-lists.ts",
+        "scripts/reconcile-connection.ts",
+        "scripts/vendor-atelier.ts",
+        "qa/load/*.js",
+        "qa/load/lib/*.js",
+        "qa/notifications/matrix.ts",
+        "vitest.config.ts",
+        ".claude/test-map.ts",
+        "deploy/lib/objects.ts",
+        "tools/pdfa-check/calibrate.ts",
+        "docs/_theme/docs.js"
+      ]
+    },
+    "apps/api": {
+      "ignoreDependencies": [
+        "pino-pretty"
+      ],
+      "ignoreUnresolved": [
+        "scripts/spec-coverage.ts"
+      ],
+      "entry": [
+        "test-support/index.e2e.ts",
+        "test-support/qa-seed-routes.ts",
+        "src/apps/*/manifest-descriptor.ts",
+        "src/apps/*/handlers.ts",
+        "src/apps/*/summarizers.ts",
+        "test-support/apps/*/manifest-descriptor.ts",
+        "test-support/apps/*/summarizers.ts",
+        "src/modules/apps/sandbox/sandbox-worker.ts",
+        "src/modules/apps/sandbox/__fixtures__/rss-read-throws.ts",
+        "src/modules/apps/__fixtures__/event-spin/summarizers.ts",
+        "test-support/security/__fixtures__/org-trace/*.ts",
+        "src/db/reconcile-catalog-boot.ts",
+        "src/tests/e2e/agent-coordination/fabrication-rate.ts",
+        "src/tests/e2e/helpers/mcp-test-client.ts",
+        "src/tests/e2e/helpers/sub-agent-s3-stub.ts",
+        "src/tests/e2e/helpers/timeline-interleave-stub.ts",
+        "src/tests/e2e/helpers/mailbox-harness.ts",
+        "src/tests/e2e/cell/boot-flat-seed.ts",
+        "src/modules/imports/reference/*.js",
+        "scripts/*.ts"
+      ]
+    },
+    "apps/desktop": {
+      "entry": [
+        "ci/*.ts",
+        "src/test-setup.ts"
+      ]
+    },
+    "apps/desktop/sidecar": {
+      "entry": [
+        "claude-auth.fixture.ts"
+      ]
+    },
+    "apps/mobile": {
+      "entry": [
+        "src/boot-entry.ts",
+        "ci/*.ts"
+      ]
+    },
+    "packages/app-ui": {
+      "entry": ["src/**/*.vitest.tsx"]
+    },
+    "packages/app-sdk": {
+      "entry": [
+        "src/types.test-d.ts"
+      ]
+    },
+    "apps/web": {
+      "entry": [
+        "src/modules/mailbox/search-index/measure-index-size.ts",
+        "public/_app-runtime/*.js",
+        "src/app-frame/runtime.ts",
+        "public/liaison-sw.js"
+      ]
+    },
+    "bundled-apps/ads": {
+      "entry": ["handlers.ts", "ui.tsx", "src/**/*.vitest.tsx"],
+      "ignoreDependencies": ["bun-types", "@testing-library/jest-dom"]
+    },
+    "bundled-apps/invoicing": {
+      "entry": ["handlers.ts", "ui.tsx", "src/**/*.vitest.tsx", "scripts/*.ts"],
+      "ignoreDependencies": ["bun-types", "@testing-library/jest-dom"]
+    },
+    "bundled-apps/boxtal": {
+      "entry": ["handlers.ts", "ui.tsx", "src/**/*.vitest.tsx", "vitest.config.ts"],
+      "ignoreDependencies": ["bun-types", "vitest", "@solidjs/testing-library"]
+    },
+    "bundled-apps/calls": {
+      "entry": ["handlers.ts"],
+      "ignoreDependencies": ["bun-types"]
+    },
+    "bundled-apps/monitoring": {
+      "entry": ["handlers.ts", "ui.tsx", "src/**/*.vitest.tsx", "vitest.config.ts"],
+      "ignoreDependencies": ["bun-types", "vitest", "@solidjs/testing-library"]
+    },
+    "bundled-apps/pennylane": {
+      "entry": ["handlers.ts"],
+      "ignoreDependencies": ["bun-types"]
+    },
+    "bundled-apps/shopify": {
+      "entry": ["handlers.ts", "ui.tsx", "scripts/*.ts"],
+      "ignoreDependencies": ["bun-types"]
+    },
+    "bundled-apps/social": {
+      "entry": ["handlers.ts", "ui.tsx", "src/**/*.vitest.tsx", "vitest.config.ts"],
+      "ignoreDependencies": ["bun-types", "vitest", "@solidjs/testing-library"]
+    }
+  }
+}

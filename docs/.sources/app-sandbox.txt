@@ -1,0 +1,50 @@
+Set up an org on first use: per-process registries filled per org -> apps/api/src/modules/apps/init.ts:681
+Boot sets up no org -> apps/api/src/index.ts:294
+An org not set up is set up now and awaited -> apps/api/src/modules/apps/init.ts:780
+Half the privileged pool in orgs in memory at once (at most 8), stale-stamp writes serialized -> apps/api/src/db/pool-plan.ts:51 ; apps/api/src/modules/apps/registration-lane.ts:101
+Outbox leaves a not-ready org's events unprocessed and retries after a growing delay -> apps/api/src/infra/events/outbox-worker.ts:297 ; apps/api/src/infra/events/outbox-worker.ts:246
+Event handler that writes (once) sets its org up first -> apps/api/src/infra/events/event-bus.ts:491
+OAuth callback sets its org up -> apps/api/src/modules/apps/connections/service.ts:2403
+Unknown or deleted org id skipped -> apps/api/src/modules/apps/init.ts:695
+Authenticated request ensures the org -> apps/api/src/middleware/auth.ts:117
+MCP request ensures the org -> apps/api/src/modules/mcp/mcp-auth-middleware.ts:48
+WebSocket connection ensures the org -> apps/api/src/index.ts:174
+Background job, outbox, state materializer, webhooks go through the ensure entry -> apps/api/src/modules/apps/init.ts:681
+Outbox ensures the org -> apps/api/src/infra/events/outbox-worker.ts:166
+Attention state refresh ensures the org -> apps/api/src/modules/attention/state-materializer.ts:354
+Search reindex ensures each org -> apps/api/src/modules/search/reindex.ts:554
+Inbound webhook sets up an existing org first; failure logged, route continues -> apps/api/src/app.ts:1262
+Two halves: in-memory registries vs org rows + setup hooks -> apps/api/src/modules/apps/init.ts:571
+Setup hook on a stale stamp: default saved views -> apps/api/src/modules/apps/init.ts:557
+Google login provider reconciled on every first touch, whatever the stamp -> apps/api/src/modules/apps/init.ts:609
+Google reconcile writes only when the stored provider differs -> apps/api/src/modules/auth/google-login-provider.ts:45
+Stamp column kernel.organizations.app_setup_stamp -> apps/api/src/db/schema/kernel/organizations.ts:32
+Stamp = hash of build id and apps sorted with versions -> apps/api/src/modules/apps/setup-stamp.ts:61
+Stamp apps = the org's default apps plus extra apps -> apps/api/src/modules/apps/init.ts:593
+Writes run when an app is in error or a row not at its version -> apps/api/src/modules/apps/setup-stamp.ts:118
+A deleted manifest role is re-seeded only when the stamp changes (stamp match skips the role writes) -> apps/api/src/modules/apps/init.ts:608
+Stamp written only after hooks ran and every app registered -> apps/api/src/modules/apps/init.ts:619
+Build part = LIAISON_VERSION; dev = per-process nonce -> apps/api/src/modules/apps/setup-stamp.ts:46
+LIAISON_VERSION defaults to dev -> apps/api/src/lib/env.ts:830
+Image build arg LIAISON_VERSION -> apps/api/Dockerfile:95
+Writes serialized by the org-setup advisory lock; double-checked re-read -> apps/api/src/modules/apps/setup-stamp.ts:9
+Re-read under the lock before writing -> apps/api/src/modules/apps/init.ts:604
+Roles all, api, worker -> apps/api/src/lib/process-role.ts:2
+Outbox drains only in the lease holder -> apps/api/src/infra/events/outbox-worker.ts:442
+WebSocket state partly per process -> apps/api/src/infra/websocket.ts:443
+App event subscription runs once, in the publishing process -> apps/api/src/modules/apps/runtime.ts:3366
+A peer's copy of an event skips once handlers -> apps/api/src/infra/events/event-bus.ts:839
+WebSocket manager: local sockets per process, live state shared in Redis -> apps/api/CLAUDE.md:52
+Mail IMAP bridge methods imap_fetch and imap_writeBack -> apps/api/src/modules/apps/sandbox/bridge/egress.ts:450
+imap_writeBack refused to a read-only execution -> apps/api/src/modules/apps/sandbox/rpc-bridge.ts:193
+Copy filed in Sent after an IMAP mailbox's smtp_send -> apps/api/src/modules/apps/sandbox/bridge/egress.ts:137 ; apps/api/src/modules/apps/sandbox/bridge/egress.ts:570
+One app's background jobs hold at most half the background workers -> apps/api/src/modules/apps/sandbox/worker-pool.ts:899
+Jobs run within their manifest timeoutMs (60 s default) -> apps/api/src/modules/apps/runtime.ts:3545
+app's own error after an upstream error answer reaches the caller sanitized, crash keeps the connection/host sentence -> apps/api/src/modules/apps/sandbox/upstream-trace.ts:115 ; apps/api/src/modules/apps/execute-tool.ts:5893
+executeTool target runs with the target app's access plus the caller's (RLS union) -> apps/api/src/modules/apps/execute-tool.ts:4004 ; apps/api/src/modules/apps/execute-tool.ts:5124
+target app copies a handed-over file onto its own record under its own write access -> apps/api/src/modules/apps/sandbox/bridge/tickets.ts:353 ; apps/api/src/modules/apps/sandbox/bridge/tickets.ts:686 ; apps/api/src/apps/tickets/tools.ts:170
+a file copied by a webhook or job records no uploader -> apps/api/src/modules/files/attach.ts:370
+One host dispatcher per call, bound to that call's bridge; __ctx built from a constant shim and the method names as data -> apps/api/src/modules/apps/sandbox/executor.ts:454 ; apps/api/src/modules/apps/sandbox/executor.ts:355
+A trusted attention provider evaluates its tree-shaken bundle, built once per bundle version -> apps/api/src/modules/apps/attention-aggregator.ts:168 ; apps/api/src/modules/apps/sandbox/bundle-shake.ts:104
+files_importAttachment and pdf.render refused at the storage limit for a person or agent; system calls and immutable-with-retention parents exempt, decided by the host -> apps/api/src/modules/apps/sandbox/bridge/files.ts:210 ; apps/api/src/modules/pdf/render.ts:267 ; apps/api/src/modules/apps/sandbox/bridge/platform.ts:246 ; apps/api/src/modules/files/service.ts:353 ; apps/api/src/modules/apps/app-registries.ts:859
+files_analyzeDocument: declared capability, own files only, PDF or image, apps media surface, credits -> apps/api/src/modules/apps/sandbox/bridge/files.ts:901 ; apps/api/src/modules/apps/manifest-schema.ts:80 ; apps/api/src/modules/agent/media/media-analysis-constants.ts:123

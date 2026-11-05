@@ -1,0 +1,182 @@
+{
+  "app_knowledge.collection_memberships": {
+    "rows": 6,
+    "digest": "a675e5be0d7a455b"
+  },
+  "app_knowledge.collections": {
+    "rows": 3,
+    "digest": "55a436d4b7947451"
+  },
+  "app_knowledge.documents": {
+    "rows": 13,
+    "digest": "84fc2f68f4c9438e"
+  },
+  "app_mail.accounts": {
+    "rows": 3,
+    "digest": "09abf5fd7ec4d53e"
+  },
+  "app_mail.conversations": {
+    "rows": 8,
+    "digest": "fca6950b13ff6abd"
+  },
+  "app_mail.messages": {
+    "rows": 11,
+    "digest": "9214309d53adfa6c"
+  },
+  "app_tickets.categories": {
+    "rows": 5,
+    "digest": "853c4db74c17eff9"
+  },
+  "app_tickets.inboxes": {
+    "rows": 3,
+    "digest": "dace40c699f34104"
+  },
+  "app_tickets.messages": {
+    "rows": 17,
+    "digest": "edf7af20ca74fb9d"
+  },
+  "app_tickets.ticket_reads": {
+    "rows": 1,
+    "digest": "31b5f700a4cdd9d9"
+  },
+  "app_tickets.tickets": {
+    "rows": 12,
+    "digest": "b629af799ebf8481"
+  },
+  "kernel.agent_memory": {
+    "rows": 12,
+    "digest": "5a04a0e8d1fd97b8"
+  },
+  "kernel.agents": {
+    "rows": 7,
+    "digest": "24a85e8a77b3cab4"
+  },
+  "kernel.app_seeded_assets": {
+    "rows": 4,
+    "digest": "adf5dffe5a68fea9"
+  },
+  "kernel.approval_requests": {
+    "rows": 8,
+    "digest": "8d2159a87275c408"
+  },
+  "kernel.apps": {
+    "rows": 16,
+    "digest": "e695cb10e154bc7b"
+  },
+  "kernel.attention_events": {
+    "rows": 46,
+    "digest": "e0ccbce467f9c74b"
+  },
+  "kernel.audit_log": {
+    "rows": 229,
+    "digest": "71a42e765e7edc3f"
+  },
+  "kernel.connected_accounts": {
+    "rows": 5,
+    "digest": "5f59780120ce4fd9"
+  },
+  "kernel.contacts": {
+    "rows": 4,
+    "digest": "ae57a38a89a54c5c"
+  },
+  "kernel.credit_balances": {
+    "rows": 1,
+    "digest": "a5e57a81685db988"
+  },
+  "kernel.disabled_app_skills": {
+    "rows": 1,
+    "digest": "7c60b3493b8c2c19"
+  },
+  "kernel.durable_consumer_marks": {
+    "rows": 229,
+    "digest": "95f9009e586cedf6"
+  },
+  "kernel.invitations": {
+    "rows": 4,
+    "digest": "3c789df25b468483"
+  },
+  "kernel.message_reactions": {
+    "rows": 7,
+    "digest": "5e78563c82d70751"
+  },
+  "kernel.messages": {
+    "rows": 111,
+    "digest": "bd285d15319b7473"
+  },
+  "kernel.notification_deliveries": {
+    "rows": 506,
+    "digest": "792fe70cf9d3d58a"
+  },
+  "kernel.organizations": {
+    "rows": 1,
+    "digest": "1b494b3774e4e3a9"
+  },
+  "kernel.pending_events": {
+    "rows": 224,
+    "digest": "599c1085191a69c0"
+  },
+  "kernel.role_dimension_grants": {
+    "rows": 1,
+    "digest": "e4f244d9734ab9c4"
+  },
+  "kernel.role_scope_grants": {
+    "rows": 272,
+    "digest": "c737feb7cda069d8"
+  },
+  "kernel.roles": {
+    "rows": 31,
+    "digest": "4260fe41bb0005eb"
+  },
+  "kernel.routine_runs": {
+    "rows": 6,
+    "digest": "3f9173c26325e3d0"
+  },
+  "kernel.routines": {
+    "rows": 6,
+    "digest": "d50c10bc1ef9ad28"
+  },
+  "kernel.saved_views": {
+    "rows": 9,
+    "digest": "87ec6b80a04179c7"
+  },
+  "kernel.shareable_resource_types": {
+    "rows": 2,
+    "digest": "4f1d5986e23fe9be"
+  },
+  "kernel.skills": {
+    "rows": 6,
+    "digest": "0f76852ca9e44e09"
+  },
+  "kernel.thread_participants": {
+    "rows": 48,
+    "digest": "5310223b082a1c83"
+  },
+  "kernel.threads": {
+    "rows": 20,
+    "digest": "1f6c5efff3974f7b"
+  },
+  "kernel.timeline_entries": {
+    "rows": 116,
+    "digest": "1eb38f49b3530c20"
+  },
+  "kernel.user_dimension_grants": {
+    "rows": 11,
+    "digest": "5a7b6aec105f752f"
+  },
+  "kernel.user_roles": {
+    "rows": 5,
+    "digest": "195328f71182edfb"
+  },
+  "kernel.user_scope_grants": {
+    "rows": 1,
+    "digest": "4c08e5a383728609"
+  },
+  "kernel.user_thread_state": {
+    "rows": 48,
+    "digest": "6341c993d30f6662"
+  },
+  "kernel.users": {
+    "rows": 5,
+    "digest": "7c759c0696e21c86"
+  }
+}

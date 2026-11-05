@@ -1,0 +1,94 @@
+Meta + Google Ads + Merchant Center; reads ungated, spend writes incl pause gated -> bundled-apps/ads/README.md:3
+System User, Admin on ad account, non-expiring token, ads_management/ads_read/pages_show_list -> bundled-apps/ads/README.md:58
+Connections section, ads:admin:connection -> bundled-apps/ads/app.manifest.json:3043
+Connect button -> apps/web/src/modules/settings/app-page/ConnectionsBlock.tsx:416
+meta connection purpose Meta ads account -> bundled-apps/ads/app.manifest.json:239
+System User access token field -> bundled-apps/ads/app.manifest.json:248
+Ad account id (act_<id>) field -> bundled-apps/ads/app.manifest.json:253
+Default Facebook Page id field -> bundled-apps/ads/app.manifest.json:258
+google + google-config both required for google_/merchant_ tools -> bundled-apps/ads/README.md:45
+Google Cloud OAuth client, callback redirect URI -> bundled-apps/ads/README.md:92
+Google Ads account connection -> bundled-apps/ads/app.manifest.json:268
+Client ID / Client secret / Connect via OAuth -> apps/web/src/modules/settings/ConnectAppDialog.tsx:296
+sign in with account with Ads + Merchant access, grant Ads + Content -> bundled-apps/ads/README.md:101
+Google Ads API settings connection -> bundled-apps/ads/app.manifest.json:326
+Google Ads optional; no developer token; Explorer access via Cloud console ads-apis overview; not the API Center form -> bundled-apps/ads/app.manifest.json:333
+manager vs ad account, Accounts > Performance, (This manager) -> bundled-apps/ads/app.manifest.json:334
+Legacy developer token field, ignored -> bundled-apps/ads/app.manifest.json:358
+MCC login customer id field -> bundled-apps/ads/app.manifest.json:342
+Operating customer id field -> bundled-apps/ads/app.manifest.json:347
+Merchant Center account id field, optional, empty = not configured -> bundled-apps/ads/README.md:86
+Separate Merchant Center account, optional, preferred for merchant reads -> bundled-apps/ads/app.manifest.json:292
+org-owned, else not_connected -> bundled-apps/ads/README.md:110
+Account status section -> bundled-apps/ads/app.manifest.json:3057
+Meta Ads / Google Ads / Merchant Center status arms -> bundled-apps/ads/src/ui/AccountStatus.tsx:115
+activity bar Ads -> bundled-apps/ads/app.manifest.json:3075
+sidebar Dashboard / Guide / Campaigns / Ads / Audiences -> bundled-apps/ads/src/ui/sidebar.tsx:141
+Dashboard subtitle spend, blended MER, experiments, health -> bundled-apps/ads/src/ui/Dashboard.tsx:458
+Daily Spend / By Campaign / Active Experiments / Health / Pending Approvals -> bundled-apps/ads/src/ui/Dashboard.tsx:630
+Guide sections Start here / What the agent will never do -> bundled-apps/ads/src/ui/Guide.tsx:147
+Campaigns lists Meta Ads and Google Ads -> bundled-apps/ads/src/ui/Campaigns.tsx:362
+Ad Sets in campaign detail -> bundled-apps/ads/src/ui/Campaigns.tsx:230
+Ads creative thumbnails, click to preview -> bundled-apps/ads/src/ui/Ads.tsx:161
+Audiences with delivery and size -> bundled-apps/ads/src/ui/Audiences.tsx:51
+create in Ads Manager empty states -> bundled-apps/ads/src/ui/Campaigns.tsx:368
+Pause button calls gated pause -> bundled-apps/ads/src/ui/Campaigns.tsx:189
+Resume button calls set_status ACTIVE -> bundled-apps/ads/src/ui/Campaigns.tsx:197
+Google create always paused, budgets in major units, read currency, review negatives -> bundled-apps/ads/app.manifest.json:127
+admin role holds all scopes incl ads:approve -> bundled-apps/ads/app.manifest.json:198
+member role, no approve/connection -> bundled-apps/ads/app.manifest.json:217
+scopes list -> bundled-apps/ads/app.manifest.json:181
+ads:approve approver scope -> docs/reference/scopes.md:67
+insights_query -> bundled-apps/ads/app.manifest.json:347
+campaigns_list -> bundled-apps/ads/app.manifest.json:406
+adsets_list -> bundled-apps/ads/app.manifest.json:428
+ads_list -> bundled-apps/ads/app.manifest.json:454
+targeting_search -> bundled-apps/ads/app.manifest.json:503
+media_list -> bundled-apps/ads/app.manifest.json:538
+audiences_list -> bundled-apps/ads/app.manifest.json:561
+pages_list -> bundled-apps/ads/app.manifest.json:576
+account_info -> bundled-apps/ads/app.manifest.json:586
+graph_get -> bundled-apps/ads/app.manifest.json:596
+creative_get -> bundled-apps/ads/app.manifest.json:618
+ad_preview -> bundled-apps/ads/app.manifest.json:637
+counts -> bundled-apps/ads/app.manifest.json:667
+pending_approvals_list -> bundled-apps/ads/app.manifest.json:677
+create_campaign gated -> bundled-apps/ads/app.manifest.json:697
+create_adset gated -> bundled-apps/ads/app.manifest.json:786
+create_ad gated -> bundled-apps/ads/app.manifest.json:1021
+create_creative gated -> bundled-apps/ads/app.manifest.json:1063
+upload_image gated -> bundled-apps/ads/app.manifest.json:1282
+update_budget gated -> bundled-apps/ads/app.manifest.json:1312
+set_status gated -> bundled-apps/ads/app.manifest.json:1405
+create_custom_audience gated -> bundled-apps/ads/app.manifest.json:1474
+create_lookalike_audience gated -> bundled-apps/ads/app.manifest.json:1571
+add_users_to_audience gated -> bundled-apps/ads/app.manifest.json:1614
+pause gated -> bundled-apps/ads/app.manifest.json:1661
+google_campaigns_list -> bundled-apps/ads/app.manifest.json:1688
+google_adgroups_list -> bundled-apps/ads/app.manifest.json:1710
+google_ads_list -> bundled-apps/ads/app.manifest.json:1725
+google_insights_query -> bundled-apps/ads/app.manifest.json:1744
+google_account_info -> bundled-apps/ads/app.manifest.json:1766
+google_search_terms -> bundled-apps/ads/app.manifest.json:1776
+google_recommendations_list -> bundled-apps/ads/app.manifest.json:1786
+google_pause gated -> bundled-apps/ads/app.manifest.json:1802
+google_create_campaign gated -> bundled-apps/ads/app.manifest.json:1849
+google_create_adgroup gated -> bundled-apps/ads/app.manifest.json:1958
+google_create_ad gated -> bundled-apps/ads/app.manifest.json:2016
+google_update_budget gated -> bundled-apps/ads/app.manifest.json:2067
+google_set_status gated -> bundled-apps/ads/app.manifest.json:2132
+google_add_negative_keywords gated -> bundled-apps/ads/app.manifest.json:2212
+google_create_conversion_action gated -> bundled-apps/ads/app.manifest.json:2265
+merchant_feed_status -> bundled-apps/ads/app.manifest.json:2294
+merchant_product_issues -> bundled-apps/ads/app.manifest.json:2304
+experiment_open -> bundled-apps/ads/app.manifest.json:2319
+experiment_update -> bundled-apps/ads/app.manifest.json:2381
+experiment_close -> bundled-apps/ads/app.manifest.json:2445
+experiment_list -> bundled-apps/ads/app.manifest.json:2472
+manual_spend_add gated -> bundled-apps/ads/app.manifest.json:2502
+manual_spend_list -> bundled-apps/ads/app.manifest.json:2549
+dealer_profile_upsert gated -> bundled-apps/ads/app.manifest.json:2574
+dealer_profiles_list -> bundled-apps/ads/app.manifest.json:2622
+metrics_list -> bundled-apps/ads/app.manifest.json:2641
+metrics_run -> bundled-apps/ads/app.manifest.json:2651
+audience_erasure_sweep -> bundled-apps/ads/app.manifest.json:2685

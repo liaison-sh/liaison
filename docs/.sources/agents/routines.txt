@@ -1,0 +1,185 @@
+Routine runs as owner, scope drift check -> apps/api/src/modules/agent/routines/routine-worker.ts:18
+Run overlap skipped -> apps/api/src/modules/agent/routines/routine-worker.ts:12
+Event-fired ticks defer instead of dropping -> apps/api/src/modules/agent/routines/routine-worker.ts:13
+Final message posted to routine output thread automatically -> packages/shared/src/validation/agent/routines.ts:210
+Routine reports back to the conversation it was created from -> apps/api/src/modules/agent/routines/routine-report.ts:8
+Report labelled Routine name -> apps/api/src/modules/agent/routines/routine-report.ts:12
+Trigger decides when, never whether a step is gated -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1133
+Agents tab Routines + New routine -> packages/shared/src/i18n/locales/en/kernel.json:315
+New routine tab title -> packages/shared/src/i18n/locales/en/kernel.json:283
+Role agent write needs kernel:agents:admin, personal must be caller's own -> packages/shared/src/validation/agent/routines.ts:223
+Type label -> packages/shared/src/i18n/locales/en/kernel.json:76
+Recurring option -> packages/shared/src/i18n/locales/en/kernel.json:77
+One-shot option -> packages/shared/src/i18n/locales/en/kernel.json:78
+When an event happens option -> packages/shared/src/i18n/locales/en/kernel.json:92
+Name rule kebab-case lowercase hyphens -> packages/shared/src/validation/agent/routines.ts:24
+Routine name placeholder -> packages/shared/src/i18n/locales/en/kernel.json:2237
+Description placeholder -> packages/shared/src/i18n/locales/en/kernel.json:79
+Schedule label -> packages/shared/src/i18n/locales/en/kernel.json:35
+Trigger label -> packages/shared/src/i18n/locales/en/kernel.json:93
+Prompt label -> packages/shared/src/i18n/locales/en/kernel.json:36
+Prompt must spell out steps, no baked ids -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5180
+The tick runs exactly what is written -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5180
+Visibility Personal Shared -> packages/shared/src/i18n/locales/en/kernel.json:81
+Visibility semantics personal owner-private shared all active members -> packages/shared/src/validation/agent/routines.ts:200
+Agent model pin and reasoning fallback -> packages/shared/src/validation/agent/routines.ts:241
+Agent model label -> packages/shared/src/i18n/locales/en/kernel.json:38
+Allowed scopes label -> packages/shared/src/i18n/locales/en/kernel.json:65
+Scopes ceiling minimal set -> packages/shared/src/validation/agent/routines.ts:187
+Write scope only if prompt performs the write -> packages/shared/src/validation/agent/routines.ts:193
+Scopes picker hint and empty text -> packages/shared/src/i18n/locales/en/kernel.json:138
+Search the scopes you hold placeholder -> packages/shared/src/i18n/locales/en/kernel.json:139
+routine_tool_scopes tool -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5357
+Runs on field -> packages/shared/src/i18n/locales/en/kernel.json:50
+Runs on Cloud -> packages/shared/src/i18n/locales/en/kernel.json:52
+Runs on My computer -> packages/shared/src/i18n/locales/en/kernel.json:53
+Runs on My computer else the cloud -> packages/shared/src/i18n/locales/en/kernel.json:54
+Runs on options cloud node node_else_cloud -> packages/shared/src/validation/agent/routines.ts:123
+Credits gate only cloud runs -> apps/api/src/modules/nodes/routine-dispatch.ts:6
+Credits are managed-edition only -> apps/api/src/modules/agent/credits/credit-meter.ts:1296
+Scopes field label -> packages/shared/src/i18n/locales/en/kernel.json:136
+Offline node holds the run and owner is notified -> apps/api/src/modules/nodes/routine-dispatch.ts:16
+Node placement fields Folder Repository URL Model -> packages/shared/src/i18n/locales/en/kernel.json:144
+Folder default The agent's folder -> packages/shared/src/i18n/locales/en/kernel.json:146
+Model default The agent's model -> packages/shared/src/i18n/locales/en/kernel.json:147
+Only owner chooses node placement -> packages/shared/src/i18n/locales/en/kernel.json:148
+Scheduled run uses owner config, event run isolated -> apps/api/src/modules/nodes/routine-dispatch.ts:19
+Event run capped at NODE_EVENT_RUN_MAX_LEVEL default strict -> apps/api/src/lib/env.ts:120
+Event runs never exceed the cap -> apps/api/src/modules/nodes/routine-dispatch.ts:121
+Interrupted node job owner decides -> apps/api/src/modules/nodes/jobs.ts:8
+Who approves its drafts -> packages/shared/src/i18n/locales/en/kernel.json:61
+Approver default and owner options -> packages/shared/src/i18n/locales/en/kernel.json:63
+Approver owner semantics -> packages/shared/src/validation/agent/routines.ts:160
+Token budget field -> packages/shared/src/i18n/locales/en/kernel.json:41
+Token budget hint -> packages/shared/src/i18n/locales/en/kernel.json:42
+Hard token limit field -> packages/shared/src/i18n/locales/en/kernel.json:43
+Hard token limit hint -> packages/shared/src/i18n/locales/en/kernel.json:44
+Token max 50 million -> packages/shared/src/validation/agent/routines.ts:93
+Token numbers must be whole above zero -> packages/shared/src/i18n/locales/en/kernel.json:49
+Presets Daily Weekdays Weekly Monthly Custom -> packages/shared/src/i18n/locales/en/kernel.json:105
+Weekday names -> packages/shared/src/i18n/locales/en/kernel.json:107
+Custom cron expression label -> packages/shared/src/i18n/locales/en/kernel.json:99
+Cron is 5-field no seconds -> packages/shared/src/validation/agent/routines.ts:40
+IANA timezone -> packages/shared/src/validation/agent/routines.ts:45
+Monthly on the 1st -> packages/shared/src/i18n/locales/en/kernel.json:2222
+One-shot Run once at -> packages/shared/src/i18n/locales/en/kernel.json:90
+One-shot hint then marked done -> packages/shared/src/i18n/locales/en/kernel.json:91
+One-shot date must be in the future -> packages/shared/src/i18n/locales/en/kernel.json:101
+Event routine Search events -> packages/shared/src/i18n/locales/en/kernel.json:95
+Event hint runs every time -> packages/shared/src/i18n/locales/en/kernel.json:97
+Event string app:entity:action -> packages/shared/src/validation/agent/routines.ts:64
+Sender filter only for mail:message:create -> packages/shared/src/validation/agent/routines.ts:152
+Only from field -> packages/shared/src/i18n/locales/en/kernel.json:55
+Only from hint -> packages/shared/src/i18n/locales/en/kernel.json:56
+Sender filter checked before the agent runs -> packages/shared/src/validation/agent/routines.ts:140
+Event coalesce window 30 s -> apps/api/src/infra/jobs/event-routine-subscriber.ts:33
+Create routine button -> packages/shared/src/i18n/locales/en/kernel.json:86
+create_routine tool gated, kernel:routines:write -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5372
+Approval card lists next three fire times -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:4938
+Run now button -> packages/shared/src/i18n/locales/en/kernel.json:66
+Run now disabled states -> packages/shared/src/i18n/locales/en/kernel.json:152
+Runs tab -> packages/shared/src/i18n/locales/en/kernel.json:163
+Run trigger labels -> packages/shared/src/i18n/locales/en/kernel.json:154
+Run trigger event -> packages/shared/src/i18n/locales/en/kernel.json:155
+Run trigger manual -> packages/shared/src/i18n/locales/en/kernel.json:156
+Run trigger retry -> packages/shared/src/i18n/locales/en/kernel.json:157
+Open the full log -> packages/shared/src/i18n/locales/en/kernel.json:162
+Open output thread -> packages/shared/src/i18n/locales/en/kernel.json:68
+Show older runs -> packages/shared/src/i18n/locales/en/kernel.json:166
+run_routine_now with event_data simulates trigger -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5463
+Run statuses -> packages/shared/src/i18n/locales/en/kernel.json:347
+Skipped: missing access status -> packages/shared/src/i18n/locales/en/kernel.json:348
+Skipped: no credits status -> packages/shared/src/i18n/locales/en/kernel.json:349
+Routine statuses -> packages/shared/src/i18n/locales/en/kernel.json:342
+Paused: no credits -> packages/shared/src/i18n/locales/en/kernel.json:343
+Paused label -> packages/shared/src/i18n/locales/en/kernel.json:341
+Done status -> packages/shared/src/i18n/locales/en/kernel.json:340
+Owner alerted on failure or pause on Home -> apps/api/src/modules/agent/routines/routine-alert.ts:3
+Home group Routines failed or paused -> packages/shared/src/i18n/locales/en/kernel.json:1424
+Scope fix hint -> packages/shared/src/i18n/locales/en/kernel.json:142
+Paused banner testid -> apps/web/src/modules/agent/RoutineDetail.tsx:532
+Settings panel Edit -> apps/web/src/modules/agent/RoutineDetail.tsx:585
+Post to field -> packages/shared/src/i18n/locales/en/kernel.json:37
+Post to destination reporting -> apps/api/src/modules/agent/routines/routine-report.ts:9
+Routines list groups Running and Switched off -> packages/shared/src/i18n/locales/en/kernel.json:244
+Mine and Shared filters -> packages/shared/src/i18n/locales/en/kernel.json:324
+Switched off no next run -> packages/shared/src/i18n/locales/en/kernel.json:331
+App templates group -> packages/shared/src/i18n/locales/en/kernel.json:334
+Built in template chip -> packages/shared/src/i18n/locales/en/kernel.json:335
+Enable template button -> packages/shared/src/i18n/locales/en/kernel.json:337
+morning-brief template weekday 08:00 -> apps/api/src/modules/agent/routines/kernel-routine-templates.ts:59
+Morning brief content: mail, approvals, tasks due -> apps/api/src/modules/agent/routines/kernel-routine-templates.ts:57
+Morning brief notifies via notify_user -> apps/api/src/modules/agent/routines/kernel-routine-templates.ts:51
+Morning brief timezone is the owner's -> apps/api/src/modules/agent/routines/kernel-routine-templates.ts:60
+Approver default Whoever may approve them -> packages/shared/src/i18n/locales/en/kernel.json:62
+Run now unavailable when app off -> packages/shared/src/i18n/locales/en/kernel.json:151
+enable_routine_template tool -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5552
+reset_routine_to_template tool -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5591
+update_routine tool -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5422
+delete_routine tool -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5446
+web_watch tool routine-only diff by key -> apps/api/src/modules/agent/tools/kernel-tools.ts:731
+watch_state tool routine-only -> apps/api/src/modules/agent/tools/kernel-tools.ts:718
+Distinct key per watched page -> apps/api/src/modules/agent/tools/kernel-tools.ts:748
+list_routines tool -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1665
+list_routine_events tool -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1677
+kernel:routines:read -> apps/api/src/modules/permissions/scope-catalog.ts:70
+kernel:routines:write -> apps/api/src/modules/permissions/scope-catalog.ts:75
+kernel:routines:run -> apps/api/src/modules/permissions/scope-catalog.ts:180
+kernel:routines:delegate -> apps/api/src/modules/permissions/scope-catalog.ts:185
+ROUTINE_OVERLAP_DEFER_DELAY_MS default 60000 -> apps/api/src/infra/jobs/kernel-jobs.ts:45
+ROUTINE_OVERLAP_MAX_DEFERRALS default 60 -> apps/api/src/infra/jobs/kernel-jobs.ts:49
+ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS default 14 -> apps/api/src/modules/agent/routines/routine-event-reconciler.ts:60
+ROUTINE_EVENT_RECONCILE_MAX_RETRIES default 3 -> apps/api/src/modules/agent/routines/routine-event-reconciler.ts:63
+routines reconcile usage and dry run -> apps/api/src/cli/commands.ts:518
+scheduled job looks back 14 days; one-shot backfill -> apps/api/src/cli/commands.ts:522
+--max-per-routine default 5 -> apps/api/src/cli/commands.ts:531
+--execute enqueues retries and raises or resolves incidents -> apps/api/src/cli/commands.ts:536
+Where a routine posts: asked-in conversation, else owner's personal-agent DM, role agent none -> apps/api/src/modules/agent/routines/routine-report.ts:137
+reportThreadId accepts an id or a #handle, owner must be a member, null = own thread -> packages/shared/src/validation/agent/routines.ts:181
+Running line settles to finished / did not finish -> apps/api/src/modules/agent/routines/routine-report.ts:447
+Running line labels -> packages/shared/src/i18n/locales/en/kernel.json:2904
+Approval card in the routine's conversation, one request, audience rules -> apps/api/src/modules/agent/routines/routine-report.ts:569
+Approval post and final message are unread for members including the owner -> apps/api/src/modules/attention/kernel-translations.ts:102
+Post to picker: conversations the owner is a member of, or Only its own run thread -> apps/web/src/modules/agent/RoutineDetail.tsx:247
+Only its own run thread label -> packages/shared/src/i18n/locales/en/kernel.json:1848
+Output thread internal, one "where it posts" field -> packages/shared/src/validation/agent/routines.ts:314
+Existing conversation output threads move to the destination -> apps/api/src/db/migrations/0219_routine_posts_to.sql:1
+Mail-started run marks the thread as outside content -> apps/api/src/infra/jobs/kernel-jobs.ts:756
+Credit-paused routine re-checks at each tick and resumes -> apps/api/src/modules/agent/routines/routine-worker.ts:897
+Credit-paused routine resumes to Active -> apps/api/src/modules/agent/routines/routine-worker.ts:1019
+Credit-paused routines stay scheduled across restarts -> apps/api/src/infra/jobs/kernel-jobs.ts:1137
+Scope-paused routine records Skipped: missing access per skipped run -> apps/api/src/modules/agent/routines/routine-worker.ts:680
+A run waits at a held step instead of carrying on -> apps/api/src/modules/agent/routines/routine-run-resume.ts:14
+A held step with references to its result: the run first proposes the steps chained on them -> apps/api/src/modules/agent/runtime/agent-service.ts:335
+The turn stops after the step that parked the call -> apps/api/src/modules/agent/runtime/agent-service.ts:251
+Waiting for approval run status -> packages/shared/src/i18n/locales/en/kernel.json:361
+Routine name is waiting for an approval line -> packages/shared/src/i18n/locales/en/kernel.json:2920
+Approved: the call runs and the same run carries on with its result -> apps/api/src/modules/agent/routines/routine-run-resume.ts:24
+Several approvals: carries on once all are decided -> apps/api/src/modules/agent/routines/routine-run-resume.ts:290
+Denied, expired or withdrawn: carries on once, told it did not run, then ends -> apps/api/src/modules/agent/routines/routine-run-resume.ts:657
+Waits again up to 5 times, then ends naming the pending requests -> apps/api/src/modules/agent/routines/routine-run-resume.ts:86
+Final message posted once, at the real end -> apps/api/src/modules/agent/routines/routine-run-resume.ts:48
+A waiting run uses no credits; the part after the decision counts like a run -> apps/api/src/modules/agent/routines/routine-run-resume.ts:52
+Other runs go on while one waits (lock released) -> apps/api/src/modules/agent/routines/routine-run-resume.ts:21
+Switched off or paused while waiting: the run ends without carrying on -> apps/api/src/modules/agent/routines/routine-run-resume.ts:637
+Owner lost a scope while waiting: run ends, routine pauses -> apps/api/src/modules/agent/routines/routine-run-resume.ts:644
+Unpicked runs resumed by the sweep, expired approvals end the run -> apps/api/src/modules/agent/routines/routine-run-resume.ts:856
+A scheduled run is skipped while one waits; event runs go on -> apps/api/src/modules/agent/routines/routine-worker.ts:1087
+A mail-started run searches and fetches without waiting, within the web-read limits -> apps/api/src/modules/apps/execute-tool.ts:4019,4029,4679 ; apps/api/src/modules/agent/tools/web-read-guardrails.ts:166,194
+Event routine tick enqueued once, by the publishing process -> apps/api/src/infra/jobs/event-routine-subscriber.ts:217
+Routine change announced to every process -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:2671
+Routine pause or delete announced to every process -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:2712
+App routines paused or resumed announced to every process -> apps/api/src/modules/apps/reconcile-assets.ts:181
+A run waits for every step of a sequence and carries on once, after the last step -> apps/api/src/modules/approvals/event-data.ts:350 ; apps/api/src/modules/agent/routines/routine-run-resume.ts:95
+A failed call or sequence step: later steps never run, the run carries on told the real error and proposes a corrected request -> apps/api/src/modules/approvals/cascade-fail.ts:142,160 ; apps/api/src/modules/agent/routines/routine-run-resume.ts:458,560
+while chaining only tool lookup, parking calls and @ref calls run -> apps/api/src/modules/agent/tools/tool-bridge.ts:94
+A run that needs the owner's locked private mailbox waits (status, an item in the owner's approvals list with Run now and Dismiss, the owner alone) -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:242 ; apps/api/src/modules/agent/routines/routine-mailbox-wait.ts:273 ; apps/api/src/modules/attention/kernel-translations.ts:233 ; apps/web/src/modules/shell/approval-facets.ts:36 ; packages/shared/src/i18n/locales/en/kernel.json:362 ; packages/shared/src/i18n/locales/en/kernel.json:5864
+Run now runs it from the owner's window, browser opens the mail as for a typed turn; a locked mailbox shows the unlock card in the item and the run starts once unlocked -> apps/web/src/modules/agent/RoutineMailboxWaitRow.tsx:103 ; apps/web/src/modules/agent/RoutineMailboxWaitRow.tsx:217 ; apps/api/src/modules/agent/routines/routine-mailbox-wait.ts:339
+Only the owner; someone else's routine or edit is refused -> apps/api/src/modules/agent/routines/routine-mailbox-wait.ts:370 ; apps/api/src/modules/agent/routines/routine-mailbox-wait.ts:382
+Dismiss: the run does not happen, status Dismissed, item leaves the list -> apps/api/src/modules/agent/routines/routine-mailbox-wait.ts:437 ; packages/shared/src/i18n/locales/en/kernel.json:364
+Scheduled runs skipped while one waits; event runs go on and each waits as its own run -> apps/api/src/modules/agent/routines/routine-mailbox-wait.ts:76 ; apps/api/src/modules/agent/routines/routine-worker.ts:1146
+Expires after 24 hours (Expired: nobody ran it), item leaves the list -> apps/api/src/modules/agent/routines/routine-mailbox-wait.ts:66 ; apps/api/src/modules/agent/routines/routine-mailbox-wait.ts:130 ; apps/api/src/infra/jobs/kernel-jobs.ts:1129 ; packages/shared/src/i18n/locales/en/kernel.json:363
+Transparent mailbox read server-side, routines never wait -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:242
+Waiting run row: Private mailbox pill, name waits for you, Details facts -> apps/web/src/modules/agent/RoutineMailboxWaitRow.tsx:335
+Run now: the row leaves the list, a toast says it is running or starts after the current run -> apps/web/src/modules/agent/RoutineMailboxWaitRow.tsx:235
+A task a routine run creates says Created by Routine <name> -> apps/api/src/modules/agent/routines/routine-report.ts:86 ; apps/api/src/modules/apps/sandbox/bridge/projects.ts:76

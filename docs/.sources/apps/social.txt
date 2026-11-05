@@ -1,0 +1,75 @@
+monitors Facebook, Instagram, YouTube; drafts replies grounded in Knowledge; approval before posting -> bundled-apps/social/README.md:3
+three oauth2 connections instagram, facebook, google -> bundled-apps/social/README.md:28
+connection purpose Instagram account -> bundled-apps/social/app.manifest.json:31
+connection purpose Facebook Page -> bundled-apps/social/app.manifest.json:56
+connection purpose Google account (YouTube) -> bundled-apps/social/app.manifest.json:86
+connect only the platforms you monitor -> bundled-apps/social/README.md:43
+provider registrations Meta Pages app / Instagram business app / Google web client -> bundled-apps/social/README.md:49
+callback redirect URI, Valid OAuth Redirect URIs / Authorized redirect URIs -> bundled-apps/social/README.md:55
+Connections settings section, social:admin:connection -> bundled-apps/social/app.manifest.json:595
+Connect button -> apps/web/src/modules/settings/app-page/ConnectionsBlock.tsx:416
+Client ID / Client secret fields -> apps/web/src/modules/settings/ConnectAppDialog.tsx:296
+Connect via OAuth -> apps/web/src/modules/settings/ConnectAppDialog.tsx:327
+org-owned; jobs run as org; not_connected otherwise -> bundled-apps/social/README.md:78
+instagram scopes -> bundled-apps/social/app.manifest.json:35
+facebook scopes -> bundled-apps/social/app.manifest.json:60
+google scopes -> bundled-apps/social/app.manifest.json:91
+webhooks_setup after connecting and after adding a Page; else polling -> bundled-apps/social/README.md:70
+Instagram long-lived token self-refresh; reconnect if it lapses -> bundled-apps/social/README.md:93
+Findings row and Awaiting approval row -> bundled-apps/social/src/ui/sidebar.tsx:141
+Findings subtitle -> bundled-apps/social/src/ui/Findings.tsx:452
+Open at source -> bundled-apps/social/src/ui/Findings.tsx:326
+Drafted reply / Reply label -> bundled-apps/social/src/ui/Findings.tsx:333
+Approve & post calls reply_to_finding -> bundled-apps/social/src/ui/Findings.tsx:253
+Approve & post button -> bundled-apps/social/src/ui/Findings.tsx:354
+Reject calls dismiss_finding -> bundled-apps/social/src/ui/Findings.tsx:269
+Reject button -> bundled-apps/social/src/ui/Findings.tsx:357
+Like button, like_item -> bundled-apps/social/src/ui/Findings.tsx:371
+like only own Page / own IG media, not YouTube -> bundled-apps/social/README.md:20
+reply submitted for approval note -> bundled-apps/social/src/ui/Findings.tsx:259
+edited-after-draft warning -> bundled-apps/social/src/ui/Findings.tsx:344
+Messages view across Facebook and Instagram -> bundled-apps/social/src/ui/Messages.tsx:205
+Open in native app -> bundled-apps/social/src/ui/Messages.tsx:163
+dm_window_closed after 7 days -> bundled-apps/social/README.md:94
+Watched view; active threads promoted automatically -> bundled-apps/social/src/ui/Watched.tsx:67
+Resume on decayed watch -> bundled-apps/social/src/ui/Watched.tsx:83
+Monitor terms section, social:terms:write, Term/Kind, Keyword/Handle/Hashtag -> bundled-apps/social/app.manifest.json:609
+Remove label -> bundled-apps/social/app.manifest.json:676
+terms drive YouTube discovery -> bundled-apps/social/README.md:24
+API quota section -> bundled-apps/social/app.manifest.json:682
+scopes list -> bundled-apps/social/app.manifest.json:16
+social:approve approver scope -> docs/reference/scopes.md:313
+webhooks_setup gated -> bundled-apps/social/app.manifest.json:333
+findings_list -> bundled-apps/social/app.manifest.json:353
+reply_to_finding gated -> bundled-apps/social/app.manifest.json:374
+send_dm gated -> bundled-apps/social/app.manifest.json:395
+like_item gated -> bundled-apps/social/app.manifest.json:416
+findings_get -> bundled-apps/social/app.manifest.json:430
+dm_list -> bundled-apps/social/app.manifest.json:438
+dm_get -> bundled-apps/social/app.manifest.json:446
+watched_list -> bundled-apps/social/app.manifest.json:454
+connections_status -> bundled-apps/social/app.manifest.json:461
+quota_status -> bundled-apps/social/app.manifest.json:468
+monitor_terms_list -> bundled-apps/social/app.manifest.json:475
+monitor_terms_add -> bundled-apps/social/app.manifest.json:482
+monitor_terms_remove -> bundled-apps/social/app.manifest.json:497
+counts -> bundled-apps/social/app.manifest.json:512
+set_triage -> bundled-apps/social/app.manifest.json:519
+correct_triage -> bundled-apps/social/app.manifest.json:536
+dismiss_finding -> bundled-apps/social/app.manifest.json:553
+watch_object -> bundled-apps/social/app.manifest.json:560
+unwatch_object -> bundled-apps/social/app.manifest.json:577
+Facebook guide: Meta developer registration first ("Sorry, the link you followed may be broken"), Page use case permissions under Customize, pages_messaging under the Messenger use case's Customize -> bundled-apps/social/app.manifest.json:116-135
+connection instagram_unified, Unified login preview, optional -> bundled-apps/social/app.manifest.json:92
+reads pending verification, nothing syncs (no sync plan for instagram_unified) -> bundled-apps/social/src/connection.ts:39
+guide: portfolio, use case, configuration, Never, Configuration ID, Meta App ID -> bundled-apps/social/app.manifest.json:121
+app setting instagramLoginConfigurationId -> bundled-apps/social/app.manifest.json:28
+no revoke call: remove the app from the business portfolio -> bundled-apps/social/app.manifest.json:115
+Facebook token reminder 14 days before expiry -> apps/api/src/modules/apps/connections/attention.ts:198
+Graph API v26.0 -> bundled-apps/social/src/adapters/facebook.ts:56
+reply card shows the comment, the post excerpt and a link -> bundled-apps/social/src/summarizers.ts:136
+link falls back to the post, then to one built from the ids -> bundled-apps/social/src/summarizers.ts:104
+Facebook comment link built when Graph omits it -> bundled-apps/social/src/adapters/facebook.ts:222
+comment and post fenced as outside text for the agent -> bundled-apps/social/src/summarizers.ts:71
+card shows fenced text as a quote from outside -> apps/web/src/modules/approvals/SummaryLineText.tsx:23
+links only to Facebook, Instagram or YouTube -> bundled-apps/social/src/summarizers.ts:86

@@ -1,0 +1,40 @@
+no public issues; Security tab; Report a vulnerability; email -> SECURITY.md:20
+include steps, version, impact -> SECURITY.md:27
+fixes land on main, latest releases only -> SECURITY.md:5
+prompt injection, not detected -> SECURITY.md:35
+agent acts with permissions of its person, RLS -> SECURITY.md:40
+sensitive actions wait for approval -> SECURITY.md:43
+outside content makes leaving actions wait -> SECURITY.md:46
+every tool call recorded -> SECURITY.md:49
+Settings group label Agent Safety -> packages/shared/src/i18n/locales/en/kernel.json:1631
+Ask for approval after outside content, on recommended -> packages/shared/src/i18n/locales/en/kernel.json:5154
+what waits when on -> packages/shared/src/i18n/locales/en/kernel.json:5155
+risk when off -> packages/shared/src/i18n/locales/en/kernel.json:5156
+frontier model, Auto picks cheapest -> SECURITY.md:54
+keep approvals on, read approvals, narrow permissions, trusted MCP, review node code -> SECURITY.md:60
+access token 15 minutes -> apps/api/src/modules/auth/jwt.ts:42
+refresh token 30 days -> apps/api/src/modules/auth/auth.ts:383
+refresh cookie flags -> docs/backend-overview.md:212
+refresh reuse revokes the family -> apps/api/src/modules/auth/auth.ts:748
+lost refresh answer, 3 minute window -> apps/api/src/modules/auth/auth.ts:584
+TOTP -> apps/api/src/modules/auth/routes.ts:11
+AES-256-GCM secrets with ENCRYPTION_KEY -> apps/api/src/lib/crypto.ts:39
+ENCRYPTION_KEY env -> apps/api/src/lib/env.ts:72
+app sandbox isolation and manifest-declared access -> docs/backend-overview.md:246
+transparent: per-mailbox key wrapped under ENCRYPTION_KEY, AES-256-GCM -> apps/api/src/modules/mailbox-crypto/managed-keys.ts:78
+opened for the owner only, audited without content -> apps/api/src/modules/mailbox-crypto/managed-open.ts:126
+keys rotate covers mailbox keys -> apps/api/src/cli/keys-rotate.ts:122
+full export keeps the key table -> apps/api/src/db/migrations/0229_mailbox_server_keys.sql:13
+private: server cannot read (seal-only) -> apps/api/src/modules/mailbox-crypto/seal-service.ts:3
+shared mailboxes not encrypted this way -> apps/api/src/modules/mailbox-crypto/content-suppression.ts:136
+ALLOW_MANAGED=false locks zero-access; DEFAULT=private is only a default -> apps/api/src/lib/env.ts:778 ; apps/api/src/modules/mailbox-crypto/encryption-mode.ts:182
+ended session's access tokens refused -> apps/api/src/middleware/auth.ts:49
+sign out ends the session -> apps/api/src/modules/auth/auth.ts:839
+password change ends sessions -> apps/api/src/modules/auth/auth.ts:909
+password reset ends sessions -> apps/api/src/modules/auth/routes.ts:1213
+deactivation ends sessions -> apps/api/src/modules/users/service.ts:395
+erasure ends sessions -> apps/api/src/modules/erasure/erase-user.ts:1371
+every server process hears it -> apps/api/src/modules/auth/session-revocation.ts:190
+open real-time connections close -> apps/api/src/lib/server.ts:558
+phone app forgets tokens on sign out -> apps/mobile/src/auth/refresh-bridge.ts:325
+desktop app forgets tokens on sign out -> apps/desktop/src/overlay.tsx:198

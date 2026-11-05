@@ -1,0 +1,15 @@
+{
+  "id": "2026-10-16-add-export-b1c2",
+  "task": "Add a CSV export to the report page",
+  "rung": "R2",
+  "phase": "execute",
+  "plan": ["frame", "brainstorm", "spec", "review", "execute", "validate", "handoff"],
+  "done": ["frame", "brainstorm", "spec", "review"],
+  "status": "running",
+  "awaiting": null,
+  "sourceSessionId": "SOURCE_SESSION_ID",
+  "budget": { "tokens": 2000000, "minutes": 120 },
+  "failure": null,
+  "boards": [{ "title": "Proof board", "url": "https://claude.ai/artifact/proof-board" }],
+  "updatedAt": "2026-10-16T08:00:00Z"
+}

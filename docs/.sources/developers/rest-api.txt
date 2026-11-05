@@ -1,0 +1,42 @@
+/api routes use authMiddleware: Bearer access token only -> apps/api/src/middleware/auth.ts:16-26
+MCP tokens refused on /api -> apps/api/src/middleware/auth.ts:28-40
+Access token lifetime 15 minutes -> apps/api/src/modules/auth/jwt.ts:42
+authMw composed for /api routes -> apps/api/src/app.ts:576-584
+API keys are tickets keys (app_tickets.api_keys) for the ticket-create webhook -> apps/api/src/cli/provisioners/api-keys.ts:2-4
+Key accepted only by the public ticket routes (classifyTier) -> apps/api/src/modules/webhooks/tickets-public.ts:401-455
+Authorization: Bearer or ApiKey, sha256 lookup -> apps/api/src/modules/webhooks/tickets-public.ts:409-415
+Public routes mounted at /webhooks -> apps/api/src/app.ts:1172
+Create routes generic and per inbox -> apps/api/src/modules/webhooks/tickets-public.ts:1336-1346
+Attachment routes -> apps/api/src/modules/webhooks/tickets-public.ts:666-674
+No OpenAPI document (only a test fixture CRM has one) -> apps/api/src/apps/api-connector/__fixtures__/fixture-crm/openapi.json:1
+Settings > Apps > Tickets, Inboxes, tickets:inboxes:admin -> docs/apps/tickets.md:13
+Create API inbox -> packages/shared/src/i18n/locales/en/tickets.json:146
+Generate API key, shown once, Copy API key -> apps/web/src/modules/tickets/TicketsInboxRouting.tsx:227-232
+Generate API key / Copy API key labels -> packages/shared/src/i18n/locales/en/tickets.json:24
+Generate API key label -> packages/shared/src/i18n/locales/en/tickets.json:160
+Per-inbox ingest URL with Copy -> apps/web/src/modules/tickets/TicketsInboxRouting.tsx:122-126
+Ingest URL panel and Copy button -> apps/web/src/modules/tickets/TicketsInboxRouting.tsx:540-563
+API keys section: Label, Key, Allowed origins, Last used, Revoke; tickets:settings:admin -> apps/api/src/apps/tickets/app.manifest.json:3260-3300
+apiKeys.list / create (gated) / revoke, tickets:settings:admin -> apps/api/src/apps/tickets/app.manifest.json:2377-2424
+config apiKeys: label, key (optional), allowedOrigins -> apps/api/src/cli/config/schema.ts:97-102
+Generated key emitted once as LIAISON_API_KEY -> apps/api/src/cli/config/report.ts:9-12
+liaison tickets inbox create --kind api --mint-key -> docs/reference/cli.md:149-155
+Base fields subject, fromEmail, fromName, textBody/htmlBody, honeypot -> apps/api/src/modules/webhooks/tickets-public.ts:102-113
+Key-only fields -> apps/api/src/modules/webhooks/tickets-public.ts:115-127
+Anonymous tier strips key-only fields -> apps/api/src/modules/webhooks/tickets-public.ts:129-133
+Create response data ticketId, ticketHandle -> apps/api/src/modules/webhooks/tickets-public.ts:1327-1331
+Generic route takes sourceInboxId or org default -> apps/api/src/modules/webhooks/tickets-public.ts:1335
+Attachments: multipart field file, key required, returns fileId -> apps/api/src/modules/webhooks/tickets-public.ts:530-533
+Attachment form field -> apps/api/src/modules/webhooks/tickets-public.ts:591
+Attachment response fileId -> apps/api/src/modules/webhooks/tickets-public.ts:657-659
+Allowed origins: origin_disallowed -> apps/api/src/modules/webhooks/tickets-public.ts:736-743
+Browser key forbidden fields -> apps/api/src/modules/webhooks/tickets-public.ts:766-786
+Browser key bound to its inbox -> apps/api/src/modules/webhooks/tickets-public.ts:789-795
+invalid_api_key on missing/unknown/revoked key -> apps/api/src/modules/webhooks/tickets-public.ts:413-435
+validation_failed 400 -> apps/api/src/modules/webhooks/tickets-public.ts:745-753
+app_disabled 503 when Tickets is off -> apps/api/src/modules/webhooks/tickets-public.ts:46-49
+Envelope success / paginated -> apps/api/src/lib/response.ts:159-174
+Error envelope message + code -> apps/api/src/middleware/error-handler.ts:85
+API key provisioning in the CLI -> docs/provisioning-cli.md:269
+access token refused once its session ends -> apps/api/src/middleware/auth.ts:49
+sign-out revokes the session's access tokens -> apps/api/src/modules/auth/auth.ts:839

@@ -1,0 +1,51 @@
+MCP endpoint mounted at /mcp behind mcpAuthMiddleware -> apps/api/src/app.ts:1216-1221
+Streamable HTTP, stateless, POST -> apps/api/src/modules/mcp/transport-routes.ts:23-33
+/.well-known/mcp: streamable-http, endpoint, auth methods oauth2 + device_code -> apps/api/src/modules/mcp/oauth-server-routes.ts:63-70
+OAuth metadata: DCR, auth code, refresh token, device code, PKCE S256 -> apps/api/src/modules/mcp/oauth-server-routes.ts:45-60
+Protected resource metadata -> apps/api/src/modules/mcp/oauth-server-routes.ts:38-43
+Bearer required, 401 with WWW-Authenticate challenge -> apps/api/src/modules/mcp/mcp-auth-middleware.ts:13-19
+Access token TTL 900 s -> apps/api/src/modules/mcp/connection-service.ts:19
+MCP tokens refused on the REST surface -> apps/api/src/middleware/auth.ts:28-40
+API keys are not MCP tokens (token must carry an MCP connection id) -> apps/api/src/modules/mcp/connection-service.ts:207-209
+Settings > Connected tools (You group) -> apps/web/src/framework/bootstrap.ts:589-598
+Clients connected to Liaison, Connect, snippets -> apps/web/src/modules/settings/McpSettings.tsx:133-150
+Claude Code command and Claude Desktop config snippets -> apps/web/src/modules/settings/McpSettings.tsx:96-106
+Labels Claude Code / Claude Desktop config -> packages/shared/src/i18n/locales/en/kernel.json:2296-2298
+Connect from /api/mcp/connect-info base URL -> apps/api/src/modules/mcp/settings-routes.ts:41-44
+Consent page: Connect <client>, unverified name, destination, scope line -> apps/api/src/modules/mcp/oauth-server-routes.ts:408-411
+Full-access acknowledgement checkbox, step-up block (emailed code only, no password field, send a new one), Approve / Cancel -> apps/api/src/modules/mcp/oauth-server-routes.ts:484-504
+consent page emails the code when the silent re-consent is refused; resend waits for the countdown -> apps/api/src/modules/mcp/oauth-server-routes.ts:361-411
+resend cooldown 60 s for mcp_connect; a send within it sends nothing and returns retryAfterSeconds -> apps/api/src/modules/auth/step-up.ts:101-117 ; apps/api/src/modules/auth/routes.ts:595-608
+Consent needs a signed-in browser -> apps/api/src/modules/mcp/oauth-server-routes.ts:422
+Connections list with Added / Last used -> apps/web/src/modules/settings/McpSettings.tsx:155-196
+Tool list = catalog for your scopes; absent when unscoped; empty results -> apps/api/src/modules/mcp/server-factory.ts:104-118
+liaison_tool_search and liaison_call_tool -> apps/api/src/modules/mcp/tool-projection.ts:22-24
+liaison_call_tool describe mode without arguments -> apps/api/src/modules/mcp/tool-projection.ts:226
+Skill catalog in instructions -> apps/api/src/modules/mcp/server-factory.ts:42-49
+Agent directory when the connection can ask -> apps/api/src/modules/mcp/server-factory.ts:31-33
+Gated tools create pending approvals -> apps/api/src/modules/mcp/server-factory.ts:91-94
+Gateway exposes connected server tools unless expose_via_gateway=false -> apps/api/src/modules/agent/tools/tool-bridge.ts:564-568
+Expose via outbound MCP gateway label -> packages/shared/src/i18n/locales/en/kernel.json:3023
+Revoke button and Revoke connection dialog -> apps/web/src/modules/settings/McpSettings.tsx:196-215
+DELETE /api/mcp/connections/:id owner-only -> apps/api/src/modules/mcp/settings-routes.ts:27-37
+Every call re-checked: revoked, deactivated, demoted -> apps/api/src/modules/mcp/connection-service.ts:217-224
+Device grant initiate and verification URI -> apps/api/src/modules/mcp/device-grant-routes.ts:68-115
+DEVICE_FLOW_CLIENTS empty by default; desktop always admitted -> apps/api/src/modules/mcp/device-client-policy.ts:5-16
+DEVICE_FLOW_CLIENTS in env reference -> docs/reference/env.md:27
+Desktop connection from the signed-in session -> apps/api/src/modules/mcp/desktop-connection-routes.ts:3-14
+Own MCP servers under Connected tools, org servers on Connectors -> apps/web/src/modules/settings/ConnectionsSettings.tsx:3-7
+MCP client transports http and sse -> apps/api/src/modules/mcp-client/transports/http.ts:3
+stdio refused -> apps/api/src/modules/mcp-client/env-bootstrap.ts:42
+Per-tool policy, tool naming, env bootstrap -> docs/agents/mcp-servers.md:37-104
+Instructions carry the shared core of the in-app guidance -> apps/api/src/modules/mcp/server-factory.ts:55-62
+Sections marked by audience in one source -> apps/api/src/modules/agent/context/shared-guidance.ts:11-24
+Teammates are messaged in a Liaison conversation, not by email -> apps/api/src/modules/agent/prompts/system.md:12-15
+First call to an app's tool brings back its working guide -> apps/api/src/modules/mcp/app-guide-surfacing.ts:30
+transparent mailbox read at once over MCP; private through the window -> apps/api/src/modules/mcp/mcp-mailbox-plaintext.ts:189
+password change or reset ends every MCP connection; old tokens refused -> apps/api/src/modules/auth/auth.ts:885 ; apps/api/src/modules/auth/routes.ts:1203 ; apps/api/src/modules/mcp/connection-service.ts:242
+full-access approval (no agent binding) needs a fresh emailed code, a password is refused -> apps/api/src/modules/mcp/oauth-server-routes.ts:582-586 ; apps/api/src/modules/mcp/full-access-step-up.ts:47-60 ; apps/api/src/modules/auth/step-up.ts:99
+agent-bound approval and silent re-consent need no step-up -> apps/api/src/modules/mcp/oauth-server-routes.ts:515-540
+device approval: full-access MCP grant needs confirmation and an emailed code, emailed by the card itself once per page view -> apps/api/src/modules/auth/device-flow-routes.ts:349-354 ; apps/web/src/modules/auth/DeviceApproval.tsx:216-222 ; packages/shared/src/i18n/locales/en/kernel.json:1195-1202
+device approval labels -> packages/shared/src/i18n/locales/en/kernel.json:1155-1166
+emailed code purpose and email copy -> apps/api/src/modules/auth/step-up.ts:31-38 ; apps/api/src/modules/auth/step-up.ts:165-178
+MCP tool schemas omit __mailbox parameters; a call that sets them has them dropped -> apps/api/src/modules/agent/tools/tool-bridge.ts:335 ; apps/api/src/modules/mcp/tool-call.ts:310 ; apps/api/src/modules/agent/tools/host-only-params.ts:15

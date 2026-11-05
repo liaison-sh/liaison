@@ -1,0 +1,43 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": "../node_modules/.cache/tsc/scripts.tsbuildinfo",
+    // `~/*` is apps/api's own import alias. Files under `scripts/` that reach
+    // into `apps/api/src` (the demo seeders and their tests) pull in modules
+    // written against that alias, so it has to resolve here too or every one
+    // of them fails with TS2307 and cascades into implicit-any errors.
+    "paths": {
+      "~/*": ["../apps/api/src/*"],
+      // `drizzle-orm` is a dependency of `@liaison/api`, not hoisted to the
+      // root node_modules, so tsc cannot resolve it from `scripts/`. The demo
+      // seeders load it at runtime through `createRequire` against apps/api;
+      // this mapping is what lets the same module's REAL types be used at
+      // that call site instead of `unknown`.
+      "drizzle-orm": ["../apps/api/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../apps/api/node_modules/drizzle-orm/*"],
+      // Same story as drizzle-orm for `sharp`: the demo seeder's avatar
+      // generator requires it out of apps/api's tree at runtime, so tsc needs
+      // to resolve its real types from there too.
+      "sharp": ["../apps/api/node_modules/sharp"]
+    },
+    "types": ["@types/bun"]
+  },
+  "include": [
+    "demo",
+    "lib",
+    "ci-scope.ts",
+    "ci-scope.test.ts",
+    "check-desktop-no-node.ts",
+    "check-desktop-no-node.test.ts",
+    "lint-button-width.ts",
+    "check-migration-safety.ts",
+    "check-migration-safety.test.ts",
+    "lint-button-width.test.ts",
+    "api-connector-schema-doc.ts",
+    "api-connector-schema-doc.test.ts",
+    // The push notification matrix runner (S7): a bun script beside the QA
+    // scenarios, typechecked with the other scripts.
+    "../qa/notifications"
+  ]
+}

@@ -1,0 +1,37 @@
+Mute silences push, desktop and email for a muted conversation or a kind set to off, in-app kept quiet -> apps/api/src/modules/notifications/router.ts:320
+Archive quiets channel posts only; mentions and direct messages still interrupt -> apps/api/src/modules/notifications/router.ts:325
+Muted items stay unread, marked quiet in metadata -> apps/api/src/modules/attention/translator.ts:235
+A reply in a muted thread keeps its quiet row (no drop before routing) -> apps/api/src/modules/attention/kernel-translations.ts:149
+Muted new email marked quiet -> apps/api/src/modules/notifications/mail-producer.ts:328
+The badge skips quiet items -> packages/shared/src/notifications/badge.ts:82
+The badge query skips quiet rows -> apps/api/src/modules/push/badge-count.ts:164
+The digest skips quiet rows -> apps/api/src/modules/attention/digest-jobs.ts:105
+Kind set to off stored as mutedGroups -> apps/api/src/modules/notifications/settings.ts:461
+Interrupt, inbox only, off modes -> apps/api/src/modules/notifications/settings.ts:142
+Default quiet hours 20:00-08:00 weekdays and all weekend -> apps/api/src/modules/notifications/quiet-window.ts:29
+Quiet hours time zone: the person's (set, profile or browser), else the org's set one, else unknown -> apps/api/src/modules/notifications/quiet-window.ts:82
+No known time zone: no default quiet hours -> apps/api/src/modules/notifications/quiet-window.ts:118
+Browser zone fills in only a zone never set -> apps/api/src/modules/notifications/settings.ts:500
+Browser reports its zone once per session -> apps/web/src/modules/notifications/browser-timezone.ts:26
+A time zone alone keeps the default window -> apps/api/src/modules/notifications/settings.ts:490
+An admin setting the org time zone marks it set -> apps/api/src/modules/org/routes.ts:157
+Only a critical incident for an on-call person crosses quiet hours -> apps/api/src/modules/notifications/router.ts:353
+Not on call: an incident is not urgent, inbox and digest only -> apps/api/src/modules/notifications/router.ts:309
+Urgent email waits during quiet hours -> apps/api/src/modules/notifications/router.ts:377
+NOTIFICATIONS_DEFAULT_QUIET_HOURS -> apps/api/src/lib/env.ts:927
+Incidents interrupt only on-call people -> apps/api/src/modules/notifications/router.ts:358
+On-call default is the admins -> apps/api/src/modules/notifications/on-call.ts:25
+No list and no admin: everyone who can read incidents, with a warning -> apps/api/src/modules/notifications/on-call.ts:91
+On-call stored as notificationsOnCall -> apps/api/src/modules/notifications/on-call.ts:24
+PUT /api/notifications/on-call admin only -> apps/api/src/modules/notifications/routes.ts:174
+GET /api/notifications/conversations -> apps/api/src/modules/notifications/routes.ts:120
+How each kind reaches you label -> packages/shared/src/i18n/locales/en/kernel.json:4389
+Interrupt, Inbox only, Off labels -> packages/shared/src/i18n/locales/en/kernel.json:4392
+Muted conversations label -> packages/shared/src/i18n/locales/en/kernel.json:4396
+Unmute label -> packages/shared/src/i18n/locales/en/kernel.json:2176
+Channels that notify you of every message label -> packages/shared/src/i18n/locales/en/kernel.json:4400
+Mentions only label -> packages/shared/src/i18n/locales/en/kernel.json:4403
+On call label -> packages/shared/src/i18n/locales/en/kernel.json:4406
+Quiet hours start once the time zone is known, on the settings page -> packages/shared/src/i18n/locales/en/kernel.json:4388
+Work hours label -> packages/shared/src/i18n/locales/en/kernel.json:4210
+Settings page sections -> apps/web/src/modules/settings/NotificationSettings.tsx:167

@@ -1,0 +1,14 @@
+# Email alias relays: one person can mint unlimited addresses on these, so each
+# is capped like a small domain (LIAISON_DEMO_DOMAIN_VERIFIED_PER_DAY) even when
+# its parent is a major mailbox provider. Hand-maintained.
+privaterelay.appleid.com
+duck.com
+mozmail.com
+simplelogin.com
+simplelogin.co
+simplelogin.fr
+aleeas.com
+slmail.me
+anonaddy.me
+anonaddy.com
+addy.io

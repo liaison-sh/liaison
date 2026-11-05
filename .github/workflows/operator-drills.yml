@@ -1,0 +1,118 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# Phase 14 operator-tier drills (E2E plan O1 and O5). Triggered only when infra
+# files change to keep the Docker-heavy work out of the per-PR happy path.
+# Each job leaves no orphaned containers because every script wraps its work
+# in a finally / down -v.
+name: operator-drills
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "deploy/docker-compose.yml"
+      - "deploy/.env.example"
+      - "apps/api/Dockerfile"
+      - ".github/workflows/release.yml"
+      - "scripts/validate-compose.ts"
+      - ".github/workflows/operator-drills.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  # O1 — pinned compose boots, /healthz reports the released tag.
+  validate-compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Generate throwaway deploy env
+        # deploy/.env is gitignored (operator-supplied secrets); CI needs one to
+        # exist to drive docker compose, so seed it from the committed example
+        # with generated, CI-only values for every variable compose requires
+        # (`${VAR:?...}` in deploy/docker-compose.yml) — never real secrets.
+        run: |
+          set -euo pipefail
+          cp deploy/.env.example deploy/.env
+          set_var() {
+            sed -i "s|^$1=.*|$1=$2|" deploy/.env
+          }
+          set_var JWT_SECRET "$(openssl rand -hex 32)"
+          set_var ENCRYPTION_KEY "$(openssl rand -hex 32)"
+          set_var BYOK_ENCRYPTION_KEY "$(openssl rand -hex 32)"
+          set_var MEILISEARCH_MASTER_KEY "$(openssl rand -hex 32)"
+          set_var MONITOR_TOKEN "$(openssl rand -hex 32)"
+          set_var POSTGRES_PASSWORD "$(openssl rand -hex 16)"
+          set_var LIAISON_APP_PASSWORD "$(openssl rand -hex 16)"
+          set_var LIAISON_READONLY_PASSWORD "$(openssl rand -hex 16)"
+          set_var OBJECT_STORE_ADMIN_ACCESS_KEY "ci-objectstore-admin"
+          set_var OBJECT_STORE_ADMIN_SECRET_KEY "$(openssl rand -hex 16)"
+          set_var OBJECT_STORAGE_ACCESS_KEY "$(openssl rand -hex 16)"
+          set_var OBJECT_STORAGE_SECRET_KEY "$(openssl rand -hex 16)"
+      - name: Pull or build the release image
+        # v0.1.0 has not been published to GHCR yet (no release has been cut).
+        # Once it has, this pulls it like a real operator would; until then it
+        # builds the same tag locally from the Dockerfile so the drill still
+        # validates the compose file end to end.
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/mathieufro/liaison:v0.1.0"
+          if docker pull "$IMAGE"; then
+            echo "pulled $IMAGE"
+          else
+            echo "$IMAGE not published yet; building locally from apps/api/Dockerfile"
+            # Pass the same build-arg release.yml does, so the local build
+            # reports version v0.1.0 at /healthz like the real release image
+            # would — without it, the image reports the Dockerfile's "dev"
+            # default and validate-compose's version check fails regardless
+            # of whether the stack itself is healthy.
+            docker build -t "$IMAGE" --build-arg LIAISON_VERSION=v0.1.0 -f apps/api/Dockerfile .
+          fi
+      - name: Compose drill
+        run: bun run validate-compose --tag v0.1.0
+
+  # O5 — release workflow dry run reaches the digest-sign step.
+  release-workflow-dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af >/dev/null
+          df -h /
+      - name: Install act
+        run: |
+          set -euo pipefail
+          # Pinned release + checksum, never an installer piped from a moving
+          # branch. To bump: set ACT_VERSION and the sha256 of
+          # act_Linux_x86_64.tar.gz from that release's checksums.txt.
+          ACT_VERSION="v0.2.89"
+          ACT_SHA256="0191d6f1f3b716b5c55820032605d05fc3c1cdbf581ebeff655019e5dd1524c0"
+          curl -fsSL -o /tmp/act.tar.gz \
+            "https://github.com/nektos/act/releases/download/${ACT_VERSION}/act_Linux_x86_64.tar.gz"
+          echo "${ACT_SHA256}  /tmp/act.tar.gz" | sha256sum -c -
+          sudo tar -xzf /tmp/act.tar.gz -C /usr/local/bin act
+          act --version
+      - name: Dry-run release.yml
+        env:
+          LIAISON_RELEASE_DRY_RUN: "1"
+        run: |
+          act push \
+            -W .github/workflows/release.yml \
+            --eventpath .github/workflows/test-events/release-tag.json \
+            --env LIAISON_RELEASE_DRY_RUN=1 \
+            -P ubuntu-latest=catthehacker/ubuntu:act-latest \
+            -P ubuntu-24.04-arm=catthehacker/ubuntu:act-latest

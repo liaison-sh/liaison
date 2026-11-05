@@ -1,0 +1,16 @@
+Callback URL <BASE_URL>/api/apps/mcp-manager/oauth/callback -> apps/api/src/apps/mcp-manager/oauth-registration.ts:27
+Pre-registered client: client ID and secret pasted, then sign in -> apps/web/src/modules/mcp-manager/McpAddFlow.tsx:162-166
+HubSpot menu Development > MCP Connectors, Redirect URLs > Add redirect URL, App ID / Client ID / Client secret -> vendor UI, confirmed by the owner 2026-10-25 (no Liaison source)
+Tools review opens after connect or sign-in, finished before the server counts as added -> apps/web/src/modules/mcp-manager/McpAddFlow.tsx:212
+Review choices Allow reads approve changes / Every call needs approval / Allow everything -> packages/shared/src/i18n/locales/en/kernel.json:3132-3136
+Closing the review keeps the current default -> apps/web/src/modules/mcp-manager/McpToolsReviewDialog.tsx:105-109
+Unreviewed org server reopens the review for an admin -> apps/web/src/modules/mcp-manager/ConnectionDetail.tsx:81-89
+Default gate_writes: read-only non-destructive tool runs, others wait, unannotated waits -> apps/api/src/apps/mcp-manager/default-policy.ts:29-40
+gate_all parks every call, auto runs every call -> apps/api/src/apps/mcp-manager/default-policy.ts:38-39
+Per-tool and role decisions win over the default -> apps/api/src/apps/mcp-manager/repo.ts:164-197
+Read-only label is the server's claim; untrusted server gets Every call needs approval -> apps/api/src/apps/mcp-manager/default-policy.ts:17-21
+Changes need approval label -> packages/shared/src/i18n/locales/en/kernel.json:3027
+Who can use it: everyone (default) or selected roles and people; admins always -> apps/api/src/modules/permissions/permissions.ts:157-210
+Env connections written by one process (the leader) -> apps/api/src/modules/mcp-client/index.ts:455
+An existing env connection is updated, not duplicated -> apps/api/src/modules/mcp-client/env-bootstrapper.ts:166
+A workspace's servers load the first time a process serves it -> apps/api/src/modules/mcp-client/index.ts:478

@@ -1,0 +1,120 @@
+{
+  "name": "contacts",
+  "agentInstructions": "Contacts is the people-and-companies directory. Reach for it to resolve who someone is, or to look up a customer or dealer before acting. Key handles: contact id, handle, email, company, external ids. Resolve is idempotent — the same email always maps to the same contact, so resolve rather than create duplicates. Silent-failure gotcha: an unknown contact returns empty, not an error — say you could not find them rather than inventing details.",
+  "version": "0.1.1",
+  "description": "Contact registry: kernel-owned, manifest-registered UI surface",
+  "license": "FSL-1.1-ALv2",
+  "listing": {
+    "publisher": "Liaison",
+    "category": "Communication",
+    "icon": "users",
+    "summary": "One directory of the people and companies you work with.",
+    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/apps/api/src/apps/contacts"
+  },
+  "export": {
+    "formats": ["json", "csv"],
+    "handler": "exportContacts",
+    "schema": {
+      "id": "string",
+      "handle": "string",
+      "name": "string",
+      "email": "string",
+      "phone": "string",
+      "company": "string",
+      "createdAt": "string"
+    }
+  },
+  "import": {
+    "kinds": {
+      "contact": {
+        "label": "Contacts",
+        "schema": {
+          "type": "object",
+          "required": [
+            "externalId",
+            "name"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "externalId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "email": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "phone": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "company": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "notes": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "handler": "importContacts",
+        "dedupKey": "externalId",
+        "tables": [
+          "kernel.contacts"
+        ],
+        "writeScopes": [
+          "kernel:contacts:write"
+        ],
+        "people": [
+          "email"
+        ]
+      }
+    }
+  },
+  "views": {
+    "tabTypes": {
+      "contact-list": {
+        "component": "ContactList",
+        "label": "Contacts",
+        "labelKey": "kernel.nav.contacts",
+        "icon": "ContactsIcon",
+        "singleton": true,
+        "sidebar": "ContactListSidebar",
+        "urlPattern": "/contacts",
+        "referenceable": false
+      },
+      "contact-detail": {
+        "component": "ContactDetail",
+        "label": "Contact",
+        "resolveLabel": "resolveContactTabLabel",
+        "sidebar": "ContactsSidebar",
+        "icon": "ContactsIcon",
+        "urlPattern": "/contacts/:entityId",
+        "referenceable": true
+      }
+    },
+    "activityBar": {
+      "icon": "ContactsIcon",
+      "label": "Contacts",
+      "labelKey": "kernel.nav.contacts",
+      "order": 20,
+      "tabAction": { "type": "contact-list", "entityId": "list", "label": "Contacts" }
+    },
+    "wsHandlers": {
+      "contact": { "key": "kernel:contact", "handler": "handleContactEvent" }
+    }
+  }
+}

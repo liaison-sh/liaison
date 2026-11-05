@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "atelier",
+  "version": "0.4.0",
+  "description": "Local install marketplace for the atelier-cc plugin (single flow, dynamic depth).",
+  "owner": {
+    "name": "Atelier"
+  },
+  "plugins": [
+    {
+      "name": "atelier",
+      "description": "Atelier — one flow with dynamic depth: frame → brainstorm → spec → review → execute → validate → handoff, at the rung the task warrants; targeted delegation, cheap-model sweeps, fresh skeptics per batch, artifact proof boards, ledger-driven hooks.",
+      "source": "./",
+      "category": "development"
+    }
+  ]
+}

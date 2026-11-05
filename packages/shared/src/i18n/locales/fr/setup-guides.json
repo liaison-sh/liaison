@@ -1,0 +1,208 @@
+{
+  "google": {
+    "title": "Configurer Google pour cet espace",
+    "project": {
+      "title": "Créer ou choisir un projet Google Cloud",
+      "body": "Connectez-vous à console.cloud.google.com avec le compte Google qui portera cette configuration (pour une entreprise sur Google Workspace, un administrateur Workspace). Dans le sélecteur de projet en haut, choisissez un projet, ou choisissez Nouveau projet, nommez-le (par exemple Liaison) et créez-le."
+    },
+    "apis": {
+      "title": "Activer les API Google",
+      "body": "Ouvrez la page de chaque API ci-dessous et cliquez sur Activer. Quand l'agent connaît l'ID du projet, chaque page s'ouvre avec ce projet sélectionné ; sinon vérifiez d'abord le nom du projet en haut de la page. Seules les API de la fonctionnalité que vous configurez sont listées.",
+      "none": "Aucune app Google n'est encore activée dans cet espace : il n'y a donc aucune API à activer. Activez d'abord Mail, Agenda ou Google Drive."
+    },
+    "audience": {
+      "title": "Choisir qui peut se connecter",
+      "body": "Ouvrez la page Audience ci-dessous (cliquez sur Commencer si Google le demande) et regardez d'abord le Type d'utilisateur, puis dites à l'agent ce qu'elle affiche (une capture d'écran de la page convient). Interne est le bon choix quand tous ceux qui se connectent ont une adresse sur le Google Workspace de votre entreprise et que le projet appartient à ce Workspace : Google ne l'examine pas, les connexions n'expirent pas, et aucun administrateur n'a à le marquer comme Fiable. Choisissez Externe seulement pour des adresses Gmail personnelles : laissez le statut de publication sur Test et ajoutez chaque adresse Gmail qui se connectera sous Utilisateurs test. Tant que l'app est en Test, Google avertit qu'elle n'est pas validée (cliquez sur Continuer), et la connexion doit être refaite tous les 7 jours."
+    },
+    "branding": {
+      "title": "Renseigner l'image de marque",
+      "body": "Ouvrez la page Branding ci-dessous et saisissez les valeurs ci-dessous, dans l'ordre : le nom de l'app (App name), l'adresse d'assistance (User support email, votre propre adresse d'administrateur) et, sous Authorized domains, Add domain, le domaine de ce serveur. Saisissez la même adresse comme contact du développeur (Developer contact email), puis cliquez sur Save.",
+      "bodyNoEmail": "Ouvrez la page Branding ci-dessous et saisissez les valeurs ci-dessous, dans l'ordre : le nom de l'app (App name) et, sous Authorized domains, Add domain, le domaine de ce serveur. Comme adresse d'assistance (User support email) et contact du développeur (Developer contact email), saisissez votre propre adresse d'administrateur (celle avec laquelle vous vous connectez à Google), puis cliquez sur Save."
+    },
+    "dataAccess": {
+      "title": "Ajouter les champs d'application",
+      "body": "Sous Accès aux données, cliquez sur Ajouter ou supprimer des champs d'application, collez ceux ci-dessous dans Ajouter manuellement des champs d'application, cliquez sur Ajouter au tableau, puis sur Mettre à jour et Enregistrer. Les champs Gmail et Drive sont restreints : c'est sans problème pour une app Interne ou en Test ; une app Externe publiée pour tous doit être validée par Google."
+    },
+    "client": {
+      "title": "Créer le client OAuth",
+      "body": "Sous Clients, cliquez sur Créer un client, choisissez Application Web, nommez-le (par exemple Liaison), et ajoutez les deux URI ci-dessous sous URI de redirection autorisés, exactement tels quels : le premier sert à connecter Gmail, Agenda, Drive et les autres comptes Google, le second à se connecter à Liaison avec Google. Un seul client sert aux deux : Google demande chaque autorisation quand un compte se connecte, pas par client. Cliquez sur Créer, puis sur Télécharger le JSON : un agent de code lit l'ID client et le code secret dans le fichier téléchargé, à partir de son chemin (le fichier peut ensuite être supprimé) ; sinon gardez-les à portée de main."
+    },
+    "secret": {
+      "title": "Donner le client à Liaison",
+      "body": "Saisissez l'ID client et le code secret dans le formulaire que l'agent vous montre, jamais dans la discussion. Connectez ensuite chaque compte Google avec sa carte Connecter."
+    },
+    "push": {
+      "title": "Facultatif : mises à jour Gmail instantanées",
+      "body": "Sans cela, Liaison consulte Gmail à intervalles réguliers, ce qui fonctionne. Pour des mises à jour instantanées : dans Pub/Sub, créez un sujet (par exemple gmail-push) ; dans les autorisations du sujet, donnez à la première adresse ci-dessous le rôle Diffuseur Pub/Sub ; puis créez sur ce sujet un abonnement push qui envoie à la seconde adresse. Donnez à la personne qui gère le serveur Liaison le nom complet du sujet (projects/<projet>/topics/<sujet>) pour activer le push."
+    },
+    "connect": {
+      "title": "Se connecter avec Google",
+      "body": "Ce serveur fournit déjà le client Google : rien à créer dans Google Cloud. Utilisez la carte Connecter et approuvez les autorisations avec le compte à connecter.",
+      "bodyOwnClient": "Cet espace de travail a déjà son propre client Google : rien à créer dans Google Cloud. Utilisez la carte Connecter et approuvez les autorisations avec le compte à connecter."
+    },
+    "links": {
+      "project": "Nouveau projet",
+      "apiLibrary": "Bibliothèque d'API",
+      "audience": "Audience",
+      "branding": "Branding",
+      "dataAccess": "Accès aux données",
+      "clients": "Clients",
+      "pubsub": "Sujets Pub/Sub",
+      "apiControls": "Commandes des API"
+    },
+    "alsoApis": {
+      "title": "Facultatif : tant que vous êtes sur cette page",
+      "body": "Si vous voudrez ces fonctionnalités plus tard, vous pouvez aussi activer leurs API maintenant, de la même façon. Sinon passez cette étape : vous pourrez y revenir à tout moment."
+    },
+    "internalTrust": {
+      "title": "Si Google indique que l'app est bloquée",
+      "body": "L'audience de ce client est Interne à votre Google Workspace : personne n'a à le marquer comme Fiable. Seulement si Google répond Error 400: admin_policy_enforced ou Accès bloqué, votre Workspace restreint l'accès à Gmail ou à Drive : un super administrateur ouvre Commandes des API (la page ci-dessous), coche Faire confiance aux applications internes appartenant au domaine sous Paramètres et enregistre. La prise en compte peut prendre quelques minutes."
+    },
+    "sharedDrives": {
+      "title": "Choisir les drives partagés que l'équipe doit voir",
+      "body": "La connexion Google Drive d'une organisation lit uniquement les drives partagés choisis, jamais le Mon Drive de quelqu'un. Connectez un compte Google membre de chaque drive partagé que l'équipe doit voir (n'importe quel rôle) : Google ne liste que les drives partagés de ce compte. Choisissez-les ensuite dans Paramètres > Connecteurs > Google Drive, demandez à l'agent, ou indiquez connection.sharedDrives dans la configuration. Toute personne qui utilise la connexion voit leurs fichiers ; chacun accède à ses propres fichiers par sa connexion Drive personnelle."
+    }
+  },
+  "shopify": {
+    "title": "Créer l'app Shopify avec la CLI Shopify",
+    "file": {
+      "title": "Enregistrer le fichier",
+      "body": "Téléchargez {{filename}} depuis la discussion et enregistrez-le dans un dossier vide sous le nom ci-dessous, exactement : la CLI Shopify ne lit que ce nom. Vérifiez que votre ordinateur n'a pas ajouté .txt à la fin.",
+      "bodyAgent": "L'agent écrit le fichier ci-dessous dans un dossier vide de cette machine, à partir des valeurs de ce serveur (le même fichier que celui que génère le serveur) : personne ne modifie ses autorisations ni ses URL à la main."
+    },
+    "cli": {
+      "title": "Installer la CLI Shopify",
+      "body": "Il vous faut une version récente de Node.js. Dans un terminal, lancez la commande ci-dessous.",
+      "bodyAgent": "L'agent vérifie que la CLI Shopify est installée (shopify version) et l'installe avec la commande ci-dessous si elle ne l'est pas. Elle demande un Node.js récent."
+    },
+    "login": {
+      "title": "Vous connecter à Shopify dans votre terminal",
+      "body": "Lancez vous-même la commande ci-dessous, dans votre propre terminal : elle ouvre le navigateur pour vous connecter. Connectez-vous avec le compte propriétaire de la boutique (ou qui peut gérer ses apps) et, quand elle le demande, choisissez l'organisation de la boutique. Dites à l'agent quand elle indique que vous êtes connecté. L'agent ne fait jamais cette connexion à votre place."
+    },
+    "link": {
+      "title": "Créer l'app",
+      "body": "Ouvrez un terminal dans ce dossier et lancez la commande ci-dessous. Connectez-vous à votre compte développeur Shopify, choisissez de créer une nouvelle app, et copiez le client_id que la CLI écrit dans le fichier. Donnez cet ID client à l'agent : il vous redonne le fichier avec l'ID dedans, car la liaison peut remplacer les URL du fichier. Enregistrez-le sous le même nom, à la place de l'ancien.",
+      "bodyAgent": "Dans ce dossier, lancez vous-même la commande ci-dessous, dans votre propre terminal (elle pose des questions) : choisissez l'organisation de la boutique, puis créez une nouvelle app (ou choisissez celle que vous avez déjà créée), et dites à l'agent quand c'est fait. L'agent lit alors le client_id que la CLI a écrit et remet les URL de ce serveur dans le fichier si la liaison les a remplacées."
+    },
+    "deploy": {
+      "title": "Envoyer la configuration à Shopify",
+      "body": "Dans le même dossier, lancez la commande ci-dessous et confirmez la version. Shopify connaît alors les autorisations que Liaison demande et son adresse de retour, {{callback}}.",
+      "bodyAgent": "L'agent lance la commande ci-dessous dans ce dossier, sans question : Shopify connaît alors les autorisations que demande Liaison et son adresse de retour, {{callback}}."
+    },
+    "fullOrderHistory": {
+      "title": "Demander l'accès à toutes les commandes (l'approbation prend du temps)",
+      "body": "Shopify ne montre à une app que les 60 derniers jours de commandes tant qu'il ne l'a pas approuvée pour Read all orders, et l'approbation peut prendre quelques jours : demandez-la maintenant. Dans le Partner Dashboard (partners.shopify.com), ouvrez Apps, puis l'app, puis API access requests, puis Read all orders. Shopify demande pourquoi l'app a besoin des commandes de plus de 60 jours : collez la réponse ci-dessous (elle est en anglais, pour les équipes de revue de Shopify). Poursuivez les étapes suivantes en attendant : la boutique se connecte et Liaison travaille avec les 60 derniers jours. Une fois la demande approuvée par Shopify, dites-le à l'agent : il active l'historique complet des commandes et vous redonne le fichier, avec read_all_orders dans ses scopes. Remplacez le fichier, lancez shopify app deploy dans le même dossier, puis reconnectez la boutique. Si shopify app deploy refuse read_all_orders, l'approbation n'est pas encore passée : l'agent désactive à nouveau l'historique complet des commandes."
+    },
+    "distribution": {
+      "title": "Installer l'app sur votre boutique",
+      "body": "Ouvrez l'app dans le Dev Dashboard de Shopify (dev.shopify.com). Sur son accueil, dans la carte Distribution, choisissez Distribution personnalisée (Shopify ne permet jamais de changer ce choix ensuite ; la distribution personnalisée convient à votre propre boutique), saisissez le domaine myshopify.com de votre boutique et ouvrez le lien d'installation proposé. Si l'app affiche plutôt une carte Installations, installez-la sur votre boutique depuis cette carte."
+    },
+    "credentials": {
+      "title": "Donner à Liaison l'ID client et le code secret",
+      "body": "Dans le Dev Dashboard, ouvrez les paramètres de l'app et copiez l'ID client et le code secret. Saisissez-les dans le formulaire que l'agent vous montre, jamais dans la discussion. Le code secret permet aussi à Liaison de vérifier que les webhooks viennent de Shopify."
+    },
+    "fullOrderHistorySetting": {
+      "title": "Activer l'historique complet des commandes",
+      "bodyApp": "Seulement quand read_all_orders est accordé (il est resté dans les scopes publiés, ou Shopify a approuvé la demande) : l'agent propose ce changement avec l'outil ci-dessous et vous approuvez la carte, pour que la boutique accorde toutes les commandes dès sa première connexion. Vous ne l'activez jamais à la main.",
+      "bodyAgent": "Seulement quand read_all_orders est accordé (il est resté dans les scopes publiés, ou Shopify a approuvé la demande) : l'agent l'ajoute à la configuration de l'espace de travail et lance liaison config apply, pour que la boutique accorde toutes les commandes dès sa première connexion. Vous ne l'activez jamais à la main."
+    },
+    "connect": {
+      "title": "Connecter votre boutique",
+      "body": "Saisissez le domaine myshopify.com de votre boutique dans la carte Connecter et approuvez les autorisations. Liaison s'abonne ensuite lui-même aux webhooks de la boutique."
+    },
+    "links": {
+      "devDashboard": "Dev Dashboard de Shopify",
+      "partnerDashboard": "Partner Dashboard de Shopify",
+      "cliDocs": "Shopify CLI"
+    },
+    "credentialsCli": {
+      "title": "Lire l'ID client et le code secret",
+      "body": "L'agent lance la commande ci-dessous dans ce dossier et écrit SHOPIFY_API_KEY (l'ID client) et SHOPIFY_API_SECRET (le code secret) directement dans le fichier de secrets, sans les afficher. Puis il met le client dans la connexion Shopify de la configuration de l'espace."
+    }
+  },
+  "imap": {
+    "title": "Connecter {{provider}} avec un mot de passe d'application",
+    "passwordTitle": "Créer un mot de passe d'application",
+    "serversTitle": "Paramètres des serveurs",
+    "serversBody": "Le serveur IMAP, puis le serveur SMTP, sous la forme hôte:port. Le nom d'utilisateur est en général votre adresse mail complète.",
+    "cardTitle": "Le saisir dans le formulaire",
+    "cardBody": "Saisissez l'adresse mail, les serveurs et le mot de passe d'application dans le formulaire que l'agent vous montre, jamais dans la discussion.",
+    "gmail": {
+      "name": "Gmail",
+      "password": "Ouvrez Mots de passe des applications, saisissez Liaison comme nom et créez-le. Google affiche un code de 16 caractères : copiez-le. Si la page indique que le paramètre n'est pas disponible, un administrateur Workspace a désactivé les mots de passe d'application ou le compte utilise la Protection avancée : une boîte Workspace se connecte plutôt avec Google, et un compte personnel ne peut pas se connecter en IMAP tant que la Protection avancée est active.",
+      "twoStepTitle": "Activer la validation en deux étapes",
+      "twoStepBody": "Google ne propose les mots de passe d'application que si la validation en deux étapes est activée. Ouvrez la page et activez-la si elle ne l'est pas ; passez cette étape si elle l'est déjà.",
+      "twoStepLink": "Validation en deux étapes",
+      "passwordTitle": "Créer un mot de passe d'application nommé Liaison",
+      "passwordLink": "Mots de passe des applications",
+      "cardBody": "Saisissez votre adresse Gmail et le code de 16 caractères dans la carte que l'agent vous montre, jamais dans la discussion. Les espaces dans le code ne posent pas de problème. Les serveurs Gmail sont remplis pour vous."
+    },
+    "outlook": {
+      "name": "Outlook ou Microsoft 365",
+      "password": "Microsoft n'accepte plus de mot de passe ni de mot de passe d'application en IMAP pour les boîtes Outlook.com, Hotmail et Microsoft 365 : cette boîte ne peut donc pas être connectée avec un mot de passe. Transférez son courrier vers une boîte que Liaison peut connecter, ou connectez plutôt une boîte Google."
+    },
+    "icloud": {
+      "name": "iCloud Mail",
+      "password": "Activez l'identification à deux facteurs du compte Apple. Sur account.apple.com, ouvrez Connexion et sécurité, puis Mots de passe pour app, et créez-en un nommé Liaison. Copiez le mot de passe affiché."
+    },
+    "fastmail": {
+      "name": "Fastmail",
+      "password": "Dans Fastmail, ouvrez Settings, puis Privacy & Security, et créez un nouveau mot de passe d'application avec accès au courrier en IMAP et SMTP. Copiez le mot de passe affiché."
+    },
+    "titleNoPassword": "{{provider}} ne peut pas se connecter avec un mot de passe"
+  },
+  "googleTrusted": {
+    "title": "Faire approuver Liaison par votre Google Workspace",
+    "family": {
+      "workspace": "Gmail et Google Agenda",
+      "drive": "Google Drive"
+    },
+    "admin": {
+      "title": "Vérifier qui peut le faire",
+      "body": "Seul un super administrateur de votre Google Workspace (ou un administrateur autorisé à gérer les commandes des API) peut marquer une app comme Fiable, et Google le demande parce que le client Google de ce serveur n'est pas passé par la validation de Google. Si vous ne l'êtes pas, envoyez à votre administrateur le message ci-dessous. Si c'est déjà fait, passez directement à la dernière étape."
+    },
+    "adminMessage": "Bonjour, je voudrais connecter mon compte Google professionnel à Liaison ({{baseUrl}}), l'espace où notre équipe traite les mails, les tickets et les documents. Google demande d'abord l'accord d'un administrateur. Dans admin.google.com, ouvrez Sécurité, puis Accès et contrôle des données, puis Commandes des API, et cliquez sur Gérer l'accès des applications. Sous Applications configurées, cliquez sur Configurer une nouvelle application, saisissez l'ID client ci-dessous, cliquez sur Rechercher puis sur Liaison. Gardez toute l'organisation comme champ d'application (ou choisissez l'unité organisationnelle de notre équipe), cliquez sur Continuer, choisissez Fiable, cliquez sur Continuer, puis sur Terminer.\n{{clients}}\nFiable permet seulement aux personnes de notre domaine qui choisissent de se connecter de donner à Liaison l'accès à leur propre compte, et cela se retire à tout moment sur la même page. Merci.",
+    "open": {
+      "title": "Ouvrir les réglages des applications tierces",
+      "body": "Dans admin.google.com, ouvrez Sécurité, puis Accès et contrôle des données, puis Commandes des API, et cliquez sur Gérer l'accès des applications : c'est là que Google liste les apps que les personnes du domaine peuvent connecter."
+    },
+    "add": {
+      "title": "Ajouter Liaison par son ID client",
+      "body": "Sous Applications configurées, cliquez sur Configurer une nouvelle application. Saisissez l'ID client ci-dessous, cliquez sur Rechercher puis sur Liaison dans les résultats. L'ID client désigne exactement le client Google de ce serveur.",
+      "bodyMany": "Sous Applications configurées, cliquez sur Configurer une nouvelle application. Saisissez le premier ID client ci-dessous, cliquez sur Rechercher puis sur Liaison dans les résultats. Faites ensuite de même, depuis Configurer une nouvelle application, pour chaque autre ID client ci-dessous : ce serveur utilise un client Google distinct pour Gmail et pour Google Drive."
+    },
+    "scope": {
+      "title": "Choisir à qui cela s'applique",
+      "body": "Pour le champ d'application, gardez l'unité organisationnelle principale pour l'appliquer à tout le monde, ou choisissez les unités organisationnelles des personnes qui se connecteront (seules elles pourront alors connecter leur compte). Cliquez ensuite sur Continuer."
+    },
+    "trust": {
+      "title": "La marquer Fiable",
+      "body": "Pour l'accès aux données Google, choisissez Fiable et cliquez sur Continuer, puis vérifiez le récapitulatif et cliquez sur Terminer : Google traite alors Liaison comme une app de votre propre domaine. Le changement peut prendre quelques minutes, parfois jusqu'à une heure."
+    },
+    "connect": {
+      "title": "Se connecter avec Google",
+      "body": "Utilisez la carte Connecter et approuvez les autorisations avec le compte à connecter. Si Google affiche Erreur 400 : admin_policy_enforced ou Accès bloqué, l'étape Fiable manque ou n'est pas encore appliquée : vérifiez-la, attendez quelques minutes et réessayez."
+    },
+    "links": {
+      "appAccess": "Gérer l'accès des applications"
+    }
+  },
+  "googleConsumer": {
+    "statement": "L'accès complet à Gmail et à Google Drive demande un compte Google Workspace : Google ne laisse pas le client Google de ce serveur lire un compte @gmail.com personnel. Avec une adresse @gmail.com, Liaison se connecte en IMAP avec un mot de passe d'application (il faut la validation en deux étapes) et envoie en SMTP. L'état lu, les suivis, l'archivage et la corbeille se synchronisent dans les deux sens avec Gmail, et le dossier Messages envoyés est importé, donc les réponses envoyées depuis Gmail apparaissent dans Liaison. Les nouveaux messages arrivent toutes les 2 minutes plutôt qu'immédiatement. Google Drive se connecte avec les seuls fichiers et dossiers que vous choisissez pour Liaison. Vous pouvez vous connecter en IMAP maintenant, ou passer à Google Workspace plus tard et vous reconnecter avec Google."
+  },
+  "shopifyDashboard": {
+    "title": "Créer l'app Shopify dans le Dev Dashboard de Shopify",
+    "open": {
+      "title": "Créer l'app",
+      "body": "Connectez-vous à dev.shopify.com/dashboard avec le compte du propriétaire de la boutique, ou un compte collaborateur qui peut gérer les apps. Cliquez sur Create app et nommez-la (par exemple Liaison). Cette app est celle de votre boutique : c'est elle qui permet à Liaison d'y accéder."
+    },
+    "version": {
+      "title": "Configurer et publier l'app",
+      "body": "Dans la nouvelle version, saisissez les valeurs ci-dessous dans l'ordre : l'App URL, la Redirect URL, puis les Scopes (copiez-les tels quels ; laissez Optional scopes vide). Désactivez Embed app in Shopify admin et Use legacy install flow, et réglez la version d'API des webhooks sur la dernière valeur. Cliquez ensuite sur Release. Shopify sait alors ce que Liaison peut lire et où vous renvoyer après l'approbation : une boutique obtient exactement ces scopes quand elle se connecte."
+    },
+    "fullOrderHistory": {
+      "title": "L'historique complet des commandes est déjà dans les scopes",
+      "body": "Les scopes ci-dessus contiennent read_all_orders : une app que l'organisation de votre propre boutique crée dans le Dev Dashboard l'obtient sans examen par Shopify, et Liaison peut donc lire les commandes de plus de 60 jours. Si Release échoue avec une erreur sur read_all_orders, l'app appartient plutôt à une organisation Partner : retirez read_all_orders des scopes et cliquez de nouveau sur Release. Puis, dans le Partner Dashboard (partners.shopify.com), ouvrez Apps, puis l'app, puis API access requests, et cliquez sur Request access pour Read all orders ; Shopify demande pourquoi l'app a besoin des commandes de plus de 60 jours : collez la réponse ci-dessous (elle est en anglais, pour les équipes de revue de Shopify). Poursuivez en attendant : la boutique se connecte avec les 60 derniers jours. Une fois l'approbation de Shopify reçue, remettez read_all_orders dans les scopes, cliquez sur Release, et dites-le à l'agent pour qu'il vous demande de reconnecter la boutique."
+    }
+  }
+}

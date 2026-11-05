@@ -1,0 +1,21 @@
+{
+  ".claude-plugin/marketplace.json": "40f4be17a7f781d7a4f243990d533c3d877f37f9345378eabf6de826c44470a1",
+  ".claude-plugin/plugin.json": "d10a5658785309dea7ce4dbff6e7dc31e52a5269b9ad05fed85ce144de0137fc",
+  "LICENSE": "699ffc3de5a5b7e0f88e0b3edd74e5b1cac088724e8925f825d8cc07be9b7946",
+  "commands/atelier.md": "addb78f009cc2ffa41ec6a3984f381f69b3962bf65c607b2bf52cc769df0c584",
+  "docs/precepts.md": "e7f743e924ad8ec54cb2222b38b203e9f6e2eaad0eb10011c36946ea85d8c324",
+  "hooks/ask-guard.sh": "c77a447ad80111ab27a344f1a779cb5d8ab0595dd3b78632b799690319a2237f",
+  "hooks/hooks.json": "327a66a3b26dd2277a9f514faa3b77486bb44af96326c129c5c03cee8b19a5fa",
+  "hooks/post-tool-use.sh": "8fa542ab8a1bb3cde4f5b8e753c65cba4fbf515f3bf7fb1b3808ce8d6bad0732",
+  "hooks/session-start.sh": "a71ff86bc2e26f2a0810c1e400df3794fc518733b23c98982bbb2843c18b92d3",
+  "hooks/stop.sh": "e7777e4ee353c72f37f3cf533cf2cfbc454dfbea640cb6e2065a377bf5270813",
+  "lib/common.sh": "501e28698fa47ed68bfb4af04171019445e0ec16a2ce43570cf22de58bbadc60",
+  "scripts/board-layout-check.cjs": "b202e4c6a3214f620990994f455eaff43b7d3377b5dcd9ae92048d5ed3a46eec",
+  "scripts/proof-board.py": "217e64a117dcf4cad8dfa530f5b3cfcef1179d654cb598062e82c8bbb2643130",
+  "skills/boards/SKILL.md": "01a8264099f9453a1379fb0c25e23b8e8c794f11c70d3e73d59a3d344b25a3b2",
+  "skills/brainstorming/SKILL.md": "5ef33cdece23123f4a8d20f7d9702d17e6f21b9353c852d374c15268f4917500",
+  "skills/executing/SKILL.md": "2e7407d2e623ab9f7a8683b4f4aa61ee9049a253364adc9b08d9920acac48b33",
+  "skills/reviewing/SKILL.md": "0fdab03df3cd642f6b4cbff0624a91a5b55d8a53d08f7f7abe3c926eb7e0ac3f",
+  "skills/speccing/SKILL.md": "213613fcddc4760ddbac85391a45c384585690d6ea7f0bdeee63c73cb3d787f1",
+  "skills/validating/SKILL.md": "cda4254cdd0ac978e6f02fdd2e41ede6b71d12091bf02ea03a3ebe025032882e"
+}

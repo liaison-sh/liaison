@@ -1,0 +1,57 @@
+Live agent turns: per-turn Redis Stream, Lua allocates seq and item id -> apps/api/src/modules/agent/runtime/stream-registry.ts:17-28 ; apps/api/src/modules/agent/runtime/stream-registry.ts:182 ; apps/api/src/modules/agent/runtime/stream-registry.ts:208-217
+Broadcast frame carries seq and itemId -> apps/api/src/modules/agent/routes.ts:333-336 ; apps/api/src/modules/agent/runtime/stream-registry.ts:638-640
+stream-state snapshot with last seq, client drops frames at or below -> apps/api/src/modules/agent/routes.ts:794 ; apps/api/src/modules/agent/routes.ts:855-856
+Registry not answering serves no run -> apps/api/src/modules/agent/routes.ts:801-808
+Checkpoint every 500 frames, XTRIM MINID -> apps/api/src/modules/agent/runtime/stream-registry.ts:86 ; apps/api/src/modules/agent/runtime/stream-registry.ts:344 ; apps/api/src/modules/agent/runtime/stream-registry.ts:647
+Ended stream readable AGENT_TURN_STREAM_TTL_S 600 s -> apps/api/src/lib/env.ts:810-812 ; apps/api/src/modules/agent/runtime/stream-registry.ts:28-29
+Readers drop dead-owner or 660 s silent turns; sweep tells listeners running false; changes channel -> apps/api/src/modules/agent/runtime/stream-registry.ts:34-39 ; apps/api/src/modules/agent/runtime/stream-registry.ts:82 ; apps/api/src/modules/agent/runtime/stream-registry.ts:91 ; apps/api/src/modules/agent/runtime/stream-registry.ts:911
+Live runs per instance, taint clear waits, fails closed -> apps/api/src/modules/agent/scopes/live-runs.ts:1-20 ; apps/api/src/modules/agent/scopes/taint.ts:299
+Credit balance through broadcastEphemeral -> apps/api/src/modules/agent/credits/credit-service.ts:294-297
+Internal listener: forward to minting process, never Redis, one route, signature, skew, replay, other instance -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:3-30 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:46-48 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:226-229
+LIAISON_INTERNAL_PORT / HOST / BIND, URL in heartbeat record -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:341-409 ; apps/api/src/index.ts:79-83 ; apps/api/src/infra/instance-registry.ts:46
+HKDF from JWT_SECRET -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:61-64
+Dead or unreachable owner 409 WRONG_INSTANCE -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:117-134 ; apps/api/src/modules/agent/routes.ts:1030-1031
+withIdempotency pending 60 s, done 24 h, 422, open on Redis failure -> apps/api/src/lib/idempotency.ts:3-22 ; apps/api/src/lib/idempotency.ts:66-70
+Message post keyed by correlationId -> apps/api/src/modules/threads/routes.ts:885-894
+Clients notice a dead connection within about 10 s -> apps/web/src/primitives/createWebSocket.ts:95
+Clients reload every open view after a reconnect -> apps/web/src/framework/resync.ts:94
+Reads time out and retry -> apps/web/src/lib/api-client.ts:154
+Lost send sent once more with the same correlationId -> apps/web/src/modules/threads/send-retry.ts:3
+A dead process's turn is dropped, not resumed -> apps/api/src/modules/agent/runtime/stream-registry.ts:941
+Migrate command / LIAISON_MIGRATE_ON_START; lease row drizzle.liaison_migration_lock 60 s / 10 s / 1 s -> apps/api/scripts/entrypoint.sh:37-76 ; apps/api/src/db/migrate.ts:109 ; apps/api/src/db/migrate.ts:210-212
+Renew/release bounded by renewMs, two failures stop; advisory fence on direct connections, skipped via PgBouncer; signal releases the lease -> apps/api/src/db/migrate.ts:196-202 ; apps/api/src/db/migrate.ts:240-251 ; apps/api/src/db/migrate.ts:264-273 ; apps/api/src/db/migrate.ts:314-322 ; apps/api/src/db/migrate.ts:334-341 ; apps/api/scripts/entrypoint.sh:32-53
+Boot catalog reconcile takes the same lease -> apps/api/src/db/reconcile-catalog-boot.ts:90
+check:migration-safety rules and annotations -> scripts/check-migration-safety.ts:7-54 ; scripts/check-migration-safety.ts:303-307 ; .github/workflows/ci.yml:72
+Index budget 10 000 ms -> scripts/check-migration-safety.ts:60
+One transaction, CONCURRENTLY refused -> scripts/check-migration-safety.ts:38-41
+Baseline file -> scripts/migration-safety-baseline.json:1
+Shutdown: one sequence, phases registered by modules -> apps/api/src/lib/shutdown.ts:2-21
+t0: readiness draining, approvals refused, job fetches stop; chat taken until the edge grace, then 503 -> apps/api/src/lib/server.ts:930 ; apps/api/src/lib/shutdown-phases.ts:27 ; apps/api/src/lib/readiness.ts:50-53 ; apps/api/src/modules/agent/routes.ts:130-135 ; apps/api/src/infra/jobs/jobs.ts:1301
+Edge: listener stops, WebSockets close 1012 -> apps/api/src/lib/server.ts:936 ; apps/api/src/lib/server.ts:849
+Drains together; job past budget aborted and re-delayed without an attempt -> apps/api/src/lib/shutdown-phases.ts:46-59 ; apps/api/src/lib/server.ts:944 ; apps/api/src/infra/jobs/jobs.ts:1312-1321 ; apps/api/src/infra/jobs/jobs.ts:571-572
+Later groups in order -> apps/api/src/lib/shutdown-phases.ts:73-157 ; apps/api/src/lib/shutdown-budget.ts:16-47
+shutdown_phase log line -> apps/api/src/lib/shutdown.ts:173-175
+Exit 0 by SHUTDOWN_HARD_DEADLINE_MS -> apps/api/src/lib/shutdown.ts:255-271
+A job ignoring the abort goes back to wait after the Postgres pool closes, before Redis -> apps/api/src/infra/jobs/jobs.ts:1371-1400 ; apps/api/src/lib/shutdown-phases.ts:166-190
+Pools wait for boot to finish or park -> apps/api/src/lib/shutdown.ts:144-170
+Signal during boot halts boot -> apps/api/src/lib/shutdown.ts:136
+Posted message on a draining process becomes an agent-turn-dispatch job -> apps/api/src/modules/threads/posted-message-dispatch.ts:86-87
+A dead or drained turn resumes from its last complete step; claim fences; writes keyed in the effect ledger -> apps/api/src/modules/agent/runtime/turn-resume.ts:135 ; apps/api/src/modules/agent/runtime/turn-ledger.ts:48 ; apps/api/src/modules/agent/tools/tool-bridge.ts:1021
+Manifest schedule = one scheduler per (app, job) on kernel-cron (app-cron-fanout:<app>:<job>); tick enqueues one job per workspace, spread over min(80 % of interval, 5 min), id names org + fire time -> apps/api/src/infra/jobs/fanout.ts:21-27 ; apps/api/src/infra/jobs/fanout.ts:80-84 ; apps/api/src/infra/jobs/fanout-runtime.ts:153 ; apps/api/src/infra/jobs/fanout-runtime.ts:359-383
+Tick includes active/no row, error once an hour, never disabled/removed; marker per job; no second job while the previous has not started -> apps/api/src/infra/jobs/fanout-runtime.ts:62-64 ; apps/api/src/infra/jobs/fanout-runtime.ts:70 ; apps/api/src/infra/jobs/fanout-runtime.ts:120-167 ; apps/api/src/infra/jobs/fanout-runtime.ts:240-260
+State materializer minute tick fans out per org -> apps/api/src/modules/attention/state-materializer.ts:372-432
+Only changed orgs (outbox marks each batch's orgs, sorted set) plus a 10-minute heartbeat per org; event-caused items next minute, time-caused within 10 min -> apps/api/src/modules/attention/org-changes.ts:1-72 ; apps/api/src/infra/events/outbox-worker.ts:288
+Boot/upkeep only add schedulers every 10 min; activation and uninstall sync an app; leader reconcile removes gone apps; legacy per-org schedulers swept, legacy ticks dropped and counted -> apps/api/src/infra/jobs/fanout-runtime.ts:300 ; apps/api/src/infra/jobs/fanout-runtime.ts:384-410 ; apps/api/src/infra/jobs/fanout-runtime.ts:442 ; apps/api/src/infra/jobs/fanout-runtime.ts:529 ; apps/api/src/infra/jobs/jobs.ts:895-898
+Rollback past the fan-out: cron-fanout-rollback.ts removes app-cron-fanout:* schedulers and queued fan-out kernel jobs -> apps/api/scripts/cron-fanout-rollback.ts
+Schedulers upserted only when missing or changed; reconcile removes only apps with no active version and not in-tree; a fired legacy tick becomes its fan-out job (legacy_tick_converted) -> apps/api/src/infra/jobs/fanout-runtime.ts:345-385 ; apps/api/src/infra/jobs/fanout-runtime.ts:495-515 ; apps/api/src/infra/jobs/fanout-runtime.ts:590-605 ; apps/api/src/infra/jobs/jobs.ts:835-870 ; apps/api/src/infra/jobs/jobs.ts:935-960
+Fair job queues: fair queues = kernel classes and app queues; turn order at enqueue (priority by waiting count); cap half the cell slots under contention, all alone; slots from instance records; over-cap job delayed without an attempt, promoted on release; nested sub-run passes up to 2x; kernel-bulk unprotected; 250 ms fail-open, degraded; JOB_ORG_FAIRNESS=off; /diag counters, busyOrgs, p95 wait, fan-out per job -> apps/api/src/infra/jobs/fairness.ts:129-146 ; apps/api/src/infra/jobs/fairness.ts:171-185 ; apps/api/src/infra/jobs/fairness.ts:250 ; apps/api/src/infra/jobs/fairness.ts:389-455 ; apps/api/src/infra/jobs/fairness.ts:106 ; apps/api/src/infra/instance-registry.ts ; apps/api/src/infra/jobs/jobs.ts:655-665 ; apps/api/src/infra/jobs/jobs.ts:572 ; apps/api/src/infra/jobs/fairness.ts:210-235 ; apps/api/src/lib/env.ts:684 ; apps/api/src/modules/monitor/index.ts:168-228 ; apps/api/src/infra/jobs/queue-classes.ts:55-66
+Fair queues /diag: denied lifetime, parkedNow = park sets now; ungated runs dropped from the turn record (fail-open cleanup, contention check prunes gone/finished jobs); older-release hosts counted with default slots -> apps/api/src/infra/jobs/fairness.ts (readQueueFairness, forgetUngatedRun, ADMIT_LUA contention loop, readCellSlots, defaultQueueSlots)
+Boot sets up no org; time flat in org count -> apps/api/src/index.ts:294
+Event dispatch of once handlers ensures the org -> apps/api/src/infra/events/event-bus.ts:491
+OAuth callback ensures the org -> apps/api/src/modules/apps/connections/service.ts:2403
+Registry miss for an org not set up: throw outside production, log + count + heal in production -> apps/api/src/modules/apps/org-registry-guard.ts:56
+/diag orgSetup counter -> apps/api/src/modules/monitor/index.ts:513
+PDF templates instance-wide, loaded per app on a miss -> apps/api/src/modules/pdf/registry-rehydrate.ts:21
+Routine schedulers re-created by the leader on lease acquire -> apps/api/src/infra/jobs/kernel-jobs.ts:1306
+MCP connections projected per org at first touch -> apps/api/src/modules/mcp-client/index.ts:478
+Env bootstrap upsert queues the connection event; processes that projected the org project it again -> apps/api/src/modules/mcp-client/env-bootstrapper.ts:191 ; apps/api/src/modules/mcp-client/index.ts:298

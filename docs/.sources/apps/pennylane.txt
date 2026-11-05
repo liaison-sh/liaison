@@ -1,0 +1,49 @@
+connects Pennylane book; spend, P&L, cash, AP, margin, runway -> bundled-apps/pennylane/README.md:3
+Pennylane is kind connector, no views -> bundled-apps/pennylane/app.manifest.json:21
+a connector is a card on the Connectors page, no page of its own -> apps/web/src/framework/define-app.ts:816
+Connectors page and cards -> apps/web/src/modules/settings/connectors/ConnectorsPage.tsx:198
+token shown once, copy immediately -> bundled-apps/pennylane/app.manifest.json:92
+company token: account settings, Executive or Accountant -> bundled-apps/pennylane/app.manifest.json:94
+firm token: Firm settings > Firm Tokens > Generate an API Token -> bundled-apps/pennylane/app.manifest.json:95
+grant scopes to read invoices, trial balance, transactions -> bundled-apps/pennylane/app.manifest.json:96
+without bank scope cash and runway unavailable -> bundled-apps/pennylane/README.md:43
+Connect button on connections block -> apps/web/src/modules/settings/app-page/ConnectionsBlock.tsx:416
+API token field -> bundled-apps/pennylane/app.manifest.json:74
+Scope (company|firm) field; must match token -> bundled-apps/pennylane/app.manifest.json:79
+scope mismatch fails reads -> bundled-apps/pennylane/README.md:38
+Company ID (firm tokens only) field -> bundled-apps/pennylane/app.manifest.json:84
+connection section adminScope pennylane:admin:connection -> bundled-apps/pennylane/app.manifest.json:45
+org-owned connection, else not_connected for others -> bundled-apps/pennylane/README.md:48
+money in minor units -> bundled-apps/pennylane/README.md:5
+gross margin and runway derived -> bundled-apps/pennylane/README.md:7
+runway months null when burn non-positive -> bundled-apps/pennylane/app.manifest.json:819
+supplier_invoice_upload gated, imports on approval, no OCR, supplier match, reuse, not for received e-invoices -> bundled-apps/pennylane/app.manifest.json:839
+upload answers posted_to_pennylane true (README stage-not-post is stale) -> bundled-apps/pennylane/src/upload.ts:138
+implements einvoicing-pa contract -> bundled-apps/pennylane/app.manifest.json:897
+E-invoicing platform field in invoicing settings -> bundled-apps/invoicing/app.manifest.json:5855
+scopes list -> bundled-apps/pennylane/app.manifest.json:34
+pennylane:approve approver scope -> docs/reference/scopes.md:253
+webhooks_setup gated -> bundled-apps/pennylane/app.manifest.json:224
+einvoicing_registration_status -> bundled-apps/pennylane/app.manifest.json:244
+einvoicing_find -> bundled-apps/pennylane/app.manifest.json:261
+einvoicing_submit -> bundled-apps/pennylane/app.manifest.json:289
+einvoicing_advance -> bundled-apps/pennylane/app.manifest.json:340
+einvoicing_status -> bundled-apps/pennylane/app.manifest.json:379
+einvoicing_status_changes -> bundled-apps/pennylane/app.manifest.json:403
+einvoicing_find_booking -> bundled-apps/pennylane/app.manifest.json:433
+einvoicing_book -> bundled-apps/pennylane/app.manifest.json:457
+einvoicing_received_list -> bundled-apps/pennylane/app.manifest.json:496
+einvoicing_received_get -> bundled-apps/pennylane/app.manifest.json:520
+einvoicing_received_file -> bundled-apps/pennylane/app.manifest.json:544
+einvoicing_received_set_status -> bundled-apps/pennylane/app.manifest.json:596
+supplier_invoices_list -> bundled-apps/pennylane/app.manifest.json:640
+supplier_invoice_get -> bundled-apps/pennylane/app.manifest.json:677
+customer_invoices_list -> bundled-apps/pennylane/app.manifest.json:692
+trial_balance_get -> bundled-apps/pennylane/app.manifest.json:728
+pnl_summary -> bundled-apps/pennylane/app.manifest.json:743
+cash_position -> bundled-apps/pennylane/app.manifest.json:758
+transactions_list -> bundled-apps/pennylane/app.manifest.json:768
+spend_by_category -> bundled-apps/pennylane/app.manifest.json:804
+runway_estimate -> bundled-apps/pennylane/app.manifest.json:819
+home_load -> bundled-apps/pennylane/app.manifest.json:829
+supplier_invoice_upload gated -> bundled-apps/pennylane/app.manifest.json:844

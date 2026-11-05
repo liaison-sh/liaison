@@ -1,0 +1,11 @@
+{
+  "tag": "v0.1.0",
+  "frozenAt": "2026-05-26T00:00:00.000Z",
+  "prelaunch": true,
+  "protected": [
+    {
+      "path": "apps/api/src/db/migrations/0000_initial.sql",
+      "sha256": "7306c7c5d67809cbecc2bb21257eea4262c1e5cf721efc8f168d11f63b7ebfe2"
+    }
+  ]
+}

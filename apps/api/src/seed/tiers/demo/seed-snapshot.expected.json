@@ -1,0 +1,318 @@
+{
+  "app_api_connector.adapters": {
+    "rows": 1,
+    "digest": "3c73adcbd0e3a486"
+  },
+  "app_boxtal.app_config": {
+    "rows": 1,
+    "digest": "7af7efe955b0cc74"
+  },
+  "app_boxtal.attention_rule": {
+    "rows": 2,
+    "digest": "2ab6fa304b39469e"
+  },
+  "app_boxtal.claim": {
+    "rows": 2,
+    "digest": "354cbb33bdcf91f0"
+  },
+  "app_boxtal.local_product": {
+    "rows": 11,
+    "digest": "bbfb759a51f9ac6d"
+  },
+  "app_boxtal.pack": {
+    "rows": 4,
+    "digest": "4e3b94c6a94addf6"
+  },
+  "app_boxtal.pack_component": {
+    "rows": 6,
+    "digest": "cb1b0aa9fe0e1ac2"
+  },
+  "app_boxtal.prep_meta": {
+    "rows": 14,
+    "digest": "8b14017d82573c6f"
+  },
+  "app_boxtal.product_profile": {
+    "rows": 11,
+    "digest": "ec59a20460e4899d"
+  },
+  "app_boxtal.product_profile_link": {
+    "rows": 11,
+    "digest": "4ee3c86761297b40"
+  },
+  "app_boxtal.shipment": {
+    "rows": 14,
+    "digest": "b429ff31ded45ee7"
+  },
+  "app_boxtal.shipping_profile": {
+    "rows": 11,
+    "digest": "532987c4c8d96323"
+  },
+  "app_calendar.accounts": {
+    "rows": 1,
+    "digest": "bb3ea2f320a2ab01"
+  },
+  "app_calendar.calendars": {
+    "rows": 1,
+    "digest": "8cff1b1ed9ac7f78"
+  },
+  "app_calendar.events": {
+    "rows": 8,
+    "digest": "a5eede9d0431d3ef"
+  },
+  "app_invoicing.contact_relationships": {
+    "rows": 30,
+    "digest": "9ea1dd04120f8e98"
+  },
+  "app_invoicing.document_lines": {
+    "rows": 58,
+    "digest": "49246faaa2bb5894"
+  },
+  "app_invoicing.documents": {
+    "rows": 37,
+    "digest": "ad3508cf904d9d2b"
+  },
+  "app_invoicing.hs_code_library": {
+    "rows": 5,
+    "digest": "8b0d62b05dc653ee"
+  },
+  "app_invoicing.issuer_profiles": {
+    "rows": 2,
+    "digest": "1ffdcca0bddd7b74"
+  },
+  "app_invoicing.tax_regimes": {
+    "rows": 4,
+    "digest": "35eb932ec500bcaf"
+  },
+  "app_knowledge.collection_memberships": {
+    "rows": 32,
+    "digest": "0e767a6b59958c83"
+  },
+  "app_knowledge.collections": {
+    "rows": 6,
+    "digest": "ab2bc72c3a4eaa43"
+  },
+  "app_knowledge.documents": {
+    "rows": 32,
+    "digest": "ff92dd2131a9948d"
+  },
+  "app_knowledge.source_identities": {
+    "rows": 4,
+    "digest": "470e43ebe13fc6f5"
+  },
+  "app_knowledge.synced_sources": {
+    "rows": 2,
+    "digest": "ec2fdecc59c1b262"
+  },
+  "app_knowledge.taggings": {
+    "rows": 69,
+    "digest": "aceb2ec9ed692ba0"
+  },
+  "app_knowledge.tags": {
+    "rows": 39,
+    "digest": "f298e499fb809e3f"
+  },
+  "app_mail.accounts": {
+    "rows": 5,
+    "digest": "38811e6ac298c6ee"
+  },
+  "app_mail.conversations": {
+    "rows": 6,
+    "digest": "4aa6a2ad6086aba1"
+  },
+  "app_mail.messages": {
+    "rows": 7,
+    "digest": "379fc8afe1805c4c"
+  },
+  "app_monitoring.incidents": {
+    "rows": 15,
+    "digest": "b6c94744ff03570c"
+  },
+  "app_pennylane.account_class_map": {
+    "rows": 7,
+    "digest": "ec494be98a48fcc7"
+  },
+  "app_pennylane.cash_snapshot": {
+    "rows": 1,
+    "digest": "27c3edb2edd24867"
+  },
+  "app_pennylane.pnl_snapshot": {
+    "rows": 1,
+    "digest": "7d8ea4b5a34b0f08"
+  },
+  "app_projects.project_statuses": {
+    "rows": 20,
+    "digest": "cf3507c626ecae49"
+  },
+  "app_projects.projects": {
+    "rows": 4,
+    "digest": "e250b121c2a524a0"
+  },
+  "app_projects.task_dependencies": {
+    "rows": 10,
+    "digest": "c62f734ea4ddbf71"
+  },
+  "app_projects.tasks": {
+    "rows": 27,
+    "digest": "b2327a8876e77683"
+  },
+  "app_social.dm_conversation": {
+    "rows": 3,
+    "digest": "4589236e1c9e8ec5"
+  },
+  "app_social.dm_message": {
+    "rows": 8,
+    "digest": "59e677b191241e59"
+  },
+  "app_social.finding": {
+    "rows": 20,
+    "digest": "bbb56638733c8243"
+  },
+  "app_social.monitor_term": {
+    "rows": 6,
+    "digest": "fd1102cd9cf337fd"
+  },
+  "app_social.sync_state": {
+    "rows": 5,
+    "digest": "dee2ba48c8160db4"
+  },
+  "app_social.watched_object": {
+    "rows": 3,
+    "digest": "4d676fda96fee0ca"
+  },
+  "app_tickets.categories": {
+    "rows": 7,
+    "digest": "3d12f08c9a9932cc"
+  },
+  "app_tickets.inboxes": {
+    "rows": 3,
+    "digest": "7c6ef055bb5bfeec"
+  },
+  "app_tickets.messages": {
+    "rows": 16,
+    "digest": "6a5d9411e5b035b6"
+  },
+  "app_tickets.ticket_reads": {
+    "rows": 8,
+    "digest": "c9c773d1f2e68fe8"
+  },
+  "app_tickets.tickets": {
+    "rows": 8,
+    "digest": "d292fcf68e6a2647"
+  },
+  "kernel.agent_knowledge_pointers": {
+    "rows": 10,
+    "digest": "933ab2b23bca7130"
+  },
+  "kernel.agent_memory": {
+    "rows": 18,
+    "digest": "db00d921351142ca"
+  },
+  "kernel.agent_skill_index": {
+    "rows": 9,
+    "digest": "70a2b38f16f77a5b"
+  },
+  "kernel.agent_thread_checkpoints": {
+    "rows": 8,
+    "digest": "3d334c6d7e4dc233"
+  },
+  "kernel.agents": {
+    "rows": 12,
+    "digest": "cd7cd5a6cd1cfc16"
+  },
+  "kernel.app_seeded_assets": {
+    "rows": 9,
+    "digest": "524db101cc33e4a6"
+  },
+  "kernel.app_sequences": {
+    "rows": 10,
+    "digest": "c05366c8f2d3eb22"
+  },
+  "kernel.approval_requests": {
+    "rows": 3,
+    "digest": "f20ae2c8af9c7d98"
+  },
+  "kernel.apps": {
+    "rows": 21,
+    "digest": "760f0ccfdba1c3cd"
+  },
+  "kernel.audit_log": {
+    "rows": 35,
+    "digest": "332154ef00bdad96"
+  },
+  "kernel.config_applied_fields": {
+    "rows": 8,
+    "digest": "a1ac404aad12146f"
+  },
+  "kernel.connected_accounts": {
+    "rows": 3,
+    "digest": "b5f2e309647617bf"
+  },
+  "kernel.contacts": {
+    "rows": 40,
+    "digest": "1ecc84a1efa14368"
+  },
+  "kernel.credit_balances": {
+    "rows": 1,
+    "digest": "3ccfcc1199e7c352"
+  },
+  "kernel.disabled_app_skills": {
+    "rows": 5,
+    "digest": "7ab21419f2813b9b"
+  },
+  "kernel.messages": {
+    "rows": 43,
+    "digest": "80cdbe01c0fdd51d"
+  },
+  "kernel.pending_events": {
+    "rows": 281,
+    "digest": "49e7fa56db245d51"
+  },
+  "kernel.resource_grants": {
+    "rows": 7,
+    "digest": "b1ae9ad68f7cda0f"
+  },
+  "kernel.roles": {
+    "rows": 32,
+    "digest": "1f27f989ee8c3cac"
+  },
+  "kernel.routines": {
+    "rows": 7,
+    "digest": "22ce18a008ffbf1a"
+  },
+  "kernel.saved_views": {
+    "rows": 8,
+    "digest": "b4ec2e3fc5bae2c9"
+  },
+  "kernel.skills": {
+    "rows": 9,
+    "digest": "3d0f5fa4648fa227"
+  },
+  "kernel.sub_agent_definitions": {
+    "rows": 3,
+    "digest": "7eb2edec8666f96a"
+  },
+  "kernel.thread_participants": {
+    "rows": 91,
+    "digest": "8edb1b8e517277a7"
+  },
+  "kernel.threads": {
+    "rows": 37,
+    "digest": "7183737ad92d02e3"
+  },
+  "kernel.user_dimension_grants": {
+    "rows": 8,
+    "digest": "92a733c59e1688da"
+  },
+  "kernel.user_roles": {
+    "rows": 8,
+    "digest": "5450128f5005cd9a"
+  },
+  "kernel.user_thread_state": {
+    "rows": 60,
+    "digest": "fb66ee5f4bf9cc9f"
+  },
+  "kernel.users": {
+    "rows": 8,
+    "digest": "3d91e9f551131e27"
+  }
+}

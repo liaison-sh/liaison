@@ -1,0 +1,225 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# Example config for `liaison config apply` — headless, idempotent org
+# provisioning. Copy to a secret file (mode 0600), fill the values, and apply:
+#
+#   docker compose exec -T app liaison config apply \
+#     --config /run/secrets/liaison-config.yaml --format env
+#
+# Every section except `org` is OPTIONAL — a run provisions whatever is present
+# and skips the rest. Re-running is safe ("ensure" semantics): unchanged input
+# is a no-op that still emits the same LIAISON_ORG_ID / LIAISON_API_KEY.
+#
+# Secrets: keep this file out of version control and off the command line.
+# `${VAR}` and `${VAR:-default}` interpolate from the process environment, so
+# you can keep secret values in env and reference them here.
+#
+# See docs/provisioning-cli.md for the full reference.
+
+org: # REQUIRED. `slug` is the stable idempotency key and determines LIAISON_ORG_ID.
+  slug: acme
+  name: "Acme"
+  timezone: Europe/Paris # optional
+  defaultLocale: en # optional
+  # requireAdminSecondFactor: true # optional: administrators must use two-step verification
+  # credits: { currency: EUR, initial: "0" }  # optional; default EUR / 0 (BYOK bypasses metering)
+
+admin: # the owner account (and its personal agent). Created once; an existing admin's password is NEVER reset.
+  email: owner@example.com
+  name: "Owner Name"
+  password: "${LIAISON_ADMIN_PASSWORD}" # optional: omit it for passwordless sign-in (emailed code)
+
+# Custom roles. A role is a NAME + the exact set of scopes it grants; the set is
+# reconciled on every apply (missing scopes granted, extra ones revoked).
+# Scopes are hierarchical `app:resource:action` strings — granting `<app>:*`
+# includes a whole app; OMITTING an app's scopes withholds it. This gates BOTH
+# the app's tools AND its surface: a user whose role holds no scope for an app
+# never sees that app's icon / nav (the activity bar is built only from apps the
+# user can reach). Default roles (admin/member/viewer) exist already; declare a
+# role here only to customise. Roles are applied BEFORE users, so `users[].role`
+# can reference one by name. Example — an `ops` role with everything EXCEPT the
+# finance/ads apps (so these teammates never see pennylane or ads):
+# roles:
+#   - name: ops
+#     description: "Ops — Shopify + tickets + threads, no finance/ads apps"
+#     scopes:
+#       - "shopify:*"
+#       - "tickets:*"
+#       - "kernel:threads:read"
+#       - "kernel:threads:write"
+#       - "kernel:contacts:read"
+#       # note: no pennylane:* and no ads:* → those apps are invisible to this role
+
+# Additional members. `role` is a role NAME (validated before any write → exit 2 on typo).
+# mode: invite (default) emails an invite (console-logged + reported as inviteUrl when no SMTP);
+# mode: create sets a password directly (requires `password`).
+# users:
+#   - { email: alice@example.com, name: "Alice Chen", role: member, mode: invite }
+#   - { email: alex@example.com,  name: "Alex", role: ops, mode: invite }
+#   - { email: sam@example.com,   name: "Sam",  role: ops, mode: invite }
+#   - { email: bot@example.com,   name: "Service Bot", role: member, mode: create, password: "${BOT_PASSWORD}" }
+
+byok: # per-org AI provider keys (openrouter | anthropic | openai | google | mistral).
+  # One OpenRouter key is the recommended single key: it reaches every major
+  # model, and with it alone Auto runs on OpenRouter's default model
+  # (DeepSeek V4.1 Flash), so the org can chat with no dashboard step.
+  openrouter:
+    apiKey: "${OPENROUTER_API_KEY}"
+    validate: true # ping the provider to verify the key; set false (or pass --no-validate-byok) for air-gapped hosts
+
+apiKeys: # org-scoped API keys for external systems (e.g. a ticket-sync hub).
+  - label: hub-sync # human label + idempotency anchor
+    key: "${LIAISON_API_KEY}" # SUPPLIED → idempotent upsert by hash. Omit `key:` to GENERATE one (emitted once).
+    allowedOrigins: [] # [] disables the Origin check (server-to-server). Never reuse a []-origin key in a browser.
+
+email: # per-org transactional identity. Falls back to the global EMAIL_FROM env when unset.
+  from: "Acme Support <support@example.com>"
+  replyTo: "support@example.com"
+
+# Ticket inboxes: support mailboxes whose mail becomes TICKETS. Each one is
+# backed by a connection the Tickets app owns (never a Mail app mailbox).
+# IMPORTANT: an inbound ticket source (e.g. an API key) needs a DEFAULT inbox or
+# ticket creation returns 422. IMAP is fully headless; Gmail needs the one-time
+# interactive `liaison connect tickets/gmail`. Settings converge on every apply.
+tickets:
+  # approveRepliesFromHome: true # approve customer replies from their Home card (default false: from the ticket only)
+  inboxes:
+    - address: support@example.com
+      provider: gmail # gmail | imap
+      google: # optional per-org Google OAuth client; consent is `connect tickets/gmail`
+        clientId: "${GOOGLE_OAUTH_CLIENT_ID}"
+        clientSecret: "${GOOGLE_OAUTH_CLIENT_SECRET}"
+      name: "Support"
+      fromDisplayName: "Acme Support"
+      # defaultTeam: "Tier 1" # team every inbound ticket on this inbox gets
+      default: true # at most one inbox; `false` never clears the flag
+    # IMAP variant (headless; at most one IMAP ticket inbox):
+    # - address: desk@example.com
+    #   provider: imap
+    #   imap:
+    #     email: desk@example.com
+    #     imapHost: imap.example.com
+    #     imapPort: 993
+    #     smtpHost: smtp.example.com
+    #     smtpPort: 587
+    #     username: desk@example.com
+    #     password: ${DESK_MAILBOX_PASSWORD}
+    #   name: "Desk"
+
+# Mail app mailboxes: boxes people read and send from in the MAIL app. They
+# never create a ticket or a ticket inbox. Omit `owner` for a shared mailbox;
+# `owner: <member email>` makes a personal IMAP mailbox (personal Gmail is
+# connected by its owner in Settings > Mail).
+# mail:
+#   mailboxes:
+#     - address: team@example.com
+#       provider: gmail # consent is `liaison connect mail/gmail`
+#     - address: alice@example.com
+#       provider: imap
+#       owner: alice@example.com
+#       imap:
+#         email: alice@example.com
+#         imapHost: imap.example.com
+#         imapPort: 993
+#         smtpHost: smtp.example.com
+#         smtpPort: 587
+#         username: alice@example.com
+#         password: ${ALICE_MAILBOX_PASSWORD}
+
+# Apps: install + enable + (for credential connectors) connect. First-party
+# CATALOG apps (pennylane, boxtal, invoicing, ads, shopify, social --
+# baked into the image) are INSTALLED on `enable: true` (idempotent; a no-op
+# when already installed) and hot-registered. Built-in/in-tree app names
+# (e.g. gitlab) are enable-only. OAuth2 connections (e.g. social, shopify) are
+# reported as `pending` for the interactive `liaison connect <app>/<conn>`.
+apps:
+  - name: pennylane
+    enable: true
+    connection:
+      name: pennylane
+      identifier: "company"
+      ownerType: org
+      credentials: { apiToken: "${PENNYLANE_TOKEN}", scope: company }
+  - name: gitlab
+    enable: true
+    connection:
+      name: gitlab
+      identifier: "your-group"
+      ownerType: org
+      credentials: { token: "${GITLAB_TOKEN}", group: your-group }
+  - name: invoicing
+    enable: true # no connection → enable only
+  - name: mail
+    enable: true
+    providers: # mail app only: Settings > Mail > Providers switches
+      gmail:
+        enabled: true # unavailable (reported pending) until Google credentials exist
+  - name: shopify
+    enable: true
+    connection:
+      name: shop
+      # The store's own domain: `liaison connect shopify/shop` signs in at it.
+      identifier: "${SHOPIFY_STORE_DOMAIN}" # <store>.myshopify.com
+      oauthClient: { clientId: "${SHOPIFY_CLIENT_ID}", clientSecret: "${SHOPIFY_CLIENT_SECRET}" }
+      # OAuth — reported `pending`; finish with `liaison connect shopify/shop`.
+      # Shopify reaches this server over the internet (app URL, webhooks): it needs
+      # a public https BASE_URL, so it cannot work on a 127.0.0.1 trial.
+
+# Knowledge-base seeding (optional). Paths are resolved relative to this config
+# file (in the container: /setup, the host's deploy/setup/). Collection
+# idempotency is by `name`; documents by (collection, title).
+# knowledge:
+#   collections:
+#     - { name: "Runbooks" }
+#     - { name: "Website" }
+#   documents:
+#     - { title: "Refund policy", collection: "Runbooks", contentFile: ./kb/refund-policy.md }
+#     # One document per Markdown/text file under a folder (title from front
+#     # matter, first heading or file name; `source:` front matter is kept):
+#     - { dir: knowledge/website, collection: "Website" }
+
+# Role agents (optional), idempotent by handle. `scopes` are added to the
+# common agent base; organization-administration scopes are refused.
+# agents:
+#   - handle: support
+#     displayName: Support
+#     purpose: Answers customer questions from the knowledge base.
+#     systemPrompt: |
+#       Search the knowledge base first and cite the document you used.
+#     model: claude-sonnet-4-6 # optional; pin a model instead of auto mode
+
+# Invoicing app config (runs AFTER `apps`, so it can build on the `invoicing`
+# app + a `shopify` connection provisioned above in the SAME apply). Requires
+# `{ name: invoicing, enable: true }` in `apps[]` — the section fails with an
+# actionable error if the invoicing app isn't installed/enabled yet.
+invoicing:
+  issuerProfiles:
+    - legalName: "Acme SAS"          # required; ensure-key within the org
+      country: FR                     # required, ISO-2
+      vatId: FR12345678901
+      taxRegistrationId: "RCS Paris 123 456 789"
+      address: "1 Rue de la Paix, 75001 Paris, France"
+      iban: FR7612345678901234567890185
+      swiftBic: AGRIFRPP
+      bankName: "Credit Agricole"
+      defaultCurrency: EUR
+      defaultLanguage: en
+      paymentTermsDays: 30
+      # "auto" resolves the org's active `shopify` connection's shop domain
+      # (connected_accounts.identifier) onto issuer_profiles.shopify_shop_id —
+      # the mapping the order-paid auto-invoice flow keys off. An explicit
+      # string ("my-shop.myshopify.com") sets it verbatim; omit/null for none.
+      shopifyShop: auto
+      autoEmail: false
+      invoiceApprovalThresholdMinor: 500000 # optional; null/omit = no approval gate
+      # Optional: local PNG/JPEG file, resolved relative to this config file's
+      # directory (absolute paths and `../` traversal are rejected). Uploaded
+      # into kernel.files and linked via issuer_profiles.logo_file_id; must be
+      # <= 2 MB. A byte-identical re-run reports `unchanged` (no re-upload). A
+      # bad file (missing, oversized, not PNG/JPEG) is reported as a per-item
+      # `logoError` — it does NOT fail the rest of `config apply`.
+      logoPath: ./assets/issuer-logo.png
+  # taxRegimes:
+  #   - { issuerCountry: FR, treatment: domestic, defaultRateBp: 2000 }
+  # hsCodes:
+  #   - { code: "9207.10", description: "Instrument controllers" }

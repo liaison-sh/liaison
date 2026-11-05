@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+		Push. `development` here: Xcode rewrites it to `production` when it
+		exports a build for TestFlight or the App Store, and the running app
+		reads which one it got from its provisioning profile
+		(LiaisonNativePlugin.apsEnvironment) so the server sends each token to
+		the matching APNs host.
+
+		App Group `group.sh.liaison.mobile`: shared with the Notification
+		Service Extension (NotificationService/), which leaves its state there
+		for the app to read.
+
+		Keychain group `$(AppIdentifierPrefix)sh.liaison.mobile`: the app's
+		own, listed first so the refresh token defaults to it.
+		Keychain group `$(AppIdentifierPrefix)sh.liaison.mobile.shared`: the
+		receipt credentials, written by the app, read by the extension.
+
+		Nothing else. No associated domains: universal links need an
+		association file served from each operator's own host, and a domain
+		named here is baked into a binary every fork ships. Links into the
+		app use the `liaison` scheme. Every entitlement in this file is
+		something the provisioning profile has to grant: one that is not is a
+		signing failure, not a missing feature.
+	-->
+	<key>aps-environment</key>
+	<string>development</string>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.sh.liaison.mobile</string>
+	</array>
+	<!-- The app's own keychain group FIRST: an item written without naming a
+	     group (the refresh token, auth/secret-store.ts) lands in the first
+	     group listed, and the extension must never read the session.
+	     Then the group shared with the Notification Service Extension: the app
+	     stores each server's receipt-only credential there, naming it, and the
+	     extension reads it to post `received` (ReceiptStore.swift, spec-push A7). -->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)sh.liaison.mobile</string>
+		<string>$(AppIdentifierPrefix)sh.liaison.mobile.shared</string>
+	</array>
+</dict>
+</plist>

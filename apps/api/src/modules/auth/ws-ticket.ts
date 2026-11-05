@@ -1,0 +1,88 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+import { isOrgDeletingAsync } from "~/modules/apps/org-apps"
+import { isUserAuthCurrent } from "~/modules/auth/auth-state"
+import { isSessionRevoked } from "~/modules/auth/session-revocation"
+import { createScope, type Scope } from "~/modules/permissions/types"
+
+export interface TicketPayload {
+  userId: string
+  orgId: string
+  scopes: Scope[]
+  roles: string[]
+  dimensionGrants: Record<string, string[]>
+  authVersion: number
+  permissionVersion: number
+  /** The sign-in session the ticket was minted from, when it had one. */
+  sid?: string
+}
+
+/** Parse and validate a WS ticket payload from Redis. Returns null if invalid. */
+export function parseTicketPayload(raw: string): TicketPayload | null {
+  try {
+    const parsed = JSON.parse(raw)
+    if (
+      typeof parsed.userId === "string" &&
+      parsed.userId.length > 0 &&
+      typeof parsed.orgId === "string" &&
+      parsed.orgId.length > 0 &&
+      Array.isArray(parsed.scopes) &&
+      typeof parsed.authVersion === "number" &&
+      typeof parsed.permissionVersion === "number"
+    ) {
+      return {
+        userId: parsed.userId,
+        orgId: parsed.orgId,
+        scopes: (parsed.scopes as string[]).map(createScope),
+        roles: Array.isArray(parsed.roles) ? parsed.roles : [],
+        dimensionGrants: parsed.dimensionGrants ?? {},
+        authVersion: parsed.authVersion,
+        permissionVersion: parsed.permissionVersion,
+        ...(typeof parsed.sid === "string" && parsed.sid.length > 0 ? { sid: parsed.sid } : {}),
+      }
+    }
+  } catch {
+    // Malformed JSON or invalid scope
+  }
+  return null
+}
+
+export async function consumeWsTicket(
+  redisClient: { getdel: (key: string) => Promise<string | null> },
+  ticket: string,
+): Promise<TicketPayload | null> {
+  const raw = await redisClient.getdel(`ws-ticket:${ticket}`)
+  if (!raw) return null
+
+  const payload = parseTicketPayload(raw)
+  if (!payload) return null
+  // A ticket minted just before its session ended opens nothing.
+  if (payload.sid && isSessionRevoked(payload.sid)) return null
+
+  const isCurrent = await isUserAuthCurrent(
+    {
+      userId: payload.userId,
+      orgId: payload.orgId,
+      authVersion: payload.authVersion,
+      permissionVersion: payload.permissionVersion,
+    },
+    { forceFresh: true },
+  )
+
+  if (!isCurrent) return null
+  // An org whose deletion has started opens no socket (S2.5), even with a
+  // ticket minted before the mark.
+  if (await isOrgDeletingAsync(payload.orgId)) return null
+  return payload
+}
+
+export async function isWsAuthStillValid(params: {
+  userId: string
+  orgId: string
+  authVersion?: number
+  permissionVersion?: number
+}): Promise<boolean> {
+  if (!(await isUserAuthCurrent(params, { forceFresh: true }))) return false
+  // An open socket of an org being deleted fails its next revalidation and is
+  // closed (lib/server.ts).
+  return !(await isOrgDeletingAsync(params.orgId))
+}

@@ -1,0 +1,69 @@
+{
+  "data": {
+    "markets": {
+      "edges": [
+        {
+          "node": {
+            "id": "gid://shopify/Market/57061441702",
+            "name": "Canada",
+            "handle": "canada",
+            "enabled": true,
+            "currencySettings": {
+              "baseCurrency": {
+                "currencyCode": "CAD"
+              },
+              "localCurrencies": false
+            },
+            "regions": {
+              "edges": [
+                {
+                  "node": {
+                    "id": "gid://shopify/MarketRegionCountry/3581524017318",
+                    "name": "Canada",
+                    "code": "CA"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Market/57061408934",
+            "name": "United States",
+            "handle": "us",
+            "enabled": true,
+            "currencySettings": {
+              "baseCurrency": {
+                "currencyCode": "USD"
+              },
+              "localCurrencies": false
+            },
+            "regions": {
+              "edges": [
+                {
+                  "node": {
+                    "id": "gid://shopify/MarketRegionCountry/3581523853478",
+                    "name": "United States",
+                    "code": "US"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  },
+  "extensions": {
+    "cost": {
+      "requestedQueryCost": 38,
+      "actualQueryCost": 7,
+      "throttleStatus": {
+        "maximumAvailable": 20000,
+        "currentlyAvailable": 19993,
+        "restoreRate": 1000
+      }
+    }
+  }
+}

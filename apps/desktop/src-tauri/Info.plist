@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Merged by Tauri into the Info.plist it generates (bundle and dev
+         binary). macOS shows this text when dictation first asks for the
+         microphone; without it the request is refused. -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Liaison uses the microphone only while you dictate a message, to turn your speech into text.</string>
+</dict>
+</plist>

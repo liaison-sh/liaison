@@ -1,0 +1,98 @@
+[
+  {
+    "id": "L1",
+    "kind": "fact",
+    "plant_week": 1,
+    "supersede_week": null,
+    "plant_text": "DHL account number is 7492118",
+    "supersede_text": null,
+    "question": "What is our DHL account number?",
+    "answer": "7492118",
+    "answer_at_week": {
+      "2": "7492118",
+      "4": "7492118",
+      "6": "7492118"
+    },
+    "proof_hint": "7492118"
+  },
+  {
+    "id": "L2",
+    "kind": "decision",
+    "plant_week": 1,
+    "supersede_week": 2,
+    "plant_text": "Tessera 2 ships on the EUR pallet 1200 x 800",
+    "supersede_text": "Tessera 2 ships on the 1200 x 1000 pallet",
+    "question": "What pallet size do we ship Tessera 2 on now, and why did it change?",
+    "answer": "1200 x 1000, because the EUR 1200 x 800 pallet did not work for the new carton",
+    "answer_at_week": {
+      "2": "1200 x 1000, changed from the EUR 1200 x 800 because the new carton did not fit",
+      "4": "1200 x 1000",
+      "6": "1200 x 1000"
+    },
+    "proof_hint": "1200 x 1000"
+  },
+  {
+    "id": "L3",
+    "kind": "open_loop",
+    "plant_week": 2,
+    "supersede_week": null,
+    "plant_text": "call Sonovox in Lyon on Friday 18 September",
+    "supersede_text": null,
+    "question": "What did I promise the dealer in Lyon and when?",
+    "answer": "To call Sonovox in Lyon back on Friday 18 September about their backorder; it is still open",
+    "answer_at_week": {
+      "2": "To call Sonovox in Lyon back on Friday 18 September about their backorder, still open",
+      "4": "same",
+      "6": "same"
+    },
+    "proof_hint": "Sonovox"
+  },
+  {
+    "id": "L4",
+    "kind": "procedure",
+    "plant_week": 1,
+    "supersede_week": null,
+    "plant_text": "every Monday run the stuck list before the ready list",
+    "supersede_text": null,
+    "question": "What do we do every Monday before the ready list?",
+    "answer": "Run the stuck list and clear it before publishing the ready list",
+    "answer_at_week": {
+      "2": "Run the stuck list and clear it first",
+      "4": "same",
+      "6": "same"
+    },
+    "proof_hint": "every Monday"
+  },
+  {
+    "id": "L5",
+    "kind": "temporal",
+    "plant_week": 2,
+    "supersede_week": null,
+    "plant_text": "claim CL-4471 opened the week the DHL surcharge rose",
+    "supersede_text": null,
+    "question": "Which claim was opened the week the DHL surcharge went up, and is it closed?",
+    "answer": "CL-4471, for the two crushed cartons on the Warsaw shipment; it is still open",
+    "answer_at_week": {
+      "2": "CL-4471, still open",
+      "4": "CL-4471",
+      "6": "CL-4471"
+    },
+    "proof_hint": "CL-4471"
+  },
+  {
+    "id": "L6",
+    "kind": "throwaway",
+    "plant_week": 1,
+    "supersede_week": null,
+    "plant_text": "the mezzanine coffee machine is broken",
+    "supersede_text": null,
+    "question": "What is broken on the mezzanine?",
+    "answer": "the coffee machine",
+    "answer_at_week": {
+      "2": "the coffee machine",
+      "4": "the coffee machine",
+      "6": "the coffee machine"
+    },
+    "proof_hint": "coffee machine"
+  }
+]

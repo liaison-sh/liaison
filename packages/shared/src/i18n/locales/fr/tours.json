@@ -1,0 +1,908 @@
+{
+  "kernel": {
+    "sample": {
+      "title": "Visite d'exemple",
+      "summary": "Une courte visite qui sert à tester le moteur des visites guidées.",
+      "welcome": {
+        "title": "Vos applications",
+        "body": "Toutes vos applications se trouvent dans cette barre."
+      },
+      "postMessage": {
+        "title": "Publier un message",
+        "body": "Écrivez un message et envoyez-le.",
+        "text": "Bonjour, ce message vient de la visite guidée."
+      },
+      "liveTicket": {
+        "title": "Un ticket arrive",
+        "body": "Regardez un nouveau ticket arriver."
+      },
+      "ticketsInbox": {
+        "title": "Vos tickets",
+        "body": "Les tickets de vos clients arrivent ici."
+      }
+    },
+    "autoplayFixture": {
+      "title": "Démonstration automatique (test)",
+      "summary": "Passe en revue chaque type de saisie que la démonstration automatique sait faire.",
+      "mention": {
+        "title": "Remercier quelqu'un",
+        "body": "Écrivez un message qui mentionne un collègue.",
+        "text": "Merci @Ami",
+        "textAfter": "pour la relecture"
+      },
+      "session": {
+        "title": "Guider une session",
+        "body": "Écrivez une consigne pour la session.",
+        "text": "Relancez les tests, s'il vous plaît"
+      },
+      "status": {
+        "title": "Changer le statut",
+        "body": "Ouvrez le menu des statuts et choisissez un statut."
+      }
+    },
+    "threads": {
+      "title": "Messages et agents",
+      "summary": "Écrire dans une discussion, dicter au lieu de taper et faire intervenir un agent avec @.",
+      "messages": {
+        "title": "Vos discussions",
+        "body": "Messages regroupe vos discussions avec votre équipe et vos agents. Ouvrez-en une pour la suivre."
+      },
+      "post": {
+        "title": "Envoyer un message",
+        "body": "Écrivez un message dans la zone du bas et envoyez-le. Si je l'écris pour vous, relisez-le et appuyez vous-même sur Envoyer.",
+        "text": "Bonjour à tous, je découvre Liaison."
+      },
+      "dictation": {
+        "title": "Dicter au lieu de taper",
+        "body": "Si la dictée est activée dans votre espace, appuyez sur le micro et parlez. Votre texte s'affiche dans la zone de saisie, déjà mis au propre."
+      },
+      "mentionAgent": {
+        "title": "Faire intervenir un agent",
+        "body": "Tapez @, choisissez un agent, dites ce dont vous avez besoin et envoyez. L'agent rejoint la discussion. Si je l'écris pour vous, appuyez vous-même sur Envoyer.",
+        "trigger": "@",
+        "text": "pouvez-vous résumer cette discussion ?"
+      },
+      "agentAnswers": {
+        "title": "L'agent répond ici",
+        "body": "Sa réponse s'affiche dans cette discussion, comme celle d'un collègue. Vous pouvez continuer à lui écrire."
+      },
+      "attach": {
+        "title": "Joindre des fichiers",
+        "body": "Avec +, joignez un fichier ou une capture d'écran à votre message."
+      }
+    },
+    "agents": {
+      "title": "Agents et approbations",
+      "summary": "Découvrez votre agent, posez-lui une question et voyez comment il vous consulte avant d'agir.",
+      "profile": {
+        "title": "Votre agent",
+        "body": "Cet agent travaille pour vous, avec vos accès et rien de plus."
+      },
+      "capabilities": {
+        "title": "Ce qu'il sait faire",
+        "body": "Voici ce qu'il peut consulter et faire pour vous."
+      },
+      "ask": {
+        "title": "Posez-lui une question",
+        "body": "Ouvrez une discussion avec votre agent et posez une question.",
+        "text": "Que pouvez-vous faire pour moi ?"
+      },
+      "asksFirst": {
+        "title": "Il demande avant d'agir",
+        "body": "Avant d'envoyer un mail ou de modifier quelque chose d'important, l'agent vous demande votre accord."
+      },
+      "approvals": {
+        "title": "Vos demandes",
+        "body": "Tout ce qui attend votre décision se trouve ici."
+      },
+      "decide": {
+        "title": "Décider",
+        "body": "Lisez ce qu'il propose, modifiez si besoin, puis approuvez ou refusez. Rien ne se fait sans vous."
+      }
+    },
+    "routines": {
+      "title": "Routines",
+      "summary": "Confiez à votre agent un travail récurrent, à heure fixe ou lorsqu'un événement se produit.",
+      "tab": {
+        "title": "Routines",
+        "body": "Une routine est une tâche que votre agent accomplit seul, à heure fixe ou lorsqu'un événement se produit."
+      },
+      "list": {
+        "title": "Vos routines",
+        "body": "Chaque routine indique quand elle s'exécute et comment s'est déroulée sa dernière exécution. Vous pouvez la mettre en pause à tout moment."
+      },
+      "templates": {
+        "title": "Routines prêtes à l'emploi",
+        "body": "Vos applications proposent des routines toutes prêtes. Activez-en une pour commencer."
+      },
+      "create": {
+        "title": "Créer une routine",
+        "body": "Donnez-lui un nom et décrivez ce qu'elle doit faire. Elle reste personnelle au départ.",
+        "name": "Résumé du matin",
+        "text": "Chaque matin, dites-moi en quelques lignes ce qui m'attend aujourd'hui."
+      },
+      "activity": {
+        "title": "Toutes les exécutions",
+        "body": "L'activité montre ce que votre agent a fait, routines comprises."
+      }
+    },
+    "sessions": {
+      "title": "Sessions",
+      "summary": "Confiez un travail à l'agent de code sur un ordinateur associé, et guidez-le pendant qu'il avance.",
+      "list": {
+        "title": "Vos sessions",
+        "body": "Dans une session, l'agent de code travaille dans un dossier de l'un de vos ordinateurs."
+      },
+      "computers": {
+        "title": "Vos ordinateurs",
+        "body": "Vos ordinateurs associés apparaissent ici. Pour en associer un, installez l'application de bureau et connectez-vous. Pas encore d'ordinateur ? Vous pourrez passer l'étape suivante."
+      },
+      "start": {
+        "title": "Lancer une session",
+        "body": "Décrivez ce que vous voulez faire, choisissez un dossier, puis appuyez sur Démarrer. Cette étape demande un ordinateur associé : sans ordinateur, passez-la.",
+        "text": "Parcourez ce projet et dites-moi en quelques lignes ce qu'il fait."
+      },
+      "steer": {
+        "title": "Guidez-la",
+        "body": "Ouvrez une session et écrivez ici pour la réorienter pendant qu'elle travaille."
+      },
+      "status": {
+        "title": "Quand elle a besoin de vous",
+        "body": "L'en-tête indique ce que fait la session et vous prévient quand elle a besoin de vous."
+      }
+    }
+  },
+  "mail": {
+    "basics": {
+      "title": "Les bases de la messagerie",
+      "summary": "Votre agent résume une discussion et prépare la réponse, vous l'approuvez.",
+      "inbox": {
+        "title": "Votre boîte de réception",
+        "body": "Les mails de vos boîtes arrivent ici, qu'elles soient personnelles ou partagées."
+      },
+      "open": {
+        "title": "Ouvrir une discussion",
+        "body": "Cliquez sur une discussion pour la lire, puis appuyez sur Suivant."
+      },
+      "summariseDraft": {
+        "title": "Demandez un résumé et un brouillon",
+        "body": "Ouvrez votre agent depuis Discussions, à côté de la discussion, et demandez-lui de résumer l'échange et de préparer une réponse. Rien n'est envoyé : le brouillon vous attend dans la discussion.",
+        "text": "Résumez-moi cette discussion et préparez une réponse.",
+        "phoneText": "Résumez-moi ma discussion mail non lue la plus récente et préparez une réponse."
+      },
+      "approve": {
+        "title": "Relisez et approuvez",
+        "body": "Relisez le brouillon, modifiez-le si besoin, puis appuyez sur Approuver : l'approbation envoie la réponse. Si je le fais pour vous, j'appuie sur Approuver sur ce brouillon."
+      },
+      "crm": {
+        "title": "Qui vous écrit",
+        "body": "La fiche client rassemble ce que vos autres outils savent de l'expéditeur. Votre agent la lit aussi."
+      },
+      "yourself": {
+        "title": "Vous pouvez aussi écrire vous-même",
+        "body": "Vous pouvez répondre ici ou rédiger un nouveau mail quand vous préférez l'écrire vous-même."
+      }
+    }
+  },
+  "tickets": {
+    "basics": {
+      "title": "Tickets",
+      "summary": "Votre agent prépare la réponse et la note, vous relisez et approuvez.",
+      "inbox": {
+        "title": "Vos tickets",
+        "body": "Les demandes de vos clients arrivent ici sous forme de tickets."
+      },
+      "open": {
+        "title": "Ouvrir un ticket",
+        "body": "Cliquez sur un ticket pour l'ouvrir, puis appuyez sur Suivant."
+      },
+      "customerCard": {
+        "title": "Qui est le client",
+        "body": "La fiche client rassemble ce que vos autres outils savent de ce client. Votre agent la lit aussi. Sur téléphone, elle se trouve dans Plus."
+      },
+      "askDraft": {
+        "title": "Demandez un brouillon à votre agent",
+        "body": "Ouvrez votre agent depuis Discussions, à côté du ticket, et demandez-lui de préparer une réponse. Il lit le ticket, la fiche du client et ses tickets précédents. Rien n'est envoyé : le brouillon vous attend sur le ticket.",
+        "text": "Préparez une réponse à ce client, en vous appuyant sur ce que nous savons de lui : le ticket, sa fiche client, ses tickets précédents et notre base de connaissances.",
+        "phoneText": "Préparez une réponse à mon ticket ouvert le plus récent, en vous appuyant sur ce que nous savons du client : le ticket, sa fiche client, ses tickets précédents et notre base de connaissances."
+      },
+      "review": {
+        "title": "Relisez et approuvez",
+        "body": "Le brouillon est sur le ticket. Relisez-le, modifiez-le si besoin, puis appuyez sur Approuver : l'approbation envoie la réponse au client. Si je le fais pour vous, j'appuie sur Approuver sur ce brouillon."
+      },
+      "note": {
+        "title": "Demandez une note pour l'équipe",
+        "body": "Dans la discussion avec votre agent, demandez-lui de résumer le dossier dans une note interne et appuyez sur Envoyer. Seule votre équipe la voit.",
+        "text": "Ajoutez à ce ticket une note interne qui résume le dossier pour l'équipe : ce que demande le client et ce que nous savons déjà.",
+        "phoneText": "Résumé pour l'équipe : ce que demande le client et ce que nous savons déjà."
+      },
+      "approveNote": {
+        "title": "Approuvez la note",
+        "body": "Votre agent a lu des informations sur le client pour l'écrire, et certaines personnes qui lisent ce ticket ne les voient pas : il vous demande donc votre accord d'abord. Lisez la note dans la discussion et appuyez sur Approuver. Si je le fais pour vous, j'appuie sur Approuver sur cette note."
+      },
+      "yourself": {
+        "title": "Vous pouvez aussi le faire vous-même",
+        "body": "Vous pouvez écrire vous-même une réponse ou une note ici, quand vous le préférez."
+      },
+      "routine": {
+        "title": "Sur chaque nouveau ticket",
+        "body": "Une routine peut demander cela à votre agent sur chaque nouveau ticket : une note et un brouillon de réponse. Vous relisez et approuvez toujours chaque réponse avant son envoi."
+      }
+    }
+  },
+  "knowledge": {
+    "basics": {
+      "title": "Connaissances",
+      "summary": "Où se trouvent les connaissances de votre entreprise, et comment les enrichir.",
+      "home": {
+        "title": "Vos connaissances",
+        "body": "Voici les documents sur lesquels s'appuient votre équipe et vos agents."
+      },
+      "collections": {
+        "title": "Collections",
+        "body": "Les documents sont rangés en collections et en dossiers."
+      },
+      "create": {
+        "title": "Ajouter des connaissances",
+        "body": "Votre agent s'ouvre et vous aide à rédiger un document à partir d'une page, d'un fichier ou de vos notes. Indiquez-lui quoi utiliser."
+      },
+      "recent": {
+        "title": "Modifiés récemment",
+        "body": "Les documents modifiés récemment apparaissent ici. Ouvrez-en un, puis appuyez sur Suivant."
+      },
+      "edit": {
+        "title": "Modifier un document",
+        "body": "Ouvrez un document que vous avez le droit de modifier, appuyez sur Modifier, changez le texte et enregistrez.",
+        "text": " Relu aujourd'hui."
+      },
+      "share": {
+        "title": "Qui le voit",
+        "body": "Choisissez qui peut lire ou modifier ce document."
+      },
+      "agents": {
+        "title": "Vos agents s'en servent",
+        "body": "Quand vos agents répondent, ils consultent les documents auxquels vous avez accès et citent leurs sources."
+      }
+    }
+  },
+  "projects": {
+    "basics": {
+      "title": "Projets",
+      "summary": "Votre agent planifie un projet et ses tâches, vous le relisez et commentez.",
+      "home": {
+        "title": "Vos projets",
+        "body": "Chaque projet réunit ses tâches, son tableau et ses discussions."
+      },
+      "askPlan": {
+        "title": "Demandez un plan à votre agent",
+        "body": "Ouvrez votre agent depuis Discussions et demandez-lui d'organiser le travail en projet. Il crée le projet et ses tâches pour vous.",
+        "text": "Planifiez notre série de webinaires d'automne comme un nouveau projet : créez le projet avec une tâche pour chaque étape, en une fois."
+      },
+      "approvePlan": {
+        "title": "Approuvez le projet",
+        "body": "Votre agent a demandé avant de créer le projet et ses tâches : il a lu des informations que certaines personnes qui voient les projets ne voient pas. Sa carte liste chaque tâche ; lisez-la dans la discussion et appuyez sur Approuver."
+      },
+      "review": {
+        "title": "Relisez le plan",
+        "body": "Le projet de votre agent est dans la liste. Vous pouvez l'ouvrir et vérifier ses tâches (modifier, réordonner ou supprimer celles que vous voulez), puis appuyer sur Suivant."
+      },
+      "comment": {
+        "title": "Commentez une tâche",
+        "body": "Ouvrez l'une de ses tâches, écrivez un commentaire en dessous et appuyez sur Envoyer.",
+        "text": "Ça me va. Je m'en charge."
+      },
+      "yourself": {
+        "title": "Vous pouvez aussi le faire vous-même",
+        "body": "Vous pouvez attribuer une tâche, lui fixer une échéance ou ajouter une tâche à la main quand vous le préférez."
+      }
+    }
+  },
+  "api-connector": {
+    "settings": {
+      "title": "Connecteur API",
+      "summary": "Vos connexions à vos propres outils, comment les tester, et interroger votre agent sur un client.",
+      "page": {
+        "title": "Vos connexions",
+        "body": "Chaque connexion relie Liaison à l'un de vos outils, comme un CRM ou un ERP."
+      },
+      "connections": {
+        "title": "État et rôles",
+        "body": "Chaque connexion indique si sa clé fonctionne et ce qu'elle fournit, par exemple des clients ou des commandes."
+      },
+      "test": {
+        "title": "Tester une lecture",
+        "body": "Appuyez sur Tester sur une connexion, choisissez une lecture, remplissez ses champs et lancez-la."
+      },
+      "result": {
+        "title": "Le résultat",
+        "body": "Vous voyez le code de statut, le temps de réponse et les lignes renvoyées."
+      },
+      "add": {
+        "title": "Ajouter une connexion",
+        "body": "Appuyez sur Ajouter une connexion, collez le fichier d'adaptateur et enregistrez, puis saisissez sa clé."
+      },
+      "ask": {
+        "title": "Interrogez votre agent sur un client",
+        "body": "Ouvrez votre agent depuis Discussions et demandez-lui ce qu'un client a commandé. Il lit votre CRM ou ERP par le connecteur API et vous répond avec ce qu'il a trouvé.",
+        "text": "Utilisez le connecteur API pour lire notre CRM ou ERP : quel client a commandé le plus récemment, et qu'a-t-il commandé ?"
+      },
+      "card": {
+        "title": "Où cela apparaît",
+        "body": "Les mêmes lectures remplissent la fiche client dans les tickets et la messagerie : votre équipe et votre agent voient les commandes du client là où ils travaillent."
+      }
+    }
+  },
+  "engine": {
+    "stepOf": "Étape {{k}} sur {{n}}",
+    "end": "Quitter la visite",
+    "close": "Fermer",
+    "next": "Suivant",
+    "finish": "Terminer",
+    "skip": "Passer",
+    "pause": "Pause",
+    "fold": "Replier la visite",
+    "unfold": "Afficher l'étape",
+    "playAll": "Dérouler toute la visite",
+    "stopPlaying": "Arrêter le déroulement",
+    "doItMyself": "Je le fais",
+    "doItForMe": "Faites-le pour moi",
+    "waiting": "En attente de cette étape. La visite continuera d'elle-même.",
+    "playing": "Je fais cette étape pour vous. Bougez la souris ou tapez au clavier pour reprendre la main.",
+    "takeover": "Vous avez repris la main. Terminez cette étape vous-même ou laissez-moi la refaire.",
+    "autoplayFailed": "Je ne trouve pas à l'écran ce dont cette étape a besoin : je me suis arrêté.",
+    "autoplayRefused": "L'écran n'était pas celui attendu : je me suis arrêté sans rien faire. Faites cette étape vous-même ou passez-la.",
+    "agentFailed": "Votre agent n'a pas pu terminer cette étape : elle n'avancera pas toute seule. Réessayez ou passez-la.",
+    "agentNoAnswer": "Votre agent n'a pas pu répondre : cette étape n'avancera pas toute seule. Réessayez ou passez-la.",
+    "tryAgain": "Réessayer",
+    "skipStep": "Passer cette étape",
+    "anchorWaiting": "J'attends que cet élément s'affiche à l'écran.",
+    "takeMeThere": "M'y emmener",
+    "more": "Plus d'actions",
+    "resetPosition": "Replacer la carte",
+    "resumeChip": "Reprendre : {{tour}}, étape {{k}}/{{n}}",
+    "completed": "Visite terminée : {{tour}}",
+    "completedSkippedOne": "{{count}} passée",
+    "completedSkippedOther": "{{count}} passées",
+    "requestFailed": "La demande n'a pas abouti. Réessayez.",
+    "showMeHow": "Montrez-moi comment",
+    "statusNew": "Nouvelle",
+    "statusDone": "Terminée",
+    "statusStopped": "Arrêtée",
+    "statusInProgress": "Étape {{k}} sur {{n}}",
+    "start": "Commencer",
+    "resume": "Reprendre",
+    "playAgain": "Rejouer",
+    "startAgain": "Recommencer",
+    "noTours": "Aucune visite n'est encore disponible pour les applications de cet espace.",
+    "loading": "Chargement des visites",
+    "watching": "En attente. Cette étape avance toute seule.",
+    "gateVerify": "Confirmez votre mail pour continuer : cette étape fait travailler un agent.",
+    "gateBudget": "Le budget de la démo est épuisé : cette étape ne peut pas s'exécuter.",
+    "gateFailed": "Cette étape n'a pas abouti.",
+    "retry": "Réessayer",
+    "nextScenario": "Ensuite : {{tour}}",
+    "scenarios": "Scénarios {{k}}/{{n}}",
+    "scenarioStart": "Commencer",
+    "scenarioResume": "Reprendre",
+    "scenarioReplay": "Rejouer",
+    "scenarioDone": "Terminé",
+    "welcome": {
+      "step": "Étape {{k}} sur {{n}}",
+      "agentsTitle": "Activez vos agents",
+      "agentsBody": "Votre démo est prête. Confirmez votre mail pour que les agents puissent travailler, puis choisissez par où commencer.",
+      "codeLead": "Saisissez le code reçu par mail",
+      "ownKey": "Utiliser plutôt votre propre clé de modèle",
+      "backToCode": "Utiliser plutôt le code reçu par mail",
+      "confirmLater": "Vous pourrez confirmer plus tard.",
+      "chooseTitle": "Par où voulez-vous commencer ?",
+      "confirmed": "Mail confirmé. Vos agents peuvent travailler.",
+      "ownKeyReady": "Votre clé de modèle est enregistrée. Vos agents peuvent travailler.",
+      "nextUp": "À suivre",
+      "orPick": "Ou choisissez-en un autre",
+      "inBanner": "Les scénarios restent accessibles dans le bandeau.",
+      "browse": "Explorer par vous-même",
+      "startOver": "Recommencer",
+      "startOverTitle": "Recommencer la démo ?",
+      "startOverBody": "Votre espace revient à son état de départ : les mails, approbations et fiches créés jusqu'ici disparaissent, et vos scénarios reviennent à 0/{{n}}. Votre budget de démo et sa date de fin ne changent pas.",
+      "startOverOwnKey": "Votre propre clé de modèle reste dans cet espace : ajoutez-la de nouveau dans le nouvel espace.",
+      "startOverCancel": "Annuler",
+      "startOverConfirm": "Recommencer",
+      "startOverWorking": "Remise à zéro…",
+      "startOverFailed": "Cela n'a pas abouti. Réessayez."
+    },
+    "gateBudgetLink": "Voir les options",
+    "agentAnswered": "Votre agent a répondu sans faire cette étape. Répondez-lui dans la discussion (par exemple « vas-y »), réessayez ou passez cette étape.",
+    "agentWaiting": "Votre agent ne l'a pas encore fait. Il vous a peut-être posé une question dans la discussion : répondez-y, réessayez ou passez cette étape.",
+    "workingAgent": "Votre agent y travaille. Cette étape avance quand sa réponse est là.",
+    "heldTitle": "Votre agent demande d'abord",
+    "heldBody": "Votre agent demande avant d'utiliser {{tool}}. Lisez sa carte et appuyez sur Approuver pour continuer.",
+    "workingRoutine": "La routine s'exécute. Cette étape avance quand elle a fini.",
+    "workingReplay": "La session enregistrée se déroule. Cette étape avance quand elle y arrive.",
+    "routineRunning": "La routine « {{name}} » s'en occupe ({{elapsed}}). Cette étape avance quand elle a fini.",
+    "routineRunningUnnamed": "La routine s'en occupe ({{elapsed}}). Cette étape avance quand elle a fini.",
+    "routineDone": "La routine « {{name}} » a fini.",
+    "routineDoneUnnamed": "La routine a fini.",
+    "routineFailed": "La routine « {{name}} » s'est arrêtée sur une erreur : {{error}} Réessayez plus tard ou passez cette étape.",
+    "routineFailedUnnamed": "La routine s'est arrêtée sur une erreur : {{error}} Réessayez plus tard ou passez cette étape.",
+    "routineFailedNoReason": "La routine « {{name}} » s'est arrêtée sur une erreur. Réessayez plus tard ou passez cette étape.",
+    "routineFailedNoReasonUnnamed": "La routine s'est arrêtée sur une erreur. Réessayez plus tard ou passez cette étape.",
+    "routineSkipped": "La routine « {{name}} » ne s'est pas exécutée : {{error}}",
+    "routineSkippedUnnamed": "La routine ne s'est pas exécutée : {{error}}",
+    "routineSkippedNoReason": "La routine « {{name}} » ne s'est pas exécutée cette fois. Passez cette étape ou réessayez plus tard.",
+    "routineSkippedNoReasonUnnamed": "La routine ne s'est pas exécutée cette fois. Passez cette étape ou réessayez plus tard.",
+    "routineSetUpModel": "Configurer un modèle",
+    "yourAgent": "votre agent"
+  },
+  "scenarios": {
+    "common": {
+      "mentionTrigger": "@",
+      "undoTitle": "Envoyé, et encore annulable",
+      "undoRole": "Chaque action que vous approuvez attend quelques secondes avant d'avoir vraiment lieu : une erreur se rattrape en un clic.",
+      "railHome": "Ouvrez Accueil dans la barre de gauche",
+      "railTickets": "Ouvrez Tickets dans la barre de gauche",
+      "railProjects": "Ouvrez Projets dans la barre de gauche",
+      "railChats": "Ouvrez Discussions dans la barre de gauche",
+      "railMail": "Ouvrez Mail dans la barre de gauche",
+      "railAgents": "Ouvrez Agents dans la barre de gauche",
+      "railShopify": "Ouvrez Shopify dans la barre de gauche",
+      "railInvoicing": "Ouvrez Facturation dans la barre de gauche",
+      "railSessions": "Ouvrez Sessions dans la barre de gauche",
+      "railKnowledge": "Ouvrez Connaissances dans la barre de gauche",
+      "sendBelow": "Envoyez la question ci-dessous avec Envoyer",
+      "openRunConversation": "Ouvrez votre discussion avec {{agent}}, en tête de Discussions",
+      "held": {
+        "title": "Votre agent demande avant d'écrire",
+        "body": "Votre agent a lu plus tôt dans cette discussion un contenu extérieur (une recherche web par exemple) ou des données que tout le monde ne peut pas voir : il demande donc avant d'écrire. Lisez sa carte et appuyez sur Approuver pour continuer.",
+        "role": "C'est réglable : un administrateur peut définir des règles d'approbation. Le globe à côté du nom de votre agent signale la marque ; cliquez dessus et choisissez Retirer la marque pour la lever.",
+        "undo": "Laissez-la partir ou appuyez sur Annuler pour voir l'action revenir en demande.",
+        "way1": "Ouvrez Discussions en bas de l'écran",
+        "way3": "Appuyez sur Approuver sur sa carte"
+      }
+    },
+    "support": {
+      "title": "Support",
+      "summary": "Une cliente écrit ; la routine de support laisse une note et un brouillon de réponse ; vous relisez et approuvez.",
+      "inbox": {
+        "title": "Votre boîte de support",
+        "body": "Regardons un ticket arriver : appuyez sur Suivant.",
+        "role": "Vous gérez le support. Chaque demande client arrive ici sous forme de ticket, et une routine lit chacune dès son arrivée."
+      },
+      "liveTicket": {
+        "title": "Une cliente nous écrit",
+        "body": "Rien à faire pour l'instant : son ticket arrive en haut de la liste dans un instant. Appuyez sur Suivant une fois qu'il est là.",
+        "role": "Le Kestrel 10 de Lena Hart ne charge plus depuis une mise à jour, et elle écrit au support en ce moment même."
+      },
+      "open": {
+        "title": "Son ticket est arrivé",
+        "body": "Ouvrez son ticket, puis appuyez sur Suivant.",
+        "role": "Avant que quiconque réponde à Lena, vous voulez voir ce qu'elle a écrit.",
+        "way2": "Cliquez sur le ticket de Lena Hart, en haut de la liste"
+      },
+      "approve": {
+        "title": "Approuvez la réponse",
+        "body": "Modifiez une phrase si vous voulez, puis appuyez sur Approuver. La réponse part chez Lena (ici une cliente fictive).",
+        "role": "C'est vous qui décidez de ce qui part : lisez le brouillon comme Lena le lira.",
+        "undo": "Laissez-la partir ou appuyez sur Annuler pour voir la réponse revenir en brouillon."
+      },
+      "sent": {
+        "title": "Envoyée",
+        "body": "La réponse s'affiche dans la discussion, à côté de la note de la routine. Appuyez sur Suivant.",
+        "role": "Lena a sa réponse, et l'équipe voit exactement ce qui a été dit."
+      },
+      "askAgent": {
+        "title": "Vérifiez si Lena est une cliente VIP",
+        "body": "Demandez à {{agent}} depuis Discussions, à côté du ticket, puis appuyez sur Envoyer. Il répond à partir de ses tickets et de sa fiche client.",
+        "text": "Lena Hart est-elle une cliente VIP ? Qu'a-t-elle acheté chez nous, et qu'a-t-elle signalé auparavant ?",
+        "role": "Avant de promettre un remplacement à Lena, vous voulez savoir si elle est cliente VIP et ce qu'elle a déjà signalé.",
+        "way1": "Ouvrez Discussions, à côté du ticket",
+        "way2": "Choisissez {{agent}}, en tête de liste",
+        "say": "Demandez à {{agent}} :"
+      },
+      "answer": {
+        "title": "Sa réponse",
+        "body": "{{agent}} répond à côté de son ticket, à partir de ses tickets et de sa fiche client. Appuyez sur Suivant une fois qu'il a répondu.",
+        "role": "Vous décidez du remplacement avec son historique sous les yeux.",
+        "way3": "Lisez sa réponse sous votre question"
+      },
+      "done": {
+        "title": "Voilà le support",
+        "body": "Une routine lit chaque ticket, écrit la note et le brouillon ; vous relisez et décidez. Rien ne part sans votre accord.",
+        "role": "Vous avez gardé la main sur chaque mot reçu par Lena."
+      },
+      "routineNote": {
+        "title": "La note interne de la routine",
+        "body": "Elle lit le ticket, sa commande et la base de connaissances, puis laisse une note à l'équipe : son verdict, ses sources et ce qu'une personne doit vérifier. Lena ne la voit jamais. Appuyez sur Suivant une fois la note arrivée ; vous approuverez sa réponse deux étapes plus loin.",
+        "role": "Votre routine de support traite le ticket en premier : vous partez de ses conclusions, pas de zéro."
+      },
+      "routineDraft": {
+        "title": "Un brouillon de réponse vous attend",
+        "body": "La routine rédige la réponse à Lena, dans sa langue. Appuyez sur Suivant quand le brouillon s'affiche ; vous le lirez et l'approuverez à l'étape suivante.",
+        "role": "Rien ne part chez Lena sans l'accord d'une personne, et cette personne, c'est vous."
+      }
+    },
+    "projects": {
+      "title": "Projets",
+      "summary": "Un collègue demande de l'aide sur votre tâche ; vous la confiez à votre agent, qui découpe le travail et lui répond ; vous relisez.",
+      "home": {
+        "title": "Vos projets",
+        "body": "Les projets et leurs tâches se trouvent ici. Appuyez sur Suivant.",
+        "role": "Vous pilotez le projet « Kestrel Field Preamp launch », l'un des projets que votre équipe suit ici."
+      },
+      "myTask": {
+        "title": "Tobias a besoin de vous sur une tâche du lancement",
+        "body": "Ouvrez la tâche et lisez son commentaire, puis appuyez sur Suivant.",
+        "role": "Vous pilotez le projet « Kestrel Field Preamp launch ». Tobias vient de commenter l'une de ses tâches pour vous demander de l'aide.",
+        "way2": "Ouvrez « Kestrel Field Preamp launch »",
+        "way3": "Ouvrez la tâche PREAMP-11 « Prepare the trade-show demo »",
+        "way4": "Lisez le commentaire de Tobias dans sa discussion"
+      },
+      "teammate": {
+        "title": "Un collègue commente",
+        "body": "Rien à faire pour l'instant : Tobias va commenter votre tâche PREAMP-11 « Prepare the trade-show demo ». Appuyez sur Suivant une fois son commentaire arrivé.",
+        "role": "Tobias Braun travaille avec vous sur le lancement, et il a besoin de votre aide sur l'une de ses tâches."
+      },
+      "askAgent": {
+        "title": "Confiez-la à votre agent",
+        "body": "Ouvrez Discussions en bas de l'écran, à côté de la tâche, choisissez votre discussion avec {{agent}}, écrivez la demande ci-dessous et appuyez sur Envoyer.",
+        "text": "Tobias a besoin d'aide sur PREAMP-11 « Prepare the trade-show demo ». Découpez-la en sous-tâches pour la semaine prochaine et créez-les maintenant comme ses sous-tâches, puis répondez à Tobias dans la discussion de la tâche. Inutile de me demander confirmation.",
+        "role": "Vous n'avez pas le temps de planifier vous-même les unités de démo. Vous le demandez à {{agent}}, comme à un assistant : il découpe la tâche et répond à Tobias pour vous.",
+        "way1": "Ouvrez Discussions en bas de l'écran, à côté de la tâche",
+        "say": "Écrivez à {{agent}} :"
+      },
+      "board": {
+        "title": "Tout le lancement d'un coup d'œil",
+        "body": "Les lignes entourées sont les sous-tâches que {{agent}} vient de créer, sous votre tâche. Appuyez sur Suivant.",
+        "role": "Les sous-tâches créées par {{agent}} rejoignent le plan du lancement avec tout le reste. Vérifiez que rien n'est en retard.",
+        "way1": "Cliquez sur « Kestrel Field Preamp launch » en haut de la tâche",
+        "way2": "Vous êtes sur le projet : les nouvelles sous-tâches sont dans sa liste"
+      },
+      "done": {
+        "title": "Voilà les projets",
+        "body": "Les agents prennent leur part du travail ; vous gardez la relecture.",
+        "role": "Tobias a son plan, et il vous a pris une minute, pas un après-midi."
+      },
+      "review": {
+        "title": "Relisez ce qu'il a fait",
+        "body": "La tâche affiche maintenant ses sous-tâches et la réponse de votre agent à Tobias. Vérifiez, déplacez ou modifiez celles que vous voulez, puis appuyez sur Suivant.",
+        "role": "Avant que Tobias suive le plan, vous vérifiez que c'est bien celui que vous voulez.",
+        "way3": "Vérifiez ses sous-tâches et la réponse de votre agent"
+      },
+      "subtasks": {
+        "title": "Votre agent fait le découpage",
+        "body": "Il lit la tâche et crée ses sous-tâches. Appuyez sur Suivant dès que la première s'affiche.",
+        "role": "Pendant que {{agent}} travaille, vous voyez le plan prendre forme.",
+        "way3": "Suivez ses étapes dans votre discussion avec lui"
+      },
+      "reply": {
+        "title": "Il répond à Tobias là où il a demandé",
+        "body": "Votre agent publie sa réponse dans la discussion de la tâche. Appuyez sur Suivant dès qu'elle y est.",
+        "role": "Tobias reçoit sa réponse dans la discussion de la tâche, de votre agent, signée comme venant de votre agent.",
+        "way3": "Lisez la réponse de votre agent dans la discussion de la tâche"
+      }
+    },
+    "chat": {
+      "title": "Discussion d'équipe",
+      "summary": "Une question qui demande le web ; votre agent fait la recherche dans votre discussion privée avec lui et cite ses sources.",
+      "channels": {
+        "title": "Vos discussions",
+        "body": "Canaux, messages directs et agents se trouvent dans Discussions. Appuyez sur Suivant.",
+        "role": "Vous travaillez avec Tobias et le reste de l'équipe dans des canaux et des messages directs."
+      },
+      "question": {
+        "title": "Un collègue a une question",
+        "body": "Rien à faire pour l'instant : Tobias va demander dans #battery-passport quelles règles européennes sur le passeport batterie s'appliquent dès 2027. Appuyez sur Suivant une fois son message arrivé.",
+        "role": "Tobias vérifie les règles sur les batteries pour le prochain produit, et il vous pose la question."
+      },
+      "readQuestion": {
+        "title": "Lisez la question de Tobias",
+        "body": "Ouvrez #battery-passport dans Discussions et lisez le message de Tobias, puis appuyez sur Suivant.",
+        "role": "Tobias attend une réponse que vous n'avez pas encore.",
+        "way2": "Ouvrez #battery-passport",
+        "way3": "Lisez son message"
+      },
+      "askAgent": {
+        "title": "Demandez à votre agent de chercher",
+        "body": "Ouvrez Discussions en bas de l'écran, à côté du canal, choisissez votre discussion avec {{agent}} et envoyez la question ci-dessous sur le passeport batterie avec Envoyer. Il cherche sur le web en direct et cite ses sources.",
+        "text": "Tobias demande quelles règles européennes sur le passeport batterie s'appliquent à nous dès 2027 et ce qu'il faut changer. Pouvez-vous chercher sur le web et me donner la réponse avec les liens vers vos sources ?",
+        "role": "Vous ne connaissez pas la réponse, mais {{agent}} peut chercher sur le web et citer ses sources.",
+        "say": "Demandez à {{agent}} :",
+        "way1": "Ouvrez Discussions en bas de l'écran, à côté du canal"
+      },
+      "searching": {
+        "title": "Il cherche sur le web",
+        "body": "{{agent}} cherche sur le web les règles du passeport batterie ; chaque outil qu'il utilise s'affiche ici au fur et à mesure. Appuyez sur Suivant une fois que vous l'avez vu.",
+        "role": "{{agent}} fait les recherches que vous feriez sinon dans dix onglets.",
+        "way3": "Suivez ses étapes dans votre discussion avec lui"
+      },
+      "sources": {
+        "title": "Ses sources : les pages web qu'il cite",
+        "body": "Ses sources sont les pages web qu'il cite sur le passeport batterie, en liens sous sa réponse. Suivant s'active dès que la réponse est là.",
+        "role": "Vous pouvez vous fier à la réponse, car vous pouvez vérifier chaque source vous-même.",
+        "way3": "Lisez les liens sous sa réponse"
+      },
+      "followUp": {
+        "title": "Faites-en une tâche",
+        "body": "Dans la même discussion, envoyez la demande ci-dessous : tapez-la et appuyez sur Envoyer ou appuyez sur le micro à côté d'Envoyer et dictez-la. Votre agent transforme la réponse en tâche du projet de lancement.",
+        "text": "Faites de cette réponse une tâche pour Tobias dans notre projet « Kestrel Field Preamp launch », avec les sources dans sa description.",
+        "role": "Tobias va donner suite à la réponse : elle doit devenir une tâche du projet de lancement.",
+        "say": "Demandez à {{agent}} :"
+      },
+      "done": {
+        "title": "Voilà la discussion avec votre agent",
+        "body": "Votre agent travaille dans toutes les applications depuis une discussion avec vous : il cherche sur le web en direct, cite ses sources et crée ce que vous demandez. Comme une personne, il garde sa propre mémoire de tout ce que vous lui dites, sans compaction, et ses propres outils en font un expert.",
+        "role": "Tobias a sa réponse avec ses sources, et une tâche pour y donner suite, dans son canal."
+      },
+      "task": {
+        "title": "Votre agent la crée",
+        "body": "Il crée la tâche ou vous demande d'abord. Appuyez sur Suivant une fois qu'elle est là ; vous l'approuverez s'il a demandé.",
+        "role": "{{agent}} transforme sa propre réponse en travail pour Tobias."
+      },
+      "replyTobias": {
+        "title": "Répondez à Tobias dans le canal",
+        "body": "Dans la même discussion, envoyez la demande ci-dessous avec Envoyer. {{agent}} publie la réponse pour Tobias dans #battery-passport, signée comme votre agent, avec ses sources et la tâche.",
+        "text": "Répondez maintenant à Tobias dans #battery-passport : dites-lui ce que vous avez trouvé, avec les sources, et indiquez-lui la tâche que vous avez créée pour lui.",
+        "role": "Tobias a posé sa question dans le canal : la réponse y a sa place, là où l'équipe la voit.",
+        "say": "Demandez à {{agent}} :"
+      },
+      "posting": {
+        "title": "Il publie dans le canal",
+        "body": "{{agent}} écrit sa réponse à Tobias dans #battery-passport ; chaque étape s'affiche ici. Appuyez sur Suivant une fois son message dans le canal.",
+        "role": "{{agent}} publie pour vous, sous son propre nom, sans que vous ayez à recopier quoi que ce soit."
+      },
+      "replyInChannel": {
+        "title": "Sa réponse dans le canal",
+        "body": "La réponse de {{agent}} est dans #battery-passport, sous la question de Tobias, signée comme votre agent. Appuyez sur Suivant.",
+        "role": "Tobias a la réponse, ses sources et sa tâche en un seul message.",
+        "way3": "Lisez son message"
+      }
+    },
+    "sales": {
+      "title": "Ventes",
+      "summary": "Une cliente potentielle écrit ; une routine vérifie votre CRM, se renseigne sur elle, puis vous demande d'approuver sa fiche CRM, un devis et la réponse en une seule demande, exécutés dans l'ordre.",
+      "crm": {
+        "title": "À qui vous parlez",
+        "body": "À côté d'une discussion, la fiche client montre ce que votre CRM sait de l'expéditeur. Appuyez sur Suivant.",
+        "role": "Vous vendez à des entreprises de l'audio. Avant de répondre à qui que ce soit, vous voulez savoir qui c'est.",
+        "way2": "Ouvrez la première discussion de la boîte"
+      },
+      "routine": {
+        "title": "Une routine pour les prospects",
+        "body": "« Research interested prospects » se lance sur chaque mail d'un prospect intéressé. Elle se renseigne sur lui, puis prépare sa fiche CRM, un devis et votre réponse, et vous soumet les trois pour accord. Elle n'envoie rien d'elle-même. Appuyez sur Suivant.",
+        "role": "Se renseigner à la main sur chaque prospect vous prend une heure par jour ; une routine peut le faire.",
+        "way2": "Ouvrez {{agent}} dans la liste",
+        "way3": "Ouvrez son onglet Routines"
+      },
+      "enable": {
+        "title": "Activez-la",
+        "body": "Appuyez sur l'interrupteur de la routine pour l'activer. Désormais, elle s'exécute à chaque mail de prospect.",
+        "role": "Vous voulez que chaque prospect intéressé soit étudié avant votre réponse, sans le faire vous-même."
+      },
+      "liveEmail": {
+        "title": "Une cliente potentielle écrit",
+        "body": "Rien à faire pour l'instant : Inês va demander un devis pour 40 unités. Appuyez sur Suivant une fois son mail arrivé.",
+        "role": "Inês, de Northwind Acoustics, a besoin de 40 unités, et elle vous écrit en ce moment."
+      },
+      "researching": {
+        "title": "La routine travaille",
+        "body": "Attendez ici, rien à faire : la routine lit le mail d'Inês, vérifie votre CRM et, comme elle est nouvelle, lit le site de son entreprise. Puis elle prépare tout pour elle : sa fiche CRM, un devis et la réponse. Cette étape avance toute seule quand tout est prêt.",
+        "role": "Pendant que la routine se renseigne sur Inês, vous faites autre chose."
+      },
+      "bundle": {
+        "title": "Rien ne part sans vous",
+        "body": "La routine a fait sa part : elle s'est renseignée sur Inês et a tout rédigé, sans rien envoyer. Ce qu'elle vous livre, c'est une demande dans Accueil, nommée d'après la réponse à Inês, qui regroupe les trois actions qu'elle veut faire : créer sa fiche CRM, émettre le devis, envoyer la réponse. Appuyez sur Suivant.",
+        "role": "Au lieu de trois choses à vérifier une par une, vous décidez une seule fois."
+      },
+      "bundleSteps": {
+        "title": "Trois étapes, dans l'ordre",
+        "body": "La demande contient trois étapes, exécutées dans cet ordre et montrées en entier : 1. Inês et son entreprise en nouvelle fiche CRM, avec chaque champ renseigné. 2. Un devis pour 40 Kestrel 6 au prix revendeur : ses lignes, la remise, le total et son identifiant CRM. 3. La réponse à Inês : le destinataire, le message entier et le PDF du devis en pièce jointe. Quand une étape reprend le résultat d'une étape précédente, elle la nomme, par exemple « le PDF du devis de l'étape 2 ». Appuyez sur Suivant une fois sa carte ouverte.",
+        "role": "Vous voyez toute l'affaire avant que quoi que ce soit ne se passe.",
+        "way2": "Cliquez sur la ligne de la demande pour l'ouvrir"
+      },
+      "approve": {
+        "title": "Approuvez une seule fois",
+        "body": "Appuyez sur Approuver : la fiche est créée (ici dans un CRM fictif), puis le devis est émis, puis la réponse part à Inês avec le devis joint (ici une cliente potentielle fictive), dans cet ordre. Si une étape échoue, rien de ce qui suit ne s'exécute et la routine prépare une demande corrigée.",
+        "role": "Une seule décision, et l'affaire avance dans le bon ordre.",
+        "undo": "Laissez-la passer ou appuyez sur Annuler pour garder la demande en attente.",
+        "way2": "Ouvrez la demande, puis appuyez sur Approuver"
+      },
+      "brief": {
+        "title": "Votre synthèse",
+        "body": "Une fois terminée, la routine publie son résumé dans votre discussion avec {{agent}} : qui est Inês, d'après le site de son entreprise et votre CRM, le numéro du devis et ce qui est parti. Appuyez sur Suivant quand il est là.",
+        "role": "Vous abordez la discussion avec Inês en sachant qui elle est.",
+        "way3": "Lisez la synthèse, en bas de la discussion",
+        "way1": "Ouvrez Discussions en bas de l'écran, à côté de la routine"
+      },
+      "card": {
+        "title": "Ce que sait votre CRM",
+        "body": "La fiche client montre maintenant la fiche CRM que vous avez approuvée : Inês et Northwind Acoustics, avec ce que la routine a appris. Appuyez sur Suivant.",
+        "role": "La prochaine fois qu'Inês écrit, vous voyez tout de suite qui elle est.",
+        "way2": "Ouvrez le mail d'Inês, en haut de la boîte"
+      },
+      "done": {
+        "title": "Voilà les ventes",
+        "body": "Les routines font les recherches et tiennent votre CRM à jour ; vous gardez le dernier mot sur chaque fiche et chaque mail.",
+        "role": "Chaque prospect est étudié avant votre réponse, et rien ne part sans vous."
+      }
+    },
+    "commerce": {
+      "title": "Commerce",
+      "summary": "Une commande arrive et sa facture est émise automatiquement ; l'agent Operations Desk répond à son sujet et prépare l'expédition pour votre accord.",
+      "orders": {
+        "title": "Les commandes de votre boutique",
+        "body": "Les commandes de votre boutique s'affichent ici dès leur arrivée. Appuyez sur Suivant.",
+        "role": "Vous tenez la boutique. Les commandes arrivent toute la journée, et chacune doit partir à temps.",
+        "way2": "Ouvrez « Orders » dans la barre latérale"
+      },
+      "liveOrder": {
+        "title": "Une commande arrive",
+        "body": "Rien à faire pour l'instant : la commande n° 1097 va arriver, avec un mot cadeau. Appuyez sur Suivant une fois qu'elle est là.",
+        "role": "Un client achète en ce moment, avec un mot cadeau pour le colis."
+      },
+      "newOrder": {
+        "title": "La commande n° 1097 est là",
+        "body": "Payée, pas encore expédiée, avec un mot cadeau : elle attend d'être envoyée. Appuyez sur Suivant.",
+        "role": "La commande arrive dans votre liste dès que le client paie."
+      },
+      "invoice": {
+        "title": "Sa facture, émise par la commande",
+        "body": "Sa ligne apparaît ici quelques secondes après la commande : l'événement de commande l'a émise, pas un agent. Les événements métier restent automatiques. Appuyez sur Suivant une fois la ligne entourée.",
+        "role": "La facture de la commande n° 1097 est émise sans que personne s'en occupe.",
+        "way2": "Ouvrez Factures"
+      },
+      "askAgent": {
+        "title": "Demandez à l'Operations Desk",
+        "body": "Ouvrez Discussions en bas de l'écran, à côté des commandes, choisissez l'Operations Desk sous Agents et envoyez la demande ci-dessous avec Envoyer. Il dispose des outils d'expédition et de facturation : il vérifie la commande et prépare l'expédition pour votre approbation.",
+        "text": "Où en est la commande n° 1097, et est-elle facturée ? Réservez maintenant son expédition à partir de sa ligne dans la liste des expéditions à préparer, telle quelle : achetez l'étiquette à l'offre de transporteur la moins chère, en une seule demande en attente de mon accord, sans autre modification. Inutile de me demander confirmation.",
+        "role": "Le client veut son colis vite ; l'Operations Desk, l'agent qui gère les expéditions, peut vérifier la commande et réserver l'expédition pour vous.",
+        "say": "Demandez à l'Operations Desk :",
+        "way1": "Ouvrez Discussions en bas de l'écran, à côté des commandes",
+        "way2": "Choisissez l'Operations Desk sous Agents"
+      },
+      "approve": {
+        "title": "Approuvez",
+        "body": "Vérifiez le colis et le transporteur, puis appuyez sur Approuver. Rien n'est réservé avant.",
+        "role": "Rien n'est réservé chez le transporteur sans votre accord.",
+        "undo": "Laissez-la partir ou appuyez sur Annuler pour voir l'expédition revenir en brouillon."
+      },
+      "done": {
+        "title": "Voilà le commerce",
+        "body": "Commandes et factures se gèrent seules ; l'Operations Desk s'occupe de ce qui demande du discernement, et vous approuvez.",
+        "role": "La commande n° 1097 est facturée et expédiée, et vous y avez passé une minute."
+      },
+      "prepare": {
+        "title": "Il prépare l'expédition",
+        "body": "L'Operations Desk vérifie la commande n° 1097 et prépare l'expédition en demande d'approbation, avec le mot cadeau. Appuyez sur Suivant une fois sa carte affichée ; vous l'approuverez ensuite.",
+        "role": "L'Operations Desk s'occupe des formalités du transporteur ; vous vérifiez seulement.",
+        "way3": "Attendez sa carte dans votre discussion avec l'Operations Desk"
+      }
+    },
+    "dev": {
+      "title": "Développeurs",
+      "summary": "Votre agent envoie la correction d'un bug à Claude Code sur un ordinateur, qui ouvre une pull request.",
+      "intro": {
+        "title": "Comment Liaison code pour vous",
+        "body": "L'application de bureau Liaison relie Claude Code (ou Codex) sur votre ordinateur à Liaison. Vos agents peuvent alors lui envoyer des tâches, comme corriger un bug et ouvrir une pull request. Chaque session s'exécute dans le mode choisi dans son menu Modes. En Auto, le mode par défaut, les commandes courantes s'exécutent et les commandes risquées attendent votre accord, où que vous soyez. Appuyez sur Suivant.",
+        "role": "Vous développez le firmware du produit, et vous voulez que les bugs se corrigent pendant que vous faites autre chose."
+      },
+      "computers": {
+        "title": "Vos ordinateurs connectés",
+        "body": "Vos ordinateurs connectés s'affichent ici. « Demo laptop (recorded) » est déjà connecté dans cet espace. Il rejoue une vraie session Claude Code : vous n'installez rien. Appuyez sur Suivant.",
+        "role": "Un ordinateur connecté à Liaison peut recevoir le travail de vos agents."
+      },
+      "askBugs": {
+        "title": "Demandez les bugs récents à votre agent",
+        "body": "Ouvrez Discussions en bas de l'écran, choisissez votre discussion avec {{agent}} et envoyez la question ci-dessous avec Envoyer. Il lit le canal Firmware bugs de l'équipe.",
+        "text": "Lisez le canal Firmware bugs et listez les bugs qui y sont signalés, du plus récent au plus ancien, une ligne chacun.",
+        "role": "Le support et le banc de test signalent les bugs dans un canal d'équipe. {{agent}} peut le lire pour vous.",
+        "say": "Demandez à {{agent}} :",
+        "way1": "Ouvrez Discussions en bas de l'écran"
+      },
+      "bugs": {
+        "title": "Les bugs récents",
+        "body": "{{agent}} liste les bugs du canal. Le plus récent : la batterie du Kestrel 6 reste à 99 % après une charge complète. Appuyez sur Suivant une fois lu.",
+        "role": "Vous voyez ce qui ne marche pas sans lire tout le canal.",
+        "way3": "Lisez sa réponse dans votre discussion avec lui"
+      },
+      "askDispatch": {
+        "title": "Demandez-lui d'envoyer la correction à l'ordinateur",
+        "body": "Envoyez la demande ci-dessous avec Envoyer. {{agent}} confie le bug de batterie à Claude Code sur l'ordinateur de démo.",
+        "text": "Lancez la correction du bug de batterie bloquée à 99 % sur mon ordinateur, le Demo laptop (recorded). Elle doit ouvrir une pull request une fois terminée.",
+        "role": "Vous choisissez le bug. Claude Code sur votre ordinateur fait la correction.",
+        "say": "Demandez à {{agent}} :"
+      },
+      "dispatch": {
+        "title": "La tâche est envoyée",
+        "body": "{{agent}} envoie la tâche à Demo laptop (recorded). Une carte de session apparaît dans votre discussion. Attendez-la, puis appuyez sur Suivant.",
+        "role": "Votre agent lance le travail sur votre ordinateur pour vous. Rien ne s'exécute ailleurs.",
+        "way3": "Cherchez la carte de session dans votre discussion avec lui"
+      },
+      "stream": {
+        "title": "Regardez-le travailler",
+        "body": "La session diffuse ce que fait Claude Code, étape par étape. Appuyez sur Suivant quand il demande votre autorisation ; vous l'autoriserez à l'étape suivante.",
+        "role": "Vous suivez le travail de Claude Code en direct, où que vous soyez."
+      },
+      "permission": {
+        "title": "Il demande d'abord",
+        "body": "Pousser la correction est une commande risquée : Claude Code vous demande d'abord. C'est le mode de la session, Auto : les commandes courantes s'exécutent, les commandes risquées attendent votre accord. Strict, à côté du modèle, est son bac à sable : uniquement son dossier et les sites web autorisés. Appuyez sur Autoriser une fois.",
+        "role": "Le mode décide de ce que Claude Code peut lancer sans demander, le niveau de ce qu'il peut atteindre. Vous choisissez les deux sous la zone de message.",
+        "way1": "Ouvrez la session de l'ordinateur de démo dans la liste"
+      },
+      "result": {
+        "title": "Le résultat",
+        "body": "C'est fait : la correction est dans une pull request. Son lien est sur la carte du résultat. Appuyez sur Suivant.",
+        "role": "Le bug est corrigé, et la modification attend votre relecture comme les autres."
+      },
+      "report": {
+        "title": "Le compte rendu dans votre discussion",
+        "body": "La session terminée rend compte dans votre discussion avec {{agent}} : ce qu'elle a fait et le lien de la pull request. Appuyez sur Suivant.",
+        "role": "La réponse arrive là où vous avez demandé, sans ouvrir la session.",
+        "way3": "Lisez le compte rendu dans votre discussion avec lui"
+      },
+      "pair": {
+        "title": "Connectez votre propre ordinateur",
+        "body": "Trois étapes : récupérez l'application de bureau avec le bouton ici, connectez-vous à Liaison dedans, puis choisissez Claude Code. Votre ordinateur s'affiche alors dans cette liste, et vos agents peuvent lui envoyer des tâches. Appuyez sur Suivant.",
+        "role": "Votre propre ordinateur peut recevoir des tâches de la même façon."
+      },
+      "done": {
+        "title": "Voilà le développement",
+        "body": "Vos agents envoient des tâches de code à vos ordinateurs, et chaque session vous consulte selon le mode choisi.",
+        "role": "Le bug de batterie est corrigé, et le push a attendu votre accord."
+      }
+    },
+    "knowledge": {
+      "title": "Connaissances de l'entreprise",
+      "summary": "Manuels, finances et playbooks dans une seule base de connaissances ; chaque agent ne lit que ce que la personne qui le sollicite peut ouvrir.",
+      "sources": {
+        "title": "Tout ce que sait votre entreprise, au même endroit",
+        "body": "La barre latérale liste les sources : resonant/manuals synchronisé depuis GitLab, le dossier Finance synchronisé depuis Google Drive, et les documents rédigés dans Liaison. Appuyez sur Suivant.",
+        "role": "Vous dirigez Resonant Audio Labs. Vos manuels sont dans GitLab, vos fichiers financiers dans Google Drive, vos playbooks dans Liaison, et tout se retrouve ici.",
+        "way2": "Regardez les sources dans la barre latérale"
+      },
+      "openPl": {
+        "title": "Ouvrez le compte de résultat du T3",
+        "body": "Ouvrez Q3 2026 P&L, lisez le bandeau en haut du document, puis appuyez sur Suivant.",
+        "role": "Ce fichier vient du dossier Finance de Google Drive. Liaison le garde synchronisé et l'affiche en lecture seule : les modifications se font dans Drive.",
+        "way1": "Cliquez sur « Q3 2026 P&L » dans la liste",
+        "way2": "Lisez le bandeau en haut du document"
+      },
+      "share": {
+        "title": "Voyez qui peut l'ouvrir",
+        "body": "Appuyez sur Partager et lisez qui y a accès, puis appuyez sur Suivant.",
+        "role": "Confidentiel signifie : accessible aux seules personnes avec qui le document est partagé. Lucas a rejoint le support le mois dernier. Il n'est pas dans cette liste, donc aucun agent qu'il sollicite ne peut l'ouvrir non plus.",
+        "way1": "Appuyez sur Partager, en haut à droite du document",
+        "way2": "Lisez « Personnes ayant accès » et « Rôles ayant accès »"
+      },
+      "askAgent": {
+        "title": "Interrogez votre agent sur les trois sources à la fois",
+        "body": "Ouvrez Discussions en bas de l'écran, à côté du compte de résultat, choisissez votre discussion avec {{agent}} et envoyez la question ci-dessous avec Envoyer. Il répond à partir du compte de résultat, du manuel et du playbook, et les cite.",
+        "role": "Votre agent voit ce que vous voyez : il peut combiner le compte de résultat, le manuel et le playbook en une seule réponse pour le conseil d'administration de demain.",
+        "text": "Quelle a été notre marge brute au T3, et quel produit l'a portée ? Citez les documents que vous avez utilisés.",
+        "say": "Demandez à {{agent}} :",
+        "way1": "Ouvrez Discussions en bas de l'écran, à côté du compte de résultat"
+      },
+      "answer": {
+        "title": "Sa réponse, avec ses sources",
+        "body": "{{agent}} répond à côté du compte de résultat, en citant le compte de résultat, le manuel et le playbook. Appuyez sur Suivant une fois qu'il a répondu.",
+        "role": "Vous obtenez une réponse tirée de trois sources, et vous pouvez ouvrir chacune d'elles.",
+        "way3": "Lisez sa réponse sous votre question"
+      },
+      "lucasAsks": {
+        "title": "Lucas pose la même question",
+        "body": "Rien à faire pour l'instant : Lucas demande à Support Desk la marge brute du T3 dans #support. Appuyez sur Suivant une fois son message arrivé.",
+        "role": "Lucas a rejoint le support le mois dernier. Il pose à Support Desk la question que vous avez posée à votre agent."
+      },
+      "lucasAnswer": {
+        "title": "Support Desk répond avec ses droits à lui",
+        "body": "Rien à faire d'autre que lire : Support Desk répond à Lucas dans #support, en cherchant dans Connaissances en tant que lui, et Lucas n'a pas accès au compte de résultat. Appuyez sur Suivant une fois sa réponse lue.",
+        "role": "L'agent travaille avec les droits de Lucas, pas les vôtres : il ne trouve rien.",
+        "way2": "Ouvrez #support sous Canaux",
+        "way3": "Lisez la réponse de Support Desk à Lucas"
+      },
+      "done": {
+        "title": "Une seule mémoire, cloisonnée par rôle",
+        "body": "Vous, Henrik à la finance et tout agent que l'un de vous sollicite pouvez lire le compte de résultat du T3. Lucas au support, et tout agent qu'il sollicite, ne le peuvent pas.",
+        "role": "Un agent lit avec les droits de la personne qui le sollicite. C'est pourquoi vous pouvez confier aux agents toutes les connaissances de l'entreprise : personne n'obtient par un agent plus que ce qu'il pourrait ouvrir lui-même."
+      }
+    }
+  }
+}

@@ -1,0 +1,30 @@
+transcript adapter deliveries become per-call knowledge documents -> bundled-apps/calls/README.md:3
+calls is kind connector, no views -> bundled-apps/calls/app.manifest.json:5
+connector is a card on the Connectors page -> apps/web/src/framework/define-app.ts:816
+Connectors page cards -> apps/web/src/modules/settings/connectors/ConnectorsPage.tsx:198
+nothing dialled out; connection mints HMAC secret -> bundled-apps/calls/README.md:30
+Connect button -> apps/web/src/modules/settings/app-page/ConnectionsBlock.tsx:416
+Transcript source label field -> bundled-apps/calls/app.manifest.json:32
+secret minted on first connect, reused -> bundled-apps/calls/app.manifest.json:37
+read secret with webhook_info, calls:admin -> bundled-apps/calls/app.manifest.json:38
+webhook_info requires calls:admin -> bundled-apps/calls/app.manifest.json:130
+agentVisible false tools not callable by agents -> apps/api/src/modules/apps/execute-tool.ts:4155
+Transcript source section adminScope calls:admin -> bundled-apps/calls/app.manifest.json:139
+segment webhook endpoint -> bundled-apps/calls/app.manifest.json:71
+webhook route /webhooks/:orgId/:appName/:endpointName -> apps/api/src/modules/webhooks/routes.ts:115
+HMAC-SHA256 base64 x-calls-signature -> bundled-apps/calls/app.manifest.json:39
+x-calls-delivery-id optional dedup -> bundled-apps/calls/app.manifest.json:40
+fresh ts, 10 min window, callsWebhookTtlSeconds -> bundled-apps/calls/app.manifest.json:41
+first delivery creates doc, later append -> bundled-apps/calls/README.md:50
+title prefix Appel : -> bundled-apps/calls/src/doc-format.ts:84
+segments idempotent by callRef+segmentId, ordered by ts -> bundled-apps/calls/README.md:7
+transcript is external speech; summary is sender's own -> bundled-apps/calls/README.md:10
+calls_segments_since returns summary and links -> bundled-apps/calls/README.md:20
+calls_set_links contact and Pipeline deal task, writes Liens block -> bundled-apps/calls/app.manifest.json:101
+transcripts not agent-writable -> bundled-apps/calls/README.md:24
+scopes list -> bundled-apps/calls/app.manifest.json:18
+calls:approve approver scope -> docs/reference/scopes.md:128
+calls_segments_since -> bundled-apps/calls/app.manifest.json:84
+calls_set_links -> bundled-apps/calls/app.manifest.json:100
+calls_list -> bundled-apps/calls/app.manifest.json:114
+webhook_info -> bundled-apps/calls/app.manifest.json:127

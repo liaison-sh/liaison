@@ -1,0 +1,37 @@
+Liaison is an agent-native business operating system -> README.md:3
+mail tickets knowledge invoicing shipping, agents under same permissions -> README.md:5
+modular, anyone can build an app on its kernel -> README.md:7
+demo gives own copy of Resonant Audio Labs fictional company -> README.md:20
+demo agents work out of the box, no model key -> README.md:22
+demo workspace expires after 72 hours -> README.md:23
+self-hosted with Docker Compose -> README.md:11
+providers Anthropic OpenAI Google Mistral OpenRouter -> packages/shared/src/i18n/locales/en/kernel.json:1631
+use a frontier model, choose model explicitly instead of Auto -> SECURITY.md:54
+sensitive actions customer replies invoices discounts merges wait for approval, edit or reject -> SECURITY.md:43
+after reading outside content actions leaving the company wait -> SECURITY.md:46
+RLS decides, not agent judgment -> README.md:9
+agent cannot read or change what the person cannot -> SECURITY.md:40
+app image + Postgres Redis MeiliSearch S3-compatible store -> README.md:12
+volumes postgres_data redis_data meili_data objectstore_data -> deploy/docker-compose.yml:637
+point object storage at S3-compatible endpoint -> README.md:142
+Mail connects Gmail and IMAP/SMTP -> packages/shared/src/i18n/locales/en/mail.json:26
+Contacts is not the CRM; no deal or pipeline model -> apps/api/src/modules/agent/tools/kernel-tools.ts:1561
+only people/company table in the kernel schema -> apps/api/src/db/schema/kernel/contacts.ts:20
+API connector for your own CRM or ERP -> README.md:108
+computer runs desktop app; sessions in folders you share -> apps/desktop/sidecar/package.json:15
+Claude Agent SDK embedded in desktop sidecar -> apps/desktop/sidecar/package.json:15
+Codex mentioned as setup tool -> README.md:32
+desktop apps macOS and Windows -> README.md:145
+mobile iOS Android Capacitor shell -> README.md:146
+backup.sh writes one archive restore.sh restores on this or another machine -> deploy/backup.sh:4
+upgrade by new image tag via LIAISON_IMAGE -> deploy/docker-compose.yml:6
+migrations on start (app migrates up on boot) -> deploy/restore.sh:12
+FSL-1.1-ALv2 -> LICENSE:1
+Permitted Purpose any purpose other than Competing Use -> LICENSE:32
+internal use and access permitted -> LICENSE:45
+Apache 2.0 effective on second anniversary -> LICENSE:87
+report via private vulnerability reporting or email -> SECURITY.md:22
+include steps, version, impact -> SECURITY.md:27
+no public issues -> SECURITY.md:20
+build app with SDK, sandbox, install path -> README.md:120
+config apply provisions org admin members keys mailboxes inboxes apps knowledge -> README.md:212

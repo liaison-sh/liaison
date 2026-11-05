@@ -1,0 +1,203 @@
+Projects in activity bar -> apps/api/src/apps/projects/app.manifest.json:1499
+New project -> apps/web/src/modules/projects/ProjectsHome.tsx:369
+Project name, Description (optional) -> apps/web/src/modules/projects/ProjectsHome.tsx:382
+Columns (optional) and hint, last counts as done -> packages/shared/src/i18n/locales/en/projects.json:14
+Icon, Color -> apps/web/src/modules/projects/ProjectsHome.tsx:417
+Create project -> packages/shared/src/i18n/locales/en/projects.json:20
+Archive project keeps tasks, restore from Archived -> packages/shared/src/i18n/locales/en/projects.json:129
+Archive / Restore project actions -> apps/web/src/modules/projects/ProjectWorkspace.tsx:607
+New task button -> apps/web/src/modules/projects/ProjectWorkspace.tsx:552
+Inline New task… (Enter to create) -> packages/shared/src/i18n/locales/en/projects.json:48
+New task dialog Title, What needs doing? -> apps/web/src/modules/projects/NewTaskDialog.tsx:80
+Description, Markdown supported -> apps/web/src/modules/projects/NewTaskDialog.tsx:104
+Status default first -> apps/web/src/modules/projects/NewTaskDialog.tsx:123
+Create -> apps/web/src/modules/projects/NewTaskDialog.tsx:156
+List view / Kanban view -> apps/web/src/modules/projects/ProjectWorkspace.tsx:503
+Kanban drag and drop -> apps/web/src/modules/projects/ProjectKanbanView.tsx:2
+Assignee, Assign to me -> apps/web/src/modules/projects/TaskDetail.tsx:817
+Due date -> apps/web/src/modules/projects/TaskDetail.tsx:917
+Priority -> apps/web/src/modules/projects/TaskDetail.tsx:960
+Release, Add release -> apps/web/src/modules/projects/TaskDetail.tsx:1015
+Blocked -> apps/web/src/modules/projects/TaskDetail.tsx:1068
+Subtasks -> apps/web/src/modules/projects/TaskDetail.tsx:539
+Discussion comment box and Comment button -> apps/web/src/modules/projects/TaskDiscussion.tsx:270
+@ brings an agent into the discussion -> apps/web/src/modules/projects/TaskDiscussion.tsx:225
+Agent answer shown as in a chat, tools and approvals inline -> apps/web/src/modules/projects/TaskDiscussion.tsx:192
+Live turn with its tool calls -> apps/web/src/modules/threads/MessageList.tsx:690
+Working while it runs -> apps/web/src/modules/projects/TaskDiscussion.tsx:203
+Working label -> packages/shared/src/i18n/locales/en/kernel.json:218
+Promote to thread list -> packages/shared/src/i18n/locales/en/projects.json:93
+Linked documents hint -> packages/shared/src/i18n/locales/en/projects.json:40
+Checklist on task -> apps/web/src/modules/projects/TaskDetail.tsx:528
+Copy task key -> apps/web/src/modules/projects/TaskDetail.tsx:384
+Delete task -> apps/web/src/modules/projects/TaskDetail.tsx:411
+Trash keeps deleted tasks, Put back -> packages/shared/src/i18n/locales/en/projects.json:72
+Put back -> packages/shared/src/i18n/locales/en/projects.json:58
+Search tasks… -> apps/web/src/modules/projects/ProjectsSidebar.tsx:215
+Assigned to me, Due filters -> apps/web/src/modules/projects/ProjectsSidebar.tsx:251
+Due options -> apps/web/src/modules/projects/ProjectsSidebar.tsx:117
+Saved views My tasks, Due this week, Active tasks -> apps/api/src/apps/projects/app.manifest.json:1526
+Recently involved filter chip -> apps/web/src/modules/projects/ProjectsSidebar.tsx:315
+Recently involved label -> packages/shared/src/i18n/locales/en/projects.json:98
+Recently involved default 14 days -> apps/web/src/modules/projects/involved.ts:8
+Recently involved window up to 90 days in a saved view -> apps/web/src/modules/projects/involved.ts:9
+Recently involved saved views (home and project) -> apps/api/src/apps/projects/app.manifest.json:2361
+Involvement from your comments -> apps/api/src/apps/projects/service/recently-involved.ts:290
+Involvement from mentions -> apps/api/src/apps/projects/service/recently-involved.ts:297
+Involvement from your changes (status, assignee, fields, moves) -> apps/api/src/apps/projects/service/recently-involved.ts:318
+Involvement when someone assigned it to you -> apps/api/src/apps/projects/service/recently-involved.ts:345
+Involvement from tasks you created -> apps/api/src/apps/projects/service/recently-involved.ts:363
+Involvement when assigned to you and changed -> apps/api/src/apps/projects/service/recently-involved.ts:370
+Never a deleted task or one of an archived project; RLS decides visibility -> apps/api/src/apps/projects/service/recently-involved.ts:400
+Most recent first -> apps/api/src/apps/projects/service/recently-involved.ts:403
+Row reason "You moved it to Done · 2 hours ago" -> apps/web/src/modules/projects/ProjectsHome.tsx:532
+Reason wording -> packages/shared/src/i18n/locales/en/projects.json:103
+Reason in a project list -> apps/web/src/modules/projects/ProjectWorkspace.tsx:953
+search involvedWithinDays tool param -> apps/api/src/apps/projects/app.manifest.json:424
+Bulk Change status…, Move…, Assign… -> apps/api/src/apps/projects/app.manifest.json:1558
+Manage statuses -> apps/web/src/modules/projects/ProjectWorkspace.tsx:972
+Add status -> apps/web/src/modules/projects/StatusManager.tsx:119
+Counts as done -> apps/web/src/modules/projects/StatusManager.tsx:174
+Rename / Delete status -> apps/web/src/modules/projects/StatusManager.tsx:191
+Delete only an empty column -> apps/api/src/apps/projects/app.manifest.json:1079
+Checklist validations in status manager -> apps/web/src/modules/projects/StatusManager.tsx:242
+Checklist validations title and hint -> packages/shared/src/i18n/locales/en/projects.json:206
+At most 8 levels -> packages/shared/src/i18n/locales/en/projects.json:221
+CI release status section, projects:settings:admin -> apps/api/src/apps/projects/app.manifest.json:1448
+CI connection fields -> apps/api/src/apps/projects/app.manifest.json:1390
+webhook_info reads the secret -> apps/api/src/apps/projects/app.manifest.json:953
+Webhook signing and header -> apps/api/src/apps/projects/app.manifest.json:1406
+Fresh ts, ciWebhookTtlSeconds, externalRef -> apps/api/src/apps/projects/app.manifest.json:1407
+Role member -> apps/api/src/apps/projects/app.manifest.json:1690
+Role lead -> apps/api/src/apps/projects/app.manifest.json:1698
+Role admin -> apps/api/src/apps/projects/app.manifest.json:1705
+projects:approve -> docs/reference/scopes.md:266
+search -> apps/api/src/apps/projects/app.manifest.json:317
+get -> apps/api/src/apps/projects/app.manifest.json:338
+createProject -> apps/api/src/apps/projects/app.manifest.json:363
+instantiate_template -> apps/api/src/apps/projects/app.manifest.json:895
+create -> apps/api/src/apps/projects/app.manifest.json:494
+update -> apps/api/src/apps/projects/app.manifest.json:593
+move -> apps/api/src/apps/projects/app.manifest.json:667
+delete gated -> apps/api/src/apps/projects/app.manifest.json:841
+merge gated -> apps/api/src/apps/projects/app.manifest.json:865
+add_dependency -> apps/api/src/apps/projects/app.manifest.json:920
+tasks_byAssignee -> apps/api/src/apps/projects/app.manifest.json:714
+tasks_byProject -> apps/api/src/apps/projects/app.manifest.json:769
+attentionItems -> apps/api/src/apps/projects/app.manifest.json:757
+portfolio_rollup -> apps/api/src/apps/projects/app.manifest.json:820
+comment -> apps/api/src/apps/projects/app.manifest.json:1123
+comments -> apps/api/src/apps/projects/app.manifest.json:1148
+status_add -> apps/api/src/apps/projects/app.manifest.json:964
+status_update -> apps/api/src/apps/projects/app.manifest.json:1018
+status_delete gated -> apps/api/src/apps/projects/app.manifest.json:1079
+checklist_get -> apps/api/src/apps/projects/app.manifest.json:1171
+checklist_add_items -> apps/api/src/apps/projects/app.manifest.json:1190
+checklist_update_item -> apps/api/src/apps/projects/app.manifest.json:1231
+checklist_set_validation -> apps/api/src/apps/projects/app.manifest.json:1268
+checklist_remove_item gated -> apps/api/src/apps/projects/app.manifest.json:1335
+projects attach-files usage and flags -> apps/api/src/cli/commands.ts:292
+attach-files matches by externalRef, backdated, notifies nobody, skips attached files -> apps/api/src/cli/commands.ts:296
+--files-dir paths relative and may not leave it -> apps/api/src/cli/commands.ts:300
+--placeholder-unknown-users creates a deactivated user, otherwise the batch fails -> apps/api/src/cli/commands.ts:310
+A task's discussion names the task (key, title, project) in the agent's context -> apps/api/src/modules/agent/context/context.ts:1856
+The line naming the task and how a subtask is filed under it -> apps/api/src/apps/projects/service/discussion-task.ts:68
+The ambiguous-project refusal names the discussion's task as the parent -> apps/api/src/apps/projects/service/resolve.ts:325
+projects.task and projects.project kinds -> apps/api/src/apps/projects/import-kind.ts:3
+writeScopes for tasks -> apps/api/src/apps/projects/app.manifest.json:1642
+task checklist imported with the task -> apps/api/src/apps/projects/import-kind.ts:428
+dependencies on later tasks linked after the kind, unresolved counted -> apps/api/src/apps/projects/import-kind.ts:754
+dependsOn and checklist record fields -> apps/api/src/apps/projects/app.manifest.json:1603
+projects.template kind, eight levels -> apps/api/src/apps/projects/import-kind.ts:919
+MAX_TASK_DEPTH is 8 -> apps/api/src/apps/projects/service/move-task.ts:11
+projects.template needs projects:settings:admin -> apps/api/src/apps/projects/app.manifest.json:1687
+dependency targets are the run's tasks or tasks the importer can read -> apps/api/src/apps/projects/import-kind.ts:361
+task attachments stored as task files under their author and date -> apps/api/src/apps/projects/import-kind.ts:832
+task attachments field -> apps/api/src/apps/projects/import-kind.ts:135
+task preview runs the run's checks (parent, comment date, attachment type), writing nothing -> apps/api/src/apps/projects/import-kind.ts:529
+Labels filter chip in the filter bar -> apps/web/src/modules/projects/ProjectWorkspace.tsx:494
+Labels filter chip on desktop, compact chip on phone -> apps/web/src/modules/projects/ProjectWorkspace.tsx:515
+Filter by label in the project menu on phone -> apps/web/src/modules/projects/ProjectWorkspace.tsx:616
+Labels chip text and Filter by label -> packages/shared/src/i18n/locales/en/projects.json:166
+Nature: bug chip, Nature: not set -> packages/shared/src/i18n/locales/en/projects.json:167
+(archived) suffix on a value -> packages/shared/src/i18n/locales/en/projects.json:169
+Inherited from {{key}} tooltip -> packages/shared/src/i18n/locales/en/projects.json:170
+None entry clears the task's own value -> packages/shared/src/i18n/locales/en/projects.json:171
+No label entry in the filter -> packages/shared/src/i18n/locales/en/projects.json:172
+This group is archived -> packages/shared/src/i18n/locales/en/projects.json:174
+Labels · {{count}} and Clear label filter -> packages/shared/src/i18n/locales/en/projects.json:177
++{{count}} on a kanban card -> packages/shared/src/i18n/locales/en/projects.json:181
+Unchanged, None, No label groups, Set labels in the bulk form -> packages/shared/src/i18n/locales/en/projects.json:185
+Label chips in the task header row -> apps/web/src/modules/projects/TaskDetail.tsx:513
+Picking a value or None patches the task's own label for that group -> apps/web/src/modules/projects/TaskDetail.tsx:516
+Chip picker lists the group's live values and None; archived group offers no values -> apps/web/src/modules/projects/LabelChip.tsx:107
+Archived group: only the task's own value can be cleared, an inherited value is read-only -> apps/web/src/modules/projects/LabelChip.tsx:110
+Inherited chip in italics with tooltip naming the parent task key -> apps/web/src/modules/projects/LabelChip.tsx:177
+Task shows chips for live groups and archived groups it has a value for -> apps/web/src/modules/projects/LabelChip.tsx:37
+Kanban card shows two chips and a +N overflow chip listing the rest on hover -> apps/web/src/modules/projects/KanbanLabelChips.tsx:16
+Kanban card chips mounted on each card -> apps/web/src/modules/projects/ProjectKanbanView.tsx:392
+Filter hidden when the org has no label group -> apps/web/src/modules/projects/LabelFilterChip.tsx:72
+Filter lists archived groups only when in use; archived values stay selectable -> apps/web/src/modules/projects/LabelFilterChip.tsx:34
+Picking a value again unpicks it, one value per group -> apps/web/src/modules/projects/LabelFilterChip.tsx:76
+No label option per group -> apps/web/src/modules/projects/LabelFilterChip.tsx:109
+Labels · N counts groups in the filter -> apps/web/src/modules/projects/LabelFilterChip.tsx:74
+Clear label filter control -> apps/web/src/modules/projects/LabelFilterChip.tsx:141
+Label filter kept in the filter state and its saved-view snapshot -> apps/web/src/modules/projects/projects-filter-store.ts:155
+Label filter applied on the cross-project home through the labels query -> apps/web/src/modules/projects/ProjectsHome.tsx:127
+Bulk Set labels… action with the SetTaskLabelsForm custom form -> apps/api/src/apps/projects/app.manifest.json:2318
+Bulk form registered for projects setLabels -> apps/web/src/modules/projects/exports.ts:49
+Bulk form submits only changed groups, None sends null -> apps/web/src/modules/projects/SetTaskLabelsForm.tsx:41
+Bulk form empty state No label groups -> apps/web/src/modules/projects/SetTaskLabelsForm.tsx:51
+Labels settings section under Settings › Apps › Projects, scope projects:labels:admin, tree block with two levels -> apps/api/src/apps/projects/app.manifest.json:2162
+Settings section title and description for Labels -> packages/shared/src/i18n/locales/en/projects.json:259
+Tree block: + Add at the top level -> apps/web/src/modules/settings/app-page/TreeBlock.tsx:380
+Tree block row menu: Rename, Add inside, Archive -> apps/web/src/modules/settings/app-page/TreeBlock.tsx:462
+Tree block saves the whole tree at once -> apps/web/src/modules/settings/app-page/TreeBlock.tsx:184
+Stale save shows Changed by someone else and Reload -> apps/web/src/modules/settings/app-page/TreeBlock.tsx:192
+Changed by someone else. Reload to see it. -> packages/shared/src/i18n/locales/en/kernel.json:2806
+Add inside, Rename -> packages/shared/src/i18n/locales/en/kernel.json:2788
+Name is 1 to 60 characters, unique within its group ignoring case, __none__ reserved -> apps/api/src/apps/projects/service/labels.ts:122
+Name length limit constant -> apps/api/src/apps/projects/service/labels.ts:33
+A value never moves to another group; two levels -> apps/api/src/apps/projects/app.manifest.json:1527
+Archiving a group archives its values, restore through labels.archive archived: false -> apps/api/src/apps/projects/app.manifest.json:1564
+Archived values stay on tasks and in filters but cannot be newly assigned -> apps/api/src/apps/projects/app.manifest.json:1564
+Archived labels are not in the settings tree (live groups and values only) -> apps/api/src/apps/projects/app.manifest.json:1590
+Whole-tree save refused with conflict on a stale version -> apps/api/src/apps/projects/app.manifest.json:1606
+admin role holds projects:labels:admin -> apps/api/src/apps/projects/app.manifest.json:2351
+labels.list tool, includeArchived -> apps/api/src/apps/projects/app.manifest.json:1475
+labels.create, labels.update, labels.archive need projects:labels:admin -> apps/api/src/apps/projects/app.manifest.json:1497
+Agent labels map on create, null clears, groups left out untouched, label_not_found / label_archived listing valid values -> apps/api/src/apps/projects/app.manifest.json:589
+Agent labels map on update -> apps/api/src/apps/projects/app.manifest.json:698
+bulkUpdate operation setLabels -> apps/api/src/apps/projects/app.manifest.json:2319
+Task rows carry labels with inherited and inheritedFromKey -> apps/api/src/apps/projects/app.manifest.json:418
+tasks_byProject labels filter, one value per group, effective value, __none__ -> apps/api/src/apps/projects/app.manifest.json:882
+tasks_byProject completedAfter inclusive -> apps/api/src/apps/projects/app.manifest.json:886
+tasks_byProject completedBefore -> apps/api/src/apps/projects/app.manifest.json:890
+tasks_byProject countOnly returns totalCount of the filter -> apps/api/src/apps/projects/app.manifest.json:925
+Weekly count recipe: terminal true, completedAfter, completedBefore, labels, countOnly -> apps/api/src/apps/projects/app.manifest.json:13
+Subtasks inherit the nearest parent's value per group until they set their own -> apps/api/src/apps/projects/app.manifest.json:589
+Edit project menu item, inline form in the header -> apps/web/src/modules/projects/ProjectWorkspace.tsx:639
+Edit project fields name, key, icon, colour, description, Save -> apps/web/src/modules/projects/ProjectEditForm.tsx:79
+Key read-only once the project has a task (trash counts) -> apps/api/src/apps/projects/service/update-project.ts:98
+Key before the name in the sidebar list (active and archived) -> apps/web/src/modules/projects/ProjectsSidebar.tsx:381
+Remove a task attachment: uploader or projects:settings:admin, inline confirm -> apps/web/src/modules/projects/LinkedDocuments.tsx:79
+Server rule for removing a task file (fileParent deleteScope) -> apps/api/src/modules/files/service.ts:1667
+Created by line, agent or routine label -> apps/web/src/modules/projects/TaskDetail.tsx:418
+Agent creator label resolution -> apps/api/src/modules/apps/sandbox/bridge/projects.ts:71
+Search and filters from a task tab bring the project list forward -> apps/web/src/modules/projects/ProjectsSidebar.tsx:78
+update_project agent tool -> apps/api/src/apps/projects/app.manifest.json:1083
+Edit project field Group (optional), suggestions from groups in use, 60 characters -> apps/web/src/modules/projects/ProjectEditForm.tsx:154
+Group label and hint strings -> packages/shared/src/i18n/locales/en/projects.json:39
+Group trimmed, empty clears, at most 60 characters -> apps/api/src/apps/projects/service/create-project.ts:477
+Group set through Edit project and update_project -> apps/api/src/apps/projects/service/update-project.ts:80
+Sidebar: ungrouped first without heading, groups alphabetical -> apps/web/src/modules/projects/project-groups.ts:32
+Group heading folds and unfolds -> apps/web/src/modules/projects/ProjectsSidebar.tsx:378
+Fold state remembered on this device -> apps/web/src/modules/projects/project-groups.ts:63
+Archived list unchanged (no groups) -> apps/web/src/modules/projects/ProjectsSidebar.tsx:175
+update_project and createProject take group -> apps/api/src/apps/projects/app.manifest.json:1151
+Comment notification names the task, opens it on the comment -> apps/api/src/modules/push/fanout-consumer.ts:834
+Task title and project in a notification -> packages/shared/src/threads/thread-anchor.ts:72
+Task not found -> packages/shared/src/i18n/locales/en/projects.json:294
+Record name shown only to people who can see the record -> apps/api/src/modules/threads/thread-anchor.ts:143
+New message in a thread -> packages/shared/src/i18n/locales/en/kernel.json:6275
+Approval thread named after the approval -> apps/api/src/modules/threads/reference-display.ts:198

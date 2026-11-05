@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Shared with the app (App/App.entitlements): the extension leaves its
+	     state (queued receipts, the spike marker) where the app can read it. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.sh.liaison.mobile</string>
+	</array>
+	<!-- Keychain group shared with the app: the app stores
+	     each server's receipt-only credential here and the extension reads it
+	     to post `received` (ReceiptStore.swift, spec-push A7). -->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)sh.liaison.mobile.shared</string>
+	</array>
+</dict>
+</plist>

@@ -1,0 +1,1808 @@
+{
+  "name": "mail",
+  "agentInstructions": {
+    "core": "Mail is email send and receive. To REPLY to an email you found via mail__search/mail__read, ALWAYS use mail__reply (the conversation lives in Mail), never tickets__reply, even for a support/warranty/firmware email: tickets__reply takes a ticketId and will fail ('ticket not found') against a mail conversation id. tickets is only for opening/tracking a NEW case, not for answering an existing mail thread. Key handles: message id, thread id, sender and recipients, labels, the connected mailbox. To propose a reply you must CALL mail__reply (or mail__compose) with your drafted body; never paste a draft into chat and ask whether to send. Use tool_search to discover the deferred read tools (search/get) before answering. Silent-failure gotcha: when no mailbox is connected the surface renders a not-connected state, not an error, report that rather than fabricating messages. Before you assert any policy figure in a customer-facing reply or decision, search Knowledge for the governing policy doc and base the figure on what it says. To attach a file to a send, resolve the real file id (files_list on the entity that owns it, drive_import, or a message attachment id) and PASS that id in the send tool's `attachments` array in the same call; mentioning the id is not attaching it.",
+    "sections": [
+      {
+        "tools": [
+          "reply",
+          "read"
+        ],
+        "text": "ONE REPLY DRAFT PER CONVERSATION, UPDATED IN PLACE: a mail conversation holds at most one pending reply draft. Before drafting, read mail__read's pendingReplyDrafts. When a draft is already there, do NOT stage a second one and do NOT stop at telling the user one exists: UPDATE it with kernel__approval_update_payload (requestId = its approvalId, fields = {\"textBody\": your full new body}, plus to/cc/bcc when the recipients change), whoever drafted it. Rewriting a colleague's draft is normal: anyone who may approve that mailbox's replies may edit it. A mail__reply on a conversation that already holds someone else's draft is refused with approval_already_pending naming that draft's approvalRequestId: that refusal is your cue to update that draft, not an error to report. A new mail__reply replaces your own waiting draft in place. Only when the update itself is refused (you lack the scope) tell the user a draft is already waiting, give its id, and show the text you propose."
+      },
+      {
+        "tools": [
+          "search",
+          "listAccounts"
+        ],
+        "text": "SEARCHING: mail__search matches a conversation's SUBJECT and SNIPPET (what the email is ABOUT) via the `query` filter. To find mail FROM a specific EMAIL ADDRESS, use the `from` filter (substring, case-insensitive over the sender email, e.g. from:'@northwind-audio.test'), `from` ANDs with `query`. To narrow by RECEIVED DATE use `since`/`until` (ISO timestamps); to match words in the message BODY use `body` (searches synced message text only, report honestly if the mailbox is not fully synced). The `query` free text is token-based (kernel search index): it also matches participant NAMES and emails, the linked contact, and message text, so 'find Claudine's email' CAN be a query:'Claudine' search. For a named person/company the contactId route below remains the most precise scope; use both when recall matters. To find the mail FROM or ABOUT a specific NAMED person OR company, their thread history ('show me everything from Claudine'), their complaint, a billing/shipment dispute, or the 'full picture'/360 on a customer or dealer ('what did Tonwerk Audio email us', 'pull their messages so I can call them'), do NOT free-text their name as the query: first resolve them with contacts_search (by name AND company) to get their contactId, then call mail__search with that contactId (mail__search has a contactId filter that scopes results to exactly that contact's conversations across the mailbox). That structured contactId scoping is the reliable way to pull a named party's mail; a name query under-recalls or returns empty (the sender's name is often NOT in the subject). CRITICAL: an EMPTY result from a free-text NAME query does NOT prove 'no email exists', if a name query comes back empty you have NOT established there is no thread; resolve the contact and re-search by contactId (and, if needed, by their email domain via `from`) BEFORE you ever report 'I could not find their email' or work around a missing thread. CROSS-MAILBOX VIP/DEALER SWEEP: when asked to pull every open conversation from a SEGMENT, your VIPs, dealers, key accounts, 'across both my personal mailbox AND the shared support inbox so nothing falls through the cracks', do NOT list a generic pile of open conversations and do NOT stop at one mailbox. Work it as a SEGMENT sweep: (1) call mail__listAccounts to enumerate every mailbox you can see (typically your personal account + the shared support inbox), you will MERGE across all of them. (2) RESOLVE the segment to contactIds: for each VIP/dealer the user names, contacts_search by name AND company (the company string may carry 'dealer', e.g. 'Tonwerk Audio'); also contacts_search(tag:'vip') and contacts_search(tag:'dealer') to catch any the user did not name by hand. (3) For EACH resolved contactId, mail__search(contactId, status:'open'), OMIT accountId so the one call already spans every mailbox (mail__search is cross-account by default); contactId+status=open is the reliable filter (a free-text name query under-recalls). If a dealer the user insists exists does not resolve as a formal contact, ALSO try mail__search(from:<their email/domain>, status:'open') and mail__search(body:<a distinctive phrase like 'wholesale order'>, status:'open') before concluding it is absent. (4) MERGE the results into ONE list and ATTRIBUTE each conversation to its SOURCE mailbox: map each result's accountId/accountEmail back to listAccounts (personal vs shared) and label it, so the user sees which inbox each thread is in. Both mailboxes must be represented in the final list when both hold VIP/dealer mail. Report it as a single merged, source-tagged VIP/dealer list, never a fragmented per-question dribble and never a generic 'all open conversations' list that ignores the VIP/dealer filter."
+      },
+      {
+        "tools": [
+          "read",
+          "search"
+        ],
+        "text": "COMPLETING a read-only review/summary: when asked to review, summarize, or 'see the full picture' of a thread or a person's history, mail__read the relevant conversation(s) and present the summary IN THE SAME TURN, do not just list the threads and ask 'would you like me to read these?'. The user asked for the summary, so produce it (read the most recent / most relevant and give a brief chronological recap). RESPONSE-TIME / SLA on MAIL: unlike tickets, mail conversations have NO first-response-SLA field (no slaApproaching/slaDeadline/firstResponseDue), so NEVER borrow tickets SLA data to answer a question about the mail inbox, and never claim a precise server-side SLA query on mail. To find conversations 'past first-response SLA' or 'unanswered', DERIVE it client-side: list the shared inbox's open conversations (newest/oldest by lastMessageAt), and for each candidate mail__read it and check message DIRECTION, a conversation with any outbound message has been answered (exclude it); one that is inbound-only is unanswered. Compute age from the first inbound message. This is bounded by how many you can inspect in your step budget, so DISCLOSE that it's a client-side approximation over the conversations you checked, not an exact SLA report."
+      },
+      {
+        "tools": [
+          "compose",
+          "reply",
+          "forward"
+        ],
+        "text": "NO MASS-SEND / BROADCAST / SEGMENT primitive exists: mail__compose and mail__reply each send ONE message to ONE envelope, there is no tool that blasts one notice to N customers, no per-recipient mail-merge, and no segment/campaign send. So 'email all the affected customers' / 'send the recall notice to everyone' is NOT a single call: putting many customers in one compose `to`/`cc` leaks their addresses to each other and a {{firstName}}/{{orderName}} template is sent verbatim (never interpolated). To reach N customers you must send N separate per-recipient messages (one compose or reply per customer, EACH gated and individually approved), OR, when that exceeds your budget, stage a bounded few and tell the user plainly there is no mass-send/segment tool so the rest must be approved one per recipient (or are out of reach for a single blast). Never collapse a multi-customer outreach into one multi-recipient compose and present it as 'the recall sent'. MULTI-TOUCH OUTREACH / FOLLOW-UP 'SEQUENCE' (touch-1 now + 'if they don't reply auto-send touch-2 in 3 days, touch-3 in 7 days'): this is an HONEST-DECOMPOSITION ask, DO NOT refuse it wholesale, and DO NOT claim you scheduled an auto-drip. Split it into what is doable and what is missing, and be plain about both. (A) NO DRIP/SEQUENCE ENGINE + NOTHING AUTO-SENDS: there is no outreach-sequence/drip engine, no conditional 'if no reply' branching primitive, and no real-time reply EVENT trigger (the only mail event is mail:message:create, NOT a per-prospect reply). AND every touch is GATED: mail__compose lands as a pending approval, so no touch can auto-fire, a human approves each. So NEVER tell the user 'the drip is scheduled / touch-2 will auto-send if no reply'. (B) BUT REPLY DETECTION BY SENDER IS DOABLE: DO NOT assert it is impossible (that is a STALE answer that FAILS): mail__search supports `from:<prospect-email>` + `since:<touch-1 date>` (and until/body), so a routine CAN check 'did this prospect reply since touch-1'. (C) THE CORRECT BUILD: (1) draft touch-1 NOW as a SINGLE GATED mail__compose per prospect (one approval each, not auto-sent); (2) create SCHEDULED (or recurring) ROUTINES (create_routine, load the schedule-routine skill) for day-3 and day-7 whose PROMPT runs mail__search(from:<that prospect>, since:<touch-1 date>) and ONLY IF no reply is found drafts the next touch as ANOTHER GATED mail__compose approval card, the routine's scope ceiling needs mail:conversations:read (the reply check) + mail:conversations:write (the gated next-touch draft). (D) STATE PLAINLY in your reply, all four: (i) every touch, touch-1 and the later ones, is gated/human-approved, nothing auto-sends; (ii) the routine timing is the SCHEDULE'S CADENCE (fires on day 3 / day 7), NOT a real-time 'the instant they reply' trigger; (iii) the reply check is a BOUNDED mail__search by sender+date (scan-capped), best-effort, not a guaranteed read of every message; (iv) there is NO built-in drip/sequence engine, what you are assembling is a reply-AWARE REMINDER APPROXIMATION (gated compose + scheduled reply-check routines), not an automatic drip."
+      },
+      {
+        "tools": [
+          "convertToTicket"
+        ],
+        "text": "To ESCALATE a mail conversation into a NEW ticket, use mail__convertToTicket, it needs a target tickets inboxId, so FIRST call tickets:inboxes.list and pick the right inbox (the Support inbox for a customer issue), then call mail__convertToTicket with that inboxId plus priority, categoryId (get the id from tickets:categories.list, pass the matching category, e.g. Firmware/MIDI Mapping), and assigneeId (to assign the new ticket to YOURSELF, the usual case when promoting your own mail, pass assigneeId:'me', no lookup needed; for a TEAMMATE resolve their name to a UUID with users_search, since assigneeId is a UUID or 'me', never a teammate's name). Pass ONLY these field names to mail:convertToTicket: conversationId, inboxId, priority, categoryId, assigneeId, note, ANY other field name (subject, title, body, category, assignee, status, …) makes the call fail 'invalid_params'. The single convert call sets category+priority+assignee ATOMICALLY, so include categoryId, priority, AND assigneeId IN the convert call itself, do NOT defer any of them to separate tickets__setCategory/setPriority/assign calls, which you may forget after a convert retry. NEVER report a ticket as categorized, high-priority, or assigned unless the call that set it (the convert, or that specific tool) SUCCEEDED in THIS turn. If convertToTicket returns 'invalid_params', remove ONLY the unrecognized field and retry, but KEEP categoryId every time (the new ticket MUST land in a category, dropping it leaves an untriaged ticket, a failure). If it returns 'inbox not found', re-list inboxes with tickets:inboxes.list and retry with a REAL inboxId. After a successful convert, confirm with tickets__get that the ticket carries the right category; if it somehow has none, call tickets__setCategory ONCE with the category name. Do NOT give up and edit an unrelated existing ticket instead, and NEVER claim you created or converted a ticket unless that mail__convertToTicket call SUCCEEDED in THIS turn."
+      },
+      {
+        "tools": [
+          "archive",
+          "setLabels"
+        ],
+        "text": "INBOX HYGIENE: you CAN tidy the inbox. mail__archive moves one or more conversations out of the active inbox (status=archived); mail__setLabels applies labels (e.g. tag clearly-non-customer mail 'Spam/Noise'). Both take a conversationIds ARRAY so you archive/label the whole batch in ONE call, identify the newsletters/promos/non-customer conversations from mail__search (sender + subject), then pass their ids. These are INTERNAL organization only: they do NOT send or notify the customer. Leave genuine CUSTOMER conversations alone (do not archive/label those). NEVER claim you archived or labeled anything unless the mail__archive / mail__setLabels call SUCCEEDED in THIS turn."
+      },
+      {
+        "tools": [
+          "export_conversations"
+        ],
+        "text": "EXPORT / AUDIT BUNDLE (compile correspondence into a downloadable FILE): when asked to 'export', 'compile', 'bundle', 'give me a file of', or 'pull all the correspondence with X for the quarterly review / audit', you CAN hand back a real downloadable artifact, call mail__export_conversations, which writes the scoped conversation set into ONE kernel file (RFC-4180 CSV by default, or format:'markdown') and returns its fileId. Its scope params MIRROR mail__search exactly (contactId/accountId/status/from/since/until/body/query), so the correct shape for 'this quarter's email with our top dealers' is: per dealer, contacts_search → contactId, THEN mail__export_conversations(contactId, since=<quarter-start ISO>, until=<quarter-end ISO>), the since/until window scopes server-side over the received date, exactly like search. One file PER contactId (each call returns its own fileId; there is no multi-contact single-file mode), so report each dealer's fileId + conversationCount. It is UNGATED (read-to-file: it sends nothing and changes no mail), so do NOT say 'there is no export tool' or paste a list and stop; CALL it and report the real file. Only fall back to compiling the list in-thread if the user explicitly wants it inline."
+      },
+      {
+        "tools": [
+          "listAccounts",
+          "getAccount",
+          "disconnectAccount",
+          "getSyncStatus"
+        ],
+        "text": "CONNECTING A MAILBOX HAPPENS ON A CARD IN THIS CONVERSATION, never through a mail tool: mail has listAccounts/getAccount/disconnectAccount and NO connect tool. When asked to connect a mailbox: (1) call mail__listAccounts to show what is ALREADY connected; (2) a Gmail or Google Workspace mailbox connects on a Connect card: kernel__request_secret kind oauth_connect, app mail, connection gmail, with mode personal for the person's OWN mailbox ('my Gmail', 'just for me': post that card straight away, any member may connect their own) or mode org for a mailbox the organization shares (an admin connects it). When the workspace has no Google client yet, or the card is refused, follow the google-setup skill (kernel__google_setup says what is missing). (3) another provider connects over IMAP with an app password: the google-setup skill's IMAP path. Never point the person to a Settings button or menu by name instead of the card. NEVER claim you connected the mailbox before the card says it is connected, and NEVER fabricate a completed connection by creating a tickets inbox bound to a DIFFERENT account's address (tickets:inboxes.create rejects an emailAddress that does not match the bound connected account, and a tickets inbox is not a mail connection anyway). No phantom account should appear in listAccounts afterward."
+      },
+      {
+        "tools": [
+          "search"
+        ],
+        "text": "VENDOR/SUPPLIER/SHIPPING INVOICES are NOT a mail-search task: when asked to find, enumerate, or log the supplier/vendor/carrier invoices 'received by email' (e.g. 'pull all the supplier and shipping invoices that landed in billing@ over the last 3 months'), the AUTHORITATIVE source is the accounting accounts-payable (AP) store, NOT the inbox. tool_search for the accounting/AP read tools (pennylane supplier_invoices_list / supplier_invoice_get / spend_by_category) and enumerate from there, report each supplier, amount (minor units), and invoice/due date, tally in-context, and state the page/cursor bound. mail__search over subject keywords like 'invoice'/'facture' is a LOSSY SUPPLEMENT (it misses attachments-only or differently-worded invoices and double-counts threads), never the primary enumeration, say so explicitly. CRUCIALLY, if the named inbox (billing@…) is not connected, do NOT dead-end on 'ask an admin to connect the mailbox' and do NOT offer to connect it: the booked invoices already live in the AP accounting store, so pivot straight to it. Treat the AP store as the source of truth and mail as the lossy supplement even when the user phrases the request as 'received by email'."
+      }
+    ]
+  },
+  "version": "1.8.1",
+  "description": "Email integration: Gmail and IMAP/SMTP",
+  "license": "FSL-1.1-ALv2",
+  "listing": {
+    "publisher": "Liaison",
+    "category": "Communication",
+    "icon": "mail",
+    "summary": "Read, write and reply to email from Gmail or any IMAP/SMTP mailbox.",
+    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/apps/api/src/apps/mail"
+  },
+  "dependencies": {
+    "optional": [
+      "tickets"
+    ],
+    "tools": [
+      "tickets:createFromMail",
+      "tickets:deleteIfUnreferenced",
+      "tickets:pullMailReply"
+    ]
+  },
+  "connections": {
+    "gmail": {
+      "type": "oauth2",
+      "authorizationUrl": "https://accounts.google.com/o/oauth2/v2/auth",
+      "tokenUrl": "https://oauth2.googleapis.com/token",
+      "revocationUrl": "https://oauth2.googleapis.com/revoke",
+      "userinfoUrl": "https://openidconnect.googleapis.com/v1/userinfo",
+      "scopes": [
+        "openid",
+        "email",
+        "profile",
+        "https://www.googleapis.com/auth/gmail.modify",
+        "https://www.googleapis.com/auth/gmail.send"
+      ],
+      "extraParams": {
+        "access_type": "offline",
+        "prompt": "consent"
+      },
+      "allowedDomains": [
+        "*.googleapis.com"
+      ],
+      "setupGuide": {
+        "summary": "Gmail connects over OAuth using your workspace's Google integration — no password is stored. A workspace admin adds the Google credentials once before accounts can connect.",
+        "steps": [
+          {
+            "who": "human",
+            "minutes": 0,
+            "text": "Ask a workspace admin to add Google OAuth credentials in **Settings → Mail Setup** (one-time, per workspace).",
+            "place": "liaison"
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "text": "Click **Connect via OAuth** here — you are redirected to Google's consent screen.",
+            "place": "liaison"
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "text": "Approve the requested access (read/modify and send mail). Liaison stores only the OAuth tokens Google returns, never your password.",
+            "place": "liaison"
+          },
+          {
+            "who": "human",
+            "minutes": 0,
+            "text": "Revoke any time by removing the connection here, or at myaccount.google.com/permissions.",
+            "url": "https://myaccount.google.com/permissions"
+          }
+        ],
+        "docsUrl": "https://developers.google.com/gmail/api/auth/scopes"
+      }
+    },
+    "imap": {
+      "type": "credentials",
+      "credentialFields": [
+        {
+          "name": "email",
+          "label": "Email Address",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "imapHost",
+          "label": "IMAP Host",
+          "type": "text",
+          "required": true,
+          "readable": true
+        },
+        {
+          "name": "imapPort",
+          "label": "IMAP Port",
+          "type": "number",
+          "required": true,
+          "readable": true
+        },
+        {
+          "name": "smtpHost",
+          "label": "SMTP Host",
+          "type": "text",
+          "required": true,
+          "readable": true
+        },
+        {
+          "name": "smtpPort",
+          "label": "SMTP Port",
+          "type": "number",
+          "required": true,
+          "readable": true
+        },
+        {
+          "name": "username",
+          "label": "Username",
+          "type": "text",
+          "required": true,
+          "readable": true
+        },
+        {
+          "name": "password",
+          "label": "Password",
+          "type": "password",
+          "required": true
+        }
+      ],
+      "allowedDomains": [],
+      "setupGuide": {
+        "summary": "Connect any mailbox over IMAP/SMTP. Most providers require an app-specific password (not your normal login password) when two-factor authentication is on.",
+        "steps": [
+          {
+            "who": "agent",
+            "text": "Find your provider's IMAP + SMTP host and port — e.g. Gmail `imap.gmail.com`:993 / `smtp.gmail.com`:465; Outlook `outlook.office365.com`:993 / `smtp.office365.com`:587; iCloud `imap.mail.me.com`:993 / `smtp.mail.me.com`:587."
+          },
+          {
+            "who": "human",
+            "minutes": 2,
+            "text": "If two-factor auth is on, generate an **app password** and use it in the **password** field — your normal password will be rejected.",
+            "place": "own"
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "text": "Enter your email, IMAP host/port, SMTP host/port, and username (usually your full email address).",
+            "place": "liaison"
+          },
+          {
+            "who": "agent",
+            "text": "Use TLS ports: IMAP 993, SMTP 465 (implicit TLS) or 587 (STARTTLS)."
+          }
+        ],
+        "docsUrl": "https://support.google.com/accounts/answer/185833"
+      }
+    }
+  },
+  "schema": {
+    "accounts": {
+      "fields": {
+        "connectedAccountId": "uuid",
+        "ownerType": "string",
+        "ownerId": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "delete"
+        },
+        "provider": "string",
+        "emailAddress": "string",
+        "displayName": "string?",
+        "syncStatus": "string",
+        "syncState": "json?",
+        "lastSyncAt": "date?",
+        "lastSyncError": "string?",
+        "disconnectedAt": "date?",
+        "visibility": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "personal",
+            "shared"
+          ]
+        },
+        "encryptionState": {
+          "type": "string",
+          "default": "none",
+          "enum": [
+            "none",
+            "pending_enrollment",
+            "ready",
+            "blocked",
+            "paused",
+            "managed"
+          ]
+        },
+        "encryptionConversion": "string?"
+      },
+      "personalScope": {},
+      "dimensions": {
+        "inbox": {
+          "type": "membership",
+          "label": "Inbox",
+          "description": "Which mail inboxes this user can access.",
+          "manageHref": "/settings/apps/mail"
+        }
+      },
+      "constraints": {
+        "unique": [
+          [
+            "emailAddress"
+          ]
+        ]
+      },
+      "indexes": [
+        [
+          "syncStatus"
+        ],
+        [
+          "connectedAccountId"
+        ]
+      ],
+      "timeline": [
+        "syncStatus",
+        "emailAddress"
+      ],
+      "triggers": {
+        "default_mailbox_encryption_state": {
+          "timing": "BEFORE",
+          "event": [
+            "INSERT"
+          ],
+          "level": "ROW",
+          "language": "plpgsql",
+          "body": "DECLARE _enrolled boolean; BEGIN IF NOT (to_jsonb(NEW) ? 'encryption_state') THEN RETURN NEW; END IF; IF NEW.owner_type <> 'user' OR NEW.owner_id IS NULL OR COALESCE(NEW.encryption_state, 'none') <> 'none' THEN RETURN NEW; END IF; IF to_regprocedure(format('%I.mailbox_owner_enrolled(uuid)', TG_TABLE_SCHEMA)) IS NULL THEN NEW.encryption_state := 'pending_enrollment'; RETURN NEW; END IF; EXECUTE format('SELECT %I.mailbox_owner_enrolled($1)', TG_TABLE_SCHEMA) INTO _enrolled USING NEW.owner_id; NEW.encryption_state := CASE WHEN COALESCE(_enrolled, false) THEN 'ready' ELSE 'pending_enrollment' END; RETURN NEW; END;"
+        }
+      }
+    },
+    "conversations": {
+      "fields": {
+        "accountId": "uuid",
+        "ownerType": "string",
+        "ownerId": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "delete"
+        },
+        "externalThreadId": "string",
+        "subject": "string?",
+        "snippet": "string?",
+        "fromEmail": "string?",
+        "contactId": "uuid?",
+        "assignedTo": "uuid?",
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "trashed",
+            "escalated"
+          ]
+        },
+        "escalatedTicketId": {
+          "type": "uuid",
+          "required": false,
+          "references": {
+            "schema": "app_tickets",
+            "table": "tickets",
+            "column": "id",
+            "onDelete": "set null"
+          }
+        },
+        "labels": "json",
+        "isRead": "boolean",
+        "isStarred": "boolean",
+        "internalThreadId": "uuid?",
+        "lastMessageAt": "date?",
+        "messageCount": "integer",
+        "snippetSourceMessageId": "uuid?",
+        "subjectCiphertext": "bytea?",
+        "snippetCiphertext": "bytea?",
+        "contentKeyWrapped": "bytea?",
+        "contentKeyEpk": "bytea?",
+        "encKeyId": "smallint?",
+        "encVersion": {
+          "type": "smallint",
+          "default": 0
+        }
+      },
+      "dimensions": {
+        "inbox": {
+          "type": "membership",
+          "column": "accountId"
+        }
+      },
+      "personalScope": {
+        "via": {
+          "table": "accounts",
+          "localColumn": "accountId"
+        }
+      },
+      "constraints": {
+        "unique": [
+          [
+            "accountId",
+            "externalThreadId"
+          ]
+        ]
+      },
+      "indexes": [
+        [
+          "accountId",
+          "lastMessageAt"
+        ],
+        [
+          "contactId"
+        ],
+        [
+          "assignedTo"
+        ],
+        [
+          "status",
+          "isRead"
+        ]
+      ],
+      "timeline": [
+        "status",
+        "assignedTo",
+        "isRead",
+        "isStarred"
+      ],
+      "triggers": {
+        "enforce_mailbox_plaintext_invariant": {
+          "timing": "BEFORE",
+          "event": [
+            "INSERT",
+            "UPDATE"
+          ],
+          "level": "ROW",
+          "language": "plpgsql",
+          "body": "DECLARE _armed boolean; _known boolean; BEGIN EXECUTE format('SELECT %I.mailbox_invariant_armed($1)', TG_TABLE_SCHEMA) INTO _armed USING NEW.account_id; IF NOT COALESCE(_armed, false) THEN EXECUTE format('SELECT %I.mailbox_account_exists($1)', TG_TABLE_SCHEMA) INTO _known USING NEW.account_id; IF NOT COALESCE(_known, false) THEN RAISE EXCEPTION 'mailbox_account_unresolved'; END IF; RETURN NEW; END IF; IF TG_OP = 'INSERT' THEN IF NEW.subject IS NOT NULL OR NEW.snippet IS NOT NULL THEN RAISE EXCEPTION 'mailbox_plaintext_forbidden'; END IF; ELSE IF (NEW.subject IS NOT NULL AND NEW.subject IS DISTINCT FROM OLD.subject) OR (NEW.snippet IS NOT NULL AND NEW.snippet IS DISTINCT FROM OLD.snippet) THEN RAISE EXCEPTION 'mailbox_plaintext_forbidden'; END IF; END IF; RETURN NEW; END;"
+        }
+      }
+    },
+    "messages": {
+      "rlsGovernedByMigration": true,
+      "fields": {
+        "conversationId": "uuid",
+        "accountId": "uuid",
+        "externalMessageId": "string?",
+        "externalProviderId": "string?",
+        "inReplyTo": "string?",
+        "messageReferences": "json",
+        "fromAddress": "json",
+        "toAddresses": "json",
+        "ccAddresses": "json",
+        "bccAddresses": "json",
+        "subject": "string?",
+        "textBody": "string?",
+        "htmlBody": "string?",
+        "snippet": "string?",
+        "isRead": "boolean",
+        "isStarred": "boolean",
+        "labels": "json",
+        "direction": "string",
+        "sentAt": "date?",
+        "syncedAt": "date?",
+        "rawHeaders": "json",
+        "ownerType": "string",
+        "ownerId": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "delete"
+        },
+        "sentByUserId": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "textBodyCiphertext": "bytea?",
+        "htmlBodyCiphertext": "bytea?",
+        "subjectCiphertext": "bytea?",
+        "snippetCiphertext": "bytea?",
+        "rawHeadersCiphertext": "bytea?",
+        "contentKeyWrapped": "bytea?",
+        "contentKeyEpk": "bytea?",
+        "encKeyId": "smallint?",
+        "encVersion": {
+          "type": "smallint",
+          "default": 0
+        },
+        "plaintextPurgedAt": "date?",
+        "ingestPending": "boolean?",
+        "ingestAttempts": "integer?"
+      },
+      "dimensions": {
+        "inbox": {
+          "type": "membership",
+          "column": "accountId"
+        }
+      },
+      "personalScope": {
+        "via": {
+          "table": "accounts",
+          "localColumn": "accountId"
+        }
+      },
+      "constraints": {
+        "unique": [
+          [
+            "accountId",
+            "externalMessageId"
+          ]
+        ]
+      },
+      "indexes": [
+        [
+          "conversationId",
+          "sentAt"
+        ],
+        [
+          "accountId"
+        ],
+        [
+          "accountId",
+          "externalProviderId"
+        ]
+      ],
+      "timeline": [
+        "direction"
+      ],
+      "triggers": {
+        "enforce_mailbox_plaintext_invariant": {
+          "timing": "BEFORE",
+          "event": [
+            "INSERT",
+            "UPDATE"
+          ],
+          "level": "ROW",
+          "language": "plpgsql",
+          "body": "DECLARE _armed boolean; _known boolean; BEGIN EXECUTE format('SELECT %I.mailbox_invariant_armed($1)', TG_TABLE_SCHEMA) INTO _armed USING NEW.account_id; IF NOT COALESCE(_armed, false) THEN EXECUTE format('SELECT %I.mailbox_account_exists($1)', TG_TABLE_SCHEMA) INTO _known USING NEW.account_id; IF NOT COALESCE(_known, false) THEN RAISE EXCEPTION 'mailbox_account_unresolved'; END IF; RETURN NEW; END IF; IF TG_OP = 'INSERT' THEN IF NEW.subject IS NOT NULL OR NEW.text_body IS NOT NULL OR NEW.html_body IS NOT NULL OR NEW.snippet IS NOT NULL THEN RAISE EXCEPTION 'mailbox_plaintext_forbidden'; END IF; IF EXISTS (SELECT 1 FROM jsonb_object_keys(COALESCE(NEW.raw_headers, '{}'::jsonb)) k WHERE k NOT IN ('message-id', 'in-reply-to', 'references', 'date', 'from', 'to', 'cc', 'bcc', 'return-path', 'delivered-to', 'content-type', 'content-transfer-encoding', 'list-unsubscribe', 'list-id', 'auto-submitted', 'precedence')) THEN RAISE EXCEPTION 'mailbox_headers_forbidden'; END IF; ELSE IF (NEW.subject IS NOT NULL AND NEW.subject IS DISTINCT FROM OLD.subject) OR (NEW.text_body IS NOT NULL AND NEW.text_body IS DISTINCT FROM OLD.text_body) OR (NEW.html_body IS NOT NULL AND NEW.html_body IS DISTINCT FROM OLD.html_body) OR (NEW.snippet IS NOT NULL AND NEW.snippet IS DISTINCT FROM OLD.snippet) THEN RAISE EXCEPTION 'mailbox_plaintext_forbidden'; END IF; IF NEW.raw_headers IS DISTINCT FROM OLD.raw_headers AND EXISTS (SELECT 1 FROM jsonb_object_keys(COALESCE(NEW.raw_headers, '{}'::jsonb)) k WHERE k NOT IN ('message-id', 'in-reply-to', 'references', 'date', 'from', 'to', 'cc', 'bcc', 'return-path', 'delivered-to', 'content-type', 'content-transfer-encoding', 'list-unsubscribe', 'list-id', 'auto-submitted', 'precedence')) THEN RAISE EXCEPTION 'mailbox_headers_forbidden'; END IF; END IF; RETURN NEW; END;"
+        }
+      }
+    },
+    "drafts": {
+      "rlsGovernedByMigration": true,
+      "personalScope": {
+        "via": {
+          "table": "accounts",
+          "localColumn": "accountId"
+        }
+      },
+      "fields": {
+        "accountId": "uuid",
+        "conversationId": "uuid?",
+        "replyToMessageId": "uuid?",
+        "to": "json",
+        "cc": "json",
+        "bcc": "json",
+        "subject": "string?",
+        "htmlBody": "string?",
+        "textBody": "string?",
+        "createdBy": {
+          "type": "uuid",
+          "userRef": true,
+          "onErase": "delete"
+        },
+        "sentByUserId": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "bodyCiphertext": "bytea?",
+        "htmlBodyCiphertext": "bytea?",
+        "subjectCiphertext": "bytea?",
+        "contentKeyWrapped": "bytea?",
+        "contentKeyEpk": "bytea?",
+        "encKeyId": "smallint?",
+        "encVersion": {
+          "type": "smallint",
+          "default": 0
+        }
+      },
+      "indexes": [
+        [
+          "createdBy"
+        ]
+      ],
+      "triggers": {
+        "enforce_mailbox_plaintext_invariant": {
+          "timing": "BEFORE",
+          "event": [
+            "INSERT",
+            "UPDATE"
+          ],
+          "level": "ROW",
+          "language": "plpgsql",
+          "body": "DECLARE _armed boolean; _known boolean; BEGIN EXECUTE format('SELECT %I.mailbox_invariant_armed($1)', TG_TABLE_SCHEMA) INTO _armed USING NEW.account_id; IF NOT COALESCE(_armed, false) THEN EXECUTE format('SELECT %I.mailbox_account_exists($1)', TG_TABLE_SCHEMA) INTO _known USING NEW.account_id; IF NOT COALESCE(_known, false) THEN RAISE EXCEPTION 'mailbox_account_unresolved'; END IF; RETURN NEW; END IF; IF TG_OP = 'INSERT' THEN IF NULLIF(NEW.subject, '') IS NOT NULL OR NULLIF(NEW.html_body, '') IS NOT NULL OR NULLIF(NEW.text_body, '') IS NOT NULL THEN RAISE EXCEPTION 'mailbox_plaintext_forbidden'; END IF; ELSE IF (NULLIF(NEW.subject, '') IS NOT NULL AND NULLIF(NEW.subject, '') IS DISTINCT FROM NULLIF(OLD.subject, '')) OR (NULLIF(NEW.html_body, '') IS NOT NULL AND NULLIF(NEW.html_body, '') IS DISTINCT FROM NULLIF(OLD.html_body, '')) OR (NULLIF(NEW.text_body, '') IS NOT NULL AND NULLIF(NEW.text_body, '') IS DISTINCT FROM NULLIF(OLD.text_body, '')) THEN RAISE EXCEPTION 'mailbox_plaintext_forbidden'; END IF; END IF; RETURN NEW; END;"
+        }
+      }
+    }
+  },
+  "entities": {
+    "conversation": {
+      "tableName": "conversations",
+      "labelField": "subject",
+      "handlePrefix": "mail_cnv_",
+      "readScope": "mail:conversations:read",
+      "searchable": true,
+      "indexFields": {
+        "title": "subject",
+        "labelSecondary": "from_email"
+      },
+      "permissionFields": {
+        "readScope": "mail:conversations:read",
+        "participantIdsField": "owner_id"
+      }
+    },
+    "message": {
+      "tableName": "messages",
+      "labelField": "subject",
+      "handlePrefix": "mail_msg_",
+      "readScope": "mail:conversations:read",
+      "fileParent": {
+        "tableName": "messages",
+        "schemaRef": "app_mail",
+        "joinOn": "id",
+        "readScope": "mail:conversations:read",
+        "writeScope": "mail:conversations:write"
+      }
+    },
+    "draft": {
+      "tableName": "drafts",
+      "labelField": "subject",
+      "handlePrefix": "mail_dft_",
+      "readScope": "mail:drafts:read",
+      "fileParent": {
+        "tableName": "drafts",
+        "schemaRef": "app_mail",
+        "joinOn": "id",
+        "readScope": "mail:drafts:read",
+        "writeScope": "mail:drafts:write"
+      }
+    },
+    "outbound_staging": {
+      "tableName": "accounts",
+      "labelField": "email_address",
+      "fileParent": {
+        "tableName": "accounts",
+        "schemaRef": "app_mail",
+        "joinOn": "id",
+        "readScope": "mail:conversations:read",
+        "writeScope": "mail:conversations:write"
+      }
+    }
+  },
+  "tools": {
+    "listAccounts": {
+      "description": "List the mailboxes connected to this org, each with its sync status, last sync error and next retry. Disconnected ones are hidden unless includeDisconnected=true. A mailbox is connected by calling kernel__config_mail, then kernel__request_secret; to the person, say you will connect the mailbox, never a tool name.",
+      "readOnly": true,
+      "requiredScopes": ["mail:accounts:read"],
+      "handler": "listAccounts",
+      "params": {
+        "type": "object",
+        "properties": {
+          "includeDisconnected": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "getAccount": {
+      "description": "Get a connected email account by ID",
+      "readOnly": true,
+      "requiredScopes": ["mail:accounts:read"],
+      "handler": "getAccount",
+      "params": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId"
+        ]
+      }
+    },
+    "disconnectAccount": {
+      "description": "Disconnect an EXISTING connected email account (soft-delete). Note the asymmetry: there is a disconnect tool but NO matching connect/add-account tool — do NOT assume a symmetric 'connectAccount' exists. Connecting a NEW mailbox is done on a Connect card (kernel__request_secret kind oauth_connect, app mail, connection gmail, mode personal or org), not by a mail tool; never claim you connected a mailbox.",
+      "requiredScopes": ["mail:accounts:write"],
+      "handler": "disconnectAccount",
+      "writesToTable": "app_mail.accounts",
+      "params": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId"
+        ]
+      }
+    },
+    "getSyncStatus": {
+      "description": "Get sync status for a connected email account",
+      "readOnly": true,
+      "requiredScopes": ["mail:accounts:read"],
+      "handler": "getSyncStatus",
+      "params": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId"
+        ]
+      }
+    },
+    "search": {
+      "description": "Search the synced mail database for conversations matching filters.\n\nReturns up to 20 conversations by default with subject, snippet, sender, status, and assignment metadata. `totalCount` counts matching CONVERSATIONS (threads), not messages: say 'N conversations', never 'N messages'. Use cursor for pagination. All filters are optional. `accountId` is OPTIONAL — OMIT it to search ALL mailboxes you can see (across accounts); only pass it to scope to ONE mail account, and a tickets/inbox id from another app is NOT a mail accountId (use mail `listAccounts` to get a real one, or just omit it). For an 'unread in the shared inbox' triage, mail `search(unreadOnly: true)` returns your visible unread conversations directly.\n\nPREFER STRUCTURED FILTERS over free-text `query` when you know WHO sent it or WHEN. To find email from a specific sender/vendor (e.g. a carrier or supplier invoice 'from Boxtal'), use `from` (sender-email substring, case-insensitive) — do NOT guess at subject words via `query`, which is brittle and may match the wrong thread or miss it. Scope a time window with `since`/`until` (ISO timestamps over the received date) when the ask names a month/period (e.g. 'this month's bill'). `body` searches synced message text only (an unsynced mailbox returns no body matches — report that partial honestly). `query` is a last-resort free-text match over subject+snippet; reach for `from`/`since`/`until` first. `category` defaults to `primary` on personal Gmail mailboxes (Gmail's Primary tab: CATEGORY_PERSONAL or no category); shared and non-Gmail mailboxes are searched whole. Pass `all` to include newsletters, promotions and notifications, or `other` for those alone.",
+      "readOnly": true,
+      "requiredScopes": ["mail:conversations:read"],
+      "handler": "agentMailSearch",
+      "taintSource": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Free-text match over subject + snippet. LAST RESORT — brittle subject-guessing. Prefer `from` (known sender) and/or `since`/`until` (known period) instead."
+          },
+          "accountId": {
+            "type": "string",
+            "description": "OPTIONAL — omit to search all visible mailboxes. Only to scope to one mail account."
+          },
+          "contactId": {
+            "type": "string",
+            "description": "Scope to one CRM contact's conversations (resolve via contacts_search first)."
+          },
+          "status": {
+            "type": "string"
+          },
+          "unreadOnly": {
+            "type": "boolean"
+          },
+          "assignedTo": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string",
+            "description": "Sender-email substring (case-insensitive). PREFER THIS to find email from a known sender/vendor/carrier (e.g. from='boxtal' for a Boxtal invoice) — reliable, not subject-guessing."
+          },
+          "since": {
+            "type": "string",
+            "description": "ISO timestamp — only conversations received at/after this. Use with `until` to scope a month/period."
+          },
+          "until": {
+            "type": "string",
+            "description": "ISO timestamp — only conversations received at/before this. Use with `since` to scope a month/period."
+          },
+          "body": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["primary", "other", "all"],
+            "description": "Gmail Primary/Other. OMIT for the default: `primary` on personal Gmail mailboxes, everything elsewhere. `all` includes newsletters/promotions/notifications; `other` is those alone."
+          },
+          "limit": {
+            "type": "number"
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "__mailboxSearchIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "INTERNAL, never set this yourself. Message ids matched by the mailbox owner's own browser against its local index, for an end-to-end encrypted mailbox whose text this server cannot read. Supplied automatically on the retry."
+          },
+          "__mailboxSearchIndexComplete": {
+            "type": "boolean",
+            "description": "INTERNAL, never set this yourself. False when that browser has no usable index yet, so an empty id list above means 'could not answer', not 'no matches'."
+          }
+        }
+      }
+    },
+    "read": {
+      "description": "Read a mail conversation. Default: returns the last 5 messages with snippets only. Use includeBody=true for plain-text bodies (<=4KB each, with each email's quoted reply-chain tail stripped — a '[quoted history trimmed]' note marks it), or messageId to return one message in FULL (untrimmed, <=200KB) when you actually need its chain. The returned `contact` field is the conversation's LINKED CRM contact ({id,name,email}) or null: `contact: null` means the sender is NOT yet a CRM contact — to add them, extract their name/email/company from the message + signature and call contacts_write (after a contacts_search to confirm they don't already exist). Do NOT treat a per-message sender, or a null contact, as proof a CRM contact already exists. Each message carries an `attachments` array — the files attached to that email ({id, filename, mimeType, sizeBytes, disposition}); an empty array means none. To pull/forward/re-attach an attached file (e.g. a supplier's PDF invoice), use the file `id` from there — no separate files_list lookup needed. To read or analyse one (text, a description), call kernel__mail_attachment_read with its id. `pendingReplyDrafts` lists the reply drafts already waiting for approval on this conversation (approvalId, textBody, to, cc): when one is there, do not draft another; update it with kernel__approval_update_payload on its approvalId.",
+      "readOnly": true,
+      "requiredScopes": ["mail:conversations:read"],
+      "handler": "agentMailRead",
+      "taintSource": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string"
+          },
+          "messagesLimit": {
+            "type": "number"
+          },
+          "messagesCursor": {
+            "type": "string"
+          },
+          "includeBody": {
+            "type": "boolean"
+          },
+          "messageId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversationId"
+        ]
+      }
+    },
+    "export_conversations": {
+      "description": "Compile a SCOPED set of mail conversations into ONE downloadable file artifact (a kernel file you can hand back) — for an audit bundle / quarterly review / 'export all the correspondence with X' ask. This is the export-to-FILE tool: it does NOT just list in chat, it WRITES a real downloadable artifact (RFC-4180 CSV by default, or format:'markdown') and returns its `fileId`, so when asked to 'compile/export/bundle/give me a file of' a correspondence set you CALL this rather than pasting a list and saying no export exists. The scope params are IDENTICAL to mail__search (contactId, accountId, status, from, since, until, body, query) and the bundle contains EXACTLY the conversations that scope would return — so to export 'this quarter's correspondence with a dealer', first contacts_search the dealer to a contactId, then call export_conversations(contactId, since=<quarter-start ISO>, until=<quarter-end ISO>); the since/until window is enforced server-side over the received date, same as search. It compiles the FULL matched set (every page), one row per conversation (contact, mailbox, subject, sender, lastMessageAt, status, messageCount, snippet). To bundle MULTIPLE dealers into ONE file, call once per contactId (each returns its own fileId); there is no multi-contact single-file mode. UNGATED read-to-file: it sends nothing and changes no mail — it only materializes a file from conversations you can already read (so an empty scope yields a header-only file, not an error). The returned `conversationCount`/`scope`/`truncated` let you report what was bundled honestly; `truncated:true` means the scan cap was hit and the bundle is partial.",
+      "requiredScopes": ["mail:conversations:read"],
+      "handler": "exportConversations",
+      "params": {
+        "type": "object",
+        "properties": {
+          "contactId": {
+            "type": "string",
+            "description": "Scope to one CRM contact's conversations (resolve via contacts_search first). For a per-dealer audit bundle, call once per dealer contactId."
+          },
+          "accountId": {
+            "type": "string",
+            "description": "OPTIONAL — omit to bundle across all visible mailboxes. Only to scope to one mail account. The artifact is parented to this account (or the org's default mailbox when omitted)."
+          },
+          "status": {
+            "type": "string"
+          },
+          "unreadOnly": {
+            "type": "boolean"
+          },
+          "assignedTo": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string",
+            "description": "Sender-email substring (case-insensitive). Same semantics as mail__search `from`."
+          },
+          "since": {
+            "type": "string",
+            "description": "ISO timestamp — only conversations received at/after this (server-side over lastMessageAt). Use with `until` to scope a quarter/period."
+          },
+          "until": {
+            "type": "string",
+            "description": "ISO timestamp — only conversations received at/before this. Use with `since` to scope a quarter/period."
+          },
+          "body": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string",
+            "description": "Free-text over subject+snippet. Prefer `from`/`since`/`until`/`contactId`."
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "csv",
+              "markdown"
+            ],
+            "description": "Artifact format. 'csv' (default) is RFC-4180, one row per conversation; 'markdown' is a human-readable digest."
+          },
+          "filename": {
+            "type": "string",
+            "description": "Optional filename for the artifact (e.g. 'klangwerk-q2-correspondence.csv'). Defaults to mail-correspondence-export.<ext>."
+          }
+        }
+      }
+    },
+    "reply": {
+      "outboundTextParams": ["textBody", "htmlBody"],
+      "description": "Reply to an existing mail conversation. GATED: calling this does NOT send — it creates a pending approval holding your drafted body that the human reviews, edits, and approves before it goes out. Calling this tool IS how a human 'looks it over before it goes out', so when asked to draft/propose/prepare a reply you must CALL this tool with the body; never paste the draft into chat and ask whether to send. The reply targets the LAST INBOUND SENDER by default; pass `to` (array of email strings) to override the recipients gmail-style, e.g. when the latest synced message is your own outbound (you were only cc'd) and the default would address a teammate instead of the customer. ONE pending reply draft per conversation: when mail__read lists a draft under pendingReplyDrafts, do NOT draft another; update that one with kernel__approval_update_payload (requestId = its approvalId), even when a colleague drafted it. A second call is refused with approval_already_pending when someone else drafted the waiting one, and replaces your own waiting draft otherwise.",
+      "requiredScopes": ["mail:conversations:write"],
+      "handler": "agentMailReply",
+      "timeoutMs": 60000,
+      "preflight": "agentMailReplyPreflight",
+      "resourceOwner": {
+        "table": "conversations",
+        "param": "conversationId",
+        "account": {
+          "table": "accounts",
+          "column": "account_id"
+        }
+      },
+      "summarizer": "summarizeMailReply",
+      "gated": true,
+      "approvalImpact": "external",
+      "approvalExpiryHours": 168,
+      "approvalDedupeKeyParam": "conversationId",
+      "approvalDedupeSameRequester": true,
+      "editableFields": [
+        {
+          "field": "textBody",
+          "label": "Body",
+          "widget": "richtext",
+          "invalidates": [
+            "htmlBody"
+          ]
+        },
+        {
+          "field": "to",
+          "label": "To",
+          "widget": "email-list"
+        },
+        {
+          "field": "cc",
+          "label": "Cc",
+          "widget": "email-list"
+        },
+        {
+          "field": "bcc",
+          "label": "Bcc",
+          "widget": "email-list"
+        }
+      ],
+      "params": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string"
+          },
+          "to": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "textBody": {
+            "type": "string"
+          },
+          "htmlBody": {
+            "type": "string"
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|@ref:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}:[a-z][a-z0-9_]*)$",
+              "description": "An attachment is a kernel file id: a uuid (36 characters, 8-4-4-4-12 hex digits), taken from files_list (or another tool that returns a fileId), or, for a file an earlier gated step of this request creates, that step's @ref token passed as the whole string, e.g. \"@ref:<approvalRequestId>:pdf_file_id\" from invoicing quote_create_and_issue outputs. A document id, a document number (QUO-2026-0001), a filename or a URL is not an attachment id."
+            },
+            "description": "Kernel file ids to attach to this reply. Accepts ids from files_list (any existing kernel file — a customer's prior attachment, a knowledge doc, a prepared shipping label), drive_import, a mail/ticket message's attachment id, or a gated tool's @ref output. To ATTACH A PREPARED SHIPPING/RETURN LABEL (e.g. 'reply with RMA instructions and attach the return shipping label'): the label is a kernel file parented to its Boxtal SHIPMENT — so (1) find the shipment (boxtal__search / returns_list by the customer name) to get its shipment id, (2) call files_list(app='boxtal', entityType='shipment', entityId=<that shipment id>) to get the label's real fileId, then (3) pass that fileId here. NEVER invent or guess a file id, and — anti-fabrication — if the user asked you to attach a file this array MUST be non-empty in THIS call: never tell the user you 'attached' a file unless its id is in this `attachments` array (the gated approval summary lists each attachment's filename + origin; an empty array means nothing is attached). A LOCAL file (one on the caller's machine, e.g. from an MCP client) is uploaded first with kernel__files_upload_url, then kernel__files_upload_confirm, and its fileId goes here."
+          },
+          "cc": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "email"
+                  ]
+                }
+              ]
+            }
+          },
+          "bcc": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "email"
+                  ]
+                }
+              ]
+            }
+          },
+          "__mailboxQuote": {
+            "type": "object",
+            "description": "INTERNAL, never set this yourself. The quoted original and resolved subject, decrypted by the mailbox owner's own browser for an end-to-end encrypted mailbox and supplied while approving. Keyed by message id."
+          },
+          "__mailboxAttachments": {
+            "type": "object",
+            "description": "INTERNAL, never set this yourself. Base64 plaintext bytes for stored attachments that are sealed at rest, decrypted by the mailbox owner's own browser and supplied while approving. Keyed by kernel file id."
+          }
+        },
+        "required": [
+          "conversationId",
+          "textBody"
+        ]
+      }
+    },
+    "forward": {
+      "outboundTextParams": ["note"],
+      "description": "Forward an existing inbound mail message to new recipients — re-sending the ORIGINAL message's body AND its attachments faithfully, the way a human hits 'Forward'. Use this (NOT compose) when asked to 'forward' an email — especially one that came in WITH an attachment (a PDF, a spec sheet, an invoice): you do NOT need to find the attachment file id yourself or re-type the body, because forward carries the original message's body (quoted under a 'Forwarded message' header) and re-attaches every original attachment automatically. The subject is prefixed 'Fwd:'. GATED: calling this does NOT send — it creates a pending approval holding the forwarded message (recipients, quoted body, and the carried-over attachments listed by filename + origin) that the human reviews, edits, and approves before it goes out. So forwarding is one call: mail__forward(conversationId, to=[recipient]); report it is QUEUED for approval, never that it was sent. Provide `note` to add a short lead-in line above the quoted original (e.g. 'Theo — can you quote this?'). By default forwards the latest inbound message in the conversation; pass `messageId` to forward a specific one. RESOLVING THE RECIPIENT: when the user names a COLLEAGUE to forward to (e.g. 'forward this to Theo in sales'), resolve that person's address with contacts_search by their name (a teammate/colleague's email lives in contacts) — do NOT substitute a DIFFERENT person than the one named. If you cannot resolve the EXACT named person, say so rather than forwarding to someone else (a same-team but different individual is a wrong recipient, not a fallback). If the user already gave the literal address, use it verbatim.",
+      "requiredScopes": ["mail:conversations:write"],
+      "handler": "agentMailForward",
+      "timeoutMs": 60000,
+      "preflight": "agentMailForwardPreflight",
+      "resourceOwner": {
+        "table": "conversations",
+        "param": "conversationId",
+        "account": {
+          "table": "accounts",
+          "column": "account_id"
+        }
+      },
+      "summarizer": "summarizeMailForward",
+      "gated": true,
+      "approvalImpact": "external",
+      "approvalExpiryHours": 168,
+      "editableFields": [
+        {
+          "field": "note",
+          "label": "Lead-in note",
+          "widget": "richtext"
+        },
+        {
+          "field": "to",
+          "label": "To",
+          "widget": "email-list"
+        },
+        {
+          "field": "cc",
+          "label": "Cc",
+          "widget": "email-list"
+        },
+        {
+          "field": "bcc",
+          "label": "Bcc",
+          "widget": "email-list"
+        }
+      ],
+      "params": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "description": "The conversation whose message you want to forward. The latest inbound message is forwarded unless `messageId` is given."
+          },
+          "messageId": {
+            "type": "string",
+            "description": "Optional. A specific message in the conversation to forward (must belong to `conversationId`). Omit to forward the latest inbound message."
+          },
+          "to": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "email"
+                  ]
+                }
+              ]
+            },
+            "description": "The recipient(s) to forward to. Use the real address you resolved (e.g. a colleague's known email) — never invent one."
+          },
+          "note": {
+            "type": "string",
+            "description": "Optional short lead-in line placed ABOVE the quoted original message (e.g. 'Theo — can you quote this bulk request?'). The original body is always quoted below it; you do NOT re-type the original body here."
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional. EXTRA kernel file ids to attach on top of the original message's attachments (which always carry over on their own). Same sources as reply: files_list, drive_import, or a LOCAL file uploaded with kernel__files_upload_url then kernel__files_upload_confirm. Never pass the original's own attachment ids here."
+          },
+          "cc": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "email"
+                  ]
+                }
+              ]
+            }
+          },
+          "bcc": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "email"
+                  ]
+                }
+              ]
+            }
+          },
+          "__mailboxQuote": {
+            "type": "object",
+            "description": "INTERNAL, never set this yourself. The quoted original and resolved subject, decrypted by the mailbox owner's own browser for an end-to-end encrypted mailbox and supplied while approving. Keyed by message id."
+          },
+          "__mailboxAttachments": {
+            "type": "object",
+            "description": "INTERNAL, never set this yourself. Base64 plaintext bytes for stored attachments that are sealed at rest, decrypted by the mailbox owner's own browser and supplied while approving. Keyed by kernel file id."
+          }
+        },
+        "required": [
+          "conversationId",
+          "to"
+        ]
+      }
+    },
+    "convertToTicket": {
+      "description": "Escalate a mail conversation to a Tickets ticket; closes the source conversation as escalated and copies messages into the new ticket.",
+      "requiredScopes": ["mail:conversations:write"],
+      "trustBoundary": "user",
+      "handler": "convertToTicket",
+      "writesToTable": "app_mail.conversations",
+      "params": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "description": "The mail conversation id to escalate (from mail__search/mail__read). REQUIRED."
+          },
+          "inboxId": {
+            "type": "string",
+            "description": "The TARGET tickets inbox id the new ticket lands in — a tickets inbox id, NOT a mail account or conversation id. You MUST get a real one from tickets:inboxes.list (typically the Support inbox); a guessed/invented id returns 'inbox not found' and creates nothing. REQUIRED."
+          },
+          "priority": {
+            "type": "string",
+            "description": "Ticket priority, e.g. 'high' for an urgent/VIP escalation."
+          },
+          "categoryId": {
+            "type": "string",
+            "description": "Category id for the new ticket — get it from tickets:categories.list (e.g. Firmware / MIDI Mapping)."
+          },
+          "assigneeId": {
+            "type": "string",
+            "description": "Who to assign the new ticket to: pass 'me' to assign to yourself, the current user (no lookup needed) — the usual case when you promote your OWN mail to a ticket. For a TEAMMATE, resolve their name via users_search and pass their UUID. A name is not accepted."
+          },
+          "note": {
+            "type": "string",
+            "description": "Optional INTERNAL note to record on the new ticket in the SAME call (recorded as a real ticket note, equivalent to a separate tickets__addNote — no second call needed). Use it to capture your finding/analysis and any hand-off the moment you convert. State your CONCLUSION explicitly, not just the raw facts: for a warranty / RMA case the note MUST (1) cite the confirmed Shopify order # + the actual purchase DATE you read off the order, (2) state your ELIGIBILITY DETERMINATION explicitly — e.g. 'purchased 2026-06-03, within the 2-year EU warranty → COVERED/eligible' (do not leave the reader to infer it from the date; the eligibility verdict is the point of the note), and (3) name who you are routing it to (Marco for the return label, Claire for the credit/replacement decision). GENERALLY — for ANY hand-off where the user asked you to CAPTURE A LOOKED-UP DATA FINDING (a Shopify on-hand/inventory STOCK level, an order/payment STATUS, an amount, an invoice state) into the note for a teammate, GATHER THAT FINDING FIRST — run the lookup chain (e.g. shopify products_search → variants_search → inventory_levels_list for the on-hand qty; documents_get for an invoice status) BEFORE you write the note, then put the ACTUAL figure you read into the note text (e.g. 'RAL-44 on hand: 31 units (read live from Shopify) — routing the 25-unit volume quote to Theo/sales'). The note must contain the real figure, not just the routing line. If you ALREADY converted before you had the figure (you ran the lookup afterwards), do NOT leave the figure only in your chat reply — record it on the ticket with a follow-up tickets__addNote that states the figure AND the routing together. The assignee/colleague reads the TICKET, not your chat — so a hand-off finding (including the data figure you were asked to capture) belongs HERE (or in a follow-up tickets__addNote), never only in chat. Passing it here is the reliable one-call path; do NOT claim you 'added a note' (or that the stock/finding is recorded) unless you actually passed this note (or called tickets__addNote) this turn."
+          },
+          "idempotencyKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversationId",
+          "inboxId"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "archive": {
+      "description": "Archive one or more mail conversations (inbox hygiene — moves them out of the active inbox by setting status='archived'). Pass conversationIds (an array of ids from mail__search/mail__read). Internal mailbox change only — does NOT send or notify the customer. Use it to clear newsletters/promos out of the inbox.",
+      "requiredScopes": ["mail:conversations:write"],
+      "trustBoundary": "user",
+      "handler": "agentMailArchive",
+      "writesToTable": "app_mail.conversations",
+      "params": {
+        "type": "object",
+        "properties": {
+          "conversationIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Conversation ids to archive (from mail__search/mail__read). REQUIRED, non-empty."
+          }
+        },
+        "required": [
+          "conversationIds"
+        ]
+      }
+    },
+    "setLabels": {
+      "description": "Apply labels to one or more mail conversations (e.g. tag non-customer mail as 'Spam/Noise'). Pass conversationIds + labels. mode 'add' (default) merges with existing labels; 'replace' overwrites. Internal organization only — does NOT message the customer.",
+      "requiredScopes": ["mail:conversations:write"],
+      "trustBoundary": "user",
+      "handler": "agentMailSetLabels",
+      "writesToTable": "app_mail.conversations",
+      "params": {
+        "type": "object",
+        "properties": {
+          "conversationIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Conversation ids to label (from mail__search/mail__read). REQUIRED, non-empty."
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Label strings to apply (e.g. ['Spam/Noise']). REQUIRED, non-empty."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "add",
+              "replace"
+            ],
+            "description": "'add' (default) merges with existing labels; 'replace' overwrites them."
+          }
+        },
+        "required": [
+          "conversationIds",
+          "labels"
+        ]
+      }
+    },
+    "providers.get": {
+      "description": "The mailbox connection types this workspace offers, for the Mail settings page: { gmail: boolean }. Same data as GET /api/mail/providers.",
+      "readOnly": true,
+      "agentVisible": false,
+      "requiredScopes": ["mail:accounts:read"],
+      "trustBoundary": "user",
+      "handler": "providersGet",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "providers.set": {
+      "description": "Turn a mailbox connection type on or off from the Mail settings page: { gmail: boolean }. Same check as PATCH /api/mail/providers/:id (mail:accounts:admin). Returns the providers as providers.get does.",
+      "agentVisible": false,
+      "requiredScopes": ["mail:accounts:admin"],
+      "trustBoundary": "user",
+      "handler": "providersSet",
+      "params": {
+        "type": "object",
+        "properties": {
+          "gmail": {
+            "type": "boolean",
+            "description": "Whether people can connect Gmail mailboxes."
+          }
+        }
+      }
+    },
+    "createFromTicket": {
+      "description": "Create a mail conversation from a ticket payload. Internal — invoked by tickets__convertToMail.",
+      "requiredScopes": ["mail:conversations:write"],
+      "trustBoundary": "internal",
+      "deferLoading": true,
+      "agentVisible": false,
+      "handler": "createFromTicket",
+      "writesToTable": "app_mail.conversations",
+      "params": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "contact": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "messages": {
+            "type": "array"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "subject",
+          "messages",
+          "idempotencyKey"
+        ]
+      }
+    },
+    "appendInboundMessage": {
+      "description": "Append an inbound mail message to a conversation, deduping by externalMessageId. Internal — used by tickets reroute and pull-mail-reply flows.",
+      "requiredScopes": ["mail:conversations:write"],
+      "trustBoundary": "internal",
+      "deferLoading": true,
+      "agentVisible": false,
+      "handler": "appendInboundMessage",
+      "writesToTable": "app_mail.messages",
+      "params": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string"
+          },
+          "message": {
+            "type": "object"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversationId",
+          "message"
+        ]
+      }
+    },
+    "compose": {
+      "outboundTextParams": ["subject", "textBody", "htmlBody"],
+      "description": "Compose a new mail message. This sends a REAL EMAIL: to message a teammate in this organization, post in a Liaison conversation instead (kernel__threads_create with their user id, or kernel__threads_reply), unless the user explicitly asks for an email. GATED: calling this does NOT send — it creates a pending approval holding your drafted message that the human reviews, edits, and approves before it goes out. Calling this tool IS how a human 'looks it over before it goes out', so when asked to draft/propose/prepare a message you must CALL this tool with the body; never paste the draft into chat and ask whether to send. NOT A BROADCAST / MASS-SEND / SEGMENT primitive: this composes ONE single message with ONE shared body to the literal envelope you pass — every address in `to`/`cc`/`bcc` receives that one identical message and (for `to`/`cc`) sees the other recipients. There is NO per-recipient personalization, mail-merge, or segment/campaign send anywhere in this product: a template variable like {{firstName}} or {{orderName}} is sent VERBATIM (it is never interpolated per recipient), and putting many customers in one `to`/`cc` array leaks their addresses to each other. So 'email all the affected customers' / 'send the recall notice to everyone' is NOT one call: to reach N customers with a personalized, privacy-safe notice you must send N separate per-recipient messages (one compose or mail__reply per customer, EACH gated and individually approved) — OR, when that exceeds your step budget, stage a bounded few and tell the user plainly that there is no mass-send/segment tool so the rest must be approved one per recipient (or are out of reach for a single blast). Do NOT collapse a multi-customer outreach into a single multi-recipient compose.",
+      "requiredScopes": ["mail:conversations:write"],
+      "handler": "agentMailCompose",
+      "timeoutMs": 60000,
+      "preflight": "agentMailComposePreflight",
+      "resourceOwner": {
+        "table": "accounts",
+        "param": "accountId"
+      },
+      "summarizer": "summarizeMailCompose",
+      "gated": true,
+      "approvalImpact": "external",
+      "approvalExpiryHours": 168,
+      "editableFields": [
+        {
+          "field": "subject",
+          "label": "Subject",
+          "widget": "text"
+        },
+        {
+          "field": "textBody",
+          "label": "Body",
+          "widget": "richtext",
+          "invalidates": [
+            "htmlBody"
+          ]
+        },
+        {
+          "field": "to",
+          "label": "To",
+          "widget": "email-list"
+        },
+        {
+          "field": "cc",
+          "label": "Cc",
+          "widget": "email-list"
+        },
+        {
+          "field": "bcc",
+          "label": "Bcc",
+          "widget": "email-list"
+        }
+      ],
+      "params": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "description": "REQUIRED. The mailbox to send FROM: there is no default, a call without it is refused. Call listAccounts first. When the user writes as themselves (personal correspondence, or they say 'from me' / 'from my address'), pass the account whose ownerType is 'user' and whose emailAddress is theirs; pass the shared org mailbox (e.g. contact@) only for mail the org sends. Never invent a placeholder id."
+          },
+          "to": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "email"
+                  ]
+                }
+              ]
+            }
+          },
+          "cc": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "email"
+                  ]
+                }
+              ]
+            }
+          },
+          "bcc": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "email"
+                  ]
+                }
+              ]
+            }
+          },
+          "subject": {
+            "type": "string"
+          },
+          "textBody": {
+            "type": "string"
+          },
+          "htmlBody": {
+            "type": "string"
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|@ref:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}:[a-z][a-z0-9_]*)$",
+              "description": "An attachment is a kernel file id: a uuid (36 characters, 8-4-4-4-12 hex digits), taken from files_list (or another tool that returns a fileId), or, for a file an earlier gated step of this request creates, that step's @ref token passed as the whole string, e.g. \"@ref:<approvalRequestId>:pdf_file_id\" from invoicing quote_create_and_issue outputs. A document id, a document number (QUO-2026-0001), a filename or a URL is not an attachment id."
+            },
+            "description": "Kernel file ids to attach to this email. To send a file the user named (a Drive PDF spec sheet, a price list, an invoice), you MUST FIRST materialize it into a kernel fileId, THEN pass that fileId here — e.g. google-drive__search the file, google-drive__import it to get a kernel fileId, then compose with attachments:[\"<fileId from google-drive__import>\"]. A raw Drive file id/URL is NOT a kernel fileId and will be rejected — import first. Accepts ids from google-drive__import (Drive files), files_list (existing kernel files), a mail/ticket message's attachment id, or a gated tool's @ref output. If the user asked you to attach a file, this array MUST be non-empty in the call — never claim a file is attached unless its id is in THIS array (the gated approval summary lists each attachment's filename + origin, and an empty array means nothing is attached). A LOCAL file (one on the caller's machine, e.g. from an MCP client) is uploaded first with kernel__files_upload_url, then kernel__files_upload_confirm, and its fileId goes here."
+          },
+          "__mailboxAttachments": {
+            "type": "object",
+            "description": "INTERNAL, never set this yourself. Base64 plaintext bytes for stored attachments that are sealed at rest, decrypted by the mailbox owner's own browser and supplied while approving. Keyed by kernel file id."
+          }
+        },
+        "required": [
+          "accountId",
+          "to",
+          "subject",
+          "textBody"
+        ]
+      }
+    },
+    "composeForApp": {
+      "description": "Internal: compose+send a mail message on behalf of another app. Same code path as 'compose' but no per-call approval (callers gate at their own surface).",
+      "requiredScopes": ["mail:conversations:write"],
+      "trustBoundary": "internal",
+      "deferLoading": true,
+      "agentVisible": false,
+      "handler": "agentMailComposeForApp",
+      "params": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "to": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "email"
+                  ]
+                }
+              ]
+            }
+          },
+          "cc": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "email"
+                  ]
+                }
+              ]
+            }
+          },
+          "bcc": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "email"
+                  ]
+                }
+              ]
+            }
+          },
+          "subject": {
+            "type": "string"
+          },
+          "textBody": {
+            "type": "string"
+          },
+          "htmlBody": {
+            "type": "string"
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "File ids to attach. PDFs owned by the calling app are copied as Mail-owned attachments via files_attachToParent."
+          },
+          "originating_approval_id": {
+            "type": "string",
+            "description": "The approval id from the calling app's surface — recorded in the audit success payload to preserve the cross-app approval chain."
+          }
+        },
+        "required": [
+          "accountId",
+          "to",
+          "subject",
+          "textBody",
+          "originating_approval_id"
+        ]
+      }
+    }
+  },
+  "export": {
+    "formats": [
+      "json",
+      "csv"
+    ],
+    "handler": "exportMail",
+    "schema": {
+      "id": "string",
+      "accountId": "string",
+      "subject": "string",
+      "snippet": "string",
+      "status": "string",
+      "contactId": "string",
+      "lastMessageAt": "string",
+      "createdAt": "string"
+    }
+  },
+  "events": {
+    "emits": [
+      "account:create",
+      "account:update",
+      "conversation:create",
+      "conversation:update",
+      "conversation:delete",
+      "conversation:converted",
+      "message:create"
+    ],
+    "subscribes": {
+      "kernel/connected_account:create": "onAccountConnected",
+      "kernel/connected_account:disconnect": "onAccountDisconnected",
+      "kernel/contact:merge": "onContactMerge"
+    }
+  },
+  "webhooks": {
+    "gmail-push": {
+      "handler": "onGmailPush",
+      "verify": "verifyGmailPush"
+    }
+  },
+  "webhookHealth": {
+    "probe": null,
+    "reason": "Gmail push only nudges the incremental sync; mailbox ingest health is judged by the mail-ingest diag, not by pushes."
+  },
+  "jobs": {
+    "gmail-initial-sync": {
+      "handler": "gmailInitialSync",
+      "onDemand": true,
+      "timeoutMs": 120000
+    },
+    "gmail-incremental-sync": {
+      "handler": "gmailIncrementalSync",
+      "runsFor": {"connection": "gmail"},
+      "schedule": "0/5 * * * *"
+    },
+    "gmail-watch-renewal": {
+      "handler": "gmailWatchRenewal",
+      "runsFor": {"connection": "gmail"},
+      "schedule": "0 0 1/6 * *"
+    },
+    "gmail-write-back": {
+      "handler": "gmailWriteBack",
+      "onDemand": true,
+      "timeoutMs": 60000
+    },
+    "gmail-attachment-backfill": {
+      "handler": "gmailAttachmentBackfill",
+      "onDemand": true,
+      "timeoutMs": 120000
+    },
+    "imap-initial-sync": {
+      "handler": "imapInitialSync",
+      "onDemand": true,
+      "timeoutMs": 120000
+    },
+    "imap-incremental-sync": {
+      "handler": "imapIncrementalSync",
+      "runsFor": {"connection": "imap"},
+      "schedule": "0/2 * * * *",
+      "timeoutMs": 120000
+    }
+  },
+  "kind": "app",
+  "settings": {
+    "sections": [
+      {
+        "id": "accounts",
+        "title": "Your email accounts",
+        "titleKey": "mail.settingsPage.accounts.title",
+        "description": "The mailboxes you read and send from in Mail, personal or shared with your team.",
+        "descriptionKey": "mail.settingsPage.accounts.description",
+        "scope": "user",
+        "blocks": [
+          {
+            "block": "custom",
+            "component": "MailAccounts",
+            "reason": "Each mailbox row carries its sync state, encryption enrolment, reset and key flows, sync now and team access; connecting a personal or shared Gmail or IMAP mailbox runs the mailbox-encryption notice and the IMAP/SMTP presets."
+          }
+        ]
+      },
+      {
+        "id": "providers",
+        "title": "Mailbox types",
+        "titleKey": "mail.settingsPage.providers.title",
+        "description": "Which mailboxes people can connect in this workspace.",
+        "descriptionKey": "mail.settingsPage.providers.description",
+        "scope": "org",
+        "adminScope": "mail:accounts:admin",
+        "blocks": [
+          {
+            "block": "field",
+            "key": "gmail",
+            "type": "toggle",
+            "label": "Gmail mailboxes",
+            "labelKey": "mail.settingsPage.providers.gmail",
+            "help": "Personal and shared Gmail mailboxes, through the Google client below.",
+            "helpKey": "mail.settingsPage.providers.gmailHelp",
+            "source": {
+              "tool": {
+                "get": "providers.get",
+                "set": "providers.set"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "google-client",
+        "title": "Gmail & Google sign-in",
+        "titleKey": "mail.settingsPage.googleClient.title",
+        "description": "The Google client Gmail connects through. It is the same client as Google sign-in.",
+        "descriptionKey": "mail.settingsPage.googleClient.description",
+        "scope": "org",
+        "adminScope": "kernel:org:admin",
+        "blocks": [
+          {
+            "block": "custom",
+            "component": "GoogleClientCard",
+            "reason": "The workspace's Google OAuth client is a kernel integration (deployment client, own client or none) shared with Security > Sign-in methods; its secret is set through its own write-only form."
+          }
+        ]
+      }
+    ]
+  },
+  "views": {
+    "tabTypes": {
+      "inbox": {
+        "component": "MailInbox",
+        "label": "Mail",
+        "labelKey": "kernel.nav.mail",
+        "sidebar": "MailSidebar",
+        "icon": "MailIcon",
+        "urlPattern": "/mail",
+        "singleton": true,
+        "referenceable": false
+      },
+      "conversation": {
+        "component": "MailConversation",
+        "label": "Conversation",
+        "sidebar": "MailSidebar",
+        "icon": "MailIcon",
+        "urlPattern": "/mail/:entityId",
+        "resolveLabel": "resolveMailConversationLabel",
+        "referenceable": true
+      },
+      "compose": {
+        "component": "MailCompose",
+        "label": "Compose",
+        "sidebar": "MailSidebar",
+        "icon": "MailIcon",
+        "urlPattern": "/mail/compose",
+        "referenceable": false
+      }
+    },
+    "activityBar": {
+      "icon": "MailIcon",
+      "label": "Mail",
+      "labelKey": "kernel.nav.mail",
+      "order": 10,
+      "tabAction": {
+        "type": "inbox",
+        "entityId": "inbox",
+        "label": "Mail"
+      }
+    },
+    "wsHandlers": {
+      "conversation": "handleConversationEvent",
+      "message": "handleMessageEvent",
+      "account": "handleAccountEvent"
+    }
+  },
+  "skills": {
+    "mail-overview": {
+      "description": "How to use the Mail app with Liaison",
+      "body": "The Mail app connects your inbox so the agent can read, triage and draft replies to email. Ask it to summarise an unread thread, draft a reply in your voice, or attach a file — sending is a gated action you approve before anything leaves your account. Create a routine that triages new mail each morning and flags what needs you. The agent grounds replies in your Knowledge entries (policies, boilerplate, product facts) so answers stay accurate and on-brand.",
+      "kind": "guide",
+      "enabledByDefault": true
+    },
+    "draft-mail-reply": {
+      "description": "Reply to an email — including grounding the reply in a Knowledge article",
+      "body": "# Draft a reply to a mail conversation\n\nUse this when asked to reply to (or 'draft a reply to', 'propose', 'prepare') an email — even when the user says they want to 'look it over before it goes out'.\n\n1. **Find the conversation.** `mail__search` for the thread (try a few natural keywords — subject words, the product, the symptom). Open it with `mail__read` (include the body) to see exactly what the customer said.\n2. **Ground it (if a procedure/policy is involved).** `knowledge__search` then `knowledge__get` the relevant article and base your reply on its actual content — never invent steps, part numbers, or policy.\n3. **Propose the reply by CALLING `mail__reply`** with `conversationId` (the mail conversation from step 1) and your drafted `textBody`. `mail__reply` is GATED: calling it does NOT send — it creates a pending approval the human reviews, edits, and approves. **That tool call IS how they 'look it over before it goes out.'** Do NOT paste the draft into chat and ask whether to send — that creates no approval and there is no way to send it.\n4. Use `mail__reply` for a mail conversation. Do NOT use `tickets__reply` — that targets a ticket by id and fails ('ticket not found') against a mail conversation.\n5. Tell the user the reply is drafted and pending their approval (do not claim it was sent).",
+      "kind": "guide",
+      "enabledByDefault": true
+    }
+  }
+}

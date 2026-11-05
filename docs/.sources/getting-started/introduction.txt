@@ -1,0 +1,23 @@
+Workspace for mail, tickets, knowledge, invoicing, shipping; agents under same permissions -> README.md:5
+Self-hosted with Docker Compose -> README.md:11
+Kernel apps list -> README.md:106
+Mail send and receive -> apps/api/src/apps/mail/app.manifest.json:4
+Tickets support inbox, status, assignee -> apps/api/src/apps/tickets/app.manifest.json:4
+Projects tasks, owner, status, due date -> apps/api/src/apps/projects/app.manifest.json:4
+Knowledge shared memory: policies, product facts, FAQ, procedures -> apps/api/src/apps/knowledge/app.manifest.json:4
+Contacts people and companies directory -> apps/api/src/apps/contacts/app.manifest.json:3
+Calendar bidirectional Google Calendar, org-wide and personal -> apps/api/src/apps/calendar/app.manifest.json:5
+Messages in activity bar -> apps/web/src/framework/bootstrap.ts:1115
+Connectors Google Drive, GitLab, database, API connector -> README.md:106
+Bundled apps list -> README.md:111
+Shipping and Finance labels for boxtal/pennylane -> packages/shared/src/i18n/locales/en/kernel.json:534
+Build own plugin app -> README.md:120
+Agents act through same tools and access rules; RLS; approvals -> README.md:9
+MCP both ways -> README.md:7
+Stack: single image, Postgres, Redis, MeiliSearch, S3-compatible store -> README.md:12
+SeaweedFS bundled -> README.md:142
+Bring your own model key, required for agents -> .claude/skills/setup-liaison/SKILL.md:89
+Desktop apps macOS, Windows, Linux installers -> apps/web/src/lib/desktop-downloads.ts:22
+Mobile shell iOS, Android -> README.md:146
+FSL-1.1-ALv2 terms and Apache 2.0 after two years -> README.md:273
+About 9 minutes best case -> README.md:59

@@ -1,0 +1,30 @@
+Node is a user's computer running the desktop app, with Claude Agent SDK sidecar -> apps/desktop/README.md:11
+Settings > Computers intro: agents work on these computers with your own Claude account -> packages/shared/src/i18n/locales/en/kernel.json:4910
+Runtime menu title Where turns run -> packages/shared/src/i18n/locales/en/kernel.json:3346
+Liaison runtime description -> packages/shared/src/i18n/locales/en/kernel.json:3344
+This machine description -> packages/shared/src/i18n/locales/en/kernel.json:3343
+My computer description -> packages/shared/src/i18n/locales/en/kernel.json:3351
+Runtime options Liaison This machine My computer -> packages/shared/src/i18n/locales/en/kernel.json:3350
+Online is live presence with 60 s TTL refreshed by 30 s heartbeat -> apps/api/src/modules/nodes/presence.ts:7
+Paused = node offline, resumes -> packages/shared/src/i18n/locales/en/kernel.json:4722
+Paused status -> packages/shared/src/i18n/locales/en/kernel.json:4208
+Sessions are Claude Code run by the desktop app's Agent SDK sidecar -> apps/desktop/README.md:11
+Node credit: runs use owner's Claude sign-in, credits gate only cloud -> apps/api/src/modules/nodes/routine-dispatch.ts:7
+Chats can run on a node -> apps/api/src/modules/nodes/thread-settings.ts:3
+Attached agents get requests from allowed requesters -> apps/api/src/modules/nodes/attachments.ts:12
+Daily caps on attached agent -> apps/api/src/modules/nodes/attachments.ts:21
+Import Claude Code sessions follow or take over -> packages/shared/src/node-session-protocol.ts:160
+Browsers and phone read the owner's nodes live; sessions start from the Sessions app in any client -> apps/web/src/modules/sessions/NewSessionDialog.tsx:70
+macOS Windows Linux -> packages/shared/src/i18n/locales/en/kernel.json:4920
+Desktop installers -> packages/shared/src/i18n/locales/en/kernel.json:983
+Folder paths owner-only and never returned -> apps/api/src/modules/nodes/routes.ts:18
+Agents see opaque candidate ids and ~/ display -> apps/api/src/modules/nodes/folder-requests.ts:17
+Clone uses computer's own git login -> packages/shared/src/i18n/locales/en/kernel.json:4635
+Truncated at 64 KB, full output stays on the computer -> packages/shared/src/i18n/locales/en/kernel.json:4269
+Show full output -> packages/shared/src/i18n/locales/en/kernel.json:4412
+Files changed drawer -> packages/shared/src/i18n/locales/en/kernel.json:4478
+Recorded session badge -> packages/shared/src/i18n/locales/en/kernel.json:4197
+Demo replay shows stream, tool calls, a permission request and a pull request -> apps/api/src/modules/demo/replay/replay.ts:5
+Recorded session hint -> packages/shared/src/i18n/locales/en/kernel.json:4198
+Download the desktop app -> packages/shared/src/i18n/locales/en/kernel.json:4201
+Starting work is approved by the owner only -> apps/api/src/modules/agent/tools/kernel-tools.ts:1109

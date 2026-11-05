@@ -1,0 +1,115 @@
+# Dependencies
+node_modules
+
+# Runtime app-install root in dev (LIAISON_APPS_DIR default set by scripts/dev.ts)
+/.liaison-apps/
+
+# Per-suite app-install roots. An integration test that runs without
+# LIAISON_APPS_DIR set falls back to its own `.liaison-apps-<suite>/` in the
+# repo root and unpacks every bundled app into it, which is megabytes of
+# regenerable output. The glob rather than one literal: the fallback is named
+# after the suite, so the next suite to need one arrives already ignored
+# instead of sitting in `git status` until somebody notices.
+/.liaison-apps-*/
+
+# Build output
+dist/
+dist-native/
+dist-e2e/
+.output/
+
+# Bun
+# The ROOT bun.lock is COMMITTED on purpose -- see ops/deploy/README.md. It was
+# ignored by the initial scaffolding commit, which combined with the
+# Dockerfile's `bun install --frozen-lockfile` meant every node carried its own
+# copy and any new dependency failed the prod build until someone relocked each
+# box by hand.
+#
+# Nested lockfiles stay ignored: this is a bun workspace, so a bun.lock inside a
+# workspace member is a stray from running an install in the wrong directory,
+# never something to version.
+bun.lock
+!/bun.lock
+
+# Provisioning input for a self-hosted instance (config + gathered knowledge),
+# mounted read only into the app container at /setup. Holds company data.
+/deploy/setup/
+# The setup playbook's API keys and tokens. Kept OUT of deploy/setup/, which
+# the long-running app container mounts.
+/deploy/.setup-secrets.env
+
+# Chaos simulator run output (transcripts, per-run worlds). Regenerable, and
+# scenario-flavoured, so it must never be swept into a bulk `git add`.
+.chaos/
+**/.chaos/
+
+# Environment
+.env
+.env.*
+!.env.example
+!.env.test.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
+
+# Drizzle
+drizzle/meta/
+
+# Vite
+*.local
+
+# Test coverage
+coverage/
+
+# Turbo / cache
+.turbo/
+
+apps/web/test-results/
+test-results/
+
+# Test logs
+logs/
+dump.rdb
+
+# Strobe
+.strobe/
+
+.playwright-mcp/
+
+logs/
+
+# Phase 14 validation artifacts (regenerated on every run)
+/.liaison-release.json
+/data/
+/deploy/data/
+# deploy/rolling-deploy.sh state: its lock, the draining list, the drain log.
+/deploy/.rolling/
+# deploy/backup.sh archives: they hold the data keys.
+/deploy/backups/
+/backups/
+/qa/load/out/
+BLOCKED.md
+
+# First-party app catalog (frozen .liaisonapp tarballs + catalog.json), built by
+# scripts/build-app-catalog.ts. Baked into the image at build time; never committed.
+/app-catalog/
+
+# Ad-hoc local validation scratch (screenshots, throwaway scripts, session state)
+/gestalt-validation-tmp/
+
+# Linux visual baselines: no pinned Linux render environment exists, so they are not tracked.
+# Regenerate locally with a Linux run; darwin baselines are the reference.
+*-linux.png
+
+# Test-only validator caches (compiled schematron SEFs, Rust build output)
+/tools/schematron/.sef/
+/tools/pdfa-check/target/
+
+# Agent worktrees (the repo convention puts them under .claude/worktrees/)
+.claude/worktrees/

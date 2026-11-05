@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Liaison</string>
+    <string name="title_activity_main">Liaison</string>
+    <string name="package_name">sh.liaison.mobile</string>
+    <string name="custom_url_scheme">sh.liaison.mobile</string>
+</resources>

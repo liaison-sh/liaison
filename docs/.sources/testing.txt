@@ -1,0 +1,29 @@
+Test data: one seed engine, writes through the product's services as the acting person -> apps/api/src/seed/tiers/minimal.ts:3-7 ; apps/api/src/seed/tiers/standard/seed-standard.ts:11-13
+One now, no randomness; the determinism guard fails a bare Date.now / new Date() / Math.random under seed/ -> apps/api/src/seed/seed-determinism.test.ts:3-7
+Tiers demo, lively, load, standard on the CLI -> apps/api/src/cli/seed/run.ts:20 ; apps/api/src/cli/commands.ts:839-843
+minimal tier: one row per call; person, session, adminSession, thread, contact, grantScope/revokeScope/assignRole/revokeRole, secondOrg -> apps/api/src/seed/tiers/minimal.ts:3-18 ; apps/api/src/seed/tiers/minimal.ts:128-353
+minimal password -> apps/api/src/seed/tiers/minimal.ts:70
+minimal import form used by tests -> apps/api/src/middleware/rate-limiter-routing.test.ts:17
+standard tier contents, Playwright lanes and bun run dev, not idempotent -> apps/api/src/seed/tiers/standard/seed-standard.ts:3-16 ; apps/api/src/seed/tiers/standard/seed-standard.ts:96-101
+standard --now, --only agent-app, JSON line on stdout -> apps/api/src/seed/tiers/standard/seed-standard.ts:166-206
+demo tier contents -> apps/api/src/cli/commands.ts:843 ; apps/api/src/cli/seed/run.ts:3-5
+lively tier: ten people, fourteen days, private boxes and self-hosted trial -> apps/api/src/seed/tiers/lively/seed-lively.ts:3-9
+load tier: --orgs, synthetic + expiry, --volume -> apps/api/src/cli/seed/run.ts:7-9 ; apps/api/src/cli/commands.ts:843
+From apps/api: bun run src/cli/index.ts seed -> packages/test-helpers/src/standard-world.ts:71-74
+Standard admin Elodie Vasseur admin@test.com / 12345678 -> scripts/seed-qa.ts:88 ; apps/api/src/tests/e2e/standard-seed-snapshot.scenario.test.ts:39
+Teammates and their addresses, password QaPass1! -> apps/api/src/seed/world/qa.ts:15 ; apps/api/src/seed/world/qa.ts:21-25
+Factory domains -> apps/api/src/seed/factories/ (agent, approvals, attention, calendar, commerce, knowledge, mail, org, people, projects, support, threads, timeline)
+SeedContext: org, now, deterministic id by kind and key -> apps/api/src/seed/context.ts:27-39 ; apps/api/src/seed/context.ts:17
+POST /api/_test/seed {factory, orgId?, args}: one named factory in the server; 200/400/422; now = wall clock -> apps/api/test-support/seed/route.ts:3-21 ; apps/api/test-support/seed/route.ts:37-90
+Factory names <group>.<name>, add one instead of a raw insert -> apps/api/test-support/seed/factories.ts:3-6 ; apps/api/test-support/seed/factories.ts:97-726
+orgId required unless the factory makes an org -> apps/api/test-support/seed/route.ts:73-80
+Mounted under qaSeedRoutesEnabled (NODE_ENV=test or ENABLE_QA_SEED_ROUTES, refused in production); test-support not in the image -> apps/api/src/lib/env.ts:1345 ; apps/api/src/lib/env.ts:1300 ; apps/api/src/app.ts:1422-1437 ; apps/api/test-support/qa-seed-routes.ts:101
+seedFactory clients -> apps/web/src/tests/e2e/helpers/seed.ts:3-16 ; apps/api/src/tests/e2e/helpers/seed-factory.ts:3-25
+api e2e lanes: bootstrapped org + admin, no seed tier; setupScenario({ populate }) -> scripts/test-e2e-parallel.ts:234 ; apps/api/src/tests/e2e/setup.ts:7-36
+Playwright lanes seed standard through the CLI, sign in every person -> apps/web/src/tests/e2e/pw-lanes.ts:18-19 ; apps/web/src/tests/e2e/pw-lanes.ts:143-145 ; packages/test-helpers/src/standard-world.ts:95-124
+Raw-insert ratchet and --write -> scripts/check-raw-insert.ts:4-19 ; package.json:71
+bun run dev seeds an empty dev database (no threads) -> scripts/dev.ts:209-218
+seed-qa: admin through the server, standard tier, dev extras (pricing, credits, chats, second org) -> scripts/seed-qa.ts:3-8 ; scripts/seed-qa.ts:368-399 ; scripts/seed-qa.ts:815 ; scripts/seed-qa.ts:831-832
+seed outside the image: catalog default app-catalog/, apps default .liaison-apps/apps, missing catalog stops with exit 2 naming the variable -> apps/api/src/cli/seed/app-dirs.ts:32-72 ; apps/api/src/cli/seed/run.ts:65-71
+macOS memory gate: kernel pressure warn/critical holds a new job; swap counts only under it; 1024 MB free backstop -> scripts/lib/machine-slots.ts:190-212 ; scripts/lib/machine-slots.ts:346-364
+targeted --file runs keep the 2 GiB reserve; mem-guard on macOS counts low memory only under pressure -> scripts/test-run.ts:133-144 ; scripts/lib/mem-guard.ts:95-101

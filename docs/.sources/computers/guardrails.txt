@@ -1,0 +1,98 @@
+Three levels strict standard open -> packages/shared/src/node-levels.ts:14
+Strict is the default level -> packages/shared/src/node-guardrails.ts:15
+Level table one definition read by sidecar, shell and web -> packages/shared/src/node-levels.ts:3
+Strict one-line legend -> packages/shared/src/i18n/locales/en/kernel.json:5126
+Standard one-line legend -> packages/shared/src/i18n/locales/en/kernel.json:5127
+Open one-line legend -> packages/shared/src/i18n/locales/en/kernel.json:5128
+Strict row: sandbox, session scope, allowlist, secrets denied, hooks off, liaison_only MCP, no local binding, askable -> packages/shared/src/node-levels.json:4
+Standard row -> packages/shared/src/node-levels.json:24
+Open row -> packages/shared/src/node-levels.json:49
+Denied tools below Open -> packages/shared/src/node-levels.json:17
+Protected branches -> packages/shared/src/node-levels.json:81
+Standard runs Playwright runners outside sandbox -> packages/shared/src/node-levels.json:42
+Playwright runs always ask, never auto-allowed -> packages/shared/src/node-levels.ts:58
+In-place sessions below Open start own branch -> packages/shared/src/node-session-protocol.ts:140
+Pick lowest level; risk note text -> packages/shared/src/i18n/locales/en/kernel.json:5119
+Suggested level Standard for Opus Fable class, Strict otherwise, Open never -> packages/shared/src/node-guardrails.ts:26
+Risk note: prompt-injected session can push to default branch from a script -> packages/shared/src/node-guardrails.ts:40
+Suggested mark -> packages/shared/src/i18n/locales/en/kernel.json:5107
+Agents tab heading -> packages/shared/src/i18n/locales/en/kernel.json:5097
+Column What it may do -> packages/shared/src/i18n/locales/en/kernel.json:5104
+Level saved for all computers, applies next session -> packages/shared/src/i18n/locales/en/kernel.json:5108
+Raised level unconfirmed on this computer -> packages/shared/src/i18n/locales/en/kernel.json:5109
+Confirm level button -> packages/shared/src/i18n/locales/en/kernel.json:5110
+Liaison tools toggle -> packages/shared/src/i18n/locales/en/kernel.json:4351
+Profile editor raises confirmed in app, Open always asks -> apps/web/src/modules/nodes/agent-profile.tsx:8
+Raise dialog title -> packages/shared/src/i18n/locales/en/kernel.json:4225
+Raise dialog confirm button -> packages/shared/src/i18n/locales/en/kernel.json:4227
+Session start above pin -> packages/shared/src/i18n/locales/en/kernel.json:4232
+Session start confirm -> packages/shared/src/i18n/locales/en/kernel.json:4234
+Running session raise restarts at end of step -> packages/shared/src/i18n/locales/en/kernel.json:4236
+Every choice of Open asks again -> packages/shared/src/node-levels.ts:6
+Confirmation lives 5 minutes unless attached -> apps/api/src/modules/node-sessions/confirmations.ts:34
+Confirmation bound to node, agent or session, level, purpose -> apps/api/src/modules/node-sessions/confirmations.ts:295
+Never minted by agent tool, MCP token, API key or node credential -> apps/api/src/modules/node-sessions/confirmations.ts:6
+No dialog on the computer -> apps/web/src/modules/nodes/LevelConfirmDialog.tsx:9
+Cancel creates nothing -> apps/web/src/modules/nodes/LevelConfirmDialog.tsx:8
+Lowering asks nothing -> packages/shared/src/i18n/locales/en/kernel.json:4373
+Permission modes Auto Manual Edit automatically Plan Bypass -> packages/shared/src/i18n/locales/en/kernel.json:1716
+Auto hint -> packages/shared/src/i18n/locales/en/kernel.json:1715
+Manual hint -> packages/shared/src/i18n/locales/en/kernel.json:1721
+Edit hint -> packages/shared/src/i18n/locales/en/kernel.json:1719
+Plan hint -> packages/shared/src/i18n/locales/en/kernel.json:1723
+Bypass hint -> packages/shared/src/i18n/locales/en/kernel.json:1717
+Menu title Modes -> packages/shared/src/i18n/locales/en/kernel.json:1724
+Auto is first and default on desktop -> apps/web/src/modules/desktop/PermissionModeMenu.tsx:47
+Desktop menu label How this session asks before it acts -> packages/shared/src/i18n/locales/en/kernel.json:3410
+Remote chat modes auto manual edit plan -> packages/shared/src/node-chat-modes.ts:7
+Node chat menu label -> packages/shared/src/i18n/locales/en/kernel.json:4179
+Bypass not offered for remote node chat; 422 bypass_unavailable_remote -> apps/web/src/modules/nodes/NodeModeMenu.tsx:10
+Bypass refused by server and DB cannot hold it -> apps/api/src/modules/nodes/thread-settings.ts:14
+Bypass declined message -> packages/shared/src/i18n/locales/en/kernel.json:3467
+Running without asking first not confirmed -> packages/shared/src/i18n/locales/en/kernel.json:3468
+Auto for chats started elsewhere -> packages/shared/src/i18n/locales/en/kernel.json:5147
+Remote chats run in Manual unless turned on; confirmed on computer -> packages/shared/src/i18n/locales/en/kernel.json:5148
+Remote auto confirmed by the shell's native question -> apps/web/src/modules/settings/computers/RemoteAutoRow.tsx:6
+Auto policy: Liaison tools allowed, scopes and approvals still apply -> apps/desktop/sidecar/auto-policy.ts:17
+Auto: shell allowed unless clearly destructive -> apps/desktop/sidecar/auto-policy.ts:21
+Auto: other tools ask like Manual -> apps/desktop/sidecar/auto-policy.ts:27
+After reading outside text shell asks as in Manual -> apps/desktop/sidecar/auto-policy.ts:57
+Mode applies from next turn, not running job -> apps/web/src/modules/nodes/NodeModeMenu.tsx:12
+Local permission card -> packages/shared/src/i18n/locales/en/kernel.json:3369
+Local permission badge -> packages/shared/src/i18n/locales/en/kernel.json:3374
+Local prompt has no timeout; only a disconnected host denies -> apps/desktop/sidecar/index.ts:271
+Stopping the turn answers a parked prompt as denied -> apps/desktop/sidecar/index.ts:274
+Standard read and write scope is home -> packages/shared/src/node-levels.json:27
+Remote permission card label -> packages/shared/src/i18n/locales/en/kernel.json:4182
+Remote permission card title -> packages/shared/src/i18n/locales/en/kernel.json:4183
+Denied automatically after 10 minutes -> packages/shared/src/i18n/locales/en/kernel.json:4184
+Expired card -> packages/shared/src/i18n/locales/en/kernel.json:4187
+Prompt timeout 10 minutes in code -> apps/api/src/modules/nodes/permission-prompts.ts:36
+Never defaults to yes -> apps/api/src/modules/nodes/permission-prompts.ts:9
+Unattended jobs run dontAsk, prompt refused -> apps/api/src/modules/nodes/permission-prompts.ts:16
+Already answered or expired -> packages/shared/src/i18n/locales/en/kernel.json:4192
+Sessions permission waits no time limit -> packages/shared/src/i18n/locales/en/kernel.json:4391
+Event runs capped at NODE_EVENT_RUN_MAX_LEVEL -> apps/api/src/lib/env.ts:120
+Event-started runs have outside text and nobody watching -> apps/api/src/modules/nodes/routine-dispatch.ts:117
+Scheduled or manual run keeps profile level -> apps/api/src/modules/nodes/routine-dispatch.ts:119
+The relayed permission card also shows in its chat, above the message box -> apps/web/src/modules/nodes/ThreadNodePermissions.tsx:44
+Home names the waiting agent and opens the chat -> apps/web/src/modules/shell/AttentionRow.tsx:1114
+Answered card gives way to a muted line -> apps/web/src/modules/nodes/ThreadNodePermissions.tsx:91
+The line stays until the turn ends -> apps/web/src/modules/nodes/ThreadNodePermissions.tsx:74
+You allowed / You denied labels -> packages/shared/src/i18n/locales/en/kernel.json:4355
+A new request reaches the open chat at once (feed reload on the notification frame) -> apps/web/src/framework/bootstrap.ts:1015
+The notification frame reaches only the people it names -> apps/api/src/infra/websocket.ts:913
+No dialog of the computer's own for a node chat's prompt: the chat answer is the confirmation -> apps/desktop/src-tauri/src/node_job.rs:630
+A command too long to show whole is never allowed -> apps/desktop/src-tauri/src/permission_gate.rs:472
+One needs-your-OK row per conversation, its newest -> apps/web/src/modules/shell/attention-groups.ts:376
+Home counts use the one row per conversation -> apps/web/src/modules/shell/home-sections.ts:81
+Answered or expired request leaves Home (server reads the row) -> apps/api/src/modules/nodes/permission-prompts.ts:230
+Expired request read when the computer polls it -> apps/api/src/modules/nodes/permission-prompts.ts:352
+A request whose turn ended is denied and leaves Home -> apps/api/src/modules/nodes/permission-prompts.ts:292
+Turn end settles its open requests -> apps/api/src/modules/nodes/turn-live.ts:172
+The card shows the whole call (command, or full tool input with file content) -> apps/desktop/src/node-jobs/runner.ts:630
+The card's input is shown whole and scrolls -> apps/web/src/modules/nodes/NodePermissionCard.tsx:122
+A call with a secret or longer than 2000 characters is denied at once, never a card -> apps/api/src/modules/nodes/permission-prompts.ts:67
+The 2000 character limit -> apps/api/src/modules/nodes/permission-prompts.ts:60
+The chat shows the refused call with the secret hidden -> apps/api/src/modules/nodes/permission-prompts.ts:158
+The agent is told why -> apps/desktop/src/node-jobs/runner.ts:1154

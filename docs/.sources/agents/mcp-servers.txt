@@ -1,0 +1,170 @@
+mcp-manager inbound MCP aggregator, remote http/sse only -> apps/api/src/apps/mcp-manager/README.md:18
+Personal connections under Settings > Connected tools -> apps/web/src/modules/settings/ConnectionsSettings.tsx:14
+Connected tools nav entry -> apps/web/src/framework/bootstrap.ts:595
+Connected tools label -> packages/shared/src/i18n/locales/en/kernel.json:1638
+Your MCP servers title -> packages/shared/src/i18n/locales/en/kernel.json:3031
+Your MCP servers intro: only you, your agent and routines -> packages/shared/src/i18n/locales/en/kernel.json:3032
+Add a connection -> packages/shared/src/i18n/locales/en/kernel.json:3034
+Org MCP servers on Connectors page -> apps/web/src/modules/settings/connectors/ConnectorsPage.tsx:276
+Connectors nav entry -> apps/web/src/framework/bootstrap.ts:722
+MCP servers section title -> packages/shared/src/i18n/locales/en/kernel.json:2662
+Add MCP server button -> packages/shared/src/i18n/locales/en/kernel.json:2664
+Add your first MCP server -> packages/shared/src/i18n/locales/en/kernel.json:2994
+Every member holds personal_connection:write -> apps/api/src/apps/mcp-manager/app.manifest.json:109
+Reading connections needs connection:read -> apps/api/src/apps/mcp-manager/routes.ts:336
+Policy write needs policy:write -> apps/api/src/apps/mcp-manager/routes.ts:895
+Connection writes open to connection:write or personal_connection:write -> apps/api/src/apps/mcp-manager/routes.ts:183
+Three-step add flow Address Sign in Tools -> apps/web/src/modules/mcp-manager/McpAddFlow.tsx:6
+Server address label and hint -> packages/shared/src/i18n/locales/en/kernel.json:3090
+Probe works out how to sign in -> apps/web/src/modules/mcp-manager/McpAddFlow.tsx:6
+HTTPS and public host only -> apps/api/src/apps/mcp-manager/routes.ts:171
+Plain http, localhost, private ranges rejected -> apps/api/src/apps/mcp-manager/app.manifest.json:40
+Continue button -> packages/shared/src/i18n/locales/en/kernel.json:773
+Automatic registration discovery text -> packages/shared/src/i18n/locales/en/kernel.json:3067
+Client discovery text -> packages/shared/src/i18n/locales/en/kernel.json:3069
+Redirect URL label -> packages/shared/src/i18n/locales/en/kernel.json:3089
+Client ID Client secret labels -> packages/shared/src/i18n/locales/en/kernel.json:3059
+Token discovery text -> packages/shared/src/i18n/locales/en/kernel.json:3072
+Open discovery text -> packages/shared/src/i18n/locales/en/kernel.json:3071
+Sign in with name -> packages/shared/src/i18n/locales/en/kernel.json:3094
+I've signed in -> packages/shared/src/i18n/locales/en/kernel.json:3082
+Extra headers optional, stored encrypted -> packages/shared/src/i18n/locales/en/kernel.json:3080
+Tools step text -> packages/shared/src/i18n/locales/en/kernel.json:3099
+Allowed Needs approval Off decisions -> packages/shared/src/i18n/locales/en/kernel.json:2998
+Allowed label -> packages/shared/src/i18n/locales/en/kernel.json:2997
+Off label -> packages/shared/src/i18n/locales/en/kernel.json:2999
+Done button -> packages/shared/src/i18n/locales/en/kernel.json:1087
+A never-usable connection is deleted -> apps/web/src/modules/mcp-manager/McpAddFlow.tsx:17
+Signed-in connection stays -> apps/web/src/modules/mcp-manager/McpAddFlow.tsx:21
+add_connection tool gated -> apps/api/src/apps/mcp-manager/app.manifest.json:25
+add_connection approval expires after 24 hours -> apps/api/src/apps/mcp-manager/app.manifest.json:27
+Personal add_connection approval goes to requester, org to admins -> apps/api/src/apps/mcp-manager/app.manifest.json:46
+add_connection tool requires personal_connection:write -> apps/api/src/apps/mcp-manager/app.manifest.json:20
+list_connections tool needs connection:read -> apps/api/src/apps/mcp-manager/app.manifest.json:86
+Connect then test then policy then discover -> apps/api/src/apps/mcp-manager/README.md:6
+Agent tool supports http sse and none/bearer; OAuth in wizard -> apps/api/src/apps/mcp-manager/app.manifest.json:19
+Tools & policy section -> packages/shared/src/i18n/locales/en/kernel.json:3104
+Tools & policy hint -> packages/shared/src/i18n/locales/en/kernel.json:3105
+Follows the server's default -> packages/shared/src/i18n/locales/en/kernel.json:3073
+Each row shows its effective decision: override, else the default's, marked default -> apps/web/src/modules/mcp-manager/tabs/ToolsTab.tsx
+Effective decision and source per tool, computed by the default policy rule -> apps/api/src/apps/mcp-manager/default-policy.ts
+GET /connections/:id/tools returns effectiveDecision and source -> apps/api/src/apps/mcp-manager/routes.ts
+Allowed · default / set for this tool / Reset to default labels -> packages/shared/src/i18n/locales/en/kernel.json:3155-3157
+Picking the decision a tool already has writes nothing -> apps/web/src/modules/mcp-manager/tabs/ToolsTab.tsx
+Connection default policy label -> packages/shared/src/i18n/locales/en/kernel.json:3018
+Default policy options auto gate_writes gate_all -> packages/shared/src/i18n/locales/en/kernel.json:3020
+Allowed without approval -> packages/shared/src/i18n/locales/en/kernel.json:3019
+Every call needs approval -> packages/shared/src/i18n/locales/en/kernel.json:3021
+New connections default to gate_writes -> apps/api/src/apps/mcp-manager/routes.ts:96
+Role overrides label and hint -> packages/shared/src/i18n/locales/en/kernel.json:3025
+Add role override -> packages/shared/src/i18n/locales/en/kernel.json:3029
+Discoverable by agent -> packages/shared/src/i18n/locales/en/kernel.json:3022
+Expose via outbound MCP gateway -> packages/shared/src/i18n/locales/en/kernel.json:3023
+Tool names projected as mcp__slug_tool -> apps/api/src/modules/mcp-client/naming.ts:7
+Scope string mcp:slug:tool -> apps/api/src/modules/mcp-client/naming.ts:8
+Projected label slug:tool -> apps/api/src/modules/mcp-client/naming.ts:9
+Name collisions get stable hash suffix -> apps/api/src/modules/mcp-client/naming.ts:40
+Slug grammar 1 to 32 -> apps/api/src/modules/mcp-client/naming.ts:13
+Max tools per connection 200 -> apps/api/src/modules/mcp-client/projector.ts:50
+Rate cap default 120 -> apps/api/src/modules/mcp-client/call.ts:369
+Max response bytes 4 MiB -> apps/api/src/modules/mcp-client/call.ts:485
+Status chips -> packages/shared/src/i18n/locales/en/kernel.json:3054
+Chip Connected -> packages/shared/src/i18n/locales/en/kernel.json:3051
+Chip Connecting -> packages/shared/src/i18n/locales/en/kernel.json:3052
+Chip Not checked yet -> packages/shared/src/i18n/locales/en/kernel.json:3055
+Chip Off -> packages/shared/src/i18n/locales/en/kernel.json:3053
+Chip Not signed in -> packages/shared/src/i18n/locales/en/kernel.json:3056
+Chip Sign in again -> packages/shared/src/i18n/locales/en/kernel.json:3058
+Chip cannot read saved credentials -> packages/shared/src/i18n/locales/en/kernel.json:3057
+Secrets unreadable detail -> packages/shared/src/i18n/locales/en/kernel.json:3066
+Failed banner -> packages/shared/src/i18n/locales/en/kernel.json:2991
+Needs reauth detail -> packages/shared/src/i18n/locales/en/kernel.json:3064
+Disabled detail -> packages/shared/src/i18n/locales/en/kernel.json:3063
+Test Edit Disable Enable Delete for own servers -> packages/shared/src/i18n/locales/en/kernel.json:3045
+Test result text -> packages/shared/src/i18n/locales/en/kernel.json:3039
+Configuration section -> packages/shared/src/i18n/locales/en/kernel.json:3109
+Display name and rate cap fields -> packages/shared/src/i18n/locales/en/kernel.json:3016
+Replace the access token -> packages/shared/src/i18n/locales/en/kernel.json:3111
+Keep current token placeholder -> packages/shared/src/i18n/locales/en/kernel.json:3112
+Activity section -> packages/shared/src/i18n/locales/en/kernel.json:3106
+Audit decision filters -> packages/shared/src/i18n/locales/en/kernel.json:3004
+Audit tab scope -> apps/api/src/apps/mcp-manager/audit-routes.ts:48
+Usage section only on managed edition -> apps/web/src/modules/mcp-manager/ConnectionDetail.tsx:193
+Usage numbers Calls (24h) Errors (24h) p95 latency Top tools -> packages/shared/src/i18n/locales/en/kernel.json:3011
+usage:read scope -> apps/api/src/apps/mcp-manager/app.manifest.json:128
+Env-defined connections prefix -> apps/api/src/modules/mcp-client/env-bootstrap.ts:5
+Env suffix list -> apps/api/src/modules/mcp-client/env-bootstrap.ts:16
+Required env fields -> apps/api/src/modules/mcp-client/env-bootstrap.ts:164
+stdio refused at boot -> apps/api/src/modules/mcp-client/env-bootstrap.ts:42
+Connection from .env chip -> packages/shared/src/i18n/locales/en/kernel.json:3015
+Viewer role scopes -> apps/api/src/apps/mcp-manager/app.manifest.json:112
+Member role -> apps/api/src/apps/mcp-manager/app.manifest.json:116
+Editor role -> apps/api/src/apps/mcp-manager/app.manifest.json:121
+Admin role -> apps/api/src/apps/mcp-manager/app.manifest.json:126
+mcp_manager:connection:admin -> apps/api/src/apps/mcp-manager/app.manifest.json:128
+mcp_manager:policy:read -> apps/api/src/apps/mcp-manager/app.manifest.json:113
+mcp_manager:connection:write -> apps/api/src/apps/mcp-manager/app.manifest.json:123
+Approval label connect MCP server -> packages/shared/src/i18n/locales/en/kernel.json:3254
+add_connection is gated; personal goes to the requester, org to admins -> apps/api/src/apps/mcp-manager/app.manifest.json:19
+add_connection approvalExpiryHours 24 -> apps/api/src/apps/mcp-manager/app.manifest.json:27
+mcp-manager:approve is the derived approver scope -> apps/api/src/modules/permissions/scope-catalog.ts:239
+Delete retires the server's tools at once -> apps/api/src/apps/mcp-manager/routes.ts:773
+Every node retires the projected tools of a deleted connection -> apps/api/src/modules/mcp-client/index.ts:253
+Tools review opens itself after connect or sign-in -> apps/web/src/modules/mcp-manager/McpAddFlow.tsx:212
+Tools review opens after the sign-in returns -> apps/web/src/modules/mcp-manager/McpAddFlow.tsx:279
+Review the tools of name title -> packages/shared/src/i18n/locales/en/kernel.json:3129
+Tool count line -> packages/shared/src/i18n/locales/en/kernel.json:3130
+Allow reads, approve changes, recommended, preselected -> packages/shared/src/i18n/locales/en/kernel.json:3132
+Allow reads hint -> packages/shared/src/i18n/locales/en/kernel.json:3133
+Every call needs approval hint for an untrusted server -> packages/shared/src/i18n/locales/en/kernel.json:3134
+Allow everything and its warning -> packages/shared/src/i18n/locales/en/kernel.json:3135-3136
+Read / Write badge from the server's annotations -> apps/web/src/modules/mcp-manager/tabs/ToolsTab.tsx:188
+Reset all to default label -> packages/shared/src/i18n/locales/en/kernel.json:3154
+Rows follow the review's default choice live, before Done -> apps/web/src/modules/mcp-manager/McpToolsReviewDialog.tsx
+Bulk choices in one request -> apps/api/src/apps/mcp-manager/routes.ts:948
+Done saves the default policy and marks reviewed -> apps/web/src/modules/mcp-manager/McpToolsReviewDialog.tsx:95
+Closing keeps the current default -> apps/web/src/modules/mcp-manager/McpToolsReviewDialog.tsx:107
+Unreviewed org server reopens the review for an admin -> apps/web/src/modules/mcp-manager/ConnectionDetail.tsx:81-89
+Sign-in tab success page: name connected, close this window -> packages/shared/src/i18n/locales/en/kernel.json:3122
+Sign-in tab close line -> packages/shared/src/i18n/locales/en/kernel.json:3128
+Sign-in did not complete with the reason -> packages/shared/src/i18n/locales/en/kernel.json:3125
+gate_writes runs a read-only, non-destructive tool; gates the rest -> apps/api/src/apps/mcp-manager/default-policy.ts:29-40
+Unannotated tool is gated -> apps/api/src/apps/mcp-manager/default-policy.ts:40
+Per-tool and role overrides win over the default -> apps/api/src/apps/mcp-manager/repo.ts:164-197
+Read-only label is the server's claim; untrusted server gets gate_all -> apps/api/src/apps/mcp-manager/default-policy.ts:17-21
+Who can use it section on an org server's page, admin only -> apps/web/src/modules/mcp-manager/ConnectionDetail.tsx:224-240
+Who can use it label and hint -> packages/shared/src/i18n/locales/en/kernel.json:3146-3147
+Everyone in the workspace / Only selected roles and people -> packages/shared/src/i18n/locales/en/kernel.json:5495-5496
+Save access -> packages/shared/src/i18n/locales/en/kernel.json:3148
+Access GET/PUT need mcp_manager:connection:admin -> apps/api/src/apps/mcp-manager/routes.ts:335
+Access routes -> apps/api/src/apps/mcp-manager/routes.ts:920-945
+New and existing org connections default to everyone -> apps/api/src/db/migrations/0198_mcp_connection_access.sql:16-17
+Restricted roles and people table -> apps/api/src/db/migrations/0198_mcp_connection_access.sql:27-35
+Loader grants mcp:<slug> to active members (everyone) or listed roles and people (restricted) -> apps/api/src/modules/permissions/permissions.ts:157-210
+Computed at load, no role grant rows, later roles covered -> apps/api/src/modules/permissions/permissions.ts:157-166
+Change bumps permission_version and drops auth caches on every node -> apps/api/src/apps/mcp-manager/service/access.ts:151
+Org-wide bump, auth cache drop and ceiling recompute -> apps/api/src/modules/apps/org-app-service.ts:104
+Personal connections have no access setting -> apps/api/src/apps/mcp-manager/service/access.ts:59
+An MCP tool the actor may not use is not offered by tool_search, not even locked -> apps/api/src/modules/agent/tools/tool-bridge.ts:1177-1180
+Tools review offers Who can use it with Everyone preselected -> apps/web/src/modules/mcp-manager/McpToolsReviewDialog.tsx
+Fine-tune in Roles & access link to the filtered roles page -> apps/web/src/modules/mcp-manager/McpAccessSection.tsx
+Fine-tune label -> packages/shared/src/i18n/locales/en/kernel.json:3151
+Roles page filter by ?scope= -> apps/web/src/modules/settings/AdminRoles.tsx:46-80
+Role page MCP servers section with links -> apps/web/src/modules/settings/AdminRoleDetail.tsx:208-250
+mcp scopes shown with the server's name -> apps/web/src/modules/mcp-manager/mcp-scope-names.ts
+Each dial stores the tools/list with its annotations -> apps/api/src/modules/mcp-client/index.ts:573-579
+Boot projects every enabled server's stored list without dialing -> apps/api/src/modules/mcp-client/index.ts:435-471
+A process without the list reads the stored hints before deciding -> apps/api/src/apps/mcp-manager/repo.ts:44-58
+Adding or deleting an org server recomputes members' agent ceilings -> apps/api/src/apps/mcp-manager/service/access.ts:159-187
+A server with no kept list is dialed once, one at a time, on its org's first tool search or tools page -> apps/api/src/modules/mcp-client/index.ts:512-560
+Unconvertible tool shows Unavailable with the reason -> packages/shared/src/i18n/locales/en/kernel.json:3211
+Unavailable tool never registered for agents -> apps/api/src/modules/mcp-client/projector.ts:236
+Remote $ref unconvertible, local refs resolved -> apps/api/src/modules/mcp-client/json-schema-to-zod.ts:10
+Waiting MCP call's card titled with server name and action -> apps/api/src/modules/mcp-client/approval-summary.ts:290-300
+Registered per projected tool from the connection display name -> apps/api/src/modules/mcp-client/projector.ts:369-378
+Display name passed when projecting -> apps/api/src/modules/mcp-client/index.ts:462
+Text first, each line up to 500 characters -> apps/api/src/modules/mcp-client/approval-summary.ts:273
+Exact payload keeps the raw arguments -> apps/web/src/modules/approvals/ApprovalCard.tsx:908-911
+New server origin clears token, OAuth tokens and extra headers; same origin keeps them; needs_reauth -> apps/api/src/apps/mcp-manager/routes.ts:736-834
+Sign-in started before an address change refused on return (server_changed) -> apps/api/src/apps/mcp-manager/oauth-routes.ts:500-515
+Address field hint -> packages/shared/src/i18n/locales/en/kernel.json:3235

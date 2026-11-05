@@ -1,0 +1,26 @@
+[
+  {
+    "id": "U0001",
+    "name": "dana",
+    "real_name": "Dana Dev",
+    "deleted": false,
+    "is_bot": false,
+    "profile": { "email": "dev@fabrikam.example", "real_name": "Dana Dev", "display_name": "dana" }
+  },
+  {
+    "id": "U0002",
+    "name": "lee",
+    "real_name": "Lee Leaver",
+    "deleted": true,
+    "is_bot": false,
+    "profile": { "email": "lee@fabrikam.example", "real_name": "Lee Leaver", "display_name": "" }
+  },
+  {
+    "id": "U0003",
+    "name": "deploybot",
+    "real_name": "Deploy Bot",
+    "deleted": false,
+    "is_bot": true,
+    "profile": { "real_name": "Deploy Bot", "bot_id": "B0001" }
+  }
+]

@@ -1,0 +1,58 @@
+Field map: fields is a list of paths or a map from output name to source path -> packages/api-connector-core/src/schema.ts:288
+Source paths may index a list (0 to 999) after the first segment -> packages/api-connector-core/src/schema.ts:266
+Output names follow the field-path rules, no object-valued name -> packages/api-connector-core/src/schema.ts:833
+A list keeps each path under its own name; a map returns the mapped names -> packages/api-connector-core/src/schema.ts:417
+Projection of a map: index picks one element, other segments walk a list, objects dropped -> packages/api-connector-core/src/project.ts:132
+Only mapped names come out -> packages/api-connector-core/src/project.ts:168
+A role field neither listed nor mapped is refused, with the map to add -> packages/api-connector-core/src/schema.ts:632
+A chained role's fields are the last step's -> packages/api-connector-core/src/schema.ts:663
+Catalogue and connection summary list a chained read's last-step fields -> packages/api-connector-core/src/schema.ts:674
+Chains: reads only, at most 2 steps -> packages/api-connector-core/src/schema.ts:81
+Chain step rules: a read of this adapter, not itself, not chained, params declared and required ones given, literal or exactly {field} -> packages/api-connector-core/src/schema.ts:685
+At most 3 distinct calls per step -> packages/api-connector-core/src/schema.ts:83
+Step params from the previous step's projected item; missing, empty or object values not followed; number feeds a string param -> packages/api-connector-core/src/chain.ts:29
+Distinct param sets, capped -> packages/api-connector-core/src/chain.ts:57
+The service runs each step through the same transport, one page each, one budget, one audit row -> apps/api/src/apps/api-connector/service.ts:283
+A role answering at least one of its params is refused without one -> apps/api/src/apps/api-connector/service.ts:232
+A body whose every param is behind $when, nothing required, is refused (oneOf roles exempt) -> packages/api-connector-core/src/schema.ts:808
+20 upstream requests per connection per resolution, role calls over budget left out -> apps/api/src/apps/api-connector/customer.ts:60
+Budget exhausted is reported as too_large -> apps/api/src/apps/api-connector/transport.ts:126
+At most 4 requests in flight per connection -> apps/api/src/apps/api-connector/transport.ts:134
+config verify never probes a oneOf role -> apps/api/src/cli/config/verify.ts:110
+Body built-ins {$now} and {$nowMs} -> packages/api-connector-core/src/schema.ts:50
+Built-ins refused in a query -> packages/api-connector-core/src/schema.ts:791
+{$now} as RFC 3339, {$nowMs} as epoch ms -> packages/api-connector-core/src/render.ts:320
+$when drops an object whose params are unset; the key is never sent -> packages/api-connector-core/src/render.ts:259
+$when names declared params, 1 to 10 -> packages/api-connector-core/src/schema.ts:960
+Card titles rows by title/name/subject and shows status/stage/state -> apps/web/src/modules/api-connector/customer-format.ts:164
+CLI test --pages N, --all-pages, --dry-run -> apps/api/src/cli/api-connector/run.ts:62
+--all-pages uses the operation's maxPages, at most 5 -> apps/api/src/cli/api-connector/run.ts:144
+--dry-run renders without sending or reading a credential -> apps/api/src/cli/api-connector/run.ts:113
+Dry-run request: method, URL, headers with REDACTED auth, body, chain -> apps/api/src/apps/api-connector/transport.ts:683
+Test report carries pages -> apps/api/src/apps/api-connector/service.ts:300
+validate from a checkout needs bun install --frozen-lockfile -> .claude/skills/api-connector-authoring/SKILL.md:299
+Roles are reads (a role is filled by a read operation) -> packages/api-connector-core/src/schema.ts:630
+Writes run only through connector_write, gated -> apps/api/src/apps/api-connector/service.ts:206
+Config permission warning only for literal secrets -> apps/api/src/cli/config/parse.ts:114
+Warning names the paths and says how to fix -> apps/api/src/cli/main.ts:110
+Connected business systems block, one line per connection, read scope only -> apps/api/src/modules/agent/context/connected-systems.ts:58
+Line: system, slug, reads, writes via connector_write with approval, six per kind -> apps/api/src/modules/agent/context/connected-systems.ts:93
+Block says a record's note or change is a connector_write, not a ticket note -> apps/api/src/modules/agent/context/connected-systems.ts:107
+Block added on every turn, any view -> apps/api/src/modules/agent/context/context.ts:1812
+Deferred catalog api-connector line names write operations -> apps/api/src/modules/agent/context/connected-systems.ts:181
+tool_search keywords: operation names, system, slug; update/change/write for connector_write -> apps/api/src/modules/agent/context/connected-systems.ts:134
+tool_search weighs a keyword like a name part -> apps/api/src/modules/agent/tools/tool-search.ts:319
+Search result starts with the system and operations -> apps/api/src/modules/agent/tools/tool-search.ts:373
+tickets addNote result names the ticket, nothing written externally -> apps/api/src/apps/tickets/admin.ts:439
+Customer block loads only list_operations, read, write -> apps/api/src/modules/agent/context/customer-context.ts:61
+Card row title tooltip -> apps/web/src/modules/api-connector/CustomerCard.tsx:312
+Card row date one line -> apps/web/src/modules/api-connector/CustomerCard.tsx:318
+Card row date short style -> apps/web/src/modules/api-connector/customer-format.ts:121
+Static headers: literal, at most 10, auth/cookie/hop/proxy/forwarding refused, no placeholder -> packages/api-connector-core/src/schema.ts:435
+Static headers sent on the first hop only, auth wins over them -> apps/api/src/apps/api-connector/transport.ts:1019
+Only secret credential fields redacted; identifiers pass through -> apps/api/src/apps/api-connector/transport.ts:213
+Secret credential fields (API key, token, password, client secret) -> packages/api-connector-core/src/schema.ts:364
+Write result record_id from the first item's id, plain-id pattern, else null + record_id_note -> apps/api/src/apps/api-connector/bridge.ts:145
+connector_write declares referenceableOutputs record_id -> apps/api/src/apps/api-connector/app.manifest.json:135
+connector_write approval title: operation in words, connection, subject -> apps/api/src/apps/api-connector/handlers.ts:156
+config apply without an admin section acts as the earliest active admin; no admin: credentials refused -> apps/api/src/cli/provisioners/admin.ts:62-92, apps/api/src/cli/provisioners/api-connectors.ts:217

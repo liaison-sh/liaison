@@ -1,0 +1,41 @@
+-- SPDX-License-Identifier: FSL-1.1-ALv2
+-- FX4: the scopes the PROPOSING turn had accumulated when a gated tool call was
+-- deferred for human approval.
+--
+-- A gated tool call (`gated: true`, `conditionalGate`, or a taint escalation)
+-- does not write when the agent makes it: it parks as an approval_request. The
+-- write happens later, on the approved re-entry, which runs OUTSIDE the
+-- proposing turn's AsyncLocalStorage frame -- a human clicked Approve minutes
+-- or days later, in another request, often in another process. Every
+-- scope-tagged sink (`kernel.messages`, `kernel.agent_memory`,
+-- `app_knowledge.documents`) therefore saw no frame and tagged the row with the
+-- empty positive assertion `{}`, which reads as "this write touched no scoped
+-- data" and is visible to every member of the room. The same call made inline,
+-- without a gate, carried the turn's scopes. Approval silently widened
+-- visibility.
+--
+-- The frame cannot survive the wait, so the scopes are persisted on the
+-- approval itself, next to `agent_id` (0063), and seeded back into the
+-- execution on re-entry.
+--
+-- NULLABLE on purpose, and the null is meaningful:
+--   NULL  -- nothing was recorded: an approval created before this migration,
+--            or a proposing turn whose taint was not knowable. The re-entry
+--            fails CLOSED to the requester's full scope set (the FX1
+--            failBundle choice), never to `{}`.
+--   '{}'  -- a positive assertion: no scoped data had been read when the call
+--            was proposed (an untainted turn, or no turn at all -- a human or
+--            a job made the call). The re-entry writes untagged, exactly as an
+--            inline call would have.
+-- A non-empty array is the proposing turn's accumulated scopes; the re-entry
+-- tags its writes with the union of those and anything it reads itself.
+--
+-- No default: an INSERT that omits the column stores NULL, which is the
+-- fail-closed branch, so a writer missed during the rollout over-tags rather
+-- than disclosing. No backfill either: existing rows genuinely have no record
+-- of their proposing turn, and inventing '{}' for them would assert exactly the
+-- untagged disclosure this migration exists to stop.
+--
+-- Re-runnable: ADD COLUMN IF NOT EXISTS is a no-op on a database that has it.
+ALTER TABLE kernel.approval_requests
+  ADD COLUMN IF NOT EXISTS proposing_turn_scopes text[];

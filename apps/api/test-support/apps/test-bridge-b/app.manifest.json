@@ -1,0 +1,35 @@
+{
+  "name": "test-bridge-b",
+  "version": "1.0.0",
+  "trusted": true,
+  "dependencies": { "tools": ["test-bridge-a:callB"] },
+  "tools": {
+    "internalCallback": {
+      "description": "Internal callback only invokable via dependency",
+      "requiredScopes": ["test-bridge-b:thing:write"],
+      "trustBoundary": "internal",
+      "deferLoading": true,
+      "handler": "internalCallback",
+      "params": {
+        "type": "object",
+        "properties": {
+          "payload": {},
+          "idempotencyKey": { "type": "string" },
+          "cycle": { "type": "boolean" }
+        }
+      }
+    },
+    "callA": {
+      "description": "Calls test-bridge-a:callB to exercise cycle detection",
+      "requiredScopes": ["test-bridge-b:thing:write"],
+      "handler": "callA",
+      "params": {
+        "type": "object",
+        "properties": {
+          "payload": {},
+          "cycle": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

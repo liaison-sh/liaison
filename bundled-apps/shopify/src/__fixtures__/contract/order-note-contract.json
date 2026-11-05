@@ -1,0 +1,23 @@
+{
+  "orders_search_hit": {
+    "id": "gid://shopify/Order/1001",
+    "name": "#1001",
+    "attributes": { "note": "PO Fournisseur Exemple 100234 du 15/03/2026 - Référence MAR26-TestCo.\nRappeler le n° de PO sur la facture. HTS demandé par le client pour les imports : 9209.94.8000 (ne pas utiliser 9209.94.0000). Merci de vérifier le poids avant expédition." }
+  },
+  "orders_get": {
+    "name": "#1001",
+    "note": "PO Fournisseur Exemple 100234 du 15/03/2026 - Référence MAR26-TestCo.\nRappeler le n° de PO sur la facture. HTS demandé par le client pour les imports : 9209.94.8000 (ne pas utiliser 9209.94.0000). Merci de vérifier le poids avant expédition."
+  },
+  "order_note_set_ok": {
+    "ok": true,
+    "order_id": "gid://shopify/Order/1001",
+    "note": "Nouvelle note de test : emballage renforcé demandé par le client (dossier TEST-88421), livraison prévue le 02/04/2026 à l'entrepôt nord. Vérifier le n° de suivi avant expédition et joindre la facture pro forma (copie n°2).",
+    "previous_note": "Ancienne note interne : commande groupée avec le dossier TEST-77310 du 18/02/2026, à expédier avec la pédale de rechange (réf. interne PED-004). Contacter le client avant départ : décalage possible côté transporteur."
+  },
+  "order_note_set_conflict": {
+    "ok": false,
+    "reason": "conflict",
+    "order_id": "gid://shopify/Order/1001",
+    "current_note": "Note actuelle Shopify (après modification par un autre agent) : commande bloquée, en attente de la validation douanière pour le dossier TEST-65599 (ouvert le 09/01/2026). Ne pas expédier avant confirmation écrite du client."
+  }
+}

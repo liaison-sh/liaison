@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cotation>
+  <shipment>
+    <offer>
+      <mode>DEV</mode>
+      <operator>
+        <code>UPSE</code>
+        <label>UPS</label>
+      </operator>
+      <service>
+        <code>Standard</code>
+        <label>UPS Standard (dev)</label>
+      </service>
+      <price>
+        <currency>EUR</currency>
+        <tax-exclusive>3.00</tax-exclusive>
+        <tax-inclusive>3.60</tax-inclusive>
+      </price>
+      <collection>
+        <date>2026-06-01</date>
+        <type>
+          <code>PICKUP</code>
+          <label>Collecte</label>
+        </type>
+      </collection>
+      <delivery>
+        <date>2026-06-03</date>
+        <type>
+          <code>DELIVERY</code>
+          <label>Livraison</label>
+        </type>
+      </delivery>
+    </offer>
+    <offer>
+      <mode>COM</mode>
+      <operator>
+        <code>CHRP</code>
+        <label>Chronopost</label>
+      </operator>
+      <service>
+        <code>Chrono13</code>
+        <label>Chrono 13</label>
+      </service>
+      <price>
+        <currency>EUR</currency>
+        <tax-exclusive>12.00</tax-exclusive>
+        <tax-inclusive>14.40</tax-inclusive>
+      </price>
+      <collection>
+        <date>2026-06-01</date>
+        <type>
+          <code>PICKUP</code>
+          <label>Collecte</label>
+        </type>
+      </collection>
+      <delivery>
+        <date>2026-06-02</date>
+        <type>
+          <code>DELIVERY</code>
+          <label>Livraison</label>
+        </type>
+      </delivery>
+    </offer>
+  </shipment>
+</cotation>

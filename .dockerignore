@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+node_modules
+**/node_modules
+.git
+.gitignore
+dist
+**/dist
+*.log
+.env
+.env.local
+.env.*.local
+.env.test
+.env*.test
+# Env files at any depth (apps/*/.env, deploy/.env, packages/*/.env.local, ...)
+# so a developer-machine build can never bake one into an image layer.
+**/.env
+**/.env.*
+!**/.env.example
+.atelier
+.claude
+.strobe
+.cache
+.next
+.vite
+coverage
+**/.turbo
+qa/load/out
+.DS_Store
+
+# Test harness for apps/api (QA seed routes, e2e/chaos entrypoints, external-API
+# mocks, test-only apps). Never part of the production image.
+apps/api/test-support
+
+# Dev-only benches: run against a test Redis, never shipped.
+apps/api/scripts/queue-isolation-bench.ts
+
+# Local runtime data / run output, never part of an image.
+dump.rdb
+**/dump.rdb
+logs
+**/logs
+.chaos
+**/.chaos
+.liaison-apps
+.liaison-apps-*
+test-results
+**/test-results

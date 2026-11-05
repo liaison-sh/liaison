@@ -1,0 +1,107 @@
+{
+  "id": "gen-1792709606-ExQA0McpqHK2JZ2zgXxf",
+  "object": "chat.completion",
+  "created": 1792709606,
+  "model": "google/gemini-3.1-flash-lite",
+  "provider": "Google",
+  "system_fingerprint": null,
+  "service_tier": "default",
+  "choices": [
+    {
+      "index": 0,
+      "logprobs": null,
+      "finish_reason": "length",
+      "native_finish_reason": "MAX_TOKENS",
+      "message": {
+        "role": "assistant",
+        "content": "Page text recorded from the live probe, replaced by this filler of the same length because the original is",
+        "refusal": null,
+        "reasoning": null,
+        "reasoning_details": [
+          {
+            "type": "reasoning.encrypted",
+            "data": "AY89a1+ZIpb+wLS25SL88G4JNIKsyyomvjczXNcUXRGk468zIDH2AAvazB/ef/PthleYnORwm0/wIEheC+FAukhV8mvnmcVsTXvQlGj4wwxm0pfhs0NhkUfRCFg=",
+            "format": "google-gemini-v1",
+            "index": 0
+          }
+        ],
+        "annotations": [
+          {
+            "type": "url_citation",
+            "url_citation": {
+              "url": "https://www.euronews.com/2026/10/22/europe-today-france-under-fire-as-macron-faces-backlash-putin-opens-door-to-ukraine-peace-",
+              "title": "Europe Today: France under fire as Macron faces backlash, Putin opens door to Ukraine peace talks | Euronews",
+              "start_index": 0,
+              "end_index": 0,
+              "content": "Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the sam"
+            }
+          },
+          {
+            "type": "url_citation",
+            "url_citation": {
+              "url": "https://www.theguardian.com/world/live/2026/oct/22/france-protests-emmanuel-macron-ukraine-energy-attacks-latest-europe-news-updates",
+              "title": "Macron hosts security council meeting ahead of planned weekend of protests \u2013 Europe live | France | The Guardian",
+              "start_index": 0,
+              "end_index": 0,
+              "content": "Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy."
+            }
+          },
+          {
+            "type": "url_citation",
+            "url_citation": {
+              "url": "https://www.reuters.com/world/europe/",
+              "title": "Europe News | Latest Headlines & Stories",
+              "start_index": 0,
+              "end_index": 0,
+              "content": "Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page t"
+            }
+          },
+          {
+            "type": "url_citation",
+            "url_citation": {
+              "url": "https://www.politico.com/news/2026/10/22/italy-and-spain-scrap-border-checks-from-ceuta-crisis",
+              "title": "Italy and Spain scrap border checks brought in after Ceuta crisis - POLITICO",
+              "start_index": 0,
+              "end_index": 0,
+              "content": "Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced"
+            }
+          },
+          {
+            "type": "url_citation",
+            "url_citation": {
+              "url": "https://www.bbc.com/news/world/europe",
+              "title": "Europe | Latest News & Updates",
+              "start_index": 0,
+              "end_index": 0,
+              "content": "Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the same length because the original is third-party copy. Page text recorded from the live probe, replaced by this filler of the sa"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 1289,
+    "completion_tokens": 26,
+    "total_tokens": 1315,
+    "cost": 0.00736125,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.00036125,
+      "upstream_inference_prompt_cost": 0.00032225,
+      "upstream_inference_completions_cost": 3.9e-5
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "_note": "Recorded 2026-10-23 by scripts/probe-openrouter-search.ts (query about European news this week). Page and answer text replaced by filler of the same length; structure, URLs, titles and usage are as recorded."
+}

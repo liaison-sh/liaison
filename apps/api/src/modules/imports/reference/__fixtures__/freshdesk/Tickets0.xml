@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<helpdesk-tickets type="array">
+  <helpdesk-ticket>
+    <id type="integer">555001</id>
+    <display-id type="integer">1</display-id>
+    <description>Hi, my Tessera 2 won't power on.</description>
+    <description-html>&lt;div&gt;Hi, my Tessera 2 won't power on.&lt;/div&gt;</description-html>
+    <requester-id type="integer">9001</requester-id>
+    <responder-id type="integer" nil="true"/>
+    <status type="integer">4</status>
+    <created-at type="dateTime">2023-05-01T10:00:00+02:00</created-at>
+    <subject>Tessera 2 dead on arrival?</subject>
+    <notes type="array">
+      <helpdesk-note>
+        <id type="integer">700001</id>
+        <body>Hi, can you try holding the power button for 10 seconds?</body>
+        <body-html>&lt;div&gt;Hi, can you try holding the power button for 10 seconds?&lt;/div&gt;</body-html>
+        <user-id type="integer">1001</user-id>
+        <incoming type="boolean">false</incoming>
+        <private type="boolean">false</private>
+        <created-at type="dateTime">2023-05-01T11:00:00+02:00</created-at>
+        <attachments type="array"/>
+      </helpdesk-note>
+      <helpdesk-note>
+        <id type="integer">700002</id>
+        <body>That worked, thanks &amp; cheers!</body>
+        <user-id type="integer">9001</user-id>
+        <incoming type="boolean">true</incoming>
+        <private type="boolean">false</private>
+        <created-at type="dateTime">2023-05-02T09:00:00+02:00</created-at>
+        <attachments type="array"/>
+      </helpdesk-note>
+      <helpdesk-note>
+        <id type="integer">700003</id>
+        <body>Known cold-boot issue on early units, closing.</body>
+        <user-id type="integer">1001</user-id>
+        <incoming type="boolean">false</incoming>
+        <private type="boolean">true</private>
+        <created-at type="dateTime">2023-05-02T12:00:00+02:00</created-at>
+        <attachments type="array"/>
+      </helpdesk-note>
+    </notes>
+  </helpdesk-ticket>
+  <helpdesk-ticket>
+    <id type="integer">555002</id>
+    <description>Where is my order?</description>
+    <requester-id type="integer">9002</requester-id>
+    <status type="integer">2</status>
+    <created-at type="dateTime">2023-06-10T08:00:00+02:00</created-at>
+    <subject>Order status</subject>
+    <notes type="array">
+      <helpdesk-note>
+        <id type="integer">700010</id>
+        <body>It ships tomorrow.</body>
+        <user-id type="integer">1001</user-id>
+        <incoming type="boolean">false</incoming>
+        <private type="boolean">false</private>
+        <created-at type="dateTime">2023-06-10T09:00:00+02:00</created-at>
+      </helpdesk-note>
+    </notes>
+  </helpdesk-ticket>
+  <helpdesk-ticket>
+    <id type="integer">555003</id>
+    <description>The firmware update failed.</description>
+    <requester-id type="integer">9002</requester-id>
+    <status type="integer">2</status>
+    <created-at type="dateTime">2023-06-11T08:00:00+02:00</created-at>
+    <subject>Update failed</subject>
+    <notes type="array">
+      <helpdesk-note>
+        <id type="integer">700020</id>
+        <body>Can you send the log?</body>
+        <user-id type="integer">1001</user-id>
+        <incoming type="boolean">false</incoming>
+        <private type="boolean">false</private>
+        <created-at type="dateTime">2023-06-11T09:00:00+02:00</created-at>
+      </helpdesk-note>
+      <helpdesk-note>
+        <id type="integer">700021</id>
+        <body>Here it is.</body>
+        <user-id type="integer">9002</user-id>
+        <incoming type="boolean">true</incoming>
+        <private type="boolean">false</private>
+        <created-at type="dateTime">2023-06-11T10:00:00+02:00</created-at>
+      </helpdesk-note>
+    </notes>
+  </helpdesk-ticket>
+  <helpdesk-ticket>
+    <id type="integer">555004</id>
+    <requester-id type="integer">4242</requester-id>
+    <status type="integer">5</status>
+    <created-at type="dateTime">2023-07-01T08:00:00+02:00</created-at>
+    <subject>System generated: survey</subject>
+    <notes type="array"/>
+  </helpdesk-ticket>
+</helpdesk-tickets>

@@ -1,0 +1,13 @@
+[package]
+name = "pdfa-check"
+version = "0.1.0"
+edition = "2021"
+license = "FSL-1.1-ALv2"
+publish = false
+description = "Test-only PDF/A smoke check over oxidize-pdf's PdfAValidator (never shipped)."
+
+[dependencies]
+oxidize-pdf = "=5.4.2"
+
+[profile.release]
+opt-level = 2

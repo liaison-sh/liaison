@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <link id="favicon" rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>Liaison</title>
+  <!-- The web build id, baked in at build time (src/lib/web-build-id-plugin.ts). -->
+  <meta name="liaison-web-build" content="__LIAISON_WEB_BUILD_ID__" />
+  <!--
+    Phase 16.5 — Plugin-app UI bundles externalize solid-js{,/web,/store} so
+    the kernel + plugins share one reactive runtime. The browser resolves these
+    bare specifiers via this import map; each entry points at a hand-authored
+    shim under /_app-runtime/ that re-exports from a window-global the kernel
+    sets at startup. See apps/web/public/_app-runtime/ and src/index.tsx.
+  -->
+  <script type="importmap">
+    {
+      "imports": {
+        "solid-js":       "/_app-runtime/solid-js.js",
+        "solid-js/web":   "/_app-runtime/solid-js-web.js",
+        "solid-js/store": "/_app-runtime/solid-js-store.js"
+      }
+    }
+  </script>
+  <script>
+    // Pre-paint theme resolver: runs synchronously before any CSS or JS module.
+    // Reads localStorage ('liaison:theme') + matchMedia, sets data-theme on
+    // <html> so the browser paints with the correct palette on first frame.
+    // Keep mirror-in-sync with src/lib/theme-resolver.ts.
+    (() => {
+      try {
+        const stored = localStorage.getItem("liaison:theme");
+        const resolved =
+          stored === "light" || stored === "dark"
+            ? stored
+            : (window.matchMedia?.("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light");
+        document.documentElement.setAttribute("data-theme", resolved);
+      } catch (_) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    })();
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/src/index.tsx"></script>
+</body>
+</html>

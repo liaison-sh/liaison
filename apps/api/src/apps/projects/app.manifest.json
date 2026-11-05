@@ -1,0 +1,2472 @@
+{
+  "name": "projects",
+  "agentInstructions": {
+    "core": "Projects tracks assignable work: projects, tasks, status, and owners. Reach for it when work needs an owner, a status, and a due date (rather than living as a thread or a ticket). A task is not mute once filed: each one carries its OWN discussion, written with `comment` and read with `comments`. A sales/dealer PIPELINE or DEALS board lives HERE: it is modeled as a project whose tasks are the individual deals/stages, so 'the state of the dealer-deals pipeline' / 'how are the deals going' = find that project (search by its name) and read its tasks (tasks_byProject) per status, do NOT answer a pipeline question from Shopify draft orders, which are unrelated draft carts. Key handles: project id, task id, status, assignee, due date. Use tool_search to discover the deferred read tools (list/get) before answering. Silent-failure gotcha: a task outside your dimension or scope returns empty, not an error, say so rather than inventing one.",
+    "sections": [
+      {
+        "tools": [
+          "labels.list",
+          "create",
+          "update",
+          "tasks_byProject"
+        ],
+        "text": "LABELS: tasks carry org-defined labels, one value per label group (for example Nature: bug / evolution / maintenance / support, Domain: enrichment / security). Call `labels.list` first for the groups and their values, and never guess a value. Set labels with `update` or `create` `labels` (a map of group name to value name, ids accepted): null clears the task's own value, groups you leave out are untouched, and an invalid value refuses the whole call with `label_not_found` / `label_archived` listing the valid values. Subtasks inherit each group's value from their nearest parent until they set their own; every task row carries `labels` with `inherited` and `inheritedFromKey`. Filter with `tasks_byProject` `labels` (one value per group, AND across groups, `__none__` for no value). To count tasks completed per label per week, call `tasks_byProject` with `terminal: true`, `completedAfter` (inclusive), `completedBefore` (exclusive), `labels` and `countOnly: true`, and read `totalCount`; one call per label value and week."
+      },
+      {
+        "tools": [
+          "search",
+          "attentionItems",
+          "tasks_byAssignee"
+        ],
+        "text": "FINDING TASKS: `search` returns PROJECTS (it matches project names + task TITLES by text); it is NOT a per-person or per-project task list, so never call `search` expecting a list of tasks and then give up when it returns projects. For 'what's overdue or due this week assigned to ME' / a morning standup / 'what needs my attention', call `attentionItems`, it returns YOUR (the caller's) overdue + due-this-week + blocked non-terminal tasks across ALL projects, self-scoped (no id/assignee needed), each with its project name + due date. For a SPECIFIC named person's tasks, call `tasks_byAssignee` (assigneeId, optional due=overdue/this_week). For what YOU (the caller) recently worked on, commented, changed or were mentioned in ('what was I doing on this', 'tasks I touched this week', a personal recap), call `search` with `involvedWithinDays` (e.g. 14, max 90): it returns only tasks, newest involvement first, each with `involvement.summary` saying why."
+      },
+      {
+        "tools": [
+          "tasks_byAssignee",
+          "update"
+        ],
+        "text": "REASSIGNING / RE-PRIORITISING A DEPARTING TEAMMATE'S WORK (e.g. 'X is on leave, reassign all her open tasks to Y and bump anything due during her leave to high priority'): resolve BOTH people to user ids via users_search FIRST, then call `tasks_byAssignee(assigneeId=X, terminal:false)` to get her OPEN (non-done) tasks across every project in ONE call, do NOT call `search('X')` expecting a task list (search returns PROJECTS). For EACH returned open task, call `update(taskId, assigneeId=Y)` to move it to the teammate; and for those whose due date falls within the leave window, ALSO set `priority:'high'` (one `update` can set both assignee and priority). When the leave window is given relatively ('next week', 'while she's out'), FIRST resolve it to a CONCRETE calendar date range ONCE up front (e.g. 'next week' = the Monday-Sunday of the week after the current week, computed from today's date), STATE that range, then compare each task's `dueDate` against it consistently, bump EVERY open task whose dueDate is inside [windowStart, windowEnd] inclusive and leave the rest at their current priority. Do not let the set you bump diverge from the window you stated (no boundary task included one way and excluded the other). LEAVE every terminal/done task untouched, `tasks_byAssignee` with `terminal:false` already excludes them, and if you read the full list each item's `statusTerminal:true` marks the ones to skip; never reassign a done task. If the number of open tasks exceeds what you can update within the turn budget, reassign as many as fit, STATE plainly how many of how many you covered and which projects remain, and do the rest next turn, never claim you reassigned them all when you only did some. EDITING A TASK: to change a task's description, owner, status, or dates you MUST call `update` and it MUST succeed, NEVER report an edit you did not actually perform (e.g. 'I updated the descriptions to cross-reference the related items') when no successful `update` call is in your actions; a narrated edit with no tool call is a fabricated success, so read the task back if unsure it took. Items that name NO owner stay unassigned; items that state NO date get no dueDate, never invent an owner or a date the source didn't give."
+      },
+      {
+        "tools": [
+          "create"
+        ],
+        "text": "TRIAGING A BATCH INTO TASKS: when you turn a list/digest/thread of raw items into tasks and you DEDUPE (merge several items that are the same ask into one task) or FILTER (skip items that aren't real action items, e.g. support questions), your reply MUST explicitly STATE which items you MERGED into one task and which you SKIPPED (and why), so the human can audit your triage. Do not silently drop or merge, naming the merges + skips is part of the deliverable, not optional. ACCOUNT FOR EVERY SOURCE ITEM: each raw item either belongs to a cluster (and is referenced in that cluster's task) or stands alone as its OWN task, never silently drop one, and a one-off that fits no cluster still gets its own task; when you group items, cross-reference ALL the contributing items in the task they inform, not just the first one or two. FILING A TASK FROM A SOURCE (a thread / conversation / ticket / forum post you READ): the task description must REFERENCE that source so the task traces back to its origin, include the source's id or `#handle` (e.g. 'Source: thread <id>') AND who requested it. Naming only the requester without citing the source thread/conversation leaves the task untraceable; cite BOTH. ASSIGNING FROM A SOURCE: when an action item NAMES an owner, set that owner via the create call's `assigneeName` param (the name as written, e.g. a first name like 'Marco' resolves to the matching user); do NOT merely write 'Owner: X' in the description and leave the task UNASSIGNED, and NEVER claim a task is 'assigned to X' when the create returned `assigneeId: null`, that is a fabricated success. If a name does not resolve (assignee_not_found / assignee_ambiguous), say so plainly and leave it unassigned rather than claiming it worked."
+      },
+      {
+        "tools": [
+          "tasks_byProject",
+          "portfolio_rollup"
+        ],
+        "text": "METRICS / BURNDOWN / VELOCITY / SPRINT / TIME-SERIES: the projects schema has NO story-points/estimate field, NO sprint/iteration entity, and NO sprint history, and the only time-bounded count is completed tasks per window, through `tasks_byProject` with `completedAfter` / `completedBefore` + `countOnly` (no group-by-status-over-time, burndown, velocity, or throughput). So burndown, velocity, story-points completed/remaining, sprint boundaries, and a multi-sprint trend CANNOT be computed; NEVER fabricate a point total, a velocity number, a sprint count, or a burndown chart, and do NOT treat task counts as 'points'. What IS derivable now, the honest PROXY to deliver for any 'sprint board / burndown / velocity / who's overloaded' ask: call `tasks_byProject(projectId)` ONCE for the project, then GROUP its returned tasks by the terminal/done status flag for a DONE-vs-REMAINING task count (done = `statusTerminal:true`, remaining = the rest, optionally split by `statusLabel`), AND group the SAME rows by `assigneeName` (carried on every row, no extra lookup) for a per-PERSON task count, naming the person with the most as the most-loaded (a crude load proxy, not a points-weighted one). Deliver those real task-count proxies AND state plainly that burndown, velocity, story-points completed/remaining, and sprint boundaries/history are NOT modeled in the schema and cannot be computed, hold that honestly even under founder pressure to 'just give me the burndown / the velocity number'. The done/remaining counts are TASK counts, never story points. To enumerate or roll up a SINGLE project's tasks (a backlog/roadmap/weekly digest, per-status counts, or reading a SOURCE project to copy it), use `tasks_byProject` (by project id), it lists the project's tasks with their status labels; do NOT rely on `search` (title-text only, paged) for that."
+      },
+      {
+        "tools": [
+          "createProject",
+          "get",
+          "create",
+          "update",
+          "status_add",
+          "status_update",
+          "status_delete"
+        ],
+        "text": "BOARD COLUMNS ARE CHOSEN AT CREATION: when the user names the columns they want ('a roadmap with idea / in discussion / candidate / todo / in progress / done'), pass them to `createProject` as `statuses` (in order, their words, mark the done column `terminal`), the board is created with exactly those columns. Only a `createProject` WITHOUT `statuses` seeds the 5 defaults (backlog/todo/in_progress/done/cancelled); never create with defaults and then queue a pile of renames. An EXISTING board's columns are managed with `status_add` (new column), `status_update` (rename / recolor / mark terminal) and `status_delete` (empty column only). `status_add` and `status_update` apply at once; `status_delete` is GATED, so report a deletion as pending approval; the human can also rename a column directly from the board's column header or the Statuses dialog. STATUS COLUMNS are PER-PROJECT, not global: a task's status must be one of ITS project's columns. Read a project's columns from get(projectId) (the `statuses` array, each with id + label + terminal). When creating/updating a task, set the column by NAME with `statusLabel` (case-insensitive) or by id with `statusId`, NEVER invent a status id; if the label does not match an existing column the call returns status_not_found WITH the project's real columns as candidates: pick the closest existing column, or create the missing column FIRST via `status_add` (applies at once) and then file the task into it. Manage columns with status_add / status_update / status_delete (delete only works on an empty column)."
+      },
+      {
+        "tools": [
+          "instantiate_template",
+          "createProject"
+        ],
+        "text": "PROJECT TEMPLATES / 'save as a template' / 'clone this project': there is NO save-as-template or project-clone primitive (`instantiate_template` only materializes a template that an admin stored ahead of time, by id). To reuse a project's structure, do a MANUAL one-time copy: resolve the SOURCE project's REAL id via search/get FIRST (never pass a placeholder like '[project id]'), read it via `get` (its `statuses` array) and `tasks_byProject`, `createProject` the new project passing the source's columns as `statuses`, then re-create the tasks (shifting dates if asked). State CLEARLY and UPFRONT that this is a manual copy, NOT a saved/reusable template. Create the new project ONCE, never leave stray/duplicate empty projects. Do NOT claim you called a `save_as_template` / `duplicate_project` / `clone_project` tool (none exists), and do NOT dress up a `knowledge` document (or anything else) as a 'saved template' and present that as done."
+      },
+      {
+        "tools": [
+          "update"
+        ],
+        "text": "SPEC DOCUMENTS ON A ROADMAP ITEM ('write the spec on the Drive, add it to Knowledge, link it in the task'): 1) google-drive upload/export the document, 2) knowledge source_link_create with the connector id + that file id (a LIVE pointer, not a frozen copy), or knowledge create for a local copy, 3) `update` the task's description so it contains `@[Spec title](knowledge:source_link:<id>)` (or knowledge:document:<id>). The task page and its kanban card then show the spec as a collapsible preview; a plain URL would not."
+      },
+      {
+        "tools": [
+          "comment",
+          "comments",
+          "get",
+          "update",
+          "tasks_byProject",
+          "tasks_byAssignee"
+        ],
+        "text": "DISCUSSING A TASK: every task carries its own discussion thread, the one the task detail pane shows. Write to it with `comment` and read it with `comments` (both take the task id or its display key, e.g. RAI-12). COMMENT vs UPDATE: `update` changes what the task IS (title, status, assignee, priority, dates); `comment` records the REASONING around it — a finding, a log excerpt, a question for the assignee, a hand-off note. Never overwrite a field to leave a message: putting your analysis in the description destroys what was there and hides it from anyone reading the conversation. When you investigate a task and reach a conclusion, the conclusion belongs in a `comment`, and only the resulting STATE change in `update`. THE threadId IS NOT A SHORTCUT: task records carry a `threadId`, but task threads are participant-gated and you are not a participant until you have read the task. Passing that id straight to kernel `threads_read` answers 'not a participant'. Use `comments`, which reads the task first and so enrols you; kernel threads_read works on that thread afterwards, not before."
+      },
+      {
+        "tools": ["checklist_get", "checklist_add_items", "checklist_update_item", "checklist_set_validation", "checklist_remove_item", "update", "move"],
+        "text": "CHECKLISTS AND VALIDATION LEVELS: a task can carry a checklist of items (a QA list, a shopping list, anything), each validated per project level (for example AI, Dev, Beta) with `checklist_set_validation`, or checked in a project without levels. RECORD WHAT THE HUMAN TELLS YOU: when a tester or developer walks the items with you, set the state they report on any level, with `source` = the https URL of their record when there is one (optional); never invent a verdict. A `fail` always needs a `note` saying what failed; the note is posted on the task's discussion. MOVING TO DONE: the checklist never blocks a status change, so moving a task to Done or any other terminal status works even when the checklist is incomplete. When it is, you get `checklistWarning` ({ message, status } with `status.blocking` listing the items not proven): `move` returns it in its result, `bulkUpdate` returns it on each affected item, and `update` returns it in its result. Read it and say plainly to the user which items are not proven. Add checklist items with `checklist_add_items` only after the human validated the list you proposed; you cannot add items to a task already in a terminal status. NEVER remove items without the human's approval: `checklist_remove_item` waits for a human approval. One pass over many items is one `checklist_set_validation` call with `entries` (up to 50). `get` on a task carries its checklist status as `checklist`."
+      }
+    ]
+  },
+  "version": "1.10.0",
+  "description": "Projects + tasks (Phase 8)",
+  "license": "FSL-1.1-ALv2",
+  "listing": {
+    "publisher": "Liaison",
+    "category": "Productivity",
+    "icon": "folder-kanban",
+    "summary": "Projects and tasks with owners, statuses, due dates and discussions.",
+    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/apps/api/src/apps/projects"
+  },
+  "trusted": true,
+  "dependencies": {
+    "required": [
+      "kernel"
+    ]
+  },
+  "schema": {
+    "projects": {
+      "migrationOwnedColumns": [
+        "nextTaskNumber"
+      ],
+      "fields": {
+        "name": "string",
+        "description": "string?",
+        "color": "string?",
+        "icon": "string?",
+        "key": {
+          "type": "string",
+          "description": "Short uppercase project key (e.g. ERB), used to display tasks as ERB-12. Auto-derived from the project name at creation; unique per org."
+        },
+        "ownerId": {
+          "type": "uuid",
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "archivedAt": "date?",
+        "validationLevels": {
+          "type": "json",
+          "default": [],
+          "description": "Ordered checklist validation levels [{ id, name }], max 8. Empty means plain checkbox mode."
+        },
+        "checklistOnCards": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the checklist summary (per-level counters) on Kanban cards."
+        },
+        "group": {
+          "type": "string",
+          "required": false,
+          "description": "Sidebar group heading (free text, shared by the org: projects with the same text sit under one heading). Trimmed, at most 60 characters; null = ungrouped. Column added by migration 0250."
+        }
+      },
+      "indexes": []
+    },
+    "project_statuses": {
+      "rlsGovernedByMigration": true,
+      "fields": {
+        "projectId": {
+          "type": "uuid",
+          "references": {
+            "table": "projects",
+            "column": "id",
+            "onDelete": "cascade"
+          }
+        },
+        "label": "string",
+        "color": "string?",
+        "order": "integer",
+        "terminal": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "indexes": [
+        [
+          "projectId",
+          "order"
+        ]
+      ]
+    },
+    "tasks": {
+      "fields": {
+        "projectId": {
+          "type": "uuid",
+          "references": {
+            "table": "projects",
+            "column": "id",
+            "onDelete": "restrict"
+          }
+        },
+        "parentTaskId": {
+          "type": "uuid",
+          "required": false,
+          "references": {
+            "table": "tasks",
+            "column": "id",
+            "onDelete": "restrict"
+          }
+        },
+        "statusId": {
+          "type": "uuid",
+          "references": {
+            "table": "project_statuses",
+            "column": "id",
+            "onDelete": "restrict"
+          }
+        },
+        "number": {
+          "type": "integer",
+          "description": "Per-project sequential number, allocated atomically at creation. Combined with the project's key for the display key, e.g. ERB-12."
+        },
+        "title": "string",
+        "description": "string?",
+        "assigneeId": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "priority": {
+          "type": "string",
+          "default": "normal",
+          "enum": [
+            "low",
+            "normal",
+            "high",
+            "urgent"
+          ]
+        },
+        "dueDate": "day?",
+        "startDate": "day?",
+        "position": {
+          "type": "double",
+          "default": 1000
+        },
+        "blocked": {
+          "type": "boolean",
+          "default": false
+        },
+        "completedAt": "date?",
+        "archivedAt": "date?",
+        "threadId": "uuid",
+        "createdBy": {
+          "type": "uuid",
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "createdByAgentLabel": {
+          "type": "string",
+          "required": false,
+          "description": "Who created the task when an agent did: the routine (\"Routine <name>\"), the named agent, or \"<person>'s agent\". Null when a person created it. Column added by migration 0248."
+        },
+        "release": {
+          "type": "string",
+          "required": false,
+          "description": "Free-text release (1..40 chars). Filtering uses the effective release: the task's own, else the nearest ancestor's."
+        },
+        "externalRef": {
+          "type": "string",
+          "required": false,
+          "description": "Bulk-import / webhook idempotency key (mirrors app_tickets.tickets.external_ref). Column added by migration 0009 (backfilled into the manifest here so db_findMany where-filtering and constraint declaration cover it); createTask does NOT dedup on it automatically — callers must pre-SELECT, same contract as tickets."
+        }
+      },
+      "constraints": {
+        "unique": [
+          {
+            "columns": [
+              "externalRef"
+            ],
+            "where": "external_ref IS NOT NULL"
+          }
+        ]
+      }
+    },
+    "task_checklist_items": {
+      "rlsGovernedByMigration": true,
+      "fields": {
+        "taskId": {
+          "type": "uuid",
+          "references": {
+            "table": "tasks",
+            "column": "id",
+            "onDelete": "cascade"
+          }
+        },
+        "position": {
+          "type": "double",
+          "default": 1000
+        },
+        "title": "string",
+        "details": "string?",
+        "checked": {
+          "type": "boolean",
+          "default": false
+        },
+        "validations": {
+          "type": "json",
+          "default": {},
+          "description": "Map of level id to { state: not_done|fail|success|na, by, via: human|agent, source, at }. A missing key reads as not_done."
+        },
+        "createdBy": {
+          "type": "uuid",
+          "userRef": true,
+          "onErase": "anonymize"
+        }
+      },
+      "indexes": [
+        [
+          "taskId",
+          "position"
+        ]
+      ]
+    },
+    "labels": {
+      "rlsGovernedByMigration": true,
+      "fields": {
+        "parentId": {
+          "type": "uuid",
+          "required": false,
+          "references": {
+            "table": "labels",
+            "column": "id",
+            "onDelete": "restrict"
+          }
+        },
+        "name": "string",
+        "sortOrder": {
+          "type": "integer",
+          "default": 0
+        },
+        "archivedAt": "date?"
+      },
+      "indexes": [
+        [
+          "parentId",
+          "sortOrder"
+        ]
+      ]
+    },
+    "task_labels": {
+      "rlsGovernedByMigration": true,
+      "fields": {
+        "taskId": {
+          "type": "uuid",
+          "references": {
+            "table": "tasks",
+            "column": "id",
+            "onDelete": "cascade"
+          }
+        },
+        "groupId": {
+          "type": "uuid",
+          "references": {
+            "table": "labels",
+            "column": "id",
+            "onDelete": "restrict"
+          }
+        },
+        "valueId": {
+          "type": "uuid",
+          "references": {
+            "table": "labels",
+            "column": "id",
+            "onDelete": "restrict"
+          }
+        }
+      },
+      "constraints": {
+        "unique": [
+          [
+            "taskId",
+            "groupId"
+          ]
+        ]
+      },
+      "indexes": [
+        [
+          "groupId",
+          "valueId"
+        ]
+      ]
+    }
+  },
+  "entities": {
+    "project": {
+      "labelField": "name",
+      "handlePrefix": "proj",
+      "searchable": true,
+      "tableName": "projects",
+      "readScope": "projects:projects:read",
+      "indexFields": {
+        "title": "name",
+        "body": "description"
+      }
+    },
+    "task": {
+      "labelField": "title",
+      "handlePrefix": "task",
+      "searchable": true,
+      "tableName": "tasks",
+      "readScope": "projects:projects:read",
+      "indexFields": {
+        "title": "title",
+        "body": "description",
+        "labelSecondaryFrom": {
+          "tableName": "projects",
+          "foreignKey": "project_id",
+          "columns": ["name", "key"]
+        }
+      },
+      "fileParent": {
+        "tableName": "tasks",
+        "schemaRef": "app_projects",
+        "joinOn": "id",
+        "readScope": "projects:tasks:read",
+        "writeScope": "projects:tasks:write",
+        "deleteScope": "projects:settings:admin"
+      }
+    }
+  },
+  "tools": {
+    "search": {
+      "description": "Search projects and tasks by text. Returns matching projects (with their ids) and tasks. A sales/dealer PIPELINE, a DEALS board, a roadmap, or any named tracking BOARD is modeled here as a project (e.g. a 'dealer-deals pipeline' is a projects board with one task per deal/stage) — so when asked for the state of a pipeline / deal board / named deals, search HERE for that project by name and read its tasks via tasks_byProject; this is the dealer-deals pipeline, NOT Shopify draft orders. Task hits carry `labels`: the task's effective value per label group (own, or inherited from the nearest parent, with `inherited` and `inheritedFromKey`).",
+      "readOnly": true,
+      "requiredScopes": ["projects:projects:read"],
+      "trustBoundary": "user",
+      "handler": "search",
+      "retryOnTransientDbError": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search text matched against project/task titles. Omit or empty to list all."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of results (default server-side; with involvedWithinDays default 50, max 200)."
+          },
+          "involvedWithinDays": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 90,
+            "description": "RECENTLY INVOLVED: return only the tasks YOU (the caller) touched in the last N days (1 to 90; 14 is the usual window), newest involvement first, and no projects. Involvement = you commented on its discussion, were @mentioned there, changed its status / assignee / any field, created it, someone assigned it to you, or it is yours and changed in the window. Each row carries `involvement` ({ kind, at, summary, ... }, e.g. summary 'you moved it to Done', 'Riley mentioned you') and `involvementKinds`. Combine with `query` (title or key) and `projectId`. Use it for 'what have I been working on', 'tasks I touched this week', 'where was I mentioned', a personal recap."
+          },
+          "projectId": {
+            "type": "string",
+            "description": "Only with involvedWithinDays: limit the involved tasks to this project (uuid)."
+          }
+        }
+      }
+    },
+    "get": {
+      "readOnly": true,
+      "description": "Get a project or task by id (id comes from a search result). Pass `id` (auto-resolved as project-or-task), or the explicit `taskId` / `projectId` when you know which kind it is. The task record carries a `threadId` for its discussion, but that id is participant-gated and is NOT usable on its own — read the conversation with `comments` and write to it with `comment`. A task also carries `checklist`: its checklist status (per-level counts and the blocking items); read the items with `checklist_get`. A task record carries `labels`: its effective value per label group (own, or inherited from the nearest parent, with `inherited` and `inheritedFromKey`).",
+      "requiredScopes": ["projects:projects:read"],
+      "trustBoundary": "user",
+      "handler": "get",
+      "retryOnTransientDbError": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The project or task id to fetch (auto-resolved)."
+          },
+          "taskId": {
+            "type": "string",
+            "description": "Explicit task id to fetch (the web task detail view sends this). Also accepts a display key like ERB-12."
+          },
+          "projectId": {
+            "type": "string",
+            "description": "Explicit project id to fetch."
+          }
+        }
+      }
+    },
+    "createProject": {
+      "description": "Create a PROJECT (the container/board) TOGETHER WITH ITS TASKS: pass the tasks you plan (up to 20, each with a title, and optionally a description and an assignee) in `tasks`, in this ONE call. Never create the project first and its tasks afterwards when you already know them: if this call waits for approval, the tasks are approved and created with it, and a task created before the project exists has nowhere to go. More than 20 tasks: pass the first 20 here, then add the rest with `create` and the returned project id. Tasks for an EXISTING project are added with the `create` tool and its project id. Create the board ONCE per goal: if you already created (or found) a project for this request, REUSE its id for all the tasks — do NOT call createProject again for the same goal across turns (that scatters the tasks across stray duplicate boards). SCAFFOLDING A BOARD/CHECKLIST OVER A KNOWN ENUMERATED SET (N units, N orders, N shipments, N rows, N people — anything you've already listed or counted): the default shape is ONE TASK PER ITEM, each titled by that item and carrying its identifying details in the title/body (e.g. the recipient/owner, the id or tracking number, the due/return date) — NOT a handful of generic action-category buckets ('clear the exceptions', 'coordinate returns') that collapse the N items into 4-5 verbs. Per-item is what makes the board actually trackable: each row is one thing the human checks off. Cover EVERY enumerated item with its own task; if all N tasks won't fit one turn's step budget, create as many per-item tasks as fit, ADD the rest to the SAME project next turn, and tell the user it's a partial pass (X of N done so far) — never start a fresh project, never collapse to generic buckets to save steps, and never claim all N are done when you only created a few. IMPROVISING WHEN THERE IS NO NATIVE OBJECT for the thing being tracked (e.g. no 'loaner', 'asset', or 'fleet' entity exists, so you model it as a projects board + tasks): say so plainly in your reply — name that there is no native X concept and that you've improvised a project board to track it — rather than silently presenting the board as if a purpose-built tracker existed.",
+      "requiredScopes": ["projects:projects:write"],
+      "trustBoundary": "user",
+      "handler": "createProject",
+      "summarizer": "summarizeCreateProject",
+      "writesToTable": "app_projects.projects",
+      "retryOnTransientDbError": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "validationLevels": {
+            "type": "array",
+            "maxItems": 8,
+            "description": "Optional checklist VALIDATION LEVELS in order, e.g. [{\"name\":\"AI\"},{\"name\":\"Dev\"},{\"name\":\"Beta\"}]. Omit for plain checklists (one checkbox per item).",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 24,
+                  "description": "Level name, e.g. 'Dev'."
+                }
+              },
+              "required": ["name"]
+            }
+          },
+          "checklistOnCards": {
+            "type": "boolean",
+            "description": "Optional: show the checklist summary on Kanban cards. Default true."
+          },
+          "tasks": {
+            "type": "array",
+            "maxItems": 20,
+            "description": "Optional: the project's tasks, created WITH it in this one call (at most 20), in board order. Each takes the same title, description and assignee fields as `create`. Pass the whole plan here rather than calling `create` per task afterwards: when this call waits for approval, the project and every task are approved and created together.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "description": "Task title (REQUIRED)."
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Task body. Make it SELF-CONTAINED — a reviewer opens the task, not your chat reply, so the facts must live HERE. When the task captures something you found via web research (a competitor spec/price, a prospect's details, any external figure), the body MUST carry the concrete data point itself and — for a comparison task — our own product's contrasting fact/angle. A task body that only names the topic ('compare connectivity', 'review their software') is incomplete. For a ONE-TASK-PER-RESEARCHED-ENTITY outreach/shortlist board (a creator, influencer, prospect, dealer, lead, school), the body MUST carry, for that entity: its link (channel/profile/website URL), any contact found (email/phone), AND a one-line WHY-RELEVANT rationale (why this entity fits the goal) — all three. The 'why relevant' note is required, not optional: a body that lists only the link + contact and drops the rationale is incomplete even though the link/contact are present. The relevance line is right there in the research snippet you read — carry it through. Put the source URL of any web-derived fact in the `sourceUrl` param (preferred — it is auto-appended to the body) or inline it here; never present an external figure with no source. MARKDOWN + LINKED DOCUMENTS: the body is rendered as markdown (headings, lists, bold, code, links). To LINK a document so it shows as a collapsible preview on the task card and page, write an entity mention in the body: `@[Title](knowledge:document:<id>)` for a Knowledge document (id from knowledge create/search), `@[Title](knowledge:source_link:<id>)` for a live Drive/remote doc registered with knowledge source_link_create (id from that call), `@[name.png](kernel:file:<id>)` for a file. A bare URL is only a link; the mention is what makes the spec visible from the board."
+                },
+                "assigneeId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional assignee user id."
+                },
+                "assigneeName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional assignee by display name — resolved to a user in this org (alternative to assigneeId)."
+                }
+              },
+              "required": [
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "name": {
+            "type": "string",
+            "description": "Project name (REQUIRED)."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional project description."
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional icon."
+          },
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional color."
+          },
+          "key": {
+            "type": "string",
+            "description": "Optional explicit short project key (e.g. ERB), used to display its tasks as ERB-12. Uppercase letters/digits, 2-10 chars, starting with a letter. Auto-derived from the name when omitted; fails if already used by another project in this org."
+          },
+          "group": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 60,
+            "description": "Optional group the project is filed under in the projects sidebar (free text, e.g. 'Product', 'Legal'; at most 60 characters). Reuse an existing group's exact name (search returns each project's group) rather than inventing a near-duplicate."
+          },
+          "statuses": {
+            "type": "array",
+            "maxItems": 20,
+            "description": "Optional initial STATUS COLUMNS in board order, e.g. [{\"label\":\"Idea\"},{\"label\":\"In discussion\"},{\"label\":\"Candidate\"},{\"label\":\"Todo\"},{\"label\":\"In progress\"},{\"label\":\"Done\",\"terminal\":true}]. Use it whenever the user names the columns they want — the board is then created with EXACTLY those columns, so you never need to rename the defaults afterwards. Omit for the five defaults (backlog/todo/in_progress/done/cancelled). `terminal: true` marks a column that counts as done; when none is marked, the LAST column is made terminal. Labels are the user's words (any language), max 60 chars, no duplicates.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "description": "Column name as the user said it, e.g. 'In discussion'."
+                },
+                "color": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional hex color."
+                },
+                "terminal": {
+                  "type": "boolean",
+                  "description": "True if tasks in this column count as done/closed."
+                }
+              },
+              "required": [
+                "label"
+              ]
+            }
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    "create": {
+      "description": "Create a TASK inside an existing project (NOT a project — use `createProject` for that). Requires the target projectId and a title. If this task captures a fact you found via web research (a competitor spec/price, a prospect detail, any external figure), pass that page's URL in `sourceUrl` so the task body always carries its citation — do this on EVERY web-derived task you create, not just the first one. OUTREACH / SHORTLIST TASKS (one task per researched entity — a creator, influencer, prospect, dealer, lead, or school): the `description` must carry, for THAT entity, ALL of: its identifying link (channel/profile/website URL), any contact (email/phone) you found, AND a one-line WHY-RELEVANT rationale grounded in what you researched (why this entity fits the goal — e.g. the gear/genre a creator covers, the segment a prospect serves). The rationale is a REQUIRED fact, not optional flavor — the research snippet you read already hands it to you, so carry it through verbatim/condensed. A task that only lists 'Channel: <url>\\nContact: <email>' with no 'why relevant' line is INCOMPLETE — write all three on EVERY such task (not just the first). Not gated: the task is created at once and the result is the task, so report it as created only when the call returned it.",
+      "requiredScopes": ["projects:tasks:write"],
+      "trustBoundary": "user",
+      "handler": "createTask",
+      "writesToTable": "app_projects.tasks",
+      "params": {
+        "type": "object",
+        "properties": {
+          "labels": {
+            "type": "object",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "Optional labels: an object whose keys are label group names (or ids) and whose values are value names (or ids), e.g. {\"Nature\": \"bug\"}; null clears this task's own value for that group; groups you leave out are untouched. Call `labels.list` for the valid groups and values. An invalid value refuses the whole call with label_not_found or label_archived, listing the valid values. Subtasks inherit each group's value from their parent unless they set their own."
+          },
+          "release": {
+            "type": ["string", "null"],
+            "maxLength": 40,
+            "description": "Free-text release this task ships in (e.g. 2.1). Subtasks inherit it for filtering. Empty or null clears it."
+          },
+          "projectId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Id of the project this task belongs to. Optional: when omitted (and projectName too) a subtask goes to its parentTaskId's project, any other task to the org's single active project (errors if ambiguous)."
+          },
+          "projectName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project by name (alternative to projectId), resolved within the org."
+          },
+          "title": {
+            "type": "string",
+            "description": "Task title (REQUIRED)."
+          },
+          "description": {
+            "type": "string",
+            "description": "Task body. Make it SELF-CONTAINED — a reviewer opens the task, not your chat reply, so the facts must live HERE. When the task captures something you found via web research (a competitor spec/price, a prospect's details, any external figure), the body MUST carry the concrete data point itself and — for a comparison task — our own product's contrasting fact/angle. A task body that only names the topic ('compare connectivity', 'review their software') is incomplete. For a ONE-TASK-PER-RESEARCHED-ENTITY outreach/shortlist board (a creator, influencer, prospect, dealer, lead, school), the body MUST carry, for that entity: its link (channel/profile/website URL), any contact found (email/phone), AND a one-line WHY-RELEVANT rationale (why this entity fits the goal) — all three. The 'why relevant' note is required, not optional: a body that lists only the link + contact and drops the rationale is incomplete even though the link/contact are present. The relevance line is right there in the research snippet you read — carry it through. Put the source URL of any web-derived fact in the `sourceUrl` param (preferred — it is auto-appended to the body) or inline it here; never present an external figure with no source. MARKDOWN + LINKED DOCUMENTS: the body is rendered as markdown (headings, lists, bold, code, links). To LINK a document so it shows as a collapsible preview on the task card and page, write an entity mention in the body: `@[Title](knowledge:document:<id>)` for a Knowledge document (id from knowledge create/search), `@[Title](knowledge:source_link:<id>)` for a live Drive/remote doc registered with knowledge source_link_create (id from that call), `@[name.png](kernel:file:<id>)` for a file. A bare URL is only a link; the mention is what makes the spec visible from the board."
+          },
+          "sourceUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The URL of the web page a web-derived fact in this task came from. When set, a 'Source: <url> (web-sourced — verify)' line is appended to the task body automatically, so the citation always lands in the workspace. ALWAYS set this for a task built from web research — on every such task, not just the first — so each comparison/research task is independently verifiable. Omit for purely internal tasks."
+          },
+          "statusId": {
+            "type": "string",
+            "description": "Optional status column id (defaults to the project's first status). If you only know the column's NAME, prefer statusLabel; a non-UUID value here is treated as a label."
+          },
+          "statusLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Status column by NAME (case-insensitive), e.g. 'Done' or 'To discuss' — alternative to statusId. If no column with that label exists the call fails with status_not_found listing the project's real columns; create the missing column first via status_add."
+          },
+          "parentTaskId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional parent task id for a subtask, or its display key (e.g. ERB-12)."
+          },
+          "assigneeId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional assignee user id."
+          },
+          "assigneeName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional assignee by display name — resolved to a user in this org (alternative to assigneeId)."
+          },
+          "priority": {
+            "type": "string",
+            "default": "normal",
+            "enum": [
+              "low",
+              "normal",
+              "high",
+              "urgent"
+            ],
+            "description": "Optional priority. EXACTLY one of low | normal | high | urgent — the column has no \"medium\" level (\"normal\" is the mid one, \"high\" the one above it), and any other value is rejected with invalid_priority."
+          },
+          "dueDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional due date (ISO 8601, e.g. 2026-06-12) — resolve relative dates ('Friday') in the user's timezone. Set it on create; you do NOT need a separate update call."
+          }
+        },
+        "required": [
+          "title"
+        ]
+      }
+    },
+    "update": {
+      "description": "Update a task. Not gated: the edit applies at once and the result is the updated task, so report it as applied only when the call returned it. Setting a terminal status (Done) is allowed even when the task's checklist is incomplete; when it is, the result carries `checklistWarning` listing the items not proven: read it and tell the user. `move` returns the same warning when you change only the status.",
+      "requiredScopes": ["projects:tasks:write"],
+      "trustBoundary": "user",
+      "handler": "updateTask",
+      "writesToTable": "app_projects.tasks",
+      "params": {
+        "type": "object",
+        "properties": {
+          "labels": {
+            "type": "object",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "Optional labels: an object whose keys are label group names (or ids) and whose values are value names (or ids), e.g. {\"Nature\": \"bug\"}; null clears this task's own value for that group; groups you leave out are untouched. Call `labels.list` for the valid groups and values. An invalid value refuses the whole call with label_not_found or label_archived, listing the valid values. Subtasks inherit each group's value from their parent unless they set their own."
+          },
+          "release": {
+            "type": ["string", "null"],
+            "maxLength": 40,
+            "description": "Free-text release this task ships in (e.g. 2.1). Subtasks inherit it for filtering. Empty or null clears it."
+          },
+          "taskId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Id of the task to update, or its display key (e.g. ERB-12)."
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "description": "New task body (markdown). MARKDOWN + LINKED DOCUMENTS: the body is rendered as markdown (headings, lists, bold, code, links). To LINK a document so it shows as a collapsible preview on the task card and page, write an entity mention in the body: `@[Title](knowledge:document:<id>)` for a Knowledge document (id from knowledge create/search), `@[Title](knowledge:source_link:<id>)` for a live Drive/remote doc registered with knowledge source_link_create (id from that call), `@[name.png](kernel:file:<id>)` for a file. A bare URL is only a link; the mention is what makes the spec visible from the board."
+          },
+          "statusId": {
+            "type": "string",
+            "description": "New status column id. If you only know the column's NAME, prefer statusLabel; a non-UUID value here is treated as a label."
+          },
+          "statusLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "New status column by NAME (case-insensitive) — alternative to statusId. Fails with status_not_found (listing the project's real columns) if no such column exists."
+          },
+          "assigneeId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "normal",
+              "high",
+              "urgent"
+            ],
+            "description": "New priority. EXACTLY one of low | normal | high | urgent — there is no \"medium\" level."
+          },
+          "dueDate": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startDate": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "blocked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      }
+    },
+    "move": {
+      "description": "Move a task: reposition / re-parent / restatus WITHIN its project, OR relocate it to ANOTHER project by passing the destination `projectId`. Passing a different `projectId` moves the task (and its whole subtree) into that project and remaps each task's status to one in the destination; each moved task also gets a new number there, so its key changes (e.g. ERB-35 becomes BUG-7, returned as `number`) — so to put a task in the right project you MOVE it; do NOT recreate it there and delete the original (that strands duplicates). Only a top-level task can change projects (its children move with it). Moving a task into a terminal status (Done) is allowed even when its checklist is incomplete; the result then carries `checklistWarning` listing the items not proven: read it and tell the user.",
+      "requiredScopes": ["projects:tasks:write"],
+      "trustBoundary": "user",
+      "handler": "moveTask",
+      "writesToTable": "app_projects.tasks",
+      "retryOnTransientDbError": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Id of the task to move, or its display key (e.g. ERB-12)."
+          },
+          "projectId": {
+            "type": "string",
+            "description": "Destination project id. Omit to move within the current project; pass a DIFFERENT project's id to relocate the task there (its subtree moves too; statuses are remapped). Only a top-level task can cross projects."
+          },
+          "parentTaskId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "statusId": {
+            "type": "string"
+          },
+          "beforeTaskId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional: position the task immediately before this task in its column, or its display key (e.g. ERB-12)."
+          },
+          "afterTaskId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional: position the task immediately after this task in its column, or its display key (e.g. ERB-12)."
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      }
+    },
+    "tasks_byAssignee": {
+      "description": "List one person's tasks across ALL projects (not scoped to a single project), each carrying its project name AND its status label + whether that status is terminal/done (`statusTerminal`). This is THE tool to answer 'what is X working on', build a per-person workload view, or REASSIGN a departing teammate's work — resolve the person's user id first (via users_search), then pass it here. By default it returns ALL of the person's tasks (open AND done); to act on only their OPEN/unfinished tasks (e.g. 'reassign all her non-done tasks'), pass `terminal:false` (or read `statusTerminal` per item and SKIP the terminal/done ones) — never reassign or mutate a task whose `statusTerminal` is true when the ask is scoped to open work. Optionally also filter to overdue / due-this-week. Each row carries a `threadId` for the task's discussion; it is participant-gated, so do not hand it to kernel threads_read directly — use `comments` (and `comment` to post). Each task row carries `labels`: its effective value per label group (own, or inherited from the nearest parent, with `inherited` and `inheritedFromKey`).",
+      "readOnly": true,
+      "requiredScopes": ["projects:tasks:read"],
+      "trustBoundary": "user",
+      "handler": "tasksByAssignee",
+      "retryOnTransientDbError": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "release": {
+            "type": "string",
+            "description": "Optional: only tasks whose EFFECTIVE release (their own, else the nearest parent's) matches, case-insensitive. `__none__` selects tasks with no release."
+          },
+          "assigneeId": {
+            "type": "string",
+            "description": "User id whose tasks to list (REQUIRED). Resolve a name to an id via users_search first."
+          },
+          "due": {
+            "type": "string",
+            "enum": [
+              "overdue",
+              "due_soon",
+              "later",
+              "none",
+              "this_week"
+            ],
+            "description": "Optional due date status filter across all projects. overdue: past due and not done. due_soon: due within the next 7 days and not done. later: due beyond 7 days and not done. none: no due date and not done. this_week is an accepted alias for due_soon. Every value excludes tasks in a done (terminal) status column: a done task never appears under any due filter, including none and later."
+          },
+          "terminal": {
+            "type": "boolean",
+            "description": "Filter by done-state: false = only this person's UNFINISHED (open, non-done) tasks — the 'reassign all her open tasks' predicate; true = only finished/terminal. Omit for all (open + done). Each returned item also carries `statusTerminal` so you can discriminate when you omit this filter."
+          },
+          "statusId": {
+            "type": "string",
+            "description": "Optional status column id to filter by."
+          }
+        },
+        "required": [
+          "assigneeId"
+        ]
+      }
+    },
+    "attentionItems": {
+      "description": "YOUR own work that needs attention right now — the calling user's OVERDUE, DUE-THIS-WEEK, and BLOCKED non-terminal tasks across ALL projects, each carrying its project name + due date. Self-scoped: it returns the CALLER's tasks, so it needs NO id and NO assignee param. This is THE tool for 'what's overdue or due this week assigned to me', a morning standup, or 'what needs my attention' — do NOT use `search` for that (search returns PROJECTS and matches task TITLES by text, it is not a per-person task list).",
+      "readOnly": true,
+      "requiredScopes": ["projects:tasks:read"],
+      "trustBoundary": "user",
+      "handler": "computeAttentionItems",
+      "retryOnTransientDbError": true,
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "tasks_byProject": {
+      "description": "List the tasks IN a single project (by project id), each with its status label + whether that status is terminal/done (`statusTerminal`) + the assignee's display name (`assigneeName`, null when unassigned). Use this to enumerate or summarize a project's tasks — a backlog/roadmap/weekly digest, a per-status rollup (group by the terminal/done flag for a DONE-vs-REMAINING count), a per-PERSON workload tally (group by `assigneeName` to find the most-loaded person), 'what's in project X', or reading a source project's task list to copy it. This single call answers a 'sprint board / burndown / who's overloaded' proxy (done-vs-remaining task counts + per-assignee counts) WITHOUT a per-id user lookup — though burndown/velocity/story-points themselves are not modeled (see agentInstructions). NOTE: `search` is title-text only and `tasks_byAssignee` is per-person across projects — neither lists a project's tasks; this is the tool for that. DERIVING BOARD-HEALTH FIGURES (a roadmap/board digest's per-status + overdue + blocked + unassigned counts): each row carries `statusLabel`, `statusTerminal`, `dueDate`, `assigneeName`, AND a server-computed `overdue` boolean. OVERDUE is the one you should TRUST DIRECTLY: each row's `overdue` field is TRUE iff that task has a due date in the PAST and is NON-terminal (the server already excludes done/cancelled tasks), so the overdue set = the rows where `overdue === true` — do NOT re-derive it by comparing `dueDate` ISO strings to today yourself; just filter/flag on `overdue`. There is still NO separate boolean `blocked` / `isBlocked` flag, so compute BLOCKED from the status label, not a blocked field: BLOCKED = tasks whose `statusLabel` is the board's blocked column (a status named 'Blocked' / 'On Hold' / 'Stuck') — count by that status label; UNASSIGNED = tasks whose `assigneeName` is null; per-status counts = group by `statusLabel`; OPEN = the non-terminal tasks (statusTerminal false). Keep the blocked count CONSISTENT with the per-status breakdown — if the status rollup shows N tasks in the 'Blocked' status, the blocked figure is N (a digest that says 'Blocked status: 2' in one section and 'Blocked: 0' in another, because it looked for a nonexistent blocked flag, is wrong). Returns up to 100 tasks by default (max 200), ordered by status then board position. Each row carries a `threadId` for the task's discussion; it is participant-gated, so do not hand it to kernel threads_read directly — use `comments` (and `comment` to post). Each task row carries `labels`: its effective value per label group (own, or inherited from the nearest parent, with `inherited` and `inheritedFromKey`).",
+      "readOnly": true,
+      "requiredScopes": ["projects:tasks:read"],
+      "trustBoundary": "user",
+      "handler": "tasksByProject",
+      "retryOnTransientDbError": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "labels": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Optional label filter: label group name (or id) to value name (or id), one value per group, AND across groups, matched on the EFFECTIVE value (own, else the nearest parent's). Archived groups and values are accepted; `__none__` selects tasks with no value in that group. An unknown group or value is refused with label_not_found listing the valid values, never an unfiltered list."
+          },
+          "completedAfter": {
+            "type": "string",
+            "description": "Optional: only tasks completed at or after this instant (ISO-8601, inclusive, offsets honoured), on the completion time. Pair with completedBefore, terminal: true and countOnly for a weekly count."
+          },
+          "completedBefore": {
+            "type": "string",
+            "description": "Optional: only tasks completed before this instant (ISO-8601, exclusive, offsets honoured), on the completion time."
+          },
+          "release": {
+            "type": "string",
+            "description": "Optional: only tasks whose EFFECTIVE release (their own, else the nearest parent's) matches, case-insensitive. `__none__` selects tasks with no release."
+          },
+          "projectId": {
+            "type": "string",
+            "description": "Project id whose tasks to list (REQUIRED). Resolve it first via search/get."
+          },
+          "statusId": {
+            "type": "string",
+            "description": "Optional status column id to filter to one status."
+          },
+          "terminal": {
+            "type": "boolean",
+            "description": "Filter by done-state: false = only UNFINISHED tasks (the 'finish every open task' sweep predicate), true = only finished/terminal. Omit for all."
+          },
+          "due": {
+            "type": "string",
+            "enum": [
+              "overdue",
+              "due_soon",
+              "later",
+              "none",
+              "this_week"
+            ],
+            "description": "Optional due date status filter. overdue: past due and not done. due_soon: due within the next 7 days and not done. later: due beyond 7 days and not done. none: no due date and not done. this_week is an accepted alias for due_soon. Every value excludes tasks in a done (terminal) status column: a done task never appears under any due filter, including none and later."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results, default 100, max 200."
+          },
+          "countOnly": {
+            "type": "boolean",
+            "description": "Return ONLY `totalCount` (the count for this filter), no task rows — the cheap 'how many are left' / countdown read. NOTE: `totalCount` (a server COUNT of ALL tasks matching every filter given (project, statusId, terminal, due, release, labels, completedAfter/completedBefore), not the page size) is ALWAYS returned; use it to drive an EXHAUSTIVE sweep and report a measured remaining count — move a task to a terminal status and the next totalCount drops, so you cannot lose count."
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    "portfolio_rollup": {
+      "description": "Cross-project PORTFOLIO ROLLUP for a board/leadership one-screen view: in ONE call it returns, per ACTIVE project, the authoritative {totalTasks, doneTasks, remainingTasks, overdueTasks, percentDone (0-100), and the single biggestAtRisk task}. This is THE tool for 'a portfolio view across every active project', 'every project's % done + overdue + biggest at-risk item', a board update, or a multi-project burndown digest — it replaces calling tasks_byProject once per project and tallying in-context. `biggestAtRisk` is the project's most-overdue (then highest-priority) non-terminal task, carrying its title, priority, dueDate, daysOverdue, assigneeName (or null), and statusLabel. Covers the most-recently-updated active projects up to `limit` (default 25, max 50); if more exist, `truncated` is true and `totalProjects` gives the full count — STATE the covered subset rather than implying full coverage. Counts are TASK counts (story-points/sprints/velocity are not modeled — see agentInstructions); never present percentDone as story-point completion. Does NOT need any project id — it self-discovers the active projects. RLS-scoped: it rolls up only projects/tasks you can read.",
+      "readOnly": true,
+      "requiredScopes": ["projects:tasks:read"],
+      "trustBoundary": "user",
+      "handler": "portfolioRollup",
+      "retryOnTransientDbError": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Max active projects to roll up (most-recently-updated first), default 25, max 50. If more projects exist than this, the result's `truncated` is true and `totalProjects` carries the full count."
+          },
+          "includeArchived": {
+            "type": "boolean",
+            "description": "Include archived projects too. Default false (active projects only)."
+          }
+        }
+      }
+    },
+    "delete": {
+      "description": "Delete a task and all of its subtasks. This is a soft delete (the task is archived, not erased) and it is destructive, so it requires human approval before it runs.",
+      "requiredScopes": ["projects:tasks:write"],
+      "trustBoundary": "user",
+      "handler": "deleteTask",
+      "preflight": "deleteTaskPreflight",
+      "gated": true,
+      "approvalImpact": "internal",
+      "summarizer": "summarizeDeleteTask",
+      "approvalExpiryHours": 24,
+      "params": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Id of the task to delete (its subtasks are deleted too), or its display key (e.g. ERB-12)."
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      }
+    },
+    "merge": {
+      "description": "Merge one task into another: the source task's subtasks and dependencies move to the target, then the source is archived. Destructive (archives the source), so it requires human approval.",
+      "requiredScopes": ["projects:tasks:write"],
+      "trustBoundary": "user",
+      "handler": "mergeTasks",
+      "preflight": "mergeTasksPreflight",
+      "gated": true,
+      "approvalImpact": "internal",
+      "summarizer": "summarizeMergeTasks",
+      "approvalExpiryHours": 24,
+      "params": {
+        "type": "object",
+        "properties": {
+          "sourceId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Id of the task to merge FROM (archived after), or its display key (e.g. ERB-12)."
+          },
+          "targetId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Id of the task to merge INTO (keeps the children), or its display key (e.g. ERB-12)."
+          }
+        },
+        "required": [
+          "sourceId",
+          "targetId"
+        ]
+      }
+    },
+    "instantiate_template": {
+      "description": "Create a new project from a stored project template, materializing the template's full task tree. Provide the template id and a name for the new project.",
+      "requiredScopes": ["projects:projects:write"],
+      "trustBoundary": "user",
+      "handler": "instantiateTemplate",
+      "writesToTable": "app_projects.projects",
+      "retryOnTransientDbError": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "templateId": {
+            "type": "string",
+            "description": "Id of the project template to instantiate."
+          },
+          "projectName": {
+            "type": "string",
+            "description": "Name for the new project."
+          }
+        },
+        "required": [
+          "templateId",
+          "projectName"
+        ]
+      }
+    },
+    "add_dependency": {
+      "description": "Add a dependency between two tasks. With type 'blocks', the task is marked blocked until the task it depends on is completed. Cycles are rejected.",
+      "requiredScopes": ["projects:tasks:write"],
+      "trustBoundary": "user",
+      "handler": "addDependency",
+      "writesToTable": "app_projects.task_dependencies",
+      "retryOnTransientDbError": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "The dependent task (the one that may become blocked), or its display key (e.g. ERB-12)."
+          },
+          "dependsOnTaskId": {
+            "type": "string",
+            "description": "The task that must be done first, or its display key (e.g. ERB-12)."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "blocks",
+              "relates"
+            ],
+            "description": "Dependency type (default 'blocks')."
+          }
+        },
+        "required": [
+          "taskId",
+          "dependsOnTaskId"
+        ]
+      }
+    },
+    "webhook_info": {
+      "description": "Operator setup read: reports whether the CI webhook signing secret has been minted (a 'ci-source' connection was established) and returns it so the CI system (TeamCity notifier / GitLab pipeline-hook relay) can be configured to sign deliveries. Admin-scoped; not for routine agent use.",
+      "readOnly": true,
+      "requiredScopes": ["projects:settings:admin"],
+      "agentVisible": false,
+      "handler": "webhookInfoHandler",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "update_project": {
+      "description": "Edit an existing PROJECT (the board itself, not a task): its name, description, icon, colour, group or key. Identify it by projectId or projectName. Fields you leave out are untouched; description, icon, color and group accept null to clear. The KEY (the prefix of every task key, e.g. ERB in ERB-12) changes only while the project has no task at all: once it holds a task, a key change is refused with project_key_locked, so say so instead of retrying. An archived project is refused with project_archived. Not gated: the edit applies at once and the result is the updated project, so report it as applied only when the call returned it.",
+      "requiredScopes": [
+        "projects:projects:write"
+      ],
+      "trustBoundary": "user",
+      "handler": "updateProject",
+      "writesToTable": "app_projects.projects",
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project id. Optional when projectName is given."
+          },
+          "projectName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project by name (alternative to projectId)."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "New project name."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "New description (markdown), or null to clear."
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Icon name, or null for the default icon."
+          },
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Colour (a CSS colour value), or null to clear."
+          },
+          "key": {
+            "type": "string",
+            "description": "New key: 2-10 uppercase letters or digits, starting with a letter. Refused once the project has tasks."
+          },
+          "group": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 60,
+            "description": "Group the project is filed under in the projects sidebar (free text, at most 60 characters), or null / empty to ungroup it. Reuse an existing group's exact name rather than a near-duplicate."
+          }
+        }
+      }
+    },
+    "status_add": {
+      "description": "Add a new STATUS COLUMN to a project's board (e.g. 'To discuss', 'Blocked', 'QA'). Statuses are PER-PROJECT: read a project's existing columns from get(projectId) (its `statuses` array) before adding, and add a column only when no existing one fits. Use this BEFORE create/update when the user asks to file a task under a column the project does not have yet. Not gated: the column is added at once and the result is the new status.",
+      "requiredScopes": ["projects:projects:write"],
+      "trustBoundary": "user",
+      "handler": "addStatus",
+      "writesToTable": "app_projects.project_statuses",
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project id. Optional when projectName is given (or the org has a single active project)."
+          },
+          "projectName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project by name (alternative to projectId)."
+          },
+          "label": {
+            "type": "string",
+            "description": "The new column's name (REQUIRED), e.g. 'To discuss'."
+          },
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional column color (hex)."
+          },
+          "terminal": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "True if tasks in this column count as DONE (e.g. 'Done', 'Cancelled'). Default false."
+          },
+          "afterStatusId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional: insert the column right after this existing status id (defaults to the end of the board)."
+          }
+        },
+        "required": [
+          "label"
+        ]
+      }
+    },
+    "status_update": {
+      "description": "Rename or reconfigure an existing STATUS COLUMN on a project's board: change its label, color, or whether it is terminal (counts as done). Identify the column by statusId or by its current statusLabel. Not gated: the change applies at once and the result is the updated status.",
+      "requiredScopes": ["projects:projects:write"],
+      "trustBoundary": "user",
+      "handler": "updateStatus",
+      "writesToTable": "app_projects.project_statuses",
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project id. Optional when projectName is given (or the org has a single active project)."
+          },
+          "projectName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project by name (alternative to projectId)."
+          },
+          "statusId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Status column id (from get(projectId).statuses)."
+          },
+          "statusLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Status column by NAME (case-insensitive) — alternative to statusId."
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "New name for the column."
+          },
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "New color (hex), or null to clear."
+          },
+          "terminal": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether tasks in this column count as DONE."
+          }
+        }
+      }
+    },
+    "status_delete": {
+      "description": "Delete an EMPTY status column from a project's board. Refuses (status_in_use) while tasks are still in the column — move them out first (update/move with a different status) — and refuses to delete the project's last column. GATED: lands as an approval, so report the deletion as pending approval.",
+      "requiredScopes": ["projects:projects:write"],
+      "trustBoundary": "user",
+      "handler": "deleteStatus",
+      "preflight": "deleteStatusPreflight",
+      "gated": true,
+      "approvalImpact": "internal",
+      "summarizer": "summarizeDeleteStatus",
+      "approvalExpiryHours": 24,
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project id. Optional when projectName is given (or the org has a single active project)."
+          },
+          "projectName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project by name (alternative to projectId)."
+          },
+          "statusId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Status column id (from get(projectId).statuses)."
+          },
+          "statusLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Status column by NAME (case-insensitive) — alternative to statusId."
+          }
+        }
+      }
+    },
+    "comment": {
+      "description": "Write a comment on a task — the task's own discussion thread, the same one the task detail pane shows. Use it to record a finding, ask the assignee something, or hand work over WITHOUT changing the task's fields: a comment is the durable place for the reasoning, `update` is for the state. Identify the task by id or by display key (e.g. RAI-12). The comment is posted under the calling identity and is visible to everyone who can read the task. Returns the task's `threadId`, which you can then read back with `comments` (or kernel threads_read — reading the task enrols you as a participant of its thread, which is what makes that work).",
+      "requiredScopes": ["projects:tasks:write"],
+      "trustBoundary": "user",
+      "handler": "addComment",
+      "writesToTable": "kernel.messages",
+      "retryOnTransientDbError": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "The task to comment on, or its display key (e.g. RAI-12)."
+          },
+          "body": {
+            "type": "string",
+            "description": "The comment. Plain text, no markdown syntax."
+          }
+        },
+        "required": [
+          "taskId",
+          "body"
+        ]
+      }
+    },
+    "comments": {
+      "readOnly": true,
+      "description": "Read a task's discussion — the comments on its own thread, newest last. This is the ONLY way to reach a task's conversation without already being a participant: task threads are participant-gated, so a `threadId` taken from tasks_byProject and handed straight to kernel threads_read answers 'not a participant'. Reading the task through this tool enrols you, after which threads_read works too. Identify the task by id or display key (e.g. RAI-12).",
+      "requiredScopes": ["projects:tasks:read"],
+      "trustBoundary": "user",
+      "handler": "listComments",
+      "params": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "The task whose discussion to read, or its display key (e.g. RAI-12)."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max messages to return (default 50, max 200)."
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      }
+    },
+    "checklist_get": {
+      "readOnly": true,
+      "description": "Read a task's checklist: the project's validation `levels` in order (id, name), the `items` (id, title, details, per-level `validations` keyed by level id, `checked` for a project without levels) and the `status` (per-level counts and the blocking items, the ones not yet complete).",
+      "requiredScopes": ["projects:tasks:read"],
+      "trustBoundary": "user",
+      "handler": "checklistGet",
+      "retryOnTransientDbError": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The task, by id or display key (e.g. ERB-12)."
+          }
+        },
+        "required": ["taskId"]
+      }
+    },
+    "checklist_add_items": {
+      "description": "Append items to a task's checklist, in the order given (batch, up to 50 per call, 200 per task). Add items only after the human validated the list you proposed. Refused (checklist_task_terminal) when the task is already in a terminal status.",
+      "requiredScopes": ["projects:tasks:write"],
+      "trustBoundary": "user",
+      "writesToTable": "app_projects.task_checklist_items",
+      "handler": "checklistAddItems",
+      "params": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The task, by id or display key (e.g. ERB-12)."
+          },
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 50,
+            "description": "Items to append.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 300,
+                  "description": "What to check, in one line."
+                },
+                "details": {
+                  "type": ["string", "null"],
+                  "maxLength": 10000,
+                  "description": "Optional context, setup, steps and expected result."
+                }
+              },
+              "required": ["title"]
+            }
+          }
+        },
+        "required": ["taskId", "items"]
+      }
+    },
+    "checklist_update_item": {
+      "description": "Edit one checklist item: its title, its details, or its position (place it before or after a sibling item of the same task). Validation states are set with checklist_set_validation, not here.",
+      "requiredScopes": ["projects:tasks:write"],
+      "trustBoundary": "user",
+      "writesToTable": "app_projects.task_checklist_items",
+      "handler": "checklistUpdateItem",
+      "params": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The item id (from checklist_get)."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "New title."
+          },
+          "details": {
+            "type": ["string", "null"],
+            "maxLength": 10000,
+            "description": "New details, or null to clear."
+          },
+          "beforeItemId": {
+            "type": ["string", "null"],
+            "description": "Place the item right before this sibling item."
+          },
+          "afterItemId": {
+            "type": ["string", "null"],
+            "description": "Place the item right after this sibling item."
+          }
+        },
+        "required": ["itemId"]
+      }
+    },
+    "checklist_set_validation": {
+      "description": "Record validation states on checklist items: one `{itemId, level, state, note, source}`, or a batch of up to 50 in `entries` so one pass over many items is one call. `level` is the level name (case-insensitive) or id; any level may be set. Record the verdict the human reports; `source` is optional, the https URL of their record when there is one. A `fail` needs a `note` (checklist_fail_note_required otherwise); a note is posted on the task's discussion. Never changes the task's status.",
+      "requiredScopes": ["projects:tasks:write"],
+      "trustBoundary": "user",
+      "handler": "checklistSetValidation",
+      "writesToTable": "kernel.messages",
+      "params": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Single form: the item id."
+          },
+          "level": {
+            "type": "string",
+            "description": "Single form: the level name or id."
+          },
+          "state": {
+            "type": "string",
+            "enum": ["not_done", "fail", "success", "na"],
+            "description": "Single form: the new state."
+          },
+          "note": {
+            "type": ["string", "null"],
+            "maxLength": 2000,
+            "description": "What was observed. Required for fail."
+          },
+          "source": {
+            "type": ["string", "null"],
+            "maxLength": 500,
+            "description": "Optional https URL of the human's record this state comes from."
+          },
+          "entries": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 50,
+            "description": "Batch form, used instead of the single fields.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "itemId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "level": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "state": {
+                  "type": "string",
+                  "enum": ["not_done", "fail", "success", "na"]
+                },
+                "note": {
+                  "type": ["string", "null"],
+                  "maxLength": 2000
+                },
+                "source": {
+                  "type": ["string", "null"],
+                  "maxLength": 500
+                }
+              },
+              "required": ["itemId", "level", "state"]
+            }
+          }
+        }
+      }
+    },
+    "checklist_remove_item": {
+      "description": "Remove one checklist item and its validation states. Waits for a human approval.",
+      "requiredScopes": ["projects:tasks:write"],
+      "trustBoundary": "user",
+      "handler": "checklistRemoveItem",
+      "preflight": "checklistRemoveItemPreflight",
+      "gated": true,
+      "approvalImpact": "internal",
+      "summarizer": "summarizeRemoveChecklistItem",
+      "approvalExpiryHours": 24,
+      "params": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The item id (from checklist_get)."
+          },
+          "taskId": {
+            "type": "string",
+            "description": "Optional: the task it belongs to (id or display key), checked before staging."
+          }
+        },
+        "required": ["itemId"]
+      }
+    },
+    "labels.list": {
+      "description": "List the org's task label groups, each with its values, in order. Live only by default; `includeArchived: true` also returns archived groups and values (a value is archived when it or its group is). Use the names (or ids) in `create` / `update` `labels` and in the `tasks_byProject` `labels` filter.",
+      "readOnly": true,
+      "requiredScopes": [
+        "projects:projects:read"
+      ],
+      "readsFromTable": "app_projects.labels",
+      "trustBoundary": "user",
+      "handler": "labelsList",
+      "retryOnTransientDbError": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "includeArchived": {
+            "type": "boolean",
+            "description": "Also return archived groups and values (default false)."
+          }
+        }
+      }
+    },
+    "labels.create": {
+      "description": "Create a label group (omit parentId) or a value inside a live group. Names are 1 to 60 characters and unique within their group (case-insensitive); `__none__` is reserved. A duplicate is refused with name_exists.",
+      "requiredScopes": [
+        "projects:labels:admin"
+      ],
+      "writesToTable": "app_projects.labels",
+      "trustBoundary": "user",
+      "handler": "labelsCreate",
+      "params": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Group or value name (REQUIRED)."
+          },
+          "parentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Group id; omit to create a group."
+          },
+          "sortOrder": {
+            "type": "integer",
+            "description": "Position among its siblings; default last."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    "labels.update": {
+      "description": "Rename or reorder a label group or value. A value can never move to another group (parentId is immutable): create a new value instead.",
+      "requiredScopes": [
+        "projects:labels:admin"
+      ],
+      "writesToTable": "app_projects.labels",
+      "targetRowParam": "id",
+      "trustBoundary": "user",
+      "handler": "labelsUpdate",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Label group or value id (REQUIRED)."
+          },
+          "name": {
+            "type": "string",
+            "description": "New name."
+          },
+          "sortOrder": {
+            "type": "integer",
+            "description": "New position among its siblings."
+          },
+          "parentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Immutable: a different value is refused with invalid_params."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "labels.archive": {
+      "description": "Archive a label group or value (`archived: true`, the default), or restore it (`archived: false`). Archived values stay on the tasks that have them and remain usable as filters, but cannot be newly assigned. Archiving a group archives its values with it; restoring the group brings them back.",
+      "requiredScopes": [
+        "projects:labels:admin"
+      ],
+      "writesToTable": "app_projects.labels",
+      "targetRowParam": "id",
+      "trustBoundary": "user",
+      "handler": "labelsArchive",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Label group or value id (REQUIRED)."
+          },
+          "archived": {
+            "type": "boolean",
+            "description": "true archives (default), false restores."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "labels.tree": {
+      "description": "The label tree for the settings page: live groups and their live values (each with updatedAt) and the tree's version, which labels.reorder takes as its base.",
+      "readOnly": true,
+      "agentVisible": false,
+      "requiredScopes": [
+        "projects:projects:read"
+      ],
+      "readsFromTable": "app_projects.labels",
+      "trustBoundary": "user",
+      "handler": "labelsTree",
+      "retryOnTransientDbError": true,
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "labels.reorder": {
+      "description": "Save the whole label tree from the settings page in one transaction: order, names, new groups and values (tempId, values may name parentTempId) and archives. Refused with conflict when baseVersion is not the current version (someone else saved first). Two levels; a value never moves to another group. Returns the new version and the ids of new labels by tempId.",
+      "agentVisible": false,
+      "requiredScopes": [
+        "projects:labels:admin"
+      ],
+      "writesToTable": "app_projects.labels",
+      "trustBoundary": "user",
+      "handler": "labelsReorder",
+      "params": {
+        "type": "object",
+        "properties": {
+          "baseVersion": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The version labels.tree returned when the page loaded (REQUIRED)."
+          },
+          "nodes": {
+            "type": "array",
+            "description": "Every label of the tree the page shows, in order (REQUIRED).",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "tempId": {
+                  "type": "string"
+                },
+                "parentId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "parentTempId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "sortOrder": {
+                  "type": "integer"
+                },
+                "archived": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "name",
+                "sortOrder"
+              ]
+            }
+          }
+        },
+        "required": [
+          "baseVersion",
+          "nodes"
+        ]
+      }
+    }
+  },
+  "export": {
+    "formats": [
+      "json",
+      "csv"
+    ],
+    "handler": "exportProjects",
+    "schema": {
+      "id": "string",
+      "title": "string",
+      "projectId": "string",
+      "statusId": "string",
+      "priority": "string",
+      "assigneeId": "string",
+      "dueDate": "string",
+      "createdAt": "string"
+    }
+  },
+  "import": {
+    "kinds": {
+      "project": {
+        "label": "Projects",
+        "schema": {
+          "type": "object",
+          "required": [
+            "name"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "statuses": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "label"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "terminal": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "handler": "importProjects",
+        "dedupKey": "name",
+        "tables": [
+          "app_projects.projects",
+          "app_projects.project_statuses"
+        ],
+        "writeScopes": [
+          "projects:projects:write"
+        ]
+      },
+      "task": {
+        "label": "Tasks",
+        "schema": {
+          "type": "object",
+          "required": [
+            "externalRef",
+            "project",
+            "title"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "externalRef": {
+              "type": "string",
+              "minLength": 1
+            },
+            "project": {
+              "type": "object",
+              "required": [
+                "name"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "status": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "statusTerminal": {
+              "type": "boolean"
+            },
+            "assigneeEmail": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "assigneeName": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reporterEmail": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reporterName": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "priority": {
+              "enum": [
+                "low",
+                "normal",
+                "high",
+                "urgent"
+              ]
+            },
+            "dueDate": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "startDate": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "blocked": {
+              "type": "boolean"
+            },
+            "createdAt": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "completedAt": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "parentExternalRef": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "comments": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "body"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "authorName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "authorEmail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "body": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "createdAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            },
+            "checklist": {
+              "type": "array",
+              "maxItems": 200,
+              "items": {
+                "type": "object",
+                "required": [
+                  "title"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "details": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "checked": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            },
+            "dependsOn": {
+              "type": "array",
+              "maxItems": 100,
+              "items": {
+                "type": "object",
+                "required": [
+                  "externalRef"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "externalRef": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "blocks",
+                      "relates"
+                    ]
+                  }
+                }
+              }
+            },
+            "attachments": {
+              "type": "array",
+              "maxItems": 100,
+              "items": {
+                "type": "object",
+                "required": [
+                  "filename",
+                  "fileId"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "filename": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "mimeType": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "fileId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "createdAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "authorEmail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "authorName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "handler": "importTasks",
+        "dedupKey": "externalRef",
+        "tables": [
+          "app_projects.tasks",
+          "app_projects.projects",
+          "app_projects.project_statuses",
+          "app_projects.task_checklist_items",
+          "app_projects.task_dependencies",
+          "kernel.threads",
+          "kernel.thread_participants",
+          "kernel.messages",
+          "kernel.users",
+          "kernel.files"
+        ],
+        "writeScopes": [
+          "projects:tasks:write",
+          "projects:projects:write"
+        ],
+        "people": [
+          "assigneeEmail",
+          "reporterEmail",
+          "comments.authorEmail",
+          "attachments.authorEmail"
+        ],
+        "files": [
+          "attachments"
+        ],
+        "rollupTables": [
+          "app_projects.tasks"
+        ]
+      },
+      "template": {
+        "label": "Project templates",
+        "schema": {
+          "type": "object",
+          "required": [
+            "name",
+            "structure"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "structure": {
+              "type": "array",
+              "minItems": 1,
+              "description": "The task tree: [{ title, description?, children? }], nested at most as deep as tasks may be.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "title"
+                ]
+              }
+            }
+          }
+        },
+        "handler": "importTemplates",
+        "dedupKey": "name",
+        "tables": [
+          "app_projects.project_templates"
+        ],
+        "writeScopes": [
+          "projects:settings:admin"
+        ]
+      }
+    }
+  },
+  "connections": {
+    "ci-source": {
+      "type": "credentials",
+      "purpose": "CI release-status webhook",
+      "optional": true,
+      "allowedDomains": [],
+      "webhookSecretConfigKey": "ciWebhookSecret",
+      "credentialFields": [
+        {
+          "name": "label",
+          "type": "text",
+          "label": "CI system label (e.g. teamcity-prod)",
+          "required": true
+        },
+        {
+          "name": "projectName",
+          "type": "text",
+          "label": "Project name for release-status tasks (created if absent)",
+          "required": false
+        }
+      ],
+      "setupGuide": {
+        "summary": "Connecting mints the webhook signing secret for CI→projects release-status reporting (spec 3.4bis #3: TeamCity/GitLab reports build/release status via an API-key/HMAC webhook, same pattern as monitoring ingest). This app never calls out to the CI system — the connection exists so the kernel generates and stores the HMAC secret the CI side must sign deliveries with.",
+        "steps": [
+          {
+            "who": "human",
+            "minutes": 1,
+            "text": "Enter a label for the reporting CI system (e.g. `teamcity-prod` or `gitlab-orders-api`) and connect — the kernel mints a random signing secret on first connect and reuses it afterwards.",
+            "place": "liaison"
+          },
+          {
+            "who": "agent",
+            "text": "Read the signing secret with the `webhook_info` tool (admin scope required)."
+          },
+          {
+            "who": "human",
+            "minutes": 10,
+            "text": "Configure the CI system (TeamCity build-status notifier, or a GitLab pipeline-hook relay) to POST a release-status JSON envelope to this Liaison instance's `ci-status` webhook endpoint for the projects app, signing the raw request body with HMAC-SHA256 (base64) under that secret in the `x-projects-ci-signature` header.",
+            "place": "own"
+          },
+          {
+            "who": "human",
+            "minutes": 0,
+            "text": "Include a fresh `ts` (ISO-8601 or epoch ms) in every payload — it is covered by the signature and deliveries whose signed `ts` is older (or further in the future) than the freshness window are rejected (default 10 minutes; override via the `ciWebhookTtlSeconds` config key).",
+            "place": "own"
+          },
+          {
+            "who": "human",
+            "minutes": 0,
+            "text": "Every delivery needs an `externalRef` (a stable id for the release/pipeline run, e.g. `teamcity:<buildTypeId>:<buildNumber>` or the GitLab pipeline id) — repeat deliveries for the same `externalRef` update the same task instead of creating duplicates.",
+            "place": "own"
+          }
+        ]
+      }
+    }
+  },
+  "webhooks": {
+    "ci-status": {
+      "handler": "ciStatusWebhookHandler",
+      "verify": "ciStatusWebhookVerifier",
+      "bodyLimitBytes": 65536,
+      "requiresUserActor": true
+    }
+  },
+  "webhookHealth": {
+    "probe": null,
+    "reason": "CI status callbacks are pushed by the org's own CI, which has no upstream the kernel can query."
+  },
+  "events": {
+    "emits": [
+      "project:created",
+      "project:updated",
+      "project:archived",
+      "project:restored",
+      "project_status:created",
+      "project_status:updated",
+      "project_status:deleted",
+      "project_status:reordered",
+      "task:created",
+      "task:updated",
+      "task:moved",
+      "task:deleted",
+      "task_checklist_item:created",
+      "task_checklist_item:updated",
+      "task_checklist_item:deleted",
+      "label:created",
+      "label:updated",
+      "label:archived",
+      "label:restored",
+      "label:reordered"
+    ]
+  },
+  "kind": "app",
+  "settings": {
+    "sections": [
+      {
+        "id": "ci",
+        "title": "CI release status",
+        "titleKey": "projects.settingsPage.ci.title",
+        "description": "A CI system (TeamCity, GitLab) reports build and release status into a project through a signed webhook.",
+        "descriptionKey": "projects.settingsPage.ci.description",
+        "scope": "org",
+        "adminScope": "projects:settings:admin",
+        "blocks": [
+          {
+            "block": "connections",
+            "names": [
+              "ci-source"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "labels",
+        "title": "Labels",
+        "titleKey": "projects.settingsPage.labels.title",
+        "description": "Groups and their values. Drag to reorder within a group; a value cannot move to another group.",
+        "descriptionKey": "projects.settingsPage.labels.description",
+        "scope": "org",
+        "adminScope": "projects:labels:admin",
+        "blocks": [
+          {
+            "block": "tree",
+            "ops": {
+              "list": "labels.tree",
+              "create": "labels.create",
+              "update": "labels.update",
+              "reorder": "labels.reorder",
+              "archive": "labels.archive"
+            },
+            "maxDepth": 2
+          }
+        ]
+      }
+    ]
+  },
+  "views": {
+    "attentionItems": {
+      "handler": "computeAttentionItems",
+      "scope": "projects:tasks:read"
+    },
+    "tabTypes": {
+      "home": {
+        "component": "ProjectsHome",
+        "sidebar": "ProjectsSidebar",
+        "label": "Projects",
+        "labelKey": "kernel.nav.projects",
+        "icon": "ProjectsIcon",
+        "urlPattern": "/projects",
+        "singleton": true,
+        "referenceable": false
+      },
+      "project": {
+        "component": "ProjectWorkspace",
+        "sidebar": "ProjectsSidebar",
+        "label": "Project",
+        "icon": "ProjectsIcon",
+        "urlPattern": "/projects/:entityId",
+        "preserveSubRoutes": true,
+        "referenceable": true
+      },
+      "task": {
+        "component": "TaskDetail",
+        "sidebar": "ProjectsSidebar",
+        "label": "Task",
+        "icon": "ProjectsIcon",
+        "urlPattern": "/projects/tasks/:entityId",
+        "referenceable": true
+      }
+    },
+    "activityBar": {
+      "icon": "ProjectsIcon",
+      "label": "Projects",
+      "labelKey": "kernel.nav.projects",
+      "order": 12,
+      "tabAction": {
+        "type": "home",
+        "entityId": "projects-home",
+        "label": "Projects"
+      }
+    },
+    "wsHandlers": {
+      "project": "handleProjectEvent",
+      "task": "handleTaskEvent",
+      "project_status": "handleProjectStatusEvent",
+      "task_checklist_item": "handleChecklistItemEvent",
+      "label": "handleLabelEvent"
+    }
+  },
+  "slots": {
+    "project:task:tabs": {
+      "position": "tabs"
+    },
+    "project:task:actions": {
+      "position": "toolbar"
+    }
+  },
+  "contributions": {},
+  "savedViews": {
+    "home": {
+      "defaults": [
+        {
+          "key": "my-tasks",
+          "name": "My tasks",
+          "payload": {
+            "assigneeId": "$me",
+            "status": "open"
+          }
+        },
+        {
+          "key": "due-soon",
+          "name": "Due this week",
+          "payload": {
+            "dueWithinDays": 7
+          }
+        },
+        {
+          "key": "recently-involved",
+          "name": "Recently involved",
+          "payload": {
+            "involvedWithinDays": 14
+          }
+        }
+      ]
+    },
+    "project": {
+      "defaults": [
+        {
+          "key": "active",
+          "name": "Active tasks",
+          "payload": {
+            "status": "open"
+          }
+        },
+        {
+          "key": "recently-involved",
+          "name": "Recently involved",
+          "payload": {
+            "involvedWithinDays": 14
+          }
+        }
+      ]
+    }
+  },
+  "bulk": {
+    "setStatus": {
+      "label": "Change status…",
+      "underlyingTool": "update",
+      "dispatchMode": "perItem",
+      "perItemParam": "taskId",
+      "sharedFields": [
+        "statusId"
+      ],
+      "agentTool": "bulkUpdate",
+      "itemResultFields": [
+        "checklistWarning"
+      ]
+    },
+    "move": {
+      "label": "Move…",
+      "underlyingTool": "move",
+      "dispatchMode": "perItem",
+      "perItemParam": "taskId",
+      "sharedFields": [
+        "projectId",
+        "parentTaskId",
+        "statusId"
+      ],
+      "agentTool": "bulkUpdate",
+      "itemResultFields": [
+        "checklistWarning"
+      ]
+    },
+    "assign": {
+      "label": "Assign…",
+      "underlyingTool": "update",
+      "dispatchMode": "perItem",
+      "perItemParam": "taskId",
+      "sharedFields": [
+        "assigneeId"
+      ],
+      "agentTool": "bulkUpdate"
+    },
+    "setLabels": {
+      "label": "Set labels…",
+      "underlyingTool": "update",
+      "dispatchMode": "perItem",
+      "perItemParam": "taskId",
+      "sharedFields": [
+        "labels"
+      ],
+      "agentTool": "bulkUpdate",
+      "customForm": "SetTaskLabelsForm"
+    }
+  },
+  "roles": {
+    "member": {
+      "description": "Project contributor: read projects, read and write tasks",
+      "scopes": [
+        "projects:projects:read",
+        "projects:tasks:read",
+        "projects:tasks:write"
+      ]
+    },
+    "lead": {
+      "description": "Project lead: create and edit projects in addition to member rights",
+      "extends": "member",
+      "scopes": [
+        "projects:projects:write"
+      ]
+    },
+    "admin": {
+      "description": "Projects app administrator: full settings control",
+      "extends": "lead",
+      "scopes": [
+        "projects:settings:admin",
+        "projects:labels:admin"
+      ]
+    }
+  },
+  "skills": {
+    "diagnose-routine-state": {
+      "description": "Diagnose why a routine is not ticking or is stuck (paused/scope/credits).",
+      "body": "When a routine is not producing the work you expect, diagnose before re-creating it. 1. Check its state: a routine paused paused_no_credits needs org credit topped up; paused_scope_mismatch means its granted scopes no longer cover the tools it calls — re-grant or narrow the routine. 2. For an EVENT-kind routine, confirm the triggering event actually fires (the domain mutation must queueEvent the (app,entity,action) the routine subscribes to) — no event, no tick; a coalesce/debounce window means a burst yields ONE tick, not many. 3. For a SCHEDULED/RECURRING routine, confirm the cron is due and the last tick did not error. 4. A duplicate event delivery is idempotent (same jobId) — do not treat a single tick on a burst as a bug. Report the specific blocking state; never silently recreate the routine.",
+      "kind": "playbook",
+      "enabledByDefault": false
+    }
+  }
+}

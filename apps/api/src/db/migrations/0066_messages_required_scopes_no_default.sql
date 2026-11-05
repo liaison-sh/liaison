@@ -1,0 +1,26 @@
+-- SPDX-License-Identifier: FSL-1.1-ALv2
+-- FX2 (spec A2): kernel.messages.required_scopes is "NOT NULL with no default".
+--
+-- 0059 added the column as NOT NULL DEFAULT '{}'::text[] so that ADD COLUMN
+-- could fill every existing row in one metadata-only statement. The default
+-- then did a second job it was never meant to do: it silently completed any
+-- INSERT that left the column out, so an untagged write published whatever it
+-- quoted to the whole room and nothing failed. The static guard
+-- (message-writes-tagged) only ever saw `.insert(<named import>)`, so a
+-- namespace import, a lowercase or quoted raw INSERT, or an explicit
+-- `requiredScopes: undefined` all walked straight past it.
+--
+-- Dropping the default moves the rule into the database: NOT NULL now has
+-- nothing to fall back on, so an INSERT that omits the column raises
+-- 23502 (null value in column "required_scopes"). Every writer must name the
+-- tag, and a missed writer is a failing test rather than a silent disclosure.
+-- The static guard stays as a second line of defence, in front of this one.
+--
+-- Existing rows are untouched: DROP DEFAULT changes only the column's default
+-- expression, never stored data, and rows already carry '{}' from 0059.
+-- NOT NULL is deliberately kept.
+--
+-- Re-runnable: DROP DEFAULT on a column that has no default is a no-op, so a
+-- re-migrate (and a fresh apply, where 0059 set the default moments earlier)
+-- both land on the same state.
+ALTER TABLE kernel.messages ALTER COLUMN required_scopes DROP DEFAULT;

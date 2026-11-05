@@ -1,0 +1,22 @@
+# Shopify app configuration for Liaison at https://liaison.example.com.
+# Generated from the Shopify app's manifest: keep the scopes and URLs as they are.
+# To add a scope later, download this file again from Liaison (or add it to
+# [access_scopes] scopes), run `shopify app deploy`, then Reconnect in Liaison.
+# Docs: https://shopify.dev/docs/apps/build/cli-for-apps/app-configuration
+
+client_id = ""
+name = "Liaison"
+application_url = "https://liaison.example.com"
+embedded = false
+
+[access_scopes]
+# Shopify grants a store exactly these scopes when it connects (managed installation).
+scopes = "read_orders,write_orders,read_draft_orders,write_draft_orders,read_customers,write_customers,read_products,write_products,read_inventory,write_inventory,read_locations,read_returns,write_returns,read_fulfillments,write_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_markets,read_discounts,write_discounts,read_reports,read_publications,write_publications"
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [ "https://liaison.example.com/api/connections/callback" ]
+
+[webhooks]
+# Liaison subscribes to the store's webhooks through the Admin API when the store connects.
+api_version = "2026-04"

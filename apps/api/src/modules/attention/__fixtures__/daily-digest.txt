@@ -1,0 +1,15 @@
+5 things need your attention
+
+[mention · 11m ago]  Alice mentioned you in "Sprint Planning"
+  https://app.liaison.sh/threads/thread-sprint-planning
+[reply · 1h ago]  Bob replied: looks good, shipping after standup
+  https://app.liaison.sh/threads/thread-sprint-planning
+[approval · 4h ago]  Your spend request was approved by Taylor
+  https://app.liaison.sh/approvals/ar-091
+[alert · 10h ago]  Search reindex failed — manual investigation needed <urgent>
+  https://app.liaison.sh/alerts/a-77
+[file · 1d ago]  Diana attached Q2-roadmap.pdf to #Sprint Planning
+  https://app.liaison.sh/tickets/T-413
+
+Open Liaison: https://app.liaison.sh
+Manage attention preferences: https://app.liaison.sh/settings/notifications

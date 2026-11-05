@@ -1,0 +1,126 @@
+Sessions app title -> packages/shared/src/i18n/locales/en/kernel.json:4435
+List groups Needs you Running Paused Done Failed or stopped Older -> packages/shared/src/i18n/locales/en/kernel.json:1413
+Failed or stopped group -> packages/shared/src/i18n/locales/en/kernel.json:4454
+Older group with Load more -> packages/shared/src/i18n/locales/en/kernel.json:752
+Statuses queued running waiting paused done needs_you stopped failed -> packages/shared/src/node-session-protocol.ts:13
+Status labels -> packages/shared/src/i18n/locales/en/kernel.json:4207
+Origin labels -> packages/shared/src/i18n/locales/en/kernel.json:4465
+Imported origin -> packages/shared/src/i18n/locales/en/kernel.json:4468
+Computer online or offline in header -> packages/shared/src/i18n/locales/en/kernel.json:4438
+Empty state Nothing running on your computer -> packages/shared/src/i18n/locales/en/kernel.json:4457
+No computer yet -> packages/shared/src/i18n/locales/en/kernel.json:4460
+Push notifications needs you done failed -> packages/shared/src/i18n/locales/en/kernel.json:4693
+Push session done title -> packages/shared/src/i18n/locales/en/kernel.json:4696
+Push session failed title -> packages/shared/src/i18n/locales/en/kernel.json:4697
+Phone Sessions header -> packages/shared/src/i18n/locales/en/kernel.json:4702
+Only the owner sees their sessions; RLS owner read -> apps/api/src/db/migrations/0140_node_sessions.sql:386
+Sessions route reads owner's rows -> apps/api/src/modules/node-sessions/routes-me.ts:29
+New session button -> packages/shared/src/i18n/locales/en/kernel.json:4436
+New session dialog title -> packages/shared/src/i18n/locales/en/kernel.json:4589
+Prompt field What should it do -> packages/shared/src/i18n/locales/en/kernel.json:4590
+Folder No folder (Liaison Node) -> packages/shared/src/i18n/locales/en/kernel.json:4592
+Hint on folders and worktrees -> packages/shared/src/i18n/locales/en/kernel.json:4596
+Model field -> packages/shared/src/i18n/locales/en/kernel.json:4371
+Agent field default personal agent -> apps/web/src/modules/sessions/NewSessionDialog.tsx:5
+Level field defaults to agent's profile level -> apps/web/src/modules/sessions/NewSessionDialog.tsx:5
+When finished options -> packages/shared/src/i18n/locales/en/kernel.json:4602
+Commit only -> packages/shared/src/i18n/locales/en/kernel.json:4603
+Leave uncommitted -> packages/shared/src/i18n/locales/en/kernel.json:4604
+Start button -> packages/shared/src/i18n/locales/en/kernel.json:4597
+No computer set up first -> packages/shared/src/i18n/locales/en/kernel.json:4599
+Level raise asks confirmation, Open always -> apps/web/src/modules/nodes/LevelConfirmDialog.tsx:4
+Header chips Branch pushed Pull request -> packages/shared/src/i18n/locales/en/kernel.json:4500
+Header tokens and context -> packages/shared/src/i18n/locales/en/kernel.json:4496
+Cache warm or cold -> packages/shared/src/i18n/locales/en/kernel.json:4489
+Reasoning chip -> packages/shared/src/i18n/locales/en/kernel.json:4498
+Open in VS Code -> packages/shared/src/i18n/locales/en/kernel.json:4520
+More actions -> packages/shared/src/i18n/locales/en/kernel.json:2611
+System lines hooks off -> packages/shared/src/i18n/locales/en/kernel.json:4280
+Auto-continue system line -> packages/shared/src/i18n/locales/en/kernel.json:4290
+Results over 64 KB cut -> apps/api/src/modules/node-sessions/routes-full-output.ts:3
+Show full output -> packages/shared/src/i18n/locales/en/kernel.json:4412
+Full output kept 24 hours -> apps/api/src/modules/node-sessions/routes-full-output.ts:47
+Full output offline text -> packages/shared/src/i18n/locales/en/kernel.json:4414
+Full output gone -> packages/shared/src/i18n/locales/en/kernel.json:4415
+Files changed drawer -> packages/shared/src/i18n/locales/en/kernel.json:4584
+Change cut at 64 KB -> packages/shared/src/i18n/locales/en/kernel.json:4586
+Plan progress -> packages/shared/src/i18n/locales/en/kernel.json:4533
+Subagents panel Active Finished -> packages/shared/src/i18n/locales/en/kernel.json:4767
+Subagent stuck -> packages/shared/src/i18n/locales/en/kernel.json:4780
+Stop subagent -> packages/shared/src/i18n/locales/en/kernel.json:4781
+Atelier steps -> packages/shared/src/i18n/locales/en/kernel.json:4796
+Atelier waiting complete failed -> packages/shared/src/i18n/locales/en/kernel.json:4797
+Mute this session -> packages/shared/src/i18n/locales/en/kernel.json:4504
+Message placeholders by state -> packages/shared/src/i18n/locales/en/kernel.json:4356
+Queued placeholder -> packages/shared/src/i18n/locales/en/kernel.json:4358
+Paused placeholder -> packages/shared/src/i18n/locales/en/kernel.json:4359
+Ended placeholder resumes -> packages/shared/src/i18n/locales/en/kernel.json:4360
+Send and Stop -> packages/shared/src/i18n/locales/en/kernel.json:757
+Mark done button -> packages/shared/src/i18n/locales/en/kernel.json:4502
+Mark done outdated -> packages/shared/src/i18n/locales/en/kernel.json:4503
+Session settings -> packages/shared/src/i18n/locales/en/kernel.json:4370
+Model and level apply from next step -> packages/shared/src/i18n/locales/en/kernel.json:4369
+Raise confirm title and body -> packages/shared/src/i18n/locales/en/kernel.json:4235
+Lowered restarts now -> packages/shared/src/i18n/locales/en/kernel.json:4373
+Raised restarts at end of step -> packages/shared/src/i18n/locales/en/kernel.json:4374
+Model refused keeps model -> packages/shared/src/i18n/locales/en/kernel.json:4375
+Reasoning label -> packages/shared/src/i18n/locales/en/kernel.json:4758
+Run on its own switch -> packages/shared/src/i18n/locales/en/kernel.json:4786
+Permission card heading -> packages/shared/src/i18n/locales/en/kernel.json:4560
+Allow once Allow for this session Deny -> packages/shared/src/i18n/locales/en/kernel.json:4389
+Permission waits no time limit -> packages/shared/src/i18n/locales/en/kernel.json:4391
+Question card -> packages/shared/src/i18n/locales/en/kernel.json:4561
+Question Other and Answer -> packages/shared/src/i18n/locales/en/kernel.json:4394
+Plan card -> packages/shared/src/i18n/locales/en/kernel.json:4562
+Approve plan Keep planning -> packages/shared/src/i18n/locales/en/kernel.json:4400
+Several questions in their own card -> packages/shared/src/i18n/locales/en/kernel.json:4368
+Browser test warning runs with full rights -> packages/shared/src/i18n/locales/en/kernel.json:4571
+Playwright runners ask the owner, never auto-allowed -> packages/shared/src/node-levels.ts:58
+Steering tools list read send stop answer settings -> apps/api/src/modules/node-sessions/agent-tools.ts:4
+Send and answer only from the person's own typed turn -> apps/api/src/modules/agent/tools/kernel-tools.ts:1248
+Refused for routines, other agents, MCP -> apps/api/src/modules/node-sessions/agent-tools.ts:20
+Level raise answers confirmation_required -> apps/api/src/modules/node-sessions/agent-tools.ts:16
+Paused when computer offline -> packages/shared/src/i18n/locales/en/kernel.json:4722
+Resumed after computer was offline -> packages/shared/src/i18n/locales/en/kernel.json:4427
+Resumed after process ended -> packages/shared/src/i18n/locales/en/kernel.json:4429
+Resumed by message -> packages/shared/src/i18n/locales/en/kernel.json:4428
+Import entry button -> packages/shared/src/i18n/locales/en/kernel.json:4803
+Import page title -> packages/shared/src/i18n/locales/en/kernel.json:4804
+Import Computer picker -> packages/shared/src/i18n/locales/en/kernel.json:4805
+Working in folder picker -> packages/shared/src/i18n/locales/en/kernel.json:4842
+Search by title folder or branch -> packages/shared/src/i18n/locales/en/kernel.json:4806
+Search all sessions -> packages/shared/src/i18n/locales/en/kernel.json:4807
+Import status chips -> packages/shared/src/i18n/locales/en/kernel.json:4870
+Open now chip -> packages/shared/src/i18n/locales/en/kernel.json:4868
+In Liaison chip -> packages/shared/src/i18n/locales/en/kernel.json:4869
+Follow button -> packages/shared/src/i18n/locales/en/kernel.json:4817
+Take over button -> packages/shared/src/i18n/locales/en/kernel.json:4818
+Following VS Code -> packages/shared/src/i18n/locales/en/kernel.json:4889
+Following read only text -> packages/shared/src/i18n/locales/en/kernel.json:4905
+Stop following -> packages/shared/src/i18n/locales/en/kernel.json:4894
+Delete from Liaison -> packages/shared/src/i18n/locales/en/kernel.json:4895
+Delete keeps transcript -> packages/shared/src/i18n/locales/en/kernel.json:4897
+Only imported sessions can be deleted; running must stop first -> packages/shared/src/i18n/locales/en/kernel.json:4902
+Not shared yet -> packages/shared/src/i18n/locales/en/kernel.json:4850
+Share this folder -> packages/shared/src/i18n/locales/en/kernel.json:4852
+Home folder never shared in import -> packages/shared/src/i18n/locales/en/kernel.json:4854
+Hidden folder never shared in import -> packages/shared/src/i18n/locales/en/kernel.json:4855
+Redaction best effort -> packages/shared/src/i18n/locales/en/kernel.json:4820
+Outside content note -> packages/shared/src/i18n/locales/en/kernel.json:4821
+Take over live confirm -> packages/shared/src/i18n/locales/en/kernel.json:4819
+Driven from VS Code header -> packages/shared/src/i18n/locales/en/kernel.json:4292
+Orphan Stop it -> packages/shared/src/i18n/locales/en/kernel.json:4518
+Driven elsewhere ask to send again -> packages/shared/src/i18n/locales/en/kernel.json:4380
+Import window earlier history stays -> packages/shared/src/i18n/locales/en/kernel.json:4300
+Import errors outside shared -> packages/shared/src/i18n/locales/en/kernel.json:4829
+computer_session_import_list -> apps/api/src/modules/agent/tools/kernel-tools.ts:1351
+computer_session_import modes follow take_over -> packages/shared/src/node-session-protocol.ts:160
+Import approval only person's click -> apps/api/src/modules/agent/tools/kernel-tools.ts:1387
+Session-written computer tools names -> apps/api/src/modules/agent/tools/kernel-tools.ts:1153
+computer_session_list -> apps/api/src/modules/agent/tools/kernel-tools.ts:1136
+computer_session_read -> apps/api/src/modules/agent/tools/kernel-tools.ts:1146
+computer_session_stop -> apps/api/src/modules/agent/tools/kernel-tools.ts:1168
+computer_session_answer -> apps/api/src/modules/agent/tools/kernel-tools.ts:1175
+computer_session_settings -> apps/api/src/modules/agent/tools/kernel-tools.ts:1203
+Auto asks after outside text; own-server downloads do not count -> apps/desktop/sidecar/outside-text.ts:139
+Reconnect within 5 s keeps sessions running; 30 s after a server restart (close 1012) -> apps/api/src/modules/node-sessions/lifecycle.ts:140-156 ; apps/api/src/lib/server.ts:810-813

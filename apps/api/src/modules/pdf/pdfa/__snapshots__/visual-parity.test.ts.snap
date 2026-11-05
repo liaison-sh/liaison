@@ -1,0 +1,149 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`S11: a Factur-X reads the same as the plain PDF invoice: same draw commands, same pages, same text; golden text 1`] = `
+"Maison Exemple SAS
+ 
+INVOICE
+FA-2026-0042
+Issued:
+ 
+2026-11-03
+Due:
+ 
+2026-12-03
+Incoterm:
+ 
+DAP
+Operation: Livraison de biens
+FROM
+Maison Exemple SAS
+1 rue de Test, 75011 Paris
+FR
+VAT: FR40902000009
+SIREN 902000009
+SAS au capital de 10 000 €
+BILL TO
+Client Exemple SAS
+10 rue Domestic, 69002 Lyon
+FR
+VAT: FR83900000001
+SIREN 900000001
+#
+ 
+Description
+ 
+Qty
+ 
+Unit price
+ 
+Tax %
+ 
+Amount
+0
+ 
+2
+ 
+349.99
+ 
+20.00%
+ 
+839.98
+Contrôleur
+1
+ 
+1
+ 
+12.50
+ 
+20.00%
+ 
+15.00
+Câble
+Subtotal
+ 
+712.48 EUR
+Tax (20.00%)
+ 
+142.50 EUR
+Total due
+ 
+854.98 EUR
+Payment details
+IBAN: FR7630006000011234567890189
+SWIFT/BIC: AGRIFRPP
+Bank: Banque Test
+Maison Exemple SAS · SAS au capital de 10 000 € · RCS Paris 902000009 · VAT FR40902000009
+ 
+Page 1 of 1"
+`;
+
+exports[`S11: a Factur-X reads the same as the plain PDF credit_note: same draw commands, same pages, same text; golden text 1`] = `
+"Maison Exemple SAS
+ 
+CREDIT NOTE
+AV-2026-0007
+Issued:
+ 
+2026-11-03
+Incoterm:
+ 
+DAP
+Operation: Livraison de biens
+Credit note for invoice FA-2026-0042 of 2026-11-03
+FROM
+Maison Exemple SAS
+1 rue de Test, 75011 Paris
+FR
+VAT: FR40902000009
+SIREN 902000009
+SAS au capital de 10 000 €
+BILL TO
+Client Exemple SAS
+10 rue Domestic, 69002 Lyon
+FR
+VAT: FR83900000001
+SIREN 900000001
+#
+ 
+Description
+ 
+Qty
+ 
+Unit price
+ 
+Tax %
+ 
+Amount
+0
+ 
+2
+ 
+349.99
+ 
+20.00%
+ 
+839.98
+Contrôleur
+1
+ 
+1
+ 
+12.50
+ 
+20.00%
+ 
+15.00
+Câble
+Subtotal
+ 
+712.48 EUR
+Tax (20.00%)
+ 
+142.50 EUR
+Total due
+ 
+854.98 EUR
+Maison Exemple SAS · SAS au capital de 10 000 € · RCS Paris 902000009 · VAT FR40902000009
+ 
+Page 1 of 1"
+`;

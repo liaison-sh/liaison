@@ -1,0 +1,1 @@
+Quote approval card: customer, lines with discount, total, Valid until, Customer ref -> bundled-apps/invoicing/src/approval-cards.ts:144,278,281 ; bundled-apps/invoicing/src/summarizers.ts:565 ; bundled-apps/invoicing/app.manifest.json:3109

@@ -1,0 +1,141 @@
+Routine model pin falls back to thread then Auto -> packages/shared/src/validation/agent/routines.ts:241
+Routine Agent model label -> packages/shared/src/i18n/locales/en/kernel.json:38
+Conversation model overrides agent preference -> apps/api/src/modules/agent/runtime/agent-service.ts:2953
+Agent model preference used when conversation names none -> apps/api/src/modules/agent/runtime/agent-service.ts:2954
+Agent default of provider with no key falls back to auto -> apps/api/src/modules/agent/runtime/agent-service.ts:2940
+Agent Settings Model field -> packages/shared/src/i18n/locales/en/kernel.json:304
+Model selector groups Local, node, Liaison -> apps/web/src/modules/agent/ModelSelector.tsx:48
+Local models label -> packages/shared/src/i18n/locales/en/kernel.json:131
+Models on node label -> packages/shared/src/i18n/locales/en/kernel.json:132
+Your Claude Code login entry -> packages/shared/src/i18n/locales/en/kernel.json:135
+Reasoning row Off Low Medium High -> apps/web/src/modules/agent/ReasoningLevelRow.tsx:8
+Reasoning label -> packages/shared/src/i18n/locales/en/kernel.json:40
+Reasoning levels off low medium high -> packages/shared/src/reasoning.ts:12
+Row hidden for non-reasoning models, Off hidden when not disableable -> packages/shared/src/reasoning.ts:104
+Reasoning level stored per model per thread -> apps/api/src/modules/agent/runtime/agent-service.ts:2960
+Auto turn runs at reasoning High, clamped to the model -> packages/shared/src/reasoning.ts:146
+Demo visitor's Auto runs at Low on the demo's key -> packages/shared/src/reasoning.ts:132
+On Auto the row shows only that level, read only -> apps/web/src/modules/agent/ReasoningLevelRow.tsx:58
+Set by Auto note -> packages/shared/src/i18n/locales/en/kernel.json:1841
+Auto-picked model marked for the turn -> apps/api/src/modules/agent/runtime/agent-service.ts:1612
+Switched-off model moves anything set to it to Auto -> packages/shared/src/i18n/locales/en/kernel.json:5213
+Models page needs kernel:org:admin -> apps/api/src/modules/settings/ai-models-routes.ts:3
+Settings Models nav entry -> apps/web/src/framework/bootstrap.ts:606
+Nav label Models -> packages/shared/src/i18n/locales/en/kernel.json:1636
+AI models page title -> packages/shared/src/i18n/locales/en/kernel.json:5178
+Auto section -> packages/shared/src/i18n/locales/en/kernel.json:5182
+Auto default option cheapest model with a key -> packages/shared/src/i18n/locales/en/kernel.json:5183
+Auto picks cheapest eligible model whose provider has a key -> apps/api/src/modules/agent/credits/credit-meter.ts:675
+Auto fallback message -> packages/shared/src/i18n/locales/en/kernel.json:5185
+Cannot switch off model Auto runs -> packages/shared/src/i18n/locales/en/kernel.json:5187
+Models switched on table columns -> packages/shared/src/i18n/locales/en/kernel.json:5199
+Context column -> packages/shared/src/i18n/locales/en/kernel.json:5200
+Chips tools no tools reasoning Auto -> packages/shared/src/i18n/locales/en/kernel.json:5203
+Supported providers -> apps/api/src/modules/settings/ai-keys-routes.ts:22
+Providers section -> packages/shared/src/i18n/locales/en/kernel.json:5190
+Locked provider row text -> packages/shared/src/i18n/locales/en/kernel.json:5207
+Configure button -> packages/shared/src/i18n/locales/en/kernel.json:1962
+API key placeholder -> packages/shared/src/i18n/locales/en/kernel.json:1967
+Key validated with provider before storing -> apps/api/src/modules/settings/ai-keys-routes.ts:104
+Key stored encrypted -> apps/api/src/modules/settings/ai-keys-routes.ts:124
+Masked hint is last six characters -> apps/api/src/modules/settings/ai-keys-routes.ts:125
+Connected hint -> packages/shared/src/i18n/locales/en/kernel.json:1980
+Last checked -> packages/shared/src/i18n/locales/en/kernel.json:1981
+Re-check -> packages/shared/src/i18n/locales/en/kernel.json:1982
+Remove then Confirm -> packages/shared/src/i18n/locales/en/kernel.json:1964
+Key removed, not used chip -> packages/shared/src/i18n/locales/en/kernel.json:5206
+BYOK_ENCRYPTION_KEY 64 hex -> apps/api/src/lib/env.ts:628
+BYOK_ENCRYPTION_KEY required in production -> apps/api/src/lib/env.ts:687
+Deployment key env LIAISON_ANTHROPIC_API_KEY -> apps/api/src/lib/env.ts:538
+OPENAI_API_KEY -> apps/api/src/lib/env.ts:547
+GOOGLE_API_KEY -> apps/api/src/lib/env.ts:548
+MISTRAL_API_KEY -> apps/api/src/lib/env.ts:549
+Deployment key chip fallback when org has no key -> apps/api/src/lib/env.ts:537
+Deployment key label -> packages/shared/src/i18n/locales/en/kernel.json:5210
+Add from OpenRouter -> packages/shared/src/i18n/locales/en/kernel.json:5195
+Catalogue needs OpenRouter key -> packages/shared/src/i18n/locales/en/kernel.json:5220
+Search OpenRouter models -> packages/shared/src/i18n/locales/en/kernel.json:5217
+Tool calling only -> packages/shared/src/i18n/locales/en/kernel.json:5218
+Tools-only note: without tools can only answer -> packages/shared/src/i18n/locales/en/kernel.json:5222
+Switch on a model -> packages/shared/src/i18n/locales/en/kernel.json:5223
+Test call then added -> apps/web/src/modules/settings/AiModelsSettings.tsx:15
+No fixed price cannot be added -> packages/shared/src/i18n/locales/en/kernel.json:5225
+OpenRouter routing: no storing or training, tool calls -> packages/shared/src/i18n/locales/en/kernel.json:5193
+OpenRouter routing data_collection deny -> apps/api/src/modules/agent/providers/openrouter.ts:34
+OpenRouter conversation keeps its first provider, falls back along the ranking -> apps/api/src/modules/agent/providers/openrouter-host-ranking.ts:112
+OpenRouter conversation re-pinned after a fallback -> apps/api/src/modules/agent/providers/openrouter-provider-pin.ts:147
+OpenRouter pin per conversation, shared store -> apps/api/src/modules/agent/providers/openrouter-provider-pin.ts:71
+OpenRouter first request skips hosts without a half-price cache read -> apps/api/src/modules/agent/providers/openrouter-host-ranking.ts:63
+OpenRouter hosts ranked by cached price first -> apps/api/src/modules/agent/providers/openrouter-host-ranking.ts:64
+OpenRouter price sort when no ranking -> apps/api/src/modules/agent/providers/openrouter-host-ranking.ts:93
+Catalogue unreachable -> packages/shared/src/i18n/locales/en/kernel.json:5221
+Add your own server -> packages/shared/src/i18n/locales/en/kernel.json:5196
+Server address key model name context window fields -> packages/shared/src/i18n/locales/en/kernel.json:5230
+Test and add -> packages/shared/src/i18n/locales/en/kernel.json:5231
+Server key optional -> packages/shared/src/i18n/locales/en/kernel.json:5228
+Server model name -> packages/shared/src/i18n/locales/en/kernel.json:5229
+OpenAI-compatible servers Ollama vLLM LM Studio llama.cpp -> packages/shared/src/i18n/locales/en/kernel.json:5232
+Test results text -> packages/shared/src/i18n/locales/en/kernel.json:5233
+Test result no tools -> packages/shared/src/i18n/locales/en/kernel.json:5234
+Own server has no prices, tokens only -> packages/shared/src/i18n/locales/en/kernel.json:5235
+Remove server -> packages/shared/src/i18n/locales/en/kernel.json:5239
+Link-local and metadata addresses always refused -> apps/api/src/modules/agent/providers/model-server.ts:6
+Private addresses need LIAISON_ALLOW_PRIVATE_MODEL_SERVERS -> apps/api/src/modules/agent/providers/model-server.ts:33
+Voice dictation model -> packages/shared/src/i18n/locales/en/kernel.json:5243
+Dictation needs OpenRouter or Google AI key -> packages/shared/src/i18n/locales/en/kernel.json:5247
+Node models are what the node's Claude offers -> apps/api/src/modules/nodes/thread-settings.ts:18
+Routine node model default the agent's model -> packages/shared/src/i18n/locales/en/kernel.json:147
+Session effort levels low medium high xhigh max -> packages/shared/src/node-session-protocol.ts:48
+Effort labels -> packages/shared/src/i18n/locales/en/kernel.json:4753
+LIAISON_ANTHROPIC_CACHE_TTL 1h default or 5m -> apps/api/src/lib/env.ts:546
+Cache TTL default 1h -> apps/api/src/lib/env.ts:539
+Org default reasoning level applies when no level is asked, Auto included -> packages/shared/src/reasoning.ts:160
+Asked level (conversation, else routine) beats the org default -> packages/shared/src/reasoning.ts:161
+Model's own default when no org default, Off when it can switch off -> packages/shared/src/reasoning.ts:118
+Level the model cannot run falls back to its default -> packages/shared/src/reasoning.ts:162
+Org default stored at settings.ai.models.defaultReasoningLevel -> packages/shared/src/validation/org-kernel-settings.ts:159
+Org default set by PATCH /settings/ai/models, admin only -> apps/api/src/modules/settings/ai-models-routes.ts:316
+Every agent turn resolves its level with the org default -> apps/api/src/modules/agent/runtime/agent-service.ts:1963
+Default reasoning level section -> packages/shared/src/i18n/locales/en/kernel.json:5393
+Reasoning level select label -> packages/shared/src/i18n/locales/en/kernel.json:5395
+Built-in default option -> packages/shared/src/i18n/locales/en/kernel.json:5396
+Default reasoning level select -> apps/web/src/modules/settings/AiModelsSettings.tsx:680
+Model menu shows the org default as the selected level -> apps/web/src/modules/agent/ReasoningLevelRow.tsx:65
+Long conversations: Conversation history section on the Models page -> apps/web/src/modules/settings/AiModelsSettings.tsx:815
+Conversation history label -> packages/shared/src/i18n/locales/en/kernel.json:5464
+Summarise conversation history after label, thousand tokens -> packages/shared/src/i18n/locales/en/kernel.json:5465
+Unit is thousands of tokens -> apps/web/src/modules/settings/HistorySection.tsx:17
+Default 256k -> apps/api/src/modules/agent/context/checkpoint.ts:83
+Lowest 32k -> packages/shared/src/validation/org-kernel-settings.ts:171
+Higher keeps more word for word, cache resets less often, more tokens per call -> packages/shared/src/i18n/locales/en/kernel.json:5467
+Smaller window uses less (clamped to the window) -> apps/api/src/modules/agent/context/checkpoint.ts:118
+Next summary after half the size again (hysteresis) -> apps/api/src/modules/agent/context/checkpoint.ts:516
+Warm summary toggle label -> packages/shared/src/i18n/locales/en/kernel.json:5471
+Warm summary on by default -> apps/api/src/modules/agent/context/history-settings.ts:51
+Only OpenRouter turns are kept for the warm summary -> apps/api/src/modules/agent/providers/provider.ts:196
+Only above about 32,000 tokens -> apps/api/src/modules/agent/context/warm-compaction.ts:65
+A new message cancels it -> apps/api/src/modules/agent/context/warm-compaction.ts:550
+AGENT_HISTORY_BUDGET_TOKENS -> apps/api/src/lib/env.ts:939
+AGENT_PROMPT_CACHE_TTL_S -> apps/api/src/lib/env.ts:948
+OpenRouter step timed: first token and tokens per second -> apps/api/src/modules/agent/runtime/agent-service.ts:3298
+OpenRouter speed limits 2.5 s, 50 tokens per second, 5 samples, env overrides -> apps/api/src/modules/agent/providers/openrouter-host-speed.ts:66
+OpenRouter slow provider tried last for new conversations -> apps/api/src/modules/agent/providers/openrouter-host-speed.ts:123
+OpenRouter provider with too few samples not judged -> apps/api/src/modules/agent/providers/openrouter-host-speed.ts:109
+OpenRouter live conversation moves only when twice as slow -> apps/api/src/modules/agent/providers/openrouter-provider-pin.ts:183
+OpenRouter blocked hosts never in order, always ignored -> apps/api/src/modules/agent/providers/openrouter-provider-pin.ts:141
+Conversation on a blocked host moves at its next request -> apps/api/src/modules/agent/providers/openrouter-provider-pin.ts:233
+Blocked hosts label -> packages/shared/src/i18n/locales/en/kernel.json:5509
+Blocked hosts help line -> packages/shared/src/i18n/locales/en/kernel.json:5510
+Host name input and Block button -> packages/shared/src/i18n/locales/en/kernel.json:5513
+Block button label -> packages/shared/src/i18n/locales/en/kernel.json:5515
+Reset to default label -> packages/shared/src/i18n/locales/en/kernel.json:5517
+Blocked hosts section under Providers -> apps/web/src/modules/settings/AiModelsSettings.tsx:818
+Remove chip button -> apps/web/src/modules/settings/BlockedHostsSection.tsx:98
+Reset sends null -> apps/web/src/modules/settings/BlockedHostsSection.tsx:149
+Org list replaces the default, empty blocks nothing -> apps/api/src/modules/agent/providers/openrouter-blocked-hosts.ts:36
+Instance default from LIAISON_OPENROUTER_IGNORE_HOSTS -> apps/api/src/modules/agent/providers/openrouter-blocked-hosts.ts:25
+Default OpenInference -> apps/api/src/lib/env.ts:561
+Case-insensitive match -> apps/api/src/modules/agent/providers/openrouter-provider-pin.ts:131
+At most 20 hosts -> packages/shared/src/validation/org-kernel-settings.ts:174
+Admin only: AI models API behind kernel:org:admin -> apps/api/src/modules/settings/ai-models-routes.ts:3
+Blocked hosts saved through PATCH /settings/ai/models -> apps/api/src/modules/settings/ai-models-routes.ts:354

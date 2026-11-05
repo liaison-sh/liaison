@@ -1,0 +1,858 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Pinned production compose for self-hosted Liaison. The release pipeline
+# rewrites the default `image:` tag (v0.1.0 in this committed file) to the
+# released semver before attaching this file to the GitHub Release, so a
+# downloaded asset already points at its own version. To target a different
+# tag or a locally-built image, export LIAISON_IMAGE (e.g.
+# `export LIAISON_IMAGE=ghcr.io/mathieufro/liaison:vX.Y.Z`).
+#
+# Every other image is pinned by digest, the tag beside it for the reader
+# (scripts/dockerfile-pins.test.ts): a tag is whatever its publisher points it
+# at today. To move one, resolve the new tag's digest
+# (`docker buildx imagetools inspect <image>:<tag>`) and replace both.
+#
+# Required env (see deploy/.env.example for full list):
+#   JWT_SECRET, ENCRYPTION_KEY, BYOK_ENCRYPTION_KEY, MONITOR_TOKEN,
+#   BASE_URL, ALLOWED_ORIGINS,
+#   MEILISEARCH_MASTER_KEY,
+#   OBJECT_STORE_ADMIN_ACCESS_KEY, OBJECT_STORE_ADMIN_SECRET_KEY (admin; objectstore-init only),
+#   OBJECT_STORAGE_ACCESS_KEY, OBJECT_STORAGE_SECRET_KEY (scoped app creds).
+
+name: liaison
+
+services:
+  postgres:
+    image: postgres:17-alpine@sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    # max_connections: the rolling profile runs old and new api/worker processes
+    # at once plus a migrate step, which needs more than the Postgres default
+    # of 100 (budget in docs/self-hosting/pools.md, planned by every api and
+    # worker process, checked by scripts/compose-db-connection-budget.test.ts). Idle slots cost
+    # a few hundred KB each, so 200 is negligible next to the 2 GB limit.
+    command: ["postgres", "-c", "max_connections=${POSTGRES_MAX_CONNECTIONS:-200}"]
+    environment:
+      # POSTGRES_USER is the privileged bootstrap role: it is a superuser and
+      # owns the schema/tables created by migrations. Migrations connect as this
+      # role (MIGRATION_DATABASE_URL); the running app does NOT — superusers and
+      # owners bypass row-level security.
+      POSTGRES_USER: liaison
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+      POSTGRES_DB: liaison
+      # Password for the non-superuser runtime login role (liaison_app) that the
+      # init hook below provisions. The app authenticates as this RLS-subject
+      # role, never as the superuser above.
+      LIAISON_APP_PASSWORD: ${LIAISON_APP_PASSWORD:?LIAISON_APP_PASSWORD required}
+      # Password for the allow-list read-only role (liaison_readonly) the
+      # `20-readonly-role.sh` init hook provisions for the database connector.
+      # That hook exits 1 without it, which failed cluster init outright on
+      # every fresh self-hosted deployment: the variable was never passed here
+      # and never documented in deploy/.env.example (found by the first real
+      # fresh-cluster deploy this tooling ever ran).
+      LIAISON_READONLY_PASSWORD: ${LIAISON_READONLY_PASSWORD:?LIAISON_READONLY_PASSWORD required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Cluster-init hook (runs once, on first init, before the server accepts
+      # external traffic): creates the liaison_app login role with the password
+      # above. Read-only so a compromised server cannot rewrite its own bootstrap.
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+      # The readonly-role grants SQL has exactly one checked-in source of
+      # truth (`apps/api/src/apps/database/generated/readonly-grants.sql`,
+      # rendered by `packages/db-core/src/grants-renderer.ts` from the
+      # catalog — regenerate via `bun run scripts/db-readonly-role.ts
+      # --regenerate`). One generated SQL file, two consumers, no second
+      # hand-maintained copy; `20-readonly-role.sh` reads it from
+      # LIAISON_GRANTS_DIR (default /tmp/liaison-grants).
+      #
+      # Mounted at /tmp/liaison-grants, a path the image ALREADY has, and not
+      # at /docker-entrypoint-initdb.d/generated: with docker's containerd
+      # overlayfs snapshotter (the default from Docker 29) the container rootfs
+      # is read-only when mounts are prepared, so a bind whose container path
+      # does not exist in the image fails the container outright with
+      # `make mountpoint ...: read-only file system`. Postgres's init-hook
+      # globber only matches top-level files in /docker-entrypoint-initdb.d
+      # either way, so nothing is lost by keeping the grants file outside it.
+      - ../apps/api/src/apps/database/generated:/tmp/liaison-grants:ro
+    networks: [internal]
+    # Hardening: block privilege escalation and drop all Linux capabilities,
+    # re-adding only the few the postgres entrypoint needs to chown/init the
+    # data dir and drop to the postgres user. The image already runs the
+    # server process as a non-root user via its entrypoint.
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
+    # Resource bounds (Compose v2 standalone keys; sized for a 4 vCPU / 8 GB
+    # host). Reservations sum well under host RAM so a single service's OOM
+    # cannot starve the others; limits cap any one service. The documented
+    # minimum (2 vCPU / 4 GB plus swap) overcommits the limits, which is fine:
+    # the stack idles well under 1 GB and swap absorbs a burst.
+    mem_limit: 2g
+    mem_reservation: 512m
+    cpus: 1.5
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U liaison -d liaison"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine@sha256:57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    # Cap Redis' own heap below the container limit so it evicts/rejects rather
+    # than tripping the cgroup OOM killer (which could take neighbours with it).
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--maxmemory",
+        "384mb",
+        "--maxmemory-policy",
+        "noeviction",
+      ]
+    volumes:
+      - redis_data:/data
+    networks: [internal]
+    # Hardening: cap_drop ALL, re-adding only what redis:7-alpine's entrypoint
+    # needs to drop privileges via `setpriv` (SETUID/SETGID/SETPCAP) and chown its
+    # data dir (CHOWN/FOWNER/DAC_OVERRIDE). Without these, setpriv fails with
+    # "setresuid: Operation not permitted" and the container crash-loops (exit 127).
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    cap_add: ["SETUID", "SETGID", "SETPCAP", "CHOWN", "FOWNER", "DAC_OVERRIDE"]
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: 0.5
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.10@sha256:9d1b9b02fe6c68f60b54ce40092d8078f051b9341c400c90f907607636b7c9c1
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    environment:
+      MEILI_MASTER_KEY: ${MEILISEARCH_MASTER_KEY:?MEILISEARCH_MASTER_KEY required}
+      MEILI_ENV: production
+      # Meili sizes its indexing memory from the HOST's RAM (two thirds of it),
+      # not from mem_limit below: a large batch (a bulk import, a reindex) then
+      # outgrows the container, gets OOM-killed, and crash-loops re-running the
+      # same batch at boot. Keep it well under mem_limit.
+      MEILI_MAX_INDEXING_MEMORY: ${MEILI_MAX_INDEXING_MEMORY:-512Mb}
+    volumes:
+      - meili_data:/meili_data
+    networks: [internal]
+    # Hardening: the search binary needs no Linux capabilities.
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    mem_limit: 1500m
+    mem_reservation: 256m
+    cpus: 1.0
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:7700/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  objectstore:
+    # SeaweedFS's S3 gateway serves every request ANONYMOUSLY — list, get, put,
+    # even bucket create/delete — until an identity config is loaded (proven
+    # against this exact image: an unauthenticated PUT on a bucket URL that
+    # does not exist yet returns 200). The entrypoint below closes that window
+    # before the gateway ever opens its port: it renders /etc/seaweedfs/s3-
+    # identities.json from env and passes it via -s3.config on the SAME
+    # process invocation that starts -s3, so there is no interval during
+    # which the gateway is reachable without identities loaded. Two
+    # identities: "admin" (Admin/Read/Write/List, used only by
+    # objectstore-init to create the bucket) and "app" (Read/Write/List/
+    # Tagging scoped to OBJECT_STORAGE_BUCKET only — no Admin, so it can
+    # never delete or create a bucket), a least-privilege split between
+    # provisioning and runtime access.
+    image: chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    environment:
+      # Admin credentials are administrative and MUST be distinct from the
+      # app's S3 credentials. objectstore-init uses these once to create the
+      # bucket; the app never sees them.
+      OBJECT_STORE_ADMIN_ACCESS_KEY: ${OBJECT_STORE_ADMIN_ACCESS_KEY:?OBJECT_STORE_ADMIN_ACCESS_KEY required}
+      OBJECT_STORE_ADMIN_SECRET_KEY: ${OBJECT_STORE_ADMIN_SECRET_KEY:?OBJECT_STORE_ADMIN_SECRET_KEY required}
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-liaison}
+      OBJECT_STORAGE_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY:?OBJECT_STORAGE_ACCESS_KEY required}
+      OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY:?OBJECT_STORAGE_SECRET_KEY required}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        umask 077
+        mkdir -p /etc/seaweedfs
+        cat >/etc/seaweedfs/s3-identities.json <<EOF
+        {
+          "identities": [
+            {
+              "name": "admin",
+              "credentials": [{"accessKey": "$$OBJECT_STORE_ADMIN_ACCESS_KEY", "secretKey": "$$OBJECT_STORE_ADMIN_SECRET_KEY"}],
+              "actions": ["Admin", "Read", "Write", "List"]
+            },
+            {
+              "name": "app",
+              "credentials": [{"accessKey": "$$OBJECT_STORAGE_ACCESS_KEY", "secretKey": "$$OBJECT_STORAGE_SECRET_KEY"}],
+              "actions": ["Read:$$OBJECT_STORAGE_BUCKET", "Write:$$OBJECT_STORAGE_BUCKET", "List:$$OBJECT_STORAGE_BUCKET", "Tagging:$$OBJECT_STORAGE_BUCKET"]
+            }
+          ]
+        }
+        EOF
+        # /entrypoint.sh (the image default) runs as root first to chown /data
+        # to the "seaweed" user (uid 1000), then re-execs itself as that user
+        # before launching `weed`. Match that ownership here so the dropped-
+        # privilege process can still read the identity file we just wrote as root.
+        chown 1000:1000 /etc/seaweedfs/s3-identities.json
+        chmod 600 /etc/seaweedfs/s3-identities.json
+        exec /entrypoint.sh server -ip=objectstore -ip.bind=0.0.0.0 \
+          -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3-identities.json \
+          -master.volumeSizeLimitMB=1024 -volume.max=0
+    volumes:
+      - objectstore_data:/data
+    networks: [internal]
+    # Hardening: cap_drop ALL, re-adding only what the image's own entrypoint
+    # needs on first boot to chown /data and drop from root to the "seaweed"
+    # user via su-exec (same shape as the redis/postgres entries above).
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN", "SETUID", "SETGID", "DAC_OVERRIDE", "FOWNER"]
+    mem_limit: 1g
+    mem_reservation: 256m
+    cpus: 1.0
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # One-shot provisioner. Waits for the object store, then creates the app
+  # bucket via `weed shell` (an internal cluster-admin client that talks gRPC
+  # straight to the master/filer, not through the S3 HTTP/IAM layer — no
+  # credentials needed). The app's scoped "app" identity already exists from
+  # process start (see the objectstore entrypoint above); this step only has
+  # to make the bucket itself exist. Idempotent: checks `s3.bucket.list`
+  # first, since `s3.bucket.create` errors (and exits non-zero) on a bucket
+  # that already exists.
+  objectstore-init:
+    image: chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+    depends_on:
+      objectstore: { condition: service_healthy }
+    networks: [internal]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    # No privilege-dropping dance needed here (no /data volume, no chown): run
+    # directly as the image's unprivileged "seaweed" user (uid/gid 1000).
+    user: "1000:1000"
+    environment:
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-liaison}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        MASTER=objectstore:9333
+        LIST=$$(printf 's3.bucket.list\n' | weed -logtostderr=false shell -master="$$MASTER" 2>/dev/null || true)
+        if echo "$$LIST" | grep -qE "^[[:space:]]*$$OBJECT_STORAGE_BUCKET[[:space:]]"; then
+          echo "objectstore-init: bucket $$OBJECT_STORAGE_BUCKET already exists"
+        else
+          printf 's3.bucket.create -name %s\n' "$$OBJECT_STORAGE_BUCKET" | weed -logtostderr=false shell -master="$$MASTER"
+        fi
+        # Verify that the bucket actually exists; fail loudly if not so that
+        # Docker Compose does NOT mark this service_completed_successfully
+        # while the bucket is missing (which would cause silent upload failures).
+        VERIFY=$$(printf 's3.bucket.list\n' | weed -logtostderr=false shell -master="$$MASTER" 2>/dev/null || true)
+        echo "$$VERIFY" | grep -qE "^[[:space:]]*$$OBJECT_STORAGE_BUCKET[[:space:]]" || { echo "objectstore-init: FAIL — bucket $$OBJECT_STORAGE_BUCKET missing after init" >&2; exit 1; }
+        echo "objectstore-init: bucket $$OBJECT_STORAGE_BUCKET ready"
+
+  # One-shot init: make the bind-mounted data dir writable by the non-root app
+  # user and pre-create the runtime app-install root. The app runs as uid 1000
+  # (`bun`) with a read-only rootfs and `no-new-privileges`, so it cannot chown
+  # its own data dir; a fresh `docker compose up` creates `./data` as root:root,
+  # leaving the app unable to write there. Without this, anything the app writes
+  # under /var/lib/liaison fails with EACCES -- most visibly installing an app
+  # (the install service unpacks into /var/lib/liaison/apps/<name>/<version>/).
+  # Runs as root (default user), chowns once, exits; idempotent on every `up`.
+  data-init:
+    image: busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+    networks: [internal]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # NOTE: 1000:1000 is the `bun` user baked into the app image (apps/api/Dockerfile).
+    command: ["sh", "-c", "mkdir -p /data/apps && chown -R 1000:1000 /data"]
+    volumes:
+      - ./data:/data
+
+  app: &liaison-app
+    # Default tag is rewritten to the released semver by the release pipeline
+    # before this file is published as a release asset. LIAISON_IMAGE overrides
+    # it (used by validate-compose / load-test / lighthouse-ci
+    # and by operators targeting a specific tag or a locally-built image).
+    image: ${LIAISON_IMAGE:-ghcr.io/mathieufro/liaison:v0.1.0}
+    restart: unless-stopped
+    # A SIGTERM runs one shutdown sequence (apps/api/src/lib/shutdown.ts):
+    # /readyz goes 503, the listener stops 2 s later, then in-flight requests,
+    # approvals, agent turns and jobs drain in parallel, each under its own
+    # budget (SHUTDOWN_*_MS below), then the outbox, pools and connections
+    # close. An approval cut between its claim and its terminalize wedges at
+    # `approving` until a human reconciles it, so the drains must finish before
+    # Docker's SIGKILL. The process exits by itself at SHUTDOWN_HARD_DEADLINE_MS
+    # (58 s = 25 s drain group, from the SIGTERM: a 20 s turn drain + its 5 s
+    # handoff, above the 20 s job drain + 4 s abort settle and queue close and
+    # the 10 s leadership stop; then 28 s of closing phases + 5 s slack). The
+    # process logs these numbers at boot ("Shutdown budgets").
+    # stop_grace_period MUST stay at least 5 s above it
+    # (scripts/compose-shutdown-budget.test.ts checks both).
+    stop_grace_period: 65s
+    # tini as PID 1: forwards SIGTERM to the (exec'd) server and reaps children.
+    init: true
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      meilisearch: { condition: service_healthy }
+      objectstore: { condition: service_healthy }
+      # Block app start until the bucket exists.
+      objectstore-init: { condition: service_completed_successfully }
+      # Block app start until the data dir is writable by the app user.
+      data-init: { condition: service_completed_successfully }
+    environment: &liaison-env
+      NODE_ENV: production
+      PORT: "3000"
+      # Shutdown budgets (see stop_grace_period above; these are the defaults,
+      # spelled out). A job still running at its budget goes back to its queue;
+      # a turn still running stops at its next step boundary (up to
+      # SHUTDOWN_TURN_SETTLE_MS) and resumes on another process.
+      SHUTDOWN_TURN_DRAIN_MS: "20000"
+      SHUTDOWN_TURN_SETTLE_MS: "2500"
+      SHUTDOWN_JOB_DRAIN_MS: "20000"
+      SHUTDOWN_HARD_DEADLINE_MS: "58000"
+      # Runtime connection: the NON-superuser, NON-owner `liaison_app` role,
+      # which is subject to row-level security. Every request still switches to
+      # liaison_rls / liaison_admin via SET LOCAL ROLE, but the base connection
+      # role itself can never bypass RLS — so a code path that forgets to set the
+      # role, or an injection foothold, stays confined by the per-org policies.
+      DATABASE_URL: postgres://liaison_app:${LIAISON_APP_PASSWORD}@postgres:5432/liaison
+      # The request login's password. Set, request transactions connect as
+      # `liaison_request` (DATABASE_URL with that user and this password), a
+      # role that can step into liaison_rls and nothing else, while
+      # liaison_app keeps the privileged work; the migration step gives the
+      # role LOGIN and this password. Empty keeps one login for both (older
+      # shape: a request transaction can then reach liaison_admin).
+      DATABASE_REQUEST_PASSWORD: ${LIAISON_REQUEST_PASSWORD:-}
+      # Migration connection: the privileged bootstrap superuser. Used ONLY by
+      # the one-shot migration step in the image entrypoint to create the schema,
+      # tables, roles, and policies (which liaison_app has no rights to do). The
+      # image entrypoint starts the server with this variable REMOVED from its
+      # environment (`env -u`), so DDL privilege never reaches the request-serving
+      # process; it stays in the container config only for the migration step and
+      # for operator CLIs run with `docker compose exec` (export-full, demo seed).
+      MIGRATION_DATABASE_URL: postgres://liaison:${POSTGRES_PASSWORD}@postgres:5432/liaison
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET required}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY required}
+      BYOK_ENCRYPTION_KEY: ${BYOK_ENCRYPTION_KEY:?BYOK_ENCRYPTION_KEY required}
+      # Public demo instance only, and empty everywhere else. A key present in
+      # .env is used by compose for SUBSTITUTION and is NOT passed into the
+      # container unless it is named here, so the demo box had both of these in
+      # its .env and the app saw neither. Empty defaults keep every other
+      # deployment byte identical: demo mode parses false when unset, and the
+      # reserved App Review org is simply not created without a password.
+      LIAISON_DEMO_MODE: ${LIAISON_DEMO_MODE:-}
+      # Demo signup ceilings (box-wide signups per hour, live visitor workspaces).
+      # Empty keeps the built-in defaults (60 and 500).
+      LIAISON_DEMO_SIGNUPS_PER_HOUR: ${LIAISON_DEMO_SIGNUPS_PER_HOUR:-}
+      LIAISON_DEMO_MAX_VISITOR_ORGS: ${LIAISON_DEMO_MAX_VISITOR_ORGS:-}
+      # The load harness's own lane (LOAD_HARNESS_KEY boxes only), apart from
+      # visitors': signed starts per hour, synthetic workspaces at once.
+      # Empty keeps the built-in defaults (60 and 500).
+      LIAISON_DEMO_SYNTHETIC_PER_HOUR: ${LIAISON_DEMO_SYNTHETIC_PER_HOUR:-}
+      LIAISON_DEMO_SYNTHETIC_MAX_ORGS: ${LIAISON_DEMO_SYNTHETIC_MAX_ORGS:-}
+      # Pre-seeded visitor workspaces kept ready (empty: 5; 0 turns the pool off).
+      LIAISON_DEMO_POOL_SIZE: ${LIAISON_DEMO_POOL_SIZE:-}
+      # Demo workspaces seeded at once, pool refill and empty-pool signups alike (empty: 2).
+      LIAISON_DEMO_SEED_CONCURRENCY: ${LIAISON_DEMO_SEED_CONCURRENCY:-}
+      # Minutes after which an org unused in a process has its in-memory setup
+      # released (set up again at its next use). Empty: 60. 0: never.
+      LIAISON_ORG_RUNTIME_IDLE_MINUTES: ${LIAISON_ORG_RUNTIME_IDLE_MINUTES:-}
+      # One-time token the FIRST registration of a fresh instance must present.
+      # Empty (the default): the app derives one from JWT_SECRET and prints it in
+      # its log at boot ("Liaison setup token: ..."). Set it to choose your own.
+      LIAISON_SETUP_TOKEN: ${LIAISON_SETUP_TOKEN:-}
+      # Private QA box only: answers a demo marked org Shopify calls from the
+      # demo fixtures while demo mode itself stays off. See apps/api/src/lib/env.ts.
+      LIAISON_DEMO_SHOPIFY_FIXTURES: ${LIAISON_DEMO_SHOPIFY_FIXTURES:-}
+      LIAISON_DEMO_REVIEWER_PASSWORD: ${LIAISON_DEMO_REVIEWER_PASSWORD:-}
+      # Optional privacy policy link for the notice under the demo signup button.
+      LIAISON_PRIVACY_URL: ${LIAISON_PRIVACY_URL:-}
+      # Private QA box only: the model every demo agent the seed writes is
+      # pinned to, so a QA pin survives the next `demo:seed` instead of being
+      # reset to the models the demo world names. Empty everywhere else, where
+      # each agent keeps its own. See apps/api/src/seed/tiers/demo/model-preference.ts.
+      LIAISON_DEMO_MODEL_PREFERENCE: ${LIAISON_DEMO_MODEL_PREFERENCE:-}
+      LIAISON_DEMO_RESERVED_MODEL: ${LIAISON_DEMO_RESERVED_MODEL:-}
+      LIAISON_DEMO_RESERVED_TOKEN_CEILING: ${LIAISON_DEMO_RESERVED_TOKEN_CEILING:-}
+      # Tailored demo: visitor spend, verification and anti-abuse knobs (see
+      # apps/api/src/lib/env.ts). Empty keeps every built-in default; none is
+      # read with demo mode off.
+      LIAISON_DEMO_VISITOR_MODEL: ${LIAISON_DEMO_VISITOR_MODEL:-}
+      LIAISON_DEMO_BUDGET_PER_EMAIL_EUR: ${LIAISON_DEMO_BUDGET_PER_EMAIL_EUR:-}
+      LIAISON_DEMO_BUDGET_PER_NETWORK_EUR: ${LIAISON_DEMO_BUDGET_PER_NETWORK_EUR:-}
+      LIAISON_DEMO_BOX_DAILY_EUR: ${LIAISON_DEMO_BOX_DAILY_EUR:-}
+      LIAISON_DEMO_BOX_HOURLY_EUR: ${LIAISON_DEMO_BOX_HOURLY_EUR:-}
+      LIAISON_DEMO_ALERT_RATIO: ${LIAISON_DEMO_ALERT_RATIO:-}
+      LIAISON_DEMO_ALERT_EMAIL: ${LIAISON_DEMO_ALERT_EMAIL:-}
+      LIAISON_DEMO_VERIFIED_PER_HOUR: ${LIAISON_DEMO_VERIFIED_PER_HOUR:-}
+      LIAISON_DEMO_DOMAIN_VERIFIED_PER_DAY: ${LIAISON_DEMO_DOMAIN_VERIFIED_PER_DAY:-}
+      LIAISON_DEMO_NETWORK_VERIFIED_PER_HOUR: ${LIAISON_DEMO_NETWORK_VERIFIED_PER_HOUR:-}
+      LIAISON_DEMO_NETWORK_VERIFIED_PER_DAY: ${LIAISON_DEMO_NETWORK_VERIFIED_PER_DAY:-}
+      LIAISON_DEMO_BOX_CONCURRENT_TURNS: ${LIAISON_DEMO_BOX_CONCURRENT_TURNS:-}
+      LIAISON_DEMO_EMAIL_CONCURRENT_TURNS: ${LIAISON_DEMO_EMAIL_CONCURRENT_TURNS:-}
+      LIAISON_DEMO_STEPS_PER_TURN: ${LIAISON_DEMO_STEPS_PER_TURN:-}
+      LIAISON_DEMO_ROUTINE_STEPS_PER_TURN: ${LIAISON_DEMO_ROUTINE_STEPS_PER_TURN:-}
+      LIAISON_DEMO_STEP_OUTPUT_TOKENS: ${LIAISON_DEMO_STEP_OUTPUT_TOKENS:-}
+      LIAISON_DEMO_WEB_SEARCH_PER_TURN: ${LIAISON_DEMO_WEB_SEARCH_PER_TURN:-}
+      LIAISON_DEMO_WEB_SEARCH_PER_EMAIL_PER_DAY: ${LIAISON_DEMO_WEB_SEARCH_PER_EMAIL_PER_DAY:-}
+      LIAISON_DEMO_CODE_SENDS_PER_IP_HOUR: ${LIAISON_DEMO_CODE_SENDS_PER_IP_HOUR:-}
+      LIAISON_DEMO_CODE_SENDS_PER_HOUR: ${LIAISON_DEMO_CODE_SENDS_PER_HOUR:-}
+      LIAISON_DEMO_CODE_SENDS_PER_ORG: ${LIAISON_DEMO_CODE_SENDS_PER_ORG:-}
+      LIAISON_DEMO_CODE_TTL_MINUTES: ${LIAISON_DEMO_CODE_TTL_MINUTES:-}
+      LIAISON_WEB_SEARCH_MAX_QUERY_CHARS: ${LIAISON_WEB_SEARCH_MAX_QUERY_CHARS:-}
+      LIAISON_WEB_FETCH_MAX_URL_CHARS: ${LIAISON_WEB_FETCH_MAX_URL_CHARS:-}
+      LIAISON_WEB_FETCH_MAX_QUERY_CHARS: ${LIAISON_WEB_FETCH_MAX_QUERY_CHARS:-}
+      LIAISON_WEB_READS_PER_TURN: ${LIAISON_WEB_READS_PER_TURN:-}
+      LIAISON_WEB_READS_CONSECUTIVE: ${LIAISON_WEB_READS_CONSECUTIVE:-}
+      LIAISON_WEB_FETCH_HOSTS_PER_TURN: ${LIAISON_WEB_FETCH_HOSTS_PER_TURN:-}
+      LIAISON_WEB_READS_PER_THREAD_HOUR: ${LIAISON_WEB_READS_PER_THREAD_HOUR:-}
+      LIAISON_DEMO_CODE_ATTEMPTS: ${LIAISON_DEMO_CODE_ATTEMPTS:-}
+      LIAISON_DEMO_EDGE_OVERWRITES_XFF: ${LIAISON_DEMO_EDGE_OVERWRITES_XFF:-}
+      LIAISON_DEMO_BOOKING_URL: ${LIAISON_DEMO_BOOKING_URL:-}
+      LIAISON_DEMO_SELF_HOST_URL: ${LIAISON_DEMO_SELF_HOST_URL:-}
+      LIAISON_DEMO_MAIL_RESEND_API_KEY: ${LIAISON_DEMO_MAIL_RESEND_API_KEY:-}
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+      # Demo instance only: the demo warehouse's OWN database login (a role that
+      # is a member of no Liaison role, SELECT on the demo_warehouse schema only).
+      # Without it the demo's db_query refuses to run; it never falls back to
+      # DATABASE_URL. The user name must start with liaison_demo_warehouse; the
+      # demo seed creates the role from this DSN.
+      LIAISON_DEMO_WAREHOUSE_DATABASE_URL: ${LIAISON_DEMO_WAREHOUSE_DATABASE_URL:-}
+      # Demo instance only: "true" opts the demo seed into the warehouse part
+      # (needs the DSN above). Off by default; never inferred from the DSN.
+      LIAISON_DEMO_WAREHOUSE: ${LIAISON_DEMO_WAREHOUSE:-}
+      # Database connector (db_query / db_read) host policy. Comma-separated
+      # allow-list of DSN hosts (`host` or `*.suffix`); empty allows any host
+      # except link-local/metadata addresses and this instance's own redis,
+      # search and object storage.
+      LIAISON_DATABASE_ALLOWED_HOSTS: ${LIAISON_DATABASE_ALLOWED_HOSTS:-}
+      # Set to "true" ONLY to let the connector use a login that can assume a
+      # superuser or BYPASSRLS role (a single-tenant database you own outright).
+      LIAISON_DB_ALLOW_PRIVILEGED_SESSION: ${LIAISON_DB_ALLOW_PRIVILEGED_SESSION:-}
+      # Demo instance only: mounts the QA notification inject route used by the
+      # push matrix. apps/api/src/lib/env.ts refuses to boot a production server
+      # with it on unless LIAISON_DEMO_MODE is on too.
+      LIAISON_QA_ROUTES: ${LIAISON_QA_ROUTES:-}
+      # Bearer token guarding GET /diag (the monitoring watchdog's only way in).
+      # apps/api/src/lib/env.ts refuses to boot in production without it, so an
+      # app container started without it crash-loops on "FATAL: MONITOR_TOKEN
+      # required in production" -- which is how every fresh self-hosted stack
+      # behaved, since neither this file nor deploy/.env.example mentioned it.
+      MONITOR_TOKEN: ${MONITOR_TOKEN:?MONITOR_TOKEN required}
+      BASE_URL: ${BASE_URL:?BASE_URL required}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?ALLOWED_ORIGINS required}
+      # Trusted reverse-proxy hops; default 1 since the runbook puts a TLS proxy
+      # in front of the app. Without this the IP rate limiter buckets all
+      # clients under the proxy's address.
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-1}
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
+      RATE_LIMIT_DEFAULT: ${RATE_LIMIT_DEFAULT:-1200}
+      RATE_LIMIT_PER_USER: ${RATE_LIMIT_PER_USER:-600}
+      LIAISON_OPERATOR_ORG_ID: ${LIAISON_OPERATOR_ORG_ID:-}
+      # HA singleton leader gate (OFF by default). Set to the LOCAL node's Patroni
+      # REST /leader (http://host.docker.internal:8008/leader) so the in-process
+      # singletons (outbox drain + BullMQ workers) run ONLY while this node is the
+      # Patroni leader -- a warm standby coming up during failover then does not
+      # double-fire customer emails/webhooks. Empty = gate off = single-active
+      # behavior (unchanged). See apps/api/src/infra/leadership.ts + ops APP-FAILOVER.md.
+      SINGLETON_LEADER_URL: ${SINGLETON_LEADER_URL:-}
+      # DB connection pool split (three pools, see apps/api/src/db/connection.ts):
+      # request/MCP (DB_POOL_MAX), background jobs (DB_JOBS_POOL_MAX), privileged
+      # nested ops (DB_PRIVILEGED_POOL_MAX). Background handlers hold connections
+      # for their full run, so isolating them keeps interactive traffic (MCP tool
+      # calls, HTTP) responsive under sync load. Defaults sum to 70; keep the sum
+      # comfortably under Postgres max_connections (200 default here). The rolling
+      # profile's api/worker plan theirs from one budget (docs/self-hosting/pools.md).
+      DB_POOL_MAX: ${DB_POOL_MAX:-25}
+      DB_JOBS_POOL_MAX: ${DB_JOBS_POOL_MAX:-30}
+      DB_PRIVILEGED_POOL_MAX: ${DB_PRIVILEGED_POOL_MAX:-15}
+      MEILISEARCH_HOST: http://meilisearch:7700
+      MEILISEARCH_API_KEY: ${MEILISEARCH_MASTER_KEY}
+      # The bundled SeaweedFS by default; an external S3 store (Amazon S3, R2)
+      # sets OBJECT_STORAGE_ENDPOINT and the rest in deploy/.env
+      # (docs/runbooks/production-bootstrap.md).
+      OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:-http://objectstore:8333}
+      OBJECT_STORAGE_REGION: ${OBJECT_STORAGE_REGION:-us-east-1}
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-liaison}
+      OBJECT_STORAGE_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY}
+      OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY}
+      OBJECT_STORAGE_FORCE_PATH_STYLE: ${OBJECT_STORAGE_FORCE_PATH_STYLE:-true}
+      OBJECT_STORAGE_AUTH: ${OBJECT_STORAGE_AUTH:-keys}
+      OBJECT_STORAGE_PUBLIC_URL: ${OBJECT_STORAGE_PUBLIC_URL:-}
+      OBJECT_STORAGE_BROWSER_DIRECT: ${OBJECT_STORAGE_BROWSER_DIRECT:-false}
+      SMTP_HOST: ${SMTP_HOST:-}
+      # Without SMTP, also log email bodies (sign-in codes, invite links). For a
+      # local trial only: deploy/quickstart.sh sets it in the .env it creates.
+      LIAISON_CONSOLE_EMAIL_BODIES: ${LIAISON_CONSOLE_EMAIL_BODIES:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      # true for port 465 (implicit TLS); 587 upgrades with STARTTLS.
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      # Transactional email through the Resend API instead of SMTP (optional).
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      # A separate Resend key for system mail only (sign-in codes, invites); empty: RESEND_API_KEY.
+      SYSTEM_RESEND_API_KEY: ${SYSTEM_RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-Liaison <noreply@liaison.example.com>}
+      SYSTEM_EMAIL_FROM: ${SYSTEM_EMAIL_FROM:-}
+      # Quiet hours by default (docs/notifications.md): on or off; empty: on.
+      NOTIFICATIONS_DEFAULT_QUIET_HOURS: ${NOTIFICATIONS_DEFAULT_QUIET_HOURS:-on}
+      # Personal mailbox encryption (docs/self-hosting/docker.md, Mail encryption):
+      # managed (transparent) or private (zero-access) for people who have not
+      # chosen; empty: decided once on first use. ALLOW_MANAGED=false locks private.
+      MAILBOX_ENCRYPTION_DEFAULT: ${MAILBOX_ENCRYPTION_DEFAULT:-}
+      MAILBOX_ENCRYPTION_ALLOW_MANAGED: ${MAILBOX_ENCRYPTION_ALLOW_MANAGED:-true}
+      # "Sign in with Google" LOGIN (optional). When both are set, a first-party
+      # Google OIDC login provider is auto-seeded per org at boot (invited users
+      # only). Distinct from the Mail app's Gmail integration (GMAIL_OAUTH_*, a
+      # per-deployment overlay). Callback derives from BASE_URL (/api/auth/oauth/callback).
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      # The deployment's Gmail OAuth client (optional): the Mail and Tickets apps
+      # use it for Gmail connections when an org has not set its own.
+      GMAIL_OAUTH_CLIENT_ID: ${GMAIL_OAUTH_CLIENT_ID:-}
+      GMAIL_OAUTH_CLIENT_SECRET: ${GMAIL_OAUTH_CLIENT_SECRET:-}
+      # The deployment's Google Drive OAuth client (optional; without it an admin
+      # sets one per org under Settings > Integrations).
+      GOOGLE_DRIVE_OAUTH_CLIENT_ID: ${GOOGLE_DRIVE_OAUTH_CLIENT_ID:-}
+      GOOGLE_DRIVE_OAUTH_CLIENT_SECRET: ${GOOGLE_DRIVE_OAUTH_CLIENT_SECRET:-}
+      # More instance-provided OAuth clients (optional; an org's own client wins):
+      # Google Ads, Merchant Center and YouTube, and a Shopify app for every store
+      # (its secret also verifies Shopify webhooks). docs/connecting-apps.md.
+      GOOGLE_MARKETING_OAUTH_CLIENT_ID: ${GOOGLE_MARKETING_OAUTH_CLIENT_ID:-}
+      GOOGLE_MARKETING_OAUTH_CLIENT_SECRET: ${GOOGLE_MARKETING_OAUTH_CLIENT_SECRET:-}
+      SHOPIFY_APP_CLIENT_ID: ${SHOPIFY_APP_CLIENT_ID:-}
+      SHOPIFY_APP_CLIENT_SECRET: ${SHOPIFY_APP_CLIENT_SECRET:-}
+      # A Pub/Sub topic Gmail push publishes to for every workspace (optional).
+      GMAIL_PUBSUB_TOPIC: ${GMAIL_PUBSUB_TOPIC:-}
+      # The Google Picker (optional): where a person chooses the Drive files Liaison
+      # sees when Drive connects with drive.file only. An API key and the project
+      # NUMBER of the Drive client's Google Cloud project (liaison guide google).
+      GOOGLE_PICKER_API_KEY: ${GOOGLE_PICKER_API_KEY:-}
+      GOOGLE_CLOUD_PROJECT_NUMBER: ${GOOGLE_CLOUD_PROJECT_NUMBER:-}
+      # true only once Google verified the instance Google clients for restricted
+      # scopes (Gmail, full Drive): personal Gmail accounts may then use them.
+      GOOGLE_OAUTH_RESTRICTED_SCOPES_VERIFIED: ${GOOGLE_OAUTH_RESTRICTED_SCOPES_VERIFIED:-false}
+      # The Google Workspace domains (comma-separated) the instance Google clients
+      # are Internal to: an address there connects with no Trusted marking.
+      GOOGLE_OAUTH_INTERNAL_DOMAINS: ${GOOGLE_OAUTH_INTERNAL_DOMAINS:-}
+      # iOS push (optional, all four or none; docs/notifications.md). The .p8 key
+      # file goes under ./data (mounted at /var/lib/liaison), e.g.
+      # APNS_KEY_PATH=/var/lib/liaison/apns/AuthKey_<KEYID>.p8. Each device token
+      # carries its own APNs environment, so there is no sandbox switch.
+      APNS_KEY_PATH: ${APNS_KEY_PATH:-}
+      APNS_KEY_ID: ${APNS_KEY_ID:-}
+      APNS_TEAM_ID: ${APNS_TEAM_ID:-}
+      APNS_BUNDLE_ID: ${APNS_BUNDLE_ID:-}
+      # Android push through Firebase Cloud Messaging (optional, both or none;
+      # the service-account JSON goes under ./data like the APNs key).
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
+      FCM_SERVICE_ACCOUNT_PATH: ${FCM_SERVICE_ACCOUNT_PATH:-}
+      # Web Push for the browser (optional, all three or none; docs/notifications.md).
+      # Without them browser notifications stay off, with one warning in the log.
+      # Generate once per deployment: `bunx web-push generate-vapid-keys`.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      CONTROL_PLANE_URL: ${CONTROL_PLANE_URL:-}
+      CONTROL_PLANE_API_KEY: ${CONTROL_PLANE_API_KEY:-}
+      # Sharing with the Liaison team (docs/self-hosting/liaison-team.md). Unset: the
+      # team's endpoint (keep in step with DEFAULT_LIAISON_TEAM_ENDPOINT, env.ts); set it
+      # empty to make sharing unavailable on this server. Nothing is sent until an admin
+      # turns sharing on.
+      LIAISON_TEAM_ENDPOINT: ${LIAISON_TEAM_ENDPOINT-https://hq.liaison.sh/webhooks/8a934d70-a7ef-4f92-b09d-99c455eb3be7/control}
+      LIAISON_TEAM_FORWARD_DEMO_LEADS: ${LIAISON_TEAM_FORWARD_DEMO_LEADS:-false}
+      # Runtime app installs (.liaisonapp): signatures required by default; the trusted
+      # publisher is ONE cosign certificate-identity regex, anchored ^(?:...)$.
+      LIAISON_REQUIRE_APP_SIGNATURE: ${LIAISON_REQUIRE_APP_SIGNATURE:-true}
+      LIAISON_TRUSTED_APP_PUBLISHERS: ${LIAISON_TRUSTED_APP_PUBLISHERS:-}
+      # AI provider keys — platform fallback for orgs that do not BYOK their own
+      # key. Optional passthrough: a BYOK-only deployment may set none, but any
+      # non-BYOK org's first agent turn hard-fails without at least one. See
+      # deploy/.env.example for details (GOOGLE_API_KEY also drives media-analysis).
+      LIAISON_ANTHROPIC_API_KEY: ${LIAISON_ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      # OpenRouter hosts no request is sent to (comma-separated). Unset: the
+      # app's default; set it empty to allow every host.
+      LIAISON_OPENROUTER_IGNORE_HOSTS: ${LIAISON_OPENROUTER_IGNORE_HOSTS-OpenInference}
+      # Web search for the agents (optional platform key; an org may bring its own).
+      EXA_API_KEY: ${EXA_API_KEY:-}
+      DEVICE_FLOW_CLIENTS: ${DEVICE_FLOW_CLIENTS:?DEVICE_FLOW_CLIENTS required (comma-separated allowed client IDs)}
+      # Off: a device-flow request must declare its scopes (an unscoped one is a full session).
+      DEVICE_FLOW_ALLOW_UNSCOPED: ${DEVICE_FLOW_ALLOW_UNSCOPED:-false}
+      # Origins of the wrapped shells that may receive a refresh token in the login body
+      # (api default when the host env leaves it unset; an empty string would allow none).
+      LIAISON_APP_ORIGINS: ${LIAISON_APP_ORIGINS:-capacitor://localhost,tauri://localhost,http://tauri.localhost}
+      # Per-fetch cap for a sandboxed ctx.fetch (rpc-bridge.ts). Default 10s;
+      # raised on this deployment because the KPI app proxies warehouse-backed
+      # kpi_run calls (~10-15s). Clamped to 120s in code; a fetch is still bounded
+      # by the calling tool's own execution budget.
+      LIAISON_SANDBOX_FETCH_TIMEOUT_MS: ${LIAISON_SANDBOX_FETCH_TIMEOUT_MS:-10000}
+      # Private services an app may reach (comma-separated `host` or `host:port`,
+      # e.g. kpi-service:8787): plain HTTP and a private address are allowed for
+      # these hosts only; the app's manifest must still list them. Empty = none.
+      LIAISON_APP_PRIVATE_HOSTS: ${LIAISON_APP_PRIVATE_HOSTS:-}
+      # clamd for scanning inbound attachments (`host` or `host:port`, TCP 3310 by
+      # default). Empty = no scanning. An infected attachment is replaced by a
+      # notice and kept under orgs/<org>/quarantine/ in object storage.
+      CLAMAV_HOST: ${CLAMAV_HOST:-}
+      # Legal-retention archive written when an organization is deleted
+      # (docs/admin/backups.md): the age recipient (`age1...`, a public key) the
+      # archive is encrypted to, and how many years it is kept (default 10).
+      # Empty recipient = `liaison org delete` refuses unless --no-legal-archive.
+      LEGAL_ARCHIVE_RECIPIENT: ${LEGAL_ARCHIVE_RECIPIENT:-}
+      LEGAL_ARCHIVE_RETENTION_YEARS: ${LEGAL_ARCHIVE_RETENTION_YEARS:-10}
+    volumes:
+      # Bind the app data dir, not just the maintenance file. The maintenance
+      # flag lives at /var/lib/liaison/maintenance (host: ./data/maintenance),
+      # the maintenance-version file at /var/lib/liaison/maintenance-version,
+      # and the release manifest at /var/lib/liaison/upgrade-state.json — all
+      # under one mount so the CLI and the running app agree on a single path.
+      - ./data:/var/lib/liaison
+      # Provisioning input, read only: the `liaison config apply` file and the
+      # knowledge files it loads (deploy/setup/liaison-config.yaml and
+      # deploy/setup/knowledge/ on the host, gitignored). Mounted so the
+      # in-container CLI reads what a setup run wrote on the host:
+      #   docker compose exec -T app liaison config apply --config /setup/liaison-config.yaml
+      # Never put secrets in it: the config names them as ${VAR} and the values
+      # reach the CLI per command (`exec -e VAR`), from deploy/.setup-secrets.env.
+      - ./setup:/setup:ro
+    ports:
+      # Bind to loopback only. The app speaks plain HTTP and is meant to sit
+      # behind a TLS-terminating reverse proxy on the same host; publishing on
+      # 0.0.0.0 would expose unencrypted HTTP on every interface (Docker also
+      # bypasses host firewalls like ufw). Override APP_BIND to 0.0.0.0 only if
+      # the proxy runs on a different host on a trusted network.
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-3000}:3000"
+    networks: [internal]
+    # Hardening: the image already runs as the non-root `bun` user. Block
+    # privilege escalation, drop all capabilities (the app binds an
+    # unprivileged port and needs none), and make the root filesystem
+    # read-only — only the bind-mounted data dir and an in-memory /tmp stay
+    # writable, so a code-exec foothold cannot tamper with the app bundle.
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    read_only: true
+    tmpfs:
+      - /tmp
+    # The app holds the in-process memory-amplification surfaces (thumbnail
+    # decode, image proxy, QuickJS sandbox pool), so it gets the largest cap.
+    # mem_reservation is the soft floor; mem_limit is the hard cgroup ceiling
+    # that bounds a single oversized request before the host OOM killer fires.
+    # 3g (was 2g): a sandbox-timeout storm leaks destroyed QuickJS modules
+    # until GC catches up; at 2g the cap was reachable in minutes and the
+    # resulting GC thrash amplified the storm (2026-07-06 incident). The pool
+    # cap + bridge-call timeouts bound the leak; the extra gig is headroom.
+    mem_limit: 3g
+    mem_reservation: 1g
+    cpus: 2.0
+    pids_limit: 512
+    healthcheck:
+      # The bun:1 image ships neither wget nor curl, so probe via bun itself.
+      # /healthz always returns HTTP 200 (even with dead deps), so we parse the
+      # body and fail unless every dependency reports "ok" — otherwise a
+      # container with a dead Postgres/Redis would stay "healthy" and in
+      # rotation behind a load balancer.
+      test:
+        - CMD
+        - bun
+        - --eval
+        - |
+          fetch('http://localhost:3000/healthz')
+            .then(r => r.ok ? r.json() : Promise.reject(new Error('status ' + r.status)))
+            .then(b => {
+              const deps = b.dependencies || {}
+              const bad = Object.entries(deps).filter(([, v]) => v !== 'ok')
+              if (bad.length) { console.error('unhealthy deps: ' + JSON.stringify(bad)); process.exit(1) }
+            })
+            .catch(e => { console.error(String(e)); process.exit(1) })
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Rolling deploys (profile `rolling`): the same image as `app`, split into an
+  # `api` (HTTP + WebSocket) and a `worker` (jobs + singletons), started BESIDE
+  # the old processes by deploy/rolling-deploy.sh and drained after the new
+  # ones are ready, so a deploy only delays work. Plain `docker compose up -d`
+  # never starts them (the profile is off); `app` above stays the default.
+  # Run them only through the script:
+  #   LIAISON_IMAGE=<image> deploy/rolling-deploy.sh
+  # It runs `migrate` once, then `up -d --no-recreate --no-deps --scale` on
+  # `api worker` only: it never recreates an old process or an infrastructure
+  # service. See docs/self-hosting/docker.md, "Deploy without downtime".
+  # Both inherit everything from `app` (YAML merge `<<`) except what is set here.
+  api:
+    <<: *liaison-app
+    profiles: ["rolling"]
+    # An old process drains for up to 10 min (turns and jobs finish where they
+    # run). The process exits by itself at SHUTDOWN_HARD_DEADLINE_MS (638 s =
+    # 605 s drain group: a 600 s turn drain + its 5 s handoff, above the 600 s
+    # job drain + 4 s; then 28 s of closing phases + 5 s slack), and the grace
+    # period stays at least 5 s above it (scripts/compose-shutdown-budget.test.ts).
+    stop_grace_period: 11m
+    environment:
+      <<: *liaison-env
+      LIAISON_ROLE: api
+      # Pools planned per role from one connection budget, for the whole
+      # topology with old and new processes side by side (docs/self-hosting/pools.md).
+      # A pool set here wins over the plan; empty = planned.
+      DB_CELL_MAX_CONNECTIONS: ${DB_CELL_MAX_CONNECTIONS:-${POSTGRES_MAX_CONNECTIONS:-200}}
+      LIAISON_API_REPLICAS: ${API_REPLICAS:-2}
+      LIAISON_WORKER_REPLICAS: ${WORKER_REPLICAS:-1}
+      DB_POOL_MAX: ${API_DB_POOL_MAX:-}
+      DB_PRIVILEGED_POOL_MAX: ${API_DB_PRIVILEGED_POOL_MAX:-}
+      DB_JOBS_POOL_MAX: ${API_DB_JOBS_POOL_MAX:-}
+      DB_PRIVILEGED_JOBS_POOL_MAX: ${API_DB_PRIVILEGED_JOBS_POOL_MAX:-}
+      # The deploy script runs the migrations once, in `migrate`, before it
+      # starts any new process.
+      LIAISON_MIGRATE_ON_START: "false"
+      SHUTDOWN_TURN_DRAIN_MS: "600000"
+      SHUTDOWN_JOB_DRAIN_MS: "600000"
+      SHUTDOWN_HARD_DEADLINE_MS: "638000"
+      # /readyz says 503 at once; the listener (and its idle keep-alive
+      # connections) stays open 5 s, five edge probes, so the edge has stopped
+      # choosing this process long before a pooled connection to it closes.
+      # It runs inside the drain budgets above, so it adds nothing to a stop.
+      SHUTDOWN_EDGE_GRACE_MS: "5000"
+    ports:
+      # One host port per api process, from this range (loopback only, as for
+      # `app`). The edge lists every port of the range and health-checks each
+      # (deploy/Caddyfile.rolling.example): an unbound port is skipped. Old and
+      # new processes run side by side during a deploy, so the range holds
+      # twice API_REPLICAS.
+      - "${APP_BIND:-127.0.0.1}:${API_PORT_RANGE:-3001-3004}:3000"
+    healthcheck: &liaison-readyz
+      # Ready = booted and not draining (/readyz 200). The deploy script waits
+      # for it on every new container before it drains an old one.
+      test:
+        - CMD
+        - bun
+        - --eval
+        - "fetch('http://localhost:3000/readyz').then(r => process.exit(r.status === 200 ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 300s
+      start_interval: 1s
+
+  worker:
+    <<: *liaison-app
+    profiles: ["rolling"]
+    stop_grace_period: 11m
+    environment:
+      <<: *liaison-env
+      LIAISON_ROLE: worker
+      # Planned like the api's (docs/self-hosting/pools.md): the worker's
+      # privileged pool fits every kernel slot, its jobs pools take the surplus.
+      DB_CELL_MAX_CONNECTIONS: ${DB_CELL_MAX_CONNECTIONS:-${POSTGRES_MAX_CONNECTIONS:-200}}
+      LIAISON_API_REPLICAS: ${API_REPLICAS:-2}
+      LIAISON_WORKER_REPLICAS: ${WORKER_REPLICAS:-1}
+      DB_POOL_MAX: ${WORKER_DB_POOL_MAX:-}
+      DB_PRIVILEGED_POOL_MAX: ${WORKER_DB_PRIVILEGED_POOL_MAX:-}
+      DB_JOBS_POOL_MAX: ${WORKER_DB_JOBS_POOL_MAX:-}
+      DB_PRIVILEGED_JOBS_POOL_MAX: ${WORKER_DB_PRIVILEGED_JOBS_POOL_MAX:-}
+      LIAISON_MIGRATE_ON_START: "false"
+      SHUTDOWN_TURN_DRAIN_MS: "600000"
+      SHUTDOWN_JOB_DRAIN_MS: "600000"
+      SHUTDOWN_HARD_DEADLINE_MS: "638000"
+      # /readyz says 503 at once; the listener (and its idle keep-alive
+      # connections) stays open 5 s, five edge probes, so the edge has stopped
+      # choosing this process long before a pooled connection to it closes.
+      # It runs inside the drain budgets above, so it adds nothing to a stop.
+      SHUTDOWN_EDGE_GRACE_MS: "5000"
+    # No published port: its HTTP server answers only /healthz and /readyz.
+    ports: []
+    healthcheck: *liaison-readyz
+
+  # The one-shot migration step of a rolling deploy (migrations under the
+  # database lease, then the first-party catalog reconcile), run by the deploy
+  # script as `docker compose --profile rolling run --rm --no-deps migrate`.
+  migrate:
+    <<: *liaison-app
+    profiles: ["rolling"]
+    command: ["migrate"]
+    restart: "no"
+    environment:
+      <<: *liaison-env
+      # A one-shot: 2 connections per pool, outside the pool plan (its whole
+      # footprint, direct connections included, is the plan's MIGRATE_FOOTPRINT).
+      LIAISON_ONESHOT: "1"
+      DB_POOL_MAX: "2"
+      DB_PRIVILEGED_POOL_MAX: "2"
+      DB_JOBS_POOL_MAX: "2"
+    ports: []
+    healthcheck:
+      disable: true
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  meili_data:
+  objectstore_data:

@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# Minimal `liaison` CLI shim so `docker compose exec <service> liaison …` works
+# (symlink or PATH this into the container). It resolves the CLI entrypoint
+# relative to its OWN location, so it does not care about the caller's cwd.
+#
+# The canonical invocation `bun run --cwd apps/api liaison …` always works too;
+# this shim is purely for the container-exec ergonomics.
+set -euo pipefail
+
+# Directory of this script (apps/api/bin), then the CLI entry at ../src/cli.
+# Resolve symlinks first: the image installs this shim as a symlink in
+# /usr/local/bin, and dirname of the link itself would point there.
+SHIM_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+API_DIR="$(cd "${SHIM_DIR}/.." && pwd)"
+
+# Mark this as a CLI run so the root logger flushes synchronously to fd 2 before
+# the CLI's hard process.exit() (the server stays async/non-blocking). The CLI
+# entrypoint also sets this defensively for the `bun run … cli/index.ts` path.
+export LIAISON_CLI=1
+
+# Run from apps/api, exactly like the canonical `bun run --cwd apps/api liaison …`:
+# the `~/` import alias only resolves from that cwd (bun's --tsconfig-override
+# crashes on it). Relative file arguments are therefore relative to apps/api;
+# pass absolute paths from elsewhere.
+cd "${API_DIR}"
+exec bun run "${API_DIR}/src/cli/index.ts" "$@"

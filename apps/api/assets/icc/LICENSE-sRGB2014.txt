@@ -1,0 +1,17 @@
+sRGB2014.icc
+============
+
+Source: International Color Consortium, sRGB profiles registry
+        https://registry.color.org/rgb-registry/srgbprofiles
+        (file https://registry.color.org/rgb-registry/profiles/sRGB2014.icc)
+SHA-256: 384b832de3412066743b52a75ee906b6fb9fb8d9e09e936fc2c43223815c6e0a
+Profile: ICC v2, device class "mntr" (display), colour space RGB,
+         description "sRGB2014", copyright tag "Copyright International Color Consortium, 2015".
+
+Terms (International Color Consortium): the profile may be used, copied and distributed without
+fee, provided the file is not changed, including its ICC copyright notice tag, and the name of
+the ICC is not used in advertising or publicity without prior written permission. It is provided
+"AS IS" with no express or implied warranty.
+
+Use in Liaison: embedded, unmodified, as the sRGB OutputIntent of PDF/A-3 documents rendered by
+apps/api/src/modules/pdf/pdfa.

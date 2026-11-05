@@ -1,0 +1,64 @@
+Two paths: coding agent playbook or quickstart -> README.md:28
+Requires Docker, Compose v2, openssl -> README.md:67
+Playbook checks docker, compose, openssl, git -> .claude/skills/setup-liaison/SKILL.md:68
+Providers OpenRouter, Anthropic, OpenAI, Google, Mistral; one OpenRouter key reaches every major model -> .claude/skills/setup-liaison/SKILL.md:91
+Server needs SSH and a domain -> .claude/skills/setup-liaison/SKILL.md:95
+Server needs TLS, DNS, SMTP -> .claude/skills/setup-liaison/SKILL.md:149
+4 GB memory host -> .claude/skills/setup-liaison/SKILL.md:451
+Clone and claude/codex command -> README.md:32
+States plan and time per step -> .claude/skills/setup-liaison/SKILL.md:45
+Questions asked at once with defaults -> .claude/skills/setup-liaison/SKILL.md:71
+Website default none -> .claude/skills/setup-liaison/SKILL.md:77
+Git repositories GitHub or GitLab -> .claude/skills/setup-liaison/SKILL.md:78
+Other documents folders, PDFs, Drive or Notion export -> .claude/skills/setup-liaison/SKILL.md:83
+People roles admin, member, viewer; default owner as admin -> .claude/skills/setup-liaison/SKILL.md:85
+Support mail none, IMAP or Gmail -> .claude/skills/setup-liaison/SKILL.md:87
+Where: this machine default or server -> .claude/skills/setup-liaison/SKILL.md:95
+Guided tour question default no -> .claude/skills/setup-liaison/SKILL.md:97
+Keys in deploy/.setup-secrets.env mode 600 -> .claude/skills/setup-liaison/SKILL.md:25
+Starts stack while you answer -> .claude/skills/setup-liaison/SKILL.md:104
+Website crawl at most 150 pages -> .claude/skills/setup-liaison/SKILL.md:180
+Shows counts and asks before loading -> .claude/skills/setup-liaison/SKILL.md:223
+config apply creates org, admin, agents, loads knowledge -> .claude/skills/setup-liaison/SKILL.md:274
+Human checkpoints: sign in, Gmail -> .claude/skills/setup-liaison/SKILL.md:305
+Smoke test with liaison agent ask -> .claude/skills/setup-liaison/SKILL.md:377
+Smoke test asks in a fresh conversation each time -> .claude/skills/setup-liaison/SKILL.md:379
+Report done, pending, time -> .claude/skills/setup-liaison/SKILL.md:394
+Safe to run twice -> .claude/skills/setup-liaison/SKILL.md:30
+Timing table and best case 9 minutes -> .claude/skills/setup-liaison/SKILL.md:45
+Quickstart command -> README.md:72
+Quickstart writes .env, pulls or builds, starts services, waits for /healthz -> README.md:75
+Register with setup token, first registration bootstraps org -> README.md:80
+Quickstart flags --port, --pull, --build, --project -> README.md:99
+--port 3100 if 3000 is taken -> .claude/skills/setup-liaison/SKILL.md:133
+Passwordless code or magic link; console email bodies -> README.md:84
+.env sets LIAISON_CONSOLE_EMAIL_BODIES=true -> .claude/skills/setup-liaison/SKILL.md:144
+Read sign-in code from log -> .claude/skills/setup-liaison/SKILL.md:312
+Set SMTP_* and remove before others sign in -> README.md:87
+--down keeps data; restart -> .claude/skills/setup-liaison/SKILL.md:407
+down -v removes data -> README.md:97
+move.sh moves data, members, accounts, keys -> .claude/skills/setup-liaison/SKILL.md:413
+Prepare server, do not register -> .claude/skills/setup-liaison/SKILL.md:417
+SSH without password prompt -> .claude/skills/setup-liaison/SKILL.md:421
+move.sh command and --remote-dir -> .claude/skills/setup-liaison/SKILL.md:423
+Pending DNS, OAuth redirect, webhooks; leave trial stopped -> .claude/skills/setup-liaison/SKILL.md:431
+Google OAuth client walk (consent screen, redirect URI, scopes) during setup -> .claude/skills/setup-liaison/SKILL.md:320
+Shopify app with the Shopify CLI from the shopify.app.toml template -> .claude/skills/setup-liaison/SKILL.md:338
+Personal Gmail over IMAP: read, star, archive and trash both ways, Sent imported, 2-minute polling -> packages/shared/src/i18n/locales/en/setup-guides.json:143 ; .claude/skills/setup-liaison/SKILL.md:332-335
+Drive picked mode: the CLI gives the Settings link to choose files -> .claude/skills/setup-liaison/SKILL.md:352
+connect --for / disconnect in onboarding -> .claude/skills/setup-liaison/SKILL.md:1
+Standard or private mailbox trade-off, one sentence each -> packages/shared/src/setup-guides.ts:56 ; apps/api/src/cli/connect/index.ts:415 ; .claude/skills/setup-liaison/SKILL.md:488 ; apps/api/src/modules/agent/prompts/kernel/setup-guide.md:26 ; packages/shared/src/i18n/locales/en/mail.json:153
+the agent records the feature answer in setup.features -> .claude/skills/setup-liaison/SKILL.md:120
+first admin sign-in opens a pinned 'Set up your space' card with what is left and the demo link; never in demo workspaces -> apps/api/src/modules/provisioning/setup-kickoff.ts:5 ; apps/api/src/modules/provisioning/setup-kickoff.ts:103 ; packages/shared/src/i18n/locales/en/first-run.json:3
+Liaison team sharing asked once, two questions, default no, exact fields -> .claude/skills/setup-liaison/SKILL.md:179 ; apps/api/src/modules/agent/prompts/kernel/setup-guide.md:17
+Sharing answers changeable in Settings > System -> apps/api/src/modules/liaison-team/routes.ts:47
+Report line for the Liaison team answer -> .claude/skills/setup-liaison/SKILL.md:652
+Sample company: lively tier is for a self-hosted trial, ten people, two weeks up to now -> apps/api/src/seed/tiers/lively/seed-lively.ts:3-9 ; apps/api/src/seed/world/lively.ts:3-39
+liaison on PATH in the image -> apps/api/Dockerfile:145
+--slug creates a separate org; --passwords-env reads the password from the env -> apps/api/src/seed/tiers/lively/seed-lively.ts:736-784
+Addresses <key>@<slug>.resonantaudiolabs.example; elodie is the founder admin -> apps/api/src/seed/tiers/demo/seed-org.ts:289 ; apps/api/src/seed/world/fiction.ts:247-251
+Sign in with a password label -> packages/shared/src/i18n/locales/en/kernel.json:3179 ; apps/web/src/modules/auth/Login.tsx:708-718
+--replace restarts the two weeks -> apps/api/src/seed/tiers/lively/seed-lively.ts:13-16 ; apps/api/src/seed/tiers/lively/seed-lively.ts:120-155
+Shopify CLI file uses Shopify-managed installation, store gets exactly its scopes -> apps/api/src/modules/connection-guides/shopify-app-toml.ts:9
+coding agent turns full order history on first so the file lists read_all_orders; deploy refused: off, deploy, request -> .claude/skills/setup-liaison/SKILL.md:524
+the printed file carries the org's opted-in protected scopes -> apps/api/src/modules/connection-guides/plan.ts:258

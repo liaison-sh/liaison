@@ -1,0 +1,52 @@
+Settings app label Calendar, section Calendar accounts -> apps/api/src/apps/calendar/app.manifest.json:586
+Empty state Connect Google Calendar opens settings -> apps/web/src/modules/calendar/CalendarShell.tsx:371
+Connect button -> apps/web/src/modules/settings/app-page/ConnectionsBlock.tsx:252
+OAuth scopes calendar.events and calendarlist.readonly -> apps/api/src/apps/calendar/app.manifest.json:28
+Only tokens stored, never password -> apps/api/src/apps/calendar/app.manifest.json:41
+Calendars to sync -> packages/shared/src/i18n/locales/en/calendar.json:17
+Only selected calendars synced -> apps/api/src/apps/calendar/app.manifest.json:269
+Uses workspace Google client shared with Gmail -> apps/api/src/apps/calendar/app.manifest.json:39
+Google-sensitive scope, Internal or verified app -> apps/api/src/apps/calendar/app.manifest.json:37
+calendar:accounts:admin manages org-wide connections -> apps/api/src/apps/calendar/app.manifest.json:575
+Org-wide calendars visible to callers -> apps/api/src/apps/calendar/app.manifest.json:269
+Retry failed import -> apps/web/src/modules/calendar/CalendarChoices.tsx:107
+Reconnect required on revoked access -> packages/shared/src/i18n/locales/en/calendar.json:52
+Disconnect deletes imported calendars and events -> packages/shared/src/i18n/locales/en/calendar.json:79
+Calendar in activity bar -> apps/api/src/apps/calendar/app.manifest.json:626
+Views Day / Week / Month -> packages/shared/src/i18n/locales/en/calendar.json:68
+Today / Previous / Next -> apps/web/src/modules/calendar/CalendarShell.tsx:280
+My calendars -> packages/shared/src/i18n/locales/en/calendar.json:38
+New event -> apps/web/src/modules/calendar/CalendarShell.tsx:340
+Event fields Title, All day, Start, End, Description, Location, Calendar, Recurrence -> apps/web/src/modules/calendar/EventDialog.tsx:285
+Recurrence options -> packages/shared/src/i18n/locales/en/calendar.json:53
+Attendees, comma-separated -> packages/shared/src/i18n/locales/en/calendar.json:15
+Save / Delete -> apps/web/src/modules/calendar/EventDialog.tsx:466
+Attendees not emailed -> packages/shared/src/i18n/locales/en/calendar.json:13
+Only organizer changes guest list -> packages/shared/src/i18n/locales/en/calendar.json:14
+Recurring event not editable -> packages/shared/src/i18n/locales/en/calendar.json:58
+Join with Google Meet -> packages/shared/src/i18n/locales/en/calendar.json:35
+Agent can create Meet links, not Teams or Zoom -> apps/api/src/apps/calendar/app.manifest.json:323
+Calendar tools not gated -> apps/api/src/apps/calendar/app.manifest.json:322
+Role member -> apps/api/src/apps/calendar/app.manifest.json:566
+Role admin -> apps/api/src/apps/calendar/app.manifest.json:575
+calendar:approve -> docs/reference/scopes.md:116
+list_accounts -> apps/api/src/apps/calendar/app.manifest.json:490
+list_calendars -> apps/api/src/apps/calendar/app.manifest.json:268
+list_events -> apps/api/src/apps/calendar/app.manifest.json:279
+search_events -> apps/api/src/apps/calendar/app.manifest.json:302
+create_event -> apps/api/src/apps/calendar/app.manifest.json:322
+update_event -> apps/api/src/apps/calendar/app.manifest.json:372
+delete_event -> apps/api/src/apps/calendar/app.manifest.json:429
+set_selected -> apps/api/src/apps/calendar/app.manifest.json:457
+retry_import -> apps/api/src/apps/calendar/app.manifest.json:475
+Import calendar events from an ics file with format ics -> apps/api/src/modules/imports/routes.ts:49
+Starting an import needs kernel:imports:run -> apps/api/src/modules/imports/routes.ts:101
+Calendar events kind needs calendar:accounts:admin and calendar:events:write -> apps/api/src/apps/calendar/app.manifest.json:613
+Events go into a calendar named Imported -> apps/api/src/apps/calendar/import-kind.ts:78
+Imported calendar granted to the importing person -> apps/api/src/apps/calendar/import-kind.ts:134
+Imported calendar never polled or watched -> apps/api/src/apps/calendar/sync.ts:2466
+Imported calendar never pushed -> apps/api/src/apps/calendar/sync.ts:2450
+Time zones and recurring events kept, override becomes its own event -> apps/api/src/modules/imports/parsers/ics.ts:13
+Re-import skips events already there -> apps/api/src/apps/calendar/import-kind.ts:168
+Imported calendar is the importer's own account -> apps/api/src/apps/calendar/import-kind.ts:103
+Imported calendars never granted to members who join later -> apps/api/src/apps/calendar/sync.ts:547

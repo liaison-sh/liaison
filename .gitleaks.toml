@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# gitleaks configuration: the default ruleset, plus allowlists for test
+# fixtures and for strings the generic rules mistake for keys. Used by the
+# gitleaks job in .github/workflows/codeql.yml, by scripts/git-hooks/ and by a
+# local run:
+#
+#   gitleaks git --config .gitleaks.toml --redact --log-opts=--all
+#
+# Every entry below is a reviewed false positive. Keep each one as narrow as
+# the string it covers: a broad pattern here hides a real key forever.
+
+title = "liaison gitleaks config"
+
+[extend]
+useDefault = true
+
+# Test fixtures: fake tokens, throwaway PEMs and sample JWTs that exist only
+# to exercise parsers, scrubbers and redaction. None of them is a credential.
+[[allowlists]]
+description = "Test files and fixtures"
+paths = [
+  '''\.test\.tsx?$''',
+  '''__fixtures__/''',
+  '''test-support/''',
+  '''tests/e2e/helpers/''',
+]
+
+# Strings the generic-api-key rule flags in product code and docs.
+[[allowlists]]
+description = "Reviewed false positives in non-test files"
+regexTarget = "secret"
+regexes = [
+  # localStorage keys such as liaison.dock.v1, liaison.pendingDecisions.v1
+  '''^liaison\.[A-Za-z]+\.v[0-9]+$''',
+  # Demo seed and approval-spec identifiers (apps/api/src/seed/**)
+  '''^(inv|quo|reply|stock-notify)-[a-z0-9]+(-[a-z0-9]+)*$''',
+  # Session stop-reason enum next to "token_limit" (packages/shared)
+  '''^stuck_after_[0-9]+_continues$''',
+  # RFC 5545 RRULE frequency list in the calendar README
+  '''^DAILY/WEEKLY/MONTHLY/YEARLY$''',
+  # Placeholder values in committed .env.example files
+  '''^replace-with-[a-z0-9-]+$''',
+]
+
+# Control plane contract test vectors: fixed master secrets and the instance
+# keys derived from them, generated once so both sides can check the key
+# derivation and the body signature byte for byte. They sign nothing real.
+# Pinned to that file and to these exact values: any other secret in the file,
+# or these values anywhere else, is still reported.
+#
+# Two things keep that sentence true, each proven by scripts/git-hooks.test.ts:
+# - `targetRules`: on an allowlist without it, gitleaks skips a file matching
+#   `paths` outright, for every rule, whatever `condition` says. Paths and values
+#   together always need it.
+# - The path starts on a directory boundary, not on the start of the string:
+#   gitleaks matches the path as the scan target spells it, absolute for an
+#   absolute target and prefixed from a parent directory.
+[[allowlists]]
+description = "Control plane contract signing vectors"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''(^|/)packages/control-plane-contract/src/vectors\.ts$''']
+regexTarget = "secret"
+regexes = [
+  '''^1b4bf8c6f6c4498eabc3ca222b50ed4a4b11d46e9caf93585b5049c6a14acd71$''',
+  '''^8f9b262944a7584c061fff311cf98d4ff225abecdf42cb2c28229fcc2cb4a162$''',
+  '''^a3a546870cf3be25cc3262ca470ba13b052fb2c0025acd01aba7ccdb948ef10b$''',
+  '''^bdc9abb4dedf071522ec79947c800481744976593804deb1a000a1742e337892$''',
+  '''^d4a3c179d8ef449a948a561f0d4cdf17557899df7a078f65bba8c3803fb923fe$''',
+  '''^f880d1be5286f89727d74dea5bd3ca25c573b565c6c05f696eb79766a26d2006$''',
+]

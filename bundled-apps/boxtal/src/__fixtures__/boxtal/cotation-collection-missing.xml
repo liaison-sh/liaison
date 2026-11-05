@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cotation>
+  <shipment>
+    <offer>
+      <mode>COM</mode>
+      <operator>
+        <code>MONR</code>
+        <label>Mondial Relay</label>
+      </operator>
+      <service>
+        <code>CpourToi</code>
+        <label>Point Relais</label>
+      </service>
+      <price>
+        <currency>EUR</currency>
+        <tax-exclusive>5.50</tax-exclusive>
+        <tax-inclusive>6.60</tax-inclusive>
+      </price>
+      <delivery>
+        <date>2026-06-05</date>
+        <type>
+          <code>PICKUP_POINT</code>
+          <label>Livraison en Relais</label>
+        </type>
+      </delivery>
+    </offer>
+  </shipment>
+</cotation>

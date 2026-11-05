@@ -1,0 +1,12 @@
+[
+  {
+    "id": "G0001",
+    "name": "design",
+    "created": 1709280000,
+    "creator": "U0001",
+    "is_archived": false,
+    "members": ["U0001"],
+    "topic": { "value": "", "creator": "", "last_set": 0 },
+    "purpose": { "value": "Design reviews", "creator": "U0001", "last_set": 1709280000 }
+  }
+]

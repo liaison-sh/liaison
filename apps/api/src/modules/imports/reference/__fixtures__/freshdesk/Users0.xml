@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<users type="array">
+  <user>
+    <id type="integer">9001</id>
+    <name>Jane Customer</name>
+    <email>jane.customer@example.com</email>
+  </user>
+  <user>
+    <id type="integer">9002</id>
+    <name>Omar Buyer</name>
+    <email>omar.buyer@example.com</email>
+  </user>
+</users>

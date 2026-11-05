@@ -1,0 +1,493 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+/**
+ * Real-DB unit test for the generic manifest-driven connector (Task 11).
+ *
+ * The connector reads the connection's manifest declaration from
+ * `connectionConfigRegistry` (warmed by `ensureAppsForOrg`, which `ensureOrg`
+ * runs post-commit) and drives it generically:
+ *  - `type:credentials` (gitlab: fields token+group, NO identifierVar) → validate
+ *    supplied creds, derive identifier from `connection.identifier`, 4-key
+ *    precheck, `createCredentialConnection` (ownerType:'org'). Re-run → NO new
+ *    row. Missing a required field → clean error, no row. Creds-changed →
+ *    disconnect + reinsert (active count stays 1).
+ *  - `type:oauth2` (shopify/shop) → `pending`, NO write.
+ */
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import crypto from "node:crypto"
+import { sql as drizzleSql } from "drizzle-orm"
+import { kernelRel } from "~/apps/tickets/schema-refs"
+import { ConfigError } from "~/cli/config/parse"
+import {
+  checkConnectionHealth,
+  describeConnectionDrift,
+  planConnection,
+  provisionConnection,
+} from "~/cli/provisioners/connector"
+import { buildProvisionContext, type ProvisionContext } from "~/cli/provisioners/types"
+import { extractRows } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
+import { connectionConfigRegistry } from "~/modules/apps/app-registries"
+import { getCredentialsForConnection } from "~/modules/apps/connections/service"
+import { ensureOrg } from "~/modules/provisioning/ensure-org"
+import { ensureUser } from "~/modules/provisioning/ensure-user"
+import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+
+beforeAll(acquireTestLock)
+afterAll(releaseTestLock)
+
+async function freshOrgWithAdmin(): Promise<{
+  ctx: ProvisionContext
+  orgId: string
+  adminId: string
+}> {
+  const { orgId } = await ensureOrg({
+    slug: `cli-conn-${crypto.randomUUID().slice(0, 12)}`,
+    name: "ConnectorTestOrg",
+  })
+  const { userId } = await ensureUser({
+    orgId,
+    email: `admin-${crypto.randomUUID().slice(0, 8)}@fabrikam.example`,
+    name: "Owner",
+    password: "pw-conn-1!",
+    role: "admin",
+  })
+  const ctx = buildProvisionContext({ log: () => {}, validateByok: false })
+  ctx.orgId = orgId
+  ctx.actor.userId = userId
+  ctx.actor.scopes = ["*"]
+  return { ctx, orgId, adminId: userId }
+}
+
+async function countActive(
+  orgId: string,
+  app: string,
+  conn: string,
+  identifier: string,
+): Promise<number> {
+  const rows = await withPrivilegedDb(orgId, "t", (tx) =>
+    tx.execute(drizzleSql`
+      SELECT id FROM ${kernelRel("connected_accounts")}
+      WHERE org_id = ${orgId}::uuid AND app_name = ${app} AND connection_name = ${conn}
+        AND identifier = ${identifier} AND status = 'active'
+    `),
+  )
+  return extractRows(rows).length
+}
+
+describe("generic connector (Task 11)", () => {
+  test("credentials connector (gitlab): valid creds → org-owned row + derived identifier; re-run no dup", async () => {
+    const { ctx, orgId } = await freshOrgWithAdmin()
+    const group = `grp-${crypto.randomUUID().slice(0, 8)}`
+    const spec = {
+      name: "gitlab",
+      identifier: group,
+      ownerType: "org" as const,
+      credentials: { token: "glpat-secret-1", group },
+    }
+
+    const r1 = await provisionConnection(ctx, "gitlab", spec)
+    expect(r1.connected).toBe(true)
+    expect(await countActive(orgId, "gitlab", "gitlab", group)).toBe(1)
+
+    // ownerType:'org' on the stored row.
+    const rows = await withPrivilegedDb(orgId, "t", (tx) =>
+      tx.execute(drizzleSql`
+        SELECT owner_type, identifier FROM ${kernelRel("connected_accounts")}
+        WHERE org_id = ${orgId}::uuid AND app_name = 'gitlab' AND connection_name = 'gitlab'
+          AND identifier = ${group} AND status = 'active'
+      `),
+    )
+    const row = extractRows<{ owner_type: string; identifier: string }>(rows)[0]
+    expect(row.owner_type).toBe("org")
+    expect(row.identifier).toBe(group)
+
+    // Re-run with identical creds → unchanged, NO new row (count==1).
+    const r2 = await provisionConnection(ctx, "gitlab", spec)
+    expect(r2.connected).toBe(true)
+    expect(await countActive(orgId, "gitlab", "gitlab", group)).toBe(1)
+  })
+
+  test("no acting person (no admin section, no active admin) → clean error naming `admin`, no row", async () => {
+    const { orgId } = await ensureOrg({
+      slug: `cli-conn-noadmin-${crypto.randomUUID().slice(0, 12)}`,
+      name: "ConnectorNoAdminOrg",
+    })
+    // As `liaison config apply` builds it when the file has no admin section
+    // and the org has no active admin: the actor stays empty.
+    const ctx = buildProvisionContext({ log: () => {}, validateByok: false })
+    ctx.orgId = orgId
+    const group = `grp-${crypto.randomUUID().slice(0, 8)}`
+    const spec = {
+      name: "gitlab",
+      identifier: group,
+      ownerType: "org" as const,
+      credentials: { token: "glpat-secret-1", group },
+    }
+
+    const err = await provisionConnection(ctx, "gitlab", spec).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(ConfigError)
+    expect(String(err)).toContain("`admin` section")
+    expect(await countActive(orgId, "gitlab", "gitlab", group)).toBe(0)
+  })
+
+  test("missing required credentialField → clean error, no row", async () => {
+    const { ctx, orgId } = await freshOrgWithAdmin()
+    const group = `grp-${crypto.randomUUID().slice(0, 8)}`
+    // gitlab requires `token` — omit it.
+    const spec = {
+      name: "gitlab",
+      identifier: group,
+      ownerType: "org" as const,
+      credentials: { group },
+    }
+
+    await expect(provisionConnection(ctx, "gitlab", spec)).rejects.toBeInstanceOf(ConfigError)
+    expect(await countActive(orgId, "gitlab", "gitlab", group)).toBe(0)
+  })
+
+  test("ALL-empty credentials (secrets not pasted yet) → pending skip, no error, no row", async () => {
+    const { ctx, orgId } = await freshOrgWithAdmin()
+    // `${GITLAB_TOKEN:-}` / `${GITLAB_GROUP:-}` interpolate to "" before the
+    // config is listed with every app — the connector must SKIP (pending), not
+    // hard-fail, so the file can be applied incrementally (oauth convention).
+    const spec = {
+      name: "gitlab",
+      identifier: "",
+      ownerType: "org" as const,
+      credentials: { token: "", group: "" },
+    }
+
+    const r = await provisionConnection(ctx, "gitlab", spec)
+    expect(r.connected).toBeFalsy()
+    expect(r.pending?.kind).toBe("credentials")
+    expect(r.pending?.app).toBe("gitlab")
+    expect(r.pending?.connection).toBe("gitlab")
+    expect(await countActive(orgId, "gitlab", "gitlab", "")).toBe(0)
+  })
+
+  test("oauth2 connector (google-drive/drive) → pending, no write", async () => {
+    const { ctx, orgId } = await freshOrgWithAdmin()
+    const spec = {
+      name: "drive",
+      identifier: "drive-account",
+      ownerType: "org" as const,
+    }
+
+    const r = await provisionConnection(ctx, "google-drive", spec)
+    expect(r.connected).toBeFalsy()
+    expect(r.pending).toBeDefined()
+    expect(r.pending?.app).toBe("google-drive")
+    expect(r.pending?.connection).toBe("drive")
+
+    // No connected_account written for an oauth2 connection.
+    const rows = await withPrivilegedDb(orgId, "t", (tx) =>
+      tx.execute(drizzleSql`
+        SELECT id FROM ${kernelRel("connected_accounts")}
+        WHERE org_id = ${orgId}::uuid AND app_name = 'google-drive'
+      `),
+    )
+    expect(extractRows(rows).length).toBe(0)
+  })
+
+  test("oauth2 with oauthClient → provisions the OAuth client (oauth_providers row) + pending", async () => {
+    const { ctx, orgId } = await freshOrgWithAdmin()
+    const spec = {
+      name: "drive",
+      identifier: "drive-account",
+      ownerType: "org" as const,
+      oauthClient: { clientId: "gdrive-client-id", clientSecret: "gdrive-secret" },
+    }
+
+    const r = await provisionConnection(ctx, "google-drive", spec)
+    expect(r.connected).toBeFalsy()
+    expect(r.pending).toBeDefined()
+    expect(r.changed ?? []).toContain("apps.google-drive.drive.oauthClient")
+
+    // The per-connection OAuth client row was written under `<app>:<connection>`.
+    const rows = await withPrivilegedDb(orgId, "t", (tx) =>
+      tx.execute(drizzleSql`
+        SELECT client_id FROM ${kernelRel("oauth_providers")}
+        WHERE org_id = ${orgId}::uuid AND name = 'google-drive:drive'
+      `),
+    )
+    const providerRows = extractRows<{ client_id: string }>(rows)
+    expect(providerRows.length).toBe(1)
+    expect(providerRows[0].client_id).toBe("gdrive-client-id")
+  })
+
+  test("oauth2 with EMPTY oauthClient → skip client provisioning, pending, no oauth_providers row", async () => {
+    const { ctx, orgId } = await freshOrgWithAdmin()
+    // An unset `${ENV:-}` ref interpolates to "" -- a declared-but-unconfigured
+    // client. The connector must SKIP it (not throw) and still report pending.
+    const spec = {
+      name: "drive",
+      identifier: "drive-account",
+      ownerType: "org" as const,
+      oauthClient: { clientId: "", clientSecret: "" },
+    }
+
+    const r = await provisionConnection(ctx, "google-drive", spec)
+    expect(r.connected).toBeFalsy()
+    expect(r.pending).toBeDefined()
+    // No client change recorded, and no oauth_providers row written.
+    expect(r.changed ?? []).not.toContain("apps.google-drive.drive.oauthClient")
+
+    const rows = await withPrivilegedDb(orgId, "t", (tx) =>
+      tx.execute(drizzleSql`
+        SELECT client_id FROM ${kernelRel("oauth_providers")}
+        WHERE org_id = ${orgId}::uuid AND name = 'google-drive:drive'
+      `),
+    )
+    expect(extractRows(rows).length).toBe(0)
+  })
+
+  test("creds-changed → disconnect + reinsert (active count stays 1, new creds stored)", async () => {
+    const { ctx, orgId } = await freshOrgWithAdmin()
+    const group = `grp-${crypto.randomUUID().slice(0, 8)}`
+    const spec1 = {
+      name: "gitlab",
+      identifier: group,
+      ownerType: "org" as const,
+      credentials: { token: "glpat-OLD", group },
+    }
+    await provisionConnection(ctx, "gitlab", spec1)
+    expect(await countActive(orgId, "gitlab", "gitlab", group)).toBe(1)
+
+    const spec2 = {
+      name: "gitlab",
+      identifier: group,
+      ownerType: "org" as const,
+      credentials: { token: "glpat-NEW", group },
+    }
+    const r2 = await provisionConnection(ctx, "gitlab", spec2)
+    expect(r2.connected).toBe(true)
+
+    // Still exactly one ACTIVE row by the 4-key.
+    expect(await countActive(orgId, "gitlab", "gitlab", group)).toBe(1)
+
+    // The active row carries the NEW token.
+    const creds = await withPrivilegedDb(orgId, "t", (tx) =>
+      getCredentialsForConnection(tx, orgId, ctx.actor.userId, "gitlab", "gitlab", group, {
+        actorType: "system",
+      }),
+    )
+    expect(creds.token).toBe("glpat-NEW")
+  })
+
+  // A manifest that later declares an identifierVar (ads/google-config: the
+  // customer id) must not fork an existing account: a config that names its
+  // identifier explicitly keeps updating the account stored under it.
+  test("an explicit identifier wins over a newly declared identifierVar: one account, updated", async () => {
+    const { ctx, orgId } = await freshOrgWithAdmin()
+    const group = `grp-${crypto.randomUUID().slice(0, 8)}`
+    const key = [orgId, "gitlab", "gitlab"] as const
+    const decl = connectionConfigRegistry.get([...key])
+    expect(decl).toBeDefined()
+    const spec = (token: string) => ({
+      name: "gitlab",
+      identifier: "default",
+      ownerType: "org" as const,
+      credentials: { token, group },
+    })
+    // Stored before the manifest derived its identifier.
+    await provisionConnection(ctx, "gitlab", spec("glpat-OLD"))
+    expect(await countActive(orgId, "gitlab", "gitlab", "default")).toBe(1)
+    try {
+      connectionConfigRegistry.set([...key], { ...decl!, identifierVar: "group" })
+      const r = await provisionConnection(ctx, "gitlab", spec("glpat-NEW"))
+      expect(r.connected).toBe(true)
+      expect(await countActive(orgId, "gitlab", "gitlab", group)).toBe(0)
+      expect(await countActive(orgId, "gitlab", "gitlab", "default")).toBe(1)
+      const creds = await withPrivilegedDb(orgId, "t", (tx) =>
+        getCredentialsForConnection(tx, orgId, ctx.actor.userId, "gitlab", "gitlab", "default", {
+          actorType: "system",
+        }),
+      )
+      expect(creds.token).toBe("glpat-NEW")
+      // With no explicit identifier, the declared field still names the account.
+      const derived = await provisionConnection(ctx, "gitlab", {
+        name: "gitlab",
+        ownerType: "org" as const,
+        credentials: { token: "glpat-NEW", group },
+      })
+      expect(derived.connected).toBe(true)
+      expect(await countActive(orgId, "gitlab", "gitlab", group)).toBe(1)
+    } finally {
+      connectionConfigRegistry.set([...key], decl!)
+    }
+  })
+  // A connection declaring a URL beside its secret (the database connector's gate
+  // mode: `gateUrl` is a text field, `gateToken` a password field). A host rename
+  // changes only the URL: apply must write it and say WHICH fields moved, naming
+  // the secret fields without ever printing a value.
+  test("a changed non-secret setting (the URL) is written and reported by field name", async () => {
+    const { ctx, orgId } = await freshOrgWithAdmin()
+    const logs: string[] = []
+    ctx.log = (line: string) => logs.push(line)
+    const identifier = `gate-${crypto.randomUUID().slice(0, 8)}`
+    const base = { name: "database", identifier, ownerType: "org" as const }
+    await provisionConnection(ctx, "database", {
+      ...base,
+      credentials: { gateUrl: "https://gate-old.example.com", gateToken: "tok-SECRET-1" },
+    })
+
+    const same = await provisionConnection(ctx, "database", {
+      ...base,
+      credentials: { gateUrl: "https://gate-old.example.com", gateToken: "tok-SECRET-1" },
+    })
+    expect(same.unchanged).toEqual(["apps.database.connection"])
+    expect(same.changed).toBeUndefined()
+
+    const moved = await provisionConnection(ctx, "database", {
+      ...base,
+      credentials: { gateUrl: "https://gate-new.example.com", gateToken: "tok-SECRET-1" },
+    })
+    expect(moved.connected).toBe(true)
+    expect(moved.unchanged).toBeUndefined()
+    expect(moved.changed).toEqual(["apps.database.connection.gateUrl"])
+    expect(await countActive(orgId, "database", "database", identifier)).toBe(1)
+    const stored = await withPrivilegedDb(orgId, "t", (tx) =>
+      getCredentialsForConnection(tx, orgId, ctx.actor.userId, "database", "database", identifier, {
+        actorType: "system",
+      }),
+    )
+    expect(stored.gateUrl).toBe("https://gate-new.example.com")
+    expect(stored.gateToken).toBe("tok-SECRET-1")
+    expect(logs.join("\n")).toContain("gateUrl")
+
+    const rotated = await provisionConnection(ctx, "database", {
+      ...base,
+      credentials: { gateUrl: "https://gate-new.example.com", gateToken: "tok-SECRET-2" },
+    })
+    expect(rotated.changed).toEqual(["apps.database.connection.gateToken"])
+    // The non-secret setting shows old -> new; the secret is named only.
+    expect(moved.fieldChanges).toEqual([
+      {
+        field: "gateUrl",
+        secret: false,
+        from: "https://gate-old.example.com",
+        to: "https://gate-new.example.com",
+      },
+    ])
+    expect(logs.join("\n")).toContain(
+      'gateUrl "https://gate-old.example.com" -> "https://gate-new.example.com"',
+    )
+    expect(rotated.fieldChanges).toEqual([{ field: "gateToken", secret: true }])
+    expect(logs.join("\n")).toContain("gateToken (secret)")
+    // Field names only for secrets: no secret value in the report or the log.
+    const everything = JSON.stringify([moved, rotated]) + logs.join("\n")
+    expect(everything).not.toContain("tok-SECRET")
+  })
+
+  // `--dry-run` runs plans only: the drift is reported (values for the
+  // non-secret setting, the secret by name) and nothing is written.
+  test("planConnection reports drift of an existing connection without writing", async () => {
+    const { ctx, orgId } = await freshOrgWithAdmin()
+    const identifier = `gate-${crypto.randomUUID().slice(0, 8)}`
+    const base = { name: "database", identifier, ownerType: "org" as const }
+    await provisionConnection(ctx, "database", {
+      ...base,
+      credentials: { gateUrl: "https://gate-old.example.com", gateToken: "tok-SECRET-1" },
+    })
+
+    expect(
+      await planConnection(ctx, orgId, "database", {
+        ...base,
+        credentials: { gateUrl: "https://gate-old.example.com", gateToken: "tok-SECRET-1" },
+      }),
+    ).toEqual(["app 'database' connection 'database' unchanged"])
+
+    const lines = await planConnection(ctx, orgId, "database", {
+      ...base,
+      credentials: { gateUrl: "https://gate-new.example.com", gateToken: "tok-SECRET-2" },
+    })
+    expect(lines).toEqual([
+      `update app 'database' connection 'database': gateToken (secret), gateUrl "https://gate-old.example.com" -> "https://gate-new.example.com"`,
+    ])
+    expect(lines.join("\n")).not.toContain("tok-SECRET")
+
+    // Nothing written: the stored row still holds the old values.
+    const stored = await withPrivilegedDb(orgId, "t", (tx) =>
+      getCredentialsForConnection(tx, orgId, ctx.actor.userId, "database", "database", identifier, {
+        actorType: "system",
+      }),
+    )
+    expect(stored).toEqual({ gateUrl: "https://gate-old.example.com", gateToken: "tok-SECRET-1" })
+    // A new org (none yet) or a new connection plans nothing beyond "connect".
+    expect(await planConnection(ctx, "", "database", base)).toEqual([])
+  })
+
+  test("checkConnectionHealth runs the app's probe on the stored row; no probe is SKIPPED", async () => {
+    const { ctx } = await freshOrgWithAdmin()
+    const identifier = `gate-${crypto.randomUUID().slice(0, 8)}`
+    await provisionConnection(ctx, "database", {
+      name: "database",
+      identifier,
+      ownerType: "org",
+      credentials: { gateUrl: "https://gate.example.com", gateToken: "tok-SECRET-1" },
+    })
+    const seen: Record<string, string>[] = []
+    const pass = await checkConnectionHealth(
+      ctx,
+      {
+        database: async (creds) => {
+          seen.push(creds)
+          return { identity: "gate ok" }
+        },
+      },
+      "database",
+      "database",
+      identifier,
+    )
+    expect(pass).toEqual({ status: "PASS", identity: "gate ok" })
+    expect(seen[0]?.gateUrl).toBe("https://gate.example.com")
+
+    const fail = await checkConnectionHealth(
+      ctx,
+      {
+        database: async () => {
+          throw new Error("HTTP 404 from gate.example.com")
+        },
+      },
+      "database",
+      "database",
+      identifier,
+    )
+    expect(fail).toEqual({ status: "FAIL", error: "HTTP 404 from gate.example.com" })
+
+    const skipped = await checkConnectionHealth(ctx, {}, "database", "database", identifier)
+    expect(skipped.status).toBe("SKIPPED")
+  })
+})
+
+describe("describeConnectionDrift", () => {
+  const fields = [
+    { name: "baseUrl", type: "text" },
+    { name: "apiKey", type: "password" },
+  ]
+  test("values for declared non-secret fields, names only for passwords and undeclared fields", () => {
+    expect(
+      describeConnectionDrift(
+        { baseUrl: "https://old.example.com", apiKey: "k1", extra: "x" },
+        { baseUrl: "https://new.example.com", apiKey: "k2" },
+        fields,
+      ),
+    ).toEqual([
+      { field: "apiKey", secret: true },
+      {
+        field: "baseUrl",
+        secret: false,
+        from: "https://old.example.com",
+        to: "https://new.example.com",
+      },
+      { field: "extra", secret: true },
+    ])
+  })
+  test("a field set on one side only has no value on the other", () => {
+    expect(describeConnectionDrift({}, { baseUrl: "https://new.example.com" }, fields)).toEqual([
+      { field: "baseUrl", secret: false, to: "https://new.example.com" },
+    ])
+    expect(describeConnectionDrift({ baseUrl: "a" }, { baseUrl: "a" }, fields)).toEqual([])
+  })
+})

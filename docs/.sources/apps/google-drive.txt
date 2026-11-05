@@ -1,0 +1,87 @@
+Settings app label Google Drive -> packages/shared/src/i18n/locales/en/kernel.json:540
+Connection section, adminScope google-drive:accounts:admin -> apps/api/src/apps/google-drive/app.manifest.json:135
+Connect button on connections block -> apps/web/src/modules/settings/app-page/ConnectionsBlock.tsx:252
+Connect label -> packages/shared/src/i18n/locales/en/kernel.json:2630
+OAuth scopes drive.readonly and drive.file -> apps/api/src/apps/google-drive/app.manifest.json:36
+Needs workspace Google OAuth credentials, no password stored, revoke -> apps/api/src/apps/google-drive/app.manifest.json:41
+Reads files, never modifies or deletes existing ones -> apps/api/src/apps/google-drive/app.manifest.json:40
+New files only in Liaison Reports, created on first upload -> apps/api/src/apps/google-drive/app.manifest.json:78
+Native Docs/Sheets/Slides cannot be imported -> apps/api/src/apps/google-drive/app.manifest.json:64
+read returns Sheets as CSV, Docs/Slides as text, binaries not readable -> apps/api/src/apps/google-drive/app.manifest.json:93
+import gives an attachable file id for send tools -> apps/api/src/apps/google-drive/app.manifest.json:64
+upload returns webViewLink, 5 MB cap -> apps/api/src/apps/google-drive/app.manifest.json:78
+Knowledge federated-search source -> apps/api/src/apps/google-drive/app.manifest.json:6
+Import does not add to Knowledge; use add_folder_source -> apps/api/src/apps/google-drive/app.manifest.json:64
+Disconnect deletes synced folders and their documents, imports stay -> apps/api/src/apps/google-drive/app.manifest.json:146
+Disconnect label -> packages/shared/src/i18n/locales/en/kernel.json:2634
+Role member scopes -> apps/api/src/apps/google-drive/app.manifest.json:115
+Role admin adds google-drive:accounts:admin -> apps/api/src/apps/google-drive/app.manifest.json:120
+google-drive:approve -> docs/reference/scopes.md:161
+search -> apps/api/src/apps/google-drive/app.manifest.json:47
+read -> apps/api/src/apps/google-drive/app.manifest.json:93
+import -> apps/api/src/apps/google-drive/app.manifest.json:63
+upload, google-drive:files:write -> apps/api/src/apps/google-drive/app.manifest.json:76
+Drive client: the workspace's own, else the server's (GOOGLE_DRIVE_OAUTH_*) -> apps/api/src/modules/apps/connections/oauth-client.ts:84
+Drive mode full vs picked from the granted scopes -> apps/api/src/apps/google-drive/drive-mode.ts:44
+Personal account on the server's unverified client is picked, Workspace full -> packages/shared/src/setup-guides.ts:175
+drive.readonly is a restricted scope, dropped from the request unless allowed -> apps/api/src/apps/google-drive/app.manifest.json:37
+Restricted scopes allowed for own client, verified client, or Workspace user -> apps/api/src/modules/apps/connections/restricted-scopes.ts:44
+Card title Choose files for Liaison -> packages/shared/src/i18n/locales/en/google-drive.json:6
+Choose files button label -> packages/shared/src/i18n/locales/en/google-drive.json:18
+Syncing N files label -> packages/shared/src/i18n/locales/en/google-drive.json:21
+Not-configured message instead of the button -> packages/shared/src/i18n/locales/en/google-drive.json:26
+Card on the Connect card once Drive connected -> apps/web/src/modules/secret-request/SecretRequestToolCard.tsx:654
+Card in the conversation from drive_picker -> apps/web/src/modules/agent/ToolCallRow.tsx:296
+Card on the Drive account in Settings -> apps/web/src/modules/settings/app-page/ConnectionsBlock.tsx:491
+Picker opens in a window on the web -> apps/web/src/modules/drive-picker/DrivePickerCard.tsx:179
+Picker opens in the system browser in the shells -> apps/web/src/modules/drive-picker/DrivePickerCard.tsx:192
+Remove button per picked item -> apps/web/src/modules/drive-picker/DrivePickerCard.tsx:269
+Picker views include shared drives -> apps/api/src/apps/google-drive/picker-page.ts:102
+Source named Google Drive: <address> -> apps/api/src/apps/google-drive/picker.ts:312
+Personal source, organization (internal) for an org account -> apps/api/src/apps/google-drive/picker.ts:314
+Sync lists exactly the picked items -> apps/api/src/apps/google-drive/adapter.ts:393
+Removed items leave Knowledge (reconciler archives what disappeared) -> apps/api/src/apps/knowledge/sync-reconciler.ts:8
+Agent shows the picker card when a file is not found in picked mode -> apps/api/src/apps/google-drive/app.manifest.json:3
+Picker env vars -> apps/api/src/lib/env.ts:793
+Mode follows the address being connected (card identifier, login_hint) -> apps/api/src/modules/apps/connections/service.ts:2019
+Reconnect keeps full mode only for the same active address -> apps/api/src/modules/apps/connections/service.ts:2110
+Deleted, trashed or unshared picks leave Knowledge -> apps/api/src/apps/google-drive/adapter.ts:68
+Picks stay with their owner on reconnect -> apps/api/src/modules/apps/connections/service.ts:2852
+Picker card above Add source in Knowledge settings -> apps/web/src/modules/knowledge/SyncedSourceAdd.tsx:21
+Picker card reads the caller's Drive accounts -> apps/web/src/modules/drive-picker/DrivePickerCard.tsx:127
+Picked files with no text form are marked not in Knowledge -> apps/web/src/modules/drive-picker/DrivePickerCard.tsx:259
+Which picked files Knowledge does not import -> apps/api/src/apps/google-drive/picker.ts:186
+A pick from the agent's card is announced in its conversation -> apps/api/src/apps/google-drive/picker-page.ts:281
+The agent's card carries its origin to the picker ticket -> apps/web/src/modules/drive-picker/DrivePickerCard.tsx:189
+In picked mode, search lists the picked files whatever the query -> apps/api/src/apps/google-drive/tools.ts:102
+Read turns an Excel workbook into CSV per sheet -> apps/api/src/apps/google-drive/tools.ts:420
+In a conversation the card lists Picked here first -> apps/web/src/modules/drive-picker/DrivePickerCard.tsx:336
+Other picks folded in one line with Manage -> apps/web/src/modules/drive-picker/DrivePickerCard.tsx:388
+The card's picks are read from its pick lines -> apps/api/src/apps/google-drive/picker-announce.ts:194
+Org connection reads only chosen shared drives, never My Drive -> apps/api/src/apps/google-drive/drive-scope.ts:61
+Enforced in the fetchers every read path shares -> apps/api/src/apps/google-drive/drive-rest.ts:280
+By-id reads refuse files outside the chosen drives -> apps/api/src/apps/google-drive/drive-rest.ts:309
+None chosen reads nothing -> apps/api/src/apps/google-drive/drive-rest.ts:222
+Lists drives the connecting account is a member of -> apps/api/src/apps/google-drive/drive-rest.ts:376
+Choosing needs the connection admin scope, member drives only -> apps/api/src/apps/google-drive/shared-drives.ts:199
+Card title Shared drives the team sees -> packages/shared/src/i18n/locales/en/google-drive.json:40
+Choose shared drives label -> packages/shared/src/i18n/locales/en/google-drive.json:44
+Pick the shared drives state -> packages/shared/src/i18n/locales/en/google-drive.json:42
+Card on org Drive connection in Settings -> apps/web/src/modules/settings/app-page/ConnectionsBlock.tsx:502
+Attention item for admins until chosen -> apps/api/src/apps/google-drive/shared-drives.ts:256
+Reconnect keeps chosen drives -> apps/api/src/modules/apps/connections/service.ts:2930
+Folder listing empty outside chosen drives, reconciler archives missing items -> apps/api/src/apps/knowledge/sync-reconciler.ts:413
+Archived documents resurrect when seen again -> apps/api/src/apps/knowledge/sync-reconciler.ts:196
+config apply sharedDrives (google-drive only) -> apps/api/src/cli/config/schema.ts:247
+config apply pending until connected, fails on non-member -> apps/api/src/cli/provisioners/drive-shared-drives.ts:16
+shared_drives and choose_shared_drives tools (gated) -> apps/api/src/apps/google-drive/app.manifest.json:48
+outside_shared_drives / shared_drives_not_chosen tool errors -> apps/api/src/apps/google-drive/tools.ts:61
+org Drive Knowledge hidden while no shared drive is picked; personal untouched -> apps/api/src/apps/google-drive/org-drive-content.ts:1
+hidden at the org's setup after an upgrade -> apps/api/src/modules/apps/init.ts:634
+change of picked drives hides and resyncs, audit google-drive.shared_drives.changed -> apps/api/src/apps/google-drive/shared-drives.ts:221
+folder in none of the picked drives deleted at its next sync, source stays in error -> apps/api/src/apps/google-drive/org-drive-content.ts:240
+unknown file id answers outside_shared_drives -> apps/api/src/apps/google-drive/drive-rest.ts:316
+uploads refused through the organization's connection -> apps/api/src/apps/google-drive/drive-rest.ts:333
+org and personal Drive of one account: separate rows, own tokens, own scope -> apps/api/src/modules/apps/connections/service.ts:3077 ; apps/api/src/apps/google-drive/drive-access.ts:1 ; apps/api/src/db/migrations/0239_connected_accounts_owner_type_unique.sql:1
+a source reads through the row of its kind; another member's row never -> apps/api/src/apps/google-drive/drive-access.ts:20
+disconnect removes only the folders synced through that row -> apps/api/src/apps/google-drive/disconnect.ts:160

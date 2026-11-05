@@ -1,0 +1,636 @@
+{
+  "description": "Dictation fixture clips for the transcription bake-off (WER, real clips only) and the clean-up scorer (fillers removed, must-keep kept). Real clips come from AMI (CC BY 4.0) and VoxPopuli (CC0 1.0); synthetic clips are text-to-speech readings of scripted hesitant text, used for filler scoring only. Synthetic entries are written by apps/api/scripts/dictation-synth-clips.ts. apps/web/src/tests/e2e/fixtures/dictation-en.wav is clip en-ami-10 as 16 kHz mono 16-bit PCM, for Chromium's fake microphone in the Playwright dictation scenario (same source, licence and attribution).",
+  "clips": [
+    {
+      "id": "en-ami-01",
+      "file": "en-ami-01.webm",
+      "lang": "en",
+      "durationSeconds": 27.96,
+      "synthetic": false,
+      "source": {
+        "corpus": "AMI Meeting Corpus, individual headset microphones, test split",
+        "url": "https://huggingface.co/datasets/edinburghcstr/ami",
+        "segments": [
+          "AMI_EN2002c_H01_FEO072_0094830_0095852",
+          "AMI_EN2002c_H01_FEO072_0095852_0097625"
+        ]
+      },
+      "licence": "CC-BY-4.0",
+      "attribution": "AMI Meeting Corpus (https://groups.inf.ed.ac.uk/ami/corpus/), meeting EN2002c, headset H01, participant FEO072. AMI Consortium, CC BY 4.0. Changes: cut to the segments, two consecutive segments of the same speaker joined, transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "because um it it m basically has to set up um like whatever ten pop up windows in memory as in already initialize them because there's there might be ten speakers that all have to have different mee windows and um and i'm working on when you click on a topic to see a list of the of the topics of of of the meetings that that topic was mentioned in",
+      "fillers": ["um", "it it", "of the of the", "of of"],
+      "mustKeep": [["ten", "10"], "pop up windows", "memory", "speakers", "topic", "meetings"],
+      "notes": "Reference is the corpus's manual transcript, lowercased, spelled-out acronyms (N. X. T.) written as one word. Fillers and must-keep terms annotated by hand from it."
+    },
+    {
+      "id": "en-ami-02",
+      "file": "en-ami-02.webm",
+      "lang": "en",
+      "durationSeconds": 14.75,
+      "synthetic": false,
+      "source": {
+        "corpus": "AMI Meeting Corpus, individual headset microphones, test split",
+        "url": "https://huggingface.co/datasets/edinburghcstr/ami",
+        "segments": ["AMI_EN2002c_H02_MEE071_0029102_0030576"]
+      },
+      "licence": "CC-BY-4.0",
+      "attribution": "AMI Meeting Corpus (https://groups.inf.ed.ac.uk/ami/corpus/), meeting EN2002c, headset H02, participant MEE071. AMI Consortium, CC BY 4.0. Changes: cut to the segment, transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "so um so i can have it so that it returns you a 'cause at the moment the main data structures are hash tables for the meetings that say it's got one that says percent it's called percent talk",
+      "fillers": ["um", "so so"],
+      "mustKeep": ["hash tables", "data structures", "percent talk"],
+      "notes": "Reference is the corpus's manual transcript, lowercased, spelled-out acronyms (N. X. T.) written as one word. Fillers and must-keep terms annotated by hand from it."
+    },
+    {
+      "id": "en-ami-03",
+      "file": "en-ami-03.webm",
+      "lang": "en",
+      "durationSeconds": 12.1,
+      "synthetic": false,
+      "source": {
+        "corpus": "AMI Meeting Corpus, individual headset microphones, test split",
+        "url": "https://huggingface.co/datasets/edinburghcstr/ami",
+        "segments": ["AMI_EN2002b_H03_MEE073_0004745_0005954"]
+      },
+      "licence": "CC-BY-4.0",
+      "attribution": "AMI Meeting Corpus (https://groups.inf.ed.ac.uk/ami/corpus/), meeting EN2002b, headset H03, participant MEE073. AMI Consortium, CC BY 4.0. Changes: cut to the segment, transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "um actually first thing i just sorta did a really sorta brief um yeah version of what we have to do",
+      "fillers": ["um"],
+      "mustKeep": ["brief", "version"],
+      "notes": "Reference is the corpus's manual transcript, lowercased, spelled-out acronyms (N. X. T.) written as one word. Fillers and must-keep terms annotated by hand from it."
+    },
+    {
+      "id": "en-ami-04",
+      "file": "en-ami-04.webm",
+      "lang": "en",
+      "durationSeconds": 11.84,
+      "synthetic": false,
+      "source": {
+        "corpus": "AMI Meeting Corpus, individual headset microphones, test split",
+        "url": "https://huggingface.co/datasets/edinburghcstr/ami",
+        "segments": ["AMI_EN2002b_H02_FEO072_0170046_0171229"]
+      },
+      "licence": "CC-BY-4.0",
+      "attribution": "AMI Meeting Corpus (https://groups.inf.ed.ac.uk/ami/corpus/), meeting EN2002b, headset H02, participant FEO072. AMI Consortium, CC BY 4.0. Changes: cut to the segment, transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "but uh so we're all still writing our um summaries sending them to you you send it on to pernilla",
+      "fillers": ["uh", "um"],
+      "mustKeep": ["summaries", "pernilla"],
+      "notes": "Reference is the corpus's manual transcript, lowercased, spelled-out acronyms (N. X. T.) written as one word. Fillers and must-keep terms annotated by hand from it."
+    },
+    {
+      "id": "en-ami-05",
+      "file": "en-ami-05.webm",
+      "lang": "en",
+      "durationSeconds": 10.57,
+      "synthetic": false,
+      "source": {
+        "corpus": "AMI Meeting Corpus, individual headset microphones, test split",
+        "url": "https://huggingface.co/datasets/edinburghcstr/ami",
+        "segments": ["AMI_EN2002a_H02_FEO072_0122961_0124017"]
+      },
+      "licence": "CC-BY-4.0",
+      "attribution": "AMI Meeting Corpus (https://groups.inf.ed.ac.uk/ami/corpus/), meeting EN2002a, headset H02, participant FEO072. AMI Consortium, CC BY 4.0. Changes: cut to the segment, transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "it was there when i took it um uses the um the NXT search to get the data out of the out the files",
+      "fillers": ["um", "the the"],
+      "mustKeep": [["nxt", "n x t"], "search", "data", "files"],
+      "notes": "Reference is the corpus's manual transcript, lowercased, spelled-out acronyms (N. X. T.) written as one word. Fillers and must-keep terms annotated by hand from it."
+    },
+    {
+      "id": "en-ami-06",
+      "file": "en-ami-06.webm",
+      "lang": "en",
+      "durationSeconds": 10.47,
+      "synthetic": false,
+      "source": {
+        "corpus": "AMI Meeting Corpus, individual headset microphones, test split",
+        "url": "https://huggingface.co/datasets/edinburghcstr/ami",
+        "segments": ["AMI_EN2002a_H02_FEO072_0174331_0175377"]
+      },
+      "licence": "CC-BY-4.0",
+      "attribution": "AMI Meeting Corpus (https://groups.inf.ed.ac.uk/ami/corpus/), meeting EN2002a, headset H02, participant FEO072. AMI Consortium, CC BY 4.0. Changes: cut to the segment, transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "it's actually all these all these um things are are nicked from um you know all these drop down menus and tick boxes are nicked from google online",
+      "fillers": ["um", "all these all these", "are are"],
+      "mustKeep": ["google", "drop down menus", "tick boxes"],
+      "notes": "Reference is the corpus's manual transcript, lowercased, spelled-out acronyms (N. X. T.) written as one word. Fillers and must-keep terms annotated by hand from it."
+    },
+    {
+      "id": "en-ami-07",
+      "file": "en-ami-07.webm",
+      "lang": "en",
+      "durationSeconds": 10.08,
+      "synthetic": false,
+      "source": {
+        "corpus": "AMI Meeting Corpus, individual headset microphones, test split",
+        "url": "https://huggingface.co/datasets/edinburghcstr/ami",
+        "segments": ["AMI_EN2002b_H02_FEO072_0036928_0037935"]
+      },
+      "licence": "CC-BY-4.0",
+      "attribution": "AMI Meeting Corpus (https://groups.inf.ed.ac.uk/ami/corpus/), meeting EN2002b, headset H02, participant FEO072. AMI Consortium, CC BY 4.0. Changes: cut to the segment, transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "um um so maybe i mean we we should we should definitely well we could probably not put it under this heading",
+      "fillers": ["um", "we we", "we should we should"],
+      "mustKeep": ["heading"],
+      "notes": "Reference is the corpus's manual transcript, lowercased, spelled-out acronyms (N. X. T.) written as one word. Fillers and must-keep terms annotated by hand from it."
+    },
+    {
+      "id": "en-ami-08",
+      "file": "en-ami-08.webm",
+      "lang": "en",
+      "durationSeconds": 10.07,
+      "synthetic": false,
+      "source": {
+        "corpus": "AMI Meeting Corpus, individual headset microphones, test split",
+        "url": "https://huggingface.co/datasets/edinburghcstr/ami",
+        "segments": ["AMI_EN2002b_H03_MEE073_0092314_0093320"]
+      },
+      "licence": "CC-BY-4.0",
+      "attribution": "AMI Meeting Corpus (https://groups.inf.ed.ac.uk/ami/corpus/), meeting EN2002b, headset H03, participant MEE073. AMI Consortium, CC BY 4.0. Changes: cut to the segment, transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "so the summary and the topic and the transcript are um so um or we could just put them all into one result pane on that same window and just indicate",
+      "fillers": ["um"],
+      "mustKeep": ["summary", "transcript", "result pane", "window"],
+      "notes": "Reference is the corpus's manual transcript, lowercased, spelled-out acronyms (N. X. T.) written as one word. Fillers and must-keep terms annotated by hand from it."
+    },
+    {
+      "id": "en-ami-09",
+      "file": "en-ami-09.webm",
+      "lang": "en",
+      "durationSeconds": 9.84,
+      "synthetic": false,
+      "source": {
+        "corpus": "AMI Meeting Corpus, individual headset microphones, test split",
+        "url": "https://huggingface.co/datasets/edinburghcstr/ami",
+        "segments": ["AMI_EN2002b_H00_FEO070_0033591_0034574"]
+      },
+      "licence": "CC-BY-4.0",
+      "attribution": "AMI Meeting Corpus (https://groups.inf.ed.ac.uk/ami/corpus/), meeting EN2002b, headset H00, participant FEO070. AMI Consortium, CC BY 4.0. Changes: cut to the segment, transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "i think it um one thing that we could probably skip uh totally is the removing things from the audio files",
+      "fillers": ["um", "uh"],
+      "mustKeep": ["audio files"],
+      "notes": "Reference is the corpus's manual transcript, lowercased, spelled-out acronyms (N. X. T.) written as one word. Fillers and must-keep terms annotated by hand from it."
+    },
+    {
+      "id": "en-ami-10",
+      "file": "en-ami-10.webm",
+      "lang": "en",
+      "durationSeconds": 8.73,
+      "synthetic": false,
+      "source": {
+        "corpus": "AMI Meeting Corpus, individual headset microphones, test split",
+        "url": "https://huggingface.co/datasets/edinburghcstr/ami",
+        "segments": ["AMI_EN2002b_H00_FEO070_0026675_0027547"]
+      },
+      "licence": "CC-BY-4.0",
+      "attribution": "AMI Meeting Corpus (https://groups.inf.ed.ac.uk/ami/corpus/), meeting EN2002b, headset H00, participant FEO070. AMI Consortium, CC BY 4.0. Changes: cut to the segment, transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "i'll uh look at it like when my usual working hours are like from twelve o'clock till three o'clock or something",
+      "fillers": ["uh"],
+      "mustKeep": [["twelve", "12"], ["three", "3"], "working hours"],
+      "notes": "Reference is the corpus's manual transcript, lowercased, spelled-out acronyms (N. X. T.) written as one word. Fillers and must-keep terms annotated by hand from it."
+    },
+    {
+      "id": "en-ami-11",
+      "file": "en-ami-11.webm",
+      "lang": "en",
+      "durationSeconds": 7.74,
+      "synthetic": false,
+      "source": {
+        "corpus": "AMI Meeting Corpus, individual headset microphones, test split",
+        "url": "https://huggingface.co/datasets/edinburghcstr/ami",
+        "segments": ["AMI_EN2002c_H01_FEO072_0251571_0252344"]
+      },
+      "licence": "CC-BY-4.0",
+      "attribution": "AMI Meeting Corpus (https://groups.inf.ed.ac.uk/ami/corpus/), meeting EN2002c, headset H01, participant FEO072. AMI Consortium, CC BY 4.0. Changes: cut to the segment, transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "um what i oh no no that that would only give us like thirty five minutes or something",
+      "fillers": ["um", "that that"],
+      "mustKeep": [["thirty five", "35"], "minutes"],
+      "notes": "Reference is the corpus's manual transcript, lowercased, spelled-out acronyms (N. X. T.) written as one word. Fillers and must-keep terms annotated by hand from it."
+    },
+    {
+      "id": "en-ami-12",
+      "file": "en-ami-12.webm",
+      "lang": "en",
+      "durationSeconds": 9.1,
+      "synthetic": false,
+      "source": {
+        "corpus": "AMI Meeting Corpus, individual headset microphones, test split",
+        "url": "https://huggingface.co/datasets/edinburghcstr/ami",
+        "segments": ["AMI_EN2002b_H01_MEE071_0118766_0119675"]
+      },
+      "licence": "CC-BY-4.0",
+      "attribution": "AMI Meeting Corpus (https://groups.inf.ed.ac.uk/ami/corpus/), meeting EN2002b, headset H01, participant MEE071. AMI Consortium, CC BY 4.0. Changes: cut to the segment, transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "'cause um i was wondering how we're gonna write it back to HTML i mean XML if we take if we did the processing",
+      "fillers": ["um"],
+      "mustKeep": [["html", "h t m l"], ["xml", "x m l"], "processing"],
+      "notes": "Reference is the corpus's manual transcript, lowercased, spelled-out acronyms (N. X. T.) written as one word. Fillers and must-keep terms annotated by hand from it."
+    },
+    {
+      "id": "fr-vox-01",
+      "file": "fr-vox-01.webm",
+      "lang": "fr",
+      "durationSeconds": 19.27,
+      "synthetic": false,
+      "source": {
+        "corpus": "VoxPopuli, French transcribed speech, test split",
+        "url": "https://huggingface.co/datasets/facebook/voxpopuli",
+        "segments": ["20131021-0900-PLENARY-9-fr_20131021-18:45:25_9"]
+      },
+      "licence": "CC0-1.0",
+      "attribution": "VoxPopuli (Wang et al., ACL 2021, https://github.com/facebookresearch/voxpopuli), European Parliament plenary 20131021-0900-PLENARY-9-fr, released under CC0 1.0. Transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "Ainsi, l'Union européenne doit dire très clairement les choses suivantes si la communauté internationale ne parvient pas à un accord international contraignant pour toutes les parties d'ici la réunion de Paris à la fin de l'année 2015, l'Union devra mettre en place un mécanisme d'inclusion carbone aux frontières",
+      "fillers": [],
+      "mustKeep": ["paris", ["2015", "deux mille quinze"], "carbone", "frontières"],
+      "notes": "Reference is the gold (validated) raw_text. VoxPopuli transcripts follow the edited plenary record and carry no hesitations, so no fillers are annotated: French filler scoring uses the synthetic clips."
+    },
+    {
+      "id": "fr-vox-02",
+      "file": "fr-vox-02.webm",
+      "lang": "fr",
+      "durationSeconds": 24.25,
+      "synthetic": false,
+      "source": {
+        "corpus": "VoxPopuli, French transcribed speech, test split",
+        "url": "https://huggingface.co/datasets/facebook/voxpopuli",
+        "segments": ["20160413-0900-PLENARY-18-fr_20160413-17:47:13_0"]
+      },
+      "licence": "CC0-1.0",
+      "attribution": "VoxPopuli (Wang et al., ACL 2021, https://github.com/facebookresearch/voxpopuli), European Parliament plenary 20160413-0900-PLENARY-18-fr, released under CC0 1.0. Transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "Madame la Présidente, si le PNR européen est adopté demain, ce sera la victoire de la persévérance et le succès de la raison. Persévérance, d'abord, car la droite et le centre de ce Parlement se sont battus pour que ce texte soit adopté en ne renonçant jamais, face à une gauche qui s'y est opposée en 2012, en 2013, en 2014 et en",
+      "fillers": [],
+      "mustKeep": [
+        "pnr",
+        ["2012", "deux mille douze"],
+        ["2013", "deux mille treize"],
+        ["2014", "deux mille quatorze"]
+      ],
+      "notes": "Reference is the gold (validated) raw_text. VoxPopuli transcripts follow the edited plenary record and carry no hesitations, so no fillers are annotated: French filler scoring uses the synthetic clips."
+    },
+    {
+      "id": "fr-vox-03",
+      "file": "fr-vox-03.webm",
+      "lang": "fr",
+      "durationSeconds": 22.69,
+      "synthetic": false,
+      "source": {
+        "corpus": "VoxPopuli, French transcribed speech, test split",
+        "url": "https://huggingface.co/datasets/facebook/voxpopuli",
+        "segments": ["20090505-0900-PLENARY-15-fr_20090505-21:04:37_4"]
+      },
+      "licence": "CC0-1.0",
+      "attribution": "VoxPopuli (Wang et al., ACL 2021, https://github.com/facebookresearch/voxpopuli), European Parliament plenary 20090505-0900-PLENARY-15-fr, released under CC0 1.0. Transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "Ce démantèlement systématique des principes fondamentaux de la spécificité de la viticulture européenne répond à une logique. Prise entre sa soumission à l'OMC et l'influence du tout puissant lobby du grand négoce européen, la CEEV, la Commission s'emploie systématiquement, depuis 2004, à ouvrir les portes du poulailler européen à tous les renards rôdant sur la planète.",
+      "fillers": [],
+      "mustKeep": ["viticulture", "omc", ["ceev", "c e e v"], ["2004", "deux mille quatre"]],
+      "notes": "Reference is the gold (validated) raw_text. VoxPopuli transcripts follow the edited plenary record and carry no hesitations, so no fillers are annotated: French filler scoring uses the synthetic clips."
+    },
+    {
+      "id": "fr-vox-04",
+      "file": "fr-vox-04.webm",
+      "lang": "fr",
+      "durationSeconds": 27.09,
+      "synthetic": false,
+      "source": {
+        "corpus": "VoxPopuli, French transcribed speech, test split",
+        "url": "https://huggingface.co/datasets/facebook/voxpopuli",
+        "segments": ["20120614-0900-PLENARY-12-fr_20120614-15:07:20_2"]
+      },
+      "licence": "CC0-1.0",
+      "attribution": "VoxPopuli (Wang et al., ACL 2021, https://github.com/facebookresearch/voxpopuli), European Parliament plenary 20120614-0900-PLENARY-12-fr, released under CC0 1.0. Transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "À cette famine s'ajoute la progression des bandes criminelles et terroristes, qui tirent leur financement d'un trafic de drogue qui va de la Guinée Bissau à la Somalie, avec la cocaïne venue d'Amérique latine et l'héroïne de l'Afghanistan. L'intervention militaire en Libye a précipité l'instabilité de la région en déplaçant des réfugiés dans tous les pays voisins et en permettant à des milices et à des armes libyennes de déstabiliser l'ensemble.",
+      "fillers": [],
+      "mustKeep": ["guinée bissau", "somalie", "afghanistan", "libye"],
+      "notes": "Reference is the gold (validated) raw_text. VoxPopuli transcripts follow the edited plenary record and carry no hesitations, so no fillers are annotated: French filler scoring uses the synthetic clips."
+    },
+    {
+      "id": "fr-vox-05",
+      "file": "fr-vox-05.webm",
+      "lang": "fr",
+      "durationSeconds": 16.51,
+      "synthetic": false,
+      "source": {
+        "corpus": "VoxPopuli, French transcribed speech, test split",
+        "url": "https://huggingface.co/datasets/facebook/voxpopuli",
+        "segments": ["20151215-0900-PLENARY-11-fr_20151215-16:59:49_0"]
+      },
+      "licence": "CC0-1.0",
+      "attribution": "VoxPopuli (Wang et al., ACL 2021, https://github.com/facebookresearch/voxpopuli), European Parliament plenary 20151215-0900-PLENARY-11-fr, released under CC0 1.0. Transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "Madame la Présidente, Messieurs et Mesdames les députés, Monsieur le Commissaire, permettez moi d'abord d'excuser la ministre de l'environnement du Luxembourg, Mme Dieschbourg, qui aurait bien voulu être avec vous, mais qui est déjà à Bruxelles pour la préparation du",
+      "fillers": [],
+      "mustKeep": ["luxembourg", "dieschbourg", "bruxelles"],
+      "notes": "Reference is the gold (validated) raw_text. VoxPopuli transcripts follow the edited plenary record and carry no hesitations, so no fillers are annotated: French filler scoring uses the synthetic clips."
+    },
+    {
+      "id": "fr-vox-06",
+      "file": "fr-vox-06.webm",
+      "lang": "fr",
+      "durationSeconds": 22.09,
+      "synthetic": false,
+      "source": {
+        "corpus": "VoxPopuli, French transcribed speech, test split",
+        "url": "https://huggingface.co/datasets/facebook/voxpopuli",
+        "segments": ["20180503-0900-PLENARY-3-fr_20180503-10:47:32_2"]
+      },
+      "licence": "CC0-1.0",
+      "attribution": "VoxPopuli (Wang et al., ACL 2021, https://github.com/facebookresearch/voxpopuli), European Parliament plenary 20180503-0900-PLENARY-3-fr, released under CC0 1.0. Transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "Pourquoi votre gouvernement s'oppose t il à la réforme de la TVA proposée par la Commission, voilà un an, qui serait cruciale pour empêcher que 50 milliards d'euros continuent à profiter à la fraude, au bénéfice d'organisations criminelles, y compris terroristes, et qui pourraient être une source d'augmentation des ressources propres de l'Union européenne",
+      "fillers": [],
+      "mustKeep": ["tva", ["50 milliards", "cinquante milliards"]],
+      "notes": "Reference is the gold (validated) raw_text. VoxPopuli transcripts follow the edited plenary record and carry no hesitations, so no fillers are annotated: French filler scoring uses the synthetic clips."
+    },
+    {
+      "id": "fr-vox-07",
+      "file": "fr-vox-07.webm",
+      "lang": "fr",
+      "durationSeconds": 11.89,
+      "synthetic": false,
+      "source": {
+        "corpus": "VoxPopuli, French transcribed speech, test split",
+        "url": "https://huggingface.co/datasets/facebook/voxpopuli",
+        "segments": ["20141112-0900-PLENARY-18-fr_20141112-23:19:01_6"]
+      },
+      "licence": "CC0-1.0",
+      "attribution": "VoxPopuli (Wang et al., ACL 2021, https://github.com/facebookresearch/voxpopuli), European Parliament plenary 20141112-0900-PLENARY-18-fr, released under CC0 1.0. Transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "Jean Claude Juncker a dit que nous avions cinq ans pour réussir. Il est donc urgent de concrétiser ces paroles par des actes en mettant en œuvre les dispositions empêchant le dumping social.",
+      "fillers": [],
+      "mustKeep": ["juncker", ["cinq ans", "5 ans"], "dumping social"],
+      "notes": "Reference is the gold (validated) raw_text. VoxPopuli transcripts follow the edited plenary record and carry no hesitations, so no fillers are annotated: French filler scoring uses the synthetic clips."
+    },
+    {
+      "id": "fr-vox-08",
+      "file": "fr-vox-08.webm",
+      "lang": "fr",
+      "durationSeconds": 14.39,
+      "synthetic": false,
+      "source": {
+        "corpus": "VoxPopuli, French transcribed speech, test split",
+        "url": "https://huggingface.co/datasets/facebook/voxpopuli",
+        "segments": ["20110928-0900-PLENARY-7-fr_20110928-17:28:25_4"]
+      },
+      "licence": "CC0-1.0",
+      "attribution": "VoxPopuli (Wang et al., ACL 2021, https://github.com/facebookresearch/voxpopuli), European Parliament plenary 20110928-0900-PLENARY-7-fr, released under CC0 1.0. Transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "De nouveaux indicateurs complémentaires du PIB propres à mesurer le progrès des sociétés, dans le sillage des travaux de la commission présidée par Amartya Sen, Joseph Stiglitz et Jean Paul Fitoussi, devront donc être discutés à Rio.",
+      "fillers": [],
+      "mustKeep": ["pib", "amartya sen", "stiglitz", "fitoussi", "rio"],
+      "notes": "Reference is the gold (validated) raw_text. VoxPopuli transcripts follow the edited plenary record and carry no hesitations, so no fillers are annotated: French filler scoring uses the synthetic clips."
+    },
+    {
+      "id": "fr-vox-09",
+      "file": "fr-vox-09.webm",
+      "lang": "fr",
+      "durationSeconds": 12.07,
+      "synthetic": false,
+      "source": {
+        "corpus": "VoxPopuli, French transcribed speech, test split",
+        "url": "https://huggingface.co/datasets/facebook/voxpopuli",
+        "segments": ["20170705-0900-PLENARY-18-fr_20170705-20:40:19_3"]
+      },
+      "licence": "CC0-1.0",
+      "attribution": "VoxPopuli (Wang et al., ACL 2021, https://github.com/facebookresearch/voxpopuli), European Parliament plenary 20170705-0900-PLENARY-18-fr, released under CC0 1.0. Transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "Je forme le vœu que cette dernière en reprenne le contenu, et ce afin de nourrir l'espoir qu'a fait naître l'arrêt rendu, le 15 décembre 2015, par la Cour de justice européenne.",
+      "fillers": [],
+      "mustKeep": [["15 décembre 2015", "quinze décembre deux mille quinze"], "cour de justice"],
+      "notes": "Reference is the gold (validated) raw_text. VoxPopuli transcripts follow the edited plenary record and carry no hesitations, so no fillers are annotated: French filler scoring uses the synthetic clips."
+    },
+    {
+      "id": "fr-vox-10",
+      "file": "fr-vox-10.webm",
+      "lang": "fr",
+      "durationSeconds": 23.43,
+      "synthetic": false,
+      "source": {
+        "corpus": "VoxPopuli, French transcribed speech, test split",
+        "url": "https://huggingface.co/datasets/facebook/voxpopuli",
+        "segments": ["20150916-0900-PLENARY-9-fr_20150916-15:22:15_9"]
+      },
+      "licence": "CC0-1.0",
+      "attribution": "VoxPopuli (Wang et al., ACL 2021, https://github.com/facebookresearch/voxpopuli), European Parliament plenary 20150916-0900-PLENARY-9-fr, released under CC0 1.0. Transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "La présidence a également arrêté des conclusions suite aux discussions approfondies que nous avons eues lundi sur les actions immédiates et sur la poursuite des travaux en vue notamment de la préparation de la réunion du Conseil Justice et affaires intérieures des 8 et 9 octobre. Comme une large majorité des États membres a marqué son accord pour avancer sur la relocalisation,",
+      "fillers": [],
+      "mustKeep": ["conseil justice", ["8 et 9 octobre", "huit et neuf octobre"], "relocalisation"],
+      "notes": "Reference is the gold (validated) raw_text. VoxPopuli transcripts follow the edited plenary record and carry no hesitations, so no fillers are annotated: French filler scoring uses the synthetic clips."
+    },
+    {
+      "id": "fr-vox-11",
+      "file": "fr-vox-11.webm",
+      "lang": "fr",
+      "durationSeconds": 8.65,
+      "synthetic": false,
+      "source": {
+        "corpus": "VoxPopuli, French transcribed speech, test split",
+        "url": "https://huggingface.co/datasets/facebook/voxpopuli",
+        "segments": ["20131021-0900-PLENARY-9-fr_20131021-17:55:52_13"]
+      },
+      "licence": "CC0-1.0",
+      "attribution": "VoxPopuli (Wang et al., ACL 2021, https://github.com/facebookresearch/voxpopuli), European Parliament plenary 20131021-0900-PLENARY-9-fr, released under CC0 1.0. Transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "Je rappellerai que notre facture énergétique s'élève à 400 milliards d'euros par an et qu'il est donc temps de sortir de la dépendance du CO2.",
+      "fillers": [],
+      "mustKeep": [["400 milliards", "quatre cents milliards"], ["co2", "co 2"]],
+      "notes": "Reference is the gold (validated) raw_text. VoxPopuli transcripts follow the edited plenary record and carry no hesitations, so no fillers are annotated: French filler scoring uses the synthetic clips."
+    },
+    {
+      "id": "fr-vox-12",
+      "file": "fr-vox-12.webm",
+      "lang": "fr",
+      "durationSeconds": 13.17,
+      "synthetic": false,
+      "source": {
+        "corpus": "VoxPopuli, French transcribed speech, test split",
+        "url": "https://huggingface.co/datasets/facebook/voxpopuli",
+        "segments": ["20170613-0900-PLENARY-14-fr_20170613-17:34:52_6"]
+      },
+      "licence": "CC0-1.0",
+      "attribution": "VoxPopuli (Wang et al., ACL 2021, https://github.com/facebookresearch/voxpopuli), European Parliament plenary 20170613-0900-PLENARY-14-fr, released under CC0 1.0. Transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "Or, la Commission s'appuie sur le CIRC pour interdire un certain nombre de produits chimiques. Pourquoi ne le fait elle pas pour le glyphosate?",
+      "fillers": [],
+      "mustKeep": ["circ", "glyphosate"],
+      "notes": "Reference is the gold (validated) raw_text. VoxPopuli transcripts follow the edited plenary record and carry no hesitations, so no fillers are annotated: French filler scoring uses the synthetic clips."
+    },
+    {
+      "id": "fr-vox-13",
+      "file": "fr-vox-13.webm",
+      "lang": "fr",
+      "durationSeconds": 38.23,
+      "synthetic": false,
+      "source": {
+        "corpus": "VoxPopuli, French transcribed speech, test split",
+        "url": "https://huggingface.co/datasets/facebook/voxpopuli",
+        "segments": ["20171026-0900-PLENARY-3-fr_20171026-09:24:54_6"]
+      },
+      "licence": "CC0-1.0",
+      "attribution": "VoxPopuli (Wang et al., ACL 2021, https://github.com/facebookresearch/voxpopuli), European Parliament plenary 20171026-0900-PLENARY-3-fr, released under CC0 1.0. Transcoded to Opus in WebM, 24 kbps mono.",
+      "reference": "Sur un certain nombre de points essentiels, il dit vraiment très bien les choses sur le respect des droits fondamentaux qui me semblent la pierre angulaire, sur la crise migratoire, sur la responsabilité des États membres qui ne respectent pas les quotas d'accueil des réfugiés, ce qui est une lourde tache sur notre comportement, et puis sur les infractions au droit de l'environnement. Sur ces points là, je crois que notre rapporteur a mis en lumière, de façon compréhensible par tout le monde, comment nous devons avancer dans la transposition du droit européen dans les États membres et l'expliquer aux électeurs.",
+      "fillers": [],
+      "mustKeep": ["droits fondamentaux", "crise migratoire", "transposition"],
+      "notes": "Reference is the gold (validated) raw_text. VoxPopuli transcripts follow the edited plenary record and carry no hesitations, so no fillers are annotated: French filler scoring uses the synthetic clips."
+    },
+    {
+      "id": "en-synth-01",
+      "file": "en-synth-01.webm",
+      "lang": "en",
+      "durationSeconds": 12.61,
+      "synthetic": true,
+      "source": {
+        "corpus": "Generated for Liaison",
+        "url": "https://openrouter.ai/docs/guides/overview/multimodal/tts",
+        "segments": ["google/gemini-3.8-flash-lite-tts voice Kore"]
+      },
+      "licence": "generated",
+      "attribution": "Scripted text read by google/gemini-3.8-flash-lite-tts (voice Kore) through OpenRouter, generated by apps/api/scripts/dictation-synth-clips.ts.",
+      "reference": "Um, so I just wanted to, uh, follow up on the the order from Harbour Supplies. Invoice number 4512 went out on March third, and, um, they still haven't paid it.",
+      "fillers": ["um", "uh", "the the"],
+      "mustKeep": [
+        "harbour supplies",
+        ["4512", "forty five twelve"],
+        ["march third", "march 3rd", "march 3"]
+      ],
+      "notes": "Synthetic: scored for filler removal and must-keep only, never in the word error rate."
+    },
+    {
+      "id": "en-synth-02",
+      "file": "en-synth-02.webm",
+      "lang": "en",
+      "durationSeconds": 9.81,
+      "synthetic": true,
+      "source": {
+        "corpus": "Generated for Liaison",
+        "url": "https://openrouter.ai/docs/guides/overview/multimodal/tts",
+        "segments": ["google/gemini-3.8-flash-lite-tts voice Puck"]
+      },
+      "licence": "generated",
+      "attribution": "Scripted text read by google/gemini-3.8-flash-lite-tts (voice Puck) through OpenRouter, generated by apps/api/scripts/dictation-synth-clips.ts.",
+      "reference": "Hi Daniel, uh, quick note. The, the replacement unit, um, ships tomorrow by courier, and you should, you should get it before Friday. Uh, the tracking code is in the ticket.",
+      "fillers": ["uh", "um", "the the", "you should you should"],
+      "mustKeep": ["daniel", "replacement unit", "tomorrow", "friday", "tracking code"],
+      "notes": "Synthetic: scored for filler removal and must-keep only, never in the word error rate."
+    },
+    {
+      "id": "en-synth-03",
+      "file": "en-synth-03.webm",
+      "lang": "en",
+      "durationSeconds": 12.81,
+      "synthetic": true,
+      "source": {
+        "corpus": "Generated for Liaison",
+        "url": "https://openrouter.ai/docs/guides/overview/multimodal/tts",
+        "segments": ["google/gemini-3.8-flash-lite-tts voice Aoede"]
+      },
+      "licence": "generated",
+      "attribution": "Scripted text read by google/gemini-3.8-flash-lite-tts (voice Aoede) through OpenRouter, generated by apps/api/scripts/dictation-synth-clips.ts.",
+      "reference": "Okay so, um, for the meeting on Tuesday at ten thirty, I, I think we need, uh, the Q3 numbers, the revenue and the churn, and, um, Sarah's slides.",
+      "fillers": ["um", "uh", "i i"],
+      "mustKeep": [
+        "tuesday",
+        ["ten thirty", "10 30"],
+        ["q3", "q 3", "third quarter"],
+        "revenue",
+        "churn",
+        "sarah's"
+      ],
+      "notes": "Synthetic: scored for filler removal and must-keep only, never in the word error rate."
+    },
+    {
+      "id": "en-synth-04",
+      "file": "en-synth-04.webm",
+      "lang": "en",
+      "durationSeconds": 11.25,
+      "synthetic": true,
+      "source": {
+        "corpus": "Generated for Liaison",
+        "url": "https://openrouter.ai/docs/guides/overview/multimodal/tts",
+        "segments": ["google/gemini-3.8-flash-lite-tts voice Charon"]
+      },
+      "licence": "generated",
+      "attribution": "Scripted text read by google/gemini-3.8-flash-lite-tts (voice Charon) through OpenRouter, generated by apps/api/scripts/dictation-synth-clips.ts.",
+      "reference": "Uh, can you, can you reset the password for the warehouse account? Um, it's the one ending in zero zero eight seven, and, uh, the user has been locked out since this morning.",
+      "fillers": ["uh", "um", "can you can you"],
+      "mustKeep": [
+        "password",
+        "warehouse account",
+        ["zero zero eight seven", "0087", "00 87", "87"],
+        "locked out",
+        "this morning"
+      ],
+      "notes": "Synthetic: scored for filler removal and must-keep only, never in the word error rate."
+    },
+    {
+      "id": "fr-synth-01",
+      "file": "fr-synth-01.webm",
+      "lang": "fr",
+      "durationSeconds": 11.65,
+      "synthetic": true,
+      "source": {
+        "corpus": "Generated for Liaison",
+        "url": "https://openrouter.ai/docs/guides/overview/multimodal/tts",
+        "segments": ["google/gemini-3.8-flash-lite-tts voice Kore"]
+      },
+      "licence": "generated",
+      "attribution": "Scripted text read by google/gemini-3.8-flash-lite-tts (voice Kore) through OpenRouter, generated by apps/api/scripts/dictation-synth-clips.ts.",
+      "reference": "Euh, bonjour Claire, je voulais, euh, te dire que la la commande numéro 2087 est partie mardi, et, ben, le client devrait la recevoir jeudi.",
+      "fillers": ["euh", "la la", "ben"],
+      "mustKeep": ["claire", ["2087", "deux mille quatre vingt sept"], "mardi", "jeudi"],
+      "notes": "Synthetic: scored for filler removal and must-keep only, never in the word error rate."
+    },
+    {
+      "id": "fr-synth-02",
+      "file": "fr-synth-02.webm",
+      "lang": "fr",
+      "durationSeconds": 9.13,
+      "synthetic": true,
+      "source": {
+        "corpus": "Generated for Liaison",
+        "url": "https://openrouter.ai/docs/guides/overview/multimodal/tts",
+        "segments": ["google/gemini-3.8-flash-lite-tts voice Puck"]
+      },
+      "licence": "generated",
+      "attribution": "Scripted text read by google/gemini-3.8-flash-lite-tts (voice Puck) through OpenRouter, generated by apps/api/scripts/dictation-synth-clips.ts.",
+      "reference": "Alors, euh, pour la réunion de vendredi à quatorze heures, il faudrait, il faudrait préparer, heu, le budget de douze mille euros et la liste des fournisseurs.",
+      "fillers": ["euh", "heu", "il faudrait il faudrait"],
+      "mustKeep": [
+        "vendredi",
+        ["quatorze heures", "14 heures", "14h", "14 h"],
+        ["douze mille euros", "12 000 euros", "12000 euros", "12 000 €", "12000 €"],
+        "fournisseurs"
+      ],
+      "notes": "Synthetic: scored for filler removal and must-keep only, never in the word error rate."
+    },
+    {
+      "id": "fr-synth-03",
+      "file": "fr-synth-03.webm",
+      "lang": "fr",
+      "durationSeconds": 10.25,
+      "synthetic": true,
+      "source": {
+        "corpus": "Generated for Liaison",
+        "url": "https://openrouter.ai/docs/guides/overview/multimodal/tts",
+        "segments": ["google/gemini-3.8-flash-lite-tts voice Aoede"]
+      },
+      "licence": "generated",
+      "attribution": "Scripted text read by google/gemini-3.8-flash-lite-tts (voice Aoede) through OpenRouter, generated by apps/api/scripts/dictation-synth-clips.ts.",
+      "reference": "Bon, euh, le client Martin a appelé ce matin, il dit que, que la facture du trois mars est, euh, incorrecte, il manque la remise de dix pour cent.",
+      "fillers": ["euh", "que que"],
+      "mustKeep": [
+        "martin",
+        "ce matin",
+        ["trois mars", "3 mars"],
+        "facture",
+        "remise",
+        ["dix pour cent", "10 pour cent", "10"]
+      ],
+      "notes": "Synthetic: scored for filler removal and must-keep only, never in the word error rate."
+    },
+    {
+      "id": "fr-synth-04",
+      "file": "fr-synth-04.webm",
+      "lang": "fr",
+      "durationSeconds": 9.73,
+      "synthetic": true,
+      "source": {
+        "corpus": "Generated for Liaison",
+        "url": "https://openrouter.ai/docs/guides/overview/multimodal/tts",
+        "segments": ["google/gemini-3.8-flash-lite-tts voice Charon"]
+      },
+      "licence": "generated",
+      "attribution": "Scripted text read by google/gemini-3.8-flash-lite-tts (voice Charon) through OpenRouter, generated by apps/api/scripts/dictation-synth-clips.ts.",
+      "reference": "Euh, tu peux, tu peux relancer le fournisseur Durand pour la livraison ? Euh, c'est la référence AB 552, et, heu, on l'attend depuis lundi.",
+      "fillers": ["euh", "heu", "tu peux tu peux"],
+      "mustKeep": ["durand", "livraison", ["ab 552", "ab552"], "lundi"],
+      "notes": "Synthetic: scored for filler removal and must-keep only, never in the word error rate."
+    }
+  ]
+}

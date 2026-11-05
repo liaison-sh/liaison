@@ -1,0 +1,92 @@
+Connection drift is reported per field; the app entry lists it under connectionChanges -> apps/api/src/cli/provisioners/apps.ts:364
+A field not marked password shows stored and new values; a secret shows its name only -> apps/api/src/cli/provisioners/connector.ts:116
+Log format: baseUrl "old" -> "new", apiKey (secret) -> apps/api/src/cli/provisioners/connector.ts:136
+--dry-run prints the comparison as a plan line for an existing org, without writing -> apps/api/src/cli/provisioners/connector.ts:264
+The apps plan calls it for each connection -> apps/api/src/cli/provisioners/apps.ts:109
+After apply, the app's config verify probe runs against the stored connection -> apps/api/src/cli/provisioners/connector.ts:298
+config apply uses the config verify probe registry -> apps/api/src/cli/config/apply.ts:73
+An app without a probe is SKIPPED -> apps/api/src/cli/provisioners/connector.ts:308
+A failed health check is a pending item of kind credentials, not an error -> apps/api/src/cli/provisioners/apps.ts:350
+A created role agent gets the org's least-used avatar color, an existing one keeps its own -> apps/api/src/cli/provisioners/agents.ts:260
+Catalog app: install when absent, upgrade only to a newer catalog version, nothing when the active one is newer (logged) -> apps/api/src/modules/apps/catalog.ts:271-278 ; apps/api/src/cli/provisioners/apps.ts:290-305
+connect takes --email; with several Gmail entries and no --email it exits 2 -> apps/api/src/cli/connect/index.ts:382
+guide takes --account-type (google_consumer, google_workspace, microsoft, other, unknown) -> apps/api/src/cli/guide/index.ts:217
+guide prints a step's links as label: url -> apps/api/src/cli/guide/index.ts:85
+guide google prints the Drive mode and the picker link -> apps/api/src/cli/guide/index.ts:149
+guide google picker link is the Drive Settings page -> apps/api/src/cli/guide/index.ts:143
+guide server / <app>/<connection> -> apps/api/src/cli/guide/index.ts:1
+server surfaces, HUMAN/AGENT steps -> apps/api/src/modules/connection-guides/server-setup.ts:1
+connection steps, redirect URI, scopes, webhooks -> apps/api/src/modules/connection-guides/connection-setup.ts:1
+connect refuses a credentials connection -> apps/api/src/cli/connect/index.ts:1
+setup state -> apps/api/src/cli/setup/state.ts:1
+connect --for: one-time link, 30 min, member only, never signs in -> apps/api/src/modules/apps/connections/connect-links.ts:119
+link redeem: consumed once, browser-bound personal flow -> apps/api/src/modules/apps/connections/connect-links.ts:260
+connect --for prints link and waits for the member's connection -> apps/api/src/cli/connect/index.ts:1
+disconnect: what is deleted, confirm, --yes, --force audited -> apps/api/src/cli/disconnect/index.ts:1
+disconnect rule (org admin scope, personal owner, force) -> apps/api/src/modules/apps/connections/disconnect-account.ts:94
+agent tools connect_link_send / connection_disconnect -> apps/api/src/modules/agent/tools/connection-tools.ts:1
+org export command -> apps/api/src/cli/commands.ts:633
+org export queues for the server, --wait follows -> apps/api/src/cli/org-export.ts:1
+Standard or private mailbox trade-off, one sentence each -> packages/shared/src/setup-guides.ts:56 ; apps/api/src/cli/connect/index.ts:415 ; .claude/skills/setup-liaison/SKILL.md:488 ; apps/api/src/modules/agent/prompts/kernel/setup-guide.md:26 ; packages/shared/src/i18n/locales/en/mail.json:153
+setup state Left = chosen features (basics until answered), alternatives, menu with times -> apps/api/src/modules/connection-guides/setup-features.ts:198 ; apps/api/src/cli/setup/state.ts:1
+setup.features ids, replace semantics, unknown id refused, kernel__config_setup -> apps/api/src/modules/connection-guides/setup-features.ts:37 ; apps/api/src/cli/provisioners/setup.ts:39 ; apps/api/src/modules/agent/tools/config-tools.ts:1
+CLI logs at warn unless LIAISON_CLI_LOG_LEVEL -> apps/api/src/lib/logger.ts:166
+setup state: a partly done feature names what is connected and what is left -> apps/api/src/modules/connection-guides/setup-features.ts:235
+setup state with nothing left prints Nothing left. -> apps/api/src/cli/setup/state.ts:186
+org delete command, gates, resume, abort -> apps/api/src/cli/commands.ts:649
+org delete hands the purge to the server -> apps/api/src/cli/org-delete.ts:1
+org caps command, flags, unset -> apps/api/src/cli/commands.ts:697 ; apps/api/src/cli/org-caps.ts:1
+limits section: set, null unlimited, kept, CLI only -> apps/api/src/cli/config/schema.ts:588 ; apps/api/src/cli/provisioners/limits.ts:1 ; apps/api/src/modules/provisioning/config-tool-input.ts:46
+Every org starts unlimited; missing cap = unlimited -> apps/api/src/db/migrations/0237_organizations_caps.sql:1 ; apps/api/src/modules/org/caps.ts:1
+Seats: active users, agents/deactivated excluded; enforced at accept, OAuth first sign-in, ensureUser, reactivate; invite soft check -> apps/api/src/modules/org/caps.ts:180 ; apps/api/src/modules/auth/auth.ts:242 ; apps/api/src/modules/auth/oauth.ts:38 ; apps/api/src/modules/provisioning/ensure-user.ts:115 ; apps/api/src/modules/users/service.ts:430 ; apps/api/src/modules/users/invites.ts:108
+SEAT_LIMIT_REACHED / MAILBOX_LIMIT_REACHED 409 with limit and count -> apps/api/src/modules/org/caps.ts:51
+Mailboxes: gmail/imap any app, not disconnected, same address once, reconnect allowed -> apps/api/src/modules/org/caps.ts:218 ; apps/api/src/modules/apps/connections/service.ts:1393
+Storage cap from caps.storageGb, STORAGE_QUOTA_EXCEEDED; old setting 10 = default, other values kept -> apps/api/src/modules/files/service.ts:277 ; apps/api/src/db/migrations/0237_organizations_caps.sql:24
+Jobs per hour: delayed to next hour with room, up to a day, never dropped; person-waited work exempt (Run now, imports, exports, upload derivatives) -> apps/api/src/infra/jobs/org-job-cap.ts:1 ; apps/api/src/infra/jobs/org-job-cap.ts:50
+Cap below usage removes nothing -> apps/api/src/cli/org-caps.ts:8
+Admins see Usage and limits read only; notifications at 80 % and 100 % -> apps/web/src/modules/settings/OrgUsageSection.tsx:1 ; apps/api/src/modules/attention/kernel-translations.ts:306
+Each cap a whole number >= 1, 0 refused (CLI, limits, column check) -> apps/api/src/cli/org-caps.ts:65 ; apps/api/src/cli/config/schema.ts:588 ; apps/api/src/db/migrations/0237_organizations_caps.sql:50
+connect --for refused: stops with the reason, exit 1 -> apps/api/src/cli/connect/index.ts:454
+STORAGE_QUOTA_EXCEEDED answers 409 (files and import uploads) -> apps/api/src/modules/files/routes.ts:43 ; apps/api/src/modules/imports/uploads/service.ts:78
+apps[].domainAccess on the database entry only, roles by name, people by email -> apps/api/src/cli/config/schema.ts:304-357
+domainAccess replaces the stored map, reported changed/unchanged as apps.database.domainAccess -> apps/api/src/cli/provisioners/database-domain-access.ts:34 ; apps/api/src/cli/provisioners/database-domain-access.ts:160-185
+Unknown role or person is a ConfigError (exit 2) at plan -> apps/api/src/cli/provisioners/database-domain-access.ts:61 ; apps/api/src/cli/provisioners/database-domain-access.ts:86 ; apps/api/src/cli/config/parse.ts:23-29
+An entry without domainAccess leaves the stored map untouched -> apps/api/src/cli/provisioners/apps.ts:401-407
+Not on the agent's config_apps tool (its app schema is strict) -> apps/api/src/modules/provisioning/config-tool-input.ts:219-229
+Drift: apply records per org and path a hash of the stored value read back after the apply, when and who -> apps/api/src/cli/config/apply.ts:183-207 ; apps/api/src/db/migrations/0243_config_applied_fields.sql:16-23
+--applied-by default cli:<user>@<host> -> apps/api/src/cli/main.ts:99
+Decision table: unchanged when file equals server; create when no org; update when no record or server equals record; conflict otherwise -> apps/api/src/cli/config/drift.ts:445-475
+A conflicting path is not written (server value kept) and the rest applies -> apps/api/src/cli/config/apply.ts:151-173
+Conflicts are logged with file, server, last applied; exit code 3 -> apps/api/src/cli/config/apply.ts:65 ; apps/api/src/cli/config/apply.ts:233
+Report lists conflicts and drift, ok false -> apps/api/src/cli/config/report.ts:119-121
+Exit 3 still prints the report -> apps/api/src/cli/main.ts:347
+--prefer file writes, --prefer server keeps and is recorded -> apps/api/src/cli/config/drift.ts:471-473 ; apps/api/src/cli/config/apply.ts:183-207
+--prefer scoped by path, most specific wins -> apps/api/src/cli/config/drift.ts:114
+First apply without a record checks nothing -> apps/api/src/cli/config/drift.ts:469
+Tracked paths and the never-tracked secrets/sections -> apps/api/src/cli/config/drift.ts:229-231 ; apps/api/src/cli/config/drift.ts:275
+--only: org and admin always kept, rest pruned; out-of-scope tracked paths keep the server value and are not checked -> apps/api/src/cli/config/drift.ts:558-562 ; apps/api/src/cli/config/apply.ts:153
+config pull rewrites tracked values, keeps env refs and comments, prints or writes --out -> apps/api/src/cli/config/pull.ts:153-187 ; apps/api/src/cli/main.ts:386
+liaisonTeam section: register, forwardBugReports, needs register, recorded when false, operator org only, refused without endpoint -> apps/api/src/cli/provisioners/liaison-team.ts:23 ; apps/api/src/cli/provisioners/liaison-team.ts:69 ; apps/api/src/cli/config/schema.ts:628
+seed --tier demo: flags, tiers, usage on a missing tier -> apps/api/src/cli/seed/run.ts:15 ; apps/api/src/cli/seed/run.ts:47-53 ; apps/api/src/cli/commands.ts:823-856
+seed demo: reserved by default, reset by default for reserved, --no-reset, visitor has no owner, partial exits 1 -> apps/api/src/seed/tiers/demo/seed-demo.ts:479-514
+seed demo: an existing non-demo org is refused -> apps/api/src/seed/tiers/demo/seed-org.ts:712
+seed demo: --passwords refused in demo mode -> apps/api/src/seed/tiers/demo/seed-demo.ts:451-456
+seed: a claimed, unmarked org left by a killed seed is cleared and made again -> apps/api/src/seed/tiers/demo/seed-org.ts:502-554
+seed lively: tier, flags (--passwords-env, --replace, --warehouse) -> apps/api/src/cli/seed/run.ts:16 ; apps/api/src/cli/seed/run.ts:52-53 ; apps/api/src/seed/tiers/lively/seed-lively.ts:736-803
+seed lively: ten people, fourteen days of activity, sixty tickets, newest three unread -> apps/api/src/seed/world/lively.ts:10-39 ; apps/api/src/seed/tiers/lively/activity-plan.ts
+seed lively: --replace refused in demo mode and for a non-demo org -> apps/api/src/seed/tiers/lively/seed-lively.ts:120-155
+seed --tier load: --orgs, --prefix default load-, demo shape, synthetic marker + expiresAt (--ttl-hours default 6) reaped by the demo reaper, load-harness flag when LOAD_HARNESS_KEY -> apps/api/src/seed/tiers/load/seed-load.ts:1-20 ; apps/api/src/seed/tiers/load/seed-load.ts (markLoadOrg, DEFAULT_LOAD_TTL_HOURS, runSeedLoadCli) ; apps/api/src/modules/demo/demo-expiry.ts (listExpiredDemoOrgs)
+seed --tier load --volume: default 1100/5000/3000/1000, per-kind flags, admin read-back under RLS, per-org reindex, --no-reindex, idempotent, result line -> apps/api/src/seed/bulk/volume.ts:1-45 ; apps/api/src/seed/bulk/volume.ts (seedVolume, volumeShortfalls)
+slack import writes the selected channels' history into existing channels, audited -> apps/api/src/cli/slack/import.ts:950 ; apps/api/src/modules/imports/kernel-kinds/chat.ts:296 ; apps/api/src/modules/imports/kernel-kinds/chat.ts:349
+No admin section: the run acts as the org's earliest active admin -> apps/api/src/cli/provisioners/admin.ts:62-92
+No active admin: a connection write (apiConnectors credentials, apps connection, tickets imap, shared mail imap) is refused, add an admin section; unchanged needs none -> apps/api/src/cli/provisioners/types.ts:68-79 ; apps/api/src/cli/provisioners/api-connectors.ts:216 ; apps/api/src/cli/provisioners/connector.ts:443-463 ; apps/api/src/cli/provisioners/ticket-inboxes.ts:311 ; apps/api/src/cli/provisioners/mail-mailboxes.ts:181
+connect --for stops with exit 1 and the new-link command once the link expires unused; a redeemed link keeps the wait -> apps/api/src/cli/connect/index.ts:471 ; apps/api/src/modules/apps/connections/connect-links.ts:127
+seed lively --admin: an existing org, not made a demo org, settings kept, --replace refused -> apps/api/src/seed/tiers/lively/seed-lively.ts:200-216 ; apps/api/src/seed/tiers/demo/seed-org.ts:589 ; apps/api/src/seed/tiers/demo/seed-org.ts:727-790 ; apps/api/src/seed/tiers/lively/seed-lively.ts:736-761
+seed lively --people: seats, name/email/jobTitle/bio, member keeps password and roles and gets the seat role -> apps/api/src/seed/tiers/lively/seed-lively.ts:58-75 ; apps/api/src/seed/tiers/lively/seed-lively.ts:159-199 ; apps/api/src/seed/tiers/demo/seed-org.ts:262-272 ; apps/api/src/seed/tiers/lively/seed-lively.ts:704-718
+seed lively --no-commerce: leaves out the shop, invoices, carrier and books -> apps/api/src/seed/tiers/lively/seed-lively.ts:91-92 ; apps/api/src/seed/tiers/lively/seed-lively.ts:787 ; apps/api/src/seed/tiers/demo/seed-demo.ts:125-131 ; apps/api/src/seed/tiers/demo/seed-demo.ts:280-282
+Team-only switch set in Settings only, off with forwardBugReports or register -> apps/api/src/cli/provisioners/liaison-team.ts:54
+seed usage line (demo|lively|load|standard, --now, --only agent-app) -> apps/api/src/cli/commands.ts:841
+seed standard --admin: teammates, addresses, QaPass1!, content -> apps/api/src/seed/world/qa.ts:15 ; apps/api/src/seed/world/qa.ts:21-25 ; apps/api/src/seed/tiers/standard/seed-standard.ts:3-6
+seed standard: an org already holding the teammates is refused -> apps/api/src/seed/tiers/standard/seed-standard.ts:96-101
+seed standard: --now default now, --only agent-app, one JSON line -> apps/api/src/seed/tiers/standard/seed-standard.ts:71-73 ; apps/api/src/seed/tiers/standard/seed-standard.ts:166-206
+seed outside the image: catalog default app-catalog/, apps default .liaison-apps/apps, missing catalog stops with exit 2 naming the variable -> apps/api/src/cli/seed/app-dirs.ts:32-72 ; apps/api/src/cli/seed/run.ts:65-71

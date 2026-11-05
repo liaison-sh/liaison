@@ -1,0 +1,26 @@
+[
+  {
+    "type": "message",
+    "user": "U0001",
+    "text": "Hello <@U0002>, welcome! See <#C0002|old-launch> and <https://example.com/docs|the docs>.",
+    "ts": "1709287200.000100",
+    "thread_ts": "1709287200.000100",
+    "reply_count": 2,
+    "reactions": [{ "name": "thumbsup", "users": ["U0001", "U0002"], "count": 2 }]
+  },
+  {
+    "type": "message",
+    "subtype": "channel_join",
+    "user": "U0002",
+    "text": "<@U0002> has joined the channel",
+    "ts": "1709287300.000200"
+  },
+  {
+    "type": "message",
+    "user": "U0002",
+    "text": "Thanks &amp; hi",
+    "ts": "1709287400.000300",
+    "thread_ts": "1709287200.000100",
+    "parent_user_id": "U0001"
+  }
+]

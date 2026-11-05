@@ -1,0 +1,129 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+  "files": {
+    "includes": [
+      "apps/**",
+      "packages/**",
+      "scripts/**",
+      "tools/**",
+      "qa/notifications/**",
+      "!apps/web/logs/**",
+      "!apps/api/scripts/dictation-bakeoff-results/**",
+      "!apps/web/test-results/**",
+      "!apps/web/dist/**",
+      "!apps/web/dist-native/**",
+      "!apps/desktop/dist/**",
+      "!apps/desktop/src-tauri/target/**",
+      "!apps/desktop/src-tauri/gen/**",
+      "!apps/desktop/sidecar/dist/**",
+      "!apps/desktop/sidecar/.entries/**",
+      "!apps/desktop/sidecar/vendor/**",
+      "!apps/mobile/ios/**",
+      "!apps/mobile/android/**",
+      "!**/__fixtures__/**/*.html"
+    ]
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "asNeeded"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "suspicious": {
+        "noExplicitAny": "off",
+        "noAssignInExpressions": "warn",
+        "useBiomeIgnoreFolder": "off"
+      },
+      "style": {
+        "noNonNullAssertion": "off",
+        "useTemplate": "warn"
+      },
+      "correctness": {
+        "noUnusedFunctionParameters": "warn",
+        "noUnusedVariables": "warn",
+        "noUnusedImports": "warn",
+        "noEmptyPattern": "warn"
+      },
+      "a11y": {
+        "useButtonType": "warn",
+        "noStaticElementInteractions": "warn",
+        "noLabelWithoutControl": "warn",
+        "useKeyWithClickEvents": "warn",
+        "useSemanticElements": "warn",
+        "useFocusableInteractive": "warn",
+        "noSvgWithoutTitle": "warn"
+      },
+      "complexity": {
+        "noBannedTypes": "warn"
+      },
+      "security": {
+        "noDangerouslySetInnerHtml": "error"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["apps/api/src/modules/imports/reference/*.js"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedVariables": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/api/src/apps/*/app.manifest.json"],
+      "formatter": {
+        "enabled": false
+      }
+    },
+    {
+      "includes": ["apps/web/src/ui/**"],
+      "linter": {
+        "rules": {
+          "correctness": {},
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "~/modules": "ui/ must not import from domain modules",
+                  "~/framework": "ui/ must not import from framework"
+                },
+                "patterns": [
+                  {
+                    "group": ["~/modules/**", "~/framework/**"],
+                    "message": "ui/ must not import from domain modules or framework, subpaths included"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

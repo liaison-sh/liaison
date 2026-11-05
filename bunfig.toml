@@ -1,0 +1,6 @@
+[test]
+# Strobe runs backend Bun tests from the repository root, so keep the root
+# timeout aligned with apps/api/bunfig.toml instead of falling back to Bun's 5s.
+timeout = 60000
+# Same env defaults as apps/api/bunfig.toml, for backend tests run from here.
+preload = ["./apps/api/src/tests/test-env-defaults.ts"]

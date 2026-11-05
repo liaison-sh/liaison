@@ -1,0 +1,35 @@
+File visibility follows the parent item (RLS joins the parent) -> apps/api/src/modules/files/rls-builder.ts:3
+Files listed per entity, no browser (FileList used by tickets and knowledge) -> apps/web/src/modules/tickets/TicketDetail.tsx:25
+Attach button label -> packages/shared/src/i18n/locales/en/kernel.json:2865
+Attach in mail reply -> apps/web/src/modules/mail/MailReplyBar.tsx:304
+Attach in chat composer -> apps/web/src/modules/threads/ComposeBar.tsx:370
+Attach in ticket composer -> apps/web/src/modules/tickets/TicketComposer.tsx:734
+Staged chips with remove -> apps/web/src/modules/files/StagedAttachmentChips.tsx:134
+Send waits while uploading -> apps/web/src/modules/files/composer-attachments.ts:7
+Queued label -> packages/shared/src/i18n/locales/en/kernel.json:2869
+Knowledge Attachments -> apps/web/src/modules/knowledge/KnowledgeDocumentView.tsx:658
+Ticket file list -> apps/web/src/modules/tickets/TicketDetail.tsx:1568
+Blocked executable extensions -> apps/api/src/modules/files/attach.ts:51
+Every dotted segment checked -> apps/api/src/modules/files/attach.ts:49
+Downloaded with Content-Disposition attachment, not rendered -> apps/api/src/modules/files/attach.ts:43
+Image lightbox Download / Close -> apps/web/src/modules/files/ImageLightbox.tsx:76
+Download on attachment card -> apps/web/src/modules/files/AttachmentCard.tsx:147
+At most 10 files and 25 MB per agent call -> apps/api/src/modules/files/attach.ts:35
+Send tools take file ids in attachments -> apps/api/src/apps/mail/app.manifest.json:4
+kernel:files:read -> apps/api/src/modules/permissions/scope-catalog.ts:39
+kernel:files:analyze -> docs/reference/scopes.md:35
+files_list -> apps/api/src/modules/agent/tools/kernel-tools.ts:776
+files_read -> apps/api/src/modules/agent/tools/kernel-tools.ts:791
+files_upload_url -> apps/api/src/modules/agent/tools/kernel-tools.ts:805
+files_upload_confirm -> apps/api/src/modules/agent/tools/kernel-tools.ts:841
+files_merge_pdfs -> apps/api/src/modules/agent/tools/kernel-tools.ts:857
+analyze_media -> apps/api/src/modules/agent/tools/kernel-tools.ts:873
+managed attachment opens for its owner only -> apps/api/src/modules/files/routes.ts:336
+Storage limit from the operator, STORAGE_QUOTA_EXCEEDED, unlimited without -> apps/api/src/modules/files/service.ts:277
+a copy keeps who attached it; a webhook or job copy records no uploader -> apps/api/src/modules/files/attach.ts:370 ; apps/api/src/modules/files/attach.ts:390
+Merged PDFs, data-subject exports and import attachments are refused past the storage limit -> apps/api/src/modules/pdf/merge.ts:264 ; apps/api/src/modules/export/data-subject-export-tool.ts:513 ; apps/api/src/modules/imports/runner.ts:1138
+Attachments an app saves and PDFs an app renders for a person or an agent are refused past the storage limit -> apps/api/src/modules/apps/sandbox/bridge/files.ts:210 ; apps/api/src/modules/pdf/render.ts:267 ; apps/api/src/modules/apps/sandbox/bridge/platform.ts:246
+Kept at the limit and counted: mail synced by Liaison (system, no agent) and legal records (immutable parent with retention) -> apps/api/src/modules/files/service.ts:353
+Notification once past 80 % (upgrade or free space) and at 100 %, again only after use drops under 80 % -> apps/api/src/modules/org/caps.ts:406 ; apps/api/src/modules/org/caps.ts:471 ; apps/api/src/modules/org/caps.ts:405 ; apps/api/src/modules/files/service.ts:369
+Remove a file: write scope on the item, plus uploader or deleteScope holder where the item declares one -> apps/api/src/modules/files/service.ts:1667 ; apps/web/src/modules/files/file-service.ts:32
+mail_attachment_read -> apps/api/src/modules/agent/tools/kernel-tools.ts:1038

@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// The host API version: the one version number for everything an app relies on
+// from the server it runs in (its manifest shape, the sandbox bridge, the frame
+// protocol, the host services). An app declares the range it needs as `host`
+// in its manifest (a semver range, "^1" when absent); the server refuses to
+// install, upgrade or load an app whose range it cannot satisfy.
+//
+// A change an app could notice as a break bumps the major; an addition bumps
+// the minor. The server keeps answering every major listed below.
+//
+// 1.1: `currentPath()` (the page's path, which a framed app cannot read from its
+// own location), the frame's `path` message and in-app links that move the page.
+
+/** The host API version this build of Liaison provides. */
+export const HOST_API_VERSION = "1.1.0"
+
+/** The host API majors this build of Liaison answers. */
+export const SUPPORTED_HOST_API_MAJORS: readonly number[] = [1]
+
+/** The range assumed for a manifest that declares no `host`. */
+export const DEFAULT_HOST_API_RANGE = "^1"

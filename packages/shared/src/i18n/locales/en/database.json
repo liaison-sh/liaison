@@ -1,0 +1,29 @@
+{
+  "connectionTitle": "Connection",
+  "settingsDescription": "Read-only connector for this deployment's own database: license lookups, moderation surfaces, instance health.",
+  "reportAccess": {
+    "title": "Report access",
+    "description": "Who may run the curated reads of each domain of the connected catalog.",
+    "intro": "Internal reports run for every member who can read reports. Confidential ones run only for the roles you choose, restricted ones only for the people you choose. Admins and members who can run raw queries always run every report.",
+    "rawQueryNote": "Raw SQL queries (admins only) are not limited by these tiers.",
+    "loadFailed": "Report access could not be loaded: {{message}}",
+    "noCatalog": "No catalog of curated reads is connected.",
+    "empty": "The connected catalog has no curated reads.",
+    "readCount": "{{count}} reads",
+    "tierLabel": "Access for {{domain}}",
+    "tierInternal": "Internal",
+    "tierConfidential": "Confidential",
+    "tierRestricted": "Restricted",
+    "catalogDefault": "catalog default",
+    "roles": "Roles",
+    "people": "People",
+    "addRole": "Add a role",
+    "addPerson": "Add a person",
+    "remove": "Remove {{name}}",
+    "nobodyYet": "Nobody but admins until you add someone.",
+    "save": "Save",
+    "saved": "Saved",
+    "saveFailed": "Could not save: {{message}}",
+    "unsaved": "Unsaved changes"
+  }
+}

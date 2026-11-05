@@ -1,0 +1,213 @@
+{
+  "data": {
+    "customers": {
+      "edges": [
+        {
+          "node": {
+            "id": "gid://shopify/Customer/24929659846822",
+            "email": "marie@example.com",
+            "firstName": "Marie",
+            "lastName": "Dupont",
+            "tags": [
+              "liaison-seed",
+              "liaison-seed-cust-001",
+              "market:canada"
+            ],
+            "defaultAddress": null,
+            "numberOfOrders": "2",
+            "amountSpent": {
+              "amount": "1495.0",
+              "currencyCode": "USD"
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Customer/24929659945126",
+            "email": "jean@example.com",
+            "firstName": "Jean",
+            "lastName": "Martin",
+            "tags": [
+              "liaison-seed",
+              "liaison-seed-cust-002",
+              "market:us"
+            ],
+            "defaultAddress": null,
+            "numberOfOrders": "2",
+            "amountSpent": {
+              "amount": "236.0",
+              "currencyCode": "USD"
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Customer/24929660043430",
+            "email": "sophie@example.com",
+            "firstName": "Sophie",
+            "lastName": "Bernard",
+            "tags": [
+              "liaison-seed",
+              "liaison-seed-cust-003",
+              "market:canada"
+            ],
+            "defaultAddress": null,
+            "numberOfOrders": "2",
+            "amountSpent": {
+              "amount": "267.0",
+              "currencyCode": "USD"
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Customer/24929660108966",
+            "email": "alex@example.com",
+            "firstName": "Alex",
+            "lastName": "Müller",
+            "tags": [
+              "liaison-seed",
+              "liaison-seed-cust-004",
+              "market:us"
+            ],
+            "defaultAddress": null,
+            "numberOfOrders": "2",
+            "amountSpent": {
+              "amount": "745.0",
+              "currencyCode": "USD"
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Customer/24929660240038",
+            "email": "maria@example.com",
+            "firstName": "Maria",
+            "lastName": "Garcia",
+            "tags": [
+              "liaison-seed",
+              "liaison-seed-cust-005",
+              "market:canada"
+            ],
+            "defaultAddress": null,
+            "numberOfOrders": "2",
+            "amountSpent": {
+              "amount": "116.0",
+              "currencyCode": "USD"
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Customer/24929660305574",
+            "email": "john@example.com",
+            "firstName": "John",
+            "lastName": "Smith",
+            "tags": [
+              "liaison-seed",
+              "liaison-seed-cust-006",
+              "market:us"
+            ],
+            "defaultAddress": null,
+            "numberOfOrders": "1",
+            "amountSpent": {
+              "amount": "299.0",
+              "currencyCode": "USD"
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Customer/24929660403878",
+            "email": "sarah@example.com",
+            "firstName": "Sarah",
+            "lastName": "Johnson",
+            "tags": [
+              "liaison-seed",
+              "liaison-seed-cust-007",
+              "market:canada"
+            ],
+            "defaultAddress": null,
+            "numberOfOrders": "1",
+            "amountSpent": {
+              "amount": "118.0",
+              "currencyCode": "USD"
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Customer/24929660469414",
+            "email": "michael@example.com",
+            "firstName": "Michael",
+            "lastName": "Williams",
+            "tags": [
+              "liaison-seed",
+              "liaison-seed-cust-008",
+              "market:us"
+            ],
+            "defaultAddress": null,
+            "numberOfOrders": "1",
+            "amountSpent": {
+              "amount": "267.0",
+              "currencyCode": "USD"
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Customer/24929660567718",
+            "email": "aki@example.com",
+            "firstName": "Aki",
+            "lastName": "Tanaka",
+            "tags": [
+              "liaison-seed",
+              "liaison-seed-cust-009",
+              "market:canada"
+            ],
+            "defaultAddress": null,
+            "numberOfOrders": "1",
+            "amountSpent": {
+              "amount": "149.0",
+              "currencyCode": "USD"
+            }
+          }
+        },
+        {
+          "node": {
+            "id": "gid://shopify/Customer/24929660633254",
+            "email": "hiroshi@example.com",
+            "firstName": "Hiroshi",
+            "lastName": "Sato",
+            "tags": [
+              "liaison-seed",
+              "liaison-seed-cust-010",
+              "market:us"
+            ],
+            "defaultAddress": null,
+            "numberOfOrders": "1",
+            "amountSpent": {
+              "amount": "58.0",
+              "currencyCode": "USD"
+            }
+          }
+        }
+      ],
+      "pageInfo": {
+        "hasNextPage": false,
+        "endCursor": "eyJsYXN0X2lkIjoyNDkyOTY2MDYzMzI1NCwibGFzdF92YWx1ZSI6MjQ5Mjk2NjA2MzMyNTR9"
+      }
+    }
+  },
+  "extensions": {
+    "cost": {
+      "requestedQueryCost": 6,
+      "actualQueryCost": 6,
+      "throttleStatus": {
+        "maximumAvailable": 20000,
+        "currentlyAvailable": 19994,
+        "restoreRate": 1000
+      }
+    }
+  }
+}

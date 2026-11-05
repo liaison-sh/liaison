@@ -1,0 +1,276 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# THIS FILE DOES NOT RUN HERE. It is the source of the release workflow that runs
+# in the operator's private repository, which holds the signing secrets and the
+# self-hosted runners; that copy checks this repository out as a submodule and
+# runs every step inside it. This repository holds no Actions secret: a
+# collaborator with write access here can read every secret and run code on
+# every self-hosted runner, so none is given to it. The tests read this file.
+#
+# The mobile store pipeline: one job per store, each on the only runner its
+# toolchain exists on, and neither of them able to sign anything today.
+#
+# That last part is the rule this file is built around. There is no Apple
+# distribution certificate, no provisioning profile, no App Store Connect API
+# key and no Play upload keystore in this repository's secrets (ws_07 swept
+# them: the repository has no Actions secrets at all). So every signing step is
+# gated on a marker that is computed once, at the top of the job, from the
+# presence of the whole credential set. With the set absent the job still runs,
+# still builds, and produces an UNSIGNED artifact that says so in the log, in
+# the job summary and in a marker file uploaded beside it. What it never does
+# is fail in the middle of a keychain command, and what it never does is enter
+# a signing step with half a credential set.
+#
+# Shape is apps/desktop's release workflow, deliberately: every action pinned
+# to a COMMIT with its tag in a comment, no permission at the top of the file
+# and the least one per job, every credential arriving as a ${{ secrets.NAME }}
+# reference and no value written anywhere, and the bundle checked for host
+# absolute paths BEFORE anything is sealed.
+name: mobile-release
+
+on:
+  push:
+    tags:
+      - "mobile-v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and package without sending anything to a store"
+        type: boolean
+        default: true
+
+permissions: {}
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build the mobile app
+        # apps/web's build, `cap sync` into the native projects, the boot
+        # bundle injected into the synced copy, and the synced trees scanned.
+        # There is no second frontend: the wrapped bundle is apps/web's own.
+        run: cd apps/mobile && bun run build:mobile
+
+      - name: Check the Home chunk budget
+        # Home is the lazy boundary a phone downloads first, on whatever
+        # connection it has. The budget is a measurement, not an opinion.
+        run: cd apps/mobile && bun run check:bundle-size
+
+      - name: Verify no Node runtime is needed
+        # Nothing shipped inside a native shell may need Node to start.
+        run: bun scripts/check-desktop-no-node.ts
+
+      - name: Verify no absolute paths in the synced assets
+        # Immediately before anything is signed: a signature over assets
+        # carrying the runner's own checkout path makes a broken build look
+        # trustworthy, and the failure only appears on somebody else's device.
+        run: cd apps/mobile && bun ci/check-synced-assets.ts
+
+      - name: Resolve the signing credentials
+        id: signing
+        env:
+          APPLE_DISTRIBUTION_CERTIFICATE_P12: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_P12 }}
+          APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+          APPLE_PROVISIONING_PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          cd apps/mobile
+          bun ci/signing-marker.ts --platform ios
+          signed=$(bun -e 'console.log(require("./ci/ios-signing-marker.json").signed)')
+          echo "signed=$signed" >> "$GITHUB_OUTPUT"
+
+      - name: Import the App Store signing assets
+        if: ${{ steps.signing.outputs.signed == 'true' }}
+        env:
+          APPLE_DISTRIBUTION_CERTIFICATE_P12: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_P12 }}
+          APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+          APPLE_PROVISIONING_PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/liaison-signing.keychain-db"
+          security create-keychain -p "$APPLE_KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$APPLE_KEYCHAIN_PASSWORD" "$keychain"
+          printf '%s' "$APPLE_DISTRIBUTION_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/dist.p12"
+          security import "$RUNNER_TEMP/dist.p12" -k "$keychain" \
+            -P "$APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$APPLE_KEYCHAIN_PASSWORD" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/dist.p12"
+          profiles="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$profiles"
+          printf '%s' "$APPLE_PROVISIONING_PROFILE" | base64 --decode > "$profiles/liaison.mobileprovision"
+
+      - name: Archive the app
+        # Runs whether or not the credentials were there. Without them the
+        # archive is built with signing disabled, which still proves the
+        # project, the plugins and the synced assets all compile.
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
+        run: |
+          set -euo pipefail
+          cd apps/mobile/ios/App
+          flags=""
+          if [ "$SIGNED" != "true" ]; then
+            echo "::warning title=iOS archive is unsigned::No Apple credentials were available, archiving with code signing disabled"
+            flags="CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="
+          fi
+          xcodebuild archive \
+            -project App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$RUNNER_TEMP/Liaison.xcarchive" \
+            $flags
+
+      - name: Export the signed app
+        if: ${{ steps.signing.outputs.signed == 'true' }}
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          # Written here rather than committed: a team id in the tree is a
+          # placeholder waiting to be exported with, and this one is a secret.
+          cat > "$RUNNER_TEMP/exportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>uploadSymbols</key><true/>
+            <key>signingStyle</key><string>manual</string>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Liaison.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/exportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export"
+
+      - name: Upload to App Store Connect
+        if: ${{ steps.signing.outputs.signed == 'true' && !inputs.dry_run }}
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          keys="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$keys"
+          printf '%s' "$APPLE_API_PRIVATE_KEY" | base64 --decode > "$keys/AuthKey_$APPLE_API_KEY_ID.p8"
+          xcrun altool --upload-app --type ios \
+            --file "$RUNNER_TEMP/export/App.ipa" \
+            --apiKey "$APPLE_API_KEY_ID" --apiIssuer "$APPLE_API_ISSUER_ID"
+          rm -f "$keys/AuthKey_$APPLE_API_KEY_ID.p8"
+
+      - name: Upload the build artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: liaison-ios
+          # The marker travels with the build: an artifact whose signing state
+          # is only in a log is an artifact somebody will assume is signed.
+          path: |
+            apps/mobile/ci/ios-signing-marker.json
+            ${{ runner.temp }}/export/*.ipa
+          if-no-files-found: warn
+
+  build-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build the mobile app
+        run: cd apps/mobile && bun run build:mobile
+
+      - name: Check the Home chunk budget
+        run: cd apps/mobile && bun run check:bundle-size
+
+      - name: Verify no Node runtime is needed
+        run: bun scripts/check-desktop-no-node.ts
+
+      - name: Verify no absolute paths in the synced assets
+        run: cd apps/mobile && bun ci/check-synced-assets.ts
+
+      - name: Resolve the signing credentials
+        id: signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+          ANDROID_KEYSTORE_ALIAS_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_ALIAS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          cd apps/mobile
+          bun ci/signing-marker.ts --platform android
+          signed=$(bun -e 'console.log(require("./ci/android-signing-marker.json").signed)')
+          echo "signed=$signed" >> "$GITHUB_OUTPUT"
+
+      - name: Import the upload keystore
+        if: ${{ steps.signing.outputs.signed == 'true' }}
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          # Outside the checkout, and only the FILE: the three passwords never
+          # enter the job environment, they are handed to the one step that
+          # builds. A keystore written into the tree is a keystore an upload
+          # step could pick up on a run that was never meant to sign.
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/upload.jks"
+
+      - name: Build the release bundle
+        # Runs whether or not the keystore arrived. app/build.gradle signs only
+        # when all four values are present AND the file exists, and says
+        # UNSIGNED release build in the log when they are not: half a
+        # credential set never reaches keytool.
+        env:
+          LIAISON_KEYSTORE_FILE: ${{ runner.temp }}/upload.jks
+          LIAISON_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          LIAISON_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+          LIAISON_KEYSTORE_ALIAS_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_ALIAS_PASSWORD }}
+        run: cd apps/mobile/android && ./gradlew bundleRelease
+
+      # There is no Play publisher credential in this repository and none is
+      # invented here: the .aab is uploaded through the Play Console by hand,
+      # to the closed testing track first (apps/mobile/STORE_CHECKLIST.md).
+      - name: Upload the build artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: liaison-android
+          path: |
+            apps/mobile/ci/android-signing-marker.json
+            apps/mobile/android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: warn

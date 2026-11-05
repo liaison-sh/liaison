@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Liaison privacy policy</title>
+<style>
+  :root { color-scheme: light dark; --bg: #ffffff; --fg: #1f2937; --muted: #6b7280; --rule: #e5e7eb; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111113; --fg: #e5e7eb; --muted: #9ca3af; --rule: #2a2a2e; }
+  }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 42rem; margin: 0 auto; padding: 2.5rem 1rem 4rem; }
+  h1 { font-size: 1.75rem; margin: 0 0 0.25rem; }
+  h2 { font-size: 1.15rem; margin: 2rem 0 0.5rem; padding-top: 1rem; border-top: 1px solid var(--rule); }
+  p.meta { color: var(--muted); margin: 0 0 1.5rem; }
+  ul { padding-left: 1.25rem; }
+  li { margin: 0.25rem 0; }
+</style>
+</head>
+<body>
+<main>
+<h1>Liaison privacy policy</h1>
+<p class="meta">Applies to the Liaison apps (iOS, Android, desktop and web) and to every Liaison server. Last updated 28 September 2026.</p>
+
+<p>Liaison is workspace software. Each Liaison server is run by an organisation (your employer or a
+company you work with), and that organisation decides what data goes into it. In this policy,
+"the operator" means the organisation that runs your Liaison server. The operator is the data
+controller for your account and your work data; questions and requests about them go to the operator.</p>
+
+<h2>What the app itself keeps on your device</h2>
+<ul>
+  <li>The address of the Liaison server(s) you added, and your sign-in session for each.</li>
+  <li>If you allow notifications: a push token issued by Apple or Google, sent to your server so it can notify you.</li>
+  <li>If you turn on biometric unlock: nothing biometric leaves the device. Face ID, Touch ID or fingerprint checks are done by the operating system, which only tells the app "yes" or "no".</li>
+  <li>If you use the encrypted mailbox: your mailbox keys, encrypted on the device.</li>
+</ul>
+<p>The app contains no advertising, no third party analytics and no tracking across apps or websites.
+Its developers receive nothing from it: there is no telemetry sent to anyone other than the server you
+connect to.</p>
+
+<h2>What a Liaison server processes</h2>
+<p>A Liaison server stores what you and your colleagues put into it to do your work: your account (name,
+email address, role), messages and threads, tickets, contacts, files, calendar and mail you choose to
+connect, and records of actions taken (an audit log). It may send text to an AI model provider chosen by
+the operator to answer your requests. Where the server runs, how long it keeps data and which providers
+it uses are the operator's choices; ask the operator for its own notice.</p>
+
+<h2>Notifications</h2>
+<p>Notifications are delivered through Apple Push Notification service or Google Firebase Cloud Messaging,
+and can be shown on a locked screen. So the server strips them at the source: a notification about anything
+that requires a permission to read carries no text at all (no content, title, sender or thread name), only a
+generic wording, the link to open, a badge count and its type. Only messages that anyone in the workspace
+may read can include a short title and preview.</p>
+
+<h2>Your choices and rights</h2>
+<ul>
+  <li>You can turn notifications and biometric unlock off at any time in the app or in your device settings.</li>
+  <li>You can delete your account from the account settings ("Delete my account"). This erases your account on that server; the operator may keep records it is legally required to keep.</li>
+  <li>For access, correction, export or any other request about your data, contact the operator. Where the GDPR applies, you can also complain to your data protection authority.</li>
+</ul>
+
+<h2>Security</h2>
+<p>All traffic between the app and the server is encrypted in transit (TLS). The encrypted mailbox, when
+used, encrypts mail on your device with keys the server does not hold.</p>
+
+<h2>Changes</h2>
+<p>This page is published by every Liaison server at <code>/privacy.html</code>. When it changes, the date
+above changes with it.</p>
+</main>
+</body>
+</html>

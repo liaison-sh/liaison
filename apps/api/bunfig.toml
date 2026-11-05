@@ -1,0 +1,8 @@
+[test]
+# Bun automatically loads .env.test for test runs.
+# Suite-wide env defaults the route tests rely on (see the file's header).
+preload = ["./src/tests/test-env-defaults.ts"]
+
+# Route integration tests use a JS mutex to serialise file-level TRUNCATE + bootstrap.
+# The default 5s timeout is too short when many files queue behind the mutex.
+timeout = 60000

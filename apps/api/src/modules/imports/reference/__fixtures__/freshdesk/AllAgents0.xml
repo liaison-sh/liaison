@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<agents type="array">
+  <agent>
+    <id type="integer">51</id>
+    <user>
+      <id type="integer">1001</id>
+      <name>Agent Smith</name>
+      <email>agent.smith@fabrikam.example</email>
+    </user>
+  </agent>
+</agents>

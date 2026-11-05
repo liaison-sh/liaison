@@ -1,0 +1,118 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# Static analysis and secret scanning: CodeQL (javascript-typescript, the
+# security-extended query suite) and gitleaks, on every push to main, every
+# pull request against main and once a week. CodeQL leaves tests and
+# developer scripts out (.github/codeql/codeql-config.yml).
+#
+# CodeQL runs only while the repository is public: code scanning needs GitHub
+# Advanced Security on a private repository, and the job-level `if` keeps it
+# from failing there. gitleaks needs no such thing and always runs; its job name
+# is what branch protection and pr:land require, so it stays `gitleaks`.
+#
+# Least privilege: nothing at the top of the file. CodeQL gets
+# `security-events: write` to upload its results and nothing else; gitleaks
+# reads the code and fails the job on a finding, it uploads nothing. Neither
+# job installs dependencies or runs repository code. Every action is pinned
+# to a commit, with the tag it was resolved from in the comment, and the
+# gitleaks binary is a pinned release checked against its published sha256.
+name: codeql
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "23 4 * * 1"
+
+permissions: {}
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codeql:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          queries: security-extended
+          # Tests and developer scripts are left out: .github/codeql/codeql-config.yml.
+          config-file: ./.github/codeql/codeql-config.yml
+      - name: Analyze
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          category: "/language:javascript-typescript"
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          # Pinned release + checksum. To bump: set GITLEAKS_VERSION and the
+          # sha256 of gitleaks_<version>_linux_x64.tar.gz from that release's
+          # checksums file.
+          GITLEAKS_VERSION="8.30.1"
+          GITLEAKS_SHA256="551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+          curl -fsSL -o "$RUNNER_TEMP/gitleaks.tar.gz" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" version
+      - name: Scan for secrets
+        # Pull request: every commit it adds, one by one, not the merge result.
+        # Push: the commits it pushed (the whole history when the push has no
+        # parent to compare with). Schedule: every ref. `git log -p` leaves merge
+        # commits out unless told otherwise, so a secret added while resolving a
+        # conflict needs --diff-merges. Commit messages are public too, and
+        # gitleaks' git mode does not read them. Event values reach the shell
+        # through env only.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            pull_request) LOG_OPTS="${PR_BASE}..${PR_HEAD}" ;;
+            push)
+              if [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ] \
+                && git cat-file -e "${PUSH_BEFORE}^{commit}" 2>/dev/null; then
+                LOG_OPTS="${PUSH_BEFORE}..${PUSH_AFTER}"
+              else
+                LOG_OPTS="${PUSH_AFTER}"
+              fi
+              ;;
+            *) LOG_OPTS="--all" ;;
+          esac
+          echo "gitleaks range: ${LOG_OPTS}"
+          "$RUNNER_TEMP/gitleaks" git --config .gitleaks.toml --redact --no-banner \
+            --ignore-gitleaks-allow --verbose \
+            --log-opts="--diff-merges=first-parent ${LOG_OPTS}" .
+          # shellcheck disable=SC2086 # LOG_OPTS is a range or --all, split on purpose.
+          git log --format='%h %s%n%b' ${LOG_OPTS} \
+            | "$RUNNER_TEMP/gitleaks" stdin --config .gitleaks.toml --redact --no-banner \
+              --ignore-gitleaks-allow --verbose

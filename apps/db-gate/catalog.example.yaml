@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# Example db-gate catalog. Mount your own at /catalog.yaml (see
+# docs/database-connector.md and the database-adapter-authoring skill).
+#
+# Shape mirrors packages/db-core/src/catalog.ts's ReadCatalogSchema: named
+# params in SQL are `:name`, resolved to ordinal placeholders in declaration
+# order. `columns` is the projection allow-list (defense in depth on top of
+# the DB grant layer) and must never include a SECRET_COLUMNS entry — the
+# gate refuses to start if it does.
+
+adapter: example
+reads:
+  widgets_overview:
+    description: List widgets for an organization.
+    domain: health
+    sql: "SELECT id, name, status FROM app_example.widgets WHERE org_id = :orgId ORDER BY id"
+    params:
+      orgId:
+        type: string
+        description: Organization UUID
+    columns: [id, name, status]
+    tables: [app_example.widgets]
+    maxRows: 100

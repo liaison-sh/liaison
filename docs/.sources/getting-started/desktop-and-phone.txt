@@ -1,0 +1,81 @@
+Desktop is Tauri shell around web app; mobile Capacitor shell iOS/Android -> README.md:145
+Get the desktop app button in activity bar -> apps/web/src/modules/shell/ActivityBar.tsx:550
+Get the desktop app label -> packages/shared/src/i18n/locales/en/kernel.json:984
+Installers macOS dmg, Windows setup exe, Linux AppImage, deb -> apps/web/src/lib/desktop-downloads.ts:22
+Installer labels -> packages/shared/src/i18n/locales/en/kernel.json:987
+Recommended for this computer -> packages/shared/src/i18n/locales/en/kernel.json:986
+Bundle targets app, dmg, nsis, appimage, deb -> apps/desktop/src-tauri/tauri.conf.json:29
+Updater prompts before install; periodic check -> apps/desktop/src-tauri/src/updater.rs:47
+macOS image holds the app and an Applications link -> apps/desktop/ci/make-dmg.sh:127
+Copy that cannot replace itself is told what to do before the prompt -> apps/desktop/src-tauri/src/updater.rs:309
+Move to Applications, deb package link, AppImage folder messages -> apps/desktop/src-tauri/src/updater.rs:356
+Enter your Liaison org URL: -> packages/shared/src/i18n/locales/en/kernel.json:3418
+Connect action -> packages/shared/src/i18n/locales/en/kernel.json:3420
+Connect link helper -> packages/shared/src/i18n/locales/en/kernel.json:3419
+Deep link shown and confirmed, never silently saved -> apps/web/src/modules/desktop/DesktopConnect.tsx:11
+Connect to this Liaison org? -> packages/shared/src/i18n/locales/en/kernel.json:3422
+Sign-in code flow -> packages/shared/src/i18n/locales/en/kernel.json:2923
+Change server -> packages/shared/src/i18n/locales/en/kernel.json:3510
+Remove this server, signed out and forgotten -> packages/shared/src/i18n/locales/en/kernel.json:3517
+Approve this device dialog -> packages/shared/src/i18n/locales/en/kernel.json:3433
+Approve in browser so conversation runs on this machine -> packages/shared/src/i18n/locales/en/kernel.json:3435
+8 character code -> packages/shared/src/i18n/locales/en/kernel.json:1015
+Approve / Deny -> packages/shared/src/i18n/locales/en/kernel.json:1009
+Session acts as you with your access -> packages/shared/src/i18n/locales/en/kernel.json:1007
+Only approve a code you asked for -> packages/shared/src/i18n/locales/en/kernel.json:1008
+It will be able to (scopes shown) -> packages/shared/src/i18n/locales/en/kernel.json:1024
+Local assistant needs Claude sign-in -> packages/shared/src/i18n/locales/en/kernel.json:3471
+Sidecar hosts the Claude Agent SDK -> apps/desktop/README.md:11
+Windows needs Git Bash or WSL -> packages/shared/src/i18n/locales/en/kernel.json:3424
+Mobile first launch prompt and Connect -> apps/mobile/src/onboarding/mobile-copy.ts:12
+Mobile shell creates no account; invite; code, password or provider -> apps/web/src/modules/auth/Login.tsx:213
+Microphone only while dictating (iOS) -> apps/mobile/ios/App/App/Info.plist:45
+RECORD_AUDIO (Android) -> apps/mobile/android/app/src/main/AndroidManifest.xml:55
+Push permission requested -> apps/mobile/src/push-client.ts:619
+Desktop client not allowed notice, DEVICE_FLOW_CLIENTS -> packages/shared/src/i18n/locales/en/kernel.json:3449
+liaison-desktop admitted whenever DEVICE_FLOW_CLIENTS non-empty; default mcp-cli -> deploy/.env.example:184
+sidecar.log paths -> apps/desktop/README.md:114
+Compatibility mode notice copy -> packages/shared/src/i18n/locales/en/kernel.json:1930
+Noted only for an unknown settings format, in a shell only -> apps/web/src/framework/bootstrap.ts:1408
+Isolated app icon from the manifest's iconSvg or iconName, else a tile with its initial -> apps/web/src/framework/isolated-app.tsx:448
+Unknown settings part placeholder copy -> packages/shared/src/i18n/locales/en/kernel.json:2644
+Desktop runs its update check at once, still asks before installing -> apps/desktop/src-tauri/src/updater.rs:1165
+Not now remembered per set of apps and versions -> apps/web/src/modules/shell/compat-mode-notice.ts:92
+Installed apps run in a sandboxed frame in the desktop and phone apps -> apps/web/src/framework/isolated-app.tsx:414
+Liaison's own apps load from the server at its version; desktop verifies a signed one before running it in its page -> apps/web/src/framework/bootstrap.ts:1515
+Desktop downloads the app files from the bound server only -> apps/desktop/src-tauri/src/verified_apps.rs:371
+Desktop checks Liaison's signature with keys built into it -> apps/desktop/src-tauri/src/app_signing.rs:42
+Desktop refuses a withdrawn (revoked or below-floor) version -> apps/desktop/src-tauri/src/app_signing.rs:494
+Any failed check runs the app in the sandboxed frame -> apps/web/src/framework/verified-app.ts:67
+The phone app frames every app, Liaison's own included (no desktop verifier) -> apps/web/src/framework/verified-app.ts:72
+A shell with no frame does not load an installed app -> apps/web/src/framework/bootstrap.ts:1519
+The phone app runs only the scripts it ships with (script-src 'self') -> apps/mobile/scripts/boot-injection.ts:75
+Minimum app versions from LIAISON_MIN_CLIENT_* -> apps/api/src/lib/env.ts:91
+Client version notice copy -> packages/shared/src/i18n/locales/en/kernel.json:1936
+App asks the client policy once at start -> apps/web/src/index.tsx:99
+Older than the minimum shows the notice -> apps/web/src/lib/client-version.ts:86
+Desktop Check for updates action -> apps/web/src/modules/shell/ClientVersionNotice.tsx:64
+App Store or Google Play sentence by phone platform -> apps/web/src/modules/shell/ClientVersionNotice.tsx:54
+Not now hides it until the app opens again -> apps/web/src/modules/shell/ClientVersionNotice.tsx:44
+Phone version is 1.0.<build> -> apps/mobile/src/native/client-version.ts:29
+Browser never asks -> apps/web/src/lib/client-version.ts:79
+The app sends each step of a chat turn back to the chat -> apps/desktop/src/node-jobs/runner.ts:1086
+Steps read from the session (tool calls and results) -> apps/desktop/sidecar/node-interactive.ts:354
+The progress post (node credential) -> apps/desktop/src/node-jobs/adapters.ts:220
+An older app shows only that the turn runs (claim opens the live turn) -> apps/api/src/modules/nodes/jobs.ts:1829
+Phone re-checks its push registration each time the app opens -> apps/mobile/src/push-client.ts:564
+Phone retries a failed push registration on its own -> apps/mobile/src/push-client.ts:672
+Signing out removes the phone's push registration -> apps/mobile/src/push-client.ts:701
+Dead socket noticed within about 10 s (5 s ping, 4 s pong deadline) -> apps/web/src/primitives/createWebSocket.ts:95
+Probes on focus, visible again, online, foreground, wake -> apps/web/src/primitives/createWebSocket.ts:100
+Offline drops the socket -> apps/web/src/primitives/createWebSocket.ts:671
+Focus and visibility probes -> apps/web/src/primitives/createWebSocket.ts:675
+Phone app foreground signal -> apps/mobile/src/native/foreground.ts:3
+Wake detector (sleep) -> apps/web/src/primitives/createWebSocket.ts:107
+Open pages resync after a reconnect -> apps/web/src/framework/resync.ts:94
+phone sign-out forgets the stored token whatever the server answers -> apps/mobile/src/auth/refresh-bridge.ts:325
+desktop sign-out forgets the stored token whatever the server answers -> apps/desktop/src/overlay.tsx:198
+desktop icon badge counts unread direct messages and mentions -> apps/web/src/modules/threads/direct-unread-count.ts:31
+desktop icon badge set by the shell -> apps/desktop/src-tauri/src/dock_badge.rs:114
+direct messages and mentions play the system sound -> apps/desktop/src-tauri/src/desktop_notifications.rs:546
+Task comment push titled with the task, tap opens the task on the comment -> apps/mobile/src/push-client.ts:213

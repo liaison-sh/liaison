@@ -1,0 +1,34 @@
+[
+  {
+    "type": "message",
+    "subtype": "thread_broadcast",
+    "user": "U0001",
+    "text": "Also posting this in the channel",
+    "ts": "1709373600.000400",
+    "thread_ts": "1709287200.000100"
+  },
+  {
+    "type": "message",
+    "subtype": "bot_message",
+    "bot_id": "B0001",
+    "username": "deploybot",
+    "text": "Deployed v1.2",
+    "ts": "1709373700.000500"
+  },
+  {
+    "type": "message",
+    "user": "U0001",
+    "text": "The plan",
+    "ts": "1709373800.000600",
+    "edited": { "user": "U0001", "ts": "1709373900.000000" },
+    "files": [
+      {
+        "id": "F0001",
+        "name": "plan.pdf",
+        "title": "plan.pdf",
+        "mimetype": "application/pdf",
+        "url_private": "https://files.example.invalid/F0001/plan.pdf"
+      }
+    ]
+  }
+]

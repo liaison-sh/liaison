@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cotation>
+  <shipment>
+    <offer>
+      <mode>COM</mode>
+      <operator>
+        <code>SOGP</code>
+        <label>So Colissimo</label>
+      </operator>
+      <service>
+        <code>DomicileSansSignature</code>
+        <label>Colissimo Domicile sans signature</label>
+      </service>
+      <price>
+        <currency>EUR</currency>
+        <tax-exclusive>9.20</tax-exclusive>
+        <tax-inclusive>11.04</tax-inclusive>
+      </price>
+      <collection>
+        <date>2026-06-01</date>
+        <type>
+          <code>DROPOFF_POINT</code>
+          <label>Depot</label>
+        </type>
+      </collection>
+      <delivery>
+        <date>2026-06-04</date>
+        <type>
+          <code>DELIVERY</code>
+          <label>Livraison a domicile</label>
+        </type>
+      </delivery>
+    </offer>
+  </shipment>
+</cotation>

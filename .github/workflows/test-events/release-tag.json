@@ -1,0 +1,60 @@
+{
+  "ref": "refs/tags/v0.1.0",
+  "ref_type": "tag",
+  "ref_name": "v0.1.0",
+  "before": "0000000000000000000000000000000000000000",
+  "after": "1111111111111111111111111111111111111111",
+  "created": true,
+  "deleted": false,
+  "forced": false,
+  "base_ref": null,
+  "compare": "https://github.com/mathieufro/liaison/compare/v0.0.0...v0.1.0",
+  "commits": [],
+  "head_commit": {
+    "id": "1111111111111111111111111111111111111111",
+    "tree_id": "2222222222222222222222222222222222222222",
+    "distinct": true,
+    "message": "Release v0.1.0",
+    "timestamp": "2026-01-01T00:00:00Z",
+    "url": "https://github.com/mathieufro/liaison/commit/1111111111111111111111111111111111111111",
+    "author": {
+      "name": "release-bot",
+      "email": "release-bot@users.noreply.github.com",
+      "username": "release-bot"
+    },
+    "committer": {
+      "name": "release-bot",
+      "email": "release-bot@users.noreply.github.com",
+      "username": "release-bot"
+    },
+    "added": [],
+    "removed": [],
+    "modified": []
+  },
+  "repository": {
+    "id": 1,
+    "node_id": "R_kgDOA0000000",
+    "name": "liaison",
+    "full_name": "mathieufro/liaison",
+    "private": false,
+    "owner": {
+      "name": "mathieufro",
+      "email": "mathieufro@users.noreply.github.com",
+      "login": "mathieufro",
+      "id": 1,
+      "node_id": "U_kgDOA0000000",
+      "type": "User"
+    },
+    "default_branch": "main"
+  },
+  "pusher": {
+    "name": "release-bot",
+    "email": "release-bot@users.noreply.github.com"
+  },
+  "sender": {
+    "login": "release-bot",
+    "id": 1,
+    "node_id": "U_kgDOA0000000",
+    "type": "User"
+  }
+}

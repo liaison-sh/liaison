@@ -1,0 +1,18 @@
+{
+  "clips": [
+    {
+      "file": "ami-es2002a-b-kickoff.webm",
+      "language": "en",
+      "seconds": 22.4,
+      "source": "AMI Meeting Corpus, meeting ES2002a, individual headset channel 1 (speaker B, project manager), 55.4 s to 77.8 s",
+      "sourceUrl": "https://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/ES2002a/audio/ES2002a.Headset-1.wav",
+      "transcriptSource": "AMI manual annotations 1.6.2, words/ES2002a.B.words.xml (https://groups.inf.ed.ac.uk/ami/AMICorpusAnnotations/ami_public_manual_1.6.2.zip)",
+      "licence": "CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
+      "attribution": "AMI Meeting Corpus, AMI Consortium (https://groups.inf.ed.ac.uk/ami/corpus/). Changes: cut to 22.4 s, downmixed to 16 kHz mono, re-encoded to WebM/Opus 24 kbit/s.",
+      "reference": "Um well this is the kick-off meeting for our our project. Um and um this is just what we're gonna be doing over the next twenty five minutes. Um so first of all, just to kind of make sure that we all know each other, I'm Laura and I'm the project manager. Do you want to introduce yourself again?",
+      "fillers": ["um", "our our"],
+      "mustKeep": [["kick-off", "kickoff"], "meeting", "project", "Laura", "project manager"],
+      "synthetic": false
+    }
+  ]
+}

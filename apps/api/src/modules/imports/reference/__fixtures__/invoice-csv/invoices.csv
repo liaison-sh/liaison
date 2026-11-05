@@ -1,0 +1,6 @@
+type,number,issued_on,due_on,currency,customer_name,customer_company,customer_email,customer_address,customer_country,customer_vat,order_ref,corrects,state,paid_amount,item,qty,unit_price,vat_percent,line_net,line_vat,pdf
+invoice,FAB-2025-0001,06/05/2025,05/06/2025,EUR,Chloe Martin,Contoso Retail,chloe@contoso.example,"12 Harbour Road, Lyon",FR,FR00123456789,#1001,,paid,1452.00,Pad controller,1,1100.00,20,1100.00,220.00,pdfs/FAB-2025-0001.pdf
+invoice,FAB-2025-0001,06/05/2025,05/06/2025,EUR,Chloe Martin,Contoso Retail,chloe@contoso.example,"12 Harbour Road, Lyon",FR,FR00123456789,#1001,,paid,1452.00,Carry case,2,55.00,20,110.00,22.00,pdfs/FAB-2025-0001.pdf
+invoice,FAB-2025-0002,10/05/2025,09/06/2025,EUR,Lars Berg,,lars@example.org,"Fjordgata 4, Bergen",NO,,#1002,,open,0,Pad controller,1,1100.00,0,1100.00,0.00,pdfs/FAB-2025-0002.pdf
+credit_note,FAB-CN-2025-0001,20/05/2025,,EUR,Lars Berg,,lars@example.org,"Fjordgata 4, Bergen",NO,,#1002,FAB-2025-0002,refunded,0,Return of pad controller,1,1100.00,0,1100.00,0.00,pdfs/FAB-CN-2025-0001.pdf
+invoice,FAB-2025-0003,22/05/2025,21/06/2025,USD,Ada Quinn,Northwind Traders,ada@northwind.example,"9 Elm Street, Boston",US,,#1003,,void,0,Sound module,3,49.99,0,149.97,0.00,pdfs/FAB-2025-0003.pdf

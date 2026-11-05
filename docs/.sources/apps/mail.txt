@@ -1,0 +1,173 @@
+Settings page is under the Apps group of settings -> packages/shared/src/i18n/locales/en/kernel.json:1567
+Mail settings page URL /settings/apps/mail -> apps/web/src/modules/mail/MailAccounts.tsx:67
+Section Your email accounts (user scope) -> apps/api/src/apps/mail/app.manifest.json:1641
+Connect an Account heading -> packages/shared/src/i18n/locales/en/mail.json:10
+Connect Gmail button -> packages/shared/src/i18n/locales/en/mail.json:122
+Gmail OAuth requests gmail.modify and gmail.send -> apps/api/src/apps/mail/app.manifest.json:103
+Personal mailbox is private, mailbox password is not the login password -> packages/shared/src/i18n/locales/en/mail.json:157
+Open Mail Setup link for mail admins when Google client missing -> apps/web/src/modules/mail/MailAccounts.tsx:87
+Gmail & Google sign-in section, adminScope kernel:org:admin -> apps/api/src/apps/mail/app.manifest.json:1687
+Google client is same as Google sign-in -> packages/shared/src/i18n/locales/en/mail.json:183
+Mailbox types section, Gmail mailboxes toggle, mail:accounts:admin -> apps/api/src/apps/mail/app.manifest.json:1661
+Gmail mailboxes toggle label -> apps/api/src/apps/mail/app.manifest.json:1667
+Connect IMAP/SMTP button -> packages/shared/src/i18n/locales/en/mail.json:12
+IMAP presets Fastmail, Yahoo, iCloud -> apps/web/src/modules/mail/MailAccounts.tsx:754
+IMAP form fields email, host, port, username, password -> apps/api/src/apps/mail/app.manifest.json:133
+IMAP submit button Connect -> apps/web/src/modules/mail/MailAccounts.tsx:949
+App password when two-factor on -> apps/api/src/apps/mail/app.manifest.json:176
+TLS ports IMAP 993, SMTP 465 or 587 -> apps/api/src/apps/mail/app.manifest.json:181
+Provider host examples Gmail, Outlook, iCloud -> apps/api/src/apps/mail/app.manifest.json:178
+Organization-owned accounts shown to mail:accounts:admin -> apps/web/src/modules/mail/MailAccounts.tsx:573
+Organization-owned accounts label -> packages/shared/src/i18n/locales/en/mail.json:32
+Connect shared Gmail -> packages/shared/src/i18n/locales/en/mail.json:123
+Connect shared IMAP/SMTP -> packages/shared/src/i18n/locales/en/mail.json:124
+Manage access links to roles with dimension mail:inbox -> apps/web/src/modules/mail/MailAccounts.tsx:659
+Sync Now button -> packages/shared/src/i18n/locales/en/mail.json:120
+Re-authorize button -> packages/shared/src/i18n/locales/en/mail.json:117
+Re-authorization required badge -> packages/shared/src/i18n/locales/en/mail.json:113
+Disconnect deletes imported data, mail stays, tickets kept -> packages/shared/src/i18n/locales/en/mail.json:169
+Mail in activity bar -> apps/api/src/apps/mail/app.manifest.json:1728
+Sidebar Inbox -> apps/web/src/modules/mail/MailSidebar.tsx:86
+Sidebar Assigned to me -> packages/shared/src/i18n/locales/en/mail.json:59
+Sidebar Starred, Drafts, Trash -> packages/shared/src/i18n/locales/en/mail.json:61
+Sidebar Sent -> packages/shared/src/i18n/locales/en/mail.json:36
+Search conversations box -> apps/web/src/modules/mail/MailInbox.tsx:443
+Search covers the whole folder after two characters -> apps/web/src/modules/mail/MailInbox.tsx:244
+Searching all conversations label -> packages/shared/src/i18n/locales/en/mail.json:93
+Private mailbox searched in the browser, only message ids sent -> apps/web/src/modules/mail/mail-conversation-store.ts:395
+Category switch All / Primary / Other -> apps/web/src/modules/mail/MailInbox.tsx:377
+Category labels -> packages/shared/src/i18n/locales/en/mail.json:68
+Row action Claim assigns to self -> apps/web/src/modules/mail/MailInbox.tsx:761
+Row action Mark read / Mark unread -> apps/web/src/modules/mail/MailInbox.tsx:624
+Row action Archive -> apps/web/src/modules/mail/MailInbox.tsx:635
+Row action Star -> apps/web/src/modules/mail/MailInbox.tsx:650
+Reply… button -> apps/web/src/modules/mail/MailReplyBar.tsx:246
+Reply all -> apps/web/src/modules/mail/MailConversation.tsx:707
+Forward -> apps/web/src/modules/mail/MailConversation.tsx:719
+Attach files in reply -> apps/web/src/modules/mail/MailReplyBar.tsx:304
+Send button -> apps/web/src/modules/mail/MailReplyBar.tsx:348
+Human send goes directly via drafts send route -> apps/api/src/modules/mail/routes.ts:375
+Compose in sidebar -> apps/web/src/modules/mail/MailSidebar.tsx:79
+Compose From field -> apps/web/src/modules/mail/MailCompose.tsx:201
+Compose To, Cc/Bcc, Subject -> apps/web/src/modules/mail/MailCompose.tsx:216
+Compose Discard -> apps/web/src/modules/mail/MailCompose.tsx:319
+Compose Send -> apps/web/src/modules/mail/MailCompose.tsx:341
+Convert to ticket -> apps/web/src/modules/mail/MailConversation.tsx:780
+Discuss opens chat with personal agent -> apps/web/src/modules/mail/MailConversation.tsx:231
+Agent drafting skill: search, knowledge, mail__reply -> apps/api/src/apps/mail/app.manifest.json:1754
+One pending reply draft per conversation, refused if a colleague's waits -> apps/api/src/apps/mail/app.manifest.json:812
+mail:accounts:read (listAccounts) -> apps/api/src/apps/mail/app.manifest.json:588
+mail:accounts:write (disconnectAccount) -> apps/api/src/apps/mail/app.manifest.json:619
+mail:conversations:read (search) -> apps/api/src/apps/mail/app.manifest.json:653
+mail:conversations:write (reply) -> apps/api/src/apps/mail/app.manifest.json:811
+listAccounts hides disconnected by default -> apps/api/src/apps/mail/app.manifest.json:588
+getAccount -> apps/api/src/apps/mail/app.manifest.json:602
+getSyncStatus -> apps/api/src/apps/mail/app.manifest.json:636
+disconnectAccount, no connect tool -> apps/api/src/apps/mail/app.manifest.json:619
+search filters -> apps/api/src/apps/mail/app.manifest.json:653
+read -> apps/api/src/apps/mail/app.manifest.json:723
+export_conversations CSV or markdown -> apps/api/src/apps/mail/app.manifest.json:753
+reply gated -> apps/api/src/apps/mail/app.manifest.json:826
+forward gated, carries attachments -> apps/api/src/apps/mail/app.manifest.json:959
+compose gated -> apps/api/src/apps/mail/app.manifest.json:1302
+archive -> apps/api/src/apps/mail/app.manifest.json:1138
+setLabels add or replace -> apps/api/src/apps/mail/app.manifest.json:1160
+convertToTicket -> apps/api/src/apps/mail/app.manifest.json:1094
+mail:drafts:read reads drafts -> apps/api/src/apps/mail/app.manifest.json:566
+mail:approve derived approver scope for gated tools -> apps/api/src/modules/permissions/scope-catalog.ts:239
+mail:accounts:admin, mail admin connects org mailboxes -> apps/web/src/modules/mail/MailAccounts.tsx:573
+A failed sync shows its error on the row -> apps/api/src/apps/mail/handlers.ts:3641
+Retry after 15 min, doubling, capped at 6 h -> apps/api/src/apps/mail/handlers.ts:3617
+A refused login is not retried -> apps/api/src/apps/mail/handlers.ts:3621
+A shared mailbox in error shows Retry now -> apps/web/src/modules/mail/MailAccounts.tsx:677
+Edit credentials opens the IMAP form for that mailbox -> apps/web/src/modules/mail/MailAccounts.tsx:182
+listAccounts returns the last sync error and next retry -> apps/api/src/apps/mail/handlers.ts:2092
+SMTP security sets the port: STARTTLS 587, SSL/TLS 465; a typed port stays -> apps/web/src/modules/mail/MailAccounts.tsx:789
+SMTP security label -> packages/shared/src/i18n/locales/en/mail.json:188
+Edit credentials opens with the stored servers, ports and username, never the password -> apps/api/src/modules/apps/connections/settings.ts:67
+A refused retry is said on the row -> apps/web/src/modules/mail/MailAccounts.tsx:642
+Retry now works for an admin holding the wildcard or a parent grant -> apps/api/src/modules/mail/service.ts:1314
+Mail settings re-read when mail:provider arrives (switch set from the agent) -> apps/web/src/modules/settings/app-page/AppSettingsPage.tsx:52
+Mail resync reloads open conversations, restarting a hung load -> apps/web/src/modules/mail/mail-message-store.ts:493
+Restart aborts the in-flight load -> apps/web/src/modules/mail/mail-message-store.ts:272
+agent draft attaches a file id or an earlier step's @ref -> apps/api/src/apps/mail/app.manifest.json:879
+Agent turn refused during a restart is sent again once after Retry-After (1 s default, 5 s cap) -> apps/web/src/modules/mailbox/job-turn-transport.ts:144-148 ; apps/web/src/lib/server-pause.ts:58-72
+compose is a real email; colleagues are messaged in a Liaison conversation -> apps/api/src/apps/mail/app.manifest.json:1297
+IMAP sign-in refusal reasons (wrong password, app password, IMAP off, held for a browser check, too many connections) -> packages/shared/src/imap-login-failures.ts:10-21 ; packages/shared/src/i18n/locales/en/mail.json:24
+Gmail app password: 2-Step Verification and app password links; spaces accepted -> packages/shared/src/setup-guides.ts:515-527
+Agent IMAP form comes filled with Gmail's servers -> apps/api/src/modules/secret-requests/approved-settings.ts:99
+Row line "Kept in step with the server", archive-local and too-large notes -> apps/web/src/modules/mail/MailAccounts.tsx:169 ; packages/shared/src/i18n/locales/en/mail.json:31 ; packages/shared/src/imap-login-failures.ts:101
+IMAP write-back: read \Seen, star \Flagged, archive/trash by folder or Gmail \Inbox label -> apps/api/src/modules/apps/sandbox/imap-mailbox.ts:313
+Server without Archive folder keeps archive in Liaison -> apps/api/src/modules/apps/sandbox/imap-mailbox.ts:256
+Remote archive/read/star and reopen come back on incremental sync; only the moved flag -> apps/api/src/apps/mail/handlers.ts:4244 ; apps/api/src/apps/mail/handlers.ts:4188 ; apps/api/src/apps/mail/handlers.ts:4300
+Inbox above 20,000 messages not tracked -> apps/api/src/modules/apps/sandbox/imap-mailbox.ts:145 ; apps/api/src/apps/mail/handlers.ts:4330
+Trashed in Liaison stays trashed through read-back -> apps/api/src/apps/mail/handlers.ts:1023
+Sent folder imported; outbound-only thread arrives archived -> apps/api/src/apps/mail/handlers.ts:4352 ; apps/api/src/modules/mail/page-write.ts:198
+Sent copy 30 s after the send, skipped for Gmail, Microsoft, Yahoo, AOL -> apps/api/src/modules/apps/sandbox/imap-mailbox.ts:395 ; apps/api/src/modules/apps/sandbox/imap-mailbox.ts:413 ; apps/api/src/modules/apps/sandbox/bridge/egress.ts:137
+Bulk changes in groups of 15, one sign-in per group -> apps/api/src/apps/mail/handlers.ts:3671 ; apps/api/src/modules/apps/sandbox/imap-bridge.ts:601
+New mail every 2 minutes -> packages/shared/src/imap-login-failures.ts:115
+Refused change stays in Liaison, row says Not written to the mail server -> packages/shared/src/i18n/locales/en/mail.json:21-23 ; apps/api/src/apps/mail/handlers.ts:3704
+"Sync paused after repeated failures, retrying at" line -> apps/web/src/modules/mail/MailAccounts.tsx:208
+Mail syncs most recent first: first import newest first, new mail caught up first on each run -> apps/api/src/apps/mail/handlers.ts:4557 ; apps/api/src/modules/apps/sandbox/imap-bridge.ts:389
+After a pause the newest waiting mail first, the gap filled newest to oldest -> apps/api/src/apps/mail/handlers.ts:4380
+Sent folder after the inbox, newest first -> apps/api/src/apps/mail/handlers.ts:4450
+Message over 1 MB imported as its text parts only -> apps/api/src/modules/apps/sandbox/imap-bridge.ts:540
+Incremental failure backoff 2 min doubling to 6 h (refused password: 6 h); Sync Now and new credentials retry at once -> apps/api/src/apps/mail/handlers.ts:4523 ; apps/api/src/apps/mail/handlers.ts:4773
+A failing Sent folder waits on its own -> apps/api/src/apps/mail/handlers.ts:4944
+Never-synced row says Not synced yet / Syncing… / Syncs once the mailbox is set up -> apps/web/src/modules/mail/MailAccounts.tsx:201 ; packages/shared/src/i18n/locales/en/mail.json:237
+Sync failure shown as a sentence, raw server error on hover (title) -> apps/web/src/modules/mail/MailAccounts.tsx:187 ; apps/web/src/modules/mail/MailAccounts.tsx:571 ; packages/shared/src/i18n/locales/en/mail.json:242
+Encrypted message text over 1 MB stored cut with a size note; sync goes on -> apps/api/src/modules/mailbox-crypto/mail-writer.ts:113
+Mailbox encryption section; Transparent / Private labels -> packages/shared/src/i18n/locales/en/mail.json:153
+Transparent mailbox needs no password at connect -> apps/web/src/modules/mail/MailAccounts.tsx:161
+mode is the person's pick inside the org switch -> apps/api/src/modules/mailbox-crypto/encryption-mode.ts:182
+Make private re-seals to the owner, needs a mailbox password -> apps/api/src/modules/mailbox-crypto/mode-switch.ts:338
+Make transparent: browser decrypts, server re-encrypts -> apps/web/src/modules/mail/mail-encryption-store.ts:137
+Make transparent needs an emailed code (Email me a code) -> apps/web/src/modules/mail/MailAccounts.tsx:371 ; apps/api/src/modules/mailbox-keys/encryption-mode-routes.ts:236 ; packages/shared/src/i18n/locales/en/mail.json:174
+Server checks each re-encrypted item against the stored copy -> apps/api/src/modules/mailbox-crypto/mode-switch.ts:731
+Attachments are checked against the stored copy too -> apps/api/src/modules/mailbox-crypto/mode-switch.ts:881 ; packages/mailbox-crypto/src/field-verify.ts:108
+Owner gets a notice in the feed when the move completes -> apps/api/src/modules/mailbox-crypto/mode-switch.ts:1027 ; packages/shared/src/i18n/locales/en/kernel.json:6017
+agent makes the mailbox private on request (kernel__mailbox_setup private) -> apps/api/src/modules/agent/tools/mailbox-setup-tool.ts:83
+Allow private mailboxes; existing private stay private -> apps/api/src/modules/mailbox-keys/encryption-mode-routes.ts:136
+MAILBOX_ENCRYPTION_DEFAULT and auto -> apps/api/src/lib/env.ts:771
+Conversion covers messages, drafts, conversations, attachments; mode flips only when nothing is left -> apps/api/src/modules/mailbox-crypto/mode-switch.ts:338 ; apps/api/src/modules/mailbox-crypto/mode-switch.ts:1018
+Finish making private / transparent resumes a stopped move -> apps/web/src/modules/mail/MailAccounts.tsx:367 ; apps/web/src/modules/mail/mail-encryption-store.ts:137
+Routine reads the owner's mailbox only when created and last edited by the owner, run on schedule/event/by the owner -> apps/api/src/modules/agent/mailbox-plaintext/routine-mailbox-trust.ts:33
+Unset default decided once; ALLOW_MANAGED=false locks private -> apps/api/src/modules/mailbox-crypto/encryption-mode.ts:93 ; apps/api/src/lib/env.ts:778
+Routines and agents can't read private mail while you're offline: runs wait (Run now) -> packages/shared/src/i18n/locales/en/mail.json:154 ; apps/api/src/modules/agent/routines/routine-mailbox-wait.ts:273
+The agent reads private mail from any open page of an unlocked window, Mail need not be open -> apps/web/src/modules/shell/Shell.tsx:1167 ; apps/web/src/modules/mailbox/MailboxAgentHost.tsx:1
+Mailbox limit refusal shown on Gmail and IMAP connect -> apps/web/src/modules/mail/MailAccounts.tsx:152 ; apps/web/src/modules/settings/cap-limit-message.ts:10 ; packages/shared/src/i18n/locales/en/kernel.json:5617
+No Sync Now on a personal mailbox awaiting encryption setup -> apps/web/src/modules/mail/MailAccounts.tsx:733
+Any unlocked app of the user answers another app's turn, silently, with the request's answer token -> apps/web/src/modules/mailbox/mailbox-agent-runtime.ts:176 ; apps/web/src/modules/mailbox/mailbox-agent-runtime.ts:289 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:496
+A locked app stays silent on another app's turn -> apps/web/src/modules/mailbox/mailbox-agent-runtime.ts:199 ; apps/web/src/modules/mailbox/mailbox-agent-runtime.ts:290
+A locked answer never settles while an unlocked app may still answer; a usable answer settles at once -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-registry.ts:205 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-registry.ts:398
+"Your mailbox is locked on all your open Liaison apps; unlock it on any of them." -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:87 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:577
+Only the user's own sessions get the request or may answer it -> apps/api/src/infra/websocket.ts:2047 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-registry.ts:383
+Ticket conversion still needs the yes in the app you asked in -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-registry.ts:387 ; apps/web/src/modules/mailbox/agent-plaintext-responder.ts:217 ; apps/web/src/modules/mailbox/agent-plaintext-responder.ts:359
+The app you asked in reads any of your mail the agent needs, opened in Mail or not -> apps/web/src/modules/mailbox/agent-plaintext-responder.ts:24 ; apps/web/src/modules/mailbox/MailboxAgentHost.tsx:154
+A conversion only for mail that turn showed -> apps/web/src/modules/mailbox/agent-plaintext-responder.ts:274
+Agent read waits up to 45 s for a few messages -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:104
+Each message past five adds 3 s to the wait -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:111
+Quoted earlier emails folded under a message -> apps/web/src/modules/mail/MailConversation.tsx:710
+Chip label N earlier emails -> packages/shared/src/i18n/locales/en/kernel.json:6227
+In this thread link jumps to the message -> apps/web/src/ui/QuotedHistory.tsx:179
+Unlinked row shows its text -> apps/web/src/ui/QuotedHistory.tsx:188
+Show original label -> packages/shared/src/i18n/locales/en/kernel.json:6231
+Show original renders the quoted part -> apps/web/src/ui/QuotedHistory.tsx:216
+A reply sent from Liaison is shown whole -> apps/web/src/modules/mail/MailConversation.tsx:97
+Thread map right of a long conversation, shown from 2.5 screens -> apps/web/src/ui/ThreadMap.tsx:44 ; apps/web/src/modules/mail/MailConversation.tsx:764
+Titles (who, date, first line) on hover only -> apps/web/src/ui/ThreadMap.tsx:341
+Click a block or a title jumps to the message's top; drag scrolls -> apps/web/src/ui/ThreadMap.tsx:271 ; apps/web/src/ui/ThreadMap.tsx:362 ; apps/web/src/ui/ThreadMap.tsx:323
+Phone: Open thread map button in the top bar from 3 messages -> apps/web/src/modules/mail/MailConversationPhoneHeader.tsx:73 ; apps/web/src/ui/thread-map-store.ts:18 ; packages/shared/src/i18n/locales/en/kernel.json:3034
+Phone: position pill while scrolling opens the drawer -> apps/web/src/ui/ThreadMapDrawer.tsx:197 ; apps/web/src/ui/ThreadMapDrawer.tsx:51
+This conversation drawer, tap a row to jump -> packages/shared/src/i18n/locales/en/kernel.json:3036 ; apps/web/src/ui/ThreadMapDrawer.tsx:240
+Several windows: a refusal from another window is held while the turn's window stays connected -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-registry.ts:175
+Several windows: an answer from the turn's window or a usable one settles at once -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-registry.ts:328
+Agent read waits up to 45 s for a few messages -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:109
+Each message past five adds 3 s to the wait -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:116
+kernel__mail_attachment_read reads an attachment by id -> apps/api/src/modules/agent/tools/kernel-tools.ts:1038
+read lists attachments and names kernel__mail_attachment_read -> apps/api/src/apps/mail/app.manifest.json
+private mailbox: opened by the unlocked window, nothing stored -> apps/api/src/modules/agent/media/mail-attachment-read.ts:208
+private mailbox: a video can't be analysed yet -> apps/api/src/modules/agent/media/media-analysis-tool.ts:370
+attachment of the user's own mail is opened by the browser for the turn -> apps/web/src/modules/mailbox/agent-plaintext-responder.ts:286
+locked mailbox refused plainly -> apps/web/src/modules/mailbox/agent-plaintext-responder.ts:301
+25 MB cap -> apps/api/src/modules/agent/mailbox-plaintext/answer-limits.ts:8

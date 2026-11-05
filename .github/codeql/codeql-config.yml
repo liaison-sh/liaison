@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# CodeQL configuration, read by .github/workflows/codeql.yml.
+#
+# Code that never runs in a deployment is left out of the analysis: tests,
+# their helpers and harnesses, the benches, and developer scripts that read
+# only the developer's own checkout. Their alerts are noise that buries the
+# product's. Everything else stays scanned, in particular the server, the web
+# app, the bundled apps, the shared packages, the operator CLI
+# (apps/api/src/cli), the desktop sidecar and release scripts
+# (apps/desktop/sidecar, apps/desktop/ci) and the seed engine the demo
+# instance runs (apps/api/src/seed).
+#
+# A path is added here only when nothing deployed imports it. paths-ignore
+# cannot re-include a subpath, so scripts/ is listed piece by piece.
+name: liaison
+
+paths-ignore:
+  # Tests, wherever they sit.
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/__test-helpers__/**"
+  # Test trees: api e2e, integration and bench; web and desktop e2e.
+  - "apps/api/src/tests/**"
+  - "apps/api/test-support/**"
+  - "apps/web/src/tests/**"
+  - "apps/desktop/src/tests/**"
+  - "packages/test-helpers/**"
+  # Developer scripts.
+  - "scripts/*"
+  - "scripts/bench/**"
+  - "scripts/git-hooks/**"
+  - "scripts/lib/**"
+  - "scripts/templates/**"
+  - "qa/**"
+  - "bundled-apps/*/scripts/**"

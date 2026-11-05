@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# The edge for rolling deploys (deploy/rolling-deploy.sh). Caddy runs on the
+# same host (network_mode: host) and lists every port the `api` service may
+# bind (API_PORT_RANGE, default 3001-3004), plus the single `app` port (3000)
+# so the first switch from `app` to `api` + `worker` has no gap. It probes each
+# one's /readyz every second: a port nobody binds, or a process that is
+# booting or draining, is unhealthy and gets no traffic.
+#
+# Keep the port list in step with API_PORT_RANGE (deploy/rolling-deploy.sh).
+#
+# During a deploy the edge HOLDS a request that cannot reach a process rather
+# than failing it: when no upstream is ready, or a dial is refused, Caddy
+# retries every 250 ms for up to 60 s on a ready upstream (lb_try_duration).
+# A request that already reached a process is never sent twice, a GET
+# included (lb_retry_match below matches nothing): if that process crashes,
+# the client gets a 502 and retries on its side.
+# The old process answers /readyz 503 at once on SIGTERM and keeps its
+# listener and its idle keep-alive connections open 5 s more
+# (SHUTDOWN_EDGE_GRACE_MS in the rolling services), five probe intervals, so
+# the edge has stopped choosing it long before a pooled connection to it
+# closes; until then it answers with `Connection: close`.
+#
+# Once the first deploy has stopped `app`, remove 127.0.0.1:3000 below.
+#
+# Copy it to your Caddyfile, set your domain, then `caddy validate` and reload.
+
+liaison.example.com {
+	encode zstd gzip
+
+	# JSON access log: deploy-under-load counts status >= 500 lines in it
+	# (scripts/lib/deploy-counters.ts, edge5xx).
+	log {
+		output file /var/log/caddy/liaison-access.log
+		format json
+	}
+
+	reverse_proxy 127.0.0.1:3000 127.0.0.1:3001 127.0.0.1:3002 127.0.0.1:3003 127.0.0.1:3004 {
+		health_uri /readyz
+		health_interval 1s
+		health_timeout 800ms
+		health_status 200
+		lb_policy least_conn
+		# Hold and retry instead of answering 502 while processes swap.
+		lb_try_duration 60s
+		lb_try_interval 250ms
+		# Retry only a request that never reached a process (a refused dial).
+		# Caddy's default also resends a GET whose connection broke after it
+		# was sent; a one-time link would then be used twice.
+		lb_retry_match {
+			expression `false`
+		}
+		fail_duration 5s
+		# Agent chat streams and WebSockets: pass bytes as they come, and let a
+		# long stream run past the default timeouts.
+		flush_interval -1
+		transport http {
+			read_timeout 0
+			write_timeout 0
+		}
+	}
+}

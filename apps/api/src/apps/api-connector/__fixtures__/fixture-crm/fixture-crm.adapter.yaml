@@ -1,0 +1,307 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# API connector adapter for the fixture CRM (server.ts in this directory).
+# Written by following .claude/skills/api-connector-authoring/SKILL.md from
+# the fixture's openapi.json. It fills all six roles plus three writes
+# (a company note, a new company, a new contact).
+#
+# baseUrl is the fixture's default local address. A loopback http baseUrl is
+# accepted by the schema, but the connector only reaches it when the
+# deployment sets LIAISON_ALLOW_PRIVATE_API_CONNECTOR_HOSTS=true (development
+# only); a real API uses https.
+$schema: ../../../../../../../packages/api-connector-core/adapter.schema.json
+id: fixture-crm
+name: Fixture CRM
+version: "1.0.0"
+description: A small fictional CRM/ERP (companies, contacts, deals, orders, invoices, stock).
+baseUrl: http://127.0.0.1:4010/v1
+auth:
+  type: apiKey
+  in: header
+  name: X-Api-Key
+operations:
+  - name: find_customers
+    description: >-
+      Find customer companies by a contact's email address, a contact's phone
+      number, or the company's email domain (e.g. acme-instruments.example).
+    kind: read
+    method: GET
+    path: /companies
+    role: customer.lookup
+    params:
+      type: object
+      properties:
+        email: { type: string, format: email, description: A contact's email address }
+        phone: { type: string, maxLength: 40, description: A contact's phone number }
+        domain: { type: string, maxLength: 253, description: The company's email domain }
+    query:
+      email: "{email}"
+      phone: "{phone}"
+      domain: "{domain}"
+    items: /data
+    fields: [id, name, domain, city, country, tier]
+
+  - name: list_companies
+    description: List customer companies, optionally filtered by a name fragment.
+    kind: read
+    method: GET
+    path: /companies
+    params:
+      type: object
+      properties:
+        q: { type: string, maxLength: 100, description: Part of the company name }
+        limit: { type: integer, minimum: 1, maximum: 100, description: Page size }
+    query:
+      q: "{q}"
+      limit: "{limit}"
+    items: /data
+    pagination:
+      type: cursor
+      param: cursor
+      cursorPointer: /next_cursor
+    fields: [id, name, domain, industry, country, tier]
+
+  - name: get_customer_summary
+    description: >-
+      One customer company's summary: location, tier, account manager,
+      lifetime value, open balance and last order date.
+    kind: read
+    method: GET
+    path: /companies/{customerId}
+    role: customer.summary
+    params:
+      type: object
+      properties:
+        customerId: { type: string, maxLength: 64, description: The company id (cmp_...) }
+      required: [customerId]
+    items: /company
+    fields:
+      - id
+      - name
+      - domain
+      - industry
+      - city
+      - country
+      - tier
+      - currency
+      - account_manager.name
+      - account_manager.email
+      - contacts_count
+      - open_deals
+      - lifetime_value
+      - open_balance
+      - last_order_date
+
+  - name: list_contacts
+    description: The people at one customer company.
+    kind: read
+    method: GET
+    path: /companies/{customerId}/contacts
+    params:
+      type: object
+      properties:
+        customerId: { type: string, maxLength: 64 }
+      required: [customerId]
+    items: /data
+    fields: [id, first_name, last_name, email, phone, title]
+
+  - name: list_orders
+    description: >-
+      One customer's sales orders, newest first, with their lines. Use since
+      (YYYY-MM-DD) to restrict to orders placed on or after a date.
+    kind: read
+    method: GET
+    path: /companies/{customerId}/orders
+    role: customer.orders
+    params:
+      type: object
+      properties:
+        customerId: { type: string, maxLength: 64 }
+        since: { type: string, format: date, description: Earliest order date (YYYY-MM-DD) }
+        status:
+          type: string
+          enum: [pending, shipped, delivered, cancelled]
+      required: [customerId]
+    query:
+      since: "{since}"
+      status: "{status}"
+    items: /data
+    fields:
+      - id
+      - number
+      - date
+      - status
+      - currency
+      - total
+      - lines.sku
+      - lines.description
+      - lines.quantity
+      - lines.unit_price
+
+  - name: list_recent_orders
+    description: >-
+      The latest sales orders across every customer, newest first, each with
+      its company's id and name and its lines. Use it to find the most recent
+      customer or what was ordered lately; no customer id needed.
+    kind: read
+    method: GET
+    path: /orders
+    params:
+      type: object
+      properties:
+        limit: { type: integer, minimum: 1, maximum: 100, description: How many orders (default 25) }
+        since: { type: string, format: date, description: Earliest order date (YYYY-MM-DD) }
+        status:
+          type: string
+          enum: [pending, shipped, delivered, cancelled]
+    query:
+      limit: "{limit}"
+      since: "{since}"
+      status: "{status}"
+    items: /data
+    fields:
+      - id
+      - number
+      - date
+      - company_id
+      - company_name
+      - status
+      - currency
+      - total
+      - lines.sku
+      - lines.description
+      - lines.quantity
+      - lines.unit_price
+
+  - name: list_invoices
+    description: One customer's invoices, optionally filtered by status.
+    kind: read
+    method: GET
+    path: /companies/{customerId}/invoices
+    role: customer.invoices
+    params:
+      type: object
+      properties:
+        customerId: { type: string, maxLength: 64 }
+        status: { type: string, enum: [paid, open, overdue] }
+      required: [customerId]
+    query:
+      status: "{status}"
+    items: /data
+    fields: [id, number, order_id, issued_on, due_on, status, total, currency]
+
+  - name: list_deals
+    description: One customer's sales opportunities (deals) and their stage.
+    kind: read
+    method: GET
+    path: /companies/{customerId}/deals
+    role: deal.list
+    params:
+      type: object
+      properties:
+        customerId: { type: string, maxLength: 64 }
+        stage: { type: string, enum: [lead, qualified, proposal, won, lost] }
+      required: [customerId]
+    query:
+      stage: "{stage}"
+    items: /data
+    fields: [id, title, stage, amount, currency, probability, expected_close, owner.name]
+
+  - name: check_stock
+    description: Stock levels per product, by exact sku or a product-name search.
+    kind: read
+    method: GET
+    path: /stock
+    role: stock.check
+    params:
+      type: object
+      properties:
+        sku: { type: string, maxLength: 64, description: Exact product sku (e.g. OSC-200) }
+        query: { type: string, maxLength: 100, description: Part of the product name }
+    query:
+      sku: "{sku}"
+      q: "{query}"
+    items: /data
+    fields: [sku, name, warehouse, on_hand, reserved, available, restock_date]
+
+  - name: create_note
+    description: Add a note to a customer company's timeline (visible to the CRM's users).
+    kind: write
+    method: POST
+    path: /companies/{customerId}/notes
+    params:
+      type: object
+      properties:
+        customerId: { type: string, maxLength: 64 }
+        text: { type: string, minLength: 1, maxLength: 2000, description: The note text }
+        pinned: { type: boolean, description: Pin the note at the top of the timeline }
+      required: [customerId, text]
+    body:
+      note:
+        body: "{text}"
+        pinned: "{pinned}"
+    items: /note
+    fields: [id, company_id, body, pinned, created_at]
+
+  - name: create_company
+    description: >-
+      Create a customer company. Look it up first (find_customers by domain,
+      list_companies by name): a domain that already exists is refused.
+    kind: write
+    method: POST
+    path: /companies
+    params:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200, description: The company name }
+        domain: { type: string, maxLength: 253, description: "The company's email or web domain (e.g. acme-instruments.example)" }
+        industry: { type: string, maxLength: 200 }
+        city: { type: string, maxLength: 200 }
+        country: { type: string, maxLength: 2, description: ISO country code (e.g. FR) }
+      required: [name]
+    body:
+      company:
+        name: "{name}"
+        domain: "{domain}"
+        industry: "{industry}"
+        city: "{city}"
+        country: "{country}"
+    items: /company
+    fields: [id, name, domain, industry, city, country]
+
+  - name: create_contact
+    description: >-
+      Create a person at a customer company: give customerId for a company the
+      CRM already has, or companyName (and companyDomain) to create the company
+      in the same call. An email that already exists is refused.
+    kind: write
+    method: POST
+    path: /contacts
+    params:
+      type: object
+      properties:
+        email: { type: string, format: email, description: "The person's email address" }
+        firstName: { type: string, minLength: 1, maxLength: 200 }
+        lastName: { type: string, minLength: 1, maxLength: 200 }
+        title: { type: string, maxLength: 200, description: Their job title }
+        phone: { type: string, maxLength: 40 }
+        customerId: { type: string, maxLength: 64, description: An existing company id (cmp_...) }
+        companyName: { type: string, maxLength: 200, description: "A new company's name, when the CRM has none" }
+        companyDomain: { type: string, maxLength: 253, description: "The new company's domain" }
+        companyIndustry: { type: string, maxLength: 200, description: "What the new company does, in a short line" }
+      required: [email, firstName, lastName]
+    body:
+      contact:
+        first_name: "{firstName}"
+        last_name: "{lastName}"
+        email: "{email}"
+        title: "{title}"
+        phone: "{phone}"
+        company_id: "{customerId}"
+        company:
+          $when: companyName
+          name: "{companyName}"
+          domain: "{companyDomain}"
+          industry: "{companyIndustry}"
+    items: /contact
+    fields: [id, company_id, first_name, last_name, email, title]

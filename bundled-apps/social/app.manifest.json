@@ -1,0 +1,1017 @@
+{
+  "name": "social",
+  "version": "0.6.54",
+  "iconName": "message-square",
+  "description": "Social 'Ground Control': monitors Facebook, Instagram and YouTube for brand-relevant activity, drafts human-approved replies, and manages DMs.",
+  "listing": {
+    "publisher": "Liaison",
+    "category": "Marketing",
+    "icon": "share-2",
+    "summary": "Watch Facebook, Instagram and YouTube activity and answer with approved replies.",
+    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/bundled-apps/social"
+  },
+  "packageFormat": 1,
+  "license": "FSL-1.1-ALv2",
+  "host": "^1",
+  "scopes": [
+    "social:findings:read",
+    "social:findings:write",
+    "social:dm:read",
+    "social:dm:write",
+    "social:watched:read",
+    "social:watched:write",
+    "social:terms:read",
+    "social:terms:write",
+    "social:admin:connection",
+    "social:internal"
+  ],
+  "configKeys": [
+    {
+      "key": "instagramLoginConfigurationId",
+      "type": "string",
+      "label": "Instagram Unified login configuration ID (Meta)"
+    }
+  ],
+  "connections": {
+    "instagram": {
+      "adminScope": "social:admin:connection",
+      "purpose": "Instagram account",
+      "type": "oauth2",
+      "authorizationUrl": "https://www.instagram.com/oauth/authorize",
+      "tokenUrl": "https://api.instagram.com/oauth/access_token",
+      "scopes": [
+        "instagram_business_basic",
+        "instagram_business_manage_comments",
+        "instagram_business_manage_messages"
+      ],
+      "scopeSeparator": ",",
+      "usePkce": false,
+      "longLivedTokenUrl": "https://graph.instagram.com/access_token",
+      "longLivedTokenGrantType": "ig_exchange_token",
+      "identifierFromTokenField": "user_id",
+      "displayNameUrl": "https://graph.instagram.com/v26.0/me?fields=username,name",
+      "displayNameFields": ["username", "name"],
+      "refreshTokenUrl": "https://graph.instagram.com/refresh_access_token",
+      "refreshGrantType": "ig_refresh_token",
+      "refreshUsesAccessToken": true,
+      "refreshWindowMs": 864000000,
+      "allowedDomains": ["graph.instagram.com", "api.instagram.com", "www.instagram.com"],
+      "clientSecretConfigKey": "socialInstagramAppSecret",
+      "setupGuide": {
+        "summary": "An Instagram professional (business or creator) account connects through a Meta app with the Instagram product (API setup with Instagram login). Meta requires an https redirect, so Liaison must be on its public https address.",
+        "steps": [
+          {
+            "who": "human",
+            "minutes": 3,
+            "text": "Open developers.facebook.com/apps, click **Create app**, pick the use case **Other**, then the app type **Business**, and click **Create app** (or use the Meta app you made for Facebook).",
+            "url": "https://developers.facebook.com/apps"
+          },
+          {
+            "who": "human",
+            "minutes": 2,
+            "text": "Under **Add products**, find **Instagram** and click **Set up**: this opens **API setup with Instagram login**.",
+            "url": "https://developers.facebook.com/apps"
+          },
+          {
+            "who": "human",
+            "minutes": 2,
+            "text": "In **3. Set up Instagram business login**, open **Business login settings**, paste the redirect URI this guide lists into **OAuth redirect URIs** and save.",
+            "url": "https://developers.facebook.com/apps"
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "text": "Copy the **Instagram app ID** and **Instagram app secret** from the same page: they are the client ID and secret (not the Facebook App ID).",
+            "url": "https://developers.facebook.com/apps"
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "text": "While the app is in Development mode, add the Instagram account under **App roles > Roles > Instagram testers** and accept the invitation in Instagram (Settings > Website permissions > Apps and websites > Tester invites).",
+            "url": "https://developers.facebook.com/apps"
+          }
+        ],
+        "docsUrl": "https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/business-login"
+      }
+    },
+    "instagram_unified": {
+      "adminScope": "social:admin:connection",
+      "purpose": "Instagram account (Unified login, preview)",
+      "description": "Preview: reads pending verification. An Instagram professional account connected through Meta's Instagram API with Unified login (Facebook Login for Business with a configuration), for Meta apps that no longer offer API setup with Instagram login. The account connects and is named; the app does not read or post through it yet.",
+      "optional": true,
+      "type": "oauth2",
+      "authorizationUrl": "https://www.facebook.com/v26.0/dialog/oauth",
+      "tokenUrl": "https://graph.facebook.com/v26.0/oauth/access_token",
+      "tokenDebugUrl": "https://graph.facebook.com/v26.0/debug_token",
+      "scopes": [],
+      "extraParams": {
+        "override_default_response_type": "true"
+      },
+      "authorizeConfigParams": {
+        "config_id": {
+          "configKey": "instagramLoginConfigurationId",
+          "pattern": "^[0-9]{1,30}$"
+        }
+      },
+      "userinfoUrl": "https://graph.facebook.com/v26.0/me/assigned_instagram_accounts?fields=id,username",
+      "identifierFromUserinfoPath": "data[].id",
+      "accountNameField": "username",
+      "allowedDomains": ["graph.facebook.com", "www.facebook.com"],
+      "setupGuide": {
+        "summary": "Preview: reads pending verification, so the account connects but the app does not read or post through it yet. Use it when your Meta app has no **API setup with Instagram login** (newer apps only offer **API setup with Unified login**). The Instagram professional account must belong to your Meta app's business portfolio first. The sign-in gives a system-user token that never expires when the configuration says so; Meta has no call to revoke it, so after disconnecting here, remove the app from the business portfolio (Business settings > Integrations) to revoke it at Meta.",
+        "steps": [
+          {
+            "who": "human",
+            "minutes": 5,
+            "url": "https://business.facebook.com/settings/instagram-account-v2",
+            "text": "Make the business portfolio that owns your Meta app own the Instagram professional account: in **Business settings > Accounts > Instagram accounts**, click **Add** and sign in to Instagram. If that dialog stays blank, link the Instagram account to a Facebook Page the portfolio owns instead (the Page's **Settings > Linked accounts > Instagram**): it then appears here. The Unified login only offers accounts the app's portfolio owns."
+          },
+          {
+            "who": "human",
+            "minutes": 2,
+            "url": "https://developers.facebook.com/apps",
+            "text": "Open your Meta app (the one used for Facebook, owned by that portfolio), go to **Use cases**, click **Add use case**, tick **Manage messaging & content on Instagram** and click **Add**."
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "url": "https://developers.facebook.com/apps",
+            "text": "On **Manage messaging & content on Instagram**, click **Customize**, then open **API setup with Unified login**."
+          },
+          {
+            "who": "human",
+            "minutes": 4,
+            "url": "https://developers.facebook.com/apps",
+            "text": "Click **Create new configuration** and keep the suggested settings: token type **System-user access token**, permissions instagram_basic, instagram_manage_messages, instagram_manage_comments and instagram_content_publish. For the token expiry choose **Never**: a 60-day expiry ends the connection and asks for a new sign-in every two months. Select the Instagram account and finish."
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "url": "https://developers.facebook.com/apps",
+            "text": "Copy the new configuration's **Configuration ID** (digits only) and give it to the agent."
+          },
+          {
+            "who": "agent",
+            "minutes": 1,
+            "text": "Set the social app setting **instagramLoginConfigurationId** to that Configuration ID (`kernel__config_apps` in the product, or `apps[].config.instagramLoginConfigurationId` with `liaison config apply`). Until it is set, the Connect button says the setting is missing."
+          },
+          {
+            "who": "human",
+            "minutes": 2,
+            "url": "https://developers.facebook.com/apps",
+            "text": "In **Facebook Login for Business > Settings**, add the redirect URI this guide lists (this server's /api/connections/callback) to **Valid OAuth Redirect URIs** and save. It is already there if you connected Facebook with this app."
+          },
+          {
+            "who": "human",
+            "minutes": 2,
+            "place": "liaison",
+            "text": "On the client card, enter the Meta **App ID** and **App secret** from the app's **App settings > Basic**: the same values as the Facebook connection, not an Instagram app ID."
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "place": "liaison",
+            "text": "Click **Connect** on the Instagram (Unified login) connection and sign in with Instagram or Facebook. If the sign-in covers several Instagram accounts, Liaison connects none and names them: ask the agent to connect the one you mean."
+          }
+        ],
+        "docsUrl": "https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login"
+      }
+    },
+    "facebook": {
+      "adminScope": "social:admin:connection",
+      "purpose": "Facebook Page",
+      "type": "oauth2",
+      "authorizationUrl": "https://www.facebook.com/v26.0/dialog/oauth",
+      "tokenUrl": "https://graph.facebook.com/v26.0/oauth/access_token",
+      "tokenDebugUrl": "https://graph.facebook.com/v26.0/debug_token",
+      "scopes": [
+        "pages_show_list",
+        "pages_read_engagement",
+        "pages_manage_engagement",
+        "pages_read_user_content",
+        "pages_messaging",
+        "pages_manage_metadata",
+        "business_management"
+      ],
+      "scopeSeparator": ",",
+      "longLivedTokenUrl": "https://graph.facebook.com/v26.0/oauth/access_token",
+      "longLivedTokenGrantType": "fb_exchange_token",
+      "longLivedTokenParamName": "fb_exchange_token",
+      "longLivedIncludeClientId": true,
+      "userinfoUrl": "https://graph.facebook.com/v26.0/me",
+      "identifierFromUserinfoField": "id",
+      "displayNameUrl": "https://graph.facebook.com/v26.0/me?fields=name,accounts%7Bname%7D",
+      "displayNameFields": ["accounts.data[].name", "name"],
+      "grantedScopesUrl": "https://graph.facebook.com/v26.0/me/permissions",
+      "extraParams": { "auth_type": "rerequest" },
+      "allowedDomains": ["graph.facebook.com", "www.facebook.com"],
+      "clientSecretConfigKey": "socialMetaAppSecret",
+      "setupGuide": {
+        "summary": "Facebook Pages connect through a Meta app you create once: its App ID and App secret are the client ID and secret. Meta requires an https redirect, so Liaison must be on its public https address. Connect with the Facebook account that manages your Pages and keep every Page selected; then ask Liaison's agent to run webhooks_setup (an approval), so new comments and messages arrive at once instead of on the next poll.",
+        "steps": [
+          {
+            "who": "human",
+            "minutes": 2,
+            "text": "Register as a Meta developer first, once per Facebook account: open developers.facebook.com, click **Get Started** (or **Log in**), accept the terms and verify your account. If **My Apps** shows \"Sorry, the link you followed may be broken\", this registration is missing or you are signed out.",
+            "url": "https://developers.facebook.com/"
+          },
+          {
+            "who": "human",
+            "minutes": 3,
+            "text": "Open **My Apps**, click **Create app**, name it (e.g. Liaison), pick the use cases **Manage everything on your Page** and **Engage with customers on Messenger from Meta**, choose your business portfolio and click **Create app**.",
+            "url": "https://developers.facebook.com/apps"
+          },
+          {
+            "who": "human",
+            "minutes": 2,
+            "text": "In the app's **Use cases**, click **Customize** on **Manage everything on your Page** and **Add** its permissions this guide lists: pages_show_list, pages_read_engagement, pages_manage_engagement, pages_read_user_content, pages_manage_metadata, business_management.",
+            "url": "https://developers.facebook.com/apps"
+          },
+          {
+            "who": "human",
+            "minutes": 2,
+            "text": "Still in **Use cases**, click **Customize** on **Engage with customers on Messenger from Meta** and **Add** pages_messaging: Page messages need it, and it is only under this use case.",
+            "url": "https://developers.facebook.com/apps"
+          },
+          {
+            "who": "human",
+            "minutes": 2,
+            "text": "Open **Facebook Login** settings (in the use case's settings, or the product's **Settings**), paste the redirect URI this guide lists into **Valid OAuth Redirect URIs** and click **Save changes**.",
+            "url": "https://developers.facebook.com/apps"
+          },
+          {
+            "who": "human",
+            "minutes": 2,
+            "text": "Open **App settings > Basic**, copy the **App ID** and the **App secret** (click Show), add your privacy policy URL, and save.",
+            "url": "https://developers.facebook.com/apps"
+          },
+          {
+            "who": "human",
+            "minutes": 2,
+            "text": "While the app is in **Development** mode, only people with a role on the app (App roles > Roles) can connect, which is enough for your own Pages. To connect Pages of people without a role, complete Business verification and request Advanced access for these permissions in App Review, then switch the app to **Live**.",
+            "url": "https://developers.facebook.com/apps"
+          }
+        ],
+        "docsUrl": "https://developers.facebook.com/docs/development/create-an-app/"
+      },
+      "appSecretConfigKeys": ["webhookVerifyToken"]
+    },
+    "google": {
+      "adminScope": "social:admin:connection",
+      "purpose": "Google account (YouTube)",
+      "type": "oauth2",
+      "authorizationUrl": "https://accounts.google.com/o/oauth2/v2/auth",
+      "tokenUrl": "https://oauth2.googleapis.com/token",
+      "revocationUrl": "https://oauth2.googleapis.com/revoke",
+      "scopes": [
+        "https://www.googleapis.com/auth/youtube.force-ssl",
+        "https://www.googleapis.com/auth/youtube.readonly"
+      ],
+      "displayNameUrl": "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true",
+      "displayNameFields": ["items[].snippet.title"],
+      "allowedDomains": ["www.googleapis.com", "youtube.googleapis.com", "oauth2.googleapis.com"],
+      "extraParams": { "access_type": "offline", "prompt": "consent" }
+    }
+  },
+  "events": {
+    "emits": ["finding:created", "finding:updated", "dm:received", "firmware:release"],
+    "subscribes": {
+      "kernel/connected_account:create": "onConnectionEstablished",
+      "kernel/connected_account:disconnect": "onConnectionDisconnected"
+    }
+  },
+  "webhooks": {
+    "meta": {
+      "handler": "metaWebhook",
+      "verify": "metaWebhookVerifier",
+      "bodyLimitBytes": 1048576
+    }
+  },
+  "webhookHealth": { "probe": "probe-webhook-upstream" },
+  "jobs": {
+    "discovery-sync": {
+      "runsFor": {"connection": ["instagram", "facebook", "google"]},
+      "schedule": "*/15 * * * *",
+      "handler": "discoverySyncJob",
+      "retry": { "attempts": 3, "backoff": "exponential" }
+    },
+    "watch-poller": {
+      "runsFor": {"connection": ["instagram", "facebook", "google"]},
+      "schedule": "*/5 * * * *",
+      "handler": "watchPollerJob",
+      "retry": { "attempts": 3, "backoff": "exponential" }
+    },
+    "dm-sync": {
+      "runsFor": {"connection": ["instagram", "facebook", "google"]},
+      "schedule": "*/10 * * * *",
+      "handler": "dmSyncJob",
+      "retry": { "attempts": 3, "backoff": "exponential" }
+    },
+    "probe-webhook-upstream": {
+      "runsFor": {"connection": ["instagram", "facebook", "google"]},
+      "schedule": "*/15 * * * *",
+      "handler": "probeWebhookUpstreamJob"
+    },
+    "parse-webhook": {
+      "onDemand": true,
+      "handler": "parseWebhookHandler"
+    }
+  },
+  "schema": {
+    "finding": {
+      "rlsScope": "findings",
+      "internalWriteScope": "social:internal",
+      "fields": {
+        "platform": { "type": "string", "enum": ["facebook", "instagram", "youtube"] },
+        "external_id": "string",
+        "relation": {
+          "type": "string",
+          "enum": [
+            "mention",
+            "mention_in_post",
+            "mention_in_comment",
+            "comment_on_our_content",
+            "keyword_match",
+            "tagged",
+            "reply"
+          ]
+        },
+        "parent_external_id": "string?",
+        "watched_object_id": "uuid?",
+        "contact_id": "uuid?",
+        "author_handle": "string?",
+        "author_external_id": "string?",
+        "content_text": "string?",
+        "media_url": "string?",
+        "permalink": "string?",
+        "occurred_at": "date?",
+        "comment_count": { "type": "number", "default": 0 },
+        "brand_relevant": { "type": "boolean", "default": false },
+        "edited_after_reply": { "type": "boolean", "default": false },
+        "triage_category": "string?",
+        "sentiment": "string?",
+        "urgency": "number?",
+        "should_reply": "boolean?",
+        "needs_human": "boolean?",
+        "triage_reason": "string?",
+        "suggested_reply": "string?",
+        "approval_request_id": "string?",
+        "status": {
+          "type": "string",
+          "default": "new",
+          "enum": ["new", "triaged", "drafted", "awaiting_approval", "handled", "dismissed", "failed"]
+        },
+        "metadata": { "type": "json", "default": {} }
+      },
+      "constraints": {
+        "unique": [["platform", "external_id"]]
+      },
+      "indexes": [["status", "urgency"], ["watched_object_id"], ["contact_id"], ["platform", "occurred_at"]]
+    },
+    "watched_object": {
+      "rlsScope": "watched",
+      "fields": {
+        "platform": { "type": "string", "enum": ["facebook", "instagram", "youtube"] },
+        "object_type": { "type": "string", "enum": ["youtube_video", "instagram_media", "facebook_post"] },
+        "external_id": "string",
+        "title": "string?",
+        "permalink": "string?",
+        "reason": { "type": "string", "default": "manual", "enum": ["auto_hot", "auto_own", "manual"] },
+        "status": {
+          "type": "string",
+          "default": "active",
+          "enum": ["active", "decayed", "stopped"]
+        },
+        "cadence_seconds": { "type": "number", "default": 3600 },
+        "priority": { "type": "number", "default": 50 },
+        "comment_cursor": "string?",
+        "last_polled_at": "date?",
+        "last_activity_at": "date?",
+        "next_poll_at": "date?",
+        "watched_by": "uuid?",
+        "new_findings_count": { "type": "number", "default": 0 },
+        "metadata": { "type": "json", "default": {} }
+      },
+      "constraints": {
+        "unique": [["platform", "external_id"]]
+      },
+      "indexes": [["status", "next_poll_at"]]
+    },
+    "dm_conversation": {
+      "rlsScope": "dm",
+      "fields": {
+        "platform": { "type": "string", "enum": ["facebook", "instagram"] },
+        "external_id": "string",
+        "contact_id": "uuid?",
+        "participant_handle": "string?",
+        "participant_external_id": "string?",
+        "participant_display_name": "string?",
+        "last_inbound_at": "date?",
+        "last_message_at": "date?",
+        "last_message_snippet": "string?",
+        "unread_count": { "type": "number", "default": 0 },
+        "status": {
+          "type": "string",
+          "default": "open",
+          "enum": ["open", "awaiting_approval", "snoozed", "archived", "handled"]
+        },
+        "suggested_reply": "string?",
+        "approval_request_id": "string?",
+        "metadata": { "type": "json", "default": {} }
+      },
+      "constraints": {
+        "unique": [["platform", "external_id"]]
+      },
+      "indexes": [["status", "last_message_at"], ["contact_id"], ["last_inbound_at"]]
+    },
+    "dm_message": {
+      "rlsScope": "dm",
+      "fields": {
+        "conversation_id": {
+          "type": "uuid",
+          "references": {
+            "table": "dm_conversation",
+            "column": "id",
+            "onDelete": "cascade"
+          }
+        },
+        "external_id": "string?",
+        "direction": { "type": "string", "enum": ["inbound", "outbound"] },
+        "author_external_id": "string?",
+        "body": "string?",
+        "attachments": { "type": "json", "default": [] },
+        "sent_via_tag": { "type": "string", "required": false, "enum": ["none", "human_agent"] },
+        "delivery_status": { "type": "string", "required": false, "enum": ["received", "pending", "sent", "failed"] },
+        "approval_request_id": "string?",
+        "occurred_at": "date?",
+        "metadata": { "type": "json", "default": {} }
+      },
+      "constraints": {
+        "unique": [["conversation_id", "external_id"]]
+      },
+      "indexes": [["conversation_id", "occurred_at"]]
+    },
+    "monitor_term": {
+      "rlsScope": "terms",
+      "fields": {
+        "kind": { "type": "string", "default": "keyword", "enum": ["keyword", "handle", "hashtag"] },
+        "value": "string",
+        "platform": { "type": "string", "required": false, "enum": ["facebook", "instagram", "youtube"] },
+        "enabled": { "type": "boolean", "default": true },
+        "notes": "string?",
+        "metadata": { "type": "json", "default": {} }
+      },
+      "constraints": {
+        "unique": [["platform", "kind", "value"]]
+      }
+    },
+    "sync_state": {
+      "rlsScope": "findings",
+      "fields": {
+        "platform": { "type": "string", "enum": ["facebook", "instagram", "youtube"] },
+        "account_external_id": "string",
+        "source_type": {
+          "type": "string",
+          "enum": ["discovery", "watch", "dm"]
+        },
+        "cursor": "string?",
+        "active": { "type": "boolean", "default": true },
+        "units_consumed_today": { "type": "number", "default": 0 },
+        "units_window_date": "string?",
+        "last_synced_at": "date?",
+        "metadata": { "type": "json", "default": {} }
+      },
+      "constraints": {
+        "unique": [["platform", "account_external_id", "source_type"]]
+      }
+    }
+  },
+  "entities": {
+    "finding": {
+      "labelField": "content_text",
+      "searchable": true,
+      "indexFields": { "title": "content_text" },
+      "tableName": "finding",
+      "readScope": "social:findings:read"
+    },
+    "dm_conversation": {
+      "labelField": "participant_handle",
+      "tableName": "dm_conversation"
+    },
+    "watched_object": { "labelField": "external_id", "tableName": "watched_object" }
+  },
+  "search": {
+    "handler": "searchHandler",
+    "entities": ["finding"],
+    "timeoutMs": 5000
+  },
+  "tools": {
+    "webhooks_setup": {
+      "description": "Point Meta's Facebook Page webhooks at this instance, so new comments and Messenger DMs arrive in real time instead of on the next poll. Makes the Meta app's page subscription (fields feed and messages) target this instance's social webhook, provisioning the verify token it checks, then subscribes every managed Page of each connected Facebook account to the app. Needs the pages_manage_metadata permission on the Facebook connection: if a Page fails with '(#200) Requires pages_manage_metadata permission', reconnect Facebook and run it again. Idempotent: what already matches is left alone and reported unchanged. Gated: a person approves. Returns the callback URL, the app subscription status and one result per Page (subscribed, unchanged or failed with Meta's error).",
+      "requiredScopes": ["social:admin:connection", "social:findings:read"],
+      "handler": "webhooksSetupHandler",
+      "preflight": "webhooksSetupPreflightHandler",
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "approvalExpiryHours": 24,
+      "atomic": false,
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "callback_base_url": {
+            "type": "string",
+            "description": "The public HTTPS address Liaison is reached at; only needed when the Facebook connection did not record it."
+          }
+        },
+        "additionalProperties": false
+      },
+      "approvalCard": {
+        "summary": "Subscribe Facebook Page webhooks (comments and Messenger) to this instance"
+      }
+    },
+    "findings_list": {
+      "description": "List social findings, optionally filtered by status/platform.",
+      "readOnly": true,
+      "requiredScopes": ["social:findings:read"],
+      "handler": "findingsList",
+      "taintSource": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string" },
+          "platform": { "type": "string", "enum": ["facebook", "instagram", "youtube"] },
+          "contact_id": { "type": "string" },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 100 }
+        }
+      }
+    },
+    "reply_to_finding": {
+      "outboundTextParams": ["reply_text"],
+      "description": "Draft and post a reply to a social finding's comment/post. Always gated — a human approves before anything is posted.",
+      "requiredScopes": ["social:findings:write"],
+      "handler": "replyToFindingHandler",
+      "summarizer": "summarizeReplyToFinding",
+      "summarizerContext": { "tool": "findings_get", "params": { "finding_id": "finding_id" } },
+      "preflight": "replyToFindingPreflightHandler",
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "editableFields": [{ "field": "reply_text", "label": "Reply", "widget": "text" }],
+      "params": {
+        "type": "object",
+        "properties": {
+          "finding_id": { "type": "string" },
+          "reply_text": { "type": "string" }
+        },
+        "required": ["finding_id", "reply_text"]
+      },
+      "approvalCard": {
+        "summary": "Reply to social finding {{params.finding_id}}: {{params.reply_text}}"
+      }
+    },
+    "send_dm": {
+      "outboundTextParams": ["body"],
+      "description": "Send a direct message in a conversation. Always gated (a human approves) — STAGE it and report it as PENDING APPROVAL, never as already sent. The platform reply window is recomputed from the LAST INBOUND message: within 24h it sends as a standard reply; from 24h up to 7 days it still sends but as a HUMAN-AGENT message (surface that — never send it silently as a normal reply); past 7 days the window is CLOSED and no API send is possible. A CLOSED window returns a `dm_window_closed` error AT THE CALL SITE (before any approval), so do NOT stage a send there — honestly tell the user the messaging window has closed and the message must go via the native app or another channel. The conversation's current window state is on its `reply_window` field from dm_get/dm_list; read it and surface the window state when proposing the send.",
+      "requiredScopes": ["social:dm:write"],
+      "handler": "sendDmHandler",
+      "summarizer": "summarizeSendDm",
+      "summarizerContext": { "tool": "dm_get", "params": { "conversation_id": "conversation_id" } },
+      "preflight": "sendDmPreflightHandler",
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "editableFields": [{ "field": "body", "label": "Message", "widget": "text" }],
+      "params": {
+        "type": "object",
+        "properties": {
+          "conversation_id": { "type": "string" },
+          "body": { "type": "string" }
+        },
+        "required": ["conversation_id", "body"]
+      },
+      "approvalCard": {
+        "summary": "Send DM in conversation {{params.conversation_id}}: {{params.body}}"
+      }
+    },
+    "like_item": {
+      "description": "Like the item behind a finding. Always gated (a human approves) — STAGE it and report it as PENDING APPROVAL, never as already liked. Liking is PLATFORM-BOUNDED: the platform API exposes a like action ONLY for own-Page Facebook comments and own-media Instagram comments. YouTube channel-likes are NOT supported — calling this on a YouTube finding returns a `like_unsupported_for_target` error AT THE CALL SITE (before any approval), so do NOT stage a like there; instead honestly tell the user liking is unsupported on YouTube and offer a gated reply (reply_to_finding) as an alternative. Propose gated likes only for the supported (Facebook own-Page / Instagram own-media) comments.",
+      "requiredScopes": ["social:findings:write"],
+      "handler": "likeItemHandler",
+      "summarizer": "summarizeLikeItem",
+      "summarizerContext": { "tool": "findings_get", "params": { "finding_id": "finding_id" } },
+      "preflight": "likeItemPreflightHandler",
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "finding_id": { "type": "string" }
+        },
+        "required": ["finding_id"]
+      },
+      "approvalCard": {
+        "summary": "Like the item behind social finding {{params.finding_id}}"
+      }
+    },
+    "findings_get": {
+      "description": "Get one social finding by id.",
+      "readOnly": true,
+      "requiredScopes": ["social:findings:read"],
+      "handler": "findingsGet",
+      "taintSource": true,
+      "params": { "type": "object", "properties": { "finding_id": { "type": "string" } }, "required": ["finding_id"] }
+    },
+    "dm_list": {
+      "description": "List direct-message conversations, most recently active first. A conversation's `status` is `open` while the other person spoke last (waiting on us) and `handled` once our side sent the latest message; their next message reopens it (an `archived` one too), so `status: open` lists the threads that need an answer. Each conversation carries a `reply_window` { tag, canSend, daysSinceLastInbound, explanation } describing the current send-time messaging window (standard ≤24h · human-agent ≤7d · closed >7d) — read it to know whether and how a send_dm can be delivered.",
+      "readOnly": true,
+      "requiredScopes": ["social:dm:read"],
+      "handler": "dmList",
+      "taintSource": true,
+      "params": { "type": "object", "properties": { "status": { "type": "string" }, "contact_id": { "type": "string" }, "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 100 } } }
+    },
+    "dm_get": {
+      "description": "Get one conversation with its messages. The conversation carries a `reply_window` { tag, canSend, daysSinceLastInbound, explanation } describing the current send-time messaging window (standard ≤24h · human-agent ≤7d · closed >7d) — read it before proposing a send_dm so you can surface the window state (e.g. an outside-24h reply goes as a human-agent message) or, if closed, honestly decline the send and point to the native app.",
+      "readOnly": true,
+      "requiredScopes": ["social:dm:read"],
+      "handler": "dmGet",
+      "taintSource": true,
+      "params": { "type": "object", "properties": { "conversation_id": { "type": "string" } }, "required": ["conversation_id"] }
+    },
+    "watched_list": {
+      "description": "List the posts/videos/threads ALREADY being watched (read-only). This only READS the current set — it does NOT start watching anything. To begin watching a post (e.g. when asked to 'keep a close eye on / monitor that post'), use watch_object; an empty list here just means nothing is watched yet, not that you can stop.",
+      "readOnly": true,
+      "requiredScopes": ["social:watched:read"],
+      "handler": "watchedList",
+      "params": { "type": "object", "properties": { "status": { "type": "string" } } }
+    },
+    "connections_status": {
+      "description": "Status of each Social connection (facebook, instagram, google) from the kernel: connected or not, org or personal, who connected it, token expiry, and whether it needs a reconnect. Read only.",
+      "readOnly": true,
+      "requiredScopes": ["social:findings:read"],
+      "handler": "connectionsStatusHandler",
+      "params": { "type": "object", "properties": {} }
+    },
+    "quota_status": {
+      "description": "Per-platform API usage: YouTube daily units used, cap, remaining and deferred watch polls for the current quota day; Facebook and Instagram appear only when a rate-limit state is stored. Read only.",
+      "readOnly": true,
+      "requiredScopes": ["social:findings:read"],
+      "handler": "quotaStatusHandler",
+      "params": { "type": "object", "properties": {} }
+    },
+    "monitor_terms_list": {
+      "description": "List brand monitor terms.",
+      "readOnly": true,
+      "requiredScopes": ["social:terms:read"],
+      "handler": "monitorTermsList",
+      "params": { "type": "object", "properties": {} }
+    },
+    "monitor_terms_add": {
+      "description": "Add (or re-enable) a brand monitor term. Upserts on the [platform, kind, value] key — re-adding a previously-disabled term re-enables it rather than erroring. YouTube discovery searches for every enabled keyword/handle term (platform null or 'youtube'); Facebook/Instagram do not currently use terms for discovery.",
+      "requiredScopes": ["social:terms:write"],
+      "handler": "monitorTermsAddHandler",
+      "params": {
+        "type": "object",
+        "properties": {
+          "value": { "type": "string" },
+          "kind": { "type": "string", "enum": ["keyword", "handle", "hashtag"], "default": "keyword" },
+          "platform": { "type": "string", "enum": ["facebook", "instagram", "youtube"] },
+          "notes": { "type": "string" }
+        },
+        "required": ["value"]
+      }
+    },
+    "monitor_terms_remove": {
+      "description": "Remove a brand monitor term, either by id or by its [platform, kind, value] key.",
+      "requiredScopes": ["social:terms:write"],
+      "handler": "monitorTermsRemoveHandler",
+      "writesToTable": "app_social.monitor_term",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "value": { "type": "string" },
+          "kind": { "type": "string", "enum": ["keyword", "handle", "hashtag"] },
+          "platform": { "type": "string", "enum": ["facebook", "instagram", "youtube"] }
+        }
+      }
+    },
+    "counts": {
+      "description": "Sidebar badge counts: new findings, awaiting approval, open DMs.",
+      "readOnly": true,
+      "requiredScopes": ["social:findings:read"],
+      "handler": "countsRead",
+      "params": { "type": "object", "properties": {} }
+    },
+    "set_triage": {
+      "description": "Record the agent's triage verdict on a finding (category/urgency/should_reply). Autonomous, no approval. Never downgrades a handled or in-flight finding.",
+      "requiredScopes": ["social:internal"],
+      "handler": "setTriageHandler",
+      "writesToTable": "app_social.finding",
+      "params": {
+        "type": "object",
+        "properties": {
+          "finding_id": { "type": "string" },
+          "triage_category": { "type": "string" },
+          "urgency": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "should_reply": { "type": "boolean" },
+          "triage_reason": { "type": "string" }
+        },
+        "required": ["finding_id", "triage_category", "urgency", "should_reply"]
+      }
+    },
+    "correct_triage": {
+      "description": "Deliberately re-triage a finding after the fact (human correction). Overwrites triage fields with no status guard.",
+      "requiredScopes": ["social:internal"],
+      "handler": "correctTriageHandler",
+      "writesToTable": "app_social.finding",
+      "params": {
+        "type": "object",
+        "properties": {
+          "finding_id": { "type": "string" },
+          "triage_category": { "type": "string" },
+          "urgency": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "should_reply": { "type": "boolean" },
+          "triage_reason": { "type": "string" }
+        },
+        "required": ["finding_id", "triage_category", "urgency", "should_reply"]
+      }
+    },
+    "dismiss_finding": {
+      "description": "Dismiss a finding (no reply needed). Autonomous, no approval.",
+      "requiredScopes": ["social:internal"],
+      "handler": "dismissFindingHandler",
+      "writesToTable": "app_social.finding",
+      "params": { "type": "object", "properties": { "finding_id": { "type": "string" } }, "required": ["finding_id"] }
+    },
+    "watch_object": {
+      "description": "Promote a SPECIFIC post/video/thread to a watched object so its FUTURE comments keep getting caught, and backfill-link its existing findings. THIS is the action to take whenever the user asks you to 'keep a close eye on / monitor / watch' a specific post — identify the post from a finding's parent_external_id (or permalink) and call this to actually start watching it. Listing watched objects (watched_list) does NOT watch anything; only THIS call does. Ungated internal metadata, no external effect.",
+      "requiredScopes": ["social:watched:write"],
+      "atomic": true,
+      "handler": "watchObjectHandler",
+      "params": {
+        "type": "object",
+        "properties": {
+          "platform": { "type": "string", "enum": ["facebook", "instagram", "youtube"] },
+          "external_id": { "type": "string" },
+          "object_type": { "type": "string", "enum": ["youtube_video", "instagram_media", "facebook_post"] },
+          "reason": { "type": "string", "enum": ["auto_hot", "manual"] },
+          "priority": { "type": "integer", "minimum": 0, "maximum": 100 }
+        },
+        "required": ["platform", "external_id"]
+      }
+    },
+    "unwatch_object": {
+      "description": "Stop watching an object.",
+      "requiredScopes": ["social:watched:write"],
+      "handler": "unwatchObjectHandler",
+      "writesToTable": "app_social.watched_object",
+      "params": {
+        "type": "object",
+        "properties": {
+          "platform": { "type": "string", "enum": ["facebook", "instagram", "youtube"] },
+          "external_id": { "type": "string" }
+        },
+        "required": ["platform", "external_id"]
+      }
+    }
+  },
+  "settings": {
+    "sections": [
+      {
+        "id": "connections",
+        "title": "Connections",
+        "titleKey": "kernel.appSettings.social.connections",
+        "description": "The Facebook Page, Instagram account and Google account (YouTube) the app watches. Connect them for the organization so the whole team and the background jobs share them.",
+        "descriptionKey": "kernel.appSettings.social.connectionsHelp",
+        "scope": "org",
+        "adminScope": "social:admin:connection",
+        "blocks": [
+          {
+            "block": "connections"
+          }
+        ]
+      },
+      {
+        "id": "terms",
+        "title": "Monitor terms",
+        "titleKey": "kernel.appSettings.social.terms",
+        "description": "Brand keywords, handles and hashtags the app looks for.",
+        "descriptionKey": "kernel.appSettings.social.termsHelp",
+        "scope": "org",
+        "adminScope": "social:terms:write",
+        "blocks": [
+          {
+            "block": "list",
+            "ops": {
+              "list": "monitor_terms_list",
+              "create": "monitor_terms_add",
+              "archive": "monitor_terms_remove"
+            },
+            "columns": [
+              {
+                "key": "value",
+                "label": "Term",
+                "labelKey": "kernel.appSettings.social.term"
+              },
+              {
+                "key": "kind",
+                "label": "Kind",
+                "labelKey": "kernel.appSettings.social.kind"
+              },
+              {
+                "key": "platform",
+                "label": "Platform",
+                "labelKey": "kernel.appSettings.social.platform"
+              }
+            ],
+            "createFields": [
+              {
+                "key": "value",
+                "type": "text",
+                "label": "Term",
+                "labelKey": "kernel.appSettings.social.term",
+                "validation": {
+                  "required": true
+                }
+              },
+              {
+                "key": "kind",
+                "type": "select",
+                "label": "Kind",
+                "labelKey": "kernel.appSettings.social.kind",
+                "default": "keyword",
+                "options": [
+                  {
+                    "value": "keyword",
+                    "label": "Keyword",
+                    "labelKey": "kernel.appSettings.social.kindKeyword"
+                  },
+                  {
+                    "value": "handle",
+                    "label": "Handle",
+                    "labelKey": "kernel.appSettings.social.kindHandle"
+                  },
+                  {
+                    "value": "hashtag",
+                    "label": "Hashtag",
+                    "labelKey": "kernel.appSettings.social.kindHashtag"
+                  }
+                ]
+              }
+            ],
+            "archiveLabel": "Remove",
+            "archiveLabelKey": "kernel.appSettings.social.remove"
+          }
+        ]
+      },
+      {
+        "id": "quota",
+        "title": "API quota",
+        "titleKey": "kernel.appSettings.social.quota",
+        "scope": "org",
+        "adminScope": "social:findings:read",
+        "blocks": [
+          {
+            "block": "custom",
+            "component": "SocialQuota",
+            "reason": "A read-only computed view: the YouTube units meter, deferred watch polls and each platform's stored rate-limit state."
+          }
+        ]
+      }
+    ]
+  },
+  "views": {
+    "activityBar": {
+      "icon": "SocialAppIcon",
+      "label": "Social",
+      "order": 80,
+      "tabAction": { "type": "home", "entityId": "findings", "label": "Findings" }
+    },
+    "tabTypes": {
+      "findings": {
+        "component": "Findings",
+        "sidebar": "SocialSidebar",
+        "icon": "SocialAppIcon",
+        "label": "Findings",
+        "singleton": true,
+        "urlPattern": "/social/findings",
+        "referenceable": false
+      },
+      "messages": {
+        "component": "Messages",
+        "sidebar": "SocialSidebar",
+        "icon": "SocialAppIcon",
+        "label": "Messages",
+        "singleton": true,
+        "urlPattern": "/social/messages",
+        "referenceable": false
+      },
+      "watched": {
+        "component": "Watched",
+        "sidebar": "SocialSidebar",
+        "icon": "SocialAppIcon",
+        "label": "Watched",
+        "singleton": true,
+        "urlPattern": "/social/watched",
+        "referenceable": false
+      }
+    },
+    "detail": {
+      "finding": { "component": "FindingDetailPanel" },
+      "dm_conversation": { "component": "ConversationDetailPanel" }
+    },
+    "attentionItems": {
+      "handler": "computeSocialAttentionItems",
+      "scope": "social:findings:read"
+    }
+  },
+  "slots": {
+    "contact_detail": {
+      "panels": [
+        {
+          "id": "social-history",
+          "label": "Social",
+          "component": "ContactSocialPanel",
+          "order": 60,
+          "visibility_scope": "social:findings:read"
+        }
+      ]
+    }
+  },
+  "skills": {
+    "social-overview": {
+      "description": "How to use the Social Ground Control app with Liaison",
+      "body": "Social Ground Control watches your Facebook, Instagram and YouTube presence for brand-relevant comments, mentions and direct messages. The agent triages each finding, drafts a reply in your brand voice grounded in Knowledge, and waits for your approval before anything is posted. Set up the morning-digest routine for a daily summary, and connect your accounts in Settings. Replies, DMs and likes are always gated actions you approve first.",
+      "kind": "guide",
+      "enabledByDefault": true
+    },
+    "triage-social-findings": {
+      "description": "Playbook: triage new social findings into a verdict",
+      "body": "When triaging a social finding, read the content_text and relation, then call set_triage with: a triage_category (one of lead_question, complaint, praise, spam, support_request, other); an urgency 0-100 (a lead_question or complaint from a real account is high, generic praise is low, spam is 0); and should_reply true only when a reply would genuinely help (answer a question, defuse a complaint, thank a notable mention). Never reply to spam — dismiss it with dismiss_finding. set_triage is autonomous and needs no approval; it will not touch a finding a human already handled, so do not worry about re-running on a coalesced burst. When a keyword-match post shows an active conversation, watch_object its parent so replies on that thread surface too.",
+      "kind": "playbook",
+      "enabledByDefault": false
+    },
+    "draft-brand-reply": {
+      "description": "Playbook: draft a brand-voice reply grounded in Knowledge",
+      "body": "To draft a reply to a finding, first retrieve the brand voice and any relevant facts via knowledge__search and knowledge__get — never invent product details, prices, or policies. Write a short, warm, on-brand reply that directly addresses the person. If you cannot ground a claimed fact in Knowledge, set needs_human in your notes and do NOT fabricate it — flag the finding for a human instead. Then call reply_to_finding, which is gated: the human reviews and approves before anything is posted. Keep replies concise and never argue publicly with a complaint — acknowledge, offer to help, and move the conversation to DM where appropriate.",
+      "kind": "playbook",
+      "enabledByDefault": false
+    },
+    "daily-social-digest": {
+      "description": "Playbook: summarize the day's social findings",
+      "body": "To produce the daily social digest, call counts and findings_list to gather the findings since yesterday. Summarize them grouped by triage_category and platform: how many leads, complaints, praise and spam; which findings still need a reply (status triaged, should_reply true); and any DMs whose reply window is closing soon. Surface the two or three highest-urgency items by name so the operator knows where to spend attention first. Where a reply is clearly warranted and you can ground it in Knowledge, draft it with draft-brand-reply so it is queued for one-click approval. Keep the digest skimmable — bullets, not prose.",
+      "kind": "playbook",
+      "enabledByDefault": false
+    }
+  },
+  "agents": {
+    "community-manager": {
+      "whenToUse": "Use for monitoring, triaging and drafting replies to social media activity (Facebook, Instagram, YouTube) — comments, mentions, and DMs. Hand off here whenever the task is about the brand's social presence.",
+      "systemPrompt": "You are the brand's community manager. Be warm, helpful and human — cool but never snarky, and never defensive. Triage social findings honestly: leads and complaints are urgent, generic praise is low, spam gets dismissed. When you draft a reply, ground every factual claim in Knowledge via knowledge__search; if you cannot ground a fact, flag it for a human rather than guessing. All outbound replies, DMs and likes are gated — a human approves before anything is posted, so draft confidently but let them decide. Move heated complaints to DM where it makes sense.",
+      "scopeCeiling": [
+        "social:findings:read",
+        "social:findings:write",
+        "social:dm:read",
+        "social:dm:write",
+        "social:watched:read",
+        "social:watched:write",
+        "social:terms:read",
+        "social:internal"
+      ],
+      "skills": ["draft-brand-reply", "daily-social-digest"],
+      "contextProfile": "standard"
+    }
+  },
+  "routines": {
+    "morning-digest": {
+      "description": "Every morning, summarize new social findings and draft replies where it makes sense.",
+      "kind": "recurring",
+      "cron": "0 9 * * *",
+      "timezone": "UTC",
+      "promptTemplate": "Run the daily-social-digest playbook over the social findings since yesterday, then draft replies with draft-brand-reply where a reply is clearly warranted and groundable in Knowledge.",
+      "scopes": ["social:findings:read", "social:findings:write", "social:dm:read", "social:internal"],
+      "enabledByDefault": false
+    },
+    "triage-event": {
+      "description": "Triage each new social finding the moment it is discovered.",
+      "kind": "event",
+      "event": "social:finding:created",
+      "promptTemplate": "Triage the newly discovered social finding(s) using the triage-social-findings playbook: call set_triage with a category, urgency and should_reply verdict, and dismiss obvious spam.",
+      "scopes": ["social:findings:read", "social:internal"],
+      "enabledByDefault": false
+    },
+    "triage-cron": {
+      "description": "Fallback: sweep untriaged findings every 15 minutes in case an event was missed.",
+      "kind": "recurring",
+      "cron": "*/15 * * * *",
+      "timezone": "UTC",
+      "promptTemplate": "Find any social findings still in status 'new' and triage them using the triage-social-findings playbook.",
+      "scopes": ["social:findings:read", "social:internal"],
+      "enabledByDefault": false
+    }
+  },
+  "agentInstructions": "Use the Social tools to triage findings (set_triage), draft replies (reply_to_finding), and manage DMs (send_dm — recomputes the platform reply window at send time). The community-manager sub-agent handles social work end to end. Read the social-overview guide for the full workflow."
+}

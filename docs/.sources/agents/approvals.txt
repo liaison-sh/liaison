@@ -1,0 +1,229 @@
+Gated tool creates an approval request with exact payload -> apps/api/src/modules/apps/execute-tool.ts:1050
+Mail gated actions (reply forward compose archive convert to ticket) -> packages/shared/src/i18n/locales/en/kernel.json:3183
+Ticket gated actions -> packages/shared/src/i18n/locales/en/kernel.json:3175
+Invoicing gated actions -> packages/shared/src/i18n/locales/en/kernel.json:3209
+Invoicing send mark paid refund -> packages/shared/src/i18n/locales/en/kernel.json:3220
+Shipping create cancel shipment open claim -> packages/shared/src/i18n/locales/en/kernel.json:3239
+Calendar and Drive actions -> packages/shared/src/i18n/locales/en/kernel.json:3233
+Social actions -> packages/shared/src/i18n/locales/en/kernel.json:3246
+Knowledge and projects actions -> packages/shared/src/i18n/locales/en/kernel.json:3201
+Workspace actions: roles invite grant scope routines skills policy MCP merge contacts -> packages/shared/src/i18n/locales/en/kernel.json:3130
+Connect MCP server approval label -> packages/shared/src/i18n/locales/en/kernel.json:3225
+Approvals screen count -> apps/web/src/modules/approvals/ApprovalsScreen.tsx:139
+Approvals screen is the phone surface -> apps/web/src/framework/bootstrap.ts:459
+Nothing expiring soon -> packages/shared/src/i18n/locales/en/kernel.json:486
+Soonest expires summary -> packages/shared/src/i18n/locales/en/kernel.json:485
+Approvals screen -> apps/web/src/modules/approvals/ApprovalsScreen.tsx:132
+Home Approvals card -> packages/shared/src/i18n/locales/en/kernel.json:1116
+Requested by on card -> packages/shared/src/i18n/locales/en/kernel.json:1020
+Exact payload section -> packages/shared/src/i18n/locales/en/kernel.json:2040
+Technical details section -> packages/shared/src/i18n/locales/en/kernel.json:2041
+Approve button -> packages/shared/src/i18n/locales/en/kernel.json:471
+Reject button -> packages/shared/src/i18n/locales/en/kernel.json:472
+Edit button -> packages/shared/src/i18n/locales/en/kernel.json:475
+Edit shown only when fields editable and requester or approver -> apps/web/src/modules/approvals/ApprovalCard.tsx:1386
+Save and cancel while editing -> apps/web/src/modules/approvals/ApprovalCard.tsx:2274
+Edit shown only when fields editable and requester or approver -> apps/web/src/modules/approvals/ApprovalCard.tsx:1386
+Save and cancel while editing -> apps/web/src/modules/approvals/ApprovalCard.tsx:2276
+Reject asks optional reason -> packages/shared/src/i18n/locales/en/kernel.json:474
+Optional reason placeholder -> packages/shared/src/i18n/locales/en/kernel.json:1733
+Requester can reject own request -> apps/web/src/modules/approvals/ApprovalCard.tsx:1381
+Requester can reject own request -> apps/web/src/modules/approvals/ApprovalCard.tsx:1381
+Undo window of five seconds -> apps/web/src/modules/approvals/decision-queue.ts:43
+Approving in Ns toast -> packages/shared/src/i18n/locales/en/kernel.json:5160
+Rejecting in Ns toast -> packages/shared/src/i18n/locales/en/kernel.json:5161
+Undo and Undo all -> packages/shared/src/i18n/locales/en/kernel.json:5167
+Toast states Approving Approved -> packages/shared/src/i18n/locales/en/kernel.json:490
+Decision sent after undo window -> apps/web/src/modules/approvals/decision-queue.ts:8
+Minutes left on card -> packages/shared/src/i18n/locales/en/kernel.json:480
+Default approval lifetime 168 hours, per tool override -> apps/api/src/modules/apps/execute-tool.ts:1428
+add_connection expires after 24 hours -> apps/api/src/apps/mcp-manager/app.manifest.json:27
+Expiry sweep marks pending requests expired -> apps/api/src/modules/approvals/expiry.ts:28
+Statuses Approved Denied Expired Withdrawn Cancelled -> packages/shared/src/i18n/locales/en/kernel.json:2125
+Decided by line -> packages/shared/src/i18n/locales/en/kernel.json:2077
+Changed since opened: read the new version -> packages/shared/src/i18n/locales/en/kernel.json:2052
+Approval bound to payload hash, 409 payload_changed -> apps/api/src/modules/approvals/decide.ts:266
+Last attempt failed -> packages/shared/src/i18n/locales/en/kernel.json:2057
+An approved read that fails passes its error to the agent, not back to pending -> apps/api/src/modules/apps/run-approved-handler.ts:323
+A read's error envelope is recorded as its result -> apps/api/src/modules/apps/run-approved-handler.ts:468
+Reads are readOnly or public-web tools that write no table -> apps/api/src/modules/apps/run-approved-handler.ts:770
+Decision line says the tool returned an error -> apps/api/src/modules/approvals/cascade.ts:297
+A transient database failure still goes back to pending -> apps/api/src/modules/apps/run-approved-handler.ts:323
+Close request for unconfirmed outcome -> packages/shared/src/i18n/locales/en/kernel.json:2071
+approval_update_payload by requester or approver -> apps/api/src/modules/agent/tools/kernel-tools.ts:1847
+approval_withdraw retracts own pending request -> apps/api/src/modules/agent/tools/kernel-tools.ts:1863
+approval tools need kernel:approvals:write -> apps/api/src/modules/permissions/scope-catalog.ts:114
+Deciding scope is the row's approve scope or app:approve -> packages/shared/src/approvals/authority.ts:108
+Skill changes decided by kernel:skills:approve -> packages/shared/src/approvals/authority.ts:99
+kernel:approve decides kernel-level approvals -> apps/api/src/modules/permissions/scope-catalog.ts:59
+Kernel action decided by its own required scope -> packages/shared/src/approvals/authority.ts:128
+Administrative kernel actions declare kernel:approve -> apps/api/src/modules/agent/tools/kernel-tools.ts:2190
+Dimension constraint on deciding -> apps/api/src/modules/approvals/decide.ts:244
+Super-admin scopes bypass dimension constraint -> apps/api/src/modules/permissions/eligible-approvers.ts:163
+Private approvals routed to resource owner -> packages/shared/src/i18n/locales/en/kernel.json:2062
+Owner-routed approvals invisible even to admins -> packages/shared/src/approvals/authority.ts:31
+Requester cannot self-approve without approve scope -> apps/api/src/modules/approvals/decide.ts:252
+Ungated action parked by scope taint is decided by holding every taint scope -> apps/api/src/modules/apps/execute-tool.ts:4743
+Taint-parked deciding scope is a taint scope, no dimension -> apps/api/src/modules/approvals/authority.ts:105
+Decider must hold every taint scope -> apps/api/src/modules/approvals/decide.ts:235
+Requester holding the taint may approve, folds out as peer noise -> apps/api/src/modules/approvals/attention.ts:516
+Administrators are always eligible approvers -> apps/api/src/modules/permissions/eligible-approvers.ts:48
+kernel:approvals:read -> apps/api/src/modules/permissions/scope-catalog.ts:113
+approvals_list tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:2201
+Peer self-approvable requests hidden on Home by default -> apps/web/src/modules/shell/Home.tsx:463
+Show N more peers label -> packages/shared/src/i18n/locales/en/kernel.json:1113
+Hide peers toggle -> packages/shared/src/i18n/locales/en/kernel.json:1112
+Own and routine-raised requests are always shown -> packages/shared/src/approvals/authority.ts:272
+Routine approver choice -> packages/shared/src/i18n/locales/en/kernel.json:63
+Tightening policy tool approval_policy_set -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5531
+approval_policy_set params minApprovers 1 to 10 -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:4113
+requireApproval default true -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:4108
+Money in minor units example -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:4102
+Tighten-only invariant -> apps/api/src/modules/approvals/approval-policy.ts:9
+kernel:policies:admin sets policies -> apps/api/src/modules/permissions/scope-catalog.ts:196
+kernel:policies:read -> apps/api/src/modules/permissions/scope-catalog.ts:191
+kernel:policies:write reads auto-approve policies only -> docs/reference/scopes.md:40
+No policy UI: policies are written only by the agent tools -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:4150
+approval_policy_get tool -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5520
+Tighten approval policy card title -> packages/shared/src/i18n/locales/en/kernel.json:2142
+Multiple distinct approvers message on card -> packages/shared/src/i18n/locales/en/kernel.json:2065
+Sign-offs counter -> packages/shared/src/i18n/locales/en/kernel.json:2076
+Awaiting second approver message -> apps/api/src/modules/approvals/decide.ts:602
+Already signed off error -> packages/shared/src/i18n/locales/en/kernel.json:2107
+policy_set creates auto-approve policy -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5502
+policy_get lists them -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5491
+Set auto-approve policy card title -> packages/shared/src/i18n/locales/en/kernel.json:2141
+Auto-approve condition operators -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:3966
+Auto-approve limits perCallMax windowSeconds windowMax -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:3976
+requiresScope on policy -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:3981
+Scope-granting calls always gate -> apps/api/src/modules/approvals/auto-approve.ts:9
+allowAfterUntrustedContent -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:3982
+Outside content hold explained in Agent behavior page -> apps/web/src/modules/settings/AgentBehaviorSettings.tsx:5
+Ask for approval after outside content switch -> packages/shared/src/i18n/locales/en/kernel.json:5154
+Warning when switched off -> packages/shared/src/i18n/locales/en/kernel.json:5156
+Setting stored as webContentProtection standard hardened off -> apps/web/src/modules/settings/AdminAgentSafetySettings.tsx:6
+Saving needs kernel:org:admin -> apps/web/src/modules/settings/AdminAgentSafetySettings.tsx:7
+Switch keeps hardened on re-enable -> apps/web/src/modules/settings/AdminAgentSafetySettings.tsx:25
+standard: outward tools park after outside text -> apps/api/src/modules/agent/scopes/taint.ts:89
+hardened: every trust-boundary tool -> apps/api/src/modules/agent/scopes/taint.ts:91
+off: nothing waits, still fenced -> apps/api/src/modules/agent/scopes/taint.ts:92
+outside_text_sources tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:1893
+outside_text_clear tool gated, no policy approves -> apps/api/src/modules/agent/tools/kernel-tools.ts:1908
+Mark covers one turn -> apps/api/src/modules/agent/scopes/taint.ts:189
+Computer approvals owner-only -> apps/api/src/modules/agent/tools/kernel-tools.ts:1108
+PARALLEL_APPROVAL_BUNDLING default false -> apps/api/src/lib/env.ts:675
+Bundle id shared by gated calls in one step -> apps/api/src/modules/agent/tools/tool-bridge.ts:586
+Approve sequence -> packages/shared/src/i18n/locales/en/kernel.json:2050
+Step needs a separate approval -> packages/shared/src/i18n/locales/en/kernel.json:2046
+Step runs automatically after approval -> packages/shared/src/i18n/locales/en/kernel.json:2047
+Expiring a bundle head cancels deferred steps -> apps/api/src/modules/approvals/expiry.ts:32
+LIAISON_TRUSTED_SUMMARIZER_APPS runs declared summarizers host-side -> apps/api/src/modules/apps/runtime.ts:908
+Sandboxed summarizer degrades to preview unavailable -> apps/api/src/modules/apps/runtime.ts:2558
+Approved action result posted to the asking conversation -> apps/api/src/modules/approvals/cascade.ts:308
+request-N ran; its result was passed to the agent -> packages/shared/src/i18n/locales/en/kernel.json:484
+Result line readable only with the proposing turn's and the tool's scopes -> apps/api/src/modules/approvals/result-notice.ts:63
+Approved result fenced as untrusted data -> apps/api/src/modules/agent/context/system-event-replay.ts:90
+Approved result marks the conversation like the live call -> apps/api/src/modules/approvals/result-notice.ts:95
+Result line readable only with the proposing turn's and the tool's scopes -> apps/api/src/modules/approvals/result-notice.ts:64
+Approved result fenced as untrusted data -> apps/api/src/modules/agent/context/system-event-replay.ts:92
+Approved result marks the conversation like the live call -> apps/api/src/modules/approvals/result-notice.ts:96
+The proposing agent answers from the result once, unprompted -> apps/api/src/modules/approvals/cascade.ts:347
+Only in-app agent turns, not routines; a rejection posts no result -> apps/api/src/modules/approvals/approval-result-turn.ts:30
+Not while a sequence still has steps to run -> apps/api/src/modules/approvals/approval-result-turn.ts:34
+Not when the person wrote after the decision -> apps/api/src/modules/approvals/event-data.ts:414
+Several calls of one turn: one answer, after the last is decided -> apps/api/src/modules/approvals/event-data.ts:430
+A refused last call hands the answer to an approved one -> apps/api/src/modules/approvals/approval-result-turn.ts:186
+Once per approval -> apps/api/src/modules/approvals/event-data.ts:398
+Server-set (pinned) values cannot be edited -> apps/api/src/modules/approvals/edit.ts:207-215
+An MCP tool call's card: server name and action as title, description, argument lines -> apps/api/src/modules/mcp-client/approval-summary.ts:290-300
+Registered for every projected MCP tool -> apps/api/src/modules/mcp-client/projector.ts:369
+Text arguments first -> apps/api/src/modules/mcp-client/approval-summary.ts:273
+Each line up to 500 characters -> packages/shared/src/types/approvals.ts:31
+Argument text as one plain line -> apps/api/src/modules/mcp-client/approval-summary.ts:103
+Summary lines render as text -> apps/web/src/modules/approvals/ApprovalCard.tsx:1663
+Summary lines render as text -> apps/web/src/modules/approvals/ApprovalCard.tsx:1665
+Globe beside a marked conversation name, Outside text label -> apps/web/src/modules/threads/ThreadHeader.tsx:281
+Globe alone in the dock window -> apps/web/src/modules/shell/ConversationTab.tsx:235
+Outside text / Clear the mark / Approval settings / Mark cleared labels -> packages/shared/src/i18n/locales/en/kernel.json:1134
+Globe pulses when an action waits because of the mark -> apps/api/src/modules/approvals/event-data.ts:134
+Pulse handler -> apps/web/src/modules/threads/outside-text-pulse.ts:28
+What marked it: tool, what it read, when -> apps/api/src/modules/threads/routes.ts:393
+Clear the mark acts at once with the approved clear's effect -> apps/api/src/modules/agent/scopes/taint.ts:330
+Only a person seated in the conversation, full session -> apps/api/src/modules/threads/routes.ts:424
+Agent seat does not count -> apps/api/src/modules/threads/routes.ts:435
+Approval settings shows only to administrators -> apps/web/src/modules/threads/OutsideTextMark.tsx:242
+Agent draft with an unfilled placeholder refused before an approval is staged, not for a person's own UI call -> apps/api/src/modules/apps/execute-tool.ts:4366
+Placeholder shapes: [DATE] [Name] {{firstName}} <insert date> XX/XX TBD -> apps/api/src/modules/apps/outbound-placeholders.ts:193
+Refusal tells the agent today's date and to write the value or say it will confirm it -> apps/api/src/modules/apps/outbound-placeholders.ts:275
+Mail reply forward compose declare outbound text -> apps/api/src/apps/mail/app.manifest.json:812
+Ticket reply nudge close declare outbound text -> apps/api/src/apps/tickets/app.manifest.json:2439
+Social reply and direct message declare outbound text -> bundled-apps/social/app.manifest.json:371
+Invoicing send to customer declares outbound text -> bundled-apps/invoicing/app.manifest.json:3514
+Agent edit of a pending request checked; a person's edit is not -> apps/api/src/modules/approvals/edit.ts:262
+Approved by you for the viewer's own decision -> apps/web/src/modules/approvals/ApprovalCard.tsx:1464
+A required step is stated by Liaison after the untrusted result -> apps/api/src/modules/agent/context/system-event-replay.ts:131
+Only Liaison's own registered tools can name a step -> apps/api/src/modules/approvals/required-step.ts:85
+Steps come from a fixed list -> apps/api/src/modules/approvals/required-step.ts:22
+Outside text a summary quotes shows as a labelled quote -> apps/web/src/modules/approvals/SummaryLineText.tsx:24
+contacts_write is internal: a policy covers it after outside text -> apps/api/src/modules/agent/tools/kernel-tools.ts:1581
+Internal tools skip the outside-text check -> apps/api/src/modules/approvals/auto-approve.ts:202
+A gated write on a tainted turn always parks, a policy does not answer it -> apps/api/src/modules/apps/execute-tool.ts:4988
+Request numbers counted per workspace -> apps/api/src/lib/handle.ts:33
+An approved secret or sign-in card appears under the result line -> apps/api/src/modules/approvals/result-notice.ts:76
+approval-card claim needs an approval still waiting in the conversation -> apps/api/src/modules/approvals/resolve-ref.ts:109
+Exempt from the outside-content hold and the scope-taint judgement -> apps/api/src/modules/apps/execute-tool.ts:4000,4017,4627
+The fetched page is outside content (taintSource) -> apps/api/src/modules/agent/tools/kernel-tools.ts:725
+What counts as workspace data (tool reads, memory, history, customer card; not the routine prompt or skills) -> apps/api/src/modules/agent/scopes/turn-scope-accumulator.ts:103,140 ; apps/api/src/modules/agent/context/context.ts:1605,2275,3480 ; apps/api/src/modules/agent/scopes/scope-taint.ts (rule 6i)
+Web reads never wait, on any surface, whatever the turn read; writes unchanged -> apps/api/src/modules/apps/execute-tool.ts:4019,4029,4679 ; apps/api/src/modules/agent/tools/kernel-tools.ts:319,739
+Limits on web reads, refused inline -> apps/api/src/modules/apps/execute-tool.ts:4491 ; apps/api/src/modules/agent/tools/web-read-guardrails.ts:166,194,243,279
+Limit defaults and env vars -> apps/api/src/lib/env.ts:519-551 ; apps/api/src/modules/agent/tools/web-read-guardrails.ts:48-58
+user:pass@ always refused -> apps/api/src/modules/agent/tools/web-read-guardrails.ts:211
+Payload checks once the turn read workspace data -> apps/api/src/modules/agent/tools/web-read-guardrails.ts:177,220
+A fetch of one of the turn's own search results skips the checks -> apps/api/src/modules/apps/execute-tool.ts:4491-4520
+Fetch the fetch policy refuses is refused before any request -> apps/api/src/modules/agent/tools/web-tools.ts:584 ; apps/api/src/modules/agent/tools/kernel-tools.ts:736
+A failed sequence step cancels the steps after it; the proposer is told the real error and proposes a corrected sequence -> apps/api/src/modules/approvals/cascade-fail.ts:142,160 ; apps/api/src/modules/approvals/decide.ts:950
+Bundled request named after its last step with the step count -> apps/api/src/modules/approvals/attention.ts:504
+Home row lists a sequence's steps in order -> apps/api/src/modules/approvals/attention.ts:659 ; apps/web/src/modules/shell/AttentionRow.tsx:819
+Each step shows its message in full, its lines, links and exact payload -> apps/web/src/modules/approvals/ApprovalCard.tsx:443,624,682
+Quote step: customer, lines, total, validity, customer reference -> bundled-apps/invoicing/src/approval-cards.ts:278,281 ; bundled-apps/invoicing/app.manifest.json:3109
+Tokens read as the step they come from -> packages/shared/src/refs.ts:162,178 ; apps/api/src/modules/apps/execute-tool.ts:5268 ; apps/api/src/modules/approvals/edit.ts:572
+File from an earlier step attached once that step has run -> apps/api/src/modules/files/attach.ts:624
+Agent invite card: 'X wants to add Y to this discussion', Add / Don't add, never auto-approved -> apps/web/src/modules/approvals/ApprovalCard.tsx:1173-1185 ; apps/web/src/modules/approvals/approval-copy.ts:179 ; apps/api/src/modules/agent/tools/kernel-tools.ts:1500-1502
+A sequence's decision toast: one item, outcome title, N steps, every step, one Undo -> apps/web/src/modules/approvals/ApprovalCard.tsx:1198-1214 ; apps/web/src/modules/approvals/DecisionToasts.tsx:113-154 ; apps/web/src/modules/approvals/decision-queue.ts:63-73
+personal mailbox draft sealed, owner-only -> apps/api/src/modules/mailbox-crypto/approval-payload.ts:225
+Edit opens on the decrypted draft -> apps/web/src/modules/approvals/ApprovalCard.tsx:1314
+Unlock instead of Edit while the mailbox is locked -> apps/web/src/modules/approvals/ApprovalCard.tsx:1671 ; packages/shared/src/i18n/locales/en/kernel.json:4135
+Saving re-encrypts the edited text, nothing readable stored -> apps/api/src/modules/approvals/edit.ts:679 ; apps/api/src/modules/mailbox-crypto/approval-payload.ts:444
+Agent edits the same way -> apps/api/src/modules/approvals/edit.ts:579
+Edit that cannot carry every encrypted part refused, withdraw and redraft -> apps/api/src/modules/mailbox-crypto/approval-payload.ts:484
+owner-only approval of a managed draft -> apps/api/src/modules/approvals/decide.ts:306
+Access requests and routine waits are rows of the approvals list -> apps/web/src/modules/shell/approval-facets.ts:42
+Access request pill takes the app colour, Grant / Deny on the row -> apps/web/src/modules/admin-scope-requests/AccessRequestRow.tsx:77
+Access requests only for kernel:scope_requests:admin holders -> apps/web/src/modules/shell/home-action-count.ts:85
+Access requests and Routine runs filter chips -> packages/shared/src/i18n/locales/en/kernel.json:5906
+Reminder of own agent-proposed or own MCP-client requests waiting more than a day, not routine-raised -> apps/api/src/modules/approvals/reminders.ts:13110
+Reminder lists each waiting request with its link and whether the person can decide it -> apps/api/src/modules/approvals/reminders.ts:221
+Reminder at most once per 24 hours, while a request is pending -> apps/api/src/modules/approvals/reminders.ts:258
+Approval reminders on for everyone by default, daily; Every 3 days, Weekly, Off -> packages/shared/src/notifications/approval-reminder.ts:8
+Settings, Notifications, Approval reminders, Remind me of my requests waiting for approval -> apps/web/src/modules/settings/notification-settings/ApprovalReminderSection.tsx:25 ; packages/shared/src/i18n/locales/en/kernel.json:4299
+Interval is both the waiting threshold and the throttle; Off sends nothing -> apps/api/src/modules/approvals/reminders.ts:131
+Ask the agent to stop or change reminders -> apps/api/src/modules/notifications/agent-tools.ts:395
+--force overrides the interval and Off -> apps/api/src/cli/approval-reminders.ts:80
+Hourly reminder check -> apps/api/src/modules/approvals/reminders.ts:62
+The agent writes the reminder message in the person's conversation -> apps/api/src/modules/agent/context/system-event-replay.ts:258
+The agent checks each request is still current and flags outdated ones -> apps/api/src/modules/agent/context/system-event-replay.ts:132
+Operator command approval-reminders run with --user, --org, --force -> apps/api/src/cli/commands.ts:806
+peer requests send no push, desktop or email notification -> apps/api/src/modules/attention/state-materializer.ts:337
+A memory write is routed to the acting agent's owner (personal agent) or the requester (no agent) -> apps/api/src/modules/agent/tools/kernel-tools.ts:724
+A personal agent's owner resolves the memory approval; a role agent keeps the org's approvers -> apps/api/src/modules/approvals/resource-owner.ts:114
+Notification settings, rules and thread mutes are routed to the requester -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1784
+Any approval of a tainted turn is narrowed to approvers holding every scope it read -> apps/api/src/modules/apps/execute-tool.ts:4696
+Notified approvers filtered to holders of the turn's scopes -> apps/api/src/modules/apps/execute-tool.ts:1591
+Refused at once when nobody who may decide it holds the scopes -> apps/api/src/modules/apps/execute-tool.ts:4721
+A sequenced encrypted-mailbox send is stored encrypted -> apps/api/src/modules/apps/execute-tool.ts:2240,2288
+After the steps before it run, the encrypted send becomes the mailbox owner's own request with earlier files attached -> apps/api/src/modules/approvals/cascade.ts:492,575
+The owner approves it from an unlocked device, then the later steps run -> apps/api/src/modules/approvals/decide.ts:350 ; apps/web/src/modules/approvals/ApprovalCard.tsx:1005
+Rejecting it cancels the steps after it -> apps/api/src/modules/approvals/decide.ts:522
+Closed approval notice carries the handler's own reason -> apps/api/src/modules/approvals/decide.ts:955-957
+Request raised in the conversation you are reading does not notify you -> apps/api/src/modules/attention/state-materializer.ts:342
+Decisions on your requests group, feed and digest only by default -> packages/shared/src/i18n/locales/en/kernel.json:4393

@@ -1,0 +1,11 @@
+# One line ending everywhere. Several test files read their own sources as
+# text (`include_str!` in src-tauri, the workflow and hook pins in
+# apps/desktop) and look for "\n" patterns; a Windows checkout under
+# core.autocrlf handed them "\r\n" and five of the shell's tests failed
+# before anything was changed. Git still detects binaries by content.
+* text=auto eol=lf
+# cmd.exe misreads labels in a batch file with bare LF line endings.
+*.bat text eol=crlf
+# The updater gate fixtures are byte exact: their sha256 and signature files
+# pin the bytes as committed, so no line ending rule may touch them.
+apps/desktop/ci/fixtures/** -text

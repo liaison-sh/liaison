@@ -1,0 +1,57 @@
+Credential prefix lnn_ and random token -> apps/api/src/modules/nodes/credentials.ts:22
+Credential stored as SHA-256 hash -> apps/api/src/modules/nodes/credentials.ts:27
+Credential header X-Node-Credential -> apps/api/src/modules/nodes/credentials.ts:24
+Credential presented next to owner's session, both same person -> apps/api/src/modules/nodes/credentials.ts:6
+Enabling again rotates the credential; delete revokes -> apps/api/src/modules/nodes/credentials.ts:4
+Credential kept in a 0600 file -> apps/api/src/modules/nodes/routes.ts:313
+Simulated node never holds a credential -> apps/api/src/modules/nodes/credentials.ts:8
+Folder routes refuse node credentials and MCP tokens -> apps/api/src/modules/nodes/folder-routes.ts:5
+Command route restricted sessions refused -> apps/api/src/modules/node-sessions/routes-commands.ts:57
+Level confirmation route refuses restricted sessions -> apps/api/src/modules/node-sessions/routes-confirm.ts:55
+Import routes refuse restricted sessions -> apps/api/src/modules/node-sessions/routes-import.ts:136
+Restricted sessions mint no new credential -> apps/api/src/modules/auth/session-ceiling.ts:12
+MCP commands tokens never pass REST session middleware -> apps/api/src/modules/node-sessions/routes-commands.ts:13
+Liaison MCP token 15 minutes, renewed; revoked needs new device approval -> apps/desktop/README.md:14
+Starting a session parks for owner approval -> apps/api/src/modules/agent/tools/kernel-tools.ts:1100
+Share and clone owner-routed approvals -> apps/api/src/modules/agent/tools/kernel-tools.ts:1106
+Import only the person's click approves -> apps/api/src/modules/agent/tools/kernel-tools.ts:1387
+Confirmation never from agent tool, MCP token, API key or node credential -> apps/api/src/modules/node-sessions/confirmations.ts:6
+Confirmation lifetime 5 minutes bound to node agent level purpose -> apps/api/src/modules/node-sessions/confirmations.ts:34
+Confirmation consumed once -> apps/api/src/modules/node-sessions/confirmations.ts:17
+Attachment of shared agent needs admin allow -> apps/api/src/modules/nodes/attachments.ts:14
+Admin cannot approve someone else's computer: owner routing registry -> apps/api/src/modules/agent/tools/kernel-tools.ts:1270
+Commands the owner can send -> packages/shared/src/node-session-protocol.ts:639
+take_over is server-applied only, never delivered to a node -> packages/shared/src/node-session-protocol.ts:650
+Server asks the node for folder ops -> packages/shared/src/node-folders.ts:5
+Paths live in an owner-only table, never answered -> apps/api/src/modules/nodes/routes.ts:17
+Session start above pin needs confirmation -> packages/shared/src/i18n/locales/en/kernel.json:4337
+Server stores paths owner-only and never answers them -> apps/api/src/modules/nodes/routes.ts:17
+Model must be one the node offers -> apps/api/src/modules/nodes/thread-settings.ts:18
+Bypass unavailable remotely -> apps/api/src/modules/nodes/thread-settings.ts:14
+Backlog jobs ask the user first -> apps/api/src/modules/nodes/jobs.ts:21
+Interrupted run never repeated silently -> apps/api/src/modules/nodes/jobs.ts:9
+Fencing by lease generation -> apps/api/src/modules/nodes/jobs.ts:13
+Result tagged with scopes the job touched -> apps/api/src/modules/nodes/job-taint.ts:3
+Job taint covers its MCP connection for the whole life -> apps/api/src/modules/nodes/job-taint.ts:15
+Plus source scopes of triggering content -> apps/api/src/modules/nodes/job-taint.ts:21
+Never taken from the client -> apps/api/src/modules/nodes/job-taint.ts:24
+Session words fenced as session data, angle brackets neutralised -> apps/api/src/modules/node-sessions/post-back.ts:27
+Event runs capped at strict by default -> apps/api/src/lib/env.ts:120
+Auto asks for shell after reading outside text -> apps/desktop/sidecar/auto-policy.ts:55
+Resumed chat keeps its session's verdict, asks when none -> apps/desktop/sidecar/outside-text.ts:65
+Saved Liaison result judged by the file's text -> apps/desktop/sidecar/outside-text.ts:281
+Turn that read outside text cannot start a session without approval -> apps/api/src/modules/agent/tools/kernel-tools.ts:1098
+Guardrail caveat: script can get past pre-push hook -> packages/shared/src/node-guardrails.ts:40
+Agents see display paths and opaque ids -> packages/shared/src/node-folders.ts:11
+Candidate ids 1 hour -> apps/api/src/modules/nodes/folder-requests.ts:42
+Full output kept 24 hours -> apps/api/src/modules/node-sessions/routes-full-output.ts:47
+Imports redact secrets best effort -> packages/shared/src/i18n/locales/en/kernel.json:4820
+Local session audit: hashes only, no path -> apps/api/src/modules/agent/local-sessions/local-session-routes.ts:13
+Local session prompts and files never reach the server -> apps/api/src/modules/agent/local-sessions/local-session-routes.ts:5
+Git login: clone with computer's own login -> packages/shared/src/i18n/locales/en/kernel.json:4635
+Sessions readable by owner only (RLS) -> apps/api/src/db/migrations/0140_node_sessions.sql:386
+Another user's session reads as not found -> apps/api/src/modules/node-sessions/agent-tools.ts:13
+DEVICE_FLOW_CLIENTS lists allowed clients -> apps/api/src/lib/env.ts:90
+Desktop client id liaison-desktop -> packages/shared/src/i18n/locales/en/kernel.json:3449
+NODE_EVENT_RUN_MAX_LEVEL in admin list -> apps/api/src/lib/env.ts:116
+Download from the bound Liaison server is not outside text or fetched code -> apps/desktop/sidecar/auto-policy.ts:818

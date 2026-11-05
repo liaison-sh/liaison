@@ -1,0 +1,104 @@
+{
+  "name": "test-bridge-a",
+  "version": "1.0.0",
+  "trusted": true,
+  "dependencies": { "tools": ["test-bridge-b:internalCallback"] },
+  "schema": {
+    "audit": {
+      "fields": {
+        "key": "string",
+        "payload": "json",
+        "at": "date"
+      }
+    }
+  },
+  "tools": {
+    "callB": {
+      "description": "Call test-bridge-b:internalCallback",
+      "requiredScopes": ["test-bridge-a:thing:write"],
+      "trustBoundary": "user",
+      "handler": "callB",
+      "params": {
+        "type": "object",
+        "properties": {
+          "payload": {},
+          "idempotencyKey": { "type": "string" },
+          "cycle": { "type": "boolean" }
+        }
+      }
+    },
+    "recurse": {
+      "description": "Self-recursive call to exercise depth limit",
+      "requiredScopes": ["test-bridge-a:thing:write"],
+      "handler": "recurse",
+      "params": {
+        "type": "object",
+        "properties": { "depth": { "type": "number" } },
+        "required": ["depth"]
+      }
+    },
+    "idempotent": {
+      "description": "Returns cached result on duplicate idempotencyKey",
+      "requiredScopes": ["test-bridge-a:thing:write"],
+      "handler": "idempotent",
+      "params": {
+        "type": "object",
+        "properties": {
+          "idempotencyKey": { "type": "string" },
+          "payload": {},
+          "delayMs": { "type": "number" }
+        },
+        "required": ["idempotencyKey", "payload"]
+      }
+    },
+    "callIdempotent": {
+      "description": "Call inner test-bridge-a:idempotent through the bridge with idempotencyKey",
+      "requiredScopes": ["test-bridge-a:thing:write"],
+      "handler": "callIdempotent",
+      "params": {
+        "type": "object",
+        "properties": {
+          "idempotencyKey": { "type": "string" },
+          "payload": {},
+          "delayMs": { "type": "number" }
+        },
+        "required": ["idempotencyKey", "payload"]
+      }
+    },
+    "cleanup": {
+      "description": "Invalidate idempotency entry",
+      "requiredScopes": ["test-bridge-a:thing:write"],
+      "trustBoundary": "user",
+      "handler": "cleanup",
+      "params": {
+        "type": "object",
+        "properties": { "idempotencyKey": { "type": "string" } },
+        "required": ["idempotencyKey"]
+      }
+    },
+    "tainted": {
+      "description": "Marks the call chain tainted",
+      "requiredScopes": ["test-bridge-a:thing:write"],
+      "taintSource": true,
+      "handler": "tainted",
+      "params": { "type": "object" }
+    },
+    "callTaintedThenTrustBoundary": {
+      "description": "Invokes tainted then a trust-boundary tool to exercise taint propagation across bridge frames",
+      "requiredScopes": ["test-bridge-a:thing:write"],
+      "handler": "callTaintedThenTrustBoundary",
+      "params": { "type": "object" }
+    }
+  },
+  "webhooks": {
+    "outcomes": {
+      "handler": "outcomesHandler",
+      "verify": "outcomesVerify",
+      "bodyLimitBytes": 4096
+    }
+  },
+  "webhookHealth": {
+    "probe": null,
+    "reason": "Test fixture with no upstream."
+  }
+}

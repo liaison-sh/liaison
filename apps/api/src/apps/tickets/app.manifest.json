@@ -1,0 +1,3982 @@
+{
+  "name": "tickets",
+  "agentInstructions": {
+    "core": "Tickets is the support inbox: customer issues, RMAs, and warranty cases. Reach for it (not mail) when the customer needs tracked resolution with a status and assignee. Key handles: ticket id, status (open/pending/resolved), assignee, the linked contact. A ticket id reads ticket-<n>, or ticket-<CODE>-<n> (e.g. ticket-B2B-123) when the org segments its ids by audience, team, category or inbox: the CODE follows the ticket's CURRENT value and may change, the number never does, and every form (any case, an outdated CODE, the uuid) is accepted wherever a ticketId is, so pass the id exactly as you read it. Name tickets to people by that id. To reply to a customer, CALL tickets__reply with your drafted body. Never paste a draft into chat and ask whether to send. tickets__search/tickets__get already return the ticketId, use it directly; never ask the human for a ticket id you can retrieve yourself. If a read tool (search/get) just returned data, the tools are working, do NOT claim a 'technical issue accessing the tickets tools' and stop; proceed to tickets__reply. Use tool_search to discover the deferred read tools (search/get) before answering. Silent-failure gotcha: a ticket outside your dimension or scope returns empty, not an error, say so rather than inventing a result. Before you assert any policy figure in a customer-facing reply or decision, search Knowledge for the governing policy doc and base the figure on what it says. To attach a file to a send, resolve the real file id (files_list on the entity that owns it, drive_import, or a message attachment id) and PASS that id in the send tool's `attachments` array in the same call; mentioning the id is not attaching it.",
+    "sections": [
+      {
+        "tools": [
+          "reply",
+          "get"
+        ],
+        "text": "ONE REPLY DRAFT PER TICKET, UPDATED IN PLACE: a ticket holds at most one pending reply draft. Before drafting, read tickets__get's pendingReplyDrafts. When a draft is already there, do NOT stage a second one and do NOT stop at telling the user one exists: UPDATE it with kernel__approval_update_payload (requestId = its approvalId, fields = {\"textBody\": your full new body}), whoever drafted it. Rewriting a colleague's draft is normal: anyone who may approve ticket replies may edit it. A tickets__reply on a ticket that already holds someone else's draft is refused with approval_already_pending naming that draft's approvalRequestId: that refusal is your cue to update that draft, not an error to report. A new tickets__reply replaces your own waiting draft in place. Only when the update itself is refused (you lack the scope) tell the user a draft is already waiting, give its id, and show the text you propose."
+      },
+      {
+        "tools": [
+          "search",
+          "get",
+          "listForContact"
+        ],
+        "text": "When a task NAMES a ticket by its human reference / number (e.g. 'EMB-T-2041', '#1234'), FIND it with tickets__search using that reference as the query, do NOT call tickets__get with the reference string (tickets__get takes the internal UUID id, so a human reference like 'EMB-T-2041' just errors); search returns the matching ticket, then read it by its REAL id. If a topic search also returns OTHER tickets, pick the one whose handle/subject matches the named reference (and prefer a resolved ticket that actually contains the fix over a bare problem report). SYNTHESIZE FROM RESOLUTIONS: when the task is to write up HOW an issue was fixed, a Knowledge/troubleshooting article, a post-mortem, 'steps drawn from real ticket resolutions', the resolutions live in CLOSED/RESOLVED tickets, so search with status=closed (or resolved), NOT the default open-only set; read the matched tickets' resolution notes/replies, synthesize the steps from them, and CITE the ticket ids you drew on. A default (open) search misses the resolved cases that hold the actual fixes, so never write the article off open tickets alone or from general knowledge. If you CANNOT locate the named ticket, SAY you couldn't find it and STOP, NEVER invent its contents or author a document from general knowledge and attribute it to that ticket. To find ALL of a specific customer's tickets (e.g. to dedup/merge their duplicates, or pull their case history), do NOT pick tickets ad-hoc or by subject guessing, first resolve them with contacts_search to a contactId, then tickets__search with that contactId (or tickets__listForContact) to get EXACTLY that contact's tickets; merge/act only on those. Picking tickets by eye risks missing a duplicate or merging an unrelated ticket. THEME / ISSUE-WAVE CLUSTERING: to gather ALL tickets about ONE recurring issue (e.g. 'a wave of <X> reports, find them all and confirm it's the same problem'), tickets__search is tokenized over subject AND body, every whitespace term must appear (in subject, handle, or a message body), and a precise multi-term query that returns nothing automatically retries as OR-of-terms, so a natural phrase like 'preset corruption v2.4' matches even when the words are scattered or live in the body. Still prefer the discriminating theme/component/firmware term(s) and, when the wave shares a category, also filter by categoryId (or smartFilter='all-open') to enumerate the whole category, not just keyword hits; read the matched set and report the count you actually retrieved. If the human says it feels like more than you found, BROADEN the query (drop an over-specific term, or enumerate the category) instead of re-running the identical search, and NEVER assert you have 'found them all' off a single narrow query, nor state a cluster count you have not actually retrieved."
+      },
+      {
+        "tools": [
+          "reply",
+          "nudge",
+          "close",
+          "create",
+          "templates.create"
+        ],
+        "text": "REACHING A CUSTOMER WHO HAS NO INBOUND TICKET: pick the channel by where the customer already exists: tickets__reply (and a ticket's closing email) can ONLY send through the ticket's SOURCE INBOX, the inbox the customer's original email arrived on. A ticket you CREATE from inside Liaison (tickets__create, or one opened to track an internal task) has NO source inbox, so replying to it fails preflight with `no_inbox` ('ticket has no source inbox'), it can hold internal notes but cannot EMAIL the customer. Likewise tickets__reply renders the customer `To:` from the ticket's most recent INBOUND customer message, so a ticket with no inbound customer message (a created or internal-note-only ticket) fails preflight with `no_recipient` ('ticket has no customer recipient'), again, reply only on the customer's genuine inbound ticket, or use mail__compose to their address. So do NOT open a brand-new internal ticket per customer just to message them: if the customer is known only from another system (e.g. a Shopify ORDER's customer email, a CRM contact) and has no existing inbound support ticket, draft the outreach with mail__compose to their email address (gated, it lands as a pending approval), which is the real sendable channel; use tickets__reply only on a ticket that genuinely came from an inbound customer email (it has a source inbox). When the work is to message MANY such customers (e.g. backorder/recall notices to a batch of order buyers), compose one gated mail draft per recipient, not a fan of inbox-less tickets that can never send. To CLOSE a ticket, use the dedicated tickets__close tool (it can send an optional final email), do NOT use tickets__setStatus to set status 'closed': setStatus does NOT transition an awaiting_customer (or open) ticket to closed and will error, so closing via setStatus silently fails. Likewise to send a final follow-up before closing, use tickets__nudge (only valid on awaiting_customer). If a close/nudge call errors, say so plainly. When the task names SEVERAL tickets, reply to EACH: call tickets__reply once per ticket, each in the customer's own language. MAKE-GOODS IN A REPLY: when a reply you draft offers a make-good (a refund, credit, discount, free or expedited replacement, extended warranty, etc.), frame it as something you are PROPOSING ('I'd like to offer…', 'we can arrange…'), NEVER as already done ('I have applied a 20% discount', 'your replacement ships today'). Drafting a reply does NOT execute a refund/credit/replacement, those are SEPARATE actions; stating one is applied/shipped when you have not actually called that specific tool is a fabrication. So the apology/make-good DRAFT proposes the gesture; the refund/replacement itself is a distinct step. NO MASS-SEND / BROADCAST / SEGMENT primitive, RECALL / ANNOUNCEMENT / 'notify all affected customers' outreach: there is NO tool anywhere in this product that delivers one notice to N customers in a single action. tickets__reply sends ONE message to ONE ticket's customer; mail__compose sends ONE message to the literal envelope you pass; templates.create only stores reusable wording in the internal macro library and contacts NOBODY. So a request to 'send the recall to everyone affected' / 'email all the impacted buyers' is NOT one call: it is N separate per-recipient gated sends (one tickets__reply or mail__compose per customer, EACH individually approved), OR, when the batch exceeds your step budget, DRAFT the notice (a template or one example reply) and tell the user PLAINLY that there is no mass-send/broadcast/segment tool, so the notice must be approved one send per recipient (or per ticket) and cannot go out as a single blast. STATE THIS LIMITATION EXPLICITLY in your summary whenever the task involves notifying a batch of customers, saving a recall template and implying it is now ready to 'send to all affected customers' WITHOUT this disclosure is wrong: the tooling cannot mass-send, and the user must know that."
+      },
+      {
+        "tools": [
+          "assign",
+          "addNote"
+        ],
+        "text": "To ROUTE/assign a ticket to a named teammate (e.g. 'give the non-English ones to Liam'), first resolve that person to their user id with users_search, then call tickets__assign with that id, assign takes a UUID, not a name, so never guess an id or skip the lookup. HAND-OFF WITH A FINDING: when you investigated something for the requester and now ROUTE/hand the ticket to a colleague (e.g. 'I verified their invoice is genuinely overdue, route it to Claire for the dunning'), the assignee reads the TICKET, not your chat with the requester, so you MUST record your finding/analysis as an internal note ON the ticket (call tickets__addNote with the finding, or pass mail__convertToTicket's note param when you convert the email) AS PART OF the hand-off. Stating the finding only in your chat reply does NOT hand it off, and assigning a ticket with no note leaves the colleague nothing to act on. Never claim you 'added a note' / 'left a note for X' unless you actually called tickets__addNote (or convertToTicket with note) in this turn, a chat summary is not a note, and saying you recorded something you did not is a fabrication. WARRANTY / RMA FINDING: STATE THE ELIGIBILITY VERDICT, not just the date: when you open or hand off a warranty/RMA case and have confirmed the purchase from Shopify (orders_search/orders_get), the internal note (tickets__addNote, or the convertToTicket note param) MUST do MORE than cite the order # and date, it MUST state your eligibility CONCLUSION in words, e.g. 'Order #1055 purchased 2026-06-03 → WITHIN the 2-year EU warranty, claim is COVERED/eligible'. Compute it: a purchase date inside the 2-year window is covered, outside it is not. A note that gives the date but leaves the reader to infer eligibility is INCOMPLETE, the colleague (Marco for the return label, Claire for the credit/replacement decision) needs the explicit covered-vs-out-of-warranty verdict to act. So every warranty hand-off note carries: the confirmed order #/date, the explicit in-warranty/eligible determination, AND the Marco/Claire routing, all three. When asked to REASSIGN or REBALANCE one person's whole queue (e.g. 'Sofia is out, reassign her open tickets'), FIRST tickets__search with assignedTo=<that person's id> (status=open) to retrieve EXACTLY their tickets, and reassign ONLY the tickets that search returned for that person, NEVER run an unscoped search and reassign the whole inbox: tickets__assign has NO undo, so reassigning tickets that weren't the named person's silently corrupts every other agent's queue. Skip any ticket the instruction excludes (e.g. 'skip awaiting_customer') by checking each ticket's status before assigning."
+      },
+      {
+        "tools": [
+          "setLanguage",
+          "setCategory",
+          "inboxes.list"
+        ],
+        "text": "MORNING SHARED-INBOX TRIAGE: CLAIM ONLY THE UNASSIGNED THREADS IN YOUR LANGUAGES, SKIP THE REST: when asked to triage a shared inbox and CLAIM (assign to yourself) the threads in particular languages (e.g. 'show me everything unassigned in the shared inbox in French, German or Italian, assign those to me and tag each with its language and topic'), work it as a per-ticket sweep, NOT a bulk move. (1) ENUMERATE the inbox, tickets__search with the inbox's sourceInboxId (resolve the inbox via inboxes.list) and status='open' (or smartFilter='all-open'). There is NO 'unassigned' filter in search (so do NOT pass a made-up assignedTo:null), and the search language: filter only matches tickets ALREADY LANGUAGE-TAGGED, a fresh inbound shared-inbox ticket is UNTAGGED until you setLanguage it, so at TRIAGE time you cannot rely on language: to find the FR/DE/IT threads; instead READ each returned ticket's fields: its assignedTo field is the ownership signal (assignedTo null/empty = UNASSIGNED and claimable; assignedTo set to a user id = ALREADY OWNED by a teammate). (2) CLAIMABLE SET = only the tickets whose assignedTo is null. A ticket already owned by Sofia, Priya, or anyone else (non-null assignedTo) is OFF-LIMITS, NEVER re-assign it to yourself even if it is in one of your languages; re-grabbing a colleague's in-progress ticket is the exact double-handling this triage exists to prevent. Leave every owned ticket untouched. (3) DETECT LANGUAGE FROM CONTENT, not a filter: read the subject and body of each CLAIMABLE ticket and judge its language yourself (French / German / Italian / English …), e.g. 'non reconnu en USB' is French, 'Bluetooth-MIDI-Verbindung bricht ab' German, 'non si connette via USB' Italian; tickets__get the body if the subject is ambiguous. (4) WORK IT IN TWO PASSES so detection cannot blur into claiming, this ordering is what prevents the #1 failure (assigning the English tickets). PASS A (detect only, NO assign): for EACH claimable ticket, read it and decide its language; do NOT call tickets__assign during this pass. PASS B (claim only the in-scope ones): now go through ONLY the tickets whose detected language is one the user named (FR/DE/IT) and, for EACH, call tickets__assign with assignedTo:'me' (you do NOT need to look up your own id, 'me' resolves to you), THEN tickets__setLanguage with the detected language (e.g. 'French'/'German'/'Italian') AND tickets__setCategory with the TOPIC category (Setup/Connectivity/Firmware/Returns/MIDI mapping etc., resolved via categories.list). LANGUAGE and TOPIC are SEPARATE fields, setLanguage writes a dedicated language tag, setCategory writes the single topic category; they COEXIST. Do NOT try to put the language into setCategory (a ticket holds only ONE category, so a second setCategory overwrites the first, language and topic cannot both be categories). For an in-scope ticket, assign + setLanguage + setCategory are three SEPARATE ungated calls; do not forget any of them (an assigned ticket with no language tag, or no topic, is incomplete). HARD GATE: an English ticket (or any language outside FR/DE/IT) is NOT in Pass B at all: you make ZERO tool calls on it: no assign, no setLanguage, no setCategory. Detecting a ticket as English and then calling assign or setLanguage on it is the single most common failure of this task; the English tickets must be left completely untouched. (5) SKIP: make NO tool calls on, the claimable tickets whose language is NOT one of yours (e.g. the English ones): leave them entirely untouched and unassigned so Sofia/Priya can pick them up. An English ticket must end this turn with assignedTo still null and NO language/category tag from you. Do NOT claim every unassigned ticket regardless of language, do NOT assign an English ticket 'to be safe', and do NOT call setLanguage on it either, touching it at all is the mistake. (6) REPORT a claimed-vs-skipped summary that MATCHES what you actually did: list each ticket you CLAIMED (only the FR/DE/IT ones you actually called assign on) with its DETECTED LANGUAGE and the topic you tagged, and list the English ones you LEFT unassigned (plus note the already-owned tickets stay with their current owner). Your summary MUST agree with your real assign calls, if you assigned an English ticket, that is a mistake to UNDO (assign it back to null), NOT to hide by claiming you left it unassigned. Only report a ticket as claimed/tagged if its assign + setLanguage + setCategory calls actually SUCCEEDED this turn, never claim work you did not complete, and never claim you left a ticket unassigned that you in fact assigned."
+      },
+      {
+        "tools": [
+          "setCategory",
+          "setPriority",
+          "categories.list",
+          "addNote"
+        ],
+        "text": "BATCH categorize/prioritize discipline: tickets__setCategory and tickets__setPriority take a ticketId you MUST copy verbatim from a tickets__search/get result in THIS conversation, NEVER invent, guess, or recall a ticket id from memory (a made-up id returns 'ticket not visible' and changes nothing). setCategory accepts a category NAME, so call categories.list once and pass the name. TAG vs NOTE, when asked to TAG / CATEGORIZE / CLUSTER tickets (e.g. 'tag them as a known-issue cluster', 'mark these as the USB-C cluster'), that means tickets__setCategory, apply a CATEGORY (call categories.list FIRST to find the matching cluster category name; the category IS the durable, filterable cluster tag). addNote only adds an internal COMMENT and does NOT categorize a ticket, a note is not a tag. So if the request is to cluster-tag AND annotate (e.g. 'tag them as a cluster and add a note linking the troubleshooting steps'), do BOTH per ticket: setCategory(clusterName) AND addNote(...). Never satisfy a 'tag/categorize/cluster' request with addNote alone. Work the tickets ONE AT A TIME with their real ids; if you cannot finish them all within your step budget, that is expected, update as many as you can, then tell the human exactly which ticketIds you changed and which still need doing, and continue when asked. NEVER report a ticket as categorized or reprioritized unless that ticket's setCategory/setPriority call SUCCEEDED in THIS turn, if a call returned an error, or you did not call the tool, say so plainly; do not claim work you did not complete or summarize a final state you have not verified with a fresh get."
+      },
+      {
+        "tools": [
+          "slaReport",
+          "backlogHealth"
+        ],
+        "text": "SLA-BREACH WATCH: to answer 'which tickets are about to breach SLA' / 'what's at risk right now' / 'triage the worst first', CALL tickets__search with slaApproaching=true (and status=open), that is the directly-supported filter for at-risk tickets; for tickets ALREADY past SLA ('aging past SLA', 'overdue', 'breached') use tickets__search with slaBreached=true (every returned ticket has slaBreachedAt set / a past slaDeadline). slaApproaching=true only matches not-yet-answered tickets nearing their deadline, so it does NOT include a ticket that has already breached, use slaBreached=true for those. Do NOT dump every open ticket and eyeball deadlines, and NEVER invent, estimate, or recall from memory a breach list or breach COUNT you did not retrieve from that call. LABEL HONESTLY: a ticket from the slaApproaching set is APPROACHING / at-risk (its deadline is near but NOT yet past); do NOT call it 'breached' / 'past SLA' / 'overdue'. A ticket is BREACHED only if it came back from a slaBreached=true search (slaBreachedAt set / deadline already past). Never tag a ticket 'breached' off an approaching-deadline reading or a gut feel, if you didn't retrieve it via slaBreached=true, it is at most approaching. SLA timing (approaching/breached) and VIP/dealer priority are SEPARATE axes: a ticket can be slaApproaching without being VIP, and VIP without being near SLA, surface both groups but don't conflate 'VIP' with 'breaching' or demote a genuinely SLA-imminent ticket because it isn't VIP. Then read the matched tickets to flag VIP/dealer ones (4h SLA per the support bible) and present them worst-first. WEEKLY SLA-BREACH POST-MORTEM / ATTAINMENT-RATE READ: 'which tickets breached SLA in the last 7 days / how late was each / per-agent breach counts / our overall SLA-attainment rate this week': there IS an authoritative aggregate, CALL tickets__slaReport (default last 7-day window; pass windowDays only if the user names a different span). It returns EXACT server-side totals: breachedCount, totalInWindow, metCount, attainmentRatePct (= metCount/totalInWindow*100, one decimal, report THIS as the definitive weekly attainment rate), perAgent[] (per-assignee breach counts with assigneeName, name the agents and their counts), and breachedTickets[] (every breached ticket, most-overdue first, each with subject + assigneeName + breachMarginHours = how late the first response was). Report attainmentRatePct, breachedCount, the perAgent split, and the breach margins AS the definitive answer, they are EXACT (a real window-scoped aggregate, not a paged sample), so do NOT label them a 'bounded sample', do NOT add a 'this is only what I could page' caveat, and do NOT tally search pages. NEVER invent or estimate an attainment percentage, a breach count, or a per-agent figure, every number comes from slaReport. attainmentRatePct is null ONLY when the window holds zero tickets (no denominator); in that case say there were no tickets in the window, never a fabricated rate. (slaReport covers SLA-breach metrics; resolution-time AVERAGES and aggregate CSAT remain unavailable, see the support-scorecard note, so do NOT claim an average resolution time from it.)"
+      },
+      {
+        "tools": [
+          "listForContact",
+          "setFollowup",
+          "clearFollowup"
+        ],
+        "text": "VIP / DEALER RELATIONSHIP-RISK READOUT (per-contact cross-reference): for 'which of my VIP/dealer relationships are at risk' / 'VIPs with an open ticket past SLA or an overdue follow-up, flag the worst to call', there is NO relationship-risk-score or cross-contact rollup tool, so you BUILD this by hand, per VIP, and EVERY flag must be grounded in a ticket/follow-up you actually READ this turn. Steps: (1) resolve the VIP/dealer set with contacts_search(tag='vip') and contacts_search(tag='dealer'), that is how the segment is stored; ALSO include any contact the user names explicitly. Do NOT invent contacts or pull names from ticket subjects alone, if contacts_search returns someone, they are real; if it returns nobody for a tag, say the segment is empty rather than guessing. (2) For EACH resolved VIP/dealer you MUST do a per-contact read, tickets__search with that contactId (or tickets__listForContact), and inspect the returned tickets: an OPEN ticket whose slaDeadline is in the past (or slaBreachedAt is set) is 'aging past SLA'; a ticket whose followupAt is in the PAST is an 'overdue promised follow-up' (the promise lives in the followupAt/followupReason fields). Do this per contact, a global tickets__search(slaApproaching=true) is NOT enough here: it omits already-breached tickets (those need slaBreached=true) AND it is a bounded page that can miss a specific VIP's ticket, so EVERY VIP flag must come from that VIP's own contactId read, never from a global filter alone. (To sweep overdue promises across all your work you may ALSO run tickets__search(smartFilter='follow-ups'), which surfaces follow-ups whose followupAt has passed, and read each.) Name each risk by its real ticket (id + subject) that appeared in a read result THIS turn, NEVER assert a VIP is 'at risk' or 'all clear' without having read their tickets, never cite a ticket id/subject/breach-time that no read returned, and NEVER attach a quote or a promise date you did not read from the ticket. (3) Conclude with ONE prioritized 'call Monday' pick, the single worst relationship, and say WHY (e.g. a VIP already PAST SLA outranks one merely approaching, and an overdue promise outranks a fresh ticket). A readout missing the single pick is incomplete. (4) This is a READ-ONLY readout: do NOT call tickets__reply/close/assign or draft any message, the user asked you to surface and prioritise risk, not to action it. Frame the whole thing as a manual cross-reference (you iterated the contacts and their tickets yourself; there is no risk-scoring tool)."
+      },
+      {
+        "tools": [
+          "inboxCounts",
+          "categories.list"
+        ],
+        "text": "SUPPORT VOLUME BY CATEGORY / THEME: there is NO per-CATEGORY count aggregate and NO time-bucketed / month-over-month aggregate, inboxCounts is per-INBOX only (not per-category), and search returns a paged/truncated sample, so an AUTHORITATIVE per-category monthly count or a month-over-month change CANNOT be computed. For a 'tickets by category this month' / 'which themes are spiking / MoM' question, call categories.list then search(categoryId, closedAfter=<window start>) per theme to gather a BOUNDED sample, present the tallies explicitly labeled as a manual count of a bounded recent window (NOT a server-side total), and state plainly that no authoritative per-category count or month-over-month trend is computable. NEVER treat a single search page as the complete monthly count, and never fabricate a per-category count or a MoM%, hold this honestly even if the user pushes for hard numbers. The SAME honesty applies to ANY breakdown the platform does not expose as a stored facet, including a breakdown by FAILURE MODE / root cause / issue type that lives in the ticket SUBJECT, not a stored category (e.g. 'which warranty failure modes are trending this week', USB-C port wear vs dead touch zones vs delamination vs power-supply): there is no aggregate or group-by for it, so retrieve the bounded recent set with a broad keyword (search is tokenized over subject+body, so the product / 'warranty'/'RMA' term recalls the set), classify EACH ticket the search actually RETURNED by reading it, tally per mode, and label the result a manual count of a bounded recent sample (not a server-side total). Report ONLY counts for tickets your search actually returned, NEVER pad the tally with an invented '+N others', a higher 'audited'/'final'/'estimated' total, or counts for tickets you never retrieved; if you believe more exist beyond what you pulled, SAY so and BROADEN the keyword rather than guessing a number."
+      },
+      {
+        "tools": [
+          "backlogHealth",
+          "inboxCounts"
+        ],
+        "text": "BACKLOG HEALTH / 'how many open vs awaiting / which are oldest / where are we bunching by category / are we drowning' STATUS READ: there IS an authoritative aggregate, CALL tickets__backlogHealth. For a whole-desk backlog question call it with NO arguments ({}); do NOT invent or guess a team filter, the team param is ONLY for when the user explicitly names a team, and a made-up team errors with 'unknown team' (drop the filter and re-run for the whole desk; never read an unknown-team error as 'the queue is empty'). It returns EXACT server-side counts over the whole open backlog (a real GROUP BY, not a paged sample): byStatus {open, awaitingCustomer, awaitingFollowup, totalOpen}, byCategory (the bunching), byAge buckets, oldest (oldest-first with ageDays/category/assignee), unassignedOpen, AND bySla {approaching, breached, approachingTop[], breachedTop[]}, the authoritative SLA-approaching + already-breached COUNTS with named exemplars (same predicates as the slaApproaching/slaBreached search filters). So when a backlog/war-room read includes 'SLA breaches / what's at risk', the answer is bySla, report bySla.breached and bySla.approaching from this same call and name the breachedTop/approachingTop tickets; do NOT report 'no breaches' or 'none at risk' from the mere absence of an SLA field, and do NOT relabel unassignedOpen as 'breaches' (they are unrelated). ALWAYS take the awaiting-customer vs awaiting-us split from byStatus (awaitingCustomer = waiting on the customer; open + awaitingFollowup = on our plate), NEVER derive that split by eyeballing the raw status of a search page (status='open' is NOT the whole 'awaiting us' set). Report those numbers AS the definitive totals, they are exact and authoritative, so do NOT label them a 'bounded sample', do NOT add a 'this is only what I could page' caveat, and do NOT tally search pages or read inboxCounts for these counts (inboxCounts is unread-per-inbox only, NOT a status split or total-open). Map the ask to the result: 'open / awaiting us' = open + awaitingFollowup (and call out totalOpen), 'awaiting customer' = awaitingCustomer, 'oldest' = the oldest[] entries (name them by subject + ageDays + status as the stuck-state + assigneeName as the OWNER, each oldest[] row carries assigneeName so you can say who owns it without a users_search; null assigneeName = unassigned), 'bunching by category' = byCategory. For a 'give me the 10 oldest still-open tickets, how long open, what state they're stuck in (awaiting customer vs us), and who owns them' backlog-burndown read, the oldest[] entries ARE the answer: ageDays is the age, status is the stuck-state (awaiting_customer = waiting on the customer; open/awaiting_followup = on our plate / awaiting us), assigneeName is the owner. (You may equivalently call search({ smartFilter:'all-open', sort:'oldest', limit:10 }), same oldest-first set with createdAt + status + assigneeName per row.) When the user presses for 'the real/complete/definitive totals I can trust', GIVE the backlogHealth totals plainly and confidently, they ARE the trusted numbers because the tool counted the entire backlog server-side; never hedge them into a sample and never invent or reconcile to a tidier round total than the tool returned. (You may still use search to pull the actual ticket rows behind a number if the user wants the list.)"
+      },
+      {
+        "tools": [
+          "search",
+          "setLanguage"
+        ],
+        "text": "EU-LANGUAGE / PER-LANGUAGE BACKLOG DIGEST: when the read is 'my French/German/Italian (EU-language) backlog' / 'my FR/DE/IT tickets' / a per-language lane, FILTER server-side with tickets__search language:['fr','de','it'] (ISO codes as an ARRAY, NOT the display words 'French/German/Italian', and NOT in-context language detection per body). The tickets app tags each ticket's language, so language:['fr','de','it'] returns EXACTLY the EU-language set and EXCLUDES English/other tickets in ONE call; eyeballing bodies both leaks English tickets into the lane and misses correctly-tagged ones. Combine it with assignedTo (your own lane). COVER THE WHOLE NON-CLOSED BACKLOG: a backlog-health digest spans ALL open statuses (open AND awaiting_customer AND awaiting_followup), so pass smartFilter:'all-open' (= status IN open/awaiting_customer/awaiting_followup) rather than a single status='open' filter: a bare status='open' reads ONLY the open group and DROPS the awaiting_customer / awaiting_followup tickets (and any aging tickets sitting in those statuses), so the digest silently misses half the backlog and the flagged-aging set no longer matches the real age partition. NEVER scope a whole-backlog digest to one status, use smartFilter:'all-open' (or enumerate all three non-closed statuses) so every group is present. AGING-FLAG DIGEST: when the ask is to 'flag anything aging past N days' (a backlog-health digest that must discriminate aging from fresh), pass tickets__search agingThresholdDays:N (e.g. agingThresholdDays:3 for 'aging past 3 days'); each returned row then carries ageDays (whole days open) AND aging (= ageDays > agingThresholdDays), so the SERVER does the per-ticket aging discrimination, RENDER the aging boolean, do NOT recompute it or eyeball timestamps. When you AUTHOR A ROUTINE for a per-language aging-backlog digest ('every week, digest my EU-language backlog grouped by status and topic, flag anything older than 3 days, note the awaiting-customer ones'), the routine PROMPT MUST wire ALL THREE into its tickets__search, smartFilter:'all-open' (so the tick covers open + awaiting_customer + awaiting_followup, not just the open group) AND language:['fr','de','it'] AND agingThresholdDays:3 (plus assignedTo the owner), so every tick reliably reads the WHOLE EU-language backlog across every non-closed status and flags the >3d ones; a routine prompt that scopes to a single status, or omits the language array or the aging threshold, produces an unreliable digest (a dropped status group / English leak / an unconfigured aging flag). RENDER EVERY STATUS GROUP: when the digest groups by status, the tick MUST emit a section for EACH of the three non-closed statuses that appears in the search result (Open, Awaiting Customer, Awaiting Follow-up), in that order; do NOT collapse to only the awaiting_* groups and silently omit the OPEN group. The single most common tick failure here is rendering the awaiting_customer / awaiting_followup sections but dropping the Open section entirely (so the open-status aging tickets vanish and the flagged set no longer matches the real backlog). So the routine prompt MUST instruct: 'group the results by status into Open / Awaiting Customer / Awaiting Follow-up sections, include the Open section even if you have to scan the whole result for open-status rows, then within each status group by topic, flag every row whose aging is true, and add a Needs-Nudge section for the awaiting_customer ones'. Every open-status row the search returned MUST appear under the Open section."
+      },
+      {
+        "tools": [
+          "csat.request",
+          "csat.summary",
+          "csat.list"
+        ],
+        "text": "SUPPORT SCORECARD / CSAT / RESOLUTION-TIME METRICS: CSAT satisfaction surveys CAN now be dispatched, to 'send a satisfaction survey to customers whose tickets we closed', first find those tickets with tickets__search (status=closed, closedAfter=<window>), then call csat.request with their ids to send each customer a survey and open a pending rating record; read recorded results with csat.summary / csat.list. BUT a customer's rating is RECORDED only when they respond, so a freshly-dispatched survey has NO score, csat.summary.averageScore stays null until responses accrue, and there is NO aggregate CSAT SCORE or week-over-week CSAT TREND computable from a request window. So for a 'CSAT score' / 'satisfaction trend' question, you may dispatch/track the surveys but must say plainly that no aggregate CSAT score or trend exists yet (ratings accrue over time) and NEVER fabricate a CSAT %. For SLA-BREACH metrics, which tickets breached in a date window, the breach MARGIN (how late first response was), PER-AGENT breach counts, and the overall SLA-ATTAINMENT RATE for the week, there IS now an authoritative aggregate: CALL tickets__slaReport (default last 7 days, override with windowDays). It returns EXACT server-side totalInWindow / breachedCount / metCount / attainmentRatePct (null only when the window is empty) + perAgent[] breach counts + breachedTickets[] with breachMarginHours, report those AS the definitive answer, NEVER a search tally or a fabricated percentage. (resolution-time AVERAGES, first-response-time averages, and aggregate CSAT scores/trends remain unavailable, there is no aggregate for those, so a 'resolution times this week' read is at most a bounded per-ticket sample, clearly labeled approximate.) So a 'support scorecard' / 'resolution times this week vs last' is at most a BOUNDED per-ticket tally over a sampled window (search with closedAfter, reading each ticket's firstResponseAt / slaBreachedAt flags), clearly labeled approximate, never a server-side average or an authoritative week-over-week trend. Deliver the bounded counts (resolved-this-week, SLA-breach count) honestly, flag aggregate CSAT scores/trends as not-yet-available (surveys can be dispatched via csat.request, but aggregate scoring accrues only as customers respond) and averages/trends as best-effort, and never invent precise averages or a CSAT figure even under pressure."
+      },
+      {
+        "tools": [
+          "reply",
+          "approveFromHome.get",
+          "approveFromHome.set"
+        ],
+        "text": "WHERE A REPLY DRAFT IS APPROVED: the org setting Approve ticket replies from Home decides whether a pending customer reply can be approved, edited or rejected from its Home card (on) or only from inside the ticket, with Home just opening it (off, the default). Read it with tickets__approveFromHome_get and change it with tickets__approveFromHome_set (gated). Asks like 'force people to open the ticket before approving a reply' or 'let us approve replies from Home' are this setting, not an approval policy."
+      }
+    ]
+  },
+  "version": "1.1.0",
+  "description": "Customer-facing ticketing: local foundations (7.1)",
+  "license": "FSL-1.1-ALv2",
+  "listing": {
+    "publisher": "Liaison",
+    "category": "Support",
+    "icon": "ticket",
+    "summary": "Track customer requests, returns and warranty cases to resolution.",
+    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/apps/api/src/apps/tickets"
+  },
+  "trusted": true,
+  "dependencies": {
+    "optional": [
+      "mail"
+    ],
+    "tools": [
+      "mail:createFromTicket",
+      "mail:appendInboundMessage"
+    ]
+  },
+  "schema": {
+    "tickets": {
+      "fields": {
+        "subject": "string",
+        "status": {
+          "type": "string",
+          "default": "open",
+          "enum": [
+            "open",
+            "awaiting_customer",
+            "awaiting_followup",
+            "closed"
+          ]
+        },
+        "priority": {
+          "type": "string",
+          "default": "normal",
+          "enum": [
+            "low",
+            "normal",
+            "high",
+            "urgent"
+          ]
+        },
+        "channel": {
+          "type": "string",
+          "enum": [
+            "email",
+            "web_form",
+            "api",
+            "mail_escalation",
+            "manual",
+            "social"
+          ]
+        },
+        "team": "string?",
+        "audience": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "b2b",
+            "b2c"
+          ]
+        },
+        "language": "string?",
+        "sensitivity": {
+          "type": "string",
+          "default": "internal",
+          "enum": [
+            "internal",
+            "confidential",
+            "restricted"
+          ]
+        },
+        "categoryId": {
+          "type": "uuid",
+          "required": false,
+          "references": {
+            "table": "categories",
+            "column": "id",
+            "onDelete": "set null"
+          }
+        },
+        "contactId": "uuid?",
+        "assignedTo": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "replyToken": "string",
+        "sourceAccountId": "uuid?",
+        "sourceInboxId": {
+          "type": "uuid",
+          "required": false,
+          "references": {
+            "table": "inboxes",
+            "column": "id"
+          }
+        },
+        "sourceConversationId": "uuid?",
+        "convertedToMailConversationId": "uuid?",
+        "mergedIntoTicketId": {
+          "type": "uuid",
+          "required": false,
+          "references": {
+            "table": "tickets",
+            "column": "id",
+            "onDelete": "set null"
+          }
+        },
+        "closedReason": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "resolved",
+            "converted_to_mail",
+            "merged",
+            "spam",
+            "duplicate",
+            "no_response"
+          ]
+        },
+        "firstResponseAt": "date?",
+        "slaTargetSeconds": "integer",
+        "slaDeadline": "date?",
+        "slaActiveStartedAt": "date?",
+        "slaPausedAt": "date?",
+        "slaElapsedSeconds": {
+          "type": "integer",
+          "default": 0
+        },
+        "slaBreachedAt": "date?",
+        "lastInboundAt": "date?",
+        "lastOutboundAt": "date?",
+        "lastMessageAt": "date?",
+        "messageCount": {
+          "type": "integer",
+          "default": 0
+        },
+        "nudgeSentAt": "date?",
+        "ackSentAt": "date?",
+        "followupAt": "date?",
+        "followupReason": "string?",
+        "followupTrigger": "string?",
+        "internalThreadId": "uuid?",
+        "externalRef": "string?",
+        "summaryText": "string?",
+        "summaryAt": "date?",
+        "summaryMessageCount": {
+          "type": "integer",
+          "default": 0
+        },
+        "summaryStatus": {
+          "type": "string",
+          "default": "idle",
+          "enum": [
+            "idle",
+            "generating",
+            "error"
+          ]
+        },
+        "summaryModel": "string?",
+        "summaryTokenUsage": "json?",
+        "summaryError": "string?",
+        "requesterEmail": "string?",
+        "participantEmails": {
+          "type": "json",
+          "default": []
+        },
+        "relatedTicketId": {
+          "type": "uuid",
+          "required": false,
+          "references": {
+            "table": "tickets",
+            "column": "id",
+            "onDelete": "set null"
+          }
+        }
+      },
+      "dimensions": {
+        "team": {
+          "type": "membership",
+          "label": "Team",
+          "description": "Which support teams this user belongs to.",
+          "values": [
+            "support-us",
+            "support-eu",
+            "support-apac",
+            "support-east",
+            "support-west"
+          ]
+        },
+        "sensitivity": {
+          "type": "level",
+          "label": "Sensitivity",
+          "description": "Up to which sensitivity level this user can see tickets.",
+          "order": [
+            "internal",
+            "confidential",
+            "restricted"
+          ]
+        }
+      },
+      "constraints": {
+        "unique": [
+          [
+            "replyToken"
+          ],
+          {
+            "columns": [
+              "externalRef"
+            ],
+            "where": "external_ref IS NOT NULL"
+          }
+        ]
+      },
+      "indexes": [
+        [
+          "status",
+          "slaDeadline"
+        ],
+        [
+          "status",
+          "followupAt"
+        ],
+        [
+          "status",
+          "lastOutboundAt"
+        ],
+        [
+          "team",
+          "status"
+        ],
+        [
+          "sensitivity"
+        ],
+        [
+          "contactId"
+        ],
+        [
+          "categoryId"
+        ],
+        [
+          "assignedTo"
+        ],
+        [
+          "lastMessageAt"
+        ],
+        [
+          "createdAt"
+        ],
+        {
+          "columns": [
+            "mergedIntoTicketId"
+          ],
+          "where": "merged_into_ticket_id IS NOT NULL"
+        }
+      ],
+      "timeline": [
+        "status",
+        "priority",
+        "assignedTo",
+        "categoryId",
+        "subject",
+        "closedReason",
+        "mergedIntoTicketId"
+      ]
+    },
+    "messages": {
+      "rlsScope": "tickets",
+      "fields": {
+        "ticketId": {
+          "type": "uuid",
+          "references": {
+            "table": "tickets",
+            "column": "id",
+            "onDelete": "cascade"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "inbound",
+            "outbound",
+            "note"
+          ]
+        },
+        "fromEmail": "string?",
+        "fromName": "string?",
+        "toEmails": {
+          "type": "json",
+          "default": []
+        },
+        "ccEmails": {
+          "type": "json",
+          "default": []
+        },
+        "subject": "string?",
+        "htmlBody": "string?",
+        "textBody": "string?",
+        "snippet": "string?",
+        "externalMessageId": "string?",
+        "inReplyTo": "string?",
+        "headerReferences": "json?",
+        "sentAt": "date",
+        "createdBy": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "approvedBy": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "isAcknowledgement": {
+          "type": "boolean",
+          "default": false
+        },
+        "authorLabel": "string?",
+        "authorAgentId": "uuid?",
+        "senderAuth": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "pass",
+            "fail",
+            "none"
+          ]
+        },
+        "receivedAt": {
+          "type": "date",
+          "default": "now"
+        }
+      },
+      "dimensions": {
+        "team": {
+          "type": "membership",
+          "inheritFrom": {
+            "table": "tickets",
+            "localColumn": "ticketId",
+            "remoteColumn": "id"
+          }
+        },
+        "sensitivity": {
+          "type": "level",
+          "order": [
+            "internal",
+            "confidential",
+            "restricted"
+          ],
+          "inheritFrom": {
+            "table": "tickets",
+            "localColumn": "ticketId",
+            "remoteColumn": "id"
+          }
+        }
+      },
+      "constraints": {
+        "unique": [
+          {
+            "columns": [
+              "externalMessageId"
+            ],
+            "where": "external_message_id IS NOT NULL"
+          }
+        ]
+      },
+      "indexes": [
+        [
+          "ticketId",
+          "sentAt"
+        ],
+        {
+          "columns": [
+            "externalMessageId"
+          ],
+          "where": "external_message_id IS NOT NULL"
+        }
+      ]
+    },
+    "ticket_reads": {
+      "rlsGovernedByMigration": true,
+      "fields": {
+        "ticketId": {
+          "type": "uuid",
+          "references": {
+            "table": "tickets",
+            "column": "id",
+            "onDelete": "cascade"
+          }
+        },
+        "userId": {
+          "type": "uuid",
+          "userRef": true,
+          "onErase": "delete",
+          "references": {
+            "schema": "kernel",
+            "table": "users",
+            "column": "id",
+            "onDelete": "cascade"
+          }
+        },
+        "readAt": {
+          "type": "date",
+          "default": "now"
+        },
+        "lastReadMessageId": {
+          "type": "uuid",
+          "required": false,
+          "references": {
+            "table": "messages",
+            "column": "id",
+            "onDelete": "set null"
+          }
+        }
+      },
+      "constraints": {
+        "unique": [
+          [
+            "ticketId",
+            "userId"
+          ]
+        ]
+      },
+      "indexes": [
+        [
+          "ticketId",
+          "readAt"
+        ],
+        [
+          "userId",
+          "readAt"
+        ]
+      ]
+    },
+    "categories": {
+      "fields": {
+        "parentId": {
+          "type": "uuid",
+          "required": false,
+          "references": {
+            "table": "categories",
+            "column": "id",
+            "onDelete": "cascade"
+          }
+        },
+        "name": "string",
+        "sortOrder": {
+          "type": "integer",
+          "default": 0
+        },
+        "archivedAt": "date?"
+      },
+      "indexes": [
+        [
+          "parentId",
+          "sortOrder"
+        ]
+      ]
+    },
+    "inboxes": {
+      "fields": {
+        "kind": {
+          "type": "string",
+          "default": "mailbox"
+        },
+        "connectedAccountId": "uuid?",
+        "name": "string",
+        "emailAddress": "string?",
+        "defaultTeam": "string?",
+        "defaultAudience": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "b2b",
+            "b2c"
+          ]
+        },
+        "defaultSensitivity": "string?",
+        "fromDisplayName": "string?",
+        "replyViaInboxId": "uuid?",
+        "replyFromEmail": "string?",
+        "replyToEmail": "string?",
+        "signatureHtml": "string?",
+        "signatureText": "string?",
+        "ackEnabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "ackBodyText": "string?",
+        "slaPromisePhrase": {
+          "type": "string",
+          "default": "within 2 business days"
+        },
+        "suppressAttention": {
+          "type": "boolean",
+          "default": false
+        },
+        "slaExempt": {
+          "type": "boolean",
+          "default": false
+        },
+        "attentionCutoffAt": "date?",
+        "isDefaultForCreate": {
+          "type": "boolean",
+          "default": false
+        },
+        "closeSilentEnabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "closeSilentNudgeDays": {
+          "type": "integer",
+          "default": 7
+        },
+        "closeSilentCloseDays": {
+          "type": "integer",
+          "default": 5
+        },
+        "closeSilentNudgeText": "string?",
+        "closeSilentEnabledAt": "date?",
+        "closeSilentEnabledBy": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "archivedAt": "date?"
+      },
+      "constraints": {
+        "unique": [
+          [
+            "emailAddress"
+          ],
+          {
+            "columns": [],
+            "where": "is_default_for_create = true"
+          }
+        ]
+      }
+    },
+    "api_keys": {
+      "rlsGovernedByMigration": true,
+      "fields": {
+        "keyHash": "string",
+        "keyPrefix": "string",
+        "label": "string",
+        "allowedOrigins": {
+          "type": "json",
+          "default": []
+        },
+        "createdBy": {
+          "type": "uuid",
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "inboxId": "uuid?",
+        "lastUsedAt": "date?",
+        "revokedAt": "date?"
+      },
+      "constraints": {
+        "unique": [
+          [
+            "keyHash"
+          ]
+        ]
+      },
+      "indexes": [
+        [
+          "keyPrefix"
+        ]
+      ]
+    }
+  },
+  "entities": {
+    "ticket": {
+      "labelField": "subject",
+      "handlePrefix": "ticket",
+      "searchable": true,
+      "tableName": "tickets",
+      "readScope": "tickets:tickets:read",
+      "cardComponent": "TicketCard",
+      "indexFields": {
+        "title": "subject",
+        "handle": "handle"
+      },
+      "permissionFields": {
+        "readScope": "tickets:tickets:read",
+        "dimensionFields": [
+          "team",
+          "sensitivity"
+        ]
+      },
+      "fileParent": {
+        "tableName": "tickets",
+        "schemaRef": "app_tickets",
+        "joinOn": "id",
+        "readScope": "tickets:tickets:read",
+        "writeScope": "tickets:tickets:write"
+      }
+    },
+    "message": {
+      "tableName": "messages",
+      "labelField": "subject",
+      "handlePrefix": "tkt_msg_",
+      "readScope": "tickets:tickets:read",
+      "fileParent": {
+        "tableName": "messages",
+        "schemaRef": "app_tickets",
+        "joinOn": "id",
+        "readScope": "tickets:tickets:read",
+        "writeScope": "tickets:tickets:write"
+      }
+    }
+  },
+  "tools": {
+    "search": {
+      "description": "Search tickets. Filter by status (open/awaiting_customer/awaiting_followup/closed), priority, assignedTo, contactId, and free-text q. Returns a PAGED/truncated list — do NOT report a COUNT by tallying these results (that under-counts). inboxCounts is authoritative ONLY for the UNREAD count PER INBOX — it is NOT a status breakdown (open vs awaiting_customer vs awaiting_followup) and NOT a total-open count, so do NOT use an inbox's unread number as 'how many open tickets'. For a status breakdown / total-open / by-category / oldest / backlog-health read there IS an authoritative aggregate — use the backlogHealth tool (exact server-side GROUP BY over the whole backlog), NOT a tally of search pages. (backlogHealth ALSO returns authoritative SLA COUNTS — bySla.approaching + bySla.breached with named exemplars — so the count of at-risk/breached tickets comes from there, not a search tally. For a weekly SLA POST-MORTEM — which tickets breached in a date window, the breach MARGIN, PER-AGENT breach counts, and the overall SLA-ATTAINMENT RATE — there IS now an authoritative aggregate: use the slaReport tool (exact server-side counts + rate over the window), NOT a search tally. The only remaining gaps are resolution-time AVERAGES and an aggregate CSAT score/trend, which stay a bounded per-ticket sample / honest unavailability, never a fabricated percentage.) Use search to retrieve the actual matching ticket ROWS (e.g. the slaApproaching set, or the tickets behind a backlogHealth count when the user wants the list), noting any such list is a bounded page, not an exact total. OLDEST / BACKLOG-BURNDOWN — 'the 10 oldest still-open tickets, how long each has been open, what state they're stuck in, and who owns them': search is age-sortable — call search({ smartFilter: 'all-open', sort: 'oldest', limit: 10 }) to get the actual N OLDEST open tickets in ONE bounded call (sort='oldest' orders by created_at, so you get the real global oldest, not the first relevance page). Each returned row carries createdAt (compute age from it / now), status (open or awaiting_followup = on our plate / awaiting_customer = waiting on the customer — the stuck-state), and assigneeName (the OWNER — null = unassigned), so present age + stuck-state + owner per ticket WITHOUT a per-ticket get. (backlogHealth.oldest also returns the same oldest-10 with ageDays + assigneeName as an authoritative aggregate; either is the right oldest-first read — never present the default unsorted page as 'the oldest'.) 'OPEN' / BACKLOG SCOPE — when a request asks for someone's 'open tickets', a 'backlog' digest, or a list GROUPED BY STATUS (and especially one that must surface an 'awaiting customer / to nudge' section), 'open' means the WHOLE NON-CLOSED set — open AND awaiting_customer AND awaiting_followup — NOT the literal status='open' bucket alone. status='open' silently DROPS the awaiting_customer and awaiting_followup tickets, which (a) guts the awaiting-customer/nudge section entirely (those tickets ARE the awaiting_customer status), and (b) collapses a status-grouped digest to a single group. So read the full backlog with search({ smartFilter: 'all-open' }) (= status IN open/awaiting_customer/awaiting_followup, closed excluded) — or pass status: ['open','awaiting_customer','awaiting_followup'] explicitly — then GROUP the returned rows by their status field yourself. When the backlog is the CALLER'S OWN in INTERACTIVE chat ('my open tickets', 'my backlog', 'my queue'), use search({ smartFilter: 'my-backlog' }) — it returns exactly that non-closed set ASSIGNED TO YOU in ONE call (auto-scoped to the caller, NO assignee UUID to look up, and you can NOT accidentally fall into a whole-org read). CAUTION — in a ROUTINE PROMPT do NOT use smartFilter:'my-backlog' or assignedTo:'me': at tick time those resolve to the ROUTINE'S OWNER, which for an agent-authored, admin-approved routine may NOT be the person who asked — so they silently read the wrong queue. A routine that digests a specific person's tickets must filter by that person's EXPLICIT user id (resolved once at authoring time and baked into the prompt). Only filter to a single status when the user explicitly asks for that one bucket. AGING / 'OLDER THAN N DAYS' — THE SERVER COMPUTES IT, YOU RENDER IT. To flag tickets 'aging past N days', pass `agingThresholdDays: N` (e.g. `agingThresholdDays: 3` for 'aging past 3 days'; default 3) and EACH returned row then carries an `aging` BOOLEAN — already computed server-side as `ageDays > N`. Just RENDER each row's `aging` flag into your digest (true → flag it as aging, false → leave it unflagged). Do NOT recompute the comparison yourself, and do NOT mark a row 'aging' unless its `aging` field is true — copying the per-row boolean is the whole point (it removes the fragile in-context date arithmetic where rows get mis-flagged). Each row also carries `ageDays` (whole days open, = floor((now − createdAt)/1 day), the same figure backlogHealth.oldest reports) for display. The result is a real DISCRIMINATION: in a backlog some rows have aging:true and some aging:false, so the flagged set is EXACTLY the over-threshold rows — never the whole set, never none. CUSTOMER-SILENCE / 'NO REPLY FOR N+ DAYS' (auto-close) — THE SERVER COMPUTES IT, YOU RENDER IT. To find the awaiting_customer tickets that have gone SILENT (no inbound customer reply for N+ days — the stale-auto-close window), pass `silentForDays: N` (e.g. silentForDays: 7) ALONGSIDE status:'awaiting_customer' (or smartFilter:'awaiting-customer'). EACH returned row then carries `customerSilentDays` (whole days since the customer last wrote, from last_inbound_at) AND a `customerSilent` BOOLEAN (= customerSilentDays >= N) — already computed server-side. The STALE set to act on (final-notice reply + close) is EXACTLY the rows where customerSilent is true; the FRESH set to SKIP is the rows where it is false. Just RENDER each row's `customerSilent` flag — do NOT recompute the last-inbound age yourself, and do NOT act on a row whose customerSilent is false (a customer who replied 1-2 days ago is FRESH, not stale). This removes the fragile in-context staleness arithmetic where a tick acted on fresh tickets, sending a 'we haven't heard from you in over a week' notice to someone who just replied — copying the per-row boolean is the whole point. WHEN TO USE THE STRUCTURED FILTERS (not free-text q): to find a TOPIC's tickets that are AT SLA RISK — e.g. 'shipping tickets at SLA risk' — call search({ category: 'Shipping', slaApproaching: true }), NOT a free-text q of keywords. q matches subject+body text ONLY, so it both MISSES correctly-categorized tickets whose words differ and surfaces unrelated noise — the precise, grounded set comes from the category + slaApproaching filters. Each returned row carries categoryName (the topic) and slaDeadline. ANTI-FABRICATION: every ticket field you report (id, subject, priority, slaDeadline, order ref, category) MUST come from a search/get tool result row — NEVER reconstruct or 'flesh out' ticket cards from a sidebar/summary line, and NEVER assert a shipment↔ticket correlation unless a returned ticket's order ref actually matches the shipment's; if a shipment has no matching ticket, say so.",
+      "readOnly": true,
+      "requiredScopes": ["tickets:tickets:read"],
+      "readsFromTable": "app_tickets.tickets",
+      "trustBoundary": "user",
+      "handler": "search",
+      "retryOnTransientDbError": true,
+      "taintSource": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "description": "Free-text search across subject and body"
+          },
+          "query": {
+            "type": "string",
+            "description": "Alias for q used by the inbox UI"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "awaiting_customer",
+                  "awaiting_followup",
+                  "closed"
+                ]
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "open",
+                    "awaiting_customer",
+                    "awaiting_followup",
+                    "closed"
+                  ]
+                }
+              }
+            ]
+          },
+          "priority": {
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "normal",
+                  "high",
+                  "urgent"
+                ]
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "low",
+                    "normal",
+                    "high",
+                    "urgent"
+                  ]
+                }
+              }
+            ]
+          },
+          "team": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "assignedTo": {
+            "type": "string",
+            "description": "User UUID, or 'me' for the calling user"
+          },
+          "contactId": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "description": "Filter by category NAME (e.g. \"Shipping\") or UUID. A name is resolved case-insensitively against the org's categories; an unknown name returns zero matches. Use this to scope a search to a topic (e.g. shipping tickets) without first looking up the category UUID. Each returned ticket also carries categoryName so you can see its topic."
+          },
+          "categoryId": {
+            "type": "string"
+          },
+          "categoryIdIncludingChildren": {
+            "type": "string"
+          },
+          "inboxId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sourceInboxId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "slaApproaching": {
+            "type": "boolean",
+            "description": "Return only OPEN tickets nearing their first-response SLA deadline (not yet replied to). The grounded 'at SLA risk' set — use it to surface tickets that need attention before they breach."
+          },
+          "slaBreached": {
+            "type": "boolean"
+          },
+          "includeMerged": {
+            "type": "boolean"
+          },
+          "includeMergedSources": {
+            "type": "boolean"
+          },
+          "excludeMergedSources": {
+            "type": "boolean"
+          },
+          "closedAfter": {
+            "type": "string"
+          },
+          "followup": {
+            "type": "string",
+            "enum": [
+              "scheduled",
+              "due"
+            ],
+            "description": "Scheduled-follow-up filter. followup:'due' returns ONLY the follow-ups that are DUE NOW (followupAt already in the PAST) — this is the can't-get-it-wrong scope for a 'draft / chase the follow-ups I promised today' routine: the SERVER does the due-ness filter, so you get EXACTLY the due set in one call and CANNOT mis-pick due vs not-yet-due. PREFER followup:'due' for a due-follow-up sweep. followup:'scheduled' returns EVERY scheduled follow-up (followupAt set) — BOTH due (past) AND not-yet-due (future) — for a digest that wants the whole schedule; each returned row then carries a `followupDue` BOOLEAN (true = due now, followupAt <= now(); false = not yet due) PLUS the raw `followupAt`, so you render the per-row boolean instead of comparing the timestamp to 'now' yourself (the fragile in-context date arithmetic). Combine either with `contactId` to narrow to one VIP/dealer, and with `assignedTo` (e.g. a specific user id) to scope to that owner's promised follow-ups."
+          },
+          "smartFilter": {
+            "type": "string",
+            "enum": [
+              "needs-attention",
+              "awaiting-customer",
+              "follow-ups",
+              "closed",
+              "all-open",
+              "my-backlog"
+            ],
+            "description": "Named scope presets. 'all-open' = the whole NON-CLOSED desk (open + awaiting_customer + awaiting_followup). 'my-backlog' = that same non-closed set but ASSIGNED TO THE CALLER — the one-call, can't-get-it-wrong scope for 'my open tickets / my backlog / my queue' (auto-resolves to the caller; no assignee UUID needed). 'awaiting-customer' / 'follow-ups' / 'needs-attention' / 'closed' as named."
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "oldest",
+              "newest",
+              "recently_updated",
+              "activity_newest",
+              "activity_oldest"
+            ],
+            "description": "Result ordering. Default (omitted) = most-recent activity first (NOT age-sorted). Use sort='oldest' to get the actual OLDEST open tickets first (by created_at), so an 'oldest open tickets / backlog burndown' read gets the real N oldest in ONE bounded call (e.g. smartFilter='all-open', sort='oldest', limit=10) instead of paging the whole inbox. 'newest' = most-recently-created first. 'activity_newest' / 'activity_oldest' order by the last MESSAGE (inbound or outbound, i.e. last_message_at) newest- / oldest-first -- the order the inbox UI uses, where the row's shown date is that same key. 'recently_updated' is the legacy alias for activity_newest. Each returned row carries createdAt (the open time), status (open / awaiting_customer = stuck-state) and assigneeName (the owner), so you can present age + stuck-state + owner per ticket without a per-ticket get."
+          },
+          "agingThresholdDays": {
+            "type": "number",
+            "description": "Threshold (whole days) for the per-row `aging` boolean (default 3). Each returned row reports `ageDays` (whole days open) AND `aging` (= ageDays > agingThresholdDays) — the server does the aging discrimination so you RENDER the boolean instead of computing the per-ticket comparison. Set it to the request's window (e.g. agingThresholdDays: 3 for 'aging past 3 days')."
+          },
+          "silentForDays": {
+            "type": "number",
+            "description": "Customer-SILENCE threshold (whole days) for the per-row `customerSilent` boolean (default 7). For an awaiting_customer ticket each returned row reports `customerSilentDays` (whole days since the LAST INBOUND customer message) AND `customerSilent` (= customerSilentDays >= silentForDays) — the server does the per-ticket STALENESS discrimination so a 'no customer reply for N+ days' AUTO-CLOSE routine RENDERS the boolean each row carries instead of recomputing the last-inbound age in-context (where a weak model acts on FRESH 1-2-day tickets — sending a 'we haven't heard from you in over a week' notice to a customer who just replied). Combine with status:'awaiting_customer' (or smartFilter:'awaiting-customer'): the STALE set to act on is exactly the rows where `customerSilent` is true; the FRESH set to SKIP is the rows where it is false. The tick copies the boolean — it does not do date math (the same lever as `aging`/`followupDue`). Set it to the request's window (e.g. silentForDays: 7 for 'no reply for 7+ days')."
+          },
+          "language": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ],
+            "description": "Filter by the ticket's tagged language code(s) (e.g. 'fr' or ['fr','de','it']). Case-insensitive. For an 'EU-language tickets' / 'French/German/Italian backlog' scope, filter by language:['fr','de','it'] SERVER-SIDE instead of detecting language in-context per body (which leaks English/other tickets that share the assignee into the digest). Each returned row also carries `language`."
+          },
+          "actorUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results, default 25"
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "countOnly": {
+            "type": "boolean",
+            "description": "Return ONLY `totalCount` (the count for this exact filter) with no ticket rows — the cheap 'how many are left' / countdown read. NOTE: `totalCount` (a server COUNT of ALL tickets matching this filter, not the page size) is ALWAYS returned by search; use it to drive an EXHAUSTIVE sweep ('triage every open ticket') and report a measured remaining count — process one, its status changes, it leaves the filter, and the next call's totalCount drops, so you cannot lose count."
+          }
+        }
+      }
+    },
+    "get": {
+      "description": "Fetch a single ticket and its recent messages. The default view is SLIM: the 12 most recent messages, text-only, with each email's quoted reply-chain tail stripped (replaced by a '[quoted history trimmed]' note) — right for triage and replies, since quoted tails only duplicate the thread's own earlier messages. totalMessageCount reports the real thread size; page older messages with messagesCursor. To dig deeper ONLY when needed: page older messages with messagesCursor, fetch ONE message in full with messageId, pass stripQuoted:false for full quoted chains, includeHtml:true for HTML rendering. Each message carries its attachments (with any analysis summary); use kernel analyze_media / files_read on an attachment id to inspect linked media. Read the ticket ONCE per run and work from what you have — do not re-read it between steps. `pendingReplyDrafts` lists the reply drafts already waiting for approval on this ticket (approvalId, textBody, who drafted it): when one is there, do not draft another; tell the user it is waiting, or change its text with kernel__approval_update_payload on its approvalId.",
+      "readOnly": true,
+      "requiredScopes": ["tickets:tickets:read"],
+      "readsFromTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "resultRowPath": "ticket.id",
+      "trustBoundary": "user",
+      "handler": "get",
+      "retryOnTransientDbError": true,
+      "taintSource": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "UUID of the ticket, or its handle as shown in search results: ticket-<n>, or ticket-<CODE>-<n> (e.g. ticket-B2B-123) when the org segments its ticket ids. Any form resolves by the number, even an outdated CODE."
+          },
+          "messagesLimit": {
+            "type": "number",
+            "description": "Max messages to return (default 12, max 100)"
+          },
+          "messagesCursor": {
+            "type": "string",
+            "description": "Keyset cursor for next page"
+          },
+          "messageId": {
+            "type": "string",
+            "description": "Drill-down: return ONLY this one message, in FULL (untrimmed). Use when a trimmed body or an older page holds something you actually need."
+          },
+          "includeHtml": {
+            "type": "boolean",
+            "description": "Include html_body + full wire columns (default false; for HTML rendering only)"
+          },
+          "stripQuoted": {
+            "type": "boolean",
+            "description": "Strip quoted reply-chain tails from message bodies (default true)"
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      }
+    },
+    "create": {
+      "description": "Create a ticket. When the ticket is about a specific customer (e.g. promoting a complaint from a thread/chat or mail, or opening a proactive case from a shipment/order event), LINK them: pass contactEmail (the tool find-or-creates that contact and links it) or a contactId obtained from contacts_search. contactId MUST be a contact id (UUID) from contacts_search — NEVER another object's id (a shipment/order/tracking id is NOT a contactId; passing one is rejected). If you only know the customer by name and have no email, either contacts_search to resolve their contactId first, or simply OMIT contactId/contactEmail (every reference field is OPTIONAL — a ticket still opens unlinked) and put the customer name + the relevant reference (e.g. the shipment tracking number) in the subject and initialMessage. Provide a clear subject + the detail (put the reported/affecting text in initialMessage.textBody — initialMessage is an OBJECT, e.g. {\"kind\":\"inbound\",\"textBody\":\"...the detail...\"}; passing the raw text as a bare string also works) and a sensible category.",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "trustBoundary": "user",
+      "handler": "create",
+      "params": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "Ticket subject/title (REQUIRED)."
+          },
+          "channel": {
+            "type": "string",
+            "description": "Origin channel (default 'manual'). One of: email, web_form, api, mail_escalation, manual, social. Use 'social' for a ticket opened from a social-platform DM or comment (Instagram/Facebook/YouTube)."
+          },
+          "priority": {
+            "type": "string",
+            "description": "Priority, e.g. normal|high (default normal)."
+          },
+          "team": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional team for visibility (defaults from the inbox)."
+          },
+          "sensitivity": {
+            "type": "string",
+            "description": "Sensitivity level: internal|confidential|restricted (default internal)."
+          },
+          "categoryId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional category id to file under."
+          },
+          "contactId": {
+            "type": "string",
+            "description": "Existing contact id to attach (or use contactEmail)."
+          },
+          "contactEmail": {
+            "type": "string",
+            "description": "Customer email to find-or-create a contact (alternative to contactId)."
+          },
+          "contactName": {
+            "type": "string",
+            "description": "Customer name, used when creating a contact from contactEmail."
+          },
+          "assignedTo": {
+            "type": "string",
+            "description": "Optional assignee — 'me' to assign to the current user (no lookup needed), or a teammate's user id (resolve a name via users_search first)."
+          },
+          "sourceInboxId": {
+            "type": "string",
+            "description": "Optional inbox id the ticket belongs to."
+          },
+          "attachments": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "string"
+            },
+            "description": "Liaison file ids to attach to the first message (needs initialMessage; at most 10), e.g. from files_list. Only files you can read are accepted; executable types are refused."
+          },
+          "initialMessage": {
+            "type": [
+              "object",
+              "string"
+            ],
+            "description": "Optional first message to seed the ticket with. Normally an OBJECT: kind is 'inbound' (the customer's message), 'outbound' (your reply), or 'note' (internal); provide textBody/htmlBody and, for inbound, fromEmail/fromName. A bare STRING is also accepted as shorthand for the inbound complaint text ({kind:'inbound', textBody:<string>}).",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "inbound",
+                  "outbound",
+                  "note"
+                ]
+              },
+              "fromEmail": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "fromName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "toEmails": {
+                "type": "array"
+              },
+              "ccEmails": {
+                "type": "array"
+              },
+              "subject": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "htmlBody": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "textBody": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "snippet": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "externalMessageId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "inReplyTo": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "headerReferences": {
+                "type": "array"
+              },
+              "sentAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Optional idempotency key — a replay with the same key returns the original ticket instead of opening a duplicate (used by an app's webhook handler so a redelivered event never opens a second ticket)."
+          }
+        },
+        "required": [
+          "subject"
+        ]
+      }
+    },
+    "addNote": {
+      "description": "Append an INTERNAL note to a Liaison ticket (seen by teammates on that ticket), never a note on a record in an external system such as a CRM company, contact or deal: that is api-connector connector_write. It is the durable place to record a finding, analysis, or hand-off that a teammate (the assignee, sales, finance, fulfillment) must SEE on the ticket. Reach for this whenever the user asked you to CAPTURE A LOOKED-UP DATA FINDING (a Shopify on-hand/inventory STOCK level, an order/payment STATUS, an amount) and ROUTE it to a colleague: gather the finding FIRST (run the lookup), then write a note that contains the ACTUAL figure you read AND the routing line together (e.g. 'RAL-44 on hand: 31 units read live from Shopify — routing the 25-unit volume quote to Theo/sales'). A figure stated only in your chat reply does NOT reach the teammate who reads the ticket, so it is not 'recorded' until it is in a note here (or passed via mail__convertToTicket's note param). If you converted a mail thread to a ticket before you had the figure, add it here afterward. Do NOT claim the stock/finding is recorded on the ticket unless this call (or the convert note) succeeded this turn.",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "trustBoundary": "user",
+      "handler": "addNote",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "Ticket id to add the internal note to (REQUIRED). Accepts either the ticket uuid or its handle as shown in search results (ticket-<n> or ticket-<CODE>-<n>, e.g. ticket-B2B-123)."
+          },
+          "text": {
+            "type": "string",
+            "description": "Note text (required unless attachments or attachmentSessionId is given)."
+          },
+          "attachmentSessionId": {
+            "type": "string",
+            "description": "Optional staged-attachment session id."
+          },
+          "attachments": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "string"
+            },
+            "description": "Liaison file ids to attach to the note (at most 10), e.g. from files_list. Only files you can read are accepted; executable types are refused."
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Optional idempotency key — a replay with the same key returns the original result instead of adding a duplicate note (used by mail__convertToTicket so a convert-retry never double-posts the note)."
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      }
+    },
+    "editNote": {
+      "description": "Edit the text of an EXISTING internal note on a ticket (kind='note' messages only — customer-visible inbound/outbound messages can never be edited). Use when a note is stale, wrong, or misleading and would confuse a teammate or a future agent run; prefer correcting the note over stacking a contradicting note on top of it. Pass the note's messageId plus the FULL replacement text (this replaces the whole note body, it does not append). Gated: your call stages an approval a human reviews before the edit lands.",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "gated": true,
+      "trustBoundary": "user",
+      "approvalImpact": "internal",
+      "approvalExpiryHours": 72,
+      "summarizer": "summarizeTicketNoteEdit",
+      "editableFields": [
+        {
+          "field": "text",
+          "label": "Note text",
+          "widget": "richtext"
+        }
+      ],
+      "handler": "editNote",
+      "preflight": "editNotePreflight",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "Ticket the note lives on (REQUIRED). Accepts either the ticket uuid or its handle as shown in search results (ticket-<n> or ticket-<CODE>-<n>, e.g. ticket-B2B-123)."
+          },
+          "messageId": {
+            "type": "string",
+            "description": "Id of the note message to edit (REQUIRED)."
+          },
+          "text": {
+            "type": "string",
+            "description": "Full replacement note text (REQUIRED, replaces the entire body)."
+          }
+        },
+        "required": [
+          "ticketId",
+          "messageId",
+          "text"
+        ]
+      }
+    },
+    "deleteNote": {
+      "description": "Delete an internal note from a ticket (kind='note' messages only — customer-visible inbound/outbound messages can never be deleted). Use when a note is obsolete or actively misleading (e.g. it records staged work that was since denied or cancelled) and keeping it would poison future triage. Deletion is permanent. Gated: your call stages an approval a human reviews before the note is removed.",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "gated": true,
+      "trustBoundary": "user",
+      "approvalImpact": "internal",
+      "approvalExpiryHours": 72,
+      "summarizer": "summarizeTicketNoteDelete",
+      "handler": "deleteNote",
+      "preflight": "deleteNotePreflight",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "Ticket the note lives on (REQUIRED). Accepts either the ticket uuid or its handle as shown in search results (ticket-<n> or ticket-<CODE>-<n>, e.g. ticket-B2B-123)."
+          },
+          "messageId": {
+            "type": "string",
+            "description": "Id of the note message to delete (REQUIRED)."
+          }
+        },
+        "required": [
+          "ticketId",
+          "messageId"
+        ]
+      }
+    },
+    "assign": {
+      "description": "Assign a ticket to a user. To assign it to YOURSELF (the current user), pass assignedTo:'me' — you do NOT need to look up your own id. To assign to a TEAMMATE, resolve their name like 'Liam' to their UUID with users_search FIRST; this tool does not accept a teammate's name. Pass null to unassign. TRIAGE GATE: when you are claiming tickets by a CRITERION (e.g. only the French/German/Italian threads in a shared inbox), call this ONLY on tickets that PASS the criterion — do NOT assign a ticket that fails it (e.g. an English ticket in an FR/DE/IT-only claim). Decide the criterion (read the body / detect the language) BEFORE assigning, and skip non-matching tickets entirely. Tagging a ticket's language is NOT a reason to claim it. SHARED-INBOX RACE — CLAIM SAFELY WITH onlyIfUnassigned:true: when you are claiming UNASSIGNED tickets out of a SHARED inbox where a teammate may be working the SAME queue at the SAME time (a post-launch spike, two agents both told to 'grab the high-priority ones'), a plain assign is a blind overwrite — you can stomp a ticket your colleague just grabbed and BOTH of you then think you own it. To claim safely, pass onlyIfUnassigned:true: the assign then succeeds ONLY while the ticket is still unowned, and if a teammate beat you to it the call returns an error with code 'conflict' (and currentAssignee = who holds it now) instead of clobbering their claim. On a 'conflict' result you MUST SKIP that ticket — do NOT retry, do NOT blind-reassign it to yourself, and do NOT report that you own it. ACKNOWLEDGE it was already taken (e.g. 'ticket X was already claimed by a teammate — left it with them') so your summary reflects the REAL post-claim state. ALWAYS pass the assignee too — to claim a ticket for yourself you MUST send BOTH assignedTo:'me' AND onlyIfUnassigned:true; onlyIfUnassigned WITHOUT an assignedTo is rejected (it would unassign, not claim). VERIFY THE RESULT BEFORE REPORTING: a successful claim returns assignedTo set to the new owner's id; only report a ticket as 'assigned to you' when the response's assignedTo is your id (not null) — if assignedTo came back null or the call errored, the claim did NOT take, so do NOT claim ownership. Only the tickets whose assign SUCCEEDED with a non-null assignedTo are yours; never claim ownership of a ticket you lost the race for or whose assign returned null. Use expectedAssignee to require a specific current owner before swapping (general compare-and-swap).",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "atomic": true,
+      "trustBoundary": "user",
+      "handler": "assign",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "UUID of the ticket"
+          },
+          "assignedTo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "'me' to self-assign to the current user (no lookup needed), OR a teammate's UUID (resolve their name via users_search first), OR null to unassign. A teammate's name is not accepted."
+          },
+          "onlyIfUnassigned": {
+            "type": "boolean",
+            "description": "Claim-if-unassigned guard (compare-and-swap). When true, the assign succeeds ONLY while the ticket is still unowned; if a teammate already claimed it the call returns an error with code 'conflict' and currentAssignee, and the ticket is NOT reassigned. Use this when racing teammates for the same shared-inbox queue so two agents cannot both claim the same ticket. On a 'conflict' result, SKIP the ticket and acknowledge it was already taken — never re-grab it or report owning it."
+          },
+          "expectedAssignee": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Compare-and-swap precondition: only reassign if the ticket's CURRENT assignee equals this value ('me' resolves to you, a UUID for a specific teammate, or null to require it be currently unassigned). If the current owner differs, returns a 'conflict' error and does not reassign."
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      }
+    },
+    "setStatus": {
+      "description": "Update ticket status",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "trustBoundary": "user",
+      "handler": "setStatus",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "Ticket id (REQUIRED)."
+          },
+          "status": {
+            "type": "string",
+            "description": "Target status: open|awaiting_customer|awaiting_followup|closed (REQUIRED)."
+          }
+        },
+        "required": [
+          "ticketId",
+          "status"
+        ]
+      }
+    },
+    "setPriority": {
+      "description": "Update ticket priority",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "trustBoundary": "user",
+      "handler": "setPriority",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "normal",
+              "high",
+              "urgent"
+            ]
+          }
+        },
+        "required": [
+          "ticketId",
+          "priority"
+        ]
+      }
+    },
+    "setCategory": {
+      "description": "Set the ticket's TOPIC category. A ticket holds exactly ONE category (a single scalar categoryId), so this REPLACES whatever category was set before — it does NOT stack/add. Calling it twice (e.g. once for a language tag, once for a topic) leaves only the LAST one; the first is overwritten and lost. To tag a ticket's LANGUAGE use the separate setLanguage tool (a distinct field that coexists with the topic category) — do NOT try to encode language as a second setCategory call.",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "atomic": true,
+      "trustBoundary": "user",
+      "handler": "setCategory",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "Ticket id (REQUIRED)."
+          },
+          "categoryId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Category to set — either the category id (UUID) or its NAME (resolved case-insensitively); null to clear. Use categories.list to see available categories. This is the TOPIC category; for the language, use setLanguage instead."
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      }
+    },
+    "setLanguage": {
+      "description": "Tag the ticket's LANGUAGE (the language the customer wrote in — e.g. 'French', 'German', 'Italian', 'English'). This is a DEDICATED field separate from the topic category, so a ticket can carry BOTH a language tag AND a topic category at once. Use this for the language; use setCategory for the topic. Pass null to clear the language. Ungated — applies immediately.",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "atomic": true,
+      "trustBoundary": "user",
+      "handler": "setLanguage",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "Ticket id (REQUIRED)."
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The detected language label (e.g. 'French', 'German', 'Italian', 'English'); null to clear."
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      }
+    },
+    "setTeam": {
+      "description": "Set the ticket's TEAM (the desk/queue that owns it — e.g. a site, a brand, a region). This is a DEDICATED free-text field, separate from the topic category and the language tag, so a ticket carries all three at once. There is no team registry: any label is accepted, and the first ticket tagged with a new label creates that team. Call teams.list first and REUSE an existing label exactly — inventing a near-duplicate spelling ('acme' vs 'Acme') silently splits that desk's history in two. Pass null to clear. Ungated — applies immediately.",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "atomic": true,
+      "trustBoundary": "user",
+      "handler": "setTeam",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "Ticket id (REQUIRED)."
+          },
+          "team": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The owning team's label, matching an existing one from teams.list wherever possible; null to clear. Leading/trailing whitespace is stripped."
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      }
+    },
+    "setAudience": {
+      "description": "Set the ticket's AUDIENCE — which SIDE the requester is on: \"b2b\" (a partner: a shopping-centre operator, an integrator, a CSM) or \"b2c\" (an end customer: a loyalty-programme member). This is ORTHOGONAL to `team`, which says WHICH shopping centre the ticket concerns: the same centre carries tickets of both kinds, so knowing one tells you nothing about the other. Only these two values exist and the database enforces it — there is no third, and no free-text variant. Pass null to clear; null is a REAL state meaning nobody has established which side wrote (mail arriving at the shared address carries no such signal), and leaving it null is correct until someone knows. Ungated — applies immediately.",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "atomic": true,
+      "trustBoundary": "user",
+      "handler": "setAudience",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "Ticket id (REQUIRED)."
+          },
+          "audience": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "b2b",
+              "b2c",
+              null
+            ],
+            "description": "\"b2b\" for a partner/operator, \"b2c\" for an end customer; null to clear. Nothing else is accepted."
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      }
+    },
+    "setFollowup": {
+      "description": "Schedule a follow-up",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "trustBoundary": "user",
+      "handler": "setFollowup",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "Ticket id (REQUIRED)."
+          },
+          "at": {
+            "type": "string",
+            "description": "Follow-up timestamp (ISO 8601) when the ticket should resurface (REQUIRED)."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Optional reason for the follow-up."
+          },
+          "trigger": {
+            "type": "string",
+            "description": "Optional trigger descriptor."
+          }
+        },
+        "required": [
+          "ticketId",
+          "at"
+        ]
+      }
+    },
+    "clearFollowup": {
+      "description": "Clear scheduled follow-up",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "trustBoundary": "user",
+      "handler": "clearFollowup",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "Ticket id whose follow-up to clear (REQUIRED)."
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      }
+    },
+    "reopen": {
+      "description": "Reopen a closed ticket",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "trustBoundary": "user",
+      "handler": "reopen",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "Ticket id to reopen (REQUIRED)."
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      }
+    },
+    "merge": {
+      "description": "Merge sources into a target",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "trustBoundary": "user",
+      "handler": "merge",
+      "params": {
+        "type": "object",
+        "properties": {
+          "targetTicketId": {
+            "type": "string",
+            "description": "Ticket that survives: uuid or handle (ticket-<n> or ticket-<CODE>-<n>)."
+          },
+          "sourceTicketIds": {
+            "type": "array",
+            "description": "Tickets merged into the target: uuids or handles (ticket-<n> or ticket-<CODE>-<n>).",
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "targetTicketId",
+          "sourceTicketIds"
+        ]
+      }
+    },
+    "ticketsMove": {
+      "description": "Move one or more tickets into a different inbox (routing bucket). The target inbox's connected account (null for an API inbox) is copied onto each ticket's source account so the reply path resolves the right send transport.",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketIds",
+      "trustBoundary": "user",
+      "handler": "ticketsMove",
+      "agentVisible": false,
+      "params": {
+        "type": "object",
+        "properties": {
+          "toInboxId": {
+            "type": "string",
+            "description": "UUID of the destination inbox (REQUIRED)."
+          },
+          "ticketIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Ticket ids to move (REQUIRED unless ticketId is given)."
+          },
+          "ticketId": {
+            "type": "string",
+            "description": "Single ticket id to move (alternative to ticketIds)."
+          }
+        },
+        "required": [
+          "toInboxId"
+        ]
+      }
+    },
+    "markRead": {
+      "description": "Record this user has read this ticket up to the current inbound message",
+      "requiredScopes": ["tickets:tickets:read"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "trustBoundary": "user",
+      "handler": "ticketsMarkRead",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "Ticket id to mark read (REQUIRED)."
+          },
+          "lastReadMessageId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional id of the last message read."
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      }
+    },
+    "inboxCounts": {
+      "description": "Per-inbox UNREAD counts only (tickets with an unread inbound message, derived from org-global read state) — keyed by inboxId. Without an inboxIds filter it also returns totalUnread: every unread ticket you can see, including tickets with no source inbox (so it can exceed the sum of the per-inbox rows). This is NOT a status breakdown and NOT a total-open count: never report an inbox's unread number as 'how many open tickets'. For a backlog-health / status-split / total-open / by-category / oldest read, use the backlogHealth tool (authoritative server-side aggregate).",
+      "readOnly": true,
+      "requiredScopes": ["tickets:tickets:read"],
+      "readsFromTable": "app_tickets.inboxes",
+      "trustBoundary": "user",
+      "handler": "ticketsInboxCounts",
+      "params": {
+        "type": "object",
+        "properties": {
+          "inboxIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional list of inbox ids to scope the counts to; omit for all inboxes."
+          }
+        }
+      }
+    },
+    "backlogHealth": {
+      "description": "AUTHORITATIVE backlog-health aggregate — the tool for 'how many open tickets / awaiting customer vs awaiting us / which are oldest / where are we bunching by category / are we drowning'. Computes EXACT server-side counts over the WHOLE open (non-closed, non-merged) backlog you can see, via a real GROUP BY (NOT a paged search sample): byStatus {open, awaitingCustomer (we're waiting on the customer), awaitingFollowup, totalOpen}, byCategory (open count per category — the bunching), byAge (0-7d / 7-14d / 14-30d / 30d+ buckets), oldest (the oldest open tickets, oldest first, with ageDays + category + assignee), unassignedOpen, and bySla {approaching, breached, approachingTop[], breachedTop[]} — the EXACT server-side counts of SLA-approaching vs already-breached tickets (same predicates as search slaApproaching/slaBreached) with up to 3 named exemplars each. So this single read DOES answer 'any SLA breaches / what's at risk': read bySla.breached and bySla.approaching — and NEVER claim zero breaches/at-risk from the ABSENCE of an SLA field (the field is bySla; 0 means a real 0, not 'not measured'). These totals are EXACT and authoritative — there is no pagination caveat and no need to sample or estimate. Use THIS instead of tallying search pages or reading inboxCounts when asked for a backlog/status/aging/category-distribution read. The result is the definitive answer to give even when the user demands 'a number I can trust' — it IS the trusted number, because it counts the entire backlog server-side. Note: awaitingCustomer = tickets where the customer owes us a reply; the live 'awaiting us / on our plate' set is open + awaitingFollowup.",
+      "readOnly": true,
+      "requiredScopes": ["tickets:tickets:read"],
+      "readsFromTable": "app_tickets.tickets",
+      "trustBoundary": "user",
+      "handler": "backlogHealth",
+      "retryOnTransientDbError": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "team": {
+            "type": "string",
+            "description": "Optional team to scope the backlog to. OMIT it (call with {}) for the whole support desk — do NOT invent a team. A team that matches no tickets returns an 'unknown_team' error (not zeros), so drop the filter and re-run."
+          }
+        }
+      }
+    },
+    "slaReport": {
+      "description": "AUTHORITATIVE weekly SLA-breach post-mortem aggregate — the tool for 'which tickets breached SLA in the last 7 days, by how much, per-agent breach counts, and our overall SLA-attainment rate this week'. Computes EXACT server-side counts over EVERY ticket you can see whose first-response SLA clock STARTED in the window (default last 7 days, override with windowDays), via a real aggregate (NOT a paged search sample, which has no 'breached' filter and no rate/margin/per-agent rollup): totalInWindow, breachedCount, metCount, attainmentRatePct (metCount/totalInWindow*100, 1 decimal — null ONLY when the window is empty, never fabricate a rate), perAgent[] (per-assignee breach counts with assigneeName, descending, including an unassigned bucket), and breachedTickets[] (every breached ticket, most-overdue first, each with assigneeName, slaDeadline, firstResponseAt, breachMarginSeconds + breachMarginHours = how LATE the first response was, and stillUnanswered). 'Breached' uses the SAME predicate as search slaBreached=true (an explicit slaBreachedAt OR a past slaDeadline on a non-paused SLA). These totals are EXACT and authoritative — there is no pagination caveat and no need to sample or estimate. Use THIS for any SLA post-mortem / attainment-rate / breach-margin / per-agent-breach question — NEVER tally search pages or invent a percentage. Report attainmentRatePct, breachedCount, and the perAgent split AS the definitive answer.",
+      "readOnly": true,
+      "requiredScopes": ["tickets:tickets:read"],
+      "readsFromTable": "app_tickets.tickets",
+      "trustBoundary": "user",
+      "handler": "slaReport",
+      "retryOnTransientDbError": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "windowDays": {
+            "type": "number",
+            "description": "Look-back window in days (integer 1..365). OMIT it for the default 7-day weekly window. A value outside 1..365 returns an 'invalid_window' error."
+          }
+        }
+      }
+    },
+    "listForContact": {
+      "description": "List recent tickets for a contact",
+      "readOnly": true,
+      "requiredScopes": ["tickets:tickets:read"],
+      "readsFromTable": "app_tickets.tickets",
+      "trustBoundary": "user",
+      "handler": "ticketsListForContact",
+      "retryOnTransientDbError": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "contactId": {
+            "type": "string",
+            "description": "Contact id whose tickets to list (REQUIRED)."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Optional max number of tickets to return."
+          }
+        },
+        "required": [
+          "contactId"
+        ]
+      }
+    },
+    "teams.list": {
+      "description": "List every TEAM that appears on this org's tickets, with openCount (not closed, not merged away) and totalCount per team. Teams are free text on the ticket — there is no teams table — so this reads the live set off the tickets themselves, under your own visibility. It is the authoritative answer to 'which desks/queues exist' and the ONLY safe way to get an exact team label: call it BEFORE passing `team` to search, backlogHealth or setTeam, and copy a label verbatim (they can differ by case or a stray space). Near-duplicate labels in the output mean a desk's history is split; teams.rename merges them.",
+      "readOnly": true,
+      "requiredScopes": ["tickets:tickets:read"],
+      "readsFromTable": "app_tickets.tickets",
+      "trustBoundary": "user",
+      "retryOnTransientDbError": true,
+      "handler": "teamsList",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "teams.rename": {
+      "description": "Rename a team across EVERY ticket in the org in one statement, and re-point any inbox whose default_team used the old label (otherwise new arrivals recreate it). Renaming onto a label that ALREADY exists MERGES the two — that is the intended way to repair near-duplicate spellings that split one desk's history. `from` is matched EXACTLY (spaces and case included) and must already exist; an unknown label is a loud error naming the near matches, never a silent no-op. Pass dryRun:true first to get the affected counts without changing anything.",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "trustBoundary": "user",
+      "handler": "teamsRename",
+      "params": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "The existing label to replace, copied VERBATIM from teams.list (matched exactly, including leading/trailing spaces and case)."
+          },
+          "to": {
+            "type": "string",
+            "description": "The label to use instead. If it already exists the two teams are merged."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Report how many tickets and inbox defaults would change, and change nothing."
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ]
+      }
+    },
+    "categories.list": {
+      "description": "List categories",
+      "readOnly": true,
+      "requiredScopes": ["tickets:tickets:read"],
+      "readsFromTable": "app_tickets.categories",
+      "trustBoundary": "user",
+      "handler": "categoriesList",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "categories.create": {
+      "description": "Create a category",
+      "requiredScopes": ["tickets:categories:admin"],
+      "writesToTable": "app_tickets.categories",
+      "trustBoundary": "user",
+      "handler": "categoriesCreate",
+      "params": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Category name (REQUIRED)."
+          },
+          "parentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional parent category id for nesting."
+          },
+          "sortOrder": {
+            "type": "number",
+            "description": "Optional sort order."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    "templates.list": {
+      "description": "List saved reply templates (canned-response macros) for the org. Optionally filter by category. Returns each template's id, name, category, and body so you can reuse a saved reply.",
+      "readOnly": true,
+      "requiredScopes": ["tickets:tickets:read"],
+      "readsFromTable": "app_tickets.reply_templates",
+      "trustBoundary": "user",
+      "handler": "templatesList",
+      "params": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "description": "Optional category to filter by (e.g. 'firmware', 'rma', 'shipping')."
+          }
+        }
+      }
+    },
+    "templates.create": {
+      "description": "Create a saved reply template (canned-response macro) the support team can reuse. Provide a unique name + the reply body text; optionally a category. Ground the body in the relevant Knowledge article. Names are unique per org — reusing one returns name_exists (pick a different name). NOT A SEND / BROADCAST / MASS-NOTIFY mechanism: creating a template contacts NO customer and notifies NO ONE — it only stores reusable wording in the team's internal macro library. To actually deliver a notice (e.g. a recall/incident message) to customers you must still send it per-recipient via tickets__reply or mail__compose, EACH gated and individually approved; there is NO mass-send / broadcast / segment primitive that blasts one notice to N customers in one action. So when you save a recall/announcement as a template, do NOT tell the user it is now ready to 'send to all affected customers' or imply an easy mass send — state plainly that the template is just reusable wording and the notice must still go out one approved send per recipient (or per ticket), or is out of reach for a single blast.",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.reply_templates",
+      "trustBoundary": "user",
+      "handler": "templatesCreate",
+      "params": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Short, unique template name (e.g. 'USB driver setup'). REQUIRED."
+          },
+          "bodyText": {
+            "type": "string",
+            "description": "The reply body the macro inserts. REQUIRED."
+          },
+          "category": {
+            "type": "string",
+            "description": "Optional grouping (e.g. 'firmware', 'rma', 'shipping')."
+          }
+        },
+        "required": [
+          "name",
+          "bodyText"
+        ]
+      }
+    },
+    "templates.update": {
+      "description": "Edit a saved reply template (canned-response macro): change its body, name, or category. Pass the template id + the fields to change.",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.reply_templates",
+      "targetRowParam": "id",
+      "trustBoundary": "user",
+      "handler": "templatesUpdate",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Id of the template to edit. REQUIRED."
+          },
+          "name": {
+            "type": "string",
+            "description": "New unique name (optional)."
+          },
+          "bodyText": {
+            "type": "string",
+            "description": "New reply body (optional)."
+          },
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "New category, or null to clear (optional)."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "templates.delete": {
+      "description": "Delete a saved reply template (canned-response macro) by id. Removes it from the team's macro library.",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.reply_templates",
+      "targetRowParam": "id",
+      "trustBoundary": "user",
+      "handler": "templatesDelete",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Id of the template to delete. REQUIRED."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "csat.request": {
+      "externalEffect": true,
+      "description": "Dispatch a post-resolution CSAT satisfaction survey to the customers of one or more CLOSED tickets (one survey per ticket). First find the closed tickets with tickets__search (status=closed, closedAfter=<window>), then pass their ids here. This DISPATCHES the surveys (status=pending) and creates the rating records; the customer's rating is RECORDED only when they respond, so freshly-dispatched surveys have NO score yet. Report how many were dispatched and that ratings will accrue as customers respond — never claim a satisfaction score was captured. Tickets that are not closed, not found, or already surveyed are skipped (returned in skippedDetail).",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketIds",
+      "trustBoundary": "user",
+      "handler": "csatRequest",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Ids of CLOSED tickets to survey (from tickets__search status=closed, closedAfter=<window>). REQUIRED."
+          }
+        },
+        "required": [
+          "ticketIds"
+        ]
+      }
+    },
+    "csat.summary": {
+      "description": "Read the aggregate CSAT result over RECORDED survey responses (total dispatched, responded, pending, declined, averageScore, responseRate, and a week-over-week `trend` array bucketed by response week). averageScore is null and `trend` is EMPTY until customers actually respond — when there are no responses there is NO aggregate CSAT score or trend to report, so say so honestly and never fabricate a percentage, average, or movement. When responses DO exist, report the trend ONLY across the weeks that actually carry responses; never extrapolate a satisfaction movement from an empty or single-week trend.",
+      "readOnly": true,
+      "requiredScopes": ["tickets:tickets:read"],
+      "readsFromTable": "app_tickets.ticket_csat",
+      "trustBoundary": "user",
+      "handler": "csatSummary",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "csat.list": {
+      "description": "List individual CSAT survey records (ticket handle/subject, status, score, sent/responded timestamps), optionally filtered by status (pending|responded|declined).",
+      "readOnly": true,
+      "requiredScopes": ["tickets:tickets:read"],
+      "readsFromTable": "app_tickets.ticket_csat",
+      "trustBoundary": "user",
+      "handler": "csatList",
+      "params": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "responded",
+              "declined"
+            ],
+            "description": "Optional status filter."
+          }
+        }
+      }
+    },
+    "categories.update": {
+      "description": "Update a category",
+      "requiredScopes": ["tickets:categories:admin"],
+      "writesToTable": "app_tickets.categories",
+      "targetRowParam": "id",
+      "trustBoundary": "user",
+      "handler": "categoriesUpdate",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Category id to update (REQUIRED)."
+          },
+          "name": {
+            "type": "string",
+            "description": "New category name."
+          },
+          "parentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "New parent category id, or null to unset."
+          },
+          "sortOrder": {
+            "type": "number",
+            "description": "New sort order."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "categories.archive": {
+      "description": "Archive a category",
+      "requiredScopes": ["tickets:categories:admin"],
+      "writesToTable": "app_tickets.categories",
+      "targetRowParam": "id",
+      "trustBoundary": "user",
+      "handler": "categoriesArchive",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Category id to archive (REQUIRED)."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "categories.tree": {
+      "description": "The categories tree for the settings page: every row (archived ones included, each with updated_at) and the tree's version, which categories.reorder takes as its base.",
+      "readOnly": true,
+      "agentVisible": false,
+      "requiredScopes": ["tickets:tickets:read"],
+      "readsFromTable": "app_tickets.categories",
+      "trustBoundary": "user",
+      "handler": "categoriesTree",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "categories.reorder": {
+      "description": "Save the whole categories tree from the settings page in one transaction: order, parents, names, new categories (tempId, children may name parentTempId) and archives. Refused with conflict when baseVersion is not the current version (someone else saved first). At most two levels. Returns the new version and the ids of new categories by tempId.",
+      "agentVisible": false,
+      "requiredScopes": ["tickets:categories:admin"],
+      "writesToTable": "app_tickets.categories",
+      "trustBoundary": "user",
+      "handler": "categoriesReorder",
+      "params": {
+        "type": "object",
+        "properties": {
+          "baseVersion": {
+            "type": ["string", "null"],
+            "description": "The version categories.tree returned when the page loaded (REQUIRED)."
+          },
+          "nodes": {
+            "type": "array",
+            "description": "Every category of the tree the page shows, in order (REQUIRED).",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "tempId": { "type": "string" },
+                "parentId": { "type": ["string", "null"] },
+                "parentTempId": { "type": "string" },
+                "name": { "type": "string" },
+                "sortOrder": { "type": "integer" },
+                "archived": { "type": "boolean" }
+              },
+              "required": ["name", "sortOrder"]
+            }
+          }
+        },
+        "required": ["baseVersion", "nodes"]
+      }
+    },
+    "inboxes.list": {
+      "description": "List inboxes",
+      "readOnly": true,
+      "requiredScopes": ["tickets:inboxes:read"],
+      "readsFromTable": "app_tickets.inboxes",
+      "trustBoundary": "user",
+      "handler": "inboxesList",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "inboxes.create": {
+      "description": "Create an inbox",
+      "requiredScopes": ["tickets:inboxes:admin"],
+      "writesToTable": "app_tickets.inboxes",
+      "gated": true,
+      "approvalImpact": "external",
+      "approvalCard": {
+        "summary": "Create inbox {{params.name}} (reply-to, from address, signature, acknowledgement)"
+      },
+      "trustBoundary": "user",
+      "handler": "inboxesCreate",
+      "params": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Inbox display name (REQUIRED)."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "mailbox",
+              "api"
+            ],
+            "description": "\"mailbox\" (default, backed by a connected mail account) or \"api\" (a pure receiving bucket with no mail account)."
+          },
+          "emailAddress": {
+            "type": "string",
+            "description": "Inbox email address. REQUIRED for kind=\"mailbox\"; omit for kind=\"api\"."
+          },
+          "connectedAccountId": {
+            "type": "string",
+            "description": "Connected mail account id backing the inbox. REQUIRED for kind=\"mailbox\"; omit for kind=\"api\"."
+          },
+          "replyViaInboxId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For kind=\"api\": the connected mailbox inbox its replies are sent through, else the org default."
+          },
+          "replyFromEmail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For kind=\"api\": optional per-source From address override."
+          },
+          "isDefaultForCreate": {
+            "type": "boolean",
+            "description": "Whether this inbox is the default for new tickets."
+          },
+          "defaultAudience": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "b2b",
+              "b2c",
+              null
+            ],
+            "description": "b2b | b2c — which side this bucket serves. Every ticket filed through it inherits this unless it carries its own; null to clear."
+          },
+          "defaultTeam": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default team applied to tickets from this inbox."
+          },
+          "defaultSensitivity": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default sensitivity for tickets from this inbox."
+          },
+          "fromDisplayName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional From display name for outbound replies."
+          },
+          "replyToEmail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Base address the reply-to plus-token is built on (e.g. support@example.com)."
+          },
+          "signatureHtml": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional per-inbox signature (HTML) appended to outbound emails from this inbox."
+          },
+          "signatureText": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional per-inbox signature (plain text)."
+          },
+          "ackEnabled": {
+            "type": "boolean",
+            "description": "Whether a new ticket on this inbox sends an acknowledgement email (default true)."
+          },
+          "ackBodyText": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Custom acknowledgement body text. Falls back to a default using the SLA promise phrase."
+          },
+          "slaPromisePhrase": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Plain-language response time promise used in the acknowledgement email (default \"within 2 business days\")."
+          },
+          "suppressAttention": {
+            "type": "boolean",
+            "description": "Monitoring inbox: tickets from this inbox raise no attention-feed items and stay out of awaiting-reply aggregates (backlog health, needs-attention sweeps). For telemetry streams like automated bug reports. Default false."
+          },
+          "slaExempt": {
+            "type": "boolean",
+            "description": "SLA-exempt inbox: tickets created in it carry NO SLA (no deadline, no breach, no SLA countdown anywhere). For telemetry streams like automated bug reports that never await an agent reply. Independent of suppressAttention. Default false."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    "inboxes.update": {
+      "description": "Update an inbox",
+      "requiredScopes": ["tickets:inboxes:admin"],
+      "writesToTable": "app_tickets.inboxes",
+      "targetRowParam": "id",
+      "gated": true,
+      "approvalImpact": "external",
+      "approvalCard": {
+        "summary": "Update inbox {{params.id}} (reply-to, from address, signature, acknowledgement)"
+      },
+      "trustBoundary": "user",
+      "handler": "inboxesUpdate",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Inbox id to update (REQUIRED)."
+          },
+          "name": {
+            "type": "string",
+            "description": "New inbox name."
+          },
+          "defaultAudience": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "b2b",
+              "b2c",
+              null
+            ],
+            "description": "b2b | b2c — which side this bucket serves. Every ticket filed through it inherits this unless it carries its own; null to clear."
+          },
+          "defaultTeam": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "New default team, or null to unset."
+          },
+          "defaultSensitivity": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "New default sensitivity, or null to unset."
+          },
+          "fromDisplayName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "New From display name, or null to unset."
+          },
+          "isDefaultForCreate": {
+            "type": "boolean",
+            "description": "Make this inbox the org's default for newly created tickets."
+          },
+          "replyViaInboxId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For an API inbox: the connected mailbox inbox its replies are sent through, or null to unset."
+          },
+          "replyFromEmail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Per-source From address override, or null to unset."
+          },
+          "replyToEmail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Base address the reply-to plus-token is built on (e.g. support@example.com), or null to unset."
+          },
+          "signatureHtml": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Per-inbox signature (HTML), or null to unset."
+          },
+          "signatureText": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Per-inbox signature (plain text), or null to unset."
+          },
+          "ackEnabled": {
+            "type": "boolean",
+            "description": "Whether a new ticket on this inbox sends an acknowledgement email."
+          },
+          "ackBodyText": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Custom acknowledgement body text, or null to fall back to the default."
+          },
+          "slaPromisePhrase": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Plain-language response time promise used in the acknowledgement email."
+          },
+          "suppressAttention": {
+            "type": "boolean",
+            "description": "Monitoring inbox: tickets from this inbox raise no attention-feed items and stay out of awaiting-reply aggregates. For telemetry streams like automated bug reports."
+          },
+          "slaExempt": {
+            "type": "boolean",
+            "description": "SLA-exempt inbox: tickets created in it carry NO SLA (no deadline, no breach, no SLA countdown anywhere). For telemetry like automated bug reports that never await a reply. Independent of suppressAttention."
+          },
+          "attentionCutoffAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Attention cutoff (ISO timestamp, or null to clear): tickets whose activity predates it raise no automatic attention items (awaiting_agent, unassigned, nudge_due, sla_risk). Set after a historical import so old records do not flood the feed; new activity re-qualifies a ticket. Explicit follow-ups still surface."
+          },
+          "closeSilentEnabled": {
+            "type": "boolean",
+            "description": "Close tickets when the customer stays silent: a ticket awaiting the customer whose last public message is ours gets the nudge after closeSilentNudgeDays, then is closed as no_response closeSilentCloseDays after the nudge unless the customer replied. Both steps go through the gated nudge and close tools. Only silences that start after it is switched on count. Off by default."
+          },
+          "closeSilentNudgeDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 90,
+            "description": "Days a ticket waits on the customer before the nudge (default 7)."
+          },
+          "closeSilentCloseDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 90,
+            "description": "Days after the nudge before the ticket is closed (default 5)."
+          },
+          "closeSilentNudgeText": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 5000,
+            "description": "The nudge's text, or null for the default wording in the ticket's language."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "inboxes.disconnect": {
+      "description": "Disconnect an inbox",
+      "requiredScopes": ["tickets:inboxes:admin"],
+      "writesToTable": "app_tickets.inboxes",
+      "targetRowParam": "id",
+      "trustBoundary": "user",
+      "handler": "inboxesDisconnect",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Inbox id to disconnect (REQUIRED)."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "idSegment.get": {
+      "description": "Read the org's ticket-id prefix setting (Settings > Tickets > Ticket id prefix): `by` is the ticket field that picks the prefix (none, audience, team, category or inbox) and `codes` maps each value of that field to its code, so a b2b ticket 12 displays as ticket-B2B-12. `examples` shows what ticket 123 displays as for each code. Stored handles never change; every form resolves by number.",
+      "readOnly": true,
+      "requiredScopes": ["tickets:settings:admin"],
+      "trustBoundary": "user",
+      "handler": "idSegmentGet",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "idSegment.set": {
+      "description": "Set the org's ticket-id prefix (the same setting as Settings > Tickets > Ticket id prefix). It changes what every ticket DISPLAYS as, everywhere: the inbox, approval cards, search, and the [#ticket-...] tag in the subject of emails CUSTOMERS receive, so confirm the codes with the requester first. `by`: the ticket field that picks the prefix (none, audience, team, category, inbox); `codes`: value of that field -> code (1-8 letters or digits, uppercased, unique), e.g. by=audience, codes={b2b:B2B, b2c:B2C}. A ticket whose value has no code keeps ticket-<n>. by=none turns prefixes off. Numbers never change and old tags still thread inbound replies. REPLACES the whole setting; read it with idSegment.get first. Gated: your call stages an approval a human reviews before the change lands. Returns the stored setting, `examples` for ticket 123, and how many tickets were queued for search re-indexing.",
+      "requiredScopes": ["tickets:settings:admin"],
+      "gated": true,
+      "trustBoundary": "user",
+      "approvalImpact": "external",
+      "approvalExpiryHours": 72,
+      "summarizer": "summarizeTicketIdSegmentSet",
+      "preflight": "idSegmentSetPreflight",
+      "handler": "idSegmentSet",
+      "params": {
+        "type": "object",
+        "properties": {
+          "by": {
+            "type": "string",
+            "enum": ["none", "audience", "team", "category", "inbox"],
+            "description": "The ticket field whose value picks the prefix (REQUIRED). audience values are b2b and b2c; team values are team labels (teams.list); category and inbox values are ids."
+          },
+          "codes": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Field value -> code, e.g. {\"b2b\": \"B2B\", \"b2c\": \"B2C\"}. Codes are 1-8 letters or digits, stored uppercase, and must be unique. Omit or {} with by=none."
+          }
+        },
+        "required": ["by"]
+      }
+    },
+    "approveFromHome.get": {
+      "description": "Read the org setting Approve ticket replies from Home (Settings > Tickets > Response times & email). `enabled` false (the default) means a pending customer reply can only be approved, edited or rejected from inside its ticket, and its Home card only opens the ticket; true means it can be decided from the Home card. Change it with tickets__approveFromHome_set.",
+      "readOnly": true,
+      "requiredScopes": ["tickets:settings:admin"],
+      "trustBoundary": "user",
+      "handler": "approveFromHomeGet",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "approveFromHome.set": {
+      "description": "Turn the org setting Approve ticket replies from Home on or off. Same setting as Settings > Tickets > Response times & email > Approve ticket replies from Home. enabled=false forces people to open the ticket to approve, edit or reject a pending reply; Home only opens the ticket. enabled=true lets them decide from the Home card. Use it for asks like 'force users to open the ticket to approve' (enabled=false) or 'let us approve replies from Home' (enabled=true). Changes only this setting; the other ticket settings stay as they are. Gated: your call stages an approval a human reviews before the change lands. Returns the stored value as `enabled`.",
+      "requiredScopes": ["tickets:settings:admin"],
+      "gated": true,
+      "trustBoundary": "user",
+      "approvalImpact": "internal",
+      "approvalExpiryHours": 72,
+      "summarizer": "summarizeTicketApproveFromHomeSet",
+      "preflight": "approveFromHomeSetPreflight",
+      "handler": "approveFromHomeSet",
+      "params": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "true: pending ticket replies can be decided from their Home card. false: people must open the ticket to approve, edit or reject them (REQUIRED)."
+          }
+        },
+        "required": ["enabled"]
+      }
+    },
+    "apiKeys.list": {
+      "description": "List the API keys that still work (a revoked key is left out)",
+      "readOnly": true,
+      "requiredScopes": ["tickets:settings:admin"],
+      "readsFromTable": "app_tickets.api_keys",
+      "trustBoundary": "user",
+      "handler": "apiKeysList",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "apiKeys.create": {
+      "gated": true,
+      "approvalImpact": "internal",
+      "description": "Create an API key",
+      "requiredScopes": ["tickets:settings:admin"],
+      "writesToTable": "app_tickets.api_keys",
+      "trustBoundary": "user",
+      "handler": "apiKeysCreate",
+      "summarizer": "summarizeTicketApiKeyCreate",
+      "params": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "Human-readable label for the API key (REQUIRED)."
+          },
+          "allowedOrigins": {
+            "type": ["array", "string"],
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional allowed origins (CORS): a list, or one string with the origins separated by commas, spaces or new lines."
+          }
+        },
+        "required": [
+          "label"
+        ]
+      }
+    },
+    "apiKeys.revoke": {
+      "description": "Revoke an API key",
+      "requiredScopes": ["tickets:settings:admin"],
+      "writesToTable": "app_tickets.api_keys",
+      "targetRowParam": "id",
+      "trustBoundary": "user",
+      "handler": "apiKeysRevoke",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "API key id to revoke (REQUIRED)."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "reply": {
+      "outboundTextParams": ["textBody", "htmlBody"],
+      "description": "Reply to a customer on a TICKET (pass the ticketId from tickets__search/tickets__get). Do NOT use this to answer an email/mail conversation — that lives in Mail; use mail__reply for it (a mail conversation id is not a ticketId and this tool fails with 'ticket not found'). GATED: calling this does NOT send — it creates a pending approval the human reviews and approves before it goes out. When asked to draft/propose a ticket reply, CALL this tool with the body; never paste the draft into chat and ask whether to send. Do NOT end the body with a sign-off, closing name, or signature: the team's configured reply signature is appended into your draft automatically (the approver sees and can edit it), and you must never sign as yourself or as the signed-in user (that 'Current user' identity is internal for resolving 'me'/'my', NOT a customer-facing sender name). Write the textBody as PLAIN TEXT (the support default): no markdown syntax (no **bold**, no # headings, no markdown bullets, no backticks, no [text](url) links) unless formatting genuinely helps the customer; markdown is sent as formatted email with a plain-text part. Write URLs bare and structure with blank-line paragraphs. This holds for REVISED drafts too: when reworking an existing draft, the new body stays plain text. ONE pending reply draft per ticket: when tickets__get lists a draft under pendingReplyDrafts, do NOT draft another; update that one with kernel__approval_update_payload (requestId = its approvalId), even when a colleague drafted it. A second call is refused with approval_already_pending when someone else drafted the waiting one, and replaces your own waiting draft otherwise.",
+      "requiredScopes": ["tickets:tickets:reply"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "trustBoundary": "user",
+      "handler": "ticketsReply",
+      "timeoutMs": 60000,
+      "preflight": "ticketsReplyPreflight",
+      "summarizer": "summarizeTicketReply",
+      "gated": true,
+      "approvalImpact": "external",
+      "approvalExpiryHours": 168,
+      "approvalDedupeKeyParam": "ticketId",
+      "approvalDedupeSameRequester": true,
+      "editableFields": [
+        {
+          "field": "textBody",
+          "label": "Body",
+          "widget": "richtext",
+          "invalidates": [
+            "htmlBody"
+          ]
+        }
+      ],
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string"
+          },
+          "textBody": {
+            "type": "string"
+          },
+          "htmlBody": {
+            "type": "string"
+          },
+          "attachmentSessionId": {
+            "type": "string",
+            "description": "ONLY for a human-uploaded file staging session id. Agents attaching a file should NOT use this — put file ids in `attachments` instead. A Drive file id, URL, or filename does NOT belong here."
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Liaison file ids to attach to this reply. Get them from files_list, drive_import (import a Drive file FIRST — a Drive file id/URL/filename is NOT a valid attachment id), or a gated tool's @ref output. A LOCAL file (one on the caller's machine, e.g. from an MCP client) is uploaded first with kernel__files_upload_url, then kernel__files_upload_confirm, and its fileId goes here."
+          },
+          "cc": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Email addresses to copy (Cc) on this reply, besides the customer. When the customer's last email copied other people, pass those addresses to keep them on the thread: they are not added automatically. Plain addresses only, at most 10."
+          },
+          "followup": {
+            "type": "object",
+            "properties": {
+              "at": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "trigger": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      },
+      "decideInContext": true
+    },
+    "nudge": {
+      "outboundTextParams": ["textBody", "htmlBody"],
+      "description": "Send a polite follow-up to the customer. Gated — only when awaiting_customer.",
+      "requiredScopes": ["tickets:tickets:reply"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "trustBoundary": "user",
+      "handler": "ticketsNudge",
+      "timeoutMs": 60000,
+      "preflight": "ticketsNudgePreflight",
+      "summarizer": "summarizeTicketNudge",
+      "gated": true,
+      "approvalImpact": "external",
+      "approvalExpiryHours": 72,
+      "editableFields": [
+        {
+          "field": "textBody",
+          "label": "Body",
+          "widget": "richtext",
+          "invalidates": [
+            "htmlBody"
+          ]
+        }
+      ],
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string"
+          },
+          "textBody": {
+            "type": "string"
+          },
+          "htmlBody": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      }
+    },
+    "convertToMail": {
+      "description": "Convert a ticket back to a Mail conversation (de-escalate / hand a mis-filed ticket back to email); closes the ticket as converted_to_mail and copies non-note messages. The new conversation is hosted on the mail account you pass as accountId — this may be EITHER your own personal user-owned mailbox OR a visible org/shared mailbox in your org (e.g. a shared support/sales inbox), so handing a mis-filed ticket back to a team queue is fully supported.",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "atomic": true,
+      "trustBoundary": "user",
+      "handler": "convertToMail",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "The ticket to convert back to mail (from tickets__search/get)."
+          },
+          "accountId": {
+            "type": "string",
+            "description": "The mail account that will HOST the new conversation. Call mail__listAccounts and pass back the `id` field of a VISIBLE account in your org EXACTLY as returned. It may be EITHER your own personal user-owned mailbox OR an org/shared inbox (e.g. support@… / sales@…) — when handing the ticket back to a team queue, the shared/org inbox is the right target. Do NOT pass a personal mailbox owned by someone else, a connected-account id, an inbox/ticket id from another app, or a fabricated UUID — any of those returns 'account not visible' and converts nothing."
+          },
+          "note": {
+            "type": "string",
+            "description": "An internal handoff note (e.g. why it's being routed, and to which team)."
+          },
+          "idempotencyKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticketId",
+          "accountId"
+        ]
+      }
+    },
+    "createFromMail": {
+      "description": "Create a ticket from an escalated mail conversation. Internal — invoked by mail__convertToTicket.",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "trustBoundary": "internal",
+      "deferLoading": true,
+      "agentVisible": false,
+      "handler": "createFromMail",
+      "params": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string"
+          },
+          "sourceInboxId": {
+            "type": "string"
+          },
+          "sourceConversationId": {
+            "type": "string"
+          },
+          "contact": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "priority": {
+            "type": "string"
+          },
+          "categoryId": {
+            "type": "string"
+          },
+          "assigneeId": {
+            "type": "string"
+          },
+          "messages": {
+            "type": "array"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "idempotencyKey",
+          "sourceConversationId",
+          "sourceInboxId",
+          "subject",
+          "messages"
+        ]
+      }
+    },
+    "pullMailReply": {
+      "description": "Attach a stray reply on the mail side back onto the ticket as a kind=inbound message.",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "trustBoundary": "internal",
+      "deferLoading": true,
+      "agentVisible": false,
+      "handler": "pullMailReply",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string"
+          },
+          "mailMessageId": {
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticketId",
+          "mailMessageId"
+        ]
+      }
+    },
+    "pullMailReplyFromBanner": {
+      "description": "User-facing wrapper for pulling an eligible Mail reply into an escalated ticket.",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "trustBoundary": "user",
+      "deferLoading": true,
+      "agentVisible": false,
+      "handler": "pullMailReplyFromBanner",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string"
+          },
+          "mailMessageId": {
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticketId",
+          "mailMessageId"
+        ]
+      }
+    },
+    "deleteIfUnreferenced": {
+      "description": "Delete a ticket created via createFromMail when no other entity references it. Internal — used as compensating cleanup.",
+      "requiredScopes": ["tickets:tickets:write"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "trustBoundary": "internal",
+      "deferLoading": true,
+      "agentVisible": false,
+      "handler": "deleteIfUnreferenced",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      }
+    },
+    "ensureSummary": {
+      "description": "Return current summary; trigger lazy regeneration when stale.",
+      "requiredScopes": ["tickets:tickets:read"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "trustBoundary": "user",
+      "agentVisible": false,
+      "handler": "ensureSummary",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      }
+    },
+    "regenerateSummary": {
+      "description": "Force regeneration of the ticket summary.",
+      "requiredScopes": ["tickets:tickets:read"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "trustBoundary": "user",
+      "agentVisible": false,
+      "handler": "regenerateSummary",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      }
+    },
+    "close": {
+      "outboundTextParams": ["textBody", "htmlBody"],
+      "description": "Close a ticket. Optionally send a final email. closedReason defaults to resolved. Gated.",
+      "requiredScopes": ["tickets:tickets:close"],
+      "writesToTable": "app_tickets.tickets",
+      "targetRowParam": "ticketId",
+      "trustBoundary": "user",
+      "handler": "ticketsClose",
+      "timeoutMs": 60000,
+      "preflight": "ticketsClosePreflight",
+      "summarizer": "summarizeTicketClose",
+      "gated": true,
+      "approvalImpact": "internal",
+      "approvalExpiryHours": 168,
+      "editableFields": [
+        {
+          "field": "textBody",
+          "label": "Body",
+          "widget": "richtext",
+          "invalidates": [
+            "htmlBody"
+          ]
+        }
+      ],
+      "params": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string"
+          },
+          "closedReason": {
+            "type": "string",
+            "enum": [
+              "resolved",
+              "duplicate",
+              "spam",
+              "no_response"
+            ]
+          },
+          "textBody": {
+            "type": "string"
+          },
+          "htmlBody": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      }
+    }
+  },
+  "export": {
+    "formats": [
+      "json",
+      "csv"
+    ],
+    "handler": "exportTickets",
+    "schema": {
+      "id": "string",
+      "handle": "string",
+      "subject": "string",
+      "status": "string",
+      "priority": "string",
+      "channel": "string",
+      "team": "string",
+      "sensitivity": "string",
+      "contactId": "string",
+      "assignedTo": "string",
+      "createdAt": "string"
+    }
+  },
+  "import": {
+    "kinds": {
+      "ticket": {
+        "label": "Tickets",
+        "schema": {
+          "type": "object",
+          "required": [
+            "subject",
+            "externalRef",
+            "messages"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "subject": {
+              "type": "string",
+              "minLength": 1
+            },
+            "externalRef": {
+              "type": "string",
+              "minLength": 1
+            },
+            "contactEmail": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "contactName": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "channel": {
+              "enum": [
+                "email",
+                "web_form",
+                "api",
+                "mail_escalation",
+                "manual",
+                "social"
+              ]
+            },
+            "priority": {
+              "enum": [
+                "low",
+                "normal",
+                "high",
+                "urgent"
+              ]
+            },
+            "status": {
+              "enum": [
+                "open",
+                "awaiting_customer",
+                "awaiting_followup",
+                "closed"
+              ]
+            },
+            "closedReason": {
+              "enum": [
+                "resolved",
+                "converted_to_mail",
+                "merged",
+                "spam",
+                "duplicate",
+                "no_response"
+              ]
+            },
+            "assigneeEmail": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "createdAt": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "firstResponseAt": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "team": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "categoryPath": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "language": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "sourceInboxId": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            },
+            "messages": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "inbound",
+                      "outbound",
+                      "note"
+                    ]
+                  },
+                  "fromEmail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "fromName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "toEmails": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "ccEmails": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "subject": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "htmlBody": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "textBody": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "snippet": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "externalMessageId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "sentAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "filename",
+                        "mimeType"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "filename": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "mimeType": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "bytesBase64": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "fileId": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      },
+                      "oneOf": [
+                        {
+                          "required": [
+                            "bytesBase64"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "fileId"
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "handler": "importTickets",
+        "dedupKey": "externalRef",
+        "tables": [
+          "app_tickets.tickets",
+          "app_tickets.messages",
+          "kernel.files",
+          "kernel.contacts",
+          "kernel.resource_grants"
+        ],
+        "writeScopes": [
+          "tickets:tickets:write"
+        ],
+        "dimension": {
+          "field": "team",
+          "dimension": "tickets:team"
+        },
+        "people": [
+          "assigneeEmail",
+          "contactEmail"
+        ],
+        "files": [
+          "messages.attachments"
+        ],
+        "parent": "category"
+      },
+      "category": {
+        "label": "Ticket categories",
+        "schema": {
+          "type": "object",
+          "required": [
+            "path"
+          ],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The category path, \"Parent / Child\"; missing segments are created."
+            },
+            "sortOrder": {
+              "type": "integer"
+            },
+            "archived": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "handler": "importCategories",
+        "dedupKey": "path",
+        "tables": [
+          "app_tickets.categories"
+        ],
+        "writeScopes": [
+          "tickets:categories:admin"
+        ]
+      },
+      "reply-template": {
+        "label": "Reply templates",
+        "schema": {
+          "type": "object",
+          "required": [
+            "name",
+            "bodyText"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "bodyText": {
+              "type": "string",
+              "minLength": 1
+            },
+            "category": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "handler": "importReplyTemplates",
+        "dedupKey": "name",
+        "tables": [
+          "app_tickets.reply_templates"
+        ],
+        "writeScopes": [
+          "tickets:tickets:write"
+        ]
+      }
+    }
+  },
+  "attention": {
+    "translations": [
+      {
+        "event": "inbox:close_silent_stopped",
+        "kind": "admin_action",
+        "urgency": 50,
+        "summary": "Closing silent tickets stopped in the {{data.name}} inbox: the person who switched it on is no longer active, or no longer allowed to reply to and close tickets. Switch it on again in the inbox settings to keep it running.",
+        "recipients": { "kind": "scope_holders", "scope": "tickets:inboxes:admin" }
+      }
+    ]
+  },
+  "events": {
+    "emits": [
+      "ticket:create",
+      "ticket:update",
+      "ticket:merged",
+      "ticket:reopened",
+      "ticket:converted",
+      "ticket:summary_updated",
+      "message:create",
+      "message:update",
+      "message:delete",
+      "note:create",
+      "sla:breach",
+      "category:create",
+      "category:update",
+      "category:archive",
+      "team:rename",
+      "inbox:create",
+      "inbox:update",
+      "inbox:disconnect",
+      "inbox:close_silent_stopped"
+    ],
+    "subscribes": {
+      "kernel/contact:merge": "onContactMerge",
+      "kernel/connected_account:create": "ticketsOnAccountConnected",
+      "kernel/connected_account:disconnect": "ticketsOnAccountDisconnected"
+    }
+  },
+  "jobs": {
+    "slaCheck": {
+      "handler": "slaCheck",
+      "runsFor": {"rows": {"entity": "tickets", "where": {"status": "open", "firstResponseAt": null, "slaPausedAt": null, "slaBreachedAt": null}}},
+      "schedule": "*/5 * * * *"
+    },
+    "followupCheck": {
+      "handler": "followupCheck",
+      "runsFor": {"rows": {"entity": "tickets", "where": {"status": "awaiting_followup"}}},
+      "schedule": "*/15 * * * *"
+    },
+    "closeSilentCheck": {
+      "handler": "closeSilentCheck",
+      "runsFor": {"rows": {"entity": "inboxes", "where": {"closeSilentEnabled": true}}},
+      "schedule": "17 * * * *"
+    },
+    "gmail-incremental-sync": {
+      "handler": "ticketsGmailIncrementalSync",
+      "runsFor": {"connection": "gmail"},
+      "schedule": "*/5 * * * *",
+      "onDemand": true
+    },
+    "gmail-initial-sync": {
+      "handler": "ticketsGmailInitialSync",
+      "onDemand": true
+    },
+    "gmail-watch-renewal": {
+      "handler": "ticketsGmailWatchRenewal",
+      "runsFor": {"connection": "gmail"},
+      "schedule": "0 0 1,7,13,19,25 * *",
+      "onDemand": true
+    },
+    "imap-incremental-sync": {
+      "handler": "ticketsImapIncrementalSync",
+      "runsFor": {"connection": "imap"},
+      "schedule": "*/2 * * * *",
+      "onDemand": true
+    },
+    "imap-initial-sync": {
+      "handler": "ticketsImapInitialSync",
+      "onDemand": true
+    },
+    "tickets-summarize": {
+      "handler": "ticketsSummarize",
+      "onDemand": true,
+      "retry": {
+        "attempts": 1
+      }
+    }
+  },
+  "prompts": {
+    "summarizer": {
+      "content": "You maintain a running, neutral summary of a customer support ticket conversation. You will be given the ticket header (handle, subject, status, priority, category, contact), the prior summary if one exists, and the most recent messages.\n\nProduce a concise summary in plain prose, no markdown, no bullets, capturing:\n- the customer's underlying problem or request\n- key facts and constraints surfaced so far\n- decisions or commitments either side has made\n- the current open question or next action\n\nGuidelines:\n- Keep the summary under 200 words.\n- Build on the previous summary; do not repeat unchanged details from older messages, and never duplicate the prior summary verbatim.\n- Treat messages tagged [INTERNAL] as internal notes — incorporate factual information but do not quote the note language to a customer-facing audience.\n- Never invent information that is not in the messages or prior summary.\n- If the conversation is too short to summarize meaningfully, return a single sentence describing what the customer asked.\n- Output only the summary text — no preamble, no headings."
+    }
+  },
+  "skills": {
+    "summarize-ticket": {
+      "description": "Write a concise running summary of the current ticket conversation.",
+      "body": "# Summarize ticket\n\nProduce a concise running summary of the current ticket conversation. Use the `tickets:read` tool to fetch the ticket plus its messages, then write 2–4 short paragraphs in plain prose (no markdown headings, no bullets) capturing:\n\n- The customer's underlying problem or request.\n- Key facts and constraints surfaced so far.\n- Any decisions or commitments either side has made.\n- The current open question or next action.\n\nGuidelines:\n\n- Keep the summary under 200 words total.\n- Treat messages tagged `[INTERNAL]` as internal notes — incorporate factual information but never echo the note language to a customer-facing audience.\n- Never invent information that is not in the messages.\n- Output only the summary text — no preamble, no headings, no closing line."
+    },
+    "draft-ticket-reply": {
+      "description": "Draft gated replies to one or more tickets, grounded in Knowledge, in the customer's language",
+      "body": "# Draft a reply to a ticket\n\nUse this when asked to reply to (or 'draft a reply to', 'propose') one or more support tickets.\n\n**When the person says to leave the ticket alone** ('draft it here only', 'don't post anything on the ticket', 'ne poste rien', 'ne touche pas au ticket'), that instruction wins over step 4: do not call `tickets__reply` or any other ticket write (category, status, follow-up, assignee, priority, team, note). Give the draft in the conversation as plain text and list any change you would make to the ticket as a proposal; make a write only when they then ask for it. The same holds for a request to triage: propose the category, status and owner, do not set them unless asked.\n\n1. **Find the ticket(s).** `tickets__search` by the subject/keywords/product, then `tickets__get` each one for its full thread. **`tickets__get` returns the ticketId — you now HAVE it.** Never ask the human for a ticket id you can retrieve yourself, and if a search/get just returned data the tools are working — never claim a 'technical issue accessing the tickets tools' and stop.\n2. **Ground it (if a procedure/policy applies).** `knowledge__search` then `knowledge__get` the relevant article and base your reply on its actual content — never invent steps or policy.\n3. **Match the customer's language.** Write each reply in the language the customer wrote in (a German ticket → reply in German, a French ticket → reply in French).\n4. **Propose each reply by CALLING `tickets__reply`** with the `ticketId` (from step 1) and your drafted `textBody`. `tickets__reply` is GATED: calling it does NOT send — it creates a pending approval the human reviews and approves. **That tool call IS how you propose the reply.** Do NOT paste the draft into chat and ask whether to send or for the id.\n5. **Several tickets → several replies.** If the task names more than one ticket, call `tickets__reply` once PER ticket (two tickets → two `tickets__reply` calls → two approvals). A gated `blocked` result on the first reply is NORMAL — keep going and submit the next one; do not treat it as a failure.\n6. Tell the user each reply is drafted and pending approval (do not claim any was sent)."
+    }
+  },
+  "webhooks": {
+    "gmail-push": {
+      "handler": "ticketsOnGmailPush",
+      "verify": "ticketsVerifyGmailPush",
+      "bodyLimitBytes": 16384
+    }
+  },
+  "webhookHealth": {
+    "probe": null,
+    "reason": "Gmail push only nudges the incremental sync; mailbox ingest health is judged by the mail-ingest diag, not by pushes."
+  },
+  "connections": {
+    "gmail": {
+      "type": "oauth2",
+      "authorizationUrl": "https://accounts.google.com/o/oauth2/v2/auth",
+      "tokenUrl": "https://oauth2.googleapis.com/token",
+      "revocationUrl": "https://oauth2.googleapis.com/revoke",
+      "userinfoUrl": "https://openidconnect.googleapis.com/v1/userinfo",
+      "scopes": [
+        "openid",
+        "email",
+        "profile",
+        "https://www.googleapis.com/auth/gmail.modify",
+        "https://www.googleapis.com/auth/gmail.send"
+      ],
+      "extraParams": {
+        "access_type": "offline",
+        "prompt": "consent"
+      },
+      "allowedDomains": [
+        "*.googleapis.com"
+      ],
+      "setupGuide": {
+        "summary": "Gmail connects over OAuth using your workspace's Google integration — no password is stored. A workspace admin adds the Google credentials once before accounts can connect.",
+        "steps": [
+          {
+            "who": "human",
+            "minutes": 0,
+            "text": "Ask a workspace admin to add Google OAuth credentials in **Settings → Mail Setup** (one-time, per workspace).",
+            "place": "liaison"
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "text": "Click **Connect via OAuth** here — you are redirected to Google's consent screen.",
+            "place": "liaison"
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "text": "Approve the requested access (read/modify and send mail). Liaison stores only the OAuth tokens Google returns, never your password.",
+            "place": "liaison"
+          },
+          {
+            "who": "human",
+            "minutes": 0,
+            "text": "Revoke any time by removing the connection here, or at myaccount.google.com/permissions.",
+            "url": "https://myaccount.google.com/permissions"
+          }
+        ],
+        "docsUrl": "https://developers.google.com/gmail/api/auth/scopes"
+      }
+    },
+    "imap": {
+      "type": "credentials",
+      "credentialFields": [
+        {
+          "name": "email",
+          "label": "Email Address",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "imapHost",
+          "label": "IMAP Host",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "imapPort",
+          "label": "IMAP Port",
+          "type": "number",
+          "required": true
+        },
+        {
+          "name": "smtpHost",
+          "label": "SMTP Host",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "smtpPort",
+          "label": "SMTP Port",
+          "type": "number",
+          "required": true
+        },
+        {
+          "name": "username",
+          "label": "Username",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "password",
+          "label": "Password",
+          "type": "password",
+          "required": true
+        }
+      ],
+      "allowedDomains": [],
+      "setupGuide": {
+        "summary": "Connect any mailbox over IMAP/SMTP. Most providers require an app-specific password (not your normal login password) when two-factor authentication is on.",
+        "steps": [
+          {
+            "who": "agent",
+            "text": "Find your provider's IMAP + SMTP host and port — e.g. Gmail `imap.gmail.com`:993 / `smtp.gmail.com`:465; Outlook `outlook.office365.com`:993 / `smtp.office365.com`:587; iCloud `imap.mail.me.com`:993 / `smtp.mail.me.com`:587."
+          },
+          {
+            "who": "human",
+            "minutes": 2,
+            "text": "If two-factor auth is on, generate an **app password** and use it in the **password** field — your normal password will be rejected.",
+            "place": "own"
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "text": "Enter your email, IMAP host/port, SMTP host/port, and username (usually your full email address).",
+            "place": "liaison"
+          },
+          {
+            "who": "agent",
+            "text": "Use TLS ports: IMAP 993, SMTP 465 (implicit TLS) or 587 (STARTTLS)."
+          }
+        ],
+        "docsUrl": "https://support.google.com/accounts/answer/185833"
+      }
+    }
+  },
+  "kind": "app",
+  "settings": {
+    "sections": [
+      {
+        "id": "signature",
+        "title": "Your reply signature",
+        "titleKey": "tickets.settingsPage.signature.title",
+        "description": "Added under the replies you send from a ticket.",
+        "descriptionKey": "tickets.settingsPage.signature.description",
+        "scope": "user",
+        "blocks": [
+          {
+            "block": "field",
+            "key": "signature.text",
+            "type": "textarea",
+            "label": "Signature",
+            "labelKey": "tickets.settingsPage.signature.text"
+          }
+        ]
+      },
+      {
+        "id": "inboxes",
+        "title": "Inboxes",
+        "titleKey": "tickets.settingsPage.inboxes.title",
+        "description": "The mailboxes and API endpoints tickets arrive through, and how each one routes and replies.",
+        "descriptionKey": "tickets.settingsPage.inboxes.description",
+        "scope": "org",
+        "adminScope": "tickets:inboxes:admin",
+        "blocks": [
+          {
+            "block": "connections",
+            "names": [
+              "gmail",
+              "imap"
+            ]
+          },
+          {
+            "block": "custom",
+            "component": "TicketsInboxRouting",
+            "reason": "Each inbox row is edited richly (audience, team, reply address, signature, acknowledgement, SLA exemption), shows its connection health with reconnect, and an API inbox reveals its ingest URL and key; an update can wait for approval."
+          }
+        ]
+      },
+      {
+        "id": "categories",
+        "title": "Categories",
+        "titleKey": "tickets.settingsPage.categories.title",
+        "description": "Drag to reorder or nest, click a name to rename. Two levels at most.",
+        "descriptionKey": "tickets.settingsPage.categories.description",
+        "scope": "org",
+        "adminScope": "tickets:categories:admin",
+        "blocks": [
+          {
+            "block": "tree",
+            "ops": {
+              "list": "categories.tree",
+              "create": "categories.create",
+              "update": "categories.update",
+              "reorder": "categories.reorder",
+              "archive": "categories.archive"
+            },
+            "maxDepth": 2
+          }
+        ]
+      },
+      {
+        "id": "response-times",
+        "title": "Response times & email",
+        "titleKey": "tickets.settingsPage.responseTimes.title",
+        "description": "First-response targets per priority, counted in business hours, and the look of the emails customers receive.",
+        "descriptionKey": "tickets.settingsPage.responseTimes.description",
+        "scope": "org",
+        "adminScope": "tickets:settings:admin",
+        "blocks": [
+          {
+            "block": "field",
+            "key": "sla.targets.urgent",
+            "type": "duration",
+            "label": "Urgent first response",
+            "labelKey": "tickets.settingsPage.responseTimes.urgent",
+            "default": 3600
+          },
+          {
+            "block": "field",
+            "key": "sla.targets.high",
+            "type": "duration",
+            "label": "High first response",
+            "labelKey": "tickets.settingsPage.responseTimes.high",
+            "default": 7200
+          },
+          {
+            "block": "field",
+            "key": "sla.targets.normal",
+            "type": "duration",
+            "label": "Normal first response",
+            "labelKey": "tickets.settingsPage.responseTimes.normal",
+            "default": 28800
+          },
+          {
+            "block": "field",
+            "key": "sla.targets.low",
+            "type": "duration",
+            "label": "Low first response",
+            "labelKey": "tickets.settingsPage.responseTimes.low",
+            "default": 86400
+          },
+          {
+            "block": "field",
+            "key": "sla.businessHours.timezone",
+            "type": "select",
+            "label": "Time zone",
+            "labelKey": "tickets.settingsPage.responseTimes.timezone",
+            "options": [
+              {
+                "value": "UTC",
+                "label": "UTC"
+              },
+              {
+                "value": "Europe/Paris",
+                "label": "Europe/Paris"
+              },
+              {
+                "value": "Europe/London",
+                "label": "Europe/London"
+              },
+              {
+                "value": "America/New_York",
+                "label": "America/New_York"
+              },
+              {
+                "value": "America/Los_Angeles",
+                "label": "America/Los_Angeles"
+              }
+            ],
+            "default": "Europe/Paris"
+          },
+          {
+            "block": "field",
+            "key": "sla.businessHours.weekly",
+            "type": "schedule",
+            "label": "Business hours",
+            "labelKey": "tickets.settingsPage.responseTimes.weekly",
+            "default": {
+              "mon": [
+                [
+                  "09:00",
+                  "18:00"
+                ]
+              ],
+              "tue": [
+                [
+                  "09:00",
+                  "18:00"
+                ]
+              ],
+              "wed": [
+                [
+                  "09:00",
+                  "18:00"
+                ]
+              ],
+              "thu": [
+                [
+                  "09:00",
+                  "18:00"
+                ]
+              ],
+              "fri": [
+                [
+                  "09:00",
+                  "18:00"
+                ]
+              ],
+              "sat": [],
+              "sun": []
+            }
+          },
+          {
+            "block": "field",
+            "key": "sla.businessHours.holidays",
+            "type": "dates",
+            "label": "Holidays",
+            "labelKey": "tickets.settingsPage.responseTimes.holidays",
+            "help": "Days the response clock does not run.",
+            "helpKey": "tickets.settingsPage.responseTimes.holidaysHelp",
+            "default": []
+          },
+          {
+            "block": "field",
+            "key": "emailTemplate.headerName",
+            "type": "text",
+            "label": "Email header name",
+            "labelKey": "tickets.settingsPage.responseTimes.headerName",
+            "help": "Shown at the top of ticket emails. Empty: the organization name.",
+            "helpKey": "tickets.settingsPage.responseTimes.headerNameHelp"
+          },
+          {
+            "block": "field",
+            "key": "emailTemplate.footerText",
+            "type": "textarea",
+            "label": "Email footer",
+            "labelKey": "tickets.settingsPage.responseTimes.footerText"
+          },
+          {
+            "block": "field",
+            "key": "emailTemplate.accentColor",
+            "type": "text",
+            "label": "Accent color",
+            "labelKey": "tickets.settingsPage.responseTimes.accentColor",
+            "help": "A hex color such as #2563eb.",
+            "helpKey": "tickets.settingsPage.responseTimes.accentColorHelp",
+            "validation": {
+              "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+            }
+          },
+          {
+            "block": "field",
+            "key": "enabled",
+            "type": "toggle",
+            "label": "Approve ticket replies from Home",
+            "labelKey": "tickets.settingsPage.responseTimes.approveFromHome",
+            "help": "Off: a pending reply is approved, edited or rejected inside its ticket. On: it can be decided from its Home card.",
+            "helpKey": "tickets.settingsPage.responseTimes.approveFromHomeHelp",
+            "source": {
+              "tool": {
+                "get": "approveFromHome.get",
+                "set": "approveFromHome.set"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "id-segments",
+        "title": "Ticket ID prefixes",
+        "titleKey": "tickets.settingsPage.idSegments.title",
+        "description": "Prefix ticket numbers by audience, team, category or inbox, such as ticket-B2B-12.",
+        "descriptionKey": "tickets.settingsPage.idSegments.description",
+        "scope": "org",
+        "adminScope": "tickets:settings:admin",
+        "blocks": [
+          {
+            "block": "custom",
+            "component": "TicketsIdSegments",
+            "reason": "One code per value of the chosen field (the values are the org's own teams, categories or inboxes), a live preview, and a gated save that re-indexes every ticket's display id."
+          }
+        ]
+      },
+      {
+        "id": "api-keys",
+        "title": "API keys",
+        "titleKey": "tickets.settingsPage.apiKeys.title",
+        "description": "Keys that create tickets through the public ingest endpoint. A key is shown once, when it is created.",
+        "descriptionKey": "tickets.settingsPage.apiKeys.description",
+        "scope": "org",
+        "adminScope": "tickets:settings:admin",
+        "blocks": [
+          {
+            "block": "list",
+            "ops": {
+              "list": "apiKeys.list",
+              "create": "apiKeys.create",
+              "archive": "apiKeys.revoke"
+            },
+            "archiveLabel": "Revoke",
+            "archiveLabelKey": "tickets.settingsPage.apiKeys.revoke",
+            "columns": [
+              {
+                "key": "label",
+                "label": "Label",
+                "labelKey": "tickets.settingsPage.apiKeys.label"
+              },
+              {
+                "key": "key_prefix",
+                "label": "Key",
+                "labelKey": "tickets.settingsPage.apiKeys.prefix"
+              },
+              {
+                "key": "allowed_origins",
+                "label": "Allowed origins",
+                "labelKey": "tickets.settingsPage.apiKeys.origins"
+              },
+              {
+                "key": "last_used_at",
+                "label": "Last used",
+                "labelKey": "tickets.settingsPage.apiKeys.lastUsed",
+                "format": "datetime"
+              }
+            ],
+            "createFields": [
+              {
+                "key": "label",
+                "type": "text",
+                "label": "Label",
+                "labelKey": "tickets.settingsPage.apiKeys.label",
+                "validation": {
+                  "required": true
+                }
+              },
+              {
+                "key": "allowedOrigins",
+                "type": "textarea",
+                "label": "Allowed origins",
+                "labelKey": "tickets.settingsPage.apiKeys.origins",
+                "help": "One https origin per line. Empty: any origin.",
+                "helpKey": "tickets.settingsPage.apiKeys.originsHelp"
+              }
+            ],
+            "revealOnCreate": "key"
+          }
+        ]
+      }
+    ]
+  },
+  "views": {
+    "attentionItems": "computeAttentionItems",
+    "tabTypes": {
+      "inbox": {
+        "component": "TicketsInbox",
+        "label": "Tickets",
+        "labelKey": "kernel.nav.tickets",
+        "sidebar": "TicketsSidebar",
+        "icon": "TicketsIcon",
+        "urlPattern": "/tickets",
+        "singleton": true,
+        "preserveSubRoutes": true,
+        "referenceable": false
+      },
+      "ticket": {
+        "component": "TicketDetail",
+        "label": "Ticket",
+        "resolveLabel": "resolveTicketTabLabel",
+        "sidebar": "TicketsSidebar",
+        "icon": "TicketsIcon",
+        "urlPattern": "/tickets/:entityId",
+        "referenceable": true
+      }
+    },
+    "activityBar": {
+      "icon": "TicketsIcon",
+      "label": "Tickets",
+      "labelKey": "kernel.nav.tickets",
+      "order": 11,
+      "tabAction": {
+        "type": "inbox",
+        "entityId": "inbox",
+        "label": "Tickets"
+      }
+    },
+    "wsHandlers": {
+      "ticket": "handleTicketEvent",
+      "message": "handleTicketMessageEvent",
+      "note": "handleTicketNoteEvent",
+      "inbox": "handleInboxEvent",
+      "category": "handleCategoryEvent",
+      "team": "handleTeamEvent",
+      "connectedAccount": {
+        "key": "kernel:connected_account",
+        "handler": "handleConnectedAccountEvent"
+      },
+      "mailConversation": {
+        "key": "mail:conversation",
+        "handler": "handleMailConversationEvent"
+      },
+      "sla": {
+        "key": "tickets:sla",
+        "handler": "handleSlaEvent"
+      }
+    }
+  },
+  "slots": {
+    "ticket:detail:actions": {
+      "position": "toolbar"
+    }
+  },
+  "contributions": {
+    "mail:conversation:banner": {
+      "label": "Ticket banner",
+      "labelKey": "kernel.nav.section.ticketsSignature",
+      "component": "MailConvertToTicketBanner"
+    },
+    "mail:conversation:actions": {
+      "label": "Convert to ticket",
+      "labelKey": "kernel.nav.section.ticketsSignature",
+      "component": "MailConvertToTicketAction"
+    }
+  },
+  "savedViews": {
+    "inbox": {
+      "defaults": [
+        {
+          "key": "my-open",
+          "name": "My open tickets",
+          "payload": {
+            "smartFilter": "needs-attention",
+            "assignedTo": "$me"
+          }
+        },
+        {
+          "key": "unassigned",
+          "name": "Unassigned",
+          "payload": {
+            "smartFilter": "all-open",
+            "assignedTo": null
+          }
+        },
+        {
+          "key": "sla-approaching",
+          "name": "SLA approaching",
+          "payload": {
+            "smartFilter": "needs-attention",
+            "slaWindowSeconds": 3600
+          }
+        }
+      ]
+    }
+  },
+  "bulk": {
+    "close": {
+      "label": "Close tickets…",
+      "underlyingTool": "close",
+      "dispatchMode": "perItem",
+      "perItemParam": "ticketId",
+      "sharedFields": [
+        "closedReason",
+        "textBody"
+      ],
+      "agentTool": "bulkClose",
+      "icon": "CheckIcon"
+    },
+    "assign": {
+      "label": "Assign…",
+      "underlyingTool": "assign",
+      "dispatchMode": "perItem",
+      "perItemParam": "ticketId",
+      "sharedFields": [
+        "assignedTo"
+      ],
+      "agentTool": "bulkAssign"
+    },
+    "setPriority": {
+      "label": "Change priority…",
+      "underlyingTool": "setPriority",
+      "dispatchMode": "perItem",
+      "perItemParam": "ticketId",
+      "sharedFields": [
+        "priority"
+      ]
+    },
+    "setAudience": {
+      "label": "Set B2B / B2C…",
+      "underlyingTool": "setAudience",
+      "dispatchMode": "perItem",
+      "perItemParam": "ticketId",
+      "sharedFields": [
+        "audience"
+      ],
+      "agentTool": "bulkSetAudience"
+    },
+    "setTeam": {
+      "label": "Change team…",
+      "underlyingTool": "setTeam",
+      "dispatchMode": "perItem",
+      "perItemParam": "ticketId",
+      "sharedFields": [
+        "team"
+      ],
+      "agentTool": "bulkSetTeam"
+    },
+    "merge": {
+      "label": "Merge…",
+      "underlyingTool": "merge",
+      "dispatchMode": "aggregate",
+      "selectionParam": "sourceTicketIds",
+      "sharedFields": [
+        "targetTicketId"
+      ],
+      "minSelection": 2,
+      "customForm": "MergeTicketsForm"
+    },
+    "move": {
+      "label": "Move to inbox…",
+      "underlyingTool": "ticketsMove",
+      "dispatchMode": "aggregate",
+      "selectionParam": "ticketIds",
+      "sharedFields": [
+        "toInboxId"
+      ],
+      "customForm": "MoveTicketsToInboxForm"
+    }
+  },
+  "roles": {
+    "support": {
+      "description": "Standard support agent",
+      "scopes": [
+        "tickets:tickets:read",
+        "tickets:tickets:write",
+        "tickets:tickets:reply",
+        "tickets:approve",
+        "tickets:inboxes:read",
+        "tickets:categories:read"
+      ]
+    },
+    "support_lead": {
+      "description": "Team lead: manages inboxes, categories, accounts; can close tickets",
+      "extends": "support",
+      "scopes": [
+        "tickets:tickets:close",
+        "tickets:inboxes:admin",
+        "tickets:categories:admin",
+        "tickets:accounts:admin"
+      ]
+    },
+    "admin": {
+      "description": "Tickets app administrator: full settings and account control",
+      "extends": "support_lead",
+      "scopes": [
+        "tickets:settings:admin",
+        "tickets:accounts:admin"
+      ]
+    }
+  }
+}

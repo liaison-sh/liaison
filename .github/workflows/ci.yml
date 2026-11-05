@@ -1,0 +1,158 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# Fast per-PR checks: lint, typecheck, the cheap `check:*` guards and the tour
+# suites, none of which needs a database or other service. They run as ONE job:
+# one checkout and one `bun install` instead of four. Heavier suites
+# (unit/integration/e2e/playwright, which need Postgres/Redis/MeiliSearch)
+# are intentionally out of scope here — see scripts/test-run.ts for those.
+name: ci
+
+on:
+  # Every pull request, whatever its base, gets the checks. `edited` re-runs
+  # them when the body changes (the docs guard reads its Docs-skip line).
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          # The docs guard diffs the PR against its base branch.
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      # A pull request checks what it touches (scripts/ci-scope.ts): Biome on its
+      # changed files, the TypeScript projects whose program holds a changed file,
+      # the docs guard only when a file it reads changed. A change to a
+      # package.json, the lockfile, a tsconfig, the Biome config or this workflow
+      # checks everything, and so does every push to main.
+      - name: Scope
+        id: scope
+        run: bun run scripts/ci-scope.ts scope
+      - name: Biome check
+        run: bun run scripts/ci-scope.ts biome
+      # tsgo (the native TypeScript compiler). `bun run typecheck` stays the
+      # plain tsc check; both report the same
+      # errors on this repo.
+      - name: TypeScript check
+        run: bun run typecheck:changed
+      # Generated dictionaries and the French locale match their sources: a
+      # string added by hand to fr/*.json without its scripts/i18n-fr-table.ts
+      # entry is overwritten with English on the next regeneration.
+      - name: Translations in sync
+        run: bun run i18n:gen:check && bun run i18n:fr:check
+      - name: SPDX headers
+        run: bun run check:spdx
+      - name: Migration baseline
+        run: bun run check:migration-baseline
+      # A new migration must not break the previous release, which keeps
+      # running against the new schema while a deploy rolls (expand/contract).
+      - name: Migration safety
+        run: bun run check:migration-safety
+      # New tests seed through the factories: the count of test files with a raw
+      # INSERT INTO a kernel or app table may only go down
+      # (scripts/raw-insert-baseline.json).
+      - name: Raw test inserts ratchet
+        run: bun run check:raw-insert
+      # A changed bundled app raises its version: an installed version directory
+      # is never rewritten, so the same version with other files fails the deploy.
+      # A push to main has no GITHUB_BASE_REF, so the check is skipped there.
+      - name: Bundled-app version raised
+        run: bun run check:bundled-app-version
+      - name: Runbook sections
+        run: bun run check:runbook-sections
+      - name: Readonly-role grants in sync
+        run: bun run check:grants
+      - name: No Node in shipped app shells
+        run: bun run check:desktop-no-node
+      # Every testid a guided tour names exists in the web source, and no
+      # beat points at a surface that renders only at the other width.
+      - name: Tour anchors
+        run: bun run check:tour-anchors
+      # Generated reference pages fresh, nav and links intact, every app,
+      # CLI command, env var, setting and scope documented, and (on a PR) every
+      # mapped change paired with its page (.claude/docs-map.ts). The PR body
+      # reaches the script only through env, never interpolated into `run:`.
+      # A push to main has no GITHUB_BASE_REF, so the diff rule is skipped.
+      # Skipped on a pull request that changes no file the check reads (Scope).
+      - name: Docs up to date
+        if: steps.scope.outputs.docs == 'true'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: bun run check:docs
+      # Every integration test file is listed in exactly one suite of
+      # scripts/test-run.ts. A file in no suite runs in no lane and rots unseen.
+      # A pure file scan, no database or service.
+      - name: Suite coverage
+        run: bun test scripts/test-run.suites.test.ts
+      # The repo-root script tests (lints, runner helpers, seeds): pure file reads
+      # and small spawns, no database or service. test-run.ts takes a slot and
+      # the namespace lock itself, in the runner's own temp dir.
+      # The e-invoice schematron tests in the root suite validate with xmllint.
+      - name: Install xmllint
+        run: sudo apt-get install -y --no-install-recommends libxml2-utils
+      - name: Root script tests
+        # These are small script tests. The runner's default memory reserve is
+        # sized for whole test lanes and stops them on a normal CI machine.
+        env:
+          TEST_MEM_RESERVE_MB: "1024"
+        run: bun run test:root
+      # A pure source scan (no database), but it sits in the `integration`
+      # suite, which no workflow runs: privileged database imports with no
+      # reviewed allowlist entry reached main unnoticed.
+      - name: Privileged database import allowlist
+        working-directory: apps/api
+        run: bun test src/tests/db-import-enforcement.test.ts
+      # Three more pure source scans that only the `unit` suite runs, so no PR
+      # check saw them: privileged org sources, raw SQL splices, and literal
+      # kernel schema names each reached main red before this step. The tool-scope
+      # read oracle joins them for the same reason: it runs only in the api-guards
+      # suite, which no PR workflow runs.
+      # Migrations read the request context only through rls_ctx: the database
+      # guard for it runs in the unit suite, after the migration has landed.
+      - name: Privileged org sources, raw SQL splices, kernel schema literals, tool-scope reads, rls_ctx readers
+        working-directory: apps/api
+        run: bun test src/db/privileged-org-source.test.ts src/db/raw-sql-sites.test.ts src/db/kernel-schema-literal.guard.test.ts src/modules/apps/tool-scope-read-oracle.test.ts src/db/migrations/rls-ctx-reader.guard.test.ts
+      # Every org scoped kernel table needs a demo reset rule: the reset refuses
+      # to run without one, and a missing rule once broke a demo deploy. The scan
+      # reads migrations only, but importing the reset module loads the config,
+      # so it gets the .env.example placeholders (not secrets).
+      - name: Demo reset rules
+        working-directory: apps/api
+        env:
+          JWT_SECRET: replace-with-at-least-32-char-secret
+          ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+        run: bun test src/modules/demo/demo-reset-rules.test.ts
+      # Erasing a user refuses to run while a kernel user column has no rule, and
+      # the live check needs a database. This reads the migrations instead.
+      - name: Erasure rules
+        working-directory: apps/api
+        env:
+          JWT_SECRET: replace-with-at-least-32-char-secret
+          ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+        run: bun test src/modules/erasure/erase-user-rules.test.ts
+      # The guided tours' fast suites: the shared tour definitions and engine
+      # rules (bun) and the web tour card and engine (vitest, jsdom). Tour
+      # regressions reached the live demo while only lint, typecheck and guards ran.
+      - name: Shared tour definitions and rules
+        working-directory: packages/shared
+        run: bun test src/tours
+      - name: Web tour engine and card
+        working-directory: apps/web
+        run: bunx vitest run src/modules/tours

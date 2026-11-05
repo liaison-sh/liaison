@@ -1,0 +1,415 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+import { Route, Router } from "@solidjs/router"
+import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { installFakeBridge, uninstallFakeBridge } from "~/modules/desktop/fake-bridge"
+import { I18nProvider } from "~/modules/i18n/i18n-context"
+import ProfileSettings from "~/modules/settings/ProfileSettings"
+import { ApiProvider } from "~/modules/shell/ApiContext"
+import { ThemeStoreTestAccess } from "~/modules/shell/theme-store"
+import { resetToastStore, toasts } from "~/modules/shell/toast-store"
+
+describe("ProfileSettings", () => {
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    // A Response body can only be read once, so every call must get a FRESH
+    // Response. `mockResolvedValue` would hand the same instance to the profile
+    // GET and the preferences GET, and the second read rejects with
+    // "Body has already been read" outside any assertion.
+    fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ data: { id: "1", name: "Test", email: "test@test.com" } }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  // The desktop's saved servers head the account area: no OS has a native
+  // Account menu, so Settings is where servers are managed.
+  it("shows the desktop's servers group first, and none in a browser", async () => {
+    const renderProfile = () =>
+      render(() => (
+        <Router>
+          <Route
+            path="*"
+            component={() => (
+              <ApiProvider>
+                <ProfileSettings />
+              </ApiProvider>
+            )}
+          />
+        </Router>
+      ))
+    const first = renderProfile()
+    expect(screen.queryByTestId("you-group-servers")).toBeNull()
+    expect(screen.queryByTestId("desktop-claude-account")).toBeNull()
+    first.unmount()
+    installFakeBridge(
+      {},
+      {
+        platform: "windows",
+        servers: {
+          list: async () => ({
+            current: "https://liaison.acme.example",
+            servers: [{ address: "https://liaison.acme.example", label: "Acme" }],
+          }),
+          add: async () => {},
+          switchTo: async () => {},
+          remove: async () => {},
+          signOut: async () => {},
+          confirmsRemoval: true,
+        },
+      },
+    )
+    try {
+      renderProfile()
+      expect(await screen.findByTestId("you-group-servers")).toBeInTheDocument()
+      expect((await screen.findAllByTestId("you-server-row"))[0].textContent).toBe("Acme")
+      // The Claude account sits beside the servers on every desktop OS.
+      expect(await screen.findByTestId("desktop-claude-account")).toBeInTheDocument()
+    } finally {
+      uninstallFakeBridge()
+    }
+  })
+
+  it("renders profile form fields", async () => {
+    render(() => (
+      <Router>
+        <Route
+          path="*"
+          component={() => (
+            <ApiProvider>
+              <ProfileSettings />
+            </ApiProvider>
+          )}
+        />
+      </Router>
+    ))
+    expect(screen.getByText("Profile")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText("Display name")).toBeInTheDocument()
+      expect(screen.getByLabelText("Timezone")).toBeInTheDocument()
+      expect(screen.getByLabelText("Locale")).toBeInTheDocument()
+    })
+  })
+
+  it("language select persists via prefs PUT and flips t() reactively", async () => {
+    // Profile GET + prefs GET both 200; capture the prefs PUT body.
+    let putBody: unknown
+    fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (typeof url === "string" && url.includes("/user/preferences") && init?.method === "PUT") {
+        putBody = JSON.parse(String(init.body))
+        return new Response(JSON.stringify({ data: putBody }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      return new Response(
+        JSON.stringify({ data: { id: "1", name: "Test", email: "test@test.com" } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      )
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(() => (
+      <I18nProvider initialLocale="en">
+        <Router>
+          <Route
+            path="*"
+            component={() => (
+              <ApiProvider>
+                <ProfileSettings />
+              </ApiProvider>
+            )}
+          />
+        </Router>
+      </I18nProvider>
+    ))
+
+    const select = (await screen.findByTestId("settings-language-select")) as HTMLSelectElement
+    // English value before the switch.
+    expect(screen.getByText("Profile")).toBeInTheDocument()
+
+    fireEvent.change(select, { target: { value: "fr" } })
+
+    await waitFor(() => {
+      expect(putBody).toMatchObject({ language: "fr" })
+    })
+    // t() flips reactively without remount: the heading is now French.
+    await waitFor(() => {
+      expect(screen.getByText("Profil")).toBeInTheDocument()
+    })
+  })
+
+  it("hydrates theme from /user/preferences on mount", async () => {
+    fetchMock = vi.fn(async (url: string) => {
+      if (typeof url === "string" && url.includes("/user/preferences")) {
+        return new Response(
+          JSON.stringify({
+            data: {
+              userId: "u1",
+              digestCadence: "daily",
+              workHoursStart: "09:00",
+              workHoursEnd: "17:00",
+              workDays: [1, 2, 3, 4, 5],
+              timezone: "UTC",
+              language: "en",
+              theme: "dark",
+              lastDailySentAt: null,
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        )
+      }
+      return new Response(
+        JSON.stringify({ data: { id: "1", name: "Test", email: "test@test.com" } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      )
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    // Pre-existing local preference is 'system' — server hydrate must win.
+    localStorage.setItem("liaison:theme", "system")
+    document.documentElement.removeAttribute("data-theme")
+    ThemeStoreTestAccess.reset()
+
+    render(() => (
+      <Router>
+        <Route
+          path="*"
+          component={() => (
+            <ApiProvider>
+              <ProfileSettings />
+            </ApiProvider>
+          )}
+        />
+      </Router>
+    ))
+
+    await waitFor(() => {
+      expect(localStorage.getItem("liaison:theme")).toBe("dark")
+      expect(document.documentElement.getAttribute("data-theme")).toBe("dark")
+    })
+  })
+
+  it("renders three theme options (System / Light / Dark)", async () => {
+    ThemeStoreTestAccess.reset()
+    render(() => (
+      <I18nProvider initialLocale="en">
+        <Router>
+          <Route
+            path="*"
+            component={() => (
+              <ApiProvider>
+                <ProfileSettings />
+              </ApiProvider>
+            )}
+          />
+        </Router>
+      </I18nProvider>
+    ))
+    const picker = (await screen.findByTestId("settings-theme-select")) as HTMLSelectElement
+    expect(picker).toBeTruthy()
+    expect(picker.querySelectorAll("option").length).toBe(3)
+  })
+
+  it("selecting Light fires PUT /user/preferences/theme with body { theme: 'light' }", async () => {
+    ThemeStoreTestAccess.reset()
+    let putUrl: string | undefined
+    let putBody: unknown
+    fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (
+        typeof url === "string" &&
+        url.includes("/user/preferences/theme") &&
+        init?.method === "PUT"
+      ) {
+        putUrl = url
+        putBody = JSON.parse(String(init.body))
+        return new Response(JSON.stringify({ data: putBody }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      return new Response(
+        JSON.stringify({ data: { id: "1", name: "Test", email: "test@test.com" } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      )
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(() => (
+      <I18nProvider initialLocale="en">
+        <Router>
+          <Route
+            path="*"
+            component={() => (
+              <ApiProvider>
+                <ProfileSettings />
+              </ApiProvider>
+            )}
+          />
+        </Router>
+      </I18nProvider>
+    ))
+    const picker = (await screen.findByTestId("settings-theme-select")) as HTMLSelectElement
+    fireEvent.change(picker, { target: { value: "light" } })
+    await waitFor(() => {
+      expect(putUrl).toMatch(/\/user\/preferences\/theme$/)
+      expect(putBody).toEqual({ theme: "light" })
+    })
+  })
+
+  it("selecting theme updates data-theme attribute immediately (optimistic)", async () => {
+    ThemeStoreTestAccess.reset()
+    render(() => (
+      <I18nProvider initialLocale="en">
+        <Router>
+          <Route
+            path="*"
+            component={() => (
+              <ApiProvider>
+                <ProfileSettings />
+              </ApiProvider>
+            )}
+          />
+        </Router>
+      </I18nProvider>
+    ))
+    const picker = (await screen.findByTestId("settings-theme-select")) as HTMLSelectElement
+    fireEvent.change(picker, { target: { value: "light" } })
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute("data-theme")).toBe("light")
+    })
+  })
+
+  it("PUT failure surfaces toast and reverts to previous selection", async () => {
+    ThemeStoreTestAccess.reset()
+    fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (
+        typeof url === "string" &&
+        url.includes("/user/preferences/theme") &&
+        init?.method === "PUT"
+      ) {
+        return new Response(JSON.stringify({ error: { message: "net" } }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      return new Response(
+        JSON.stringify({ data: { id: "1", name: "Test", email: "test@test.com" } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      )
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(() => (
+      <I18nProvider initialLocale="en">
+        <Router>
+          <Route
+            path="*"
+            component={() => (
+              <ApiProvider>
+                <ProfileSettings />
+              </ApiProvider>
+            )}
+          />
+        </Router>
+      </I18nProvider>
+    ))
+    resetToastStore()
+    const picker = (await screen.findByTestId("settings-theme-select")) as HTMLSelectElement
+    // Theme was 'system' before the click — capture it for revert assertion.
+    fireEvent.change(picker, { target: { value: "light" } })
+    await waitFor(() => {
+      expect(toasts().some((tt) => /Failed to update theme/i.test(tt.message))).toBe(true)
+    })
+    // Optimistic flip rolled back to the previous concrete value (which was
+    // 'system' resolving to 'dark' under the matchMedia polyfill: matches=false → 'light').
+    await waitFor(() => {
+      expect(picker.value).not.toBe("light")
+    })
+  })
+
+  it("renders save button", async () => {
+    render(() => (
+      <Router>
+        <Route
+          path="*"
+          component={() => (
+            <ApiProvider>
+              <ProfileSettings />
+            </ApiProvider>
+          )}
+        />
+      </Router>
+    ))
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /save/i })).toBeInTheDocument()
+    })
+  })
+
+  it("dictation clean-up: on by default, off from the stored preference, saved on its own endpoint", async () => {
+    let putBody: unknown
+    let putUrl: string | undefined
+    let stored: boolean | undefined = false
+    fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (typeof url === "string" && url.includes("/user/preferences/dictation")) {
+        putUrl = url
+        putBody = JSON.parse(String(init?.body))
+        return new Response(JSON.stringify({ data: putBody }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      if (typeof url === "string" && url.endsWith("/user/preferences")) {
+        return new Response(JSON.stringify({ data: { dictationAutoClean: stored } }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      return new Response(
+        JSON.stringify({ data: { id: "1", name: "Test", email: "test@test.com" } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      )
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const mount = () =>
+      render(() => (
+        <I18nProvider initialLocale="en">
+          <Router>
+            <Route
+              path="*"
+              component={() => (
+                <ApiProvider>
+                  <ProfileSettings />
+                </ApiProvider>
+              )}
+            />
+          </Router>
+        </I18nProvider>
+      ))
+    const first = mount()
+    const off = await screen.findByTestId("settings-dictation-auto-clean")
+    await waitFor(() => expect(off.getAttribute("aria-checked")).toBe("false"))
+    expect(screen.getByText("Clean up dictation automatically")).toBeInTheDocument()
+    fireEvent.click(off)
+    await waitFor(() => {
+      expect(putUrl).toMatch(/\/user\/preferences\/dictation$/)
+      expect(putBody).toEqual({ autoClean: true })
+    })
+    expect(off.getAttribute("aria-checked")).toBe("true")
+    first.unmount()
+
+    // No stored value: the default is on.
+    stored = undefined
+    mount()
+    const on = await screen.findByTestId("settings-dictation-auto-clean")
+    await waitFor(() => expect(on.getAttribute("aria-checked")).toBe("true"))
+  })
+})

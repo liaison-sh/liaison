@@ -1,0 +1,31 @@
+#!/bin/sh
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Stops a commit whose staged content holds a secret, before it can be pushed:
+# a pushed PR commit stays reachable through refs/pull/* for good. Scans only the
+# staged diff, so a normal commit costs a fraction of a second. Installed by
+# `bun install` (package.json "prepare" sets core.hooksPath).
+if ! command -v gitleaks >/dev/null 2>&1; then
+  cat >&2 <<'MSG'
+
+pre-commit: gitleaks is not installed, so this commit cannot be checked for secrets.
+  brew install gitleaks
+  (or a release binary: https://github.com/gitleaks/gitleaks/releases)
+
+MSG
+  exit 1
+fi
+
+set -- --pre-commit --staged --redact --verbose --no-banner --log-level warn --ignore-gitleaks-allow
+if [ -f .gitleaks.toml ]; then
+  set -- "$@" --config .gitleaks.toml
+fi
+gitleaks git "$@" . </dev/null && exit 0
+
+cat >&2 <<'MSG'
+
+pre-commit: commit REFUSED: gitleaks flagged the staged content above (or could not run).
+  A real secret: remove it from the file, unstage it and rotate it.
+  A false positive: see "Secret scanning" in CONTRIBUTING.md.
+
+MSG
+exit 1

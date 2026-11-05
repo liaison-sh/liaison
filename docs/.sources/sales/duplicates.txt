@@ -1,0 +1,31 @@
+Merge with... button on the contact page -> apps/web/src/modules/contacts/ContactDetail.tsx:214-221
+The opened contact is the merge source (deleted) -> apps/web/src/modules/contacts/contact-merge-store.ts:41-42
+Merge contacts dialog title and description -> apps/web/src/modules/contacts/ContactMergeDialog.tsx:60-61
+Search contacts field and Search button -> apps/web/src/modules/contacts/ContactMergeDialog.tsx:74-84
+Pick the contact to keep (target) -> apps/web/src/modules/contacts/ContactMergeDialog.tsx:86-98
+Survivor and Duplicate columns -> apps/web/src/modules/contacts/ContactMergeDialog.tsx:113-114
+Fields Name, Email, Phone, Company -> packages/shared/src/i18n/locales/en/contacts.json:66-71
+External ids unioned with survivor winning, metadata merged -> packages/shared/src/i18n/locales/en/contacts.json:57
+Continue button -> apps/web/src/modules/contacts/ContactMergeDialog.tsx:160
+Summary: will absorb, conversations reassigned, email discarded -> apps/web/src/modules/contacts/ContactMergeDialog.tsx:170-186
+Back and Confirm Merge -> apps/web/src/modules/contacts/ContactMergeDialog.tsx:192-210
+Contacts merged -> apps/web/src/modules/contacts/ContactMergeDialog.tsx:204
+UI merge posts directly, no approval -> apps/web/src/modules/contacts/contact-merge-store.ts:91
+Merge route -> apps/api/src/modules/contacts/routes.ts:196-211
+Merge deletes the source permanently -> apps/api/src/modules/agent/tools/kernel-tools.ts:1633
+contacts_find_duplicates server scan, normalization, clusters, confidence tiers -> apps/api/src/modules/agent/tools/kernel-tools.ts:1616-1618
+Coverage: scanCap default 500, scannedCount/totalCount, coveragePartial -> apps/api/src/modules/agent/tools/kernel-tools.ts:1619
+scanCap max 1000, maxClusters -> apps/api/src/modules/agent/tools/kernel-tools.ts:1622-1623
+contacts_find_duplicates scope kernel:contacts:read -> apps/api/src/modules/agent/tools/kernel-tools.ts:1620
+contacts_merge targetId survivor, sourceId deleted, resolvedFields -> apps/api/src/modules/agent/tools/kernel-tools.ts:1633
+contacts_merge scope kernel:contacts:write, gated -> apps/api/src/modules/agent/tools/kernel-tools.ts:1638-1644
+Approval summary names survivor/deleted and irreversibility -> apps/api/src/modules/agent/tools/kernel-tools.ts:1643
+Trusted senders: verified for acknowledgement, desk routing, contact linking, participants; forged stays forged -> apps/api/src/modules/contacts/trusted-senders.ts:4-7
+Trusted sender is a known calendar guest -> apps/api/src/modules/contacts/trusted-senders.ts:8-9
+Public mail provider domain never trusted at domain level -> apps/api/src/modules/contacts/trusted-senders.ts:10-11
+Trust this sender control next to the contact email -> apps/web/src/modules/contacts/ContactDetail.tsx:141
+Trust this sender / Trust address / Trust every address at domain -> apps/web/src/modules/contacts/TrustedSenderControl.tsx:69-88
+Trusted sender label and Remove trust -> apps/web/src/modules/contacts/TrustedSenderControl.tsx:107-119
+Labels -> packages/shared/src/i18n/locales/en/contacts.json:113-121
+Same control on a ticket conversation -> apps/web/src/modules/tickets/TicketConversationStream.tsx:580
+Admin and read scopes -> apps/api/src/modules/contacts/trusted-senders.ts:25-27

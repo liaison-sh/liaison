@@ -1,0 +1,21 @@
+-- SPDX-License-Identifier: FSL-1.1-ALv2
+-- Projects: bulk-import idempotency key on tasks.
+--
+-- `liaison projects import` (the generic NDJSON task importer) needs the same
+-- re-runnable dedup contract the tickets importer has: each imported task
+-- carries the source system's stable identifier, and re-importing the same
+-- corpus skips rows that already landed instead of duplicating them.
+--
+-- Shape mirrors `app_tickets.tickets.external_ref` exactly (0000_initial.sql):
+-- a nullable TEXT column plus a partial unique index per org — NULLs (every
+-- task created through the normal UI/tool surface) are exempt from uniqueness;
+-- only externally-imported tasks pay the constraint.
+--
+-- IDEMPOTENT (IF NOT EXISTS): this migration originally shipped to the
+-- branch deployment as 0009 with the same journal timestamp main's
+-- 0009_inbox_email_identity used; after the branch histories were reconciled
+-- it was renumbered (finally to 0013) with a fresh timestamp, so that deployment
+-- re-applies it as a no-op while databases migrated from main apply it fresh.
+ALTER TABLE app_projects.tasks ADD COLUMN IF NOT EXISTS external_ref TEXT;
+--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_app_projects_tasks_external_ref ON app_projects.tasks (org_id, external_ref) WHERE external_ref IS NOT NULL;

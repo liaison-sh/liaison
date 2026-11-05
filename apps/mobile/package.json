@@ -1,0 +1,36 @@
+{
+  "name": "@liaison/mobile",
+  "private": true,
+  "license": "FSL-1.1-ALv2",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build:web": "bun --filter '@liaison/web' build",
+    "sync": "bunx cap sync",
+    "build:mobile": "bun run scripts/build-mobile.ts",
+    "check:bundle-size": "bun run scripts/check-bundle-size.ts"
+  },
+  "dependencies": {
+    "@aparajita/capacitor-biometric-auth": "^10.0.0",
+    "@aparajita/capacitor-secure-storage": "8.0.1",
+    "@capacitor/android": "8.5.2",
+    "@capacitor/app": "8.1.1",
+    "@capacitor/core": "8.5.2",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "8.5.2",
+    "@capacitor/keyboard": "^8.0.5",
+    "@capacitor/network": "^8.0.1",
+    "@capacitor/preferences": "8.0.1",
+    "@capacitor/push-notifications": "8.1.2",
+    "@capacitor/share": "^8.0.2",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3",
+    "@liaison/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.2",
+    "@happy-dom/global-registrator": "20.14.5",
+    "@types/bun": "latest",
+    "typescript": "^6.0.3"
+  }
+}

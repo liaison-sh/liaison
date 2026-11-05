@@ -1,0 +1,1661 @@
+{
+  "name": "knowledge",
+  "agentInstructions": {
+    "core": "Knowledge is the org's shared memory: brand voice, policies, product facts, FAQ, procedures. ALWAYS knowledge__search then knowledge__get before answering a customer or drafting a reply in Mail/Tickets/Social, and ground every claimed fact in a retrieved article, never invent steps, prices, part numbers, or policy. Create with knowledge__create (documentScope personal vs organization); update carries a revision for optimistic concurrency.",
+    "sections": [
+      {
+        "tools": [
+          "create",
+          "update",
+          "search"
+        ],
+        "text": "AUTHORING ONE DOC FROM SOURCES: when asked to consolidate tickets / a thread / a changelog / recurring themes into a SINGLE knowledge article (an FAQ, a troubleshooting/KB article, release notes, a one-pager), READ the source material FIRST BEFORE you call knowledge__create, for a tickets-based article, search by the TOPIC KEYWORD (e.g. q='handshake' / q='Editor') and INCLUDE CLOSED/resolved tickets (the working fixes live in RESOLVED tickets, not the open queue, a generic open-ticket list won't have them), then tickets__get SEVERAL of those resolved tickets to read their actual resolution replies, and synthesize the steps from what those resolutions say (not from an unrelated existing KB doc), do NOT create a generic boilerplate doc up front and backfill it. GROUND EVERY FIGURE: for a doc that states PRODUCT FIGURES (prices, discount tiers, SKUs, bundle contents, specs, lead times), GROUND each figure via products_search (the catalog system of record), or the order/invoice for amounts, BEFORE you knowledge__create; NEVER write a price / tier / SKU / bundle / lead-time from memory (an ungrounded figure is a fabrication, and `5/10/25-unit` thresholds are not `%`-off tiers, read the real ones). Ground FIRST, then create ONE correct doc; do NOT publish a from-memory draft and then 'fix' it with a SECOND doc (that leaves the fabricated original live), if a draft is wrong, knowledge__update it. DATES ARE FIGURES TOO: NEVER FABRICATE AN EVENT DATE OR SCHEDULE: do NOT write a SPECIFIC event/expo/launch start-or-end date, a 'schedule', or a date-bounded window ('July 1-14') into a doc unless it came from a source you READ. When a task only frames a RELATIVE window ('the two weeks before the launch', 'the run-up to the expo') and the exact dates are in no readable source, do NOT search-then-invent them and do NOT author a 'Launch Schedule'/'Event Calendar' doc to satisfy the framing, report the real records you read (project tasks, their due dates) and bound a recurring routine by its cron, not by an invented date doc. DEDUPE FIRST: before you knowledge__create, ALSO knowledge__search the existing KB for a doc already covering this topic and explicitly confirm you checked; if an existing article TRULY covers the SAME topic AND is the SAME document TYPE, knowledge__update THAT one instead of creating a duplicate (searching the source tickets is NOT the dedupe check, you must search Knowledge itself). DEDUPE MATCHES TOPIC *AND* DOC-TYPE, NOT just the product/version: an engineering CHANGELOG / release-notes doc and a customer-facing RECOVERY / troubleshooting / emergency-bulletin article about the SAME firmware version are DIFFERENT documents serving different readers, finding the changelog does NOT mean the recovery article exists. So when asked to CREATE/PUBLISH a NEW emergency recovery (or troubleshooting / how-to) article and the only existing match is a changelog or release-notes doc for that version, knowledge__create the NEW recovery article, do NOT knowledge__update the changelog into a recovery doc and do NOT report the changelog as if it were the recovery article. NEVER claim a doc is 'created / published / live / verified' unless the knowledge__create (or :update) call SUCCEEDED in THIS turn and returned a real document id, if a create/update returned an error or you did not call it, say so plainly and retry the CORRECT call (a NEW knowledge__create for a new article); asserting an article is live when no successful create returned an id is a fabrication. Then create EXACTLY ONE consolidated doc grounded in what you read, and cite which tickets/sources informed it. Do NOT create multiple near-duplicate articles, a second 'real-world' copy, or an 'OLD/ARCHIVED' copy, it is ONE create per request; if a first draft came out wrong, knowledge__update it (it carries a revision) rather than creating another."
+      },
+      {
+        "tools": [
+          "create",
+          "update"
+        ],
+        "text": "SENSITIVITY IS INTERNAL-ONLY, NOT EXTERNAL PUBLISHING: Knowledge is an INTERNAL org knowledge base with NO external-publish capability (no public-help-center / website / CMS / forum-write tool exists or is connected). The `sensitivity` value controls who INSIDE the org can read a doc, NEVER whether it is visible to customers on a public site. `public` means 'readable by anyone in the org' (a customer-facing FAQ whose WORDING is safe to reuse), it does NOT mean 'published to / visible on a public website or help center'. So after a create/update NEVER tell the user a doc is 'published externally', 'live on the public help center', or 'customer-facing / visible to customers'; when asked to publish externally, say plainly that no external-publish/website/forum tool exists and offer the internal doc + a manual/connector step. Pass the EXACT lowercase enum value (one of: public | internal | confidential | restricted), never capitalized. Choose from the content: `public` for org-wide customer-facing FAQ / policy / product facts (org-readable, still internal); `internal` for ops notes and procedures; `confidential` for commercially-sensitive figures, PRICING, dealer discounts/tiers, margins, runway, contract or financial terms. Pricing/financial terms are `confidential` by default, never capture an agreed dealer tier, discount, or price into Knowledge at `public` or `internal`. RESTRICTING VISIBILITY TO A TEAM: the `team` field IS the supported mechanism to restrict who can read an ORGANIZATION-scoped doc: an org-scoped doc with an EMPTY `team` is readable by anyone in the org, but once you set `team:[\"leadership\"]` (or any team list) the doc becomes readable ONLY by members who hold a matching team grant, that restriction is enforced on every read. So to lock a public/org-wide doc down to leadership, knowledge__update it with sensitivity=confidential AND team:[\"leadership\"]; the doc's `documentScope` STAYING `\"organization\"` is EXPECTED and CORRECT, `documentScope` is the personal-vs-org axis, NOT the audience, and it does NOT re-broaden access once `team` is non-empty. CONFIRM the restriction from the returned `team` (e.g. team=[\"leadership\"] -> 'now visible to the leadership team only'); NEVER read the unchanged `documentScope:\"organization\"` in the update response as proof the restriction failed, and NEVER tell the user the doc is 'still visible to the whole organization' / 'everyone in the org can still open it' when you set a non-empty `team`, that is a misreport of a successful change. (Changing a doc's sensitivity or team resets its review status to unverified, mention that if it was verified, but it is not a failure.)"
+      },
+      {
+        "tools": [
+          "collection_create",
+          "collection_update",
+          "collection_delete",
+          "add_to_collection",
+          "remove_from_collection",
+          "create"
+        ],
+        "text": "Collections (folders) organize docs. PLACEMENT AND ACCESS RULES FOR CREATED DOCUMENTS (server-enforced): EVERY document you create (personal included) must (1) be filed into a collection via collectionId, inspect existing collections (the create error lists them) and pick the best fit, or create a well-named one (e.g. 'Finance', 'Support Playbooks') with collection_create; (2) carry an explicit sensitivity you CHOSE for the content, never default it; (3) when the content is commercially sensitive (pricing, margins, revenue/ASP analyses, dealer terms, runway, contracts), use sensitivity 'confidential' AND shareWithRoles granting the executive role (call the kernel roles_list tool and pick the C-Level/executive role) viewer or editor access, such material must never be org-wide readable or editable. After creating, your confirmation must paste the returned mentionTag (the clickable entity pill) AND state the placement and access you set (collection name, sensitivity, which roles can access it) so the user can open it in one click and correct anything immediately."
+      },
+      {
+        "tools": [
+          "archive",
+          "restore"
+        ],
+        "text": "If you DID end up with a stray duplicate or a clearly-wrong document, RETIRE it with knowledge__archive (pass its id), a reversible soft-archive (knowledge__restore reverses it) that removes it from the active KB; never leave an '[ARCHIVED]'/'OLD'-titled stub doc as a fake cleanup, and never hard-edit a real article into a tombstone. NEVER claim you 'archived', 'deleted', 'replaced', or 'cleaned up' a document unless a knowledge__archive (or knowledge__update) tool result confirms it, asserting a cleanup you did not actually perform is a fabrication; leave the KB with exactly the one clean article you were asked for."
+      },
+      {
+        "tools": [
+          "review_queue",
+          "verify"
+        ],
+        "text": "Documents have a review lifecycle (unverified -> verified, or needs_review / stale), use review_queue to find what needs checking and verify to mark an article confirmed; surface stale entries for review rather than trusting them blindly."
+      },
+      {
+        "tools": [
+          "add_folder_source"
+        ],
+        "text": "BRINGING AN EXTERNAL SOURCE INTO KNOWLEDGE AS AN AUTO SYNCING FOLDER (files or rows become documents, kept in sync automatically): use add_folder_source with source set to 'google-drive', 'gitlab', or 'database'. Do NOT hand-walk a repo, hand-read files one at a time, or knowledge__create documents one by one to mirror an external source: that fabricates or duplicates content and never stays in sync. Call add_folder_source exactly ONCE per external source (one call per Drive folder, one call per repo, one call for the database KB). Resolving ref: for source 'google-drive', resolve the real Drive folder id first (search or list, never guess it from the folder's display name) and pass it as ref (folderId is accepted as a back compat alias). For source 'gitlab', pass ref as the repo folder reference in the form projectId:branch:path, for example 123:main:docs. For source 'database', ref is OPTIONAL: it syncs the connected database's knowledge base, and the connector's curated reads define what actually syncs, so omit ref unless you need a second distinct database source. Each synced source then syncs on its own schedule; set oneShot:true only for a one time import (it harvests once then archives the source), and use scope:'organization' (needs sources:manage) for org wide documents. Report the real documentsCreated the call returns, never an invented count. If asked to sync product manuals from their repos, create ONE add_folder_source call per repo with source:'gitlab'. If asked to pull the knowledge base, KB, or help articles from the database or Hub, use ONE add_folder_source call with source:'database'. Never substitute manual document creation for a sync source, and never hand-enumerate a repo tree or a database table to fake a sync."
+      },
+      {
+        "tools": [
+          "source_link_create"
+        ],
+        "text": "REGISTERING A SINGLE LIVING DOC AS A LINK (not a copy), when asked to 'register / track / link / reference' ONE external doc 'that keeps changing' / 'always points to the live version' / 'don't want a frozen copy' / 'this is the canonical X', use source_link_create, it registers a LIVING source_link that points at the remote doc (it always reflects the current version), NOT a frozen body copy. Resolve the real remote file id FIRST (google-drive__search, never guess it from the file's name), then source_link_create with source:'google-drive' + externalId:<the file id> + a title. Do NOT knowledge__create a document for a 'live link' request: create freezes a snapshot copy of the body, so calling it a 'live link' is a misrepresentation. Conversely, use knowledge__create (a document) only when the user wants to SAVE / SUMMARISE / IMPORT the content as an editable local copy. NEVER claim a link was registered unless source_link_create returned a real id, and NEVER freeze a copy and label it a live link."
+      }
+    ]
+  },
+  "version": "1.0.7",
+  "description": "Knowledge workspace for local documents and curated source links",
+  "license": "FSL-1.1-ALv2",
+  "listing": {
+    "publisher": "Liaison",
+    "category": "Knowledge",
+    "icon": "book-open",
+    "summary": "Your team's shared documents, policies and curated source links.",
+    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/apps/api/src/apps/knowledge"
+  },
+  "trusted": true,
+  "rlsManagedBy": "migration",
+  "dependencies": {
+    "required": [
+      "kernel"
+    ]
+  },
+  "schema": {
+    "documents": {
+      "migrationOwnedColumns": [
+        "orgAccess",
+        "editScope",
+        "aclUserIds",
+        "aclRoleIds",
+        "orgWide",
+        "requiredScopes"
+      ],
+      "fields": {
+        "title": "string",
+        "summary": "string?",
+        "body": {
+          "type": "text",
+          "default": ""
+        },
+        "documentScope": {
+          "type": "string",
+          "enum": [
+            "personal",
+            "organization"
+          ],
+          "default": "organization"
+        },
+        "ownerUserId": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "participantIds": {
+          "type": "json",
+          "required": false
+        },
+        "team": {
+          "type": "json",
+          "default": []
+        },
+        "sensitivity": {
+          "type": "string",
+          "required": false
+        },
+        "reviewStatus": {
+          "type": "string",
+          "enum": [
+            "unverified",
+            "verified",
+            "needs_review",
+            "stale"
+          ],
+          "default": "unverified"
+        },
+        "verifiedBy": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "verifiedAt": "date?",
+        "reviewDueAt": "date?",
+        "reviewReason": "string?",
+        "archivedAt": "date?",
+        "revision": {
+          "type": "integer",
+          "default": 0
+        },
+        "createdBy": {
+          "type": "uuid",
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "updatedBy": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "syncedSourceId": {
+          "type": "uuid",
+          "required": false,
+          "references": {
+            "table": "synced_sources",
+            "column": "id",
+            "onDelete": "cascade"
+          }
+        },
+        "sourceIdentityId": {
+          "type": "uuid",
+          "required": false,
+          "references": {
+            "table": "source_identities",
+            "column": "id",
+            "onDelete": "set null"
+          }
+        },
+        "externalPath": "string?",
+        "externalRev": "string?",
+        "lastSyncedAt": "date?",
+        "externalRef": {
+          "type": "string",
+          "required": false,
+          "description": "Import dedup key `<source>:<key>` (modules/imports). Column and partial unique index added by migration 0208; NULL for rows the app writes itself."
+        }
+      },
+      "constraints": {
+        "unique": [
+          {
+            "columns": [
+              "externalRef"
+            ],
+            "where": "external_ref IS NOT NULL"
+          }
+        ]
+      },
+      "indexes": [
+        [
+          "title"
+        ],
+        [
+          "reviewStatus"
+        ],
+        [
+          "ownerUserId"
+        ],
+        {
+          "columns": [
+            "archivedAt"
+          ],
+          "where": "archived_at IS NULL"
+        }
+      ]
+    },
+    "source_identities": {
+      "fields": {
+        "source": "string",
+        "externalId": "string",
+        "providerMetadata": {
+          "type": "json",
+          "default": {}
+        },
+        "mimeType": "string?",
+        "url": "string?",
+        "modifiedAt": "date?",
+        "cacheStatus": {
+          "type": "string",
+          "enum": [
+            "available",
+            "partial",
+            "unavailable",
+            "unauthorized",
+            "stale",
+            "unsupported"
+          ],
+          "default": "available"
+        }
+      },
+      "constraints": {
+        "unique": [
+          [
+            "source",
+            "externalId"
+          ]
+        ]
+      },
+      "indexes": [
+        [
+          "source"
+        ]
+      ]
+    },
+    "source_links": {
+      "fields": {
+        "sourceIdentityId": {
+          "type": "uuid",
+          "references": {
+            "table": "source_identities",
+            "column": "id",
+            "onDelete": "cascade"
+          }
+        },
+        "source": "string",
+        "externalId": "string",
+        "title": "string",
+        "summary": "string?",
+        "url": "string?",
+        "mimeType": "string?",
+        "providerMetadata": {
+          "type": "json",
+          "default": {}
+        },
+        "ownerUserId": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "syncedSourceId": "uuid?",
+        "reviewStatus": {
+          "type": "string",
+          "enum": [
+            "unverified",
+            "verified",
+            "needs_review",
+            "stale"
+          ],
+          "default": "unverified"
+        },
+        "verifiedBy": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "verifiedAt": "date?",
+        "reviewDueAt": "date?",
+        "reviewReason": "string?",
+        "archivedAt": "date?",
+        "visibilityStatus": {
+          "type": "string",
+          "enum": [
+            "available",
+            "partial",
+            "unavailable",
+            "unauthorized",
+            "stale",
+            "unsupported"
+          ],
+          "default": "available"
+        },
+        "cacheStatus": {
+          "type": "string",
+          "enum": [
+            "available",
+            "partial",
+            "unavailable",
+            "unauthorized",
+            "stale",
+            "unsupported"
+          ],
+          "default": "available"
+        }
+      },
+      "constraints": {
+        "unique": [
+          {
+            "columns": [
+              "sourceIdentityId"
+            ],
+            "where": "archived_at IS NULL"
+          }
+        ]
+      },
+      "indexes": [
+        [
+          "source"
+        ],
+        [
+          "title"
+        ],
+        {
+          "columns": [
+            "archivedAt"
+          ],
+          "where": "archived_at IS NULL"
+        }
+      ]
+    },
+    "collections": {
+      "fields": {
+        "parentCollectionId": {
+          "type": "uuid",
+          "required": false,
+          "references": {
+            "table": "collections",
+            "column": "id",
+            "onDelete": "restrict"
+          }
+        },
+        "ownerUserId": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "maintainerUserIds": {
+          "type": "json",
+          "default": []
+        },
+        "name": "string",
+        "description": "string?",
+        "archivedAt": "date?",
+        "externalRef": {
+          "type": "string",
+          "required": false,
+          "description": "Import dedup key `<source>:<key>` (modules/imports). Column and partial unique index added by migration 0208; NULL for rows the app writes itself."
+        }
+      },
+      "constraints": {
+        "unique": [
+          {
+            "columns": [
+              "externalRef"
+            ],
+            "where": "external_ref IS NOT NULL"
+          }
+        ]
+      },
+      "indexes": [
+        [
+          "parentCollectionId"
+        ],
+        [
+          "name"
+        ]
+      ]
+    },
+    "collection_memberships": {
+      "fields": {
+        "collectionId": {
+          "type": "uuid",
+          "references": {
+            "table": "collections",
+            "column": "id",
+            "onDelete": "restrict"
+          }
+        },
+        "targetType": "string",
+        "targetId": "uuid",
+        "createdBy": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        }
+      },
+      "constraints": {
+        "unique": [
+          [
+            "collectionId",
+            "targetType",
+            "targetId"
+          ]
+        ]
+      },
+      "indexes": [
+        [
+          "targetType",
+          "targetId"
+        ]
+      ]
+    },
+    "tags": {
+      "fields": {
+        "name": "string",
+        "normalizedName": "string",
+        "description": "string?"
+      },
+      "constraints": {
+        "unique": [
+          [
+            "normalizedName"
+          ]
+        ]
+      }
+    },
+    "taggings": {
+      "fields": {
+        "tagId": {
+          "type": "uuid",
+          "references": {
+            "table": "tags",
+            "column": "id",
+            "onDelete": "cascade"
+          }
+        },
+        "targetType": "string",
+        "targetId": "uuid",
+        "createdBy": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        }
+      },
+      "constraints": {
+        "unique": [
+          [
+            "tagId",
+            "targetType",
+            "targetId"
+          ]
+        ]
+      },
+      "indexes": [
+        [
+          "targetType",
+          "targetId"
+        ]
+      ]
+    },
+    "content_cache_entries": {
+      "fields": {
+        "sourceIdentityId": {
+          "type": "uuid",
+          "references": {
+            "table": "source_identities",
+            "column": "id",
+            "onDelete": "cascade"
+          }
+        },
+        "policy": {
+          "type": "string",
+          "default": "remote_search"
+        },
+        "cacheBytes": {
+          "type": "integer",
+          "default": 0
+        },
+        "retainedChunks": {
+          "type": "integer",
+          "default": 0
+        },
+        "retentionDays": {
+          "type": "integer",
+          "default": 0
+        },
+        "usable": {
+          "type": "boolean",
+          "default": false
+        },
+        "expiresAt": "date?"
+      },
+      "indexes": [
+        [
+          "sourceIdentityId"
+        ],
+        [
+          "usable"
+        ]
+      ]
+    },
+    "synced_sources": {
+      "fields": {
+        "appName": "string",
+        "folderRef": "string",
+        "displayName": "string",
+        "sourceAccount": "string?",
+        "rootCollectionId": {
+          "type": "uuid",
+          "references": {
+            "table": "collections",
+            "column": "id",
+            "onDelete": "cascade"
+          }
+        },
+        "ownerUserId": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "defaultSensitivity": "string?",
+        "syncIntervalSeconds": {
+          "type": "integer",
+          "default": 3600
+        },
+        "lastSyncAt": "date?",
+        "lastSyncStatus": {
+          "type": "string",
+          "enum": [
+            "idle",
+            "running",
+            "ok",
+            "error"
+          ],
+          "default": "idle"
+        },
+        "lastError": "string?",
+        "createdBy": {
+          "type": "uuid",
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "archivedAt": "date?"
+      },
+      "indexes": [
+        {
+          "columns": [
+            "archivedAt"
+          ],
+          "where": "archived_at IS NULL"
+        },
+        [
+          "ownerUserId"
+        ],
+        [
+          "lastSyncAt"
+        ]
+      ]
+    },
+    "source_policies": {
+      "fields": {
+        "source": "string",
+        "policy": {
+          "type": "string",
+          "default": "remote_search"
+        },
+        "connectionMode": {
+          "type": "string",
+          "default": "selected"
+        },
+        "broadSearchEnabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "cacheBytes": {
+          "type": "integer",
+          "default": 0
+        },
+        "retainedChunks": {
+          "type": "integer",
+          "default": 0
+        },
+        "retentionDays": {
+          "type": "integer",
+          "default": 0
+        },
+        "settings": {
+          "type": "json",
+          "default": {}
+        }
+      },
+      "constraints": {
+        "unique": [
+          [
+            "source"
+          ]
+        ]
+      }
+    }
+  },
+  "entities": {
+    "document": {
+      "labelField": "title",
+      "handlePrefix": "doc",
+      "searchable": true,
+      "mentionable": true,
+      "tableName": "documents",
+      "archivedField": "archived_at",
+      "readScope": "knowledge:documents:read",
+      "indexFields": {
+        "title": "title",
+        "body": "body",
+        "labelSecondary": "summary"
+      },
+      "permissionFields": {
+        "readScope": "knowledge:documents:read",
+        "participantIdsField": "participant_ids",
+        "aclFields": {
+          "orgWideField": "org_wide",
+          "userIdsField": "acl_user_ids",
+          "roleIdsField": "acl_role_ids"
+        }
+      },
+      "fileParent": {
+        "tableName": "documents",
+        "schemaRef": "app_knowledge",
+        "joinOn": "id",
+        "readScope": "knowledge:attachments:download",
+        "writeScope": "knowledge:documents:update"
+      }
+    },
+    "source_link": {
+      "labelField": "title",
+      "handlePrefix": "src",
+      "searchable": true,
+      "mentionable": true,
+      "tableName": "source_links",
+      "archivedField": "archived_at",
+      "readScope": "knowledge:documents:read",
+      "indexFields": {
+        "title": "title",
+        "body": "summary",
+        "labelSecondary": "source"
+      },
+      "permissionFields": {
+        "readScope": "knowledge:documents:read"
+      }
+    }
+  },
+  "tools": {
+    "synced_sources.list": {
+      "description": "The synced sources the caller sees (their own and the organization's), for the Knowledge settings page. Same data as GET /api/knowledge/synced-sources.",
+      "readOnly": true,
+      "agentVisible": false,
+      "requiredScopes": ["knowledge:documents:read"],
+      "trustBoundary": "user",
+      "handler": "syncedSourcesList",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "synced_sources.archive": {
+      "description": "Stop syncing a source from the Knowledge settings page (its documents stay). A personal source by its owner, an organization source with knowledge:sources:manage; same checks as DELETE /api/knowledge/synced-sources/:id.",
+      "agentVisible": false,
+      "requiredScopes": ["knowledge:documents:read"],
+      "trustBoundary": "user",
+      "handler": "syncedSourcesArchive",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "Synced source id (REQUIRED)." }
+        },
+        "required": ["id"]
+      }
+    },
+    "synced_sources.run_now": {
+      "description": "Sync a source now from the Knowledge settings page. A personal source by its owner, an organization source by any reader; same checks as POST /api/knowledge/synced-sources/:id/run-now.",
+      "agentVisible": false,
+      "requiredScopes": ["knowledge:documents:read"],
+      "trustBoundary": "user",
+      "handler": "syncedSourcesRunNow",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "Synced source id (REQUIRED)." }
+        },
+        "required": ["id"]
+      }
+    },
+    "search": {
+      "description": "Federated search across Knowledge and enabled remote sources",
+      "readOnly": true,
+      "requiredScopes": ["knowledge:documents:read"],
+      "trustBoundary": "user",
+      "handler": "search",
+      "params": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search text — the words or phrase to look for across the knowledge base and enabled sources. Use the words the documents themselves would contain, in the documents' language: when the user writes in another language than the documents (e.g. French about English documents), search with the key terms translated ('gross margin Q3', not 'marge brute T3'). REQUIRED and must be non-empty; an empty query returns no results."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of hits to return (default 10)."
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional list of source ids to restrict the search to; omit to search everything."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    "review_queue": {
+      "description": "List Knowledge items that need attention — documents or source links that are flagged needs_review/stale, are missing an owner, or are past their review-due date. Read-only; verified items are excluded. Use this to find what to verify or refresh.",
+      "readOnly": true,
+      "requiredScopes": ["knowledge:documents:read"],
+      "trustBoundary": "user",
+      "handler": "reviewQueue",
+      "params": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of attention items to return (default 20)."
+          }
+        }
+      }
+    },
+    "verify": {
+      "description": "Mark a Knowledge document (or a linked source item) as verified — confirming its content is current. Pass exactly one of documentId or sourceLinkId. For a source link, the remote is re-probed; if it is no longer reachable the link is marked stale instead. Requires the update scope.",
+      "requiredScopes": ["knowledge:documents:update"],
+      "writesToTable": "app_knowledge.documents",
+      "trustBoundary": "user",
+      "handler": "verify",
+      "params": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "description": "Local Knowledge document id to mark verified."
+          },
+          "sourceLinkId": {
+            "type": "string",
+            "description": "Linked source item id to re-verify against its remote source."
+          }
+        }
+      }
+    },
+    "add_folder_source": {
+      "description": "Bulk-ingest an external FOLDER-shaped source into Knowledge in one bounded call: a Google Drive folder, a GitLab repo path, or the connected database's KB. This is the right tool whenever the task is to bring an external source in as an auto-syncing folder, not to hand-copy its content. Pass `source`: 'google-drive' (default, back-compat), 'gitlab', or 'database'. It enumerates the source, READS each item's real content, and creates ONE Knowledge document per item (name to title, the item's actual text to body), each with a review-queue entry, so you never hand-import items one by one and never fabricate a body. Set oneShot:true to harvest once and then archive the source (a one-time bulk import); omit it to keep syncing on a schedule. Pass scope:'organization' (with sources:manage) to make the docs available org-wide. Returns syncedSourceId and documentsCreated, the real number of documents ingested.",
+      "requiredScopes": ["knowledge:sources:manage"],
+      "trustBoundary": "user",
+      "handler": "addFolderSource",
+      "params": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "google-drive",
+              "gitlab",
+              "database"
+            ],
+            "description": "Which connector to sync from. Defaults to 'google-drive' when omitted (back-compat). 'gitlab' syncs a repo folder; 'database' syncs the connected database's KB."
+          },
+          "ref": {
+            "type": "string",
+            "description": "The source-specific folder reference. For 'google-drive': the real Drive folder id, resolved via search first, never guessed. For 'gitlab': the repo folder ref in the form '<projectId>:<branch>:<path>', e.g. '123:main:docs'. For 'database': OPTIONAL, a logical root label; the connected catalog's curated reads define what actually syncs, so omit it unless you need multiple distinct database sources."
+          },
+          "folderId": {
+            "type": "string",
+            "description": "DEPRECATED alias for `ref` when source is 'google-drive' (or omitted). Kept for back-compat; prefer `ref` + `source`."
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Optional human label for the source; defaults to a name derived from source and ref."
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "personal",
+              "organization"
+            ],
+            "description": "Whether the ingested documents are personal or org-wide (default personal)."
+          },
+          "defaultSensitivity": {
+            "type": "string",
+            "enum": [
+              "public",
+              "internal",
+              "confidential",
+              "restricted"
+            ],
+            "description": "Sensitivity applied to org-scoped ingested documents (default internal)."
+          },
+          "oneShot": {
+            "type": "boolean",
+            "description": "When true, harvest once and archive the source; otherwise keep syncing."
+          }
+        }
+      }
+    },
+    "source_link_create": {
+      "description": "Register a LIVING source_link in Knowledge that POINTS at a single remote document (e.g. a specific Google Drive file) — it always reflects the CURRENT remote doc and is NEVER a frozen copy of its content. This is the right tool when the user wants to 'register / track / link / reference' an external doc 'that keeps changing' / 'always points to the live version' / 'don't want a frozen copy' / 'this is the canonical X' — register the live pointer, do NOT use `create` (which freezes a local document copy of the body). FIRST resolve the real remote file id with the connector's search (e.g. google-drive__search — never guess the id from the file's name), then pass `source` (the connector id, e.g. 'google-drive') + `externalId` (the file id from that search hit) + a concise `title`. The remote is re-probed before the link is stored, so a link can only be registered for a doc that actually exists and is visible — never assert a link without a successful result + id. Requires the knowledge:links:create scope. (Use `create` instead only when the user wants to SAVE / SUMMARISE / IMPORT the content as an editable local copy.)",
+      "requiredScopes": ["knowledge:links:create"],
+      "trustBoundary": "user",
+      "handler": "source_link_create",
+      "params": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "The connector id the remote doc lives in (e.g. 'google-drive'). REQUIRED."
+          },
+          "externalId": {
+            "type": "string",
+            "description": "The remote document's id (the file id from a google-drive__search hit) the living link should point at. REQUIRED — resolve it via search, never guess it from the file name."
+          },
+          "title": {
+            "type": "string",
+            "description": "Concise title for the registered link — what the team would search for. REQUIRED."
+          },
+          "url": {
+            "type": "string",
+            "description": "Optional canonical external URL of the live doc; if omitted, the connector's probed URL is used."
+          },
+          "summary": {
+            "type": "string",
+            "description": "Optional one-paragraph description of what the linked doc is."
+          },
+          "collectionId": {
+            "type": "string",
+            "description": "Optional Knowledge collection id to file the link under."
+          }
+        },
+        "required": [
+          "source",
+          "externalId",
+          "title"
+        ]
+      }
+    },
+    "get": {
+      "description": "Fetch the full content of a Knowledge document OR a remote connected-source item. Pass `id` for a local Knowledge document. To read a file that lives in a connected source (e.g. a Google Doc found via google-drive__search), pass `source` (the connector id, e.g. 'google-drive') + `sourceEntityId` (the file id from the search hit) — this returns the file's REAL text content (Google Docs/Sheets are exported to text), so you can ground a new Knowledge document's body in it instead of inventing one. Remote content reads require the knowledge:sources:read scope.",
+      "readOnly": true,
+      "requiredScopes": ["knowledge:documents:read"],
+      "trustBoundary": "user",
+      "handler": "get",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Local Knowledge document id (from a search hit's id) to fetch the full body for."
+          },
+          "source": {
+            "type": "string",
+            "description": "Remote connected-source id (e.g. 'google-drive') when fetching a remote file's content instead of a local document. Use together with sourceEntityId."
+          },
+          "sourceEntityId": {
+            "type": "string",
+            "description": "Remote source entity id (the file id from a google-drive__search hit), used together with `source`."
+          },
+          "purpose": {
+            "type": "string",
+            "description": "Optional retrieval-purpose hint for content chunking."
+          }
+        }
+      }
+    },
+    "find_by_title": {
+      "description": "Look up a Knowledge document by its EXACT title — DB-backed, never rides the search index, so a document created moments ago resolves immediately (unlike `search`, which is Meilisearch-backed and can lag behind a fresh write under load). Use this when you already know (or another tool told you) the precise title to check for — e.g. a connector app's deterministic per-entity doc naming convention — not for keyword discovery (use `search` for that). Returns found:false + document:null when no exact match exists or you cannot read it; pass includeArchived:true to also match an archived document.",
+      "readOnly": true,
+      "requiredScopes": ["knowledge:documents:read"],
+      "trustBoundary": "user",
+      "handler": "find_by_title",
+      "params": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Exact document title to look up (trimmed, case-sensitive)."
+          },
+          "includeArchived": {
+            "type": "boolean",
+            "description": "Include archived documents in the lookup (default false)."
+          }
+        },
+        "required": [
+          "title"
+        ]
+      }
+    },
+    "create": {
+      "description": "Create a local Knowledge document. SEARCH BEFORE YOU CREATE: the knowledge base is curated and org-wide, so first look for a document that already covers this subject (search by topic, find_by_title when you know the exact title). If one exists, UPDATE it instead: a second doc on a subject someone already wrote splits the truth in two and both become untrustworthy. Create only when the subject is genuinely new. EVERY document MUST be filed into a collection via collectionId (never free-floating). ORGANIZATION documents must additionally be access-classified: pass an explicit sensitivity, and for 'confidential'/'restricted' pass shareWithRoles naming who may access it (roles_list gives role ids; finance, pricing, margin, revenue and contract material belongs to the executive/C-Level role, NOT org-wide). Missing placement or access rules returns a structured error listing existing collections so you can retry. Create a local Knowledge document. The result includes the new document's id, a `resourceUrl`, and a ready-made `mentionTag` (an @[Title](knowledge:document:<id>) entity tag) — after creating, ALWAYS confirm to the user by pasting the returned mentionTag verbatim in your reply (it renders as a clickable entity pill that opens the doc), never just a bare success sentence. NEVER FABRICATE DATES OR AN EVENT SCHEDULE INTO A DOC: do not author a document containing SPECIFIC dates (an event/expo/launch start or end date, a 'schedule', a 'calendar', a date-bounded window like 'July 1–14') unless those exact dates came from a source you actually READ (a retrieved Knowledge article, a project task's real due date, an order/invoice). If the user frames a request with a RELATIVE window ('in the two weeks before the launch', 'in the run-up to the expo', 'until the event') but the SPECIFIC dates are not in any readable source, do NOT search-then-invent and do NOT create a 'Schedule'/'Launch Calendar' doc to fill the gap — manufacturing concrete dates and persisting them here is a fabrication. Just report the real records you read (e.g. the project's open + overdue tasks) and, for a recurring digest, bound the recurrence with the cron schedule, not with an invented date doc.",
+      "requiredScopes": ["knowledge:documents:create"],
+      "writesToTable": "app_knowledge.documents",
+      "trustBoundary": "user",
+      "conditionalGate": true,
+      "approvalCard": { "summary": "Create knowledge document {{params.title}}" },
+      "approvalImpact": "internal",
+      "editableFields": [
+        {
+          "field": "title",
+          "label": "Title",
+          "widget": "text"
+        },
+        {
+          "field": "body",
+          "label": "Body",
+          "widget": "richtext"
+        }
+      ],
+      "handler": "create",
+      "params": {
+        "type": "object",
+        "properties": {
+          "documentScope": {
+            "type": "string",
+            "enum": [
+              "personal",
+              "organization"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "type": "string"
+          },
+          "team": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sensitivity": {
+            "type": "string",
+            "enum": [
+              "public",
+              "internal",
+              "confidential",
+              "restricted"
+            ],
+            "description": "INTERNAL access-classification ONLY — it controls who INSIDE the org can read this document, NOT external visibility. Knowledge is an INTERNAL org knowledge base with NO external-publish capability: NO value here (`public` included) publishes the document to any public help center, website, customer portal, or other customer-facing surface, and there is no connector that does. `public` means 'readable by anyone in the org' (e.g. a customer-facing FAQ whose WORDING is safe to reuse), NOT 'visible to the public/customers on a website'. So after a successful create/update, NEVER tell the user the document is 'published externally', 'live on the public help center', or 'customer-facing/visible to customers' — it is an internal doc. If asked to publish it externally, state plainly that no external-publish/website/forum tool exists and offer the internal doc + a manual/connector step. `internal` = ops notes/procedures; `confidential` = commercially-sensitive figures (pricing, dealer tiers, margins, runway, contract/financial terms); `restricted` = the tightest tier."
+          },
+          "ownerUserId": {
+            "type": "string"
+          },
+          "verifyNow": {
+            "type": "boolean"
+          },
+          "reviewDueAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "collectionId": {
+            "type": "string",
+            "description": "REQUIRED for every documentScope: the collection (folder) this document is filed into. Pick the best-fitting existing collection or create one with collection_create first. A document can never be created free-floating."
+          },
+          "shareWithRoles": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "roleId": {
+                  "type": "string"
+                },
+                "access": {
+                  "type": "string",
+                  "enum": [
+                    "viewer",
+                    "editor"
+                  ]
+                }
+              },
+              "required": [
+                "roleId",
+                "access"
+              ]
+            },
+            "description": "Explicit role-based access grants applied at creation. REQUIRED (non-empty) when sensitivity is 'confidential' or 'restricted': such documents are invisible to everyone but the owner until shared, so name who may access them. Find role ids with the kernel roles_list tool; for finance/pricing/margin material grant the executive (e.g. C-Level) role."
+          },
+          "tagNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags to apply to the new document. Tags are created if absent and applied idempotently (unique by normalized name). Supported by the create service since IC-5; declared here so tool-param validation admits them (incl. from cross-app callers such as the calls connector)."
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Optional cross-app idempotency key: the kernel caches (org, tool, key) → result for 24h so a retried create returns the ORIGINAL document instead of duplicating. Same per-target declaration convention as tickets__createFromMail. Pass a deterministic key (e.g. calls:doc:<callRef>)."
+          }
+        },
+        "required": [
+          "documentScope",
+          "title"
+        ]
+      }
+    },
+    "update": {
+      "description": "Update a local Knowledge document with revision check The result includes a `mentionTag` (@[Title](knowledge:document:<id>)) — paste it verbatim in your confirmation so the updated doc is one click away.",
+      "requiredScopes": ["knowledge:documents:update"],
+      "writesToTable": "app_knowledge.documents",
+      "trustBoundary": "user",
+      "conditionalGate": true,
+      "approvalCard": { "summary": "Update knowledge document {{params.title}}" },
+      "approvalImpact": "internal",
+      "editableFields": [
+        {
+          "field": "title",
+          "label": "Title",
+          "widget": "text"
+        },
+        {
+          "field": "body",
+          "label": "Body",
+          "widget": "richtext"
+        }
+      ],
+      "handler": "update",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "type": "string"
+          },
+          "team": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sensitivity": {
+            "type": "string",
+            "enum": [
+              "public",
+              "internal",
+              "confidential",
+              "restricted"
+            ],
+            "description": "INTERNAL access-classification ONLY — it controls who INSIDE the org can read this document, NOT external visibility. Knowledge is an INTERNAL org knowledge base with NO external-publish capability: NO value here (`public` included) publishes the document to any public help center, website, customer portal, or other customer-facing surface, and there is no connector that does. `public` means 'readable by anyone in the org' (e.g. a customer-facing FAQ whose WORDING is safe to reuse), NOT 'visible to the public/customers on a website'. So after a successful create/update, NEVER tell the user the document is 'published externally', 'live on the public help center', or 'customer-facing/visible to customers' — it is an internal doc. If asked to publish it externally, state plainly that no external-publish/website/forum tool exists and offer the internal doc + a manual/connector step. `internal` = ops notes/procedures; `confidential` = commercially-sensitive figures (pricing, dealer tiers, margins, runway, contract/financial terms); `restricted` = the tightest tier."
+          },
+          "ownerUserId": {
+            "type": "string"
+          },
+          "verifyNow": {
+            "type": "boolean"
+          },
+          "reviewDueAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "revision"
+        ]
+      }
+    },
+    "archive": {
+      "description": "Archive (retire) a Knowledge document — a reversible soft-archive that removes it from the active KB and from search. Use this to retire a wrong, superseded, or stray DUPLICATE document you created; restore reverses it. Do NOT rename a doc to '[ARCHIVED]'/'OLD' as a fake cleanup — archive it. Pass the document id.",
+      "requiredScopes": ["knowledge:documents:archive"],
+      "writesToTable": "app_knowledge.documents",
+      "trustBoundary": "user",
+      "conditionalGate": true,
+      "approvalCard": { "summary": "Archive a knowledge document" },
+      "approvalImpact": "internal",
+      "handler": "archive",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "restore": {
+      "description": "Restore a previously-archived Knowledge document back into the active KB. Reverses archive; a no-op (no event) if the document is already active. Pass the document id.",
+      "requiredScopes": ["knowledge:documents:archive"],
+      "writesToTable": "app_knowledge.documents",
+      "trustBoundary": "user",
+      "handler": "restore",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "collection_create": {
+      "description": "Create a Knowledge collection (folder).",
+      "requiredScopes": ["knowledge:collections:manage"],
+      "trustBoundary": "user",
+      "handler": "collection_create",
+      "writesToTable": "app_knowledge.collections",
+      "params": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "parentCollectionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    "collection_update": {
+      "description": "Update a Knowledge collection's name, description, or parent.",
+      "requiredScopes": ["knowledge:collections:manage"],
+      "trustBoundary": "user",
+      "handler": "collection_update",
+      "writesToTable": "app_knowledge.collections",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parentCollectionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "collection_delete": {
+      "description": "Archive a Knowledge collection (removes it from the active tree).",
+      "requiredScopes": ["knowledge:collections:manage"],
+      "trustBoundary": "user",
+      "handler": "collection_delete",
+      "writesToTable": "app_knowledge.collections",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "add_to_collection": {
+      "description": "Add a Knowledge document to a collection.",
+      "requiredScopes": ["knowledge:collections:manage"],
+      "trustBoundary": "user",
+      "handler": "add_to_collection",
+      "writesToTable": "app_knowledge.collection_memberships",
+      "params": {
+        "type": "object",
+        "properties": {
+          "collectionId": {
+            "type": "string"
+          },
+          "documentId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "collectionId",
+          "documentId"
+        ]
+      }
+    },
+    "remove_from_collection": {
+      "description": "Remove a Knowledge document from a collection.",
+      "requiredScopes": ["knowledge:collections:manage"],
+      "trustBoundary": "user",
+      "handler": "remove_from_collection",
+      "writesToTable": "app_knowledge.collection_memberships",
+      "params": {
+        "type": "object",
+        "properties": {
+          "collectionId": {
+            "type": "string"
+          },
+          "documentId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "collectionId",
+          "documentId"
+        ]
+      }
+    }
+  },
+  "export": {
+    "formats": [
+      "json",
+      "csv"
+    ],
+    "handler": "exportKnowledge",
+    "schema": {
+      "id": "string",
+      "title": "string",
+      "summary": "string",
+      "scope": "string",
+      "status": "string",
+      "ownerUserId": "string",
+      "createdAt": "string"
+    }
+  },
+  "import": {
+    "kinds": {
+      "collection": {
+        "label": "Knowledge collections",
+        "schema": {
+          "type": "object",
+          "required": [
+            "externalRef",
+            "name"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "externalRef": {
+              "type": "string",
+              "minLength": 1
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "parentExternalRef": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "shared": {
+              "type": "boolean",
+              "description": "Shared with the whole organization rather than owned by the person importing."
+            }
+          }
+        },
+        "handler": "importCollections",
+        "dedupKey": "externalRef",
+        "tables": [
+          "app_knowledge.collections"
+        ],
+        "writeScopes": [
+          "knowledge:collections:manage"
+        ]
+      },
+      "document": {
+        "label": "Knowledge documents",
+        "schema": {
+          "type": "object",
+          "required": [
+            "externalRef",
+            "title",
+            "body"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "externalRef": {
+              "type": "string",
+              "minLength": 1
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1
+            },
+            "body": {
+              "type": "string"
+            },
+            "summary": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "collectionRefs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "tagNames": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "sensitivity": {
+              "type": "string",
+              "enum": [
+                "public",
+                "internal",
+                "confidential",
+                "restricted"
+              ]
+            },
+            "team": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "documentScope": {
+              "type": "string",
+              "enum": [
+                "org",
+                "personal"
+              ]
+            },
+            "ownerEmail": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "attachments": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "fileId"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "fileId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "handler": "importDocuments",
+        "dedupKey": "externalRef",
+        "tables": [
+          "app_knowledge.documents",
+          "app_knowledge.collection_memberships",
+          "app_knowledge.tags",
+          "app_knowledge.taggings",
+          "kernel.files"
+        ],
+        "writeScopes": [
+          "knowledge:documents:create"
+        ],
+        "people": [
+          "ownerEmail"
+        ],
+        "files": [
+          "attachments"
+        ],
+        "parent": "collection"
+      }
+    }
+  },
+  "events": {
+    "emits": [
+      "document:create",
+      "document:update",
+      "document:archive",
+      "document:restore",
+      "document:delete",
+      "document:share",
+      "source_link:create",
+      "source_link:update",
+      "source_link:archive",
+      "source_link:restore",
+      "source_link:verify",
+      "source_link:refresh",
+      "collection:create",
+      "collection:update",
+      "collection:archive",
+      "collection_membership:create",
+      "collection_membership:delete",
+      "tag:upsert",
+      "tagging:create",
+      "tagging:delete",
+      "synced_source:create",
+      "synced_source:update",
+      "synced_source:archive"
+    ]
+  },
+  "kind": "app",
+  "settings": {
+    "sections": [
+      {
+        "id": "synced-sources",
+        "title": "Synced sources",
+        "titleKey": "knowledge.settingsPage.syncedSources.title",
+        "description": "Folders from Google Drive, GitLab or a database kept in sync as knowledge, yours or the organization's.",
+        "descriptionKey": "knowledge.settingsPage.syncedSources.description",
+        "scope": "user",
+        "blocks": [
+          {
+            "block": "list",
+            "ops": {
+              "list": "synced_sources.list",
+              "archive": "synced_sources.archive",
+              "rowAction": [
+                {
+                  "label": "Sync now",
+                  "labelKey": "knowledge.settingsPage.syncedSources.syncNow",
+                  "tool": "synced_sources.run_now"
+                }
+              ]
+            },
+            "columns": [
+              {
+                "key": "displayName",
+                "label": "Source",
+                "labelKey": "knowledge.settingsPage.syncedSources.source"
+              },
+              {
+                "key": "appName",
+                "label": "From",
+                "labelKey": "knowledge.settingsPage.syncedSources.from",
+                "format": "enum",
+                "options": [
+                  { "value": "google-drive", "label": "Google Drive", "labelKey": "knowledge.settingsPage.syncedSources.app.googleDrive" },
+                  { "value": "gitlab", "label": "GitLab", "labelKey": "knowledge.settingsPage.syncedSources.app.gitlab" },
+                  { "value": "database", "label": "Database", "labelKey": "knowledge.settingsPage.syncedSources.app.database" }
+                ]
+              },
+              {
+                "key": "scope",
+                "label": "Shared with",
+                "labelKey": "knowledge.settingsPage.syncedSources.scope",
+                "format": "enum",
+                "options": [
+                  { "value": "personal", "label": "Just the owner", "labelKey": "knowledge.settingsPage.syncedSources.scopeValue.personal" },
+                  { "value": "organization", "label": "Organization", "labelKey": "knowledge.settingsPage.syncedSources.scopeValue.organization" }
+                ]
+              },
+              {
+                "key": "lastSyncAt",
+                "label": "Last sync",
+                "labelKey": "knowledge.settingsPage.syncedSources.lastSync",
+                "format": "datetime"
+              },
+              {
+                "key": "lastSyncStatus",
+                "label": "Status",
+                "labelKey": "knowledge.settingsPage.syncedSources.status",
+                "format": "status",
+                "errorKey": "lastError",
+                "options": [
+                  { "value": "idle", "label": "Waiting", "labelKey": "knowledge.settingsPage.syncedSources.statusValue.idle" },
+                  { "value": "running", "label": "Syncing", "labelKey": "knowledge.settingsPage.syncedSources.statusValue.running" },
+                  { "value": "ok", "label": "Up to date", "labelKey": "knowledge.settingsPage.syncedSources.statusValue.ok" },
+                  { "value": "error", "label": "Failed", "labelKey": "knowledge.settingsPage.syncedSources.statusValue.error" }
+                ]
+              }
+            ]
+          },
+          {
+            "block": "custom",
+            "component": "SyncedSourceAdd",
+            "reason": "Adding a source is the full-tab create flow (connector, folder, scope, sensitivity, interval); this block is the button that opens it."
+          }
+        ]
+      }
+    ]
+  },
+  "views": {
+    "attentionItems": {
+      "handler": "computeAttentionItems",
+      "scope": "knowledge:documents:read"
+    },
+    "tabTypes": {
+      "home": {
+        "component": "KnowledgeWorkspace",
+        "sidebar": "KnowledgeSidebar",
+        "label": "Knowledge",
+        "labelKey": "kernel.nav.knowledge",
+        "icon": "KnowledgeIcon",
+        "urlPattern": "/knowledge",
+        "singleton": true,
+        "preserveSubRoutes": true,
+        "referenceable": false
+      },
+      "document": {
+        "component": "KnowledgeDocumentView",
+        "sidebar": "KnowledgeSidebar",
+        "label": "Document",
+        "icon": "KnowledgeIcon",
+        "urlPattern": "/knowledge/documents/:entityId",
+        "resolveLabel": "resolveKnowledgeDocLabel",
+        "referenceable": false
+      },
+      "source_link": {
+        "component": "KnowledgeLinkedSourceView",
+        "sidebar": "KnowledgeSidebar",
+        "label": "Linked Source",
+        "icon": "KnowledgeIcon",
+        "urlPattern": "/knowledge/sources/:entityId",
+        "referenceable": false
+      },
+      "synced-source-add": {
+        "component": "SyncedSourceAddTab",
+        "sidebar": "KnowledgeSidebar",
+        "label": "Add synced source",
+        "icon": "KnowledgeIcon",
+        "urlPattern": "/knowledge/settings/synced-sources/add",
+        "singleton": true,
+        "referenceable": false
+      }
+    },
+    "wsHandlers": {
+      "document": "handleKnowledgeDocumentWsEvent",
+      "synced_source": "handleSyncedSourceWsEvent"
+    },
+    "activityBar": {
+      "icon": "KnowledgeIcon",
+      "label": "Knowledge",
+      "labelKey": "kernel.nav.knowledge",
+      "order": 11,
+      "tabAction": {
+        "type": "home",
+        "entityId": "knowledge-home",
+        "label": "Knowledge"
+      }
+    }
+  },
+  "roles": {
+    "member": {
+      "description": "Knowledge member: read, create, update, link, and attach allowed Knowledge items",
+      "scopes": [
+        "knowledge:documents:read",
+        "knowledge:documents:create",
+        "knowledge:documents:update",
+        "knowledge:links:create",
+        "knowledge:sources:read",
+        "knowledge:attachments:download",
+        "knowledge:attachments:upload"
+      ]
+    },
+    "curator": {
+      "description": "Knowledge curator: manage collections, tags, archives, and source settings",
+      "extends": "member",
+      "scopes": [
+        "knowledge:collections:manage",
+        "knowledge:tags:manage",
+        "knowledge:documents:archive",
+        "knowledge:documents:assign-owner",
+        "knowledge:sources:manage"
+      ]
+    },
+    "admin": {
+      "description": "Knowledge administrator: manage all Knowledge documents and cache policy",
+      "extends": "curator",
+      "scopes": [
+        "knowledge:documents:admin",
+        "knowledge:cache:manage"
+      ]
+    }
+  },
+  "skills": {
+    "knowledge-overview": {
+      "description": "How to use the Knowledge app with Liaison",
+      "body": "Knowledge is your organisation's shared memory: brand voice, policies, product facts, FAQs. The agent searches it before answering customers or drafting replies, so the more you capture here the more grounded every app becomes. Ask the agent to add or update an entry, or to find what you already know about a topic. Other apps (Mail, Social, Shopify) lean on Knowledge to keep replies accurate. Build a routine that reminds you to review stale entries so your knowledge base stays current.",
+      "kind": "guide",
+      "enabledByDefault": true
+    }
+  }
+}

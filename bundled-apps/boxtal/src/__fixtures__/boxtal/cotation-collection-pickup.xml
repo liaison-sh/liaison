@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cotation>
+  <shipment>
+    <offer>
+      <mode>COM</mode>
+      <operator>
+        <code>CHRP</code>
+        <label>Chronopost</label>
+      </operator>
+      <service>
+        <code>Chrono18</code>
+        <label>Chrono 18</label>
+      </service>
+      <price>
+        <currency>EUR</currency>
+        <tax-exclusive>7.80</tax-exclusive>
+        <tax-inclusive>9.36</tax-inclusive>
+      </price>
+      <collection>
+        <date>2026-06-01</date>
+        <type>
+          <code>PICKUP</code>
+          <label>Collecte</label>
+        </type>
+      </collection>
+      <delivery>
+        <date>2026-06-02</date>
+        <type>
+          <code>DELIVERY</code>
+          <label>Livraison a domicile</label>
+        </type>
+      </delivery>
+    </offer>
+  </shipment>
+</cotation>

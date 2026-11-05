@@ -1,0 +1,4 @@
+{
+  "connectionTitle": "Connection",
+  "settingsDescription": "Read-only connector for a GitLab group: projects, commits, merge requests, issues, releases."
+}

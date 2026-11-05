@@ -1,0 +1,18 @@
+{
+  "id": "2026-10-16-hostile-0000",
+  "task": "A hostile ledger",
+  "rung": "R1",
+  "phase": "validate",
+  "plan": ["frame", "brainstorm", "spec", "review", "execute", "validate", "handoff"],
+  "done": ["frame", "brainstorm", "spec", "review", "execute"],
+  "status": "failed",
+  "awaiting": null,
+  "sourceSessionId": "SOURCE_SESSION_ID",
+  "failure": { "phase": "validate", "reason": "REASON", "lastError": "x" },
+  "boards": [
+    { "title": "Script", "url": "javascript:alert(1)" },
+    { "title": "Plain", "url": "http://example.com/board" },
+    { "title": "Kept", "url": "https://example.com/board" }
+  ],
+  "updatedAt": "2026-10-16T09:00:00Z"
+}

@@ -1,0 +1,25 @@
+{
+  "items": [
+    {
+      "id": { "kind": "youtube#video", "videoId": "vid-abc" },
+      "snippet": {
+        "title": "Honest review of OurBrand widgets",
+        "description": "I tried OurBrand for a month — here is what happened.",
+        "channelTitle": "TechReviewer",
+        "channelId": "chan-1",
+        "publishedAt": "2026-05-31T10:00:00Z"
+      }
+    },
+    {
+      "id": { "kind": "youtube#video", "videoId": "vid-abc" },
+      "snippet": {
+        "title": "Honest review of OurBrand widgets",
+        "description": "duplicate hit on the same video for a second matched term",
+        "channelTitle": "TechReviewer",
+        "channelId": "chan-1",
+        "publishedAt": "2026-05-31T10:00:00Z"
+      }
+    }
+  ],
+  "nextPageToken": "PAGE_TOKEN_2"
+}

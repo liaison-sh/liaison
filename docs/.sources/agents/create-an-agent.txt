@@ -1,0 +1,70 @@
+Creating a role agent requires kernel:agents:admin -> apps/api/src/modules/agent/directory/definition-routes.ts:1458
+Scope description: kernel:agents:admin -> apps/api/src/modules/permissions/scope-catalog.ts:155
+Plus button New agent in Agents sidebar for admins -> apps/web/src/modules/agent/AgentSidebar.tsx:199
+New agent tab opens /agents/new/settings -> apps/web/src/modules/agent/AgentSidebar.tsx:234
+New agent label -> packages/shared/src/i18n/locales/en/kernel.json:252
+Name field -> packages/shared/src/i18n/locales/en/kernel.json:286
+Handle derived from name, editable on create, fixed after -> apps/web/src/modules/agent/AgentSettingsTab.tsx:530
+Handle hint: fixed after creation -> packages/shared/src/i18n/locales/en/kernel.json:250
+Handle grammar -> apps/api/src/modules/agent/directory/definition-routes.ts:1155
+Handle taken 409 -> apps/api/src/modules/agent/directory/definition-routes.ts:1512
+Description field with purpose hint -> packages/shared/src/i18n/locales/en/kernel.json:308
+Instructions field -> packages/shared/src/i18n/locales/en/kernel.json:302
+Model field with Auto -> packages/shared/src/i18n/locales/en/kernel.json:307
+Capabilities field (ceiling grid) -> packages/shared/src/i18n/locales/en/kernel.json:263
+Save button -> packages/shared/src/i18n/locales/en/kernel.json:293
+Ceiling cannot exceed what the creator may grant -> apps/api/src/modules/agent/directory/definition-routes.ts:1311
+Admin scopes list for role agents -> apps/api/src/modules/agent/directory/ceiling-guard.ts:68
+config apply refuses admin scopes in a role agent ceiling -> apps/api/src/cli/provisioners/agents.ts:102
+Approving an access request never adds an admin scope to a role agent -> apps/api/src/modules/scope-requests/service.ts:539
+Saved agent opens on its Settings tab -> apps/web/src/modules/agent/AgentSettingsTab.tsx:249
+Admin scopes rule: org administration reached through personal agents -> apps/api/src/modules/agent/directory/ceiling-guard.ts:9
+kernel:threads:read gates tool_search, without it no app tool -> apps/api/src/modules/agent/directory/common-base-scopes.ts:14
+kernel:threads:write gates agents_ask and agents_invite -> apps/api/src/modules/agent/directory/common-base-scopes.ts:19
+kernel:agent:memory for memory tools -> apps/api/src/modules/agent/directory/common-base-scopes.ts:21
+config apply gives role agents the common base -> apps/api/src/cli/provisioners/agents.ts:60
+Form-created agents get the ticked ceiling -> apps/web/src/modules/agent/AgentSettingsTab.tsx:239
+Composed instructions note -> packages/shared/src/i18n/locales/en/kernel.json:303
+Show instructions toggle -> packages/shared/src/i18n/locales/en/kernel.json:260
+Picture upload PNG JPEG WEBP GIF up to 5 MB -> packages/shared/src/i18n/locales/en/kernel.json:298
+Choose picture and Remove -> packages/shared/src/i18n/locales/en/kernel.json:296
+Picture control drawn only after the agent exists -> apps/web/src/modules/agent/AgentSettingsTab.tsx:287
+Color field label -> packages/shared/src/i18n/locales/en/kernel.json:302
+Color hint: each agent starts with its own color -> packages/shared/src/i18n/locales/en/kernel.json:303
+New agents get the org's least-used color, eight slots -> apps/api/src/modules/agent/directory/avatar-color.ts:20
+REST create picks the color -> apps/api/src/modules/agent/directory/definition-routes.ts:1547
+Color shown on every disc of the agent -> apps/web/src/ui/avatar-palette.ts:41
+Color picker: eight native radios, arrow keys, after the agent exists -> apps/web/src/modules/agent/AgentSettingsTab.tsx:500
+Color saved on pick -> apps/web/src/modules/agent/AgentSettingsTab.tsx:364
+Owner may set the color -> apps/api/src/modules/agent/directory/definition-routes.ts:1166
+Skills tab New skill -> packages/shared/src/i18n/locales/en/kernel.json:314
+Skill name rule -> packages/shared/src/i18n/locales/en/kernel.json:30
+Skill fields description and Body (markdown) -> packages/shared/src/i18n/locales/en/kernel.json:114
+Skill domain routes approval -> packages/shared/src/i18n/locales/en/kernel.json:116
+Domain (optional) label -> packages/shared/src/i18n/locales/en/kernel.json:115
+Domain slug rule 1 to 40 -> packages/shared/src/i18n/locales/en/kernel.json:33
+Create skill button -> packages/shared/src/i18n/locales/en/kernel.json:87
+Skill groups Agent skills and App skills -> packages/shared/src/i18n/locales/en/kernel.json:241
+Skill filters Built-in Org Personal -> packages/shared/src/i18n/locales/en/kernel.json:321
+Agent-made skill changes are approval-gated -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5206
+update_skill tool -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5263
+delete_skill tool -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5312
+toggle_app_skill tool -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5334
+Skills approved by kernel:skills:approve narrowed by domain -> apps/api/src/modules/permissions/scope-catalog.ts:111
+kernel:skills:read -> apps/api/src/modules/permissions/scope-catalog.ts:106
+kernel:skills:write -> apps/api/src/modules/permissions/scope-catalog.ts:107
+Routines tab New routine -> packages/shared/src/i18n/locales/en/kernel.json:315
+Knowledge tab Open in Knowledge -> packages/shared/src/i18n/locales/en/kernel.json:281
+Add to channel on Overview -> packages/shared/src/i18n/locales/en/kernel.json:266
+Message button -> packages/shared/src/i18n/locales/en/kernel.json:232
+Personal agent owner edits name, picture, color, instructions -> packages/shared/src/i18n/locales/en/kernel.json:320
+Owner branch hides model and capabilities -> apps/web/src/modules/agent/AgentSettingsTab.tsx:8
+Admin edits everything -> apps/web/src/modules/agent/AgentSettingsTab.tsx:204
+Advanced section holds archive -> packages/shared/src/i18n/locales/en/kernel.json:305
+Archive blocked while agent owns skills or routines -> packages/shared/src/i18n/locales/en/kernel.json:17
+Reassign control -> packages/shared/src/i18n/locales/en/kernel.json:2191
+Archive button in the Advanced section -> apps/web/src/modules/agent/AgentArchiveAdmin.tsx:140
+Archive route needs kernel:agents:admin -> apps/api/src/modules/agent/directory/definition-routes.ts:1054
+Base agent cannot be archived -> apps/api/src/modules/agent/directory/archive.ts:41
+Personal agent ceiling follows its owner's grants on every permission event -> apps/api/src/modules/agent/directory/personal-agent.ts:33
+Admin narrowing kept as ceiling_restriction, cleared when it covers the owner -> apps/api/src/modules/agent/directory/definition-routes.ts:1334

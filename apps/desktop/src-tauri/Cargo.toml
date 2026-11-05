@@ -1,0 +1,104 @@
+[package]
+name = "liaison-desktop"
+version = "0.1.44"
+description = "Liaison desktop shell"
+edition = "2021"
+rust-version = "1.77.2"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# `tray-icon`: the menu bar / notification area icon that keeps the app
+# reachable once its window is closed to the tray (tray.rs).
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-deep-link = "2"
+# ONE RUNNING COPY, and the reason is the deep link: on Windows and Linux the
+# operating system answers a `liaison://` link by STARTING the executable with
+# the URL as its argument, so without this a link opened while the app is
+# running produced a second window that knew nothing of the first, and the
+# first never heard of the link. The `deep-link` feature hands the second
+# launch's arguments to the deep link plugin of the copy already running, which
+# then emits them like any other link.
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+tauri-plugin-updater = "2"
+# Opening a local path the agent named (`local_path.rs`): its free functions
+# `open_path` and `reveal_item_in_dir` only, called from Rust. The plugin is
+# NOT registered, so the window gains no opener permission of its own.
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+percent-encoding = "2"
+url = "2"
+libc = "0.2.189"
+getrandom = "0.3"
+# `time` and `sync` only: the device grant polls on an interval inside the
+# runtime Tauri already runs, and a start waits on the sidecar's boot line
+# through a oneshot, so this adds a timer and a channel, not a second runtime.
+# The tests build the `rt-multi-thread` half themselves.
+tokio = { version = "1", default-features = false, features = ["time", "sync", "macros"] }
+# THE NOTIFICATION CHANNELS to every saved server the window is not on
+# (server_listeners.rs): one WebSocket each, on the runtime Tauri already runs,
+# TLS through rustls with the system's roots. `rustls` itself is named only to
+# pick its process-wide crypto provider (aws-lc-rs, the one reqwest uses).
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "rustls-tls-native-roots"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std"] }
+# Another server's notification on Windows and Linux is raised through
+# notify-rust directly (the plugin already depends on it) so its CLICK is
+# heard: the plugin's toast and XDG notification report none
+# (desktop_notifications.rs `raise_with_click`).
+notify-rust = "4"
+# Native OS notifications (S7). Pinned to the minor that matches the tauri
+# crate (2.5 needs tauri 2.12): the tauri crate moves in step with
+# @tauri-apps/api and the CLI, not with a plugin.
+tauri-plugin-notification = "~2.5"
+# Launch at login (autostart.rs): on by default in a release build, a setting
+# turns it off. Driven from Rust only; the window gets no autostart permission.
+tauri-plugin-autostart = "2"
+# The notification device id (notification_device.rs) is a digest of the
+# install salt, never the salt itself.
+sha2 = "0.10"
+# Verifying a first-party app's signed statement before its UI runs in the
+# window's page (app_signing.rs, S13): Ed25519 over the statement bytes, the
+# base64 of its signature and of the pinned keys, and the single-file bundle
+# rule's patterns.
+ed25519-dalek = "3"
+base64 = "0.22"
+regex = "1"
+
+# The REAL notification permission, raising a notification whose click opens
+# its item, and the tray activity assertion (macOS).
+# The notification plugin answers "granted" whatever the system says, so the
+# shell asks UNUserNotificationCenter itself (desktop_notifications.rs), and
+# holds an NSProcessInfo activity while its window is in the tray so App Nap
+# does not starve the presence heartbeat (tray.rs).
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSProcessInfo", "NSString", "NSDictionary", "NSError"] }
+# Raising a notification with UNUserNotificationCenter (content, request, the
+# `route` in its userInfo) and hearing its click through the center's delegate
+# (desktop_notifications.rs): the plugin's NSUserNotification never reports one.
+objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "bitflags", "block2", "UNUserNotificationCenter", "UNNotificationSettings", "UNNotification", "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotificationSound", "UNNotificationTrigger"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "time", "net", "io-util"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+# No debug info: it carries the absolute paths of the machine that built this,
+# which is what ci/check-bundle-no-absolute-paths.ts refuses. The SYMBOLS stay.
+# Stripping those too is one step further than the checker needs and it breaks
+# the bundler: tauri patches a __TAURI_BUNDLE_TYPE symbol into the binary at
+# bundling time and reads it back at runtime to know how it was packaged, and
+# with no symbol table it has nothing to patch ("Failed to add bundler type to
+# the binary ... Updater plugin may not be able to update this package").
+# ci/tauri-build.ts sets CARGO_PROFILE_RELEASE_STRIP to the same value, and the
+# environment wins over this file, so the two have to agree.
+debug = false
+strip = "debuginfo"

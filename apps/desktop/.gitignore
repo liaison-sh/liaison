@@ -1,0 +1,11 @@
+# Compiled sidecar binaries: generated, large, and never committed.
+sidecar/dist/
+
+# Generated per-target entry modules for the sidecar compile.
+sidecar/.entries/
+
+# Bun's compile artefacts for the sidecar, generated per build.
+sidecar/*.bun-build
+
+# The bundled Atelier's embed module, generated per build from its manifest.
+sidecar/vendor/*.gen.ts

@@ -1,0 +1,87 @@
+{
+  "name": "example",
+  "version": "0.0.2",
+  "description": "Reference app demonstrating every Liaison SDK surface",
+  "listing": {
+    "publisher": "Liaison",
+    "category": "Developer",
+    "icon": "code",
+    "summary": "Reference app showing every surface of the Liaison app SDK.",
+    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/apps/api/src/apps/example"
+  },
+  "packageFormat": 1,
+  "license": "MIT",
+  "host": "^1",
+  "scopes": ["example:items:read", "example:items:write", "example:external:read"],
+  "schema": {
+    "items": {
+      "fields": {
+        "text": "string",
+        "createdBy": { "type": "uuid", "required": false }
+      },
+      "searchable": ["text"]
+    },
+    "summaries": {
+      "fields": {
+        "itemCount": { "type": "number" },
+        "computedAt": "date"
+      }
+    }
+  },
+  "entities": {
+    "items": {
+      "labelField": "text",
+      "searchable": true,
+      "tableName": "items",
+      "readScope": "example:items:read"
+    }
+  },
+  "tools": {
+    "items_list": {
+      "description": "List example items",
+      "requiredScopes": ["example:items:read"],
+      "handler": "items_list",
+      "readOnly": true,
+      "params": { "type": "object", "properties": {} }
+    },
+    "items_create": {
+      "description": "Create an example item",
+      "requiredScopes": ["example:items:write"],
+      "atomic": true,
+      "handler": "items_create",
+      "writesToTable": "app_example.items",
+      "params": {
+        "type": "object",
+        "properties": { "text": { "type": "string", "minLength": 1 } },
+        "required": ["text"]
+      }
+    },
+    "external_fetch": {
+      "description": "Demonstrate the connections + fetch surface",
+      "requiredScopes": ["example:external:read"],
+      "handler": "external_fetch",
+      "readOnly": true,
+      "params": { "type": "object", "properties": {} }
+    },
+    "resolve_contact": {
+      "description": "Demonstrate the contacts integration surface",
+      "requiredScopes": ["example:items:read"],
+      "handler": "resolve_contact",
+      "params": {
+        "type": "object",
+        "properties": { "email": { "type": "string" } },
+        "required": ["email"]
+      }
+    }
+  },
+  "events": {
+    "emits": ["item:created", "summary:computed"]
+  },
+  "jobs": {
+    "nightly_summary": {
+      "runsFor": {"everyOrg": "The example app summarizes each org's own data every night; it needs no connection."},
+      "schedule": "0 0 * * *",
+      "handler": "nightly_summary"
+    }
+  }
+}

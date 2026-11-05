@@ -1,0 +1,28 @@
+{
+  "name": "@liaison/invoicing-app",
+  "version": "0.7.8",
+  "description": "Liaison Invoicing plugin app",
+  "license": "FSL-1.1-ALv2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@liaison/app-sdk": "file:../../packages/app-sdk",
+    "@liaison/app-ui": "file:../../packages/app-ui",
+    "@liaison/host": "file:../../packages/host-sdk",
+    "solid-js": "^1.9.0"
+  },
+  "devDependencies": {
+    "@solidjs/testing-library": "^0.8.10",
+    "@types/bun": "latest",
+    "jsdom": "29.1.1",
+    "pdf-parse": "^1.1.1",
+    "typescript": "latest",
+    "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "@liaison/shared": "file:../../packages/shared"
+  }
+}

@@ -1,0 +1,91 @@
+run_on_my_computer tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:1043
+Called only when the person asked or agreed -> apps/api/src/modules/nodes/run-on-my-computer.ts:73
+Where and model are the person's choice -> apps/api/src/modules/nodes/run-on-my-computer.ts:76
+Tool answers what to ask and lists folders and models -> apps/api/src/modules/nodes/run-on-my-computer.ts:77
+Effort levels low medium high xhigh max -> packages/shared/src/node-session-protocol.ts:48
+Autonomy only when person asked -> apps/api/src/modules/agent/tools/kernel-tools.ts:1088
+finishWith pr commit none, default pull request -> apps/api/src/modules/agent/tools/kernel-tools.ts:1094
+noFolder for work needing no folder -> apps/api/src/modules/agent/tools/kernel-tools.ts:1070
+Repo as git URL or name of shared repo -> apps/api/src/modules/agent/tools/kernel-tools.ts:1066
+Session runs at agent's profile level, no level parameter -> apps/api/src/modules/nodes/run-on-my-computer.ts:16
+Session card in conversation -> packages/shared/src/i18n/locales/en/kernel.json:4239
+Approval card title Run on node -> packages/shared/src/i18n/locales/en/kernel.json:4249
+No folder on card -> packages/shared/src/i18n/locales/en/kernel.json:4251
+Waiting for your approval card text -> packages/shared/src/i18n/locales/en/kernel.json:4252
+Approved starting text -> packages/shared/src/i18n/locales/en/kernel.json:4256
+Rejected expired withdrawn texts -> packages/shared/src/i18n/locales/en/kernel.json:4261
+Approve on the card -> packages/shared/src/i18n/locales/en/kernel.json:4254
+Reject on the card -> packages/shared/src/i18n/locales/en/kernel.json:4255
+Parks as approval when untrusted text or not typed -> apps/api/src/modules/agent/tools/kernel-tools.ts:1098
+Only the owner of the computer decides -> apps/api/src/modules/agent/tools/kernel-tools.ts:1105
+Another member's approve scope does not count -> apps/api/src/modules/agent/tools/kernel-tools.ts:1107
+Refusal: no node -> packages/shared/src/i18n/locales/en/kernel.json:4336
+Refusal: folder unresolved -> packages/shared/src/i18n/locales/en/kernel.json:4334
+Refusal: model unavailable -> packages/shared/src/i18n/locales/en/kernel.json:4335
+Refusal: folder missing -> packages/shared/src/i18n/locales/en/kernel.json:4338
+Refusal: level unconfirmed -> packages/shared/src/i18n/locales/en/kernel.json:4337
+Refusal: auth required -> packages/shared/src/i18n/locales/en/kernel.json:4342
+Refusal: timeout -> packages/shared/src/i18n/locales/en/kernel.json:4340
+Refusal: node outdated -> packages/shared/src/i18n/locales/en/kernel.json:4344
+Blocked card Not started on node, Fix it, Start again -> packages/shared/src/i18n/locales/en/kernel.json:4676
+Start again -> packages/shared/src/i18n/locales/en/kernel.json:4680
+Fix it -> packages/shared/src/i18n/locales/en/kernel.json:4679
+New session from Sessions app -> packages/shared/src/i18n/locales/en/kernel.json:4437
+Runtime menu Where turns run -> packages/shared/src/i18n/locales/en/kernel.json:3346
+Runtime control absent unless a node is enabled and online -> apps/web/src/modules/desktop/RuntimeControl.tsx:25
+Runtime stored on server per thread and agent -> apps/web/src/modules/desktop/RuntimeControl.tsx:28
+Offline node in menu -> packages/shared/src/i18n/locales/en/kernel.json:3352
+Permission mode label on computer -> packages/shared/src/i18n/locales/en/kernel.json:4179
+Node models group -> packages/shared/src/i18n/locales/en/kernel.json:132
+Only node owner's messages go to node; others run in cloud -> apps/api/src/modules/nodes/routing.ts:17
+node_else_cloud fell_back -> apps/api/src/modules/nodes/routing.ts:18
+Routine runs on My computer waits offline, owner notified -> apps/api/src/modules/nodes/routine-dispatch.ts:16
+Backlog jobs ask the user first -> apps/api/src/modules/nodes/jobs.ts:21
+One-shot routine settles with job -> apps/api/src/modules/nodes/routine-dispatch.ts:17
+Credits gate only cloud runs -> apps/api/src/modules/nodes/routine-dispatch.ts:7
+Credits are managed-edition only -> apps/api/src/modules/agent/credits/credit-meter.ts:1296
+fell_back job recorded -> apps/api/src/modules/nodes/routine-dispatch.ts:36
+Agents tab heading Agents that can run here -> packages/shared/src/i18n/locales/en/kernel.json:5097
+Agents tab hint -> packages/shared/src/i18n/locales/en/kernel.json:5098
+Add an agent -> packages/shared/src/i18n/locales/en/kernel.json:5099
+Choose an agent -> packages/shared/src/i18n/locales/en/kernel.json:5100
+Who may ask it -> packages/shared/src/i18n/locales/en/kernel.json:5115
+Edit on the agent row opens the editor -> apps/web/src/modules/settings/computers/ComputerAgentsTab.tsx:206
+Requesters picker lists agents -> apps/web/src/modules/settings/computers/ComputerAgentsTab.tsx:227
+Daily caps editor with its own Save -> apps/web/src/modules/settings/computers/ComputerAgentsTab.tsx:259
+Caps Save label -> packages/shared/src/i18n/locales/en/kernel.json:4610
+Only you default -> packages/shared/src/i18n/locales/en/kernel.json:5111
+Daily caps labels -> packages/shared/src/i18n/locales/en/kernel.json:4608
+Tokens cap label -> packages/shared/src/i18n/locales/en/kernel.json:4609
+Sessions a day 1 to 1000 -> apps/api/src/modules/nodes/attachments.ts:48
+Tokens a day 1000 to 1,000,000,000 -> apps/api/src/modules/nodes/attachments.ts:49
+Remove from your computers -> packages/shared/src/i18n/locales/en/kernel.json:5118
+Requester matches by person or asking agent, node owner always -> apps/api/src/modules/nodes/attachments.ts:12
+Shared role agent needs admin to allow -> apps/api/src/modules/nodes/attachments.ts:14
+Earliest attachment wins -> apps/api/src/modules/nodes/attachments.ts:18
+Answer posted to owner's conversation and asking conversation -> apps/api/src/modules/nodes/routing.ts:10
+Reached cap refuses in words, never reroutes to cloud -> apps/api/src/modules/nodes/attachments.ts:23
+Default caps 4 live and 2 background -> packages/shared/src/node-session-protocol.ts:778
+Autonomy guided or autonomous -> packages/shared/src/node-session-protocol.ts:125
+Auto-continue 5 in a row -> packages/shared/src/node-session-protocol.ts:132
+Auto-continue 30 per run -> packages/shared/src/node-session-protocol.ts:134
+Host tools mark_done and needs_you -> packages/shared/src/node-session-protocol.ts:54
+Run on its own label -> packages/shared/src/i18n/locales/en/kernel.json:4786
+Autonomous label -> packages/shared/src/i18n/locales/en/kernel.json:4787
+Post-back after dispatch session ends done by its own signal -> apps/api/src/modules/node-sessions/post-back.ts:6
+Post-back not posted for owner-caused ends or app sessions -> apps/api/src/modules/node-sessions/post-back.ts:13
+Post-back content: node, title, session words, PR link -> packages/shared/src/i18n/locales/en/kernel.json:4744
+Post-back session says line -> packages/shared/src/i18n/locales/en/kernel.json:4740
+Post-back PR line -> packages/shared/src/i18n/locales/en/kernel.json:4747
+Post-back fenced session data -> apps/api/src/modules/node-sessions/post-back.ts:27
+A node chat turn reads Queued while it waits for a computer -> apps/api/src/modules/nodes/jobs.ts:773
+Queued label -> packages/shared/src/i18n/locales/en/kernel.json:216
+Working label -> packages/shared/src/i18n/locales/en/kernel.json:218
+The claim opens the live turn with the Run On My Computer step naming the computer -> apps/api/src/modules/nodes/jobs.ts:1829
+Run On My Computer step tool -> apps/api/src/modules/nodes/turn-live.ts:48
+Each tool the agent uses on the computer is relayed as a step -> apps/desktop/sidecar/node-interactive.ts:354
+Steps relayed by the desktop app -> apps/desktop/src/node-jobs/runner.ts:1086
+Step summaries are redacted -> apps/api/src/modules/nodes/turn-live.ts:138
+Step content goes to the owner only (no scope tag, requester exemption) -> apps/api/src/modules/nodes/turn-live.ts:18
+Step summary shown in the tool row -> apps/web/src/modules/agent/ToolCallRow.tsx:188
+The card does not notify; the result does, once -> apps/api/src/modules/nodes/run-on-my-computer.ts:395 ; apps/api/src/modules/node-sessions/post-back.ts:205 ; apps/api/src/modules/nodes/job-routes.ts:550

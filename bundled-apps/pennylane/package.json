@@ -1,0 +1,24 @@
+{
+  "name": "@liaison/pennylane-app",
+  "version": "0.1.2",
+  "description": "Liaison Pennylane accounting connector plugin app",
+  "license": "FSL-1.1-ALv2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@liaison/app-sdk": "file:../../packages/app-sdk",
+    "@liaison/app-ui": "file:../../packages/app-ui",
+    "@liaison/host": "file:../../packages/host-sdk",
+    "solid-js": "^1.9.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "latest"
+  },
+  "overrides": {
+    "@liaison/shared": "file:../../packages/shared"
+  }
+}

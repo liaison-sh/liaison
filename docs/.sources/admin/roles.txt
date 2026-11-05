@@ -1,0 +1,62 @@
+Roles & access page in Workspace group, kernel:users:admin -> apps/web/src/framework/bootstrap.ts:675
+Roles & access label -> packages/shared/src/i18n/locales/en/kernel.json:1639
+A role is a set of permissions -> packages/shared/src/i18n/locales/en/kernel.json:5325
+admin role scopes *, first registered user -> apps/api/src/modules/permissions/default-roles.ts:8
+admin scopes -> apps/api/src/modules/permissions/default-roles.ts:30
+member scopes list -> apps/api/src/modules/permissions/default-roles.ts:36
+viewer scopes list -> apps/api/src/modules/permissions/default-roles.ts:66
+App scopes not granted by default -> apps/api/src/modules/permissions/default-roles.ts:13
+App roles named <app>.<tier>, displayed App · Tier -> apps/web/src/lib/app-label.ts:73
+Tickets tiers support, support_lead, admin -> apps/api/src/modules/apps/runtime.ts:710
+Projects roles member, lead, admin -> apps/api/src/apps/projects/app.manifest.json:1689
+Knowledge roles member, curator -> apps/api/src/apps/knowledge/app.manifest.json:1620
+Full Member system-managed, base member tier, excludes admin/lead/curator -> apps/api/src/modules/apps/runtime.ts:731
+Base tier: member role or lowest non-admin -> apps/api/src/modules/apps/runtime.ts:718
+Additive only, never revokes -> apps/api/src/modules/apps/runtime.ts:751
+delete_role refuses system-managed; re-created by name -> apps/api/src/modules/agent/tools/kernel-tools.ts:2103
+Click role opens role page -> apps/web/src/modules/settings/AdminRoles.tsx:54
+Permissions section, tick capabilities, exact permissions -> packages/shared/src/i18n/locales/en/kernel.json:2386
+Permissions label -> packages/shared/src/i18n/locales/en/kernel.json:2388
+Search permissions… -> apps/web/src/modules/settings/PermissionGrid.tsx:264
+Select all -> apps/web/src/modules/settings/PermissionGrid.tsx:371
+Clear label -> packages/shared/src/i18n/locales/en/kernel.json:2255
+Full {{app}} access -> apps/web/src/modules/settings/PermissionGrid.tsx:405
+Inherited = granted by wildcard, not interactive -> apps/web/src/modules/settings/PermissionGrid.tsx:396
+Inherited not interactive -> apps/web/src/modules/settings/PermissionGrid.tsx:480
+Scope hierarchy prefix and trailing * -> apps/api/src/modules/permissions/permissions.ts:15
+Parent scope covers children (kernel:agent:memory) -> apps/api/src/modules/permissions/default-roles.ts:54
+Members list on role page -> packages/shared/src/i18n/locales/en/kernel.json:1536
+Assign role from users' settings page -> apps/web/src/modules/settings/AdminRoleDetail.tsx:209
+Delete role button -> apps/web/src/modules/settings/AdminRoleDetail.tsx:155
+Delete revokes permissions granted through role -> packages/shared/src/i18n/locales/en/kernel.json:2394
+Cannot delete role with active members -> apps/api/src/modules/permissions/roles.ts:300
+No create-role control in web UI: AdminRoles only lists -> apps/web/src/modules/settings/AdminRoles.tsx:22
+config roles section, reconciled to exact scopes -> apps/api/src/cli/config/schema.ts:78
+roles example ops -> deploy/liaison-config.example.yaml:42
+users[].role references role by name -> apps/api/src/cli/config/schema.ts:81
+create_role tool, only scopes you hold -> apps/api/src/modules/agent/tools/kernel-tools.ts:2048
+create_role approval summary -> apps/api/src/modules/agent/tools/kernel-tools.ts:2065
+edit_role tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:2066
+delete_role tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:2099
+roles_list tool, per-role scope counts -> apps/api/src/modules/agent/tools/kernel-tools.ts:2119
+get_role tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:2133
+users_list tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:2143
+describe_user_access tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:2157
+list_scopes tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:2169
+invite_user tool, gated -> apps/api/src/modules/agent/tools/kernel-tools.ts:2314
+assign_role tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:2344
+remove_user_from_role tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:2363
+grant_user_scope tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:2415
+users_search tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:1518
+request_scope tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:1959
+Access requests section, approving gives permission, role unchanged -> packages/shared/src/i18n/locales/en/kernel.json:5326
+Data access section help -> packages/shared/src/i18n/locales/en/kernel.json:5328
+mcp scopes shown with the server's name on role pages -> apps/web/src/modules/settings/AdminRoleDetail.tsx:193
+Role page MCP servers section with a link to each server -> apps/web/src/modules/settings/AdminRoleDetail.tsx:208-250
+MCP servers label -> packages/shared/src/i18n/locales/en/kernel.json:3156
+Roles list filtered by ?scope= from Fine-tune in Roles & access -> apps/web/src/modules/settings/AdminRoles.tsx:46-80
+Show all roles -> packages/shared/src/i18n/locales/en/kernel.json:3154
+Who can use an org server is set on the server page -> apps/web/src/modules/mcp-manager/ConnectionDetail.tsx:224-240
+An approved change runs with the approver's permissions -> apps/api/src/modules/agent/tools/org-config-tools.ts:50-64
+The approver is recorded as the actor, the requester as requestedBy -> apps/api/src/modules/permissions/roles.ts:169-204
+kernel:org:admin holders are on call by default -> apps/api/src/modules/notifications/on-call.ts:85

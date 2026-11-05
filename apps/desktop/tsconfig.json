@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/.cache/tsc/typecheck.tsbuildinfo",
+    "types": ["@types/bun"],
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "paths": {
+      "@liaison/web/*": ["../web/src/*"],
+      "@liaison/shared/*": ["../../packages/shared/src/*"]
+    }
+  },
+  "include": ["*.ts", "ci/**/*.ts", "sidecar/**/*.ts", "src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["**/node_modules", "sidecar/vendor/*.gen.ts"]
+}

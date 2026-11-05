@@ -1,0 +1,93 @@
+{
+  "data": {
+    "order": {
+      "id": "gid://shopify/Order/12768069779622",
+      "name": "#1001",
+      "email": "marie@example.com",
+      "phone": null,
+      "note": null,
+      "tags": [
+        "liaison-seed",
+        "liaison-seed-order-001"
+      ],
+      "createdAt": "2026-05-26T22:50:48Z",
+      "updatedAt": "2026-05-26T22:50:49Z",
+      "displayFinancialStatus": "PAID",
+      "displayFulfillmentStatus": "UNFULFILLED",
+      "currentTotalPriceSet": {
+        "presentmentMoney": {
+          "amount": "598.0",
+          "currencyCode": "USD"
+        },
+        "shopMoney": {
+          "amount": "598.0",
+          "currencyCode": "USD"
+        }
+      },
+      "subtotalPriceSet": {
+        "presentmentMoney": {
+          "amount": "598.0",
+          "currencyCode": "USD"
+        }
+      },
+      "totalShippingPriceSet": {
+        "presentmentMoney": {
+          "amount": "0.0",
+          "currencyCode": "USD"
+        }
+      },
+      "totalTaxSet": {
+        "presentmentMoney": {
+          "amount": "0.0",
+          "currencyCode": "USD"
+        }
+      },
+      "customer": {
+        "id": "gid://shopify/Customer/24929659846822",
+        "email": "marie@example.com",
+        "firstName": "Marie",
+        "lastName": "Dupont"
+      },
+      "shippingAddress": null,
+      "billingAddress": null,
+      "lineItems": {
+        "edges": [
+          {
+            "node": {
+              "id": "gid://shopify/LineItem/36942158561446",
+              "title": "Kestrel Pocket Recorder",
+              "quantity": 2,
+              "variant": {
+                "id": "gid://shopify/ProductVariant/56534768255142",
+                "sku": null,
+                "title": "Default Title"
+              },
+              "originalUnitPriceSet": {
+                "presentmentMoney": {
+                  "amount": "299.0",
+                  "currencyCode": "USD"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "fulfillments": [],
+      "refunds": [],
+      "metafields": {
+        "edges": []
+      }
+    }
+  },
+  "extensions": {
+    "cost": {
+      "requestedQueryCost": 28,
+      "actualQueryCost": 11,
+      "throttleStatus": {
+        "maximumAvailable": 20000,
+        "currentlyAvailable": 19989,
+        "restoreRate": 1000
+      }
+    }
+  }
+}

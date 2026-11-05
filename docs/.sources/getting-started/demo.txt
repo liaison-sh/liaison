@@ -1,0 +1,180 @@
+Three pages counted in the header: Scenarios, The company, Your details -> apps/web/src/modules/demo/DemoEntry.tsx:240
+Step counter labels -> packages/shared/src/i18n/locales/en/kernel.json:1004
+Company page: what it makes and sells, the operations rows, the team, the picks -> apps/web/src/modules/demo/DemoEntry.tsx:347
+Company facts: fictional, Paris, 7 people -> packages/shared/src/i18n/locales/en/kernel.json:1009
+How it runs on Liaison, six areas -> packages/shared/src/i18n/locales/en/kernel.json:1011
+Only the outside world is simulated -> packages/shared/src/i18n/locales/en/kernel.json:1039
+The team, run as CEO -> packages/shared/src/i18n/locales/en/kernel.json:1040
+You'll see, the picks on the company page -> apps/web/src/modules/demo/DemoEntry.tsx:452
+Company page Continue -> apps/web/src/modules/demo/DemoEntry.tsx:498
+Seven seeded people (DEMO_TEAM) -> apps/api/src/seed/world/fiction.ts:245
+Company name Resonant Audio Labs -> apps/web/src/modules/demo/door-company.ts:10
+Heading What do you want to see agents do? -> packages/shared/src/i18n/locales/en/kernel.json:848
+Scenario tiles, short names -> packages/shared/src/i18n/locales/en/kernel.json:902
+Scenario descriptions -> packages/shared/src/i18n/locales/en/kernel.json:911
+Minutes per scenario -> apps/web/src/modules/demo/NeedsPicker.tsx:48
+Everything option -> packages/shared/src/i18n/locales/en/kernel.json:921
+Everything pill: Select all, All selected -> apps/web/src/modules/demo/NeedsPicker.tsx:202
+Select all and All selected labels -> packages/shared/src/i18n/locales/en/kernel.json:1001
+Bar under the tiles: picks, minutes, Continue off until a pick -> apps/web/src/modules/demo/DemoEntry.tsx:304
+Pick at least one, played in order -> packages/shared/src/i18n/locales/en/kernel.json:993
+Continue -> packages/shared/src/i18n/locales/en/kernel.json:995
+Or just explore on your own: everything seeded, on to the company page -> apps/web/src/modules/demo/DemoEntry.tsx:205
+Explore link and chip -> packages/shared/src/i18n/locales/en/kernel.json:999
+Change what you'll see, company page back to scenarios -> apps/web/src/modules/demo/DemoEntry.tsx:353
+Change what you'll see label -> packages/shared/src/i18n/locales/en/kernel.json:996
+Back, details back to the company page -> apps/web/src/modules/demo/DemoEntry.tsx:518
+Back label -> packages/shared/src/i18n/locales/en/kernel.json:1052
+A link with needs lands on the company page -> apps/web/src/modules/demo/DemoEntry.tsx:114
+Your name field -> apps/web/src/modules/demo/DemoEntry.tsx:536
+Email field -> apps/web/src/modules/demo/DemoEntry.tsx:547
+Start the demo button -> apps/web/src/modules/demo/DemoEntry.tsx:556
+Start the demo label -> packages/shared/src/i18n/locales/en/kernel.json:854
+Start stays off until name and email; hint says so -> packages/shared/src/i18n/locales/en/kernel.json:855
+Lead notice, opt out -> packages/shared/src/i18n/locales/en/kernel.json:856
+Agent turns need confirmed email or own key -> packages/shared/src/i18n/locales/en/kernel.json:881
+6-digit code, paste or open link -> packages/shared/src/i18n/locales/en/kernel.json:916
+Confirm button -> packages/shared/src/i18n/locales/en/kernel.json:919
+Agents run on demo key within small budget after confirm -> packages/shared/src/i18n/locales/en/kernel.json:872
+Budget link in banner -> packages/shared/src/i18n/locales/en/kernel.json:940
+Budget spent: everything stays open -> packages/shared/src/i18n/locales/en/kernel.json:943
+Add your own model key prompt, stored encrypted, own workspace only -> packages/shared/src/i18n/locales/en/kernel.json:875
+BYOK providers Anthropic, OpenAI, Google, Mistral, OpenRouter -> apps/web/src/modules/demo/DemoByokPrompt.tsx:37
+Show me how button in activity bar -> apps/web/src/modules/shell/ActivityBar.tsx:620
+Show me how label -> packages/shared/src/i18n/locales/en/tours.json:365
+Tour status labels, Next, Skip, Do it for me, End the tour -> packages/shared/src/i18n/locales/en/tours.json:336
+Step says the agent is working -> packages/shared/src/i18n/locales/en/tours.json:406
+Agent answered without doing the step: reply, try again, or skip -> packages/shared/src/i18n/locales/en/tours.json:404
+Not while the turn waits on an approval -> apps/web/src/modules/tours/agent-turn-watch.ts:193
+Play all keeps playing after an answer without the step -> apps/web/src/modules/tours/TourHost.tsx:581
+Turn ended without the step's event is detected -> apps/web/src/modules/tours/agent-turn-watch.ts:139
+Try again and Skip this step labels -> packages/shared/src/i18n/locales/en/tours.json:355
+Try again re-sends the request the step waits on -> apps/web/src/modules/tours/autoplay-controller.ts:337
+A new event still moves the step on -> apps/web/src/modules/tours/agent-turn-watch.ts:194
+Tour titles -> packages/shared/src/i18n/locales/en/tours.json:44
+Routines/Sessions/Mail basics/Tickets/Knowledge/Projects/API connector tours -> packages/shared/src/i18n/locales/en/tours.json:104
+What this demo cannot do link -> packages/shared/src/i18n/locales/en/kernel.json:867
+Limits: mail, connectors, ads -> packages/shared/src/i18n/locales/en/kernel.json:869
+Visitor web search on the box key, per turn and per email per day -> apps/api/src/modules/agent/tools/web-tools.ts:492-500
+Search allowances env defaults -> apps/api/src/lib/env.ts:467-474
+Demo org web_fetch uses its own lists, empty allows every public host -> apps/api/src/modules/agent/tools/web-tools.ts:661-665
+Private and internal addresses refused -> apps/api/src/modules/agent/tools/web-tools.ts:682
+Banner shows expiry -> packages/shared/src/i18n/locales/en/kernel.json:866
+Visitor org lives 72 hours -> apps/api/src/lib/env.ts:256
+Workspace lives 7 days once a real service connects -> apps/api/src/lib/env.ts:266
+MCP connection reaching connected extends the workspace -> apps/api/src/modules/mcp-client/health.ts:52
+Everything goes with it -> packages/shared/src/i18n/locales/en/kernel.json:873
+Get a fresh workspace, same company -> packages/shared/src/i18n/locales/en/kernel.json:883
+Get a fresh workspace button -> packages/shared/src/i18n/locales/en/kernel.json:884
+Agentic company knowledge scenario, seventh need -> packages/shared/src/demo/needs.ts:21
+Scenario: sources, P&L, Share, your agent answers, Lucas asks in #support with his own access -> apps/api/src/modules/demo/world/knowledge-lucas-asks.ts:1
+Projects scenario: ask your agent from Chats in the dock, beside the task; subtasks, then its reply in the task discussion -> packages/shared/src/tours/demo/projects.ts:99
+Projects scenario reply beat in the task discussion -> packages/shared/src/tours/demo/projects.ts:135
+Team chat scenario: a teammate asks in a channel, you read his message there -> packages/shared/src/tours/demo/chat.ts:90
+Team chat scenario: ask your agent from Chats in the dock, beside the channel -> packages/shared/src/tours/demo/chat.ts:110
+Team chat scenario: it searches the web and cites its sources -> packages/shared/src/tours/demo/chat.ts:129
+Team chat scenario: the follow-up turns the answer into a task -> packages/shared/src/tours/demo/chat.ts:163
+Team chat scenario: your agent answers the teammate in the channel, with its sources and the task -> packages/shared/src/tours/demo/chat.ts:205
+Team chat scenario: you read its reply in the channel -> packages/shared/src/tours/demo/chat.ts:236
+Orders scenario: ask your agent from Chats in the dock, beside the orders; it prepares the shipment for approval -> packages/shared/src/tours/demo/commerce.ts:78
+Knowledge scenario: ask your agent from Chats in the dock, beside the P&L -> packages/shared/src/tours/demo/knowledge.ts:76
+Scenarios talk to the person's one conversation with their agent -> packages/shared/src/tours/schema.ts:487
+The run's conversation is the person's DM with their agent, made when missing -> apps/api/src/modules/tours/conversation.ts:19
+Agent asks before it writes: approve step shown only when the write was held -> packages/shared/src/tours/demo/shared.ts:183
+Approve step copy (outside content or data not everyone can see; press Approve) -> packages/shared/src/i18n/locales/en/tours.json:442
+An issued invoice is kept for ten years and cannot be deleted -> bundled-apps/invoicing/app.manifest.json:333
+A demo workspace's issued invoices are deleted with it -> apps/api/src/modules/demo/demo-reset.ts:83
+The exception applies only to a demo workspace -> apps/api/src/modules/apps/ddl.ts:393
+Warm pool of filled workspaces, LIAISON_DEMO_POOL_SIZE default 5, 0 off -> apps/api/src/lib/env.ts:295
+Pool off or empty: workspace filled in behind the response -> apps/api/src/modules/demo/routes.ts:807
+Signup takes a ready workspace from the pool -> apps/api/src/modules/demo/routes.ts:780
+Refilled in the background one at a time -> apps/api/src/modules/demo/demo-pool.ts:368
+Refill warn line with fill time and ready count -> apps/api/src/modules/demo/demo-pool.ts:419
+Pooled workspace never expires, 72 hours start at claim -> apps/api/src/modules/demo/demo-pool.ts:613
+Only the running build's pooled workspaces are claimed; others retired with a warn line -> apps/api/src/modules/demo/demo-pool.ts:517
+Pool empty warning with running count -> apps/api/src/modules/demo/demo-pool.ts:837
+LIAISON_DEMO_SEED_CONCURRENCY default 2, seeds at once -> apps/api/src/lib/env.ts:304
+Empty-pool seeds go through the gate -> apps/api/src/modules/demo/routes.ts:950
+Visitors beyond the limit wait in line, warn with queue depth -> apps/api/src/modules/demo/demo-seed-gate.ts:108
+Refill waits while any visitor waits -> apps/api/src/modules/demo/demo-seed-gate.ts:81
+Open tab of an expired workspace signs out and lands on the demo page -> apps/web/src/modules/auth/createAuthManager.ts:174-190
+Ended-workspace line on the demo page -> packages/shared/src/i18n/locales/en/kernel.json:847
+Step waiting on a routine says its run: running with time taken, finished, failed, not run -> apps/api/src/modules/tours/beat-status.ts:166
+Routine running line copy -> packages/shared/src/i18n/locales/en/tours.json:411
+A tool call the agent's turn parked for approval holds the step -> apps/api/src/modules/tours/beat-status.ts:293
+Your agent asks first copy -> packages/shared/src/i18n/locales/en/tours.json:407
+Do it for me approves the parked request -> apps/web/src/modules/tours/TourPanel.tsx:779
+Work done ahead is kept on its later step -> apps/api/src/modules/tours/consumer.ts:343
+A step done ahead shows Next -> packages/shared/src/tours/api.ts:73
+Tour card at the bottom left of the main panel, moves only off what it rings -> apps/web/src/modules/tours/placement.ts:138
+Top line: tour, a dot per step, End the tour -> apps/web/src/modules/tours/TourPanel.tsx:490
+The one move to make next, with n/m -> apps/web/src/modules/tours/TourPanel.tsx:406
+Request cut to two lines, click to read all -> apps/web/src/modules/tours/TourPanel.tsx:591
+More actions menu: Take me there, Play whole scenario, Pause, Skip this step -> packages/shared/src/i18n/locales/en/tours.json:359
+Steps the agent or a routine does: nothing to click, Next once done -> apps/web/src/modules/tours/TourPanel.tsx:209
+Steps waiting on a routine or a recorded session running on its own: working line, no buttons, Do it for me in the menu -> apps/web/src/modules/tours/TourPanel.tsx:232
+Banner and demo help only in demo workspaces -> apps/web/src/modules/shell/branding-store.ts:43
+Setup card does not offer the demo of its own server -> apps/api/src/modules/provisioning/setup-kickoff.ts:83
+removing a demo workspace deletes the Shopify webhooks first -> apps/api/src/modules/demo/demo-reset.ts:798
+Sales scenario: summary and website lookup in the personal agent chat, opened from the dock -> packages/shared/src/tours/demo/sales.ts:239
+Sales request steps go to Home and ring the request's row by its first step's tool -> packages/shared/src/tours/demo/sales.ts:54
+Approve step after a finished routine waits on the person -> apps/api/src/modules/tours/beat-status.ts:370
+An approve step whose request the routine did not raise is passed (whenRaised) -> packages/shared/src/tours/schema.ts:466
+Sales row: CRM check, website for new company, record, quote and reply in one request -> packages/shared/src/i18n/locales/en/tours.json:634
+Wait step until the request's last step is proposed, no trip to Routines -> packages/shared/src/tours/demo/sales.ts:158-178
+Open the one request in Home, read its steps, approve once; done when the reply ran -> packages/shared/src/tours/demo/sales.ts:179-229
+Summary read in Chats after the approval, then the customer card -> packages/shared/src/tours/demo/sales.ts:230-258
+Do it for me approves a parked request once -> apps/web/src/modules/tours/TourHost.tsx:173
+Visitor agent on the instance's OpenRouter key at reasoning Low -> apps/api/src/modules/agent/providers/openrouter.ts:129
+LIAISON_DEMO_STEP_OUTPUT_TOKENS default 16000 caps a step's output -> apps/api/src/lib/env.ts:462
+Step holds its output at the cap before it is sent -> apps/api/src/modules/agent/credits/credit-meter.ts:623
+Step holds its input from the request's size as it leaves; refused when the budget cannot hold it -> apps/api/src/modules/agent/credits/credit-meter.ts:1531
+Pages read capped per turn and per conversation per hour -> apps/api/src/modules/agent/tools/web-read-guardrails.ts:25-28
+Quote step: the routine's prompt, tools, order and @ref forms -> apps/api/src/seed/tiers/demo/seed-agent-native.ts:1860
+No record step when the prospect is already in the CRM -> apps/api/src/seed/tiers/demo/seed-agent-native.ts:1879
+A failed step stops the rest and the run proposes a corrected request -> apps/api/src/modules/agent/routines/routine-run-resume.ts:420
+play whole scenario approves the corrected request too -> apps/web/src/modules/tours/autoplay-controller.ts:354
+Start over: link under the scenario list in the welcome opened from Scenarios k/n -> apps/web/src/modules/demo/DemoWelcome.tsx:420
+Start over confirm: title, body, Cancel, Start over -> packages/shared/src/i18n/locales/en/tours.json:403-409
+Start over: fresh workspace, session moves in place -> apps/web/src/modules/demo/demo-store.ts:400
+Start over keeps the end date, lead (confirmed email) and spend identity; old workspace ends -> apps/api/src/modules/demo/routes.ts:1323-1331
+Own model key stays with the old workspace -> packages/shared/src/i18n/locales/en/tours.json:406
+Agent could not answer: step says so (show step copy) -> packages/shared/src/i18n/locales/en/tours.json:355
+Agent could not answer: refused/failed turn read from refusal line, audit row, turn row -> apps/api/src/modules/tours/beat-status.ts:444
+Agent could not answer: reason under the line -> apps/web/src/modules/tours/TourPanel.tsx:437
+Try again sends the same question in the same conversation -> apps/web/src/modules/tours/agent-failed-status.ts:84
+Asking again yourself: the step follows the answer to your newest message -> apps/api/src/modules/tours/beat-status.ts:606
+Next-steps dialog opens on the first budget refusal, once per workspace -> apps/web/src/modules/demo/demo-store.ts:824
+Once per workspace remembered server-side -> apps/api/src/modules/demo/routes.ts:1286
+Budget link in banner opens it -> apps/web/src/modules/demo/DemoBanner.tsx:64
+Recap: scenarios, agent actions, approvals, minutes -> apps/api/src/modules/demo/demo-recap.ts:34
+Recap labels -> packages/shared/src/i18n/locales/en/kernel.json:1059
+We set it up for you / Write to us -> packages/shared/src/i18n/locales/en/kernel.json:1072
+Continue now with your key / Add my key -> packages/shared/src/i18n/locales/en/kernel.json:1076
+Install it yourself / See the guide -> packages/shared/src/i18n/locales/en/kernel.json:1083
+Work address puts setup first, personal address the key -> apps/web/src/modules/demo/DemoNextSteps.tsx:122
+Tell me when the hosted version opens -> packages/shared/src/i18n/locales/en/kernel.json:1091
+Last scenario opens the dialog in place of the end card -> apps/web/src/modules/demo/DemoScenarioRunner.tsx:124
+Keep exploring shows the budget left -> packages/shared/src/i18n/locales/en/kernel.json:1067
+Warehouse revenue, dealers and customers reports are confidential -> apps/api/src/modules/demo/warehouse/catalog.ts:146-150
+Granted to finance and operations; the CEO is an admin and passes -> apps/api/src/seed/tiers/demo/role-scopes.ts:287-299 ; apps/api/src/apps/database/domain-access.ts:117-120
+Leads stay on the instance; LIAISON_TEAM_FORWARD_DEMO_LEADS off by default copies them only when registered, never opted-out or .invalid -> apps/api/src/lib/env.ts:930 ; apps/api/src/modules/liaison-team/lead-forwarding.ts:40-53 ; apps/api/src/lib/load-harness.ts:172-178
+Warehouse part only with LIAISON_DEMO_WAREHOUSE on, off by default, needs the warehouse DSN -> apps/api/src/lib/env.ts:305-315 ; apps/api/src/seed/tiers/demo/demo-apps.ts:60-95 ; apps/api/src/seed/tiers/demo/seed-warehouse.ts:70-78
+Off parts logged as opt-in parts off on this deployment -> apps/api/src/seed/tiers/demo/seed-demo.ts:261-269
+A failed seed is logged as an error naming the parts; CLI exits 1 -> apps/api/src/modules/demo/demo-seeder.ts:330-345 ; apps/api/src/seed/tiers/demo/seed-demo.ts:528-536
+A failed pooled workspace is never handed out -> apps/api/src/modules/demo/demo-pool.ts:803-808
+A visitor whose workspace failed sees the failed notice -> apps/web/src/modules/demo/DemoHost.tsx:106-112 ; packages/shared/src/i18n/locales/en/kernel.json:902
+Expired workspaces deleted hourly at minute 40, 10 min pass budget -> apps/api/src/modules/demo/demo-reset.ts:760-763
+Cleanup pressure signals (pool waiters, db probe, host load 0.7/core) -> apps/api/src/modules/demo/demo-reset.ts:791-811 ; apps/api/src/modules/demo/reap-pacer.ts:50-57
+One at a time with a rest, min duty a tenth, three at once when quiet -> apps/api/src/modules/demo/reap-pacer.ts:59-109 ; apps/api/src/modules/demo/demo-reset.ts:776
+Log line demo reap pass paced -> apps/api/src/modules/demo/demo-reset.ts:914
+Start past 15 s answers being prepared (202), retry in 5 s, finished behind the answer -> apps/api/src/modules/demo/routes.ts:441-445 ; apps/api/src/modules/demo/routes.ts:890-929
+Page says busy moment, retries with the same start -> apps/web/src/modules/demo/demo-store.ts:363-371 ; apps/web/src/modules/demo/DemoEntry.tsx:596-607 ; packages/shared/src/i18n/locales/en/kernel.json:897
+Log warns demo signup past its answer budget -> apps/api/src/modules/demo/routes.ts:917-920
+Which looks most like your company?, the four answers -> packages/shared/src/i18n/locales/en/kernel.json:921
+Answers preselect scenarios, other picks nothing -> packages/shared/src/validation/demo-entry.ts:29
+Answer pressed again is taken back; other's text field -> apps/web/src/modules/demo/EntryQuestion.tsx:67
+Continue with other and no picks opens the whole company -> apps/web/src/modules/demo/DemoEntry.tsx:257
+A link names a company type (entry) -> apps/web/src/modules/demo/DemoEntry.tsx:113
+Answer on the workspace marker, counted by type in the log -> apps/api/src/modules/demo/routes.ts:1101
+Every answer opens the same example company, said on the company page -> packages/shared/src/i18n/locales/en/kernel.json:931

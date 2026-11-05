@@ -1,0 +1,190 @@
+Inboxes section, tickets:inboxes:admin -> apps/api/src/apps/tickets/app.manifest.json:3033
+Inbox connections gmail and imap -> apps/api/src/apps/tickets/app.manifest.json:3042
+Settings Apps group -> packages/shared/src/i18n/locales/en/kernel.json:1567
+Create API inbox -> packages/shared/src/i18n/locales/en/tickets.json:146
+Configure inbox -> packages/shared/src/i18n/locales/en/tickets.json:158
+From display name -> packages/shared/src/i18n/locales/en/tickets.json:32
+Reply-to base address -> packages/shared/src/i18n/locales/en/tickets.json:161
+Reply-from email (optional) -> packages/shared/src/i18n/locales/en/tickets.json:149
+Default team -> packages/shared/src/i18n/locales/en/tickets.json:26
+Signature (HTML) -> packages/shared/src/i18n/locales/en/tickets.json:162
+Signature (plain text) -> packages/shared/src/i18n/locales/en/tickets.json:163
+Send acknowledgement email on new ticket -> packages/shared/src/i18n/locales/en/tickets.json:164
+Acknowledgement body text (optional) -> packages/shared/src/i18n/locales/en/tickets.json:166
+Monitoring inbox: keep out of the attention feed -> packages/shared/src/i18n/locales/en/tickets.json:169
+No SLA exempt inbox -> packages/shared/src/i18n/locales/en/tickets.json:171
+Save inbox -> apps/web/src/modules/tickets/TicketsInboxRouting.tsx:735
+Generate API key -> packages/shared/src/i18n/locales/en/tickets.json:160
+API key shown only once -> packages/shared/src/i18n/locales/en/tickets.json:152
+API keys section, public ingest endpoint -> apps/api/src/apps/tickets/app.manifest.json:3329
+Allowed origins, one https origin per line -> apps/api/src/apps/tickets/app.manifest.json:3381
+Tickets in activity bar -> apps/api/src/apps/tickets/app.manifest.json:3417
+Smart filters heading -> packages/shared/src/i18n/locales/en/tickets.json:78
+Smart filter names -> packages/shared/src/i18n/locales/en/tickets.json:299
+Saved view My open tickets -> apps/api/src/apps/tickets/app.manifest.json:3469
+Saved views Unassigned, SLA approaching -> apps/api/src/apps/tickets/app.manifest.json:3476
+Filter bar Status, Priority, Inbox, Team, Audience, Category -> apps/web/src/modules/tickets/TicketFilterBar.tsx:98
+Sort newest / oldest -> apps/web/src/modules/tickets/TicketFilterBar.tsx:429
+Search tickets… -> packages/shared/src/i18n/locales/en/tickets.json:73
+Statuses Open, Awaiting customer, Awaiting follow-up, Closed -> packages/shared/src/i18n/locales/en/tickets.json:284
+New ticket button -> apps/web/src/modules/tickets/TicketsInbox.tsx:423
+New ticket Subject, Contact email, Contact name, existing contact id -> apps/web/src/modules/tickets/NewTicketDialog.tsx:157
+New ticket Inbox, Priority Low/Normal/High/Urgent -> apps/web/src/modules/tickets/NewTicketDialog.tsx:198
+New ticket Category, Assignee, Team -> apps/web/src/modules/tickets/NewTicketDialog.tsx:226
+New ticket Sensitivity Internal/Confidential/Restricted -> apps/web/src/modules/tickets/NewTicketDialog.tsx:272
+Initial content as Internal note or Initial inbound -> apps/web/src/modules/tickets/NewTicketDialog.tsx:300
+Create -> apps/web/src/modules/tickets/NewTicketDialog.tsx:347
+Mail Convert to ticket contribution -> apps/api/src/apps/tickets/app.manifest.json:3459
+Convert dialog Tickets inbox, Priority, Note (optional), Convert -> apps/web/src/modules/tickets/MailConvertToTicketDialog.tsx:106
+Need a support inbox before converting -> packages/shared/src/i18n/locales/en/tickets.json:259
+Convert to Mail, Send-from account -> apps/web/src/modules/tickets/TicketConvertToMailDialog.tsx:85
+Reply / Note tabs -> apps/web/src/modules/tickets/TicketDetail.tsx:622
+Reply to customer… placeholder -> packages/shared/src/i18n/locales/en/tickets.json:202
+Insert saved reply -> packages/shared/src/i18n/locales/en/tickets.json:40
+Set follow-up -> packages/shared/src/i18n/locales/en/tickets.json:204
+Send reply / Add note -> packages/shared/src/i18n/locales/en/tickets.json:214
+Internal note visible to agents only -> packages/shared/src/i18n/locales/en/tickets.json:203
+Note posts immediately -> apps/web/src/modules/tickets/TicketComposer.tsx:871
+Own reply sent unless two-approver policy -> apps/web/src/modules/tickets/TicketComposer.tsx:258
+Awaiting second approver message -> packages/shared/src/i18n/locales/en/tickets.json:208
+Your reply signature section, user scope -> apps/api/src/apps/tickets/app.manifest.json:3016
+Assign / Assign to me -> apps/web/src/modules/tickets/TicketDetail.tsx:1312
+Change status / priority / category -> apps/web/src/modules/tickets/TicketDetail.tsx:943
+Schedule / Clear follow-up -> apps/web/src/modules/tickets/TicketDetail.tsx:1396
+Send nudge -> apps/web/src/modules/tickets/TicketDetail.tsx:776
+Reopen ticket -> apps/web/src/modules/tickets/TicketDetail.tsx:811
+Close dialog reasons Resolved, Duplicate, Spam, No response -> apps/web/src/modules/tickets/TicketCloseDialog.tsx:69
+Final reply (optional) -> packages/shared/src/i18n/locales/en/tickets.json:31
+Select for bulk -> packages/shared/src/i18n/locales/en/kernel.json:1895
+Bulk actions labels -> apps/api/src/apps/tickets/app.manifest.json:3494
+Merge needs two or more -> apps/api/src/apps/tickets/app.manifest.json:3547
+Categories section, tree, two levels -> apps/api/src/apps/tickets/app.manifest.json:3056
+Response times section, tickets:settings:admin -> apps/api/src/apps/tickets/app.manifest.json:3078
+Urgent first response default 3600 s -> apps/api/src/apps/tickets/app.manifest.json:3153
+High 7200, Normal 28800, Low 86400 defaults -> apps/api/src/apps/tickets/app.manifest.json:3161
+Time zone, Business hours, Holidays -> apps/api/src/apps/tickets/app.manifest.json:3184
+Email header name, footer, accent color -> apps/api/src/apps/tickets/app.manifest.json:3265
+Approve ticket replies from Home toggle and behaviour -> apps/api/src/apps/tickets/app.manifest.json:3296
+Ticket ID prefixes section -> apps/api/src/apps/tickets/app.manifest.json:3310
+Role support scopes -> apps/api/src/apps/tickets/app.manifest.json:3569
+Role support_lead -> apps/api/src/apps/tickets/app.manifest.json:3580
+Role admin adds tickets:settings:admin -> apps/api/src/apps/tickets/app.manifest.json:3590
+tickets:approve approver scope -> docs/reference/scopes.md:331
+search -> apps/api/src/apps/tickets/app.manifest.json:709
+get -> apps/api/src/apps/tickets/app.manifest.json:913
+listForContact -> apps/api/src/apps/tickets/app.manifest.json:1634
+create -> apps/api/src/apps/tickets/app.manifest.json:957
+reply gated -> apps/api/src/apps/tickets/app.manifest.json:2438
+nudge gated -> apps/api/src/apps/tickets/app.manifest.json:2512
+close gated -> apps/api/src/apps/tickets/app.manifest.json:2757
+addNote -> apps/api/src/apps/tickets/app.manifest.json:1102
+editNote gated -> apps/api/src/apps/tickets/app.manifest.json:1134
+deleteNote gated -> apps/api/src/apps/tickets/app.manifest.json:1176
+assign -> apps/api/src/apps/tickets/app.manifest.json:1206
+setStatus -> apps/api/src/apps/tickets/app.manifest.json:1245
+setPriority -> apps/api/src/apps/tickets/app.manifest.json:1270
+setCategory -> apps/api/src/apps/tickets/app.manifest.json:1299
+setLanguage -> apps/api/src/apps/tickets/app.manifest.json:1327
+setTeam -> apps/api/src/apps/tickets/app.manifest.json:1355
+setAudience -> apps/api/src/apps/tickets/app.manifest.json:1383
+setFollowup -> apps/api/src/apps/tickets/app.manifest.json:1416
+clearFollowup -> apps/api/src/apps/tickets/app.manifest.json:1449
+reopen -> apps/api/src/apps/tickets/app.manifest.json:1469
+merge -> apps/api/src/apps/tickets/app.manifest.json:1489
+markRead -> apps/api/src/apps/tickets/app.manifest.json:1551
+convertToMail -> apps/api/src/apps/tickets/app.manifest.json:2553
+inboxCounts -> apps/api/src/apps/tickets/app.manifest.json:1578
+backlogHealth -> apps/api/src/apps/tickets/app.manifest.json:1598
+slaReport -> apps/api/src/apps/tickets/app.manifest.json:1616
+teams.list -> apps/api/src/apps/tickets/app.manifest.json:1659
+teams.rename -> apps/api/src/apps/tickets/app.manifest.json:1672
+categories.list -> apps/api/src/apps/tickets/app.manifest.json:1700
+categories.create -> apps/api/src/apps/tickets/app.manifest.json:1712
+categories.update -> apps/api/src/apps/tickets/app.manifest.json:1900
+categories.archive -> apps/api/src/apps/tickets/app.manifest.json:1935
+templates.list (saved replies) -> apps/api/src/apps/tickets/app.manifest.json:1742
+templates.create -> apps/api/src/apps/tickets/app.manifest.json:1759
+templates.update -> apps/api/src/apps/tickets/app.manifest.json:1787
+templates.delete -> apps/api/src/apps/tickets/app.manifest.json:1822
+csat.request -> apps/api/src/apps/tickets/app.manifest.json:1842
+csat.summary -> apps/api/src/apps/tickets/app.manifest.json:1866
+csat.list -> apps/api/src/apps/tickets/app.manifest.json:1878
+inboxes.list -> apps/api/src/apps/tickets/app.manifest.json:2003
+inboxes.create gated -> apps/api/src/apps/tickets/app.manifest.json:2015
+inboxes.update gated -> apps/api/src/apps/tickets/app.manifest.json:2153
+inboxes.disconnect -> apps/api/src/apps/tickets/app.manifest.json:2287
+idSegment.get -> apps/api/src/apps/tickets/app.manifest.json:2307
+idSegment.set gated -> apps/api/src/apps/tickets/app.manifest.json:2318
+approveFromHome.get -> apps/api/src/apps/tickets/app.manifest.json:2345
+approveFromHome.set gated -> apps/api/src/apps/tickets/app.manifest.json:2356
+apiKeys.list -> apps/api/src/apps/tickets/app.manifest.json:2377
+apiKeys.create gated -> apps/api/src/apps/tickets/app.manifest.json:2389
+apiKeys.revoke -> apps/api/src/apps/tickets/app.manifest.json:2418
+signature.text, section "Your reply signature", per user -> apps/api/src/apps/tickets/app.manifest.json:3025
+sla.targets.urgent default 3600 -> apps/api/src/apps/tickets/app.manifest.json:3153
+sla.targets.high default 7200 -> apps/api/src/apps/tickets/app.manifest.json:3161
+sla.targets.normal default 28800 -> apps/api/src/apps/tickets/app.manifest.json:3169
+sla.targets.low default 86400 -> apps/api/src/apps/tickets/app.manifest.json:3177
+sla.businessHours.timezone default Europe/Paris -> apps/api/src/apps/tickets/app.manifest.json:3185
+sla.businessHours.weekly -> apps/api/src/apps/tickets/app.manifest.json:3215
+sla.businessHours.holidays -> apps/api/src/apps/tickets/app.manifest.json:3256
+emailTemplate.headerName -> apps/api/src/apps/tickets/app.manifest.json:3266
+emailTemplate.footerText -> apps/api/src/apps/tickets/app.manifest.json:3275
+emailTemplate.accentColor -> apps/api/src/apps/tickets/app.manifest.json:3282
+addNote: internal note on a Liaison ticket, result names the ticket -> apps/api/src/apps/tickets/admin.ts:439
+tickets.ticket kind, externalRef dedup, skipped not updated -> apps/api/src/apps/tickets/import-kind.ts:9
+writeScopes tickets:tickets:write and team dimension -> apps/api/src/apps/tickets/app.manifest.json:3069
+tickets.category kind, missing levels created, existing reused untouched -> apps/api/src/apps/tickets/import-kind.ts:441
+categories nest at most two levels -> apps/api/src/apps/tickets/admin.ts:609
+tickets.category needs tickets:categories:admin -> apps/api/src/apps/tickets/app.manifest.json:3112
+tickets.ticket imports after its category kind -> apps/api/src/apps/tickets/app.manifest.json:3083
+tickets.reply-template matched on name, skipped untouched -> apps/api/src/apps/tickets/import-kind.ts:517
+tickets.reply-template needs tickets:tickets:write -> apps/api/src/apps/tickets/app.manifest.json:3145
+ticket preview runs the run's checks (category, team grant), writing nothing -> apps/api/src/apps/tickets/import-kind.ts:310
+Agent connects an inbox mailbox on a Connect card before the inbox is created -> apps/api/src/apps/tickets/admin.ts:1525
+Resync reloads the open ticket, restarting a hung load -> apps/web/src/modules/tickets/ticket-detail-store.ts:162
+loadTicket restart reloads the conversation -> apps/web/src/modules/tickets/ticket-detail-store.ts:96
+A hung load is aborted and restarted -> apps/web/src/modules/tickets/ticket-message-store.ts:163
+A stale ticket tab reloads when activated -> apps/web/src/modules/tickets/TicketDetail.tsx:324
+Open pages resync after a reconnect -> apps/web/src/framework/resync.ts:94
+create attachments param, needs initialMessage -> apps/api/src/apps/tickets/app.manifest.json:1016
+create attachments refused without initialMessage -> apps/api/src/apps/tickets/create.ts:285
+addNote attachments param -> apps/api/src/apps/tickets/app.manifest.json:1132
+reply attachments param -> apps/api/src/apps/tickets/app.manifest.json:2496
+attachments: readable under the caller's RLS context, own org, denylist, caps -> apps/api/src/apps/tickets/tools.ts:71
+caps 10 files, 25 MB per file, 35 MB total -> apps/api/src/apps/tickets/tools.ts:52
+files land on the new message as attachments -> apps/api/src/apps/tickets/create.ts:778
+note attachments checked before the note is written -> apps/api/src/apps/tickets/admin.ts:327
+an app attaches its own file through a declared cross-app call; read with the calling app's access -> apps/api/src/modules/apps/execute-tool.ts:4004 ; apps/api/src/tests/integration/cross-app-file-attach.integration.test.ts:1
+cross-app attach needs no tickets scopes of the caller (operating scopes decide the destination write check) -> apps/api/src/modules/apps/sandbox/bridge/tickets.ts:686 ; apps/api/src/apps/tickets/tools.ts:170
+create and addNote declare an optional idempotencyKey -> apps/api/src/apps/tickets/app.manifest.json:1104 ; apps/api/src/apps/tickets/app.manifest.json:1144
+same key + same params replays the cached result; different params refused; concurrent call told to retry -> apps/api/src/modules/apps/execute-tool.ts:4324 ; apps/api/src/modules/apps/idempotency.ts:36
+replay window 24 hours -> apps/api/src/modules/apps/idempotency.ts:7
+a webhook handler's replay through the sandbox bridge opens one ticket -> apps/api/src/modules/apps/sandbox/bridge/agent.ts:420 ; apps/api/src/tests/integration/tickets-create-idempotency.integration.test.ts:1
+Report a bug attachments stay on the ticket; forward link -> apps/api/src/modules/bug-reports/service.ts ; apps/api/src/apps/tickets/inbound.ts
+Close tickets when the customer stays silent -> packages/shared/src/i18n/locales/en/tickets.json:378
+Default nudge wording, in the ticket's language -> packages/shared/src/i18n/locales/en/tickets.json:386
+Per-inbox closeSilentEnabled, off by default -> apps/api/src/apps/tickets/app.manifest.json:620
+Hourly closeSilentCheck job -> apps/api/src/apps/tickets/app.manifest.json:3268
+Defaults 7 and 5 days, at most 20 per run -> apps/api/src/apps/tickets/close-silent.ts:48
+Only silences after the option was switched on -> apps/api/src/apps/tickets/close-silent.ts:144
+Steps go through the gated tools as a system-origin call -> apps/api/src/apps/tickets/close-silent.ts:406
+Reply cancels a pending nudge or no-response close; our message or a status change cancels the routine's cards -> apps/api/src/apps/tickets/close-silent.ts:451
+Acts through the owner's Close silent tickets routine, attributed to it -> apps/api/src/apps/tickets/close-silent.ts:263 ; apps/api/src/modules/approvals/requester.ts:31
+Deactivated owner, or one who may no longer reply or close: option off, inbox admins notified -> apps/api/src/apps/tickets/close-silent.ts:312 ; apps/api/src/apps/tickets/app.manifest.json:3221
+A late approval does nothing once someone wrote or the status changed -> apps/api/src/apps/tickets/close-silent.ts:515
+A customer reply starts a new nudge cycle -> apps/api/src/apps/tickets/inbound-record.ts:56
+Switching it on needs the reply and close permissions -> apps/api/src/apps/tickets/admin.ts:1908
+Quoted earlier emails folded under a message -> apps/web/src/modules/tickets/TicketConversationStream.tsx:501
+Chip label N earlier emails -> packages/shared/src/i18n/locales/en/kernel.json:6227
+In this thread link jumps to the message -> apps/web/src/ui/QuotedHistory.tsx:179
+Unlinked row shows its text -> apps/web/src/ui/QuotedHistory.tsx:188
+Show original label -> packages/shared/src/i18n/locales/en/kernel.json:6231
+Show original renders the quoted part -> apps/web/src/ui/QuotedHistory.tsx:216
+A reply sent from Liaison is shown whole -> apps/web/src/modules/tickets/TicketConversationStream.tsx:79
+Thread map right of a long ticket, shown from 2.5 screens -> apps/web/src/ui/ThreadMap.tsx:44 ; apps/web/src/modules/tickets/TicketConversationStream.tsx:964
+Titles (who, date, first line) on hover only -> apps/web/src/ui/ThreadMap.tsx:341
+Click a block or a title jumps to the message's top; drag scrolls -> apps/web/src/ui/ThreadMap.tsx:271 ; apps/web/src/ui/ThreadMap.tsx:362 ; apps/web/src/ui/ThreadMap.tsx:323
+Phone: Open thread map button in the top bar from 3 messages -> apps/web/src/modules/tickets/TicketPhoneHeader.tsx:62 ; apps/web/src/ui/thread-map-store.ts:18 ; packages/shared/src/i18n/locales/en/kernel.json:3034
+Phone: position pill while scrolling opens the drawer -> apps/web/src/ui/ThreadMapDrawer.tsx:197 ; apps/web/src/ui/ThreadMapDrawer.tsx:51
+This conversation drawer, tap a row to jump -> packages/shared/src/i18n/locales/en/kernel.json:3036 ; apps/web/src/ui/ThreadMapDrawer.tsx:240

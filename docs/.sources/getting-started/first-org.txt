@@ -1,0 +1,32 @@
+Local URL http://127.0.0.1:3000 -> .claude/skills/setup-liaison/SKILL.md:310
+Email field -> packages/shared/src/i18n/locales/en/kernel.json:2925
+Continue with email -> packages/shared/src/i18n/locales/en/kernel.json:2926
+Sign-in code field -> packages/shared/src/i18n/locales/en/kernel.json:2929
+Verify code button -> packages/shared/src/i18n/locales/en/kernel.json:2930
+6-digit code expires in 10 minutes -> packages/shared/src/i18n/locales/en/kernel.json:2923
+Users settings page -> apps/web/src/framework/bootstrap.ts:656
+Invite user -> packages/shared/src/i18n/locales/en/kernel.json:2345
+Email address, Role fields -> apps/web/src/modules/settings/AdminUsers.tsx:373
+Send invitation -> packages/shared/src/i18n/locales/en/kernel.json:2357
+Default roles admin, member, viewer; admin has * -> apps/api/src/modules/permissions/default-roles.ts:26
+member/viewer kernel-only scopes; app scopes not granted by default -> apps/api/src/modules/permissions/default-roles.ts:13
+member scopes threads, contacts, approvals, files -> apps/api/src/modules/permissions/default-roles.ts:36
+Per-app member/admin roles -> apps/api/src/db/migrations/0006_system_managed_full_member_role.sql:4
+Apps settings group, one row per app -> apps/web/src/modules/settings/settings-nav-groups.ts:4
+Connect Gmail -> apps/web/src/modules/mail/MailAccounts.tsx:551
+Connect IMAP/SMTP -> apps/web/src/modules/mail/MailAccounts.tsx:568
+Gmail needs Google credentials first -> packages/shared/src/i18n/locales/en/mail.json:107
+Agents in activity bar -> apps/web/src/modules/agent/agent-app.ts:63
+New agent button -> apps/web/src/modules/agent/AgentSidebar.tsx:233
+Name, Description, Instructions fields -> apps/web/src/modules/agent/AgentSettingsTab.tsx:370
+Name label -> packages/shared/src/i18n/locales/en/kernel.json:286
+Description label -> packages/shared/src/i18n/locales/en/kernel.json:287
+Purpose hint -> packages/shared/src/i18n/locales/en/kernel.json:308
+Instructions label -> packages/shared/src/i18n/locales/en/kernel.json:302
+Model field, Auto -> packages/shared/src/i18n/locales/en/kernel.json:304
+Auto label -> packages/shared/src/i18n/locales/en/kernel.json:307
+Save button -> apps/web/src/modules/agent/AgentSettingsTab.tsx:563
+New agent needs kernel:agents:admin -> apps/web/src/modules/agent/AgentSidebar.tsx:199
+Messages in activity bar -> apps/web/src/framework/bootstrap.ts:1115
+Handle is how people mention the agent -> packages/shared/src/i18n/locales/en/kernel.json:250
+Approvals open from Home -> apps/web/src/framework/bootstrap.ts:463

@@ -1,0 +1,77 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// @liaison/app-sdk/connection-credentials: read a credentials connection's key
+// map from `ctx.connections`, whichever runtime shape it has.
+//
+// `ctx.connections` has two runtime shapes:
+//   - FLAT   `{ getCredentials(name, id?) }`: the sandbox bridge group.
+//   - RECORD `{ [name]: { getCredentials(id?) } }`: the SDK type and unit-test mocks.
+// The raw value may arrive as a JSON string (the sandbox shim's raw path for a
+// primitive arg) or as an object.
+
+export type CredentialsAccessor = () => Promise<Record<string, string>>
+
+/** Normalize both `ctx.connections` shapes to one accessor, or null when absent. */
+export function resolveCredentialsAccessor(
+  connections: unknown,
+  name: string,
+): CredentialsAccessor | null {
+  const flat = connections as {
+    getCredentials?: (name: string, identifier?: string) => Promise<unknown>
+  }
+  if (typeof flat.getCredentials === "function") {
+    return async () => {
+      const raw = await flat.getCredentials!(name)
+      return (typeof raw === "string" ? JSON.parse(raw) : (raw ?? {})) as Record<string, string>
+    }
+  }
+  const record = connections as Record<
+    string,
+    { getCredentials?: (identifier?: string) => Promise<unknown> } | undefined
+  >
+  const entry = record?.[name]
+  if (entry && typeof entry.getCredentials === "function") {
+    return async () => {
+      const raw = await entry.getCredentials!()
+      return (typeof raw === "string" ? JSON.parse(raw) : (raw ?? {})) as Record<string, string>
+    }
+  }
+  return null
+}
+
+export type ConnectionCredentialsResult<K extends string> =
+  | { ok: true; credentials: Record<string, string> }
+  | {
+      ok: false
+      /**
+       * not_connected: no accessor for the connection; unreadable: the accessor
+       * threw (its text is never surfaced); empty: no keys stored; incomplete:
+       * some `requiredKeys` are missing or empty (listed in `missing`).
+       */
+      reason: "not_connected" | "unreadable" | "empty" | "incomplete"
+      missing: K[]
+    }
+
+/**
+ * Read the credential map of connection `name` and check `requiredKeys`. Never
+ * throws for a connection problem: the caller maps each reason to its own error
+ * and message.
+ */
+export async function readConnectionCredentials<K extends string>(
+  connections: unknown,
+  name: string,
+  requiredKeys: readonly K[],
+): Promise<ConnectionCredentialsResult<K>> {
+  const accessor = resolveCredentialsAccessor(connections, name)
+  if (!accessor) return { ok: false, reason: "not_connected", missing: [] }
+  let map: Record<string, string>
+  try {
+    map = await accessor()
+  } catch {
+    return { ok: false, reason: "unreadable", missing: [] }
+  }
+  if (!map || Object.keys(map).length === 0) return { ok: false, reason: "empty", missing: [] }
+  const missing = requiredKeys.filter((k) => !map[k])
+  if (missing.length > 0) return { ok: false, reason: "incomplete", missing }
+  return { ok: true, credentials: map }
+}

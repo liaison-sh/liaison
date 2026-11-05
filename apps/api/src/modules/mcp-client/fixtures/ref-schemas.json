@@ -1,0 +1,271 @@
+{
+  "get_attribution_reports": {
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": true,
+      "idempotentHint": true,
+      "destructiveHint": false
+    },
+    "inputSchema": {
+      "type": "object",
+      "$defs": {
+        "com.example.reports.model.AttributionReportMetric": {
+          "enum": ["ATTRIBUTION_COUNT", "CONTACT_COUNT", "DEAL_AMOUNT", "DEAL_COUNT", "REVENUE"],
+          "type": "string"
+        },
+        "com.example.reports.model.AttributionReportDimension": {
+          "enum": [
+            "AD_KEYWORD",
+            "ASSET_TITLE",
+            "ASSET_TYPE",
+            "GROUP",
+            "COMPANY",
+            "CONTACT",
+            "CTA",
+            "DEAL",
+            "DEAL_CLOSE_DATE",
+            "DEAL_CREATE_DATE",
+            "DEAL_NAME",
+            "DEAL_OWNER",
+            "DEAL_PIPELINE",
+            "DEAL_TYPE",
+            "FORM",
+            "INTERACTION_DATE",
+            "INTERACTION_POSITION",
+            "INTERACTION_SOURCE",
+            "INTERACTION_TYPE",
+            "INTERACTION_URL",
+            "UTM_GROUP",
+            "UTM_CONTENT",
+            "UTM_MEDIUM",
+            "UTM_SOURCE",
+            "UTM_TERM"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [],
+      "properties": {
+        "mode": {
+          "enum": ["AGGREGATION", "SEARCH"],
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "taskId": {
+          "type": "string"
+        },
+        "endDate": {
+          "type": "string"
+        },
+        "filters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["dimension", "operator"],
+            "properties": {
+              "value": {
+                "type": "string"
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "operator": {
+                "enum": [
+                  "EQ",
+                  "NEQ",
+                  "IN",
+                  "NOT_IN",
+                  "GT",
+                  "GTE",
+                  "LT",
+                  "LTE",
+                  "HAS_PROPERTY",
+                  "NOT_HAS_PROPERTY"
+                ],
+                "type": "string"
+              },
+              "dimension": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/com.example.reports.model.AttributionReportDimension"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "metrics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/com.example.reports.model.AttributionReportMetric"
+          }
+        },
+        "sortOrder": {
+          "enum": ["ASC", "DESC"],
+          "type": "string"
+        },
+        "startDate": {
+          "type": "string"
+        },
+        "dimensions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/com.example.reports.model.AttributionReportDimension"
+          }
+        },
+        "sortByMetric": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/com.example.reports.model.AttributionReportMetric"
+            }
+          ]
+        },
+        "responseFormat": {
+          "enum": ["CONCISE", "DETAILED"],
+          "type": "string"
+        },
+        "attributionModel": {
+          "enum": [
+            "LINEAR",
+            "FIRST_INTERACTION",
+            "LAST_INTERACTION",
+            "FULL_PATH",
+            "U_SHAPED",
+            "W_SHAPED",
+            "TIME_DECAY",
+            "J_SHAPED",
+            "INVERSE_J_SHAPED"
+          ],
+          "type": "string"
+        },
+        "groupIds": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "hasReadToolInstructions": {
+          "type": "boolean"
+        }
+      },
+      "definitions": {},
+      "additionalProperties": false
+    }
+  },
+  "manage_records": {
+    "annotations": {
+      "readOnlyHint": false,
+      "openWorldHint": true,
+      "idempotentHint": false,
+      "destructiveHint": true
+    },
+    "inputSchema": {
+      "type": "object",
+      "$defs": {
+        "com.example.records.model.AssociationContext": {
+          "type": "object",
+          "required": ["targetObjectId", "targetObjectType"],
+          "properties": {
+            "labels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "targetObjectId": {
+              "type": "integer"
+            },
+            "targetObjectType": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [],
+      "properties": {
+        "createRequest": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "objects": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["objectType"],
+                "properties": {
+                  "objectType": {
+                    "type": "string"
+                  },
+                  "properties": {
+                    "type": "object",
+                    "required": [],
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "associations": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/com.example.records.model.AssociationContext"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "updateRequest": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "objects": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["objectType", "objectId"],
+                "properties": {
+                  "objectId": {
+                    "type": "integer"
+                  },
+                  "objectType": {
+                    "type": "string"
+                  },
+                  "properties": {
+                    "type": "object",
+                    "required": [],
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "associations": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/com.example.records.model.AssociationContext"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "confirmationStatus": {
+          "enum": ["CONFIRMED", "CONFIRMATION_WAIVED_FOR_SESSION"],
+          "type": "string"
+        }
+      },
+      "definitions": {},
+      "additionalProperties": false
+    }
+  }
+}

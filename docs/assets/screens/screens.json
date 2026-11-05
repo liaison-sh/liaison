@@ -1,0 +1,86 @@
+[
+  {
+    "name": "home",
+    "file": "home.webp",
+    "alt": "The Home overview with the sidebar listing approvals and queues, and a feed of pending approval requests with Approve and Reject buttons.",
+    "url": "https://demo.liaison.sh/"
+  },
+  {
+    "name": "approvals",
+    "file": "approvals.webp",
+    "alt": "An approval request on Home expanded to show the drafted ticket reply to a customer, with Edit, Approve and Reject buttons.",
+    "url": "https://demo.liaison.sh/"
+  },
+  {
+    "name": "agent-chat",
+    "file": "agent-chat.webp",
+    "alt": "A conversation with the user's personal agent, which summarises what needs attention this morning and answers follow-up questions.",
+    "url": "https://demo.liaison.sh/chats"
+  },
+  {
+    "name": "routines",
+    "file": "routines.webp",
+    "alt": "The Routines tab of the Support Desk agent, listing a scheduled morning triage routine and an event-triggered new ticket routine with the first one open.",
+    "url": "https://demo.liaison.sh/agents/self/routines"
+  },
+  {
+    "name": "mail",
+    "file": "mail.webp",
+    "alt": "The Mail inbox with a folder list on the left and a list of customer conversations, each with a Claim button.",
+    "url": "https://demo.liaison.sh/mail"
+  },
+  {
+    "name": "chat",
+    "file": "chat.webp",
+    "alt": "The Shipping exceptions channel in Chats, with messages from teammates and an agent and the thread list on the left.",
+    "url": "https://demo.liaison.sh/chats"
+  },
+  {
+    "name": "knowledge",
+    "file": "knowledge.webp",
+    "alt": "The Knowledge home with a folder tree on the left and a list of recently touched documents such as product spec sheets and support procedures.",
+    "url": "https://demo.liaison.sh/knowledge"
+  },
+  {
+    "name": "contacts",
+    "file": "contacts.webp",
+    "alt": "The Contacts list showing people with their email addresses and the time of the last activity.",
+    "url": "https://demo.liaison.sh/contacts"
+  },
+  {
+    "name": "calendar",
+    "file": "calendar.webp",
+    "alt": "The Calendar in month view with a mini month, the team calendar and events such as a team offsite and daily stand-ups.",
+    "url": "https://demo.liaison.sh/calendar"
+  },
+  {
+    "name": "projects",
+    "file": "projects.webp",
+    "alt": "The Projects overview listing four active projects with their task counts, and filters for status and due date in the sidebar.",
+    "url": "https://demo.liaison.sh/projects"
+  },
+  {
+    "name": "invoicing",
+    "file": "invoicing.webp",
+    "alt": "The Invoicing documents list with invoices, quotes, proformas and credit notes, their status and payment state, and filters above the table.",
+    "url": "https://demo.liaison.sh/invoicing"
+  },
+  {
+    "name": "store",
+    "file": "store.webp",
+    "alt": "The Shopify app home with the shop name, low inventory items and a list of unfulfilled orders past their SLA.",
+    "url": "https://demo.liaison.sh/shopify"
+  },
+  {
+    "name": "settings",
+    "file": "settings.webp",
+    "alt": "The Settings landing page on the Profile section, with the settings menu for personal, AI, workspace and app settings.",
+    "url": "https://demo.liaison.sh/settings"
+  },
+  {
+    "name": "tickets",
+    "file": "tickets.webp",
+    "alt": "A support ticket open with the customer messages, an internal note, the reply editor, and a side panel with status, assignees and category.",
+    "url": "https://demo.liaison.sh/tickets"
+  }
+]

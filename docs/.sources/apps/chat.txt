@@ -1,0 +1,90 @@
+Messages activity bar entry opens chats list -> apps/web/src/framework/bootstrap.ts:1115
+Messages label -> packages/shared/src/i18n/locales/en/kernel.json:1570
+New message button -> apps/web/src/modules/threads/ChatsList.tsx:332
+To field -> apps/web/src/modules/threads/NewMessageDialog.tsx:310
+Picker groups Conversations, Agents, People -> apps/web/src/modules/threads/NewMessageDialog.tsx:366
+Pick several people for a group conversation -> packages/shared/src/i18n/locales/en/kernel.json:1678
+Start conversation button -> packages/shared/src/i18n/locales/en/kernel.json:1689
+Already have a conversation, open it -> packages/shared/src/i18n/locales/en/kernel.json:1684
+New channel button -> apps/web/src/modules/threads/ChatsList.tsx:287
+Channel Name field -> packages/shared/src/i18n/locales/en/kernel.json:1660
+Visibility Public / Private with help text -> packages/shared/src/i18n/locales/en/kernel.json:1667
+Add people (optional) -> apps/web/src/modules/threads/NewChannelDialog.tsx:276
+Create channel -> packages/shared/src/i18n/locales/en/kernel.json:1674
+Browse channels -> packages/shared/src/i18n/locales/en/kernel.json:710
+Channels you can join -> packages/shared/src/i18n/locales/en/kernel.json:703
+Write a message hint @ people, # threads -> packages/shared/src/i18n/locales/en/kernel.json:2006
+Attach -> packages/shared/src/i18n/locales/en/kernel.json:783
+Emoji -> packages/shared/src/i18n/locales/en/kernel.json:784
+Fix spelling & grammar -> packages/shared/src/i18n/locales/en/kernel.json:1484
+Dictate -> packages/shared/src/i18n/locales/en/kernel.json:5264
+Enter sends -> apps/web/src/modules/threads/ComposeBar.tsx:201
+Reply in thread -> packages/shared/src/i18n/locales/en/kernel.json:4051
+Quote -> packages/shared/src/i18n/locales/en/kernel.json:4058
+Copy text -> packages/shared/src/i18n/locales/en/kernel.json:2825
+Edit / Delete own messages -> apps/web/src/modules/threads/MessageRow.tsx:471
+Followed threads -> packages/shared/src/i18n/locales/en/kernel.json:4063
+Agent chat dispatches every message; @-mention of an agent invokes it -> apps/api/src/modules/threads/posted-message-dispatch.ts:120
+Add participant -> apps/web/src/modules/threads/ThreadHeader.tsx:314
+Hidden history warning -> packages/shared/src/i18n/locales/en/kernel.json:12
+Pin / Pin for all -> apps/web/src/modules/threads/ThreadHeader.tsx:448
+Mute -> apps/web/src/modules/threads/ThreadHeader.tsx:484
+Archive / Unarchive thread -> apps/web/src/modules/threads/ThreadHeader.tsx:501
+Archived threads -> packages/shared/src/i18n/locales/en/kernel.json:492
+Set topic / Edit description -> apps/web/src/modules/threads/ThreadHeader.tsx:523
+Discoverable and help -> packages/shared/src/i18n/locales/en/kernel.json:1855
+Leave thread -> apps/web/src/modules/threads/ThreadHeader.tsx:745
+Search threads... -> packages/shared/src/i18n/locales/en/kernel.json:1764
+kernel:threads:read / write / admin scopes -> apps/api/src/modules/permissions/scope-catalog.ts:24
+threads_list -> apps/api/src/modules/agent/tools/kernel-tools.ts:760
+threads_read -> apps/api/src/modules/agent/tools/kernel-tools.ts:914
+threads_create -> apps/api/src/modules/agent/tools/kernel-tools.ts:943
+threads_reply -> apps/api/src/modules/agent/tools/kernel-tools.ts:980
+agents_ask -> apps/api/src/modules/agent/tools/kernel-tools.ts:1023
+agents_invite -> apps/api/src/modules/agent/tools/kernel-tools.ts:1453
+create_pinned_thread, kernel:threads:admin -> apps/api/src/modules/agent/tools/kernel-tools.ts:2216
+Approved action result muted line -> apps/web/src/modules/threads/MessageRow.tsx:873
+Globe beside the conversation name, click to see or clear -> apps/web/src/modules/threads/ThreadHeader.tsx:281
+Setup card in the first admin's agent conversation -> apps/web/src/modules/threads/MessageRow.tsx:808
+Demo link on the setup card -> apps/web/src/modules/threads/SetupKickoffRow.tsx:81
+A computer chat's permission request shows above the message box -> apps/web/src/modules/threads/ThreadView.tsx:848
+Routine run line, finished / did not finish, owner's full-run link -> apps/web/src/modules/threads/MessageRow.tsx:947
+Run line settles in place on message update -> apps/web/src/modules/threads/message-store.ts:1920
+Routine approval row drawn as the request's card -> apps/web/src/modules/threads/MessageRow.tsx:371
+Run line labels -> packages/shared/src/i18n/locales/en/kernel.json:2904
+Routine post is unread news to its owner too -> apps/api/src/modules/threads/message.ts:64
+Routine post pops the conversation in the dock -> apps/web/src/framework/bootstrap.ts:173
+Running line is never unread -> apps/api/src/modules/threads/status-line-sql.ts:5
+After answering a computer chat's request, a muted line says what was allowed or denied -> apps/web/src/modules/nodes/ThreadNodePermissions.tsx:91
+A computer chat turn's steps show live -> apps/api/src/modules/nodes/turn-live.ts:48
+Agent seats carry the agent's stored avatar color -> apps/api/src/modules/threads/thread.ts:973
+The web keeps a seat's color for every disc of that agent -> apps/web/src/modules/threads/thread-store.ts:39
+The chats list draws the agent's stored color -> apps/web/src/modules/threads/ChatsList.tsx:769
+Colors are chosen per org and set under Settings, Color -> packages/shared/src/i18n/locales/en/kernel.json:302
+A message counts as read only in a window the user is looking at (visible and focused; a phone app when visible) -> apps/web/src/modules/threads/reading-focus.ts:17
+A message arriving in the active conversation is read only while the window has the focus -> apps/web/src/framework/bootstrap.ts:835
+An open conversation is read when its window is focused again -> apps/web/src/modules/threads/ThreadView.tsx:373
+Reading clears the unread pill on the reader's other devices -> apps/web/src/modules/threads/read-state-sync.ts:41
+Run line reads Routine name is waiting for an approval while the run waits -> apps/web/src/modules/threads/MessageRow.tsx:979
+Waiting line key -> packages/shared/src/i18n/locales/en/kernel.json:2920
+A failed approved action shows as a muted line, not a member's message -> apps/web/src/modules/threads/MessageRow.tsx:977
+Failed turn: short line in your language then the error itself -> apps/web/src/modules/threads/MessageList.tsx:423
+Error detail never a stack trace or a key -> packages/shared/src/threads/agent-notice.ts:87
+Message sent again with the same correlationId posted once -> apps/web/src/modules/threads/message-store.ts:1361 ; apps/api/src/modules/threads/routes.ts:885-914
+Lost send retried once after 1 s with the same body -> apps/web/src/modules/threads/send-retry.ts:3
+Retry delay 1 s -> apps/web/src/modules/threads/send-retry.ts:14
+No error toast for reads while reconnecting -> apps/web/src/lib/api-client.ts:480
+Reconnecting state -> apps/web/src/lib/socket-state.ts:19
+Message sent during a restart: a draining server hands the agent dispatch to a running one -> apps/api/src/modules/threads/posted-message-dispatch.ts:86-87 ; apps/api/src/infra/jobs/kernel-jobs.ts:621
+Answer carried on by another server, one reply; closing the tab does not end the turn -> apps/api/src/modules/agent/runtime/turn-resume.ts:217 ; apps/api/src/modules/agent/routes.ts:311 ; apps/api/src/modules/agent/routes.ts:709
+Open conversation follows the carried-on answer, cut part not repeated -> apps/api/src/modules/agent/runtime/turn-resume.ts:196-212 ; apps/web/src/modules/threads/message-store.ts:2455-2458 ; apps/api/src/modules/agent/routes.ts:919
+agents_ask without adding; agents_invite asks a person first -> apps/api/src/modules/agent/tools/kernel-tools.ts:1063-1067 ; apps/api/src/modules/agent/tools/kernel-tools.ts:1493-1521
+Personal agent messages signed "<Owner>'s agent" with the Agent badge, older messages and reply authors too; routine posts "Routine name" -> packages/shared/src/agents/personal-agent-name.ts:42 ; apps/api/src/modules/threads/message.ts:389 ; apps/api/src/modules/threads/message.ts:418 ; apps/web/src/modules/threads/agent-name.ts:21 ; packages/shared/src/i18n/locales/en/kernel.json:230 ; apps/web/src/modules/threads/MessageRow.tsx:566
+Agent post some participant cannot see waits for the requester; approving shares it -> apps/api/src/modules/apps/execute-tool.ts:3910 ; apps/api/src/modules/agent/tools/chat-tools.ts:60
+Message stamps never hold a grant wildcard -> apps/api/src/modules/threads/message.ts:496
+desktop app icon counts unread direct messages and mentions only -> apps/web/src/modules/threads/direct-unread-count.ts:31
+A task's discussion opened as a conversation shows the task and Open task -> apps/web/src/modules/threads/ThreadAnchorHeader.tsx:14
+Open task -> packages/shared/src/i18n/locales/en/kernel.json:6280
+AI service stops answering mid-turn: the step is tried again, then the reply says it stopped responding, say "continue" -> apps/api/src/modules/agent/runtime/agent-service.ts:3748 ; packages/shared/src/threads/agent-notice.ts:64
+Notify me of every message switch in the channel menu -> apps/web/src/modules/threads/ThreadHeader.tsx:600
+Notify me of every message label -> packages/shared/src/i18n/locales/en/kernel.json:2124

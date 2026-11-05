@@ -1,0 +1,35 @@
+Read-only group connector, syncs manuals into knowledge -> apps/api/src/apps/gitlab/app.manifest.json:5
+No write operations -> apps/api/src/apps/gitlab/README.md:5
+Credentials connection, no OAuth -> apps/api/src/apps/gitlab/README.md:30
+Token steps: Edit profile, Access tokens -> apps/api/src/apps/gitlab/app.manifest.json:34
+Scopes read_api and read_repository, never api -> apps/api/src/apps/gitlab/app.manifest.json:34
+Longest expiry, expired token stops sync silently -> apps/api/src/apps/gitlab/app.manifest.json:34
+Rotation replaces stored credential -> apps/api/src/apps/gitlab/app.manifest.json:34
+Settings app label GitLab -> packages/shared/src/i18n/locales/en/kernel.json:539
+Connection section, adminScope gitlab:accounts:admin -> apps/api/src/apps/gitlab/app.manifest.json:320
+Connect button -> apps/web/src/modules/settings/app-page/ConnectionsBlock.tsx:252
+Token field label -> apps/api/src/apps/gitlab/app.manifest.json:24
+Group path or ID field label -> apps/api/src/apps/gitlab/app.manifest.json:29
+Allowed domains gitlab.com and subdomains -> apps/api/src/apps/gitlab/app.manifest.json:19
+Start with gitlab_list_projects -> apps/api/src/apps/gitlab/app.manifest.json:40
+Release vs milestone bug question pattern -> apps/api/src/apps/gitlab/app.manifest.json:333
+File content secret-redacted -> apps/api/src/apps/gitlab/app.manifest.json:234
+GitLab is a Knowledge source adapter -> apps/api/src/apps/gitlab/adapter.ts:115
+add_folder_source supports gitlab -> apps/api/src/apps/knowledge/app.manifest.json:775
+Synced sources list shows GitLab -> apps/api/src/apps/knowledge/app.manifest.json:1511
+Role member -> apps/api/src/apps/gitlab/app.manifest.json:300
+Role admin -> apps/api/src/apps/gitlab/app.manifest.json:305
+gitlab:approve -> docs/reference/scopes.md:150
+gitlab_list_projects -> apps/api/src/apps/gitlab/app.manifest.json:40
+gitlab_list_commits -> apps/api/src/apps/gitlab/app.manifest.json:52
+gitlab_get_commit -> apps/api/src/apps/gitlab/app.manifest.json:80
+gitlab_list_merge_requests -> apps/api/src/apps/gitlab/app.manifest.json:97
+gitlab_get_merge_request -> apps/api/src/apps/gitlab/app.manifest.json:124
+gitlab_list_issues -> apps/api/src/apps/gitlab/app.manifest.json:141
+gitlab_list_milestones -> apps/api/src/apps/gitlab/app.manifest.json:168
+gitlab_list_labels -> apps/api/src/apps/gitlab/app.manifest.json:188
+gitlab_list_releases -> apps/api/src/apps/gitlab/app.manifest.json:202
+gitlab_list_tags -> apps/api/src/apps/gitlab/app.manifest.json:217
+gitlab_read_file -> apps/api/src/apps/gitlab/app.manifest.json:232
+gitlab_list_tree -> apps/api/src/apps/gitlab/app.manifest.json:254
+gitlab_search -> apps/api/src/apps/gitlab/app.manifest.json:274

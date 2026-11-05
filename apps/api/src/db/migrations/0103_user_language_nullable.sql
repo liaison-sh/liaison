@@ -1,0 +1,24 @@
+-- SPDX-License-Identifier: FSL-1.1-ALv2
+-- A user who never chose a UI language has no language.
+--
+-- kernel.user_preferences.language was NOT NULL DEFAULT 'en'. Rows are created
+-- lazily (first Settings visit, theme or home layout save), so every user got
+-- 'en' written for them, and that stored 'en' outranked the org default locale
+-- and the browser language: a French org's members saw an English UI until
+-- each of them found the language picker.
+--
+-- NULL now means "never chose"; the resolver falls back to the org default,
+-- then the browser, then English.
+--
+-- Existing rows are NOT rewritten. A stored 'en' cannot be told apart from a
+-- deliberate English choice (no audit event, updated_at moves on any save),
+-- and this migration must not undo a choice. A stored 'fr' is always explicit
+-- and stays. An operator who knows an org's members never picked English can
+-- release their defaulted rows with:
+--   UPDATE kernel.user_preferences p SET language = NULL
+--     FROM kernel.users u JOIN kernel.organizations o ON o.id = u.org_id
+--    WHERE u.id = p.user_id AND p.language = 'en' AND o.slug = '<org slug>';
+-- Each member can also clear their own choice in Settings > Profile.
+ALTER TABLE kernel.user_preferences ALTER COLUMN language DROP DEFAULT;
+--> statement-breakpoint
+ALTER TABLE kernel.user_preferences ALTER COLUMN language DROP NOT NULL;

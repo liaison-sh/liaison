@@ -1,0 +1,44 @@
+Demo routine Research interested prospects -> packages/shared/src/tours/demo/sales.ts:31
+Demo routine description -> apps/api/src/seed/tiers/demo/seed-agent-native.ts:1976-1977
+Trigger event mail:message:create -> apps/api/src/seed/tiers/demo/seed-agent-native.ts:1978
+Demo filter from the prospect contact -> apps/api/src/seed/tiers/demo/seed-agent-native.ts:2032
+Demo scopes incl. mail:accounts:read reason, CRM writes and the discussion post -> apps/api/src/seed/tiers/demo/seed-agent-native.ts:1980-2005
+Demo prompt (example prompt quoted) -> apps/api/src/seed/tiers/demo/seed-agent-native.ts:2007-2031
+Brief posted to the owner's DM in the demo (report thread) -> apps/api/src/seed/tiers/demo/seed-agent-native.ts:1969-1972
+web_fetch tool and kernel:agent:web -> apps/api/src/modules/agent/tools/kernel-tools.ts:679-682
+kernel:agent:web is the one web scope -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5186
+connector_read read-only -> apps/api/src/apps/api-connector/app.manifest.json:97-103
+connector_write gated, looks up before creating -> apps/api/src/apps/api-connector/app.manifest.json:129-135
+Brief posted in the contact discussion with threads_reply contactId -> apps/api/src/modules/agent/tools/kernel-tools.ts:989-1008
+Discussion post needs kernel:threads:write -> apps/api/src/seed/tiers/demo/seed-agent-native.ts:1996-1998
+mail__reply gated draft, mail:conversations:write -> apps/api/src/apps/mail/app.manifest.json:806-808
+One reply draft per conversation, replaced in place -> apps/api/src/apps/mail/app.manifest.json:11
+No deals/pipeline object (deal only an external CRM role) -> packages/api-connector-core/src/schema.ts:71
+Sender filter fromContactIds / fromGroupIds -> packages/shared/src/validation/agent/routines.ts:145-155
+Filter checked before the agent runs -> packages/shared/src/validation/agent/routines.ts:138-141
+Only from label and hint -> packages/shared/src/i18n/locales/en/kernel.json:55-56
+Event gate applies the filter -> apps/api/src/infra/jobs/event-routine-gate.ts:196-241
++ New routine -> packages/shared/src/i18n/locales/en/kernel.json:315
+Type, When an event happens -> packages/shared/src/i18n/locales/en/kernel.json:76-92
+Trigger, Search events -> packages/shared/src/i18n/locales/en/kernel.json:93-95
+Prompt -> packages/shared/src/i18n/locales/en/kernel.json:36
+Scopes -> packages/shared/src/i18n/locales/en/kernel.json:136
+Create routine -> packages/shared/src/i18n/locales/en/kernel.json:86
+Post to, Edit -> packages/shared/src/i18n/locales/en/kernel.json:26-37
+Name must be kebab-case -> packages/shared/src/validation/agent/routines.ts:24
+Posting the result needs no write scope -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5186
+Fetched pages are untrusted data -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5180
+Customer card on the conversation -> packages/shared/src/tours/demo/sales.ts:193-205
+Approval card for the CRM record -> packages/shared/src/tours/demo/sales.ts:206-231
+Approval card for the gated reply -> packages/shared/src/tours/demo/sales.ts:232-254
+Event coalescing window -> apps/api/src/infra/jobs/event-routine-subscriber.ts:33
+Routine approvals also show as cards where the routine posts, one request -> apps/api/src/modules/agent/routines/routine-report.ts:566
+Any other address waits -> apps/api/src/modules/apps/execute-tool.ts:4000,4708
+Order: CRM lookup (reads only) first -> apps/api/src/seed/tiers/demo/seed-agent-native.ts:2010-2011
+New sender: create_contact with company in the same call, companyIndustry one line; known sender: a note; waits for approval -> apps/api/src/seed/tiers/demo/seed-agent-native.ts:2017-2022
+Reply drafted once the record is decided, waits for approval -> apps/api/src/seed/tiers/demo/seed-agent-native.ts:2023-2024
+Brief, then posted on the contact discussion and given as the answer -> apps/api/src/seed/tiers/demo/seed-agent-native.ts:2025-2030
+Run pauses on a held call and resumes with its result -> packages/shared/src/tours/demo/sales.ts:152-157
+Record approved first, then the reply (tour order) -> packages/shared/src/tours/demo/sales.ts:170-215
+Website read only when neither sender nor company is in the CRM, at https://<domain>/ -> apps/api/src/seed/tiers/demo/seed-agent-native.ts:2012-2016
+Reading the web never waits for an approval -> apps/api/src/modules/apps/execute-tool.ts:4019,4029

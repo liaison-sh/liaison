@@ -1,0 +1,211 @@
+{
+  "name": "test",
+  "version": "1.0.0",
+  "description": "Kernel contract validation app",
+  "schema": {
+    "items": {
+      "fields": {
+        "title": "string",
+        "status": "string",
+        "team": "string",
+        "sensitivity": "string",
+        "createdBy": { "type": "uuid", "required": false }
+      },
+      "dimensions": {
+        "team": {
+          "type": "membership",
+          "label": "Team",
+          "description": "Fixture team values used by the kernel contract test app.",
+          "values": ["alpha", "beta", "gamma"]
+        },
+        "sensitivity": {
+          "type": "level",
+          "label": "Sensitivity",
+          "description": "Up to which sensitivity level this user can see test items.",
+          "order": ["public", "internal", "confidential"]
+        }
+      },
+      "timeline": ["status", "team"],
+      "searchable": ["title"]
+    },
+    "event_log": {
+      "fields": {
+        "eventType": "string",
+        "entityId": "string",
+        "data": "json"
+      }
+    },
+    "externalrecords": {
+      "fields": {
+        "name": "string",
+        "market": "string"
+      },
+      "dimensions": {
+        "market": {
+          "type": "membership",
+          "label": "Market",
+          "description": "Which markets' external records (the externalSearch tool) this user can see.",
+          "values": ["eu", "us", "ap"]
+        }
+      }
+    }
+  },
+  "entities": {
+    "items": {
+      "labelField": "title",
+      "searchable": true,
+      "tableName": "items",
+      "readScope": "test:items:read"
+    }
+  },
+  "tools": {
+    "listItems": {
+      "description": "List test items",
+      "params": { "type": "object", "properties": { "status": { "type": "string" } } },
+      "requiredScopes": ["test:items:read"],
+      "handler": "listItems"
+    },
+    "createItem": {
+      "description": "Create a test item",
+      "params": {
+        "type": "object",
+        "properties": { "title": { "type": "string" }, "team": { "type": "string" } },
+        "required": ["title", "team"]
+      },
+      "requiredScopes": ["test:items:write"],
+      "handler": "createItem"
+    },
+    "riskyAction": {
+      "description": "A gated action requiring approval",
+      "params": {
+        "type": "object",
+        "properties": { "itemId": { "type": "string" }, "action": { "type": "string" } }
+      },
+      "requiredScopes": ["test:items:write"],
+      "handler": "riskyAction",
+      "gated": true,
+      "approvalImpact": "external"
+    },
+    "gatedEcho": {
+      "description": "Test gated tool — echoes its message after approval",
+      "requiredScopes": ["test:gated:write"],
+      "handler": "gatedEcho",
+      "summarizer": "summarizeGatedEcho",
+      "gated": true,
+      "approvalImpact": "internal",
+      "approvalExpiryHours": 1,
+      "editableFields": [{ "field": "message", "label": "Message", "widget": "text" }],
+      "params": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string", "minLength": 1 },
+          "lines": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["message"]
+      },
+      "returns": { "schema": { "echoed": "string" } }
+    },
+    "gatedEchoLater": {
+      "description": "Test gated tool, a six-hour approval window: echoes its message after approval",
+      "requiredScopes": ["test:gated:write"],
+      "handler": "gatedEchoLater",
+      "summarizer": "summarizeGatedEcho",
+      "gated": true,
+      "approvalImpact": "internal",
+      "approvalExpiryHours": 6,
+      "editableFields": [{ "field": "message", "label": "Message", "widget": "text" }],
+      "params": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string", "minLength": 1 },
+          "lines": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["message"]
+      },
+      "returns": { "schema": { "echoed": "string" } }
+    },
+    "gatedCreateItem": {
+      "description": "Gated create — emits items:created after approval",
+      "params": {
+        "type": "object",
+        "properties": { "title": { "type": "string" }, "team": { "type": "string" } },
+        "required": ["title", "team"]
+      },
+      "requiredScopes": ["test:items:write"],
+      "handler": "gatedCreateItem",
+      "gated": true,
+      "approvalExpiryHours": 1
+    },
+    "externalSearch": {
+      "description": "Mock external API search",
+      "params": { "type": "object", "properties": { "query": { "type": "string" } } },
+      "requiredScopes": ["test:external:read"],
+      "handler": "mockExternalSearch",
+      "returns": {
+        "schema": { "id": "string", "name": "string", "market": "string" },
+        "dimensions": { "market": "test:market" }
+      }
+    },
+    "gatedProduce": {
+      "description": "Test sequencing tool — produces a referenceable value after approval",
+      "requiredScopes": ["test:gated:write"],
+      "handler": "gatedProduce",
+      "summarizer": "summarizeGatedProduce",
+      "gated": true,
+      "approvalExpiryHours": 1,
+      "referenceableOutputs": ["value"],
+      "params": {
+        "type": "object",
+        "properties": { "seed": { "type": "string", "minLength": 1 } },
+        "required": ["seed"]
+      },
+      "returns": { "schema": { "value": "string" } }
+    },
+    "gatedConsume": {
+      "description": "Test sequencing tool — consumes a produced value after approval",
+      "requiredScopes": ["test:gated:write"],
+      "handler": "gatedConsume",
+      "summarizer": "summarizeGatedConsume",
+      "gated": true,
+      "approvalExpiryHours": 1,
+      "editableFields": [{ "field": "label", "label": "Label", "widget": "text" }],
+      "params": {
+        "type": "object",
+        "properties": { "note": { "type": "string" }, "label": { "type": "string" } },
+        "required": ["note", "label"]
+      }
+    }
+  },
+  "events": {
+    "emits": ["items:created", "items:updated", "items:deleted"],
+    "subscribes": { "items:created": "onItemCreated" }
+  },
+  "jobs": {
+    "processItems": {
+      "schedule": "0/5 * * * *",
+      "handler": "processItemsBatch",
+      "retry": { "attempts": 2, "backoff": "exponential" }
+    }
+  },
+  "webhooks": {
+    "test-hook": { "handler": "handleTestWebhook", "verify": "verifyTestSignature" }
+  },
+  "webhookHealth": {
+    "probe": null,
+    "reason": "Test fixture with no upstream."
+  },
+  "export": { "formats": ["json"], "handler": "exportItems" },
+  "slots": { "item:detail:actions": { "position": "toolbar" } },
+  "contributions": {
+    "test:detail:tabs": { "label": "Test Contribution", "component": "TestContributionPanel" }
+  },
+  "connections": {
+    "gitlab": {
+      "type": "oauth2",
+      "authorizationUrl": "https://gitlab.com/oauth/authorize",
+      "tokenUrl": "https://gitlab.com/oauth/token",
+      "scopes": ["read_api"],
+      "allowedDomains": ["gitlab.com"]
+    }
+  }
+}

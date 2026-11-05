@@ -1,0 +1,592 @@
+{
+  "name": "monitoring",
+  "agentInstructions": "Monitoring ingests external production alerts (uptime probes, error trackers, infrastructure watchdogs) through a signed webhook and tracks them as INCIDENTS with a lifecycle: open → acknowledged → resolved. Reach for it when the question is 'what is broken right now', 'what fired overnight', or to triage/acknowledge/close an alert. Key handles: incident ref (INC-<n>, the short name people use), incident id, source (which system sent the alert), severity (info/warning/critical), status, count (how many times the alert repeated). Use incidents_list to read the board — filter by status:'open' for the live problem set, severity:'critical' for the worst, or source to scope to one system; each row carries count and lastSeenAt so you can tell a flapping alert (high count) from a one-off. Use incidents_get for one incident's full detail. To TRIAGE: incidents_ack marks an incident acknowledged (you are on it — this clears the urgency without closing it); incidents_resolve closes it with an optional resolutionNote saying what fixed it. incidents_get, incidents_ack, incidents_resolve and incidents_comment take either the UUID or the INC-<n> ref from a tool result or from the user in THIS conversation; never invent one. Name incidents by their ref when you report them. Record context a teammate will need (vendor ticket, next step, who is on it) with incidents_comment, in any status; incidents_ack also takes an optional note saved as a comment. incidents_get returns the comments and the archived previous episodes, oldest first. A repeated alert does NOT create duplicate incidents: deliveries sharing (source, dedupKey) fold into one incident whose count increments, so 'the same alert fired 40 times' is ONE incident with count 40, not 40 rows. An alert arriving after its incident was resolved REOPENS that incident (status back to open) — check statusHistory-style fields (reopenedAt/resolvedAt) before claiming something is still fixed. A repeat or reopen refreshes the incident title (and the body when the alert carries one). NEVER fabricate an incident, a count, or a resolution state you did not read from a tool result this turn; an empty list means nothing is tracked, not that monitoring is broken.",
+  "version": "0.4.10",
+  "iconName": "activity",
+  "capabilities": ["sequences.allocate"],
+  "description": "Production-alert ingestion: a signed webhook turns external monitoring alerts into deduplicated incidents with attention-feed surfacing and an ack/resolve triage lifecycle",
+  "listing": {
+    "publisher": "Liaison",
+    "category": "Operations",
+    "icon": "gauge",
+    "summary": "Turn production alerts into deduplicated incidents to acknowledge and resolve.",
+    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/bundled-apps/monitoring"
+  },
+  "packageFormat": 1,
+  "license": "FSL-1.1-ALv2",
+  "host": "^1",
+  "scopes": [
+    "monitoring:incidents:read",
+    "monitoring:incidents:write",
+    "monitoring:admin"
+  ],
+  "schema": {
+    "incidents": {
+      "fields": {
+        "source": "string",
+        "severity": {
+          "type": "string",
+          "enum": [
+            "info",
+            "warning",
+            "critical"
+          ]
+        },
+        "title": "string",
+        "body": "string?",
+        "dedup_key": "string?",
+        "url": "string?",
+        "status": {
+          "type": "string",
+          "default": "open",
+          "enum": [
+            "open",
+            "acknowledged",
+            "resolved"
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "default": 1
+        },
+        "first_seen_at": "date",
+        "last_seen_at": "date",
+        "alert_ts": "date?",
+        "acknowledged_at": "date?",
+        "acknowledged_by": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "resolved_at": "date?",
+        "resolved_by": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "reopened_at": "date?",
+        "resolution_note": "string?",
+        "ref_number": {
+          "type": "integer",
+          "required": false
+        }
+      },
+      "constraints": {
+        "unique": [
+          {
+            "columns": [
+              "source",
+              "dedup_key"
+            ],
+            "where": "dedup_key IS NOT NULL"
+          },
+          [
+            "ref_number"
+          ]
+        ]
+      },
+      "indexes": [
+        [
+          "status",
+          "severity"
+        ],
+        [
+          "source"
+        ],
+        [
+          "last_seen_at"
+        ]
+      ]
+    },
+    "incident_comments": {
+      "rlsScope": "incidents",
+      "fields": {
+        "incident_id": {
+          "type": "uuid",
+          "references": {
+            "table": "incidents",
+            "column": "id",
+            "onDelete": "cascade"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "default": "comment",
+          "enum": [
+            "comment",
+            "episode"
+          ]
+        },
+        "body": "string?",
+        "author_id": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "episode_title": "string?",
+        "episode_resolved_at": "date?",
+        "episode_resolution_note": "string?"
+      },
+      "indexes": [
+        [
+          "incident_id"
+        ]
+      ]
+    }
+  },
+  "entities": {
+    "incident": {
+      "labelField": "title",
+      "tableName": "incidents",
+      "readScope": "monitoring:incidents:read"
+    }
+  },
+  "connections": {
+    "alert-source": {
+      "type": "credentials",
+      "purpose": "Alert webhook",
+      "optional": true,
+      "allowedDomains": [],
+      "webhookSecretConfigKey": "monitoringWebhookSecret",
+      "credentialFields": [
+        {
+          "name": "label",
+          "type": "text",
+          "label": "Alert source label (e.g. grafana-prod)",
+          "required": true
+        }
+      ],
+      "setupGuide": {
+        "summary": "Connecting mints the webhook signing secret. Monitoring never calls out to your alerting system — the connection exists so the kernel generates and stores the HMAC secret your alert source must sign deliveries with.",
+        "steps": [
+          {
+            "who": "human",
+            "minutes": 1,
+            "text": "Enter any label describing your alert source (e.g. `grafana-prod`) and connect — the kernel mints a random signing secret on first connect and reuses it afterwards.",
+            "place": "liaison"
+          },
+          {
+            "who": "agent",
+            "text": "Read the signing secret with the `monitoring__webhook_info` tool (admin scope required)."
+          },
+          {
+            "who": "human",
+            "minutes": 10,
+            "text": "Configure your alerting system to POST alert JSON to this Liaison instance's `alert` webhook endpoint for the monitoring app, signing the raw request body with HMAC-SHA256 (base64) under that secret in the `x-monitoring-signature` header.",
+            "place": "own"
+          },
+          {
+            "who": "human",
+            "minutes": 0,
+            "text": "Optionally send a unique `x-monitoring-delivery-id` header per delivery for exact-retry deduplication.",
+            "place": "own"
+          },
+          {
+            "who": "human",
+            "minutes": 0,
+            "text": "Include a fresh `ts` (ISO-8601 or epoch ms) in every payload — it is covered by the signature and deliveries whose signed `ts` is older (or further in the future) than the freshness window are rejected (default 10 minutes; override via the `monitoringAlertTtlSeconds` config key).",
+            "place": "own"
+          },
+          {
+            "who": "human",
+            "minutes": 2,
+            "text": "To clear an alert from the source, POST the same signed envelope shape with `status: \"resolved\"` (or `event: \"resolve\"`), the alert's `source`, `dedupKey` and a fresh `ts`; `severity` and `title` are optional. The live incident is resolved automatically (note `cleared by <source> at <ts>`); with no live incident nothing is created, and a resolve older than the latest alert is ignored as stale.",
+            "place": "own"
+          }
+        ]
+      }
+    }
+  },
+  "configKeys": [
+    { "key": "monitoringSources", "type": "json", "label": "Sources" },
+    { "key": "monitoringUrl", "type": "url", "label": "Detailed monitoring" }
+  ],
+  "events": {
+    "emits": [
+      "incident:created",
+      "incident:reopened",
+      "incident:escalated",
+      "incident:repeated",
+      "incident:acknowledged",
+      "incident:resolved",
+      "incident:commented"
+    ]
+  },
+  "attention": {
+    "filterableAxes": [
+      "source",
+      "severity"
+    ],
+    "translations": [
+      {
+        "event": "incident:created",
+        "kind": "monitoring:incident.critical",
+        "urgency": 90,
+        "summary": "Critical alert: {{payload.data.refLabel}}{{payload.data.title}} ({{payload.data.source}})",
+        "when": {
+          "op": "eq",
+          "path": "data.severity",
+          "value": "critical"
+        },
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "monitoring:incidents:read"
+        }
+      },
+      {
+        "event": "incident:created",
+        "kind": "monitoring:incident.warning",
+        "urgency": 60,
+        "summary": "Warning alert: {{payload.data.refLabel}}{{payload.data.title}} ({{payload.data.source}})",
+        "when": {
+          "op": "eq",
+          "path": "data.severity",
+          "value": "warning"
+        },
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "monitoring:incidents:read"
+        }
+      },
+      {
+        "event": "incident:reopened",
+        "kind": "monitoring:incident.critical",
+        "urgency": 90,
+        "summary": "Re-fired after resolve: {{payload.data.refLabel}}{{payload.data.title}} ({{payload.data.source}})",
+        "when": {
+          "op": "eq",
+          "path": "data.severity",
+          "value": "critical"
+        },
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "monitoring:incidents:read"
+        }
+      },
+      {
+        "event": "incident:reopened",
+        "kind": "monitoring:incident.warning",
+        "urgency": 60,
+        "summary": "Re-fired after resolve: {{payload.data.refLabel}}{{payload.data.title}} ({{payload.data.source}})",
+        "when": {
+          "op": "eq",
+          "path": "data.severity",
+          "value": "warning"
+        },
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "monitoring:incidents:read"
+        }
+      },
+      {
+        "event": "incident:escalated",
+        "kind": "monitoring:incident.critical",
+        "urgency": 90,
+        "summary": "Escalated to critical: {{payload.data.refLabel}}{{payload.data.title}} ({{payload.data.source}})",
+        "when": {
+          "op": "eq",
+          "path": "data.severity",
+          "value": "critical"
+        },
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "monitoring:incidents:read"
+        }
+      },
+      {
+        "event": "incident:resolved",
+        "kind": "monitoring:incident.critical",
+        "urgency": 0,
+        "summary": "Resolved: {{payload.data.refLabel}}{{payload.data.title}} ({{payload.data.source}})",
+        "resolveWhen": {
+          "field": "status",
+          "equals": "resolved"
+        },
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "monitoring:incidents:read"
+        }
+      },
+      {
+        "event": "incident:resolved",
+        "kind": "monitoring:incident.warning",
+        "urgency": 0,
+        "summary": "Resolved: {{payload.data.refLabel}}{{payload.data.title}} ({{payload.data.source}})",
+        "resolveWhen": {
+          "field": "status",
+          "equals": "resolved"
+        },
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "monitoring:incidents:read"
+        }
+      }
+    ]
+  },
+  "settings": {
+    "sections": [
+      {
+        "id": "link",
+        "title": "Detailed monitoring",
+        "titleKey": "kernel.appSettings.monitoring.link",
+        "scope": "org",
+        "blocks": [
+          {
+            "block": "field",
+            "key": "monitoringUrl",
+            "type": "url",
+            "label": "Detailed monitoring link",
+            "labelKey": "kernel.appSettings.monitoring.linkLabel",
+            "help": "Shown at the bottom of the Monitoring sidebar. Leave empty to hide it.",
+            "helpKey": "kernel.appSettings.monitoring.linkHelp",
+            "source": "config"
+          }
+        ]
+      },
+      {
+        "id": "sources",
+        "title": "Sources",
+        "titleKey": "kernel.appSettings.monitoring.sources",
+        "description": "Order, name and mark the sources that need immediate attention. Urgent sources get the red callout on the overview.",
+        "descriptionKey": "kernel.appSettings.monitoring.sourcesHelp",
+        "scope": "org",
+        "blocks": [
+          {
+            "block": "custom",
+            "component": "MonitoringSources",
+            "reason": "Ordered source rows built from the alerts seen so far (reorder, label, urgent, identity hue with a live preview), saved as one JSON value; no field or list fits."
+          }
+        ]
+      },
+      {
+        "id": "alert-source",
+        "title": "Alert source",
+        "titleKey": "kernel.appSettings.monitoring.alertSource",
+        "scope": "org",
+        "blocks": [
+          {
+            "block": "connections",
+            "names": [
+              "alert-source"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "views": {
+    "activityBar": {
+      "icon": "MonitoringAppIcon",
+      "label": "Monitoring",
+      "order": 75,
+      "tabAction": {
+        "type": "home",
+        "entityId": "home",
+        "label": "Monitoring"
+      }
+    },
+    "tabTypes": {
+      "home": {
+        "component": "MonitoringDashboard",
+        "sidebar": "MonitoringSidebar",
+        "icon": "MonitoringAppIcon",
+        "label": "Monitoring",
+        "singleton": true,
+        "urlPattern": "/monitoring",
+        "referenceable": false
+      },
+      "incident": {
+        "component": "IncidentDetailPanel",
+        "sidebar": "MonitoringSidebar",
+        "icon": "MonitoringAppIcon",
+        "label": "Incident",
+        "singleton": false,
+        "urlPattern": "/monitoring/incident/:id",
+        "referenceable": false
+      },
+      "source": {
+        "component": "MonitoringSourcePage",
+        "sidebar": "MonitoringSidebar",
+        "icon": "MonitoringAppIcon",
+        "label": "Source",
+        "resolveLabel": "resolveSourceTabLabel",
+        "singleton": false,
+        "urlPattern": "/monitoring/source/:id",
+        "referenceable": false
+      },
+      "status": {
+        "component": "MonitoringStatusList",
+        "sidebar": "MonitoringSidebar",
+        "icon": "MonitoringAppIcon",
+        "label": "Incidents",
+        "singleton": false,
+        "urlPattern": "/monitoring/status/:status",
+        "referenceable": false
+      }
+    },
+    "detail": {
+      "incident": {
+        "component": "IncidentDetailPanel"
+      }
+    }
+  },
+  "webhooks": {
+    "alert": {
+      "handler": "alertWebhookHandler",
+      "verify": "monitoringWebhookVerifier",
+      "bodyLimitBytes": 65536
+    }
+  },
+  "webhookHealth": {
+    "probe": null,
+    "reason": "The sender is our own watchdog, whose liveness is monitored by its heartbeat."
+  },
+  "jobs": {
+    "assign-refs": {
+      "handler": "assignRefsJobHandler",
+      "runsFor": {"rows": {"entity": "incidents", "where": {"ref_number": null}}},
+      "schedule": "*/5 * * * *",
+      "atomic": true,
+      "timeoutMs": 20000
+    }
+  },
+  "tools": {
+    "incidents_list": {
+      "description": "List incidents, most recently seen first. Filter by status (open/acknowledged/resolved), severity (info/warning/critical), and source. Each row carries id, ref (the incident's short INC-<n> name, null for a few minutes on a brand new incident), source, severity, title, status, count (times the alert fired), firstSeenAt, lastSeenAt, url. The live problem set is status:'open'; a high count marks a flapping alert. Returns a bounded page (default 25) — not an authoritative total.",
+      "readOnly": true,
+      "requiredScopes": ["monitoring:incidents:read"],
+      "handler": "incidentsListHandler",
+      "params": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "acknowledged",
+              "resolved"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "info",
+              "warning",
+              "critical"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max rows, default 25"
+          }
+        }
+      }
+    },
+    "incidents_get": {
+      "description": "Fetch one incident by its UUID or its INC-<n> ref (from an incidents_list result or from the user, never a guessed one). Returns the full record including body, dedupKey, ack/resolve audit fields and resolutionNote, plus comments (comments and archived previous episodes, oldest first, the newest 200) and commentsTruncated.",
+      "readOnly": true,
+      "requiredScopes": ["monitoring:incidents:read"],
+      "handler": "incidentsGetHandler",
+      "params": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "incidentId"
+        ]
+      }
+    },
+    "incidents_ack": {
+      "description": "Acknowledge an open incident, by UUID or INC-<n> ref: marks that someone is on it (status → acknowledged, stamped with who/when). Errors on an already-resolved incident (resolve is terminal until the alert re-fires). The optional note is saved as a comment on the incident after the ack.",
+      "requiredScopes": ["monitoring:incidents:write"],
+      "handler": "incidentsAckHandler",
+      "writesToTable": "app_monitoring.incidents",
+      "params": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string",
+            "description": "Optional context saved as a comment on the incident (1 to 4000 characters). Saved after the ack: if saving it fails the incident stays acknowledged; call again with the same note."
+          }
+        },
+        "required": [
+          "incidentId"
+        ]
+      }
+    },
+    "incidents_resolve": {
+      "description": "Resolve an incident, by UUID or INC-<n> ref (status → resolved, stamped with who/when). Pass resolutionNote saying what fixed it (at most 4000 characters): future triage reads it. A later delivery of the same (source, dedupKey) alert reopens the incident.",
+      "requiredScopes": ["monitoring:incidents:write"],
+      "handler": "incidentsResolveHandler",
+      "writesToTable": "app_monitoring.incidents",
+      "params": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": "string"
+          },
+          "resolutionNote": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "incidentId"
+        ]
+      }
+    },
+    "incidents_comment": {
+      "description": "Add a comment to an incident, in any status: vendor ticket, next step, what was tried. Takes the incident UUID or its INC-<n> ref. Stored with its time and author: the user you act for (an agent's comment shows under that user's name; no separate agent marker exists). Returned by incidents_get; comments never notify the feed. Body 1 to 4000 characters.",
+      "requiredScopes": ["monitoring:incidents:write"],
+      "handler": "incidentsCommentHandler",
+      "writesToTable": "app_monitoring.incident_comments",
+      "params": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "incidentId",
+          "body"
+        ]
+      }
+    },
+    "incidents_summary": {
+      "description": "Dashboard aggregate: open incident counts by severity, acknowledged count, incidents resolved in the trailing 24h, per-source health (live count, worst severity, last alert time, configured profile), the configured source profiles and display order, the optional detailed-monitoring link, and whether the caller may edit the source configuration. Bounded reads — a glanceable board, not an authoritative report at pathological volumes.",
+      "readOnly": true,
+      "requiredScopes": ["monitoring:incidents:read"],
+      "handler": "incidentsSummaryHandler",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "webhook_info": {
+      "description": "Operator setup read: reports whether the webhook signing secret has been minted (an 'alert-source' connection was established) and returns it so the external alert system can be configured to sign deliveries. Admin-scoped; not for routine agent use.",
+      "readOnly": true,
+      "requiredScopes": ["monitoring:admin"],
+      "agentVisible": false,
+      "handler": "webhookInfoHandler",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  }
+}

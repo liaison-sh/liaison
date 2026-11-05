@@ -1,0 +1,26 @@
+# Dependency update PRs.
+#
+# ONLY THE CLAUDE AGENT SDK, on purpose. Local desktop sessions run on the
+# Agent SDK the sidecar bundles, and the models the app offers are the ones
+# that SDK advertises (apps/desktop/sidecar/sdk-runner.ts `localModelsFrom`):
+# a new Claude model reaches users through an SDK update and nothing else. The
+# SDK and its per-platform binaries are pinned to one exact version in
+# apps/api and apps/desktop/sidecar, so they move together in one PR.
+# Every other dependency is updated by hand.
+version: 2
+updates:
+  - package-ecosystem: "bun"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 2
+    allow:
+      - dependency-name: "@anthropic-ai/claude-agent-sdk"
+      - dependency-name: "@anthropic-ai/claude-agent-sdk-*"
+    groups:
+      claude-agent-sdk:
+        patterns:
+          - "@anthropic-ai/claude-agent-sdk"
+          - "@anthropic-ai/claude-agent-sdk-*"
+    commit-message:
+      prefix: "deps"

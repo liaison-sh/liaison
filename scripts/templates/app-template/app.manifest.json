@@ -1,0 +1,17 @@
+{
+  "name": "__APP_NAME__",
+  "version": "0.0.1",
+  "description": "__APP_DESCRIPTION__",
+  "packageFormat": 1,
+  "license": "MIT",
+  "host": "^1",
+  "scopes": ["__APP_NAME__:items:read"],
+  "tools": {
+    "items_list": {
+      "description": "List items",
+      "requiredScopes": ["__APP_NAME__:items:read"],
+      "handler": "items_list",
+      "params": { "type": "object", "properties": {} }
+    }
+  }
+}

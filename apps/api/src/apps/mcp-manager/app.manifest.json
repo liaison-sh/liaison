@@ -1,0 +1,131 @@
+{
+  "name": "mcp-manager",
+  "agentInstructions": "MCP Manager administers external MCP server connections and their aggregated tools. Reach for it to ADD an http/sse MCP server (e.g. an ERP/inventory server the user gives you a URL + API key for), LIST existing connections, or inspect the tools they expose. Key handles: connection id, server name, exposed tool names. To connect a server: call add_connection with displayName + httpUrl + (for an API key) authFlavor:'bearer' and the bearerToken. The flow is connect→test→policy→discover: the server's own tools only become discoverable to the agent (via tool_search) once the connection has been dialed/tested and an access policy permits them — so after add_connection, tell the user its tools will become available after it's tested and policy-allowed (point them to the MCP Manager test/policy step). Do NOT fabricate that the ERP's stock tools are already callable. MCP servers are remote (http/sse). The agent does NOT handle OAuth flows — those stay in the MCP Manager wizard. Silent-failure gotcha: a flapping or disconnected server surfaces in a degraded state, not as an error — report the degraded state rather than assuming its tools are available.",
+  "version": "1.2.6",
+  "description": "Inbound MCP aggregator: connect, gate, audit external MCP servers",
+  "license": "FSL-1.1-ALv2",
+  "listing": {
+    "publisher": "Liaison",
+    "category": "Developer",
+    "icon": "waypoints",
+    "summary": "Connect external MCP servers and control which of their tools agents may use.",
+    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/apps/api/src/apps/mcp-manager"
+  },
+  "trusted": true,
+  "dependencies": { "required": ["kernel"] },
+  "entities": {},
+  "tools": {
+    "add_connection": {
+      "description": "Add an external MCP server (http/sse) so its tools can be aggregated. Only for a system that offers one; a REST API with a key goes through api-connector__connector_adapter_save. Gated: not live until approved, then tested and checked.",
+      "requiredScopes": ["mcp_manager:personal_connection:write"],
+      "trustBoundary": "user",
+      "handler": "addConnection",
+      "preflight": "addConnectionPreflight",
+      "summarizer": "summarizeAddConnection",
+      "gated": true,
+      "approvalImpact": "internal",
+      "approvalExpiryHours": 24,
+      "resourceOwner": {
+        "requester": { "param": "ownershipScope", "equals": "personal" }
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "description": "User-facing connection name, e.g. 'Inventory ERP'."
+          },
+          "httpUrl": {
+            "type": "string",
+            "description": "The MCP server endpoint. Required, and it must be an https URL on a publicly reachable host: a plain http endpoint, or one pointing at loopback or a private network (localhost, 127.x, 10.x, 192.168.x, 172.16 to 172.31.x, 169.254.x, [::1]), is rejected outright and can never be connected.",
+            "pattern": "^https://(?!localhost(?::\\d+)?(?:[/?#]|$))(?!\\[::1\\](?::\\d+)?(?:[/?#]|$))(?!127(?:\\.\\d{1,3}){3}(?::\\d+)?(?:[/?#]|$))(?!10(?:\\.\\d{1,3}){3}(?::\\d+)?(?:[/?#]|$))(?!0\\.0\\.0\\.0(?::\\d+)?(?:[/?#]|$))(?!192\\.168(?:\\.\\d{1,3}){2}(?::\\d+)?(?:[/?#]|$))(?!169\\.254(?:\\.\\d{1,3}){2}(?::\\d+)?(?:[/?#]|$))(?!172\\.(?:1[6-9]|2\\d|3[01])(?:\\.\\d{1,3}){2}(?::\\d+)?(?:[/?#]|$))[^\\s]+$"
+          },
+          "ownershipScope": {
+            "type": "string",
+            "enum": ["org", "personal"],
+            "description": "'personal' = the requesting user's OWN connection: only they, their agent and their routines ever see its tools, and the approval goes to them alone (any member may ask). 'org' (default) = shared with the whole org; needs mcp_manager:connection:write and an admin's approval. Use 'personal' when the user connects their own account to an MCP server."
+          },
+          "transport": {
+            "type": "string",
+            "enum": ["http", "sse"],
+            "description": "Streamable HTTP (default) or SSE."
+          },
+          "authFlavor": {
+            "type": "string",
+            "enum": ["none", "bearer"],
+            "description": "'bearer' if the server needs an API key/token, else 'none'. Defaults to 'bearer' when a bearerToken is given."
+          },
+          "bearerToken": {
+            "type": "string",
+            "description": "The API key / bearer token. Stored AES-encrypted; omit for unauthenticated servers."
+          },
+          "slug": {
+            "type": "string",
+            "description": "Optional short handle (lowercase a-z0-9-, ≤32). Derived from displayName when omitted."
+          },
+          "agentVisibility": {
+            "type": "string",
+            "enum": ["discoverable", "hidden"],
+            "description": "Whether the server's tools are discoverable to the agent once dialed (default discoverable)."
+          },
+          "connectionDefaultPolicy": {
+            "type": "string",
+            "enum": ["auto", "gate_writes", "gate_all"],
+            "description": "Default per-tool policy (default gate_writes: reads auto, writes need approval)."
+          }
+        },
+        "required": ["displayName", "httpUrl"]
+      },
+      "approvalCard": {
+        "summary": "Connect MCP server \"{{params.displayName}}\" ({{params.transport}}) at {{params.httpUrl}}"
+      }
+    },
+    "list_connections": {
+      "description": "List the org's MCP server connections (id, name, transport, auth flavor, visibility, default policy, enabled/disabled). Read-only.",
+      "readOnly": true,
+      "requiredScopes": ["mcp_manager:connection:read"],
+      "trustBoundary": "user",
+      "handler": "listConnections",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  },
+  "events": {
+    "emits": [
+      "connection:created",
+      "connection:updated",
+      "connection:deleted",
+      "connection:disabled",
+      "connection:enabled",
+      "connection:oauth_completed",
+      "connection:oauth_callback_rejected",
+      "connection:needs_reauth",
+      "policy:updated"
+    ]
+  },
+  "memberPresetScopes": ["mcp_manager:connection:read", "mcp_manager:personal_connection:write"],
+  "everyMemberScopes": ["mcp_manager:connection:read", "mcp_manager:personal_connection:write"],
+  "roles": {
+    "viewer": {
+      "description": "Read-only access to MCP connections, policies, and audit",
+      "scopes": ["mcp_manager:connection:read", "mcp_manager:policy:read", "mcp_manager:audit:read"]
+    },
+    "member": {
+      "description": "Every member: read the org's MCP connections and add, test and remove their OWN personal connections (only they and their agent and routines see its tools)",
+      "extends": "viewer",
+      "scopes": ["mcp_manager:personal_connection:write"]
+    },
+    "editor": {
+      "description": "Create + edit personal and shared MCP connections and policies",
+      "extends": "member",
+      "scopes": ["mcp_manager:connection:write", "mcp_manager:policy:write"]
+    },
+    "admin": {
+      "description": "Full MCP manager admin: including org-wide usage analytics",
+      "extends": "editor",
+      "scopes": ["mcp_manager:connection:admin", "mcp_manager:usage:read"]
+    }
+  }
+}

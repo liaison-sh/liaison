@@ -1,0 +1,44 @@
+alerts become deduplicated severity-ranked incidents; critical/warning on home feed -> bundled-apps/monitoring/README.md:3
+nothing dialled out; connection mints HMAC secret -> bundled-apps/monitoring/README.md:91
+Alert source settings section -> bundled-apps/monitoring/app.manifest.json:292
+Connect button -> apps/web/src/modules/settings/app-page/ConnectionsBlock.tsx:416
+Alert source label field -> bundled-apps/monitoring/app.manifest.json:114
+secret minted on first connect and reused -> bundled-apps/monitoring/README.md:96
+read secret with webhook_info, monitoring:admin -> bundled-apps/monitoring/app.manifest.json:122
+webhook_info requires monitoring:admin -> bundled-apps/monitoring/app.manifest.json:476
+agentVisible false tools not callable by agents -> apps/api/src/modules/apps/execute-tool.ts:4155
+alert webhook endpoint -> bundled-apps/monitoring/app.manifest.json:364
+webhook route /webhooks/:orgId/:appName/:endpointName -> apps/api/src/modules/webhooks/routes.ts:115
+HMAC-SHA256 base64 in x-monitoring-signature -> bundled-apps/monitoring/app.manifest.json:123
+x-monitoring-delivery-id optional -> bundled-apps/monitoring/app.manifest.json:124
+fresh ts, 10 min, monitoringAlertTtlSeconds -> bundled-apps/monitoring/app.manifest.json:125
+alert envelope fields and required ones -> bundled-apps/monitoring/README.md:25
+url must be http(s) -> bundled-apps/monitoring/README.md:37
+401 unsigned, 400 malformed, 503 retry -> bundled-apps/monitoring/README.md:113
+resolve envelope status resolved / event resolve; source, dedupKey, ts required -> bundled-apps/monitoring/README.md:42
+same source+dedupKey folds into one incident, count up, no feed flood -> bundled-apps/monitoring/README.md:78
+severity up = escalated, feed-worthy -> bundled-apps/monitoring/README.md:81
+re-fire after resolve reopens -> bundled-apps/monitoring/README.md:83
+no dedupKey = new incident each time -> bundled-apps/monitoring/README.md:85
+attention to monitoring:incidents:read holders, critical/warning -> bundled-apps/monitoring/app.manifest.json:145
+Monitoring activity bar -> bundled-apps/monitoring/app.manifest.json:308
+sidebar Overview / Acknowledged / Resolved / Sources / Detailed monitoring -> bundled-apps/monitoring/src/ui/sidebar.tsx:207
+source page Live incidents / Recently resolved -> bundled-apps/monitoring/src/ui/SourcePage.tsx:158
+Alert detail / Timeline / Dedup key -> bundled-apps/monitoring/src/ui/IncidentDetail.tsx:189
+Open in source system -> bundled-apps/monitoring/src/ui/IncidentDetail.tsx:220
+Acknowledge button on open incidents -> bundled-apps/monitoring/src/ui/IncidentDetail.tsx:125
+Resolve with a note, placeholder -> bundled-apps/monitoring/src/ui/IncidentDetail.tsx:251
+Resolve button -> bundled-apps/monitoring/src/ui/IncidentDetail.tsx:134
+Sources settings section -> bundled-apps/monitoring/app.manifest.json:277
+Label / Colour / Automatic colour / Urgent sources use red / Move up-down / Save -> bundled-apps/monitoring/src/ui/SourcesSettings.tsx:177
+monitoringSources config key -> bundled-apps/monitoring/README.md:66
+Detailed monitoring section, Detailed monitoring link, monitoringUrl -> bundled-apps/monitoring/app.manifest.json:259
+scopes list -> bundled-apps/monitoring/app.manifest.json:17
+monitoring:approve approver scope -> docs/reference/scopes.md:242
+incidents_list -> bundled-apps/monitoring/app.manifest.json:375
+incidents_get -> bundled-apps/monitoring/app.manifest.json:409
+incidents_ack -> bundled-apps/monitoring/app.manifest.json:426
+incidents_resolve -> bundled-apps/monitoring/app.manifest.json:443
+incidents_summary -> bundled-apps/monitoring/app.manifest.json:463
+webhook_info -> bundled-apps/monitoring/app.manifest.json:473
+Urgent banner counts open and acknowledged incidents apart -> bundled-apps/monitoring/src/ui/format.ts:136

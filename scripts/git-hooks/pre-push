@@ -1,0 +1,125 @@
+#!/bin/sh
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# shellcheck disable=SC2086 # $revs is several words on purpose.
+# Installed by `bun install` (package.json "prepare" sets core.hooksPath).
+# git passes the remote name and URL as $1 and $2, and
+# `<local ref> <local sha> <remote ref> <remote sha>` per ref on stdin.
+#
+# 1. Changes reach the product repo's main only through a pull request landed
+#    with `bun run pr:land` (scripts/pr-land.ts), so a push to main on that remote
+#    is refused. Other remotes (a fork on another forge, with its own review flow)
+#    are not guarded by this rule.
+# 2. On every remote, the commits being pushed are checked before they leave this
+#    machine: a pushed PR commit stays reachable through refs/pull/* for good.
+#    gitleaks scans their diffs (merge commits included) and their messages, and
+#    no author, committer or message may name an address from the local-only git
+#    config list `liaison.blockedEmails`, so the repository names no address.
+remote=$1
+url=$2
+refs=$(cat)
+
+case "$url" in
+  *github.com[:/]mathieufro/liaison | *github.com[:/]mathieufro/liaison.git)
+    while read -r local_ref local_sha remote_ref remote_sha; do
+      if [ "$remote_ref" = "refs/heads/main" ]; then
+        cat >&2 <<'MSG'
+
+pre-push: push to main REFUSED. Changes reach main only through a pull request:
+  git push -u origin <your-branch>
+  gh pr create --base main --fill
+  bun run pr:land <number> --wait
+pr:land merges only when the PR's checks and main's CI are green.
+
+MSG
+        exit 1
+      fi
+    done <<REFS
+$refs
+REFS
+    ;;
+esac
+
+set -- --redact --verbose --no-banner --log-level warn --ignore-gitleaks-allow
+if [ -f .gitleaks.toml ]; then
+  set -- "$@" --config .gitleaks.toml
+fi
+blocked=$(git config --get-all liaison.blockedEmails 2>/dev/null | tr ',' ' ')
+status=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # An empty stdin, or a deletion (the all-zero sha): no commit leaves here.
+  case "$local_sha" in
+    *[!0]*) ;;
+    *) continue ;;
+  esac
+
+  # The commits this ref adds: not on the ref it replaces (when known locally, a
+  # forced push may name a commit never fetched), not on any ref of that remote.
+  revs=$local_sha
+  case "$remote_sha" in
+    *[!0]*)
+      if git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
+        revs="$revs ^$remote_sha"
+      fi
+      ;;
+  esac
+  case "$remote" in
+    *[/:]*) ;; # Pushed to a bare URL: no remote-tracking refs to exclude.
+    *) revs="$revs --not --remotes=$remote" ;;
+  esac
+
+  # $revs is split into words on purpose, here and below.
+  if ! count=$(git rev-list --count $revs 2>/dev/null); then
+    echo "pre-push: cannot list the commits of $local_ref ($local_sha); refusing." >&2
+    status=1
+    continue
+  fi
+  [ "$count" -eq 0 ] && continue
+
+  if ! command -v gitleaks >/dev/null 2>&1; then
+    cat >&2 <<'MSG'
+
+pre-push: gitleaks is not installed, so this push cannot be checked for secrets.
+  brew install gitleaks
+  (or a release binary: https://github.com/gitleaks/gitleaks/releases)
+
+MSG
+    exit 1
+  fi
+
+  # `git log -p` leaves merge commits out unless told otherwise, so a secret
+  # added while resolving a conflict would pass without --diff-merges.
+  if ! gitleaks git "$@" --log-opts="--diff-merges=first-parent $revs" . </dev/null; then
+    status=1
+  fi
+  if ! git log --format='%h %s%n%b' $revs | gitleaks stdin "$@"; then
+    echo "pre-push: the finding above is in a commit message of $local_ref." >&2
+    status=1
+  fi
+
+  for address in $blocked; do
+    hits=$(git log --format='%h author %ae%n%h committer %ce%n%B' $revs | grep -iFw -- "$address")
+    if [ -n "$hits" ]; then
+      printf '\npre-push: a blocked address is on %s:\n%s\n' "$local_ref" "$hits" >&2
+      cat >&2 <<'MSG'
+Set the right address, then rewrite those commits (and fix any message by hand):
+  git config user.email <the address to publish>
+  git rebase -r <base> --exec 'git commit --amend --no-edit --reset-author'
+MSG
+      status=1
+    fi
+  done
+done <<REFS
+$refs
+REFS
+
+if [ "$status" -ne 0 ]; then
+  cat >&2 <<'MSG'
+
+pre-push: push REFUSED, nothing left this machine.
+  A secret: remove it from every commit in the push, not just the newest, and rotate it.
+  A false positive: see "Secret scanning" in CONTRIBUTING.md.
+
+MSG
+fi
+exit "$status"

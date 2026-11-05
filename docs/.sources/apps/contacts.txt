@@ -1,0 +1,53 @@
+Contacts appear automatically from mail and agent mentions -> packages/shared/src/i18n/locales/en/contacts.json:31
+Contacts in activity bar -> apps/api/src/apps/contacts/app.manifest.json:49
+Search people… -> packages/shared/src/i18n/locales/en/contacts.json:23
+Filter People / All with hints -> packages/shared/src/i18n/locales/en/contacts.json:26
+auto badge for notification senders -> apps/web/src/modules/contacts/ContactList.tsx:332
+Groups and All contacts in sidebar -> apps/web/src/modules/contacts/ContactsSidebar.tsx:229
+Row actions Email / Call -> apps/web/src/modules/contacts/ContactList.tsx:386
+Click any field to edit -> packages/shared/src/i18n/locales/en/contacts.json:41
+Fields Name, Email, Phone, Company -> apps/web/src/modules/contacts/ContactDetail.tsx:296
+Save field -> apps/web/src/modules/contacts/ContactDetail.tsx:552
+Activity shows mail and Tickets -> apps/web/src/modules/contacts/ContactDetail.tsx:327
+More actions, Delete contact -> apps/web/src/modules/contacts/ContactDetail.tsx:247
+New group, Group name -> apps/web/src/modules/contacts/ContactsSidebar.tsx:235
+Create group -> apps/web/src/modules/contacts/AddToGroupMenu.tsx:169
+Add to group (selection and contact) -> apps/web/src/modules/contacts/ContactList.tsx:171
+Add to group on contact -> apps/web/src/modules/contacts/ContactDetail.tsx:188
+Group delete keeps contacts -> docs/reference/agent-tools.md:34
+Share button -> apps/web/src/modules/contacts/ContactDetail.tsx:212
+Share with mailbox members -> packages/shared/src/i18n/locales/en/contacts.json:81
+Contact becomes org's only when shared -> docs/reference/agent-tools.md:42
+Merge with... -> apps/web/src/modules/contacts/ContactDetail.tsx:221
+Merge dialog Survivor / Duplicate -> apps/web/src/modules/contacts/ContactMergeDialog.tsx:113
+Confirm Merge -> packages/shared/src/i18n/locales/en/contacts.json:65
+External IDs unioned, survivor wins -> packages/shared/src/i18n/locales/en/contacts.json:57
+Trust this sender, address or domain -> apps/web/src/modules/contacts/TrustedSenderControl.tsx:64
+Trusted sender effect, public domains address only, who can trust -> apps/web/src/modules/contacts/TrustedSenderControl.tsx:3
+kernel:contacts:* scopes -> docs/reference/scopes.md:30
+kernel:contacts:read/write -> apps/api/src/modules/permissions/scope-catalog.ts:27
+contacts_search -> apps/api/src/modules/agent/tools/kernel-tools.ts:1471
+contacts_read -> apps/api/src/modules/agent/tools/kernel-tools.ts:1535
+contacts_write -> apps/api/src/modules/agent/tools/kernel-tools.ts:1558
+contacts_export gated -> docs/reference/agent-tools.md:30
+contacts_find_duplicates -> apps/api/src/modules/agent/tools/kernel-tools.ts:1612
+contacts_merge gated -> docs/reference/agent-tools.md:39
+contacts_share gated -> docs/reference/agent-tools.md:42
+contacts_groups_list -> apps/api/src/modules/agent/tools/kernel-tools.ts:1735
+contacts_group_members -> apps/api/src/modules/agent/tools/kernel-tools.ts:1747
+contacts_group_create -> apps/api/src/modules/agent/tools/kernel-tools.ts:1768
+contacts_group_rename -> apps/api/src/modules/agent/tools/kernel-tools.ts:1782
+contacts_group_delete gated -> docs/reference/agent-tools.md:34
+contacts_group_add -> apps/api/src/modules/agent/tools/kernel-tools.ts:1814
+contacts_group_remove -> apps/api/src/modules/agent/tools/kernel-tools.ts:1828
+privatize-mailbox-senders usage, dry run, backup -> apps/api/src/cli/commands.ts:401
+restore-privatized-senders skips a contact whose address has an org contact -> apps/api/src/cli/commands.ts:422
+apply-provenance usage and effects -> apps/api/src/cli/commands.ts:437
+apply-provenance --execute recomputes under row locks and refuses unless identical to --plan -> apps/api/src/cli/commands.ts:463
+restore-provenance puts back from the backup -> apps/api/src/cli/commands.ts:474
+contacts.contact kind, skip existing by source id or email -> apps/api/src/apps/contacts/import-kind.ts:7
+Needs kernel:contacts:write -> apps/api/src/apps/contacts/app.manifest.json:78
+contacts_write gated -> apps/api/src/modules/agent/tools/kernel-tools.ts:1580
+threads_reply with contactId posts in a contact's discussion, no approval -> apps/api/src/modules/agent/tools/kernel-tools.ts:989-1008
+Auto-approve policy turns either gate off -> apps/api/src/tests/integration/contacts-write-gate.test.ts:132
+Addresses section in the contact page -> apps/web/src/modules/contacts/ContactDetail.tsx:370

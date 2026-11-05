@@ -1,0 +1,54 @@
+{
+  "name": "metrics-fixture",
+  "version": "1.0.0",
+  "description": "Test fixture shaped like a metrics registry app: an outside app whose UI reads its own tools, opens its settings and draws its icon from manifest data",
+  "packageFormat": 1,
+  "license": "MIT",
+  "host": "^1",
+  "iconSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4f46e5\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 3v18h18\"/><rect x=\"7\" y=\"12\" width=\"3\" height=\"5\"/><rect x=\"12\" y=\"8\" width=\"3\" height=\"9\"/><rect x=\"17\" y=\"5\" width=\"3\" height=\"12\"/></svg>",
+  "scopes": ["metrics-fixture:read"],
+  "settings": {
+    "sections": [
+      {
+        "id": "connection",
+        "title": "Metrics service",
+        "description": "The service this app reads its metrics from.",
+        "scope": "org",
+        "blocks": [
+          {
+            "block": "custom",
+            "component": "MetricsSettings",
+            "reason": "Shows the service connection state computed from a live read."
+          }
+        ]
+      }
+    ]
+  },
+  "views": {
+    "activityBar": {
+      "icon": "MetricsAppIcon",
+      "label": "Metrics",
+      "order": 70,
+      "tabAction": { "type": "explorer", "entityId": "explorer", "label": "Metrics" }
+    },
+    "tabTypes": {
+      "explorer": {
+        "component": "MetricsExplorer",
+        "icon": "MetricsAppIcon",
+        "label": "Metrics",
+        "singleton": true,
+        "urlPattern": "/metrics-fixture",
+        "referenceable": false
+      }
+    }
+  },
+  "tools": {
+    "metrics_list": {
+      "description": "List the metric registry: id, title and version of every metric.",
+      "readOnly": true,
+      "requiredScopes": ["metrics-fixture:read"],
+      "handler": "metricsListHandler",
+      "params": { "type": "object", "properties": {} }
+    }
+  }
+}

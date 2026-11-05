@@ -1,0 +1,76 @@
+Get the desktop app menu and installers -> packages/shared/src/i18n/locales/en/kernel.json:984
+Installer macOS Windows Linux AppImage deb -> packages/shared/src/i18n/locales/en/kernel.json:990
+First launch asks Enter your Liaison org URL -> packages/shared/src/i18n/locales/en/kernel.json:3418
+Connect action -> packages/shared/src/i18n/locales/en/kernel.json:3420
+Invalid address message -> packages/shared/src/i18n/locales/en/kernel.json:3421
+Approve step Sign in to finish connecting -> packages/shared/src/i18n/locales/en/kernel.json:3428
+Your code -> packages/shared/src/i18n/locales/en/kernel.json:3429
+Open the approval page -> packages/shared/src/i18n/locales/en/kernel.json:3430
+Waiting for you to approve this device -> packages/shared/src/i18n/locales/en/kernel.json:3431
+Use a different server -> packages/shared/src/i18n/locales/en/kernel.json:3432
+Deep link liaison://connect?server= asks to confirm -> packages/shared/src/i18n/locales/en/kernel.json:3422
+Connect link can be opened from web app -> packages/shared/src/i18n/locales/en/kernel.json:3419
+Deep link example -> apps/desktop/README.md:164
+Server must allow liaison-desktop in DEVICE_FLOW_CLIENTS -> packages/shared/src/i18n/locales/en/kernel.json:3449
+DEVICE_FLOW_CLIENTS env -> apps/api/src/lib/env.ts:90
+Sign in to Claude action -> packages/shared/src/i18n/locales/en/kernel.json:3477
+Claude sign-in waiting text and code field -> packages/shared/src/i18n/locales/en/kernel.json:3481
+Code from Claude and Submit -> packages/shared/src/i18n/locales/en/kernel.json:3482
+Open the page again -> packages/shared/src/i18n/locales/en/kernel.json:3486
+Claude sign-in try again -> packages/shared/src/i18n/locales/en/kernel.json:2700
+Setup panel title and body -> packages/shared/src/i18n/locales/en/kernel.json:4941
+Setup body three quick checks -> packages/shared/src/i18n/locales/en/kernel.json:4942
+Check states Done To do Checking Not available -> packages/shared/src/i18n/locales/en/kernel.json:4963
+Check Signed in to Claude -> packages/shared/src/i18n/locales/en/kernel.json:4947
+Check Notifications -> packages/shared/src/i18n/locales/en/kernel.json:1629
+Check Open at login and stay awake -> packages/shared/src/i18n/locales/en/kernel.json:4951
+Fix buttons Sign in Allow Turn on -> packages/shared/src/i18n/locales/en/kernel.json:4956
+Notifications denied: open system notification settings -> packages/shared/src/i18n/locales/en/kernel.json:4945
+Turn on button -> packages/shared/src/i18n/locales/en/kernel.json:4943
+Setup checklist (claude, notifications, launchAtLogin, keepAwake) -> apps/web/src/modules/nodes/node-setup.ts:31
+keepAwake not available on Linux -> apps/web/src/modules/nodes/node-setup.ts:15
+Registers with POST /api/nodes and credential handed to the shell -> apps/web/src/modules/nodes/node-setup.ts:18
+Credential stored 0600 file -> apps/api/src/modules/nodes/routes.ts:313
+Ready to work panel -> packages/shared/src/i18n/locales/en/kernel.json:4967
+Ready panel re-checked every start -> packages/shared/src/i18n/locales/en/kernel.json:4968
+Ready checks wording -> packages/shared/src/i18n/locales/en/kernel.json:4972
+Keep awake states -> packages/shared/src/i18n/locales/en/kernel.json:4983
+Turn off -> packages/shared/src/i18n/locales/en/kernel.json:4981
+Can read places and not allowed yet -> packages/shared/src/i18n/locales/en/kernel.json:4985
+macOS folder permission path -> packages/shared/src/i18n/locales/en/kernel.json:4998
+Windows folder permission path -> packages/shared/src/i18n/locales/en/kernel.json:4999
+Linux folder permission note -> packages/shared/src/i18n/locales/en/kernel.json:5000
+Open System Settings button -> packages/shared/src/i18n/locales/en/kernel.json:5002
+Check again button -> packages/shared/src/i18n/locales/en/kernel.json:4628
+Computers list status Online Last seen -> packages/shared/src/i18n/locales/en/kernel.json:3918
+Never connected -> packages/shared/src/i18n/locales/en/kernel.json:4927
+Sessions running and waiting counts -> packages/shared/src/i18n/locales/en/kernel.json:4930
+Folders and agents counts -> packages/shared/src/i18n/locales/en/kernel.json:4933
+Let agents use switch -> packages/shared/src/i18n/locales/en/kernel.json:4918
+Computer page tabs -> packages/shared/src/i18n/locales/en/kernel.json:4990
+Computer page switch -> packages/shared/src/i18n/locales/en/kernel.json:4988
+Settings name and workload -> packages/shared/src/i18n/locales/en/kernel.json:5132
+Name hint -> packages/shared/src/i18n/locales/en/kernel.json:5134
+Sessions at once 1 to 16 -> packages/shared/src/i18n/locales/en/kernel.json:5136
+Of which for others and routines -> packages/shared/src/i18n/locales/en/kernel.json:5137
+Background cap hint -> packages/shared/src/i18n/locales/en/kernel.json:5138
+Validation 1 to 16 and at most that many for others -> packages/shared/src/i18n/locales/en/kernel.json:5139
+Default caps 4 and 2 -> packages/shared/src/node-session-protocol.ts:778
+Caps patch 1..16 and 0..16 within live -> apps/api/src/modules/nodes/routes.ts:62
+Settings Save -> packages/shared/src/i18n/locales/en/kernel.json:293
+Auto for chats started elsewhere, confirmed on this computer -> packages/shared/src/i18n/locales/en/kernel.json:5147
+Remote auto body -> packages/shared/src/i18n/locales/en/kernel.json:5148
+Remote auto row desktop app only -> apps/web/src/modules/settings/computers/RemoteAutoRow.tsx:3
+Turn off = PATCH enabled false, queued jobs wait -> apps/web/src/modules/nodes/node-setup.ts:22
+Re-enabling after removal rotates the credential -> apps/api/src/modules/nodes/routes.ts:273
+Add another computer -> packages/shared/src/i18n/locales/en/kernel.json:4912
+Several computers: pick the one sharing the folder, online first then most recently seen -> apps/api/src/modules/node-sessions/resolve.ts:142
+Remove computer title and body -> packages/shared/src/i18n/locales/en/kernel.json:5143
+Remove button and confirm -> packages/shared/src/i18n/locales/en/kernel.json:1964
+Remove revokes credential -> apps/api/src/modules/nodes/routes.ts:12
+Assistant stopped message with Retry -> packages/shared/src/i18n/locales/en/kernel.json:3401
+sidecar.log for support -> packages/shared/src/i18n/locales/en/kernel.json:3470
+updater.log beside sidecar.log -> apps/desktop/README.md:93
+Log file locations -> apps/desktop/README.md:114
+Windows bash notice -> packages/shared/src/i18n/locales/en/kernel.json:3424
+Messages to update the app or the server -> packages/shared/src/i18n/locales/en/kernel.json:4673

@@ -1,0 +1,908 @@
+{
+  "kernel": {
+    "sample": {
+      "title": "Sample tour",
+      "summary": "A short tour used to test the tour engine.",
+      "welcome": {
+        "title": "Your apps",
+        "body": "Every app you use lives in this bar."
+      },
+      "postMessage": {
+        "title": "Post a message",
+        "body": "Write a message and send it.",
+        "text": "Hello from the tour"
+      },
+      "liveTicket": {
+        "title": "A ticket arrives",
+        "body": "Watch a new ticket come in."
+      },
+      "ticketsInbox": {
+        "title": "Your tickets",
+        "body": "Tickets from your customers land here."
+      }
+    },
+    "autoplayFixture": {
+      "title": "Autoplay fixture",
+      "summary": "Drives each kind of input autoplay supports.",
+      "mention": {
+        "title": "Thank someone",
+        "body": "Write a message that mentions a teammate.",
+        "text": "Thanks @Ami",
+        "textAfter": "for the review"
+      },
+      "session": {
+        "title": "Steer a session",
+        "body": "Write an instruction for the session.",
+        "text": "Run the tests again please"
+      },
+      "status": {
+        "title": "Change the status",
+        "body": "Open the status menu and pick a status."
+      }
+    },
+    "threads": {
+      "title": "Messages and agents",
+      "summary": "Post in a conversation, speak instead of typing, and bring an agent in with @.",
+      "messages": {
+        "title": "Your conversations",
+        "body": "Messages holds your conversations with your team and your agents. Open one to follow along."
+      },
+      "post": {
+        "title": "Post a message",
+        "body": "Write a message in the box at the bottom and send it. If I write it for you, read it over and press Send yourself.",
+        "text": "Hello everyone, I'm trying out Liaison."
+      },
+      "dictation": {
+        "title": "Speak instead of typing",
+        "body": "When dictation is on for your workspace, press the microphone and talk. Your words land in the box, cleaned up."
+      },
+      "mentionAgent": {
+        "title": "Bring an agent in",
+        "body": "Type @ and pick an agent, then say what you need, and send. The agent joins the conversation. If I write it for you, press Send yourself.",
+        "trigger": "@",
+        "text": "can you sum up this conversation?"
+      },
+      "agentAnswers": {
+        "title": "The agent answers here",
+        "body": "Its reply arrives in this conversation, like a teammate's. You can keep talking to it."
+      },
+      "attach": {
+        "title": "Add files",
+        "body": "Use + to attach a file or a screenshot to your message."
+      }
+    },
+    "agents": {
+      "title": "Agents and approvals",
+      "summary": "Meet your agent, ask it something, and see how it checks with you before it acts.",
+      "profile": {
+        "title": "Your agent",
+        "body": "This agent works for you, with your access and nothing more."
+      },
+      "capabilities": {
+        "title": "What it can do",
+        "body": "These are the kinds of things it can read and do for you."
+      },
+      "ask": {
+        "title": "Ask it something",
+        "body": "Open a conversation with your agent and ask a question.",
+        "text": "What can you help me with?"
+      },
+      "asksFirst": {
+        "title": "It asks before it acts",
+        "body": "Before it sends an email or changes something that matters, the agent asks you first."
+      },
+      "approvals": {
+        "title": "Your requests",
+        "body": "Everything waiting for your decision is listed here."
+      },
+      "decide": {
+        "title": "Decide",
+        "body": "Read what it wants to do, change it if needed, then approve or decline. Nothing happens until you do."
+      }
+    },
+    "routines": {
+      "title": "Routines",
+      "summary": "Let your agent do recurring work on a schedule or when something happens.",
+      "tab": {
+        "title": "Routines",
+        "body": "Routines are tasks your agent runs by itself, on a schedule or when something happens."
+      },
+      "list": {
+        "title": "Your routines",
+        "body": "Each routine shows when it runs and how its last run went. Pause one at any time."
+      },
+      "templates": {
+        "title": "Ready-made routines",
+        "body": "Your apps suggest routines. Turn one on to start from it."
+      },
+      "create": {
+        "title": "Create a routine",
+        "body": "Give it a name and say what to do. It starts as a personal routine.",
+        "name": "Morning summary",
+        "text": "Each morning, tell me in a few lines what is waiting for me today."
+      },
+      "activity": {
+        "title": "See every run",
+        "body": "Activity shows what your agent did, routine runs included."
+      }
+    },
+    "sessions": {
+      "title": "Sessions",
+      "summary": "Run the coding agent on a computer you paired, and steer it while it works.",
+      "list": {
+        "title": "Your sessions",
+        "body": "A session is the coding agent working in a folder on one of your computers."
+      },
+      "computers": {
+        "title": "Your computers",
+        "body": "Paired computers show here. To pair one, install the desktop app and sign in. No computer yet? You can skip the next step."
+      },
+      "start": {
+        "title": "Start a session",
+        "body": "Say what you want done, pick a folder, then press Start. This needs a paired computer: without one, skip this step.",
+        "text": "Look around this project and tell me in a few lines what it does."
+      },
+      "steer": {
+        "title": "Steer it",
+        "body": "Open a session and write here to change course while it works."
+      },
+      "status": {
+        "title": "When it needs you",
+        "body": "The header shows what the session is doing and tells you when it is waiting for you."
+      }
+    }
+  },
+  "mail": {
+    "basics": {
+      "title": "Mail basics",
+      "summary": "Your agent sums up a conversation and drafts the reply, you approve it.",
+      "inbox": {
+        "title": "Your inbox",
+        "body": "Mail from your mailboxes lands here, personal and shared."
+      },
+      "open": {
+        "title": "Open a conversation",
+        "body": "Click a conversation to read it, then press Next."
+      },
+      "summariseDraft": {
+        "title": "Ask for a summary and a draft",
+        "body": "Open your agent from Chats, beside the conversation, and ask it to sum up the thread and draft a reply. Nothing is sent: the draft waits in the conversation for you.",
+        "text": "Sum up this conversation for me and draft a reply.",
+        "phoneText": "Sum up my newest unread email conversation for me and draft a reply."
+      },
+      "approve": {
+        "title": "Review and approve",
+        "body": "Read the draft, edit it if needed, then press Approve: approving sends the reply. If I do it for you, I press Approve on this draft."
+      },
+      "crm": {
+        "title": "Who is writing",
+        "body": "The customer card shows what your other systems know about the sender. Your agent reads it too."
+      },
+      "yourself": {
+        "title": "You can also write yourself",
+        "body": "You can reply here, or start a new email, whenever you prefer to write it yourself."
+      }
+    }
+  },
+  "tickets": {
+    "basics": {
+      "title": "Tickets",
+      "summary": "Your agent drafts the reply and the note, you review and approve.",
+      "inbox": {
+        "title": "Your tickets",
+        "body": "Requests from your customers land here as tickets."
+      },
+      "open": {
+        "title": "Open a ticket",
+        "body": "Click a ticket to open it, then press Next."
+      },
+      "customerCard": {
+        "title": "Who the customer is",
+        "body": "The customer card shows what your other systems know about this customer. Your agent reads it too. On a phone, it is under More."
+      },
+      "askDraft": {
+        "title": "Ask your agent for a draft",
+        "body": "Open your agent from Chats, beside the ticket, and ask it to draft a reply. It reads the ticket, the customer's record and their past tickets. Nothing is sent: the draft waits on the ticket for you.",
+        "text": "Draft a reply to this customer. Use what we know about them: the ticket, their customer record, their past tickets and our knowledge base.",
+        "phoneText": "Draft a reply to my newest open ticket. Use what we know about the customer: the ticket, their customer record, their past tickets and our knowledge base."
+      },
+      "review": {
+        "title": "Review and approve",
+        "body": "The draft is on the ticket. Read it, edit it if needed, then press Approve: approving sends the reply to the customer. If I do it for you, I press Approve on this draft."
+      },
+      "note": {
+        "title": "Ask for a note for the team",
+        "body": "In your agent's conversation, ask it to sum up the case in an internal note and press Send. Only your team sees it.",
+        "text": "Add an internal note to this ticket that sums up the case for the team: what the customer asks and what we already know.",
+        "phoneText": "Summary for the team: what the customer asks and what we already know."
+      },
+      "approveNote": {
+        "title": "Approve the note",
+        "body": "Your agent read about the customer before writing it, and some people who read this ticket cannot see that, so it asks you first. Read the note in the conversation and press Approve. If I do it for you, I press Approve on this note."
+      },
+      "yourself": {
+        "title": "You can also do it yourself",
+        "body": "You can write a reply or a note yourself here whenever you prefer."
+      },
+      "routine": {
+        "title": "On every new ticket",
+        "body": "A routine can ask your agent for this on every new ticket: a note and a reply draft. You still read and approve every reply before it goes out."
+      }
+    }
+  },
+  "knowledge": {
+    "basics": {
+      "title": "Knowledge",
+      "summary": "Where your company knowledge lives and how to add to it.",
+      "home": {
+        "title": "Your knowledge",
+        "body": "Documents your team and your agents rely on live here."
+      },
+      "collections": {
+        "title": "Collections",
+        "body": "Documents are grouped in collections and folders."
+      },
+      "create": {
+        "title": "Add knowledge",
+        "body": "Your agent opens and helps you write a document from a page, a file or your notes. Tell it what to use."
+      },
+      "recent": {
+        "title": "Recently touched",
+        "body": "The documents changed lately show up here. Open one, then press Next."
+      },
+      "edit": {
+        "title": "Edit a document",
+        "body": "Open a document you can edit, press Edit, change the text and save.",
+        "text": " Reviewed today."
+      },
+      "share": {
+        "title": "Who sees it",
+        "body": "Choose who can read or edit this document."
+      },
+      "agents": {
+        "title": "Your agents use it",
+        "body": "When your agents answer, they read the documents you can see and say where the answer came from."
+      }
+    }
+  },
+  "projects": {
+    "basics": {
+      "title": "Projects",
+      "summary": "Your agent plans a project with its tasks, you review it and comment.",
+      "home": {
+        "title": "Your projects",
+        "body": "Each project holds its tasks, its board and its discussion."
+      },
+      "askPlan": {
+        "title": "Ask your agent for a plan",
+        "body": "Open your agent from Chats and ask it to plan the work as a project. It creates the project and its tasks for you.",
+        "text": "Plan our autumn webinar series as a new project: create the project with one task for each step, in one go."
+      },
+      "approvePlan": {
+        "title": "Approve the project",
+        "body": "Your agent asked before creating the project and its tasks: it read things some people who see projects cannot. Its card lists every task; read it in the conversation and press Approve."
+      },
+      "review": {
+        "title": "Review the plan",
+        "body": "Your agent's project is in the list. You can open it and check its tasks (edit, reorder or delete any of them), then press Next."
+      },
+      "comment": {
+        "title": "Comment on a task",
+        "body": "Open one of its tasks, write a comment under it and press Send.",
+        "text": "Looks good. I'll take this one."
+      },
+      "yourself": {
+        "title": "You can also do it yourself",
+        "body": "You can assign a task, give it a due date or add a task by hand whenever you prefer."
+      }
+    }
+  },
+  "api-connector": {
+    "settings": {
+      "title": "API connector",
+      "summary": "Your connections to your own systems, how to test them, and asking your agent about a customer.",
+      "page": {
+        "title": "Your connections",
+        "body": "Each connection links Liaison to one of your systems, such as a CRM or an ERP."
+      },
+      "connections": {
+        "title": "Status and roles",
+        "body": "Each connection shows whether its key works and what it provides, such as customers or orders."
+      },
+      "test": {
+        "title": "Test a read",
+        "body": "Press Test on a connection, pick a read, fill in its fields and run it."
+      },
+      "result": {
+        "title": "The result",
+        "body": "You see the answer's status, how long it took and the rows it returned."
+      },
+      "add": {
+        "title": "Add a connection",
+        "body": "Press Add connection, paste the adapter file and save, then enter its key."
+      },
+      "ask": {
+        "title": "Ask your agent about a customer",
+        "body": "Open your agent from Chats and ask what a customer ordered. It reads your CRM or ERP through the API connector and answers with what it found.",
+        "text": "Use the API connector to read our CRM or ERP: which customer ordered most recently, and what did they order?"
+      },
+      "card": {
+        "title": "Where it shows up",
+        "body": "The same reads fill the customer card on tickets and mail, so your team and your agent see the customer's orders where they work."
+      }
+    }
+  },
+  "engine": {
+    "stepOf": "Step {{k}} of {{n}}",
+    "end": "End the tour",
+    "close": "Close",
+    "next": "Next",
+    "finish": "Finish",
+    "skip": "Skip",
+    "pause": "Pause",
+    "fold": "Fold the tour away",
+    "unfold": "Show the step",
+    "playAll": "Play whole scenario",
+    "stopPlaying": "Stop playing",
+    "doItMyself": "I'll do it",
+    "doItForMe": "Do it for me",
+    "waiting": "Waiting for this step to be done. It moves on by itself.",
+    "playing": "Playing this step for you. Move the mouse or type to take over.",
+    "takeover": "You took over. Finish this step yourself, or let me do it again.",
+    "autoplayFailed": "I could not find what this step needs on screen, so I stopped.",
+    "autoplayRefused": "This step did not look as expected, so I stopped before doing anything. Do it yourself, or skip it.",
+    "agentFailed": "Your agent could not finish this step, so it will not move on by itself. Try again, or skip it.",
+    "agentNoAnswer": "Your agent could not answer, so this step will not move on by itself. Try again, or skip it.",
+    "tryAgain": "Try again",
+    "skipStep": "Skip this step",
+    "anchorWaiting": "Waiting for this to appear on screen.",
+    "takeMeThere": "Take me there",
+    "more": "More actions",
+    "resetPosition": "Reset card position",
+    "resumeChip": "Resume: {{tour}}, step {{k}}/{{n}}",
+    "completed": "{{tour}}: done",
+    "completedSkippedOne": "{{count}} skipped",
+    "completedSkippedOther": "{{count}} skipped",
+    "requestFailed": "That did not go through. Try again.",
+    "showMeHow": "Show me how",
+    "statusNew": "New",
+    "statusDone": "Done",
+    "statusStopped": "Stopped",
+    "statusInProgress": "Step {{k}} of {{n}}",
+    "start": "Start",
+    "resume": "Resume",
+    "playAgain": "Play again",
+    "startAgain": "Start again",
+    "noTours": "No tours for the apps in this workspace yet.",
+    "loading": "Loading tours",
+    "watching": "Watching for this to happen. It moves on by itself.",
+    "gateVerify": "Confirm your email to continue: this step runs an agent.",
+    "gateBudget": "The demo budget is used up, so this step cannot run.",
+    "gateFailed": "This step did not go through.",
+    "retry": "Retry",
+    "nextScenario": "Next: {{tour}}",
+    "scenarios": "Scenarios {{k}}/{{n}}",
+    "scenarioStart": "Start",
+    "scenarioResume": "Resume",
+    "scenarioReplay": "Replay",
+    "scenarioDone": "Done",
+    "welcome": {
+      "step": "Step {{k}} of {{n}}",
+      "agentsTitle": "Turn on your agents",
+      "agentsBody": "Your demo is ready. Confirm your email so the agents can work, then pick where to start.",
+      "codeLead": "Enter the code from your email",
+      "ownKey": "Use your own model key instead",
+      "backToCode": "Use the email code instead",
+      "confirmLater": "You can confirm later.",
+      "chooseTitle": "Where do you want to start?",
+      "confirmed": "Email confirmed. Your agents can run.",
+      "ownKeyReady": "Your own model key is saved. Your agents can run.",
+      "nextUp": "Next up",
+      "orPick": "Or pick another",
+      "inBanner": "Scenarios stay in the banner.",
+      "browse": "Browse on your own",
+      "startOver": "Start over",
+      "startOverTitle": "Start the demo over?",
+      "startOverBody": "Your workspace goes back to its starting state: the mails, approvals and records made so far are gone, and your scenarios go back to 0/{{n}}. Your demo budget and its end date stay the same.",
+      "startOverOwnKey": "Your own model key stays with this workspace: add it again in the new one.",
+      "startOverCancel": "Cancel",
+      "startOverConfirm": "Start over",
+      "startOverWorking": "Starting over…",
+      "startOverFailed": "That did not go through. Try again."
+    },
+    "gateBudgetLink": "See your options",
+    "agentAnswered": "Your agent answered without doing this step. Reply to it in the conversation (for example \"go ahead\"), try again, or skip this step.",
+    "agentWaiting": "Your agent has not done this yet. It may have asked you something in the conversation: answer it there, try again, or skip this step.",
+    "workingAgent": "Your agent is working on it. This step moves on when its answer is here.",
+    "heldTitle": "Your agent asks first",
+    "heldBody": "Your agent asks before it uses {{tool}}. Read its card and press Approve to continue.",
+    "workingRoutine": "The routine is running. This step moves on when it has finished.",
+    "workingReplay": "The recorded session is playing. This step moves on when it gets there.",
+    "routineRunning": "The routine “{{name}}” is working on it ({{elapsed}}). This step moves on when it is done.",
+    "routineRunningUnnamed": "The routine is working on it ({{elapsed}}). This step moves on when it is done.",
+    "routineDone": "The routine “{{name}}” has finished.",
+    "routineDoneUnnamed": "The routine has finished.",
+    "routineFailed": "The routine “{{name}}” stopped with an error: {{error}} Try again later, or skip this step.",
+    "routineFailedUnnamed": "The routine stopped with an error: {{error}} Try again later, or skip this step.",
+    "routineFailedNoReason": "The routine “{{name}}” stopped with an error. Try again later, or skip this step.",
+    "routineFailedNoReasonUnnamed": "The routine stopped with an error. Try again later, or skip this step.",
+    "routineSkipped": "The routine “{{name}}” did not run: {{error}}",
+    "routineSkippedUnnamed": "The routine did not run: {{error}}",
+    "routineSkippedNoReason": "The routine “{{name}}” did not run this time. Skip this step, or try it again later.",
+    "routineSkippedNoReasonUnnamed": "The routine did not run this time. Skip this step, or try it again later.",
+    "routineSetUpModel": "Set up a model",
+    "yourAgent": "your agent"
+  },
+  "scenarios": {
+    "common": {
+      "mentionTrigger": "@",
+      "undoTitle": "Sent, and still undoable",
+      "undoRole": "Every action you approve waits a few seconds before it really happens, so a slip is one click to take back.",
+      "railHome": "Open Home on the left bar",
+      "railTickets": "Open Tickets on the left bar",
+      "railProjects": "Open Projects on the left bar",
+      "railChats": "Open Chats on the left bar",
+      "railMail": "Open Mail on the left bar",
+      "railAgents": "Open Agents on the left bar",
+      "railShopify": "Open Shopify on the left bar",
+      "railInvoicing": "Open Invoicing on the left bar",
+      "railSessions": "Open Sessions on the left bar",
+      "railKnowledge": "Open Knowledge on the left bar",
+      "sendBelow": "Send the question below with Send",
+      "openRunConversation": "Open your conversation with {{agent}}, at the top of Chats",
+      "held": {
+        "title": "Your agent asks before it writes",
+        "body": "Your agent read outside content earlier in this conversation (a web search, for example) or data not everyone can see, so it asks before it writes. Read its card and press Approve to continue.",
+        "role": "This is configurable: an admin can set approval policies. The globe beside your agent's name shows the mark; click it and choose Clear the mark to lift it.",
+        "undo": "Let it go, or press Undo to see the action come back as a request.",
+        "way1": "Open Chats at the bottom of the screen",
+        "way3": "Press Approve on its card"
+      }
+    },
+    "support": {
+      "title": "Support",
+      "summary": "A customer writes in; the support routine posts a note and a reply draft; you review and approve.",
+      "inbox": {
+        "title": "Your support inbox",
+        "body": "Let's watch one come in: press Next.",
+        "role": "You run support. Every customer request lands here as a ticket, and a routine reads each one as it arrives."
+      },
+      "liveTicket": {
+        "title": "A customer is writing in",
+        "body": "Nothing to do yet: her ticket lands at the top of the list in a moment. Press Next once it is there.",
+        "role": "Lena Hart's Kestrel 10 stopped charging after an update, and she is emailing support about it right now."
+      },
+      "open": {
+        "title": "Her ticket is here",
+        "body": "Open her ticket, then press Next.",
+        "role": "Before anyone answers Lena, you want to see what she wrote.",
+        "way2": "Click Lena Hart's ticket, at the top of the list"
+      },
+      "approve": {
+        "title": "Approve the reply",
+        "body": "Edit a sentence if you like, then press Approve. It goes to Lena (a fictional customer here).",
+        "role": "You decide what goes out: read the draft as Lena will read it.",
+        "undo": "Let it go, or press Undo to see the reply come back as a draft."
+      },
+      "sent": {
+        "title": "Sent",
+        "body": "The reply shows in the conversation, next to the routine's note. Press Next.",
+        "role": "Lena has her answer, and the team can see exactly what was said."
+      },
+      "askAgent": {
+        "title": "Check whether Lena is a VIP",
+        "body": "Ask {{agent}} from Chats, beside the ticket, and press Send. It answers from her tickets and her customer record.",
+        "text": "Is Lena Hart a VIP customer? What has she bought from us, and what did she report before?",
+        "role": "Before you promise Lena a replacement, you want to know if she is a VIP customer and what she reported before.",
+        "way1": "Open Chats, beside the ticket",
+        "way2": "Pick {{agent}}, first in the list",
+        "say": "Ask {{agent}}:"
+      },
+      "answer": {
+        "title": "Its answer",
+        "body": "{{agent}} answers beside her ticket, from her tickets and customer record. Press Next once it has answered.",
+        "role": "You decide on the replacement with her history in front of you.",
+        "way3": "Read its answer under your question"
+      },
+      "done": {
+        "title": "That's support",
+        "body": "A routine reads every ticket, writes the note and the draft; you review and decide. Nothing goes out without your approval.",
+        "role": "You stayed in charge of every word Lena received."
+      },
+      "routineNote": {
+        "title": "The routine's internal note",
+        "body": "It reads the ticket, her order and the knowledge base, then leaves a note for the team: its verdict, its sources and what a person must check. Lena never sees it. Press Next once the note is in; you'll approve its reply two steps on.",
+        "role": "Your support routine works the ticket first, so you start from its findings, not from zero."
+      },
+      "routineDraft": {
+        "title": "A reply draft waits for you",
+        "body": "The routine drafts the reply to Lena, in her language. Press Next once the draft shows; you'll read it and approve it in the next step.",
+        "role": "Nothing reaches Lena until a person says yes, and that person is you."
+      }
+    },
+    "projects": {
+      "title": "Projects",
+      "summary": "A teammate asks for help on your task; you hand it to your agent, which breaks the work down and answers him; you review it.",
+      "home": {
+        "title": "Your projects",
+        "body": "Projects and their tasks live here. Press Next.",
+        "role": "You lead the Kestrel Field Preamp launch, one of the projects your team runs here."
+      },
+      "myTask": {
+        "title": "Tobias needs your help on a launch task",
+        "body": "Open the task and read his comment, then press Next.",
+        "role": "You lead the Kestrel Field Preamp launch. Tobias just commented on one of its tasks and asked you for help.",
+        "way2": "Open \"Kestrel Field Preamp launch\"",
+        "way3": "Open the task PREAMP-11 \"Prepare the trade-show demo\"",
+        "way4": "Read Tobias's comment in its discussion"
+      },
+      "teammate": {
+        "title": "A teammate comments",
+        "body": "Nothing to do yet: Tobias is about to comment on your task PREAMP-11 \"Prepare the trade-show demo\". Press Next once his comment is in.",
+        "role": "Tobias Braun works on the launch with you, and he needs your help on one of its tasks."
+      },
+      "askAgent": {
+        "title": "Hand it to your agent",
+        "body": "Open Chats at the bottom of the screen, beside the task, pick your conversation with {{agent}}, write the request below and press Send.",
+        "text": "Tobias needs help on PREAMP-11 \"Prepare the trade-show demo\". Break it into subtasks for next week and create them now as its subtasks, then reply to Tobias in the task's discussion. No need to check with me first.",
+        "role": "You don't have time to plan the demo units yourself. You ask {{agent}}, the way you'd ask an assistant: it splits the task and answers Tobias for you.",
+        "way1": "Open Chats at the bottom of the screen, beside the task",
+        "say": "Write to {{agent}}:"
+      },
+      "board": {
+        "title": "See the whole launch at a glance",
+        "body": "The ringed rows are the subtasks {{agent}} just made, nested under your task. Press Next.",
+        "role": "The subtasks {{agent}} made now sit in the launch plan with everything else. Check that nothing is late.",
+        "way1": "Click \"Kestrel Field Preamp launch\" at the top of the task",
+        "way2": "You're on the project: the new subtasks are in its list"
+      },
+      "done": {
+        "title": "That's projects",
+        "body": "Agents take a share of the task work; you stay in review.",
+        "role": "Tobias has his plan, and it took you a minute, not an afternoon."
+      },
+      "review": {
+        "title": "Review what it did",
+        "body": "The task now shows its subtasks and your agent's reply to Tobias. Check, move or edit any of them, then press Next.",
+        "role": "Before Tobias acts on the plan, you check it is the one you want.",
+        "way3": "Check its subtasks and your agent's reply"
+      },
+      "subtasks": {
+        "title": "Your agent does the breakdown",
+        "body": "It reads the task and creates its subtasks. Press Next once the first one shows.",
+        "role": "While {{agent}} works, you watch the plan take shape.",
+        "way3": "Watch its steps in your conversation with it"
+      },
+      "reply": {
+        "title": "It answers Tobias where he asked",
+        "body": "Your agent posts its reply in the task's discussion. Press Next once it's there.",
+        "role": "Tobias gets his answer in the task's own discussion, from your agent, signed as your agent.",
+        "way3": "Read your agent's reply in the task's discussion"
+      }
+    },
+    "chat": {
+      "title": "Team chat",
+      "summary": "A question that needs the web; your agent researches it in its DM and cites its sources.",
+      "channels": {
+        "title": "Your conversations",
+        "body": "Channels, direct messages and your agents live in Chats. Press Next.",
+        "role": "You work with Tobias and the rest of the team in channels and direct messages."
+      },
+      "question": {
+        "title": "A teammate has a question",
+        "body": "Nothing to do yet: Tobias is about to ask in #battery-passport which EU battery passport rules apply from 2027. Press Next once his message is in.",
+        "role": "Tobias is checking the battery rules for the next product, and he asks you."
+      },
+      "readQuestion": {
+        "title": "Read Tobias's question",
+        "body": "Open #battery-passport in Chats and read Tobias's message, then press Next.",
+        "role": "Tobias needs an answer you don't have yet.",
+        "way2": "Open #battery-passport",
+        "way3": "Read his message"
+      },
+      "askAgent": {
+        "title": "Ask your agent to research it",
+        "body": "Open Chats at the bottom of the screen, beside the channel, pick your conversation with {{agent}} and send the battery passport question below with Send. It searches the web live and cites its sources.",
+        "text": "Tobias is asking which EU battery passport rules apply to us from 2027 and what we need to change. Can you look it up on the web and give me the answer with links to your sources?",
+        "role": "You don't know the answer, but {{agent}} can search the web and cite its sources.",
+        "say": "Ask {{agent}}:",
+        "way1": "Open Chats at the bottom of the screen, beside the channel"
+      },
+      "searching": {
+        "title": "It searches the web",
+        "body": "{{agent}} searches the web for the battery passport rules; each tool it uses shows here as it runs. Press Next once you have seen it.",
+        "role": "{{agent}} does the legwork you would otherwise do in ten browser tabs.",
+        "way3": "Watch its steps in your conversation with it"
+      },
+      "sources": {
+        "title": "Its sources: the web pages it cites",
+        "body": "Its sources are the web pages it cites on the battery passport, shown as links under its answer. Next turns on once the answer is here.",
+        "role": "You can trust the answer because you can check every source yourself.",
+        "way3": "Read the links under its answer"
+      },
+      "followUp": {
+        "title": "Turn it into a task",
+        "body": "In the same conversation, send the request below: type it and press Send, or press the microphone beside Send and say it. It turns the answer into a task in the launch project.",
+        "text": "Please make this answer a task for Tobias in our \"Kestrel Field Preamp launch\" project, with the sources in its description.",
+        "role": "Tobias will act on the answer, so it should become a task in the launch project.",
+        "say": "Ask {{agent}}:"
+      },
+      "done": {
+        "title": "That's chat with your agent",
+        "body": "Your agent works across the apps from a conversation with you: it searches the web live, cites its sources and creates what you ask for. Like a person, it keeps its own memory of everything you tell it, with no compaction, and its own tools make it an expert.",
+        "role": "Tobias has his answer with its sources, and a task to act on it, in his channel."
+      },
+      "task": {
+        "title": "Your agent creates it",
+        "body": "It creates the task, or asks you first. Press Next once it is there; you'll approve it if it asked.",
+        "role": "{{agent}} turns its own answer into work for Tobias."
+      },
+      "replyTobias": {
+        "title": "Answer Tobias in the channel",
+        "body": "In the same conversation, send the request below with Send. {{agent}} posts the answer in #battery-passport for Tobias, signed as your agent, with its sources and the task.",
+        "text": "Now reply to Tobias in #battery-passport: tell him what you found, with the sources, and point him to the task you created for him.",
+        "role": "Tobias asked in the channel, so the answer belongs there, where the team sees it.",
+        "say": "Ask {{agent}}:"
+      },
+      "posting": {
+        "title": "It posts in the channel",
+        "body": "{{agent}} writes its answer to Tobias in #battery-passport; each step it takes shows here. Press Next once its message is in the channel.",
+        "role": "{{agent}} posts for you, under its own name, without you copying anything across."
+      },
+      "replyInChannel": {
+        "title": "Its reply in the channel",
+        "body": "{{agent}}'s answer is in #battery-passport, under Tobias's question, signed as your agent. Press Next.",
+        "role": "Tobias has the answer, its sources and his task in one message.",
+        "way3": "Read its message"
+      }
+    },
+    "sales": {
+      "title": "Sales",
+      "summary": "A prospect emails; a routine checks your CRM, reads up on them, then asks you to approve its CRM record, a quote and the reply in one request, run in order.",
+      "crm": {
+        "title": "Who you are talking to",
+        "body": "Next to a conversation, the customer card shows what your CRM knows about the sender. Press Next.",
+        "role": "You sell to audio companies. Before you answer anyone, you want to know who they are.",
+        "way2": "Open the first conversation in the inbox"
+      },
+      "routine": {
+        "title": "A routine for prospects",
+        "body": "\"Research interested prospects\" runs on every email from an interested prospect. It reads up on them, then prepares their CRM record, a quote and your reply, and hands all three to you to approve. It sends nothing on its own. Press Next.",
+        "role": "Researching each prospect by hand takes you an hour a day; a routine can do it.",
+        "way2": "Open {{agent}} in the list",
+        "way3": "Open its Routines tab"
+      },
+      "enable": {
+        "title": "Switch it on",
+        "body": "Press the routine's switch to turn it on. From now on it runs on every prospect's email.",
+        "role": "You want every interested prospect researched before you reply, without doing it yourself."
+      },
+      "liveEmail": {
+        "title": "A prospect writes in",
+        "body": "Nothing to do yet: Inês is about to ask for a quote for 40 units. Press Next once her email is in.",
+        "role": "Inês from Northwind Acoustics needs 40 units, and she is writing to you now."
+      },
+      "researching": {
+        "title": "The routine is at work",
+        "body": "Wait here, nothing to do: the routine reads Inês's email, checks your CRM and, since she is new, reads her company's website. Then it prepares everything for her: her CRM record, a quote and the reply. This step moves on by itself once it is all ready.",
+        "role": "While the routine reads up on Inês, you do something else."
+      },
+      "bundle": {
+        "title": "Nothing goes out without you",
+        "body": "The routine has done its part: it read up on Inês and wrote everything, but sent nothing. What it delivers is one request in Home, named after the reply to Inês, holding the three actions it wants to take: create her CRM record, issue the quote, send the reply. Press Next.",
+        "role": "Instead of three things to check one by one, you decide once."
+      },
+      "bundleSteps": {
+        "title": "Three steps, in order",
+        "body": "The request holds three steps, run in this order, each shown in full: 1. Inês and her company as a new CRM record, with every field it writes. 2. A quote for 40 Kestrel 6 at your dealer price: its lines, discount, total and her CRM id. 3. The reply to Inês: who it goes to, the whole message, and the quote's PDF attached. What a step takes from the one before reads as that step, such as \"the quote PDF from step 2\". Press Next once its card is open.",
+        "role": "You see the whole deal before anything happens.",
+        "way2": "Click the request's row to open it"
+      },
+      "approve": {
+        "title": "Approve once",
+        "body": "Press Approve: the record is written (here to a fictional CRM), then the quote is issued, then the reply goes to Inês with the quote attached (here to a fictional prospect), in that order. If a step fails, nothing after it runs and the routine works out a corrected request.",
+        "role": "One decision, and the deal moves forward in the right order.",
+        "undo": "Let it go, or press Undo to keep the request waiting for you.",
+        "way2": "Open the request, then press Approve"
+      },
+      "brief": {
+        "title": "Your brief",
+        "body": "When it is done, the routine posts its summary in your chat with {{agent}}: who Inês is, from her company's site and your CRM, the quote's number and what went out. Press Next once it is there.",
+        "role": "You walk into the conversation with Inês knowing who she is.",
+        "way3": "Read the summary, at the bottom of the chat",
+        "way1": "Open Chats at the bottom of the screen, beside the routine"
+      },
+      "card": {
+        "title": "What your CRM knows",
+        "body": "The customer card now shows the CRM record you approved: Inês and Northwind Acoustics, with what the routine learned. Press Next.",
+        "role": "The next time Inês writes, you see at once who she is.",
+        "way2": "Open Inês's email, at the top of the inbox"
+      },
+      "done": {
+        "title": "That's sales",
+        "body": "Routines do the research and keep your CRM up to date; you keep the last word on every record and every email.",
+        "role": "Every prospect is researched before you reply, and nothing goes out without you."
+      }
+    },
+    "commerce": {
+      "title": "Commerce",
+      "summary": "An order arrives and its invoice issues itself; the Operations Desk answers about it and prepares the shipment for your approval.",
+      "orders": {
+        "title": "Your shop's orders",
+        "body": "Orders from your shop show here as they come in. Press Next.",
+        "role": "You run the shop. Orders come in all day, and each one must ship on time.",
+        "way2": "Open Orders in the sidebar"
+      },
+      "liveOrder": {
+        "title": "An order is coming in",
+        "body": "Nothing to do yet: order #1097 is about to arrive, with a gift note. Press Next once it is in.",
+        "role": "A customer is buying right now, with a gift note for the parcel."
+      },
+      "newOrder": {
+        "title": "Order #1097 is in",
+        "body": "Paid, unfulfilled, with a gift note: it waits to ship. Press Next.",
+        "role": "The order lands in your list the moment the customer pays."
+      },
+      "invoice": {
+        "title": "Its invoice, issued by the order",
+        "body": "Its row appears here seconds after the order: the order event issued it, not an agent. Business events stay automatic. Press Next once the row is ringed.",
+        "role": "The invoice for order #1097 is issued without anyone doing it.",
+        "way2": "Open Invoices"
+      },
+      "askAgent": {
+        "title": "Ask the Operations Desk",
+        "body": "Open Chats at the bottom of the screen, beside the orders, pick the Operations Desk under Agents and send the request below with Send. It holds the shipping and invoicing tools: it checks the order and prepares the shipment for your approval.",
+        "text": "Where does order #1097 stand, and is it invoiced? Book its shipment now from its row in the shipping prep list, as it is: buy the label at the cheapest carrier offer, as one approval for me to review, and make no other change. No need to check with me first.",
+        "role": "The customer wants the parcel fast; the Operations Desk, the agent that runs shipping, can check the order and book the shipment for you.",
+        "say": "Ask the Operations Desk:",
+        "way1": "Open Chats at the bottom of the screen, beside the orders",
+        "way2": "Pick the Operations Desk under Agents"
+      },
+      "approve": {
+        "title": "Approve it",
+        "body": "Check the parcel and the carrier, then press Approve. Nothing is booked before you do.",
+        "role": "Nothing is booked with the carrier until you say yes.",
+        "undo": "Let it go, or press Undo to see the shipment come back as a draft."
+      },
+      "done": {
+        "title": "That's commerce",
+        "body": "Orders and invoices run on their own; the Operations Desk handles the judgement around them, and you approve.",
+        "role": "Order #1097 is invoiced and shipping, and you spent a minute on it."
+      },
+      "prepare": {
+        "title": "It prepares the shipment",
+        "body": "The Operations Desk checks order #1097 and stages the shipment as an approval, with the gift note. Press Next once its card is there; you'll approve it next.",
+        "role": "The Operations Desk does the carrier paperwork; you only check it.",
+        "way3": "Watch for its card in your conversation with the Operations Desk"
+      }
+    },
+    "dev": {
+      "title": "Developers",
+      "summary": "Your agent sends a bug fix to Claude Code on a computer, and it opens a pull request.",
+      "intro": {
+        "title": "How Liaison codes for you",
+        "body": "The Liaison desktop app connects Claude Code (or Codex) on your computer to Liaison. Your agents can then send it jobs, like fixing a bug and opening a pull request. Each session runs in the mode you pick in its Modes menu. In Auto, the default, everyday commands run and risky ones wait for your yes, from anywhere. Press Next.",
+        "role": "You build the product's firmware, and you want bugs fixed while you do other work."
+      },
+      "computers": {
+        "title": "Your connected computers",
+        "body": "Your connected computers show here. \"Demo laptop (recorded)\" is already connected in this workspace. It replays a real Claude Code session, so you install nothing. Press Next.",
+        "role": "A computer connected to Liaison is one your agents can send work to."
+      },
+      "askBugs": {
+        "title": "Ask your agent for the recent bugs",
+        "body": "Open Chats at the bottom of the screen, pick your conversation with {{agent}} and send the question below with Send. It reads the team's Firmware bugs channel.",
+        "text": "Read the Firmware bugs channel and list the bugs reported there, newest first, one line each.",
+        "role": "Support and the test bench report bugs in a team channel. {{agent}} can read it for you.",
+        "say": "Ask {{agent}}:",
+        "way1": "Open Chats at the bottom of the screen"
+      },
+      "bugs": {
+        "title": "The recent bugs",
+        "body": "{{agent}} lists the bugs from the channel. The newest: the Kestrel 6 battery stays at 99% after a full charge. Press Next once you have read it.",
+        "role": "You see what is broken without reading the whole channel.",
+        "way3": "Read its answer in your conversation with it"
+      },
+      "askDispatch": {
+        "title": "Ask it to send the fix to the computer",
+        "body": "Send the request below with Send. {{agent}} hands the battery bug to Claude Code on the demo laptop.",
+        "text": "Run a fix for the battery bug stuck at 99% on my computer, the Demo laptop (recorded). It should open a pull request when done.",
+        "role": "You pick the bug. Claude Code on your computer does the fix.",
+        "say": "Ask {{agent}}:"
+      },
+      "dispatch": {
+        "title": "The job is sent",
+        "body": "{{agent}} sends the job to Demo laptop (recorded). A session card shows up in your conversation. Wait for it, then press Next.",
+        "role": "Your agent starts the work on your computer for you. Nothing runs anywhere else.",
+        "way3": "Look for the session card in your conversation with it"
+      },
+      "stream": {
+        "title": "Watch it work",
+        "body": "The session streams what Claude Code does, step by step. Press Next once it asks for your permission; you'll allow it in the next step.",
+        "role": "You follow Claude Code's work as it happens, from anywhere."
+      },
+      "permission": {
+        "title": "It asks first",
+        "body": "Pushing the fix is a risky command, so Claude Code asks you first. That is the session's mode, Auto: everyday commands run, risky ones wait for your yes. Strict, beside the model, is its sandbox: only its folder and approved websites. Press Allow once.",
+        "role": "The mode decides what Claude Code may run without asking, the level what it may reach. You pick both under the message box.",
+        "way1": "Open the demo laptop's session in the list"
+      },
+      "result": {
+        "title": "The result",
+        "body": "Done: the fix is in a pull request. Its link is on the result card. Press Next.",
+        "role": "The bug is fixed, and the change waits for your review like any other."
+      },
+      "report": {
+        "title": "The report in your conversation",
+        "body": "The finished session reports back to your conversation with {{agent}}: what it did and the pull request link. Press Next.",
+        "role": "You hear back where you asked, without opening the session.",
+        "way3": "Read the report in your conversation with it"
+      },
+      "pair": {
+        "title": "Connect your own computer",
+        "body": "Three steps: get the desktop app from the button here, sign in to Liaison in it, then choose Claude Code. Your computer then shows in this list, and your agents can send it jobs. Press Next.",
+        "role": "Your own computer can take jobs the same way."
+      },
+      "done": {
+        "title": "That's development",
+        "body": "Your agents send coding jobs to your computers, and each session asks you according to the mode you picked.",
+        "role": "The battery bug is fixed, and the push waited for your yes."
+      }
+    },
+    "knowledge": {
+      "title": "Company knowledge",
+      "summary": "Manuals, finance and playbooks in one knowledge base; each agent reads only what the person asking may open.",
+      "sources": {
+        "title": "Everything your company knows, in one place",
+        "body": "The sidebar lists the sources: resonant/manuals synced from GitLab, the Finance folder synced from Google Drive, and the documents written in Liaison. Press Next.",
+        "role": "You run Resonant Audio Labs. Your manuals live in GitLab, your finance files in Google Drive, your playbooks in Liaison, and all of it is here.",
+        "way2": "Look at the sources in the sidebar"
+      },
+      "openPl": {
+        "title": "Open the Q3 P&L",
+        "body": "Open the Q3 2026 P&L, read the banner at its top, then press Next.",
+        "role": "This file comes from the Finance folder in Google Drive. Liaison keeps it in sync and shows it read-only: edits happen in Drive.",
+        "way1": "Click \"Q3 2026 P&L\" in the list",
+        "way2": "Read the banner at its top"
+      },
+      "share": {
+        "title": "See who can open it",
+        "body": "Press Share and read who has access, then press Next.",
+        "role": "Confidential means only the people it is shared with. Lucas joined support last month. He isn't on this list, so no agent he asks can open it either.",
+        "way1": "Press Share at the top right of the document",
+        "way2": "Read \"People with access\" and \"Roles with access\""
+      },
+      "askAgent": {
+        "title": "Ask your agent across all three sources",
+        "body": "Open Chats at the bottom of the screen, beside the P&L, pick your conversation with {{agent}} and send the question below with Send. It answers from the P&L, the manual and the playbook, and cites them.",
+        "role": "Your agent sees what you see, so it can combine the P&L, the manual and the playbook in one answer for tomorrow's board meeting.",
+        "text": "What was our gross margin in Q3, and which product drove it? Cite the documents you used.",
+        "say": "Ask {{agent}}:",
+        "way1": "Open Chats at the bottom of the screen, beside the P&L"
+      },
+      "answer": {
+        "title": "Its answer, with its sources",
+        "body": "{{agent}} answers beside the P&L, citing the P&L, the manual and the playbook. Press Next once it has answered.",
+        "role": "You get one answer drawn from three places, and you can open each source.",
+        "way3": "Read its answer under your question"
+      },
+      "lucasAsks": {
+        "title": "Lucas asks the same question",
+        "body": "Nothing to do yet: Lucas is asking Support Desk about the Q3 gross margin in #support. Press Next once his message is in.",
+        "role": "Lucas joined support last month. He asks Support Desk the same thing you asked your agent."
+      },
+      "lucasAnswer": {
+        "title": "Support Desk answers with his access",
+        "body": "Nothing to do but read: Support Desk answers Lucas in #support, searching Knowledge as him, and the P&L is not his to open. Press Next once you have read its answer.",
+        "role": "The agent works with Lucas's access, not yours, so it finds nothing.",
+        "way2": "Open #support under Channels",
+        "way3": "Read Support Desk's answer to Lucas"
+      },
+      "done": {
+        "title": "One brain, walled by role",
+        "body": "You, Henrik in finance and any agent either of you asks can read the Q3 P&L. Lucas in support, and any agent he asks, cannot.",
+        "role": "An agent reads with the access of the person asking it. That's why you can give agents the whole company's knowledge: nobody gets more through an agent than they could open themselves."
+      }
+    }
+  }
+}

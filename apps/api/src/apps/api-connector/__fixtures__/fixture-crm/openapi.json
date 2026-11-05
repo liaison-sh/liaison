@@ -1,0 +1,1369 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Fixture CRM",
+    "version": "1.0.0",
+    "description": "A small fictional CRM/ERP used to test and demonstrate Liaison's API connector. All data is fictional. Fields described as 'Internal only.' exist so tests can prove the connector's field projection drops them."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:4010/v1",
+      "description": "Local fixture (server.ts)"
+    }
+  ],
+  "security": [
+    {
+      "apiKey": []
+    }
+  ],
+  "paths": {
+    "/companies": {
+      "get": {
+        "operationId": "listCompanies",
+        "summary": "List or search companies",
+        "description": "Filters combine. email and phone match a contact of the company; domain matches the company's email domain.",
+        "parameters": [
+          {
+            "name": "email",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "A contact's email address"
+          },
+          {
+            "name": "phone",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A contact's phone number (digits compared)"
+          },
+          {
+            "name": "domain",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The company's email domain"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Case-insensitive part of the company name"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            },
+            "description": "Page size"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque cursor from next_cursor"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createCompany",
+        "summary": "Create a company",
+        "description": "Refused with 409 when a company already has the domain.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewCompany"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyCreated"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/companies/{id}": {
+      "get": {
+        "operationId": "getCompany",
+        "summary": "One company with computed totals",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CompanyId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/companies/{id}/contacts": {
+      "get": {
+        "operationId": "listContacts",
+        "summary": "A company's contacts",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CompanyId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/companies/{id}/deals": {
+      "get": {
+        "operationId": "listDeals",
+        "summary": "A company's deals",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CompanyId"
+          },
+          {
+            "name": "stage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["lead", "qualified", "proposal", "won", "lost"]
+            },
+            "description": "Only deals in this stage"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DealList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/companies/{id}/orders": {
+      "get": {
+        "operationId": "listOrders",
+        "summary": "A company's sales orders, newest first",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CompanyId"
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Only orders on or after this date"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["pending", "shipped", "delivered", "cancelled"]
+            },
+            "description": "Only orders in this status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/companies/{id}/invoices": {
+      "get": {
+        "operationId": "listInvoices",
+        "summary": "A company's invoices",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CompanyId"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["paid", "open", "overdue"]
+            },
+            "description": "Only invoices in this status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/companies/{id}/notes": {
+      "post": {
+        "operationId": "createNote",
+        "summary": "Add a note to a company's timeline",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CompanyId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewNote"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/contacts": {
+      "post": {
+        "operationId": "createContact",
+        "summary": "Create a contact at an existing company or at a new one",
+        "description": "Give exactly one of contact.company_id (an existing company) and contact.company (a new company created in the same call; the response then carries it). Refused with 409 when the email or the new company's domain already exists.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewContact"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactCreated"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/orders": {
+      "get": {
+        "operationId": "listRecentOrders",
+        "summary": "The latest sales orders across every customer, newest first, each with its company's name",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            },
+            "description": "How many orders"
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Only orders on or after this date"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["pending", "shipped", "delivered", "cancelled"]
+            },
+            "description": "Only orders in this status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecentOrderList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    },
+    "/stock": {
+      "get": {
+        "operationId": "listStock",
+        "summary": "Stock levels",
+        "parameters": [
+          {
+            "name": "sku",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact product sku"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Case-insensitive part of the product name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockItemList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "apiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Api-Key"
+      }
+    },
+    "parameters": {
+      "CompanyId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Company id (cmp_...)"
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid API key",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "No such company or route",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "BadRequest": {
+        "description": "Invalid parameter or body",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "The record already exists",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "AccountManager": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "phone_private": {
+            "type": "string",
+            "description": "Internal only."
+          }
+        },
+        "required": ["name", "email", "phone_private"]
+      },
+      "CreditCheck": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "rating": {
+            "type": "string"
+          },
+          "raw_score": {
+            "type": "integer"
+          }
+        },
+        "required": ["rating", "raw_score"],
+        "description": "Internal only."
+      },
+      "Company": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "industry": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string",
+            "description": "ISO 3166-1 alpha-2"
+          },
+          "tier": {
+            "type": "string",
+            "enum": ["gold", "silver", "bronze"]
+          },
+          "currency": {
+            "type": "string"
+          },
+          "created_on": {
+            "type": "string",
+            "format": "date"
+          },
+          "account_manager": {
+            "$ref": "#/components/schemas/AccountManager"
+          },
+          "internal_notes": {
+            "type": "string",
+            "description": "Internal only."
+          },
+          "credit_check": {
+            "$ref": "#/components/schemas/CreditCheck"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "domain",
+          "industry",
+          "city",
+          "country",
+          "tier",
+          "currency",
+          "created_on",
+          "account_manager",
+          "internal_notes",
+          "credit_check"
+        ]
+      },
+      "CompanySummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "industry": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string",
+            "description": "ISO 3166-1 alpha-2"
+          },
+          "tier": {
+            "type": "string",
+            "enum": ["gold", "silver", "bronze"]
+          },
+          "currency": {
+            "type": "string"
+          },
+          "created_on": {
+            "type": "string",
+            "format": "date"
+          },
+          "account_manager": {
+            "$ref": "#/components/schemas/AccountManager"
+          },
+          "internal_notes": {
+            "type": "string",
+            "description": "Internal only."
+          },
+          "credit_check": {
+            "$ref": "#/components/schemas/CreditCheck"
+          },
+          "contacts_count": {
+            "type": "integer"
+          },
+          "open_deals": {
+            "type": "integer"
+          },
+          "lifetime_value": {
+            "type": "number"
+          },
+          "open_balance": {
+            "type": "number"
+          },
+          "last_order_date": {
+            "type": ["string", "null"],
+            "format": "date"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "domain",
+          "industry",
+          "city",
+          "country",
+          "tier",
+          "currency",
+          "created_on",
+          "account_manager",
+          "internal_notes",
+          "credit_check",
+          "contacts_count",
+          "open_deals",
+          "lifetime_value",
+          "open_balance",
+          "last_order_date"
+        ]
+      },
+      "Contact": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "company_id": {
+            "type": "string"
+          },
+          "first_name": {
+            "type": "string"
+          },
+          "last_name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "company_id", "first_name", "last_name", "email", "phone", "title"]
+      },
+      "DealOwner": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          }
+        },
+        "required": ["name", "email"]
+      },
+      "Deal": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "company_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "stage": {
+            "type": "string",
+            "enum": ["lead", "qualified", "proposal", "won", "lost"]
+          },
+          "amount": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "probability": {
+            "type": "integer"
+          },
+          "expected_close": {
+            "type": "string",
+            "format": "date"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/DealOwner"
+          }
+        },
+        "required": [
+          "id",
+          "company_id",
+          "title",
+          "stage",
+          "amount",
+          "currency",
+          "probability",
+          "expected_close",
+          "owner"
+        ]
+      },
+      "OrderLine": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sku": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          },
+          "unit_price": {
+            "type": "number"
+          },
+          "cost_price": {
+            "type": "number",
+            "description": "Internal only."
+          }
+        },
+        "required": ["sku", "description", "quantity", "unit_price", "cost_price"]
+      },
+      "Order": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "company_id": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "shipped", "delivered", "cancelled"]
+          },
+          "currency": {
+            "type": "string"
+          },
+          "total": {
+            "type": "number"
+          },
+          "margin": {
+            "type": "number",
+            "description": "Internal only."
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderLine"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "company_id",
+          "date",
+          "status",
+          "currency",
+          "total",
+          "margin",
+          "lines"
+        ]
+      },
+      "RecentOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "company_id": {
+            "type": "string"
+          },
+          "company_name": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "shipped", "delivered", "cancelled"]
+          },
+          "currency": {
+            "type": "string"
+          },
+          "total": {
+            "type": "number"
+          },
+          "margin": {
+            "type": "number",
+            "description": "Internal only."
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderLine"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "company_id",
+          "company_name",
+          "date",
+          "status",
+          "currency",
+          "total",
+          "margin",
+          "lines"
+        ]
+      },
+      "Invoice": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "company_id": {
+            "type": "string"
+          },
+          "order_id": {
+            "type": "string"
+          },
+          "issued_on": {
+            "type": "string",
+            "format": "date"
+          },
+          "due_on": {
+            "type": "string",
+            "format": "date"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["paid", "open", "overdue"]
+          },
+          "total": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "bank_reference": {
+            "type": "string",
+            "description": "Internal only."
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "company_id",
+          "order_id",
+          "issued_on",
+          "due_on",
+          "status",
+          "total",
+          "currency",
+          "bank_reference"
+        ]
+      },
+      "StockItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sku": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "warehouse": {
+            "type": "string"
+          },
+          "on_hand": {
+            "type": "integer"
+          },
+          "reserved": {
+            "type": "integer"
+          },
+          "available": {
+            "type": "integer"
+          },
+          "restock_date": {
+            "type": ["string", "null"],
+            "format": "date"
+          },
+          "unit_cost": {
+            "type": "number",
+            "description": "Internal only."
+          }
+        },
+        "required": [
+          "sku",
+          "name",
+          "warehouse",
+          "on_hand",
+          "reserved",
+          "available",
+          "restock_date",
+          "unit_cost"
+        ]
+      },
+      "Note": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "company_id": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["id", "company_id", "body", "pinned", "created_at"]
+      },
+      "NewNote": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "body": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "pinned": {
+                "type": "boolean"
+              }
+            },
+            "required": ["body"]
+          }
+        },
+        "required": ["note"]
+      },
+      "Error": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["code", "message"]
+          }
+        },
+        "required": ["error"]
+      },
+      "CompanyPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Company"
+            }
+          },
+          "next_cursor": {
+            "type": ["string", "null"],
+            "description": "Pass as cursor for the next page; null on the last page."
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": ["data", "next_cursor", "total"]
+      },
+      "ContactList": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Contact"
+            }
+          }
+        },
+        "required": ["data"]
+      },
+      "DealList": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Deal"
+            }
+          }
+        },
+        "required": ["data"]
+      },
+      "OrderList": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Order"
+            }
+          }
+        },
+        "required": ["data"]
+      },
+      "RecentOrderList": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecentOrder"
+            }
+          }
+        },
+        "required": ["data"]
+      },
+      "InvoiceList": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Invoice"
+            }
+          }
+        },
+        "required": ["data"]
+      },
+      "StockItemList": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockItem"
+            }
+          }
+        },
+        "required": ["data"]
+      },
+      "CompanyEnvelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "company": {
+            "$ref": "#/components/schemas/CompanySummary"
+          }
+        },
+        "required": ["company"]
+      },
+      "NoteEnvelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "$ref": "#/components/schemas/Note"
+          }
+        },
+        "required": ["note"]
+      },
+      "NewCompany": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "company": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "domain": {
+                "type": "string",
+                "maxLength": 253
+              },
+              "industry": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "city": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "country": {
+                "type": "string",
+                "maxLength": 2
+              }
+            },
+            "required": ["name"]
+          }
+        },
+        "required": ["company"]
+      },
+      "NewContact": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "contact": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "first_name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "last_name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "email": {
+                "type": "string",
+                "format": "email"
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "phone": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "company_id": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "company": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "domain": {
+                    "type": "string",
+                    "maxLength": 253
+                  },
+                  "industry": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "city": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "country": {
+                    "type": "string",
+                    "maxLength": 2
+                  }
+                },
+                "required": ["name"]
+              }
+            },
+            "required": ["first_name", "last_name", "email"]
+          }
+        },
+        "required": ["contact"]
+      },
+      "ContactCreated": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "contact": {
+            "$ref": "#/components/schemas/Contact"
+          },
+          "company": {
+            "$ref": "#/components/schemas/Company",
+            "description": "The company created with the contact; absent when the contact joined an existing one."
+          }
+        },
+        "required": ["contact"]
+      },
+      "CompanyCreated": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "company": {
+            "$ref": "#/components/schemas/Company"
+          }
+        },
+        "required": ["company"]
+      }
+    }
+  }
+}

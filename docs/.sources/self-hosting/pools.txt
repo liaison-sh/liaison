@@ -1,0 +1,20 @@
+Five pools: main, request, privileged, jobs, privileged-jobs; request and jobs log in as the request login when DATABASE_REQUEST_PASSWORD is set -> apps/api/src/db/connection.ts:59-114 ; apps/api/src/db/pool-plan.ts:19-28
+Unsplit: request is main, privileged-jobs is jobs -> apps/api/src/db/connection.ts:74 ; apps/api/src/db/connection.ts:114 ; apps/api/src/db/pool-plan.ts:144
+DB_CELL_MAX_CONNECTIONS is the budget; compose sets it from POSTGRES_MAX_CONNECTIONS (200) -> apps/api/src/lib/env.ts:677-681 ; deploy/docker-compose.yml:703 ; deploy/docker-compose.yml:751
+Reserved 15, migrate footprint 13, available = budget - reserved - 13 -> apps/api/src/db/pool-plan.ts:40-42 ; apps/api/src/lib/env.ts:684
+Topology: LIAISON_API_REPLICAS (2) and LIAISON_WORKER_REPLICAS (1), compose from API_REPLICAS/WORKER_REPLICAS, same values rolling-deploy scales to -> apps/api/src/lib/env.ts:692-696 ; deploy/docker-compose.yml:704-705 ; deploy/rolling-deploy.sh:78-92
+No budget: legacy sizes (env or 20), nothing refuses -> apps/api/src/db/pool-plan.ts:60 ; apps/api/src/db/pool-plan.ts:155
+Floors per role (api 5/6/10/3/2, worker 5/7/15/3/2) -> apps/api/src/db/pool-plan.ts:171-179 ; apps/api/src/db/pool-plan.ts:44
+Api privileged floor 10 measured with two conversation views and their customer cards -> apps/api/src/modules/api-connector/card-privileged-peak.integration.test.ts
+Worker privileged = kernel slots (cron 3, agent 4, media 2, bulk 1, +1) + 4; kernel slots never above the pool -> apps/api/src/db/pool-plan.ts:56 ; apps/api/src/infra/jobs/queue-classes.ts (kernelSlotsWanted, planKernelSlots) ; apps/api/src/infra/jobs/jobs.ts:420-426
+Surplus order: worker jobs, worker privileged-jobs, api request/privileged up to 25/20, rest unallocated -> apps/api/src/db/pool-plan.ts:182-236 ; apps/api/src/db/pool-plan.ts:64-65
+Defaults: api 26, worker 34, steady 86, overlap 172 -> scripts/compose-db-connection-budget.test.ts ; apps/api/src/db/pool-plan.test.ts
+Env pool sizes win over the plan; compose API_DB_*/WORKER_DB_* empty = planned; app keeps 25/15/30; migrate and CLI 2 per pool -> apps/api/src/db/pool-plan.ts:285 ; apps/api/src/db/pool-plan.ts:58 ; deploy/docker-compose.yml:706-709 ; deploy/docker-compose.yml:515-517 ; apps/api/scripts/entrypoint.sh
+pool_plan line; pool_budget_exceeded names every pool and exits 1 before Redis/HTTP; overlap only warns pool_budget_overlap_exceeded; DB_CELL_STRICT refuses -> apps/api/src/db/pool-boot.ts:54-70 ; apps/api/src/index.ts:100-121 ; apps/api/src/db/pool-plan.ts:335-336 ; apps/api/src/db/pool-boot.test.ts
+DB_CELL_ENDPOINT direct reads max_connections minus reserved slots, pool_budget_above_server_limit -> apps/api/src/db/pool-boot.ts:86-133 ; apps/api/src/index.ts:106-110
+DB_CELL_ENDPOINT pooler logs perLogin, skips server check -> apps/api/src/db/pool-boot.ts:52 ; apps/api/src/lib/env.ts:688
+Whole-run jobs (atomic jobs, event handlers, webhook retries, import batches) wait FIFO for a slot; 2 kept for session jobs; backlog after a minute; abort hands back -> apps/api/src/infra/jobs/pinned-jobs-gate.ts:1-27 ; apps/api/src/infra/jobs/pinned-jobs-gate.ts:92 ; apps/api/src/db/pool-plan.ts:46 ; apps/api/src/infra/jobs/pinned-jobs-gate.test.ts
+/diag pools, poolPlan, pinnedJobs, nestedPrivilegedAcquisitions -> apps/api/src/modules/monitor/index.ts:505-510 ; apps/api/src/db/pool-diag.ts (getPoolGauges) ; apps/api/src/modules/monitor/index.ts:439
+Api jobs floor = 2 event handlers + 1 reserve (3 split, 5 unsplit); api pinned slots 2; defaults api 26, worker 34 -> apps/api/src/db/pool-plan.ts (API_EVENT_HANDLER_SLOTS, API_JOBS_RESERVE, floors, jobsReserve) ; apps/api/src/db/pool-plan.test.ts
+Event handler admission ends when the bus times the handler out (HANDLER_TIMEOUT_MS 60 s, abort signal) -> apps/api/src/infra/events/event-bus.ts (runHandlerWithTimeout) ; apps/api/src/infra/events/event-bus.ts:176 ; apps/api/src/modules/apps/runtime.ts (admission) ; apps/api/src/infra/events/event-bus.test.ts
+Per-pool transactions since process start -> apps/api/src/db/pool-diag.ts:85 ; apps/api/src/db/pool-diag.ts:130

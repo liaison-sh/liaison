@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# The load-test edge (deploy/docker-compose.loadtest.yml, profile `rolling`):
+# plain HTTP on EDGE_PORT (default 8080), the same upstream block as
+# deploy/Caddyfile.rolling.example, and a JSON access log for the edge5xx
+# counter (scripts/lib/deploy-counters.ts).
+
+:{$EDGE_PORT:8080} {
+	log {
+		output file /var/log/caddy/access.log
+		format json
+	}
+
+	reverse_proxy 127.0.0.1:3000 127.0.0.1:3001 127.0.0.1:3002 127.0.0.1:3003 127.0.0.1:3004 {
+		health_uri /readyz
+		health_interval 1s
+		health_timeout 800ms
+		health_status 200
+		lb_policy least_conn
+		lb_try_duration 60s
+		lb_try_interval 250ms
+		# Retry only a request that never reached a process (a refused dial).
+		# Caddy's default also resends a GET whose connection broke after it
+		# was sent; a one-time link would then be used twice.
+		lb_retry_match {
+			expression `false`
+		}
+		fail_duration 5s
+		flush_interval -1
+		transport http {
+			read_timeout 0
+			write_timeout 0
+		}
+	}
+}

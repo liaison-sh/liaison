@@ -1,0 +1,57 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Liaison",
+  "version": "0.1.44",
+  "identifier": "sh.liaison.desktop",
+  "build": {
+    "frontendDist": "../../web/dist",
+    "devUrl": "http://localhost:5173"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Liaison",
+        "width": 1280,
+        "height": 860,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "backgroundThrottling": "throttle",
+        "create": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' liaison-app: http://liaison-app.localhost; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; media-src 'self' data: blob:; worker-src 'self' blob:; base-uri 'self'; form-action 'self'; connect-src 'self' https: http://localhost:* ws: wss: ipc: http://ipc.localhost; frame-src 'self' blob: data: liaison-frame: http://liaison-frame.localhost; object-src 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "publisher": "Embodme",
+    "targets": ["app", "dmg", "nsis", "appimage", "deb"],
+    "externalBin": ["binaries/liaison-sidecar"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerHooks": "windows/installer-hooks.nsi"
+      }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["liaison"]
+      }
+    },
+    "updater": {
+      "endpoints": ["https://downloads.liaison.sh/desktop/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ1M0I5RENCMkJDNEExQzcKUldUSG9jUXJ5NTA3UlVuRWgzOG11cGtmbDBWczVLTmRCYk56ZDh3bmRraUVzU2J1SXp5TVVzN2kK"
+    }
+  }
+}

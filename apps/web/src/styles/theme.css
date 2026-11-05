@@ -1,0 +1,213 @@
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
+@import "tailwindcss";
+
+/* Phase 16 — make Tailwind v4 scan first-party plugin UIs under
+ * `bundled-apps/` so classes used in Shopify/Invoicing/etc. UI components
+ * are emitted in the kernel's compiled CSS. Without this, plugin-only
+ * classes get JIT-purged at build time and the UI renders unstyled. */
+@source "../../../../bundled-apps/**/src/**/*.{tsx,ts}";
+/* The shared plugin UI kit (@liaison/app-ui/kit) those apps compose from. */
+@source "../../../../packages/app-ui/src/**/*.{tsx,ts}";
+
+@theme {
+  --color-bg: #111113;
+  --color-surface: #1a1a1e;
+  --color-surface-hover: #232329;
+  --color-surface-active: #2e2e37;
+  /* A well set INTO the surface (status badges, inset code, track fills): one
+   * step below --color-surface, toward --color-bg. */
+  --color-surface-sunken: #151518;
+  --color-elevated: #1e1e22;
+  --color-border-subtle: #1e1e24;
+  --color-border: #262630;
+  --color-border-strong: #333340;
+  --color-text: #cdcdd4;
+  --color-text-secondary: #888892;
+  --color-text-tertiary: #65656e;
+  --color-accent: #b0b8c8;
+  /* The foreground of anything painted ON --color-accent (the unread count
+   * pill above all). It used to be a hardcoded `text-white`, which in dark is
+   * white on light grey: the weakest text on the sidebar, exactly where A36
+   * moved the unread weight the preview line used to carry. It is a TOKEN so
+   * the pair can be contrast checked (theme-contrast.test.ts). */
+  --color-accent-foreground: #16161a;
+  --color-accent-hover: #c8d0e0;
+  /* Aliases for names components were written against but the theme never
+   * defined. An undefined color token emits a utility that sets nothing, so
+   * `text-text-on-accent` left "+ Add source" in the inherited dark text on
+   * the accent fill (the walk's unreadable button), and every
+   * `text-text-primary` / `hover:text-text-primary` did nothing. They resolve
+   * through the canonical tokens, so both themes follow automatically.
+   * theme-tokens-defined.test.ts fails on any NEW undefined color token. */
+  --color-text-primary: var(--color-text);
+  --color-text-muted: var(--color-text-tertiary);
+  --color-text-on-accent: var(--color-accent-foreground);
+  --color-accent-muted: #808898;
+  --color-accent-subtle: rgba(176, 184, 200, 0.05);
+  --color-accent-tint: rgba(176, 184, 200, 0.08);
+  --color-accent-glow: rgba(176, 184, 200, 0.1);
+  --color-accent-wash: rgba(176, 184, 200, 0.15);
+  --color-accent-border: rgba(176, 184, 200, 0.18);
+  --color-success: #3dbf70;
+  --color-success-glow: rgba(61, 191, 112, 0.06);
+  --color-success-border: rgba(61, 191, 112, 0.14);
+  --color-danger: #e5484d;
+  --color-error: #e86464;
+  --color-error-glow: rgba(232, 100, 100, 0.06);
+  --color-error-border: rgba(232, 100, 100, 0.14);
+  --color-warning: #d4a020;
+  --color-warning-glow: rgba(212, 160, 32, 0.06);
+  --color-warning-border: rgba(212, 160, 32, 0.16);
+  --color-overlay: rgba(17, 17, 19, 0.5);
+  --color-overlay-heavy: rgba(17, 17, 19, 0.75);
+  --color-glass-bg: rgba(18, 18, 22, 0.65);
+  --color-glass-tint: rgba(180, 190, 210, 0.08);
+  --font-sans: "Geist Sans", system-ui, -apple-system, sans-serif;
+  --font-display: "Clash Display", "Geist Sans", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+  --text-xs: 11px;
+  --text-sm: 12.5px;
+  --text-base: 13.5px;
+  --text-lg: 15px;
+  --text-xl: 18px;
+  --text-2xl: 22px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+  --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.3), 0 0 0 1px var(--color-border);
+  /* A drawer is a raised LAYER over the surface it opened from, so its shadow
+   * is wide and directional and carries no 1px ring: a ring reads as the
+   * border of an inline column, which is exactly what a drawer is not. */
+  --shadow-drawer: 8px 0 32px rgba(0, 0, 0, 0.45);
+  /* The same, for a drawer held against the RIGHT edge (the phone thread map). */
+  --shadow-drawer-end: -8px 0 32px rgba(0, 0, 0, 0.45);
+  --shadow-tooltip: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow-error-glow: 0 0 6px rgba(232, 100, 100, 0.3);
+  /* A chat dock conversation window floats above the dock bar, over whatever
+   * page it is docked on: a contact shadow plus a deep soft drop, heavier than
+   * a popover's, so it reads as a window and not as a menu. */
+  --shadow-dock-window: 0 2px 6px rgba(0, 0, 0, 0.35), 0 18px 48px -8px rgba(0, 0, 0, 0.65);
+  /* The chat composer is a flat card, framed by its 1px ring alone. On focus
+   * a 4px accent wash haloes it, so where the typing goes is plain without a
+   * heavier ring. */
+  --shadow-composer-focus: 0 0 0 4px var(--color-accent-glow);
+
+  /* Indeterminate loading sweep (TabLoadingBar). The inner bar is 40% of its
+   * track, so translateX(250%) of its own width carries it fully across. */
+  --animate-loading-sweep: loading-sweep 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+
+  @keyframes loading-sweep {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(250%);
+    }
+  }
+}
+
+/* ── Avatar palette (both themes) ─────────────────────────── */
+
+/* The avatar slots are saturated enough to read on either page, so the light
+ * theme does not override them (`~/ui/avatar-palette` picks the slot). */
+:root {
+  /* Native controls (checkboxes, selects, scrollbars) draw for the theme they
+     sit on: without it a checkbox is a white square on the dark page. */
+  color-scheme: dark;
+  accent-color: var(--color-accent);
+  /* People: a solid, saturated disc with white initials. One set for both
+     themes; every bg holds white text at a readable contrast. */
+  --avatar-0-bg: #2563eb;
+  --avatar-0-text: #ffffff;
+  --avatar-1-bg: #ea580c;
+  --avatar-1-text: #ffffff;
+  --avatar-2-bg: #16a34a;
+  --avatar-2-text: #ffffff;
+  --avatar-3-bg: #9333ea;
+  --avatar-3-text: #ffffff;
+  --avatar-4-bg: #0d9488;
+  --avatar-4-text: #ffffff;
+  --avatar-5-bg: #db2777;
+  --avatar-5-text: #ffffff;
+  --avatar-6-bg: #dc2626;
+  --avatar-6-text: #ffffff;
+  --avatar-7-bg: #b45309;
+  --avatar-7-text: #ffffff;
+  /* Agents: their own set, a two-stop gradient behind a white bolt, so an
+     agent never wears a person's colour. `-solid` is the same hue for a bare
+     bolt drawn without a disc. Eight clearly different hues: an agent's slot
+     is stored (kernel.agents.avatar_color) and the server gives each new
+     agent its org's least-used one, so two slots must never read alike. */
+  --agent-avatar-0-bg: linear-gradient(135deg, #8b5cf6, #6d28d9);
+  --agent-avatar-0-solid: #7c3aed;
+  --agent-avatar-1-bg: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  --agent-avatar-1-solid: #2563eb;
+  --agent-avatar-2-bg: linear-gradient(135deg, #f59e0b, #ea580c);
+  --agent-avatar-2-solid: #ea580c;
+  --agent-avatar-3-bg: linear-gradient(135deg, #22c55e, #15803d);
+  --agent-avatar-3-solid: #16a34a;
+  --agent-avatar-4-bg: linear-gradient(135deg, #ec4899, #be185d);
+  --agent-avatar-4-solid: #db2777;
+  --agent-avatar-5-bg: linear-gradient(135deg, #14b8a6, #0f766e);
+  --agent-avatar-5-solid: #0d9488;
+  --agent-avatar-6-bg: linear-gradient(135deg, #ef4444, #b91c1c);
+  --agent-avatar-6-solid: #dc2626;
+  --agent-avatar-7-bg: linear-gradient(135deg, #64748b, #334155);
+  --agent-avatar-7-solid: #475569;
+}
+
+/* ── Light theme ─────────────────────────────────────────────
+ * Calm off-white palette mirroring the warm-charcoal dark theme.
+ * Applied via `data-theme="light"` on <html>. Every component already
+ * uses var(--color-*) or Tailwind tokens that resolve to these vars,
+ * so the swap requires zero component edits.
+ *
+ * Note: typography and radius tokens are theme-agnostic and are NOT
+ * redefined here — the @theme block at the top carries them through.
+ */
+[data-theme="light"] {
+  color-scheme: light;
+  --color-bg: #fafafa;
+  --color-surface: #f4f4f6;
+  --color-surface-hover: #ecedf1;
+  --color-surface-active: #dfe0e6;
+  --color-surface-sunken: #ececf0;
+  --color-elevated: #f8f8fa;
+  --color-border-subtle: #ececf0;
+  --color-border: #dfdfe5;
+  --color-border-strong: #cdcdd5;
+  --color-text: #2a2a32;
+  --color-text-secondary: #5a5a64;
+  --color-text-tertiary: #92929c;
+  --color-accent: #4a5468;
+  --color-accent-foreground: #ffffff;
+  --color-accent-hover: #2f3849;
+  --color-accent-muted: #6a7488;
+  --color-accent-subtle: rgba(74, 84, 104, 0.06);
+  --color-accent-tint: rgba(74, 84, 104, 0.09);
+  --color-accent-glow: rgba(74, 84, 104, 0.11);
+  --color-accent-wash: rgba(74, 84, 104, 0.13);
+  --color-accent-border: rgba(74, 84, 104, 0.2);
+  --color-success: #1f9d55;
+  --color-success-glow: rgba(31, 157, 85, 0.08);
+  --color-success-border: rgba(31, 157, 85, 0.2);
+  --color-danger: #c93236;
+  --color-error: #c93236;
+  --color-error-glow: rgba(201, 50, 54, 0.07);
+  --color-error-border: rgba(201, 50, 54, 0.2);
+  --color-warning: #a87900;
+  --color-warning-glow: rgba(168, 121, 0, 0.08);
+  --color-warning-border: rgba(168, 121, 0, 0.2);
+  --color-overlay: rgba(250, 250, 250, 0.55);
+  --color-overlay-heavy: rgba(40, 40, 48, 0.3);
+  --color-glass-bg: rgba(252, 252, 254, 0.75);
+  --color-glass-tint: rgba(74, 84, 104, 0.06);
+  --shadow-popover: 0 4px 16px rgba(20, 20, 26, 0.1), 0 0 0 1px var(--color-border);
+  --shadow-drawer: 8px 0 32px rgba(20, 20, 26, 0.18);
+  --shadow-drawer-end: -8px 0 32px rgba(20, 20, 26, 0.18);
+  --shadow-tooltip: 0 2px 8px rgba(20, 20, 26, 0.12);
+  --shadow-error-glow: 0 0 6px rgba(201, 50, 54, 0.25);
+  --shadow-dock-window: 0 2px 6px rgba(20, 20, 26, 0.08), 0 18px 48px -8px rgba(20, 20, 26, 0.24);
+}

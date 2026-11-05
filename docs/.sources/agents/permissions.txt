@@ -1,0 +1,80 @@
+Intersection never union, always an intersection -> apps/api/src/modules/agent/scopes/effective-scope.ts:14
+DM bounded by requester -> apps/api/src/modules/agent/scopes/effective-scope.ts:58
+Channel bounded by every human member -> apps/api/src/modules/agent/scopes/effective-scope.ts:50
+Routine tick has no requester floor -> apps/api/src/modules/agent/scopes/effective-scope.ts:7
+Routine pauses on scope drift -> apps/api/src/modules/agent/routines/routine-worker.ts:19
+Delegation: requester grants intersect callee ceiling -> apps/api/src/modules/agent/scopes/effective-scope.ts:8
+Sub-agent effective scopes parent ∩ role ∩ requested -> apps/api/src/modules/agent/subruns/spawn-agent.ts:12
+Withheld capabilities message -> packages/shared/src/i18n/locales/en/kernel.json:1992
+Continue in a DM -> packages/shared/src/i18n/locales/en/kernel.json:1993
+Personal agent ceiling equals owner's grants -> apps/api/src/modules/agent/directory/personal-agent.ts:76
+Personal ceiling recomputed from owner's grants -> apps/api/src/modules/scope-requests/service.ts:494
+Role agent ceiling set by admin capabilities grid -> apps/web/src/modules/agent/AgentSettingsTab.tsx:510
+Ceiling bounded by what creator may grant -> apps/api/src/modules/agent/directory/definition-routes.ts:1310
+System agent common base -> apps/api/src/modules/agent/directory/common-base-scopes.ts:8
+Organization-administration scopes list -> apps/api/src/modules/agent/directory/ceiling-guard.ts:69
+Role agents get no admin scopes via config apply -> apps/api/src/cli/provisioners/agents.ts:102
+Approved access request never adds an admin scope to a role agent -> apps/api/src/modules/scope-requests/service.ts:539
+Dimension grants filter records server side -> apps/api/src/modules/permissions/response-filter.ts:8
+Scopes are hierarchical: a shorter grant covers everything under it -> apps/api/src/modules/permissions/permissions.ts:33
+Full wildcard grants everything -> apps/api/src/modules/permissions/permissions.ts:19
+App off or restricted affects agents -> packages/shared/src/i18n/locales/en/kernel.json:5449
+App off: no agent tools -> packages/shared/src/i18n/locales/en/kernel.json:5428
+Scope request refused for app off or restricted -> apps/api/src/modules/scope-requests/service.ts:119
+list_locked_capabilities tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:1948
+tool_search only loads tools within access -> apps/api/src/modules/agent/tools/kernel-tools.ts:1929
+Permission denied toast text -> packages/shared/src/i18n/locales/en/kernel.json:1713
+Request access button on toast -> apps/web/src/modules/shell/ApiContext.tsx:50
+Access request sent toast -> packages/shared/src/i18n/locales/en/kernel.json:6
+Requestable denial posts to /scope-requests -> apps/web/src/modules/shell/ApiContext.tsx:53
+Repeat requests merged -> apps/api/src/modules/scope-requests/service.ts:100
+request_scope tool -> apps/api/src/modules/agent/tools/kernel-tools.ts:1961
+request_scope only after user confirmed -> apps/api/src/modules/agent/tools/kernel-tools.ts:1974
+Decision notification title -> packages/shared/src/i18n/locales/en/kernel.json:3308
+Agent speaks first after decision -> apps/api/src/modules/scope-requests/announce.ts:16
+Roles & access page with Access requests section -> apps/web/src/modules/settings/RolesAccessSettings.tsx:17
+Access requests section title -> packages/shared/src/i18n/locales/en/kernel.json:7
+Access requests help text approving gives person permission -> packages/shared/src/i18n/locales/en/kernel.json:5327
+Approve button on request -> apps/web/src/modules/admin-scope-requests/AdminScopeRequests.tsx:131
+Deny button with optional reason -> apps/web/src/modules/admin-scope-requests/AdminScopeRequests.tsx:139
+via agent name on request -> apps/web/src/modules/admin-scope-requests/AdminScopeRequests.tsx:58
+Approving widens asking agent's ceiling -> apps/api/src/modules/scope-requests/service.ts:484
+Someone else's personal agent not widened -> apps/api/src/modules/scope-requests/service.ts:499
+Cannot approve a scope you do not hold -> apps/api/src/modules/scope-requests/service.ts:363
+Decision rolled back as a whole on refusal -> apps/api/src/modules/scope-requests/service.ts:491
+Decision announced in originating conversation -> apps/api/src/modules/scope-requests/announce.ts:12
+describe_user_access -> apps/api/src/modules/agent/tools/kernel-tools.ts:2159
+list_scopes -> apps/api/src/modules/agent/tools/kernel-tools.ts:2171
+roles_list -> apps/api/src/modules/agent/tools/kernel-tools.ts:2121
+get_role -> apps/api/src/modules/agent/tools/kernel-tools.ts:2135
+users_list -> apps/api/src/modules/agent/tools/kernel-tools.ts:2145
+list_dimensions -> apps/api/src/modules/agent/tools/kernel-tools.ts:2384
+create_role gated kernel:roles:admin -> apps/api/src/modules/agent/tools/kernel-tools.ts:2046
+edit_role -> apps/api/src/modules/agent/tools/kernel-tools.ts:2068
+delete_role -> apps/api/src/modules/agent/tools/kernel-tools.ts:2101
+assign_role -> apps/api/src/modules/agent/tools/kernel-tools.ts:2346
+remove_user_from_role -> apps/api/src/modules/agent/tools/kernel-tools.ts:2365
+grant_user_scope -> apps/api/src/modules/agent/tools/kernel-tools.ts:2417
+grant_dimension_value -> apps/api/src/modules/agent/tools/kernel-tools.ts:2394
+kernel:agents:admin authors sub-agent roles -> apps/api/src/modules/permissions/scope-catalog.ts:157
+subagent_get needs kernel:agents:admin -> apps/api/src/modules/agent/tools/kernel-tools.ts:2654
+kernel:agents:read definition read -> apps/api/src/modules/permissions/scope-catalog.ts:169
+kernel:agents:spawn -> apps/api/src/modules/permissions/scope-catalog.ts:152
+kernel:agent:web -> apps/api/src/modules/permissions/scope-catalog.ts:98
+kernel:agent:memory -> apps/api/src/modules/permissions/scope-catalog.ts:119
+kernel:agent:memory:read -> apps/api/src/modules/permissions/scope-catalog.ts:124
+kernel:agent:memory:write -> apps/api/src/modules/permissions/scope-catalog.ts:129
+kernel:threads:read -> apps/api/src/modules/permissions/scope-catalog.ts:24
+kernel:threads:write -> apps/api/src/modules/permissions/scope-catalog.ts:25
+kernel:threads:admin -> apps/api/src/modules/permissions/scope-catalog.ts:26
+kernel:files:read -> apps/api/src/modules/permissions/scope-catalog.ts:39
+kernel:files:analyze -> apps/api/src/modules/permissions/scope-catalog.ts:43
+kernel:skills:approve -> apps/api/src/modules/permissions/scope-catalog.ts:109
+kernel:approvals:admin -> apps/api/src/modules/permissions/scope-catalog.ts:115
+kernel:approve -> apps/api/src/modules/permissions/scope-catalog.ts:57
+kernel:policies:write -> apps/api/src/modules/permissions/scope-catalog.ts:80
+kernel:scope_requests:admin -> apps/api/src/modules/permissions/scope-catalog.ts:172
+create_pinned_thread needs kernel:threads:admin -> apps/api/src/modules/agent/tools/kernel-tools.ts:2216
+Access request waits in the Home Approvals list with Grant / Deny -> apps/web/src/modules/admin-scope-requests/AccessRequestRow.tsx:77
+Decision Undo window covers access requests -> apps/web/src/modules/approvals/decision-queue.ts:50
+kernel:bug_reports:file held by every active member, kept by their agent whatever its ceiling -> apps/api/src/modules/permissions/every-member-scopes.ts:23 ; apps/api/src/modules/permissions/permissions.ts:154 ; apps/api/src/modules/agent/scopes/effective-scope.ts:45-56

@@ -1,0 +1,17 @@
+{
+  "name": "@liaison/mailbox-crypto",
+  "private": true,
+  "license": "FSL-1.1-ALv2",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "^1",
+    "typescript": "^6"
+  },
+  "dependencies": {
+    "hash-wasm": "^4.12.0"
+  }
+}

@@ -1,0 +1,101 @@
+Contact columns name, email, phone, company, externalIds, metadata, tags -> apps/api/src/db/schema/kernel/contacts.ts:24-30
+Contacts are not the CRM -> apps/api/src/modules/agent/tools/kernel-tools.ts:1561
+Owner and org access none/viewer/editor -> apps/api/src/db/schema/kernel/contacts.ts:36-37
+No create UI: contacts appear automatically -> packages/shared/src/i18n/locales/en/contacts.json:31
+Empty-state text in the list -> apps/web/src/modules/contacts/ContactList.tsx:555
+Personal mailbox sender becomes the owner's private contact -> apps/api/src/modules/mail/sender-contacts.ts:10-11
+Shared mailbox sender becomes a contact shared with the mailbox's members -> apps/api/src/modules/mail/sender-contacts.ts:12-16
+Existing org contact linked, bulk/no-reply senders only linked -> apps/api/src/modules/mail/sender-contacts.ts:17-19
+Ticket address-only customer: restricted, shared with the ticket's team -> apps/api/src/modules/contacts/creation-paths.test.ts:132
+Agent-created contact private to that person -> apps/api/src/modules/agent/tools/kernel-tools.ts:1685
+Search box Search people… -> packages/shared/src/i18n/locales/en/contacts.json:23
+Search matches name, email, company -> apps/api/src/modules/contacts/service.ts:498-500
+People / All filter and hints -> packages/shared/src/i18n/locales/en/contacts.json:26-29
+People / All filter in the list -> apps/web/src/modules/contacts/ContactList.tsx:454-461
+auto badge -> apps/web/src/modules/contacts/ContactList.tsx:332
+Search all senders instead -> apps/web/src/modules/contacts/ContactList.tsx:569
+Groups in the sidebar, click to filter -> apps/web/src/modules/contacts/ContactsSidebar.tsx:206-219
+Group: <name> and Show all contacts -> packages/shared/src/i18n/locales/en/contacts.json:104-105
+Identity section, click any field to edit -> apps/web/src/modules/contacts/ContactDetail.tsx:289-290
+Name, Phone, Company editable, Email read only -> apps/web/src/modules/contacts/ContactDetail.tsx:295-321
+Activity (mail) and Tickets sections -> apps/web/src/modules/contacts/ContactDetail.tsx:327-382
+More actions > Delete contact, confirm -> apps/web/src/modules/contacts/ContactDetail.tsx:227-262
+Delete confirm text -> packages/shared/src/i18n/locales/en/contacts.json:8
+New group, Group name, Create in the sidebar -> apps/web/src/modules/contacts/ContactsSidebar.tsx:235-255
+Group labels -> packages/shared/src/i18n/locales/en/contacts.json:95-97
+List selection N selected, Add to group -> apps/web/src/modules/contacts/ContactList.tsx:161-171
+Add to group on a contact -> apps/web/src/modules/contacts/ContactDetail.tsx:183-188
+Clicking a ticked group removes the contact -> apps/web/src/modules/contacts/AddToGroupMenu.tsx:43-52
+Mail routine filter by contact group -> packages/shared/src/validation/agent/routines.ts:145-146
+Visibility badge Private / Organisation / Shared with you -> packages/shared/src/i18n/locales/en/contacts.json:83-89
+Share button -> apps/web/src/modules/contacts/ContactDetail.tsx:212
+General access options Private / view / edit -> apps/web/src/modules/contacts/ContactShareDialog.tsx:31-50
+General access option labels -> packages/shared/src/i18n/locales/en/contacts.json:75-80
+General access, Add people…, Add roles…, Viewer, Editor -> packages/shared/src/i18n/locales/en/kernel.json:4128-4136
+Save in the share dialog -> apps/web/src/modules/sharing/ShareDialog.tsx:572
+Only the owner shares; unowned contact needs kernel:contacts:admin; editors never re-share -> apps/api/src/modules/contacts/sharing.ts:5-9
+Cannot take back an org contact the team uses -> apps/api/src/modules/contacts/sharing.ts:15-18
+contacts_search filters and scope -> apps/api/src/modules/agent/tools/kernel-tools.ts:1471-1475
+contacts_read mail backlinks and timeline -> apps/api/src/modules/agent/tools/kernel-tools.ts:1538
+contacts_write ungated, kernel:contacts:write -> apps/api/src/modules/agent/tools/kernel-tools.ts:1561-1562
+contacts_export gated CSV, segment or tag, export+read scopes -> apps/api/src/modules/agent/tools/kernel-tools.ts:1588-1594
+contacts_share gated, kernel:contacts:write -> apps/api/src/modules/agent/tools/kernel-tools.ts:1685-1691
+contacts_merge gated -> apps/api/src/modules/agent/tools/kernel-tools.ts:1644
+contacts_groups_list, contacts_group_members read scope -> apps/api/src/modules/agent/tools/kernel-tools.ts:1725
+contacts_group_create/rename/add/remove ungated write -> apps/api/src/modules/agent/tools/kernel-tools.ts:1768-1832
+contacts_group_delete gated, contacts kept -> apps/api/src/modules/agent/tools/kernel-tools.ts:1799-1802
+Scope descriptions read/write -> apps/api/src/modules/permissions/scope-catalog.ts:27-28
+Scope descriptions admin/export -> apps/api/src/modules/permissions/scope-catalog.ts:86-93
+Trusted senders managed with kernel:contacts:admin -> apps/api/src/modules/contacts/trusted-senders.ts:25
+Agent contact edits gated (contacts_write) -> apps/api/src/modules/agent/tools/kernel-tools.ts:1580
+contacts_write card: contact and each field's new value -> apps/api/src/modules/agent/tools/contact-tools.ts:1069
+A person's own call to a gated tool runs -> apps/api/src/modules/apps/execute-tool.ts:948
+Auto-approve policy on the tool name turns the gate off -> apps/api/src/tests/integration/contacts-write-gate.test.ts:132
+Set auto-approve policy request, needs kernel:policies:admin -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:4071
+A gated write on a tainted turn always parks, a policy does not answer it -> apps/api/src/modules/apps/execute-tool.ts:4988
+Discussion heading, placeholder, Send -> packages/shared/src/i18n/locales/en/contacts.json:53-56
+Discussion rail beside the contact where both fit, after the details on a phone -> apps/web/src/modules/contacts/ContactDetail.tsx:138
+Discussion pane and the shared task discussion -> apps/web/src/modules/contacts/ContactDetail.tsx:460-492
+Same discussion as a task: files, @ picker, wand, mic, Cmd/Ctrl+Enter -> apps/web/src/modules/threads/EntityDiscussion.tsx:223-311
+New messages land live (message:create) -> apps/web/src/modules/threads/EntityDiscussion.tsx:12
+Whoever sees the contact opens its discussion (RLS), else 404 -> apps/api/src/modules/contacts/discussion.ts:49-53
+Sharing change drops the enrolled people; re-enrol by opening -> apps/api/src/modules/contacts/sharing.ts:145
+Private contact's discussion stays private (test) -> apps/api/src/modules/contacts/routes.test.ts:330
+Agent post in the discussion: threads_reply contactId, no approval -> apps/api/src/modules/agent/tools/kernel-tools.ts:989-1008
+Agent post attributed to the agent, no approval (test) -> apps/api/src/tests/integration/contacts-write-gate.test.ts:165
+Agent contact edit asked in the discussion parks a card there (test) -> apps/api/src/tests/integration/contacts-write-gate.test.ts:192
+Earlier notes moved into the discussion with author and date -> apps/api/src/db/migrations/0216_contact_discussion.sql:73-115
+Migrated notes are searchable: the boot rebuild indexes them -> apps/api/src/modules/search/index-shape.ts:44-56
+Migrated note found by whoever sees the contact, not by others (test) -> apps/api/src/modules/contacts/discussion-search.integration.test.ts:179
+Merge: the merged contact's discussion joins the survivor's, authors, dates and order kept -> apps/api/src/modules/contacts/discussion.ts:196-219
+Merge: survivor's sharing decides who reads it -> apps/api/src/modules/contacts/discussion.ts:209-213
+Merge moves the discussion (test) -> apps/api/src/modules/contacts/routes.test.ts:405
+Deleting a contact deletes its discussion -> apps/api/src/modules/contacts/service.ts:1507
+Deleting a contact deletes its discussion (test) -> apps/api/src/modules/contacts/routes.test.ts:548
+Address book roles billing, delivery, other -> apps/api/src/db/migrations/0253_contact_addresses.sql:39-40
+Verified = verified_at, verified_by, source set together; sources purchase_order, email, phone_call, other -> apps/api/src/db/migrations/0253_contact_addresses.sql:57-71
+contacts_addresses_list returns verification, read only -> apps/api/src/modules/agent/tools/kernel-tools.ts:1913
+Added, imported or copied addresses are never verified -> apps/api/src/modules/contacts/addresses.ts:294-306
+Location fields (name, company, street, city, postal code, region, country) clear the verification; phone and email keep it -> apps/api/src/modules/contacts/addresses.ts:86-95
+Editing a location field clears verification -> apps/api/src/modules/contacts/addresses.ts:420
+Phone change keeps, street change clears (test) -> apps/api/src/modules/contacts/addresses.test.ts:180
+REST verify records the signed-in person with source, note, fileId -> apps/api/src/modules/contacts/routes.ts:261-289
+Restricted device session refused on verify -> apps/api/src/modules/contacts/routes.ts:274
+Restricted session verify 403 (test) -> apps/api/src/modules/contacts/addresses.test.ts:141
+contacts_address_upsert gated, always not verified -> apps/api/src/modules/agent/tools/kernel-tools.ts:1929
+contacts_address_verify gated, noAutoApprove -> apps/api/src/modules/agent/tools/kernel-tools.ts:1960-1970
+Verify card shows address, source, note, file link -> apps/api/src/modules/agent/tools/contact-tools.ts:1484
+kernel:* and named policies do not skip verify; approver recorded (test) -> apps/api/src/tests/integration/contact-addresses-agent-tools.test.ts:215-266
+Never verify from an email alone (tool description) -> apps/api/src/modules/agent/tools/kernel-tools.ts:1966
+Source file must be readable by the caller -> apps/api/src/modules/contacts/addresses.ts:485
+Apps cannot verify: host services refuse the verify route and tool to app UIs -> apps/web/src/framework/person-only-actions.ts:34
+Host fetch and invokeTool apply the refusal -> apps/web/src/framework/host-services.ts:162
+Addresses section on the contact page -> packages/shared/src/i18n/locales/en/contacts.json:130
+Role chips Billing, Delivery, Other -> packages/shared/src/i18n/locales/en/contacts.json:150
+Verified badge text -> packages/shared/src/i18n/locales/en/contacts.json:144
+Not verified badge -> packages/shared/src/i18n/locales/en/contacts.json:143
+Add an address -> packages/shared/src/i18n/locales/en/contacts.json:132
+Verify form sources Purchase order, Email, Phone call, Other -> packages/shared/src/i18n/locales/en/contacts.json:161
+Mark verified, note, file from the contact's files -> apps/web/src/modules/contacts/ContactAddresses.tsx:432
+Edit, Mark stale, Archive -> packages/shared/src/i18n/locales/en/contacts.json:137
+Read-only rows for a reader who cannot edit (meta.canEdit) -> apps/api/src/modules/contacts/routes.ts:213

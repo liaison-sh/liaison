@@ -1,0 +1,20 @@
+{
+  "data": {
+    "staffMembers": {
+      "edges": [
+        {
+          "node": {
+            "id": "gid://shopify/StaffMember/1",
+            "email": "owner@example.com",
+            "isShopOwner": true,
+            "active": true,
+            "accountType": "REGULAR",
+            "name": "Test Owner",
+            "privateData": null
+          }
+        }
+      ],
+      "pageInfo": { "hasNextPage": false, "endCursor": null }
+    }
+  }
+}

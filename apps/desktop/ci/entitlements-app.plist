@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- The OUTER app bundle's entitlements. Deliberately smaller than the
+         sidecar's: the shell is Rust, it JITs nothing (the webview's
+         JavaScript runs in WebKit's own process, which carries its own
+         entitlements) and it loads no third party library into itself, so it
+         asks for neither allow-jit, nor allow-unsigned-executable-memory, nor
+         a library validation bypass. Those live in entitlements-sidecar.plist
+         because the sidecar is a Bun binary that really does JIT.
+
+         Network client: it refreshes the Liaison token and talks to the
+         API. Audio input: dictation records through getUserMedia in the
+         webview, which the hardened runtime refuses without this grant. The
+         sidecar never records and carries no device grant. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+</dict>
+</plist>

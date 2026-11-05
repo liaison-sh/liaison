@@ -1,0 +1,1542 @@
+{
+ "case-01": {
+  "label": {
+   "recipient_address": {
+    "name": "Camille Rousseau",
+    "company": null,
+    "email": "buyer0@mail.example",
+    "phone": "+33612345601",
+    "street": "12 rue des Lilas",
+    "city": "Lyon",
+    "postalCode": "69003",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "5a3cdeb1d1f8581a65525d69079b3779c2c7d6466ad6b953cac5a83927fc9ccb"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Camille Rousseau",
+    "company": null,
+    "email": "buyer0@mail.example",
+    "phone": "+33612345601",
+    "street": "12 rue des Lilas",
+    "city": "Lyon",
+    "postalCode": "69003",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "5a3cdeb1d1f8581a65525d69079b3779c2c7d6466ad6b953cac5a83927fc9ccb"
+  }
+ },
+ "case-02": {
+  "label": {
+   "recipient_address": {
+    "name": "Hugo Lambert",
+    "company": null,
+    "email": "buyer1@mail.example",
+    "phone": "+33612345602",
+    "street": "4 avenue Jean Jaures, Bat B",
+    "city": "Nantes",
+    "postalCode": "44000",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "09aec81360421265e8f2d987b90ee94f3da7b02e4e0e95894433250f29aef495"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Hugo Lambert",
+    "company": null,
+    "email": "buyer1@mail.example",
+    "phone": "+33612345602",
+    "street": "4 avenue Jean Jaures, Bat B",
+    "city": "Nantes",
+    "postalCode": "44000",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "09aec81360421265e8f2d987b90ee94f3da7b02e4e0e95894433250f29aef495"
+  }
+ },
+ "case-03": {
+  "label": {
+   "recipient_address": {
+    "name": "Lea Fontaine",
+    "company": null,
+    "email": "buyer2@mail.example",
+    "phone": "+33612345603",
+    "street": "78 boulevard Voltaire",
+    "city": "Paris",
+    "postalCode": "75011",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "b098adf3bd54c32b85e374f016ad1f9ff41dd2a1c8b782bc4f62754d9aa2a6fc"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Lea Fontaine",
+    "company": null,
+    "email": "buyer2@mail.example",
+    "phone": "+33612345603",
+    "street": "78 boulevard Voltaire",
+    "city": "Paris",
+    "postalCode": "75011",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "b098adf3bd54c32b85e374f016ad1f9ff41dd2a1c8b782bc4f62754d9aa2a6fc"
+  }
+ },
+ "case-04": {
+  "label": {
+   "recipient_address": {
+    "name": "Nathan Girard",
+    "company": null,
+    "email": "buyer3@mail.example",
+    "phone": "+33612345604",
+    "street": "3 impasse des Tilleuls",
+    "city": "Rennes",
+    "postalCode": "35000",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "e6dc1f91b18cc11adb2b7ff28ea28970a0b38eba4076e65aa5b0dd053bc06d8f"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Nathan Girard",
+    "company": null,
+    "email": "buyer3@mail.example",
+    "phone": "+33612345604",
+    "street": "3 impasse des Tilleuls",
+    "city": "Rennes",
+    "postalCode": "35000",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "e6dc1f91b18cc11adb2b7ff28ea28970a0b38eba4076e65aa5b0dd053bc06d8f"
+  }
+ },
+ "case-05": {
+  "label": {
+   "recipient_address": {
+    "name": "Manon Leroy",
+    "company": null,
+    "email": "buyer4@mail.example",
+    "phone": "+33612345605",
+    "street": "21 rue Nationale",
+    "city": "Lille",
+    "postalCode": "59000",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "ea7ab9bb8e6e8f71fbdbe04a2f0c28386125d8c3afbd1a40db351b61d04a5e53"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Manon Leroy",
+    "company": null,
+    "email": "buyer4@mail.example",
+    "phone": "+33612345605",
+    "street": "21 rue Nationale",
+    "city": "Lille",
+    "postalCode": "59000",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "ea7ab9bb8e6e8f71fbdbe04a2f0c28386125d8c3afbd1a40db351b61d04a5e53"
+  }
+ },
+ "case-06": {
+  "label": {
+   "recipient_address": {
+    "name": "Louis Morel",
+    "company": "Studio Morel",
+    "email": "buyer5@mail.example",
+    "phone": "+33612345606",
+    "street": "9 quai de la Fosse",
+    "city": "Nantes",
+    "postalCode": "44100",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "253e7e1487152db5f81ccce4403edb698ce58c92c5b9ca0711e93c9ff11b8efe"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Louis Morel",
+    "company": "Studio Morel",
+    "email": "buyer5@mail.example",
+    "phone": "+33612345606",
+    "street": "9 quai de la Fosse",
+    "city": "Nantes",
+    "postalCode": "44100",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "253e7e1487152db5f81ccce4403edb698ce58c92c5b9ca0711e93c9ff11b8efe"
+  }
+ },
+ "case-07": {
+  "label": {
+   "recipient_address": {
+    "name": "Chloe Andre",
+    "company": null,
+    "email": "buyer6@mail.example",
+    "phone": "+33612345607",
+    "street": "150 route de Narbonne",
+    "city": "Toulouse",
+    "postalCode": "31400",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "54195ec7c999064bed9d177f41d2edcefc1731203a93d87e6a97fea59e4a11bf"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Chloe Andre",
+    "company": null,
+    "email": "buyer6@mail.example",
+    "phone": "+33612345607",
+    "street": "150 route de Narbonne",
+    "city": "Toulouse",
+    "postalCode": "31400",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "54195ec7c999064bed9d177f41d2edcefc1731203a93d87e6a97fea59e4a11bf"
+  }
+ },
+ "case-08": {
+  "label": {
+   "recipient_address": {
+    "name": "Jules Mercier",
+    "company": null,
+    "email": "buyer7@mail.example",
+    "phone": "+33612345608",
+    "street": "2 place Bellecour",
+    "city": "Lyon",
+    "postalCode": "69002",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "8343d8f4b71510b06b97e5cadeb194c51b772f221eaef45e909bdafd2312bbd1"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Jules Mercier",
+    "company": null,
+    "email": "buyer7@mail.example",
+    "phone": "+33612345608",
+    "street": "2 place Bellecour",
+    "city": "Lyon",
+    "postalCode": "69002",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "8343d8f4b71510b06b97e5cadeb194c51b772f221eaef45e909bdafd2312bbd1"
+  }
+ },
+ "case-09": {
+  "label": {
+   "recipient_address": {
+    "name": "Ines Blanc",
+    "company": null,
+    "email": "buyer8@mail.example",
+    "phone": "+33612345609",
+    "street": "45 cours Mirabeau",
+    "city": "Aix-en-Provence",
+    "postalCode": "13100",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "3ecad3ccbf06e0738d0ccc1f128ced08fa07fa6a1998d781560cec298629afdd"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Ines Blanc",
+    "company": null,
+    "email": "buyer8@mail.example",
+    "phone": "+33612345609",
+    "street": "45 cours Mirabeau",
+    "city": "Aix-en-Provence",
+    "postalCode": "13100",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "3ecad3ccbf06e0738d0ccc1f128ced08fa07fa6a1998d781560cec298629afdd"
+  }
+ },
+ "case-10": {
+  "label": {
+   "recipient_address": {
+    "name": "Theo Garnier",
+    "company": null,
+    "email": "buyer9@mail.example",
+    "phone": "+33612345610",
+    "street": "6 allee des Pins",
+    "city": "Bordeaux",
+    "postalCode": "33000",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "6c3836e7e55ca21dde56955db5226dcbe97fc535d5bc2fd36e04f0236359f6a0"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Theo Garnier",
+    "company": null,
+    "email": "buyer9@mail.example",
+    "phone": "+33612345610",
+    "street": "6 allee des Pins",
+    "city": "Bordeaux",
+    "postalCode": "33000",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "6c3836e7e55ca21dde56955db5226dcbe97fc535d5bc2fd36e04f0236359f6a0"
+  }
+ },
+ "case-11": {
+  "label": {
+   "recipient_address": {
+    "name": "Jonas Becker",
+    "company": null,
+    "email": "eu0@mail.example",
+    "phone": "+4917011100001",
+    "street": "Lindenstr. 14",
+    "city": "Koeln",
+    "postalCode": "50674",
+    "countryIsoCode": "DE",
+    "state": null
+   },
+   "rest": "2880784a883a38b0255c5915708e1138f9572b5942dddc3e2bccf1fdc422f31d"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Jonas Becker",
+    "company": null,
+    "email": "eu0@mail.example",
+    "phone": "+4917011100001",
+    "street": "Lindenstr. 14",
+    "city": "Koeln",
+    "postalCode": "50674",
+    "countryIsoCode": "DE",
+    "state": null
+   },
+   "rest": "2880784a883a38b0255c5915708e1138f9572b5942dddc3e2bccf1fdc422f31d"
+  }
+ },
+ "case-12": {
+  "label": {
+   "recipient_address": {
+    "name": "Anna Schulz",
+    "company": null,
+    "email": "eu1@mail.example",
+    "phone": "+4917011100002",
+    "street": "GARTENWEG 3 A",
+    "city": "Bonn",
+    "postalCode": "53111",
+    "countryIsoCode": "DE",
+    "state": null
+   },
+   "rest": "5b54a128bd21d645b60fdff40d49980c341331e69f0611f566afb6a8e1be0f23"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Anna Schulz",
+    "company": null,
+    "email": "eu1@mail.example",
+    "phone": "+4917011100002",
+    "street": "GARTENWEG 3 A",
+    "city": "Bonn",
+    "postalCode": "53111",
+    "countryIsoCode": "DE",
+    "state": null
+   },
+   "rest": "5b54a128bd21d645b60fdff40d49980c341331e69f0611f566afb6a8e1be0f23"
+  }
+ },
+ "case-13": {
+  "label": {
+   "recipient_address": {
+    "name": "Marco Bianchi",
+    "company": null,
+    "email": "eu2@mail.example",
+    "phone": "+393331110003",
+    "street": "via roma, 22",
+    "city": "Milano",
+    "postalCode": "20121",
+    "countryIsoCode": "IT",
+    "state": null
+   },
+   "rest": "2cbc1db3c3401e92d7bb318dfe2fcca271657f42cc2e25fcff6793731642125f"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Marco Bianchi",
+    "company": null,
+    "email": "eu2@mail.example",
+    "phone": "+393331110003",
+    "street": "via roma, 22",
+    "city": "Milano",
+    "postalCode": "20121",
+    "countryIsoCode": "IT",
+    "state": null
+   },
+   "rest": "2cbc1db3c3401e92d7bb318dfe2fcca271657f42cc2e25fcff6793731642125f"
+  }
+ },
+ "case-14": {
+  "label": {
+   "recipient_address": {
+    "name": "Lucia Garcia",
+    "company": null,
+    "email": "eu3@mail.example",
+    "phone": "+34611110004",
+    "street": "Calle Mayor, 7",
+    "city": "Madrid",
+    "postalCode": "28013",
+    "countryIsoCode": "ES",
+    "state": null
+   },
+   "rest": "8afb260b65757026214d35390b69dd63dfd7f4999fca93385682c53e502d2c15"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Lucia Garcia",
+    "company": null,
+    "email": "eu3@mail.example",
+    "phone": "+34611110004",
+    "street": "Calle Mayor, 7",
+    "city": "Madrid",
+    "postalCode": "28013",
+    "countryIsoCode": "ES",
+    "state": null
+   },
+   "rest": "8afb260b65757026214d35390b69dd63dfd7f4999fca93385682c53e502d2c15"
+  }
+ },
+ "case-15": {
+  "label": {
+   "recipient_address": {
+    "name": "Sander de Vries",
+    "company": null,
+    "email": "eu4@mail.example",
+    "phone": "+31611110005",
+    "street": "Keizersgracht 101",
+    "city": "Amsterdam",
+    "postalCode": "1015CJ",
+    "countryIsoCode": "NL",
+    "state": null
+   },
+   "rest": "900f195f30bf5d74c0334a08f013f1bb1c7b75920c36ed7a98d5dae7c58c3a77"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Sander de Vries",
+    "company": null,
+    "email": "eu4@mail.example",
+    "phone": "+31611110005",
+    "street": "Keizersgracht 101",
+    "city": "Amsterdam",
+    "postalCode": "1015CJ",
+    "countryIsoCode": "NL",
+    "state": null
+   },
+   "rest": "900f195f30bf5d74c0334a08f013f1bb1c7b75920c36ed7a98d5dae7c58c3a77"
+  }
+ },
+ "case-16": {
+  "label": {
+   "recipient_address": {
+    "name": "Elise Peeters",
+    "company": null,
+    "email": "eu5@mail.example",
+    "phone": "+32471110006",
+    "street": "Av. Louise 54",
+    "city": "Bruxelles",
+    "postalCode": "1050",
+    "countryIsoCode": "BE",
+    "state": null
+   },
+   "rest": "07cd5b3b179d3be183424d077378366491966b1869f96046e161a8f088cc9b08"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Elise Peeters",
+    "company": null,
+    "email": "eu5@mail.example",
+    "phone": "+32471110006",
+    "street": "Av. Louise 54",
+    "city": "Bruxelles",
+    "postalCode": "1050",
+    "countryIsoCode": "BE",
+    "state": null
+   },
+   "rest": "07cd5b3b179d3be183424d077378366491966b1869f96046e161a8f088cc9b08"
+  }
+ },
+ "case-17": {
+  "label": {
+   "recipient_address": {
+    "name": "Paul Simon",
+    "company": null,
+    "email": "nc0@mail.example",
+    "phone": "+33612340001",
+    "street": "8 rue Gambetta",
+    "city": "Tours",
+    "postalCode": "37000",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "14515f816acf5fc91fe7ae0b9441ef792abdda048c0d1869c90b5c9739df355e"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Paul Simon",
+    "company": null,
+    "email": "nc0@mail.example",
+    "phone": null,
+    "street": "8 rue Gambetta",
+    "city": "Tours",
+    "postalCode": "37000",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "14515f816acf5fc91fe7ae0b9441ef792abdda048c0d1869c90b5c9739df355e"
+  }
+ },
+ "case-18": {
+  "label": {
+   "recipient_address": {
+    "name": "Eva Novak",
+    "company": null,
+    "email": "nc1@mail.example",
+    "phone": "+420601110002",
+    "street": "Hlavni 12",
+    "city": "Brno",
+    "postalCode": "60200",
+    "countryIsoCode": "CZ",
+    "state": null
+   },
+   "rest": "f3e605f1829744a57de0127dfac64f1a3988b84739f2d0a4f360c3ff07948192"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Eva Novak",
+    "company": null,
+    "email": "nc1@mail.example",
+    "phone": null,
+    "street": "Hlavni 12",
+    "city": "Brno",
+    "postalCode": "60200",
+    "countryIsoCode": "CZ",
+    "state": null
+   },
+   "rest": "f3e605f1829744a57de0127dfac64f1a3988b84739f2d0a4f360c3ff07948192"
+  }
+ },
+ "case-19": {
+  "label": {
+   "recipient_address": {
+    "name": "Ole Hansen",
+    "company": null,
+    "email": "nc2@mail.example",
+    "phone": null,
+    "street": "Storgata 5",
+    "city": "Oslo",
+    "postalCode": "0155",
+    "countryIsoCode": "NO",
+    "state": null
+   },
+   "rest": "c714ab9e80e353a4b919a5a809725259f10a6eefe5524d3704c2479b30ce6fa1"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Ole Hansen",
+    "company": null,
+    "email": "nc2@mail.example",
+    "phone": null,
+    "street": "Storgata 5",
+    "city": "Oslo",
+    "postalCode": "0155",
+    "countryIsoCode": "NO",
+    "state": null
+   },
+   "rest": "c714ab9e80e353a4b919a5a809725259f10a6eefe5524d3704c2479b30ce6fa1"
+  }
+ },
+ "case-20": {
+  "label": {
+   "recipient_address": {
+    "name": "Mia Weber",
+    "company": null,
+    "email": "nc3@mail.example",
+    "phone": "+41791110004",
+    "street": "Bahnhofstrasse 40",
+    "city": "Zuerich",
+    "postalCode": "8001",
+    "countryIsoCode": "CH",
+    "state": null
+   },
+   "rest": "97eec0cfd64fdd01b8b2c23d3f3ec7ea59e18e4eb83b7a3e1af8db63ec3887a1"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Mia Weber",
+    "company": null,
+    "email": "nc3@mail.example",
+    "phone": null,
+    "street": "Bahnhofstrasse 40",
+    "city": "Zuerich",
+    "postalCode": "8001",
+    "countryIsoCode": "CH",
+    "state": null
+   },
+   "rest": "97eec0cfd64fdd01b8b2c23d3f3ec7ea59e18e4eb83b7a3e1af8db63ec3887a1"
+  }
+ },
+ "case-21": {
+  "label": {
+   "recipient_address": {
+    "name": "Tom Murphy",
+    "company": null,
+    "email": "nc4@mail.example",
+    "phone": "+353861110005",
+    "street": "14 Grafton Street",
+    "city": "Dublin",
+    "postalCode": "D02 X285",
+    "countryIsoCode": "IE",
+    "state": null
+   },
+   "rest": "a35fefd8cf8b2bcd8bfa5e38eed71199a58120c7061b99b33716f4cb2f6fbbaa"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Tom Murphy",
+    "company": null,
+    "email": "nc4@mail.example",
+    "phone": null,
+    "street": "14 Grafton Street",
+    "city": "D02 X285 Dublin",
+    "postalCode": null,
+    "countryIsoCode": "IE",
+    "state": null
+   },
+   "rest": "a35fefd8cf8b2bcd8bfa5e38eed71199a58120c7061b99b33716f4cb2f6fbbaa"
+  }
+ },
+ "case-22": {
+  "label": {
+   "recipient_address": {
+    "name": "Sarah Klein",
+    "company": null,
+    "email": "ncp0@mail.example",
+    "phone": "+4917022200001",
+    "street": "Rosenweg 2",
+    "city": "Mainz",
+    "postalCode": "55116",
+    "countryIsoCode": "DE",
+    "state": null
+   },
+   "rest": "d7e4a101838e26d45632cb6afe0b34b89fb61c715ea259189a35cc78ddb4560d"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Sarah Klein",
+    "company": null,
+    "email": "ncp0@mail.example",
+    "phone": null,
+    "street": "Rosenweg 2",
+    "city": "Mainz",
+    "postalCode": "55116",
+    "countryIsoCode": "DE",
+    "state": null
+   },
+   "rest": "d7e4a101838e26d45632cb6afe0b34b89fb61c715ea259189a35cc78ddb4560d"
+  }
+ },
+ "case-23": {
+  "label": {
+   "recipient_address": {
+    "name": "Lucas Petit",
+    "company": null,
+    "email": "ncp1@mail.example",
+    "phone": "+33622220002",
+    "street": "33 rue de la Paix",
+    "city": "Reims",
+    "postalCode": "51100",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "087f97d92918a33131b546b9167e13dce4200215c101678f1236f6fdbc6b8c5e"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Lucas Petit",
+    "company": null,
+    "email": "ncp1@mail.example",
+    "phone": null,
+    "street": "33 rue de la Paix",
+    "city": "Reims",
+    "postalCode": "51100",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "087f97d92918a33131b546b9167e13dce4200215c101678f1236f6fdbc6b8c5e"
+  }
+ },
+ "case-24": {
+  "label": {
+   "recipient_address": {
+    "name": "Giulia Ferri",
+    "company": "Ferri Suoni",
+    "email": "ncp2@mail.example",
+    "phone": "+393332220003",
+    "street": "Corso Vittorio 9",
+    "city": "Torino",
+    "postalCode": "10121",
+    "countryIsoCode": "IT",
+    "state": null
+   },
+   "rest": "0a5fe294034db0e5e64cea785650b5ae0fd9daa4a2cefc3adecc686efeada314"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Giulia Ferri",
+    "company": null,
+    "email": "ncp2@mail.example",
+    "phone": null,
+    "street": "Ferri Suoni, Corso Vittorio 9",
+    "city": "Torino",
+    "postalCode": "10121",
+    "countryIsoCode": "IT",
+    "state": null
+   },
+   "rest": "0a5fe294034db0e5e64cea785650b5ae0fd9daa4a2cefc3adecc686efeada314"
+  }
+ },
+ "case-25": {
+  "label": {
+   "recipient_address": {
+    "name": "Kenji Sato",
+    "company": null,
+    "email": "ncp3@mail.example",
+    "phone": "+81312340004",
+    "street": "2-3-1 Nishi-Shinjuku",
+    "city": "Tokyo",
+    "postalCode": "163-8001",
+    "countryIsoCode": "JP",
+    "state": null
+   },
+   "rest": "0ca69ac73932e24142d119fe29448df4c8156eba3ba892a76dc9173b58d0a712"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Kenji Sato",
+    "company": null,
+    "email": "ncp3@mail.example",
+    "phone": null,
+    "street": "2-3-1 Nishi-Shinjuku",
+    "city": "Tokyo",
+    "postalCode": "163-8001",
+    "countryIsoCode": "JP",
+    "state": null
+   },
+   "rest": "0ca69ac73932e24142d119fe29448df4c8156eba3ba892a76dc9173b58d0a712"
+  }
+ },
+ "case-26": {
+  "label": {
+   "recipient_address": {
+    "name": "Remi Faure",
+    "company": null,
+    "email": "np0@mail.example",
+    "phone": "+33633330001",
+    "street": "17 rue Victor Hugo",
+    "city": "Grenoble",
+    "postalCode": "38000",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "c087431cb877322c9555dd0e88f69193de27a4d24925f466f1af57e27b0ac62c"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Remi Faure",
+    "company": null,
+    "email": "np0@mail.example",
+    "phone": null,
+    "street": "17 rue Victor Hugo",
+    "city": "Grenoble",
+    "postalCode": "38000",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "c087431cb877322c9555dd0e88f69193de27a4d24925f466f1af57e27b0ac62c"
+  }
+ },
+ "case-27": {
+  "label": {
+   "recipient_address": {
+    "name": "Lena Wolf",
+    "company": null,
+    "email": "np1@mail.example",
+    "phone": "+4917033300002",
+    "street": "Marktplatz 1",
+    "city": "Heidelberg",
+    "postalCode": "69117",
+    "countryIsoCode": "DE",
+    "state": null
+   },
+   "rest": "dc7edc3dd7ad6a59972cb6ce6d39eb47d691337fa556a6efbc2c48310b546a90"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Lena Wolf",
+    "company": null,
+    "email": "np1@mail.example",
+    "phone": null,
+    "street": "Marktplatz 1",
+    "city": "Heidelberg",
+    "postalCode": "69117",
+    "countryIsoCode": "DE",
+    "state": null
+   },
+   "rest": "dc7edc3dd7ad6a59972cb6ce6d39eb47d691337fa556a6efbc2c48310b546a90"
+  }
+ },
+ "case-28": {
+  "label": {
+   "recipient_address": {
+    "name": "Pedro Silva",
+    "company": null,
+    "email": "np2@mail.example",
+    "phone": "+351911110003",
+    "street": "Rua Augusta 100",
+    "city": "Lisboa",
+    "postalCode": "1100-053",
+    "countryIsoCode": "PT",
+    "state": null
+   },
+   "rest": "e001c77ea8433917f03d98825335461c78237642ec892cd421ff8bc00f01a690"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Pedro Silva",
+    "company": null,
+    "email": "np2@mail.example",
+    "phone": null,
+    "street": "Rua Augusta 100",
+    "city": "Lisboa",
+    "postalCode": "1100-053",
+    "countryIsoCode": "PT",
+    "state": null
+   },
+   "rest": "e001c77ea8433917f03d98825335461c78237642ec892cd421ff8bc00f01a690"
+  }
+ },
+ "case-29": {
+  "label": {
+   "recipient_address": {
+    "name": "Anouk Janssen",
+    "company": null,
+    "email": "np3@mail.example",
+    "phone": null,
+    "street": "Oudegracht 50",
+    "city": "Utrecht",
+    "postalCode": "3511 AR",
+    "countryIsoCode": "NL",
+    "state": null
+   },
+   "rest": "55828df2a22fab3c7703b0eac918adb0c8f8681f7a1650c8c244ddbb718eb82d"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Anouk Janssen",
+    "company": null,
+    "email": "np3@mail.example",
+    "phone": null,
+    "street": "Oudegracht 50",
+    "city": "Utrecht",
+    "postalCode": "3511 AR",
+    "countryIsoCode": "NL",
+    "state": null
+   },
+   "rest": "55828df2a22fab3c7703b0eac918adb0c8f8681f7a1650c8c244ddbb718eb82d"
+  }
+ },
+ "case-30": {
+  "label": {
+   "recipient_address": {
+    "name": "Atelier Sonore",
+    "company": "Atelier Sonore SARL",
+    "email": "man0@mail.example",
+    "phone": "+33491110001",
+    "street": "5 rue du Port",
+    "city": "Marseille",
+    "postalCode": "13002",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "918d50c9ba92b7b2b31bf60e2c699818127e7689836b0f52bf8a3b28e00dbc97"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Atelier Sonore",
+    "company": "Atelier Sonore SARL",
+    "email": "man0@mail.example",
+    "phone": "+33491110001",
+    "street": "5 rue du Port",
+    "city": "Marseille",
+    "postalCode": "13002",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "918d50c9ba92b7b2b31bf60e2c699818127e7689836b0f52bf8a3b28e00dbc97"
+  }
+ },
+ "case-31": {
+  "label": {
+   "recipient_address": {
+    "name": "Klangwerk GmbH",
+    "company": "Klangwerk GmbH",
+    "email": "man1@mail.example",
+    "phone": "+49711110002",
+    "street": "Industriestr. 20",
+    "city": "Stuttgart",
+    "postalCode": "70565",
+    "countryIsoCode": "DE",
+    "state": null
+   },
+   "rest": "a05d345edae85bff4c4c2ff04e1fa78d00b243b1f4261fde10b0c21d939f9254"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Klangwerk GmbH",
+    "company": "Klangwerk GmbH",
+    "email": "man1@mail.example",
+    "phone": "+49711110002",
+    "street": "Industriestr. 20",
+    "city": "Stuttgart",
+    "postalCode": "70565",
+    "countryIsoCode": "DE",
+    "state": null
+   },
+   "rest": "a05d345edae85bff4c4c2ff04e1fa78d00b243b1f4261fde10b0c21d939f9254"
+  }
+ },
+ "case-32": {
+  "label": {
+   "recipient_address": {
+    "name": "Nordic Tone AS",
+    "company": "Nordic Tone AS",
+    "email": "man2@mail.example",
+    "phone": "+4737110003",
+    "street": "Industriveien 4",
+    "city": "Grimstad",
+    "postalCode": "4879",
+    "countryIsoCode": "NO",
+    "state": null
+   },
+   "rest": "5f2ff76383ee2914f47372fea411622f92aa02d06ba32a6c61bb468a54c2daba"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Nordic Tone AS",
+    "company": "Nordic Tone AS",
+    "email": "man2@mail.example",
+    "phone": "+4737110003",
+    "street": "Industriveien 4",
+    "city": "Grimstad",
+    "postalCode": "4879",
+    "countryIsoCode": "NO",
+    "state": null
+   },
+   "rest": "5f2ff76383ee2914f47372fea411622f92aa02d06ba32a6c61bb468a54c2daba"
+  }
+ },
+ "case-33": {
+  "label": {
+   "recipient_address": {
+    "name": "Ruta Kalnina",
+    "company": null,
+    "email": "man3@mail.example",
+    "phone": "+37121110004",
+    "street": "Brivibas iela 30",
+    "city": "Riga",
+    "postalCode": "LV-1050",
+    "countryIsoCode": "LV",
+    "state": null
+   },
+   "rest": "0e1a3748da03ef4ab388fc97ada70d69dd97c39992f87ad18133204a1b1dd46b"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Ruta Kalnina",
+    "company": null,
+    "email": "man3@mail.example",
+    "phone": "+37121110004",
+    "street": "Brivibas iela 30",
+    "city": "Riga",
+    "postalCode": "LV-1050",
+    "countryIsoCode": "LV",
+    "state": null
+   },
+   "rest": "0e1a3748da03ef4ab388fc97ada70d69dd97c39992f87ad18133204a1b1dd46b"
+  }
+ },
+ "case-34": {
+  "label": {
+   "recipient_address": {
+    "name": "Yanis Robert",
+    "company": null,
+    "email": "g0@mail.example",
+    "phone": null,
+    "street": "50 rue des Trois Rois",
+    "city": "NANTES",
+    "postalCode": "44000",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "3443cbaa8a3b59ad59a168c08a5f0f461c658ff5407c68f74c83564b715a6694"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Yanis Robert",
+    "company": null,
+    "email": "g0@mail.example",
+    "phone": null,
+    "street": "50 rue des Trois Rois",
+    "city": "NANTES",
+    "postalCode": "44000",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "3443cbaa8a3b59ad59a168c08a5f0f461c658ff5407c68f74c83564b715a6694"
+  }
+ },
+ "case-35": {
+  "label": {
+   "recipient_address": {
+    "name": "Harbor Sound LLC",
+    "company": null,
+    "email": "g1@mail.example",
+    "phone": null,
+    "street": "250 W 57th St",
+    "city": "New York",
+    "postalCode": "10019",
+    "countryIsoCode": "US",
+    "state": "NY"
+   },
+   "rest": "cb398982264ab1749648101c1325ca7d3b3be14eac00c3fa836c1b077d485141"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Harbor Sound LLC",
+    "company": null,
+    "email": "g1@mail.example",
+    "phone": null,
+    "street": "250 W 57th St",
+    "city": "New York",
+    "postalCode": "10019",
+    "countryIsoCode": "US",
+    "state": "NY"
+   },
+   "rest": "cb398982264ab1749648101c1325ca7d3b3be14eac00c3fa836c1b077d485141"
+  }
+ },
+ "case-36": {
+  "label": {
+   "recipient_address": {
+    "name": "Fjord Audio",
+    "company": null,
+    "email": "g2@mail.example",
+    "phone": null,
+    "street": "Industriveien 4",
+    "city": "Grimstad",
+    "postalCode": "4879",
+    "countryIsoCode": "NO",
+    "state": null
+   },
+   "rest": "40cfe66368bc945aa08c0bceedb9e50f09ed9b665f91e225c241a7e804a99190"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Fjord Audio",
+    "company": null,
+    "email": "g2@mail.example",
+    "phone": null,
+    "street": "Industriveien 4",
+    "city": "Grimstad",
+    "postalCode": "4879",
+    "countryIsoCode": "NO",
+    "state": null
+   },
+   "rest": "40cfe66368bc945aa08c0bceedb9e50f09ed9b665f91e225c241a7e804a99190"
+  }
+ },
+ "case-37": {
+  "label": {
+   "recipient_address": null,
+   "rest": "b0e03ba086b12d1ad5da64a0d5048cbb3e0aa5f064fe65649023686c2cd76a1a"
+  },
+  "worklist": {
+   "recipient_address": null,
+   "rest": "b0e03ba086b12d1ad5da64a0d5048cbb3e0aa5f064fe65649023686c2cd76a1a"
+  }
+ },
+ "case-38": {
+  "label": {
+   "recipient_address": {
+    "name": "Iris Moulin",
+    "company": null,
+    "email": "def0@mail.example",
+    "phone": "+33644440001",
+    "street": "11 rue Pasteur",
+    "city": "Dijon",
+    "postalCode": "21000",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "73bfbbdcbcd93741a7181c45561ddd8b40c78a8d1648ec68112b5d1668bf54b7"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Iris Moulin",
+    "company": null,
+    "email": "def0@mail.example",
+    "phone": "+33644440001",
+    "street": "11 rue Pasteur",
+    "city": "Dijon",
+    "postalCode": "21000",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "73bfbbdcbcd93741a7181c45561ddd8b40c78a8d1648ec68112b5d1668bf54b7"
+  }
+ },
+ "case-39": {
+  "label": {
+   "recipient_address": {
+    "name": "Felix Braun",
+    "company": null,
+    "email": "def1@mail.example",
+    "phone": "+4917044400002",
+    "street": "Hafenstrasse 8",
+    "city": "Hamburg",
+    "postalCode": "20459",
+    "countryIsoCode": "DE",
+    "state": null
+   },
+   "rest": "a264873d9a958c7626e90bcd8098d1233ce6907d982c6e99fdbe0e39350511ae"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Felix Braun",
+    "company": null,
+    "email": "def1@mail.example",
+    "phone": "+4917044400002",
+    "street": "Hafenstrasse 8",
+    "city": "Hamburg",
+    "postalCode": "20459",
+    "countryIsoCode": "DE",
+    "state": null
+   },
+   "rest": "a264873d9a958c7626e90bcd8098d1233ce6907d982c6e99fdbe0e39350511ae"
+  }
+ },
+ "case-40": {
+  "label": {
+   "recipient_address": {
+    "name": "Sofia Rossi",
+    "company": null,
+    "email": "def2@mail.example",
+    "phone": "+393334440003",
+    "street": "Via Dante 3",
+    "city": "Bologna",
+    "postalCode": "40125",
+    "countryIsoCode": "IT",
+    "state": null
+   },
+   "rest": "7360e0ac612be7e11c171383828a49aea0ad3daa650a5157ac809ca66204965b"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Sofia Rossi",
+    "company": null,
+    "email": "def2@mail.example",
+    "phone": null,
+    "street": "Via Dante 3",
+    "city": "Bologna",
+    "postalCode": "40125",
+    "countryIsoCode": "IT",
+    "state": null
+   },
+   "rest": "7360e0ac612be7e11c171383828a49aea0ad3daa650a5157ac809ca66204965b"
+  }
+ },
+ "case-41": {
+  "label": {
+   "recipient_address": {
+    "name": "Grace Lee",
+    "company": null,
+    "email": "us0@mail.example",
+    "phone": "+12155550101",
+    "street": "1200 Market St",
+    "city": "Philadelphia",
+    "postalCode": "19107",
+    "countryIsoCode": "US",
+    "state": "PA"
+   },
+   "rest": "56d9219f07208ea8b76928378e7f6b5a8f7d5fed3fcf58c8422bb5bdced51d6e"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Grace Lee",
+    "company": null,
+    "email": "us0@mail.example",
+    "phone": "+12155550101",
+    "street": "1200 Market St",
+    "city": "Philadelphia",
+    "postalCode": "19107",
+    "countryIsoCode": "US",
+    "state": "PA"
+   },
+   "rest": "56d9219f07208ea8b76928378e7f6b5a8f7d5fed3fcf58c8422bb5bdced51d6e"
+  }
+ },
+ "case-42": {
+  "label": {
+   "recipient_address": {
+    "name": "Owen Clark",
+    "company": null,
+    "email": "us1@mail.example",
+    "phone": "+12125550102",
+    "street": "11418 Richmond Hill",
+    "city": "New York",
+    "postalCode": "10001",
+    "countryIsoCode": "US",
+    "state": "NY"
+   },
+   "rest": "13faf206417886def00e2fc4ca6d8bbe15e20a35f15f99b3707e6f696335d4b0"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Owen Clark",
+    "company": null,
+    "email": "us1@mail.example",
+    "phone": "+12125550102",
+    "street": "11418 Richmond Hill",
+    "city": "New York",
+    "postalCode": "10001",
+    "countryIsoCode": "US",
+    "state": "NY"
+   },
+   "rest": "13faf206417886def00e2fc4ca6d8bbe15e20a35f15f99b3707e6f696335d4b0"
+  }
+ },
+ "case-43": {
+  "label": {
+   "recipient_address": {
+    "name": "Chloe Tremblay",
+    "company": null,
+    "email": "ca0@mail.example",
+    "phone": "+15145550103",
+    "street": "500 Rue Sherbrooke O",
+    "city": "Montreal",
+    "postalCode": "H3A 3G6",
+    "countryIsoCode": "CA",
+    "state": "QC"
+   },
+   "rest": "3c9d6f1e9f855f0e59365dc44de1002a79fdb014f49a920b88412fa1e73077f2"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Chloe Tremblay",
+    "company": null,
+    "email": "ca0@mail.example",
+    "phone": null,
+    "street": "500 Rue Sherbrooke O",
+    "city": "H3A 3G6 Montreal",
+    "postalCode": null,
+    "countryIsoCode": "CA",
+    "state": null
+   },
+   "rest": "3c9d6f1e9f855f0e59365dc44de1002a79fdb014f49a920b88412fa1e73077f2"
+  }
+ },
+ "case-44": {
+  "label": {
+   "recipient_address": {
+    "name": "Bastien Roux",
+    "company": null,
+    "email": "j0@mail.example",
+    "phone": "+33655550001",
+    "street": "8 chemin des Vignes",
+    "city": "Avignon",
+    "postalCode": "84000",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "6929f23d3bf4289c4a1d580568efbf2c58794e4a70743d2cb93514f28df7f329"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Bastien Roux",
+    "company": null,
+    "email": "j0@mail.example",
+    "phone": "+33655550001",
+    "street": "8 chemin des Vignes",
+    "city": "Avignon",
+    "postalCode": "84000",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "6929f23d3bf4289c4a1d580568efbf2c58794e4a70743d2cb93514f28df7f329"
+  }
+ },
+ "case-45": {
+  "label": {
+   "recipient_address": {
+    "name": "Tonstudio Nord",
+    "company": null,
+    "email": "j1@mail.example",
+    "phone": "+49431110002",
+    "street": "Kaiserstr. 2",
+    "city": "Kiel",
+    "postalCode": "24103",
+    "countryIsoCode": "DE",
+    "state": null
+   },
+   "rest": "194fed1df70f42e6dcf9d1b50d4ca77afc4ce8032761866700e75570f0f30a25"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Tonstudio Nord",
+    "company": null,
+    "email": "j1@mail.example",
+    "phone": "+49431110002",
+    "street": "Kaiserstr. 2",
+    "city": "Kiel",
+    "postalCode": "24103",
+    "countryIsoCode": "DE",
+    "state": null
+   },
+   "rest": "194fed1df70f42e6dcf9d1b50d4ca77afc4ce8032761866700e75570f0f30a25"
+  }
+ },
+ "case-46": {
+  "label": {
+   "recipient_address": {
+    "name": "Ivy Turner",
+    "company": null,
+    "email": "j2@mail.example",
+    "phone": "+447700900003",
+    "street": "22 Baker Street",
+    "city": "London",
+    "postalCode": "NW1 6XE",
+    "countryIsoCode": "GB",
+    "state": null
+   },
+   "rest": "56ccc9b0ee1e03b31ff6337e82bb35f2498cc45758a01d02ded2706c3319392a"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Ivy Turner",
+    "company": null,
+    "email": "j2@mail.example",
+    "phone": "+447700900003",
+    "street": "22 Baker Street",
+    "city": "London",
+    "postalCode": "NW1 6XE",
+    "countryIsoCode": "GB",
+    "state": null
+   },
+   "rest": "56ccc9b0ee1e03b31ff6337e82bb35f2498cc45758a01d02ded2706c3319392a"
+  }
+ },
+ "case-47": {
+  "label": {
+   "recipient_address": {
+    "name": "Noah Dubois",
+    "company": null,
+    "email": "k0@mail.example",
+    "phone": "+33666660001",
+    "street": "7 rue Colbert",
+    "city": "Reims",
+    "postalCode": "51100",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "133198494026a983ff163c4e9505a0ca62088ca4d8149ed281003c4a5229860f"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Noah Dubois",
+    "company": null,
+    "email": "k0@mail.example",
+    "phone": "+33666660001",
+    "street": "7 rue Colbert",
+    "city": "Reims",
+    "postalCode": "51100",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "133198494026a983ff163c4e9505a0ca62088ca4d8149ed281003c4a5229860f"
+  }
+ },
+ "case-48": {
+  "label": {
+   "recipient_address": {
+    "name": "Alice Perrin",
+    "company": null,
+    "email": "k1@mail.example",
+    "phone": null,
+    "street": "40 rue Faidherbe",
+    "city": "Lille",
+    "postalCode": "59800",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "31c2c9bf38b387b171934c3d66b49afb8c0eafbd690635df6fc42997e9f254dc"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Alice Perrin",
+    "company": null,
+    "email": "k1@mail.example",
+    "phone": null,
+    "street": "40 rue Faidherbe",
+    "city": "Lille",
+    "postalCode": "59800",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "31c2c9bf38b387b171934c3d66b49afb8c0eafbd690635df6fc42997e9f254dc"
+  }
+ },
+ "case-49": {
+  "label": {
+   "recipient_address": {
+    "name": "Paul Rehm",
+    "company": null,
+    "email": "b2b0@mail.example",
+    "phone": "+4915100000001",
+    "street": "Fliederstrasse 7",
+    "city": "Remagen",
+    "postalCode": "53424",
+    "countryIsoCode": "DE",
+    "state": null
+   },
+   "rest": "5e576109e76f502c8fca1fffc1736aa3c47be8aea46ab3436ca18a7e3553afe7"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Paul Rehm",
+    "company": null,
+    "email": "b2b0@mail.example",
+    "phone": "+4915100000001",
+    "street": "Fliederstrasse 7",
+    "city": "Remagen",
+    "postalCode": "53424",
+    "countryIsoCode": "DE",
+    "state": null
+   },
+   "rest": "5e576109e76f502c8fca1fffc1736aa3c47be8aea46ab3436ca18a7e3553afe7"
+  }
+ },
+ "case-50": {
+  "label": {
+   "recipient_address": {
+    "name": "Joost Smit",
+    "company": "Sonora Pro BV",
+    "email": "b2b1@mail.example",
+    "phone": "+31151110002",
+    "street": "Kantoorlaan 1",
+    "city": "Delft",
+    "postalCode": "2611 AA",
+    "countryIsoCode": "NL",
+    "state": null
+   },
+   "rest": "78661ba119c4a77d262c257c7042443c8f1f5d3087f59a63c6f5c96513c041ca"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Joost Smit",
+    "company": "Sonora Pro BV",
+    "email": "b2b1@mail.example",
+    "phone": "+31151110002",
+    "street": "Kantoorlaan 1",
+    "city": "Delft",
+    "postalCode": "2611 AA",
+    "countryIsoCode": "NL",
+    "state": null
+   },
+   "rest": "78661ba119c4a77d262c257c7042443c8f1f5d3087f59a63c6f5c96513c041ca"
+  }
+ },
+ "case-51": {
+  "label": {
+   "recipient_address": {
+    "name": "Compta",
+    "company": "Audio Sud SAS",
+    "email": "b2b2@mail.example",
+    "phone": "+33466110003",
+    "street": "12 avenue de la Gare",
+    "city": "Nimes",
+    "postalCode": "30000",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "b78b6cde0a303a2d848f3945d53c3f47d4c04650fd2a77690f997052f2e22444"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Compta",
+    "company": "Audio Sud SAS",
+    "email": "b2b2@mail.example",
+    "phone": "+33466110003",
+    "street": "12 avenue de la Gare",
+    "city": "Nimes",
+    "postalCode": "30000",
+    "countryIsoCode": "FR",
+    "state": null
+   },
+   "rest": "b78b6cde0a303a2d848f3945d53c3f47d4c04650fd2a77690f997052f2e22444"
+  }
+ },
+ "case-52": {
+  "label": {
+   "recipient_address": {
+    "name": "Bergklang AG",
+    "company": "Bergklang AG",
+    "email": "b2b3@mail.example",
+    "phone": "+41411110004",
+    "street": "Postfach 12",
+    "city": "Luzern",
+    "postalCode": "6002",
+    "countryIsoCode": "CH",
+    "state": null
+   },
+   "rest": "7b025adfd8833c7fe013450ebdba6f73aeb9efef2489774b1513953cfcefd63b"
+  },
+  "worklist": {
+   "recipient_address": {
+    "name": "Bergklang AG",
+    "company": null,
+    "email": "b2b3@mail.example",
+    "phone": null,
+    "street": "Postfach 12",
+    "city": "Luzern",
+    "postalCode": "6002",
+    "countryIsoCode": "CH",
+    "state": null
+   },
+   "rest": "7b025adfd8833c7fe013450ebdba6f73aeb9efef2489774b1513953cfcefd63b"
+  }
+ }
+}

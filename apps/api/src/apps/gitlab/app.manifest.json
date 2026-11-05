@@ -1,0 +1,371 @@
+{
+  "name": "gitlab",
+  "version": "1.0.1",
+  "kind": "connector",
+  "description": "GitLab connector: sync group manuals into the knowledge base and provide read-only access to projects, commits, MRs, issues, releases, and more.",
+  "listing": {
+    "publisher": "Liaison",
+    "category": "Developer",
+    "icon": "folder-git-2",
+    "summary": "Sync GitLab manuals into Knowledge and read projects, merge requests and issues.",
+    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/apps/api/src/apps/gitlab"
+  },
+  "trusted": false,
+  "license": "FSL-1.1-ALv2",
+  "dependencies": { "required": ["kernel", "knowledge"] },
+  "connections": {
+    "gitlab": {
+      "type": "credentials",
+      "allowedDomains": ["gitlab.com", "*.gitlab.com"],
+      "credentialFields": [
+        {
+          "name": "token",
+          "type": "password",
+          "label": "GitLab group access token (read-only: read_api + read_repository, NOT api)"
+        },
+        {
+          "name": "group",
+          "type": "text",
+          "label": "GitLab group path or ID"
+        }
+      ],
+      "setupGuide": {
+        "summary": "Connect a GitLab group read-only with a Personal Access Token. Group, project and service-account tokens all need a paid gitlab.com tier, so a PAT is the supported path here.",
+        "steps": [
+          {
+            "who": "human",
+            "minutes": 1,
+            "text": "On gitlab.com, open your avatar → **Edit profile → Access tokens** (gitlab.com/-/user_settings/personal_access_tokens).",
+            "url": "https://gitlab.com/-/user_settings/personal_access_tokens"
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "text": "Create a token with scopes **read_api** and **read_repository** only: never `api` (write).",
+            "url": "https://gitlab.com/-/user_settings/personal_access_tokens"
+          },
+          {
+            "who": "human",
+            "minutes": 0,
+            "text": "Set the LONGEST expiry GitLab offers. An expired PAT stops every sync silently: it still looks configured here while GitLab answers 401, and the only symptom is content quietly going stale.",
+            "url": "https://gitlab.com/-/user_settings/personal_access_tokens"
+          },
+          {
+            "who": "human",
+            "minutes": 0,
+            "text": "Copy the `glpat-…` value and paste it into the **token** field.",
+            "place": "liaison"
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "text": "In **group**, enter the GitLab group path or numeric id (e.g. `acme-tools`).",
+            "place": "liaison"
+          },
+          {
+            "who": "human",
+            "minutes": 0,
+            "text": "Rotating later: come back to this same form and paste the new token. It REPLACES the stored credential rather than adding a second connection.",
+            "place": "liaison"
+          }
+        ],
+        "docsUrl": "https://docs.gitlab.com/user/profile/personal_access_tokens/"
+      }
+    }
+  },
+  "tools": {
+    "gitlab_list_projects": {
+      "taintSource": true,
+      "description": "List all projects in the connected GitLab group. Call this first to discover available projects.",
+      "readOnly": true,
+      "requiredScopes": ["gitlab:repo:read"],
+      "trustBoundary": "user",
+      "handler": "gitlabListProjects",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "gitlab_list_commits": {
+      "taintSource": true,
+      "description": "List commits in a GitLab project. Filter by branch/ref, file path, or date range.",
+      "readOnly": true,
+      "requiredScopes": ["gitlab:repo:read"],
+      "trustBoundary": "user",
+      "handler": "gitlabListCommits",
+      "params": {
+        "type": "object",
+        "properties": {
+          "project": { "type": "string", "description": "Project path or numeric ID" },
+          "ref": {
+            "type": "string",
+            "description": "Branch, tag, or commit SHA (default: default branch)"
+          },
+          "path": { "type": "string", "description": "Only commits touching this file path" },
+          "since": {
+            "type": "string",
+            "description": "ISO 8601 date — only commits after this date"
+          },
+          "until": {
+            "type": "string",
+            "description": "ISO 8601 date — only commits before this date"
+          }
+        },
+        "required": ["project"]
+      }
+    },
+    "gitlab_get_commit": {
+      "taintSource": true,
+      "description": "Get a single GitLab commit by SHA, optionally with diff.",
+      "readOnly": true,
+      "requiredScopes": ["gitlab:repo:read"],
+      "trustBoundary": "user",
+      "handler": "gitlabGetCommit",
+      "params": {
+        "type": "object",
+        "properties": {
+          "project": { "type": "string", "description": "Project path or numeric ID" },
+          "sha": { "type": "string", "description": "Commit SHA" },
+          "withDiff": { "type": "boolean", "description": "Include file diffs" }
+        },
+        "required": ["project", "sha"]
+      }
+    },
+    "gitlab_list_merge_requests": {
+      "taintSource": true,
+      "description": "List merge requests in a GitLab project. Filter by state, branch, milestone, or labels.",
+      "readOnly": true,
+      "requiredScopes": ["gitlab:repo:read"],
+      "trustBoundary": "user",
+      "handler": "gitlabListMergeRequests",
+      "params": {
+        "type": "object",
+        "properties": {
+          "project": { "type": "string", "description": "Project path or numeric ID" },
+          "state": {
+            "type": "string",
+            "enum": ["opened", "closed", "locked", "merged"],
+            "description": "Filter by state"
+          },
+          "target_branch": { "type": "string", "description": "Filter by target branch" },
+          "milestone": { "type": "string", "description": "Filter by milestone title" },
+          "labels": { "type": "string", "description": "Comma-separated label names" },
+          "updated_after": {
+            "type": "string",
+            "description": "ISO 8601 — only MRs updated after this date"
+          }
+        },
+        "required": ["project"]
+      }
+    },
+    "gitlab_get_merge_request": {
+      "taintSource": true,
+      "description": "Get a single GitLab merge request by internal ID (iid), optionally with file changes.",
+      "readOnly": true,
+      "requiredScopes": ["gitlab:repo:read"],
+      "trustBoundary": "user",
+      "handler": "gitlabGetMergeRequest",
+      "params": {
+        "type": "object",
+        "properties": {
+          "project": { "type": "string", "description": "Project path or numeric ID" },
+          "iid": { "type": "number", "description": "Merge request internal ID (iid)" },
+          "withChanges": { "type": "boolean", "description": "Include file changes (diffs)" }
+        },
+        "required": ["project", "iid"]
+      }
+    },
+    "gitlab_list_issues": {
+      "taintSource": true,
+      "description": "List issues in a GitLab project. Filter by state, milestone, labels, or search text.",
+      "readOnly": true,
+      "requiredScopes": ["gitlab:repo:read"],
+      "trustBoundary": "user",
+      "handler": "gitlabListIssues",
+      "params": {
+        "type": "object",
+        "properties": {
+          "project": { "type": "string", "description": "Project path or numeric ID" },
+          "state": {
+            "type": "string",
+            "enum": ["opened", "closed", "all"],
+            "description": "Filter by state"
+          },
+          "milestone": { "type": "string", "description": "Filter by milestone title" },
+          "labels": { "type": "string", "description": "Comma-separated label names" },
+          "search": { "type": "string", "description": "Search in issue title and description" },
+          "updated_after": {
+            "type": "string",
+            "description": "ISO 8601 — only issues updated after this date"
+          }
+        },
+        "required": ["project"]
+      }
+    },
+    "gitlab_list_milestones": {
+      "taintSource": true,
+      "description": "List milestones in a GitLab project. A milestone may represent a sprint, release phase, or version.",
+      "readOnly": true,
+      "requiredScopes": ["gitlab:repo:read"],
+      "trustBoundary": "user",
+      "handler": "gitlabListMilestones",
+      "params": {
+        "type": "object",
+        "properties": {
+          "project": { "type": "string", "description": "Project path or numeric ID" },
+          "state": {
+            "type": "string",
+            "enum": ["active", "closed"],
+            "description": "Filter by state"
+          }
+        },
+        "required": ["project"]
+      }
+    },
+    "gitlab_list_labels": {
+      "description": "List labels in a GitLab project, including issue/MR counts.",
+      "readOnly": true,
+      "requiredScopes": ["gitlab:repo:read"],
+      "trustBoundary": "user",
+      "handler": "gitlabListLabels",
+      "params": {
+        "type": "object",
+        "properties": {
+          "project": { "type": "string", "description": "Project path or numeric ID" }
+        },
+        "required": ["project"]
+      }
+    },
+    "gitlab_list_releases": {
+      "taintSource": true,
+      "description": "List releases in a GitLab project. Each release includes milestone issue_stats {total, closed} — note these count ALL milestone issues, not just bugs. To answer 'were all bugs fixed?' combine this with gitlab_list_issues(milestone=…, labels=bug, state=all).",
+      "readOnly": true,
+      "requiredScopes": ["gitlab:repo:read"],
+      "trustBoundary": "user",
+      "handler": "gitlabListReleases",
+      "params": {
+        "type": "object",
+        "properties": {
+          "project": { "type": "string", "description": "Project path or numeric ID" }
+        },
+        "required": ["project"]
+      }
+    },
+    "gitlab_list_tags": {
+      "taintSource": true,
+      "description": "List git tags in a GitLab project.",
+      "readOnly": true,
+      "requiredScopes": ["gitlab:repo:read"],
+      "trustBoundary": "user",
+      "handler": "gitlabListTags",
+      "params": {
+        "type": "object",
+        "properties": {
+          "project": { "type": "string", "description": "Project path or numeric ID" }
+        },
+        "required": ["project"]
+      }
+    },
+    "gitlab_read_file": {
+      "taintSource": true,
+      "description": "Read a file from a GitLab project repository. Optionally specify a ref (branch/tag/SHA) and line range. File content is secret-redacted.",
+      "readOnly": true,
+      "requiredScopes": ["gitlab:repo:read"],
+      "trustBoundary": "user",
+      "handler": "gitlabReadFile",
+      "params": {
+        "type": "object",
+        "properties": {
+          "project": { "type": "string", "description": "Project path or numeric ID" },
+          "path": { "type": "string", "description": "File path within the repository" },
+          "ref": {
+            "type": "string",
+            "description": "Branch, tag, or commit SHA (default: default branch)"
+          },
+          "startLine": { "type": "number", "description": "1-based start line (inclusive)" },
+          "endLine": { "type": "number", "description": "1-based end line (inclusive)" }
+        },
+        "required": ["project", "path"]
+      }
+    },
+    "gitlab_list_tree": {
+      "description": "List files and directories in a GitLab project repository path.",
+      "readOnly": true,
+      "requiredScopes": ["gitlab:repo:read"],
+      "trustBoundary": "user",
+      "handler": "gitlabListTree",
+      "params": {
+        "type": "object",
+        "properties": {
+          "project": { "type": "string", "description": "Project path or numeric ID" },
+          "path": { "type": "string", "description": "Directory path (default: root)" },
+          "ref": {
+            "type": "string",
+            "description": "Branch, tag, or commit SHA (default: default branch)"
+          },
+          "recursive": { "type": "boolean", "description": "List recursively (default: false)" }
+        },
+        "required": ["project"]
+      }
+    },
+    "gitlab_search": {
+      "taintSource": true,
+      "description": "Search within a GitLab project or group. Scopes: blobs (file content), commits, issues, merge_requests.",
+      "readOnly": true,
+      "requiredScopes": ["gitlab:repo:read"],
+      "trustBoundary": "user",
+      "handler": "gitlabSearch",
+      "params": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "type": "string",
+            "description": "Project path or numeric ID (search within this project)"
+          },
+          "scope": {
+            "type": "string",
+            "enum": ["blobs", "commits", "issues", "merge_requests"],
+            "description": "What to search"
+          },
+          "query": { "type": "string", "description": "Search query" },
+          "ref": { "type": "string", "description": "Branch/ref for blob search" }
+        },
+        "required": ["scope", "query"]
+      }
+    }
+  },
+  "roles": {
+    "member": {
+      "description": "GitLab repository reader: read access to projects, commits, issues, MRs",
+      "scopes": ["gitlab:repo:read", "gitlab:accounts:read"]
+    },
+    "admin": {
+      "description": "GitLab connection administrator: manage GitLab connections",
+      "extends": "member",
+      "scopes": ["gitlab:accounts:admin"]
+    }
+  },
+  "settings": {
+    "sections": [
+      {
+        "id": "connection",
+        "title": "Connection",
+        "titleKey": "gitlab.connectionTitle",
+        "description": "Read-only connector for a GitLab group: projects, commits, merge requests, issues, releases.",
+        "descriptionKey": "gitlab.settingsDescription",
+        "scope": "org",
+        "adminScope": "gitlab:accounts:admin",
+        "blocks": [
+          {
+            "block": "connections",
+            "names": ["gitlab"],
+            "status": {
+              "tool": "gitlab_list_projects"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "agentInstructions": "GitLab connector provides read-only access to a connected GitLab group. Call gitlab_list_projects first to discover available projects. A 'sprint' in GitLab is typically a milestone or a label — check both. A Release embeds milestone issue_stats {total, closed} but counts ALL milestone issues, not just bugs. To answer 'were all .83 bugs fixed in the .83 release?' combine gitlab_list_releases (milestone closed==total) with gitlab_list_issues(milestone=…, labels=bug, state=all). Tools are read-only — no write operations. When GitLab is not connected, surface a not_connected error, do not fabricate data."
+}

@@ -1,0 +1,9 @@
+{
+  "name": "atelier",
+  "version": "0.4.0",
+  "description": "Atelier — one flow with dynamic depth for Claude Code. A strong orchestrator walks frame → brainstorm → spec → review → execute → validate → handoff at the rung the task warrants: targeted delegation, cheap-model sweeps where the work is wide, fresh skeptics per batch, artifact proof boards the owner judges last, and ledger-driven hooks that keep a long run driving.",
+  "author": {
+    "name": "Atelier"
+  },
+  "license": "MIT"
+}

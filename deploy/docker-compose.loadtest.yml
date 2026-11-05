@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Validation-only overlay used by `bun run load-test`
+# to bind Postgres to a host port so tooling on the host can connect to
+# the stack's database from outside the compose network. NEVER
+# used in production deployment — operators run the base compose file only.
+
+services:
+  postgres:
+    ports:
+      - "${POSTGRES_HOST_PORT:-55432}:5432"
+  app:
+    environment:
+      # No ENABLE_LOAD_TEST_ENDPOINT here: the image runs NODE_ENV=production,
+      # where apps/api/src/lib/env.ts refuses to boot with it, so the measured
+      # release must not set it. The scenario that needs its route (a2) runs
+      # only against a local dev server (`--target local`).
+      # k6 generates traffic well above the production-default 300 rpm. The
+      # spec's load-execution profile requires the rate limiter to be relaxed
+      # for the measured run; production deploys keep the 300 default.
+      RATE_LIMIT_DEFAULT: "1000000000"
+      # The per-user agent stream cap (2 by default) would throttle a3's
+      # virtual users, all one seeded user; production keeps the default.
+      AGENT_MAX_CONCURRENT_STREAMS: "100000"
+      # A3 measures /api/agent/chat first-token latency. Auto mode resolves to
+      # whichever model is cheapest in MODEL_PRICING_SEED — currently Gemini
+      # Flash-Lite — so we must set every provider key the QA seed might
+      # select. Any value works; the route returns 200 + SSE `event:error`
+      # when the upstream call fails, which is what we need to time platform
+      # overhead. Production deploys leave these unset.
+      LIAISON_ANTHROPIC_API_KEY: "sk-loadtest-stub"
+      OPENAI_API_KEY: "sk-loadtest-stub"
+      GOOGLE_API_KEY: "sk-loadtest-stub"
+      MISTRAL_API_KEY: "sk-loadtest-stub"
+  # The edge of a rolling deploy under load (profile `rolling`, with the api and
+  # worker services): Caddy on the host network in front of the api port range,
+  # health-checking /readyz and holding requests during a swap
+  # (deploy/Caddyfile.loadtest, the same block as Caddyfile.rolling.example).
+  # Its JSON access log is what the edge5xx counter reads.
+  caddy:
+    image: caddy:2.11.7-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f
+    profiles: ["rolling"]
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./Caddyfile.loadtest:/etc/caddy/Caddyfile:ro
+      - ./data/caddy-logs:/var/log/caddy

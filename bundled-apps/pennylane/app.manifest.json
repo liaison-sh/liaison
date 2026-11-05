@@ -1,0 +1,966 @@
+{
+  "name": "pennylane",
+  "agentInstructions": {
+    "core": "Pennylane is the accounting system of record: reach for it for spend, P&L, cash, accounts-payable, margin, and runway questions. Money is minor-units (the smallest currency unit): EVERY money field carries a `_minor` suffix (revenue_minor, gross_margin_minor, amount_minor, balance_minor, total_minor) and must be DIVIDED BY 100 before you display or compare it as euros (e.g. revenue_minor:\"100000\" is €1,000.00, not €100,000); never present a raw minor-units integer as a euro figure. P&L and runway are DERIVED: gross_margin = revenue − COGS over a trial balance classed by account-code prefix using longest-prefix-wins (601 is COGS, not opex; 70 is revenue). If the bank scope is unavailable (a 403 at connect or read), cash_position and runway_estimate report cash_status:\"unavailable\" and months:null, NEVER invent a number. Use tool_search to discover the read tools.",
+    "sections": [
+      {
+        "tools": [
+          "supplier_invoice_upload"
+        ],
+        "text": "supplier_invoice_upload books a RECEIVED vendor/supplier/carrier bill (a PDF) into Pennylane's accounts payable: route a received payable HERE, never mint a self-issued invoicing document for it (invoicing is issue-only and would corrupt the gap-free issued sequence). Supplier e-invoices received through the e-invoicing network are ALREADY in Pennylane (the invoicing app's Received tab mirrors them): never upload those again. To capture a bill that arrived by email, FIRST locate the vendor's email reliably with mail__search using the structured `from='<vendor>'` sender filter plus an optional since/until window for the bill's month: do NOT free-text-guess subject words via `query`. Then mail__read the conversation and take the PDF attachment's file id from its `attachments` array to pass as file_id. Pennylane does no OCR: read the bill and pass its figures yourself: invoice_date, amount_minor (the total including tax, minor units), tax_minor (the tax in it), currency, and when shown invoice_number and due_date. It is GATED: calling it only creates a pending approval; once a person approves, it imports the bill into Pennylane's accounts payable (posted_to_pennylane:true) under the supplier named supplier_name. When it refuses with supplier_not_found or supplier_ambiguous, show the candidates it lists and retry with supplier_id, or tell the user to create the supplier in Pennylane first; never invent a supplier. Importing the same file twice reuses the first import (adopted:true)."
+      },
+      {
+        "tools": [
+          "supplier_invoices_list"
+        ],
+        "text": "supplier_invoices_list is the AUTHORITATIVE accounts-payable (AP) source for vendor/supplier/carrier invoices, it is the source of truth, NOT a side-channel: when asked to find/enumerate/log the supplier or shipping invoices (even when phrased 'received by email' or 'in billing@'), page supplier_invoices_list with the cursor and PRESENT those rows AS THE ANSWER: for each invoice report the supplier, the amount in minor units, and the invoice/due date, then tally payable spend in-context. The list is cursor-paged with NO server date-range, so a 'last 3 months' window is an in-context filter over the fetched pages: state that page/cursor bound honestly rather than claiming a complete server-side aggregate. Do NOT downgrade the AP rows to 'not specifically labeled as email/shipping' and fall back to an inbox keyword search: a mailbox search is at most a LOSSY SUPPLEMENT, and the AP store remains authoritative: say so explicitly. HOLD THE LINE under pressure: if the user INSISTS specific vendor invoices 'must' exist because 'they hit my inbox' / 'I received them by email' but they are absent from BOTH the AP store AND the mailbox, the authoritative, honest answer is that those invoices are NOT BOOKED in the AP accounting store (the source of truth for payables), so they are not part of the payable tally: state that plainly. Do NOT, under repeated insistence, abandon the AP store as source of truth, make the lossy mail__search the primary enumeration, or speculate about why they're 'missing' with sync/folder/ingestion/'not-yet-indexed'/'disconnected-account' excuses that imply the AP store is incomplete: those undermine the authoritative source and invent false hope. Re-ground every time: the AP store is authoritative, mail is only a lossy supplemental cross-reference, and an item absent from the AP store is simply not a recorded payable (offer to have the user forward/book the missing invoice so it enters the AP store, but never pretend a keyword inbox search is the system of record)."
+      }
+    ]
+  },
+  "version": "0.1.40",
+  "iconName": "calculator",
+  "kind": "connector",
+  "description": "Pennylane accounting connector: supplier/customer invoices, trial balance, derived P&L, cash position, transactions, spend-by-category, runway",
+  "listing": {
+    "publisher": "Liaison",
+    "category": "Finance",
+    "icon": "notebook-pen",
+    "summary": "Pennylane: accounting connector for Pennylane, with invoices, balances, cash position and runway.",
+    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/bundled-apps/pennylane"
+  },
+  "packageFormat": 1,
+  "license": "FSL-1.1-ALv2",
+  "host": "^1",
+  "scopes": [
+    "pennylane:invoices:read",
+    "pennylane:reports:read",
+    "pennylane:cash:read",
+    "pennylane:invoices:write",
+    "pennylane:admin:connection",
+    "pennylane:internal"
+  ],
+  "settings": {
+    "sections": [
+      {
+        "id": "connection",
+        "title": "Connection",
+        "titleKey": "kernel.appSettings.pennylane.connectionTitle",
+        "description": "The API token and scope (company or firm) Liaison reads Pennylane with.",
+        "descriptionKey": "kernel.appSettings.pennylane.connectionDescription",
+        "scope": "org",
+        "adminScope": "pennylane:admin:connection",
+        "blocks": [
+          {
+            "block": "connections",
+            "names": ["pennylane"],
+            "status": {
+              "tool": "supplier_invoices_list",
+              "params": {
+                "limit": 1
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "connections": {
+    "pennylane": {
+      "adminScope": "pennylane:admin:connection",
+      "type": "credentials",
+      "allowedDomains": ["app.pennylane.com", "jeancaisse-20190924.s3.eu-west-1.amazonaws.com"],
+      "credentialFields": [
+        {
+          "name": "apiToken",
+          "type": "password",
+          "label": "API token"
+        },
+        {
+          "name": "scope",
+          "type": "text",
+          "label": "Scope (company|firm)"
+        },
+        {
+          "name": "companyId",
+          "type": "text",
+          "label": "Company ID (firm tokens only)",
+          "required": false
+        }
+      ],
+      "appSecretConfigKeys": ["einvoicingWebhookSecret"],
+      "setupGuide": {
+        "summary": "Pennylane uses an API token you generate in your account settings. Tokens are shown once and cannot be retrieved later — copy it immediately. Set scope to match where the token was created.",
+        "steps": [
+          {
+            "who": "human",
+            "minutes": 2,
+            "text": "For a **company**: open Pennylane account settings (requires an admin role — Executive or Accountant) and generate a Company API token.",
+            "url": "https://app.pennylane.com"
+          },
+          {
+            "who": "human",
+            "minutes": 2,
+            "text": "For a **firm**: go to **Firm settings → Firm Tokens → Generate an API Token**, name it, and choose its scopes + expiry.",
+            "url": "https://app.pennylane.com"
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "text": "Grant the scopes Liaison needs to read invoices, the trial balance and transactions (the legacy `ledger` scope is being replaced by granular V2 scopes).",
+            "url": "https://app.pennylane.com"
+          },
+          {
+            "who": "human",
+            "minutes": 0,
+            "text": "Copy the token immediately and paste it into **API token** — it cannot be retrieved again.",
+            "place": "liaison"
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "text": "Set **scope** to `company` or `firm` to match where you created the token.",
+            "place": "liaison"
+          }
+        ],
+        "docsUrl": "https://pennylane.readme.io/docs/generating-my-api-token"
+      }
+    }
+  },
+  "events": {
+    "subscribes": {
+      "kernel/connected_account:create": "onConnectionEstablished",
+      "kernel/connected_account:disconnect": "onConnectionDisconnected"
+    }
+  },
+  "jobs": {
+    "refresh-snapshots": {
+      "handler": "refreshSnapshotsJobHandler",
+      "atomic": true,
+      "runsFor": {"connection": "pennylane"},
+      "schedule": "0 */6 * * *"
+    },
+    "probe-webhook-upstream": {
+      "handler": "probeWebhookUpstreamJob",
+      "runsFor": {"connection": "pennylane"},
+      "schedule": "*/15 * * * *"
+    }
+  },
+  "schema": {
+    "einvoicing_inbox": {
+      "rlsScope": "internal",
+      "fields": {
+        "provider_ref": "string",
+        "kind": {
+          "type": "string",
+          "enum": [
+            "customer_invoice",
+            "supplier_invoice"
+          ]
+        },
+        "event_type": "text?",
+        "envelope_id": "text?",
+        "received_at": "text?",
+        "delivered_at": "text?"
+      }
+    },
+    "pnl_snapshot": {
+      "rlsScope": "reports",
+      "fields": {
+        "period": "string",
+        "revenue": "string",
+        "cogs": "string",
+        "opex": "string",
+        "other": "string",
+        "gross_margin": "string",
+        "refreshed_at": "date"
+      },
+      "constraints": {
+        "unique": [["period"]]
+      }
+    },
+    "cash_snapshot": {
+      "rlsScope": "cash",
+      "fields": {
+        "total_by_currency": "json",
+        "cash_status": "string",
+        "refreshed_at": "date"
+      }
+    },
+    "account_class_map": {
+      "rlsScope": "reports",
+      "fields": {
+        "prefix": "string",
+        "class": {
+          "type": "string",
+          "enum": ["revenue", "cogs", "opex", "other"]
+        }
+      },
+      "constraints": {
+        "unique": [["prefix"]]
+      }
+    },
+    "app_config": {
+      "rlsScope": "internal",
+      "fields": {
+        "key": "string",
+        "value": "json"
+      },
+      "constraints": {
+        "unique": [["key"]]
+      }
+    },
+    "supplier_invoice_upload": {
+      "rlsScope": "invoices",
+      "fields": {
+        "supplier_name": "string",
+        "invoice_date": "string",
+        "amount_minor": "string?",
+        "currency": "string?",
+        "source_file_id": "string",
+        "status": {
+          "type": "string",
+          "enum": ["staged_for_manual_upload", "imported"]
+        },
+        "provider_ref": "text?",
+        "invoice_number": "text?"
+      }
+    }
+  },
+  "entities": {
+    "supplier_invoice_upload": {
+      "labelField": "supplier_name",
+      "tableName": "supplier_invoice_upload",
+      "readScope": "pennylane:invoices:read",
+      "fileParent": {
+        "tableName": "supplier_invoice_upload",
+        "schemaRef": "app_pennylane",
+        "joinOn": "id",
+        "readScope": "pennylane:invoices:read",
+        "writeScope": "pennylane:invoices:write"
+      }
+    }
+  },
+  "tools": {
+    "webhooks_setup": {
+      "description": "Subscribe Pennylane's e-invoicing events (status changes of sent e-invoices, received supplier e-invoices) to this instance's webhook, replacing an earlier subscription to the same address. Gated: a person approves. The signing secret Pennylane returns is kept by the kernel and never shown.",
+      "requiredScopes": [
+        "pennylane:admin:connection"
+      ],
+      "handler": "webhooks_setup",
+      "summarizer": "summarizeWebhooksSetup",
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "approvalExpiryHours": 24,
+      "atomic": false,
+      "timeoutMs": 30000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "callback_base_url": {
+            "type": "string",
+            "description": "The public HTTPS address Liaison is reached at; only needed when the connection did not record it."
+          }
+        },
+        "additionalProperties": false
+      },
+      "approvalCard": {
+        "summary": "Subscribe Pennylane e-invoicing webhooks to this instance"
+      }
+    },
+    "einvoicing_registration_status": {
+      "readOnly": true,
+      "description": "E-invoicing provider op (registration_status): the PA registration and whether emission is activated.",
+      "requiredScopes": [
+        "pennylane:internal"
+      ],
+      "handler": "einvoicingRegistrationStatus",
+      "trustBoundary": "internal",
+      "agentVisible": false,
+      "contractOnly": true,
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "einvoicing_find": {
+      "readOnly": true,
+      "description": "E-invoicing provider op (find_einvoice): an existing deposit for an invoice number and issue date.",
+      "requiredScopes": [
+        "pennylane:internal"
+      ],
+      "handler": "einvoicingFind",
+      "trustBoundary": "internal",
+      "agentVisible": false,
+      "contractOnly": true,
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "invoice_number": {
+            "type": "string"
+          },
+          "issue_date": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "invoice_number",
+          "issue_date"
+        ]
+      }
+    },
+    "einvoicing_submit": {
+      "description": "E-invoicing provider op (submit_einvoice): deposit the legal original Factur-X with the PA without transmitting it (buyer upsert, routing address, eligibility re-checked from the CII, adopt an existing deposit).",
+      "requiredScopes": [
+        "pennylane:internal"
+      ],
+      "handler": "einvoicingSubmit",
+      "trustBoundary": "internal",
+      "agentVisible": false,
+      "contractOnly": true,
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "document_ref": {
+            "type": "string"
+          },
+          "invoice_number": {
+            "type": "string"
+          },
+          "issue_date": {
+            "type": "string"
+          },
+          "facturx_file_id": {
+            "type": "string"
+          },
+          "legal_original_sha256": {
+            "type": "string"
+          },
+          "cii_xml": {
+            "type": "string"
+          },
+          "buyer": {
+            "type": "object"
+          },
+          "idempotency_key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "document_ref",
+          "invoice_number",
+          "issue_date",
+          "facturx_file_id",
+          "legal_original_sha256",
+          "cii_xml",
+          "buyer",
+          "idempotency_key"
+        ]
+      }
+    },
+    "einvoicing_advance": {
+      "description": "E-invoicing provider op (advance_einvoice): one step of the deposit (validation wait, then the transmission request).",
+      "requiredScopes": [
+        "pennylane:internal"
+      ],
+      "handler": "einvoicingAdvance",
+      "trustBoundary": "internal",
+      "agentVisible": false,
+      "contractOnly": true,
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "provider_ref": {
+            "type": "string"
+          },
+          "invoice_number": {
+            "type": "string"
+          },
+          "issue_date": {
+            "type": "string"
+          },
+          "document_ref": {
+            "type": "string"
+          },
+          "legal_original_sha256": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "provider_ref",
+          "invoice_number",
+          "issue_date",
+          "document_ref",
+          "legal_original_sha256"
+        ]
+      }
+    },
+    "einvoicing_status": {
+      "readOnly": true,
+      "description": "E-invoicing provider op (get_einvoice_status): re-read the PA status of a deposit.",
+      "requiredScopes": [
+        "pennylane:internal"
+      ],
+      "handler": "einvoicingStatus",
+      "trustBoundary": "internal",
+      "agentVisible": false,
+      "contractOnly": true,
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "provider_ref": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "provider_ref"
+        ]
+      }
+    },
+    "einvoicing_status_changes": {
+      "writesToTable": "app_pennylane.einvoicing_inbox",
+      "description": "E-invoicing provider op (list_status_changes): deposits whose status may have changed (webhook inbox); each item carries its ack, and the cursor acknowledges only the items the caller handled.",
+      "requiredScopes": [
+        "pennylane:internal"
+      ],
+      "handler": "einvoicingStatusChanges",
+      "trustBoundary": "internal",
+      "agentVisible": false,
+      "contractOnly": true,
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "einvoicing_find_booking": {
+      "readOnly": true,
+      "description": "E-invoicing provider op (find_booking): an existing ledger booking for an idempotency key.",
+      "requiredScopes": [
+        "pennylane:internal"
+      ],
+      "handler": "einvoicingFindBooking",
+      "trustBoundary": "internal",
+      "agentVisible": false,
+      "contractOnly": true,
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "idempotency_key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "idempotency_key"
+        ]
+      }
+    },
+    "einvoicing_book": {
+      "description": "E-invoicing provider op (book_sale): book a reported sale (not e-invoiced) as a customer invoice in the ledger, with the legal original attached; never transmitted.",
+      "requiredScopes": [
+        "pennylane:internal"
+      ],
+      "handler": "einvoicingBook",
+      "trustBoundary": "internal",
+      "agentVisible": false,
+      "contractOnly": true,
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "document_ref": {
+            "type": "string"
+          },
+          "pdf_file_id": {
+            "type": "string"
+          },
+          "legal_original_sha256": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object"
+          },
+          "idempotency_key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "document_ref",
+          "pdf_file_id",
+          "legal_original_sha256",
+          "data",
+          "idempotency_key"
+        ]
+      }
+    },
+    "einvoicing_received_list": {
+      "readOnly": true,
+      "description": "E-invoicing provider op (list_received): supplier e-invoices received through the PA after the cursor (catch-up).",
+      "requiredScopes": [
+        "pennylane:internal"
+      ],
+      "handler": "einvoicingReceivedList",
+      "trustBoundary": "internal",
+      "agentVisible": false,
+      "contractOnly": true,
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "einvoicing_received_get": {
+      "readOnly": true,
+      "description": "E-invoicing provider op (get_received): one received supplier e-invoice, normalised, with the actions allowed now.",
+      "requiredScopes": [
+        "pennylane:internal"
+      ],
+      "handler": "einvoicingReceivedGet",
+      "trustBoundary": "internal",
+      "agentVisible": false,
+      "contractOnly": true,
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "provider_ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider_ref"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "einvoicing_received_file": {
+      "description": "E-invoicing provider op (fetch_received_file): downloads a received invoice's original or rendering host-side onto the caller's file parent, the token sent to the API host only.",
+      "requiredScopes": [
+        "pennylane:internal"
+      ],
+      "handler": "einvoicingReceivedFile",
+      "trustBoundary": "internal",
+      "agentVisible": false,
+      "contractOnly": true,
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "provider_ref": {
+            "type": "string"
+          },
+          "file": {
+            "type": "string",
+            "enum": [
+              "original",
+              "rendering"
+            ]
+          },
+          "target": {
+            "type": "object",
+            "properties": {
+              "app": {
+                "type": "string"
+              },
+              "entity_type": {
+                "type": "string"
+              },
+              "entity_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "app",
+              "entity_type",
+              "entity_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "provider_ref",
+          "file",
+          "target"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "einvoicing_received_set_status": {
+      "description": "E-invoicing provider op (set_received_status): refuse, dispute or withdraw a dispute on a received supplier e-invoice, with one of the reasons offered for it.",
+      "requiredScopes": [
+        "pennylane:internal"
+      ],
+      "handler": "einvoicingReceivedSetStatus",
+      "trustBoundary": "internal",
+      "agentVisible": false,
+      "contractOnly": true,
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "provider_ref": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "refused",
+              "in_dispute",
+              "approved"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "provider_ref",
+          "status"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "supplier_invoices_list": {
+      "description": "List SUPPLIER (accounts-payable) invoices — the bills YOU OWE to vendors/carriers/suppliers — id, supplier, total (minor units), status, due date. These are NOT your customer/dealer receivables: for 'dealer invoices', 'customer invoices', or 'overdue invoices we are owed' use the invoicing app's documents_search instead (this list is money you owe OUT, not money owed to you). Supports cursor paging and a filter array of {field,operator,value} clauses (see the filter param — it is an ARRAY of OBJECTS, never a bare string like \"status=unpaid\").",
+      "readOnly": true,
+      "requiredScopes": ["pennylane:invoices:read"],
+      "handler": "supplierInvoicesListHandler",
+      "summarizer": "summarizeSupplierInvoiceUpload",
+      "params": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "filter": {
+            "type": "array",
+            "description": "An ARRAY of field/operator/value clause OBJECTS — e.g. [{\"field\":\"status\",\"operator\":\"eq\",\"value\":\"unpaid\"}]. Each item MUST be an object with field, operator, value; a bare string (\"status=unpaid\") or a plain object ({\"status\":\"unpaid\"}) is rejected. Omit it entirely to list all.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "operator": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": ["field", "operator", "value"]
+            }
+          }
+        }
+      }
+    },
+    "supplier_invoice_get": {
+      "description": "Get one supplier invoice header by id (normalized projection, no raw payload).",
+      "readOnly": true,
+      "requiredScopes": ["pennylane:invoices:read"],
+      "handler": "supplierInvoiceGetHandler",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": ["id"]
+      }
+    },
+    "customer_invoices_list": {
+      "description": "List CUSTOMER (accounts-receivable / revenue) invoices AS BOOKED IN THE ACCOUNTING LEDGER — id, customer, total (minor units), status, due date. Use this for accounting/AR-from-the-books questions. For the operational 'dealer invoices' / 'overdue invoices' a sales or ops person means day-to-day (the issued documents in the Invoicing app), prefer the invoicing app's documents_search (status=issued, derive overdue by comparing due_date to today). Cursor paging + filter array of {field,operator,value} objects (same shape as supplier_invoices_list — never a bare string).",
+      "readOnly": true,
+      "requiredScopes": ["pennylane:invoices:read"],
+      "handler": "customerInvoicesListHandler",
+      "params": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "filter": {
+            "type": "array",
+            "description": "Field/operator/value filter clauses.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "operator": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": ["field", "operator", "value"]
+            }
+          }
+        }
+      }
+    },
+    "trial_balance_get": {
+      "description": "Read the trial balance for a period — account_code, label, balance_minor (minor units, on the account's natural side: credits − debits for revenue accounts, debits − credits otherwise), plus the period_start/period_end window used. Reconstructs from ledger entries when trial_balance is firm-scoped (403).",
+      "readOnly": true,
+      "requiredScopes": ["pennylane:reports:read"],
+      "handler": "trialBalanceGetHandler",
+      "params": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "type": "string",
+            "description": "YYYY, YYYY-MM, YYYY-Qn, or YYYY-MM-DD..YYYY-MM-DD. Omitted or 'current': the current fiscal year to date (calendar year to date when the fiscal year is unknown)."
+          }
+        }
+      }
+    },
+    "pnl_summary": {
+      "description": "Derived P&L summary for a period — returns revenue_minor, cogs_minor, opex_minor, other_minor, gross_margin_minor (gross_margin_minor = revenue_minor − cogs_minor). EVERY money field is in MINOR UNITS (the smallest currency unit, e.g. cents) — the `_minor` suffix says so — so DIVIDE BY 100 before displaying euros: revenue_minor:\"100000\" is €1,000.00, NOT €100,000. Buckets the trial balance by the org account_class_map (longest-prefix wins; 601 is COGS). Returns the period_start/period_end window used.",
+      "readOnly": true,
+      "requiredScopes": ["pennylane:reports:read"],
+      "handler": "pnlSummaryHandler",
+      "params": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "type": "string",
+            "description": "YYYY, YYYY-MM, YYYY-Qn, or YYYY-MM-DD..YYYY-MM-DD. Omitted or 'current': the current fiscal year to date (calendar year to date when the fiscal year is unknown)."
+          }
+        }
+      }
+    },
+    "cash_position": {
+      "description": "Current cash position — per-account balances and total_by_currency (minor units). Returns cash_status:'unavailable' with empty totals when the bank scope is descoped (403), never a fabricated number.",
+      "readOnly": true,
+      "requiredScopes": ["pennylane:cash:read"],
+      "handler": "cashPositionHandler",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "transactions_list": {
+      "description": "List bank transactions (burn side) — amount (minor units), currency. Cursor paging + filter array.",
+      "readOnly": true,
+      "requiredScopes": ["pennylane:cash:read"],
+      "handler": "transactionsListHandler",
+      "params": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "filter": {
+            "type": "array",
+            "description": "Field/operator/value filter clauses.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "operator": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": ["field", "operator", "value"]
+            }
+          }
+        }
+      }
+    },
+    "spend_by_category": {
+      "description": "Spend aggregated by P&L class (revenue/cogs/opex/other) for a period — total_minor per class. Classes the trial balance by the org account_class_map. Returns the period_start/period_end window used.",
+      "readOnly": true,
+      "requiredScopes": ["pennylane:reports:read"],
+      "handler": "spendByCategoryHandler",
+      "params": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "type": "string",
+            "description": "YYYY, YYYY-MM, YYYY-Qn, or YYYY-MM-DD..YYYY-MM-DD. Omitted or 'current': the current fiscal year to date (calendar year to date when the fiscal year is unknown)."
+          }
+        }
+      }
+    },
+    "runway_estimate": {
+      "description": "Runway estimate in whole months = cash / trailing net burn. Returns months:null when net burn is non-positive (cash-flow positive) OR cash_status:'unavailable' when the bank scope is descoped (403). Single-currency only (no automated FX).",
+      "readOnly": true,
+      "requiredScopes": ["pennylane:reports:read"],
+      "handler": "runwayEstimateHandler",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "home_load": {
+      "description": "Load the cached P&L + cash snapshot for the Pennylane home view (reads the snapshot, not the live API).",
+      "readOnly": true,
+      "requiredScopes": ["pennylane:reports:read"],
+      "handler": "homeLoadHandler",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "supplier_invoice_upload": {
+      "description": "Book a received vendor/supplier/carrier bill (a PDF the caller can read, e.g. a mail attachment) into Pennylane's accounts payable. GATED: a person approves first; the approved call imports it (file attachment + supplier invoice import) with the figures you pass (Pennylane does no OCR) and answers posted_to_pennylane:true with the Pennylane id. The supplier is supplier_id, else the one Pennylane supplier named exactly supplier_name (refuses supplier_not_found / supplier_ambiguous with candidates, creating nothing). The same file imported twice reuses the first import. Never for supplier e-invoices received through the e-invoicing network: they are already in Pennylane. Use this (not a self-issued invoicing document) to record a received payable: invoicing is issue-only.",
+      "requiredScopes": ["pennylane:invoices:write"],
+      "handler": "supplier_invoice_upload",
+      "summarizer": "summarizeSupplierInvoiceUpload",
+      "gated": true,
+      "approvalImpact": "external",
+      "atomic": false,
+      "timeoutMs": 60000,
+      "trustBoundary": "user",
+      "approvalExpiryHours": 24,
+      "params": {
+        "type": "object",
+        "properties": {
+          "file_id": {
+            "type": "string",
+            "description": "The bill's PDF (a file id you can read, e.g. a mail attachment)."
+          },
+          "supplier_name": {
+            "type": "string",
+            "description": "The supplier's name as Pennylane knows it."
+          },
+          "supplier_id": {
+            "type": "string",
+            "description": "The Pennylane supplier id, when known or when a lookup listed candidates."
+          },
+          "invoice_date": {
+            "type": "string",
+            "description": "YYYY-MM-DD"
+          },
+          "due_date": {
+            "type": "string",
+            "description": "YYYY-MM-DD (default: the invoice date)"
+          },
+          "invoice_number": {
+            "type": "string"
+          },
+          "amount_minor": {
+            "type": "string",
+            "description": "The total including tax, in minor units (412.60 EUR = 41260)."
+          },
+          "tax_minor": {
+            "type": "string",
+            "description": "The tax included in the total, in minor units (default 0)."
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO code, default EUR."
+          }
+        },
+        "required": ["file_id", "supplier_name", "invoice_date", "amount_minor"],
+        "additionalProperties": false
+      },
+      "approvalCard": {
+        "summary": "Import the {{params.supplier_name}} bill into Pennylane's accounts payable"
+      }
+    }
+  },
+  "implements": [
+    {
+      "contract": "einvoicing-pa",
+      "version": 1,
+      "tools": {
+        "registration_status": "einvoicing_registration_status",
+        "find_einvoice": "einvoicing_find",
+        "submit_einvoice": "einvoicing_submit",
+        "advance_einvoice": "einvoicing_advance",
+        "get_einvoice_status": "einvoicing_status",
+        "list_status_changes": "einvoicing_status_changes",
+        "find_booking": "einvoicing_find_booking",
+        "book_sale": "einvoicing_book",
+        "list_received": "einvoicing_received_list",
+        "get_received": "einvoicing_received_get",
+        "fetch_received_file": "einvoicing_received_file",
+        "set_received_status": "einvoicing_received_set_status"
+      }
+    }
+  ],
+  "webhooks": {
+    "einvoicing": {
+      "handler": "einvoicingWebhookHandler",
+      "verify": "verifyEinvoicingWebhook",
+      "bodyLimitBytes": 262144
+    }
+  },
+  "webhookHealth": { "probe": "probe-webhook-upstream", "deliveryGraceSec": 10800 },
+  "skills": {
+    "pennylane-overview": {
+      "description": "How to use the Pennylane accounting app with Liaison",
+      "body": "Pennylane connects your accounting (Pennylane) to Liaison so the agent can answer finance questions — spend, P&L, cash, accounts-payable, margin, and runway — from the live book. P&L and runway are derived: gross margin is revenue minus COGS over a trial balance classed by account-code prefix, and runway is cash divided by trailing net burn. If your Pennylane token lacks the bank scope, cash and runway honestly report 'unavailable' rather than guessing. Staging a supplier invoice for upload is a gated action you approve first, and it only stages the document with an instruction to file it in Pennylane.",
+      "kind": "guide",
+      "enabledByDefault": true
+    },
+    "capture-vendor-bill-payable": {
+      "description": "Capture a received vendor/supplier/carrier bill as an accounts-payable item",
+      "body": "Use this when asked to capture/file/log a RECEIVED vendor, supplier, or carrier bill (e.g. a shipping invoice that arrived by email) as a payable. AP lives in Pennylane, NOT invoicing: invoicing only ISSUES org documents, so never mint a self-issued invoicing document to represent a received bill (it would corrupt the gap-free issued sequence). Supplier e-invoices received through the e-invoicing network are already in Pennylane (see the invoicing app's Received tab): never upload those.\n\n1. **Locate the email reliably.** `mail__search` with the structured sender filter `from='<vendor>'`, and add a `since`/`until` window for the bill's month when the ask names a period. Do NOT free-text-guess subject words via `query`; the sender filter is the reliable locator.\n2. **Open it and take the PDF file id.** `mail__read` the conversation (it returns each message's `attachments` array) and take the bill PDF's `id` from there.\n3. **Read the figures.** Pennylane does no OCR: take from the bill its date, total including tax, the tax in it, currency, and when shown its number and due date.\n4. **Propose the gated import.** Call `supplier_invoice_upload` with `file_id`, `supplier_name`, `invoice_date`, `amount_minor` (total incl. tax in minor units, e.g. 412.60 EUR = 41260), `tax_minor`, `currency`, and `invoice_number` / `due_date` when known. It is GATED: calling it creates a pending approval, it does not act yet.\n5. **Frame it honestly.** Tell the user it is pending approval and that, once approved, the bill is imported into Pennylane's accounts payable. If it refuses with `supplier_not_found` or `supplier_ambiguous`, show the candidates and retry with `supplier_id`, or ask the user to create the supplier in Pennylane first.",
+      "kind": "guide",
+      "enabledByDefault": true
+    }
+  }
+}

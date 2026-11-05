@@ -1,0 +1,1293 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# THIS FILE DOES NOT RUN HERE. It is the source of the release workflow that runs
+# in the operator's private repository, which holds the signing secrets and the
+# self-hosted runners; that copy checks this repository out as a submodule and
+# runs every step inside it. This repository holds no Actions secret: a
+# collaborator with write access here can read every secret and run code on
+# every self-hosted runner, so none is given to it. The tests read this file.
+#
+# The desktop release pipeline: one job per OS, each building on its OWN native
+# runner, and a manifest publish that waits for all three.
+#
+# Two rules this file exists to hold, both of them silent when broken:
+#   1. the sidecar is codesigned BEFORE the outer app bundle. Signing it after
+#      re-signs a nested binary underneath the outer signature, and the bundle
+#      is then refused on a machine that never built it.
+#   2. the manifest is published LAST, and only after every platform's artifact
+#      has been signed and verified. An updater manifest that points at an
+#      unsigned or half-signed build is an auto-update that breaks installs.
+#
+# Every credential arrives as a ${{ secrets.NAME }} reference. No value is ever
+# written here, and every action is pinned to a COMMIT rather than to a tag its
+# owner can repoint: these jobs hold the Apple, the Azure and the updater
+# signing secrets, so an action that silently changes under its tag is an
+# action that reads them. The comment after each hash is the tag it was
+# resolved from.
+name: desktop-release
+
+on:
+  push:
+    tags:
+      - "desktop-v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and package on each runner without signing or publishing anything"
+        type: boolean
+        default: true
+      platforms:
+        # Dry runs are how this pipeline is debugged, and a fix to one runner
+        # costs three runners on a free plan, one of them billed at ten times
+        # the others. This narrows a DRY RUN to the runner that is actually in
+        # question. It cannot narrow a release: the condition on every build
+        # job starts with "not a dry run", so a tag push and a dry_run=false
+        # dispatch always build all three, whatever is typed here.
+        #
+        # "all", one name, or a comma list with no spaces: macos,linux
+        description: "Which runners to use (all, macos, linux, windows, or a comma list). Honoured by a dry run and by the test channel; a production build always uses all three"
+        type: string
+        default: all
+      channel:
+        # THE TEST CHANNEL (apps/desktop/ci/channel.ts): "test" builds and signs
+        # exactly like a release (dispatch it with dry_run=false), stamps the
+        # version below, points the app's updater at desktop/test/latest.json
+        # and publishes under desktop/test/ only. Empty is the production
+        # pipeline: with dry_run=false a dispatch then publishes a RELEASE to
+        # every customer, exactly as a tag push does. Anything but exactly ""
+        # or "test" fails the run.
+        description: "Empty: production (with dry_run=false this publishes a release to every customer). test: a signed test channel build (with dry_run=false). Nothing else is accepted"
+        type: string
+        default: ""
+      version:
+        description: "Test channel only: the version to stamp, like 0.1.10-test.1"
+        type: string
+        default: ""
+
+# No permission at the top of the file. Only the job that publishes the
+# manifest writes to the repository, and it says so for itself: a token that
+# can create a release handed to a build job is a build job that could publish
+# one without the gate below ever running.
+permissions: {}
+
+# The channel, for every script that names or stamps a version
+# (apps/desktop/ci/channel.ts). Both are empty on a tag push and on a
+# production dispatch, and empty is the production pipeline exactly as it was.
+# The scripts read them EXACTLY, like the job conditions: " test" is neither
+# channel and fails the run.
+env:
+  LIAISON_DESKTOP_CHANNEL: ${{ inputs.channel }}
+  LIAISON_DESKTOP_TEST_VERSION: ${{ inputs.version }}
+
+# Each job runs on GitHub's hosted runner unless the repository variable names
+# a self-hosted runner label (DESKTOP_RUNNER_MACOS, _WINDOWS, _LINUX). A
+# self-hosted machine outlives the job, so nothing here may assume a fresh one:
+# the signing scripts delete their temporary keychain and leave the user's
+# keychain search list as they found it.
+jobs:
+  build-macos:
+    runs-on: ${{ vars.DESKTOP_RUNNER_MACOS || 'macos-latest' }}
+    # A dry run or a test channel build may be narrowed to one runner with the
+    # `platforms` input; a real release never is (the first clause below), so
+    # every existing gate still holds and the publish job still waits on all
+    # three.
+    if: ${{ (!inputs.dry_run && inputs.channel == '') || inputs.platforms == '' || inputs.platforms == 'all' || contains(format(',{0},', inputs.platforms), ',macos,') }}
+    timeout-minutes: 120
+    # Read the code, and nothing else. A build job that can write contents is a
+    # build job that could create the release itself, with the two signature
+    # gate below it never running.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+
+      - name: Check the release channel
+        # Empty on a tag push (production). On the test channel: a well formed
+        # test version, and a signed build, or nothing is built at all.
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: bun apps/desktop/ci/channel.ts check --dry-run "$DRY_RUN"
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          # One universal app for every Mac: cargo builds each slice, tauri
+          # merges them with lipo.
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Install dependencies
+        # --cpu='*' installs the x86_64 Claude Code CLI package beside the
+        # arm64 one: the Intel slice of the sidecar embeds it, and bun installs
+        # only the host's optional packages otherwise.
+        run: bun install --cpu='*'
+
+      - name: Build the web app
+        # The webview serves apps/web's build, compiled into the shell binary.
+        run: bun --filter '@liaison/web' build
+
+      - name: Build the desktop overlay
+        run: cd apps/desktop && bun run build:overlay
+
+      - name: Prepare the universal sidecar
+        # Compiles the arm64 and x86_64 Bun sidecars, each with its own CLI,
+        # places them where externalBin resolves them and lipos the universal
+        # one. Tauri refuses to build at all when those files are absent.
+        run: cd apps/desktop && bun prepare-sidecar.ts --force --target universal-apple-darwin
+
+      - name: Verify no absolute paths in the sidecar
+        # Immediately before the signature, because a signature over a binary
+        # carrying the build machine's own directories only makes the broken
+        # binary look trustworthy. The sidecar is signed before the bundle
+        # exists, so it gets its own check here rather than waiting for the
+        # bundle-wide one.
+        run: |
+          bun apps/desktop/ci/check-bundle-no-absolute-paths.ts \
+            apps/desktop/src-tauri/binaries
+
+      - name: Sign sidecar binaries
+        # Skipped on a dry run: no credential is needed to prove a runner can
+        # build and package, and a dry run that asks for one cannot be run at all.
+        if: ${{ !inputs.dry_run }}
+        # 6a's script owns the codesign call, the hardened runtime flag and the
+        # sidecar entitlements. This step only decides WHICH binaries and WHEN,
+        # and refuses to move on having signed nothing: an empty directory here
+        # produces a bundle with an unsigned sidecar inside it, and that is a
+        # Gatekeeper refusal on a customer's Mac, not a red pipeline.
+        # APPLE_TEAM_ID names the one Apple team the script may sign as: the
+        # runner's keychain can hold other teams' Developer ID certificates.
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          MACOS_KEYCHAIN_PWD: ${{ secrets.MACOS_KEYCHAIN_PWD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          signed=0
+          for binary in apps/desktop/src-tauri/binaries/liaison-sidecar-*; do
+            [ -f "$binary" ] || continue
+            apps/desktop/ci/sign-sidecar-macos.sh "$binary"
+            signed=$((signed + 1))
+          done
+          if [ "$signed" -eq 0 ]; then
+            echo "No sidecar binary was signed, the bundle would embed an unsigned one" >&2
+            exit 1
+          fi
+          echo "sidecar binaries signed: $signed"
+
+      - name: Generate a throwaway updater key for the build
+        # The bundler carries createUpdaterArtifacts, so it signs the updater
+        # payload as part of the build, and it refuses to finish when the
+        # config names a public key and the environment holds no private one:
+        # "A public key has been found, but no private key". So every build,
+        # dry run or release, makes its own keypair and builds with that.
+        #
+        # A release too, and that is the point: the build runs thousands of
+        # crates' build scripts and proc macros plus bun scripts, and anything
+        # in the environment file is in every one of them. The project's real
+        # updater key cannot be rotated (every installed copy verifies against
+        # the public half compiled into it), so it never enters the environment
+        # file and never reaches a build step. The signature the bundler makes
+        # with this key is thrown away: the updater archive that ships is
+        # rebuilt and signed by "Sign the updater archive", the only step that
+        # receives the real key, as that step's own env.
+        #
+        # The password is a throwaway word rather than an empty one, and that
+        # is measured, not taste: a key this CLI generates with an empty
+        # password cannot be read back with an empty password ("Wrong password
+        # for that key"), so an empty one would fail the build it is here to
+        # unblock. The key file is written under RUNNER_TEMP and dies with the
+        # runner.
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/dry-run-updater.key"
+          (cd apps/desktop && bunx tauri signer generate --ci --force --password dryrun --write-keys "$key")
+          echo "TAURI_SIGNING_PRIVATE_KEY=$(cat "$key")" >> "$GITHUB_ENV"
+          echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=dryrun" >> "$GITHUB_ENV"
+
+      - name: Check the updater signing secrets are set
+        # A release must never publish unsigned updater artifacts, and without
+        # this the missing secret would only surface at "Sign the updater
+        # archive", after every runner had compiled. The secrets arrive by name
+        # in this step's own env, are tested for presence, and go nowhere else:
+        # nothing here writes to the environment file, to disk or to the log.
+        if: ${{ !inputs.dry_run }}
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ] || [ -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" ]; then
+            echo "The updater signing secrets are not set on this repository, and a release must never publish unsigned updater artifacts: set TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD, or run this workflow with dry_run" >&2
+            exit 1
+          fi
+
+      - name: Build the app bundle
+        # The wrapper adds --remap-path-prefix for this machine's own
+        # directories: without it rustc bakes the builder's home directory into
+        # the binary and the path check below refuses the bundle.
+        # --bundles app only: the DMG is assembled after signing, by
+        # apps/desktop/ci/make-dmg.sh, because tauri's own bundle_dmg.sh failed
+        # here after the .app was already written.
+        run: bun apps/desktop/ci/tauri-build.ts --target universal-apple-darwin --bundles app
+
+      - name: Verify the app is universal
+        # Both executables must carry both slices: a thin shell or a thin
+        # sidecar is an app that installs on an Intel Mac and never starts.
+        run: |
+          set -euo pipefail
+          app=apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/Liaison.app
+          for binary in "$app/Contents/MacOS/"*; do
+            archs="$(lipo -archs "$binary")"
+            echo "$(basename "$binary"): $archs"
+            case " $archs " in *" arm64 "*) ;; *) echo "$binary has no arm64 slice" >&2; exit 1 ;; esac
+            case " $archs " in *" x86_64 "*) ;; *) echo "$binary has no x86_64 slice" >&2; exit 1 ;; esac
+          done
+
+      - name: Verify no absolute paths in the bundle
+        # The LAST thing before anything is signed: a signature over a bundle
+        # carrying the runner's own checkout path only makes the broken build
+        # look trustworthy.
+        run: |
+          bun apps/desktop/ci/check-bundle-no-absolute-paths.ts \
+            apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/Liaison.app
+
+      - name: Sign and notarize the app
+        # Skipped on a dry run: no credential is needed to prove a runner can
+        # build and package, and a dry run that asks for one cannot be run at all.
+        if: ${{ !inputs.dry_run }}
+        # Seals the bundle around the already signed sidecar, then submits it
+        # to the notary and staples the ticket. The script refuses to leave a
+        # nested binary that is already signed re-signed, which is what would
+        # strip the sidecar's JIT entitlements.
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          MACOS_KEYCHAIN_PWD: ${{ secrets.MACOS_KEYCHAIN_PWD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          apps/desktop/ci/sign-app-macos.sh \
+            apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/Liaison.app
+
+      - name: Verify no absolute paths in the disk image payload
+        # The image is made from the app AND notarized, so the same rule
+        # applies to it as to every other seal: the check is the step
+        # immediately before, not one earlier in the job.
+        if: ${{ !inputs.dry_run }}
+        run: |
+          bun apps/desktop/ci/check-bundle-no-absolute-paths.ts \
+            apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/Liaison.app
+
+      - name: Package DMG
+        # Skipped on a dry run: no credential is needed to prove a runner can
+        # build and package, and a dry run that asks for one cannot be run at all.
+        if: ${{ !inputs.dry_run }}
+        # hdiutil directly, not tauri's bundler: its own bundle_dmg.sh failed
+        # here after the .app was already written. The script refuses an app
+        # that is unsigned or carries no ticket, so the image can never be the
+        # thing that hides a half signed build.
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          apps/desktop/ci/make-dmg.sh \
+            apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/Liaison.app \
+            apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/dmg
+
+      - name: Verify no absolute paths in the updater archive
+        # The same rule the other signatures follow: the check is the step
+        # immediately before the signature, not somewhere earlier. This one
+        # also puts the app under its derived name, because that name is what
+        # the archive, its signature and the manifest all key on.
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          app=apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/Liaison.app
+          named="$(dirname "$app")/$(bun apps/desktop/ci/artifact-names.ts name macos dmg | sed 's/\.dmg$/.app/')"
+          [ "$app" = "$named" ] || cp -R "$app" "$named"
+          bun apps/desktop/ci/check-bundle-no-absolute-paths.ts "$named"
+
+      - name: Sign the updater archive
+        if: ${{ !inputs.dry_run }}
+        # AFTER notarization, from the signed .app, because tauri writes its
+        # own updater archive during the build, when the app inside it is not
+        # signed yet. Shipping that one means the disk image a human downloads
+        # is fine and the payload the updater installs is refused by
+        # Gatekeeper, with every check in this pipeline green.
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          app=apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/Liaison.app
+          named="$(dirname "$app")/$(bun apps/desktop/ci/artifact-names.ts name macos dmg | sed 's/\.dmg$/.app/')"
+          bun apps/desktop/ci/sign-updater-artifact.ts "$named"
+
+      - name: Scripted install and launch check
+        # Mounts the image, copies the app out, launches it and asks the
+        # window server whether a window actually came up. A check that only
+        # looks for the process passes on a build whose window never builds.
+        if: ${{ !inputs.dry_run }}
+        run: |
+          apps/desktop/ci/install-launch-check.sh \
+            "$(ls apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/dmg/Liaison_*_*.dmg | head -1)"
+
+      - name: Upload the macOS artifact
+        # A dry run signs nothing, so it has no .sig to upload and the manifest
+        # job it would feed is skipped too.
+        if: ${{ !inputs.dry_run }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: liaison-desktop-macos
+          # From the build job to the publish job of this run, nothing longer.
+          retention-days: 3
+          path: |
+            apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/dmg/Liaison_*_*.dmg
+            apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/Liaison_*_*.app.tar.gz
+            apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/Liaison_*_*.app.tar.gz.sig
+            apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/Liaison_*_*.app.tar.gz.sha256
+          if-no-files-found: error
+
+  build-windows:
+    runs-on: ${{ vars.DESKTOP_RUNNER_WINDOWS || 'windows-latest' }}
+    # A dry run or a test channel build may be narrowed to one runner with the
+    # `platforms` input; a real release never is (the first clause below), so
+    # every existing gate still holds and the publish job still waits on all
+    # three.
+    if: ${{ (!inputs.dry_run && inputs.channel == '') || inputs.platforms == '' || inputs.platforms == 'all' || contains(format(',{0},', inputs.platforms), ',windows,') }}
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # Where the EnVar plugin is installed and where installer-hooks.nsi reads
+      # it from at compile time. Not tauri's own NSIS directory: the bundler
+      # deletes and re-extracts that one the first time it runs on a machine,
+      # taking any plugin dropped in there with it. Set from a step: the
+      # `runner` context is not available in a job level `env` block, and
+      # GitHub refuses to dispatch a workflow that reads it there.
+      - name: Name the NSIS plugin directory
+        shell: pwsh
+        run: '"LIAISON_NSIS_PLUGINS=$env:RUNNER_TEMP\liaison-nsis-plugins" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8'
+
+      # setup-bun installs into homedir()\.bun\bin, and on Windows homedir() is
+      # USERPROFILE. A self-hosted runner runs as the machine's own user, so
+      # without this it overwrites that user's bun.exe, and any bun the user is
+      # running makes the copy fail with EBUSY. Pointed at the runner's tool
+      # cache, the runner keeps its own bun (and keeps it across runs).
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        env:
+          USERPROFILE: ${{ runner.tool_cache }}\liaison-bun-home
+        with:
+          bun-version: "1.4.x"
+
+      - name: Check the release channel
+        # Empty on a tag push (production). On the test channel: a well formed
+        # test version, and a signed build, or nothing is built at all.
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: bun apps/desktop/ci/channel.ts check --dry-run "$DRY_RUN"
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Name the binary the bundler installs
+        # `Liaison.exe` is produced by nothing. Tauri's main binary name is the
+        # cargo binary's name unless mainBinaryName overrides it, and nothing
+        # does: the compiled file is liaison-desktop.exe and the NSIS template
+        # installs $INSTDIR\${MAINBINARYNAME}.exe from that same name. Four
+        # steps below used to spell the product name instead and dry run
+        # 34777230634 died on the first of them. So it is derived once, from
+        # the config and the cargo manifest, and the steps and the scripts read
+        # it from here.
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "LIAISON_MAIN_BINARY=$(bun apps/desktop/ci/artifact-names.ts main-binary)" >> "$GITHUB_ENV"
+
+      - name: Build the web app
+        run: bun --filter '@liaison/web' build
+
+      - name: Build the desktop overlay
+        run: cd apps/desktop && bun run build:overlay
+
+      - name: Prepare the sidecar for the host triple
+        run: cd apps/desktop && bun prepare-sidecar.ts --force
+
+      - name: Compile the app binary
+        # --no-bundle: the .exe only. It has to exist, and be SIGNED, before
+        # the bundler wraps it in the installer, or the installer is a signed
+        # container around unsigned code. The Azure variables are here for the
+        # signCommand tauri-build.ts hands the CLI on Windows, so this build and
+        # the bundle step's run one identical configuration.
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_CODESIGN_ACCOUNT: ${{ secrets.AZURE_CODESIGN_ACCOUNT }}
+          AZURE_CODESIGN_PROFILE: ${{ secrets.AZURE_CODESIGN_PROFILE }}
+          AZURE_CODESIGN_ENDPOINT: ${{ secrets.AZURE_CODESIGN_ENDPOINT }}
+        run: bun apps/desktop/ci/tauri-build.ts --no-bundle
+
+      - name: Verify no absolute paths in the binaries
+        # The two files the next step signs, checked immediately before it: the
+        # bundle-wide check further down cannot cover them, because the bundle
+        # does not exist yet.
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun apps/desktop/ci/check-bundle-no-absolute-paths.ts \
+            apps/desktop/src-tauri/binaries
+          exe="apps/desktop/src-tauri/target/release/$LIAISON_MAIN_BINARY.exe"
+          if [ ! -f "$exe" ]; then
+            echo "no compiled app .exe to check at $exe, nothing was built" >&2
+            exit 1
+          fi
+          bun apps/desktop/ci/check-bundle-no-absolute-paths.ts "$exe"
+
+      - name: Sign the Windows binaries
+        # The sidecar .exe, then the app .exe. AZURE_CLIENT_ID unset skips
+        # signing and says UNSIGNED in the log, the way ci/sign-windows.ps1 in
+        # the monorepo does, so the pipeline stays green before the service
+        # principal exists. Any OTHER missing variable is a loud failure.
+        shell: pwsh
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_CODESIGN_ACCOUNT: ${{ secrets.AZURE_CODESIGN_ACCOUNT }}
+          AZURE_CODESIGN_PROFILE: ${{ secrets.AZURE_CODESIGN_PROFILE }}
+          AZURE_CODESIGN_ENDPOINT: ${{ secrets.AZURE_CODESIGN_ENDPOINT }}
+        run: apps/desktop/ci/sign-windows.ps1 -Stage binaries
+
+      - name: Install the NSIS EnVar plugin
+        # The installer hooks edit ONE element of the user PATH through this
+        # plugin, because an NSIS string holds 1024 characters and a real user
+        # PATH is longer: reading it into a register and writing it back
+        # truncates it and the customer loses every tool past the limit. The
+        # archive is pinned by sha256, since it ends up inside a signed
+        # installer (apps/desktop/ci/windows-installer.md).
+        shell: pwsh
+        run: apps/desktop/ci/install-nsis-envar.ps1
+
+      - name: Generate a throwaway updater key for the build
+        # The bundler carries createUpdaterArtifacts, so it signs the updater
+        # payload as part of the build, and it refuses to finish when the
+        # config names a public key and the environment holds no private one:
+        # "A public key has been found, but no private key". So every build,
+        # dry run or release, makes its own keypair and builds with that.
+        #
+        # A release too, and that is the point: the build runs thousands of
+        # crates' build scripts and proc macros plus bun scripts, and anything
+        # in the environment file is in every one of them. The project's real
+        # updater key cannot be rotated (every installed copy verifies against
+        # the public half compiled into it), so it never enters the environment
+        # file and never reaches a build step. The signature the bundler makes
+        # with this key is thrown away: the updater archive that ships is
+        # rebuilt and signed by "Sign the updater archive", the only step that
+        # receives the real key, as that step's own env.
+        #
+        # The password is a throwaway word rather than an empty one, and that
+        # is measured, not taste: a key this CLI generates with an empty
+        # password cannot be read back with an empty password ("Wrong password
+        # for that key"), so an empty one would fail the build it is here to
+        # unblock. The key file is written under RUNNER_TEMP and dies with the
+        # runner.
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/dry-run-updater.key"
+          (cd apps/desktop && bunx tauri signer generate --ci --force --password dryrun --write-keys "$key")
+          echo "TAURI_SIGNING_PRIVATE_KEY=$(cat "$key")" >> "$GITHUB_ENV"
+          echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=dryrun" >> "$GITHUB_ENV"
+
+      - name: Check the updater signing secrets are set
+        # A release must never publish unsigned updater artifacts, and without
+        # this the missing secret would only surface at "Sign the updater
+        # archive", after every runner had compiled. The secrets arrive by name
+        # in this step's own env, are tested for presence, and go nowhere else:
+        # nothing here writes to the environment file, to disk or to the log.
+        if: ${{ !inputs.dry_run }}
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ] || [ -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" ]; then
+            echo "The updater signing secrets are not set on this repository, and a release must never publish unsigned updater artifacts: set TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD, or run this workflow with dry_run" >&2
+            exit 1
+          fi
+
+      - name: Build the app bundle
+        # The NSIS installer, around the already signed binaries
+        # (apps/desktop/ci/windows-installer.md records why NSIS and not MSI).
+        # This step RECOMPILES the app (seen on every Windows run, signed or
+        # not), which discards the signature the step above made. So the
+        # bundler signs too, through bundle.windows.signCommand
+        # (apps/desktop/ci/tauri-build.ts): the app .exe after any recompile,
+        # the uninstaller and the installer, with the same script and the same
+        # Azure variables; unset, it takes the same unsigned skip.
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_CODESIGN_ACCOUNT: ${{ secrets.AZURE_CODESIGN_ACCOUNT }}
+          AZURE_CODESIGN_PROFILE: ${{ secrets.AZURE_CODESIGN_PROFILE }}
+          AZURE_CODESIGN_ENDPOINT: ${{ secrets.AZURE_CODESIGN_ENDPOINT }}
+        run: bun apps/desktop/ci/tauri-build.ts --bundles nsis
+
+      - name: Discard the bundler's own updater signature
+        # `tauri build` signs the installer it just produced, and this job then
+        # REWRITES that installer: the Authenticode step below changes its
+        # bytes. The .sig the bundler wrote covers the file as it was before
+        # that, it is named `Liaison_<version>_x64-setup.exe.sig`, and that
+        # name matches the upload glob further down, so leaving it in place
+        # uploads a second, perfectly well formed signature over a file nobody
+        # has. The signature that ships is made after the Authenticode one, by
+        # the step that says so.
+        shell: bash
+        run: rm -f apps/desktop/src-tauri/target/release/bundle/nsis/*.exe.sig
+
+      - name: Verify the Windows binaries are still signed
+        # The sidecar was signed before the bundler ran and the bundler only
+        # copies it, so the copy it packaged must still carry that signature.
+        # NOT the app .exe: since tauri-bundler 2.12 (bundle.rs, "Restore
+        # unsigned and unpatched binary") the bundler patches and signs the
+        # main binary for each package type, packs THAT into the installer,
+        # then puts the unsigned original back in target/release. Read here,
+        # it is NotSigned by design (0.1.14's first run). The app .exe a
+        # customer runs is checked where it lands: "Verify the Windows
+        # registration" reads the signatures of the binaries the installer
+        # actually wrote.
+        shell: pwsh
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        run: |
+          apps/desktop/ci/verify-windows-signatures.ps1 `
+            -Path 'apps/desktop/src-tauri/binaries/liaison-sidecar-*.exe' `
+            -Publisher 'Mathieu Frohlich'
+
+      - name: Verify no absolute paths in the bundle
+        shell: bash
+        run: |
+          bun apps/desktop/ci/check-bundle-no-absolute-paths.ts \
+            apps/desktop/src-tauri/target/release/bundle
+
+      - name: Sign the Windows installer
+        # Last, because it is the container: signing it earlier would seal a
+        # bundle that did not exist yet. This stage also writes
+        # windows-signing.json beside the installer, on the signing path and on
+        # the AZURE_CLIENT_ID skip path alike: the publish job below holds no
+        # Azure secret and reads that file to decide whether the Authenticode
+        # half of the gate runs.
+        shell: pwsh
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_CODESIGN_ACCOUNT: ${{ secrets.AZURE_CODESIGN_ACCOUNT }}
+          AZURE_CODESIGN_PROFILE: ${{ secrets.AZURE_CODESIGN_PROFILE }}
+          AZURE_CODESIGN_ENDPOINT: ${{ secrets.AZURE_CODESIGN_ENDPOINT }}
+        run: apps/desktop/ci/sign-windows.ps1 -Stage installer -Publisher 'Mathieu Frohlich'
+
+      - name: Name the windows artifacts
+        # The bundler names the installer its own way, and its own way changes
+        # between versions. Everything downstream matches on the derived name,
+        # so the rename happens here, once, right after the artifact exists.
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path apps/desktop/src-tauri/target/release/bundle/nsis -Filter *.exe -File |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $installer) { throw "no installer to name" }
+          bun apps/desktop/ci/artifact-names.ts rename windows exe "$installer"
+
+      - name: Install the app silently
+        # A real install on the runner, unattended (/S), so the next step can
+        # ask the operating system what the installer actually registered. A
+        # per-user NSIS install needs no elevation, which is what makes this
+        # possible in a job at all.
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path apps/desktop/src-tauri/target/release/bundle/nsis -Filter *.exe -File |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $installer) { throw "no installer to run" }
+          Start-Process -FilePath $installer -ArgumentList "/S" -Wait -NoNewWindow
+
+      - name: Verify the Windows registration
+        # The scheme, the uninstall entry, the PATH entry and the signatures of
+        # the binaries the installer actually wrote. An install that registers
+        # none of them still launches, which is why a smoke test that only
+        # starts the app proves nothing; and a signed installer says nothing
+        # about whether its payload is signed.
+        shell: pwsh
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        run: apps/desktop/ci/verify-windows-registration.ps1 -Publisher 'Mathieu Frohlich'
+
+      - name: Verify no absolute paths in the updater payload
+        # Immediately before the updater signature, same rule as the two
+        # Authenticode signatures above it.
+        if: ${{ !inputs.dry_run }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for installer in apps/desktop/src-tauri/target/release/bundle/nsis/Liaison_*_*.exe; do
+            bun apps/desktop/ci/check-bundle-no-absolute-paths.ts "$installer"
+          done
+
+      - name: Sign the updater archive
+        if: ${{ !inputs.dry_run }}
+        # The installer IS the updater payload on Windows, so this signs the
+        # same file that was Authenticode signed a moment ago, in that order:
+        # signing it before would have signed bytes the Azure step then
+        # rewrote.
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for installer in apps/desktop/src-tauri/target/release/bundle/nsis/Liaison_*_*.exe; do
+            bun apps/desktop/ci/sign-updater-artifact.ts "$installer"
+          done
+
+      - name: Scripted install and launch check
+        # The silent install above already put it on the machine; this launches
+        # what it installed and waits for the process to still be there.
+        shell: pwsh
+        run: apps/desktop/ci/install-launch-check.ps1
+
+      - name: Uninstall the app
+        # A self-hosted runner outlives the job and runs in a real user's
+        # session, so the silent install above must not stay in that profile.
+        # always(): a check that failed between the install and here still
+        # leaves nothing behind.
+        if: always()
+        shell: pwsh
+        run: apps/desktop/ci/uninstall-windows.ps1
+
+      - name: Upload the unsigned installer for a dry run walk
+        # The one thing a dry run hands back, and it is not a release: a
+        # WORKFLOW artifact that dies in a day, named for what it is, so a
+        # human can put this exact build on a Windows machine and walk it.
+        # No secret was touched above
+        # it and no manifest is published after it: the publish job is still
+        # skipped on a dry run, and a download is not a release.
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-dry-run-installer-UNSIGNED
+          path: apps/desktop/src-tauri/target/release/bundle/nsis/Liaison_*_*.exe
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Upload the Windows artifact
+        # A dry run signs nothing, so it has no .sig to upload and the manifest
+        # job it would feed is skipped too.
+        if: ${{ !inputs.dry_run }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: liaison-desktop-windows
+          # From the build job to the publish job of this run, nothing longer.
+          retention-days: 3
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/nsis/Liaison_*_*.exe
+            apps/desktop/src-tauri/target/release/bundle/nsis/Liaison_*_*.exe.sig
+            apps/desktop/src-tauri/target/release/bundle/nsis/Liaison_*_*.exe.sha256
+            apps/desktop/src-tauri/target/release/bundle/nsis/windows-signing.json
+          if-no-files-found: error
+
+  build-linux:
+    runs-on: ${{ vars.DESKTOP_RUNNER_LINUX || 'ubuntu-latest' }}
+    # A dry run or a test channel build may be narrowed to one runner with the
+    # `platforms` input; a real release never is (the first clause below), so
+    # every existing gate still holds and the publish job still waits on all
+    # three.
+    if: ${{ (!inputs.dry_run && inputs.channel == '') || inputs.platforms == '' || inputs.platforms == 'all' || contains(format(',{0},', inputs.platforms), ',linux,') }}
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install the Linux build prerequisites
+        # Tauri's own Ubuntu 24.04 list, plus pkg-config and libglib2.0-dev,
+        # which are the two `glib-sys` actually looks for: without them the
+        # first cargo build dies inside a build script with "The system library
+        # glib-2.0 required by crate glib-sys was not found", several minutes
+        # in and with nothing in this file having mentioned webkit. patchelf is
+        # what the AppImage bundler shells out to, squashfs-tools is what the
+        # repack step below unpacks and packs the AppImage payload with (an
+        # AppImage is an ELF runtime with a squashfs concatenated onto it), and
+        # libfuse2t64 is FUSE 2
+        # under the name 24.04 gives it: linuxdeploy and its appimage plugin
+        # are AppImages, and an AppImage mounts itself with FUSE 2 before it
+        # runs. The build below asks them to extract themselves instead, so
+        # this package is the second way of surviving the same thing. Nothing
+        # is pinned to a version: the runner image decides, and a pin here
+        # would rot quietly. xdg-utils is what the AppImage bundler reads
+        # xdg-mime from: GitHub's hosted image ships it, a plain Ubuntu (a
+        # self-hosted container) does not, and the bundle then fails with
+        # "xdg-mime binary not found".
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libglib2.0-dev \
+            pkg-config \
+            patchelf \
+            libfuse2t64 \
+            squashfs-tools \
+            xdg-utils
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+
+      - name: Check the release channel
+        # Empty on a tag push (production). On the test channel: a well formed
+        # test version, and a signed build, or nothing is built at all.
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: bun apps/desktop/ci/channel.ts check --dry-run "$DRY_RUN"
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build the web app
+        run: bun --filter '@liaison/web' build
+
+      - name: Build the desktop overlay
+        run: cd apps/desktop && bun run build:overlay
+
+      - name: Prepare the sidecar for the host triple
+        run: cd apps/desktop && bun prepare-sidecar.ts --force
+
+      - name: Put the ldd shim in front of the AppImage bundler
+        # linuxdeploy walks every ELF file in the AppDir and shells out to
+        # `ldd` for each one. On the runner it reached the Bun compiled
+        # sidecar, ldd exited 1, and linuxdeploy threw "Failed to run ldd:
+        # exited with code 1" from inside the gtk plugin: SIGABRT, plugin exit
+        # 134, no AppImage (run 34774739558).
+        #
+        # The answer is not worth the question. glibc's ldd is not a parser: it
+        # runs the file through the dynamic loader, and the file here is 325 MB
+        # of vendored Bun runtime with the Claude Code CLI appended, whose whole
+        # NEEDED list (libc, libm, libpthread, libdl, the loader) is on
+        # linuxdeploy's own blacklist. The pass that did succeed deployed
+        # exactly nothing for it.
+        #
+        # So the shim answers for that one base name with the sentence
+        # linuxdeploy already handles ("not a dynamic executable", which it
+        # reads as not linked dynamically and answers with an empty dependency
+        # list) and delegates every other file to the real ldd, by absolute
+        # path so it cannot find itself again.
+        run: |
+          set -euo pipefail
+          shim="$RUNNER_TEMP/ldd-shim"
+          mkdir -p "$shim"
+          cp apps/desktop/ci/linuxdeploy-ldd-shim.sh "$shim/ldd"
+          chmod +x "$shim/ldd"
+          echo "$shim" >> "$GITHUB_PATH"
+
+      - name: Generate a throwaway updater key for the build
+        # The bundler carries createUpdaterArtifacts, so it signs the updater
+        # payload as part of the build, and it refuses to finish when the
+        # config names a public key and the environment holds no private one:
+        # "A public key has been found, but no private key". So every build,
+        # dry run or release, makes its own keypair and builds with that.
+        #
+        # A release too, and that is the point: the build runs thousands of
+        # crates' build scripts and proc macros plus bun scripts, and anything
+        # in the environment file is in every one of them. The project's real
+        # updater key cannot be rotated (every installed copy verifies against
+        # the public half compiled into it), so it never enters the environment
+        # file and never reaches a build step. The signature the bundler makes
+        # with this key is thrown away: the updater archive that ships is
+        # rebuilt and signed by "Sign the updater archive", the only step that
+        # receives the real key, as that step's own env.
+        #
+        # The password is a throwaway word rather than an empty one, and that
+        # is measured, not taste: a key this CLI generates with an empty
+        # password cannot be read back with an empty password ("Wrong password
+        # for that key"), so an empty one would fail the build it is here to
+        # unblock. The key file is written under RUNNER_TEMP and dies with the
+        # runner.
+        shell: bash
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/dry-run-updater.key"
+          (cd apps/desktop && bunx tauri signer generate --ci --force --password dryrun --write-keys "$key")
+          echo "TAURI_SIGNING_PRIVATE_KEY=$(cat "$key")" >> "$GITHUB_ENV"
+          echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=dryrun" >> "$GITHUB_ENV"
+          # The public half, for the signature check further down, on a dry
+          # run only: a dry run's artifact is signed with this key and not with
+          # the one compiled into the build, so the check has to be told which
+          # key to trust. A release signs with the real key and falls back to
+          # the configured pubkey, which is the key an installed copy verifies
+          # with.
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "LIAISON_UPDATER_PUBKEY_FILE=$key.pub" >> "$GITHUB_ENV"
+          fi
+
+      - name: Check the updater signing secrets are set
+        # A release must never publish unsigned updater artifacts, and without
+        # this the missing secret would only surface at "Sign the updater
+        # archive", after every runner had compiled. The secrets arrive by name
+        # in this step's own env, are tested for presence, and go nowhere else:
+        # nothing here writes to the environment file, to disk or to the log.
+        if: ${{ !inputs.dry_run }}
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ] || [ -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" ]; then
+            echo "The updater signing secrets are not set on this repository, and a release must never publish unsigned updater artifacts: set TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD, or run this workflow with dry_run" >&2
+            exit 1
+          fi
+
+      - name: Build the app bundle
+        # Both targets, named rather than left to the config: a release that
+        # quietly lost its .deb looks exactly like one that never built it.
+        # Linux is unsigned by design in this epic. No Linux signing credential
+        # exists anywhere in it, so the integrity a downloader gets is the
+        # checksum file published beside the packages, and nothing else. Adding
+        # a GPG step here without a key would be theatre.
+        #
+        # The three things around the command are what the AppImage half of it
+        # needs on a 24.04 runner, and every one of them failed silently once:
+        #
+        #   APPIMAGE_EXTRACT_AND_RUN makes linuxdeploy and the appimage plugin
+        #   unpack themselves rather than mount themselves, which is the only
+        #   way they run where FUSE 2 is not the system FUSE. The bundler sets
+        #   it for linuxdeploy itself; saying it here covers every child of it
+        #   the bundler never spawns directly.
+        #
+        #   NO_STRIP stops linuxdeploy stripping the binary a second time,
+        #   inside the AppDir. The bundler patches a __TAURI_BUNDLE_TYPE symbol
+        #   into the binary for the updater to read back at runtime, and a
+        #   strip that runs after that patch removes it again.
+        #
+        #   --verbose is diagnosis, not taste: tauri only forwards
+        #   linuxdeploy's own stderr when the log level is above error, and
+        #   without it a failed AppImage reads "failed to run linuxdeploy" and
+        #   names nothing at all.
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          NO_STRIP: "true"
+        run: bun apps/desktop/ci/tauri-build.ts --bundles appimage,deb --verbose
+
+      - name: Repack the AppImage around the pristine sidecar
+        # linuxdeploy rewrites the rpath of every ELF in the AppDir with
+        # patchelf, the Bun compiled sidecar included, twice. Dry run
+        # 34777230634 built the AppImage, extracted it and ran the sidecar out
+        # of it: SIGSEGV, exit 139, not one byte printed. The AppImage itself
+        # launches perfectly, so nothing else here would ever notice, and the
+        # failure lands on a customer's first agent turn.
+        #
+        # So the payload is unpacked, the sidecar is replaced with the build
+        # output every other package ships, and it is packed again onto the
+        # ORIGINAL runtime prefix, byte for byte: nothing about the AppImage's
+        # own desktop integration is rebuilt or re-downloaded. The script reads
+        # the sidecar back OUT of the file it just wrote and refuses unless the
+        # sha256 matches the build output.
+        #
+        # The bundler's own .sig goes with it. `tauri build` signed the bytes
+        # that existed before this step, they are not the bytes that ship, and
+        # its file name matches the upload glob: leaving it there uploads a
+        # second signature over a file nobody has.
+        run: |
+          set -euo pipefail
+          bundle=apps/desktop/src-tauri/target/release/bundle
+          sidecar="$(ls apps/desktop/src-tauri/binaries/liaison-sidecar-*-unknown-linux-gnu | head -1)"
+          if [ ! -f "$sidecar" ]; then
+            echo "no prepared sidecar to compare the AppImage against" >&2
+            exit 1
+          fi
+          for image in "$bundle/appimage/"*.AppImage; do
+            bun apps/desktop/ci/repack-appimage.ts "$image" --sidecar "$sidecar"
+            rm -f "$image.sig"
+          done
+          rm -f "$bundle/deb/"*.deb.sig
+
+      - name: Verify no absolute paths in the bundle
+        run: |
+          bun apps/desktop/ci/check-bundle-no-absolute-paths.ts \
+            apps/desktop/src-tauri/target/release/bundle
+
+      - name: List package outputs
+        run: |
+          set -euo pipefail
+          bundle=apps/desktop/src-tauri/target/release/bundle
+          for package in "$bundle/appimage/"*.AppImage "$bundle/deb/"*.deb; do
+            if [ ! -f "$package" ]; then
+              echo "missing Linux package: $package" >&2
+              exit 1
+            fi
+            ls -la "$package"
+          done
+
+      - name: Name the linux artifacts
+        # Before the checksum file is written: a checksum that names the
+        # bundler's own file name is a checksum of a file nobody downloads.
+        run: |
+          set -euo pipefail
+          bundle=apps/desktop/src-tauri/target/release/bundle
+          bun apps/desktop/ci/artifact-names.ts rename linux AppImage "$bundle/appimage/"*.AppImage
+          bun apps/desktop/ci/artifact-names.ts rename linux deb "$bundle/deb/"*.deb
+
+      - name: Checksum the Linux packages
+        # The only integrity check a Linux downloader gets, since nothing here
+        # is signed. Relative paths inside the file, so it verifies from the
+        # directory it was downloaded into.
+        run: |
+          set -euo pipefail
+          cd apps/desktop/src-tauri/target/release/bundle
+          sha256sum appimage/*.AppImage deb/*.deb > SHA256SUMS
+          sha256sum --check SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Verify the sidecar inside the AppImage still runs
+        # Two questions about the same file, and the repack above is only
+        # believed once both have answered.
+        #
+        # ARE THEY THE SAME BYTES: the sha256 of the sidecar taken out of the
+        # finished artifact against the sha256 of the build output the .deb,
+        # the DMG and the .exe all ship. That is the assertion the repack
+        # exists for, and it is read out of the artifact rather than out of the
+        # directory the artifact was packed from.
+        #
+        # DOES IT RUN: the real binary, out of the real artifact, executed. Its
+        # own usage line is the assertion, because a binary that prints it has
+        # loaded its runtime, read its arguments and reached its own code. This
+        # is the check that caught the crash in the first place (exit 139,
+        # dry run 34777230634), and equal bytes alone would not have.
+        run: |
+          set -euo pipefail
+          bundle=apps/desktop/src-tauri/target/release/bundle
+          image="$(ls "$bundle/appimage/"Liaison_*_*.AppImage | head -1)"
+          image="$(realpath "$image")"
+          work="$RUNNER_TEMP/appimage-sidecar-check"
+          rm -rf "$work"
+          mkdir -p "$work"
+          cd "$work"
+          APPIMAGE_EXTRACT_AND_RUN=1 "$image" --appimage-extract > /dev/null
+          sidecar="$work/squashfs-root/usr/bin/liaison-sidecar"
+          if [ ! -x "$sidecar" ]; then
+            echo "no sidecar inside $image" >&2
+            exit 1
+          fi
+          pristine="$(ls "$OLDPWD/apps/desktop/src-tauri/binaries/"liaison-sidecar-*-unknown-linux-gnu | head -1)"
+          shipped_sha="$(sha256sum "$sidecar" | cut -d' ' -f1)"
+          pristine_sha="$(sha256sum "$pristine" | cut -d' ' -f1)"
+          echo "sidecar in the AppImage: $shipped_sha"
+          echo "sidecar the build made:  $pristine_sha"
+          if [ "$shipped_sha" != "$pristine_sha" ]; then
+            echo "the AppImage does not carry the sidecar this build produced" >&2
+            exit 1
+          fi
+          set +e
+          output="$("$sidecar" 2>&1)"
+          code=$?
+          set -e
+          echo "$output"
+          case "$output" in
+          *"usage: liaison-sidecar"*) echo "the sidecar inside the AppImage runs" ;;
+          *)
+            echo "the sidecar inside the AppImage did not run (exit $code)" >&2
+            exit 1
+            ;;
+          esac
+
+      - name: Verify no absolute paths in the updater payload
+        # Immediately before the one signature a Linux build carries.
+        run: |
+          set -euo pipefail
+          for image in apps/desktop/src-tauri/target/release/bundle/appimage/Liaison_*_*.AppImage; do
+            bun apps/desktop/ci/check-bundle-no-absolute-paths.ts "$image"
+          done
+
+      - name: Sign the updater archive
+        # Nothing signs a Linux build, so the updater signature is the ONLY
+        # thing an installed copy can check before it replaces itself. The
+        # AppImage is the updater payload; the .deb is installed by a package
+        # manager and never auto-updates.
+        #
+        # This runs on a dry run too, and that is deliberate. The AppImage is
+        # the one artifact in this pipeline whose bytes CHANGE after the
+        # bundler signed them (the repack above), so the ordering between the
+        # repack and the signature is the thing most worth executing, and a
+        # step that only ever runs on a tagged release is a step first executed
+        # by the release it could break. A dry run signs with the throwaway key
+        # the build used (from the environment file), uploads nothing, and
+        # publishes nothing.
+        #
+        # A release signs with the real key, which reaches this step alone, as
+        # its own env. The expression hands a dry run an empty string instead
+        # of the secret, and the names differ from the ones the signer reads so
+        # an empty value cannot clobber the throwaway key a dry run signs with.
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          RELEASE_UPDATER_KEY: ${{ !inputs.dry_run && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          RELEASE_UPDATER_KEY_PASSWORD: ${{ !inputs.dry_run && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" != "true" ]; then
+            if [ -z "${RELEASE_UPDATER_KEY:-}" ] || [ -z "${RELEASE_UPDATER_KEY_PASSWORD:-}" ]; then
+              echo "The updater signing secrets are not set on this repository, and a release must never publish unsigned updater artifacts" >&2
+              exit 1
+            fi
+            export TAURI_SIGNING_PRIVATE_KEY="$RELEASE_UPDATER_KEY"
+            export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$RELEASE_UPDATER_KEY_PASSWORD"
+          fi
+          unset RELEASE_UPDATER_KEY RELEASE_UPDATER_KEY_PASSWORD
+          for image in apps/desktop/src-tauri/target/release/bundle/appimage/Liaison_*_*.AppImage; do
+            bun apps/desktop/ci/sign-updater-artifact.ts "$image"
+          done
+
+      - name: Verify the updater signature covers the shipped AppImage
+        # The signature is verified against the bytes on disk, here, on the
+        # runner that made them. A .sig produced BEFORE the repack is perfectly
+        # well formed and covers a file nobody has, and the only place that
+        # would surface is an installed copy refusing its own update: the one
+        # path with no human watching.
+        #
+        # A dry run signed with its throwaway key, so it trusts that key's
+        # public half; a release trusts the pubkey compiled into the build.
+        run: |
+          set -euo pipefail
+          pubkey=""
+          if [ -n "${LIAISON_UPDATER_PUBKEY_FILE:-}" ]; then
+            pubkey="--pubkey-file $LIAISON_UPDATER_PUBKEY_FILE"
+          fi
+          for image in apps/desktop/src-tauri/target/release/bundle/appimage/Liaison_*_*.AppImage; do
+            # shellcheck disable=SC2086
+            bun apps/desktop/ci/verify-updater-signature.ts "$image" $pubkey
+          done
+
+      - name: Scripted install and launch check
+        # Xvfb, because a GitHub runner has no display and the shell builds a
+        # real window: without one the app exits and the check would read that
+        # as a broken build.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb
+          xvfb-run --auto-servernum apps/desktop/ci/install-launch-check.sh \
+            "$(ls apps/desktop/src-tauri/target/release/bundle/appimage/Liaison_*_*.AppImage | head -1)"
+
+      - name: Upload the Linux artifact
+        # A dry run signs nothing, so it has no .sig to upload and the manifest
+        # job it would feed is skipped too.
+        if: ${{ !inputs.dry_run }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: liaison-desktop-linux
+          # From the build job to the publish job of this run, nothing longer.
+          retention-days: 3
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/appimage/Liaison_*_*.AppImage
+            apps/desktop/src-tauri/target/release/bundle/appimage/Liaison_*_*.AppImage.sig
+            apps/desktop/src-tauri/target/release/bundle/appimage/Liaison_*_*.AppImage.sha256
+            apps/desktop/src-tauri/target/release/bundle/deb/Liaison_*_*.deb
+            apps/desktop/src-tauri/target/release/bundle/SHA256SUMS
+          if-no-files-found: error
+
+  publish-manifest:
+    # macOS, not ubuntu, and the reason is the gate itself: `codesign`, `spctl`
+    # and `stapler` exist on no other runner, so a Linux publish job could only
+    # take the macOS build job's word for the Apple signature. Taking an earlier
+    # job's word for a verification is the desync this gate exists to catch.
+    # Everything else it needs is portable: the Authenticode presence check
+    # reads bytes, the Linux check is a checksum, and the updater signature is
+    # verified in process.
+    runs-on: ${{ vars.DESKTOP_RUNNER_MACOS || 'macos-latest' }}
+    needs: [build-macos, build-windows, build-linux]
+    # A dry run publishes nothing. There is no signature to gate on, and a
+    # manifest is the one artifact every installed copy acts on unattended.
+    # Nor does anything but the production channel, compared EXACTLY: `!=
+    # 'test'` let " test" through to here with test stamped artifacts. On a
+    # tag push the input is null, and GitHub compares null and '' equal. The
+    # job also refuses for itself below, from what it downloaded.
+    if: ${{ !inputs.dry_run && inputs.channel == '' }}
+    # It moves about a gigabyte three times: the download, the release upload
+    # and the mirror. On a self-hosted runner behind a home connection that
+    # took 35 minutes and more, and 0.1.5 was cancelled at 30 with the
+    # release out and the mirror half written.
+    timeout-minutes: 120
+    # The only job in this file that may write to the repository.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+
+      - name: Download the platform artifacts
+        # v8, a Node 24 action. The runner forces Node 20 actions onto Node 24,
+        # and v4 under Node 24 ended the step green part way through the
+        # extraction: the Windows artifact arrived without its .sig and the
+        # gate below refused the release. v8 also fails on a digest mismatch.
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: release-artifacts
+
+      - name: Refuse anything but a production build
+        # Before the gate, from the artifacts themselves: the channel variables
+        # exactly empty and no test stamped file in the download
+        # (apps/desktop/ci/channel.ts, productionRefusal).
+        run: bun apps/desktop/ci/channel.ts production-only --artifacts release-artifacts
+
+      - name: Describe the release to publish
+        # The request the gate acts on, built from what the three build jobs
+        # actually uploaded rather than from a list written by hand. The
+        # platform set is one constant in build-publish-request.ts, one entry
+        # per build job above, and a platform that is not in the download stops
+        # this step by name: a quietly shorter manifest is an update channel
+        # that goes dead on that platform with nothing said. The same step
+        # reads the Windows job's signing marker, so whether the Authenticode
+        # half of the gate runs is decided by what that job did, not by what
+        # this job can see of the Azure secrets (it sees none of them).
+        run: |
+          bun apps/desktop/ci/build-publish-request.ts \
+            --artifacts release-artifacts \
+            --tag "${GITHUB_REF_NAME}" \
+            --notes-file apps/desktop/ci/RELEASE_NOTES.md \
+            --out publish-request.json
+
+      - name: Verify both signatures and publish the manifest
+        # BOTH signatures, freshly, against the files this run produced, and
+        # then the upload, in one process. Nothing here is cached from an
+        # earlier run and no step before this one is allowed to have decided
+        # that a signature was fine. APPLE_TEAM_ID: the macOS app must be
+        # signed by THAT team, not merely by some Developer ID.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          bun apps/desktop/ci/verify-and-publish.ts --request publish-request.json
+
+      - name: Mirror the release to the public downloads host
+        # The GitHub release above is the PRIVATE record of what was built.
+        # This repository is private, so every asset on it, and the
+        # releases/latest/download path an updater would read, answer 404 to an
+        # anonymous client: an installed copy asking for its next version gets
+        # nothing, and there is no token it could be handed. The public surface
+        # is the R2 bucket behind downloads.liaison.sh, and this step is what
+        # puts the release there.
+        #
+        # It runs after the publish, never on a dry run (a dry run signs
+        # nothing and this job does not run at all then), and it re-runs the
+        # two signature gate over the same request before it uploads a byte.
+        # latest.json goes up LAST, after every file it names has been read
+        # back from the public host: written first, it would point every
+        # machine that polls in the gap at a url that is not there yet.
+        #
+        # The credentials are R2 S3 keys rather than a Cloudflare API token
+        # because the REST object api caps a body at 100 MB with no multipart,
+        # and the disk image is past that on its own.
+        if: ${{ !inputs.dry_run && inputs.channel == '' }}
+        env:
+          # The mirror re-runs the two signature gate, which needs the team.
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          LIAISON_DOWNLOADS_CF_ACCOUNT_ID: ${{ secrets.LIAISON_DOWNLOADS_CF_ACCOUNT_ID }}
+          LIAISON_DOWNLOADS_R2_ACCESS_KEY_ID: ${{ secrets.LIAISON_DOWNLOADS_R2_ACCESS_KEY_ID }}
+          LIAISON_DOWNLOADS_R2_SECRET_ACCESS_KEY: ${{ secrets.LIAISON_DOWNLOADS_R2_SECRET_ACCESS_KEY }}
+        run: |
+          bun apps/desktop/ci/mirror-to-downloads.ts \
+            --request publish-request.json \
+            --manifest latest.json \
+            --artifacts release-artifacts
+
+  publish-test-channel:
+    # THE TEST CHANNEL's publish (apps/desktop/ci/channel.ts). The same two
+    # signature gate as a release, in dry run mode (no GitHub release: a test
+    # build has no tag), then the mirror, which routes a test version under
+    # desktop/test/ by its version alone and refuses a plan with any key
+    # outside it (mirror-to-downloads.ts, planMirror). It never runs on a tag
+    # push: the channel input is empty there.
+    runs-on: ${{ vars.DESKTOP_RUNNER_MACOS || 'macos-latest' }}
+    needs: [build-macos, build-windows, build-linux]
+    # The platforms not selected are SKIPPED, which would skip this job too,
+    # so it runs whatever they did and then requires that nothing failed and
+    # something was built.
+    if: ${{ always() && inputs.channel == 'test' && !inputs.dry_run && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && contains(needs.*.result, 'success') }}
+    timeout-minutes: 120
+    # Reads the code. It creates no release and writes nothing to the
+    # repository; the downloads host is reached with the R2 keys alone.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+
+      - name: Check the release channel
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: bun apps/desktop/ci/channel.ts check --dry-run "$DRY_RUN"
+
+      - name: Download the platform artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: release-artifacts
+
+      - name: Describe the test build to publish
+        # The notes a test build's update prompt shows. Customer copy rules
+        # still hold (no dash punctuation), and they say what this is.
+        run: |
+          printf 'Test build %s of the Liaison desktop app. Not a release.\n' "$LIAISON_DESKTOP_TEST_VERSION" > test-notes.md
+          bun apps/desktop/ci/build-publish-request.ts \
+            --artifacts release-artifacts \
+            --tag "test-${LIAISON_DESKTOP_TEST_VERSION}" \
+            --notes-file test-notes.md \
+            --out publish-request.json
+
+      - name: Verify both signatures and write the test manifest
+        # APPLE_TEAM_ID: the macOS app must be signed by THAT team.
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          bun apps/desktop/ci/verify-and-publish.ts --request publish-request.json --dry-run --manifest-out latest.json
+
+      - name: Mirror the test build to desktop/test on the downloads host
+        env:
+          # The mirror re-runs the two signature gate, which needs the team.
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          LIAISON_DOWNLOADS_CF_ACCOUNT_ID: ${{ secrets.LIAISON_DOWNLOADS_CF_ACCOUNT_ID }}
+          LIAISON_DOWNLOADS_R2_ACCESS_KEY_ID: ${{ secrets.LIAISON_DOWNLOADS_R2_ACCESS_KEY_ID }}
+          LIAISON_DOWNLOADS_R2_SECRET_ACCESS_KEY: ${{ secrets.LIAISON_DOWNLOADS_R2_SECRET_ACCESS_KEY }}
+        run: |
+          bun apps/desktop/ci/mirror-to-downloads.ts \
+            --request publish-request.json \
+            --manifest latest.json \
+            --artifacts release-artifacts

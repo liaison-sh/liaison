@@ -1,0 +1,429 @@
+{
+ "case-01": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Camille Rousseau, 12 rue des Lilas, 69003 Lyon, FR (+33612345601)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-02": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Hugo Lambert, 4 avenue Jean Jaures, Bat B, 44000 Nantes, FR (+33612345602)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-03": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Lea Fontaine, 78 boulevard Voltaire, 75011 Paris, FR (+33612345603)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-04": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Nathan Girard, 3 impasse des Tilleuls, 35000 Rennes, FR (+33612345604)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-05": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Manon Leroy, 21 rue Nationale, 59000 Lille, FR (+33612345605)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-06": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Studio Morel / Louis Morel, 9 quai de la Fosse, 44100 Nantes, FR (+33612345606)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-07": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Chloe Andre, 150 route de Narbonne, 31400 Toulouse, FR (+33612345607)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-08": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Jules Mercier, 2 place Bellecour, 69002 Lyon, FR (+33612345608)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-09": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Ines Blanc, 45 cours Mirabeau, 13100 Aix-en-Provence, FR (+33612345609)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-10": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Theo Garnier, 6 allee des Pins, 33000 Bordeaux, FR (+33612345610)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-11": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Jonas Becker, Lindenstr. 14, 50674 Koeln, DE (+4917011100001)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-12": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Anna Schulz, GARTENWEG 3 A, 53111 Bonn, DE (+4917011100002)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-13": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Marco Bianchi, via roma, 22, 20121 Milano, IT (+393331110003)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-14": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Lucia Garcia, Calle Mayor, 7, 28013 Madrid, ES (+34611110004)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-15": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Sander de Vries, Keizersgracht 101, 1015CJ Amsterdam, NL (+31611110005)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-16": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Elise Peeters, Av. Louise 54, 1050 Bruxelles, BE (+32471110006)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-17": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Paul Simon, 8 rue Gambetta, 37000 Tours, FR (+33612340001)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-18": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Eva Novak, Hlavni 12, 60200 Brno, CZ (+420601110002)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-19": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Ole Hansen, Storgata 5, 0155 Oslo, NO",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Customs export: 1 article, declared 100.00 EUR, HS 854370",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-20": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Mia Weber, Bahnhofstrasse 40, 8001 Zuerich, CH (+41791110004)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Customs export: 1 article, declared 100.00 EUR, HS 854370",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-21": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Tom Murphy, 14 Grafton Street, D02 X285 Dublin, IE (+353861110005)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-22": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Sarah Klein, Rosenweg 2, 55116 Mainz, DE (+4917022200001)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-23": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Lucas Petit, 33 rue de la Paix, 51100 Reims, FR (+33622220002)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-24": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Ferri Suoni / Giulia Ferri, Corso Vittorio 9, 10121 Torino, IT (+393332220003)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-25": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Kenji Sato, 2-3-1 Nishi-Shinjuku, 163-8001 Tokyo, JP (+81312340004)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Customs export: 1 article, declared 100.00 EUR, HS 854370",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-26": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Remi Faure, 17 rue Victor Hugo, 38000 Grenoble, FR (+33633330001)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-27": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Lena Wolf, Marktplatz 1, 69117 Heidelberg, DE (+4917033300002)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-28": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Pedro Silva, Rua Augusta 100, 1100-053 Lisboa, PT (+351911110003)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-29": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Anouk Janssen, Oudegracht 50, 3511 AR Utrecht, NL",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-30": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Atelier Sonore SARL / Atelier Sonore, 5 rue du Port, 13002 Marseille, FR (+33491110001)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-31": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Klangwerk GmbH / Klangwerk GmbH, Industriestr. 20, 70565 Stuttgart, DE (+49711110002)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-32": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Nordic Tone AS / Nordic Tone AS, Industriveien 4, 4879 Grimstad, NO (+4737110003)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Customs export: 1 article, declared 100.00 EUR, HS 854370",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-33": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Ruta Kalnina, Brivibas iela 30, LV-1050 Riga, LV (+37121110004)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-34": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Yanis Robert, 50 rue des Trois Rois, 44000 NANTES, FR",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-35": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Harbor Sound LLC, 250 W 57th St, 10019 New York, US",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Customs export: 1 article, declared 100.00 EUR, HS 854370",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-36": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Fjord Audio, Industriveien 4, 4879 Grimstad, NO",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Customs export: 1 article, declared 100.00 EUR, HS 854370",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-37": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "Recipient address: taken from the source invoice (confirm on the approval card before buying)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-38": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Iris Moulin, 11 rue Pasteur, 21000 Dijon, FR (+33644440001)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-39": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Felix Braun, Hafenstrasse 8, 20459 Hamburg, DE (+4917044400002)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-40": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Sofia Rossi, Via Dante 3, 40125 Bologna, IT (+393334440003)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-41": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Grace Lee, 1200 Market St, 19107 Philadelphia, US (+12155550101)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Customs export: 1 article, declared 100.00 EUR, HS 854370",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-42": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Owen Clark, 11418 Richmond Hill, 10001 New York, US (+12125550102)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Customs export: 1 article, declared 100.00 EUR, HS 854370",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-43": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Chloe Tremblay, 500 Rue Sherbrooke O, H3A 3G6 Montreal, CA (+15145550103)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Customs export: 1 article, declared 100.00 EUR, HS 854370",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-44": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Bastien Roux, 8 chemin des Vignes, 84000 Avignon, FR (+33655550001)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-45": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Tonstudio Nord, Kaiserstr. 2, 24103 Kiel, DE (+49431110002)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-46": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Ivy Turner, 22 Baker Street, NW1 6XE London, GB (+447700900003)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Customs export: 1 article, declared 100.00 EUR, HS 854370",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-47": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Noah Dubois, 7 rue Colbert, 51100 Reims, FR (+33666660001)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-48": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Alice Perrin, 40 rue Faidherbe, 59800 Lille, FR",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-49": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Werkton Distribution GmbH / Lena Brandt, Werkstr. 6, 53424 Remagen, DE",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-50": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Sonora Pro BV / Receiving, Havenweg 12, 3011 AB Rotterdam, NL (+31101110002)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-51": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Audio Sud SAS / Magasin, ZA des Pins, lot 4, 34000 Montpellier, FR (+33467110003)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Invoice issued: 2026-10-01"
+ ],
+ "case-52": [
+  "Carrier: MONR-CpourToi, 9.50 EUR TTC",
+  "From: Fabrikam SAS / Fabrikam SAS, 10 Rue de Rivoli, 75001 Paris, FR",
+  "To: Bergklang AG / Store, Seestrasse 50, 6003 Luzern, CH (+41411110004)",
+  "Contents: 1x SM",
+  "Package: 1 parcel, 30x20x10 cm, 0.50 kg total",
+  "Customs export: 1 article, declared 100.00 EUR, HS 854370",
+  "Invoice issued: 2026-10-01"
+ ]
+}

@@ -1,0 +1,24 @@
+[
+  {
+    "id": "C0001",
+    "name": "general",
+    "created": 1709280000,
+    "creator": "U0001",
+    "is_archived": false,
+    "is_general": true,
+    "members": ["U0001", "U0002"],
+    "topic": { "value": "Company-wide news", "creator": "U0001", "last_set": 1709280000 },
+    "purpose": { "value": "Announcements and chatter", "creator": "U0001", "last_set": 1709280000 }
+  },
+  {
+    "id": "C0002",
+    "name": "old-launch",
+    "created": 1706745600,
+    "creator": "U0002",
+    "is_archived": true,
+    "is_general": false,
+    "members": ["U0001", "U0002"],
+    "topic": { "value": "", "creator": "", "last_set": 0 },
+    "purpose": { "value": "The 2024 launch", "creator": "U0002", "last_set": 1706745600 }
+  }
+]

@@ -1,0 +1,467 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# Tag a vX.Y.Z release: gate it with the same checks CI runs on every PR plus
+# a hermetic unit-test pass with real service containers, build + push a
+# multi-arch image to GHCR, sign it keylessly with cosign, and publish a
+# GitHub Release carrying the pinned compose file an operator needs.
+#
+# Gate decision: lint/typecheck/guards mirror `ci.yml` (duplicated rather than
+# called as a reusable workflow — this file is also driven standalone by
+# `act` in the operator drill, and a local `uses: ./...` reusable-workflow
+# call is one more thing that can fail to resolve under `act`). On top of
+# that we add a REAL unit-test pass: Postgres/Redis/MeiliSearch/SeaweedFS as
+# service infra via the repo's own `docker-compose.yml` (exactly what
+# `bun run infra:up` already knows how to bring up and heal), then
+# `bun run test:unit` (which also runs `test:guards` and `test:root`). That
+# suite is hermetic — no third-party credentials, no LLM API keys (the test
+# preload injects placeholder provider keys) — so it is cheap and safe to run
+# on every tagged release.
+#
+# Integration/e2e/Playwright and the load-test/Lighthouse perf suites are
+# deliberately NOT in this gate: integration needs the full bundled-app
+# install pipeline and a wider slice of infra (webhook replays, mailbox
+# migrations, live-shaped fixtures) that is slower and flakier to run cold on
+# a stock runner, and the perf suites need a *running, migrated* instance
+# plus a real browser to drive load/Lighthouse against — nothing this
+# pipeline has stood up yet at gate time. ci.yml already keeps those out of
+# the per-PR gate for the same reason (see its header comment); run them
+# against staging (or a validate-compose'd local stack) as a release
+# *readiness* check before cutting the tag, not as a blocking workflow step.
+#
+# Multi-arch decision: per-architecture NATIVE builds (amd64 on `ubuntu-latest`,
+# arm64 on `ubuntu-24.04-arm`) merged into one multi-arch manifest with
+# `docker buildx imagetools create`, instead of a single `docker buildx build
+# --platform linux/amd64,linux/arm64` job under QEMU emulation. A local native
+# arm64 build of this image (bun install + web build + freezing 8 bundled
+# apps + esbuild) took ~2m20s cold; the same work under QEMU on an amd64
+# runner routinely runs 3-10x slower for CPU-bound JS toolchains, which risks
+# either a flaky multi-hour job or bun/esbuild misbehaving under emulation.
+# Native arm64 GitHub-hosted runners are billed like any other Linux runner
+# for a private repo (this repo is private for now) — standard per-minute
+# billing applies, not "free" until the repo flips public — but the time and
+# reliability win is worth it even so.
+#
+# The operator dry run (LIAISON_RELEASE_DRY_RUN=1, under `act`) proves only
+# the packaging/signing mechanics: it skips every gate (lint/typecheck/guards,
+# unit tests), the baseline PR, the GHCR login/push, and the GitHub Release;
+# it builds exactly one architecture (amd64) locally and does not sign for
+# real (`act` has no OIDC issuer for cosign keyless).
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+# Least privilege: the workflow default is read-only. Every job that needs
+# more declares exactly what it needs, and the jobs that run tests or
+# `bun install` (gate, unit-tests) never hold a write or id-token permission,
+# so a compromised dev dependency cannot publish or sign an image.
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/mathieufro/liaison
+
+jobs:
+  # ----- Gate: the same checks as ci.yml's lint/typecheck/guards jobs -----
+  # Skipped entirely under the dry run — act has no need to re-prove these on
+  # every packaging-mechanics drill, and the drill times out at 30 minutes.
+  # NOTE: job-level `if:` cannot see the `env` context on GitHub (only
+  # github/inputs/needs/vars — see the Actions docs on context availability),
+  # so "skip this whole job under the dry run" is expressed as the same
+  # `if: env.LIAISON_RELEASE_DRY_RUN != '1'` repeated on every step instead
+  # of once on the job. `checkout`/`setup-bun`/`install` stay unconditional —
+  # cheap, harmless, and some step below may still need them.
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Biome check
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        run: bun run check
+      - name: TypeScript check
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        env:
+          NODE_OPTIONS: "--max-old-space-size=8192"
+        run: bun run typecheck
+      - name: SPDX headers
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        run: bun run check:spdx
+      - name: Migration baseline
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        run: bun run check:migration-baseline
+      - name: Runbook sections
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        run: bun run check:runbook-sections
+      - name: Readonly-role grants in sync
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        run: bun run check:grants
+      - name: No Node in shipped app shells
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        run: bun run check:desktop-no-node
+      - name: Tour anchors
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        run: bun run check:tour-anchors
+      # No PR here, so no base: freshness, nav and coverage only.
+      - name: Docs up to date
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        run: bun run check:docs
+
+  # ----- Hermetic unit-test pass, with real Postgres/Redis/MeiliSearch/SeaweedFS -----
+  unit-tests:
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Install postgres/redis CLIs
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client redis-tools
+      - name: Write .env.test
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        # Same placeholder secrets as the repo's own .env.example (JWT_SECRET,
+        # ENCRYPTION_KEY) — non-secret, test-only values, never used past a
+        # throwaway CI runner. DATABASE_URL/NODE_ENV/MEILISEARCH_API_KEY are
+        # the three values that MUST diverge from dev defaults: liaison_test
+        # (not liaison_dev) over the liaison_app role, NODE_ENV=test (not
+        # development, which `scripts/test-run.ts` relies on to unlock
+        # test-only bypasses), and MeiliSearch's master key, which has no
+        # default and must match docker-compose.yml's MEILI_MASTER_KEY.
+        run: |
+          set -euo pipefail
+          cp .env.example .env.test
+          sed -i 's#^DATABASE_URL=.*#DATABASE_URL=postgres://liaison_app:liaison_app@localhost:5432/liaison_test#' .env.test
+          sed -i 's#^NODE_ENV=.*#NODE_ENV=test#' .env.test
+          echo "MEILISEARCH_API_KEY=dev-master-key" >> .env.test
+      - name: Bring up test infra (Postgres, Redis, MeiliSearch, SeaweedFS)
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        # The repo's own dev docker-compose.yml, via its own self-healing
+        # bring-up script: creates/migrates liaison_test, waits for every
+        # dependency to answer healthy. Same command a developer runs locally.
+        run: bun run infra:up
+      - name: Unit tests (+ guards + root)
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        run: bun run test:unit
+      - name: Tear down test infra
+        if: always() && env.LIAISON_RELEASE_DRY_RUN != '1'
+        run: docker compose down -v
+
+  # ----- Rolling semver tags (needs no checkout and no write permission) -----
+  release-prep:
+    needs: [gate, unit-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      major: ${{ steps.semver.outputs.major }}
+      majorminor: ${{ steps.semver.outputs.majorminor }}
+      security: ${{ steps.security.outputs.security }}
+    steps:
+      - name: Compute semver tags
+        id: semver
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          # Strip the leading "v" before deriving rolling tags so the published
+          # tags are 0.1, 0, stable, latest (not v0.1, v0, …).
+          REF="${REF_NAME#v}"
+          MAJOR="${REF%%.*}"
+          MAJORMINOR=$(echo "$REF" | cut -d. -f1-2)
+          echo "major=${MAJOR}" >> "$GITHUB_OUTPUT"
+          echo "majorminor=${MAJORMINOR}" >> "$GITHUB_OUTPUT"
+
+      # `Security: yes` in the tag annotation names the GitHub release
+      # `<tag> [security]` (publish job), which instances read to say an update
+      # fixes a security issue. The job has to check the tag out here: the
+      # publish job has no checkout, and actions/checkout turns a pushed
+      # annotated tag into a lightweight ref, so the annotation is re-fetched.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        with:
+          bun-version: "1.4.x"
+      - name: Read the security marker from the tag annotation
+        id: security
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        env:
+          # The checkout keeps no credentials (persist-credentials: false), so
+          # this one fetch passes the job token itself: without it the fetch of
+          # a private repository fails and no release can be cut.
+          FETCH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$FETCH_TOKEN" | base64 | tr -d '\n')"
+          git -c "http.https://github.com/.extraheader=$auth" fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          echo "security=$(bun run scripts/release-security-marker.ts "$GITHUB_REF_NAME")" >> "$GITHUB_OUTPUT"
+
+  # ----- Migration baseline PR (v0.1.0 only) -----
+  # The only job that pushes a branch and opens a PR, so the only one with
+  # contents/pull-requests write. It runs no tests and no `bun install`:
+  # scripts/write-baseline.ts imports only node:crypto/fs/path.
+  baseline-pr:
+    needs: [gate, unit-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: github.ref_name == 'v0.1.0'
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        if: github.ref_name == 'v0.1.0'
+        with:
+          bun-version: "1.4.x"
+      - name: Write migration baseline (v0.1.0 only)
+        if: github.ref_name == 'v0.1.0'
+        env:
+          GIT_TAG: ${{ github.ref_name }}
+        run: bun run scripts/write-baseline.ts
+
+      - name: Open baseline PR (v0.1.0 only)
+        if: github.ref_name == 'v0.1.0' && env.LIAISON_RELEASE_DRY_RUN != '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "release-bot"
+          git config user.email "release-bot@users.noreply.github.com"
+          git checkout -b baseline/v0.1.0
+          git add apps/api/src/db/migrations/.baseline
+          git commit -m "chore: write migration baseline for v0.1.0"
+          git push origin baseline/v0.1.0
+          gh pr create --title "chore: migration baseline for v0.1.0" \
+            --body "Auto-generated baseline at v0.1.0 cut. Merge to lock 0000_initial.sql." \
+            --base main --head baseline/v0.1.0
+
+      # NOTE: the release manifest, the compose pin, and the changelog are
+      # NOT built here and handed to the other jobs via actions/upload-artifact
+      # for the manifest: that action's v4 "Results API" backend isn't emulated
+      # by `act`'s local artifact server, so the operator dry run can never
+      # exercise an artifact hand-off. The manifest is a pure, deterministic
+      # function of the checked-out tree, so each build job regenerates it from
+      # its own fresh checkout. (The release-notes -> publish hand-off below
+      # does use artifacts, but only in the non-dry-run path.)
+
+  # ----- Per-arch native image builds -----
+  build-amd64:
+    needs: release-prep
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+      - name: Write release manifest
+        # No `bun install` first: the script only imports node:crypto/fs/path,
+        # so it needs nothing from node_modules — see release-prep's note on
+        # why this is regenerated here rather than handed down as an artifact.
+        env:
+          GIT_TAG: ${{ github.ref_name }}
+        run: bun run scripts/build-release-manifest.ts
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build (+ push unless dry run) amd64
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          platforms: linux/amd64
+          push: ${{ env.LIAISON_RELEASE_DRY_RUN != '1' }}
+          load: ${{ env.LIAISON_RELEASE_DRY_RUN == '1' }}
+          # Intermediate per-arch tag, combined into the public multi-arch
+          # tags by the `publish` job below — not part of the published tag
+          # contract itself.
+          tags: ${{ env.IMAGE }}:${{ github.ref_name }}-amd64
+          build-args: LIAISON_VERSION=${{ github.ref_name }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/mathieufro/liaison
+            org.opencontainers.image.licenses=FSL-1.1-ALv2
+            org.opencontainers.image.description=Liaison self-hosted agent-native business OS
+
+  # ----- Native arm64 build (skipped in the dry run: "builds one arch") -----
+  build-arm64:
+    needs: release-prep
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+      - name: Write release manifest
+        env:
+          GIT_TAG: ${{ github.ref_name }}
+        run: bun run scripts/build-release-manifest.ts
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build + push arm64
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ github.ref_name }}-arm64
+          build-args: LIAISON_VERSION=${{ github.ref_name }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/mathieufro/liaison
+            org.opencontainers.image.licenses=FSL-1.1-ALv2
+            org.opencontainers.image.description=Liaison self-hosted agent-native business OS
+
+  # ----- Release notes + pinned compose (read-only; runs repo scripts) -----
+  # Kept out of `publish` so no repo-controlled script runs in the job that
+  # holds packages/contents write and id-token. The outputs travel as an
+  # artifact (skipped under the dry run, where `act` cannot emulate it).
+  release-notes:
+    needs: release-prep
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+      - name: Generate changelog
+        run: bun run scripts/changelog.ts > CHANGELOG.md || echo "skipping changelog" > CHANGELOG.md
+      # Pin the published compose to this release. The default image tag in
+      # the committed file is v0.1.0; rewrite it to the released ref so an
+      # operator who runs `docker compose pull && up -d` without setting
+      # LIAISON_IMAGE gets THIS version (otherwise the readiness gate
+      # asserting .version==$VERSION loops forever against a v0.1.0
+      # container). Operators can still override with
+      # `export LIAISON_IMAGE=…:vX.Y.Z`.
+      - name: Pin compose image tag to release
+        env:
+          REF: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          sed -i "s#liaison:v0.1.0}#liaison:${REF}}#" deploy/docker-compose.yml
+          grep -q "liaison:${REF}}" deploy/docker-compose.yml \
+            || { echo "FAIL: compose image tag not rewritten to ${REF}"; exit 1; }
+          echo "compose image default pinned to ${REF}"
+      - name: Upload release assets
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-assets
+          path: |
+            deploy/docker-compose.yml
+            deploy/.env.example
+            CHANGELOG.md
+          if-no-files-found: error
+
+  # ----- Merge into one multi-arch manifest, sign, publish the release -----
+  # Entirely skipped in the dry run: no registry push to merge/sign, no
+  # GitHub Release to publish ("act" also has no OIDC issuer for cosign
+  # keyless signing). This is the ONLY job with id-token and release write; it
+  # checks out nothing and installs nothing, so the only code it runs is
+  # pinned third-party actions plus docker/cosign.
+  publish:
+    needs: [release-prep, baseline-pr, release-notes, build-amd64, build-arm64]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    steps:
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge amd64 + arm64 into the public multi-arch tags
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        id: merge
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create \
+            --tag "${IMAGE}:${{ github.ref_name }}" \
+            --tag "${IMAGE}:${{ needs.release-prep.outputs.majorminor }}" \
+            --tag "${IMAGE}:${{ needs.release-prep.outputs.major }}" \
+            --tag "${IMAGE}:stable" \
+            --tag "${IMAGE}:latest" \
+            "${IMAGE}@${{ needs.build-amd64.outputs.digest }}" \
+            "${IMAGE}@${{ needs.build-arm64.outputs.digest }}"
+          DIGEST=$(docker buildx imagetools inspect "${IMAGE}:${{ github.ref_name }}" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+      - name: cosign sign the multi-arch manifest
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: cosign sign --yes "${IMAGE}@${{ steps.merge.outputs.digest }}"
+
+      - name: Download release assets
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-assets
+
+      - name: Publish GitHub Release
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          name: ${{ needs.release-prep.outputs.security == 'true' && format('{0} [security]', github.ref_name) || github.ref_name }}
+          files: |
+            deploy/docker-compose.yml
+            deploy/.env.example
+            CHANGELOG.md
+          body_path: CHANGELOG.md

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<error>
+  <code>RESULT_ERROR</code>
+  <message>Le code postal du destinataire est invalide.</message>
+</error>

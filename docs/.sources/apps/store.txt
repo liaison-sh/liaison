@@ -1,0 +1,181 @@
+orders, customers, products, markets, draft orders, refunds, fulfillments, returns; reads ungated, writes gated -> bundled-apps/shopify/README.md:3
+server-provided Shopify app (SHOPIFY_APP_CLIENT_*), nothing to create -> apps/api/src/modules/apps/connections/oauth-client.ts:91
+the agent hands over no file and the store just connects -> apps/api/src/modules/agent/tools/setup-guide-tools.ts:163
+guide is the connect step alone -> packages/shared/src/setup-guides.ts:152
+the workspace's own app replaces the server's (org first, then instance) -> apps/api/src/modules/apps/connections/oauth-client.ts:177
+agent posts the generated app configuration file in the conversation -> apps/api/src/modules/agent/tools/setup-guide-tools.ts:143
+file built from the shop connection scopes and BASE_URL -> apps/api/src/modules/connection-guides/shopify-app-toml.ts:53
+handed over as shopify-app.toml, saved as shopify.app.toml -> apps/api/src/modules/connection-guides/shopify-app-toml.ts:41
+install the Shopify CLI -> packages/shared/src/setup-guides.ts:166
+shopify app config link creates the app, client id filled in on a second call -> packages/shared/src/setup-guides.ts:174
+linking can replace the file's URLs (CLI merges the remote config over the local file) -> packages/shared/src/i18n/locales/en/setup-guides.json:55
+shopify app deploy, callback is BASE_URL/api/connections/callback -> apps/api/src/modules/connection-guides/shopify-app-toml.ts:85
+custom distribution and install link -> packages/shared/src/setup-guides.ts:196
+client id and secret through the form card; secret verifies webhooks -> bundled-apps/shopify/app.manifest.json:373
+connect card -> packages/shared/src/setup-guides.ts:198
+request Read all orders right after the deploy, Partner Dashboard API access requests, go on meanwhile -> packages/shared/src/setup-guides.ts:191
+step text: approval takes days, last 60 days meanwhile, tell the agent, missing_shopify_permission means not approved yet -> packages/shared/src/i18n/locales/en/setup-guides.json:63
+the answer to paste, in English -> packages/shared/src/setup-guides.ts:146
+the agent turns on fullOrderHistory through config_apps settings and posts the Connect card again -> apps/api/src/modules/agent/prompts/kernel/shopify-setup.md:30
+apps[].settings writes an org field of the settings page -> apps/api/src/cli/provisioners/app-settings.ts:116
+attention flags a grant lacking a protected scope: request, turn on, reconnect -> apps/api/src/modules/apps/connections/attention.ts:261
+once the setting is on, attention only asks to reconnect -> apps/api/src/modules/apps/connections/attention.ts:259
+instance app: the operator requests access, the person only connects -> apps/api/src/modules/agent/prompts/kernel/shopify-setup.md:32
+read_all_orders is a protected scope, never in the file -> apps/api/src/modules/connection-guides/shopify-app-toml.ts:59
+Full order history setting (fullOrderHistory, off by default) in Store connection -> bundled-apps/shopify/app.manifest.json:801
+read_all_orders opts in through fullOrderHistory -> bundled-apps/shopify/app.manifest.json:355
+requested when opted in or the reconnected store already holds it -> apps/api/src/modules/apps/connections/protected-scopes.ts:60
+without read_all_orders Shopify exposes the last 60 days of orders -> bundled-apps/shopify/src/reads.ts:449
+no webhook subscriptions in the file, Liaison subscribes at connect -> apps/api/src/modules/connection-guides/shopify-app-toml.ts:88
+example file shipped -> bundled-apps/shopify/shopify.app.toml.example:1
+create app by hand, redirect URL -> bundled-apps/shopify/README.md:75
+store domain; development store works for testing -> bundled-apps/shopify/app.manifest.json:374
+redirect_uri_mismatch when callback or BASE_URL wrong -> bundled-apps/shopify/README.md:107
+Store connection settings section -> bundled-apps/shopify/app.manifest.json:774
+Connect button on connections block -> apps/web/src/modules/settings/app-page/ConnectionsBlock.tsx:416
+Client ID field when app needs an OAuth client -> apps/web/src/modules/settings/ConnectAppDialog.tsx:296
+Client secret field -> apps/web/src/modules/settings/ConnectAppDialog.tsx:303
+template var field labelled by key (shop) -> apps/web/src/modules/settings/ConnectAppDialog.tsx:308
+shop template var, lowercased, .myshopify.com appended -> bundled-apps/shopify/app.manifest.json:362
+acme and acme.myshopify.com both resolve -> bundled-apps/shopify/README.md:58
+Connect via OAuth, permission screen, redirect back, no token copied -> bundled-apps/shopify/app.manifest.json:375
+connect org-owned, user-owned returns not_connected for others -> bundled-apps/shopify/README.md:96
+Permissions update required banner -> bundled-apps/shopify/src/ui/settings.tsx:211
+Reconnect, otherwise orders older than 60 days hidden -> bundled-apps/shopify/src/ui/settings.tsx:218
+activity bar label Shopify -> bundled-apps/shopify/app.manifest.json:820
+Home sidebar row, Orders, Customers, Products, Markets -> bundled-apps/shopify/src/ui/sidebar.tsx:174
+Recent orders -> bundled-apps/shopify/src/ui/home.tsx:204
+Low inventory / Unfulfilled past SLA / Pending returns cards -> bundled-apps/shopify/src/ui/home.tsx:370
+order filters All/Open/Unfulfilled/Cancelled/Refunded/Drafts -> bundled-apps/shopify/src/ui/list-helpers.ts:73
+invoice number button on order row opens invoice -> bundled-apps/shopify/src/ui/lists.tsx:464
+search placeholders on Orders/Customers/Products/Markets -> bundled-apps/shopify/src/ui/lists.tsx:501
+Open in Shopify detail link -> bundled-apps/shopify/app.manifest.json:879
+Diagnostics and mappings section, shopify:admin:identity-map -> bundled-apps/shopify/app.manifest.json:790
+Sync diagnostics -> bundled-apps/shopify/src/ui/settings.tsx:252
+Identity mappings -> bundled-apps/shopify/src/ui/settings.tsx:304
+Map manually -> bundled-apps/shopify/src/ui/settings.tsx:362
+Shopify staff id input, Save -> bundled-apps/shopify/src/ui/settings.tsx:376
+Remove override -> bundled-apps/shopify/src/ui/settings.tsx:408
+quotes are draft orders, paid order auto invoice -> bundled-apps/invoicing/README.md:46
+Shopify refund/cancellation issues credit note -> bundled-apps/invoicing/app.manifest.json:3591
+scopes list -> bundled-apps/shopify/app.manifest.json:295
+shopify:approve approver scope -> docs/reference/scopes.md:282
+analytics_query partial: true plan limitation -> bundled-apps/shopify/README.md:117
+home_load -> bundled-apps/shopify/app.manifest.json:1039
+analytics_query -> bundled-apps/shopify/app.manifest.json:1063
+orders_search -> bundled-apps/shopify/app.manifest.json:1112
+orders_get -> bundled-apps/shopify/app.manifest.json:1146
+orders_invoice_links -> bundled-apps/shopify/app.manifest.json:1164
+customers_search -> bundled-apps/shopify/app.manifest.json:1181
+customers_segment_search -> bundled-apps/shopify/app.manifest.json:1205
+customers_get -> bundled-apps/shopify/app.manifest.json:1234
+customers_get_by_external_id -> bundled-apps/shopify/app.manifest.json:1252
+draft_orders_list -> bundled-apps/shopify/app.manifest.json:1270
+draft_orders_get -> bundled-apps/shopify/app.manifest.json:1294
+locations_list -> bundled-apps/shopify/app.manifest.json:1312
+products_search -> bundled-apps/shopify/app.manifest.json:1332
+products_get -> bundled-apps/shopify/app.manifest.json:1355
+products_publication_targets, sales channels of a product -> bundled-apps/shopify/app.manifest.json:1374
+products_publish id only, every channel not on yet -> bundled-apps/shopify/src/mutations/products.ts:375
+products_unpublish, channels it is on -> bundled-apps/shopify/src/mutations/products.ts:385
+approval card names each channel -> bundled-apps/shopify/src/summarizers.ts:977
+needs sales channel permission (write_publications) -> bundled-apps/shopify/app.manifest.json:350
+refuses to stage without the permission until Reconnect -> bundled-apps/shopify/src/mutations/products.ts:399
+markets_list -> bundled-apps/shopify/app.manifest.json:1372
+markets_get -> bundled-apps/shopify/app.manifest.json:1392
+variants_search -> bundled-apps/shopify/app.manifest.json:1409
+variants_get -> bundled-apps/shopify/app.manifest.json:1432
+variants_brief -> bundled-apps/shopify/app.manifest.json:1449
+variants_market_price -> bundled-apps/shopify/app.manifest.json:1473
+inventory_levels_list -> bundled-apps/shopify/app.manifest.json:1500
+inventory_value -> bundled-apps/shopify/app.manifest.json:1526
+repeat_rate -> bundled-apps/shopify/app.manifest.json:1536
+abandoned_checkouts_list -> bundled-apps/shopify/app.manifest.json:1546
+fulfillments_get -> bundled-apps/shopify/app.manifest.json:1562
+fulfillment_orders_get -> bundled-apps/shopify/app.manifest.json:1579
+returns_search -> bundled-apps/shopify/app.manifest.json:1597
+refunds_get -> bundled-apps/shopify/app.manifest.json:1626
+discounts_search -> bundled-apps/shopify/app.manifest.json:1644
+metafields_list -> bundled-apps/shopify/app.manifest.json:1667
+refunds_create gated -> bundled-apps/shopify/app.manifest.json:1717
+draft_orders_create gated -> bundled-apps/shopify/app.manifest.json:1855
+draft_orders_complete gated -> bundled-apps/shopify/app.manifest.json:1997
+fulfillments_create gated -> bundled-apps/shopify/app.manifest.json:2027
+fulfillments_cancel gated -> bundled-apps/shopify/app.manifest.json:2108
+fulfillments_update_tracking gated -> bundled-apps/shopify/app.manifest.json:2128
+products_create gated -> bundled-apps/shopify/app.manifest.json:2184
+products_update gated -> bundled-apps/shopify/app.manifest.json:2247
+products_delete gated -> bundled-apps/shopify/app.manifest.json:2314
+products_merge gated -> bundled-apps/shopify/app.manifest.json:2335
+variants_create gated -> bundled-apps/shopify/app.manifest.json:2369
+variants_update gated -> bundled-apps/shopify/app.manifest.json:2436
+variants_delete gated -> bundled-apps/shopify/app.manifest.json:2504
+inventory_adjust gated -> bundled-apps/shopify/app.manifest.json:2530
+inventory_set_on_hand gated -> bundled-apps/shopify/app.manifest.json:2594
+discounts_create gated -> bundled-apps/shopify/app.manifest.json:2656
+discounts_bulk_create gated -> bundled-apps/shopify/app.manifest.json:2709
+discounts_update gated -> bundled-apps/shopify/app.manifest.json:2766
+discounts_delete gated -> bundled-apps/shopify/app.manifest.json:2825
+returns_request gated -> bundled-apps/shopify/app.manifest.json:2845
+returns_approve gated -> bundled-apps/shopify/app.manifest.json:2906
+returns_decline gated -> bundled-apps/shopify/app.manifest.json:2927
+returns_refund gated -> bundled-apps/shopify/app.manifest.json:2952
+returns_close gated -> bundled-apps/shopify/app.manifest.json:3008
+customers_update gated -> bundled-apps/shopify/app.manifest.json:3035
+customers_email_marketing_consent_update gated -> bundled-apps/shopify/app.manifest.json:3101
+customers_sms_marketing_consent_update gated -> bundled-apps/shopify/app.manifest.json:3160
+apply_seed_suggestion gated -> bundled-apps/shopify/app.manifest.json:3213
+settings_load -> bundled-apps/shopify/app.manifest.json:3235
+connection_disconnect gated -> bundled-apps/shopify/app.manifest.json:3250
+staff_overrides_upsert gated -> bundled-apps/shopify/app.manifest.json:3267
+staff_overrides_delete gated -> bundled-apps/shopify/app.manifest.json:3295
+webhooks_repair -> bundled-apps/shopify/app.manifest.json:3311
+order_update gated -> bundled-apps/shopify/app.manifest.json:3337
+order_cancel gated -> bundled-apps/shopify/app.manifest.json:3394
+order_note_set -> bundled-apps/shopify/app.manifest.json:3421
+draft_orders_update gated -> bundled-apps/shopify/app.manifest.json:3465
+draft_orders_delete gated -> bundled-apps/shopify/app.manifest.json:3531
+draft_orders_send gated -> bundled-apps/shopify/app.manifest.json:3557
+products_publish gated -> bundled-apps/shopify/app.manifest.json:3612
+products_unpublish gated -> bundled-apps/shopify/app.manifest.json:3661
+customers_tag gated -> bundled-apps/shopify/app.manifest.json:3710
+metafields_set gated -> bundled-apps/shopify/app.manifest.json:3745
+metafields_delete gated -> bundled-apps/shopify/app.manifest.json:3798
+disconnecting the store deletes this workspace's webhook subscriptions -> bundled-apps/shopify/src/connection.ts:623
+a connect removes this workspace's stale subscriptions, others left alone -> bundled-apps/shopify/src/connection.ts:306
+the agent turns on full order history (approval card in the app; apps[].settings + config apply with a coding agent) -> packages/shared/src/setup-guides.ts:473
+the person runs shopify auth login in their own terminal, never the agent -> packages/shared/src/setup-guides.ts:506
+Order reads show tax charged, tax exemption and the B2B company -> bundled-apps/shopify/src/reads.ts:306-312
+Customer reads show tax exemption and companies -> bundled-apps/shopify/src/reads.ts:1166-1170
+orders_search and customers_search optional timeout_ms (500 to 10000), fail fast on a rate limit -> bundled-apps/shopify/src/reads.ts:81-85,540,1228; bundled-apps/shopify/src/lib/shopify-client.ts:51-56,118,148
+Invoicing reads them for the EU business buyer check -> bundled-apps/invoicing/src/buyer-vat.ts:218-268
+Has items to ship filter -> bundled-apps/shopify/src/ui/lists.tsx:655
+software-only orders and drafts are not shippable, the order's own requiresShipping decides -> bundled-apps/shopify/src/ui/list-helpers.ts:307
+Items column, cart summary with short codes, unknown shows N×? with title on hover -> bundled-apps/shopify/src/ui/list-helpers.ts:352
++N more when the order has more lines than fetched -> bundled-apps/shopify/src/ui/list-helpers.ts:323
+Items column header -> bundled-apps/shopify/src/ui/list-helpers.ts:256
+Tags column header -> bundled-apps/shopify/src/ui/list-helpers.ts:259
+short codes read from the kernel product attributes -> bundled-apps/shopify/src/reads.ts:854
+generated file uses Shopify-managed installation (use_legacy_install_flow = false), no optional_scopes -> apps/api/src/modules/connection-guides/shopify-app-toml.ts:116
+under managed installation Shopify grants the released configuration's scopes; reconnect alone adds none -> apps/api/src/modules/connection-guides/shopify-app-toml.ts:9
+file lists read_all_orders once Full order history is on -> apps/api/src/modules/connection-guides/plan.ts:176
+the in-product agent's file carries the org's opted-in protected scopes -> apps/api/src/modules/agent/tools/setup-guide-tools.ts:471
+adding a scope later: file again or edit [access_scopes] scopes, shopify app deploy, Reconnect -> apps/api/src/modules/connection-guides/shopify-app-toml.ts:104
+Dev Dashboard: leave Optional scopes empty, Use legacy install flow off -> packages/shared/src/i18n/locales/en/setup-guides.json:201
+Partner app: once approved, add read_all_orders back to the scopes and Release, then reconnect -> packages/shared/src/i18n/locales/en/setup-guides.json:205
+CLI path: once approved, the agent turns on full order history and posts the file again; deploy, then reconnect -> packages/shared/src/i18n/locales/en/setup-guides.json:94
+deploy refusing read_all_orders means the approval is not through -> apps/api/src/modules/agent/prompts/kernel/shopify-setup.md:25
+attention says to add the scope to the app's configuration and release it before reconnecting -> apps/api/src/modules/apps/connections/attention.ts:344
+release refused: approval not through yet -> apps/api/src/modules/apps/connections/attention.ts:351
+Permissions update required: add the scopes to the configuration, shopify app deploy, then Reconnect -> bundled-apps/shopify/src/ui/settings.tsx:227
+Shopify connection declares scopesFromAppConfiguration -> bundled-apps/shopify/app.manifest.json:375
+Full order history help text: approve, add to configuration, deploy, reconnect -> packages/shared/src/i18n/locales/en/kernel.json:464
+short codes read from the kernel product attributes -> bundled-apps/shopify/src/reads.ts:875
+Shipping emails section, Send Shopify's shipping email to, customerShippingEmail, options -> bundled-apps/shopify/app.manifest.json:862
+policy values caller/retail_only/all/none, unset is the caller's flag -> bundled-apps/shopify/src/lib/b2b.ts:48
+retail_only: retail emailed, B2B never, unreadable fails closed -> bundled-apps/shopify/src/lib/b2b.ts:187
+B2B = Shopify company buyer or a b2bSkuSuffixes suffix, comma separated, not case sensitive -> bundled-apps/shopify/src/lib/b2b.ts:55
+every fulfilment path (agent, Boxtal tick, carrier scan) decided in the create handler -> bundled-apps/shopify/src/mutations/fulfillments.ts:465
+one email per fulfillment with its first tracking number; no tracking, or a later change, never emails -> bundled-apps/shopify/src/lib/b2b.ts:193
+the result says whether Shopify emailed the customer (customerNotification) -> bundled-apps/shopify/src/mutations/fulfillments.ts:345
+approval card wording (retail order, B2B order, no tracking yet, already tracked, decided at execution) -> bundled-apps/shopify/src/summarizers.ts:650

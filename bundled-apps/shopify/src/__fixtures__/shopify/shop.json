@@ -1,0 +1,30 @@
+{
+  "data": {
+    "shop": {
+      "id": "gid://shopify/Shop/74673684646",
+      "name": "example-store",
+      "email": "admin@liaison.sh",
+      "myshopifyDomain": "example-store.myshopify.com",
+      "primaryDomain": {
+        "url": "https://example-store.myshopify.com",
+        "host": "example-store.myshopify.com"
+      },
+      "currencyCode": "USD",
+      "plan": {
+        "displayName": "Shopify Plus App Development"
+      },
+      "ianaTimezone": "America/New_York"
+    }
+  },
+  "extensions": {
+    "cost": {
+      "requestedQueryCost": 3,
+      "actualQueryCost": 3,
+      "throttleStatus": {
+        "maximumAvailable": 20000,
+        "currentlyAvailable": 19997,
+        "restoreRate": 1000
+      }
+    }
+  }
+}

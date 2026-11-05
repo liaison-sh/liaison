@@ -1,0 +1,354 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+/**
+ * The owner gate and the mail sender filter of event routines.
+ *
+ * A routine runs as its OWNER. An event that reaches it is data the owner's
+ * agent will read, so an event about an entity the owner cannot see must never
+ * fire it: another member's personal-mailbox mail, a personal calendar's event,
+ * a private contact, a personal MCP connection, a personal knowledge document.
+ * The bus delivers every event of the org to every subscriber, so the
+ * subscriber re-reads the event's entity AS THE OWNER, under RLS, before it
+ * enqueues anything, and drops the event when that read finds nothing.
+ *
+ * Families whose entity carries no per-owner visibility (tickets, social
+ * findings, inventory, ...) have no resolver here and pass unchanged.
+ *
+ * The mail sender filter narrows a `mail:message:create` routine to mail FROM
+ * given contacts or members of given contact groups. It is evaluated before any
+ * tick is enqueued, so a non-matching mail spends no tokens, and it resolves the
+ * sender under the owner's RLS too: a private contact of someone else, or a
+ * group member the owner cannot see, never matches.
+ */
+import { sql as drizzleSql } from "drizzle-orm"
+import type { RlsClient } from "~/db"
+import { extractRows } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
+import { type UserContext, withRlsContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
+import { quoteIdent } from "~/lib/sql-utils"
+import { UUID_RE } from "~/lib/uuid"
+
+const K = () => drizzleSql.raw(schemaRef("kernel"))
+
+/** The subset of an `AppEvent` the gate reads. */
+export interface GateEvent {
+  app: string
+  entity: string
+  action: string
+  orgId: string
+  entityId?: unknown
+  data?: unknown
+}
+
+interface EntityProbe {
+  /** Schema-qualified table, unquoted parts. */
+  schema: string
+  table: string
+  /** When the entity row is gone (a delete event), the parent whose
+   *  visibility stands in for it, read from these `data` keys in order. */
+  parents?: Array<{ dataKey: string; schema: string; table: string }>
+}
+
+const mailProbe = (table: string): EntityProbe => ({
+  schema: "app_mail",
+  table,
+  parents: [{ dataKey: "accountId", schema: "app_mail", table: "accounts" }],
+})
+const calendarProbe = (table: string): EntityProbe => ({
+  schema: "app_calendar",
+  table,
+  parents: [
+    { dataKey: "calendarId", schema: "app_calendar", table: "calendars" },
+    { dataKey: "accountId", schema: "app_calendar", table: "accounts" },
+  ],
+})
+
+/**
+ * One resolver per ownership-bearing event family, keyed `<app>:<entity>`.
+ * A family missing from this map has no owner-scoped entity and passes.
+ */
+const OWNER_SCOPED_FAMILIES: Record<string, EntityProbe> = {
+  "mail:message": mailProbe("messages"),
+  "mail:conversation": mailProbe("conversations"),
+  "mail:account": { schema: "app_mail", table: "accounts" },
+  "calendar:event": calendarProbe("events"),
+  "calendar:calendar": calendarProbe("calendars"),
+  "calendar:account": { schema: "app_calendar", table: "accounts" },
+  "kernel:contact": { schema: "kernel", table: "contacts" },
+  "mcp-manager:connection": { schema: "app_mcp_manager", table: "mcp_connections" },
+  "knowledge:document": { schema: "app_knowledge", table: "documents" },
+}
+
+function asUuid(v: unknown): string | null {
+  return typeof v === "string" && UUID_RE.test(v) ? v : null
+}
+
+function dataOf(evt: GateEvent): Record<string, unknown> {
+  return evt.data && typeof evt.data === "object" && !Array.isArray(evt.data)
+    ? (evt.data as Record<string, unknown>)
+    : {}
+}
+
+/** Whether events of this family must pass the owner gate. */
+export function isOwnerScopedEvent(evt: Pick<GateEvent, "app" | "entity">): boolean {
+  return `${evt.app}:${evt.entity}` in OWNER_SCOPED_FAMILIES
+}
+
+/** The routine owner's effective RLS context, or null when the routine is gone. */
+export async function loadRoutineOwnerContext(
+  orgId: string,
+  routineId: string,
+): Promise<UserContext | null> {
+  if (!asUuid(routineId)) return null
+  const { loadEffectivePermissions } = await import("~/modules/permissions/permissions")
+  return withPrivilegedDb(orgId, "event-routine-owner-gate", async (tx) => {
+    const [row] = extractRows<{ owner_user_id: string }>(
+      await tx.execute(drizzleSql`
+        SELECT owner_user_id FROM ${drizzleSql.raw(quoteIdent(schemaRef("kernel")))}.routines
+        WHERE id = ${routineId}::uuid AND org_id = ${orgId}::uuid
+        LIMIT 1`),
+    )
+    if (!row) return null
+    const perms = await loadEffectivePermissions(tx, row.owner_user_id, orgId)
+    return {
+      actorType: "user",
+      userId: row.owner_user_id,
+      orgId,
+      scopes: perms.scopes,
+      dimensionGrants: perms.dimensionGrants,
+      roles: perms.roles,
+    }
+  })
+}
+
+function tableSql(schema: string, table: string) {
+  return drizzleSql.raw(`${quoteIdent(schemaRef(schema))}.${quoteIdent(table)}`)
+}
+
+async function rowExists(
+  tx: { execute: RlsClient["execute"] },
+  schema: string,
+  table: string,
+  id: string,
+  orgId: string,
+): Promise<boolean> {
+  const rows = extractRows(
+    await tx.execute(drizzleSql`
+      SELECT 1 AS ok FROM ${tableSql(schema, table)}
+      WHERE id = ${id}::uuid AND org_id = ${orgId}::uuid LIMIT 1`),
+  )
+  return rows.length > 0
+}
+
+/**
+ * Whether the routine owner can see the entity this event is about.
+ *
+ *  - Families with no owner-scoped entity: true.
+ *  - The entity row is visible to the owner under RLS: true.
+ *  - The row exists but the owner cannot see it: false.
+ *  - The row is gone (a delete event): the first parent named in the event's
+ *    data decides (the mailbox, the calendar); with no parent to read, false.
+ *  - Anything unreadable (no entity id, an error): false. The gate fails closed.
+ */
+export async function ownerCanSeeEventEntity(owner: UserContext, evt: GateEvent): Promise<boolean> {
+  const probe = OWNER_SCOPED_FAMILIES[`${evt.app}:${evt.entity}`]
+  if (!probe) return true
+  const id = asUuid(evt.entityId) ?? asUuid(dataOf(evt).id)
+  if (!id) return false
+  const visible = await withRlsContext(
+    owner,
+    (tx) => rowExists(tx, probe.schema, probe.table, id, owner.orgId),
+    { pool: "jobs" },
+  )
+  if (visible) return true
+  const exists = await withPrivilegedDb(owner.orgId, "event-routine-owner-gate-exists", (tx) =>
+    rowExists(tx, probe.schema, probe.table, id, owner.orgId),
+  )
+  if (exists) return false
+  const data = dataOf(evt)
+  for (const parent of probe.parents ?? []) {
+    const parentId = asUuid(data[parent.dataKey])
+    if (!parentId) continue
+    return withRlsContext(
+      owner,
+      (tx) => rowExists(tx, parent.schema, parent.table, parentId, owner.orgId),
+      { pool: "jobs" },
+    )
+  }
+  return false
+}
+
+// ── Mail sender filter (S26) ────────────────────────────────────────────────
+
+export interface MailSenderFilter {
+  fromContactIds?: string[]
+  fromGroupIds?: string[]
+}
+
+/** What the database says about a sender, as the routine owner sees it. */
+export interface SenderMembership {
+  contactIds: string[]
+  groupIds: string[]
+}
+
+/** Whether a filter narrows anything (an empty filter matches every mail). */
+export function isMailSenderFilterActive(filter: MailSenderFilter | null | undefined): boolean {
+  return Boolean(
+    filter && ((filter.fromContactIds?.length ?? 0) > 0 || (filter.fromGroupIds?.length ?? 0) > 0),
+  )
+}
+
+/** Whether the filter applies to events of this family (only new mail messages). */
+export function isMailSenderFilterEvent(
+  evt: Pick<GateEvent, "app" | "entity" | "action">,
+): boolean {
+  return evt.app === "mail" && evt.entity === "message" && evt.action === "create"
+}
+
+/**
+ * The sender a filter is matched against: `data.from.email` of an INBOUND
+ * `mail:message:create`, lowercased. Null for outbound mail and for events
+ * without a usable sender address.
+ */
+export function inboundSenderEmail(evt: GateEvent): string | null {
+  if (!isMailSenderFilterEvent(evt)) return null
+  const data = dataOf(evt)
+  if ((data.direction ?? "inbound") !== "inbound") return null
+  const from = data.from
+  const email =
+    from && typeof from === "object" && !Array.isArray(from)
+      ? (from as { email?: unknown }).email
+      : null
+  return typeof email === "string" && email.includes("@") ? email.trim().toLowerCase() : null
+}
+
+/**
+ * Pure: does this mail event pass the filter, given the sender's membership?
+ * An inactive filter passes everything. An active filter passes only an inbound
+ * mail whose sender is one of the listed contacts or a member of a listed group.
+ */
+export function mailSenderFilterMatches(
+  filter: MailSenderFilter | null | undefined,
+  evt: GateEvent,
+  membership: SenderMembership,
+): boolean {
+  if (!isMailSenderFilterActive(filter)) return true
+  if (!inboundSenderEmail(evt)) return false
+  // The From address is whatever the sender typed. A filter naming trusted
+  // contacts or groups matches only a message the receiving provider
+  // authenticated (SPF/DKIM/DMARC pass).
+  if (dataOf(evt).senderAuth !== "pass") return false
+  const contacts = new Set(filter?.fromContactIds ?? [])
+  const groups = new Set(filter?.fromGroupIds ?? [])
+  return (
+    membership.contactIds.some((id) => contacts.has(id)) ||
+    membership.groupIds.some((id) => groups.has(id))
+  )
+}
+
+/** The contacts carrying `email` and the manual groups they belong to, as the
+ *  caller's RLS context sees them. */
+export async function loadSenderMembership(
+  tx: RlsClient,
+  orgId: string,
+  email: string,
+): Promise<SenderMembership> {
+  const k = drizzleSql.raw(quoteIdent(schemaRef("kernel")))
+  const rows = extractRows<{ contact_id: string; segment_id: string | null }>(
+    await tx.execute(drizzleSql`
+      SELECT c.id::text AS contact_id, m.segment_id::text AS segment_id
+      FROM ${k}.contacts c
+      LEFT JOIN ${k}.contact_group_members m ON m.contact_id = c.id AND m.org_id = c.org_id
+      WHERE c.org_id = ${orgId}::uuid AND lower(c.email) = ${email}`),
+  )
+  return {
+    contactIds: [...new Set(rows.map((r) => r.contact_id))],
+    groupIds: [...new Set(rows.flatMap((r) => (r.segment_id ? [r.segment_id] : [])))],
+  }
+}
+
+/** Evaluate the filter for one event as the routine owner. */
+export async function ownerMailSenderFilterMatches(
+  owner: UserContext,
+  filter: MailSenderFilter | null | undefined,
+  evt: GateEvent,
+): Promise<boolean> {
+  if (!isMailSenderFilterActive(filter)) return true
+  const email = inboundSenderEmail(evt)
+  if (!email) return false
+  const membership = await withRlsContext(
+    owner,
+    (tx) => loadSenderMembership(tx, owner.orgId, email),
+    { pool: "jobs" },
+  )
+  return mailSenderFilterMatches(filter, evt, membership)
+}
+
+/** The subset of an `AppEvent` the origin classifier reads. */
+export interface OriginEvent extends GateEvent {
+  actorType?: string
+  actorId?: string | null
+}
+
+async function isActiveOrgMember(orgId: string, userId: string | null): Promise<boolean> {
+  const id = asUuid(userId)
+  if (!id) return false
+  return withPrivilegedDb(orgId, "event-routine-origin-member", async (tx) => {
+    const rows = extractRows<{ one: number }>(
+      await tx.execute(
+        drizzleSql`SELECT 1 AS one FROM ${K()}.users
+          WHERE org_id = ${orgId}::uuid AND id = ${id}::uuid AND status = 'active' LIMIT 1`,
+      ),
+    )
+    return rows.length > 0
+  })
+}
+
+/**
+ * Where a routine's triggering event came from (`TriggerEventOrigin`, scopes/taint.ts). Only an
+ * event that carries text written outside the organisation taints the tick it fires.
+ *
+ * - Families whose payload is outside text by nature are external whoever the emitting actor is
+ *   (a mail sync job runs under the mailbox owner's identity): any inbound mail (its From is not
+ *   authenticated, and a member's forward carries a customer's words), an inbound ticket message,
+ *   any mail conversation event, any social event, and a thread message an AGENT posted (it can
+ *   carry what its turn read outside; a member's own message stays internal).
+ * - Every other event is internal when an active org member (directly, through their agent or an
+ *   MCP client) produced it, and external otherwise: a system actor is a webhook, a sync or an
+ *   ingestion, i.e. a third party's payload.
+ * Fails closed: an event that cannot be judged is external.
+ */
+export async function triggerEventOrigin(evt: OriginEvent): Promise<"external" | "internal"> {
+  try {
+    const data = dataOf(evt)
+    if (evt.app === "social") return "external"
+    if (evt.app === "mail" && evt.entity === "conversation") return "external"
+    // An inbound mail is outside text whoever its From names: the header is not authenticated
+    // here, and a member forwarding or quoting a customer carries the customer's words.
+    if (isMailSenderFilterEvent(evt) && (data.direction ?? "inbound") === "inbound") {
+      return "external"
+    }
+    // An agent's post can carry what its turn read outside, and thread posts are not gated.
+    if (
+      evt.app === "kernel" &&
+      evt.entity === "message" &&
+      (evt.actorType === "agent" || data.authorType === "agent")
+    ) {
+      return "external"
+    }
+    if (
+      evt.app === "tickets" &&
+      evt.entity === "message" &&
+      data.kind !== "outbound" &&
+      data.kind !== "note"
+    ) {
+      return "external"
+    }
+    if (evt.actorType === "user" || evt.actorType === "agent" || evt.actorType === "mcp") {
+      return (await isActiveOrgMember(evt.orgId, evt.actorId ?? null)) ? "internal" : "external"
+    }
+    return "external"
+  } catch {
+    return "external"
+  }
+}

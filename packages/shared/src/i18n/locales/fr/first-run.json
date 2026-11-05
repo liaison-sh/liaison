@@ -1,0 +1,27 @@
+{
+  "kickoff": {
+    "title": "Configurez votre espace",
+    "intro": "Votre agent configure cet espace avec vous ici, étape par étape. Il vous demande d'abord quelles fonctionnalités vous voulez, puis commence par l'essentiel : votre boîte mail, la connexion avec Google, la boîte de support et l'import depuis vos autres outils. Chaque étape indique sa durée, et vous pouvez passer n'importe laquelle et y revenir à tout moment.",
+    "keyFirst": "D'abord, une clé de modèle d'IA : votre agent en a besoin pour répondre. Saisissez-la dans la carte ci-dessous ; l'agent ne la voit jamais.",
+    "demoTitle": "Envie de le voir fonctionner d'abord ?",
+    "demoBody": "Ouvrez votre propre copie temporaire d'une entreprise exemple sur {{host}}, choisissez ce que vous voulez voir et suivez ses scénarios guidés. Rien à installer.",
+    "demoLink": "Ouvrir la démo"
+  },
+  "checklist": {
+    "title": "Configuration",
+    "asOf": "Au {{time}}",
+    "optional": "facultatif",
+    "done": "Fait",
+    "notDone": "Pas encore",
+    "item": {
+      "aiKey": "Clé de modèle d'IA",
+      "apps": "Applications",
+      "mail": "Mail",
+      "team": "Équipe",
+      "knowledge": "Connaissances de l'entreprise",
+      "import": "Import depuis un autre outil",
+      "roles": "Rôles",
+      "connector": "Connexion API"
+    }
+  }
+}

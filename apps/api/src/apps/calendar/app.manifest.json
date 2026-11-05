@@ -1,0 +1,733 @@
+{
+  "name": "calendar",
+  "agentInstructions": "Calendar is a bidirectional Google Calendar connector — events created/edited here sync to Google and vice versa. Reach for it to list a user's schedule, search events, or create/update/delete events (with sendUpdates disabled, so attendees are never emailed by these tools). Key handles: calendar id, event id. Personal connections are private to their owner; org connections are visible to all org members. Writes to org calendars are permission-gated by app role. Recurring events store the master row plus exception rows for edited/cancelled occurrences; editing recurrence is limited to none/daily/weekly/monthly — a complex inbound RRULE is preserved but not editable here. VIDEO MEETINGS: when the user asks for a Google Meet, a video call, a visio or an online meeting, call create_event with conference: \"google_meet\" — Google then creates a real Meet link. Never put a conferencing product name (\"Google Meet\", \"Meet\", \"Hangouts\") in location: location is for a physical place or a link the user gave you. After creating, give the user the meetLink from the result (if it is not there yet, say the link is being created and read it from list_events hangoutLink shortly after). Only Google accounts are connected, so the only video link these tools can create is Google Meet: for Microsoft Teams or Zoom, say plainly that Calendar cannot create that link and offer a Google Meet, or put a link the user provides in the description. EDITING MEETINGS: to change an existing meeting (time, title, description, location, guests, or adding/removing its Google Meet), find it with search_events or list_events, then call update_event with its eventId — conference: \"google_meet\" adds a Meet link, conference: \"none\" removes it. Never tell the user to do it themselves in Google Calendar when update_event can do it; if Google refuses a change (for example the user is not the organizer), say what was refused and why. RECURRING MEETINGS: list_events returns a recurring series once (its eventId, first start and repeat rule) plus any occurrence already edited (recurringEventId set). Before changing one, know whether the user means only this occurrence or the whole series; if the request does not say, ask. Then call update_event with scope: \"occurrence\" and occurrenceStart (the original start of that occurrence) or scope: \"series\". update_event refuses a recurring meeting without a scope. delete_event takes the same scope: \"occurrence\" (with occurrenceStart) cancels only that occurrence on Google, \"series\" deletes the whole series; ask the user which when it is not clear.",
+  "version": "1.1.9",
+  "description": "Calendar app: month/week UI backed by a bidirectional Google Calendar connector for org-wide and personal calendars.",
+  "license": "FSL-1.1-ALv2",
+  "listing": {
+    "publisher": "Liaison",
+    "category": "Productivity",
+    "icon": "calendar",
+    "summary": "Month and week calendar that syncs both ways with Google Calendar.",
+    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/apps/api/src/apps/calendar"
+  },
+  "trusted": true,
+  "dependencies": {
+    "required": ["kernel"]
+  },
+  "connections": {
+    "google-calendar": {
+      "type": "oauth2",
+      "authorizationUrl": "https://accounts.google.com/o/oauth2/v2/auth",
+      "tokenUrl": "https://oauth2.googleapis.com/token",
+      "revocationUrl": "https://oauth2.googleapis.com/revoke",
+      "userinfoUrl": "https://openidconnect.googleapis.com/v1/userinfo",
+      "scopes": [
+        "openid",
+        "email",
+        "https://www.googleapis.com/auth/calendar.events",
+        "https://www.googleapis.com/auth/calendar.calendarlist.readonly"
+      ],
+      "extraParams": {
+        "access_type": "offline",
+        "prompt": "consent"
+      },
+      "allowedDomains": ["*.googleapis.com"],
+      "setupGuide": {
+        "summary": "Google Calendar connects over OAuth using your workspace's Google integration — no password is stored. Calendar access is a Google-sensitive scope: an Internal Google Workspace app (or a verified External app) is required.",
+        "steps": [
+          {
+            "who": "human",
+            "minutes": 0,
+            "text": "Ask a workspace admin to add Google OAuth credentials in Settings → Mail Setup (shared with Gmail/Tickets, one-time per workspace).",
+            "place": "liaison"
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "text": "Click **Connect via OAuth** here — you are redirected to Google's consent screen.",
+            "place": "liaison"
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "text": "Approve calendar access. Liaison stores only the OAuth tokens Google returns, never your password.",
+            "place": "liaison"
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "text": "Choose which of your calendars to import; you can change this later in Calendar settings.",
+            "place": "liaison"
+          },
+          {
+            "who": "human",
+            "minutes": 0,
+            "text": "Revoke any time by removing the connection here, or at myaccount.google.com/permissions.",
+            "url": "https://myaccount.google.com/permissions"
+          }
+        ],
+        "docsUrl": "https://developers.google.com/calendar/api/guides/auth"
+      }
+    }
+  },
+  "schema": {
+    "accounts": {
+      "fields": {
+        "connectedAccountId": "uuid",
+        "ownerType": "string",
+        "ownerId": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "delete"
+        },
+        "emailAddress": "string",
+        "displayName": "string?",
+        "syncStatus": {
+          "type": "string",
+          "default": "pre-sync",
+          "enum": [
+            "pre-sync",
+            "syncing",
+            "active",
+            "error",
+            "reauth-required",
+            "disconnected",
+            "imported"
+          ]
+        },
+        "lastSyncError": "string?",
+        "disconnectedAt": "date?"
+      },
+      "personalScope": {},
+      "dimensions": {
+        "calaccess": {
+          "type": "membership",
+          "label": "Calendar access",
+          "description": "Which connected Google Calendar accounts this user can access.",
+          "manageHref": "/settings/apps/calendar"
+        }
+      },
+      "constraints": {
+        "unique": [["emailAddress"]]
+      },
+      "indexes": [["syncStatus"]],
+      "timeline": ["syncStatus", "emailAddress"]
+    },
+    "calendars": {
+      "fields": {
+        "accountId": {
+          "type": "uuid",
+          "references": {
+            "table": "accounts",
+            "column": "id",
+            "onDelete": "cascade"
+          }
+        },
+        "googleCalendarId": "string",
+        "name": "string",
+        "color": "string?",
+        "timeZone": "string?",
+        "accessRole": "string?",
+        "selected": {
+          "type": "boolean",
+          "default": true
+        },
+        "syncToken": "string?",
+        "watchChannelId": "string?",
+        "watchResourceId": "string?",
+        "watchExpiration": "date?",
+        "lastPolledAt": "date?",
+        "syncPending": {
+          "type": "boolean",
+          "default": false
+        },
+        "calaccess": "string"
+      },
+      "personalScope": {
+        "via": { "table": "accounts", "localColumn": "accountId" }
+      },
+      "internalWriteScope": "calendar:events:write",
+      "dimensions": {
+        "calaccess": {
+          "type": "membership"
+        }
+      },
+      "constraints": {
+        "unique": [["accountId", "googleCalendarId"]]
+      },
+      "indexes": [["accountId"], ["watchChannelId"], ["watchExpiration"]]
+    },
+    "events": {
+      "fields": {
+        "calendarId": {
+          "type": "uuid",
+          "references": {
+            "table": "calendars",
+            "column": "id",
+            "onDelete": "cascade"
+          }
+        },
+        "googleEventId": {
+          "type": "string",
+          "required": false
+        },
+        "etag": "string?",
+        "title": "string?",
+        "description": "string?",
+        "location": "string?",
+        "start": "json?",
+        "end": "json?",
+        "allDay": {
+          "type": "boolean",
+          "default": false
+        },
+        "status": {
+          "type": "string",
+          "default": "confirmed"
+        },
+        "attendees": "json?",
+        "recurrence": "json?",
+        "recurringEventId": "string?",
+        "originalStartTime": "json?",
+        "extendedProps": "json?",
+        "hangoutLink": "string?",
+        "liaisonSyncVersion": {
+          "type": "integer",
+          "default": 0
+        },
+        "pendingPush": {
+          "type": "string",
+          "default": "none",
+          "enum": ["none", "create", "update", "delete"]
+        },
+        "googleUpdatedAt": "date?",
+        "attendeesBase": "json?",
+        "organizerSelf": "boolean?",
+        "guestsCanModify": "boolean?",
+        "pushError": "string?",
+        "pushAttempts": {
+          "type": "integer",
+          "default": 0
+        },
+        "lastPushAttemptAt": "date?",
+        "firstPushFailureAt": "date?",
+        "deletedAt": "date?",
+        "pendingBeforeDelete": "string?",
+        "pushNotice": "string?",
+        "conferenceRequest": "string?",
+        "calaccess": "string",
+        "externalRef": {
+          "type": "string",
+          "required": false,
+          "description": "Import dedup key `<source>:<key>` (an ICS UID) of a local imported event (modules/imports), unique per calendar. Column and index also added by migration 0208; NULL for synced events."
+        }
+      },
+      "personalScope": {
+        "via": { "table": "accounts", "localColumn": "calaccess" }
+      },
+      "dimensions": {
+        "calaccess": {
+          "type": "membership"
+        }
+      },
+      "constraints": {
+        "unique": [
+          {
+            "columns": ["calendarId", "googleEventId"],
+            "where": "google_event_id IS NOT NULL"
+          },
+          {
+            "columns": ["calendarId", "externalRef"],
+            "where": "external_ref IS NOT NULL"
+          }
+        ]
+      },
+      "indexes": [
+        ["calendarId", "start"],
+        {
+          "columns": ["pendingPush"],
+          "where": "pending_push != 'none'"
+        },
+        ["recurringEventId"]
+      ]
+    },
+    "sync_log": {
+      "fields": {
+        "calendarId": {
+          "type": "uuid",
+          "references": {
+            "table": "calendars",
+            "column": "id",
+            "onDelete": "cascade"
+          }
+        },
+        "operation": "string",
+        "status": "string",
+        "errorKind": "string?",
+        "detail": "string?",
+        "calaccess": "string"
+      },
+      "rlsScope": "events",
+      "personalScope": {
+        "via": { "table": "accounts", "localColumn": "calaccess" }
+      },
+      "dimensions": {
+        "calaccess": {
+          "type": "membership"
+        }
+      },
+      "indexes": [["calendarId"]]
+    }
+  },
+  "entities": {
+    "event": {
+      "tableName": "events",
+      "labelField": "title",
+      "handlePrefix": "cal_evt_",
+      "readScope": "calendar:events:read"
+    }
+  },
+  "tools": {
+    "list_calendars": {
+      "description": "List the connected Google calendars visible to the caller (personal calendars they own, plus org-wide calendars), each with `selected`: only selected calendars are synced and have events.",
+      "readOnly": true,
+      "requiredScopes": ["calendar:events:read"],
+      "trustBoundary": "user",
+      "handler": "calendarListCalendars",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "list_events": {
+      "taintSource": true,
+      "description": "List events in a time window, optionally scoped to one calendar. Recurring events are expanded into their occurrences within the window.",
+      "readOnly": true,
+      "requiredScopes": ["calendar:events:read"],
+      "trustBoundary": "user",
+      "handler": "calendarListEvents",
+      "params": {
+        "type": "object",
+        "properties": {
+          "calendarId": {
+            "type": "string"
+          },
+          "timeMin": {
+            "type": "string"
+          },
+          "timeMax": {
+            "type": "string"
+          }
+        },
+        "required": ["timeMin", "timeMax"]
+      }
+    },
+    "search_events": {
+      "taintSource": true,
+      "description": "Search events by text over title, description, and location.",
+      "readOnly": true,
+      "requiredScopes": ["calendar:events:read"],
+      "trustBoundary": "user",
+      "handler": "calendarSearchEvents",
+      "params": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "number"
+          }
+        },
+        "required": ["query"]
+      }
+    },
+    "create_event": {
+      "description": "Create a new event or meeting on a writable calendar. Syncs to Google (sendUpdates disabled — attendees are not emailed by this tool). For a Google Meet / video call / online meeting, pass conference: \"google_meet\": Google creates a real Meet link and the result returns it as meetLink — give that link to the user. Never write \"Google Meet\" or another conferencing product name into location as a substitute (location is a place or a link the user gave). Only Google accounts are connected: Teams or Zoom links cannot be created here, say so. To change the event later (time, guests, adding or removing the Meet), use update_event.",
+      "requiredScopes": ["calendar:events:write"],
+      "trustBoundary": "user",
+      "handler": "calendarCreateEvent",
+      "params": {
+        "type": "object",
+        "properties": {
+          "calendarId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "conference": {
+            "type": "string",
+            "enum": ["google_meet", "none"],
+            "description": "\"google_meet\" creates a Google Meet video link on the event (returned as meetLink). Omit or \"none\" for no video call."
+          },
+          "location": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string"
+          },
+          "end": {
+            "type": "string"
+          },
+          "allDay": {
+            "type": "boolean"
+          },
+          "attendees": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "recurrence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["calendarId", "title", "start", "end"]
+      }
+    },
+    "update_event": {
+      "description": "Update an existing event or meeting: change its time, title, description, location or guests, or add or remove its Google Meet video link. Find the eventId first with search_events or list_events. Syncs to Google. conference: \"google_meet\" adds a Meet link to an event that has none (the result returns it as meetLink); conference: \"none\" removes the event's video conference; omit it to keep the conference as it is. Never tell the user to make these changes themselves in Google Calendar. For a recurring meeting, scope is required: scope: \"occurrence\" changes one occurrence (pass occurrenceStart, its original start; an already-edited occurrence can be passed by its own eventId), scope: \"series\" changes every occurrence (start/end then set the first occurrence). If the user did not say which, ask the user before calling. `attendees` is the COMPLETE guest list: omit it to keep the current guests unchanged; to add someone, pass everyone who should attend plus the new address; anyone left out is removed. No invitation or update email is sent to attendees (writes use sendUpdates=none). Only the organizer (or anyone, when the event lets guests modify it) can change the guest list; otherwise Google keeps its own list.",
+      "requiredScopes": ["calendar:events:write"],
+      "trustBoundary": "user",
+      "handler": "calendarUpdateEvent",
+      "params": {
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "enum": ["occurrence", "series"],
+            "description": "Required for a recurring meeting: \"occurrence\" changes one occurrence only, \"series\" changes every occurrence. Ask the user when the request does not say which."
+          },
+          "occurrenceStart": {
+            "type": "string",
+            "description": "With scope \"occurrence\" on a series: the ORIGINAL start (ISO date-time, or date for an all-day series) of the occurrence to change."
+          },
+          "calendarId": {
+            "type": "string",
+            "description": "Only when the eventId is a Google event id present on more than one calendar: the calendar to change it on."
+          },
+          "conference": {
+            "type": "string",
+            "enum": ["google_meet", "none"],
+            "description": "\"google_meet\" adds a Google Meet video link if the event has none (returned as meetLink); \"none\" removes the event's video conference. Omit to leave it unchanged."
+          },
+          "location": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string"
+          },
+          "end": {
+            "type": "string"
+          },
+          "allDay": {
+            "type": "boolean"
+          },
+          "attendees": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["eventId"]
+      }
+    },
+    "delete_event": {
+      "description": "Delete an event or meeting. Syncs the deletion to Google in the background. For a recurring meeting, scope is required: scope: \"occurrence\" cancels one occurrence only (pass occurrenceStart, its original start; an already-edited occurrence can be passed by its own eventId), scope: \"series\" deletes every occurrence. If the user did not say which, ask the user before calling.",
+      "requiredScopes": ["calendar:events:write"],
+      "trustBoundary": "user",
+      "handler": "calendarDeleteEvent",
+      "params": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": ["occurrence", "series"],
+            "description": "Required for a recurring meeting: \"occurrence\" cancels one occurrence only, \"series\" deletes every occurrence. Ask the user when the request does not say which."
+          },
+          "occurrenceStart": {
+            "type": "string",
+            "description": "With scope \"occurrence\" on a series: the ORIGINAL start (ISO date-time, or date for an all-day series) of the occurrence to cancel."
+          },
+          "calendarId": {
+            "type": "string",
+            "description": "Only when the eventId is a Google event id present on more than one calendar: the calendar to delete it from."
+          },
+          "eventId": {
+            "type": "string"
+          }
+        },
+        "required": ["eventId"]
+      }
+    },
+    "set_selected": {
+      "description": "Toggle whether a connected Google calendar is selected for sync (UI settings action — deselecting stops its watch channel and purges local events; re-selecting resyncs it). Selecting/deselecting an ORG calendar requires the admin scope; a member may still toggle a PERSONAL calendar they own (both enforced server-side).",
+      "requiredScopes": ["calendar:events:write"],
+      "trustBoundary": "user",
+      "handler": "calendarSetSelected",
+      "params": {
+        "type": "object",
+        "properties": {
+          "calendarId": {
+            "type": "string"
+          },
+          "selected": {
+            "type": "boolean"
+          }
+        },
+        "required": ["calendarId", "selected"]
+      }
+    },
+    "retry_import": {
+      "description": "Re-run the import of a connected Google Calendar account whose last import failed (sync status 'error'), e.g. after the Google Calendar API was enabled in the Google Cloud project. Clears the stored error and lists the account's calendars again in the background. A personal account can be retried by its owner; an org account requires the calendar admin scope.",
+      "requiredScopes": ["calendar:events:write"],
+      "trustBoundary": "user",
+      "handler": "calendarRetryImport",
+      "params": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          }
+        },
+        "required": ["accountId"]
+      }
+    },
+    "list_accounts": {
+      "description": "List connected Google Calendar accounts visible to the caller (their own personal connections plus every org-wide connection) — the generic kernel connections list deliberately excludes org-owned non-kernel connections, so Settings uses this app-specific tool instead (mirrors mail's listAccounts).",
+      "readOnly": true,
+      "requiredScopes": ["calendar:events:read"],
+      "trustBoundary": "user",
+      "handler": "calendarListAccounts",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  },
+  "export": {
+    "formats": ["json", "csv"],
+    "handler": "exportCalendar",
+    "schema": {
+      "id": "string",
+      "connectionName": "string",
+      "identifier": "string",
+      "displayName": "string",
+      "status": "string",
+      "createdAt": "string"
+    }
+  },
+  "jobs": {
+    "calendar-import": {
+      "handler": "calendarImport",
+      "onDemand": true
+    },
+    "calendar-initial-sync": {
+      "handler": "calendarInitialSync",
+      "onDemand": true
+    },
+    "calendar-incremental-sync": {
+      "handler": "calendarIncrementalSync",
+      "onDemand": true
+    },
+    "calendar-push": {
+      "handler": "calendarPush",
+      "onDemand": true
+    },
+    "calendar-watch-renewal": {
+      "handler": "calendarWatchRenewal",
+      "runsFor": {"connection": "google-calendar"},
+      "schedule": "0 */3 * * *"
+    },
+    "calendar-poll-fallback": {
+      "handler": "calendarPollFallback",
+      "runsFor": {"connection": "google-calendar"},
+      "schedule": "*/30 * * * *"
+    }
+  },
+  "webhooks": {
+    "google-push": {
+      "handler": "onGooglePush",
+      "verify": "verifyGooglePush"
+    }
+  },
+  "webhookHealth": {
+    "probe": null,
+    "reason": "Google push only nudges the incremental sync, and calendar-poll-fallback resyncs when pushes stop."
+  },
+  "import": {
+    "kinds": {
+      "event": {
+        "label": "Calendar events",
+        "schema": {
+          "type": "object",
+          "required": ["externalRef", "start", "end", "allDay"],
+          "additionalProperties": false,
+          "properties": {
+            "externalRef": { "type": "string", "minLength": 1 },
+            "title": { "type": "string" },
+            "description": { "type": "string" },
+            "location": { "type": "string" },
+            "start": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "dateTime": { "type": "string" },
+                "date": { "type": "string" },
+                "timeZone": { "type": "string" }
+              }
+            },
+            "end": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "dateTime": { "type": "string" },
+                "date": { "type": "string" },
+                "timeZone": { "type": "string" }
+              }
+            },
+            "allDay": { "type": "boolean" },
+            "status": { "type": "string", "enum": ["confirmed", "tentative", "cancelled"] },
+            "recurrence": { "type": "array", "items": { "type": "string" } },
+            "attendees": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["email"],
+                "additionalProperties": false,
+                "properties": { "email": { "type": "string" }, "name": { "type": "string" } }
+              }
+            },
+            "organizerEmail": { "type": "string" },
+            "originalStartTime": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "dateTime": { "type": "string" },
+                "date": { "type": "string" },
+                "timeZone": { "type": "string" }
+              }
+            }
+          }
+        },
+        "handler": "importEvents",
+        "dedupKey": "externalRef",
+        "tables": [
+          "app_calendar.accounts",
+          "app_calendar.calendars",
+          "app_calendar.events",
+          "kernel.user_dimension_grants"
+        ],
+        "writeScopes": ["calendar:accounts:admin", "calendar:events:write"],
+        "people": ["attendees.email", "organizerEmail"]
+      }
+    }
+  },
+  "events": {
+    "emits": [
+      "account:create",
+      "account:update",
+      "calendar:create",
+      "event:create",
+      "event:update",
+      "event:delete"
+    ],
+    "subscribes": {
+      "kernel/connected_account:create": "onAccountConnected",
+      "kernel/connected_account:disconnect": "onAccountDisconnected",
+      "kernel/user:registered": "onUserRegistered"
+    }
+  },
+  "roles": {
+    "member": {
+      "description": "Calendar member: read and create/edit events on calendars they can access, connect a personal Google account",
+      "scopes": [
+        "calendar:events:read",
+        "calendar:events:write",
+        "calendar:calendars:read",
+        "calendar:accounts:read"
+      ]
+    },
+    "admin": {
+      "description": "Calendar administrator: manage org-wide Google Calendar connections and calendar selection",
+      "extends": "member",
+      "scopes": ["calendar:accounts:admin"]
+    }
+  },
+  "kind": "app",
+  "settings": {
+    "sections": [
+      {
+        "id": "accounts",
+        "title": "Calendar accounts",
+        "titleKey": "calendar.settingsPage.accounts.title",
+        "description": "The Google calendars you, or the whole organization, import into Calendar.",
+        "descriptionKey": "calendar.settingsPage.accounts.description",
+        "scope": "user",
+        "blocks": [
+          {
+            "block": "connections"
+          },
+          {
+            "block": "custom",
+            "component": "CalendarChoices",
+            "reason": "Which calendars of the connected accounts are imported (one checkbox per calendar, rolled back when Google refuses), and a Retry for an account whose import failed."
+          }
+        ]
+      }
+    ]
+  },
+  "views": {
+    "tabTypes": {
+      "month": {
+        "component": "CalendarMonthTab",
+        "label": "Calendar",
+        "labelKey": "kernel.nav.calendar",
+        "sidebar": "CalendarSidebar",
+        "icon": "CalendarIcon",
+        "urlPattern": "/calendar",
+        "singleton": true,
+        "referenceable": false
+      },
+      "week": {
+        "component": "CalendarWeekTab",
+        "label": "Calendar (Week)",
+        "sidebar": "CalendarSidebar",
+        "icon": "CalendarIcon",
+        "urlPattern": "/calendar/week",
+        "singleton": true,
+        "referenceable": false
+      }
+    },
+    "activityBar": {
+      "icon": "CalendarIcon",
+      "label": "Calendar",
+      "labelKey": "kernel.nav.calendar",
+      "order": 12,
+      "tabAction": {
+        "type": "month",
+        "entityId": "calendar",
+        "label": "Calendar"
+      }
+    }
+  }
+}

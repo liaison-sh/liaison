@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cotation>
+  <shipment>
+    <offer>
+      <mode>COM</mode>
+      <operator>
+        <code>SOGP</code>
+        <label>So Colissimo</label>
+      </operator>
+      <service>
+        <code>DomicileSansSignature</code>
+        <label>Colissimo Domicile sans signature</label>
+      </service>
+      <price>
+        <currency>EUR</currency>
+        <tax-exclusive>9.20</tax-exclusive>
+        <tax-inclusive>11.04</tax-inclusive>
+      </price>
+      <collection>
+        <date>2026-06-01</date>
+        <type>
+          <code>DROPOFF_POINT</code>
+          <label>Depot</label>
+        </type>
+      </collection>
+      <delivery>
+        <date>2026-06-04</date>
+        <type>
+          <code>DELIVERY</code>
+          <label>Livraison a domicile</label>
+        </type>
+      </delivery>
+    </offer>
+    <offer>
+      <mode>COM</mode>
+      <operator>
+        <code>CHRP</code>
+        <label>Chronopost</label>
+      </operator>
+      <service>
+        <code>Chrono18</code>
+        <label>Chrono 18</label>
+      </service>
+      <price>
+        <currency>EUR</currency>
+        <tax-exclusive>7.80</tax-exclusive>
+        <tax-inclusive>9.36</tax-inclusive>
+      </price>
+      <collection>
+        <date>2026-06-01</date>
+        <type>
+          <code>PICKUP</code>
+          <label>Collecte</label>
+        </type>
+      </collection>
+      <delivery>
+        <date>2026-06-02</date>
+        <type>
+          <code>DELIVERY</code>
+          <label>Livraison a domicile</label>
+        </type>
+      </delivery>
+    </offer>
+    <offer>
+      <mode>COM</mode>
+      <operator>
+        <code>MONR</code>
+        <label>Mondial Relay</label>
+      </operator>
+      <service>
+        <code>CpourToi</code>
+        <label>Point Relais</label>
+      </service>
+      <price>
+        <currency>EUR</currency>
+        <tax-exclusive>5.50</tax-exclusive>
+        <tax-inclusive>6.60</tax-inclusive>
+      </price>
+      <collection>
+        <date>2026-06-01</date>
+        <type>
+          <code>DROPOFF_POINT</code>
+          <label>Depot relais</label>
+        </type>
+      </collection>
+      <delivery>
+        <date>2026-06-05</date>
+        <type>
+          <code>PICKUP_POINT</code>
+          <label>Livraison en Relais</label>
+        </type>
+      </delivery>
+    </offer>
+  </shipment>
+</cotation>

@@ -1,0 +1,4 @@
+{
+  "connectionTitle": "Connexion",
+  "settingsDescription": "Connecteur en lecture seule vers un groupe GitLab : projets, commits, demandes de fusion, tickets, versions."
+}

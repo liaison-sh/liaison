@@ -1,0 +1,39 @@
+{
+  "files": [
+    {
+      "id": "heic-photo",
+      "file": "grid.heic",
+      "kind": "image",
+      "context": "This is a photo a customer attached to a support ticket. It shows a dark panel with coloured squares, and the customer outlined one square in green because it does not respond. Describe what you see and which square the customer is pointing at.",
+      "mustMention": ["grid", "green"]
+    },
+    {
+      "id": "png-screenshot",
+      "file": "shapes.png",
+      "kind": "image",
+      "context": "This is a screenshot a customer sent of a screen that looks wrong to them. Describe the colours and shapes on it.",
+      "mustMention": ["yellow", "red"]
+    },
+    {
+      "id": "mp4-long",
+      "file": "moving-square.mp4",
+      "kind": "video",
+      "context": "This is a short screen recording a customer sent. Describe what is shown and what changes during the clip.",
+      "mustMention": ["white", "mov"]
+    },
+    {
+      "id": "mov-h264",
+      "file": "colour-cycle.mov",
+      "kind": "video",
+      "context": "This is a short video a customer recorded of a display. Describe the colours it shows, in order.",
+      "mustMention": ["red", "green", "blue"]
+    },
+    {
+      "id": "mov-hevc",
+      "file": "moving-square-hevc.mov",
+      "kind": "video",
+      "context": "This is a short video a customer recorded of a display. Describe the background colour and what moves on it.",
+      "mustMention": ["yellow"]
+    }
+  ]
+}

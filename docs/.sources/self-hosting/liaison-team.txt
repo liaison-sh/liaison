@@ -1,0 +1,50 @@
+Sharing off until an admin of the operator org turns it on; nothing sent before -> apps/api/src/modules/liaison-team/settings.ts:113 ; apps/api/src/modules/liaison-team/settings.ts:67-72
+Register/heartbeat fields exactly version, edition, activeUsers (+ nonce on register) -> packages/control-plane-contract/src/index.ts:86-102 ; apps/api/src/modules/liaison-team/payloads.ts:44-65
+Random server id (UUIDv4) and 32-byte base64url nonce -> apps/api/src/modules/liaison-team/identity.ts:87-97
+Active users excludes demo orgs, deleting orgs, import placeholders -> apps/api/src/modules/liaison-team/payloads.ts:28-41
+Key stored encrypted with ENCRYPTION_KEY -> apps/api/src/modules/liaison-team/identity.ts:99-101
+Unreadable key -> register again under a new id -> apps/api/src/modules/liaison-team/identity.ts:109-123 ; apps/api/src/modules/liaison-team/outbox.ts:694
+Job every minute -> apps/api/src/infra/jobs/kernel-jobs.ts:1173
+Backoff 30 s doubling to 1 h, jitter, retry-after honoured -> apps/api/src/modules/liaison-team/outbox.ts:70-71
+Clock skew 2 minutes -> apps/api/src/modules/liaison-team/outbox.ts:73
+401 for 24 h and 5 attempts / unknown_instance -> re-register -> apps/api/src/modules/liaison-team/outbox.ts:75 ; apps/api/src/modules/liaison-team/outbox.ts:173
+Refused not retried; 7-day expiry -> apps/api/src/modules/liaison-team/outbox.ts:67 ; apps/api/src/modules/liaison-team/outbox.ts:173
+Lease 2 minutes -> apps/api/src/modules/liaison-team/outbox.ts:65
+Data purged after 7 days, rows deleted after 90 -> apps/api/src/modules/liaison-team/outbox.ts:68-69
+Turning off cancels, deregisters, deletes identity; 409 RETIRING while sending -> apps/api/src/modules/liaison-team/settings.ts:113-195
+Empty LIAISON_TEAM_ENDPOINT disables; default endpoint -> apps/api/src/lib/env.ts:56 ; apps/api/src/lib/env.ts:917
+Signature header base64 HMAC-SHA256 -> apps/api/src/modules/liaison-team/outbox.ts:451 ; packages/control-plane-contract/src/node.ts:15-21
+Send only while elapsed + timeout fits half the lease, give the rest back; finishes fenced on the claimed lease -> apps/api/src/modules/liaison-team/outbox.ts:288-297 ; apps/api/src/modules/liaison-team/outbox.ts:486-489
+Refused or expired registration -> Settings error, off then on retries -> apps/api/src/modules/liaison-team/settings.ts:229-232
+Deregister answered unknown_instance/409 counts as delivered; unreadable key while leaving deletes the identity, no new registration -> apps/api/src/modules/liaison-team/outbox.ts:663-675 ; apps/api/src/modules/liaison-team/outbox.ts:529-547
+Default endpoint URL -> apps/api/src/lib/env.ts:56-57
+Settings > System: any admin reads, operator org changes; others never see id/outbox -> apps/api/src/modules/liaison-team/routes.ts:35-50
+Forward needs registration (REGISTRATION_REQUIRED), off with registration; RETIRING; unavailable refused -> apps/api/src/modules/liaison-team/settings.ts:124-160
+Audit entry liaison_team.updated with both switches -> apps/api/src/modules/liaison-team/settings.ts:192-201
+Demo leads: own switch, off by default; needs demo mode, a registered server, lead not opted out -> apps/api/src/lib/env.ts:930 ; apps/api/src/modules/liaison-team/lead-forwarding.ts:40-44
+Lead fields exactly leadId, email, name, needs, verified, notifyManaged, noticeVersion, signedUpAt -> apps/api/src/modules/liaison-team/payloads.ts:70-90 ; packages/control-plane-contract/src/index.ts:160-171
+Updates on verification, notify-managed, opt-out; scenarios before the workspace is deleted or on start-over -> apps/api/src/modules/demo/demo-leads.ts ; apps/api/src/modules/demo/demo-verification.ts ; apps/api/src/modules/demo/demo-reset.ts ; apps/api/src/modules/demo/routes.ts
+Enqueue failures logged, never fail the signup -> apps/api/src/modules/liaison-team/lead-forwarding.ts
+Load-test (.invalid) leads never sent; queued under the switches' lock -> apps/api/src/modules/liaison-team/lead-forwarding.ts:40-53 ; apps/api/src/lib/load-harness.ts:172-178
+While leaving, only the deregister is sent; other rows cancelled -> apps/api/src/modules/liaison-team/outbox.ts:410-415
+Opt-out before the first send attempt cancels the lead row -> apps/api/src/modules/liaison-team/lead-forwarding.ts:84-95
+Forward box shown only when forwarding is on and the server is registered; local report always filed first -> apps/api/src/modules/liaison-team/bug-report-payload.ts ; apps/web/src/modules/bug-report/BugReportDialog.tsx ; apps/api/src/modules/bug-reports/service.ts
+First tick freezes app logs (dialog) and server error signatures (snapshot, 10 minutes) -> apps/web/src/modules/bug-report/BugReportDialog.tsx ; apps/api/src/modules/liaison-team/snapshot.ts
+Email only with the second tick; per-file unticked boxes; files over 7 MB cannot be ticked -> apps/api/src/modules/liaison-team/bug-report-payload.ts ; packages/control-plane-contract/src/index.ts:43 ; packages/shared/src/i18n/locales/en/kernel.json
+Changed report or forwarding turned off -> 409, nothing filed -> apps/api/src/modules/bug-reports/service.ts
+Forwarded fields; host replaced by <instance>; page path + query keys; logs scrubbed; 256 KB cap drops oldest lines; serverErrors operator org only -> apps/api/src/modules/liaison-team/bug-report-payload.ts ; packages/control-plane-contract/src/index.ts:45 ; packages/control-plane-contract/src/index.ts:119-146
+Each ticked file sent as its own message, read at send time, checked against its SHA-256; gone or changed -> not sent -> apps/api/src/modules/liaison-team/outbox.ts
+report_bug tool never forwards -> apps/api/src/modules/bug-reports/tool.ts ; apps/api/src/modules/bug-reports/tool.test.ts
+Asked once during onboarding (skill and in-app agent), default no, either answer done -> apps/api/src/modules/provisioning/setup-state.ts:355 ; apps/api/src/modules/agent/prompts/kernel/setup-guide.md:17
+liaisonTeam config section and refusal without register -> apps/api/src/cli/provisioners/liaison-team.ts:69
+Export prints values for the operator org only -> apps/api/src/modules/provisioning/config-export.ts:75
+Send bug reports only to the Liaison team switch, needs forwarding (FORWARDING_REQUIRED), off with forwarding -> apps/api/src/modules/liaison-team/settings.ts:153 ; apps/web/src/modules/settings/LiaisonTeamSection.tsx:181
+Team-only applies to the operator org's reporters only, on any instance -> apps/api/src/modules/liaison-team/bug-report-payload.ts:294
+Team-only form: fixed line, preview always on, email ticked by default -> apps/web/src/modules/bug-report/BugReportDialog.tsx: ; packages/shared/src/i18n/locales/en/kernel.json:545
+Team-only submit: no local ticket, FORWARD_REQUIRED, FORWARDING_UNAVAILABLE, reference answered, staged files -> apps/api/src/modules/bug-reports/service.ts:511
+Staged files readable by no user, deleted when rows end or after 8 days -> apps/api/src/modules/liaison-team/team-only.ts:42
+Undelivered team-only report: one notice for the org admins with the report text -> apps/api/src/modules/liaison-team/team-only.ts:208 ; apps/api/src/modules/attention/kernel-translations.ts
+report_bug in team-only mode prepares, reporter confirms on a card; no person behind the turn refused -> apps/api/src/modules/bug-reports/tool.ts:103 ; apps/web/src/modules/bug-report/BugReportDraftCard.tsx
+Prepared reports: only the reporter reads and sends them, 5 sent an hour (unqueued sends not counted), 10 waiting, 20 prepared an hour; tool answer holds no payload -> apps/api/src/modules/bug-reports/agent-drafts.ts ; apps/api/src/modules/bug-reports/tool.ts
+Expiry with the endpoint unset: the sweep runs the outbox housekeeping -> apps/api/src/modules/liaison-team/team-only.ts ; apps/api/src/modules/liaison-team/outbox.ts
+Team-only: no-person turn refused before any approval; prepared report judged by its reporter alone; held report approved prepares the card, a routine's is closed; any member's agent may use it -> apps/api/src/modules/bug-reports/tool.ts:142-155,258-272 ; apps/api/src/modules/apps/execute-tool.ts:3531-3543 ; apps/api/src/modules/approvals/decide.ts:900-915

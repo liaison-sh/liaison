@@ -1,0 +1,82 @@
+{
+  "levels": [
+    {
+      "id": "strict",
+      "rank": 0,
+      "sandbox": true,
+      "writeScope": "session",
+      "readScope": "session",
+      "network": "allowlist",
+      "secretsDenied": true,
+      "writeDenied": true,
+      "destructiveGitDenied": true,
+      "prePushHook": true,
+      "settingsHooks": false,
+      "mcp": "liaison_only",
+      "userSettings": "mirror_filtered",
+      "deniedTools": ["EnterWorktree", "CronCreate", "ScheduleWakeup", "RemoteTrigger"],
+      "askable": ["file_write_outside", "web_outside_allowlist", "git_push_non_default"],
+      "allowLocalBinding": false,
+      "machLookups": [],
+      "browserTestRunners": []
+    },
+    {
+      "id": "standard",
+      "rank": 1,
+      "sandbox": true,
+      "writeScope": "home",
+      "readScope": "home",
+      "network": "open",
+      "secretsDenied": true,
+      "writeDenied": true,
+      "destructiveGitDenied": true,
+      "prePushHook": true,
+      "settingsHooks": false,
+      "mcp": "user_and_tracked_project",
+      "userSettings": "mirror_filtered",
+      "deniedTools": ["EnterWorktree", "CronCreate", "ScheduleWakeup", "RemoteTrigger"],
+      "askable": ["file_write_outside"],
+      "allowLocalBinding": true,
+      "machLookups": [],
+      "browserTestRunners": [
+        "npx playwright test",
+        "bunx playwright test",
+        "pnpm exec playwright test",
+        "yarn exec playwright test"
+      ]
+    },
+    {
+      "id": "open",
+      "rank": 2,
+      "sandbox": false,
+      "writeScope": "any",
+      "readScope": "any",
+      "network": "open",
+      "secretsDenied": false,
+      "writeDenied": false,
+      "destructiveGitDenied": false,
+      "prePushHook": false,
+      "settingsHooks": true,
+      "mcp": "all",
+      "userSettings": "mirror_unfiltered",
+      "deniedTools": [],
+      "askable": [],
+      "allowLocalBinding": true,
+      "machLookups": [],
+      "browserTestRunners": []
+    }
+  ],
+  "alwaysAllowedTools": [
+    "Skill",
+    "Task",
+    "Agent",
+    "TodoWrite",
+    "TaskCreate",
+    "TaskUpdate",
+    "TaskList",
+    "ToolSearch",
+    "EnterPlanMode"
+  ],
+  "askTools": ["AskUserQuestion", "ExitPlanMode"],
+  "protectedBranches": ["main", "master", "trunk", "develop", "production"]
+}

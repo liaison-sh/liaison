@@ -1,0 +1,88 @@
+Knowledge in activity bar -> apps/api/src/apps/knowledge/app.manifest.json:1608
+New document -> apps/web/src/modules/knowledge/KnowledgeSidebar.tsx:249
+Save document -> apps/web/src/modules/knowledge/KnowledgeDocumentView.tsx:380
+Personal tree -> apps/web/src/modules/knowledge/KnowledgeSidebar.tsx:316
+Shared with org tree -> apps/web/src/modules/knowledge/KnowledgeSidebar.tsx:356
+New personal folder / New shared folder -> packages/shared/src/i18n/locales/en/knowledge.json:67
+New folder -> packages/shared/src/i18n/locales/en/knowledge.json:15
+Move to -> apps/web/src/modules/knowledge/KnowledgeCollectionTree.tsx:220
+Unfiled -> apps/web/src/modules/knowledge/KnowledgeSidebar.tsx:418
+Deleting a folder keeps documents -> packages/shared/src/i18n/locales/en/knowledge.json:73
+Create knowledge from… opens agent chat -> apps/web/src/modules/knowledge/KnowledgeHome.tsx:62
+Load the latest version on concurrent edit -> packages/shared/src/i18n/locales/en/knowledge.json:120
+Share button -> apps/web/src/modules/knowledge/KnowledgeDocumentView.tsx:445
+General access -> packages/shared/src/i18n/locales/en/kernel.json:4137
+Restricted, only people with access -> packages/shared/src/i18n/locales/en/knowledge.json:103
+Anyone in the org can view / edit -> packages/shared/src/i18n/locales/en/knowledge.json:105
+C-Level option -> packages/shared/src/i18n/locales/en/knowledge.json:109
+People with access, Add people… -> packages/shared/src/i18n/locales/en/kernel.json:4129
+Viewer / Editor -> packages/shared/src/i18n/locales/en/kernel.json:4130
+Roles with access, Add roles… -> packages/shared/src/i18n/locales/en/kernel.json:4134
+Save share -> apps/web/src/modules/sharing/ShareDialog.tsx:572
+No admin bypass, restricted doc writable by owner or editor share -> apps/api/src/apps/knowledge/service.ts:355
+Search uses a sharing ACL projection -> apps/api/src/apps/knowledge/service.ts:875
+Mount external folder, Google Drive today -> packages/shared/src/i18n/locales/en/knowledge.json:32
+Synced sources section on settings page -> apps/api/src/apps/knowledge/app.manifest.json:1484
++ Add source -> packages/shared/src/i18n/locales/en/knowledge.json:33
+Drive folder ID and where to find it -> packages/shared/src/i18n/locales/en/knowledge.json:76
+Display name, Sync interval (minutes) -> apps/web/src/modules/knowledge/SyncedSourceAddTab.tsx:126
+Scope Personal / Shared with org -> apps/web/src/modules/knowledge/SyncedSourceAddTab.tsx:160
+Shared needs knowledge:sources:manage -> packages/shared/src/i18n/locales/en/knowledge.json:86
+Sensitivity options -> apps/web/src/modules/knowledge/SyncedSourceAddTab.tsx:194
+Add source submit -> apps/web/src/modules/knowledge/SyncedSourceAddTab.tsx:235
+Confidential or restricted synced documents are not org-wide -> apps/api/src/apps/knowledge/sync-reconciler.ts:294
+Synced from, Refresh -> apps/web/src/modules/knowledge/KnowledgeDocumentView.tsx:573
+Synced sources list From Google Drive / GitLab / Database, Shared with -> apps/api/src/apps/knowledge/app.manifest.json:1511
+Sync now action -> apps/api/src/apps/knowledge/app.manifest.json:1497
+Archive stops sync, documents stay -> apps/api/src/apps/knowledge/app.manifest.json:681
+add_folder_source Drive, GitLab, database -> apps/api/src/apps/knowledge/app.manifest.json:775
+Needs review filter -> apps/web/src/modules/knowledge/KnowledgeHome.tsx:131
+Review queue criteria -> apps/api/src/apps/knowledge/app.manifest.json:739
+Verify button -> apps/web/src/modules/knowledge/KnowledgeDocumentView.tsx:469
+Archive / Restore -> apps/web/src/modules/knowledge/KnowledgeDocumentView.tsx:484
+Role member -> apps/api/src/apps/knowledge/app.manifest.json:1621
+Role curator -> apps/api/src/apps/knowledge/app.manifest.json:1633
+Role admin -> apps/api/src/apps/knowledge/app.manifest.json:1644
+knowledge:approve -> docs/reference/scopes.md:188
+search -> apps/api/src/apps/knowledge/app.manifest.json:709
+get -> apps/api/src/apps/knowledge/app.manifest.json:869
+find_by_title -> apps/api/src/apps/knowledge/app.manifest.json:897
+review_queue -> apps/api/src/apps/knowledge/app.manifest.json:739
+create -> apps/api/src/apps/knowledge/app.manifest.json:920
+update -> apps/api/src/apps/knowledge/app.manifest.json:1036
+verify -> apps/api/src/apps/knowledge/app.manifest.json:755
+archive -> apps/api/src/apps/knowledge/app.manifest.json:1113
+restore -> apps/api/src/apps/knowledge/app.manifest.json:1134
+collection_create -> apps/api/src/apps/knowledge/app.manifest.json:1152
+collection_update -> apps/api/src/apps/knowledge/app.manifest.json:1182
+collection_delete archives -> apps/api/src/apps/knowledge/app.manifest.json:1215
+add_to_collection -> apps/api/src/apps/knowledge/app.manifest.json:1233
+remove_from_collection -> apps/api/src/apps/knowledge/app.manifest.json:1255
+source_link_create -> apps/api/src/apps/knowledge/app.manifest.json:829
+synced_sources.list -> apps/api/src/apps/knowledge/app.manifest.json:669
+synced_sources.run_now -> apps/api/src/apps/knowledge/app.manifest.json:695
+synced_sources.archive -> apps/api/src/apps/knowledge/app.manifest.json:681
+Demo: GitLab and Google Drive sources are seeded and do not sync -> apps/api/src/apps/knowledge/knowledge-jobs.ts:263
+knowledge.collection and knowledge.document kinds, externalRef dedup -> apps/api/src/apps/knowledge/import-kind.ts:12
+document kind imports after collections -> apps/api/src/apps/knowledge/app.manifest.json:1448
+confidential and restricted start with org_access none -> apps/api/src/apps/knowledge/service.ts:997
+an existing tag is reused untouched -> apps/api/src/apps/knowledge/import-kind.ts:206
+tagging needs knowledge:tags:manage -> apps/api/src/apps/knowledge/import-kind.ts:238
+attachments copy files the person can see -> apps/api/src/apps/knowledge/import-kind.ts:330
+personal document for another owner needs assign-owner -> apps/api/src/apps/knowledge/import-kind.ts:256
+document kind needs knowledge:documents:create -> apps/api/src/apps/knowledge/app.manifest.json:1439
+collection kind needs knowledge:collections:manage -> apps/api/src/apps/knowledge/app.manifest.json:1337
+Shared also open to knowledge:documents:admin and the admin wildcard -> apps/web/src/modules/knowledge/SyncedSourceAddTab.tsx:30
+Picked-mode Drive adds its own source named Google Drive: <address> -> apps/api/src/apps/google-drive/picker.ts:312
+Picked source syncs the picked items -> apps/api/src/apps/knowledge/knowledge-jobs.ts:126
+Picker card above Add source in Knowledge settings -> apps/web/src/modules/knowledge/SyncedSourceAdd.tsx:21
+Drive Docs, Slides, Sheets and Excel workbooks have a text form -> apps/api/src/apps/google-drive/drive-text.ts:49
+The Drive adapter declares which types it has text for -> apps/api/src/apps/google-drive/adapter.ts:482
+A personal source names the files it left out -> apps/api/src/apps/knowledge/sync-reconciler.ts:698
+The left-out files are kept on the sync status -> apps/api/src/apps/knowledge/sync-reconciler.ts:748
+Agent searches in the documents' language -> apps/api/src/apps/knowledge/app.manifest.json:720
+Retry in English when nothing matches -> apps/api/src/modules/apps/sandbox/bridge/knowledge.ts:144
+Org Drive folder sync only in picked shared drives -> apps/api/src/apps/knowledge/knowledge-jobs.ts:111
+Federated Drive search through the scoped fetchers -> apps/api/src/apps/knowledge/source-registry.ts:65
+org Drive folder hidden / deleted outside picked drives -> apps/api/src/apps/knowledge/knowledge-jobs.ts:280
+org folder via org row, personal folder via owner row, same account -> apps/api/src/apps/knowledge/knowledge-jobs.ts:111 ; apps/api/src/apps/google-drive/drive-access.ts:20

@@ -1,0 +1,58 @@
+Upgrade = back up, new image tag, restart; migrations on start -> docs/runbooks/production-bootstrap.md:493
+System page Running/Latest -> packages/shared/src/i18n/locales/en/kernel.json:2441
+Update available, Release notes -> packages/shared/src/i18n/locales/en/kernel.json:2275
+Periodic GitHub checks, disable -> packages/shared/src/i18n/locales/en/kernel.json:2282
+Disable update checks -> packages/shared/src/i18n/locales/en/kernel.json:2283
+Back up first -> docs/runbooks/production-bootstrap.md:498
+LIAISON_IMAGE in .env, example tag -> docs/runbooks/production-bootstrap.md:504
+LIAISON_IMAGE override in compose -> deploy/docker-compose.yml:6
+docker compose pull app, up -d -> docs/runbooks/production-bootstrap.md:508
+Wait for /healthz new version all ok -> docs/runbooks/production-bootstrap.md:511
+CMD: migrate, reconcile catalog, start server -> apps/api/Dockerfile:143
+Failed migration stops container -> docs/runbooks/production-bootstrap.md:496
+Catalog reconcile fail-soft -> apps/api/Dockerfile:129
+Rollback: logs, previous tag, restore --force -> docs/runbooks/production-bootstrap.md:514
+restore refuses backup newer than image -> docs/runbooks/production-bootstrap.md:440
+App store section kernel:apps:admin -> apps/web/src/framework/bootstrap.ts:694
+Update available state in App store -> apps/web/src/modules/settings/app-store/AppStorePage.tsx:83
+Update available label -> packages/shared/src/i18n/locales/en/kernel.json:5357
+Check for updates button -> apps/web/src/modules/settings/app-store/AppStoreDetail.tsx:467
+Upgrade preview dialog -> apps/web/src/modules/settings/app-store/AppStoreDetail.tsx:530
+Apply upgrade -> packages/shared/src/i18n/locales/en/kernel.json:2251
+Desktop updater asks before install -> apps/desktop/src-tauri/src/updater.rs:47
+New app version runs without a restart, health-checked within 30 seconds -> apps/api/src/modules/apps/activation.ts:88
+Health check: loads, registers where the app is on, tools registered -> apps/api/src/modules/apps/activation.ts:303
+Failed version replaced by the previous one, reason recorded -> apps/api/src/modules/apps/activation.ts:567
+Previous version kept, older ones deleted -> apps/api/src/modules/apps/install-service.ts:595
+Upgrade that would lose data is refused with the list -> apps/api/src/modules/apps/additive-schema.ts:161
+App that fails to load shows the reason, kept across restarts -> apps/api/src/modules/apps/runtime.ts:603
+Running state -> packages/shared/src/i18n/locales/en/kernel.json:5499
+Failed to load state -> packages/shared/src/i18n/locales/en/kernel.json:5500
+Upgrade failed state -> packages/shared/src/i18n/locales/en/kernel.json:5501
+State chosen from load problem, failed upgrade, else running -> apps/web/src/modules/settings/app-store/store-model.ts:194
+Reason under the app's name -> apps/web/src/modules/settings/app-store/AppStorePage.tsx:479
+Listing says which version failed and which still runs -> packages/shared/src/i18n/locales/en/kernel.json:5554
+Failed upgrade kept in activation events, shown until the next activation -> apps/api/src/modules/apps/activation.ts:546
+app status prints the same states -> apps/api/src/cli/app/manage.ts:59
+Previous version kept for a rollback -> packages/shared/src/i18n/locales/en/kernel.json:5555
+Roll back to button under Version history -> apps/web/src/modules/settings/app-store/AppStoreDetail.tsx:557
+Inline question before the rollback -> packages/shared/src/i18n/locales/en/kernel.json:5557
+Rollback goes through the same health gate -> apps/api/src/modules/apps/activation.ts:506
+Security release refuses a rollback, button hidden -> apps/web/src/modules/settings/app-store/store-model.ts:154
+Rollback route: kernel:apps:admin and instance operator -> apps/api/src/modules/apps/install-routes.ts:408
+Operator: the operator org on a multi-tenant server, any app admin elsewhere -> apps/api/src/modules/apps/operator-org.ts:72
+Rollback button only for the operator -> apps/web/src/modules/settings/app-store/AppStoreDetail.tsx:162
+liaison app rollback -> apps/api/src/cli/commands.ts:138
+Migrations under a lease, one runs, others wait then find nothing -> apps/api/src/db/migrate.ts:193-203 ; apps/api/src/db/migrate.ts:309-313
+Crashed holder loses lease after 60 s -> apps/api/src/db/migrate.ts:210
+Stopping the migration releases the lease, migration rolled back -> apps/api/scripts/entrypoint.sh:32-53 ; apps/api/src/db/migrate.ts:264-273
+migrate argument: migrate, reconcile, exit -> apps/api/scripts/entrypoint.sh:60-66
+LIAISON_MIGRATE_ON_START=false skips migrate, still reconciles -> apps/api/scripts/entrypoint.sh:71-74
+LIAISON_MIGRATE_ON_START default true -> apps/api/scripts/entrypoint.sh:71
+Release adds only; removal after a release stops using it (guard) -> scripts/check-migration-safety.ts:7-36 ; .github/workflows/ci.yml:72
+Updating line at once on a server restart signal -> apps/web/src/modules/shell/ServerPauseNotice.tsx:51
+Restart signal = WebSocket close 1012 -> apps/web/src/primitives/createWebSocket.ts:436
+Restart signal = 503 RESTARTING -> apps/web/src/lib/api-client.ts:466
+Updating / still updating / connection lost / offline labels -> packages/shared/src/i18n/locales/en/kernel.json:1807
+90 seconds -> apps/web/src/modules/shell/ServerPauseNotice.tsx:26
+3 seconds, shorter drop shows nothing -> apps/web/src/modules/shell/ServerPauseNotice.tsx:24

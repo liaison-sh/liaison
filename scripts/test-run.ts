@@ -586,11 +586,6 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/request-secret-approved-card.test.ts",
             // agents_ask: the asked agent always answers in the thread, in its own name.
             "src/tests/integration/agent-ask-thread-reply.test.ts",
-            // Agent tools for document templates and contact addresses, and the
-            // audience of an approval on a person's own resource.
-            "src/tests/integration/document-agent-tools.test.ts",
-            "src/tests/integration/contact-addresses-agent-tools.test.ts",
-            "src/tests/integration/self-resource-approval-audience.test.ts",
           ]),
     ],
     cwd: path.join(ROOT, "apps/api"),

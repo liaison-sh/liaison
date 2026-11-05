@@ -107,7 +107,7 @@ let B: postgres.Sql
 let installRoot = ""
 const children: Array<{ kill: () => void }> = []
 
-// ── the fake control plane (the lease rules of control-plane/src/cloud/moves.ts) ──
+// ── the fake control plane (the lease rules it enforces) ──
 class FakeControl {
   state: MoveState = "planned"
   leaseUntil = 0

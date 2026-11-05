@@ -42,7 +42,7 @@ export interface OperatorCredential {
 
 const CELL_OPS_TIMEOUT_MS = 5_000
 
-/** The signed `cell-ops` body (headers as control-plane/src/cloud/cell-ops.ts verifies them). */
+/** The signed `cell-ops` body (headers as the control plane verifies them). */
 export function signCellOps(
   operatorKey: string,
   body: Record<string, unknown>,

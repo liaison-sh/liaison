@@ -217,6 +217,8 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
     "the user a managed side call's usage row is attributed to: called through a dynamic import by message-indexer.ts (managedOrgEmbedder) with the org whose content it indexes; reads one user id of that org",
   "apps/api/src/modules/cloud/billing.ts#applyBillingPush":
     "signed control plane push: the org is the one the verified request names (path and body must agree, modules/cloud/verify.ts)",
+  "apps/api/src/modules/cloud/billing.ts#rerunMissedOneShots":
+    "payment resumed on a signed control plane push: applyBillingPush passes the org that push names (path and body must agree), and the query reads only that org's routines",
   "apps/api/src/modules/mailbox-keys/attention.ts#computeMailboxEnrollmentAttentionItems":
     "attention computer registered by name: called for the org being computed",
   "apps/api/src/modules/mailbox-keys/reset.ts#resetMailbox":
@@ -376,6 +378,8 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "the managed side-call gate, handed on as a value: media-analysis-tool.ts calls it (deps.managedSideCallGate) with ctx.orgId, the run's org, and message-indexer.ts (managedOrgEmbedder, dynamic import) with the org whose content it indexes",
   "apps/api/src/modules/webhooks/routes.ts#dispatchVerifiedWebhook":
     "an inbound delivery already verified (by the app's verifier on POST /:orgId/:appName/:endpointName, or by the kernel on the server's own Meta callback): the handler runs for the registration's own org, found under [orgId, app, endpoint], and the payload is the provider's body, which names no org the dispatch uses",
+  "apps/api/src/modules/webhooks/routes.ts#runDelivery":
+    "the delivery closure inside dispatchVerifiedWebhook, called only there: its org is appOrgId, registration.orgId, so the handler runs for the registration's own org as the entry above says",
   "apps/api/src/modules/webhooks/org-setup.ts#setUpOrgForInboundWebhook":
     "unauthenticated /webhooks/:orgId/* first touch (app.ts): the path org only picks which org gets the setup any first touch runs; awaitOrgApps skips a non-UUID or an id no organization row carries, returns at once for a registered org, and writes only that org's own idempotent, stamp-gated setup; nothing is returned, and each route's own capability check (signature, verify token, API key or public form) still guards everything after it",
   "apps/api/src/modules/apps/org-apps.ts#pathOrgAppState":

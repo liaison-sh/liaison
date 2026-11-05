@@ -202,15 +202,15 @@ describe("workflow hardening", () => {
 
     it("the image reports nightly-YYYYMMDD-<shortsha>", () => {
       expect(allRuns).toContain('tag="nightly-$day"')
-      expect(allRuns).toContain('version="$tag-${sha:0:7}"')
-      expect(raw).toContain("version: ${{ needs.resolve.outputs.version }}")
+      expect(allRuns).toContain(`version="$tag-\${sha:0:7}"`)
+      expect(raw).toContain(`version: \${{ needs.resolve.outputs.version }}`)
     })
   })
 
   it("the compose pin both publishing workflows rewrite is in the compose file", () => {
     const compose = readFileSync(join(ROOT, "deploy/docker-compose.yml"), "utf8")
-    expect(compose).toContain("${LIAISON_IMAGE:-ghcr.io/mathieufro/liaison:v0.1.0}")
-    expect(compose).toContain("${LIAISON_RELEASE_CHANNEL:-release}")
+    expect(compose).toContain(`\${LIAISON_IMAGE:-ghcr.io/mathieufro/liaison:v0.1.0}`)
+    expect(compose).toContain(`\${LIAISON_RELEASE_CHANNEL:-release}`)
     for (const f of PUBLISHING) {
       expect(readFileSync(join(WORKFLOW_DIR, f), "utf8")).toContain("s#liaison:v0.1.0}#liaison:")
     }

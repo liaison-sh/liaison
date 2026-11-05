@@ -52,10 +52,13 @@ AS $fn$
   )
 $fn$;
 --> statement-breakpoint
+-- reviewed-dynamic: a GRANT EXECUTE on the function this file creates, no dynamic SQL.
 GRANT EXECUTE ON FUNCTION kernel.every_member_scope_covers(uuid, uuid, text) TO PUBLIC;
 --> statement-breakpoint
+-- expand-safe: replaced by a policy that only adds readers, in the same transaction; the previous release reads the same rows and more.
 DROP POLICY IF EXISTS approval_requests_select ON kernel.approval_requests;
 --> statement-breakpoint
+-- expand-safe: only widens the notified-approver branch to the scopes a real check already gives the person; the previous release decides those rows the same way.
 CREATE POLICY approval_requests_select ON kernel.approval_requests FOR SELECT TO liaison_rls
   USING (
 ((org_id = (( SELECT rls_ctx.org_id() AS org_id))::uuid) AND (((resource_owner_id IS NOT NULL) AND ((requested_by = (NULLIF(( SELECT rls_ctx.user_id() AS user_id), ''::text))::uuid) OR (resource_owner_id = (NULLIF(( SELECT rls_ctx.user_id() AS user_id), ''::text))::uuid))) OR ((resource_owner_id IS NULL) AND ((requested_by = (( SELECT rls_ctx.user_id() AS user_id))::uuid) OR (EXISTS ( SELECT 1

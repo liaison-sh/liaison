@@ -8862,6 +8862,8 @@ describe("intra-EU business buyer guard", () => {
     expect("status" in d && d.status).toBe("pending_approval")
     expect(m.extras.approvalsRequested).toHaveLength(2)
     expect(m.extras.approvalsRequested[1]!.tool_name).toBe("invoicing:drafts_create")
+    // Its own card, with the evidence: the manifest's summarizer is for the other parks.
+    expect(m.extras.approvalsRequested[1]!.summary).toContain("as a PRIVATE CONSUMER")
     expect((m.extras.approvalsRequested[1]!.summary_detail?.lines ?? []).join("\n")).toContain('tagged "B2B"')
     expect(m.db.__all("documents").filter((x) => x.type === "quote")).toHaveLength(0)
 

@@ -1835,6 +1835,13 @@
       "when": 1900002861000,
       "tag": "0260_inbox_notify_new_ticket",
       "breakpoints": true
+    },
+    {
+      "idx": 262,
+      "version": "7",
+      "when": 1900002862000,
+      "tag": "0261_every_member_scope_approvers",
+      "breakpoints": true
     }
   ]
 }

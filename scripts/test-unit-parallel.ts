@@ -59,7 +59,7 @@ import { cloneDatabase, dropTestDatabase, dropTrash, ensureTemplate } from "./li
 import { formatFailures, type JunitFailure, parseJunitSuites } from "./lib/unit-junit"
 import { formatPhaseSplit, planRetries } from "./lib/unit-retry"
 import { mergeTimings, readTimings, timingsHistoryPath } from "./lib/unit-timings"
-import { silenceLimitMs, tailLines, watchSilence } from "./lib/unit-watchdog"
+import { silenceLimitMs, tailLines, watchSilence, withoutQuietBunVars } from "./lib/unit-watchdog"
 
 const ROOT = path.resolve(import.meta.dir, "..")
 const API = path.join(ROOT, "apps/api")
@@ -203,7 +203,8 @@ function shardEnv(shardId: number, token: number): Record<string, string> {
   // Let `--env-file=.env.test` set NODE_ENV=test; the parent's auto-loaded .env
   // (NODE_ENV=development) would otherwise leak in and win over the file.
   delete childEnv.NODE_ENV
-  return childEnv
+  // The watchdog reads a shard's progress as its proof of life, so bun must print it.
+  return withoutQuietBunVars(childEnv)
 }
 
 /**

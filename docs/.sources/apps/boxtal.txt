@@ -156,6 +156,8 @@ row cannot ship until a pick -> bundled-apps/boxtal/src/ui/prep-row-logic.ts:299
 staging and the label buy refuse while differs without a pick -> bundled-apps/boxtal/src/shipment.ts:2997
 pick voided when either address changes (hash of both) -> bundled-apps/boxtal/src/address-check.ts:263
 prep_set_address_choice gated, noAutoApprove -> bundled-apps/boxtal/app.manifest.json:2383
+prep_set_address_choice card shows the staged addresses, a later change voids the approval -> bundled-apps/boxtal/src/address-choice.ts:60
+prep_set_address_choice refuses at staging when there is nothing to pick -> bundled-apps/boxtal/src/address-choice.ts:103
 card line: which address and whether verified; none for a customer with no verified address -> bundled-apps/boxtal/src/summarizers.ts:136
 Print documents control on each Ready to ship row -> bundled-apps/boxtal/src/ui/Queues.tsx:825
 Print documents / Needed labels -> packages/app-ui/src/print-documents.tsx:37-38

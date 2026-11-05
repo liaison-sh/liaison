@@ -24,7 +24,10 @@ import { readApprovalRequesters } from "~/modules/approvals/requester"
 import { withServedSummaries } from "~/modules/approvals/served-summary"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { isSeededWrite } from "~/modules/notifications/seeded"
-import { scopeMatchesFragment } from "~/modules/permissions/eligible-approvers"
+import {
+  everyMemberScopeFragment,
+  scopeMatchesFragment,
+} from "~/modules/permissions/eligible-approvers"
 
 const K = drizzleSql.raw(schemaRef("kernel"))
 
@@ -291,7 +294,7 @@ async function readRequesterDecides(
         JOIN ${K}.role_scope_grants rsg ON rsg.role_id = ur.role_id
         WHERE ur.user_id = w.user_id AND ur.org_id = ${orgId}::uuid
           AND ${scopeMatchesFragment(drizzleSql`rsg.scope`, drizzleSql`w.scope`)}
-      ))
+      ) OR ${everyMemberScopeFragment(orgId, drizzleSql`w.user_id`, drizzleSql`w.scope`)})
     `),
   )
   for (const d of decideRows) requesterDecides.add(`${d.user_id}\u0000${d.scope}\u0000${d.app}`)

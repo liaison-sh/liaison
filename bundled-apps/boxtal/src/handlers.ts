@@ -9,7 +9,7 @@
 // (no `any`): the manifest declares the param JSON-schema, so we type params to
 // the per-tool input shape and let the orchestrator functions do the work.
 
-import { type PrepSetAddressChoiceInput, prepSetAddressChoice } from "./address-choice"
+import { type PrepSetAddressChoiceInput, prepSetAddressChoice, prepSetAddressChoicePreflight as prepSetAddressChoicePreflightImpl } from "./address-choice"
 import {
   localProductUpsert,
   type PackUpsertInput,
@@ -309,6 +309,8 @@ export const prepSelectOfferHandler = (params: PrepSelectOfferInput, ctx: Ctx) =
 // noAutoApprove: a person's click runs it, an agent's call waits for a person).
 export const prepSetAddressChoiceHandler = (params: PrepSetAddressChoiceInput, ctx: Ctx) =>
   prepSetAddressChoice(ctx, params)
+export const prepSetAddressChoicePreflight = (params: PrepSetAddressChoiceInput, ctx: Ctx) =>
+  prepSetAddressChoicePreflightImpl(ctx, params)
 export const prepSetValidatedHandler = (params: PrepSetValidatedInput, ctx: Ctx) =>
   prepSetValidated(ctx, params)
 // One status per row (to_prepare / validated / on_hold), keyed by order_key: the row-level

@@ -1828,6 +1828,13 @@
       "when": 1900002860000,
       "tag": "0259_thread_notify_all_posts",
       "breakpoints": true
+    },
+    {
+      "idx": 261,
+      "version": "7",
+      "when": 1900002861000,
+      "tag": "0260_inbox_notify_new_ticket",
+      "breakpoints": true
     }
   ]
 }

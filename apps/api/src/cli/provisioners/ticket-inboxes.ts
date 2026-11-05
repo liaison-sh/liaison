@@ -46,7 +46,7 @@ type TicketInboxEntry = NonNullable<NonNullable<ProvisioningConfig["tickets"]>["
 /** The inbox settings the config converges. */
 export type TicketInboxSettings = Pick<
   TicketInboxEntry,
-  "name" | "fromDisplayName" | "defaultTeam" | "default"
+  "name" | "fromDisplayName" | "defaultTeam" | "notifyNewTicket" | "default"
 >
 
 /** A tickets inbox row plus the app that owns its connection. */
@@ -55,6 +55,7 @@ export interface TicketInboxRow {
   name: string
   from_display_name: string | null
   default_team: string | null
+  notify_new_ticket: boolean
   is_default_for_create: boolean
   connected_account_id: string | null
   connection_app: string | null
@@ -79,7 +80,8 @@ export async function readTicketInbox(
 ): Promise<TicketInboxRow | null> {
   const rows = await priv("cli-ticket-inbox-read", (tx) =>
     tx.execute(drizzleSql`
-      SELECT i.id, i.name, i.from_display_name, i.default_team, i.is_default_for_create,
+      SELECT i.id, i.name, i.from_display_name, i.default_team, i.notify_new_ticket,
+             i.is_default_for_create,
              i.connected_account_id, ca.app_name AS connection_app
       FROM ${ticketsRel("inboxes")} i
       LEFT JOIN ${kernelRel("connected_accounts")} ca
@@ -112,6 +114,9 @@ export async function convergeTicketInbox(
   }
   if (want.defaultTeam !== undefined && want.defaultTeam !== row.default_team) {
     params.defaultTeam = want.defaultTeam
+  }
+  if (want.notifyNewTicket !== undefined && want.notifyNewTicket !== row.notify_new_ticket) {
+    params.notifyNewTicket = want.notifyNewTicket
   }
   if (want.default === true && !row.is_default_for_create) params.isDefaultForCreate = true
   const changed = Object.keys(params)

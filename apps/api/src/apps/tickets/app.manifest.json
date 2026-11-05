@@ -106,7 +106,7 @@
       }
     ]
   },
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Customer-facing ticketing: local foundations (7.1)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -605,6 +605,10 @@
           "default": "within 2 business days"
         },
         "suppressAttention": {
+          "type": "boolean",
+          "default": false
+        },
+        "notifyNewTicket": {
           "type": "boolean",
           "default": false
         },
@@ -2180,6 +2184,10 @@
             "type": "boolean",
             "description": "Monitoring inbox: tickets from this inbox raise no attention-feed items and stay out of awaiting-reply aggregates (backlog health, needs-attention sweeps). For telemetry streams like automated bug reports. Default false."
           },
+          "notifyNewTicket": {
+            "type": "boolean",
+            "description": "Notify on new ticket: each new ticket in this inbox raises an attention item for the holders of tickets:inboxes:admin, delivered per their own notification settings. A monitoring inbox (suppressAttention) stays silent. Default false."
+          },
           "slaExempt": {
             "type": "boolean",
             "description": "SLA-exempt inbox: tickets created in it carry NO SLA (no deadline, no breach, no SLA countdown anywhere). For telemetry streams like automated bug reports that never await an agent reply. Independent of suppressAttention. Default false."
@@ -2306,6 +2314,10 @@
           "suppressAttention": {
             "type": "boolean",
             "description": "Monitoring inbox: tickets from this inbox raise no attention-feed items and stay out of awaiting-reply aggregates. For telemetry streams like automated bug reports."
+          },
+          "notifyNewTicket": {
+            "type": "boolean",
+            "description": "Notify on new ticket: each new ticket in this inbox raises an attention item for the holders of tickets:inboxes:admin, delivered per their own notification settings. A monitoring inbox (suppressAttention) stays silent. Default false."
           },
           "slaExempt": {
             "type": "boolean",
@@ -3222,6 +3234,23 @@
         "kind": "admin_action",
         "urgency": 50,
         "summary": "Closing silent tickets stopped in the {{data.name}} inbox: the person who switched it on is no longer active, or no longer allowed to reply to and close tickets. Switch it on again in the inbox settings to keep it running.",
+        "recipients": { "kind": "scope_holders", "scope": "tickets:inboxes:admin" }
+      },
+      {
+        "event": "ticket:create",
+        "kind": "tickets:ticket.created",
+        "urgency": 40,
+        "when": { "op": "eq", "path": "data.notifyNewTicket", "value": true },
+        "summary": "New ticket in {{data.inboxName}}: {{data.subject}} (from {{data.requester}})",
+        "recipients": { "kind": "scope_holders", "scope": "tickets:inboxes:admin", "excludeActor": true }
+      },
+      {
+        "event": "ticket:update",
+        "kind": "tickets:ticket.created",
+        "urgency": 0,
+        "when": { "op": "in", "path": "data.changes.status", "values": ["awaiting_customer", "awaiting_followup", "closed"] },
+        "resolveWhen": { "always": true },
+        "summary": "Ticket handled",
         "recipients": { "kind": "scope_holders", "scope": "tickets:inboxes:admin" }
       }
     ]

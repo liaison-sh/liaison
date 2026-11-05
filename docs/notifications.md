@@ -73,6 +73,15 @@ from the defaults in `kernel.user_preferences.notification_channels`; `GET`/`PAT
 /api/notifications/settings` read and write it. In Liaison is always on. The digest cadence decides
 when email goes out; the email column decides what goes in it, and cadence "off" is every email cell off.
 
+## New tickets
+
+An inbox with **Notify on new ticket** switched on (off by default, [Tickets](apps/tickets.md#hear-about-new-tickets))
+raises one `tickets:ticket.created` item for each new ticket, for the holders of `tickets:inboxes:admin`. It
+belongs to the tickets tasks and knowledge group, so by default it reaches the feed and the email digest, not
+the phone or the computer. To be interrupted, a person switches phone and computer on for that row, which also
+turns them on for everything else in the group, such as another app's new orders. It is not urgent, so quiet
+hours apply, and many at once reach the person as one summary.
+
 ## The router
 
 `apps/api/src/modules/notifications/router.ts` decides the channels for one item and one person, and

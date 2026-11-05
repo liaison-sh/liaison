@@ -4237,6 +4237,7 @@
       "shopify_orders_unfulfilled": "Commandes en attente d'expédition",
       "shopify_refund_created": "Remboursements faits dans Shopify",
       "shopify_return_requested": "Demandes de retour",
+      "tickets_ticket_created": "Nouveaux tickets des boîtes à surveiller",
       "monitoring_incident_critical": "Incidents critiques",
       "monitoring_incident_warning": "Avertissements",
       "invoicing_contact_conflict": "Coordonnées client en conflit",

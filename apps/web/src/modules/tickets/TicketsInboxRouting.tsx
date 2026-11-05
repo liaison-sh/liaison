@@ -65,6 +65,10 @@ function suppressAttention(inbox: TicketInbox): boolean {
   return (inbox.suppressAttention ?? inbox.suppress_attention) === true
 }
 
+function notifyNewTicket(inbox: TicketInbox): boolean {
+  return (inbox.notifyNewTicket ?? inbox.notify_new_ticket) === true
+}
+
 function slaExempt(inbox: TicketInbox): boolean {
   return (inbox.slaExempt ?? inbox.sla_exempt) === true
 }
@@ -437,6 +441,7 @@ const InboxRow: Component<InboxRowProps> = (props) => {
   let ackBodyInput!: HTMLTextAreaElement
   let slaPromiseInput!: HTMLInputElement
   let suppressAttentionInput!: HTMLInputElement
+  let notifyNewTicketInput!: HTMLInputElement
   let slaExemptInput!: HTMLInputElement
   let closeSilentNudgeDaysInput!: HTMLInputElement
   let closeSilentCloseDaysInput!: HTMLInputElement
@@ -470,6 +475,7 @@ const InboxRow: Component<InboxRowProps> = (props) => {
         ackBodyText: ackBodyInput.value.trim() || null,
         slaPromisePhrase: slaPromiseInput.value.trim() || "within 2 business days",
         suppressAttention: suppressAttentionInput.checked,
+        notifyNewTicket: notifyNewTicketInput.checked,
         slaExempt: slaExemptInput.checked,
         closeSilentEnabled: closeSilentOn(),
         ...(closeSilentOn()
@@ -733,6 +739,20 @@ const InboxRow: Component<InboxRowProps> = (props) => {
             </span>
             <span class="pl-6 text-xs text-text-secondary">
               {i18n.t("tickets.ticketsFromThisInboxRaiseNo")}
+            </span>
+          </label>
+          <label class="flex flex-col gap-1 sm:col-span-2">
+            <span class="flex items-center gap-2">
+              <input
+                ref={notifyNewTicketInput}
+                type="checkbox"
+                data-testid={`tickets-inboxes-notify-new-ticket-${props.inbox.id}`}
+                checked={notifyNewTicket(props.inbox)}
+              />
+              {i18n.t("tickets.notifyOnNewTicket")}
+            </span>
+            <span class="pl-6 text-xs text-text-secondary">
+              {i18n.t("tickets.eachNewTicketInThisInboxRaises")}
             </span>
           </label>
           <label class="flex flex-col gap-1 sm:col-span-2">

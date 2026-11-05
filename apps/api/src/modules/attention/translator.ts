@@ -787,7 +787,10 @@ function adaptManifestTranslation(t: ManifestTranslation, app: string): Translat
     summary: t.summary,
     when: t.when,
     recipients,
-    excludeActor: t.recipients.kind === "participants" ? Boolean(t.recipients.excludeActor) : false,
+    excludeActor:
+      t.recipients.kind === "participants" || t.recipients.kind === "scope_holders"
+        ? Boolean(t.recipients.excludeActor)
+        : false,
     resolveWhen: t.resolveWhen,
   }
 }

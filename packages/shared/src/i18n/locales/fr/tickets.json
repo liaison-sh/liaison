@@ -171,6 +171,8 @@
   "defaultForNewTickets": "Par défaut pour les nouveaux tickets",
   "monitoringInboxKeepOutOfThe": "Boîte de surveillance : exclue du fil d'alertes",
   "ticketsFromThisInboxRaiseNo": "Les tickets de cette boîte ne créent pas d'alertes et ne comptent pas comme en attente de réponse (santé du backlog, relevés des tickets à traiter). À utiliser pour des flux automatiques comme les signalements de bugs. Les relances que vous programmez restent visibles.",
+  "notifyOnNewTicket": "Prévenir à chaque nouveau ticket",
+  "eachNewTicketInThisInboxRaises": "Chaque nouveau ticket de cette boîte crée une alerte pour les personnes qui administrent les boîtes. Téléphone, ordinateur, récapitulatif et heures calmes suivent les réglages de notification de chacun. Une boîte de surveillance reste silencieuse.",
   "noSlaExemptThisInboxS": "Sans SLA : les tickets de cette boîte en sont exemptés",
   "ticketsCreatedInThisInboxGet": "Les tickets créés dans cette boîte n'ont pas d'échéance SLA, ne la dépassent jamais et n'affichent pas de compte à rebours. À utiliser pour des flux automatiques comme les signalements de bugs, qui n'attendent jamais de réponse.",
   "b2bPartner": "B2B (partenaire)",

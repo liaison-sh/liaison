@@ -262,6 +262,22 @@ interface ActorRef {
   operatingScopes?: string[]
 }
 
+export type CreateTicketOptions = PrivilegedReadOptions & {
+  /**
+   * The ticket records something from the past (an import, a mailbox backfill),
+   * or our own mail: it is not news, so a "Notify on new ticket" inbox says
+   * nothing. An option rather than a param, so no tool input can set it.
+   */
+  notNews?: boolean
+}
+
+/** What a new-ticket notice calls the person who asked: name and address, whichever exist. */
+function requesterLabel(name: string | null | undefined, email: string | null): string {
+  const cleanName = name?.trim()
+  if (cleanName && email) return `${cleanName} <${email}>`
+  return cleanName || email || "unknown sender"
+}
+
 export async function createTicket(
   tx: SqlClient,
   orgId: string,
@@ -269,7 +285,7 @@ export async function createTicket(
   actor: ActorRef,
   // A caller inside a privileged transaction passes it here: every privileged
   // read then runs on it, never on a second connection (privileged-read.ts).
-  opts: PrivilegedReadOptions = {},
+  opts: CreateTicketOptions = {},
 ): Promise<
   | {
       ticketId: string
@@ -594,6 +610,15 @@ export async function createTicket(
   // a comparison a NULL deadline never satisfies). Resolved from whichever inbox
   // the ticket lands in (explicit or the default-for-create fallback below).
   let slaExempt = false
+  // The inbox's "Notify on new ticket": its name when it applies, read from the
+  // same row. A monitoring inbox (suppress_attention) stays silent whatever the flag.
+  let notifyInboxName: string | null = null
+  const notifyName = (row: {
+    name: string
+    notify_new_ticket: boolean | null
+    suppress_attention: boolean | null
+  }): string | null =>
+    row.notify_new_ticket === true && row.suppress_attention !== true ? row.name : null
   if (params.sourceInboxId) {
     // A sourceInboxId MUST be a UUID. Without this guard a non-UUID value (e.g. the inbox SLUG
     // "support", or any free-text the agent guessed) reached `WHERE id = 'support'` against the
@@ -611,7 +636,7 @@ export async function createTicket(
       }
     }
     const ib = await tx.execute(
-      drizzleSql`SELECT archived_at, connected_account_id, default_team, default_audience, default_sensitivity, sla_exempt FROM ${ticketsRel("inboxes")} WHERE id = ${params.sourceInboxId}::uuid AND org_id = ${orgId} LIMIT 1`,
+      drizzleSql`SELECT archived_at, connected_account_id, default_team, default_audience, default_sensitivity, sla_exempt, name, notify_new_ticket, suppress_attention FROM ${ticketsRel("inboxes")} WHERE id = ${params.sourceInboxId}::uuid AND org_id = ${orgId} LIMIT 1`,
     )
     const row = extractRows<{
       archived_at: Date | null
@@ -620,6 +645,9 @@ export async function createTicket(
       default_audience: string | null
       default_sensitivity: "internal" | "confidential" | "restricted" | null
       sla_exempt: boolean | null
+      name: string
+      notify_new_ticket: boolean | null
+      suppress_attention: boolean | null
     }>(ib)[0]
     if (!row) {
       return { error: { code: "not_found", message: "inbox not found", retryable: false } }
@@ -635,6 +663,7 @@ export async function createTicket(
     audience = (params.audience as string | null | undefined) ?? row.default_audience ?? null
     sensitivity = params.sensitivity ?? row.default_sensitivity ?? "internal"
     slaExempt = row.sla_exempt === true
+    notifyInboxName = notifyName(row)
   } else {
     // No explicit sourceInboxId → bind the ticket to the org's DEFAULT outbound inbox so a created
     // ticket is REPLYABLE. Without this a manually/agent-created ticket landed with source_inbox_id
@@ -661,9 +690,13 @@ export async function createTicket(
           default_audience: string | null
           default_sensitivity: "internal" | "confidential" | "restricted" | null
           sla_exempt: boolean | null
+          name: string
+          notify_new_ticket: boolean | null
+          suppress_attention: boolean | null
         }>(
           await pTx.execute(
-            drizzleSql`SELECT i.id, i.connected_account_id, i.default_team, i.default_audience, i.default_sensitivity, i.sla_exempt
+            drizzleSql`SELECT i.id, i.connected_account_id, i.default_team, i.default_audience, i.default_sensitivity, i.sla_exempt,
+                            i.name, i.notify_new_ticket, i.suppress_attention
                        FROM ${ticketsRel("inboxes")} i
                        JOIN ${kernelRel("connected_accounts")} ca ON ca.id = i.connected_account_id
                       WHERE i.org_id = ${orgId}::uuid AND i.archived_at IS NULL
@@ -680,6 +713,7 @@ export async function createTicket(
       audience = (params.audience as string | null | undefined) ?? dib.default_audience ?? null
       sensitivity = params.sensitivity ?? dib.default_sensitivity ?? "internal"
       slaExempt = dib.sla_exempt === true
+      notifyInboxName = notifyName(dib)
     }
   }
 
@@ -699,6 +733,20 @@ export async function createTicket(
       : null) ??
     normalizeEmail(params.contactEmail) ??
     null
+
+  // A backdated ticket is history too, whoever creates it.
+  const newTicketNotice =
+    notifyInboxName !== null && opts.notNews !== true && !params.createdAt
+      ? {
+          notifyNewTicket: true,
+          inboxName: notifyInboxName,
+          requester: requesterLabel(
+            (initialForRequester?.kind === "inbound" ? initialForRequester.fromName : null) ??
+              params.contactName,
+            requesterEmail,
+          ),
+        }
+      : null
 
   const userId = actor.actorType === "user" ? actor.userId : null
 
@@ -863,7 +911,18 @@ export async function createTicket(
           entity: "ticket",
           action: "create",
           entityId: ticketId,
-          data: { ticketId, handle: displayHandle, subject: params.subject, priority, channel },
+          data: {
+            ticketId,
+            handle: displayHandle,
+            subject: params.subject,
+            priority,
+            channel,
+            // The ticket's dimension values, so the WS frame filter keeps its
+            // subject (and a notice's requester) within its team and sensitivity.
+            "tickets:team": team,
+            "tickets:sensitivity": sensitivity,
+            ...newTicketNotice,
+          },
           actorId: actor.userId,
           actorType: actor.auditActorType ?? actor.actorType,
           orgId,

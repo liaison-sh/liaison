@@ -311,7 +311,8 @@ expected, so a placeholder never reaches a record or a customer.
 field's `validation.pattern` and a connection's template variable or authorize
 parameter pattern run on the server. The install refuses a pattern longer than
 512 characters or one whose matching time is not linear, such as `^(a|a)+$`:
-a repeated part must not match the same text in two ways. See
+a repeated part must not match the same text in two ways. A pattern whose check
+takes too long is refused too, so keep patterns short. See
 [the package format](app-package-format.md#regular-expressions-in-a-manifest).
 
 ---

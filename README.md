@@ -229,6 +229,13 @@ The production path — TLS termination, DNS, backups and the restore drill,
 rolling upgrades, and an incident playbook — is documented end to end in the
 [Production Bootstrap runbook](docs/runbooks/production-bootstrap.md).
 
+You choose how fast you take new versions. The `release` channel (the default)
+gets versions promoted from a nightly that has run on the maintainers' instances;
+the `nightly` channel gets a signed build of the newest green `main` each day, with
+no soak (`./deploy/quickstart.sh --channel nightly`). Migrations only go forward,
+so read [Choose a channel](docs/admin/upgrades.md#choose-a-channel) before you
+switch.
+
 For headless, config-as-code org provisioning (org, admin, members, BYOK keys,
 org API keys, Mail app mailboxes, ticket inboxes, apps, knowledge) from a
 single file, see the [Provisioning CLI](docs/provisioning-cli.md)

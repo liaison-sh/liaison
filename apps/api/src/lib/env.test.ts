@@ -497,3 +497,32 @@ describe("env schema: process role and leader lease", () => {
     expect(short.data.LEADER_LEASE_POLL_MS).toBe(250)
   })
 })
+
+describe("LIAISON_RELEASE_CHANNEL", () => {
+  const parse = (value?: string) => {
+    const { envSchema } = require("~/lib/env")
+    return envSchema.safeParse({
+      JWT_SECRET: "a".repeat(32),
+      ENCRYPTION_KEY: "a".repeat(64),
+      BASE_URL: "http://localhost:3000",
+      ALLOWED_ORIGINS: "http://localhost:5173",
+      ...(value === undefined ? {} : { LIAISON_RELEASE_CHANNEL: value }),
+    })
+  }
+
+  test("defaults to release, also when set empty", () => {
+    expect(parse().data.LIAISON_RELEASE_CHANNEL).toBe("release")
+    expect(parse("").data.LIAISON_RELEASE_CHANNEL).toBe("release")
+  })
+
+  test("accepts nightly and release", () => {
+    expect(parse("nightly").data.LIAISON_RELEASE_CHANNEL).toBe("nightly")
+    expect(parse("release").data.LIAISON_RELEASE_CHANNEL).toBe("release")
+  })
+
+  test("refuses anything else", () => {
+    const result = parse("beta")
+    expect(result.success).toBe(false)
+    expect(result.error.issues[0].path).toEqual(["LIAISON_RELEASE_CHANNEL"])
+  })
+})

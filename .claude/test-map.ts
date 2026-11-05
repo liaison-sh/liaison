@@ -168,6 +168,7 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   { glob: "scripts/migration-safety-baseline.json", suites: ["guards"] },
   { glob: "scripts/__fixtures__/migration-safety/**", suites: ["guards"] },
   { glob: ".github/workflows/**", suites: ["guards"] },
+  { glob: ".github/actions/**", suites: ["guards"] },
   { glob: "apps/api/Dockerfile", suites: ["guards"] },
 
   // Desktop shell, demo seeder, and the compose files the root suite validates.

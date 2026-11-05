@@ -490,7 +490,8 @@ During a deploy the previous release runs against the new schema, so release N's
 
 - Expand, migrate the code, contract. A column, table, enum value or jsonb key is removed only after a release that no longer reads or writes it.
 - Code that reads an enum, a `state` value or a jsonb shape tolerates values it does not know: it skips them or treats them as opaque, and never throws.
-- Rolling back to the previous image is always schema-compatible, because a contract only follows a release that stopped using the object.
+- The previous image's running processes stay schema-compatible, because a contract only follows a release that stopped using the object.
+- Starting an image older than the schema is refused (`apps/api/src/db/schema-guard.ts`, in the migration step and in the entrypoint): migrations only go forward. `LIAISON_ALLOW_OLDER_IMAGE=true` is the unsupported emergency override.
 
 `bun run check:migration-safety` (CI) refuses a new migration that breaks this, unless the file says why it is safe:
 

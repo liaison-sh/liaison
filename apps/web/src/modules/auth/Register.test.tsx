@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { clearAuth } from "~/modules/auth/auth-store"
 import Register from "~/modules/auth/Register"
+import { _resetBranding, ensureBrandingLoaded } from "~/modules/shell/branding-store"
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -38,6 +39,31 @@ describe("Register", () => {
     renderWithRouter()
     expect(screen.getByPlaceholderText("Your name")).toBeInTheDocument()
     expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument()
+  })
+
+  it("an invite link still opens the form on a server that hides account creation", async () => {
+    _resetBranding()
+    await ensureBrandingLoaded(
+      vi.fn(async () =>
+        jsonResponse({ data: { orgName: "Managed", flags: { noAccountEntry: true } } }),
+      ),
+    )
+    fetchMock.mockResolvedValue(jsonResponse({ data: { email: "new@acme.test" } }))
+    window.history.pushState(null, "", "/register?token=invite-token")
+    render(() => (
+      <Router>
+        <Route path="*" component={Register} />
+      </Router>
+    ))
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/invites/invite-token/validate"),
+        expect.anything(),
+      ),
+    )
+    expect(await screen.findByPlaceholderText("Your name")).toBeInTheDocument()
+    expect(screen.queryByPlaceholderText("you@company.com")).not.toBeInTheDocument()
+    _resetBranding()
   })
 
   it("shows email field in bootstrap mode (no invite token)", () => {

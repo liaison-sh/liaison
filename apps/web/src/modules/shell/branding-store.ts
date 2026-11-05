@@ -58,7 +58,7 @@ const demoOrgSurfaces = (): boolean => demoMode() && signedInOrgDemo() === true
 const [demoMode, setDemoMode] = createSignal(false)
 
 /**
- * The server says nobody can join this host's workspace (closed, or gone): the
+ * The server takes new accounts by invitation only (the managed edition): the
  * login page offers no account creation. False until told otherwise.
  */
 const [noAccountEntry, setNoAccountEntry] = createSignal(false)

@@ -288,13 +288,13 @@ describe("Login on a demo deployment", () => {
     expect(screen.queryByTestId("auth-card")).toBeNull()
   })
 
-  it("offers no account creation where nobody can sign in", async () => {
+  it("offers no account creation where the server says accounts come by invitation", async () => {
     _resetBranding()
     await ensureBrandingLoaded(
       (async () =>
         ({
           ok: true,
-          json: async () => ({ data: { orgName: "Closed", flags: { noAccountEntry: true } } }),
+          json: async () => ({ data: { orgName: "Managed", flags: { noAccountEntry: true } } }),
         }) as unknown as Response) as unknown as typeof fetch,
     )
     renderWithRouter()

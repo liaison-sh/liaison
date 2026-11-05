@@ -354,7 +354,7 @@ describe("past accessUntil, then closed", () => {
   })
 })
 
-describe("the login page of a workspace nobody can sign in to", () => {
+describe("the login page of a managed workspace", () => {
   const onHost = (origin: string, path: string) =>
     app.request(`${origin}${path}`, { headers: { host: new URL(origin).host } })
   const flags = async (origin: string) =>
@@ -373,12 +373,13 @@ describe("the login page of a workspace nobody can sign in to", () => {
     return org
   }
 
-  test("open, and suspended inside the admins' window: both offered as before", async () => {
+  test("open, and suspended inside the admins' window: providers offered, account creation never", async () => {
+    // A managed /register takes invitations only, and an invite link goes straight to it.
     const org = await withGoogle("login-open")
-    expect(await flags(org.origin)).toEqual({})
+    expect(await flags(org.origin)).toEqual({ noAccountEntry: true })
     expect(await providers(org.origin)).toHaveLength(1)
     await push(org.id, "suspended", { accessUntil: inDays(5) })
-    expect(await flags(org.origin)).toEqual({})
+    expect(await flags(org.origin)).toEqual({ noAccountEntry: true })
     expect(await providers(org.origin)).toHaveLength(1)
   })
 

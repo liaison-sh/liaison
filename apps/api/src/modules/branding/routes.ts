@@ -43,16 +43,13 @@
 // answer. Anything else is `private`: still cacheable by the client that asked,
 // never by something in between serving other tenants.
 import { asc, eq } from "drizzle-orm"
-import type { Context } from "hono"
 import { Hono } from "hono"
 import type { AppEnv } from "~/app"
 import { withSystemDb } from "~/db/privileged"
 import { organizations } from "~/db/schema/kernel"
 import { isManagedEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
-import { orgIdForSlug, requestHostBinding } from "~/lib/org-host"
 import { success } from "~/lib/response"
-import { orgAccess } from "~/modules/cloud/suspension"
 import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 
 export const brandingRoutes = new Hono<AppEnv>()
@@ -82,9 +79,9 @@ export interface PublicBranding {
    * `POST /api/demo/orgs` at all, and on every other deployment the object is
    * absent-keyed exactly as it was: `{}`.
    *
-   * `noAccountEntry`, present and true only on a managed org's host where nobody
-   * can sign in (closed, suspended past its admins' window) or that names no org
-   * here (retired): the login page offers no "Create an account" there.
+   * `noAccountEntry`, present and true on every host of a managed server: its
+   * /register takes invitations only, and an invite link goes straight to it, so
+   * the login page offers no "Create an account". Absent on a self-hosted one.
    */
   flags: Record<string, boolean>
   /**
@@ -138,15 +135,6 @@ function isSlugShaped(value: string): boolean {
   return value.length > 0 && value.length <= 63 && /^[a-z0-9][a-z0-9-]*$/.test(value)
 }
 
-/** Nothing to join or create on this org's host; false, without a query, self-hosted. */
-async function hostOffersNoAccountEntry(c: Context): Promise<boolean> {
-  if (!isManagedEdition()) return false
-  const binding = requestHostBinding(c)
-  if (binding.kind !== "org") return false
-  const orgId = await orgIdForSlug(binding.slug)
-  return orgId === null || (await orgAccess(orgId)) === "refused"
-}
-
 brandingRoutes.get("/branding", async (c) => {
   const requested = requestedOrgSlug(c.req.header("host"))
 
@@ -177,7 +165,7 @@ brandingRoutes.get("/branding", async (c) => {
     // deployment's body is byte identical to what it has always been.
     flags: {
       ...(isDemoModeEnabled() ? { demo: true } : {}),
-      ...((await hostOffersNoAccountEntry(c)) ? { noAccountEntry: true } : {}),
+      ...(isManagedEdition() ? { noAccountEntry: true } : {}),
     },
     byokModelIds: [],
     ...(env.LIAISON_PRIVACY_URL ? { privacyUrl: env.LIAISON_PRIVACY_URL } : {}),

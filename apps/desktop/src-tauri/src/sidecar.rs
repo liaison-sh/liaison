@@ -2246,7 +2246,49 @@ pub fn settle_boot<F: FnOnce()>(
 /// other account on the machine. The mode is set at creation AND again on the
 /// open handle, because a create-time mode does nothing to a file that already
 /// exists. Windows keeps the directory's inherited ACL.
+///
+/// AND IT IS REPLACED WHOLE. The bytes go to a sibling file that is flushed to
+/// disk and then renamed over the target, so a reader never sees the file
+/// truncated or half written and a quit, crash or power cut mid write leaves
+/// the previous content rather than an empty file. Truncating in place let a
+/// concurrent read of the refresh token file come back empty, and its
+/// read-modify-write then wrote back a map without the token just rotated.
 pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let staging = path.with_file_name(format!(
+        ".{name}.{}-{}.tmp",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    let written =
+        write_private_in_place(&staging, bytes).and_then(|()| fs::rename(&staging, path));
+    match written {
+        Ok(()) => {
+            // The rename itself is made durable too: without the directory's
+            // flush a power cut can bring the old entry back.
+            #[cfg(unix)]
+            if let Some(parent) = path.parent() {
+                if let Ok(dir) = fs::File::open(parent) {
+                    let _ = dir.sync_all();
+                }
+            }
+            Ok(())
+        }
+        Err(_) => {
+            // A rename can be refused where the target is held open (Windows):
+            // the write in place is still better than no write at all.
+            let _ = fs::remove_file(&staging);
+            write_private_in_place(path, bytes)
+        }
+    }
+}
+
+fn write_private_in_place(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let mut options = OpenOptions::new();
     options.write(true).create(true).truncate(true);
     #[cfg(unix)]
@@ -2262,7 +2304,8 @@ pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> io::Result<()> {
         permissions.set_mode(0o600);
         file.set_permissions(permissions)?;
     }
-    file.write_all(bytes)
+    file.write_all(bytes)?;
+    file.sync_all()
 }
 
 /// The per-session `--mcp-config` file. Written under the app's own config

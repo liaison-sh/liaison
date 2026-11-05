@@ -74,7 +74,7 @@ The first administrator to sign in to a new workspace is greeted by their agent 
 
 Sign-in is passwordless by default: a person enters their email, clicks **Continue with email** and types the 6-digit code (valid 10 minutes) or opens the link in the email. A person who has a password can choose **Sign in with a password** instead, and changes it in **Settings › Security › Change password**. Changing or resetting a password ends every session of that person and every AI tool they connected over MCP; the tools must connect again. It also stops push notifications to every phone and browser the person registered: the phone app registers again at its next launch, and in a browser the person turns notifications on again.
 
-A sign-in stays open for 30 days from its last use. A browser that loses the answer to a session renewal on a bad network (a train, a tunnel) and retries within 3 minutes stays signed in. If an old renewal token is used again after its replacement was already in use, Liaison treats it as stolen and ends every session of that sign-in; the person signs in again.
+A sign-in stays open for 30 days from its last use. A browser that loses the answer to a session renewal on a bad network (a train, a tunnel) and retries within 3 minutes stays signed in. If an old renewal token is used again after its replacement was already in use, Liaison treats it as stolen and ends that one sign-in (the device or browser that presented it), which then asks the person to sign in again. The person's other sign-ins, on other devices and browsers, stay open.
 
 Admins with `kernel:org:admin` see a **Sign-in methods** section in **Settings › Security**:
 

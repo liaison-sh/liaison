@@ -63,7 +63,7 @@ Enable 2FA -> packages/shared/src/i18n/locales/en/kernel.json:2405
 First admin sign-in of a new workspace opens the setup conversation -> apps/api/src/modules/auth/auth.ts:549
 session lasts 30 days from last renewal -> apps/api/src/modules/auth/auth.ts:383
 lost renewal answer, 3 minute retry window -> apps/api/src/modules/auth/auth.ts:584
-reused old renewal token ends the sign-in's sessions -> apps/api/src/modules/auth/auth.ts:748
+reused old renewal token ends only that sign-in (its family); other sign-ins stay open -> apps/api/src/modules/auth/auth.ts:706 ; apps/api/src/modules/auth/refresh-lost-response-routes.test.ts:223
 Seat limit: agents/deactivated take no seat; invite, accept, SSO first sign-in, reactivate refused SEAT_LIMIT_REACHED with limit and used -> apps/api/src/modules/org/caps.ts:180 ; apps/api/src/modules/users/invites.ts:108 ; apps/api/src/modules/auth/auth.ts:242 ; apps/api/src/modules/auth/oauth-routes.ts:959 ; apps/api/src/modules/users/service.ts:430
 deactivation revokes the sessions' access tokens -> apps/api/src/modules/users/service.ts:395
 open real-time connections of an ended session close -> apps/api/src/lib/server.ts:558

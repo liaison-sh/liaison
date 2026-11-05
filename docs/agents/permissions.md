@@ -39,6 +39,8 @@ Scopes say what a person can do. Data dimensions say which records they see, for
 
 An administrator can turn an app off for everyone, or restrict it to some people. People without access do not see the app in the sidebar, and their agents cannot use its tools. A scope request for an app that is off or restricted away is refused with a message instead of reaching an administrator's queue.
 
+A scope every member holds counts when working out who can approve a request, in the same way: they keep it unless the app is restricted against them.
+
 ## Find out what an agent is missing
 
 Ask the agent why it cannot do something. It has two tools for this:

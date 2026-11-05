@@ -12,3 +12,4 @@ Settings › Connectors › Database › Report access, kernel:apps:admin -> app
 Raw queries are not limited by tiers -> packages/shared/src/i18n/locales/en/database.json:8
 config apply: apps[].domainAccess on the database entry -> apps/api/src/cli/config/schema.ts:304-357
 A read param cast once is cast at every use -> packages/db-core/src/catalog.ts:164-179 ; packages/db-core/src/catalog.ts:192-217 ; apps/api/src/apps/database/knowledge-sync.integration.test.ts:1
+db_query takes at most 100,000 characters; over it the code is query_too_long -> packages/db-core/src/sql-guard.ts:25 ; packages/db-core/src/sql-guard.ts:275-280 ; apps/api/src/apps/database/app.manifest.json:213

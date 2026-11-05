@@ -162,8 +162,21 @@ export function agentNoticeCode(
   return null
 }
 
-const STOP_REASON = /\((stop reason: [^)]+|this run's limit is [^)]+)\)/
+const STOP_REASON_OPEN = /\((?:stop reason: |this run's limit is )/g
 const TOOL_CALLS_DONE = /I completed \d+ tool calls? before stopping/
+
+/** The text of the first non-empty "(stop reason: ...)" or "(this run's limit is ...)"
+ *  aside, without its parentheses. Forward scans only: a run with no closing parenthesis
+ *  ends the search, so the cost stays linear. */
+function stopReasonOf(text: string): string | undefined {
+  for (const open of text.matchAll(STOP_REASON_OPEN)) {
+    const valueStart = open.index + open[0].length
+    const close = text.indexOf(")", valueStart)
+    if (close === -1) return undefined
+    if (close > valueStart) return text.slice(open.index + 1, close)
+  }
+  return undefined
+}
 
 /**
  * The failure's own detail a failure message carries, safe to show, or null: the provider's
@@ -179,7 +192,7 @@ export function agentNoticeDetail(content: string | null | undefined): string | 
     return safeAgentNoticeDetail(s.includes(":") ? s.slice(s.indexOf(":") + 1) : "")
   }
   if (s.startsWith(STOPPED_EARLY_PREFIX) || s.startsWith(CREDITS_RAN_OUT_PREFIX)) {
-    const parts = [STOP_REASON.exec(s)?.[1], TOOL_CALLS_DONE.exec(s)?.[0]].filter(Boolean)
+    const parts = [stopReasonOf(s), TOOL_CALLS_DONE.exec(s)?.[0]].filter(Boolean)
     return parts.length > 0 ? safeAgentNoticeDetail(`${parts.join("; ")}.`) : null
   }
   return null

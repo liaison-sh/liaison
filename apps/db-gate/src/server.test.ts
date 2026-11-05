@@ -9,7 +9,7 @@
 // and dirty-probe startup refusal under DB_GATE_ALLOW_QUERY=true.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import type { ReadCatalog } from "@liaison/db-core"
+import { MAX_RAW_SQL_CHARS, type ReadCatalog } from "@liaison/db-core"
 import postgres from "postgres"
 import { loadConfig } from "./config"
 import { GateDb } from "./gate-db"
@@ -224,6 +224,24 @@ describe("db-gate server — /query", () => {
       expect(res.status).toBe(200)
       const body = (await res.json()) as { rows: Record<string, unknown>[] }
       expect(body.rows[0]?.one).toBe(1)
+    } finally {
+      await db.close()
+    }
+  })
+
+  test("enabled + over the length limit -> sql-guard rejection (400) with its code", async () => {
+    const { handler, db } = makeHandler({ allowQuery: true })
+    try {
+      const res = await handler(
+        req("/query", {
+          method: "POST",
+          token: TOKEN,
+          body: { sql: `SELECT '${"a".repeat(MAX_RAW_SQL_CHARS)}'` },
+        }),
+      )
+      expect(res.status).toBe(400)
+      const body = (await res.json()) as { error: { code: string } }
+      expect(body.error.code).toBe("query_too_long")
     } finally {
       await db.close()
     }

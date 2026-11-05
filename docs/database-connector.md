@@ -79,7 +79,7 @@ agent ──tool call──▶ execute-tool.ts (trust boundary → scope → AJV
 | `db_read(name, params)` | `database:reads:read` | Run a named, parameterized curated read. Result columns restricted to the read's allow-list. |
 | `db_describe(table?, schema?, search?, connection?)` | `database:reads:read` (plus `database:query:read` for `connection: "warehouse"`) | Discovery, grant-grounded (not the catalog). With no `table`: a compact listing, `schema.table` plus its column count, narrowed by `schema` (exact) or `search` (substring), never the columns (a 165-table warehouse's full map was ~121 KB and got truncated). With `table`: that table's columns and types. Secret columns filtered out. |
 | `db_probe(connection?)` | `database:reads:read` (plus `database:query:read` for `connection: "warehouse"`) | Run the connect-time safety probe on demand — write/EXECUTE grants beyond the allow-list, catalog drift (gate mode). |
-| `db_query(sql, connection?)` | `database:query:read` | Raw, single-statement SELECT. Enabled by default; a deployment can disable it with `LIAISON_DATABASE_ALLOW_RAW_QUERY=false`. Same grant restrictions as curated reads. |
+| `db_query(sql, connection?)` | `database:query:read` | Raw, single-statement SELECT of at most 100,000 characters. Enabled by default; a deployment can disable it with `LIAISON_DATABASE_ALLOW_RAW_QUERY=false`. Same grant restrictions as curated reads. |
 
 `roles`: `member` gets `database:reads:read`; `admin` additionally gets
 `database:query:read` (the raw-query surface is the higher-trust capability).
@@ -507,6 +507,7 @@ here's what each field means and what to do about it.
 | Typed error `kind: "timeout"` (tool code `statement_timeout`) | `statement_timeout` (default 10s / 15s for the role-level setting, at most 55 s inside a tool call) fired, or the tool call ran out of budget and the bridge cancelled the statement — the query is too expensive or `pg_sleep`-shaped and rightly got cut off. | If it's a legitimate slow read, consider narrowing the `WHERE` or paging via `maxRows`; this is not a bug to "fix" by raising the timeout casually. |
 | `db_query` error `code: "disabled"` | This deployment explicitly opted out (`LIAISON_DATABASE_ALLOW_RAW_QUERY=false`). | Remove the opt-out env var if the deployment wants the raw-query surface back (it's on by default; still grant-restricted). |
 | `db_query` / raw SQL rejected with a sql-guard code (e.g. `multi_statement`, `not_select`, `dangerous_function`) | The SELECT-only validator caught a hostile or malformed shape before it ever reached Postgres. | Rewrite the query as a single `SELECT`/`WITH ... SELECT`; if it needs a function on the denylist, that function is blocked by design — use a curated read instead. |
+| `db_query` / raw SQL rejected with code `query_too_long`, or a `sql` parameter error | The statement is over the 100,000 character limit. | Shorten it, or split it into smaller queries. |
 | Postgres `42501` surfaced directly (e.g. via `db_describe` or a `db_query` result) | The grant layer itself refused — a table/column outside the allow-list. This is the primary wall doing its job, not a misconfiguration to route around. | Add the table/column to the catalog (if it should be readable) and regenerate `readonly-grants.sql`; do not attempt to work around this at the app layer. |
 
 ---

@@ -556,10 +556,11 @@ describe("Boxtal app.manifest.json", () => {
     // tracking number, and leave the customer email to the shopify app's shipping email policy.
     // 0.23.1: the create-draft form's scroll end leaves room to lift its submit row above the
     // desktop chat dock's bar.
+    // 0.23.3: prep_set_address_choice validates at staging and binds the pick to the addresses on its card.
     // 0.23.2: a carrier order id no longer reaches the uuid row-id lookup (print_pack,
     // ready_set_packed, import_label_document), and print_pack renders an issued invoice's missing
     // PDF on demand instead of failing the invoice job.
-    expect(m.version).toBe("0.23.2")
+    expect(m.version).toBe("0.23.3")
     expect(m.packageFormat).toBe(1)
   })
 

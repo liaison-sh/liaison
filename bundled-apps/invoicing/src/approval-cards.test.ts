@@ -337,3 +337,61 @@ describe("invoicing approval cards: a quote staged before it is issued", () => {
   })
 })
 
+describe("invoicing approval cards: a draft parked for any reason but a consumer declaration", () => {
+  const CONSUMER = /private consumer|consumer VAT/i
+  const company = {
+    type: "proforma",
+    counterparty_name: "Werkton Distribution GmbH",
+    counterparty_vat_id: "DE123456789",
+    shopify_order_number: "3446",
+    currency: "EUR",
+    items: [{ description: "Kestrel 6", quantity: 2, unit_price_minor: 41940 }],
+  }
+
+  it("drafts_create for a company: says what it creates, and claims no consumer", async () => {
+    const card = await cardFor("drafts_create", company)
+    expectHuman(card, ["41940"])
+    expect(card.title).toBe("Create a draft proforma for Werkton Distribution GmbH")
+    expect(visible(card)).not.toMatch(CONSUMER)
+    expect(visible(card)).toContain("Order: #3446")
+    expect(visible(card)).toContain("Kestrel 6 x 2 @ 419.40")
+  })
+
+  it("drafts_create that declares a consumer says so, in the call's own terms", async () => {
+    const card = await cardFor("drafts_create", { ...company, buyer_is_consumer: true })
+    expectHuman(card)
+    expect(card.lines[0]).toContain("This call declares the buyer a private consumer")
+  })
+
+  it("drafts_update of a company draft: names the document and the change, and claims no consumer", async () => {
+    const context = { id: DOC_ID, type: "proforma", number: null, counterparty_name: "Werkton Distribution GmbH" }
+    const card = await cardFor("drafts_update", { draft_id: DOC_ID, patch: { notes: "Ship in one crate" } }, context)
+    expectHuman(card)
+    expect(card.title).toBe("Update draft proforma (Werkton Distribution GmbH)")
+    expect(visible(card)).toContain("Notes: set to Ship in one crate")
+    expect(visible(card)).not.toMatch(CONSUMER)
+  })
+
+  it("drafts_update still says something true when the document cannot be read", async () => {
+    const card = await cardFor("drafts_update", { draft_id: DOC_ID, patch: { due_at: "2026-11-30" } })
+    expectHuman(card)
+    expect(card.title).toBe("Update a draft")
+    expect(visible(card)).not.toMatch(CONSUMER)
+  })
+
+  it("drafts_update that declares or clears a consumer says so", async () => {
+    const declared = await cardFor("drafts_update", { draft_id: DOC_ID, patch: { buyer_is_consumer: true } })
+    expect(declared.lines[0]).toContain("This call declares the buyer a private consumer")
+    const cleared = await cardFor("drafts_update", { draft_id: DOC_ID, patch: { buyer_is_consumer: false } })
+    expect(cleared.lines[0]).toContain("removes the declaration")
+    expectHuman(declared)
+    expectHuman(cleared)
+  })
+
+  it("the tools use the summarizer, not a fixed sentence", () => {
+    for (const name of ["drafts_create", "drafts_update"]) {
+      expect(typeof TOOLS[name]?.summarizer).toBe("string")
+      expect(TOOLS[name]?.approvalCard).toBeUndefined()
+    }
+  })
+})

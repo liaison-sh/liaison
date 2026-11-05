@@ -67,7 +67,7 @@ When the order has a ship-to and the customer has a verified delivery address th
 1. Click **Address differs** on the row. The order's address and the verified address open side by side under it.
 2. Click **Use order address** or **Use verified address**.
 
-The pick holds until either address changes; then the row shows **Address differs** again. An agent can ask for the same pick (`prep_set_address_choice`), which always waits for a person to approve it. For a return, which has no **To prepare** row, the pick is made the same way with `prep_set_address_choice` on the sale invoice.
+The pick holds until either address changes; then the row shows **Address differs** again. An agent can ask for the same pick (`prep_set_address_choice`), which always waits for a person to approve it. Its approval card shows the two addresses as they read when it was asked. If either one changes before the approval, approving stores nothing, says so, and the row stays held: ask again. An agent is told at once when there is nothing to pick. For a return, which has no **To prepare** row, the pick is made the same way with `prep_set_address_choice` on the sale invoice.
 
 Two addresses are the same place only when the country, postal code, city, street and house number all match (spelling, accents and common abbreviations aside). If the store cannot be reached when the label is bought, nothing is bought and the label is refused with "Could not read the order's address from the store; try again" rather than guessing an address.
 

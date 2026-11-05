@@ -7,6 +7,20 @@
 // unit process is watched for silence: bun prints every file as it finishes and the
 // tests log, so a process that says nothing for several per-test timeouts in a row
 // is wedged. It is killed, and it counts as a failure that names what it was doing.
+//
+// That progress is bun's default, not a promise: when it believes an AI agent is running
+// it (the variables below) it prints nothing until the end, and a quiet healthy process
+// then reads as wedged. A watched process runs without them (withoutQuietBunVars).
+
+/** The variables that make `bun test` hold back its per-file progress (bun 1.4.4). */
+export const QUIET_BUN_VARS = ["CLAUDECODE", "AGENT", "REPL_ID"] as const
+
+/** A copy of `env` for a watched `bun test` process, whose progress is its proof of life. */
+export function withoutQuietBunVars(env: Record<string, string>): Record<string, string> {
+  const out = { ...env }
+  for (const name of QUIET_BUN_VARS) delete out[name]
+  return out
+}
 
 /** Silence that means wedged: five per-test timeouts, overridable for one slow test. */
 export function silenceLimitMs(perTestTimeoutMs: number, override?: string): number {

@@ -27,6 +27,17 @@ export function scopeMatchesFragment(scopeColumnExpr: SQL, requiredExpr: SQL): S
 }
 
 /**
+ * The scopes every member holds, as a grant-table reader must count them: a real scope check
+ * (`loadEffectivePermissions`) adds them to the stored grants, so a reader of the grant tables that
+ * leaves them out answers differently from the decide check. The one SQL statement of
+ * `everyMemberScopeGrants`, with the app restriction a real check applies to these grants
+ * (migration 0261).
+ */
+export function everyMemberScopeFragment(orgId: string, userExpr: SQL, requiredExpr: SQL): SQL {
+  return drizzleSql`${K}.every_member_scope_covers(${orgId}::uuid, ${userExpr}, ${requiredExpr}::text)`
+}
+
+/**
  * The app whose restriction (S20) decides who may approve: the tool's own app when
  * the caller names it (the `approval_requests_select` policy reads
  * `split_part(tool_name, ':', 1)`, so a manifest `approveScope` from another app
@@ -42,6 +53,8 @@ function restrictionApp(requiredScope: string, toolApp: string | undefined): str
  * `toolApp`: the app of the tool being approved, when the scope is a deciding scope;
  * people a restriction of that app keeps out are not approvers.
  *
+ * Effective scopes are the stored grants plus the computed every-member ones, so this answers as
+ * `hasScope` does over `loadEffectivePermissions`, and nobody that check refuses is an approver.
  * Single SQL round-trip. Caller must run inside a privileged transaction so the
  * UNION across `user_scope_grants` and `role_scope_grants` is not gated by RLS.
  */
@@ -75,6 +88,7 @@ export async function eligibleApprovers(
             AND ur.org_id = ${orgId}::uuid
             AND ${scopeMatchesFragment(drizzleSql`rsg.scope`, required)}
         )
+        OR ${everyMemberScopeFragment(orgId, drizzleSql`u.id`, required)}
       )
   `)
   return extractRows<{ user_id: string }>(result).map((r) => r.user_id)
@@ -115,7 +129,7 @@ export function dimensionGrantCovers(
  * dimension constraint: a user is kept only when they hold `requiredScope` AND
  * either bypass (scope-level super-admin, see {@link bypassesDimensionConstraint})
  * OR their effective dimension grants on `constraint.key` include `"*"` or ALL of
- * `constraint.values`. Effective grants union user_dimension_grants +
+ * `constraint.values`. The scope is judged as in {@link eligibleApprovers}. Effective grants union user_dimension_grants +
  * role_dimension_grants (mirroring loadEffectivePermissions). Single SQL
  * round-trip; caller runs inside a privileged transaction.
  */
@@ -157,6 +171,7 @@ export async function eligibleApproversWithDimension(
             AND ur.org_id = ${orgId}::uuid
             AND ${scopeMatchesFragment(drizzleSql`rsg.scope`, required)}
         )
+        OR ${everyMemberScopeFragment(orgId, drizzleSql`u.id`, required)}
       )
       AND (
         -- Scope-level super-admin bypass: '*' / 'kernel' / a scope covering

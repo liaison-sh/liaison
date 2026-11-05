@@ -66,6 +66,8 @@ interface Row {
 
 const viewers: Viewer[] = []
 const rows: Row[] = []
+/** What every active member of the fixture org holds with no stored grant (0261). */
+const EVERY_MEMBER_SCOPE = "parity_app:things:read"
 
 /** The SQL policy, restated over the authority primitives (see header). */
 function rlsVisibilityMirror(
@@ -73,7 +75,7 @@ function rlsVisibilityMirror(
   v: Viewer,
   taintAudienceMustHold: readonly string[] = [],
 ): boolean {
-  const has = (s: string) => hasScope(s, v.scopes)
+  const has = (s: string) => hasScope(s, [...v.scopes, EVERY_MEMBER_SCOPE])
   // 0167: a tainted shared-surface draft reaches a surface reader only when they hold its taint.
   const holdsTaint = taintAudienceMustHold.every(has)
   if (isOwnerRouted(f)) return isRequester(f, v.id) || f.resourceOwnerId === v.id
@@ -213,6 +215,17 @@ beforeAll(async () => {
     return thread.id
   })
 
+  await sql`INSERT INTO kernel.apps (org_id, name, version, every_member_scopes)
+    VALUES (${orgId}, 'parity_app', '1.0.0', ${`{${EVERY_MEMBER_SCOPE}}`}::text[])`
+  // 0261: decided by a scope every member holds, as a disclosure decision can be.
+  await insertApproval({
+    name: "every-member-decided",
+    toolName: "kernel:threads_reply",
+    approveScope: EVERY_MEMBER_SCOPE,
+    resourceOwnerId: null,
+    requestedBy: requester.id,
+    notifyUserIds: [requester.id, customNotified.id],
+  })
   await insertApproval({
     name: "plain-derived",
     toolName: "test:gatedEcho",
@@ -348,6 +361,14 @@ describe("authority <-> RLS parity matrix", () => {
     expect(await rlsVisible(mail, find("mail-reader-tainted"))).toBe(true)
     // A draft without the key is unchanged: every ticket reader sees it.
     expect(await rlsVisible(plain, find("ticket-reader"))).toBe(true)
+  })
+
+  it("a notified approver holding the deciding scope only as an every-member scope reads the row; nobody else does (0261)", async () => {
+    const row = rows.find((r) => r.name === "every-member-decided")!
+    const find = (name: string) => viewers.find((v) => v.name === name)!
+    expect(await rlsVisible(row, find("custom-notified"))).toBe(true)
+    expect(await rlsVisible(row, find("bystander"))).toBe(false)
+    expect(await rlsVisible(row, find("derived-notified"))).toBe(false)
   })
 
   it("the COALESCE branch equals decidingScope: custom-scope holder in, generic kernel:approve out", async () => {

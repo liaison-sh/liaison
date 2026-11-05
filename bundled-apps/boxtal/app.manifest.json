@@ -195,7 +195,7 @@
       }
     ]
   },
-  "version": "0.23.2",
+  "version": "0.23.3",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {
@@ -2413,9 +2413,11 @@
       }
     },
     "prep_set_address_choice": {
-      "description": "Pick which address a prep row's label goes to when the order's own ship-to and the customer's VERIFIED delivery address differ (prep_list shows address_check.state = differs). Until someone picks, create_shipment refuses to stage that row. choice 'order' ships to the order's ship-to, 'verified' to the verified address (pass its id from address_check.verified_address.id as address_id). A person decides this: never pick on your own judgment, ask the operator which one is right. The pick is voided as soon as either address changes, and the row is held again.",
+      "description": "Pick which address a prep row's label goes to when the order's own ship-to and the customer's VERIFIED delivery address differ (prep_list shows address_check.state = differs). Until someone picks, create_shipment refuses to stage that row. choice 'order' ships to the order's ship-to, 'verified' to the verified address (pass its id from address_check.verified_address.id as address_id). A person decides this: never pick on your own judgment, ask the operator which one is right. The pick is voided as soon as either address changes, including while it waits for a person, and the row is held again.",
       "requiredScopes": ["boxtal:shipments:write"],
       "handler": "prepSetAddressChoiceHandler",
+      "preflight": "prepSetAddressChoicePreflight",
+      "pinnedParams": ["shown_addresses"],
       "writesToTable": "app_boxtal.prep_order_state",
       "gated": true,
       "noAutoApprove": true,
@@ -2443,6 +2445,11 @@
           "address_id": {
             "type": "string",
             "description": "With choice 'verified': the verified address id from address_check.verified_address.id."
+          },
+          "shown_addresses": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Set by the server when the pick is staged (the two addresses the approval shows); leave it out."
           }
         },
         "required": ["document_ref", "choice"]

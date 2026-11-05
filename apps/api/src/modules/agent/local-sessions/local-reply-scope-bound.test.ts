@@ -211,8 +211,10 @@ describe("a local or node reply is stamped with what the turn could read", () =>
     await recordConnectionTaintMarks(orgId, agentId, [MAIL_READ])
     await redis.del(mcpTurnTaintKey(orgId, agentId), mcpTurnTaintMarksKey(orgId, agentId))
     const stamp = await localReplyScope(orgId, threadId, ownerId, ["*"], agentId, turnStartedAt)
-    // The admin's effective scope in its own DM: everything, which covers the lost read.
-    expect(stamp).toContain("*")
+    // The admin's effective scope in its own DM: everything, never stamped as `*`, which only
+    // the grant `*` covers (scope-taint.ts, rule 3). It still covers the lost read.
+    expect(stamp).not.toContain("*")
+    expect(stamp).toContain(MAIL_READ)
   })
 
   it("a taint set that expired under the turn: the day-long ledger answers exactly (fix8 M2)", async () => {

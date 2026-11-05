@@ -103,6 +103,8 @@ describe("contact creation paths", () => {
       "modules/apps/context.ts": [
         "appContactAudience(appBridgeManifest(orgId, appName)?.capabilities)",
       ],
+      // The seed engine's contact factory: the audience its caller names. Test and demo data.
+      "seed/factories/people/contacts.ts": ["target"],
     })
   })
 
@@ -121,6 +123,8 @@ describe("contact creation paths", () => {
         "apps/contacts/import-kind.ts",
         "modules/contacts/service.ts",
         "modules/mail/sender-contacts.ts",
+        // The seed engine's volume writer: load data on a private box, never a real org.
+        "seed/bulk/volume.ts",
         // Seeds fixtures for demo orgs only (never a real org).
         ...inserters.filter((f) => f.startsWith("modules/demo/")),
       ].sort(),

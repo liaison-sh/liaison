@@ -20,10 +20,12 @@ import { SCOPE_TAINT_BLOCKED_MESSAGE, UNKNOWN_TURN_TAINT } from "~/modules/agent
 import {
   expandWildcardStamp,
   isWildcardScope,
+  projectTaintScopes,
   taintReadCatalog,
   WRITE_ACTION_VERBS,
 } from "~/modules/agent/scopes/taint-read-scopes"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
+import { KERNEL_EVERY_MEMBER_SCOPES } from "~/modules/permissions/every-member-scopes"
 import {
   REQUESTER_EFFECTIVE_SCOPE,
   REQUESTER_TAINT_PROJECTION,
@@ -34,6 +36,13 @@ const writeOrAction = (scopes: readonly string[]) =>
   scopes.filter((s) => WRITE_ACTION_VERBS.has(s.split(":").at(-1) ?? ""))
 
 describe("scope taint holds no write or action scope", () => {
+  test("a scope every member holds classifies nothing: no taint and no stamp carries it", () => {
+    for (const scope of KERNEL_EVERY_MEMBER_SCOPES) {
+      expect(projectTaintScopes([scope, "mail:messages:read"])).toEqual(["mail:messages:read"])
+      expect(failureContextRequiredScopes([scope, "seq:write"])).toEqual(["seq:write"])
+    }
+  })
+
   test("the fixture is the 34-scope stamp, write and action scopes included", () => {
     expect(REQUESTER_EFFECTIVE_SCOPE).toHaveLength(34)
     expect(REQUESTER_EFFECTIVE_SCOPE).toContain("tickets:tickets:close")

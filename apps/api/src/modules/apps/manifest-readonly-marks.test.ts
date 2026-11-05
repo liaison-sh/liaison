@@ -183,6 +183,8 @@ const READ_ONLY: Record<string, string[]> = {
     "hs_codes_lookup",
     "pending_approvals_list",
     "vat_validate",
+    // Reads the web and VIES for a buyer's number; writes nothing.
+    "vat_lookup",
     "viewer_access",
     "contact_relationships_get",
     "deferred_list",

@@ -91,6 +91,10 @@ export const KEPT_COLUMNS: Readonly<Record<string, string>> = {
   "app_knowledge.documents.verified_by": "who checked the document, not a verifier",
   "app_knowledge.source_links.verified_at": "a timestamp",
   "app_knowledge.source_links.verified_by": "who checked the link, not a verifier",
+  "kernel.config_applied_fields.value_hash":
+    "drift check over config values that are never a secret",
+  "kernel.contact_addresses.verified_at": "a timestamp",
+  "kernel.contact_addresses.verified_by": "who checked the address, not a verifier",
   "kernel.agent_turns.state": STATUS,
   "kernel.demo_world_marks.state": STATUS,
   "kernel.device_flow_requests.state": STATUS,
@@ -101,6 +105,7 @@ export const KEPT_COLUMNS: Readonly<Record<string, string>> = {
   "app_boxtal.app_config.key": NOT_SECRET_KEY,
   "app_pennylane.app_config.key": NOT_SECRET_KEY,
   "app_projects.projects.key": NOT_SECRET_KEY,
+  "kernel.product_attributes.key": NOT_SECRET_KEY,
   "app_test_bridge_a.audit.key": NOT_SECRET_KEY,
   "app_boxtal.prep_order_state.order_key": NOT_SECRET_KEY,
   "app_boxtal.prep_quote.input_hash": CONTENT_HASH,

@@ -441,7 +441,7 @@ describe("one-time connect links", () => {
         payload: { actorId?: string; actorType?: string }
       }>
       expect(events.map((e) => [e.payload.actorId, e.payload.actorType])).toEqual([
-        ["system", "system"],
+        [null, "system"],
       ])
       const [row] = (await sql`
         SELECT status FROM kernel.connected_accounts WHERE id = ${t.id}`) as Array<{

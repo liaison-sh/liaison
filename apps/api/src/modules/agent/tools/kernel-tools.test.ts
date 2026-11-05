@@ -617,6 +617,8 @@ describe("kernel tool registration", () => {
       // (P1-T12-fix: recorded as a read, it refused the next notify_user).
       "notify_user",
       "open_app",
+      // Its answer is the report's own ticket or draft id, never an org record.
+      "report_bug",
       // Reads the tool registry and the scope catalog, never an org record.
       "routine_tool_scopes",
       "tool_search",

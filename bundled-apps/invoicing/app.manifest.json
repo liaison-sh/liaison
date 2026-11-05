@@ -224,7 +224,7 @@
       }
     ]
   },
-  "version": "0.20.30",
+  "version": "0.20.31",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -2291,6 +2291,7 @@
       "readOnly": true
     },
     "drafts_create": {
+      "approvalCard": { "summary": "Create a draft for a buyer declared a private consumer" },
       "description": "LEGACY, internal: create an unnumbered draft row. There is NO user facing draft document category any more. Do not use this to start an invoice (invoices come from paid orders or from converting a quote or proforma) or a quote (use quote_create_and_issue, which makes the Shopify draft order). Only a proforma or purchase order may still be prepared this way before proforma_issue / po_issue; prefer their create_and_issue tools.",
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "draftsCreateHandler",
@@ -2561,6 +2562,7 @@
       }
     },
     "drafts_update": {
+      "approvalCard": { "summary": "Update a draft for a buyer declared a private consumer" },
       "description": "LEGACY, internal: update an unnumbered draft row before it is issued. Issued documents are edited with documents_update. There is no user facing draft document category.",
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "draftsUpdateHandler",

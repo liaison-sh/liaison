@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cfg: [debuglog, warnlog]
+        cfg: [profile]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -23,6 +23,16 @@ jobs:
         with:
           bun-version: "1.4.x"
       - run: bun install --frozen-lockfile
+      - name: Profile build of the same bun, with symbols
+        run: |
+          v=$(bun --version)
+          cd /tmp && curl -fsSLO "https://github.com/oven-sh/bun/releases/download/bun-v$v/bun-linux-x64-profile.zip"
+          unzip -q bun-linux-x64-profile.zip
+          sudo cp /tmp/bun-linux-x64-profile/bun-profile "$(dirname "$(readlink -f "$(command -v bun)")")/bun-real"
+          real=$(readlink -f "$(command -v bun)"); dir=$(dirname "$real")
+          sudo mv "$real" "$dir/bun-orig"; sudo mv "$dir/bun-real" "$real"; sudo chmod +x "$real"
+          bun --version
+          sudo apt-get install -y --no-install-recommends gdb
       - run: |
           sudo apt-get install -y --no-install-recommends postgresql-common
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
@@ -42,8 +52,8 @@ jobs:
       - name: Runner on writer and friends
         run: |
           mkdir -p logs/w
-          ( sleep 75; for p in $(pgrep -f 'bun test --env-file'); do age=$(ps -o etimes= -p $p); [ "$age" -gt 45 ] || continue; echo "--- pid $p age $age: $(tr '\0' ' ' < /proc/$p/cmdline | sed 's/.*xml //')"; for t in /proc/$p/task/*; do echo "$(cat $t/comm) wchan=$(cat $t/wchan) syscall=$(sudo cut -d' ' -f1-3 $t/syscall)"; done; sudo ls -l /proc/$p/fd | awk '{print $9,$10,$11}' | grep -E 'pipe|socket|^[012] ' | head -12; done; docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}}'; free -m | head -3; ss -s | head -3 ) > logs/w/threads.log 2>&1 &
-          LOG_DIR=$PWD/logs/w TEST_UNIT_SHARDS=4 TEST_UNIT_SILENCE_MS=120000 timeout -k 10 500 bun run scripts/with-test-lock.ts -- bun run scripts/test-unit-parallel.ts --retries=0 -- $(cat .github/tmp-probe-tail.txt) 2>&1 | tee logs/w/run.log; echo "rc=${PIPESTATUS[0]}"
+          ( for i in 1 2 3; do sleep 45; for p in $(pgrep -f 'bun test --env-file'); do age=$(ps -o etimes= -p $p); [ "$age" -gt 40 ] || continue; c=$(tr '\0' ' ' < /proc/$p/cmdline | sed 's/.*xml //'); case "$c" in *writer.test*) continue;; esac; echo "--- snap $i pid $p age $age: $c"; sudo gdb -q -batch -p $p -ex 'set pagination off' -ex 'thread apply all bt 28' 2>/dev/null | grep -E '^Thread|^#' | cut -c1-150; done; done ) > logs/w/gdb.log 2>&1 &
+          LOG_DIR=$PWD/logs/w TEST_UNIT_SHARDS=4 TEST_UNIT_SILENCE_MS=150000 timeout -k 10 500 bun run scripts/with-test-lock.ts -- bun run scripts/test-unit-parallel.ts --retries=0 -- $(cat .github/tmp-probe-tail.txt) 2>&1 | tee logs/w/run.log; echo "rc=${PIPESTATUS[0]}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

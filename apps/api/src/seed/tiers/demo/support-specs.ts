@@ -2290,7 +2290,7 @@ export const ARTICLE_SPECS: ArticleSpec[] = [
       `Confirm the prospective dealer is a real registered business with a physical or established ` +
       `online storefront appropriate to the territory, and get their company registration details and a ` +
       `trade reference if one is available. A hobbyist reseller enquiry is redirected to a normal ` +
-      `customer purchase, not onboarded as a dealer.\n\n` +
+      `customer purchase, not signed up as a dealer.\n\n` +
       `Step 2: agree terms and sign\n` +
       `Send the standard dealer agreement, covering the pricing tiers, the demo unit terms, and the ` +
       `warranty handling described in the Warranty policy article. The agreement is countersigned by ` +
@@ -2320,7 +2320,7 @@ export const ARTICLE_SPECS: ArticleSpec[] = [
       `Six dealers across five territories as of this review: Klangwerk GmbH (Germany), Northfield ` +
       `Instruments Ltd (United Kingdom), Atelier Sonore SARL (France), Kanaal Audio BV (Netherlands), ` +
       `Harborlight Audio KK (Japan) and Westcoast Pro Audio LLC (United States). A new territory enquiry ` +
-      `outside these is still onboarded through the same five steps.\n\n` +
+      `outside these still signs up through the same five steps.\n\n` +
       `A dealer that goes quiet\n` +
       `A countersigned dealer that has placed no order in over a year is not automatically removed from ` +
       `the network; Giulia checks in directly before any decision is made, since a quiet dealer is often ` +

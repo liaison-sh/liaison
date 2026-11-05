@@ -704,7 +704,12 @@ export async function handleToolSearch(
     })
     .slice(0, effectiveCap)
   const matches = ranked.map((s) => toMatch(s.tool))
-  const strong = new Set(strongMatches(ranked, wholeAppQuery).map((s) => s.tool.sdkName))
+  // Words that name no capability ("what can you do") load nothing, however many
+  // descriptions happen to contain them.
+  const namesNothing = terms.every((term) => FILLER_WORDS.has(term))
+  const strong = new Set(
+    namesNothing ? [] : strongMatches(ranked, wholeAppQuery).map((s) => s.tool.sdkName),
+  )
   const strongHits = matches.filter((m) => strong.has(m.name))
   if (allAlreadyLoaded(strongHits)) {
     return {

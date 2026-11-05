@@ -59,6 +59,7 @@ import { cloneDatabase, dropTestDatabase, dropTrash, ensureTemplate } from "./li
 import { formatFailures, type JunitFailure, parseJunitSuites } from "./lib/unit-junit"
 import { formatPhaseSplit, planRetries } from "./lib/unit-retry"
 import { mergeTimings, readTimings, timingsHistoryPath } from "./lib/unit-timings"
+import { silenceLimitMs, tailLines, watchSilence } from "./lib/unit-watchdog"
 
 const ROOT = path.resolve(import.meta.dir, "..")
 const API = path.join(ROOT, "apps/api")
@@ -82,6 +83,7 @@ const BATCH = Math.max(
   1,
   Math.floor(Number(flag("batch") ?? process.env.TEST_UNIT_BATCH ?? 8)) || 1,
 )
+const SILENCE_LIMIT_MS = silenceLimitMs(Number(TIMEOUT_MS), process.env.TEST_UNIT_SILENCE_MS)
 const REPORT_DIR = mkdtempSync(path.join(tmpdir(), "liaison-unit-junit-"))
 // Per-file wall times from earlier runs, shared by every worktree of the
 // checkout (scripts/lib/unit-timings.ts): they order the queue longest first and
@@ -177,20 +179,6 @@ const results: Result[] = []
 let completed = 0
 let bailed = false
 
-async function readStream(stream: ReadableStream<Uint8Array>): Promise<string> {
-  const reader = stream.getReader()
-  const decoder = new TextDecoder()
-  const chunks: string[] = []
-  try {
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      chunks.push(decoder.decode(value, { stream: true }))
-    }
-  } catch {}
-  return chunks.join("")
-}
-
 function shardEnv(shardId: number, token: number): Record<string, string> {
   const db = shardDb(shardId)
   const childEnv: Record<string, string> = {
@@ -233,6 +221,10 @@ async function runUnitOnShard(files: string[], shardId: number, token: number): 
   // errors come from, kept per file even when the batch's stdout is shared.
   const reporter = ["--reporter=junit", `--reporter-outfile=${report}`]
   const t = Date.now()
+  // To files, not pipes: a child a test leaves behind cannot hold the run open on
+  // a pipe it inherited, and a passing process's output never comes into memory.
+  const outFile = path.join(REPORT_DIR, `s${shardId}_${token}.out`)
+  const errFile = path.join(REPORT_DIR, `s${shardId}_${token}.err`)
   const proc = Bun.spawn({
     cmd: [
       "bun",
@@ -245,12 +237,36 @@ async function runUnitOnShard(files: string[], shardId: number, token: number): 
     ],
     cwd: API,
     env: shardEnv(shardId, token),
-    stdout: "pipe",
-    stderr: "pipe",
+    stdin: "ignore",
+    stdout: Bun.file(outFile),
+    stderr: Bun.file(errFile),
   })
-  const [out, err] = await Promise.all([readStream(proc.stdout), readStream(proc.stderr)])
+  const readOutput = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : "")
+  const outputBytes = () =>
+    [outFile, errFile].reduce((sum, f) => sum + (existsSync(f) ? statSync(f).size : 0), 0)
+  const watch = watchSilence(SILENCE_LIMIT_MS, (silentMs) => {
+    const said = tailLines(`${readOutput(outFile)}\n${readOutput(errFile)}`, 20)
+    process.stdout.write(
+      `\n! wedged: no output for ${Math.round(silentMs / 1000)}s, killing shard ${shardId}'s process ` +
+        `(${files.join(" ")}). It last said:\n${said}\n`,
+    )
+    proc.kill("SIGKILL")
+  })
+  let seenBytes = 0
+  const sizePoll = setInterval(() => {
+    const bytes = outputBytes()
+    if (bytes !== seenBytes) watch.touch()
+    seenBytes = bytes
+  }, 1000)
   const exitCode = await proc.exited
+  clearInterval(sizePoll)
+  watch.stop()
   const ms = Date.now() - t
+  // A passing process's output is never shown, so it never comes into memory.
+  const out = exitCode === 0 ? "" : readOutput(outFile)
+  const err = exitCode === 0 ? "" : readOutput(errFile)
+  rmSync(outFile, { force: true })
+  rmSync(errFile, { force: true })
   const base = { shard: shardId, token, out, err, batch: files.length }
   const suites = existsSync(report)
     ? parseJunitSuites(readFileSync(report, "utf8"), (f) =>

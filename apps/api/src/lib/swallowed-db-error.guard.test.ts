@@ -208,10 +208,10 @@ const ALLOWLIST: AllowlistEntry[] = [
     note: "Throws a sentinel so withSystemDb rolls back (the invite claim is undone); inviteRegister maps it.",
   },
   {
-    file: "apps/projects/routes.ts",
-    function: "PATCH /:projectId",
+    file: "apps/projects/service/update-project.ts",
+    function: "updateProject",
     why: "rethrows",
-    note: "Maps a key collision to ProjectsHttpError(409) and throws; the route's tx rolls back.",
+    note: "Maps a key collision to ProjectsServiceError(409) and throws; the caller's tx rolls back.",
   },
   {
     file: "modules/contacts/groups.ts",

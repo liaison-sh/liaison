@@ -24,7 +24,10 @@
 //      own rule (`*` every one, `p:*` those under `p:`, a `*` anywhere but last none), which keeps
 //      an over-approximation (the abnormal-end widening of a `*` ceiling) exactly as wide in what
 //      it classifies and never fails open (2026-11-03);
-//   4. every other scope is KEPT: an app tool's `:run` execution scope (its code reads app
+//   4. a scope every member holds (every-member-scopes.ts) classifies nothing: it is what a
+//      person may do as themself with nothing read, so it is dropped. Kept, it stamped a
+//      fallback taint with a scope no approver's grants carry, and the turn could never park;
+//   5. every other scope is KEPT: an app tool's `:run` execution scope (its code reads app
 //      data), an `:admin` or `:spawn` scope gating a read-only tool (users_list, export,
 //      subagent_list), an unknown action. Not knowing a scope is not knowing that it classifies
 //      nothing.
@@ -33,6 +36,7 @@
 // unknown-taint sentinel is not a scope and is always kept: unknown stays held by nobody.
 
 import { UNKNOWN_TURN_TAINT } from "~/modules/agent/scopes/scope-taint"
+import { KERNEL_EVERY_MEMBER_SCOPES } from "~/modules/permissions/every-member-scopes"
 import { rlsScopeEntityForTable } from "~/modules/permissions/rls-generator"
 import { getScopeCatalog } from "~/modules/permissions/scope-catalog"
 import { knownScopeUniverse } from "~/modules/permissions/scope-registry"
@@ -121,6 +125,7 @@ export function readScopesCoveredByWildcard(
 
 export function readScopesImpliedBy(scope: string, readCatalog: readonly string[]): string[] {
   if (isWildcardScope(scope)) return readScopesCoveredByWildcard(scope, readCatalog)
+  if (KERNEL_EVERY_MEMBER_SCOPES.includes(scope)) return []
   if (isReadScope(scope)) return [scope]
   const parts = scope.split(":")
   const action = parts[parts.length - 1] ?? ""

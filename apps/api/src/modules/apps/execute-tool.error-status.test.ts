@@ -29,7 +29,9 @@ function sourceFiles(dir: string): string[] {
 
 // Snake-case literals in a `code: …` / `code = …` expression that are not codes
 // (a status compared in a ternary, a typeof check, a sort direction, a field name).
-const NOT_A_CODE = new Set(["error", "asc", "desc", "tool_error", "phone", "string"])
+// `failed` is the boxtal short-code writer's own record of a batch that threw
+// (product-attributes.ts), read back in the same function and never returned.
+const NOT_A_CODE = new Set(["error", "asc", "desc", "tool_error", "phone", "string", "failed"])
 
 function declaredCodes(dir: string): string[] {
   const codes = new Set<string>()

@@ -48,6 +48,10 @@ export const OFFICE_TOTAL_MAX_INFLATED_BYTES = 16 * 1024 * 1024
  *  inflater push (about 4 MiB), never more. */
 const OFFICE_ZIP_CAPS: ZipCaps = {
   ...DEFAULT_ZIP_CAPS,
+  // No ratio refusal: a part stops inflating at OFFICE_PART_MAX_INFLATED_BYTES whatever its ratio
+  // and the text up to there is returned with a [Cut:] note, so a spreadsheet of mostly empty rows
+  // still reads. The absolute caps below are what bound the work.
+  maxEntryRatio: Number.POSITIVE_INFINITY,
   maxEntries: 20_000,
   totalFloorBytes: OFFICE_TOTAL_MAX_INFLATED_BYTES + 8 * 1024 * 1024,
   maxTotalBytes: OFFICE_TOTAL_MAX_INFLATED_BYTES + 8 * 1024 * 1024,

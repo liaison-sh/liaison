@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { expandWildcardStamp } from "~/modules/agent/scopes/taint-read-scopes"
+import { KERNEL_EVERY_MEMBER_SCOPES } from "~/modules/permissions/every-member-scopes"
 
 /**
  * The scopes the failure-context message carries. It quotes step results and
@@ -14,7 +15,10 @@ import { expandWildcardStamp } from "~/modules/agent/scopes/taint-read-scopes"
 export function failureContextRequiredScopes(requesterScopes: string[], orgId?: string): string[] {
   // A grant wildcard in that set is expanded onto the read scopes it covers, never stamped as
   // is (scope-taint.ts, rule 10b): a required `*` is covered only by the grant `*`.
-  return [...new Set(expandWildcardStamp(requesterScopes, orgId))].sort()
+  // A scope every member holds classifies no data, so it narrows no reader (taint-read-scopes.ts).
+  return [...new Set(expandWildcardStamp(requesterScopes, orgId))]
+    .filter((scope) => !KERNEL_EVERY_MEMBER_SCOPES.includes(scope))
+    .sort()
 }
 
 /** Re-invoke the agent on the originating thread after a bundle failure. Posts

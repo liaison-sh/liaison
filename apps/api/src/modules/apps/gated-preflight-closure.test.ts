@@ -49,6 +49,8 @@ const NO_PREFLIGHT_NEEDED: Record<string, string> = {
 
   // Validate before they call ctx.requestApproval, so an incomplete call never
   // reaches a human in the first place.
+  "invoicing:drafts_create": "validates before parking",
+  "invoicing:drafts_update": "validates before parking",
   "invoicing:quote_issue": "validates before parking",
   "invoicing:quote_create_and_issue": "validates before parking",
   "invoicing:credit_note_issue": "validates before parking",
@@ -99,6 +101,9 @@ const NO_PREFLIGHT_NEEDED: Record<string, string> = {
   // Never refuses after approval: it saves what it is given and reports the
   // address fields still missing in its result.
   "boxtal:settings_sender_address_set": "reports missing fields, never refuses",
+  // Its checks read the two addresses live, and only the reading at decision counts: they can
+  // change after staging, which voids the pick. A refusal there writes nothing.
+  "boxtal:prep_set_address_choice": "judged against the addresses as they read at decision",
 
   // Recorded gaps, not a clean bill of health: admin settings writes gated by
   // the security pass whose handlers still refuse knowable input only at

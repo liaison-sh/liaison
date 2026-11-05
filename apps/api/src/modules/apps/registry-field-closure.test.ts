@@ -46,6 +46,7 @@ const SKILL_TOOLS = join(SRC, "modules", "agent", "tools", "skills-routines-tool
 const KERNEL_TOOLS = join(SRC, "modules", "agent", "tools", "kernel-tools.ts")
 const SECRET_TOOLS = join(SRC, "modules", "agent", "tools", "secret-request-tools.ts")
 const MCP_PROJECTOR = join(SRC, "modules", "mcp-client", "projector.ts")
+const REPORT_BUG_TOOL = join(SRC, "modules", "bug-reports", "tool.ts")
 
 /**
  * Registry fields set ONLY by host-registered tools — see header — each with the
@@ -71,6 +72,11 @@ const HOST_ONLY_FIELDS: Record<string, string> = {
   gatedWhen: KERNEL_TOOLS,
   // Whether a routine create/update grants scopes: such a call is never auto-approved.
   grantsScopes: SKILL_TOOLS,
+  // Where a call writes when that depends on the org's state: a function, so it
+  // cannot cross the package boundary.
+  taintSinkFor: REPORT_BUG_TOOL,
+  // Who a post reaches, read from the call's params: a function, likewise.
+  taintPostAudience: KERNEL_TOOLS,
   // A personal MCP connection's tools belong to the person who connected it.
   ownerUserId: MCP_PROJECTOR,
   // An inbound MCP tool's own tools/list annotations, set when the tool is projected.

@@ -16,6 +16,13 @@
 import type { RegExpEngine } from "ajv/dist/types"
 import { checkSync } from "recheck"
 
+// recheck's default sync backend runs the check on a Worker while this thread
+// sits in Atomics.wait with no deadline. Under Bun that Worker can deadlock in its
+// own garbage collection (seen under load, four processes on four CPUs), and then
+// the event loop never turns again: no request, no timer, no test timeout. The pure
+// backend is the same checker in this thread, bounded by CHECK_TIMEOUT_MS.
+process.env.RECHECK_SYNC_BACKEND = "pure"
+
 export const MAX_MANIFEST_PATTERN_LENGTH = 512
 /** Wall clock the check may take for one pattern before it is refused as unknown. */
 const CHECK_TIMEOUT_MS = 2_000

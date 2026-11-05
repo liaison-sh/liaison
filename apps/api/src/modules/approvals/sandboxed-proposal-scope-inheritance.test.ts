@@ -58,12 +58,6 @@ const APPROVE = `${APP}:approve`
  * the row it writes (INSERT ... RETURNING is checked against the read policy).
  */
 const REQUESTER_GRANTS = [READ, WRITE, APPROVE, "kernel:threads:read", "kernel:threads:write"]
-/**
- * REQUESTER_GRANTS as a turn's scope taint records them: every scope lands on
- * its catalogued read sibling, and this fixture app's own write and approve
- * scopes, which have none, are dropped (scope-taint-read-projection.test.ts).
- */
-const REQUESTER_TAINT = ["kernel:threads:read", READ]
 
 /** The human who decides. Holds the approve scope; the proposing actor does not. */
 function approver(): UserContext {
@@ -172,19 +166,34 @@ function bridgeFor(opts: {
   return opts.frame ? runContextStore.run(opts.frame, build) : build()
 }
 
-/** Propose the gated write from OUTSIDE the frame, as the sandbox hop does. */
-async function proposeViaSandbox(
+/** Call the gated write from OUTSIDE the frame, as the sandbox hop does. */
+async function callViaSandbox(
   frame: RunContext | undefined,
   body: string,
   extra: { callerScopes?: string[] } = {},
-): Promise<string> {
+): Promise<Envelope> {
   const bridge = bridgeFor({ frame, ...extra })
-  const env = await runContextStore.exit(async () => {
+  return runContextStore.exit(async () => {
     expect(runContextStore.getStore()).toBeUndefined()
     return JSON.parse(
       await bridge.executeTool!(`${APP}:postScoped`, JSON.stringify({ body })),
     ) as Envelope
   })
+}
+
+async function approvalCount(): Promise<number> {
+  const [row] =
+    await sql`SELECT count(*)::int AS n FROM kernel.approval_requests WHERE org_id = ${ORG}`
+  return row?.n as number
+}
+
+/** Propose the gated write and return the approval it parked. */
+async function proposeViaSandbox(
+  frame: RunContext | undefined,
+  body: string,
+  extra: { callerScopes?: string[] } = {},
+): Promise<string> {
+  const env = await callViaSandbox(frame, body, extra)
   if (!env.blocked?.approvalRequestId) {
     throw new Error(`expected the call to be gated, got ${JSON.stringify(env)}`)
   }
@@ -346,26 +355,21 @@ describe("a gated call from a sandboxed app records the real proposing scopes (F
     expect(await messagesVisibleTo(LACKER, [])).toContain(await messageIdOf(body))
   })
 
-  it("a sandboxed proposal whose turn is undeterminable records NOTHING, so the re-entry falls back to the requester's scope set", async () => {
+  it("a sandboxed proposal whose turn is undeterminable is refused, and parks nothing", async () => {
     // A frame with no accumulator and no effective scope, reached with no caller
-    // scopes either: nothing can answer what this turn read. FX4's contract is
-    // to record SQL NULL -- never `[]` -- so the re-entry over-tags with the
-    // requester's own scope set instead of publishing the write to the room.
-    const body = "written by a re-entry whose proposing turn could not be determined"
-    const approvalId = await proposeViaSandbox(frameOf({}), body)
+    // scopes either: nothing can answer what this turn read. Unknown taint is held
+    // by nobody, so no approver can see the result and the gate refuses. (A row
+    // with SQL NULL, from before the column existed, keeps its re-entry fallback:
+    // approved-reentry-scope-inheritance.test.ts.)
+    const body = "written by a turn that could not be determined"
+    const before = await approvalCount()
+    const env = await callViaSandbox(frameOf({}), body)
 
-    expect(await storedScopesOf(approvalId)).toBeNull()
-
-    await decideApproval({
-      orgId: ORG,
-      requestId: approvalId,
-      actor: approver(),
-      decision: "approve",
-    })
-
-    // The requester's scope set, as a turn's taint records it (its read projection).
-    expect(await messageTag(body)).toEqual(REQUESTER_TAINT)
-    expect(await messagesVisibleTo(LACKER, [])).not.toContain(await messageIdOf(body))
+    expect(env.error?.code).toBe("E_SCOPE_TAINT_BLOCKED")
+    expect(await approvalCount()).toBe(before)
+    expect(
+      await sql`SELECT id FROM kernel.messages WHERE org_id = ${ORG} AND content = ${body}`,
+    ).toHaveLength(0)
   })
 
   it("outside any turn a sandboxed proposal still records the empty assertion", async () => {

@@ -121,7 +121,10 @@ jobs:
   unit-tests:
     needs: gate
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Twice the job's slower measured run on a hosted runner, 28 minutes (unit
+    # took 20 and 27). A wedged test process is the runner's to kill and name
+    # (scripts/lib/unit-watchdog.ts), so this limit never hides one.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -133,23 +136,23 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Install postgres/redis CLIs
         if: env.LIAISON_RELEASE_DRY_RUN != '1'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client redis-tools libxml2-utils
-      - name: Write .env.test
-        if: env.LIAISON_RELEASE_DRY_RUN != '1'
-        # Same placeholder secrets as the repo's own .env.example (JWT_SECRET,
-        # ENCRYPTION_KEY) — non-secret, test-only values, never used past a
-        # throwaway CI runner. DATABASE_URL/NODE_ENV/MEILISEARCH_API_KEY are
-        # the three values that MUST diverge from dev defaults: liaison_test
-        # (not liaison_dev) over the liaison_app role, NODE_ENV=test (not
-        # development, which `scripts/test-run.ts` relies on to unlock
-        # test-only bypasses), and MeiliSearch's master key, which has no
-        # default and must match docker-compose.yml's MEILI_MASTER_KEY.
+        # The client's major matches docker-compose's postgres: pg_dump refuses a
+        # newer server, and the runner's own packages stop at an older major.
         run: |
           set -euo pipefail
-          cp .env.example .env.test
-          sed -i 's#^DATABASE_URL=.*#DATABASE_URL=postgres://liaison_app:liaison_app@localhost:5432/liaison_test#' .env.test
-          sed -i 's#^NODE_ENV=.*#NODE_ENV=test#' .env.test
-          echo "MEILISEARCH_API_KEY=dev-master-key" >> .env.test
+          sudo apt-get install -y --no-install-recommends postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y --no-install-recommends postgresql-client-17 redis-tools libxml2-utils
+          # pg_wrapper in /usr/bin picks the runner's own older cluster, not the newest client.
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+      - name: Write .env.test
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        # The test env the repo documents (run-tests skill), with throwaway secrets
+        # that never leave this runner.
+        run: |
+          set -euo pipefail
+          cp .env.test.example .env.test
+          sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|; s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=$(openssl rand -hex 32)|" .env.test
       - name: Bring up test infra (Postgres, Redis, MeiliSearch, SeaweedFS)
         if: env.LIAISON_RELEASE_DRY_RUN != '1'
         # The repo's own dev docker-compose.yml, via its own self-healing
@@ -158,10 +161,18 @@ jobs:
         run: bun run infra:up
       - name: Unit tests (+ guards + root)
         if: env.LIAISON_RELEASE_DRY_RUN != '1'
-        # The default memory reserve doesn't fit a hosted runner's size.
+        # The default memory reserve doesn't fit a hosted runner's size, and the
+        # runner runs nothing else, so the whole budget is this job's.
         env:
           TEST_MEM_RESERVE_MB: "2048"
+          LIAISON_TEST_SLOTS: "1"
         run: bun run test:unit
+      - name: Keep the run's logs
+        if: always() && env.LIAISON_RELEASE_DRY_RUN != '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unit-logs
+          path: logs/
       - name: Tear down test infra
         if: always() && env.LIAISON_RELEASE_DRY_RUN != '1'
         run: docker compose down -v

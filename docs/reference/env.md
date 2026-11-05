@@ -297,6 +297,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `QA_DRIVE_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/knowledge.ts:79` |
 | `QA_GMAIL_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/rows.ts:462` |
 | `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:505`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
+| `RECHECK_SYNC_BACKEND` | `apps/api/src/lib/manifest-regex.ts:24` |
 | `ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:61` |
 | `ROUTINE_EVENT_RECONCILE_MAX_RETRIES` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:64` |
 | `ROUTINE_OVERLAP_DEFER_DELAY_MS` | `apps/api/src/infra/jobs/kernel-jobs.ts:69` |

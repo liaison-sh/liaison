@@ -438,10 +438,10 @@ describe("one-time connect links", () => {
         SELECT payload FROM kernel.pending_events
          WHERE org_id = ${orgId} AND payload->>'entityId' = ${t.id}
            AND payload->>'action' = 'disconnect'`) as Array<{
-        payload: { actorId?: string; actorType?: string }
+        payload: { actorId?: string | null; actorType?: string }
       }>
       expect(events.map((e) => [e.payload.actorId, e.payload.actorType])).toEqual([
-        ["system", "system"],
+        [null, "system"],
       ])
       const [row] = (await sql`
         SELECT status FROM kernel.connected_accounts WHERE id = ${t.id}`) as Array<{

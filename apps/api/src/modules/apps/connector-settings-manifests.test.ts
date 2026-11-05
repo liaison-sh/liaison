@@ -42,6 +42,9 @@ const CONNECTORS: Array<{ manifest: Manifest; adminScope?: string; status?: stri
   { manifest: apiConnector as Manifest, adminScope: "api-connector:admin" },
 ]
 
+/** A section that names its own scope: who may open report access is the apps admin. */
+const SECTION_SCOPE: Record<string, string> = { "report-access": "kernel:apps:admin" }
+
 describe.each(CONNECTORS)("connector $manifest.name", ({ manifest, adminScope, status }) => {
   it("validates as a manifest", () => {
     const result = validateAppManifest(manifest)
@@ -57,7 +60,7 @@ describe.each(CONNECTORS)("connector $manifest.name", ({ manifest, adminScope, s
 
   it("its org sections are administered by the app's accounts scope (or the default)", () => {
     for (const s of manifest.settings?.sections ?? []) {
-      if (s.scope === "org") expect(s.adminScope).toBe(adminScope)
+      if (s.scope === "org") expect(s.adminScope).toBe(SECTION_SCOPE[s.id] ?? adminScope)
     }
   })
 

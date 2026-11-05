@@ -16,8 +16,8 @@
 // merged unchecked. `--wait` polls pending checks for up to 30 minutes.
 //
 // The repo's pre-push hook (scripts/git-hooks/pre-push) refuses direct pushes
-// to main, so with GitHub's branch protection unavailable this script is the
-// merge gate.
+// to main, and GitHub's branch protection and ruleset enforce the same on the
+// server. Merging takes the admin bypass, so this script remains the merge gate.
 import { spawnSync } from "node:child_process"
 
 export interface CiRun {
@@ -261,6 +261,9 @@ and land that first. Then re-run pr:land for this one.`)
     "-R",
     slug,
     "--squash",
+    // The ruleset on main lets only admins update it, through this bypass. The
+    // gates above decide; a collaborator without the role is refused by GitHub.
+    "--admin",
     "--match-head-commit",
     pr.headRefOid,
   ])

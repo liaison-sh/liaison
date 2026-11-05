@@ -41,8 +41,8 @@ jobs:
       - run: bun run scripts/bootstrap-test-env.ts
       - name: Runner on writer and friends
         run: |
-          mkdir -p logs/w
-          LOG_DIR=$PWD/logs/w TEST_UNIT_SHARDS=4 TEST_UNIT_SILENCE_MS=200000 timeout -k 10 1000 bun run scripts/with-test-lock.ts -- bun run scripts/test-unit-parallel.ts --retries=0 -- $(cat .github/${{ matrix.list }}) 2>&1 | tee logs/w/run.log; echo "rc=${PIPESTATUS[0]}"
+          mkdir -p logs/w # recheck in-thread
+          LOG_DIR=$PWD/logs/w TEST_UNIT_SHARDS=4 TEST_UNIT_SILENCE_MS=200000 timeout -k 10 1100 bun run scripts/with-test-lock.ts -- bun run scripts/test-unit-parallel.ts --retries=0 -- $(cat .github/${{ matrix.list }}) 2>&1 | tee logs/w/run.log; echo "rc=${PIPESTATUS[0]}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

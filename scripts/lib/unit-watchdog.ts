@@ -2,12 +2,11 @@
 // scripts/lib/unit-watchdog.ts
 //
 // A wedged `bun test` process never ends on its own: --timeout only fires while
-// its event loop turns, so a process stuck inside the runtime sits there until the
+// its event loop turns, so a process stuck in a blocking call sits there until the
 // job's own limit cancels the whole run, with no report and no name to go on. Each
-// unit process is watched for silence: bun prints every test as it finishes and
-// the tests log, so a process that says nothing for several per-test timeouts in a
-// row is wedged. It is killed, and it counts as a failure that names what it
-// was doing.
+// unit process is watched for silence: bun prints every file as it finishes and the
+// tests log, so a process that says nothing for several per-test timeouts in a row
+// is wedged. It is killed, and it counts as a failure that names what it was doing.
 
 /** Silence that means wedged: five per-test timeouts, overridable for one slow test. */
 export function silenceLimitMs(perTestTimeoutMs: number, override?: string): number {

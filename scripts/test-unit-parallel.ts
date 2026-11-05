@@ -221,10 +221,8 @@ async function runUnitOnShard(files: string[], shardId: number, token: number): 
   // errors come from, kept per file even when the batch's stdout is shared.
   const reporter = ["--reporter=junit", `--reporter-outfile=${report}`]
   const t = Date.now()
-  // To files, never pipes. The logger's sync destination spins on EAGAIN inside
-  // Atomics.wait, where no test timeout can fire, so a pipe this process stopped
-  // draining wedged the test process for good, and it held every file's output in
-  // memory besides. A file has no back pressure and no reader to wait for.
+  // To files, not pipes: a child a test leaves behind cannot hold the run open on
+  // a pipe it inherited, and a passing process's output never comes into memory.
   const outFile = path.join(REPORT_DIR, `s${shardId}_${token}.out`)
   const errFile = path.join(REPORT_DIR, `s${shardId}_${token}.err`)
   const proc = Bun.spawn({

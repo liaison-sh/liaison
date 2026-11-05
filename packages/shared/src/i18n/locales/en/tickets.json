@@ -171,6 +171,8 @@
   "defaultForNewTickets": "Default for new tickets",
   "monitoringInboxKeepOutOfThe": "Monitoring inbox: keep out of the attention feed",
   "ticketsFromThisInboxRaiseNo": "Tickets from this inbox raise no attention items and are not counted as awaiting a reply (backlog health, needs-attention sweeps). Use for automated streams like bug reports. Explicit follow-ups you schedule still surface.",
+  "notifyOnNewTicket": "Notify on new ticket",
+  "eachNewTicketInThisInboxRaises": "Each new ticket in this inbox raises an attention item for the people who administer inboxes. Phone, computer, digest and quiet hours follow each person's notification settings. A monitoring inbox stays silent.",
   "noSlaExemptThisInboxS": "No SLA: exempt this inbox's tickets from SLA",
   "ticketsCreatedInThisInboxGet": "Tickets created in this inbox get no SLA deadline and never breach or show an SLA countdown. Use for automated streams like bug reports that never await a reply.",
   "b2bPartner": "B2B (partner)",

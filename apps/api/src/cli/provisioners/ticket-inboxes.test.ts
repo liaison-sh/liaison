@@ -43,7 +43,13 @@ async function freshOrgWithAdmin(): Promise<{ ctx: ProvisionContext; orgId: stri
 
 function imapConfig(
   address: string,
-  settings: { name?: string; defaultTeam?: string; fromDisplayName?: string; default?: boolean },
+  settings: {
+    name?: string
+    defaultTeam?: string
+    fromDisplayName?: string
+    notifyNewTicket?: boolean
+    default?: boolean
+  },
 ): ProvisioningConfig {
   return {
     org: { slug: "x", name: "X" },
@@ -83,7 +89,8 @@ async function connectionsFor(orgId: string, address: string) {
 async function inboxFor(orgId: string, address: string) {
   const rows = await withPrivilegedDb(orgId, "t", (tx) =>
     tx.execute(drizzleSql`
-      SELECT id, name, default_team, from_display_name, is_default_for_create, connected_account_id
+      SELECT id, name, default_team, from_display_name, notify_new_ticket, is_default_for_create,
+             connected_account_id
       FROM app_tickets.inboxes WHERE org_id = ${orgId}::uuid AND email_address = ${address}
     `),
   )
@@ -92,6 +99,7 @@ async function inboxFor(orgId: string, address: string) {
     name: string
     default_team: string | null
     from_display_name: string | null
+    notify_new_ticket: boolean
     is_default_for_create: boolean
     connected_account_id: string
   }>(rows)
@@ -160,6 +168,7 @@ describe("tickets.inboxes provisioner: imap", () => {
       name: "Support",
       defaultTeam: "Le Pass",
       fromDisplayName: "Fabrikam Support",
+      notifyNewTicket: true,
       default: true,
     })
 
@@ -171,6 +180,7 @@ describe("tickets.inboxes provisioner: imap", () => {
     expect(inbox?.name).toBe("Support")
     expect(inbox?.default_team).toBe("Le Pass")
     expect(inbox?.from_display_name).toBe("Fabrikam Support")
+    expect(inbox?.notify_new_ticket).toBe(true)
     expect(inbox?.is_default_for_create).toBe(true)
     expect(r1.changed ?? []).toContain(`tickets.inboxes.${address}.settings`)
 

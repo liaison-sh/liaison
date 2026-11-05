@@ -188,3 +188,12 @@ Click a block or a title jumps to the message's top; drag scrolls -> apps/web/sr
 Phone: Open thread map button in the top bar from 3 messages -> apps/web/src/modules/tickets/TicketPhoneHeader.tsx:62 ; apps/web/src/ui/thread-map-store.ts:18 ; packages/shared/src/i18n/locales/en/kernel.json:3034
 Phone: position pill while scrolling opens the drawer -> apps/web/src/ui/ThreadMapDrawer.tsx:197 ; apps/web/src/ui/ThreadMapDrawer.tsx:51
 This conversation drawer, tap a row to jump -> packages/shared/src/i18n/locales/en/kernel.json:3036 ; apps/web/src/ui/ThreadMapDrawer.tsx:240
+Notify on new ticket checkbox in Configure -> apps/web/src/modules/tickets/TicketsInboxRouting.tsx:749
+A new ticket in a flagged inbox raises one item for the holders of tickets:inboxes:admin -> apps/api/src/apps/tickets/app.manifest.json:3240
+The item names the inbox, the subject and the requester -> apps/api/src/apps/tickets/app.manifest.json:3244
+A monitoring inbox stays silent -> apps/api/src/apps/tickets/create.ts:621
+Imports raise nothing -> apps/api/src/apps/tickets/import-kind.ts:381
+History, old mail and our own first mail raise nothing -> apps/api/src/apps/tickets/inbound.ts:84
+The person who opens the ticket is not told -> apps/api/src/apps/tickets/app.manifest.json:3245
+The item leaves the feed once someone replied, snoozed or closed -> apps/api/src/apps/tickets/app.manifest.json:3252
+CLI flag --notify-new-ticket -> apps/api/src/cli/tickets/inbox.ts:26

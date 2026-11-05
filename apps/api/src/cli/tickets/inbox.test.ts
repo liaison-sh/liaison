@@ -132,6 +132,37 @@ describe("liaison tickets inbox create/update — email identity flags", () => {
     expect(row?.slaPromisePhrase).toBe("within 2 business days")
   })
 
+  it("--notify-new-ticket: off by default, set by create and update, surfaced by list", async () => {
+    const off = await runTicketsInbox(["create", "--org", orgSlug, "--name", "Quiet Bucket"])
+    const on = await runTicketsInbox([
+      "create",
+      "--org",
+      orgSlug,
+      "--name",
+      "Loud Bucket",
+      "--notify-new-ticket",
+      "true",
+    ])
+    const offId = (off.report as { id: string }).id
+    const onId = (on.report as { id: string }).id
+    const listed = async () =>
+      (
+        (await runTicketsInbox(["list", "--org", orgSlug])).report as {
+          inboxes: Array<Record<string, unknown>>
+        }
+      ).inboxes
+    let inboxes = await listed()
+    expect(inboxes.find((i) => i.id === offId)?.notifyNewTicket).toBe(false)
+    expect(inboxes.find((i) => i.id === onId)?.notifyNewTicket).toBe(true)
+
+    const args = ["update", "--org", orgSlug, "--notify-new-ticket"]
+    expect((await runTicketsInbox([...args, "true", "--id", offId])).exitCode).toBe(0)
+    expect((await runTicketsInbox([...args, "false", "--id", onId])).exitCode).toBe(0)
+    inboxes = await listed()
+    expect(inboxes.find((i) => i.id === offId)?.notifyNewTicket).toBe(true)
+    expect(inboxes.find((i) => i.id === onId)?.notifyNewTicket).toBe(false)
+  })
+
   it("update sets --reply-via, the send transport an API inbox has no other way to get", async () => {
     // An api inbox has no mail account of its own: without reply_via_inbox_id
     // its replies and acknowledgements have nowhere to go, and NOTHING errors —

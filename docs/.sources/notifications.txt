@@ -35,3 +35,6 @@ On call label -> packages/shared/src/i18n/locales/en/kernel.json:4406
 Quiet hours start once the time zone is known, on the settings page -> packages/shared/src/i18n/locales/en/kernel.json:4388
 Work hours label -> packages/shared/src/i18n/locales/en/kernel.json:4210
 Settings page sections -> apps/web/src/modules/settings/NotificationSettings.tsx:167
+A kind the table does not name falls back to the work group -> packages/shared/src/notifications/groups.ts:207
+The work group defaults to feed and digest, no phone or computer -> packages/shared/src/notifications/groups.ts:242
+The new-ticket item is not urgent, its urgency stays under 70 -> apps/api/src/apps/tickets/app.manifest.json:3241

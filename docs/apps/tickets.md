@@ -19,10 +19,32 @@ Tickets arrive through inboxes. An inbox is a connected Gmail or IMAP mailbox, o
    - **Signature (HTML)** and **Signature (plain text)**
    - **Send acknowledgement email on new ticket**, with an optional acknowledgement body
    - **Monitoring inbox: keep out of the attention feed**, for automated streams such as bug reports (reports from **Report a bug** keep their attached files on the ticket, and carry the server's recent error signatures only when the reporter belongs to the org that runs the server; a report can also be sent to the Liaison team, see [Share with the Liaison team](../self-hosting/liaison-team.md#forward-a-bug-report))
+   - **Notify on new ticket**, off by default, see [Hear about new tickets](#hear-about-new-tickets)
    - **No SLA: exempt this inbox's tickets from SLA**
 4. Click **Save**.
 
 For an API inbox, click **Generate API key**. The key is shown only once. The **API keys** section lists the keys that create tickets through the public ingest endpoint, with their **Allowed origins** (one https origin per line, empty means any origin).
+
+
+## Hear about new tickets
+
+A ticket from a website form or another API inbox raises no notification by itself. To be told, tick **Notify on new ticket** when you click **Configure** on the inbox, or switch it on from the command line or the agent:
+
+```bash
+liaison tickets inbox update --id <inboxId> --notify-new-ticket true
+```
+
+The agent tool is `inboxes.update` with `notifyNewTicket: true`, and a mailbox inbox in a provisioning file takes `notifyNewTicket: true`. It is off by default.
+
+With it on, each new ticket in that inbox raises one attention item for the people who hold `tickets:inboxes:admin`. The item names the inbox, the subject and the requester, never the message body.
+
+- A message added to an existing ticket raises nothing.
+- A **Monitoring inbox** stays silent even with the option on.
+- Imports, a newly connected mailbox's history, mail more than three days old and a thread you opened by writing first raise nothing.
+- The person who opens a ticket by hand is not told about it. The other admins are.
+- The item leaves the feed once someone replies to the ticket, snoozes it or closes it.
+
+Each person hears about it through their own notification settings. By default it lands in the attention feed and the email digest, under **Tickets, tasks and knowledge**. To get it on the phone and the computer, switch those on for that row, which also turns them on for the rest of the row, see [Notifications](../notifications.md#new-tickets).
 
 ## Find tickets
 

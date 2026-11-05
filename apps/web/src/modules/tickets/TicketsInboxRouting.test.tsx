@@ -157,6 +157,20 @@ describe("TicketsInboxRouting", () => {
     })
   })
 
+  it("configure form toggles Notify on new ticket (off by default)", async () => {
+    render(() => <TicketsInboxRouting />)
+    fireEvent.click(screen.getByTestId("tickets-inboxes-configure-i2"))
+    const toggle = screen.getByTestId("tickets-inboxes-notify-new-ticket-i2") as HTMLInputElement
+    expect(toggle.checked).toBe(false)
+    fireEvent.click(toggle)
+    fireEvent.click(screen.getByTestId("tickets-inboxes-save-i2"))
+    await waitFor(() => expect(state.api.post).toHaveBeenCalled())
+    expect(state.api.post.mock.calls[0][1]).toMatchObject({
+      toolName: "tickets:inboxes.update",
+      params: { id: "i2", notifyNewTicket: true },
+    })
+  })
+
   it("close-silent is off by default and sends only the switch while off", async () => {
     render(() => <TicketsInboxRouting />)
     fireEvent.click(screen.getByTestId("tickets-inboxes-configure-i2"))

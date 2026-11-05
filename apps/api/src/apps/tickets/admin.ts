@@ -1416,7 +1416,7 @@ async function inboxesList(tx: SqlClient, orgId: string): Promise<AdminResult> {
     SELECT i.id, i.kind, i.connected_account_id, i.name, i.email_address, i.default_team, i.default_audience,
            i.default_sensitivity, i.from_display_name, i.reply_via_inbox_id, i.reply_from_email,
            i.reply_to_email, i.signature_html, i.signature_text, i.ack_enabled, i.ack_body_text,
-           i.sla_promise_phrase, i.suppress_attention, i.sla_exempt, i.attention_cutoff_at,
+           i.sla_promise_phrase, i.suppress_attention, i.notify_new_ticket, i.sla_exempt, i.attention_cutoff_at,
            i.close_silent_enabled, i.close_silent_nudge_days, i.close_silent_close_days,
            i.close_silent_nudge_text, i.close_silent_enabled_at,
            i.is_default_for_create, i.archived_at,
@@ -1599,7 +1599,7 @@ async function inboxesCreate(
           INSERT INTO ${ticketsRel("inboxes")} (
             id, org_id, connected_account_id, name, email_address, default_team, default_audience, default_sensitivity, from_display_name,
             reply_to_email, signature_html, signature_text, ack_enabled, ack_body_text, sla_promise_phrase,
-            suppress_attention, sla_exempt, is_default_for_create, created_at, updated_at
+            suppress_attention, notify_new_ticket, sla_exempt, is_default_for_create, created_at, updated_at
           ) VALUES (
             gen_random_uuid(), ${orgId}::uuid, ${connectedAccountId}::uuid, ${name}, ${emailAddress},
             ${(params.defaultTeam as string | null) ?? null},
@@ -1613,6 +1613,7 @@ async function inboxesCreate(
             ${(params.ackBodyText as string | null) ?? null},
             ${(params.slaPromisePhrase as string | null) ?? "within 2 business days"},
             ${params.suppressAttention === true},
+            ${params.notifyNewTicket === true},
             ${params.slaExempt === true},
             false,
             now(), now()
@@ -1657,7 +1658,7 @@ async function inboxesCreate(
         INSERT INTO ${ticketsRel("inboxes")} (
           id, org_id, connected_account_id, name, email_address, default_team, default_sensitivity, from_display_name,
           reply_to_email, signature_html, signature_text, ack_enabled, ack_body_text, sla_promise_phrase,
-          suppress_attention, sla_exempt, is_default_for_create, created_at, updated_at
+          suppress_attention, notify_new_ticket, sla_exempt, is_default_for_create, created_at, updated_at
         ) VALUES (
           gen_random_uuid(), ${orgId}::uuid, ${connectedAccountId}::uuid, ${name}, ${emailAddress},
           ${(params.defaultTeam as string | null) ?? null},
@@ -1670,6 +1671,7 @@ async function inboxesCreate(
           ${(params.ackBodyText as string | null) ?? null},
           ${(params.slaPromisePhrase as string | null) ?? "within 2 business days"},
           ${params.suppressAttention === true},
+          ${params.notifyNewTicket === true},
           ${params.slaExempt === true},
           ${isDefaultForCreate},
           now(), now()
@@ -1825,7 +1827,7 @@ async function inboxesCreateApi(
       default_team, default_sensitivity, from_display_name,
       reply_via_inbox_id, reply_from_email, reply_to_email,
       signature_html, signature_text, ack_enabled, ack_body_text, sla_promise_phrase,
-      suppress_attention, sla_exempt, is_default_for_create, created_at, updated_at
+      suppress_attention, notify_new_ticket, sla_exempt, is_default_for_create, created_at, updated_at
     ) VALUES (
       gen_random_uuid(), ${orgId}::uuid, 'api', NULL, ${name}, NULL,
       ${(params.defaultTeam as string | null) ?? null},
@@ -1839,6 +1841,7 @@ async function inboxesCreateApi(
       ${(params.ackBodyText as string | null) ?? null},
       ${(params.slaPromisePhrase as string | null) ?? "within 2 business days"},
       ${params.suppressAttention === true},
+      ${params.notifyNewTicket === true},
       ${params.slaExempt === true},
       false,
       now(), now()
@@ -1991,6 +1994,8 @@ async function inboxesUpdate(
     )
   if ("suppressAttention" in params)
     sets.push(drizzleSql`suppress_attention = ${params.suppressAttention === true}`)
+  if ("notifyNewTicket" in params)
+    sets.push(drizzleSql`notify_new_ticket = ${params.notifyNewTicket === true}`)
   if ("slaExempt" in params) sets.push(drizzleSql`sla_exempt = ${params.slaExempt === true}`)
   if ("attentionCutoffAt" in params)
     sets.push(

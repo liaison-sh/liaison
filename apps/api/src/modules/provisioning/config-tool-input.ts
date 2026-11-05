@@ -203,6 +203,7 @@ const toolInboxSchema = z
     name: z.string().min(1).optional(),
     fromDisplayName: z.string().optional(),
     defaultTeam: z.string().min(1).optional(),
+    notifyNewTicket: z.boolean().optional(),
     default: z.boolean().optional(),
   })
   .strict()

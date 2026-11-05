@@ -97,7 +97,13 @@ export const NOTIFICATION_GROUPS: readonly NotificationGroup[] = [
     labelKey: "notifications.groups.approvals",
     label: "Approvals and access requests",
     // What only you (or your role) can decide: a direct ask.
-    kinds: ["approval_pending", "scope_request", "admin_action", "routine_mailbox_wait", "tickets:ticket.created"],
+    kinds: [
+      "approval_pending",
+      "scope_request",
+      "admin_action",
+      "routine_mailbox_wait",
+      "tickets:ticket.created",
+    ],
   },
   {
     // The outcome of your own request: news for the inbox, never an

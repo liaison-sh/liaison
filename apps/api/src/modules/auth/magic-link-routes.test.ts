@@ -490,6 +490,13 @@ describe("what counts as the provider refusing", () => {
     [new EmailProviderError("Resend 500: x", 500), "unreachable"],
     [new EmailProviderError('Resend 403: {"name":"invalid_api_key"}', 403), "credentials"],
     [
+      new EmailProviderError(
+        'Resend 401: {"message":"API key is invalid","name":"validation_error","statusCode":401}',
+        401,
+      ),
+      "credentials",
+    ],
+    [
       new EmailProviderError('Resend 403: {"name":"validation_error","message":"domain"}', 403),
       null,
     ],

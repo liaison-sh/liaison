@@ -542,7 +542,9 @@ export function emailFailureOutage(err: unknown): { kind: EmailOutageKind; detai
       return { kind: "unreachable", detail: `resend ${err.status ?? "network"}` }
     }
     const key = /invalid_api_key|missing_api_key|restricted_api_key/.exec(err.message)
-    return key ? { kind: "credentials", detail: key[0] } : null
+    if (key) return { kind: "credentials", detail: key[0] }
+    // Resend answers a key it does not take with 401 and the generic `validation_error`.
+    return err.status === 401 ? { kind: "credentials", detail: "resend 401" } : null
   }
   // A nodemailer failure: `code` for the connection, `responseCode` and `response` for the server,
   // `command` for the stage it answered.

@@ -43,7 +43,7 @@
 #
 # The operator dry run (LIAISON_RELEASE_DRY_RUN=1, under `act`) proves only
 # the packaging/signing mechanics: it skips every gate (lint/typecheck/guards,
-# unit tests), the baseline PR, the GHCR login/push, and the GitHub Release;
+# unit tests), the GHCR login/push, and the GitHub Release;
 # it builds exactly one architecture (amd64) locally and does not sign for
 # real (`act` has no OIDC issuer for cosign keyless).
 
@@ -216,56 +216,14 @@ jobs:
           git -c "http.https://github.com/.extraheader=$auth" fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
           echo "security=$(bun run scripts/release-security-marker.ts "$GITHUB_REF_NAME")" >> "$GITHUB_OUTPUT"
 
-  # ----- Migration baseline PR (v0.1.0 only) -----
-  # The only job that pushes a branch and opens a PR, so the only one with
-  # contents/pull-requests write. It runs no tests and no `bun install`:
-  # scripts/write-baseline.ts imports only node:crypto/fs/path.
-  baseline-pr:
-    needs: [gate, unit-tests]
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        if: github.ref_name == 'v0.1.0'
-        with:
-          fetch-depth: 0
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        if: github.ref_name == 'v0.1.0'
-        with:
-          bun-version: "1.4.x"
-      - name: Write migration baseline (v0.1.0 only)
-        if: github.ref_name == 'v0.1.0'
-        env:
-          GIT_TAG: ${{ github.ref_name }}
-        run: bun run scripts/write-baseline.ts
-
-      - name: Open baseline PR (v0.1.0 only)
-        if: github.ref_name == 'v0.1.0' && env.LIAISON_RELEASE_DRY_RUN != '1'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          git config user.name "release-bot"
-          git config user.email "release-bot@users.noreply.github.com"
-          git checkout -b baseline/v0.1.0
-          git add apps/api/src/db/migrations/.baseline
-          git commit -m "chore: write migration baseline for v0.1.0"
-          git push origin baseline/v0.1.0
-          gh pr create --title "chore: migration baseline for v0.1.0" \
-            --body "Auto-generated baseline at v0.1.0 cut. Merge to lock 0000_initial.sql." \
-            --base main --head baseline/v0.1.0
-
-      # NOTE: the release manifest, the compose pin, and the changelog are
-      # NOT built here and handed to the other jobs via actions/upload-artifact
-      # for the manifest: that action's v4 "Results API" backend isn't emulated
-      # by `act`'s local artifact server, so the operator dry run can never
-      # exercise an artifact hand-off. The manifest is a pure, deterministic
-      # function of the checked-out tree, so each build job regenerates it from
-      # its own fresh checkout. (The release-notes -> publish hand-off below
-      # does use artifacts, but only in the non-dry-run path.)
+  # NOTE: the release manifest, the compose pin, and the changelog are
+  # NOT built here and handed to the other jobs via actions/upload-artifact
+  # for the manifest: that action's v4 "Results API" backend isn't emulated
+  # by `act`'s local artifact server, so the operator dry run can never
+  # exercise an artifact hand-off. The manifest is a pure, deterministic
+  # function of the checked-out tree, so each build job regenerates it from
+  # its own fresh checkout. (The release-notes -> publish hand-off below
+  # does use artifacts, but only in the non-dry-run path.)
 
   # ----- Per-arch native image builds -----
   build-amd64:
@@ -373,11 +331,13 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.4.x"
-      - name: Generate changelog
-        run: bun run scripts/changelog.ts > CHANGELOG.md || echo "skipping changelog" > CHANGELOG.md
+      # docs/release-notes.md lists the newest release first: its top section is
+      # this release's notes. An empty result fails the release.
+      - name: Take this release's notes
+        run: |
+          set -euo pipefail
+          awk '/^## /{ if (seen) exit; seen=1 } seen' docs/release-notes.md > CHANGELOG.md
+          test -s CHANGELOG.md
       # Pin the published compose to this release. The default image tag in
       # the committed file is v0.1.0; rewrite it to the released ref so an
       # operator who runs `docker compose pull && up -d` without setting
@@ -412,7 +372,7 @@ jobs:
   # checks out nothing and installs nothing, so the only code it runs is
   # pinned third-party actions plus docker/cosign.
   publish:
-    needs: [release-prep, baseline-pr, release-notes, build-amd64, build-arm64]
+    needs: [release-prep, release-notes, build-amd64, build-arm64]
     runs-on: ubuntu-latest
     # Signing and publishing wait for the required reviewer on this environment.
     environment: release

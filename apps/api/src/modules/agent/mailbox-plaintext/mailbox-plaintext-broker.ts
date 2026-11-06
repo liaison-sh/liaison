@@ -305,7 +305,8 @@ function turnState(frame: RunContext): MailboxTurnState {
  * from the owner's live window? Either the reader typed it (a person's turn,
  * from any surface: the app, the CLI, a channel, the phone; it runs as whoever
  * typed it, and the opener still requires that person to own the mailbox; a
- * site visitor's turn and the MCP gateway's frame are never one), or it is a tick of a routine
+ * site visitor's turn, a restricted session's message and the MCP gateway's
+ * frame are never one), or it is a tick of a routine
  * that is the reader's own work: created and last edited by them, and run on
  * its schedule, on its event or at their own request (routine-mailbox-trust.ts,
  * stamped on the frame by the routine worker). A routine someone else set up

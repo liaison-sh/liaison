@@ -1291,6 +1291,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // CSV formula cells, currency exponents, gated settings tools (pure).
             "src/csv-money-and-gated-settings.test.ts",
             "src/numbering.test.ts",
+            // The one door of the issue date and number year, with its guard over the issue paths.
+            "src/issue-date.test.ts",
             "src/state.test.ts",
             "src/tax.test.ts",
             // E-invoicing pure core (territory, identity, regime classifier, operation type).

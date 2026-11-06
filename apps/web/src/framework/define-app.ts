@@ -174,6 +174,15 @@ export function registerApp(def: AppDefinition): void {
   batch(() => registerAppImpl(def))
 }
 
+/** The feature of the tab type an app's rail entry opens, when it has one. */
+function navigationFeature(def: AppDefinition): string | undefined {
+  const tabAction = def.activityBar?.tabAction
+  const local =
+    (tabAction && (def.tabTypes?.[tabAction.type] ? tabAction.type : tabAction.entityId)) ??
+    Object.keys(def.tabTypes ?? {})[0]
+  return local ? def.tabTypes?.[local]?.feature : undefined
+}
+
 function registerAppImpl(def: AppDefinition): void {
   const previousIndex = appIndex[def.name]
   const nextTabTypeKeys = Object.keys(def.tabTypes ?? {}).map((type) =>
@@ -232,6 +241,7 @@ function registerAppImpl(def: AppDefinition): void {
       position: def.activityBar.position,
       external: def.activityBar.external,
       appId: def.name,
+      feature: navigationFeature(def),
       tabAction: def.activityBar.tabAction
         ? {
             ...def.activityBar.tabAction,
@@ -571,6 +581,8 @@ export interface AppManifest {
         preserveSubRoutes?: boolean
         resolveLabel?: string
         referenceable?: boolean
+        /** A feature the app declares under top-level `features`. */
+        feature?: string
       }
     >
     activityBar?: {
@@ -735,10 +747,14 @@ export function appSettingsLabelKey(
     : undefined
 }
 
-function pageSectionAccess(settings: AppManifest["settings"]): SettingsPageSectionAccess[] {
+function pageSectionAccess(
+  appId: string,
+  settings: AppManifest["settings"],
+): SettingsPageSectionAccess[] {
   return (settings?.sections ?? []).map((s) => ({
     scope: s.scope,
     ...(s.adminScope ? { adminScope: s.adminScope } : {}),
+    ...(s.feature ? { feature: s.feature, appId } : {}),
   }))
 }
 
@@ -823,6 +839,7 @@ export function registerAppFromManifest(
         preserveSubRoutes: reg.preserveSubRoutes,
         resolveLabel: reg.resolveLabel ? resolveExport(reg.resolveLabel) : undefined,
         referenceable: reg.referenceable,
+        feature: reg.feature,
       }
     }
   }
@@ -870,7 +887,7 @@ export function registerAppFromManifest(
     })
     if (manifest.kind === "connector") {
       // A connector is a card on the Connectors page: no row, no page of its own.
-      registerConnectorApp(manifest.name, pageSectionAccess(settings))
+      registerConnectorApp(manifest.name, pageSectionAccess(manifest.name, settings))
     } else {
       // ONE page per app, named like the app; visible when the viewer sees at
       // least one of its sections.
@@ -882,7 +899,7 @@ export function registerAppFromManifest(
           href: appSettingsHref(manifest.name),
           group: "app",
           order: 0,
-          pageSections: pageSectionAccess(settings),
+          pageSections: pageSectionAccess(manifest.name, settings),
           component: appSettingsPageFor(manifest.name),
         },
       ]

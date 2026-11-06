@@ -144,7 +144,7 @@ import {
   skillRegistry,
   toolRegistry,
 } from "~/modules/apps/app-registries"
-import { isAppUnavailableFor, primeOrgApps } from "~/modules/apps/org-apps"
+import { isAppUnavailableFor, isFeatureOffForTool, primeOrgApps } from "~/modules/apps/org-apps"
 import { isVisitorDemoOrgId } from "~/modules/demo/demo-org"
 import { listMcpTools } from "~/modules/mcp/tool-projection"
 import { liveDesktopConnections } from "~/modules/nodes/presence"
@@ -1525,6 +1525,9 @@ Write numbers, amounts and dates the way that language writes them, never as a r
       continue
     }
     if (isAppUnavailableFor(orgId, tkey[1], actor.userId)) continue
+    // A tool of a feature that is off is loaded nowhere, so a guide section about
+    // it alone stays out of the prompt.
+    if (isFeatureOffForTool(orgId, tdef)) continue
     if (!isDeferredTool(tkey[1], tdef)) {
       hotApps.add(tkey[1])
       loadedAppTools.add(`${tkey[1]}__${tkey[2]}`)

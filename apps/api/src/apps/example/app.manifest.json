@@ -1,6 +1,6 @@
 {
   "name": "example",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Reference app demonstrating every Liaison SDK surface",
   "listing": {
     "publisher": "Liaison",
@@ -28,6 +28,12 @@
       }
     }
   },
+  "features": {
+    "item_notes": {
+      "adminScope": "example:items:write",
+      "labelKey": "apps.example.features.itemNotes"
+    }
+  },
   "entities": {
     "items": {
       "labelField": "text",
@@ -37,6 +43,14 @@
     }
   },
   "tools": {
+    "item_notes_count": {
+      "description": "Count example items for the notes feature",
+      "requiredScopes": ["example:items:read"],
+      "handler": "item_notes_count",
+      "readOnly": true,
+      "feature": "item_notes",
+      "params": { "type": "object", "properties": {} }
+    },
     "items_list": {
       "description": "List example items",
       "requiredScopes": ["example:items:read"],

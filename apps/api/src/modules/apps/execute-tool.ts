@@ -245,7 +245,14 @@ import {
 import { generateApprovalSummary } from "~/modules/apps/approval-summarizers"
 import { ingestionCallerApp } from "~/modules/apps/cross-app-ingestions"
 import { ensureAppsForOrg, getDefaultApps } from "~/modules/apps/init"
-import { APP_STATE_UNAVAILABLE_CODE, isAppActiveForOrgAsync } from "~/modules/apps/org-apps"
+import {
+  APP_STATE_UNAVAILABLE_CODE,
+  FEATURE_OFF_CODE,
+  isAppActiveForOrgAsync,
+  isFeatureOffForTool,
+  primeOrgApps,
+} from "~/modules/apps/org-apps"
+import { featureOffAnswer } from "~/modules/apps/org-features"
 import { sealMailApprovalPayload } from "~/modules/mailbox-crypto/approval-payload"
 import {
   bypassesDimensionConstraint,
@@ -3422,6 +3429,7 @@ export function statusForToolError(code: string): number {
     // The app is turned Off for the workspace (S19): a conflict with the
     // workspace's state, not a fault and not a missing permission.
     case APP_DISABLED_CODE:
+    case FEATURE_OFF_CODE:
       return 409
     case APP_STATE_UNAVAILABLE_CODE:
       return 503
@@ -4239,6 +4247,15 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         retryable: false,
       },
     }
+  }
+
+  // A FEATURE SWITCHED OFF INSIDE THE APP runs nothing, for an admin holding `*` as
+  // for anyone: its tool is gone from every catalog, so a call that still names it
+  // comes from an old schema or a stale list, and it is told what happened in the
+  // feature's own words. Before anything can park an approval for it.
+  if (isFeatureOffForTool(opts.orgId, tool)) {
+    const { code, message, feature, next, retryable } = featureOffAnswer(opts.orgId, tool)
+    return { error: { code, message, retryable, status: 409, body: { feature, next } } }
   }
 
   // A near-miss reference (`{{step1.record_id}}`, `@ref:<approval1>:id`, `$ref`, a token
@@ -6061,6 +6078,15 @@ export async function executeApprovedToolHandlerInternal(args: {
    */
   threadId?: string
 }): Promise<unknown> {
+  // The feature went off while this waited for a person. Approving the same request
+  // again cannot pass, so the answer is final and closes it with the feature's words
+  // (`revertToPending`, approvals/decide.ts), rather than re-pending it forever.
+  await primeOrgApps(args.orgId)
+  if (isFeatureOffForTool(args.orgId, args.tool)) {
+    const { code, message, feature, next } = featureOffAnswer(args.orgId, args.tool)
+    // The closing notice carries the message alone, so the next step travels in it.
+    return { error: { code, message: `${message} ${next}`, feature, next, final: true } }
+  }
   const validated = validateParamsForTool(
     args.tool,
     args.orgId,

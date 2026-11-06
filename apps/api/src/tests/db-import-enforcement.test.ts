@@ -125,6 +125,9 @@ describe("db import enforcement", () => {
     // instance `kernel.apps.config` rows, written after the route's
     // kernel:apps:admin check and the manifest configKeys allowlist.
     "modules/apps/app-config.ts",
+    // The one writer of kernel.org_app_features: a member has no write path on the
+    // table, so the row is written privileged after the feature's adminScope is checked.
+    "modules/apps/org-features.ts",
     // Declarative app settings (GET/PATCH /api/apps/:app/settings/org):
     // kernel.organizations is deny-all under RLS, so org-scope values are read
     // and written privileged after the route checks the section's adminScope;

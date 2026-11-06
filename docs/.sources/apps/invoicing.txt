@@ -195,3 +195,4 @@ A draft order deleted or completed meanwhile closes its wait -> bundled-apps/inv
 An issued document's date stays in its number's year; an invoice or credit note's date stays between its neighbouring numbers and on or before today -> bundled-apps/invoicing/src/mutations/documents-update.ts:330
 A date picked on a new quote, proforma or purchase order decides its number year; after today is refused; a shop-linked quote takes its draft order's day -> bundled-apps/invoicing/src/mutations/stated-issue-date.ts:13; bundled-apps/invoicing/src/ui/Editor.tsx:803
 The PDF tab frames the document where the browser has a PDF viewer -> bundled-apps/invoicing/src/ui/DocumentDetail.tsx:772
+credit note approval card states total, lines, date, original -> bundled-apps/invoicing/src/approval-cards.ts:334

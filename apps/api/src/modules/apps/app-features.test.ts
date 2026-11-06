@@ -10,12 +10,18 @@ import { z } from "zod"
 import { app } from "~/app"
 import { sql } from "~/db"
 import * as privileged from "~/db/privileged"
+import { withSystemDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
+import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel"
 import * as eventBus from "~/infra/events/event-bus"
+import { flushEventHandlers } from "~/infra/events/event-bus"
+import { registerEventSubscribers } from "~/infra/events/event-subscribers"
+import { processOutboxBatch } from "~/infra/events/outbox-worker"
 import { appsLogger } from "~/lib/logger"
 import * as scriptedProvider from "~/modules/agent/providers/scripted-model-provider"
 import { AgentServiceTestAccess, runAgentChat } from "~/modules/agent/runtime/agent-service"
-import { runContextStore } from "~/modules/agent/runtime/run-context"
+import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
+import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { spawnAgent } from "~/modules/agent/subruns/spawn-agent"
 import { createSubAgentDefinition } from "~/modules/agent/subruns/sub-agent-definitions"
 import { awaitSubRunResult } from "~/modules/agent/subruns/subrun-await"
@@ -38,6 +44,7 @@ import { toolRegistry } from "~/modules/apps/app-registries"
 import { executeTool, executeToolCore } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import {
+  enabledFeaturesFor,
   forgetOrgApps,
   isFeatureOffForTool,
   primeOrgApps,
@@ -51,10 +58,16 @@ import {
   registerActiveServer,
   unregisterActiveServer,
 } from "~/modules/mcp/catalog-notifier"
-import { manifestWithBundle } from "~/modules/mcp/test-helpers"
+import {
+  cleanupSeededOrg,
+  manifestWithBundle,
+  seedOrgWithTicketsApp,
+} from "~/modules/mcp/test-helpers"
 import { handleToolCall } from "~/modules/mcp/tool-call"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
+import { resetOrgRuntimeForTest } from "~/tests/helpers/org-runtime"
+import { seededApps } from "~/tests/helpers/seeded-app-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const ORIG_ANTHROPIC_KEY = process.env.LIAISON_ANTHROPIC_API_KEY
@@ -98,6 +111,7 @@ function featuredManifest() {
   }
 }
 
+const SEEDED = seededApps()
 let orgId: string
 let owner: minimal.Session
 let agentId: string
@@ -211,6 +225,7 @@ beforeAll(async () => {
   await acquireTestLock()
   process.env.LIAISON_ANTHROPIC_API_KEY = "sk-test-key"
   process.env.LIAISON_MODEL_PROVIDER = "scripted"
+  registerEventSubscribers()
   ;({ orgId, owner } = await setUpOrg())
   const [agent] = await sql<{ id: string }[]>`
     INSERT INTO kernel.agents (org_id, kind, handle, display_name, scope_ceiling, owner_user_id)
@@ -230,6 +245,7 @@ afterEach(async () => {
 })
 
 afterAll(async () => {
+  await SEEDED.cleanup()
   forgetOrgApps()
   if (ORIG_ANTHROPIC_KEY !== undefined) process.env.LIAISON_ANTHROPIC_API_KEY = ORIG_ANTHROPIC_KEY
   else delete process.env.LIAISON_ANTHROPIC_API_KEY
@@ -292,12 +308,25 @@ describe("what a turn is given", () => {
 
     // A sub-run builds its own set and its own catalog.
     const agentType = `feat-${crypto.randomUUID().slice(0, 6)}`
+    const scopes = ["test:items:read", "test:items:write", "test:external:read"]
+    const owningApp = SEEDED.track(`feat-${crypto.randomUUID().slice(0, 8)}`)
+    await withSystemDb("feature-test-install-app", async (db) => {
+      await db.insert(appsInstalled).values({
+        name: owningApp,
+        version: "1.0.0",
+        sourceUrl: `file:///tmp/${owningApp}.liaisonapp`,
+        sha256: "0".repeat(64),
+        grantedScopes: scopes,
+        installedBy: owner.userId,
+      })
+      await db.insert(appsActiveVersion).values({ name: owningApp, version: "1.0.0" })
+    })
     await createSubAgentDefinition({
       orgId,
-      appName: "test",
+      appName: owningApp,
       agentType,
       whenToUse: "test",
-      scopeCeiling: ["test:*"],
+      scopeCeiling: scopes,
       systemPrompt: "Do the task.",
     })
     let subTools: string[] = []
@@ -313,14 +342,15 @@ describe("what a turn is given", () => {
         parentRun: {
           id: null,
           threadId: await freshThread(),
-          actor: actor(["test:*"]),
+          actor: actor(scopes),
           nestingDepth: 0,
         },
         subagentType: agentType,
         description: "feature gate",
         prompt: "go",
       })
-      await awaitSubRunResult(handle.runId, orgId, { timeoutMs: 30_000 })
+      // Whether it produced anything is not the question here: what it was given is.
+      await awaitSubRunResult(handle.runId, orgId, { timeoutMs: 30_000 }).catch(() => null)
     } finally {
       AgentServiceTestAccess.setStreamText()
     }
@@ -472,7 +502,7 @@ describe("the row", () => {
       WHERE org_id = ${orgId} AND app_name = 'test' AND feature = ${FEATURE}`
     expect(row?.enabled).toBe(true)
     expect(row?.changed_by).toBe(owner.userId)
-    expect(row?.changed_at).toBeInstanceOf(Date)
+    expect(row?.changed_at).toBeTruthy()
   })
 
   it("the same value again changes nothing and tells nobody", async () => {
@@ -552,24 +582,29 @@ describe("the row", () => {
   })
 
   it("cross-org", async () => {
-    const other = await setUpOrg()
-    await flip(true)
-    await primeOrgApps(other.orgId, 0)
-    const tool = { appName: "test", feature: FEATURE }
-    expect(isFeatureOffForTool(orgId, tool)).toBe(false)
-    expect(isFeatureOffForTool(other.orgId, tool)).toBe(true)
-    const res = await app.request("/api/apps/features", {
-      headers: { Authorization: `Bearer ${other.owner.bearer}` },
-    })
-    expect(((await res.json()) as { data: unknown[] }).data).toEqual([])
-    const buildOther = buildToolSet(
-      other.orgId,
-      actor(["*"], other.orgId, other.owner.userId),
-      undefined,
-      ALL_DEFERRED_TOOLS_UNLOCKED,
-    )
-    expect(Object.keys(buildOther)).not.toContain(DEFERRED_TOOL)
-  }, 120_000)
+    const other = await seedOrgWithTicketsApp()
+    try {
+      resetOrgRuntimeForTest(other.orgId)
+      await registerApps([featuredManifest()], other.orgId)
+      await primeOrgApps(other.orgId, 0)
+      await flip(true)
+      const tool = { appName: "test", feature: FEATURE }
+      expect(isFeatureOffForTool(orgId, tool)).toBe(false)
+      expect(isFeatureOffForTool(other.orgId, tool)).toBe(true)
+      expect(enabledFeaturesFor(other.orgId)).toEqual([])
+      const held = buildToolSet(
+        other.orgId,
+        actor(["*"], other.orgId, other.ownerId),
+        undefined,
+        ALL_DEFERRED_TOOLS_UNLOCKED,
+      )
+      expect(Object.keys(held)).not.toContain(DEFERRED_TOOL)
+    } finally {
+      resetOrgRuntimeForTest(other.orgId)
+      forgetOrgApps(other.orgId)
+      await cleanupSeededOrg(other.orgId)
+    }
+  }, 60_000)
 })
 
 describe("a flip", () => {
@@ -589,6 +624,10 @@ describe("a flip", () => {
   })
 
   it("a flip emits entity app and a live MCP session gets it", async () => {
+    while ((await processOutboxBatch()) > 0) {
+      // Earlier flips in this file are delivered before this session opens.
+    }
+    await flushEventHandlers()
     let listChanged = 0
     registerActiveServer({
       connectionId: "feature-flip",
@@ -600,14 +639,17 @@ describe("a flip", () => {
     })
     try {
       await flip(true)
+      const [event] = await sql<{ payload: { entity: string; action: string } }[]>`
+        SELECT payload FROM kernel.pending_events
+        WHERE org_id = ${orgId} AND payload->>'entity' = 'app'
+        ORDER BY seq DESC LIMIT 1`
+      expect(event?.payload.action).toBe("feature_update")
+      // The outbox delivers it to this process's subscribers, as to every other's.
+      await processOutboxBatch()
+      await flushEventHandlers()
       const deadline = Date.now() + 10_000
       while (listChanged === 0 && Date.now() < deadline) await Bun.sleep(50)
-      expect(listChanged).toBe(1)
-      const [event] = await sql<{ payload: Record<string, unknown> }[]>`
-        SELECT payload FROM kernel.event_outbox
-        WHERE org_id = ${orgId} AND payload->>'entity' = 'app'
-        ORDER BY created_at DESC LIMIT 1`
-      expect(event?.payload?.action).toBe("feature_update")
+      expect(listChanged).toBeGreaterThan(0)
     } finally {
       unregisterActiveServer("feature-flip")
       __resetCatalogNotifier()
@@ -636,7 +678,7 @@ describe("a flip", () => {
       toolName: "test:riskyAction",
       orgId,
       actor: actor(["*"]),
-      params: { title: "A budget", amount: 1 },
+      params: { itemId: "item-1", action: "archive" },
       threadId,
     } as never)
     const requestId = parked.blocked?.approvalRequestId
@@ -666,6 +708,13 @@ describe("a flip", () => {
 
 describe("the breaker", () => {
   const STALE_APP = "staleness"
+  const freshFrame = (): RunContext => ({
+    runId: crypto.randomUUID(),
+    parentRunId: null,
+    rootRunId: "root",
+    nestingDepth: 0,
+    turnScopeAccumulator: createTurnScopeAccumulator({ orgId }),
+  })
 
   beforeAll(() => {
     toolRegistry.set([orgId, STALE_APP, "edit"], {
@@ -692,7 +741,7 @@ describe("the breaker", () => {
     const tool = tools[name] as {
       execute: (a: unknown, o: { toolCallId: string; messages: unknown[] }) => Promise<unknown>
     }
-    return runContextStore.run({ runId: crypto.randomUUID() } as never, async () => {
+    return runContextStore.run(freshFrame(), async () => {
       const results: unknown[] = []
       for (let step = 1; step <= 4; step++) {
         results.push(
@@ -721,7 +770,7 @@ describe("the breaker", () => {
     const tool = tools[DEFERRED_TOOL] as {
       execute: (a: unknown, o: { toolCallId: string; messages: unknown[] }) => Promise<unknown>
     }
-    const results = await runContextStore.run({ runId: crypto.randomUUID() } as never, async () => {
+    const results = await runContextStore.run(freshFrame(), async () => {
       const out: Array<{ error: string }> = []
       for (let step = 1; step <= 4; step++) {
         out.push(

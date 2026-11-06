@@ -3,14 +3,13 @@ import { and, eq, sql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { routines, skills } from "~/db/schema/kernel"
+import { broadcastEphemeral } from "~/infra/events/event-bus"
 import { rootLogger } from "~/lib/logger"
-import { currentRunContext } from "~/modules/agent/runtime/run-context"
 import {
   type OpenRecord,
   type OpenTab,
   type OpenView,
   openViewsOf,
-  readScopeOf,
   runHasNoViewer,
   tabForId,
 } from "~/modules/agent/tools/open-targets"
@@ -20,7 +19,7 @@ import {
   resolveConnectionTemplateVars,
 } from "~/modules/apps/detail-external-link"
 import { hasScope } from "~/modules/permissions/permissions"
-import { lookupEntityDecl, resolveEntityLabel } from "~/modules/threads/reference-display"
+import { lookupEntityDecl, resolveEntityNaming } from "~/modules/threads/reference-display"
 
 const log = rootLogger.child({ module: "navigation-tool" })
 
@@ -28,6 +27,8 @@ const log = rootLogger.child({ module: "navigation-tool" })
 const TAB_ID = /^[\w:.@-]{1,200}$/
 const PANEL_ID = /^[\w:/.@%=+-]{1,200}$/
 const LABEL_MAX = 120
+/** A reference fit for the model to read: one generated token, never a sentence. */
+const REFERENCE = /^[\w.-]{1,64}$/
 
 export interface OpenAppContext {
   userId: string
@@ -35,6 +36,8 @@ export interface OpenAppContext {
   /** The actor's RLS transaction. A failed read inside it runs under a savepoint here. */
   db?: any
   scopes?: string[]
+  /** The conversation the turn is answering: the requester's screen is reached through it. */
+  agentExecutionThreadId?: string
 }
 
 type Refused = { ok: false; code: string; message: string; valid?: string[]; url?: string }
@@ -43,8 +46,8 @@ type Opened = {
   app: string
   view?: string
   id?: string
-  label?: string
-  tab?: OpenTab
+  /** What opened: its kind and a generated reference. Never a record's own words. */
+  opened?: string
   note?: string
 }
 
@@ -93,18 +96,18 @@ async function hasLocalRow(ctx: OpenAppContext, record: OpenRecord): Promise<boo
 }
 
 /**
- * The record's name under the actor's RLS, or null when it is gone or hidden. A savepoint holds
+ * The record's naming under the actor's RLS, or null when it is gone or hidden. A savepoint holds
  * the read: an id of the wrong shape fails its query, and that must not abort the whole turn's
  * transaction.
  */
-async function readLabel(
+async function readNaming(
   ctx: OpenAppContext,
   record: OpenRecord,
   id: string,
-): Promise<string | null> {
+): Promise<{ label: string; handle: string | null } | null> {
   try {
     return await ctx.db.transaction((tx: any) =>
-      resolveEntityLabel(tx, {
+      resolveEntityNaming(tx, {
         orgId: ctx.orgId,
         app: record.app,
         entityType: record.entityType,
@@ -169,12 +172,41 @@ async function outsideLink(ctx: OpenAppContext, app: string, entity: string, id:
 }
 
 /**
+ * Opens the tab on the requester's own connections (`REQUESTER_ONLY_ACTIONS`, websocket.ts). The
+ * title travels here and nowhere else, since a record's name can be outside text: not in the tool's
+ * result, so no model reads it and no later turn replays it, and not on the room's stream.
+ */
+async function showTab(ctx: OpenAppContext, tab: OpenTab, label: string): Promise<boolean> {
+  const threadId = ctx.agentExecutionThreadId
+  if (!threadId) return false
+  try {
+    await broadcastEphemeral({
+      app: "kernel",
+      entity: "agent_stream",
+      action: "open_tab",
+      entityId: threadId,
+      orgId: ctx.orgId,
+      actorId: ctx.userId,
+      actorType: "agent",
+      data: { threadId, requesterId: ctx.userId, tab, label: label.slice(0, LABEL_MAX) },
+    })
+    return true
+  } catch (err) {
+    log.warn({ err, threadId }, "open_app could not reach the requester's screen")
+    return false
+  }
+}
+
+const NO_SCREEN = () => refuse("NO_VIEWER", "The person's screen could not be reached.")
+
+/**
  * `open_app`: let the agent move the requester's UI to an app, a view or one record. The EFFECT is
  * client-side: the web app reads this call off the `agent_stream` channel, for the person who
  * asked only (`message-store.ts`). With only `app` it opens that app, by the name the web app
  * resolves. With a view or an id, this handler decides: the row is read under the actor's RLS,
  * so a record the person cannot see answers NOT_FOUND exactly as one that does not exist, and the
- * tab comes from this result rather than from the model's arguments.
+ * tab is the server's rather than the model's words. The result names what opened by its kind and
+ * a generated reference, so the model never reads a record's own words through this tool.
  */
 export async function handleOpenApp(
   params: { app: string; view?: string; id?: string },
@@ -210,7 +242,8 @@ export async function handleOpenApp(
       )
     }
     const tab = tabForId(chosen.target, chosen.view)
-    return { ok: true, app, view: chosen.view, label: chosen.label, ...(tab ? { tab } : {}) }
+    if (!tab || !(await showTab(ctx, tab, chosen.label))) return NO_SCREEN()
+    return { ok: true, app, view: chosen.view, opened: chosen.label }
   }
   if (!chosen.needsId) {
     return refuse("ID_NOT_TAKEN", `${app} view "${chosen.view}" is not a record: it takes no id.`)
@@ -224,21 +257,16 @@ export async function handleOpenApp(
   // A page that is only a name (a work queue, a list's filter): nothing to read, nothing hidden.
   if (!chosen.record) {
     const tab = tabForId(chosen.target, id)
-    return {
-      ok: true,
-      app,
-      view: chosen.view,
-      id,
-      label: `${chosen.label}: ${id}`,
-      ...(tab ? { tab } : {}),
-    }
+    const named = `${chosen.label}: ${id}`
+    if (!tab || !(await showTab(ctx, tab, named))) return NO_SCREEN()
+    return { ok: true, app, view: chosen.view, id, opened: named }
   }
 
   if (!holdsReadScope(ctx.orgId, chosen.record, ctx.scopes)) return notFound()
 
   const readable = await hasLocalRow(ctx, chosen.record)
-  const label = readable ? await readLabel(ctx, chosen.record, id) : null
-  if (readable && label === null) return notFound()
+  const naming = readable ? await readNaming(ctx, chosen.record, id) : null
+  if (readable && naming === null) return notFound()
 
   if (chosen.target.kind === "outside") {
     const link = await outsideLink(ctx, app, chosen.target.entity, id)
@@ -255,20 +283,16 @@ export async function handleOpenApp(
   const tab = tabForId(chosen.target, id) ?? (await tabOfInnerRecord(ctx, chosen.target, id))
   if (!tab) return notFound()
 
-  // The name read from the row reaches the model and the room's stream, so the turn now holds
-  // what that scope protects, as any read of this record would.
-  const scope = readScopeOf(ctx.orgId, chosen.record)
-  if (label !== null && scope) {
-    currentRunContext()?.turnScopeAccumulator?.recordInjected([scope])
-  }
+  const reference = naming?.handle && REFERENCE.test(naming.handle) ? naming.handle : id
+  const opened = `${chosen.label.toLowerCase()} ${reference}`
+  if (!(await showTab(ctx, tab, naming?.label ?? opened))) return NO_SCREEN()
 
   return {
     ok: true,
     app,
     view: chosen.view,
     id,
-    label: (label ?? `${chosen.label} ${id}`).slice(0, LABEL_MAX),
-    tab,
+    opened,
     ...(readable
       ? {}
       : {

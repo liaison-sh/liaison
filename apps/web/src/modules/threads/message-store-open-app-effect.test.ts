@@ -15,14 +15,6 @@ import { registerActivityBarEntry, unregisterActivityBarEntry } from "~/framewor
 import { handleWsAgentStreamEvent } from "~/modules/threads/message-store"
 
 const TAB = { type: "projects:task", entityId: "task-1" }
-const OK = {
-  ok: true,
-  app: "projects",
-  view: "task",
-  id: "task-1",
-  label: "Fix the pump",
-  tab: TAB,
-}
 const WIRE_NAME = "kernel__open_app"
 
 let n = 0
@@ -32,13 +24,8 @@ function turn(): string {
   return threadId
 }
 
-function result(threadId: string, data: Record<string, unknown>) {
-  handleWsAgentStreamEvent("tool_result", {
-    threadId,
-    toolCallId: "c1",
-    toolName: WIRE_NAME,
-    ...data,
-  })
+function openTabFrame(data: Record<string, unknown>) {
+  handleWsAgentStreamEvent("open_tab", { threadId: "t", tab: TAB, label: "Fix the pump", ...data })
 }
 
 describe("open_app moves the screen of the person who asked", () => {
@@ -72,8 +59,8 @@ describe("open_app moves the screen of the person who asked", () => {
     })
   })
 
-  it("a record opens from the result, with the tab and the label the server gave", () => {
-    result(turn(), { requesterId: "me", result: OK })
+  it("a record opens from the server's frame, titled by the frame", () => {
+    openTabFrame({ requesterId: "me" })
     expect(openTabMock).toHaveBeenCalledWith({ ...TAB, label: "Fix the pump" })
   })
 
@@ -83,34 +70,42 @@ describe("open_app moves the screen of the person who asked", () => {
       entityId: "ada",
       routePath: "/agents/ada/routines?selected=r1",
     }
-    result(turn(), { requesterId: "me", result: { ok: true, label: "Weekly", tab } })
+    openTabFrame({ requesterId: "me", tab, label: "Weekly" })
     expect(openTabMock).toHaveBeenCalledWith({ ...tab, label: "Weekly" })
   })
 
-  it("another person's agent moves no tab, on the call or on its result", () => {
-    const threadId = turn()
+  it("another person's agent moves no tab, by a call or by a frame", () => {
     handleWsAgentStreamEvent("tool_call", {
-      threadId,
+      threadId: turn(),
       toolCallId: "c1",
       toolName: WIRE_NAME,
       requesterId: "colleague",
       args: { app: "tickets" },
     })
-    result(threadId, { requesterId: "colleague", result: OK })
+    openTabFrame({ requesterId: "colleague" })
     expect(openTabMock).not.toHaveBeenCalled()
   })
 
-  it("a frame that names nobody moves no tab: a routine's run has no viewer", () => {
-    result(turn(), { result: OK })
+  it("a call that names nobody moves no tab: a routine's run has no viewer", () => {
+    registerActivityBarEntry({
+      id: "wire-routine",
+      icon: () => null as never,
+      label: "Tickets",
+      order: 10,
+      appId: "tickets",
+      tabAction: { type: "tickets:inbox", entityId: "tickets-inbox", label: "Tickets" },
+    })
+    handleWsAgentStreamEvent("tool_call", {
+      threadId: turn(),
+      toolCallId: "c1",
+      toolName: WIRE_NAME,
+      args: { app: "tickets" },
+    })
+    unregisterActivityBarEntry("wire-routine")
     expect(openTabMock).not.toHaveBeenCalled()
   })
 
-  it("a refused call moves no tab", () => {
-    result(turn(), { requesterId: "me", result: { ok: false, code: "NOT_FOUND", tab: TAB } })
-    expect(openTabMock).not.toHaveBeenCalled()
-  })
-
-  it("a call naming a record waits for its result: the arguments alone move nothing", () => {
+  it("a call naming a record moves nothing by itself: only the server's frame does", () => {
     handleWsAgentStreamEvent("tool_call", {
       threadId: turn(),
       toolCallId: "c1",
@@ -121,14 +116,20 @@ describe("open_app moves the screen of the person who asked", () => {
     expect(openTabMock).not.toHaveBeenCalled()
   })
 
-  it("a browser tab in the background is not moved", () => {
-    vi.spyOn(document, "hidden", "get").mockReturnValue(true)
-    result(turn(), { requesterId: "me", result: OK })
+  it("a tool's result never opens a tab, whatever it holds", () => {
+    handleWsAgentStreamEvent("tool_result", {
+      threadId: turn(),
+      toolCallId: "c1",
+      toolName: WIRE_NAME,
+      requesterId: "me",
+      result: { ok: true, tab: TAB, label: "Fix the pump" },
+    })
     expect(openTabMock).not.toHaveBeenCalled()
   })
 
-  it("another tool's result never opens a tab, whatever it holds", () => {
-    result(turn(), { toolName: "kernel__threads_read", requesterId: "me", result: OK })
+  it("a browser tab in the background is not moved", () => {
+    vi.spyOn(document, "hidden", "get").mockReturnValue(true)
+    openTabFrame({ requesterId: "me" })
     expect(openTabMock).not.toHaveBeenCalled()
   })
 })

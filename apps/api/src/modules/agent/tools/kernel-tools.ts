@@ -3615,14 +3615,14 @@ When to use: When an admin asks to set up a reusable role they will spawn repeat
   // --- UI navigation (lets the agent drive the requester's UI: an app, a view or
   //     one record). Gated on `kernel:threads:read`, the baseline every default
   //     role holds, so the call is never silently dropped; a record's own reading
-  //     scope and RLS are checked in the handler. The effect is client-side (see
-  //     message-store), so there is nothing to run over MCP. ---
+  //     scope and RLS are checked in the handler. The effect is on the requester's
+  //     screen (see message-store), so there is nothing to run over MCP. ---
   toolRegistry.set([orgId, "kernel", "open_app"], {
     appName: "kernel",
     name: "open_app",
     readOnly: true,
-    // Holds no org record by itself. A record's name it returns records that record's
-    // own scope in the handler, as threads_read records its messages' stamps.
+    // Its result holds no record content: a kind and a generated reference. The record's
+    // name goes to the requester's tab alone, never into the result (navigation-tool.ts).
     taintFree: true,
     gatewayHidden: true,
     description:

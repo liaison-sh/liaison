@@ -170,7 +170,7 @@ async function loadAppEntityLabelAndSnippet(
     /** The name the snippet calls it by: the tab type a link opens, when one names it. */
     shownAs: string
   },
-): Promise<{ label?: string; snippet?: string } | null> {
+): Promise<{ label?: string; snippet?: string; handle?: string | null } | null> {
   const { orgId, app, entityType, entityId, shownAs } = params
   const tableName = decl.tableName
   const labelField = decl.labelField
@@ -216,6 +216,7 @@ async function loadAppEntityLabelAndSnippet(
   if (mailSuppressed) {
     return {
       label: `${entityType} ${shortId(entityId)}`,
+      handle: row.handle ?? null,
       snippet: `[Entity: ${shownAs}, id: ${entityId}] { content encrypted, readable only by the mailbox owner }`,
     }
   }
@@ -225,6 +226,7 @@ async function loadAppEntityLabelAndSnippet(
   const labelClause = row.label ? `${labelField}: "${row.label}"` : `${labelField}: "(unnamed)"`
   return {
     label,
+    handle,
     snippet: `[Entity: ${shownAs}${handle ? ` #${handle}` : ""}, id: ${entityId}] { ${labelClause} }`,
   }
 }
@@ -232,7 +234,7 @@ async function loadAppEntityLabelAndSnippet(
 async function loadKnownEntityLabelAndSnippet(
   tx: LabelReader,
   params: { orgId: string; app: string; entityType: string; entityId: string },
-): Promise<{ label?: string; snippet?: string } | null> {
+): Promise<{ label?: string; snippet?: string; handle?: string | null } | null> {
   const { orgId, entityId } = params
   const shownAs = `${params.app}:${params.entityType}`
   const { app, entityType } = tabEntity(orgId, params.app, params.entityType) ?? params
@@ -247,6 +249,7 @@ async function loadKnownEntityLabelAndSnippet(
       const label = row.title ?? `#${row.handle}`
       return {
         label,
+        handle: row.handle,
         snippet: `[Entity: kernel:thread #${row.handle}, id: ${entityId}] { title: "${row.title ?? "(untitled)"}" }`,
       }
     }
@@ -356,6 +359,19 @@ export async function resolveEntityLabel(
 ): Promise<string | null> {
   const found = await loadKnownEntityLabelAndSnippet(tx, params)
   return found?.label ?? null
+}
+
+/**
+ * The name and, when the kind has one, the generated handle of an entity, read with `tx`'s
+ * visibility: null when `resolveEntityLabel` would be. The name can be anyone's words (a customer
+ * writes a ticket's subject); the handle is the reference to give a model instead.
+ */
+export async function resolveEntityNaming(
+  tx: LabelReader,
+  params: { orgId: string; app: string; entityType: string; entityId: string },
+): Promise<{ label: string; handle: string | null } | null> {
+  const found = await loadKnownEntityLabelAndSnippet(tx, params)
+  return found?.label ? { label: found.label, handle: found.handle ?? null } : null
 }
 
 export async function resolveReferenceDisplay(

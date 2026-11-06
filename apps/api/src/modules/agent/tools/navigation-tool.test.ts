@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { afterEach, beforeEach, describe, expect, it } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, type Mock, mock, spyOn } from "bun:test"
+import * as eventBus from "~/infra/events/event-bus"
 import { runContextStore } from "~/modules/agent/runtime/run-context"
 import { handleOpenApp } from "~/modules/agent/tools/navigation-tool"
 import { entityRegistry, viewRegistry } from "~/modules/apps/app-registries"
@@ -43,10 +44,14 @@ describe("open_app to a view or a record", () => {
     orgId: ORG,
     db: reader(rows),
     scopes,
+    agentExecutionThreadId: "thread-1",
   })
-  const ROW = [{ label: "Fix the pump", present: true }]
+  const ROW = [{ label: "Fix the pump", handle: "task-7", present: true }]
+  let broadcast: Mock<typeof eventBus.broadcastEphemeral>
+  const frames = () => broadcast.mock.calls.map(([event]) => event)
 
   beforeEach(() => {
+    broadcast = spyOn(eventBus, "broadcastEphemeral").mockResolvedValue(undefined)
     viewRegistry.set([ORG, "projects"], {
       tabTypes: {
         home: { label: "Projects", urlPattern: "/projects", singleton: true },
@@ -80,6 +85,7 @@ describe("open_app to a view or a record", () => {
   })
 
   afterEach(() => {
+    broadcast.mockRestore()
     viewRegistry.delete([ORG, "projects"])
     viewRegistry.delete([ORG, "shop"])
     entityRegistry.delete([ORG, "projects", "task"])
@@ -103,7 +109,7 @@ describe("open_app to a view or a record", () => {
   it("a hidden record answers NOT_FOUND, as one that does not exist", async () => {
     const res = await handleOpenApp({ app: "projects", view: "task", id: TASK }, asPerson([]))
     expect(res).toMatchObject({ ok: false, code: "NOT_FOUND" })
-    expect("tab" in res).toBe(false)
+    expect(frames()).toHaveLength(0)
     expect(res).toMatchObject({ message: expect.stringContaining("No tab opened") })
   })
 
@@ -140,9 +146,9 @@ describe("open_app to a view or a record", () => {
       ok: true,
       app: "projects",
       view: "home",
-      label: "Projects",
-      tab: { type: "projects:home", entityId: "home" },
+      opened: "Projects",
     })
+    expect(frames()[0]?.data).toMatchObject({ tab: { type: "projects:home", entityId: "home" } })
     expect(
       await handleOpenApp({ app: "projects", view: "home", id: TASK }, asPerson(ROW)),
     ).toMatchObject({ ok: false, code: "ID_NOT_TAKEN" })
@@ -183,8 +189,9 @@ describe("open_app to a view or a record", () => {
       { app: "shop", view: "customer", id: gid },
       asPerson([{ label: "ada@example.com", present: true }]),
     )
-    expect(res).toMatchObject({
-      ok: true,
+    expect(res).toMatchObject({ ok: true, opened: `customer ${gid}` })
+    expect(JSON.stringify(res)).not.toContain("ada@example.com")
+    expect(frames()[0]?.data).toMatchObject({
       label: "ada@example.com",
       tab: { type: "kernel:detail", entityId: `shop/customer/${encodeURIComponent(gid)}` },
     })
@@ -195,10 +202,9 @@ describe("open_app to a view or a record", () => {
       { app: "shop", view: "customer", id: "c9" },
       asPerson([{ present: false }]),
     )
-    expect(res).toMatchObject({
-      ok: true,
+    expect(res).toMatchObject({ ok: true, note: expect.stringContaining("not checked") })
+    expect(frames()[0]?.data).toMatchObject({
       tab: { type: "kernel:detail", entityId: "shop/customer/c9" },
-      note: expect.stringContaining("not checked"),
     })
   })
 
@@ -216,7 +222,7 @@ describe("open_app to a view or a record", () => {
       asPerson([{ present: false }]),
     )
     expect(res).toMatchObject({ ok: false, code: "OPENS_OUTSIDE" })
-    expect("tab" in res).toBe(false)
+    expect(frames()).toHaveLength(0)
   })
 
   it("a routine's run has no viewer: it opens nothing and says so, even with only an app", async () => {

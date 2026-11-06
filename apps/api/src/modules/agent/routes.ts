@@ -583,7 +583,6 @@ async function chatTurn(
             emitStreamEvent("tool_result", {
               toolCallId: part.toolCallId,
               result: part.output,
-              ...uiEffectRequester(part.toolName, actor.userId),
             })
             break
 

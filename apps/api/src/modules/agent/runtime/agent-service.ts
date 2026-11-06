@@ -5250,7 +5250,6 @@ async function runThreadTurn(
         emitStreamEvent("tool_result", {
           toolCallId: chunk.toolCallId,
           result: persistableResult,
-          ...uiEffectRequester(resultToolName, actor.userId),
         })
       } else if (chunk.type === "tool-error") {
         // The AI SDK emits this INSTEAD of a tool-result when the call never

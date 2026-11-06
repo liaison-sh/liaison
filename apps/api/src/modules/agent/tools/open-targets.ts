@@ -17,16 +17,16 @@ export function runHasNoViewer(): boolean {
 }
 
 /**
- * WHOSE SCREEN A CALL MAY MOVE, on the stream frames of `open_app`: the person whose request
+ * WHOSE SCREEN `open_app` WITH ONLY AN APP MAY MOVE, on its stream frame: the person whose request
  * started the turn. A run with nobody watching (a routine's) names nobody and moves
  * nothing. Other tools' frames carry nothing extra.
  */
 export function uiEffectRequester(
   sdkToolName: string,
   requesterId: string,
-): { requesterId?: string; toolName?: string } {
+): { requesterId?: string } {
   if (sdkToolName !== "kernel__open_app") return {}
-  return runHasNoViewer() ? {} : { requesterId, toolName: sdkToolName }
+  return runHasNoViewer() ? {} : { requesterId }
 }
 
 /** What the web app opens. Comes from the server, never from the model's arguments. */

@@ -238,11 +238,8 @@ describe("the kernel's own tabs are declared", () => {
 })
 
 describe("whose screen an open_app frame may move", () => {
-  test("it names the requester on the tool's own frames", () => {
-    expect(uiEffectRequester("kernel__open_app", "u1")).toEqual({
-      requesterId: "u1",
-      toolName: "kernel__open_app",
-    })
+  test("it names the requester on the tool's own call", () => {
+    expect(uiEffectRequester("kernel__open_app", "u1")).toEqual({ requesterId: "u1" })
   })
 
   test("a routine's run names nobody, so its frames move no one's screen", () => {

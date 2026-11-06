@@ -300,6 +300,7 @@ export const CampaignsTab: Component = () => {
   // Accordion: id of the expanded row, or null (collapsed). Clicking a row
   // toggles its inline detail; only one row is expanded at a time.
   const [expanded, setExpanded] = createSignal<string | null>(null)
+  app.trackOpenRecord("campaign", expanded)
   const toggle = (id: string) => setExpanded((cur) => (cur === id ? null : id))
 
   // Google Ads campaigns. The tool returns the not-connected envelope as DATA

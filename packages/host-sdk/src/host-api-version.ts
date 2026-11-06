@@ -11,9 +11,11 @@
 //
 // 1.1: `currentPath()` (the page's path, which a framed app cannot read from its
 // own location), the frame's `path` message and in-app links that move the page.
+// 1.2: `app.trackOpenRecord()` (the record a page has open in a pane, which a turn
+// sent from its tab names) and the frame's `setOpenRecord` call.
 
 /** The host API version this build of Liaison provides. */
-export const HOST_API_VERSION = "1.1.0"
+export const HOST_API_VERSION = "1.2.0"
 
 /** The host API majors this build of Liaison answers. */
 export const SUPPORTED_HOST_API_MAJORS: readonly number[] = [1]

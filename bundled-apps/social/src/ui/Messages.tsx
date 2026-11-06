@@ -199,6 +199,7 @@ export const Messages: Component = () => {
     return visible()[0]?.id ?? null
   })
   const selectedRow = createMemo(() => visible().find((r) => r.id === selectedId()) ?? null)
+  app.trackOpenRecord("dm_conversation", selectedId)
 
   return (
     <div class="flex h-full min-h-0 flex-col">

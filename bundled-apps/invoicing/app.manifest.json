@@ -224,7 +224,7 @@
       }
     ]
   },
-  "version": "0.20.42",
+  "version": "0.20.43",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -332,6 +332,11 @@
           "readScope": "invoicing:documents:read",
           "writeScope": "invoicing:documents:write"
         }
+      },
+      "received_einvoice": {
+        "labelField": "invoice_number",
+        "tableName": "received_einvoices",
+        "readScope": "invoicing:received:read"
       },
       "received_file": {
         "labelField": "kind",
@@ -6267,6 +6272,7 @@
         "referenceable": false
       },
       "editor": {
+        "entity": "document",
         "component": "InvoicingEditor",
         "sidebar": "InvoicingSidebar",
         "icon": "InvoicingAppIcon",
@@ -6276,6 +6282,7 @@
         "referenceable": false
       },
       "detail": {
+        "entity": "document",
         "component": "InvoicingDocumentDetail",
         "sidebar": "InvoicingSidebar",
         "icon": "InvoicingAppIcon",
@@ -6295,6 +6302,7 @@
         "referenceable": false
       },
       "identity": {
+        "entity": "kernel:contact",
         "component": "InvoicingIdentity",
         "sidebar": "InvoicingSidebar",
         "icon": "InvoicingAppIcon",
@@ -6313,6 +6321,7 @@
         "referenceable": false
       },
       "received_detail": {
+        "entity": "received_einvoice",
         "component": "InvoicingReceivedDetail",
         "sidebar": "InvoicingSidebar",
         "icon": "InvoicingAppIcon",

@@ -62,6 +62,8 @@ import {
   SETTINGS_APPS_ROOT,
   SETTINGS_CONNECTORS_PATH,
 } from "~/modules/settings/settings-aliases"
+import { setOpenRecord } from "~/modules/shell/open-record"
+import { useTabId } from "~/modules/shell/TabVisibilityContext"
 import { openTab } from "~/modules/shell/tab-store"
 import { addToast } from "~/modules/shell/toast-store"
 import {
@@ -241,13 +243,28 @@ export function frameVisiblePath(app: string, path: string): string {
   return own ? path : ""
 }
 
+/** An entity name as manifests spell them. */
+const ENTITY_NAME = /^[a-zA-Z][\w-]*$/
+
 export async function answerFrameCall(
   app: string,
   method: string,
   args: unknown[],
   host: IsolatedHost,
+  /** The tab this frame sits in, the one its page's open record belongs to. */
+  tabId?: string,
 ): Promise<unknown> {
   switch (method) {
+    case "setOpenRecord": {
+      const [entityType, id] = args
+      if (typeof entityType !== "string" || !ENTITY_NAME.test(entityType)) {
+        throw new Error("setOpenRecord: an entity name of this app is required")
+      }
+      if (id !== null && typeof id !== "string")
+        throw new Error("setOpenRecord: id must be a string")
+      if (tabId) setOpenRecord(tabId, id ? { tabType: `${app}:${entityType}`, entityId: id } : null)
+      return null
+    }
     case "fetch": {
       const [path, init] = args
       if (typeof path !== "string") throw new Error("fetch: a path is required")
@@ -385,6 +402,7 @@ export function isolatedView(options: IsolatedViewOptions) {
     const [missing, setMissing] = createSignal(false)
     const [stopped, setStopped] = createSignal(false)
     const host = options.host ?? kernelHost
+    const tabId = useTabId()
     let frame: HTMLIFrameElement | undefined
     const subscriptions = new Map<number, () => void>()
     const given = { bundleUrl: options.bundleUrl, frameUrl: options.frameUrl }
@@ -436,7 +454,9 @@ export function isolatedView(options: IsolatedViewOptions) {
       const bridged = parseAppUiBridgeMessage(event.data)
       if (bridged) {
         if (services) {
-          answerFrameCall(options.app, bridged.method, bridged.args, services).catch(() => {})
+          answerFrameCall(options.app, bridged.method, bridged.args, services, tabId).catch(
+            () => {},
+          )
         }
         return
       }
@@ -477,7 +497,7 @@ export function isolatedView(options: IsolatedViewOptions) {
             post({ kind: "result", id, ok: false, error: "no host services" })
             return
           }
-          answerFrameCall(options.app, message.method, message.args, services).then(
+          answerFrameCall(options.app, message.method, message.args, services, tabId).then(
             (value) => post({ kind: "result", id, ok: true, value }),
             (error: unknown) =>
               post({
@@ -519,6 +539,7 @@ export function isolatedView(options: IsolatedViewOptions) {
 
     window.addEventListener("message", onMessage)
     onCleanup(() => {
+      if (tabId) setOpenRecord(tabId, null)
       window.removeEventListener("message", onMessage)
       for (const stop of subscriptions.values()) stop()
       subscriptions.clear()

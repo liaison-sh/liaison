@@ -1,7 +1,7 @@
 {
   "name": "ads",
   "displayName": "Ads",
-  "version": "0.1.54",
+  "version": "0.1.55",
   "iconName": "bar-chart",
   "packageFormat": 1,
   "license": "FSL-1.1-ALv2",
@@ -3169,6 +3169,10 @@
         ]
       }
     ]
+  },
+  "entities": {
+    "campaign": { "labelField": "name", "external": true },
+    "ad": { "labelField": "name", "external": true }
   },
   "views": {
     "activityBar": {

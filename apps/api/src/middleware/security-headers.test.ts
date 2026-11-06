@@ -201,6 +201,16 @@ describe("Turnstile in the web shell's policy", () => {
     expect(contentSecurityPolicy({ storageOrigin: null })).not.toContain("frame-src")
   })
 
+  // A blob frame inherits this policy, and WebKit applies its frame-ancestors to the blob
+  // itself: under 'none' the PDF tab stayed blank there. 'self' is the least that loads it.
+  it("the web shell may be framed by its own origin only; an API response by nothing", () => {
+    const ancestors = (csp: string) => /frame-ancestors ([^;]+)/.exec(csp)?.[1]
+    expect(ancestors(contentSecurityPolicy({ storageOrigin: null, scriptHashes: [] }))).toBe(
+      "'self'",
+    )
+    expect(ancestors(contentSecurityPolicy({ storageOrigin: null }))).toBe("'none'")
+  })
+
   it("never opens it on API responses, only the web shell", () => {
     const csp = withDemo(true, "1x00000000000000000000AA", () =>
       contentSecurityPolicy({ storageOrigin: null }),

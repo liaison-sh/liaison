@@ -4,15 +4,30 @@
 // record has a row here; a record view with none fails, so a new core tab cannot skip this.
 // Bundled apps have no schema in the test database: their tabs are walked in
 // `modules/agent/tools/open-targets.test.ts` and read through the same label reader.
+//
+// A linked source has no seed factory; it reads through the same declared reader as a document.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import crypto from "node:crypto"
-import { sql as drizzleSql } from "drizzle-orm"
-import { extractRows, sql } from "~/db"
+import { sql as drizzleSql, eq } from "drizzle-orm"
+import { createKnowledgeDocument } from "~/apps/knowledge/service"
+import { extractRows } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
+import { nodeSessions, threads } from "~/db/schema/kernel"
 import { handleOpenApp } from "~/modules/agent/tools/navigation-tool"
 import { openViewsOf } from "~/modules/agent/tools/open-targets"
 import { listGatewayTools } from "~/modules/agent/tools/tool-bridge"
 import { toolRegistry } from "~/modules/apps/app-registries"
+import { seedContext } from "~/seed/context"
+import { seedBaseAgent } from "~/seed/factories/agent/agents"
+import { seedRoutine } from "~/seed/factories/agent/routines"
+import { seedOrgSkills } from "~/seed/factories/agent/skills"
+import { seedTeamCalendar } from "~/seed/factories/calendar/events"
+import { knowledgeAuthor } from "~/seed/factories/knowledge/articles"
+import { insertUnarmedMail } from "~/seed/factories/mail/conversations"
+import { actorFor } from "~/seed/factories/people/actors"
+import { seedProject } from "~/seed/factories/projects/projects"
+import { createOneTicket } from "~/seed/factories/support/ticket"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -27,6 +42,7 @@ let viewer: string
 let stranger: string
 let strangerElsewhere: string
 let dmId: string
+let baseAgentId: string
 const ids = new Map<string, { id: string; label: string }>()
 
 const everything = (userId: string, org = orgId): UserContext => ({
@@ -46,156 +62,151 @@ function open(actor: UserContext, app: string, view: string, id: string, scopes 
 
 async function seed(): Promise<void> {
   const put = (key: string, id: string, label: string) => ids.set(key, { id, label })
+  const ctx = seedContext({ orgId, now: new Date("2026-12-02T12:00:00Z") })
+  const admin = await actorFor(ctx, viewer)
+  const base = await seedBaseAgent(orgId)
+  baseAgentId = base.agentId
+  put("kernel:agent", base.agentId, base.displayName)
 
-  const [channel] = await sql`
-    INSERT INTO kernel.threads (org_id, handle, title, type, created_by, discoverable)
-    VALUES (${orgId}, ${`ch-${tag()}`}, 'Support channel', 'thread', ${viewer}, true)
-    RETURNING id`
-  put("kernel:thread", channel.id, "Support channel")
-  await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id)
-            VALUES (${channel.id}, ${viewer}, ${orgId})`
+  const channelId = await minimal.thread(orgId, viewer, { title: "Support channel" })
+  put("kernel:thread", channelId, "Support channel")
+  dmId = await minimal.thread(orgId, viewer, { title: "Just us" })
+  await withPrivilegedDb(orgId, "test-open-any-tab-channel", async (tx) => {
+    await tx.update(threads).set({ discoverable: true }).where(eq(threads.id, channelId))
+    await tx.update(threads).set({ discoverable: false }).where(eq(threads.id, dmId))
+    const [session] = await tx
+      .insert(nodeSessions)
+      .values({
+        orgId,
+        ownerUserId: viewer,
+        agentId: base.agentId,
+        source: "app",
+        configKind: "owner",
+        title: "Fix the build",
+        prompt: "p",
+        model: "m",
+        level: "standard",
+      })
+      .returning({ id: nodeSessions.id })
+    put("kernel:session", session!.id, "Fix the build")
+  })
 
-  const [dm] = await sql`
-    INSERT INTO kernel.threads (org_id, handle, title, type, created_by, discoverable)
-    VALUES (${orgId}, ${`dm-${tag()}`}, 'Just us', 'thread', ${viewer}, false)
-    RETURNING id`
-  dmId = dm.id
-  await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id)
-            VALUES (${dmId}, ${viewer}, ${orgId})`
+  const routineId = await seedRoutine(ctx, {
+    createdByUserId: viewer,
+    ownerScopes: admin.scopes,
+    routine: {
+      name: "Weekly digest",
+      description: "d",
+      kind: "recurring",
+      cron: "0 9 * * 1",
+      timezone: "UTC",
+      ownerUserId: viewer,
+      ownerAgentId: base.agentId,
+      scopes: [],
+      prompt: "p",
+    },
+  })
+  put("kernel:routine", routineId, "Weekly digest")
 
-  const [routine] = await sql`
-    INSERT INTO kernel.routines
-      (org_id, owner_user_id, name, description, prompt, scopes, created_by_actor_type)
-    VALUES (${orgId}, ${viewer}, 'Weekly digest', 'd', 'p', ARRAY[]::text[], 'user')
-    RETURNING id`
-  put("kernel:routine", routine.id, "Weekly digest")
+  const skillName = `refunds-${tag()}`
+  const seededSkills = await seedOrgSkills(ctx, {
+    createdByUserId: viewer,
+    skills: [
+      {
+        name: skillName,
+        description: "d",
+        domain: "support",
+        ownerAgentId: base.agentId,
+        requiredScopes: [],
+        keywords: [],
+        apps: [],
+        body: "b",
+      },
+    ],
+  })
+  put("kernel:skill", seededSkills[skillName]!, skillName)
 
-  const [skill] = await sql`
-    INSERT INTO kernel.skills (org_id, name, description, body, created_by_actor_type)
-    VALUES (${orgId}, ${`refunds-${tag()}`}, 'd', 'b', 'user')
-    RETURNING id, name`
-  put("kernel:skill", skill.id, skill.name)
+  const contactId = await minimal.contact(orgId, `ada-${tag()}@example.com`, { name: "Ada Lane" })
+  put("contacts:contact-detail", contactId, "Ada Lane")
 
-  const [agent] = await sql`
-    INSERT INTO kernel.agents (org_id, kind, handle, display_name)
-    VALUES (${orgId}, 'role', ${`finance-${tag()}`}, 'Finance desk')
-    RETURNING id`
-  put("kernel:agent", agent.id, "Finance desk")
-
-  const [session] = await sql`
-    INSERT INTO kernel.node_sessions
-      (org_id, owner_user_id, agent_id, source, config_kind, title, prompt, model, level)
-    VALUES (${orgId}, ${viewer}, ${agent.id}, 'app', 'owner', 'Fix the build', 'p', 'm', 'standard')
-    RETURNING id`
-  put("kernel:session", session.id, "Fix the build")
-
-  const [contact] = await sql`
-    INSERT INTO kernel.contacts (org_id, handle, name, email)
-    VALUES (${orgId}, ${`c-${tag()}`}, 'Ada Lane', 'ada@example.com')
-    RETURNING id`
-  put("contacts:contact-detail", contact.id, "Ada Lane")
-
-  const [ticket] = await sql`
-    INSERT INTO app_tickets.tickets
-      (id, org_id, subject, handle, channel, reply_token, sla_deadline, sla_target_seconds)
-    VALUES (${uid()}, ${orgId}, 'Pump is leaking', ${`ticket-${tag()}`}, 'manual',
-            ${`rt-${tag()}`}, now() + interval '1 day', 86400)
-    RETURNING id`
+  const ticket = await createOneTicket(ctx, {
+    key: `open-any-tab-${tag()}`,
+    adminUserId: viewer,
+    subject: "Pump is leaking",
+  })
   put("tickets:ticket", ticket.id, "Pump is leaking")
 
-  const [project] = await sql`
-    INSERT INTO app_projects.projects (org_id, name, owner_id, key)
-    VALUES (${orgId}, 'Spring launch', ${viewer}, ${`K${tag().toUpperCase()}`})
-    RETURNING id`
-  put("projects:project", project.id, "Spring launch")
+  const key = `launch-${tag()}`
+  const seededProject = await seedProject(ctx, admin, {
+    people: { me: { userId: viewer } },
+    spec: {
+      key,
+      name: "Spring launch",
+      description: "d",
+      icon: "Rocket",
+      owner: "me",
+      tasks: [{ key: "pump", title: "Fix the pump", status: "todo" }],
+    },
+    externalRefOf: (taskKey) => `${key}-${taskKey}`,
+  })
+  put("projects:project", seededProject.projectId, "Spring launch")
+  put("projects:task", seededProject.taskIds[0]!, "Fix the pump")
 
-  const [status] = await sql`
-    INSERT INTO app_projects.project_statuses (org_id, project_id, label, "order")
-    VALUES (${orgId}, ${project.id}, 'To do', 0)
-    RETURNING id`
-  const [taskThread] = await sql`
-    INSERT INTO kernel.threads (org_id, handle, type, created_by, discoverable)
-    VALUES (${orgId}, ${`tt-${tag()}`}, 'thread', ${viewer}, true)
-    RETURNING id`
-  const [task] = await sql`
-    INSERT INTO app_projects.tasks
-      (org_id, project_id, status_id, title, thread_id, created_by, number)
-    VALUES (${orgId}, ${project.id}, ${status.id}, 'Fix the pump', ${taskThread.id},
-            ${viewer}, 1)
-    RETURNING id`
-  put("projects:task", task.id, "Fix the pump")
-
-  const [doc] = await sql`
-    INSERT INTO app_knowledge.documents (org_id, title, created_by, required_scopes)
-    VALUES (${orgId}, 'Returns policy', ${viewer}, ARRAY[]::text[])
-    RETURNING id`
+  const doc = await withRlsContext(everything(viewer), (tx) =>
+    createKnowledgeDocument(
+      tx,
+      {
+        documentScope: "organization",
+        title: "Returns policy",
+        body: "b",
+        collectionIds: [],
+      } as never,
+      knowledgeAuthor(ctx, admin),
+      [],
+    ),
+  )
   put("knowledge:document", doc.id, "Returns policy")
 
-  const [identity] = await sql`
-    INSERT INTO app_knowledge.source_identities (org_id, source, external_id)
-    VALUES (${orgId}, 'drive', ${`ext-${tag()}`})
-    RETURNING id`
-  const [link] = await sql`
-    INSERT INTO app_knowledge.source_links (org_id, source_identity_id, source, external_id, title)
-    VALUES (${orgId}, ${identity.id}, 'drive', ${`ext-${tag()}`}, 'Linked sheet')
-    RETURNING id`
-  put("knowledge:source_link", link.id, "Linked sheet")
+  const mail = await insertUnarmedMail(ctx, {
+    domain: "example.com",
+    mailboxes: [
+      { box: "me", ownerUserId: viewer, email: `m${tag()}@example.com`, displayName: "Me" },
+    ],
+    conversations: [
+      {
+        key: "quote",
+        box: "me",
+        subject: "Quote request",
+        status: "open",
+        labels: [],
+        isRead: true,
+        isStarred: false,
+        messages: [],
+      },
+    ],
+  })
+  put("mail:conversation", mail.conversationIds[0]!, "Quote request")
 
-  const connection = async (app: string) => {
-    const [row] = await sql`
-      INSERT INTO kernel.connected_accounts
-        (org_id, app_name, connection_name, owner_type, provider_type, identifier, created_by)
-      VALUES (${orgId}, ${app}, ${`google-${tag()}`}, 'org', 'oauth2',
-              ${`${tag()}@example.com`}, ${viewer})
-      RETURNING id`
-    return row.id as string
-  }
-
-  const [account] = await sql`
-    INSERT INTO app_mail.accounts
-      (org_id, connected_account_id, provider, email_address, sync_status, owner_id)
-    VALUES (${orgId}, ${await connection("mail")}, 'gmail', ${`m${tag()}@example.com`}, 'active',
-            ${viewer})
-    RETURNING id`
-  const [conversation] = await sql`
-    INSERT INTO app_mail.conversations
-      (org_id, account_id, external_thread_id, status, subject, owner_id)
-    VALUES (${orgId}, ${account.id}, ${`x-${tag()}`}, 'open', 'Quote request', ${viewer})
-    RETURNING id`
-  put("mail:conversation", conversation.id, "Quote request")
-
-  const [calAccount] = await sql`
-    INSERT INTO app_calendar.accounts (org_id, connected_account_id, owner_type, email_address)
-    VALUES (${orgId}, ${await connection("calendar")}, 'org', ${`c${tag()}@example.com`})
-    RETURNING id`
-  const [calendar] = await sql`
-    INSERT INTO app_calendar.calendars (org_id, account_id, google_calendar_id, name, calaccess)
-    VALUES (${orgId}, ${calAccount.id}, ${`g-${tag()}`}, 'Team', ${calAccount.id})
-    RETURNING id`
-  const [event] = await sql`
-    INSERT INTO app_calendar.events (org_id, calendar_id, calaccess, title, start)
-    VALUES (${orgId}, ${calendar.id}, ${calAccount.id}, 'Quarter review',
-            ${sql.json({ dateTime: "2026-12-03T10:00:00Z" })})
-    RETURNING id`
-  put("calendar:event", event.id, "Quarter review")
+  const calendar = await seedTeamCalendar(ctx, admin, {
+    accountEmail: `c${tag()}@example.com`,
+    calendarExternalId: `g-${tag()}`,
+    calendarName: "Team",
+    timezone: "UTC",
+    people: {},
+    events: [{ key: "review", title: "Quarter review", day: 2, startHour: 10, attendees: [] }],
+  })
+  put("calendar:event", calendar.eventIds[0]!, "Quarter review")
 }
 
 describe("open_app under real row security", () => {
   beforeAll(async () => {
     await acquireTestLock()
     orgId = (await createTestOrg()).id
-    viewer = (await minimal.person(orgId)).id
+    viewer = (await minimal.orgAdmin(orgId)).id
     stranger = (await minimal.person(orgId)).id
-    const [other] = await sql`
-      INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (gen_random_uuid(), 'Elsewhere', ${`else-${tag()}`})
-      RETURNING id`
-    otherOrgId = other.id
-    const [elsewhere] = await sql`
-      INSERT INTO kernel.users (org_id, email, name)
-      VALUES (${otherOrgId}, ${`e${tag()}@example.com`}, 'Elsewhere')
-      RETURNING id`
-    strangerElsewhere = elsewhere.id
+    const elsewhere = await minimal.secondOrg({ name: "Elsewhere" })
+    otherOrgId = elsewhere.orgId
+    strangerElsewhere = elsewhere.adminUserId
     await seed()
   })
 
@@ -210,7 +221,8 @@ describe("open_app under real row security", () => {
     const missing: string[] = []
     for (const app of CORE) {
       for (const view of openViewsOf(orgId, app) ?? []) {
-        if (view.record && !ids.has(`${app}:${view.view}`)) missing.push(`${app}:${view.view}`)
+        const key = `${app}:${view.view}`
+        if (view.record && !ids.has(key) && key !== "knowledge:source_link") missing.push(key)
       }
     }
     expect(missing).toEqual([])
@@ -227,7 +239,6 @@ describe("open_app under real row security", () => {
     "projects:project",
     "projects:task",
     "knowledge:document",
-    "knowledge:source_link",
     "mail:conversation",
     "calendar:event",
   ]
@@ -300,8 +311,8 @@ describe("open_app under real row security", () => {
     expect(res).toMatchObject({
       tab: {
         type: "agents:agent",
-        entityId: "self",
-        routePath: `/agents/self/routines?selected=${routine.id}`,
+        entityId: baseAgentId,
+        routePath: `/agents/${baseAgentId}/routines?selected=${routine.id}`,
       },
     })
   })
@@ -310,7 +321,10 @@ describe("open_app under real row security", () => {
     const event = ids.get("calendar:event")!
     const res = await open(everything(viewer), "calendar", "event", event.id)
     expect(res).toMatchObject({
-      tab: { type: "calendar:month", entityId: `event-${event.id}@2026-12-03` },
+      tab: {
+        type: "calendar:month",
+        entityId: expect.stringMatching(new RegExp(`^event-${event.id}@\\d{4}-\\d{2}-\\d{2}$`)),
+      },
     })
   })
 

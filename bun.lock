@@ -272,8 +272,12 @@
         "vitest": "^4.1.11",
       },
       "peerDependencies": {
+        "@liaison/host": "*",
         "solid-js": "^1",
       },
+      "optionalPeers": [
+        "@liaison/host",
+      ],
     },
     "packages/control-plane-contract": {
       "name": "@liaison/control-plane-contract",

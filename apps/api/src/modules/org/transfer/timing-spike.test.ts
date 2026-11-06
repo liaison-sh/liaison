@@ -180,7 +180,7 @@ async function scanReplayMarks(orgId: string): Promise<{ keys: number; calls: nu
  */
 async function copyAppSchemas(db: string): Promise<void> {
   const u = new URL(superA)
-  const container = process.env.LIAISON_TRANSFER_TIMING_PG_CONTAINER ?? "saas-core-postgres-1"
+  const container = process.env.LIAISON_TRANSFER_TIMING_PG_CONTAINER ?? "liaison-postgres-1"
   const exec = (cmd: string) =>
     new Promise<void>((resolve, reject) => {
       const c = spawn("sh", ["-c", cmd], {
@@ -370,7 +370,7 @@ d("transfer timing spike (local half)", () => {
       scanInfo = r.v
     }
     report.replayScan = { realKeyspace: dbsize, ms: scanMs, ...scanInfo }
-    // A large keyspace (the production Redis holds queues, sessions and rate counters).
+    // A large keyspace (a busy server holds queues, sessions and rate counters).
     const synth = `${process.env.REDIS_PREFIX ?? ""}spikescan:`
     for (let off = 0; off < 200_000; off += 10_000) {
       const p = redisBullMQ.pipeline()

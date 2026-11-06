@@ -52,7 +52,7 @@ describe("agent integration", () => {
     await acquireTestLock()
     // Agent billing (deduction, 402) is managed-edition behaviour — exercise it.
     _setEdition("managed")
-    // A managed cell meters nothing without a pushed rate (A39).
+    // A managed cell meters nothing without a pushed rate.
     await setTestCreditPricing()
     await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${ORG_ID}, 'IntegrationOrg', 'integration-org')`
     await sql`INSERT INTO kernel.users (id, org_id, email, name) VALUES (${USER_ID}, ${ORG_ID}, 'integration@test.com', 'Int User')`
@@ -473,7 +473,7 @@ describe("agent integration", () => {
     expect(Array.isArray(txns)).toBe(true)
   })
 
-  // D17: an unpaid renewal refuses the turn with 402 payment_required (never a
+  // an unpaid renewal refuses the turn with 402 payment_required (never a
   // 500), says so in the thread with the code on the system row, and the
   // thread path's Failed frame carries the code, so the client offers Billing.
   it("an unpaid renewal: 402 payment_required, coded system row and stream frame", async () => {

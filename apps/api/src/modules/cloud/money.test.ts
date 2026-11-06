@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// The cell's billing surface in the managed edition (spec S16, S21, S41, §3.4):
+// The cell's billing surface in the managed edition (spec S16, S21, S41):
 //  - the billing push applies only a newer version (reverse and concurrent
 //    delivery keep the newest), maps the plan onto the kernel tier, sets the
 //    caps, and a failed auto top-up raises one attention item for admins;
@@ -471,7 +471,7 @@ describe("PUT /api/cloud/settings/credit-rate (S21)", () => {
     expect(await readCreditRate()).toBe("1.4")
     const bad = await put("0", 4)
     expect(bad.res.status).toBe(400)
-    // The unit prices are part of the push (A39): without them, 400 and nothing changes.
+    // The unit prices are part of the push: without them, 400 and nothing changes.
     const noUnits = await send(
       "/api/cloud/settings/credit-rate",
       { rate: "1.5", version: 5 },
@@ -587,7 +587,7 @@ describe("GET /api/billing/state", () => {
       includedCredits: "250",
       previewEndsAt: null,
       autoTopUp: { enabled: true, thresholdCredits: 20, amountCredits: 100 },
-      // P3: the suspension window (null outside suspension); no contact pushed here.
+      // the suspension window (null outside suspension); no contact pushed here.
       accessUntil: null,
     })
     expect(data).not.toHaveProperty("billingPortalUrl")
@@ -638,7 +638,7 @@ describe("/api/admin/billing/* is retired (S41)", () => {
   }
 })
 
-describe("BYOK in the managed edition (A33)", () => {
+describe("BYOK in the managed edition", () => {
   test("provider keys and own model servers → 403 managed_no_byok; self-hosted unchanged", async () => {
     const orgId = await createOrg("byok-managed", "byok@acme.test")
     const { origin, headers } = await ownerSession(orgId)

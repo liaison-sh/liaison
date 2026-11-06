@@ -3148,7 +3148,7 @@ export async function handleCreateRoutine(
   let row: typeof routinesTbl.$inferSelect | undefined
   try {
     row = await withPrivilegedDb(ctx.orgId, "routines-create", async (tx) => {
-      // D9/A15: every routine is owned by a named agent — the agent the request
+      // Every routine is owned by a named agent — the agent the request
       // named (already authorised above), else the RUN-AS user's personal agent
       // (mirrors handleCreateSkill; created on demand if their signup/invite flow
       // has not produced one yet).

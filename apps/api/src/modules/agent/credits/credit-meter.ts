@@ -252,7 +252,7 @@ type PreCheckFailure = {
   code?: DemoSpendCode
   /**
    * A billing refusal's code: `credit_rate_missing` when the cell has no pushed
-   * rate (A39), `payment_required` while the org's renewal is unpaid (D17),
+   * rate, `payment_required` while the org's renewal is unpaid,
    * `out_of_credits` when the balance is spent. Every other refusal carries no
    * code and speaks for itself through `reason`.
    */
@@ -380,9 +380,9 @@ export async function resolveKey(
   await assertDemoPlatformKeyAllowed(orgId)
 
   // A managed org past due, suspended or closed spends nothing on the platform
-  // key (D17): every paid call resolves its key here, so this one refusal
+  // key: every paid call resolves its key here, so this one refusal
   // covers chat, side calls (titles, link ingest, media, embeddings), web
-  // search and dictation. BYOK never applies in the managed edition (A33).
+  // search and dictation. BYOK never applies in the managed edition.
   if (isManagedEdition()) await assertPaymentNotRequired(orgId)
 
   const envVar = ENV_KEY_MAP[provider]
@@ -1329,7 +1329,7 @@ export async function resolveUnmeteredSideCall(
   return { model: resolved.model, providerKey: key, orgId }
 }
 
-/** The refusal of a paid call while the org's renewal is unpaid (D17). */
+/** The refusal of a paid call while the org's renewal is unpaid. */
 function paymentRequiredRefusal(err: PaymentRequiredError): PreCheckFailure {
   return {
     allowed: false,
@@ -1457,7 +1457,7 @@ export async function spendGate(
     return null
   }
 
-  // 3b'. An unpaid renewal (D17): no platform-key spend until the open invoice
+  // 3b'. An unpaid renewal: no platform-key spend until the open invoice
   //      is paid. `resolveKey` refuses first on most paths; this keeps a caller
   //      that resolved its key earlier (a dictation's second model) from spending.
   if (await paymentRequired(orgId)) return paymentRequiredRefusal(new PaymentRequiredError())
@@ -1480,7 +1480,7 @@ export async function spendGate(
     }
   }
 
-  // 3d. No pushed rate, no metered usage (A39): refused, never billed at a
+  // 3d. No pushed rate, no metered usage: refused, never billed at a
   //     guessed factor. `cellCreditPricing` logs the alert line.
   if (!(await cellCreditPricing("spend-gate"))) {
     return {
@@ -1803,9 +1803,9 @@ export class DemoStepMeter {
  *
  * - Managed edition: every org's call is metered like a turn. On the cell's key
  *   that is a billed `usage` row (the org's allowance, and the daily usage
- *   report), attributed to the acting user or, with none, a real org user. A
- *   live rehearsal found these calls spending on the cell's key unbilled: the
- *   org's usage was about half of what the provider billed the key.
+ *   report), attributed to the acting user or, with none, a real org user. These
+ *   calls spend on the cell's key, so an unbilled one would leave the org's
+ *   usage below what the provider bills the key.
  * - The reserved demo org: finalized too (an unbilled row its ceiling sums,
  *   and the reservation `preCheck` took released), or, when the call produced
  *   nothing, the reservation is simply released.
@@ -1919,7 +1919,7 @@ interface FinalizeParams {
    */
   fixedCostUsd?: number
   /**
-   * A fixed-price item (D15): on a billed managed call its credits are
+   * A fixed-price item: on a billed managed call its credits are
    * `quantity` x the item's pushed credit price, never the raw cost x rate.
    * The row still keeps the raw cost. Ignored where nothing is billed.
    */
@@ -2095,7 +2095,7 @@ export async function finalizeUsage(
 
   const reportedUsd = reportedCostUsd(model.provider, params.providerCostUsd, params.fixedCostUsd)
   // The rate is looked up when it is needed: a reported USD cost to convert,
-  // or the managed edition, whose rows all keep their USD cost (A34).
+  // or the managed edition, whose rows all keep their USD cost.
   const usdEurRate =
     reportedUsd !== null || isManagedEdition() ? await usdEurRateOrNull(model.provider) : null
   const reported = reportedUsd !== null && usdEurRate !== null ? reportedUsd / usdEurRate : null
@@ -2115,7 +2115,7 @@ export async function finalizeUsage(
     model.updatedAt &&
     Date.now() - new Date(model.updatedAt).getTime() > 7 * 24 * 60 * 60 * 1000
   // The row's USD cost: what the provider reported, else the EUR estimate back
-  // in USD at the same rate (A34). Null only when there is no rate at all.
+  // in USD at the same rate. Null only when there is no rate at all.
   const rawCostUsd =
     reported !== null ? reportedUsd : usdEurRate !== null ? rawCost * usdEurRate : null
   const usdFields = {
@@ -2180,7 +2180,7 @@ export async function finalizeUsage(
 
   // Billed: credits = raw EUR x the cell's credit rate, read per call so a
   // pushed rate applies without a restart (S21), x the stale factor; a
-  // fixed-price item costs its pushed credit price (D15). No pushed rate: the
+  // fixed-price item costs its pushed credit price. No pushed rate: the
   // gate refused the call, so reaching here means it vanished mid-call; that
   // counts as a failed deduction (the breaker) below, never a guessed factor.
   let creditCost = 0

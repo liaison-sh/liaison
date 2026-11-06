@@ -245,7 +245,7 @@ export async function purgeOrg(orgId: string, opts: PurgeOrgOptions): Promise<Pu
 }
 
 /**
- * Uninstall every custom app the org owns (A46, app-org-scope.ts): its
+ * Uninstall every custom app the org owns (app-org-scope.ts): its
  * install and active-version rows, version files and stored packages, cron
  * schedulers and in-memory registrations (uninstallApp), then its `app_<name>`
  * schema. Idempotent; returns the names removed. No other org runs these apps,

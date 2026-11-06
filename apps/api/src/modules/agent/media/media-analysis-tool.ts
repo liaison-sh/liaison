@@ -111,7 +111,7 @@ export interface MediaAnalysisToolDeps {
   analyzeWithGemini: typeof defaultAnalyzeWithGemini
   /** The managed edition's model call (S31): OpenRouter, zero data retention. */
   analyzeWithOpenRouter: typeof defaultAnalyzeWithOpenRouter
-  /** The managed edition's spend gate for that call (D17 refusal, balance). */
+  /** The managed edition's spend gate for that call (refusal, balance). */
   managedSideCallGate: typeof defaultManagedSideCallGate
   preCheck: typeof defaultPreCheck
   finalizeUsage: typeof defaultFinalizeUsage
@@ -477,7 +477,7 @@ export async function handleAnalyzeMedia(
     // Inline only when the total request stays under the cap; the buffer is the
     // dominant term (prompt + instruction are small).
     const totalRequestBytes = normalized.buffer.byteLength + Buffer.byteLength(systemInstruction)
-    // A managed cell has no slow path (A45: no Gemini Files API, no Google key
+    // A managed cell has no slow path (no Gemini Files API, no Google key
     // on a cell): it sends up to its own inline limit and refuses above it.
     if (isManagedEdition()) {
       if (totalRequestBytes > MANAGED_INLINE_MEDIA_MAX_BYTES) {

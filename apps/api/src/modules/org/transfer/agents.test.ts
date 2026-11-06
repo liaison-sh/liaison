@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The transfer agents driving whole moves between two instances (plans R1.1,
-// R1.2, R1.4; D33, D34, D37). Instance A is this test namespace (database,
+// The transfer agents driving whole moves between two instances. Instance A is this test namespace (database,
 // Redis prefix, search index); instance B is a second database cloned from the
 // same migrated template, its own Redis prefix, search index and keys, and its
 // target agent is a REAL child process (`liaison org transfer agent --role
@@ -411,7 +410,7 @@ describe("org transfer agents", () => {
           },
           beforeCommit: async () => {
             rewatchBeforeCommit.push(await rewatchKeys(transferId))
-            // A control-plane message of the org queued after the drain (P4P-15).
+            // A control-plane message of the org queued after the drain.
             await seedControlPlaneMessage({
               type: "usage.report",
               messageId: lateMessage,
@@ -646,11 +645,11 @@ describe("org transfer agents", () => {
       return d.state
     }
     const later = () => Date.now() + 46_000
-    // HQ unreachable: nothing moves, never two writers.
+    // Control unreachable: nothing moves, never two writers.
     const first = await resolveOverdueMoves({ moving: readMovingOrgs, askControl: ask, now: later })
     expect(first.find((o) => o.orgId === orgId)?.action).toBe("unreachable")
     expect((await orgState(A, orgId))?.s).toBe("frozen")
-    // HQ back, the lease long lapsed: aborted, A serves again.
+    // Control back, the lease long lapsed: aborted, A serves again.
     control.reachable = true
     control.offset = (MOVE_LEASE_SECONDS + 1) * 1000
     const second = await resolveOverdueMoves({

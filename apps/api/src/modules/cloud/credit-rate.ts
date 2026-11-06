@@ -2,7 +2,7 @@
 //
 // The cell's credit rate (spec S21): the factor between a provider's cost and
 // the credits it costs an org, and the credit price of each fixed-price item
-// (D15, A39: a web call, a dictation minute), pushed together by the control
+// (a web call, a dictation minute), pushed together by the control
 // plane with `PUT /api/cloud/settings/credit-rate` so they change without a
 // deploy.
 // Stored in `kernel.instance_settings` (privileged pool only) with the

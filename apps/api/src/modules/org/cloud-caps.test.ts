@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The plan caps added for the managed edition (S24, A42): custom apps refused
-// at the cap under the org lock, and audit retention "as sold" (P3R-16): the
+// The plan caps added for the managed edition (S24): custom apps refused
+// at the cap under the org lock, and audit retention "as sold": the
 // managed retention is min(admin choice ?? cap, cap), the 90-day settings
 // default is not read there, and a self-hosted org keeps its setting.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"

@@ -185,7 +185,7 @@ export async function isOrgPrivateApp(name: string): Promise<boolean> {
   return (await appOwnerOrg(name)) !== null
 }
 
-// --- What a custom app may declare (P3R-2 point 2) ------------------------------
+// --- What a custom app may declare ------------------------------
 
 /**
  * The platform capabilities an org-private app may hold: the org-level grants

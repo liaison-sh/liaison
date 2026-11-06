@@ -38,14 +38,19 @@ const okFetch = (seen: string[]) =>
 describe("LIAISON_APP_PRIVATE_HOSTS", () => {
   it("is empty by default: a private host stays refused", async () => {
     delete process.env[ENV]
-    expect(isOperatorPrivateAppHost(new URL("http://kpi-service:8787/x"))).toBe(false)
+    expect(isOperatorPrivateAppHost(new URL("http://analytics-service:8787/x"))).toBe(false)
     expect(() =>
-      validateSandboxFetchUrl("http://kpi-service:8787/x", ["kpi-service"], false, "kpi"),
+      validateSandboxFetchUrl(
+        "http://analytics-service:8787/x",
+        ["analytics-service"],
+        false,
+        "kpi",
+      ),
     ).toThrow("HTTPS")
     lookupSpy.mockImplementation((async () => [{ address: "172.18.0.4", family: 4 }]) as never)
     await expect(
       fetchWithPinnedHost(
-        "https://kpi-service/x",
+        "https://analytics-service/x",
         {},
         { ...sandboxEgressPolicy("kpi"), fetchImpl: okFetch([]) },
       ),
@@ -53,37 +58,46 @@ describe("LIAISON_APP_PRIVATE_HOSTS", () => {
   })
 
   it("lets a listed host be reached over HTTP on a private address", async () => {
-    process.env[ENV] = "kpi-service:8787, other.internal"
-    expect(isOperatorPrivateAppHost(new URL("http://kpi-service:8787/kpi"))).toBe(true)
-    expect(isOperatorPrivateAppHost(new URL("http://KPI-SERVICE:8787/kpi"))).toBe(true)
+    process.env[ENV] = "analytics-service:8787, other.internal"
+    expect(isOperatorPrivateAppHost(new URL("http://analytics-service:8787/kpi"))).toBe(true)
+    expect(isOperatorPrivateAppHost(new URL("http://ANALYTICS-SERVICE:8787/kpi"))).toBe(true)
     expect(isOperatorPrivateAppHost(new URL("http://other.internal/kpi"))).toBe(true)
     expect(isOperatorPrivateAppHost(new URL("https://other.internal:9443/kpi"))).toBe(true)
     // A port pinned in the entry must match.
-    expect(isOperatorPrivateAppHost(new URL("http://kpi-service:9999/kpi"))).toBe(false)
-    expect(isOperatorPrivateAppHost(new URL("http://kpi-service/kpi"))).toBe(false)
+    expect(isOperatorPrivateAppHost(new URL("http://analytics-service:9999/kpi"))).toBe(false)
+    expect(isOperatorPrivateAppHost(new URL("http://analytics-service/kpi"))).toBe(false)
     // No suffix reach.
-    expect(isOperatorPrivateAppHost(new URL("http://x.kpi-service:8787/kpi"))).toBe(false)
+    expect(isOperatorPrivateAppHost(new URL("http://x.analytics-service:8787/kpi"))).toBe(false)
 
     expect(
-      validateSandboxFetchUrl("http://kpi-service:8787/kpi", ["kpi-service"], false, "kpi")
-        .hostname,
-    ).toBe("kpi-service")
+      validateSandboxFetchUrl(
+        "http://analytics-service:8787/kpi",
+        ["analytics-service"],
+        false,
+        "kpi",
+      ).hostname,
+    ).toBe("analytics-service")
 
     lookupSpy.mockImplementation((async () => [{ address: "172.18.0.4", family: 4 }]) as never)
     const seen: string[] = []
     const res = await fetchWithPinnedHost(
-      "http://kpi-service:8787/kpi",
+      "http://analytics-service:8787/kpi",
       {},
       { ...sandboxEgressPolicy("kpi"), fetchImpl: okFetch(seen) },
     )
     expect(res.status).toBe(200)
-    expect(seen).toEqual(["http://kpi-service:8787/kpi"])
+    expect(seen).toEqual(["http://analytics-service:8787/kpi"])
   })
 
   it("still requires the app's own domain allow-list", () => {
-    process.env[ENV] = "kpi-service:8787"
+    process.env[ENV] = "analytics-service:8787"
     expect(() =>
-      validateSandboxFetchUrl("http://kpi-service:8787/kpi", ["api.example.com"], false, "kpi"),
+      validateSandboxFetchUrl(
+        "http://analytics-service:8787/kpi",
+        ["api.example.com"],
+        false,
+        "kpi",
+      ),
     ).toThrow("Domain not in allowlist")
   })
 
@@ -103,20 +117,20 @@ describe("LIAISON_APP_PRIVATE_HOSTS", () => {
   })
 
   it("does not carry the private allowance to a redirect target that is not listed", async () => {
-    process.env[ENV] = "kpi-service:8787"
+    process.env[ENV] = "analytics-service:8787"
     lookupSpy.mockImplementation((async (host: string) =>
-      host === "kpi-service"
+      host === "analytics-service"
         ? [{ address: "172.18.0.4", family: 4 }]
         : [{ address: "10.0.0.9", family: 4 }]) as never)
     const fakeFetch = (async (input: unknown) => {
       const u = String(input)
-      if (u.startsWith("http://kpi-service:8787"))
+      if (u.startsWith("http://analytics-service:8787"))
         return new Response(null, { status: 302, headers: { location: "https://db.internal/x" } })
       return new Response("leak", { status: 200 })
     }) as unknown as typeof fetch
     await expect(
       fetchWithPinnedHost(
-        "http://kpi-service:8787/kpi",
+        "http://analytics-service:8787/kpi",
         {},
         { ...sandboxEgressPolicy("kpi"), fetchImpl: fakeFetch },
       ),
@@ -139,7 +153,7 @@ describe("org-private custom apps", () => {
     _setEdition("managed")
     priorCell = mutableEnv.LIAISON_CELL_PUBLIC_ADDRESSES
     priorTemplate = mutableEnv.LIAISON_ORG_HOST_TEMPLATE
-    mutableEnv.LIAISON_CELL_PUBLIC_ADDRESSES = "93.184.216.34, 2a01:4f8:c0c:1::7"
+    mutableEnv.LIAISON_CELL_PUBLIC_ADDRESSES = "93.184.216.34, 2001:db8::7"
     mutableEnv.LIAISON_ORG_HOST_TEMPLATE = "https://{slug}.cells.example"
   })
   afterEach(() => {
@@ -149,31 +163,40 @@ describe("org-private custom apps", () => {
   })
 
   it("never gets the operator's private hosts", async () => {
-    process.env[ENV] = "kpi-service:8787"
+    process.env[ENV] = "analytics-service:8787"
     expect(() =>
-      validateSandboxFetchUrl("http://kpi-service:8787/kpi", ["kpi-service"], false, CUSTOM),
+      validateSandboxFetchUrl(
+        "http://analytics-service:8787/kpi",
+        ["analytics-service"],
+        false,
+        CUSTOM,
+      ),
     ).toThrow("HTTPS")
     lookupSpy.mockImplementation((async () => [{ address: "172.18.0.4", family: 4 }]) as never)
     await expect(
       fetchWithPinnedHost(
-        "https://kpi-service:8787/kpi",
+        "https://analytics-service:8787/kpi",
         {},
         { ...sandboxEgressPolicy(CUSTOM), fetchImpl: okFetch([]) },
       ),
     ).rejects.toThrow("private network")
     // An instance app still does.
     expect(
-      validateSandboxFetchUrl("http://kpi-service:8787/kpi", ["kpi-service"], false, "kpi")
-        .hostname,
-    ).toBe("kpi-service")
+      validateSandboxFetchUrl(
+        "http://analytics-service:8787/kpi",
+        ["analytics-service"],
+        false,
+        "kpi",
+      ).hostname,
+    ).toBe("analytics-service")
   })
 
   it("never reaches this server's own public address, as a literal or through DNS", async () => {
-    for (const url of ["https://93.184.216.34:6379/", "https://[2a01:4f8:c0c:1::7]:6432/"]) {
+    for (const url of ["https://93.184.216.34:6379/", "https://[2001:db8::7]:6432/"]) {
       expect(() =>
         validateSandboxFetchUrl(
           url,
-          ["93.184.216.34", "[2a01:4f8:c0c:1::7]", "2a01:4f8:c0c:1::7"],
+          ["93.184.216.34", "[2001:db8::7]", "2001:db8::7"],
           false,
           CUSTOM,
         ),

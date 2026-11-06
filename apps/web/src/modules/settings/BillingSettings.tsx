@@ -28,10 +28,10 @@ import { Switch } from "~/ui/Switch"
 
 type PlanId = "preview" | "base" | "pro"
 
-/** The subscription's state as the control plane pushes it (D17, A43). */
+/** The subscription's state as the control plane pushes it. */
 export type BillingStatus = "active" | "past_due" | "suspended" | "closed"
 
-/** Payment failed: top-ups wait behind the open invoice (D17, P3R-19). */
+/** Payment failed: top-ups wait behind the open invoice. */
 export function paymentBlocked(status: BillingStatus): boolean {
   return status === "past_due" || status === "suspended" || status === "closed"
 }
@@ -672,7 +672,7 @@ const BillingSettings: Component = () => {
                   </Show>
                 </SettingsPageSection>
 
-                {/* While payment failed, top-ups wait behind the open invoice (P3R-19). */}
+                {/* While payment failed, top-ups wait behind the open invoice. */}
                 <Show when={!paymentBlocked(s().status)}>
                   <SettingsPageSection
                     title={t("cloud-billing.topUp.title")}

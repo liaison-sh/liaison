@@ -428,7 +428,7 @@ describe("POST /api/assist/transcribe", () => {
     }
   })
 
-  it("managed edition, platform key, no pushed credit rate: 503 credit_rate_missing, provider never called (A39)", async () => {
+  it("managed edition, platform key, no pushed credit rate: 503 credit_rate_missing, provider never called", async () => {
     await sql`INSERT INTO kernel.credit_balances (org_id, included_balance, purchased_balance, currency)
       VALUES (${ORG_ID}, '50', '0', 'EUR') ON CONFLICT (org_id) DO UPDATE SET included_balance = '50', purchased_balance = '0'`
     await clearTestCreditPricing()

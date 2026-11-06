@@ -43,9 +43,9 @@ describe("credits", () => {
   test("raw EUR × rate, × the stale factor when stale", () => {
     expect(creditsForEur(2, 1.4, false)).toBeCloseTo(2.8, 10)
     expect(creditsForEur(2, 1.4, true)).toBeCloseTo(2.8 * STALE_PRICE_FACTOR, 10)
-    expect(STALE_PRICE_FACTOR).toBeCloseTo(1.25 / 1.2, 12)
+    expect(STALE_PRICE_FACTOR).toBeCloseTo(1.0416666666667, 12)
   })
-  test("a fixed-price item costs its pushed credit price, whatever the rate (D15)", () => {
+  test("a fixed-price item costs its pushed credit price, whatever the rate", () => {
     const unitPrices = { webCall: "0.05", dictationMinute: "0.25" }
     for (const rate of [1.1, 1.4, 9]) {
       const pricing = { rate, unitPrices }

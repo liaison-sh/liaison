@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// The end of a managed subscription on the cell (spec S26, A43, D24), driven by
+// The end of a managed subscription on the cell (spec S26), driven by
 // signed billing pushes against the real database:
 //  - suspended within accessUntil: an admin's session keeps Billing, the
 //    billing state and the exports; any other route, a member, an admin on a
@@ -425,7 +425,7 @@ async function stateUntil(orgId: string): Promise<string | null> {
   return r?.access_until ? new Date(r.access_until as string).toISOString() : null
 }
 
-describe("webhooks of a suspended org (D24)", () => {
+describe("webhooks of a suspended org", () => {
   test("answered 200 and dropped, processed again after resume; 410/drop when deleting unchanged", async () => {
     const org = await setUpOrg("susp-hooks")
     const handler = mock(async () => ({ status: 200 }))
@@ -461,7 +461,7 @@ describe("webhooks of a suspended org (D24)", () => {
   })
 })
 
-describe("jobs of a suspended org (D24)", () => {
+describe("jobs of a suspended org", () => {
   test("the exempt list names real kernel jobs, export and deletion included", () => {
     for (const name of SUSPENDED_ORG_EXEMPT_JOBS) expect(KERNEL_JOBS[name]).toBeDefined()
     expect(SUSPENDED_ORG_EXEMPT_JOBS.has("org-export")).toBe(true)

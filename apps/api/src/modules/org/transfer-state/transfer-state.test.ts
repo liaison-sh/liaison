@@ -714,7 +714,7 @@ describe("cross-org sweeps", () => {
   }, 60_000)
 })
 
-describe("deadline resolver (D34)", () => {
+describe("deadline resolver", () => {
   const backdate = (orgId: string) =>
     sql`UPDATE kernel.organizations SET transfer_at = now() - interval '60 seconds' WHERE id = ${orgId}`
 

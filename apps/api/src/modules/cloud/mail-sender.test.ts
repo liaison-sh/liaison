@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// The org's own sender (S29, A44, P3R-7), against the real database:
+// The org's own sender (S29), against the real database:
 //  - `PUT /api/cloud/orgs/:id/mail-sender` signed as Control signs it stores
 //    `settings.cloudSender {domain, fromAddress, version}` and the key encrypted
 //    (never in clear in the row), and never touches `settings.email.from`;
@@ -247,7 +247,7 @@ describe("PUT /api/cloud/orgs/:id/mail-sender", () => {
   })
 })
 
-describe("org-scoped mail uses the org sender; auth mail does not (P3R-7)", () => {
+describe("org-scoped mail uses the org sender; auth mail does not", () => {
   test("cell mail domain is the host part of EMAIL_FROM", () => {
     expect(cellMailDomain("Liaison <no-reply@cells.example>")).toBe("cells.example")
     expect(cellMailDomain("no-reply@Other.Example")).toBe("other.example")

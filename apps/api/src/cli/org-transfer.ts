@@ -17,9 +17,8 @@
 //       --target-cmd '<command that starts the target agent>'   -> progress lines, JSON report
 //
 // The agents (modules/org/transfer/agent-*.ts) run one move end to end: the
-// source agent starts the target agent with `--target-cmd` (in production an
-// ssh to the target over the private network whose forced command is
-// `liaison org transfer agent --role target`) and speaks to it on its stdin
+// source agent starts the target agent with `--target-cmd` (for example an ssh
+// whose remote command is `liaison org transfer agent --role target`) and speaks to it on its stdin
 // and stdout. The source agent's first stdin line is the operator's
 // credential for the control plane's move actions,
 // `{"operator":{"control":"<webhook base>","operatorKey":"<key>"}}`, held in

@@ -1924,7 +1924,7 @@ async function runAgentChatTurn(
     if (creditCheck.code) {
       throw new DemoSpendHttpError(creditCheck.code, creditCheck.reason)
     }
-    // An unpaid renewal (D17): 402 `payment_required`, so the client offers Billing.
+    // An unpaid renewal: 402 `payment_required`, so the client offers Billing.
     if (creditCheck.billingCode === PAYMENT_REQUIRED_CODE) throw new PaymentRequiredError()
     // Every coded (demo) refusal left above; the rest are 400, 402 or 500.
     const status =

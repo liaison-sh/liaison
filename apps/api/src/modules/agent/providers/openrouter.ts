@@ -40,7 +40,7 @@ export function openRouterBaseURL(): string {
 export const OPENROUTER_ROUTING = { data_collection: "deny", require_parameters: true } as const
 
 /**
- * The routing of a managed cell's side calls (S31, A45): embeddings, media
+ * The routing of a managed cell's side calls (S31): embeddings, media
  * analysis and the web-search completion name zero data retention themselves.
  * `withManagedZdr` adds it to every managed request whatever its builder said.
  */

@@ -604,7 +604,7 @@ export function setSystemEmailProvider(provider: EmailProvider | null): void {
   _systemProvider = provider
 }
 
-// --- Org sender channel (managed edition, A44) ---
+// --- Org sender channel (managed edition) ---
 //
 // An org of the managed edition whose own sending domain is verified sends its
 // org-scoped mail (invitations, connect links, digests, CSAT) with a key

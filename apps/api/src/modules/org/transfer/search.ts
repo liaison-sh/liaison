@@ -38,7 +38,7 @@ export function userProvidedDimensions(signature: string): number | null {
 /**
  * Whether this index can take vectors of `signature`: the same embedder, or none declared yet. A
  * fresh index (a new cell, no org embedded anything yet) declares the embedder on its first vector
- * write; that is not a skew (seen live: every move to a fresh cell was refused). A source that
+ * write; that is not a skew, so a move to a fresh cell is not refused. A source that
  * declares none carries no vector (every document's `_vectors.memory` is null): any index takes
  * its documents, keyword only, and the embedding backfill embeds them there as it does any
  * document written without a vector.
@@ -208,7 +208,7 @@ export async function searchDocHashes(orgId: string): Promise<Record<string, str
 }
 
 /**
- * The catch-up after a commit (P4P-20): what the target must write so its
+ * The catch-up after a commit: what the target must write so its
  * documents of the org equal the source's, from the source's documents (bundle
  * lines) and the target's hashes. Ids only on the target are deleted.
  */

@@ -150,7 +150,7 @@ export async function processMediaAnalysisJob(
     return
   }
 
-  // A managed cell never takes the Gemini Files-API slow path (A45: no Google
+  // A managed cell never takes the Gemini Files-API slow path (no Google
   // key on a cell, nothing outside OpenRouter's zero-retention routing). A job
   // queued before the switch, or by any other path, stops with the limit.
   if (isManagedEdition()) {

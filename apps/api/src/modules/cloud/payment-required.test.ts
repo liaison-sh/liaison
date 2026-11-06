@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// D17 on the cell: from the first failed renewal (status `past_due`, then
+// Past-due handling on the cell: from the first failed renewal (status `past_due`, then
 // `suspended` and `closed`) no metered usage runs on the platform key. The
 // refusal sits at the chokepoints every paid call passes: `resolveKey` (the
 // platform key in the managed edition), `spendGate`, and the web-call refusal;
@@ -38,7 +38,7 @@ const orgs: string[] = []
 async function orgWithStatus(status: string | null): Promise<string> {
   const id = randomUUID()
   orgs.push(id)
-  await seedOrgRow({ id, name: "D17 org", slug: `d17-${id.slice(0, 8)}` })
+  await seedOrgRow({ id, name: "Past due org", slug: `past-due-${id.slice(0, 8)}` })
   if (status !== null) await seedOrgBillingState(id, { plan: "base", status, includedCredits: 100 })
   return id
 }

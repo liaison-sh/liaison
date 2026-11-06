@@ -12,8 +12,8 @@
 // lock of the upsert orders concurrent pushes: the tier and caps written last
 // are always those of the newest version.
 //
-// Payment resumed (P3R-18): while an org is past_due or suspended its side
-// calls are refused (D17), embeddings included, so its new messages were
+// Payment resumed: while an org is past_due or suspended its side
+// calls are refused, embeddings included, so its new messages were
 // indexed keyword only. The push that takes it from past_due|suspended back
 // to active starts its embedding backfill, once. The previous status is read
 // under the same row lock as the upsert, so only the transition starts it. The
@@ -42,7 +42,7 @@ export type BillingPushResult =
 
 const log = rootLogger.child({ module: "cloud-billing" })
 
-/** The statuses whose side calls are refused (D17); leaving them for active resumes them. */
+/** The statuses whose side calls are refused; leaving them for active resumes them. */
 const PAYMENT_REQUIRED_STATUSES = new Set(["past_due", "suspended"])
 
 /** A job started on resume, past the time every process may still read the old status. */

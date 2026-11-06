@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// A managed cell's pushed credit pricing for tests (S21, D15, A39): a managed
+// A managed cell's pushed credit pricing for tests (S21): a managed
 // cell meters nothing without one, so a test that exercises metered managed
 // usage sets it first. Neutral values, not anyone's real prices.
 import type { CloudUnitPrices } from "@liaison/control-plane-contract"

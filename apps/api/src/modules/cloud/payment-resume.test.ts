@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// P3R-18: while payment was required the cell embedded nothing (keyword only),
+// while payment was required the cell embedded nothing (keyword only),
 // so the push that brings the org back to `active` from `past_due` or
 // `suspended` starts its embedding backfill, once. Any other transition does not.
 //

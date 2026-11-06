@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// An org's own custom apps on a move (P4P-23). They live in rows, in their own
+// An org's own custom apps on a move. They live in rows, in their own
 // schema (`app_<name>`) and in package files, so the import alone cannot carry
 // them: during the precopy, after pass 1 created the org (`incoming`) on the
 // target, the source sends each app's stored package and the target installs

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Org-private custom apps on a managed cell (S33, A46) and the hostile-tenant
+// Org-private custom apps on a managed cell (S33) and the hostile-tenant
 // boundary around them (modules/apps/app-org-scope.ts). Two tenants on one
 // cell, real database, real install route, real sandbox:
 //   - each installs base `crm` 1.0.0 with different code and gets its own answer;
@@ -443,7 +443,7 @@ describe("A's app is unreachable from B", () => {
   })
 })
 
-describe("A's interface runs isolated (S5-3)", () => {
+describe("A's interface runs isolated", () => {
   it("never in the page: not first-party, ui.js as text, the frame sandboxed with no network", async () => {
     const manifests = await on(A.host, "/api/apps/manifests", {
       headers: { authorization: `Bearer ${A.bearer}` },
@@ -509,7 +509,7 @@ describe("A's app inside the sandbox", () => {
   }, 60_000)
 })
 
-describe("one tenant cannot starve the others (S5-2)", () => {
+describe("one tenant cannot starve the others", () => {
   it("A's flood runs 2 at a time and is refused past its line (429); B's tool answers at once", async () => {
     const tenant = `org:${customAppOrgKey(A.orgId)}`
     const flood = Array.from({ length: 11 }, () =>
@@ -604,7 +604,7 @@ describe("caps, operator rule, suspension", () => {
         seen.push(e.orgId)
       })({ orgId: A.orgId })
       expect(seen).toEqual([])
-      expect((await enumerateFanoutOrgs(A.crm)).length).toBe(1) // jobs: skipped at dispatch (T1)
+      expect((await enumerateFanoutOrgs(A.crm)).length).toBe(1) // jobs: skipped at dispatch
     } finally {
       await sql`DELETE FROM kernel.org_billing_state WHERE org_id = ${A.orgId}`
       clearOrgBillingStatusCache()
@@ -612,7 +612,7 @@ describe("caps, operator rule, suspension", () => {
   })
 })
 
-describe("the operator's kill switch (S5-7)", () => {
+describe("the operator's kill switch", () => {
   it("disables A's app for everyone (A included), refuses its replacement and removal, audits it", async () => {
     // Another org cannot be named for A's app.
     expect((await setAppState(B.orgId, A.crm, true, "wrong org")).status).toBe(404)

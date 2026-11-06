@@ -35,7 +35,7 @@ describe("credit-meter", () => {
     // This suite asserts the metered/billed behaviour — exercise it as a
     // managed instance. The self-hosted (no-credits) path has its own block.
     _setEdition("managed")
-    // A managed cell meters nothing without a pushed rate (A39).
+    // A managed cell meters nothing without a pushed rate.
     await setTestCreditPricing()
 
     // Encrypt BYOK key the same way ai-keys-routes does in production

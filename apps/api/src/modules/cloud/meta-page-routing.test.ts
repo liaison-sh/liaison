@@ -26,7 +26,7 @@ async function org(label: string): Promise<{ id: string; user: string }> {
   await seedUserRow({
     id: user,
     orgId: id,
-    email: `mpr-${user.slice(0, 8)}@test.com`,
+    email: `mpr-${user.slice(0, 8)}@example.test`,
     passwordHash: "hash",
     name: label,
     status: "active",

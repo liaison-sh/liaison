@@ -748,7 +748,7 @@ describe("handleAnalyzeMedia", () => {
     expect(row.analysis_summary).toBeNull()
   })
 
-  // S31/A45: a managed cell analyses media inline on OpenRouter with zero data
+  // S31: a managed cell analyses media inline on OpenRouter with zero data
   // retention, metered at the reported cost; the Gemini Files-API slow path is
   // never used there, so media above the inline limit is refused with the limit.
   // Drop the managed branch: the Gemini fake is called and the stub sees nothing.
@@ -896,7 +896,7 @@ describe("handleAnalyzeMedia", () => {
       expect(await managedRows()).toHaveLength(0)
     })
 
-    it("past_due: refused before any call (D17)", async () => {
+    it("past_due: refused before any call", async () => {
       const id = "00000000-0000-4000-8000-00000000e005"
       await seedFile({ id, orgId: ORG_A, app: "tickets" })
       await setManagedOrgStatus(ORG_A, "past_due")

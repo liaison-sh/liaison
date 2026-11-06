@@ -150,7 +150,7 @@ org.patch("/", zValidator("json", updateOrgSchema), async (c) => {
       })
     }
   }
-  // The audit retention in the managed edition (S24, P3R-16): the admin's
+  // The audit retention in the managed edition (S24): the admin's
   // choice is stored apart (`auditRetentionDaysChosen`), never above the
   // plan's `auditDays`; the retention job keeps min(choice ?? cap, cap). A
   // self-hosted org writes `auditRetentionDays` as always.

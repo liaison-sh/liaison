@@ -149,7 +149,7 @@ describe("createRpcBridge", () => {
     )
   })
 
-  // BL-254 — a failed db_insert must NOT poison the surrounding transaction. The INSERT runs in a
+  // A failed db_insert must NOT poison the surrounding transaction. The INSERT runs in a
   // DRIVER savepoint (`txDb.transaction`): a raw SAVEPOINT statement is not enough, postgres.js
   // rethrows a caught failed query when its transaction scope ends. The behavioural proof against a
   // real database is modules/webhooks/caught-db-error.test.ts.

@@ -384,7 +384,7 @@ async function searchOnOpenRouter(
       inputTokens: found.inputTokens,
       outputTokens: found.outputTokens,
       ...(found.costUsd !== undefined ? { providerCostUsd: found.costUsd } : {}),
-      // One web call at its pushed credit price on a managed cell (D15).
+      // One web call at its pushed credit price on a managed cell.
       unit: { item: "webCall", quantity: 1 },
       keySource: params.keySource,
       userId: ctx.userId,
@@ -468,16 +468,16 @@ async function visitorBoxKeySearch(
 
 /**
  * Exa's list price of one call (a search with up to 25 results, or one page's
- * contents), in USD: the row's raw cost (the usage report, our own margin).
+ * contents), in USD: the row's raw cost (for the usage report).
  * The managed edition bills the call at the pushed `webCall` credit price
- * (D15), never this price x the rate.
+ * (never this price x the rate).
  */
 export const EXA_CALL_USD = 0.005
 
 /**
  * The refusal of a web call on the platform key of a managed cell, or null:
- * the org's renewal is unpaid (D17, `payment_required`), or the cell has no
- * pushed pricing (A39). Checked before the call is sent (both Exa paths and
+ * the org's renewal is unpaid (`payment_required`), or the cell has no
+ * pushed pricing. Checked before the call is sent (both Exa paths and
  * the OpenRouter search).
  */
 export async function webCallPricingRefusal(
@@ -571,7 +571,7 @@ export async function handleWebSearch(
   const backend = await resolveWebSearchBackend(ctx.orgId)
   if (!backend && visitor) return visitorBoxKeySearch(query, clampedNum, ctx)
   if (!backend) {
-    // A managed org with an unpaid renewal: the platform key refused (D17).
+    // A managed org with an unpaid renewal: the platform key refused.
     if (isManagedEdition() && (await paymentRequired(ctx.orgId))) {
       return { error: new PaymentRequiredError().message }
     }
@@ -821,7 +821,7 @@ async function readThroughExa(
   ctx: { orgId: string; userId?: string },
   reason: string,
 ): Promise<WebFetchResult | null> {
-  // A managed cell never calls Exa (A45, P3R-23): it holds no Exa key (the
+  // A managed cell never calls Exa: it holds no Exa key (the
   // boot guard refuses one), and even an org key would be a call outside
   // OpenRouter. web_fetch answers what the direct fetch gave.
   if (isManagedEdition()) return null
@@ -1091,9 +1091,9 @@ export async function runSandboxedExtraction(params: {
     return cached
   }
 
-  // The reserved App Review org gets the raw page instead of a model
-  // extraction: an extraction is not worth a share of the one demo ceiling App
-  // Review lives under. The raw page is the degraded answer this function
+  // A reserved demo org gets the raw page instead of a model extraction: an
+  // extraction is not worth a share of the spend ceiling that org lives under.
+  // The raw page is the degraded answer this function
   // already gives without a model. A demo VISITOR org likewise.
   const reservedDemo = (await demoOrgKind(orgId)) !== "none"
   const cheapModel = reservedDemo

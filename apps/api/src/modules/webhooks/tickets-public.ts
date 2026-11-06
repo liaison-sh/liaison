@@ -45,7 +45,7 @@ const log = rootLogger.child({ module: "tickets-public-webhook" })
 
 export const ticketsPublicRoutes = new Hono<AppEnv>()
 
-// Tickets turned Off (or removed) for the org (S19, D24), or the managed org
+// Tickets turned Off (or removed) for the org (S19), or the managed org
 // suspended or closed (403, below): its first-party
 // public endpoints (ticket create, attachments, CSAT) answer 503 app_disabled,
 // so a form embedding them shows a clear failure instead of a silent drop.

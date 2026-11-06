@@ -19,7 +19,7 @@ export const BYOK_PROVIDER_NAMES: Record<ByokProvider, string> = {
 
 /**
  * The managed edition runs every model call on the server's own provider keys
- * and meters it in credits (spec A33): adding or checking an organization's
+ * and meters it in credits : adding or checking an organization's
  * own provider key, or adding an own model server or one of its models, is
  * refused with 403 `managed_no_byok`. Reading and removing stay allowed.
  * Decided per request (lib/edition.ts).

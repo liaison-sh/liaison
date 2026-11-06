@@ -73,7 +73,7 @@ export function clearOrgBillingStatusCache(): void {
   cache.clear()
 }
 
-/** Metered managed usage is refused in these statuses (D17). */
+/** Metered managed usage is refused in these statuses. */
 export function paymentRequiredFor(status: OrgBillingStatus | null): boolean {
   return (
     status !== null &&
@@ -83,7 +83,7 @@ export function paymentRequiredFor(status: OrgBillingStatus | null): boolean {
 
 /**
  * Suspended or closed (any part of the window): the org's jobs are skipped and
- * its webhooks dropped (D24). False, without a query, on a self-hosted instance.
+ * its webhooks dropped. False, without a query, on a self-hosted instance.
  */
 export async function orgSuspendedOrClosed(orgId: string): Promise<boolean> {
   const s = await orgBillingStatus(orgId)

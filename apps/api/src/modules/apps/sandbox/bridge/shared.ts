@@ -220,9 +220,9 @@ function normalizeAddress(address: string): string {
 
 /**
  * LIAISON_CELL_PUBLIC_ADDRESSES: this server's own public IPv4/IPv6 addresses
- * (comma-separated). Traffic from the host to its own public address skips the
- * cloud firewall and reaches any port a container publishes on all interfaces,
- * so an org's custom app may never fetch them.
+ * (comma-separated). Traffic from the host to its own public address can reach
+ * any port a container publishes on all interfaces, so an org's custom app may
+ * never fetch them.
  */
 export function cellOwnAddresses(): Set<string> {
   const raw = env.LIAISON_CELL_PUBLIC_ADDRESSES ?? ""

@@ -2822,7 +2822,7 @@ export async function sweepNodeLeases(): Promise<{
             eq(nodeJobs.status, "running"),
             lt(nodeJobs.leaseExpiresAt, sql`now()`),
             sql`${nodeJobs.startedAt} IS NOT NULL`,
-            // A session's run is paused, never interrupted, by a lapse (G5):
+            // A session's run is paused, never interrupted, by a lapse:
             // lifecycle.ts sweeps those.
             sql`NOT EXISTS (SELECT 1 FROM ${K()}.node_sessions s WHERE s.job_id = ${nodeJobs.id})`,
             notOnSimulatedNode,
@@ -2841,7 +2841,7 @@ export async function sweepNodeLeases(): Promise<{
     await writeUnlessMoving(job.orgId, async () => {
       nodeTurnEnded(job, "ended")
       await releaseJobConnection(job)
-      // P1 mapping: an interrupted run fails its session (L4 resumes it in P3).
+      // An interrupted run fails its session.
       await settleJobSession(job, "failed", {
         from: LIVE_SESSION_STATUSES,
         error: job.error ?? "The computer stopped answering while the job was running.",

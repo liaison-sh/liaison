@@ -13,13 +13,13 @@ export const MEDIA_ANALYSIS_MODEL_ID = "gemini-flash-lite-latest"
 /**
  * The OpenRouter model a managed cell analyses media on (S31): the current
  * flash-lite with a zero-data-retention endpoint, the family the Gemini alias
- * above resolves to. Live probe 2026-11-03: images, PDFs (`file` part), video
+ * above resolves to. Verified against the provider: images, PDFs (`file` part), video
  * and audio inline, all under `zdr: true`.
  */
 export const MANAGED_MEDIA_ANALYSIS_UPSTREAM_ID = "google/gemini-3.5-flash-lite"
 
 /**
- * The largest media a managed cell analyses, inline (A45). A managed cell has
+ * The largest media a managed cell analyses, inline. A managed cell has
  * no Gemini Files-API slow path, so anything larger is refused with this
  * limit. The 2026-11-03 probe sent a 64.5 MB video inline (about 86 MB of
  * base64) without error; the limit keeps headroom under that.

@@ -526,7 +526,7 @@ describe("POST /api/cloud/orgs while another attempt is creating the same org", 
   })
 })
 
-describe("POST /api/cloud/orgs gives the org the server's default models (D20)", () => {
+describe("POST /api/cloud/orgs gives the org the server's default models", () => {
   const MODEL = "deepseek/deepseek-v4.1-flash"
   const catalogueModel = (upstreamId: string, over: Record<string, unknown> = {}) => ({
     upstreamId,

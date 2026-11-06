@@ -256,7 +256,7 @@ describe("passwordless magic-link login", () => {
     }
   })
 
-  // The mail provider refuses (daily quota, seen live): the page must not say a code was sent, and
+  // The mail provider refuses (daily quota): the page must not say a code was sent, and
   // the answer must stay the same for any address. A send is only attempted for a known address, so
   // nothing about the outage may depend on which address asks.
   describe("POST /api/auth/magic-link/request while the mail provider refuses", () => {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The cell side of auto top-up (spec S22, A34). After a metered deduction, if
+// The cell side of auto top-up (spec S22). After a metered deduction, if
 // the org's stored auto top-up (the control plane's billing push,
 // `kernel.org_billing_state.auto_top_up`) is on and the org's credits
 // (included + purchased) are below the threshold after it, the cell asks the

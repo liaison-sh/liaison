@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Contract v2 money messages (P2): the Control→cell billing push, credit grant,
+// Contract v2 money messages: the Control→cell billing push, credit grant,
 // credit rate and lookup; the cell→Control `cell-billing` messages and their
 // replies; the managed billing-state reply the web app reads.
 import { describe, expect, test } from "bun:test"
@@ -60,7 +60,7 @@ describe("cell-billing endpoint and message types", () => {
     expect(Object.values(ENDPOINTS) as string[]).not.toContain(CELL_BILLING_ENDPOINT)
   })
 
-  test("the frozen list of cell→Control message types (P2 billing, P3 mail domains, P4 move lease)", () => {
+  test("the frozen list of cell→Control message types", () => {
     expect<string[]>([...CELL_BILLING_MESSAGE_TYPES].sort()).toEqual(
       [
         "billing.summary",
@@ -383,7 +383,7 @@ describe("Control→cell money endpoints (§3.4)", () => {
     }
   })
 
-  test("credit rate carries the fixed-price items' credit prices (A39)", () => {
+  test("credit rate carries the fixed-price items' credit prices", () => {
     const body = moneyVectors.controlToCell["credit rate"].body
     const { unitPrices: _u, ...noUnits } = body
     expect(cloudCreditRateRequestSchema.safeParse(noUnits).success).toBe(false)

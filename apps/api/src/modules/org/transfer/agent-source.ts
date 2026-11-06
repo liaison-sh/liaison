@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // The source transfer agent: drives one org's move from this instance to a
-// target instance (plans R1.1, R1.2; D33, D34, D37). Long-lived (started
+// target instance. Long-lived (started
 // detached by the operator's `cell:move`, survives the operator going away),
 // it holds its database and Redis connections for the whole move, so nothing
 // cold-starts inside the write gap.
@@ -15,7 +15,7 @@
 //             Waits (at most `drainTimeoutMs`, 30 s) for the org's live turns,
 //             jobs, claimed events and pending control-plane messages to run
 //             down (the latter flushed to the control plane, which accepts the
-//             source until the commit, P4P-15). Not drained: aborted, no gap;
+//             source until the commit). Not drained: aborted, no gap;
 //   frozen    the write gap, every step under its ceiling (ceilings.ts):
 //             freeze + acks, quiesce, pass 2 scan + jobs export, apply on the
 //             target (one transaction), fingerprint re-check + the delta's
@@ -29,7 +29,7 @@
 // serve writes again, and the target purges its incoming copy. When the
 // control plane cannot be reached about a frozen move, the org STAYS frozen
 // and the freeze-deadline resolver on each side settles it from the control
-// plane's decision (D34): never two writers.
+// plane's decision: never two writers.
 import type { MoveAgentPhase } from "@liaison/control-plane-contract"
 import {
   exportOrgJobs,
@@ -108,7 +108,7 @@ export const defaultObjectOps: ObjectOps = {
   },
 }
 
-/** How long the router's KV entry can stay stale at an edge (about 60 s), with a margin. */
+/** How long the router's pin can stay stale (about a minute), with a margin. */
 export const ROUTING_SETTLE_MS = 65_000
 
 export interface SourceMoveOptions {
@@ -386,7 +386,7 @@ export async function runSourceMove(opts: SourceMoveOptions): Promise<MoveReport
     }
     try {
       // Control-plane messages of the org enqueued here after the drain: the
-      // target sends them now (P4P-15); the control plane dedups by message id.
+      // target sends them now; the control plane dedups by message id.
       const pending = await pendingOutboxMessages(orgId)
       if (pending.length > 0) {
         await target.call("adopt-outbox", {

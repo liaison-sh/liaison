@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Contract v2 additions for limits and providers (P3): the six cap kinds and
+// Contract v2 additions for limits and providers: the six cap kinds and
 // their one bounds table, the tenant lifecycle fields of the billing push, the
 // org deletion and mail-sender endpoints, the `mail.domain_*` messages and the
 // uniform limit error codes. Every addition is optional or new, so a version-2

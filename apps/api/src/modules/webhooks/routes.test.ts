@@ -299,7 +299,7 @@ describe("webhook routes", () => {
     expect(wrongToken.status).toBe(401)
   })
 
-  // S30/A47: one push subscription per cell; each org's Mail or Tickets verifier
+  // S30: one push subscription per cell; each org's Mail or Tickets verifier
   // checks the OIDC token against the instance's audience and push service
   // account when the org set none of its own.
   it("the instance Gmail push audience and service account reach the Mail and Tickets verifiers", async () => {

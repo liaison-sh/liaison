@@ -1038,8 +1038,8 @@ export const envSchema = z
     META_APP_ID: z.preprocess(unsetIfEmpty, z.string().optional()),
     // This server's own public IPv4/IPv6 addresses, comma-separated. An
     // organization's custom app (managed edition) can never fetch them: traffic
-    // from the host to its own public address skips the cloud firewall and
-    // reaches any port published on all interfaces. Unset: only its host names
+    // from the host to its own public address can reach any port published on
+    // all interfaces. Unset: only its host names
     // (BASE_URL, ALLOWED_ORIGINS, the org host template) are refused that way.
     LIAISON_CELL_PUBLIC_ADDRESSES: z.preprocess(unsetIfEmpty, z.string().optional()),
     // A throwaway test server. Only then may an org transfer agent inject a
@@ -1051,7 +1051,7 @@ export const envSchema = z
     // (lib/managed-boot.ts). Unset = self-hosted (a server that sets the legacy
     // control-plane pair below without it refuses to start).
     LIAISON_EDITION: z.preprocess(unsetIfEmpty, z.enum(["self_hosted", "managed"]).optional()),
-    // Control-plane integration (Phase 14, Track D). Both must be set or unset.
+    // Control-plane integration. Both must be set or unset.
     // The pair no longer switches the managed edition on: set alone, without
     // LIAISON_EDITION, the server refuses to start (lib/managed-boot.ts).
     // No kernel-enforced minimum on the key; operators are advised to use

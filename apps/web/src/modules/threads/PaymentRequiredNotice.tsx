@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// A turn refused because the org's renewal is unpaid (managed edition, D17):
+// A turn refused because the org's renewal is unpaid (managed edition):
 // the server answers 402 `payment_required`. Said in the reader's language with
 // a link to Billing, where an admin pays the open invoice.
 import { OUT_OF_CREDITS_CODE, PAYMENT_REQUIRED_CODE } from "@liaison/shared"

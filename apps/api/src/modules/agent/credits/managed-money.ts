@@ -56,7 +56,7 @@ export interface ManagedBalance {
 }
 
 /**
- * Credits left and the period's use (P2R-20). The period starts at its
+ * Credits left and the period's use. The period starts at its
  * `monthly_reset` row: available = the included credits it set + the
  * purchased balance at that moment (its `balance_after` minus its amount) +
  * every top-up since. Used = every spend since. Without a reset row yet (a

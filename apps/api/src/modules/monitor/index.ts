@@ -567,7 +567,7 @@ monitorDiagRoutes.get("/", async (c) => {
     uptimeSec: Math.floor(process.uptime()),
     errorSignatures: getDiagErrorState().errorSignatures,
     // Managed cells: whether the control plane's credit rate is held ("ok" |
-    // "missing"; metered usage is refused while missing, A39; "unknown" when it
+    // "missing"; metered usage is refused while missing; "unknown" when it
     // cannot be read, the postgres dep says why). Null self-hosted.
     creditPricing: isManagedEdition()
       ? await creditPricingStatus().catch(() => "unknown" as const)

@@ -108,7 +108,7 @@ export interface InstallOptions {
    */
   storeBestEffort?: boolean
   /**
-   * Managed edition: install an org-private custom app for this org (A46). Its
+   * Managed edition: install an org-private custom app for this org. Its
    * name must be `<base>-o<orgKey>`, its manifest may declare org-level
    * declarations only (app-org-scope.ts), a new one takes one of the org's
    * `customApps`, and only this org sees and runs it. Unset: an instance app.
@@ -174,7 +174,7 @@ async function currentOwnerOf(name: string): Promise<string | null> {
 }
 
 /**
- * Who may install `name` (A46). An org-private install: the custom app name
+ * Who may install `name`. An org-private install: the custom app name
  * rule, the declarations an org-level app may carry, and no other owner of the
  * name. An instance install: never over an org's app, and in the managed
  * edition never a custom-app-shaped name (the boundary's DB-free rule keeps
@@ -873,7 +873,7 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
 
       await withSystemDb("install-app", async (db) => {
         // A new custom app takes one of the org's `customApps`, under the org's
-        // cap lock, in the transaction that writes its row (T2's room check).
+        // cap lock, in the transaction that writes its row.
         if (ownerOrgId !== null) {
           const [own] = await db
             .select({ name: appsInstalled.name })

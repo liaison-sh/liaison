@@ -203,7 +203,7 @@ describe("org transfer closure", () => {
     for (const name of [...Object.keys(GLOBAL_TABLES), ...Object.keys(EXCLUDED_TABLES)]) {
       expect({ name, exists: catalog.has(name) }).toEqual({ name, exists: true })
     }
-    // The tables the plan review named, which the purge's org_id list misses.
+    // The tables which the purge's org_id list misses.
     for (const name of [
       "kernel.role_scope_grants",
       "kernel.role_dimension_grants",

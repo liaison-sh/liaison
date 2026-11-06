@@ -226,7 +226,7 @@ async function autoPriceOf(
 /**
  * Voice dictation's models as the page shows them: USD per minute on a
  * self-hosted server, credits per minute on a managed cell (S18): the pushed
- * `dictationMinute` credit price (D15), the same for every model, absent while
+ * `dictationMinute` credit price, the same for every model, absent while
  * the cell has no pushed pricing.
  */
 async function transcriptionView(orgId: string) {
@@ -630,7 +630,7 @@ export const aiModelsRoutes = new Hono<AppEnv>()
         return c.json(errorBody("This model is already in your list.", "already_added"), 409)
       }
       // On the managed service the test call runs on the cell's own key and
-      // is metered to the org's credits like any call (A33): it needs credits.
+      // is metered to the org's credits like any call: it needs credits.
       const { key: apiKey, source } = await resolveKey(orgId, "openrouter")
       const metered = isManagedEdition() && source === "liaison"
       if (metered) {

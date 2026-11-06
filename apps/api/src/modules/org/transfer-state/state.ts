@@ -84,7 +84,7 @@ export const FREEZE_DEADLINE_MS = 45_000
 export const SNAPSHOT_MAX_AGE_MS = 1_000
 /** A refresh that fails keeps the last snapshot this long, then gates refuse. */
 export const SNAPSHOT_FAIL_CLOSED_MS = 10_000
-/** How long every live instance has to confirm a state (R1.4: ceiling 2 s). */
+/** How long every live instance has to confirm a state. */
 export const ACK_TIMEOUT_MS = 2_000
 
 const CHANGE_CHANNEL = `${REDIS_PREFIX}org-transfer:changed`

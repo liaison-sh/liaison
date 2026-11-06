@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // What the target does for a moved org once the move committed and the org
-// serves from here, outside the write gap (plans R1.1 step 4, R1.7):
+// serves from here, outside the write gap:
 //   - jobs and schedulers carried from the source are re-added, each once
 //     (ids derived from the transfer, each marked as it is added);
 //   - MCP connections: their tokens are signed with the source's JWT_SECRET,
-//     which stays on the source (D36), so every carried connection of the org
+//     which stays on the source, so every carried connection of the org
 //     is revoked and the org's admins get ONE attention item saying to reconnect;
 //   - Gmail: the mailboxes are watched again with THIS instance's Pub/Sub topic
-//     and synced from the historyId stored at the freeze (P4P-11). Strictly
+//     and synced from the historyId stored at the freeze. Strictly
 //     after the commit: a watch made earlier would move push delivery away
 //     from the source while it still serves the org.
 // Each step is independent: one failing is reported and logged, never undoes
@@ -364,7 +364,7 @@ export interface CarriedMessage {
 
 /**
  * Target: queue the source's undelivered control-plane messages of the org in
- * this instance's outbox (P4P-15), with their message ids, so the control plane
+ * this instance's outbox, with their message ids, so the control plane
  * deduplicates one the source delivered after all. Only the org's messages.
  */
 export async function adoptOutboxMessages(

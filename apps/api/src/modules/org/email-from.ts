@@ -65,7 +65,7 @@ export async function getOrgEmailReplyTo(orgId: string): Promise<string | undefi
   return (await getOrgEmailConfig(orgId)).replyTo
 }
 
-// ── The org's own sender in the managed edition (S29, A44, P3R-7) ──
+// ── The org's own sender in the managed edition (S29) ──
 //
 // ORG-SCOPED mail only (invitations, connect links, attention digests, the
 // CSAT survey): sign-in codes, magic links, resets and handoffs keep

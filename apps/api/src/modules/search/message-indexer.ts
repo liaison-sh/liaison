@@ -1073,10 +1073,10 @@ function noteManagedEmbeddingRefused(orgId: string, reason: string, code?: strin
  * A managed cell's embedder (S31): OpenRouter, the cell's key, zero data
  * retention, the same Google model and width as the self-hosted path (so the
  * shared index's embedder width never changes). Each batch passes the side-call
- * gate first (`resolveKey` refuses while payment is required, D17; `spendGate`
+ * gate first (`resolveKey` refuses while payment is required; `spendGate`
  * checks the balance), so an embedder built while the org was active stops
  * spending the moment it is not; a refused batch embeds nothing and the
- * documents stay keyword only. Each batch is ONE usage row (P3R-18), billed to
+ * documents stay keyword only. Each batch is ONE usage row, billed to
  * a real org user (`systemWorkUserId`).
  */
 function managedOrgEmbedder(orgId: string, modelId: string): Embedder {

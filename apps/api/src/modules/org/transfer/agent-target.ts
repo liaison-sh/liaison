@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The target transfer agent (D34): one long-lived process on the target
+// The target transfer agent: one long-lived process on the target
 // instance that receives the source agent's commands and runs them, ONE AT A
 // TIME, in arrival order (so an abort queues behind a late apply and always
 // sees what that apply left). It holds no decision of its own: the source
@@ -94,7 +94,7 @@ export interface TargetAgentDeps {
   moveState?: (orgId: string, transferId: string) => Promise<MoveState>
 }
 
-/** Only the control plane decides a move is committed (D34); the source's word is not enough. */
+/** Only the control plane decides a move is committed; the source's word is not enough. */
 async function assertCommitted(
   deps: TargetAgentDeps,
   orgId: string,

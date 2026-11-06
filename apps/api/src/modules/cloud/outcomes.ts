@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // The idempotency store of the signed Control→cell API (kernel.cloud_request_outcomes,
-// migration 0247). Each endpoint names its key (spec §3.4): a request claims
+// migration 0247). Each endpoint names its key : a request claims
 // the row before it acts, then stores its reply; a repeat gets the stored reply
 // back instead of acting twice. The claim also serialises two attempts on one
 // key: the second answers `busy` until the first finishes, or takes over once

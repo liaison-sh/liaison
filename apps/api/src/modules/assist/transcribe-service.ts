@@ -679,7 +679,7 @@ export async function transcribe(
   const outcomes = await Promise.all(attempts.map((a) => a.settled))
   const heard = winner?.transcript.seconds ?? boundedSeconds
   // A managed cell bills the dictation once, at the pushed per-minute credit
-  // price (D15) for what the winner heard; a hedge's second call is ours.
+  // price for what the winner heard; a hedge's second call is ours.
   const dictated = winner?.transcript.seconds ?? winner?.transcript.heardSeconds ?? boundedSeconds
   const unitOf = (attempt: Attempt) => ({
     item: "dictationMinute" as const,

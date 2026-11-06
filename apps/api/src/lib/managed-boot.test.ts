@@ -19,7 +19,7 @@ const COMPLETE = {
   OPENROUTER_API_KEY: "sk-or-test-cell",
 }
 
-/** Every platform key a managed cell must not hold (A45), and a Gemini variable. */
+/** Every platform key a managed cell must not hold, and a Gemini variable. */
 const FORBIDDEN_KEYS = [
   "LIAISON_ANTHROPIC_API_KEY",
   "OPENAI_API_KEY",
@@ -150,7 +150,7 @@ describe("managedBootProblems", () => {
     expect(managedBootProblems({}, "missing").length).toBe(8)
   })
 
-  // S31/A45: every AI call of a managed cell goes through OpenRouter.
+  // S31: every AI call of a managed cell goes through OpenRouter.
   it("refuses without OPENROUTER_API_KEY, naming it", () => {
     for (const value of [undefined, "", "   "]) {
       const problems = managedBootProblems({ ...COMPLETE, OPENROUTER_API_KEY: value }, "registered")
@@ -174,7 +174,7 @@ describe("managedBootProblems", () => {
     for (const name of FORBIDDEN_KEYS) expect(problems[0]).toContain(name)
   })
 
-  // S30/A47: a cell's Gmail push topic delivers to /webhooks/_cell/gmail-push with
+  // S30: a cell's Gmail push topic delivers to /webhooks/_cell/gmail-push with
   // an OIDC token whose audience and service account the cell must know.
   describe("Gmail push on a cell", () => {
     const PUSH = {

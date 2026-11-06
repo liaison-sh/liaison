@@ -241,7 +241,7 @@ describe("processMediaAnalysisJob", () => {
     expect(await creditRows()).toBe(0)
   })
 
-  // A45: the Gemini Files-API slow path never runs on a managed cell (a job
+  // The Gemini Files-API slow path never runs on a managed cell (a job
   // queued before the switch, or by any other path, stops with the limit).
   it("managed edition: refused with the inline limit, no key, no upload, no spend", async () => {
     const id = "00000000-0000-4000-8000-00000000a006"

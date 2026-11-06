@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The move resolver (D34): an org draining, frozen or incoming is settled by
+// The move resolver: an org draining, frozen or incoming is settled by
 // asking the control plane what it decided for the move (`move.status`), never
 // by this instance alone, so the org never has two writers:
 //  - committed (or finalized): a source copy becomes `moved`, a target copy

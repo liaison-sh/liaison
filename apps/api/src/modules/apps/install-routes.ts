@@ -120,7 +120,7 @@ async function signatureConfigFor(
 
 /**
  * The gate of the routes that act on ONE installed app by name. An org's
- * custom app (A46) is managed by its own org alone: any other org, the
+ * custom app is managed by its own org alone: any other org, the
  * operator's included, gets 404 as if it did not exist. Every other app keeps
  * the instance-operator rule (`requireInstanceOperator`).
  */
@@ -263,7 +263,7 @@ installRoutes.post(
   },
 )
 
-// GET /custom/namespace — the name this org's custom apps carry (A46): `<name>-o<orgKey>`.
+// GET /custom/namespace — the name this org's custom apps carry: `<name>-o<orgKey>`.
 installRoutes.get(
   "/custom/namespace",
   requireScope("kernel:apps:admin"),
@@ -280,7 +280,7 @@ installRoutes.get(
 )
 
 // POST /custom/install — an org admin installs (or re-installs, or moves to a
-// newer version of) a custom app for their own org only (managed edition, A46).
+// newer version of) a custom app for their own org only (managed edition).
 // No instance-operator gate: the app is org-private, held to the org-level
 // declarations, the name rule and the org's `customApps` cap
 // (installAppFromTarball `ownerOrgId`), and invisible to every other org.

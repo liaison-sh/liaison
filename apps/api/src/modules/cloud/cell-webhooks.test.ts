@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// The cell's own inbound callbacks (S30, A25, A47): one Gmail push subscription
+// The cell's own inbound callbacks (S30): one Gmail push subscription
 // and one Meta app callback per cell, fanned out to the orgs they concern. The
 // lookups and the per-org dispatch are injected, so these run without a database.
 import { describe, expect, it } from "bun:test"
@@ -182,7 +182,7 @@ describe("cell Gmail push (S30)", () => {
   })
 })
 
-describe("cell Meta callback (A25, A47)", () => {
+describe("cell Meta callback", () => {
   const payload = {
     object: "page",
     entry: [
@@ -273,7 +273,7 @@ describe("self-hosted (S19)", () => {
   })
 })
 
-describe("instance config the apps read (A47)", () => {
+describe("instance config the apps read", () => {
   it("social gets the server's Meta callback and handshake token in managed with a Meta app secret only", async () => {
     const { _setEdition } = await import("~/lib/edition")
     const { env } = await import("~/lib/env")

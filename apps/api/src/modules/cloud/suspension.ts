@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // The end of a managed subscription, enforced on the cell from the billing
-// status Control pushes (spec S26, A10, A43, D17, D24). Managed edition only:
+// status Control pushes (spec S26). Managed edition only:
 // every function returns at once on a self-hosted instance (billing-status.ts
 // answers null without a query).
 //
-//  - `past_due` (first failed renewal, D17): metered usage on the platform key
+//  - `past_due` (first failed renewal): metered usage on the platform key
 //    is refused with 402 `payment_required` (`assertPaymentNotRequired`); the
 //    rest of the app stays usable.
 //  - `suspended` with `accessUntil` ahead: an org admin's SESSION may sign in,
@@ -18,7 +18,7 @@
 //  - `closed`, or `suspended` past `accessUntil`: every user credential is
 //    refused, admins included.
 //
-// The gate applies to user credentials only (P3R-8): the signed `/api/cloud/*`
+// The gate applies to user credentials only: the signed `/api/cloud/*`
 // calls, `/health`, `/diag`, `/webhooks/_cell/*` never pass through it. The
 // public tickets routes (create, attachments, CSAT) answer the same 403
 // (`assertOrgTakesPublicWrites`). Provider webhooks are answered 200 and
@@ -79,7 +79,7 @@ export class OrgSuspendedError extends HTTPException {
   }
 }
 
-/** The 402 of metered usage while the org is past due, suspended or closed (D17). */
+/** The 402 of metered usage while the org is past due, suspended or closed. */
 export class PaymentRequiredError extends Error {
   readonly status = 402
   readonly code = PAYMENT_REQUIRED_CODE
@@ -91,13 +91,13 @@ export class PaymentRequiredError extends Error {
 
 /**
  * Throws `PaymentRequiredError` when the org's metered managed usage is
- * refused (D17). A no-op, without a query, on a self-hosted instance.
+ * refused. A no-op, without a query, on a self-hosted instance.
  */
 export async function assertPaymentNotRequired(orgId: string): Promise<void> {
   if (paymentRequiredFor(await orgBillingStatus(orgId))) throw new PaymentRequiredError()
 }
 
-/** Whether the org's metered managed usage is refused now (D17). */
+/** Whether the org's metered managed usage is refused now. */
 export async function paymentRequired(orgId: string): Promise<boolean> {
   return paymentRequiredFor(await orgBillingStatus(orgId))
 }

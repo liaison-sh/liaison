@@ -730,7 +730,7 @@ test.describe("projects visual", () => {
       maxDiffPixelRatio: 0.02,
       // Mask the provenance line ("Created Xm ago, last updated Ym ago") and the
       // created-by line (the run's date): they carry timing that varies across
-      // runs. The agent panel it also used to mask is retired (P4c-T17).
+      // runs. The agent panel it also used to mask is retired .
       mask: [
         page.getByTestId("task-detail.provenance"),
         page.getByTestId("task-detail.created-by"),

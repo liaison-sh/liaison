@@ -721,7 +721,7 @@ const AiModelsSettings: Component = () => {
           </div>
         </section>
 
-        {/* Providers: keys are the org's own (BYOK), refused on a managed cell (A33) */}
+        {/* Providers: keys are the org's own (BYOK), refused on a managed cell */}
         <Show when={!managed()}>
           <section class="flex flex-col gap-2" data-testid="ai-models-providers">
             <h2 class="text-sm font-semibold text-text">{t("kernel.aiModels.providersTitle")}</h2>

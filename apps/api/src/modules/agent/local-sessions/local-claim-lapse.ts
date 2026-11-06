@@ -122,7 +122,7 @@ export async function sweepLapsedLocalClaims(now: Date = new Date()): Promise<La
       )
       if (removed.length === 0) return
       result.swept += 1
-      // S59 (D43 F6): the turn that holder was running loses its credential with
+      // S59: the turn that holder was running loses its credential with
       // the claim, never later.
       try {
         await revokeTurnCredentials({

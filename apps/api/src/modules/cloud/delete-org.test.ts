@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// `DELETE /api/cloud/orgs/:id` (S26, A43, D24) and the `PUT /orgs/:id/mail-sender`
+// `DELETE /api/cloud/orgs/:id` (S26) and the `PUT /orgs/:id/mail-sender`
 // route, signed as Control signs them, against the real database:
 //  - fences: active → 409 not_closed; closed < 25 days → closed_too_recently;
 //    the operator org → operator_org; a running export → export_running;
@@ -142,7 +142,7 @@ beforeEach(async () => {
   await clearRedisPatterns(["cloud:*"])
 })
 
-describe("401 matrix: the P3 endpoints", () => {
+describe("401 matrix: the cloud endpoints", () => {
   test("unsigned or mis-signed DELETE and mail-sender PUT: 401, nothing changes", async () => {
     const orgId = await createOrg("del-matrix")
     for (const opts of [{ unsigned: true }, { key: WRONG_KEY }]) {

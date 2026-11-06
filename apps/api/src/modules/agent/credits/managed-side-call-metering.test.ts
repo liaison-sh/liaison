@@ -4,9 +4,8 @@
 // allowance, not only its turns: the side calls outside the loop (the memory
 // flush of a consolidation, checkpoint briefs, fact extraction and episode
 // summaries, auto-titles, web extraction) each write one billed `usage` row at
-// what OpenRouter reported. A live rehearsal found the cell's usage report at
-// about half of what the provider billed its key: these calls spent on the
-// cell's key and wrote nothing. A self-hosted instance has no credits and keeps
+// what OpenRouter reported. These calls spend on the cell's key, so one that
+// wrote nothing would leave the usage report below what the provider bills. A self-hosted instance has no credits and keeps
 // these calls unrecorded, as before.
 //
 // THE MUTATIONS THAT PROVE THESE BITE

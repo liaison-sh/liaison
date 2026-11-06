@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // `/api/mail-sender/*`: the org's sending domain in Settings → Organization
-// (S29, A44), forwarded to the control plane:
+// (S29), forwarded to the control plane:
 //  - 404 outside the managed edition, org admins only (member 403), no session 401;
 //  - GET status, POST add {domain}, POST verify, DELETE remove each send one
 //    signed `mail.domain_*` message for the caller's org with the body the

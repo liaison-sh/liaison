@@ -516,7 +516,7 @@ export const moneyVectors = {
         { ok: true, applied: false, version: 4 },
       ],
     },
-    /** The last push of a tenant closed for non-payment (A43). */
+    /** The last push of a tenant closed for non-payment. */
     "billing push closed": {
       body: {
         orgId: ORG_ID,
@@ -575,7 +575,7 @@ export const moneyVectors = {
         { ok: true, orgs: [] },
       ],
     },
-    /** `DELETE /api/cloud/orgs/:id` (D24): one reply per state, one error per refusal. */
+    /** `DELETE /api/cloud/orgs/:id`: one reply per state, one error per refusal. */
     "delete org": {
       body: { orgId: ORG_ID, timerId: "delete:7d1f3a52" },
       invalid: { body: { orgId: ORG_ID, timerId: "" }, path: ["timerId"] },
@@ -592,7 +592,7 @@ export const moneyVectors = {
         { ok: false, code: "export_running" },
       ],
     },
-    /** `PUT /api/cloud/orgs/:id/mail-sender` (A44). The key is a placeholder, not a real key. */
+    /** `PUT /api/cloud/orgs/:id/mail-sender`. The key is a placeholder, not a real key. */
     "mail sender": {
       body: {
         orgId: ORG_ID,

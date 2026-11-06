@@ -20,7 +20,7 @@ describe("agent-service", () => {
     await acquireTestLock()
     // Agent billing (402 on zero balance) is managed-edition behaviour.
     _setEdition("managed")
-    // A managed cell meters nothing without a pushed rate (A39).
+    // A managed cell meters nothing without a pushed rate.
     await setTestCreditPricing()
     await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${ORG_ID}, 'AgentOrg', 'agent-org')`
     await sql`INSERT INTO kernel.users (id, org_id, email, name) VALUES (${USER_ID}, ${ORG_ID}, 'agent@test.com', 'Agent User')`

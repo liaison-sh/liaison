@@ -454,7 +454,7 @@ describe("web tools", () => {
         expect(Number(rows[0].raw_cost)).toBeCloseTo(0.00736125 / 1.25, 8)
       })
 
-      // S31/A45: a managed cell searches on OpenRouter only, even when an Exa
+      // S31: a managed cell searches on OpenRouter only, even when an Exa
       // key resolves, and the search completion asks for zero data retention.
       // Drop the managed branch of resolveWebSearchBackend: the first test gets
       // Exa. Drop managedZdrRouting from the request: the body has no zdr.
@@ -749,7 +749,7 @@ describe("web tools", () => {
       expect(result.error).toContain("Run web_search for the document")
     })
 
-    // A45/P3R-23: a managed cell never reads through Exa, even if an Exa key
+    // a managed cell never reads through Exa, even if an Exa key
     // resolved: the direct-fetch answer is what web_fetch gives.
     it("managed: a blocked page makes no Exa call and returns the direct-fetch answer", async () => {
       await stubDirect(403, "")()

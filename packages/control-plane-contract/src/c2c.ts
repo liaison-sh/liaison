@@ -207,7 +207,7 @@ export function isSha256Hex(value: string): boolean {
   return HEX_64.test(value)
 }
 
-// ── Body and reply schemas (spec §3.4, phase 1 rows) ────────────────────────
+// ── Body and reply schemas ────────────────────────
 
 /** Lowercase `[a-z0-9-]{3,40}`, no leading or trailing hyphen. */
 export const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/

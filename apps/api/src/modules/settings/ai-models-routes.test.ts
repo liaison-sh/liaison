@@ -326,7 +326,7 @@ describe("AI models API", () => {
     expect(res.status).toBe(412)
   })
 
-  it("on the managed edition a test call runs on the platform key, metered to the org's credits (A33)", async () => {
+  it("on the managed edition a test call runs on the platform key, metered to the org's credits", async () => {
     process.env.OPENROUTER_API_KEY = "sk-or-platform"
     _setEdition("managed")
     const usageRows = async () =>

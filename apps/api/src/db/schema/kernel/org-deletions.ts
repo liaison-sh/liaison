@@ -25,7 +25,7 @@ export type OrgDeletionStatus =
 export interface OrgDeletionWaiver {
   kind: "no-legal-archive" | "without-export"
   at: string
-  /** Why the gate was waived, when no operator did it by hand (managed deletion, D24). */
+  /** Why the gate was waived, when no operator did it by hand (managed deletion). */
   reason?: string
 }
 

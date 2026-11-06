@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// The billing code is deployment-agnostic (spec A35): prices, the top-up
+// The billing code is deployment-agnostic : prices, the top-up
 // minimum and unit price, and the payment frame's origin reach a server only
 // in the control plane's replies or its own settings. So the billing source
 // (server routes, the web page and frame, their strings) names no deployment
@@ -34,7 +34,7 @@ const TAX_ABBREVIATION = /\bHT\b/
 /** A hard-coded payment-frame URL: the frame origin only ever comes from the server. */
 const FRAME_URL = /https:\/\/pay\.[a-z0-9-]/
 
-describe("billing code names no deployment, price or tax regime (A35)", () => {
+describe("billing code names no deployment, price or tax regime", () => {
   const sources = BILLING_SOURCES.flatMap(files)
 
   test("the billing sources exist (the guard reads real files)", () => {

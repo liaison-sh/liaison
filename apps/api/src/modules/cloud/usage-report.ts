@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The daily usage report (spec S5d, A34): once a day, after 00:10 UTC, a
+// The daily usage report (spec S5d): once a day, after 00:10 UTC, a
 // managed cell tells the control plane, per org, what the previous UTC day's
 // billed usage cost the provider in USD (the sum of `raw_cost_usd` of the
 // rows metered on the cell's own key) and how many rows that was. The control

@@ -10,7 +10,7 @@
 //                  and the transfer the org arrived through (reverse moves);
 //   rows:<table>   the org's rows (`to_jsonb` of each), secrets re-keyed to the
 //                  transfer keys (rekey.ts). Mode `full` sends every row; mode
-//                  `delta` (pass 2 of a move, D33) sends only the rows whose
+//                  `delta` (pass 2 of a move) sends only the rows whose
 //                  `(primary key, xmin)` is not in the previous pass's
 //                  fingerprint;
 //   deletes:<table> (delta) primary keys the previous pass sent that are gone;

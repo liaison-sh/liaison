@@ -77,7 +77,7 @@ export const dictationErrorCodeSchema = z.enum([
   "insufficient_credits",
   // A managed cell with no pushed credit rate (its billing setup is incomplete).
   "credit_rate_missing",
-  // A managed org whose renewal is unpaid: no metered usage until it is (D17).
+  // A managed org whose renewal is unpaid: no metered usage until it is.
   "payment_required",
   "demo_key_required",
   "upstream_failed",

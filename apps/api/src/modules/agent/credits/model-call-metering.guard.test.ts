@@ -3,10 +3,9 @@
 // EVERY MODEL CALL IS METERED. On a managed cell a model call made for an org
 // spends the cell's key, so it must reach `finalizeUsage` (directly, or through
 // `meterSideCall` for a side call) and debit that org's allowance; a call that
-// does not is spend the usage report never sees. A live rehearsal found exactly
-// that: memory consolidation, checkpoint briefs, auto-titles and web
-// extraction spent on the cell's key unbilled, and the org's reported usage was
-// about half of what the provider billed.
+// does not is spend the usage report never sees. Side calls (memory consolidation, checkpoint
+// briefs, auto-titles, web extraction) were once unmetered; this guard keeps
+// every model call metered.
 //
 // This guard lists every file that builds a model on a key or sends a request
 // to a model provider, with its metering disposition:

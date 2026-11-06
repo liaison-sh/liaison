@@ -9,9 +9,9 @@
 //    new rate applies without a restart. A stale catalogue price adds the
 //    stale factor on top.
 //  - A fixed-price item (a web call, a dictation minute) costs its own credit
-//    price, pushed with the rate (D15): never list price x rate, which would
+//    price, pushed with the rate: never list price x rate, which would
 //    let credits / the public list price reveal the rate.
-//  - No pushed pricing, no metered managed usage (A39): the call is refused
+//  - No pushed pricing, no metered managed usage: the call is refused
 //    with CREDIT_PRICING_MISSING and an error log the watchdog sees (also
 //    `cloud.creditPricing` on /diag). There is no fallback factor.
 //  - A model's price is shown as a multiplier against the model Auto runs:
@@ -25,8 +25,8 @@ import { readCreditPricing } from "~/modules/cloud/credit-rate"
 
 const log = rootLogger.child({ module: "credit-cost" })
 
-/** Extra factor when the price is stale (the meter's historical 1.25 against 1.2). */
-export const STALE_PRICE_FACTOR = 1.25 / 1.2
+/** Extra factor applied to the cost when the catalogue price is stale. */
+export const STALE_PRICE_FACTOR = 1.0416666666666667
 
 /** The error code of metered managed usage refused for want of a pushed rate. */
 export const CREDIT_PRICING_MISSING = "credit_rate_missing"

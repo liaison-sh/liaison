@@ -23,7 +23,7 @@
 //                                with an OIDC token the server must be able to verify;
 //   - and NO other provider key: any non-blank platform key of ENV_KEY_MAP other
 //     than OpenRouter's, or any GEMINI_* variable, is refused, so no call can
-//     leave outside OpenRouter's zero-retention routing (A45). OAuth client
+//     leave outside OpenRouter's zero-retention routing. OAuth client
 //     variables (GOOGLE_OAUTH_CLIENT_ID, ...) are not provider keys.
 //   - a liaison team identity installed with `liaison team identity install`
 //     (state registered, key readable under ENCRYPTION_KEY). The managed

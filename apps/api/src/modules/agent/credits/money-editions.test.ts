@@ -10,7 +10,7 @@
 //    period denominator counts a mid-period top-up.
 //  - S21: the meter bills raw EUR x the pushed credit rate (x the stale factor),
 //    a new rate applies without a restart, and each row keeps its USD cost and
-//    the ECB rate used (A34).
+//    the ECB rate used.
 //  - S22: a deduction crossing the auto top-up threshold queues one signed
 //    request; a later one below it, or auto top-up off, queues none.
 //  - S5d: the daily usage report sums one UTC day of billed rows in USD and is
@@ -21,7 +21,7 @@
 //    in a serializer): the snapshot of that route differs.
 //  * Leave `inputCostPerM` (or `currency`, `inputTokens`) in a managed body:
 //    the discriminator fails on that route.
-//  * Keep the 1.2 margin in managed: the 2.8 credits assertion fails.
+//  * Apply a fixed markup in managed: the 2.8 credits assertion fails.
 //  * Ask only on a downward crossing (the old trigger): the re-ask and the
 //    already-below cases queue nothing. Drop the spacing: two rows, not one.
 //  * Bill a fixed-price item at list price × rate: the two-rate unit test differs.
@@ -505,7 +505,7 @@ describe("S18: managed AI-usage responses carry credits only", () => {
     const res = await asManaged(() => managedGet("/api/settings/ai/models"))
     const models = (res.body as { data: { models: Array<{ key: string; multiplier: unknown }> } })
       .data.models
-    // Flash is Auto (1×); Pro blends (3 × 1.25 + 10) / 4 = 3.4375 against 0.175 → 20×
+    // Flash is Auto (1×); Pro is 20× Auto
     expect(models.find((m) => m.key === FLASH)?.multiplier).toBe(1)
     expect(models.find((m) => m.key === PRO)?.multiplier).toBe(20)
     const credits = await asManaged(() => managedGet("/api/credits/models"))
@@ -561,7 +561,7 @@ describe("S21 / S22: the managed meter and the auto top-up trigger", () => {
     })
   })
 
-  test("a new rate applies without a restart; a stale price adds 1.25/1.2", async () => {
+  test("a new rate applies without a restart; a stale price adds the stale factor", async () => {
     await pushRate("1.50")
     expect((await call()).creditCost).toBe("3.00000000")
     const stale = await call({
@@ -577,7 +577,7 @@ describe("S21 / S22: the managed meter and the auto top-up trigger", () => {
       outputTokens: 0,
       providerCostUsd: undefined,
     })
-    // 1 EUR estimated × 1.5 × 1.25 / 1.2
+    // 1 EUR estimated × 1.5 × the stale factor
     expect(stale.creditCost).toBe("1.56250000")
     expect(await lastRow()).toMatchObject({ eur: "1.00000000", usd: "1.25000000" })
   })
@@ -622,7 +622,7 @@ describe("S21 / S22: the managed meter and the auto top-up trigger", () => {
   })
 })
 
-describe("D15 / A39: fixed-price items and a cell without a pushed rate", () => {
+describe("fixed-price items and a cell without a pushed rate", () => {
   const unitCall = (item: "webCall" | "dictationMinute", quantity: number) =>
     asManaged(() =>
       finalizeUsage(METER_ORG, {
@@ -666,7 +666,7 @@ describe("D15 / A39: fixed-price items and a cell without a pushed rate", () => 
       expect((await unitCall("webCall", 1)).creditCost).toBe("0.03710000")
       expect((await unitCall("dictationMinute", 0.5)).creditCost).toBe("0.14815000")
     }
-    // credits ÷ the public list price is no function of the rate: two rates, one quotient.
+    // The credits of a fixed-price item do not depend on the rate: two rates, one price.
   })
 
   test("an Exa call is billed its webCall price, the raw cost kept; without a stored ECB rate it is still billed", async () => {

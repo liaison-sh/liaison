@@ -22,7 +22,7 @@ export const TEST_VIES_REGISTRY: Readonly<Record<string, { name: string; address
     address: "Industriestrasse 12, 80807 München, Germany",
   },
   DE298765432: { name: "Klangwerk GmbH", address: "Rheinallee 4, 40545 Düsseldorf, Germany" },
-  IT00000000000: { name: "Suono Studio S.r.l.", address: "Via Roma 1, 20121 Milano, Italy" },
+  IT00000000000: { name: "Example Studio S.r.l.", address: "Via Roma 1, 20121 Milano, Italy" },
 }
 
 /** A number the stand-in answers with a member-state outage, for any country code. */

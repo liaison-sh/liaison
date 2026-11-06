@@ -76,9 +76,9 @@ async function generateTitleWithLLM(
   userMessage: string,
   agentReply: string,
 ): Promise<string> {
-  // The reserved App Review org titles its chats by heuristic: a title is not
-  // worth a share of the one demo ceiling App Review lives under. No query on
-  // a normal deployment.
+  // A reserved demo org titles its chats by heuristic: a title is not worth a
+  // share of the spend ceiling that org lives under. No query on a normal
+  // deployment.
   if (await isReservedDemoOrg(orgId)) return heuristicTitle(userMessage)
   // A demo VISITOR org reaches the box key only through a reservation, and
   // this side call has none: its title comes from the first message too.

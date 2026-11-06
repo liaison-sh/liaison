@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// THE GATE OF A MANAGED SIDE CALL (S31, A45).
+// THE GATE OF A MANAGED SIDE CALL (S31).
 //
 // On a managed cell every AI call runs on OpenRouter with the cell's key, and
 // the calls that are not chat turns (embeddings, media analysis) pass the same
 // two chokepoints as a turn: `resolveKey` (which refuses the platform key while
-// payment is required, D17) and `spendGate` (balance, breaker, pushed rate).
+// payment is required) and `spendGate` (balance, breaker, pushed rate).
 // They are then metered like any OpenRouter call: the reported USD cost, raw
 // cost x the pushed rate, one usage row per call (`finalizeUsage`).
 //
@@ -36,7 +36,7 @@ export type ManagedSideCallGate =
       allowed: false
       status: number
       reason: string
-      /** `payment_required` while the org's renewal is unpaid (D17). */
+      /** `payment_required` while the org's renewal is unpaid. */
       billingCode?: string
     }
 

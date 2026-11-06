@@ -757,14 +757,14 @@ describe("org transfer between two instances", () => {
       WHERE id = ${orgId}`
     await B`UPDATE kernel.threads SET title = 'Written on B' WHERE id = (
       SELECT id FROM kernel.threads WHERE org_id = ${orgId} ORDER BY id LIMIT 1)`
-    // A parent written on B after the move, with a child linked to it (T10 live: the reverse move's
+    // A parent written on B after the move, with a child linked to it (the reverse move's
     // dry run, which applies nothing, refused the child as "not this org's").
     const ormB = drizzle(B)
     const [ev] = await ormB
       .insert(pendingEvents)
-      .values({ orgId, payload: { t10: "after the move" } })
+      .values({ orgId, payload: { note: "after the move" } })
       .returning({ id: pendingEvents.id })
-    await ormB.insert(durableConsumerMarks).values({ consumer: "t10-reverse", eventId: ev!.id })
+    await ormB.insert(durableConsumerMarks).values({ consumer: "reverse-move", eventId: ev!.id })
     const [fromA] = await A<{ id: string }[]>`
       SELECT id::text AS id FROM kernel.credit_transactions WHERE org_id = ${orgId} LIMIT 1`
     const meteredOnA = fromA!.id

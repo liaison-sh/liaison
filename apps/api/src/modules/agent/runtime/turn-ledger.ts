@@ -529,7 +529,7 @@ export async function pruneTerminalTurns(
         .where(and(inArray(agentTurnEvents.turnId, terminalIds), notMoving(agentTurnEvents.orgId)))
         .returning({ turnId: agentTurnEvents.turnId })
       // Turn write results left behind (a turn whose finish never ran): every
-      // `tool:` row older than the longest a turn may stay open (M4).
+      // `tool:` row older than the longest a turn may stay open.
       const maxAgeS = TURN_MAX_AGE_MS / 1000
       const effects = await tx
         .delete(effectLedger)

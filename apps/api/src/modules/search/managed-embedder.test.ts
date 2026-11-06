@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// S31/A45: a managed cell embeds on OpenRouter with the cell's key and zero
+// S31: a managed cell embeds on OpenRouter with the cell's key and zero
 // data retention, and meters each embed batch to the org's credits as ONE
-// usage row (P3R-18), attributed to a real org user (the system-work
-// convention). While payment is required (D17) nothing is sent. A
+// usage row, attributed to a real org user (the system-work
+// convention). While payment is required nothing is sent. A
 // self-hosted instance keeps its Google embedder and writes no row (S19).
 //
 // THE MUTATIONS THAT PROVE THESE BITE

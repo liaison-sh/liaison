@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The write-gap budget (plans R1.4, D37): the per-step table sums to the
-// targets and ceilings the plan states, a step past its ceiling rejects, a
+// The write-gap budget: the per-step table sums to the
+// targets and ceilings of the move, a step past its ceiling rejects, a
 // post-commit step is measured but never cut, and the object keys of a delta
 // are found in its file rows (the org's own prefix only).
 import { describe, expect, it } from "bun:test"
@@ -16,7 +16,7 @@ import {
 } from "./ceilings"
 
 describe("write-gap ceilings", () => {
-  it("sums to the plan's 9.5 s target and 20 s ceiling", () => {
+  it("sums to the 9.5 s target and 20 s ceiling", () => {
     expect(gapTotals()).toEqual({ targetMs: 9_500, ceilingMs: 20_000 })
     expect(GAP_STEPS.commit.ceilingMs).toBe(2_500)
   })

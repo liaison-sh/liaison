@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// `DELETE /api/cloud/orgs/:id {orgId, timerId}` (spec S26, §3.4, A43, D24):
+// `DELETE /api/cloud/orgs/:id {orgId, timerId}` (spec S26):
 // Control's delete timer deletes a closed managed org with the cell's one
 // deletion core (modules/org/delete/start.ts, the same path as the operator's
 // `liaison org delete`): the ledger row, the deleting mark, the `org-delete`
@@ -12,7 +12,7 @@
 //   closed_too_recently  `closedAt` (from the push) is less than 25 days ago;
 //   export_running       an export of the org runs (Control retries later).
 // The operator's export and legal-archive gates are waived and the waivers
-// recorded on the ledger (D24): the customer had the 30-day export window and
+// recorded on the ledger: the customer had the 30-day export window and
 // is the controller of its data.
 //
 // Asynchronous and idempotent on `timerId` (outcomes.ts): the first call queues
@@ -56,7 +56,7 @@ export const CLOSED_DELETION_DELAY_MS = 25 * 24 * 60 * 60 * 1000
 /** The ledger operator of a deletion Control asked for. */
 const operatorOf = (timerId: string) => `control-plane:${timerId}`
 
-/** The waivers a managed deletion records (D24). */
+/** The waivers a managed deletion records. */
 export const MANAGED_DELETION_WAIVER_REASONS = {
   export: "export: customer had the 30-day export window",
   legalArchive:

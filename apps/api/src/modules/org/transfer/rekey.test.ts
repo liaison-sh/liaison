@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // The move's key handling, without a database:
-//   - `cli/keys-rotate.ts` is the file the owner approved, unchanged (git blob
+//   - `cli/keys-rotate.ts` is unchanged (git blob
 //     pinned): the transfer only calls its exports;
 //   - every encrypted column and JSON place keys-rotate knows is re-keyed on
 //     export, both families, and a value the instance key cannot open refuses;
@@ -18,7 +18,7 @@ import { generateTransferKeys, parseTransferKeys, RekeyRefused, rekeyRowForExpor
 
 const SRC = path.resolve(import.meta.dir, "../../..")
 
-/** The blob of `cli/keys-rotate.ts` the owner approved the move against (gate G-P4-1). */
+/** The blob of `cli/keys-rotate.ts` the move is written against. */
 const KEYS_ROTATE_BLOB = "f31e7ba80d1bd3e3e1099833c22852ae5b47b60d"
 
 function gitBlobSha(file: string): string {
@@ -27,7 +27,7 @@ function gitBlobSha(file: string): string {
 }
 
 describe("org transfer keys", () => {
-  it("keys-rotate.ts is the approved file, unchanged", () => {
+  it("keys-rotate.ts is unchanged", () => {
     expect(gitBlobSha(path.join(SRC, "cli/keys-rotate.ts"))).toBe(KEYS_ROTATE_BLOB)
   })
 
@@ -131,7 +131,7 @@ const JWT_SECRET_USES: Record<string, string> = {
     "archive download token: short-lived, the export is asked again on the target",
   "modules/apps/ui-bundle-token.ts": "UI bundle tokens: re-minted on the next page load",
   "modules/mcp/connection-service.ts":
-    "MCP connection tokens: after the commit the org's MCP clients reconnect (accepted, gate G-P4-1; the after-commit step marks them)",
+    "MCP connection tokens: after the commit the org's MCP clients reconnect (accepted; the after-commit step marks them)",
   "modules/agent/mailbox-plaintext/mailbox-forward.ts":
     "process-to-process signing of in-flight decrypt answers: nothing persisted, none in flight after the drain",
   "apps/api-connector/store.ts":

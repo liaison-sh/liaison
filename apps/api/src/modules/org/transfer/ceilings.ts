@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The write gap of a move, step by step (D37): each step inside the freeze has
+// The write gap of a move, step by step: each step inside the freeze has
 // a target and a ceiling. The source agent runs every step under its ceiling;
 // a step past it before the commit aborts the move (the org goes back to
 // serving from the source), so a slow move never becomes a long outage. A step

@@ -2,7 +2,7 @@
 //
 // Embeddings on OpenRouter (`POST /embeddings`), the managed edition's
 // embedder (S31). Zero data retention per request; the reported USD cost is
-// what the call is metered at. Live probe 2026-11-03: `google/gemini-embedding-001`
+// what the call is metered at. Verified against the provider: `google/gemini-embedding-001`
 // answers 3072 dimensions under `zdr: true`, the same vectors the Google
 // path stores, so a cell needs no reindex.
 import { managedZdrRouting, openRouterFetch } from "~/modules/agent/providers/openrouter"

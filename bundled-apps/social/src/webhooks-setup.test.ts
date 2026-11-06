@@ -283,7 +283,7 @@ describe("webhooks_setup", () => {
   })
 })
 
-// Managed edition (A25, A47): one Meta app serves every workspace on every cell, and it has ONE
+// Managed edition: one Meta app serves every workspace on every cell, and it has ONE
 // app-level callback, so it points at the cell's /webhooks/_cell/meta, which routes deliveries by
 // Page id; until an edge callback exists, exactly one cell carries Meta.
 describe("webhooks_setup on a managed cell", () => {

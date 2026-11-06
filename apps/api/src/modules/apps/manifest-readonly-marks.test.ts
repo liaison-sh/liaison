@@ -194,7 +194,7 @@ const READ_ONLY: Record<string, string[]> = {
     "settings_shop_mapping_list",
     "documents_preview_pdf",
     "documents_download_pdf",
-    // The approval cards' reads (#826): issuer profiles and the buyer's VAT
+    // The approval cards' reads: issuer profiles and the buyer's VAT
     // status (a VIES lookup), written nowhere.
     "documents_issue_preview",
     "documents_update_preview",

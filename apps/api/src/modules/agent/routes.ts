@@ -339,7 +339,7 @@ async function chatTurn(
     releaseStreamSlot()
 
     if (err instanceof HTTPException) throw err
-    // An unpaid renewal (D17) is a 402 `payment_required` the client offers
+    // An unpaid renewal is a 402 `payment_required` the client offers
     // Billing for, never a 500 (errorHandler keeps its status and code).
     if (err instanceof PaymentRequiredError) throw err
     log.error({ err }, "Agent chat initialization failed")

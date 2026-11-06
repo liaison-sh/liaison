@@ -86,7 +86,7 @@ export const CLOUD_LIMIT_ERROR_CODES = {
 export type CloudLimitErrorCode =
   (typeof CLOUD_LIMIT_ERROR_CODES)[keyof typeof CLOUD_LIMIT_ERROR_CODES]
 
-/** Auto top-up settings as Control holds them (S22, A35). */
+/** Auto top-up settings as Control holds them (S22). */
 export const cloudAutoTopUpSchema = z
   .object({
     enabled: z.boolean(),
@@ -111,14 +111,14 @@ function orgPath(orgId: string, suffix: string): string {
 /** The cell-side pathname of each Control→cell endpoint (what a signer signs). */
 export const cloudPaths = {
   orgs: () => `${CLOUD_API_BASE}/orgs`,
-  /** `DELETE`: the org's deletion (P3). */
+  /** `DELETE`: the org's deletion. */
   org: (orgId: string) => orgPath(orgId, ""),
   handoff: (orgId: string) => orgPath(orgId, "/handoff"),
   billing: (orgId: string) => orgPath(orgId, "/billing"),
   credits: (orgId: string) => orgPath(orgId, "/credits"),
   creditRate: () => `${CLOUD_API_BASE}/settings/credit-rate`,
   lookup: () => `${CLOUD_API_BASE}/lookup`,
-  /** `PUT`: the org's own mail sender (P3). */
+  /** `PUT`: the org's own mail sender. */
   mailSender: (orgId: string) => orgPath(orgId, "/mail-sender"),
   /** `PUT`: the operator's kill switch for one of the org's custom apps. */
   customAppState: (orgId: string, name: string) => {
@@ -129,7 +129,7 @@ export const cloudPaths = {
 } as const
 
 /**
- * `POST /api/cloud/orgs/:id/billing` (S16, S22, S24, A35). `version` is a monotonic
+ * `POST /api/cloud/orgs/:id/billing` (S16, S22, S24). `version` is a monotonic
  * per-tenant Control sequence: the cell applies a push only when it is newer than
  * the one it holds, and answers `applied: false` otherwise.
  */
@@ -176,7 +176,7 @@ export const cloudCreditGrantKindSchema = z.enum(["topup", "auto_topup", "period
 
 /**
  * `POST /api/cloud/orgs/:id/credits` (S17, S21, S22, S41). Idempotent on `grantId`
- * (the paid invoice's id, A29); the same id with another amount is `grant_conflict`.
+ * (the paid invoice's id); the same id with another amount is `grant_conflict`.
  * `period_reset` sets the period's included credits; the others add purchased credits.
  */
 export const cloudCreditGrantRequestSchema = z
@@ -193,10 +193,8 @@ export const cloudCreditGrantReplySchema = z
   .strict()
 
 /**
- * The credit price of each fixed-price item (D15, A39): what one unit costs in
- * credits, set in Control and pushed with the rate. A fixed-price item has a
- * public list price, so its credits are never list price × rate (the quotient
- * would reveal the rate).
+ * The credit price of each fixed-price item: what one unit costs in
+ * credits, set in Control and pushed with the rate.
  *  - `webCall`: one web search, or one page read through the search service;
  *  - `dictationMinute`: one minute of voice dictation (pro rata by the second).
  */
@@ -211,7 +209,7 @@ export type CloudUnitItem = keyof z.infer<typeof cloudUnitPricesSchema>
  * `PUT /api/cloud/settings/credit-rate` (S21): the cell's credit rate and the
  * fixed-price items' credit prices, applied only when `version` is newer. A
  * cell setting, never serialized to a client. A cell without one refuses
- * metered managed usage (A39).
+ * metered managed usage.
  */
 export const cloudCreditRateRequestSchema = z
   .object({
@@ -238,13 +236,13 @@ export const cloudLookupReplySchema = z
   })
   .strict()
 
-// ── Control→cell, P3: org deletion and the org's mail sender ─────────────────
+// ── Control→cell: org deletion and the org's mail sender ─────────────────
 
 /** The id of the Control timer that asks (Control's idempotency key for the deletion). */
 const timerIdSchema = z.string().regex(/^[A-Za-z0-9:_-]{1,128}$/)
 
 /**
- * `DELETE /api/cloud/orgs/:id` (D24): deletes a closed org with the cell's
+ * `DELETE /api/cloud/orgs/:id`: deletes a closed org with the cell's
  * deletion core. Asynchronous: the first call queues it, Control calls again
  * (same `timerId`) until `done` or `failed`. A repeat answers the current state.
  */
@@ -282,7 +280,7 @@ export const MAIL_DOMAIN_PATTERN =
 export const mailDomainNameSchema = z.string().regex(MAIL_DOMAIN_PATTERN)
 
 /**
- * `PUT /api/cloud/orgs/:id/mail-sender` (A44): the org's verified sending domain,
+ * `PUT /api/cloud/orgs/:id/mail-sender`: the org's verified sending domain,
  * its From address and a sending key restricted to that domain; `sender: null`
  * returns the org to the cell's fallback sender. Applied only when `version` is
  * newer than the one the cell holds (reply as the billing push). The key is
@@ -383,7 +381,7 @@ export const CELL_BILLING_MESSAGE_TYPES = [
   "move.status",
 ] as const
 
-/** The org's sending-domain messages (A44): Control holds the provider's full-access key. */
+/** The org's sending-domain messages: Control holds the provider's full-access key. */
 export const MAIL_DOMAIN_MESSAGE_TYPES = [
   "mail.domain_add",
   "mail.domain_status",
@@ -464,7 +462,7 @@ export const cellBillingDataSchemas = {
   "billing.auto_topup_request": z
     .object({ ...requestFields, crossingId: z.string().regex(/^[A-Za-z0-9:_-]{1,128}$/) })
     .strict(),
-  /** One UTC day's provider-reported cost of the org, in USD, and its usage row count (S5d, A34). */
+  /** One UTC day's provider-reported cost of the org, in USD, and its usage row count (S5d). */
   "usage.report": z
     .object({
       ...requestFields,
@@ -662,7 +660,7 @@ export const billingSummaryReplySchema = z
       })
       .strict()
       .optional(),
-    /** Top-up terms, from Control config (A35): the cell never holds a price. */
+    /** Top-up terms, from Control config: the cell never holds a price. */
     topUp: z
       .object({
         minCredits: wholeCreditsSchema,
@@ -677,7 +675,7 @@ export const billingSummaryReplySchema = z
       .object({ invoiceId: providerIdSchema, amountDisplay: displaySchema })
       .strict()
       .optional(),
-    /** The unpaid renewal invoice while past due or suspended: paying it resumes the org (D17). */
+    /** The unpaid renewal invoice while past due or suspended: paying it resumes the org. */
     openInvoice: z
       .object({
         invoiceId: providerIdSchema,
@@ -843,7 +841,7 @@ export type InvoiceListItem = z.infer<typeof invoiceListItemSchema>
 
 // ── Managed `GET /api/billing/state` (served by the cell from the last push) ──
 
-/** No portal or checkout URL (A35); self-hosted keeps its own reply. */
+/** No portal or checkout URL; self-hosted keeps its own reply. */
 export const managedBillingStateSchema = z
   .object({
     mode: z.literal("managed"),

@@ -1071,8 +1071,8 @@ type DispatchedJob = Pick<Job, "id" | "name" | "data" | "attemptsMade" | "repeat
 
 /** Jobs dropped at start because their org was deleted or is being deleted; read by metrics/tests. */
 /**
- * The org jobs that still run while a managed org is suspended or closed
- * (D24): its exports (the admins' 30-day window), its deletion and purges,
+ * The org jobs that still run while a managed org is suspended or closed:
+ * its exports (the admins' 30-day window), its deletion and purges,
  * and the cloud billing and reporting jobs. Pinned by a test.
  */
 export const SUSPENDED_ORG_EXEMPT_JOBS: ReadonlySet<string> = new Set([
@@ -1237,7 +1237,7 @@ async function processJobInOrigin(
         return
       }
       // A managed org suspended or closed for billing (modules/cloud/
-      // suspension.ts, D24): its job is skipped and counted, its scheduler
+      // suspension.ts): its job is skipped and counted, its scheduler
       // KEPT, so a routine fires again on its next tick after the org pays.
       // Export, deletion, purge and billing jobs still run. A no-op, without
       // a query, on a self-hosted instance. Fail-closed: an unreadable status
@@ -1612,7 +1612,7 @@ export async function listOrgQueuedJobs(
   return { jobs, truncatedQueues }
 }
 
-// ── Org jobs on a move (modules/org/transfer/, plan R1.5) ────────────────────
+// ── Org jobs on a move (modules/org/transfer/) ────────────────────
 
 /** One queued job of an org as a move carries it to the target. */
 export interface TransferredJob {

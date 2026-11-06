@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// `/api/mail-sender/*`: the org's own sending domain (S29, A44), shown in
+// `/api/mail-sender/*`: the org's own sending domain (S29), shown in
 // Settings → Organization → Email sender. Managed edition only (404
 // otherwise, decided per request), org admins only (app.ts). The control plane
 // holds the mail provider's account and creates, verifies and removes the

@@ -142,7 +142,7 @@ export function webhooksDroppedOrgSuspendedCount(orgId: string): number {
 }
 
 /**
- * A delivery to a managed org suspended or closed for billing (D24): 200 and
+ * A delivery to a managed org suspended or closed for billing: 200 and
  * dropped, logged and counted per org, so the provider keeps the subscription
  * and the org's integrations work again once it pays. Not replayed on resume.
  * 410 stays for an org being deleted (above). A no-op, without a query, on a
@@ -256,7 +256,7 @@ webhookRoutes.post("/:orgId/:appName/:endpointName", async (c) => {
   if (!(await appVisibleToOrg(appName, webhookOrgId))) {
     throw new HTTPException(404, { message: "Unknown webhook endpoint" })
   }
-  // An org's custom app: a per-minute budget before any sandbox work (S5-2).
+  // An org's custom app: a per-minute budget before any sandbox work.
   await assertCustomAppWebhookRate(webhookOrgId, appName)
   const dropped = await dropIfAppOff(c, webhookOrgId, appName, endpointName)
   if (dropped) return dropped

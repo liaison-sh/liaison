@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// `PUT /api/cloud/orgs/:id/mail-sender` (A44): the org's own verified sending
+// `PUT /api/cloud/orgs/:id/mail-sender`: the org's own verified sending
 // domain, From address and domain-restricted sending key, pushed by Control.
 //
 // Stored in the org's settings under its OWN key, `cloudSender {domain,
 // fromAddress, version, keyCiphertext}` (the key encrypted like every other
 // org settings secret), never in `email.from`: sign-in mail reads that one
-// and must keep the system sender (P3R-7). Only the org-scoped sends read
+// and must keep the system sender. Only the org-scoped sends read
 // `cloudSender`, through `getOrgSenderTransport` (modules/org/email-from.ts).
 // `sender: null` removes the sender and the key and keeps the version, so a
 // late older push cannot bring them back. Applied only when `version` is newer

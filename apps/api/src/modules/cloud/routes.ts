@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The signed Control→cell API, mounted at `/api/cloud` (spec §3.4): create an
+// The signed Control→cell API, mounted at `/api/cloud` : create an
 // org, hand its owner a sign-in link, push its billing state, grant credits,
 // set the credit rate, look up an email's workspaces, delete a closed org,
 // push the org's own mail sender. These routes are outside the suspension

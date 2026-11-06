@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Settings > Billing while a renewal is unpaid (D17, P3R-19): a banner says to
+// Settings > Billing while a renewal is unpaid: a banner says to
 // pay the open invoice, its button opens the payment frame on that invoice, and
 // the top-up and auto top-up controls are hidden until it is paid.
 import { Route, Router } from "@solidjs/router"

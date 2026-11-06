@@ -168,7 +168,7 @@ export async function assertIncomingPurgeSafe(transferId: string): Promise<void>
  * Source, before purging the moved copy: refuses unless the move's record
  * proves (by the probe) that the target's stores differ from this cell's.
  * Equal config names are no evidence either way: every cell reaches its own
- * search service under one name (seen live: the finalize of every move was refused).
+ * search service under one name.
  */
 export async function assertMovedPurgeSafe(transferId: string): Promise<void> {
   const peer = await readPeerStorage(transferId)

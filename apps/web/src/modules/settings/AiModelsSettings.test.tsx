@@ -656,7 +656,7 @@ describe("AI models: voice dictation", () => {
   })
 })
 
-describe("AI models: the managed edition shows multipliers, never money (S18, A33)", () => {
+describe("AI models: the managed edition shows multipliers, never money (S18)", () => {
   const managedPayload = () => {
     const base = adminPayload()
     return {

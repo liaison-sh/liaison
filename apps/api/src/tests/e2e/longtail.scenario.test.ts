@@ -955,7 +955,7 @@ describe("Long-tail per-app E2E — projects + boxtal + contacts (Module J)", ()
       expect(String(res.body.error.message)).toMatch(/scope|forbidden|contacts:export/i)
     }, 60_000)
 
-    it("J-C6: an agent's export for a holder of the export scope PROPOSES (an approval lands, no file is written)", async () => {
+    it("an agent's export for a holder of the export scope PROPOSES (an approval lands, no file is written)", async () => {
       // contacts_export is gated because it materializes bulk PII. An agent call
       // must land a pending approval and produce NO artifact, and the envelope
       // must say so rather than looking like a completed export. A kernel tool is

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// What the source transfer agent asks the control plane during a move (D34).
+// What the source transfer agent asks the control plane during a move.
 //
 //   heartbeat  every 2 s, renews the lease (`move.heartbeat`, the instance's own
 //              signed cell-billing channel; contract moves.ts);
@@ -12,7 +12,7 @@
 // webhook: the operator hands its key to the agent on the agent's stdin when it
 // starts the move (memory only, never a file or an argument), and the agent
 // signs them itself, so the commit runs from the cell, not from the operator's
-// machine (R1.4).
+// machine.
 //
 // Every reply is a `MoveDecision`. `unreachable` means the call's outcome is
 // unknown (network error, timeout, a 5xx): for a commit that is NOT a refusal,

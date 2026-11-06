@@ -4,7 +4,7 @@
 // `audit-log-retention`): one DELETE over every org, no org list in memory.
 //
 // Self-hosted: an org keeps `settings.auditRetentionDays` days, else 90.
-// Managed (S24, A42, P3R-16): the plan's `caps.auditDays` is what was sold, so
+// Managed (S24): the plan's `caps.auditDays` is what was sold, so
 // the org keeps min(`settings.auditRetentionDaysChosen` ?? `auditDays`,
 // `auditDays`) days; the 90-day settings default is not read for a capped org.
 // A managed org without the cap keeps the admin's choice, else the setting,

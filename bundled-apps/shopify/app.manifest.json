@@ -274,7 +274,7 @@
       }
     ]
   },
-  "version": "0.4.1",
+  "version": "0.4.2",
   "iconName": "shopping-cart",
   "description": "Shopify integration: orders, customers, products, markets, draft orders, refunds, fulfillments, returns",
   "listing": {
@@ -1141,6 +1141,7 @@
   "tools": {
     "home_load": {
       "description": "Load the Shopify Home tab dashboard: connection, attention items (low-stock product variants, unfulfilled-past-SLA count, pending returns), and a recent-orders preview. This is a STORE DASHBOARD overview, not the order query — to ENUMERATE which orders need shipping use orders_search with query='fulfillment_status:unfulfilled' (it returns each order's line-item SKUs), and never read attention.lowInventory (a low-stock PRODUCT list) as if it were the order list.",
+      "searchKeywords": ["résumé", "aperçu", "overview", "business"],
       "requiredScopes": ["shopify:orders:read"],
       "handler": "home_load",
       "params": {
@@ -1165,6 +1166,7 @@
     },
     "analytics_query": {
       "description": "Aggregate sales analytics over a period, optionally grouped by SKU or market. Metric semantics (Shopify sales dataset, state them when reporting): net_sales = product revenue AFTER discounts and returns, EXCLUDING taxes (VAT) and shipping — use this for product revenue and as the ASP numerator; revenue = Shopify total_sales, which ADDS taxes and shipping on top of net sales (matches the admin's Total sales figure) — never use it for per-unit price math; units = net_items_sold (returns deducted; zero-priced warranty/replacement units still count); aov = average order value; orders = order count. All figures are converted to the store's base currency and cover EVERY market and sales channel for the period. Use this for any period total / AOV / units-by-SKU / by-market question; NEVER page orders_search and tally by hand. Returns ShopifyQL results when available, else a bounded in-context count (partial:true, boundedTo:N) — report that partial honestly.",
+      "searchKeywords": ["ventes", "chiffre", "affaires", "statistiques", "stats", "revenue", "sales", "rapport", "report"],
       "requiredScopes": ["shopify:analytics:read"],
       "handler": "analytics_query",
       "params": {
@@ -1215,6 +1217,7 @@
     "orders_search": {
       "taintSource": true,
       "description": "Search Shopify orders by query (email, customer name, order name/number, financial_status, fulfillment_status, tag, …) AND/OR by a placed-date window. To scope to a DATE/WEEK ('yesterday', 'this week', 'Modular Expo week'), pass `created_at_min` and/or `created_at_max` (inclusive ISO dates) — these filter SERVER-SIDE on the order's PLACED date (its processedAt, which can differ from createdAt for an imported or backdated order; results are sorted newest createdAt first), so 'orders placed during week X' IS directly queryable; they COMPOSE with the `query` facet (e.g. tag a product SKU via query AND bound the week via the date params in ONE call). A date term written INSIDE the `query` string is still silently ignored — use the date-range params, not the query, for dates. Results come back most-recent-first and are bounded by `limit` + the opaque `cursor`; to enumerate the full matching set, PAGE the cursor (pass the returned nextCursor back until it is null) — do NOT re-run the same query and assume one page is complete.",
+      "searchKeywords": ["commande", "commandes", "chercher", "rechercher", "retrouver", "trouver", "find", "vente", "ventes", "sale", "sales"],
       "requiredScopes": ["shopify:orders:read"],
       "handler": "orders_search",
       "params": {
@@ -1250,6 +1253,7 @@
     "orders_get": {
       "taintSource": true,
       "description": "Get one Shopify order by id (line items, fulfillments, refunds, returns, customer). For a customer's POSTAL/SHIPPING ADDRESS the result carries TWO fields: `shippingAddress` (the per-order ship-to — frequently NULL, as many orders have no order-level address) and `customerAddress` (the customer's canonical defaultAddress: { address1, address2, city, province, provinceCode, zip, country, countryCode, phone }). If `shippingAddress` is null, do NOT conclude the address is unavailable — use `customerAddress` (the customer record is the source of the address). Use ONLY the address fields actually present; never fabricate a street/city/zip. PRICING: each lineItems[] entry carries `priceSet` (the LIST unit price before discounts) AND `discountedUnitPriceSet` (the unit price actually charged after ALL discounts, line-level and allocated order-level) — when invoicing or reconciling an order, ALWAYS use `discountedUnitPriceSet` (fall back to priceSet only when it is absent). Top-level `shippingLine` ({ title, priceSet }) is the shipping charge after shipping discounts, null when free. The result also carries `po_number`, the customer's purchase order reference taken from Shopify's native Order.poNumber (falling back to the originating draft order's), which invoicing prints on the invoice. TAX: US sales tax on a Shop channel order is collected and remitted by Shopify as marketplace facilitator, so it stays OFF our invoicing documents: never copy an order's tax onto an invoice or a quote, and never re-derive a tax figure the order already establishes. B2B SIGNALS in attributes: totalTax, taxExempt, b2bCompany {name, taxRegistrationId} (null for a consumer), customerTaxExempt.",
+      "searchKeywords": ["commande", "détail", "voir", "lire"],
       "requiredScopes": ["shopify:orders:read"],
       "handler": "orders_get",
       "params": {
@@ -1268,6 +1272,7 @@
     },
     "orders_invoice_links": {
       "description": "Resolve linked invoicing documents for a set of Shopify orders. Each entry of order_ids may be the order's gid, its numeric id, or its name (#1097, or the bare number); each link's order_id is the entry you passed. Reads the invoices as they are now, so an invoice issued a moment ago shows. Best effort: returns empty when invoicing is not installed.",
+      "searchKeywords": ["commande", "lien"],
       "requiredScopes": ["shopify:orders:read"],
       "handler": "orders_invoice_links",
       "params": {
@@ -1305,6 +1310,7 @@
     "customers_search": {
       "taintSource": true,
       "description": "Search Shopify customers. Each result carries the customer's NATIVE lifetime spend in `amountSpent` ({ amount, currencyCode }) and `numberOfOrders` — use these directly for any spend / lifetime-value / top-customers / spend-tier question. Do NOT sum orders by hand, and NEVER claim per-customer lifetime spend is uncomputable: amountSpent IS it. Results are PAGED/BOUNDED (~100 per page via cursor) and every page returns `totalCount` — the server-side total number of customers matching the same filter. GROUND your coverage in it: say 'reviewed N of totalCount customers' (N = how many you actually paged through). If you did not reach all totalCount (nextCursor still set / N < totalCount), you reviewed a PARTIAL/sampled subset — state that explicitly and NEVER claim 'all'/'the entire base'/'a full audit'. Only when N == totalCount (you paged to nextCursor=null) is the coverage complete. Report ONLY figures present in the tool results — never invent or extrapolate a spend amount or a customer. Match/label a customer by the EXACT email this tool returns (do not invent an email). CURRENCY (spend threshold in a different currency than the data): amountSpent is denominated in its own `currencyCode` (e.g. USD). If the user states a threshold in a DIFFERENT currency (e.g. 'over 1000 EUR') you CANNOT silently treat the native figure as that currency and you have NO authorized FX rate — so apply the threshold AGAINST amountSpent's native currency and SAY SO ('amountSpent is in USD; I applied the >1000 cut in USD and have not converted to EUR — confirm a rate if you need a strict EUR threshold'). Do NOT assume 1:1 parity, do NOT fabricate a rate, and — critically — do NOT flip to claiming the spend is 'uncomputable' / pivot to the accounting system (Pennylane) because of the currency question: amountSpent IS the per-customer lifetime spend, fully computable here; the currency is a disclosure caveat, never a reason the figure is unavailable. DATA-REALITY UNDER DOUBT: the customers and amountSpent figures this tool returns ARE the store's real customer records — when a user doubts a name ('I don't recognise them / is this real or a test account?'), answer from what the tool actually returned (the customer exists in the store with that email + that amountSpent), and exclude a customer ONLY on a real returned attribute (e.g. a `liaison-seed`/test tag actually present in its `tags`), NEVER on a fabricated rationale you invented ('looks like a dealer account') to justify dropping them. Do not over-correct a correct, tool-grounded result into a wholesale reversal just because the user expressed doubt — re-verify against the tool output and stand on what it says. Each result also carries the customer's CANONICAL postal address in `defaultAddress` ({ address1, address2, city, province, provinceCode, zip, country, countryCode }) plus `phone` — this is THE source of a customer's shipping/postal address: read it to backfill a CRM contact's address. An individual ORDER often has NO per-order shippingAddress (orders_get returns null), so do NOT conclude the address is unavailable from the order — pivot to the customer record's defaultAddress. Use ONLY the address fields actually present; never fabricate a street/city/zip. BUILDING A SPEND SEGMENT (e.g. 'customers who spent over 1000', 'high-value customers', 'top spenders'): do NOT page this whole-base search and filter by hand — the base can hold thousands of customers, far beyond one turn's page budget, so you would only ever reach a sampled subset and must never claim a complete sweep. Use `customers_segment_search` instead: it asks Shopify to evaluate the spend threshold SERVER-SIDE and returns ONLY the matching customers plus a server-side `totalCount`, so you get the EXACT, COMPLETE high-value set in one (or a few) bounded pages.",
+      "searchKeywords": ["client", "clients", "acheteur", "chercher", "rechercher", "retrouver", "trouver"],
       "requiredScopes": ["shopify:customers:read"],
       "handler": "customers_search",
       "params": {
@@ -1330,6 +1336,7 @@
     "customers_segment_search": {
       "taintSource": true,
       "description": "Build a SERVER-SIDE customer SPEND SEGMENT — the right tool for any 'customers who spent over X', 'high-value customers', 'top spenders', or 'spend-tier' segmentation request. Pass `minSpend` (the threshold AMOUNT, a number) and Shopify's segment engine evaluates `amount_spent > minSpend` SERVER-SIDE, returning ONLY the matching customers — NOT the whole base. This is how you segment a large store without enumerating it: do NOT page `customers_search` over thousands of customers and filter by hand (you would only reach a sampled subset within one turn, then be tempted to over-claim a sweep you never did). Each page returns `totalCount` — the server-side count of ALL customers over the threshold across every page. GROUND your coverage in it: if `totalCount` fits in the page(s) you read (nextCursor=null), you have the COMPLETE high-value set and may say so; if nextCursor is still set you have a partial page — say 'reviewed N of totalCount' and page on. Each result carries the customer's `amountSpent` ({ amount, currencyCode }), email, name, and numberOfOrders. CURRENCY: the threshold is compared against each customer's NATIVE lifetime spend in its own `currencyCode` (e.g. USD). If the user stated the threshold in a DIFFERENT currency (e.g. 'over 1000 EUR'), you have NO authorized FX rate — the segment is computed against the native figure, so SAY SO ('amountSpent is in USD; the >1000 cut was applied in USD, not converted to EUR — confirm a rate for a strict EUR threshold'); never assume 1:1 parity, never fabricate a rate. To LABEL these customers (so marketing can target them), match each to a kernel contact by the EXACT email returned here (contacts_search by email) and apply a tag via contacts_write(tags=['high-value']); that produces a filterable TAG (contacts_search(tag='high-value')), NOT a persisted named spend-segment object — there is no agent tool to create a stored Shopify/kernel segment, so describe what you built as a tag, never claim a named segment was saved. Report ONLY customers this tool returned; never invent or extrapolate a customer or a spend figure.",
+      "searchKeywords": ["client", "clients"],
       "requiredScopes": ["shopify:customers:read"],
       "handler": "customers_segment_search",
       "params": {
@@ -1359,6 +1366,7 @@
     "customers_get": {
       "taintSource": true,
       "description": "Get one Shopify customer by id. Returns the customer's `defaultAddress` ({ address1, address2, city, province, provinceCode, zip, country, countryCode }) + `phone` — the CANONICAL postal address for the customer; read it to backfill a CRM contact's shipping address. An individual order often has no per-order shippingAddress, so the customer's defaultAddress is the source — never conclude the address is unavailable just because an order lacks one, and never fabricate address fields not present. Also returns email, name, tags, numberOfOrders, amountSpent, recent orders, taxExempt and companies (B2B company names, [{ name }]).",
+      "searchKeywords": ["client", "fiche", "voir"],
       "requiredScopes": ["shopify:customers:read"],
       "handler": "customers_get",
       "params": {
@@ -1436,6 +1444,7 @@
     },
     "locations_list": {
       "description": "List Shopify fulfillment locations",
+      "searchKeywords": ["entrepôt", "lieu", "emplacement", "warehouse"],
       "requiredScopes": ["shopify:locations:read"],
       "handler": "locations_list",
       "params": {
@@ -1456,6 +1465,7 @@
     },
     "products_search": {
       "description": "Search Shopify products",
+      "searchKeywords": ["produit", "produits", "catalogue", "article", "chercher", "rechercher", "trouver", "find"],
       "requiredScopes": ["shopify:products:read"],
       "handler": "products_search",
       "params": {
@@ -1479,6 +1489,7 @@
     },
     "products_get": {
       "description": "Get one Shopify product by id (with variants)",
+      "searchKeywords": ["produit", "fiche", "voir"],
       "requiredScopes": ["shopify:products:read"],
       "handler": "products_get",
       "params": {
@@ -1522,6 +1533,7 @@
     },
     "markets_list": {
       "description": "List Shopify markets configured on the shop",
+      "searchKeywords": ["marché", "marchés", "pays"],
       "requiredScopes": ["shopify:markets:read"],
       "handler": "markets_list",
       "params": {
@@ -1559,6 +1571,7 @@
     },
     "variants_search": {
       "description": "Search Shopify product variants (by sku, title, …)",
+      "searchKeywords": ["variante", "variantes", "sku", "référence", "barcode"],
       "requiredScopes": ["shopify:products:read"],
       "handler": "variants_search",
       "params": {
@@ -1623,6 +1636,7 @@
     },
     "variants_market_price": {
       "description": "Read the per-market (contextual) price for one product variant — what a buyer in a given country actually sees on that storefront. The catalog price from variants_get/products_get is the shop-default, home-currency listing price; this tool returns the variant's contextual price for the requested market (its currency plus any FX/round-rule the market applies). Use it to report a market-specific storefront price; pass the market's ISO 3166-1 alpha-2 country code (resolve it from markets_list). Never fabricate or hand-compute an FX conversion when this real market price is available.",
+      "searchKeywords": ["prix", "marché", "price"],
       "requiredScopes": ["shopify:products:read"],
       "handler": "variants_market_price",
       "params": {
@@ -1650,6 +1664,7 @@
     },
     "inventory_levels_list": {
       "description": "List Shopify inventory levels for an inventory item across locations. Each location row returns on_hand (physical units), committed (units reserved against open/unfulfilled orders), and available (sellable = on_hand − committed). For an oversell check, committed > on_hand means the SKU is oversold by committed − on_hand (= −available); report on_hand as the stock figure, never available.",
+      "searchKeywords": ["stock", "stocks", "quantité", "disponible", "rupture", "inventaire", "combien"],
       "requiredScopes": ["shopify:inventory:read"],
       "handler": "inventory_levels_list",
       "params": {
@@ -1676,6 +1691,7 @@
     },
     "inventory_value": {
       "description": "Total RETAIL value of stock on hand across the WHOLE catalog, computed server-side in one call (sums on-hand quantity × selling price over every product variant, all locations). Use this for 'what is our inventory worth / total stock value right now' — do NOT page inventory_levels_list + variants and tally by hand. Returns totalInventoryValue + currency + a per-SKU breakdown (topByValue), and is RETAIL value (selling price): Shopify exposes no unit cost, so this is sell-through value, not COGS. Reports partial:true if the catalog exceeds the scan bound.",
+      "searchKeywords": ["stock", "valeur", "valorisation"],
       "requiredScopes": ["shopify:inventory:read"],
       "handler": "inventory_value",
       "params": {
@@ -1686,6 +1702,7 @@
     },
     "repeat_rate": {
       "description": "Base-wide repeat-PURCHASE rate, computed server-side in one call: the share of customers with more than one order (and the count + a sample of repeat customers). Use this for 'what share of customers come back for a second purchase / repeat rate' — do NOT page customers_search and tally by hand. Returns totalCustomers, repeatCustomers, repeatRatePct, sampleRepeatCustomers (+ partial:true if the base exceeds the scan bound). It does NOT split by an arbitrary historical-event cohort (e.g. Black Friday vs Modular Expo) — there is no first-order-date cohort tool and the store carries no such historical cohort, so report the overall repeat rate and bound any event-cohort comparison honestly.",
+      "searchKeywords": ["fidélité", "rachat", "retention", "récurrent", "clients"],
       "requiredScopes": ["shopify:customers:read"],
       "handler": "repeat_rate",
       "params": {
@@ -1697,6 +1714,7 @@
     "abandoned_checkouts_list": {
       "taintSource": true,
       "description": "List abandoned customer checkouts for cart recovery (value, customer name + email, line items, and the recovery URL per checkout), newest first. Use this for 'pull this week's abandoned checkouts / abandoned carts for a recovery campaign'. IMPORTANT: draft_orders are seller-created quotes, NOT abandoned customer carts — do NOT use draft_orders_list for this. Abandoned checkouts are created by Shopify only from real buyer abandonment, so a store with no recent abandonment legitimately returns an EMPTY list ({total:0}); report that honestly ('no abandoned checkouts this week') and never fabricate carts or pass off draft orders / recent completed orders as abandoned checkouts. Returns checkouts[], total, totalRecoverableValue, currency (+ partial:true if the store exceeds the scan bound). Optional sinceDays bounds the window (default 30).",
+      "searchKeywords": ["panier", "paniers", "abandonné", "abandonnés", "cart", "carts"],
       "requiredScopes": ["shopify:orders:read"],
       "handler": "abandoned_checkouts_list",
       "params": {
@@ -1748,6 +1766,7 @@
     "returns_search": {
       "taintSource": true,
       "description": "Search Shopify returns",
+      "searchKeywords": ["retour", "retours"],
       "requiredScopes": ["shopify:returns:read"],
       "handler": "returns_search",
       "params": {
@@ -1777,6 +1796,7 @@
     "refunds_get": {
       "taintSource": true,
       "description": "Get one Shopify refund by id",
+      "searchKeywords": ["remboursement", "commande"],
       "requiredScopes": ["shopify:orders:read"],
       "handler": "refunds_get",
       "params": {
@@ -1794,6 +1814,7 @@
     },
     "discounts_search": {
       "description": "Search Shopify discount-code nodes (basic / bxgy / free-shipping) by code/title KEYWORD. There is NO created-date filter and NO campaign-tag filter — when you scope by a `query` keyword the result carries a `keywordMatchNotice`; relay its caveat (the match may miss codes not named for the campaign) to the user and never claim an exhaustive sweep.",
+      "searchKeywords": ["remise", "réduction", "promo", "code", "coupon"],
       "requiredScopes": ["shopify:discounts:read"],
       "handler": "discounts_search",
       "params": {
@@ -1855,6 +1876,7 @@
     },
     "refunds_create": {
       "description": "Refund a Shopify order. For a FLAT goodwill / courtesy / partial refund of a fixed sum (e.g. a 50 EUR goodwill credit), pass `amount` (a money value like \"50.00\") and OMIT refundLineItems — the refund returns exactly that amount and is NOT tied to line items. To refund specific units, pass refundLineItems instead. Omit BOTH amount and refundLineItems to refund the whole order. You only need to specify HOW MUCH (amount) or WHICH items (refundLineItems) — the transaction plumbing (gateway/parent transaction) is derived from the order automatically; do not hand-build a transactions entry or split a goodwill amount onto shipping. Invoicing issues the matching credit note automatically once this refund lands, so never also call invoicing__credit_note_create_and_issue for it.",
+      "searchKeywords": ["rembourser", "remboursement", "refund", "argent", "commande", "order", "rembourse"],
       "requiredScopes": ["shopify:refunds:create"],
       "handler": "refunds_create",
       "summarizer": "summarizeRefundsCreate",
@@ -1993,6 +2015,7 @@
     },
     "draft_orders_create": {
       "description": "Create a Shopify draft order. To apply a dealer / volume / tier discount you MUST set an appliedDiscount on the line item (lineItems[].appliedDiscount) or order-level — { value: <number>, valueType: 'PERCENTAGE' (or 'FIXED_AMOUNT'), description: '<reason>' }. Stating the discount only in your reply WITHOUT setting appliedDiscount creates the draft at FULL price (a fabricated discount — the rubric fails). Resolve the customer with shopify customers_search and set purchasingEntity.customerId to its Shopify Customer GID (gid://shopify/Customer/…) — do NOT pass a kernel contact id (a bare UUID from kernel contacts_search; Shopify rejects it: 'Invalid global id'). If you pass an email instead of customerId, it must be a real deliverable address (a kernel contact's `.example` TLD is rejected: 'Email contains an invalid domain name') — so prefer the Shopify customerId. Pass each line as lineItems[] = { variantId, quantity, appliedDiscount? }. QUOTES: when the Invoicing app is installed and its issuer profile is mapped to this shop, a draft order IS the customer's quote: creating it makes a numbered quote PDF appear in Invoicing automatically (linked by the draft order id), so never also create a quote there. Set the customer (purchasingEntity.customerId) and a shipping address so the quote has a complete recipient; without them the quote waits until the draft order is updated with them. Prices on custom lines are tax inclusive when the shop prices tax inclusive. A `poNumber` on the draft is the customer's purchase order reference: it travels to the numbered quote and on to the invoice, so put a PO there rather than in a tag or a note.",
+      "searchKeywords": ["brouillon", "commande"],
       "requiredScopes": ["shopify:draft-orders:write"],
       "handler": "draft_orders_create",
       "preflight": "draft_orders_create_preflight",
@@ -2136,6 +2159,7 @@
     },
     "draft_orders_complete": {
       "description": "Complete a Shopify draft order: it becomes a real order. paymentPending defaults to false, which MARKS THE ORDER PAID; for a B2B customer who pays by wire against the invoice pass paymentPending: true so the order stays pending and no customer email goes out. QUOTES: when Invoicing is installed the linked quote turns 'invoiced' and the invoice is issued automatically by the order-created auto-flow; do NOT also call invoicing__invoice_create_and_issue. The Invoicing side does the same thing through documents_convert_to_invoice on the quote, which is what the Convert to invoice button uses.",
+      "searchKeywords": ["brouillon", "finaliser"],
       "requiredScopes": ["shopify:draft-orders:write"],
       "handler": "draft_orders_complete",
       "summarizer": "summarizeDraftOrdersComplete",
@@ -2165,6 +2189,7 @@
     },
     "fulfillments_create": {
       "description": "Mark an order's items as fulfilled. SIMPLEST: pass just the order id as `orderId` (gid://shopify/Order/...) and ALL of that order's open line items are fulfilled — you do NOT need to look up fulfillment-order ids yourself. PARTIAL shipment (only some items or quantities shipped): pass `orderId` PLUS `lineItems` [{ sku, quantity }] (or { orderLineItemId, quantity } when a sku is missing or ambiguous): exactly those quantities are marked fulfilled and the rest stays open; the handler maps them onto the order's open fulfillment orders for you (call fulfillment_orders_get first to see what is still fulfillable). It errors instead of guessing when a sku is unknown/ambiguous or a quantity exceeds what remains. Advanced: an explicit `fulfillment.lineItemsByFulfillmentOrder` is still honored verbatim. Optionally add `fulfillment.trackingInfo` (company/number/url) and `fulfillment.notifyCustomer`. When the store sets a shipping email policy (customerShippingEmail, e.g. retail orders only: a retail customer is emailed, a B2B buyer, a Shopify B2B company or a line sku ending with a b2bSkuSuffixes suffix, never is), the policy decides notifyCustomer whatever you pass, and the result carries `customerNotification` {notified, reason, message}: tell the person whether Shopify emailed the customer.",
+      "searchKeywords": ["expédié", "expédier", "expédition", "ship", "shipped", "fulfilled", "livrer", "marquer", "mark", "traiter"],
       "requiredScopes": ["shopify:fulfillments:write"],
       "handler": "fulfillments_create",
       "preflight": "fulfillments_create_preflight",
@@ -2252,6 +2277,7 @@
     },
     "fulfillments_cancel": {
       "description": "Cancel a Shopify fulfillment",
+      "searchKeywords": ["expédition", "annuler"],
       "requiredScopes": ["shopify:fulfillments:write"],
       "handler": "fulfillments_cancel",
       "preflight": "fulfillments_cancel_preflight",
@@ -2273,6 +2299,7 @@
     },
     "fulfillments_update_tracking": {
       "description": "Update tracking info (number, carrier, URL) on a Shopify fulfillment",
+      "searchKeywords": ["suivi", "numéro", "transporteur", "carrier"],
       "requiredScopes": ["shopify:fulfillments:write"],
       "handler": "fulfillments_update_tracking",
       "summarizer": "summarizeFulfillmentsUpdateTracking",
@@ -2335,6 +2362,7 @@
     },
     "products_create": {
       "description": "Create a Shopify product",
+      "searchKeywords": ["produit", "ajouter", "nouveau", "créer", "add"],
       "requiredScopes": ["shopify:products:write"],
       "handler": "products_create",
       "summarizer": "summarizeProductsCreate",
@@ -2391,6 +2419,7 @@
     },
     "products_update": {
       "description": "Update a Shopify product",
+      "searchKeywords": ["produit", "modifier", "titre", "description", "edit"],
       "requiredScopes": ["shopify:products:write"],
       "handler": "products_update",
       "preflight": "products_update_preflight",
@@ -2458,6 +2487,7 @@
     },
     "products_delete": {
       "description": "Delete a Shopify product",
+      "searchKeywords": ["produit", "supprimer"],
       "requiredScopes": ["shopify:products:write"],
       "handler": "products_delete",
       "preflight": "products_delete_preflight",
@@ -2580,6 +2610,7 @@
     },
     "variants_update": {
       "description": "Update a Shopify product variant",
+      "searchKeywords": ["prix", "price", "tarif", "variante", "sku", "modifier"],
       "requiredScopes": ["shopify:products:write"],
       "handler": "variants_update",
       "preflight": "variants_update_preflight",
@@ -2680,6 +2711,7 @@
     },
     "inventory_adjust": {
       "description": "Apply a RELATIVE delta to inventory per (item, location) — e.g. +10 received, -3 damaged. Relative changes ONLY. To SET a final/absolute count (e.g. after a physical count → 47 on hand) use inventory_set_on_hand, NOT this. Pass a signed delta per change.",
+      "searchKeywords": ["stock", "ajuster", "inventaire", "quantité"],
       "requiredScopes": ["shopify:inventory:write"],
       "handler": "inventory_adjust",
       "preflight": "inventory_adjust_preflight",
@@ -2744,6 +2776,7 @@
     },
     "inventory_set_on_hand": {
       "description": "SET the ABSOLUTE on-hand count for an item at a location — e.g. after a physical/cycle count: on-hand = 47. Use this whenever the user gives a target/final number (\"set the count to N\", \"there are N on hand\"). For a relative +/- change use inventory_adjust. Pass the absolute quantity per (item, location).",
+      "searchKeywords": ["stock", "inventaire", "corriger", "quantité"],
       "requiredScopes": ["shopify:inventory:write"],
       "handler": "inventory_set_on_hand",
       "preflight": "inventory_set_on_hand_preflight",
@@ -2806,6 +2839,7 @@
     },
     "discounts_create": {
       "description": "Create a Shopify discount code. To make the code apply to a SPECIFIC product (not the whole store), you MUST set customerGets.items.products to that product's id in THIS call (products_search returns the id) — omitting it makes a STOREWIDE code. Provide the percent (customerGets.value.percentage as a 0-1 fraction) and the active window (startsAt/endsAt).",
+      "searchKeywords": ["remise", "réduction", "promo", "promotion", "code", "coupon"],
       "requiredScopes": ["shopify:discounts:write"],
       "handler": "discounts_create",
       "preflight": "discounts_create_preflight",
@@ -2859,6 +2893,7 @@
     },
     "discounts_bulk_create": {
       "description": "Generate MANY unique discount codes on ONE code discount in a SINGLE call — the right tool when the user asks for N unique codes (e.g. '25 unique single-use 50%-off codes to hand to press'). It creates the code discount once and bulk-adds the codes server-side (the codes are created in ONE operation, not one approval per code), then returns the ACTUAL codes created. Set `count` to how many, `codePrefix` to the shared human prefix (each code gets a unique suffix), and the discount config (percentage as a 0-1 fraction, product scope, window) the same way as discounts_create. Codes are SINGLE-USE by default (usageLimit 1, once per customer) — override usageLimit for a capped multi-use code. Report ONLY the codes this tool returns; never claim codes it did not return.",
+      "searchKeywords": ["remise", "codes", "masse", "promo"],
       "requiredScopes": ["shopify:discounts:write"],
       "handler": "discounts_bulk_create",
       "preflight": "discounts_bulk_create_preflight",
@@ -2916,6 +2951,7 @@
     },
     "discounts_update": {
       "description": "Update a Shopify discount code (gated). To DEACTIVATE/turn off an existing active code, set endsAt to a time in the past — that expires it so it can no longer be redeemed.",
+      "searchKeywords": ["remise", "réduction", "promo", "modifier"],
       "requiredScopes": ["shopify:discounts:write"],
       "handler": "discounts_update",
       "preflight": "discounts_update_preflight",
@@ -2975,6 +3011,7 @@
     },
     "discounts_delete": {
       "description": "Delete a Shopify discount code",
+      "searchKeywords": ["remise", "réduction", "promo", "supprimer"],
       "requiredScopes": ["shopify:discounts:write"],
       "handler": "discounts_delete",
       "preflight": "discounts_delete_preflight",
@@ -2996,6 +3033,7 @@
     },
     "returns_request": {
       "description": "Open a Shopify RETURN REQUEST for one or more shipped line items — the platform record that QUEUES a unit as inbound so it is inspected and restocked ON RECEIPT (use this to 'queue a unit to be restocked when it comes back', NOT an immediate inventory bump). GATED → lands as an approval. To build the input you must resolve a FulfillmentLineItem gid: orders_search by the customer's email/order number → orders_get the order to read its `fulfillments[].id` → fulfillments_get(that fulfillment id) to read its `lineItems[].id` (each is the fulfillmentLineItemId) and quantity. Then call returns_request with input.orderId = the Order gid and input.returnLineItems = [{ fulfillmentLineItemId, quantity, returnReason }] (returnReason DEFECTIVE for a dead-zone/hardware fault). A bare line-item id from orders_get is NOT a fulfillmentLineItemId — it will be rejected; the id MUST come from fulfillments_get.",
+      "searchKeywords": ["retour", "retourner", "return"],
       "requiredScopes": ["shopify:returns:write"],
       "handler": "returns_request",
       "summarizer": "summarizeReturnsRequest",
@@ -3056,6 +3094,7 @@
     },
     "returns_approve": {
       "description": "Approve a pending Shopify return request (accept the return). Use this when the return is within policy — e.g. inside the warranty/return window confirmed via orders_get on the return's order. Prefer this over returns_decline whenever the request is legitimate; declining is the exception, not the default.",
+      "searchKeywords": ["retour", "accepter"],
       "requiredScopes": ["shopify:returns:write"],
       "handler": "returns_approve",
       "preflight": "returns_approve_preflight",
@@ -3077,6 +3116,7 @@
     },
     "returns_decline": {
       "description": "Decline a pending Shopify return request (reject the return). Only decline when you have VERIFIED grounds — never on the customer's claim alone. Before declining, call orders_get on the return's order to read the actual purchase date (the `processedAt` field, the true transaction date) and confirm it is genuinely outside the applicable window (e.g. past the warranty/return period); if the order is still within the window, approve instead. When the denial cites a policy (e.g. a warranty window), look that policy up first (search Knowledge) so the reason and any customer reply are grounded in the real policy text, not asserted. `declineReason` is free text describing why (the underlying enum is set automatically).",
+      "searchKeywords": ["retour", "refuser"],
       "requiredScopes": ["shopify:returns:write"],
       "handler": "returns_decline",
       "preflight": "returns_decline_preflight",
@@ -3102,6 +3142,7 @@
     },
     "returns_refund": {
       "description": "Issue a refund against a Shopify return",
+      "searchKeywords": ["retour", "rembourser", "remboursement", "refund", "rembourse"],
       "requiredScopes": ["shopify:returns:write"],
       "handler": "returns_refund",
       "preflight": "returns_refund_preflight",
@@ -3158,6 +3199,7 @@
     },
     "returns_close": {
       "description": "Close a Shopify return",
+      "searchKeywords": ["retour", "fermer"],
       "requiredScopes": ["shopify:returns:write"],
       "handler": "returns_close",
       "preflight": "returns_close_preflight",
@@ -3179,6 +3221,7 @@
     },
     "customers_update": {
       "description": "Update a Shopify customer record",
+      "searchKeywords": ["client", "modifier"],
       "requiredScopes": ["shopify:customers:write"],
       "handler": "customers_update",
       "preflight": "customers_update_preflight",
@@ -3246,6 +3289,7 @@
     },
     "customers_email_marketing_consent_update": {
       "description": "Set a Shopify customer's email-marketing consent state",
+      "searchKeywords": ["consentement", "newsletter", "désabonner", "unsubscribe"],
       "requiredScopes": ["shopify:customers:write"],
       "handler": "customers_email_marketing_consent_update",
       "summarizer": "summarizeCustomersEmailMarketingConsentUpdate",
@@ -3481,6 +3525,7 @@
     },
     "order_update": {
       "description": "Update a Shopify order's tags or note. Do NOT record a customer's purchase order number here: a PO-852875 tag or a line in the note is the old workaround and changes nothing on the document the customer holds. The PO belongs on the invoicing document, as po_number on the issue tool or via invoicing__documents_update on an already issued one.",
+      "searchKeywords": ["commande", "modifier", "tags", "tag", "edit"],
       "requiredScopes": ["shopify:orders:write"],
       "handler": "order_update",
       "preflight": "order_update_preflight",
@@ -3538,6 +3583,7 @@
     },
     "order_cancel": {
       "description": "Cancel a Shopify order (optionally refund + restock). Invoicing auto issues the credit note for the cancellation, reversing only the REMAINDER when the invoice was already partly credited, so never issue a second one by hand.",
+      "searchKeywords": ["annuler", "commande", "cancel"],
       "requiredScopes": ["shopify:orders:write"],
       "handler": "order_cancel",
       "preflight": "order_cancel_preflight",
@@ -3577,6 +3623,7 @@
     },
     "order_note_set": {
       "description": "Set or clear a Shopify order's internal staff note. Pass expected_note (the note value you last read, or null if you read no note) to make the write refuse instead of applying when the note changed since you read it; omit expected_note to overwrite unconditionally. This is the only ungated write tool in this app: every other write tool here is gated. It is ungated because a cross app call into a gated tool always parks a pending approval, which would put an approval card on every note save and make inline editing unusable. It is contained instead by trustBoundary: internal, so only an app that declared this tool in cross_app_calls can reach it. The blast radius is one internal staff text field on one order: no email, no money, no fulfillment.",
+      "searchKeywords": ["note", "commande", "staff", "interne"],
       "requiredScopes": ["shopify:orders:write"],
       "handler": "order_note_set",
       "trustBoundary": "internal",
@@ -3702,6 +3749,7 @@
     },
     "draft_orders_send": {
       "description": "Send a draft-order invoice to the customer. `email` is OPTIONAL — OMIT it to send to the draft's OWN customer (recommended: the draft already carries the customer and their valid email). Only pass `email` to OVERRIDE the recipient, and then it must be an OBJECT (Shopify EmailInput), NEVER a bare string: { to: '<real deliverable address>', subject?, customMessage? } — a string value fails with 'email must be an object', and a non-deliverable address (e.g. a kernel contact's `.example` TLD) fails with 'invalid domain name'. So the safe call is just { id: '<draftOrderId>' }; full shape is { id, email?: { to, subject?, customMessage? } }.",
+      "searchKeywords": ["brouillon", "envoyer"],
       "requiredScopes": ["shopify:draft-orders:write"],
       "handler": "draft_orders_send",
       "summarizer": "summarizeDraftOrdersSend",
@@ -3756,6 +3804,7 @@
     },
     "products_publish": {
       "description": "Publish a Shopify product to its sales channels. Call with just the product `id`: the channels (publications) are resolved automatically, namely every sales channel on the store the product is not yet published on (the Online Store, any headless or Storefront API channel, and the others), and the approval card names each one. B2B and market catalogs are never included by default: name a catalog's Publication gid in `input` to publish to it. Pass `input` only with REAL Publication gids read from products_publication_targets, to limit the publish to those channels; an invented id is ignored. GATED (user-approved): it lands as an approval request and NEVER auto-executes — including inside a routine, where each scheduled/event tick that proposes a publish surfaces it as its OWN per-tick approval in the routine output thread (a routine never auto-approves its own gated actions). So when you set up a routine to publish a product at a launch time, do NOT tell the user it 'will publish automatically' / 'auto-publishes when it fires' — say the routine DRAFTS the publish for their approval at that time. For a known/planned launch datetime, schedule a one-shot kind:'scheduled' routine at that runAt that proposes this publish (NOT a kind:'event' routine on a record-move event — there is no 'launch:live' event, and 'shopify:product:published' fires AFTER a publish, so subscribing to it to TRIGGER a publish is circular).",
+      "searchKeywords": ["publier", "ligne", "online"],
       "requiredScopes": ["shopify:products:write"],
       "handler": "products_publish",
       "preflight": "products_publish_preflight",
@@ -3806,6 +3855,7 @@
     },
     "products_unpublish": {
       "description": "Take a Shopify product OFFLINE by unpublishing it from its sales channels (e.g. to stop overselling an out-of-stock listing). Call with just the product `id` — the channels (publications) are resolved automatically (the product's currently-published channels). Do NOT pass `input` / fabricate a channel/publication id unless you already read a real Publication gid; an invented id is not needed and will be ignored in favour of the product's actual channels.",
+      "searchKeywords": ["dépublier", "retirer", "offline"],
       "requiredScopes": ["shopify:products:write"],
       "handler": "products_unpublish",
       "preflight": "products_unpublish_preflight",
@@ -3856,6 +3906,7 @@
     },
     "customers_tag": {
       "description": "Add or remove tags on a Shopify customer",
+      "searchKeywords": ["étiquette", "client", "vip"],
       "requiredScopes": ["shopify:customers:write"],
       "handler": "customers_tag",
       "preflight": "customers_tag_preflight",

@@ -159,6 +159,7 @@ export function registerSetupStateTool(orgId: string): void {
     deferLoading: true,
     description:
       "What is set up in this workspace and what is left of the features the person chose (setup.features), with the other features as a menu with times; read from the workspace itself.",
+    searchKeywords: ["configuration", "installation", "onboarding"],
     // Org-level facts with no names in them: any member may read them.
     requiredScopes: ["kernel:threads:read"],
     readOnly: true,

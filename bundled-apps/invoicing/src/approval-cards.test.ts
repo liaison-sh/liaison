@@ -15,7 +15,7 @@ import manifest from "../app.manifest.json"
 import * as summarizers from "./summarizers"
 
 type Card = { kind: string; title: string; subtitle?: string; lines: string[]; links?: Array<{ label: string; entityId?: string }> }
-type Tool = { gated?: boolean; summarizer?: string; summarizerContext?: { tool: string; params: Record<string, string> } }
+type Tool = { gated?: boolean; summarizer?: string; approvalCard?: unknown; summarizerContext?: { tool: string; params: Record<string, string> } }
 const TOOLS = (manifest as unknown as { tools: Record<string, Tool> }).tools
 
 /** The kernel's fallback card for a gated tool with no summarizer. */

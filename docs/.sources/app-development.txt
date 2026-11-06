@@ -36,3 +36,5 @@ Attention translations in the manifest: event, kind, urgency, when, summary, rec
 excludeActor on scope_holders recipients -> apps/api/src/modules/apps/manifest-schema.ts:1273
 Predicate operators for when -> apps/api/src/modules/attention/predicates.ts:2
 resolveWhen ends an item -> apps/api/src/modules/apps/manifest-schema.ts:1238
+searchKeywords on a tool, single words -> apps/api/src/modules/apps/manifest-schema.ts:517
+Keywords are read only by the search, folded for accents -> apps/api/src/modules/agent/tools/tool-rank.ts:72

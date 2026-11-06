@@ -81,7 +81,7 @@ describe("ads app.manifest.json", () => {
     // 0.1.47: no developer token (retired by Google 2026-09-09); google-config derives its identifier from customerId.
     // 0.1.49: every HUMAN setup step says its own minutes. The legacy developerToken is read without error and never threaded into the client.
     // 0.1.52: a bunfig.toml wires the Solid JSX preload for `bun test` run from the app dir.
-    expect(m.version).toBe("0.1.52")
+    expect(m.version).toBe("0.1.53")
     for (const name of ["insights_query", "metrics_list", "metrics_run"]) {
       expect(m.tools[name]?.readOnly).toBe(true)
       expect(m.tools[name]?.writesToTable).toBeUndefined()

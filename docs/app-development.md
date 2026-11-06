@@ -316,6 +316,22 @@ a repeated part must not match the same text in two ways. A pattern whose check
 takes too long is refused too, so keep patterns short. See
 [the package format](app-package-format.md#regular-expressions-in-a-manifest).
 
+
+### Let people find it
+
+An agent finds most tools by searching. Add the words people use for what the
+tool does, when its name and description do not carry them, in
+`searchKeywords`: single words, in any language, the words on your screens
+included. They are read only by the search, never sent to a model, so they cost
+no tokens. Accents do not matter: `clôturer` also answers to `cloturer`.
+
+```json
+"close": {
+  "description": "Close a ticket.",
+  "searchKeywords": ["fermer", "clôturer", "résoudre"]
+}
+```
+
 ---
 
 ## 5. Writing a panel

@@ -1,15 +1,22 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { UserContext } from "~/db/rls"
 import {
-  CONNECTOR_APP,
   connectorSearchHints,
   loadConnectedSystems,
 } from "~/modules/agent/context/connected-systems"
 import { currentRunContext } from "~/modules/agent/runtime/run-context"
 import { turnToolScopes } from "~/modules/agent/scopes/effective-scope"
 import { listDeferredTools } from "~/modules/agent/tools/tool-bridge"
+import {
+  CONNECTOR_APP,
+  rankDeferredTools,
+  type ScorableDeferredTool,
+  scoreDeferredTools,
+} from "~/modules/agent/tools/tool-rank"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { ensureOrgToolLists } from "~/modules/mcp-client/index"
+
+export { scoreDeferredTools }
 
 /**
  * The SDK name of a tool THIS turn can call right now without a search (in
@@ -334,153 +341,6 @@ function orgAppNames(orgId: string): Set<string> {
   return names
 }
 
-/** The minimal shape the keyword scorer needs from a deferred-tool row. */
-export interface ScorableDeferredTool {
-  toolName: string
-  appName: string
-  description: string
-  /**
-   * Words the tool answers to beyond its name, weighed almost like a name part:
-   * a connector tool's operation names and connected system ("add_company_note",
-   * "crm"), which its static description cannot know.
-   */
-  keywords?: readonly string[]
-}
-
-/**
- * Tokenized keyword scoring shared by the in-agent `tool_search` and the MCP
- * gateway's `liaison_tool_search`. Tokenizes the query on the separators models
- * (and humans) actually type — whitespace, `,` `:` `.` `/` `_` `-` — so
- * "create skill" matches `create_skill` instead of requiring the exact
- * underscore form (the naive single-substring match this replaces made the
- * MCP discovery search return nothing for it).
- */
-export function scoreDeferredTools<T extends ScorableDeferredTool>(
-  tools: readonly T[],
-  query: string,
-  /** The org's app names, so a kernel tool is not held to match the app it acts on. */
-  opts?: { appNames?: Iterable<string> },
-): Array<{ tool: T; score: number; termsMatched: number; termCount: number }> {
-  const terms = query
-    .toLowerCase()
-    .split(/[\s,:./_-]+/)
-    .filter(Boolean)
-  const appTerms = new Set([...(opts?.appNames ?? [])].map((n) => n.toLowerCase()))
-  return tools.map((t) => {
-    let score = 0
-    let termsMatched = 0
-    let termCount = 0
-    const nameLower = t.toolName.toLowerCase()
-    const nameParts = nameLower.split(/[^a-z0-9]+/)
-    const descLower = t.description.toLowerCase()
-    const isKernel = t.appName === "kernel"
-
-    for (const term of terms) {
-      const before = score
-      // Exact name part match (high weight); a singular term also names its
-      // plural part ("app" names `apps_set_enabled`).
-      if (nameParts.some((p) => p === term || p === `${term}s`)) score += 10
-      // A keyword the tool declares for this org (singular or plural either way)
-      else if (t.keywords?.some((k) => k === term || k === `${term}s` || `${k}s` === term))
-        score += 8
-      // Partial name match
-      else if (nameLower.includes(term)) score += 5
-      // App name match
-      else if (t.appName.toLowerCase().includes(term)) score += 6
-      // Description match (lower weight)
-      else if (descLower.includes(term)) score += 2
-      if (score > before) termsMatched++
-      // Another app's name is the ARGUMENT of a kernel tool, which acts on
-      // apps ("turn the social app off"), not a term the tool must match.
-      else if (isKernel && appTerms.has(term)) continue
-      termCount++
-    }
-
-    return { tool: t, score, termsMatched, termCount }
-  })
-}
-
-/**
- * The matches a keyword search LOADS, as opposed to lists. A query for
- * `mail:read` used to load its five padded hits: mail__read and then
- * google-drive__read, database__db_read, gitlab__gitlab_read_file and
- * mail__listAccounts, each of those a whole app whose full instruction guide
- * then rode in the cached prefix for the life of the thread. A strong match
- * satisfies EVERY query term and ties the best score; the rest stay listed,
- * one direct call or one `select:` away. A bare app name is a request for that
- * app's whole surface, so every usable hit is strong.
- */
-export function strongMatches<T extends { score: number; termsMatched: number; termCount: number }>(
-  scored: readonly T[],
-  wholeAppQuery: boolean,
-): T[] {
-  if (wholeAppQuery) return [...scored]
-  const top = scored.reduce((best, s) => Math.max(best, s.score), 0)
-  return scored.filter((s) => s.score === top && s.termsMatched === s.termCount)
-}
-
-/** Words of a request that name no capability ("connect OUR crm"). */
-const FILLER_WORDS = new Set(
-  "a an the our my your their its it we us i you me to for of in on at with and or from please can could would some do does what how is are be this that".split(
-    " ",
-  ),
-)
-
-/** What a word must score alone to be kept: a tool's name part (10) or keyword (8). */
-const NAMED_TERM_SCORE = 8
-
-/**
- * The query a keyword search scores with. A strong match must satisfy every
- * term, so "connect our CRM" loaded nothing for want of "our", and a weak model
- * concluded the capability was missing. Filler words and words no tool answers
- * to at all (a vendor's name: "connect HubSpot") are dropped, but only when
- * every word kept NAMES a tool (a name part or a keyword) or an installed app:
- * a word found only in descriptions ("post" in "post to facebook" with the
- * social app off) must not load whatever mentions it. Null: the query is
- * scored as typed. `outside` holds the dropped words no tool answers to: the
- * name of a system Liaison has no app for (creditOutsideSystemNames).
- */
-function loadingTerms(
-  tools: readonly ScorableDeferredTool[],
-  terms: readonly string[],
-  appNames: Iterable<string>,
-): { query: string; outside: string[] } | null {
-  const apps = [...appNames].map((a) => a.toLowerCase())
-  const best = (term: string) =>
-    Math.max(0, ...scoreDeferredTools(tools, term, { appNames: apps }).map((s) => s.score))
-  const kept = terms.filter((term) => !FILLER_WORDS.has(term) && best(term) > 0)
-  if (kept.length === 0 || kept.length === terms.length) return null
-  const named = kept.every((term) => best(term) >= NAMED_TERM_SCORE || apps.includes(term))
-  if (!named) return null
-  const outside = terms.filter((term) => !FILLER_WORDS.has(term) && !kept.includes(term))
-  return { query: kept.join(" "), outside }
-}
-
-/**
- * A word no tool answers to is the name of a system Liaison has no app for
- * ("connect HubSpot"), and the API connector is the app that connects any such
- * system: its tools answer to that name as a keyword, exactly as they answer
- * to the name of a system already connected (withConnectorHints). So a
- * connector tool is scored on the kept words plus that name, every other tool
- * on the kept words alone. Without it, dropping the name left "connect", and
- * the tool with "connect" in its own name (sending a member a link for their
- * own Gmail) outscored the adapter save that connects the system named.
- */
-function creditOutsideSystemNames<T extends ScorableDeferredTool>(
-  scored: Array<{ tool: T; score: number; termsMatched: number; termCount: number }>,
-  loading: { query: string; outside: string[] },
-  appNames: Iterable<string>,
-): Array<{ tool: T; score: number; termsMatched: number; termCount: number }> {
-  if (loading.outside.length === 0) return scored
-  const query = [loading.query, ...loading.outside].join(" ")
-  return scored.map((s) => {
-    if (s.tool.appName !== CONNECTOR_APP) return s
-    const credited = { ...s.tool, keywords: [...(s.tool.keywords ?? []), ...loading.outside] }
-    const [rescored] = scoreDeferredTools([credited], query, { appNames })
-    return { ...rescored, tool: s.tool }
-  })
-}
-
 /**
  * The connector tools with this org's connections folded in: the operation
  * names and system as keywords, and a summary leading the description, given
@@ -665,51 +525,12 @@ export async function handleToolSearch(
     }
   }
 
-  // Keyword search: score by name and description matches. Tokenize on the
-  // separators models actually type (`tickets:reply`, `tickets.reply`,
-  // `mail/compose`) — whitespace-only splitting scored those queries 0 against
-  // everything and dumped the agent into the catalog fallback.
-  const terms = query
-    .toLowerCase()
-    .split(/[\s,:./]+/)
-    .filter(Boolean)
-
-  // A query that names an app exactly (e.g. "tickets") means "show me this
-  // app's tools" — return ALL of them (up to the hard cap) instead of an
-  // arbitrary maxResults-sized slice of a same-score tie. The tie slice is how
-  // `tickets__reply` got crowded out by search/get/create/addNote/assign.
-  const appNames = new Set(allDeferred.map((t) => t.appName.toLowerCase()))
-  const wholeAppQuery = terms.length === 1 && appNames.has(terms[0])
-  const effectiveCap = wholeAppQuery ? Math.max(cap, 20) : cap
-
-  const orgApps = orgAppNames(ctx.orgId)
-  const loading = loadingTerms(allDeferred, terms, orgApps)
-  const scored = loading
-    ? creditOutsideSystemNames(
-        scoreDeferredTools(allDeferred, loading.query, { appNames: orgApps }),
-        loading,
-        orgApps,
-      )
-    : scoreDeferredTools(allDeferred, query, { appNames: orgApps })
-
-  const ranked = scored
-    .filter((s) => s.score > 0)
-    // Available tools first, then locked ones (so a usable tool is never crowded out of
-    // the cap by a locked one), each group by descending score.
-    .sort((a, b) => {
-      const al = a.tool.locked ? 1 : 0
-      const bl = b.tool.locked ? 1 : 0
-      if (al !== bl) return al - bl
-      return b.score - a.score
-    })
-    .slice(0, effectiveCap)
+  // Keyword search: score by name, keywords and description (tool-rank.ts).
+  const { ranked, strongNames: strong } = rankDeferredTools(allDeferred, query, {
+    cap,
+    appNames: orgAppNames(ctx.orgId),
+  })
   const matches = ranked.map((s) => toMatch(s.tool))
-  // Words that name no capability ("what can you do") load nothing, however many
-  // descriptions happen to contain them.
-  const namesNothing = terms.every((term) => FILLER_WORDS.has(term))
-  const strong = new Set(
-    namesNothing ? [] : strongMatches(ranked, wholeAppQuery).map((s) => s.tool.sdkName),
-  )
   const strongHits = matches.filter((m) => strong.has(m.name))
   if (allAlreadyLoaded(strongHits)) {
     return {

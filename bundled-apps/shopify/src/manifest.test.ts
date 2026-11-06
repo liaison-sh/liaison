@@ -894,7 +894,7 @@ describe("Shopify app.manifest.json", () => {
     // store's approval (Shopify-managed installation).
     // 0.3.0: the Orders list shows tags, a cart summary from the kernel's product short codes
     // (products_short_codes) and a "Has items to ship" filter.
-    expect(m.version).toBe("0.4.1")
+    expect(m.version).toBe("0.4.2")
   })
 
   it("read_all_orders is a protected scope behind the org's full-order-history toggle", () => {

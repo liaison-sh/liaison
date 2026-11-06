@@ -271,6 +271,72 @@ describe("scoreDeferredTools -- tokenized keyword scoring (shared with the MCP g
 // full description (~100KB for "update knowledge document"), blowing the
 // client's tool-result token cap. The result is capped by count AND bytes, with
 // an honest "N more" note; full schemas arrive via tools/list after discovery.
+describe("accents in a tool search", () => {
+  const CATALOG = [
+    {
+      toolName: "close",
+      appName: "tickets",
+      description: "Close a ticket.",
+      keywords: ["clôturer", "fermer"],
+    },
+    { toolName: "archive", appName: "mail", description: "Résumé d'une conversation à archiver." },
+  ]
+  const top = (query: string) =>
+    scoreDeferredTools(CATALOG, query)
+      .filter((s) => s.score > 0)
+      .sort((a, b) => b.score - a.score)[0]?.tool.toolName
+
+  it("a word finds a keyword with or without its accent, in any case", () => {
+    expect(top("clôturer")).toBe("close")
+    expect(top("cloturer")).toBe("close")
+    expect(top("CLÔTURER")).toBe("close")
+  })
+
+  it("a keyword declared without an accent is found by the accented word", () => {
+    expect(top("férmer")).toBe("close")
+  })
+
+  it("a description is matched folded too", () => {
+    expect(top("resume")).toBe("archive")
+    expect(top("résumé")).toBe("archive")
+  })
+
+  it('a word under 3 letters stays as typed: "à" is not the letter a', () => {
+    const scoreOf = (query: string) =>
+      scoreDeferredTools(CATALOG, query).find((s) => s.tool.toolName === "close")?.score
+    expect(scoreOf("à")).toBe(0)
+  })
+})
+
+describe("a search keyword never reaches the model", () => {
+  const KW_ORG = "00000000-0000-0000-0000-000000000a1a"
+
+  beforeAll(() => {
+    toolRegistry.set([KW_ORG, "gadgets", "rebuild"], {
+      appName: "gadgets",
+      name: "rebuild",
+      description: "Rebuild the gadget index.",
+      requiredScopes: ["widgets:widgets:read"],
+      searchKeywords: ["motcherche", "motcache"],
+      handler: async () => ({ ok: true }),
+      deferLoading: true,
+    } as any)
+  })
+
+  afterAll(() => {
+    toolRegistry.delete([KW_ORG, "gadgets", "rebuild"])
+  })
+
+  it("the search finds the tool by the keyword and answers without the list", async () => {
+    const res = await handleToolSearch(
+      { query: "motcherche" },
+      { orgId: KW_ORG, scopes: ["widgets:widgets:read"] },
+    )
+    expect(res.matches.map((m) => m.name)).toEqual(["gadgets__rebuild"])
+    expect(JSON.stringify(res)).not.toContain("motcache")
+  })
+})
+
 describe("compactToolSearchResult caps a broad query", () => {
   const bigCatalog = Array.from({ length: 300 }, (_, i) => ({
     tool: {

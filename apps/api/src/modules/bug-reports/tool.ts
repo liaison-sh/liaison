@@ -264,6 +264,7 @@ export function registerReportBugTool(orgId: string): void {
     deferLoading: true,
     description:
       "File a bug report about Liaison itself (something broken, wrong or confusing in the product) for the signed-in user, exactly like the app's Report a bug form: it lands in the Bug Reports inbox under the user's name. Where the server sends bug reports only to the Liaison team, it prepares the report for the Liaison team instead, and the user sends it with one click after checking it. Use when the user asks to report or file a Liaison bug, or asks for a change to a skill or toolkit. Not for a customer's problem with the org's own products: that is a ticket.",
+    searchKeywords: ["bug", "signaler", "problème", "anomalie"],
     // Every active member holds it, as the web form is open to every member
     // (every-member-scopes.ts): most reporters hold no tickets scope at all.
     requiredScopes: ["kernel:bug_reports:file"],

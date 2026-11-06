@@ -40,7 +40,7 @@ describe("calls app.manifest.json", () => {
     // 0.2.12: the manifest declares its host API range (`host: "^1"`) instead of sdkVersion.
     // 0.2.13: the icon as data (`iconName`), drawn when the UI runs framed.
     // 0.2.15: every HUMAN setup step says its own minutes.
-    expect((MANIFEST as unknown as { version: string }).version).toBe("0.2.16")
+    expect((MANIFEST as unknown as { version: string }).version).toBe("0.2.17")
   })
 
   // Settings overhaul P2: a connector without a UI bundle; the kernel renders

@@ -172,7 +172,7 @@ describe("Turnstile in the web shell's policy", () => {
       contentSecurityPolicy({ storageOrigin: null, scriptHashes: [] }),
     )
     expect(csp).toContain(`script-src 'self' 'wasm-unsafe-eval' ${TURNSTILE_ORIGIN}`)
-    expect(csp).toContain(`frame-src 'self' ${TURNSTILE_ORIGIN}`)
+    expect(csp).toContain(`frame-src 'self' blob: ${TURNSTILE_ORIGIN}`)
   })
 
   it("names no third party anywhere else", () => {
@@ -185,8 +185,20 @@ describe("Turnstile in the web shell's policy", () => {
         contentSecurityPolicy({ storageOrigin: null, scriptHashes: [] }),
       )
       expect(csp).not.toContain("challenges.cloudflare.com")
-      expect(csp).not.toContain("frame-src")
+      expect(csp).toContain("frame-src 'self' blob:;")
     }
+  })
+
+  it("lets the web shell frame what it makes itself, and nothing more", () => {
+    const shell = contentSecurityPolicy({ storageOrigin: null, scriptHashes: [] })
+    // No plugin, no remote frame, and no new way to run a script.
+    expect(shell).toContain("object-src 'none'")
+    expect(/frame-src ([^;]+)/.exec(shell)?.[1]).toBe("'self' blob:")
+    expect(shell).not.toContain("'unsafe-inline' blob:")
+    expect(/script-src ([^;]+)/.exec(shell)?.[1]).not.toContain("blob:")
+    expect(shell.split(/[\s;]+/)).not.toContain("'unsafe-eval'")
+    // An API response is never a page: no frame source at all.
+    expect(contentSecurityPolicy({ storageOrigin: null })).not.toContain("frame-src")
   })
 
   it("never opens it on API responses, only the web shell", () => {

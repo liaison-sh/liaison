@@ -1318,6 +1318,12 @@ export const connectionConfigRegistry = createTypedRegistry<
      *  Best effort: a failure is logged and never blocks the disconnect. */
     revocationUrl?: string
     /**
+     * Ends a push watch at the provider when the connection goes (POST with its bearer
+     * token, before the revocation): Gmail's users.stop. Kept while another active
+     * connection on this instance declares the same endpoint for the same account.
+     */
+    watchStopUrl?: string
+    /**
      * The same provider account may hold an ORGANIZATION connection and a
      * member's PERSONAL connection at once, as two separate rows (own tokens,
      * own metadata), because the app gives the two owners disjoint data: Drive's

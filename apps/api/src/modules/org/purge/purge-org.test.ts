@@ -20,7 +20,10 @@ import { MeiliSearch } from "meilisearch"
 import { sql } from "~/db"
 import { closeAllQueues, registerJobWorker, upsertJobScheduler } from "~/infra/jobs/jobs"
 import * as searchClientModule from "~/infra/search/client"
+import { CryptoContext, encryptSecret } from "~/lib/crypto"
+import { env } from "~/lib/env"
 import { bullPrefix, redisBullMQ } from "~/lib/redis"
+import { connectionConfigRegistry, initializedOrgRuntimes } from "~/modules/apps/app-registries"
 import { generateImmutableTriggerDdl, IMMUTABLE_TRIGGER_DELETING_BRANCH } from "~/modules/apps/ddl"
 import {
   markOrgDeleting,
@@ -178,6 +181,75 @@ afterAll(async () => {
 })
 
 describe("the org purge core", () => {
+  describe("a Gmail connection of the org", () => {
+    async function seedConnection(
+      name: string,
+      urlBase: string,
+    ): Promise<{ org: string; id: string }> {
+      const org = await seedOrg(name)
+      const [user] = await sql<{ id: string }[]>`SELECT id FROM kernel.users WHERE org_id = ${org}`
+      initializedOrgRuntimes.add(org)
+      connectionConfigRegistry.set([org, "mail", "gmail"], {
+        type: "oauth2",
+        allowedDomains: [],
+        tokenUrl: `${urlBase}/token`,
+        revocationUrl: `${urlBase}/revoke`,
+        watchStopUrl: `${urlBase}/stop`,
+      })
+      const [row] = await sql<{ id: string }[]>`
+        INSERT INTO kernel.connected_accounts
+          (org_id, app_name, connection_name, owner_type, owner_id, provider_type, identifier,
+           access_token_encrypted, refresh_token_encrypted, status, created_by)
+        VALUES (${org}, 'mail', 'gmail', 'user', ${user!.id}, 'oauth2', ${`${name}-${tag}@gmail.test`},
+          ${encryptSecret("a", env.ENCRYPTION_KEY, CryptoContext.connectedAccountAccessToken)},
+          ${encryptSecret("r", env.ENCRYPTION_KEY, CryptoContext.connectedAccountRefreshToken)},
+          'active', ${user!.id})
+        RETURNING id`
+      return { org, id: row!.id }
+    }
+
+    it("is stopped and revoked before its rows go; a moved org's is left alone", async () => {
+      const calls: string[] = []
+      const server = Bun.serve({
+        port: 0,
+        fetch: (req) => {
+          calls.push(new URL(req.url).pathname)
+          return new Response("{}")
+        },
+      })
+      try {
+        const urlBase = `http://localhost:${server.port}`
+        const deleted = await seedConnection("gmaildelete", urlBase)
+        await markOrgDeleting(deleted.org, new Date(Date.now() - 60_000))
+        const result = await purgeOrg(deleted.org, {
+          reason: "test-purge-gmail",
+          externalDeps: objectDeps,
+        })
+        expect(result.orgRowDeleted).toBe(true)
+        expect(result.residue?.total).toBe(0)
+        expect(calls).toEqual(["/stop", "/revoke"])
+        expect(
+          await sql`SELECT 1 FROM kernel.connection_teardowns WHERE connection_id = ${deleted.id}`,
+        ).toHaveLength(0)
+
+        calls.length = 0
+        const moved = await seedConnection("gmailmoved", urlBase)
+        await markOrgDeleting(moved.org, new Date(Date.now() - 60_000))
+        await purgeOrg(moved.org, {
+          reason: "test-purge-gmail-moved",
+          externalDeps: objectDeps,
+          providerHooks: false,
+        })
+        expect(calls).toEqual([])
+        expect(
+          await sql`SELECT 1 FROM kernel.connection_teardowns WHERE connection_id = ${moved.id}`,
+        ).toHaveLength(0)
+      } finally {
+        server.stop(true)
+      }
+    })
+  })
+
   it("refuses an org whose deletion has not started, and deletes nothing", async () => {
     const before = await residueScan(unmarked, { deps: objectDeps })
     expect(before.total).toBeGreaterThan(0)

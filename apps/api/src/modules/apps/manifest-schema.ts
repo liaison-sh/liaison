@@ -332,6 +332,9 @@ const connectionSchema = {
     refreshTokenUrl: { type: "string" },
     // RFC 7009 token revocation endpoint, called on disconnect and erasure.
     revocationUrl: { type: "string" },
+    // Called (POST, the connection's bearer token) on removal, before the revocation,
+    // to end a push watch at the provider: Gmail's users.stop.
+    watchStopUrl: { type: "string" },
     // One provider account may be connected BOTH for the organization and as a
     // member's own, as two rows reading disjoint data (app-registries.ts).
     orgAndPersonalCoexist: { type: "boolean" },

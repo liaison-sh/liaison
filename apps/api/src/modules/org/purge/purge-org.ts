@@ -43,6 +43,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
 import { forgetOrgHostSlug } from "~/lib/org-host"
 import { runBeforeDisconnectForOrg } from "~/modules/apps/connections/before-disconnect"
+import { teardownOrgConnections } from "~/modules/apps/connections/revoke"
 import { validateIdentifier } from "~/modules/apps/ddl"
 import { uninstallApp } from "~/modules/apps/install-service"
 import { forgetOrgApps } from "~/modules/apps/org-apps"
@@ -181,7 +182,11 @@ export async function purgeOrg(orgId: string, opts: PurgeOrgOptions): Promise<Pu
     opts.regenerateTriggers === false ? { skipped: true } : await ensureImmutableTriggersCurrent()
   await step("triggers", triggers)
 
-  if (opts.providerHooks !== false) await runBeforeDisconnectForOrg(orgId)
+  if (opts.providerHooks !== false) {
+    await runBeforeDisconnectForOrg(orgId)
+    // Stop watches and revoke grants, while the org's OAuth client still exists.
+    await teardownOrgConnections(orgId)
+  }
   await step("disconnect", opts.providerHooks === false ? { skipped: true } : {})
 
   // Before the rows: the org's own apps go whole (files, schema, schedulers),

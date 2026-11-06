@@ -2172,9 +2172,9 @@ async function releaseInboxConnection(
       if (live.length === 0) return
       await disconnectConnection(ptx, orgId, actor.userId, connectedAccountId)
     })
-    // Committed: revoke the grant at the provider (best effort, never throws).
-    const { revokeStagedGrant } = await import("~/modules/apps/connections/revoke")
-    await revokeStagedGrant(connectedAccountId)
+    // Committed: stop the push watch and revoke the grant at the provider (never throws).
+    const { runConnectionTeardown } = await import("~/modules/apps/connections/revoke")
+    await runConnectionTeardown(connectedAccountId)
   } catch (err) {
     log.warn(
       { orgId, inboxId, connectedAccountId, err: (err as Error).message },

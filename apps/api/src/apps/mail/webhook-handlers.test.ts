@@ -188,6 +188,37 @@ describe("onGmailPush", () => {
     bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
   })
 
+  it("drops and acknowledges a push for an account gone or disconnected, storing nothing", async () => {
+    const encoded = Buffer.from(
+      JSON.stringify({ emailAddress: "gone@gmail.com", historyId: "42" }),
+    ).toString("base64")
+    for (const rows of [[], [{ id: "acc-1", disconnected_at: "2026-11-06T00:00:00Z" }]]) {
+      const touched: string[] = []
+      const logged: string[] = []
+      const bridge: Record<string, any> = {
+        getUserId: () => "system",
+        getOrgId: () => "org-1",
+        crypto_timingSafeEqual: async (a: string, b: string) => a === b,
+        db_findMany: async () => JSON.stringify(rows),
+        enqueueJob: async () => touched.push("enqueueJob"),
+        db_create: async () => touched.push("db_create"),
+        db_update: async () => touched.push("db_update"),
+        log_info: (...args: unknown[]) => logged.push(args.join(" ")),
+        log_warn: (...args: unknown[]) => logged.push(args.join(" ")),
+        log_error: (...args: unknown[]) => logged.push(args.join(" ")),
+      }
+      await executeInSandbox({
+        pool: getSandboxPool(),
+        bundleSource,
+        exportName: "onGmailPush",
+        params: { message: { data: encoded, messageId: "m1" } },
+        bridge,
+      })
+      expect(touched).toEqual([])
+      expect(logged.join("\n")).not.toContain("gone@gmail.com")
+    }
+  })
+
   it("enqueues incremental sync for known account", async () => {
     const jobs: any[] = []
     const bridge: Record<string, any> = {

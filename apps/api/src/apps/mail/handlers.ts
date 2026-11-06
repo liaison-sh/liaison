@@ -5028,11 +5028,10 @@ async function onGmailPush(payload: unknown, ctx: MailCtx) {
         }),
       ),
     )
+    // A push for an account no longer here (a watch still lapsing at the provider): dropped
+    // and acknowledged, and its address is not kept even in the log.
     if (accounts.length === 0) {
-      ctx.log_info(
-        "Gmail push for unknown account",
-        JSON.stringify({ emailAddress: parsed.emailAddress }),
-      )
+      ctx.log_info("Gmail push for no connected account, dropped")
       return
     }
 

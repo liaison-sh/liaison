@@ -61,6 +61,7 @@ import {
 } from "~/lib/shutdown"
 import { registerProcessShutdownPhases } from "~/lib/shutdown-phases"
 import { startInternalListener } from "~/modules/agent/mailbox-plaintext/mailbox-forward"
+import { registerConnectionTeardownSweep } from "~/modules/apps/connections/revoke"
 import { awaitOrgApps, getDefaultApps } from "~/modules/apps/init"
 import { startVersionsInUseHeartbeat } from "~/modules/apps/versions-in-use"
 import { consumeWsTicket } from "~/modules/auth/ws-ticket"
@@ -421,6 +422,8 @@ if (servesApi(role)) {
 // Start transactional outbox worker last — after durable consumers are
 // registered. It drains while this process holds the leader lease.
 if (isLeaderEligible(role)) registerOutboxSingleton()
+// The leader retries the provider teardowns of removed connections.
+if (isLeaderEligible(role)) registerConnectionTeardownSweep()
 // The leader removes the Redis entries of processes whose heartbeat lapsed.
 if (isLeaderEligible(role)) registerLiveStateSweep()
 

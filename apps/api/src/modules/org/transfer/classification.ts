@@ -18,6 +18,8 @@ export const GLOBAL_TABLES: Record<string, string> = {
     "this instance's deletion ledger (names a deleted org, which no longer exists here)",
   "kernel.legal_archives": "this instance's legal archive index of deleted orgs",
   "kernel.demo_leads": "demo signups; a demo org is never moved (the import refuses one)",
+  "kernel.connection_teardowns":
+    "removed connections' pending provider work; it finishes on the server that removed them, under that server's key",
   "kernel.control_plane_outbox":
     "messages to the control plane; the org's are drained before the freeze, never carried",
   "kernel.cloud_request_outcomes":

@@ -59,7 +59,7 @@ import {
   restrictedScopesOf,
   withoutRestricted,
 } from "~/modules/apps/connections/restricted-scopes"
-import { stageGrantRevocation } from "~/modules/apps/connections/revoke"
+import { stageConnectionTeardown } from "~/modules/apps/connections/revoke"
 import {
   claimConnectHandoff,
   parkConnectHandoff,
@@ -1695,6 +1695,9 @@ export async function disconnectConnection(
       providerType: connectedAccounts.providerType,
       accessTokenEncrypted: connectedAccounts.accessTokenEncrypted,
       refreshTokenEncrypted: connectedAccounts.refreshTokenEncrypted,
+      oauthClientSource: connectedAccounts.oauthClientSource,
+      oauthClientId: connectedAccounts.oauthClientId,
+      tokenExpiresAt: connectedAccounts.tokenExpiresAt,
     })
     .from(connectedAccounts)
     .where(and(eq(connectedAccounts.id, connectionId), eq(connectedAccounts.orgId, orgId)))
@@ -1705,10 +1708,10 @@ export async function disconnectConnection(
   // then did nothing, silently. Report it.
   if (!row) throw new HTTPException(404, { message: "Connection not found" })
 
-  // The grant is revoked at the provider (a connection declaring `revocationUrl`) only after
-  // this transaction commits, unless another active connection holds the same account: staged
-  // here, run by the caller after its commit or by the committed disconnect event (revoke.ts).
-  stageGrantRevocation({ ...row, orgId })
+  // What the connection still owes its provider (stop its push watch, revoke its grant) runs
+  // only after this transaction commits, and the tokens it takes move with it: written here in
+  // this transaction, worked off by any process (revoke.ts).
+  await stageConnectionTeardown(tx, { ...row, orgId })
 
   // Then forget the secrets: a disconnected connection holds no token or credential. A
   // reconnect stores fresh ones.

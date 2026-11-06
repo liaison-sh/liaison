@@ -53,6 +53,8 @@ export type { CloudRequestOutcomeRow } from "./cloud-request-outcomes"
 export { cloudRequestOutcomes } from "./cloud-request-outcomes"
 export { type ConfigAppliedFieldRow, configAppliedFields } from "./config-applied-fields"
 export { connectedAccounts } from "./connected-accounts"
+export type { ConnectionTeardownRow } from "./connection-teardowns"
+export { connectionTeardowns } from "./connection-teardowns"
 export type {
   ContactAddressOrigin,
   ContactAddressRole,

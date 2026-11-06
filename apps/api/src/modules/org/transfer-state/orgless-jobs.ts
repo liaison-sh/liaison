@@ -99,6 +99,9 @@ const PAYLOAD_HOLD = "its jobs carry orgId in the payload, so the transfer hold 
 export const ORGLESS_WORKER_AUDIT: Readonly<Record<string, OrglessJobEntry>> = {
   "apps/knowledge/knowledge-jobs.ts": skips("apps/knowledge/knowledge-jobs.ts"),
   "apps/tickets/link-ingest-job.ts": audited(PAYLOAD_HOLD),
+  "modules/apps/connections/revoke.ts": audited(
+    "the leader works off removed connections' provider calls from an instance-level table; it writes no org's rows",
+  ),
   "infra/boot-phase10.ts": audited(
     "the leader's files-policy check changes the catalog's policy, not per-org rows",
   ),

@@ -67,7 +67,7 @@
       }
     ]
   },
-  "version": "1.8.3",
+  "version": "1.8.4",
   "description": "Email integration: Gmail and IMAP/SMTP",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -93,6 +93,7 @@
       "authorizationUrl": "https://accounts.google.com/o/oauth2/v2/auth",
       "tokenUrl": "https://oauth2.googleapis.com/token",
       "revocationUrl": "https://oauth2.googleapis.com/revoke",
+      "watchStopUrl": "https://gmail.googleapis.com/gmail/v1/users/me/stop",
       "userinfoUrl": "https://openidconnect.googleapis.com/v1/userinfo",
       "scopes": [
         "openid",

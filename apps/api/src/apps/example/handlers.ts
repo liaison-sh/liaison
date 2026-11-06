@@ -23,6 +23,15 @@ export async function items_list(
   return { data: rows as Item[] }
 }
 
+/** Manifest `feature`: this tool exists only in an org where `item_notes` is on. */
+export async function item_notes_count(
+  _params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<{ count: number }> {
+  const rows = await ctx.db.findMany("items", { where: { orgId: ctx.orgId } })
+  return { count: rows.length }
+}
+
 /** SDK surface: ctx.db + ctx.emit — persist an item and emit a domain event. */
 export async function items_create(
   params: { text: string },
@@ -73,6 +82,7 @@ export async function nightly_summary(
 
 /** Handler bundle keyed by the manifest's `handler` strings. */
 export const handlers = defineHandlers({
+  item_notes_count,
   items_list,
   items_create,
   external_fetch,

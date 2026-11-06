@@ -30,7 +30,12 @@ import { getDetailExternalLink } from "~/modules/apps/detail-external-link"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { getInstallTrust } from "~/modules/apps/install-trust"
-import { isAppUnavailableFor, primeOrgApps, unavailableAppsFor } from "~/modules/apps/org-apps"
+import {
+  enabledFeaturesFor,
+  isAppUnavailableFor,
+  primeOrgApps,
+  unavailableAppsFor,
+} from "~/modules/apps/org-apps"
 import { restToolCall } from "~/modules/apps/rest-tool-call"
 import { signUiBundleToken } from "~/modules/apps/ui-bundle-token"
 import { invokeAppExport, toHttpException } from "~/modules/export/invoke-export"
@@ -258,6 +263,15 @@ appRoutes.get("/dimensions/:dimensionKey/values", requireScope("kernel:users:adm
 // Apps that declare NO scopes stay visible to everyone (fail-open — there is
 // nothing to gate on, and historically every app was visible to every member);
 // a full-wildcard (`*`) admin holder sees every app via `hasScope`.
+// The features switched on in this workspace, read with the shell's app list. What
+// is not listed is off: the shell hides a settings section or tab type that names it.
+// Fail-closed: an unreadable app state fails the request.
+appRoutes.get("/features", async (c) => {
+  const orgId = c.get("orgId")
+  await primeOrgApps(orgId)
+  return c.json({ data: enabledFeaturesFor(orgId) })
+})
+
 appRoutes.get("/manifests", async (c) => {
   const orgId = c.get("orgId")
   await ensureAppsForOrg(orgId)

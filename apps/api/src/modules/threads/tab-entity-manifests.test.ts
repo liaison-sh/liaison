@@ -9,6 +9,8 @@ import { describe, expect, test } from "bun:test"
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 
+import { TABS_WHOSE_ID_IS_NOT_A_RECORD as NOT_A_RECORD } from "~/modules/agent/tools/open-targets"
+
 const ROOT = join(import.meta.dir, "../../../../..")
 
 interface Manifest {
@@ -35,15 +37,6 @@ function manifests(): Manifest[] {
 
 /** Kernel kinds reference-display.ts reads by name. */
 const KERNEL_ENTITIES = new Set(["thread", "contact", "approval_request", "routine", "skill"])
-
-/** Tabs with a `:param` that is not a record, and why. */
-const NOT_A_RECORD = new Set([
-  "boxtal:queue", // a work queue's name
-  "invoicing:dashboard", // a dashboard's name
-  "invoicing:documents", // a list's filter
-  "monitoring:source", // a configured monitoring source, not a row of the app
-  "monitoring:status", // a list's filter
-])
 
 describe("every tab whose id is a record resolves to an entity", () => {
   const all = manifests()

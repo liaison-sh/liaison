@@ -71,7 +71,7 @@ Scopes are shown in full. `kernel:agent:memory` is the gate for the memory and n
 | `agents_invite` | Add another agent to the conversation, after you approve it there. | `kernel:threads:write` | Yes |
 | `users_search` | Find colleagues by name or email. | `kernel:users:read` | No |
 | `create_pinned_thread` | Create an organization-wide pinned conversation. | `kernel:threads:admin` | No |
-| `open_app` | Open an app or view in your screen to show where something lives. | `kernel:threads:read` | No |
+| `open_app` | Open an app, a view or one record (an invoice, a ticket, a channel) on your screen. Only your own request moves your own tabs. | `kernel:threads:read` | No |
 
 ### Files and media
 

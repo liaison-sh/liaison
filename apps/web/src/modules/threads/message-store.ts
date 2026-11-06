@@ -6,6 +6,7 @@ import { createStore, produce, reconcile } from "solid-js/store"
 import { getAppTabAction } from "~/framework/app-registry"
 import { subscribeResync } from "~/framework/resync"
 import { onSessionTeardown } from "~/lib/session-lifecycle"
+import { userFromToken } from "~/modules/auth/auth-store"
 import { runMessageAsLocalTurn } from "~/modules/desktop/desktop-store"
 import { tNow } from "~/modules/i18n/i18n-context"
 import { openTab } from "~/modules/shell/tab-store"
@@ -2689,15 +2690,36 @@ function applyAgentStreamFrame(action: string, data: any): void {
     }),
   )
 
-  // `open_app` is a client-effect tool: it rides the agent_stream `tool_call`
-  // channel rather than its own WS message. When the agent calls it (e.g. to
-  // show the user where an app lives), navigate the UI to the requested
-  // app. Done outside the store `produce` above so the tab-store mutation isn't
-  // nested inside the message-store update. An unknown app id resolves to null
-  // and is a harmless no-op.
-  if (action === "tool_call" && data?.toolName === "open_app") {
-    const app = typeof data.args?.app === "string" ? data.args.app : ""
-    const tabAction = app ? getAppTabAction(app) : null
+  applyOpenAppEffect(action, data)
+}
+
+/** The agent's `open_app`, by the name it has on the wire or its bare one. */
+function isOpenAppTool(name: unknown): boolean {
+  return name === "kernel__open_app" || name === "open_app"
+}
+
+/**
+ * `open_app` is a client-effect tool: it rides the agent_stream channel rather than
+ * its own WS message, so every reader of the thread receives it. It moves one screen:
+ * the one of the person whose request started the turn, and only while they are
+ * looking at it. The server names that person on these frames, and names nobody for a
+ * routine's run. Done outside the store `produce` so the tab-store mutation isn't
+ * nested inside the message-store update.
+ *
+ * App alone opens on the call, as the web app resolves the name (an unknown one is a
+ * harmless no-op). A view or an id waits for the result: the server decides, a refused
+ * call moves nothing, and the tab comes from the server rather than the model's words.
+ */
+function applyOpenAppEffect(action: string, data: any): void {
+  if (action !== "tool_call" && action !== "tool_result") return
+  if (!isOpenAppTool(data?.toolName)) return
+  if ((data.requesterId ?? null) !== (userFromToken()?.userId ?? null)) return
+  if (typeof document !== "undefined" && document.hidden) return
+
+  if (action === "tool_call") {
+    const args = data.args
+    if (args?.view || args?.id) return
+    const tabAction = typeof args?.app === "string" ? getAppTabAction(args.app) : null
     if (tabAction) {
       openTab({
         type: tabAction.type,
@@ -2705,7 +2727,17 @@ function applyAgentStreamFrame(action: string, data: any): void {
         label: tabAction.label,
       })
     }
+    return
   }
+  const result = data.result
+  const tab = result?.ok === true ? result.tab : null
+  if (typeof tab?.type !== "string" || typeof tab.entityId !== "string") return
+  openTab({
+    type: tab.type,
+    entityId: tab.entityId,
+    label: typeof result.label === "string" ? result.label : tab.entityId,
+    ...(typeof tab.routePath === "string" ? { routePath: tab.routePath } : {}),
+  })
 }
 
 export function handleWsReactionEvent(action: string, data: any, currentUserId?: string): void {

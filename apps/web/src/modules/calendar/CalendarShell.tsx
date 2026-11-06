@@ -49,6 +49,14 @@ export interface CalendarShellProps {
   initialView: CalendarView
   /** stable per-tab testid kept for the e2e journey */
   testId: string
+  /** The tab's id. `event-<id>@<YYYY-MM-DD>` asks to open that event on that day. */
+  entityId?: string
+}
+
+/** The event a calendar tab's id asks to open, as `open_app` writes it. */
+export function eventRequestOf(entityId: string | undefined): { id: string; day: string } | null {
+  const found = /^event-([^@]+)@(\d{4}-\d{2}-\d{2})?$/.exec(entityId ?? "")
+  return found ? { id: found[1]!, day: found[2] ?? "" } : null
 }
 
 const VIEWS: CalendarView[] = ["day", "week", "month"]
@@ -133,6 +141,29 @@ export const CalendarShell: Component<CalendarShellProps> = (props) => {
       void loadCalendarsList(api)
     }, 5000)
   }
+
+  // The agent opened one event: go to its day, and open it once that window has loaded.
+  const [requestedEventId, setRequestedEventId] = createSignal<string | null>(null)
+  createEffect(
+    on(
+      () => props.entityId,
+      (entityId) => {
+        const request = eventRequestOf(entityId)
+        if (!request) return
+        if (request.day) setFocusedDate(new Date(`${request.day}T12:00:00`))
+        setRequestedEventId(request.id)
+      },
+    ),
+  )
+  createEffect(() => {
+    const id = requestedEventId()
+    if (!id || !calendarStore.events.some((e) => e.eventId === id)) return
+    untrack(() => {
+      setRequestedEventId(null)
+      setEditingEventId(id)
+      setDialogOpen(true)
+    })
+  })
 
   // Sidebar "+ Create" requests open the dialog here (cross-tree signal).
   createEffect(() => {

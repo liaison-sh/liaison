@@ -2,7 +2,7 @@
 import { and, sql as drizzleSql, eq } from "drizzle-orm"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
-import { routines, skills, threads } from "~/db/schema/kernel"
+import { agents, nodeSessions, routines, skills, threads } from "~/db/schema/kernel"
 import { approvalRequests } from "~/db/schema/kernel/agent-memory"
 import { contacts } from "~/db/schema/kernel/contacts"
 import { entityRegistry, type SearchIndexFields, viewRegistry } from "~/modules/apps/app-registries"
@@ -81,6 +81,7 @@ interface RegistryEntityShape {
   handlePrefix: string
   tableName?: string
   external?: boolean
+  readScope?: string
   indexFields?: SearchIndexFields
 }
 
@@ -89,7 +90,7 @@ interface RegistryEntityShape {
  * registration and falling back to the wildcard one — same precedence as
  * `lookupFromRegistry` for view metadata.
  */
-function lookupEntityDecl(
+export function lookupEntityDecl(
   orgId: string,
   app: string,
   entityType: string,
@@ -300,6 +301,30 @@ async function loadKnownEntityLabelAndSnippet(
       return {
         label: row.name,
         snippet: `[Entity: kernel:skill, id: ${entityId}] { name: "${row.name}" }`,
+      }
+    }
+    if (app === "kernel" && entityType === "agent") {
+      const [row] = await tx
+        .select({ name: agents.displayName })
+        .from(agents)
+        .where(and(eq(agents.id, entityId), eq(agents.orgId, orgId)))
+        .limit(1)
+      if (!row) return null
+      return {
+        label: row.name,
+        snippet: `[Entity: kernel:agent, id: ${entityId}] { name: "${row.name}" }`,
+      }
+    }
+    if (app === "kernel" && entityType === "session") {
+      const [row] = await tx
+        .select({ title: nodeSessions.title })
+        .from(nodeSessions)
+        .where(and(eq(nodeSessions.id, entityId), eq(nodeSessions.orgId, orgId)))
+        .limit(1)
+      if (!row) return null
+      return {
+        label: row.title,
+        snippet: `[Entity: kernel:session, id: ${entityId}] { title: "${row.title}" }`,
       }
     }
     // Non-kernel app entities resolve generically through the entity registry —

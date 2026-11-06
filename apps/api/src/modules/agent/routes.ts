@@ -48,6 +48,7 @@ import {
 } from "~/modules/agent/runtime/stream-registry"
 import { turnStatus } from "~/modules/agent/runtime/turn-ledger"
 import { takeStreamSlot } from "~/modules/agent/stream-slots"
+import { uiEffectRequester } from "~/modules/agent/tools/open-targets"
 import { FileServiceError, moveFilesToParent } from "~/modules/files/service"
 import { getThread } from "~/modules/threads/thread"
 import { isMessageVisible } from "~/services/security/visibility"
@@ -566,6 +567,7 @@ async function chatTurn(
               toolCallId: part.toolCallId,
               toolName: part.toolName,
               args: part.input,
+              ...uiEffectRequester(part.toolName, actor.userId),
             })
             break
 
@@ -581,6 +583,7 @@ async function chatTurn(
             emitStreamEvent("tool_result", {
               toolCallId: part.toolCallId,
               result: part.output,
+              ...uiEffectRequester(part.toolName, actor.userId),
             })
             break
 

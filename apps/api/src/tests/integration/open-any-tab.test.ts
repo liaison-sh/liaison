@@ -196,7 +196,17 @@ async function seed(): Promise<void> {
         labels: [],
         isRead: true,
         isStarred: false,
-        messages: [],
+        messages: [
+          {
+            direction: "inbound",
+            fromName: "Ada",
+            fromEmail: "ada@example.com",
+            toName: "Me",
+            toEmail: "me@example.com",
+            hoursAgo: 1,
+            body: "b",
+          },
+        ],
       },
     ],
   })

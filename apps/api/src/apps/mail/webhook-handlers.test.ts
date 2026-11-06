@@ -242,6 +242,7 @@ describe("onGmailPush", () => {
     expect(jobs.length).toBe(1)
     expect(jobs[0].name).toBe("gmail-incremental-sync")
     expect(jobs[0].payload.accountId).toBe("acc-1")
+    expect(jobs[0].payload.push).toBe(true)
   })
 })
 

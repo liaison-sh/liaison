@@ -2976,7 +2976,10 @@ async function gmailInitialSync(payload: { orgId: string; accountId: string }, c
     }),
   )
 }
-async function gmailIncrementalSync(payload: { orgId: string; accountId?: string }, ctx: MailCtx) {
+async function gmailIncrementalSync(
+  payload: { orgId: string; accountId?: string; push?: boolean },
+  ctx: MailCtx,
+) {
   // Scheduled tick (no accountId): first rescue accounts stranded before
   // `active` -- they are invisible to loadSyncableAccounts and would otherwise
   // never sync again. Deliberately NOT gated on hasOnlineUsers: onboarding
@@ -2992,7 +2995,8 @@ async function gmailIncrementalSync(payload: { orgId: string; accountId?: string
     const isOnline = JSON.parse(await ctx.hasOnlineUsers(account.id))
     if (!isOnline && !payload.accountId) continue
 
-    if (account.last_sync_at) {
+    // A push means new mail now: skipping it would leave that mail for the next tick, minutes away.
+    if (account.last_sync_at && !payload.push) {
       const elapsed = Date.now() - new Date(account.last_sync_at).getTime()
       if (elapsed < 60_000) continue
     }
@@ -5037,7 +5041,12 @@ async function onGmailPush(payload: unknown, ctx: MailCtx) {
 
     await ctx.enqueueJob(
       "gmail-incremental-sync",
-      JSON.stringify({ orgId: ctx.getOrgId(), accountId: account.id, historyId: parsed.historyId }),
+      JSON.stringify({
+        orgId: ctx.getOrgId(),
+        accountId: account.id,
+        historyId: parsed.historyId,
+        push: true,
+      }),
       JSON.stringify({ jobId: `gmail-incremental-sync:${account.id}` }),
     )
   } catch (err) {

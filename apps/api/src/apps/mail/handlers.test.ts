@@ -665,18 +665,35 @@ describe("mail agent handlers", () => {
           : "[]",
       connections_getAccounts: async () => "[]",
     })
-    const rows = (await executeInSandbox({
+    const listed = (await executeInSandbox({
       pool: getSandboxPool(),
       bundleSource,
       exportName: "listAccounts",
       params: {},
       bridge,
-    })) as Array<Record<string, unknown>>
-    expect(rows[0]).toMatchObject({
+    })) as { accounts: Array<Record<string, unknown>>; note: string }
+    expect(listed.accounts[0]).toMatchObject({
       syncStatus: "error",
       lastSyncError: "getaddrinfo ENOTFOUND imap.acme.invalid",
       nextRetryAt: "2026-10-26T19:32:00.000Z",
     })
+  })
+
+  it("listAccounts says an empty list is what this person can use, not the organization's", async () => {
+    // "No mailbox is connected to the organisation at all", to a person whose org had five.
+    const bridge = makeAgentBridge({
+      db_findMany: async () => "[]",
+      connections_getAccounts: async () => "[]",
+    })
+    const listed = (await executeInSandbox({
+      pool: getSandboxPool(),
+      bundleSource,
+      exportName: "listAccounts",
+      params: {},
+      bridge,
+    })) as { accounts: unknown[]; note: string }
+    expect(listed.accounts).toEqual([])
+    expect(listed.note).toContain("never means it has no mailbox")
   })
 
   it("agentMailSearch returns conversations with documented projection", async () => {

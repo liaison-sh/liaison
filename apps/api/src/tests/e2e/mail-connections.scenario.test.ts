@@ -493,7 +493,7 @@ describe("Mail Connections Scenario", () => {
         body: {},
       })
       expect(resA.status).toBe(200)
-      const accountsA = resA.body.data
+      const accountsA = resA.body.data.accounts
       const orgAccountA = accountsA.find(
         (a: any) => a.emailAddress === "org-shared-rls@company.e2e.test",
       )
@@ -506,7 +506,7 @@ describe("Mail Connections Scenario", () => {
         body: {},
       })
       expect(resB.status).toBe(200)
-      const accountsB = resB.body.data
+      const accountsB = resB.body.data.accounts
       const orgAccountB = accountsB.find(
         (a: any) => a.emailAddress === "org-shared-rls@company.e2e.test",
       )
@@ -522,7 +522,7 @@ describe("Mail Connections Scenario", () => {
         body: {},
       })
       expect(resA.status).toBe(200)
-      const personalA = resA.body.data.find(
+      const personalA = resA.body.data.accounts.find(
         (a: any) => a.emailAddress === "usera-personal@gmail.e2e.test",
       )
       expect(personalA).toBeDefined()
@@ -534,7 +534,7 @@ describe("Mail Connections Scenario", () => {
         body: {},
       })
       expect(resB.status).toBe(200)
-      const personalB = resB.body.data.find(
+      const personalB = resB.body.data.accounts.find(
         (a: any) => a.emailAddress === "usera-personal@gmail.e2e.test",
       )
       expect(personalB).toBeUndefined()
@@ -548,8 +548,10 @@ describe("Mail Connections Scenario", () => {
         body: {},
       })
       expect(res.status).toBe(200)
-      const accounts = res.body.data
+      const accounts = res.body.data.accounts
       expect(accounts.length).toBeGreaterThanOrEqual(1)
+      // What the agent reads with the list: a short list says nothing about the org.
+      expect(res.body.data.note).toContain("never means it has no mailbox")
 
       for (const account of accounts) {
         expect(account.id).toBeDefined()
@@ -714,7 +716,7 @@ describe("Mail Connections Scenario", () => {
         body: {},
       })
       expect(listRes.status).toBe(200)
-      const found = listRes.body.data.find(
+      const found = listRes.body.data.accounts.find(
         (a: any) => a.emailAddress === "dc-personal@gmail.e2e.test",
       )
       expect(found).toBeUndefined()
@@ -726,7 +728,7 @@ describe("Mail Connections Scenario", () => {
         body: { includeDisconnected: true },
       })
       expect(listDisRes.status).toBe(200)
-      const foundDis = listDisRes.body.data.find(
+      const foundDis = listDisRes.body.data.accounts.find(
         (a: any) => a.emailAddress === "dc-personal@gmail.e2e.test",
       )
       expect(foundDis).toBeDefined()

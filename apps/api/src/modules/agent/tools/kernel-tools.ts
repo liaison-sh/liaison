@@ -1206,7 +1206,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
         .uuid()
         .optional()
         .describe(
-          "A Liaison contact whose discussion to post into, instead of threadId: what you learned about the person, what they asked for, the next step. Everyone who can see the contact reads it. Only pass an id you saw in a kernel__contacts_search or kernel__contacts_read result.",
+          "A Liaison contact whose discussion to post into, instead of threadId: what you learned about the person, what they asked for, the next step. Asked to add a note with no wording given, ask what it should say and post nothing: never compose it from what you found. Everyone who can see the contact reads it. Only pass an id you saw in a kernel__contacts_search or kernel__contacts_read result.",
         ),
       content: z
         .string()

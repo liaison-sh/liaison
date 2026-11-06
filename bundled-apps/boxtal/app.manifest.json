@@ -2217,7 +2217,7 @@
       "timeoutMs": 25000
     },
     "get_documents": {
-      "description": "Fetch a Boxtal shipment's shipping/customs documents (fresh signed URLs).",
+      "description": "Fetch a Boxtal shipment's shipping/customs documents, each with a download link fetched just now. Enough to show or hand over a label: nothing needs importing for that.",
       "searchKeywords": ["étiquette", "bordereau", "label", "douane", "cn23", "shipping"],
       "requiredScopes": ["boxtal:documents:read"],
       "handler": "getDocumentsHandler",
@@ -2879,7 +2879,7 @@
       "timeoutMs": 60000
     },
     "import_label_document": {
-      "description": "Backfill-import a created shipment's LABEL PDF into Liaison's file store and return its `label_file_id` (a kernel file id attachable to a tickets__reply / mail message). Boxtal generates the label ASYNCHRONOUSLY after the order, so create_shipment can return label_file_id null — call THIS tool with the boxtal_order_id (or the local shipment row id) to import it once it exists. Retries a few reads internally; returns label_not_ready when Boxtal has not served the LABEL yet (retry in a minute, never fabricate a file id). Also usable as the MIDDLE step of a one-approval sequence: create_shipment -> import_label_document with id = the @ref boxtal_order_id token -> tickets__reply with attachments = [the @ref label_file_id token]. Each call imports a fresh copy; reuse the returned id instead of re-calling.",
+      "description": "Import a created shipment's LABEL PDF into Liaison's file store, only to ATTACH it to a reply or message the person asked for (to show or hand over a label, get_documents is enough), and return its `label_file_id` (a kernel file id attachable to a tickets__reply / mail message). Boxtal generates the label ASYNCHRONOUSLY after the order, so create_shipment can return label_file_id null — call THIS tool with the boxtal_order_id (or the local shipment row id) to import it once it exists. Retries a few reads internally; returns label_not_ready when Boxtal has not served the LABEL yet (retry in a minute, never fabricate a file id). Also usable as the MIDDLE step of a one-approval sequence: create_shipment -> import_label_document with id = the @ref boxtal_order_id token -> tickets__reply with attachments = [the @ref label_file_id token]. Each call imports a fresh copy; reuse the returned id instead of re-calling.",
       "requiredScopes": ["boxtal:shipments:write"],
       "handler": "importLabelDocumentHandler",
       "referenceableOutputs": [

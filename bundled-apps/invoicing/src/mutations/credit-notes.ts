@@ -336,7 +336,10 @@ async function preflightCreditNoteCreateAndIssueParams(
   })
   if (!gate.ok) return { ok: false, error: gate.error }
 
-  const when = await statedIssueDate(ctx, issuer, "credit_note", input.issued_at)
+  const when = await statedIssueDate(ctx, issuer, "credit_note", input.issued_at, {
+    number: originalNumber,
+    issued_at: originalIssuedAt,
+  })
   if (!when.ok) return when
 
   return {

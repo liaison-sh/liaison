@@ -16,12 +16,16 @@ function dateRefused(code: string, message: string): { ok: false; error: ErrorEn
  * no number issued today can follow it, and every default date would precede it. Numbers and dates
  * also run together in a credit note series, so a date before its last number is refused before a
  * number is taken; a quote, proforma or purchase order records no sale, so no order binds it.
+ * A credit note that names its invoice also follows it: it corrects something that already exists.
+ * Only a date someone states is held to this: with none it takes today, so a refund or an order edit
+ * still gets its credit note whatever the invoice's date.
  */
 export async function statedIssueDate(
   ctx: TimeSurface & { db: Pick<MutationsDb, "findMany"> },
   issuer: { id: string; timezone?: string | null },
   type: string,
   stated: string | null | undefined,
+  original?: { number?: string | null; issued_at?: unknown } | null,
 ): Promise<({ ok: true } & IssueDateParts) | { ok: false; error: ErrorEnvelope }> {
   const today = await issueDateParts(ctx, issuer)
   if (!today.ok || stated == null || stated === "") return today
@@ -38,6 +42,15 @@ export async function statedIssueDate(
       "issue_date_in_future",
       `issued_at ${date} is after today (${today.issued_at} in the issuer's time zone), so nothing was issued ` +
         "and no number was used. Pass today or an earlier date, or omit issued_at to use today.",
+    )
+  }
+  const originalDate = dateOnly(original?.issued_at)
+  if (originalDate && date < originalDate) {
+    return dateRefused(
+      "issue_date_before_original",
+      `issued_at ${date} is before ${String(original?.number ?? "the invoice")} (${originalDate}), the invoice this ` +
+        "credit note corrects, so nothing was issued and no number was used. Pass that date or a later one, " +
+        "or omit issued_at to use today.",
     )
   }
   const year = Number(date.slice(0, 4))

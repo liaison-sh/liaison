@@ -37,6 +37,7 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   source_document_unreadable: 409,
   // Names nothing that exists.
   shipment_not_found: 404,
+  document_not_found: 404,
   order_not_found: 404,
   row_not_found: 404,
   // A pick between the order's address and the verified one: needed, gone stale or not needed.
@@ -132,6 +133,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   issued_at_invalid: 400,
   issue_date_in_future: 422,
   issue_date_before_last_number: 409,
+  issue_date_before_original: 409,
+  issue_date_after_credit_note: 409,
   issue_date_crosses_number_year: 409,
   issue_date_breaks_number_order: 409,
   issue_date_set_by_draft_order: 409,

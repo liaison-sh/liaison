@@ -1,0 +1,2204 @@
+[
+  {
+    "id": "C01",
+    "set": "seed",
+    "lang": "fr",
+    "say": "NNN a annulé, enlève les du mois",
+    "typed": [
+      "annuler abonnement mois",
+      "enlever facture du mois",
+      "remove from month end run",
+      "end schedule",
+      "recurring schedule"
+    ],
+    "any": ["invoicing__drafts_discard"]
+  },
+  {
+    "id": "C15",
+    "set": "seed",
+    "lang": "fr",
+    "say": "rembourse Élodie sur sa commande shopify",
+    "typed": ["rembourser commande", "shopify refund", "refund order"],
+    "any": ["shopify__refunds_create"]
+  },
+  {
+    "id": "C16",
+    "set": "seed",
+    "lang": "en",
+    "say": "they have not paid",
+    "typed": ["failed payment", "unpaid invoice", "overdue invoices", "past due"],
+    "any": ["invoicing__documents_search"]
+  },
+  {
+    "id": "C17",
+    "set": "seed",
+    "lang": "fr",
+    "say": "qui ne m'a pas payé",
+    "typed": ["impayé", "factures impayées", "relance paiement"],
+    "any": ["invoicing__documents_search"]
+  },
+  {
+    "id": "C39",
+    "set": "seed",
+    "lang": "en",
+    "say": "reply to this ticket",
+    "typed": ["reply ticket", "tickets reply", "answer customer"],
+    "any": ["tickets__reply"]
+  },
+  {
+    "id": "C40",
+    "set": "seed",
+    "lang": "fr",
+    "say": "réponds au client sur ce ticket",
+    "typed": ["répondre ticket", "répondre client"],
+    "any": ["tickets__reply"]
+  },
+  {
+    "id": "C41",
+    "set": "seed",
+    "lang": "en",
+    "say": "make a task for Tom",
+    "typed": ["create task", "new task", "projects create"],
+    "any": ["projects__create"]
+  },
+  {
+    "id": "C42",
+    "set": "seed",
+    "lang": "fr",
+    "say": "crée une tâche pour Tom",
+    "typed": ["créer tâche", "nouvelle tâche", "tâche"],
+    "any": ["projects__create"]
+  },
+  {
+    "id": "C43",
+    "set": "seed",
+    "lang": "en",
+    "say": "email Sara the summary",
+    "typed": ["send email", "compose mail", "mail compose"],
+    "any": ["mail__compose"]
+  },
+  {
+    "id": "C44",
+    "set": "seed",
+    "lang": "fr",
+    "say": "envoie un mail à Sara",
+    "typed": ["envoyer mail", "envoyer email", "courriel"],
+    "any": ["mail__compose"]
+  },
+  {
+    "id": "C45",
+    "set": "seed",
+    "lang": "en",
+    "say": "find invoice F-2026-0640",
+    "typed": ["find invoice", "search invoices", "invoice number"],
+    "any": ["invoicing__documents_search"]
+  },
+  {
+    "id": "C46",
+    "set": "seed",
+    "lang": "fr",
+    "say": "retrouve la facture F-2026-0640",
+    "typed": ["chercher facture", "facture", "rechercher facture"],
+    "any": ["invoicing__documents_search"]
+  },
+  {
+    "id": "C47",
+    "set": "seed",
+    "lang": "en",
+    "say": "issue that invoice",
+    "typed": ["issue invoice", "invoice issue"],
+    "any": ["invoicing__invoice_issue"]
+  },
+  {
+    "id": "C48",
+    "set": "seed",
+    "lang": "fr",
+    "say": "fais un avoir de 200 euros",
+    "typed": ["avoir", "credit note", "note de crédit"],
+    "any": ["invoicing__credit_note_create_and_issue"]
+  },
+  {
+    "id": "C49",
+    "set": "seed",
+    "lang": "en",
+    "say": "change the address on this contact",
+    "typed": ["update contact", "edit contact", "contact write"],
+    "any": ["kernel__contacts_write", "kernel__contacts_address_upsert"]
+  },
+  {
+    "id": "C50",
+    "set": "seed",
+    "lang": "en",
+    "say": "write this down as a policy",
+    "typed": ["create document", "knowledge create", "new doc", "write policy"],
+    "any": ["knowledge__create", "kernel__capture_business_knowledge"]
+  },
+  {
+    "id": "C51",
+    "set": "seed",
+    "lang": "fr",
+    "say": "retrouve la politique de remboursement",
+    "typed": ["politique remboursement", "knowledge search", "refund policy"],
+    "any": ["knowledge__search"]
+  },
+  {
+    "id": "C52",
+    "set": "seed",
+    "lang": "fr",
+    "say": "mets un rdv avec Lumen mardi",
+    "typed": ["rendez-vous", "create event", "calendar event", "réunion"],
+    "any": ["calendar__create_event"]
+  },
+  {
+    "id": "C53",
+    "set": "seed",
+    "lang": "en",
+    "say": "cancel that shopify order",
+    "typed": ["cancel order", "order cancel"],
+    "any": ["shopify__order_cancel"]
+  },
+  {
+    "id": "C54",
+    "set": "seed",
+    "lang": "en",
+    "say": "ship it to Lyon",
+    "typed": ["create shipment", "ship parcel", "expédier colis", "label"],
+    "any": ["boxtal__create_shipment", "boxtal__shipment_draft_create"]
+  },
+  {
+    "id": "C55",
+    "set": "seed",
+    "lang": "fr",
+    "say": "qu'est-ce qui attend ma validation",
+    "typed": ["approvals", "pending approvals", "en attente validation", "a valider"],
+    "any": ["kernel__approvals_list"]
+  },
+  {
+    "id": "C56",
+    "set": "seed",
+    "lang": "en",
+    "say": "every monday send me the numbers",
+    "typed": ["create routine", "schedule recurring task", "routine weekly"],
+    "any": ["kernel__create_routine"]
+  },
+  {
+    "id": "C57",
+    "set": "seed",
+    "lang": "en",
+    "say": "typo: invocie Alpine",
+    "typed": ["invocie", "invoce search"],
+    "any": ["invoicing__documents_search"]
+  },
+  {
+    "id": "A001",
+    "set": "seed",
+    "lang": "fr",
+    "say": "fermer ticket",
+    "typed": ["fermer ticket"],
+    "any": ["tickets__close"]
+  },
+  {
+    "id": "A002",
+    "set": "seed",
+    "lang": "fr",
+    "say": "attribuer ticket",
+    "typed": ["attribuer ticket"],
+    "any": ["tickets__assign"]
+  },
+  {
+    "id": "A003",
+    "set": "seed",
+    "lang": "en",
+    "say": "send email",
+    "typed": ["send email"],
+    "any": ["mail__compose"]
+  },
+  {
+    "id": "A004",
+    "set": "seed",
+    "lang": "fr",
+    "say": "répondre mail",
+    "typed": ["répondre mail"],
+    "any": ["mail__reply"]
+  },
+  {
+    "id": "A005",
+    "set": "seed",
+    "lang": "en",
+    "say": "find email",
+    "typed": ["find email"],
+    "any": ["mail__search"]
+  },
+  {
+    "id": "A006",
+    "set": "seed",
+    "lang": "en",
+    "say": "invoice list",
+    "typed": ["invoice list"],
+    "any": ["invoicing__documents_search"]
+  },
+  {
+    "id": "A007",
+    "set": "seed",
+    "lang": "en",
+    "say": "find invoice",
+    "typed": ["find invoice"],
+    "any": ["invoicing__documents_search"]
+  },
+  {
+    "id": "A008",
+    "set": "seed",
+    "lang": "en",
+    "say": "paid invoice",
+    "typed": ["paid invoice"],
+    "any": ["invoicing__documents_mark_paid"]
+  },
+  {
+    "id": "A009",
+    "set": "seed",
+    "lang": "en",
+    "say": "download invoice",
+    "typed": ["download invoice"],
+    "any": ["invoicing__documents_download_pdf"]
+  },
+  {
+    "id": "A010",
+    "set": "seed",
+    "lang": "en",
+    "say": "shipping label",
+    "typed": ["shipping label"],
+    "any": ["boxtal__create_shipment", "boxtal__get_documents", "boxtal__print_pack"]
+  },
+  {
+    "id": "A011",
+    "set": "seed",
+    "lang": "en",
+    "say": "update price",
+    "typed": ["update price"],
+    "any": ["shopify__variants_update"]
+  },
+  {
+    "id": "A012",
+    "set": "seed",
+    "lang": "en",
+    "say": "mark fulfilled",
+    "typed": ["mark fulfilled"],
+    "any": ["shopify__fulfillments_create"]
+  },
+  {
+    "id": "A013",
+    "set": "seed",
+    "lang": "en",
+    "say": "add task",
+    "typed": ["add task"],
+    "any": ["projects__create"]
+  },
+  {
+    "id": "A014",
+    "set": "seed",
+    "lang": "en",
+    "say": "project status",
+    "typed": ["project status"],
+    "any": ["projects__tasks_byProject"]
+  },
+  {
+    "id": "A015",
+    "set": "seed",
+    "lang": "en",
+    "say": "grant role",
+    "typed": ["grant role"],
+    "any": ["kernel__assign_role"]
+  },
+  {
+    "id": "A016",
+    "set": "seed",
+    "lang": "en",
+    "say": "set priority",
+    "typed": ["set priority"],
+    "any": ["tickets__setPriority"]
+  },
+  {
+    "id": "A017",
+    "set": "seed",
+    "lang": "en",
+    "say": "schedule meeting",
+    "typed": ["schedule meeting"],
+    "any": ["calendar__create_event"]
+  },
+  {
+    "id": "A018",
+    "set": "seed",
+    "lang": "en",
+    "say": "stop ad",
+    "typed": ["stop ad"],
+    "any": ["ads__pause", "ads__google_pause"]
+  },
+  {
+    "id": "A019",
+    "set": "seed",
+    "lang": "en",
+    "say": "customer satisfaction",
+    "typed": ["customer satisfaction"],
+    "any": ["tickets__csat_summary", "tickets__csat_list"]
+  },
+  {
+    "id": "A020",
+    "set": "seed",
+    "lang": "fr",
+    "say": "colis bloqué",
+    "typed": ["colis bloqué"],
+    "any": ["boxtal__stuck_list", "boxtal__exceptions_list"]
+  },
+  {
+    "id": "A021",
+    "set": "seed",
+    "lang": "fr",
+    "say": "réclamation transporteur",
+    "typed": ["réclamation transporteur"],
+    "any": ["boxtal__claim_open"]
+  },
+  {
+    "id": "A022",
+    "set": "seed",
+    "lang": "fr",
+    "say": "avoir",
+    "typed": ["avoir"],
+    "any": ["invoicing__credit_note_create_and_issue", "invoicing__credit_note_issue"]
+  },
+  {
+    "id": "A023",
+    "set": "seed",
+    "lang": "fr",
+    "say": "devis en facture",
+    "typed": ["devis en facture"],
+    "any": ["invoicing__documents_convert_to_invoice"]
+  },
+  {
+    "id": "A024",
+    "set": "seed",
+    "lang": "fr",
+    "say": "factures fournisseurs",
+    "typed": ["factures fournisseurs"],
+    "any": ["invoicing__received_einvoices_list", "pennylane__supplier_invoices_list"]
+  },
+  {
+    "id": "A025",
+    "set": "seed",
+    "lang": "fr",
+    "say": "facture du mois",
+    "typed": ["facture du mois"],
+    "any": ["invoicing__documents_search"]
+  },
+  {
+    "id": "A026",
+    "set": "seed",
+    "lang": "fr",
+    "say": "la facture",
+    "typed": ["la facture"],
+    "any": ["invoicing__documents_search"]
+  },
+  {
+    "id": "A027",
+    "set": "seed",
+    "lang": "en",
+    "say": "search invoices",
+    "typed": ["search invoices"],
+    "any": ["invoicing__documents_search"]
+  },
+  {
+    "id": "A028",
+    "set": "seed",
+    "lang": "en",
+    "say": "where is the parcel",
+    "typed": ["where is the parcel"],
+    "any": ["boxtal__track"]
+  },
+  {
+    "id": "A029",
+    "set": "seed",
+    "lang": "en",
+    "say": "what's left to ship",
+    "typed": ["what's left to ship"],
+    "any": ["boxtal__to_prepare_list", "boxtal__prep_list"]
+  },
+  {
+    "id": "A030",
+    "set": "seed",
+    "lang": "fr",
+    "say": "rembourse",
+    "typed": ["rembourse"],
+    "any": [
+      "shopify__refunds_create",
+      "invoicing__documents_record_refund",
+      "shopify__returns_refund"
+    ]
+  },
+  {
+    "id": "A031",
+    "set": "seed",
+    "lang": "en",
+    "say": "add a note on the order",
+    "typed": ["add a note on the order"],
+    "any": ["shopify__order_note_set", "shopify__order_update"]
+  },
+  {
+    "id": "A032",
+    "set": "seed",
+    "lang": "en",
+    "say": "require approval",
+    "typed": ["require approval"],
+    "any": ["kernel__approval_policy_set"]
+  },
+  {
+    "id": "A033",
+    "set": "seed",
+    "lang": "en",
+    "say": "auto approve",
+    "typed": ["auto approve"],
+    "any": ["kernel__policy_set"]
+  },
+  {
+    "id": "A034",
+    "set": "seed",
+    "lang": "fr",
+    "say": "active l'application",
+    "typed": ["active l'application"],
+    "any": ["kernel__enable_app", "kernel__apps_set_enabled"]
+  },
+  {
+    "id": "A035",
+    "set": "seed",
+    "lang": "fr",
+    "say": "imprime étiquettes",
+    "typed": ["imprime étiquettes"],
+    "any": ["boxtal__print_pack", "boxtal__print_pack_batch"]
+  },
+  {
+    "id": "L036",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Marquer comme payé",
+    "typed": ["Marquer comme payé"],
+    "any": ["invoicing__documents_mark_paid"]
+  },
+  {
+    "id": "L037",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Programmer une relance",
+    "typed": ["Programmer une relance"],
+    "any": ["tickets__setFollowup"]
+  },
+  {
+    "id": "L038",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Créer une tâche",
+    "typed": ["Créer une tâche"],
+    "any": ["projects__create"]
+  },
+  {
+    "id": "L039",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Nouvelle tâche",
+    "typed": ["Nouvelle tâche"],
+    "any": ["projects__create"]
+  },
+  {
+    "id": "L040",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Supprimer la tâche",
+    "typed": ["Supprimer la tâche"],
+    "any": ["projects__delete"]
+  },
+  {
+    "id": "L041",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Rechercher des tâches",
+    "typed": ["Rechercher des tâches"],
+    "any": ["projects__search"]
+  },
+  {
+    "id": "L042",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Créer un projet",
+    "typed": ["Créer un projet"],
+    "any": ["projects__createProject"]
+  },
+  {
+    "id": "L043",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Archiver le projet",
+    "typed": ["Archiver le projet"],
+    "any": ["projects__update_project"]
+  },
+  {
+    "id": "L044",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Clôturer le ticket",
+    "typed": ["Clôturer le ticket"],
+    "any": ["tickets__close"]
+  },
+  {
+    "id": "L045",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Rouvrir le ticket",
+    "typed": ["Rouvrir le ticket"],
+    "any": ["tickets__reopen"]
+  },
+  {
+    "id": "L046",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Changer la priorité",
+    "typed": ["Changer la priorité"],
+    "any": ["tickets__setPriority"]
+  },
+  {
+    "id": "L047",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Changer la catégorie",
+    "typed": ["Changer la catégorie"],
+    "any": ["tickets__setCategory"]
+  },
+  {
+    "id": "L048",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Changer le statut",
+    "typed": ["Changer le statut"],
+    "any": ["tickets__setStatus"]
+  },
+  {
+    "id": "L049",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Fusionner les tickets",
+    "typed": ["Fusionner les tickets"],
+    "any": ["tickets__merge"]
+  },
+  {
+    "id": "L050",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Convertir en mail",
+    "typed": ["Convertir en mail"],
+    "any": ["tickets__convertToMail"]
+  },
+  {
+    "id": "L051",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Convertir en ticket",
+    "typed": ["Convertir en ticket"],
+    "any": ["mail__convertToTicket"]
+  },
+  {
+    "id": "L052",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Ajouter une note",
+    "typed": ["Ajouter une note"],
+    "any": ["tickets__addNote"]
+  },
+  {
+    "id": "L053",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Envoyer une relance",
+    "typed": ["Envoyer une relance"],
+    "any": ["tickets__nudge"]
+  },
+  {
+    "id": "L054",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Supprimer la relance",
+    "typed": ["Supprimer la relance"],
+    "any": ["tickets__clearFollowup"]
+  },
+  {
+    "id": "L055",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Rechercher des tickets",
+    "typed": ["Rechercher des tickets"],
+    "any": ["tickets__search"]
+  },
+  {
+    "id": "L056",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Nouveau ticket",
+    "typed": ["Nouveau ticket"],
+    "any": ["tickets__create"]
+  },
+  {
+    "id": "L057",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Nouveau mail",
+    "typed": ["Nouveau mail"],
+    "any": ["mail__compose"]
+  },
+  {
+    "id": "L058",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Répondre à tous",
+    "typed": ["Répondre à tous"],
+    "any": ["mail__reply"]
+  },
+  {
+    "id": "L059",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Archiver",
+    "typed": ["Archiver"],
+    "any": ["mail__archive", "knowledge__archive"]
+  },
+  {
+    "id": "L060",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Connecter Gmail",
+    "typed": ["Connecter Gmail"],
+    "any": ["kernel__mailbox_setup", "kernel__connect_link_send"]
+  },
+  {
+    "id": "L061",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Nouvel événement",
+    "typed": ["Nouvel événement"],
+    "any": ["calendar__create_event"]
+  },
+  {
+    "id": "L062",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Modifier l'événement",
+    "typed": ["Modifier l'événement"],
+    "any": ["calendar__update_event"]
+  },
+  {
+    "id": "L063",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Mes agendas",
+    "typed": ["Mes agendas"],
+    "any": ["calendar__list_calendars"]
+  },
+  {
+    "id": "L064",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Nouveau document",
+    "typed": ["Nouveau document"],
+    "any": ["knowledge__create"]
+  },
+  {
+    "id": "L065",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Convert to invoice",
+    "typed": ["Convert to invoice"],
+    "any": ["invoicing__documents_convert_to_invoice"]
+  },
+  {
+    "id": "L066",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Télécharger le PDF",
+    "typed": ["Télécharger le PDF"],
+    "any": ["invoicing__documents_download_pdf"]
+  },
+  {
+    "id": "L067",
+    "set": "screen",
+    "lang": "en",
+    "say": "Download PDF",
+    "typed": ["Download PDF"],
+    "any": ["invoicing__documents_download_pdf"]
+  },
+  {
+    "id": "L068",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Envoyer au client",
+    "typed": ["Envoyer au client"],
+    "any": ["invoicing__documents_send_to_customer"]
+  },
+  {
+    "id": "L069",
+    "set": "screen",
+    "lang": "en",
+    "say": "New quote",
+    "typed": ["New quote"],
+    "any": ["invoicing__quote_create_and_issue"]
+  },
+  {
+    "id": "L070",
+    "set": "screen",
+    "lang": "en",
+    "say": "Credit note",
+    "typed": ["Credit note"],
+    "any": ["invoicing__credit_note_create_and_issue"]
+  },
+  {
+    "id": "L071",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Contester cette facture",
+    "typed": ["Contester cette facture"],
+    "any": ["invoicing__received_einvoice_action_request"]
+  },
+  {
+    "id": "L072",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Facturation électronique",
+    "typed": ["Facturation électronique"],
+    "any": ["invoicing__einvoicing_readiness"]
+  },
+  {
+    "id": "L073",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Prendre en compte",
+    "typed": ["Prendre en compte"],
+    "any": ["monitoring__incidents_ack"]
+  },
+  {
+    "id": "L074",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Résoudre",
+    "typed": ["Résoudre"],
+    "any": ["monitoring__incidents_resolve", "tickets__close"]
+  },
+  {
+    "id": "L075",
+    "set": "screen",
+    "lang": "fr",
+    "say": "Incidents en cours",
+    "typed": ["Incidents en cours"],
+    "any": ["monitoring__incidents_list"]
+  },
+  {
+    "id": "H001",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "modifier un rôle",
+    "typed": ["modifier un rôle"],
+    "any": ["kernel__edit_role"]
+  },
+  {
+    "id": "H002",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "créer un rôle",
+    "typed": ["créer un rôle"],
+    "any": ["kernel__create_role"]
+  },
+  {
+    "id": "H003",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "supprimer un rôle",
+    "typed": ["supprimer un rôle"],
+    "any": ["kernel__delete_role"]
+  },
+  {
+    "id": "H004",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "attribuer un rôle",
+    "typed": ["attribuer un rôle"],
+    "any": ["kernel__assign_role"]
+  },
+  {
+    "id": "H005",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "retirer un utilisateur d'un rôle",
+    "typed": ["retirer un utilisateur d'un rôle"],
+    "any": ["kernel__remove_user_from_role"]
+  },
+  {
+    "id": "H006",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "accorder un droit à un utilisateur",
+    "typed": ["accorder un droit à un utilisateur"],
+    "any": ["kernel__grant_user_scope"]
+  },
+  {
+    "id": "H007",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "accorder un accès restreint",
+    "typed": ["accorder un accès restreint"],
+    "any": ["kernel__grant_dimension_value"]
+  },
+  {
+    "id": "H008",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "inviter un utilisateur",
+    "typed": ["inviter un utilisateur"],
+    "any": ["kernel__invite_user"]
+  },
+  {
+    "id": "H009",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "désactiver un utilisateur",
+    "typed": ["désactiver un utilisateur"],
+    "any": ["kernel__deactivateUser"]
+  },
+  {
+    "id": "H010",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "désactiver des utilisateurs",
+    "typed": ["désactiver des utilisateurs"],
+    "any": ["kernel__bulkDeactivateUsers"]
+  },
+  {
+    "id": "H011",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "créer une compétence",
+    "typed": ["créer une compétence"],
+    "any": ["kernel__create_skill"]
+  },
+  {
+    "id": "H012",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "modifier une compétence",
+    "typed": ["modifier une compétence"],
+    "any": ["kernel__update_skill"]
+  },
+  {
+    "id": "H013",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "supprimer une compétence",
+    "typed": ["supprimer une compétence"],
+    "any": ["kernel__delete_skill"]
+  },
+  {
+    "id": "H014",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "activer ou désactiver une compétence d'application",
+    "typed": ["activer ou désactiver une compétence d'application"],
+    "any": ["kernel__toggle_app_skill"]
+  },
+  {
+    "id": "H015",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "créer une routine",
+    "typed": ["créer une routine"],
+    "any": ["kernel__create_routine"]
+  },
+  {
+    "id": "H016",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "modifier une routine",
+    "typed": ["modifier une routine"],
+    "any": ["kernel__update_routine"]
+  },
+  {
+    "id": "H017",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "supprimer une routine",
+    "typed": ["supprimer une routine"],
+    "any": ["kernel__delete_routine"]
+  },
+  {
+    "id": "H018",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "lancer une routine maintenant",
+    "typed": ["lancer une routine maintenant"],
+    "any": ["kernel__run_routine_now"]
+  },
+  {
+    "id": "H019",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "activer un modèle de routine",
+    "typed": ["activer un modèle de routine"],
+    "any": ["kernel__enable_routine_template"]
+  },
+  {
+    "id": "H020",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "réinitialiser une routine selon le modèle",
+    "typed": ["réinitialiser une routine selon le modèle"],
+    "any": ["kernel__reset_routine_to_template"]
+  },
+  {
+    "id": "H021",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "définir une règle d'approbation automatique",
+    "typed": ["définir une règle d'approbation automatique"],
+    "any": ["kernel__policy_set"]
+  },
+  {
+    "id": "H022",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "renforcer une règle d'approbation",
+    "typed": ["renforcer une règle d'approbation"],
+    "any": ["kernel__approval_policy_set"]
+  },
+  {
+    "id": "H023",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "fusionner des contacts",
+    "typed": ["fusionner des contacts"],
+    "any": ["kernel__contacts_merge"]
+  },
+  {
+    "id": "H024",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "modifier un contact",
+    "typed": ["modifier un contact"],
+    "any": ["kernel__contacts_write"]
+  },
+  {
+    "id": "H025",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "activer une application",
+    "typed": ["activer une application"],
+    "any": ["kernel__enable_app"]
+  },
+  {
+    "id": "H026",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "exporter les données d'une personne",
+    "typed": ["exporter les données d'une personne"],
+    "any": ["kernel__data_subject_export"]
+  },
+  {
+    "id": "H027",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "créer un sous-agent",
+    "typed": ["créer un sous-agent"],
+    "any": ["kernel__subagent_create"]
+  },
+  {
+    "id": "H028",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "supprimer un sous-agent",
+    "typed": ["supprimer un sous-agent"],
+    "any": ["kernel__subagent_delete"]
+  },
+  {
+    "id": "H029",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "répondre",
+    "typed": ["répondre"],
+    "any": ["tickets__reply", "mail__reply"]
+  },
+  {
+    "id": "H030",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "relancer",
+    "typed": ["relancer"],
+    "any": ["tickets__nudge"]
+  },
+  {
+    "id": "H031",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "clôturer",
+    "typed": ["clôturer"],
+    "any": ["tickets__close"]
+  },
+  {
+    "id": "H032",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "modifier une note interne",
+    "typed": ["modifier une note interne"],
+    "any": ["tickets__editNote"]
+  },
+  {
+    "id": "H033",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "supprimer une note interne",
+    "typed": ["supprimer une note interne"],
+    "any": ["tickets__deleteNote"]
+  },
+  {
+    "id": "H034",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "fusionner des tickets",
+    "typed": ["fusionner des tickets"],
+    "any": ["tickets__merge"]
+  },
+  {
+    "id": "H035",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "créer un ticket",
+    "typed": ["créer un ticket"],
+    "any": ["tickets__create"]
+  },
+  {
+    "id": "H036",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "attribuer",
+    "typed": ["attribuer"],
+    "any": ["tickets__assign"]
+  },
+  {
+    "id": "H037",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "changer le statut",
+    "typed": ["changer le statut"],
+    "any": ["tickets__setStatus"]
+  },
+  {
+    "id": "H038",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "convertir en mail",
+    "typed": ["convertir en mail"],
+    "any": ["tickets__convertToMail"]
+  },
+  {
+    "id": "H039",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "transférer",
+    "typed": ["transférer"],
+    "any": ["mail__forward"]
+  },
+  {
+    "id": "H040",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "écrire un mail",
+    "typed": ["écrire un mail"],
+    "any": ["mail__compose"]
+  },
+  {
+    "id": "H041",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "archiver",
+    "typed": ["archiver"],
+    "any": ["mail__archive"]
+  },
+  {
+    "id": "H042",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "convertir en ticket",
+    "typed": ["convertir en ticket"],
+    "any": ["mail__convertToTicket"]
+  },
+  {
+    "id": "H043",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "créer un document",
+    "typed": ["créer un document"],
+    "any": ["knowledge__create"]
+  },
+  {
+    "id": "H044",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "modifier un document",
+    "typed": ["modifier un document"],
+    "any": ["knowledge__update"]
+  },
+  {
+    "id": "H045",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "archiver un document",
+    "typed": ["archiver un document"],
+    "any": ["knowledge__archive"]
+  },
+  {
+    "id": "H046",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "restaurer un document",
+    "typed": ["restaurer un document"],
+    "any": ["knowledge__restore"]
+  },
+  {
+    "id": "H047",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "vérifier un document",
+    "typed": ["vérifier un document"],
+    "any": ["knowledge__verify"]
+  },
+  {
+    "id": "H048",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "créer une collection",
+    "typed": ["créer une collection"],
+    "any": ["knowledge__collection_create"]
+  },
+  {
+    "id": "H049",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "modifier une collection",
+    "typed": ["modifier une collection"],
+    "any": ["knowledge__collection_update"]
+  },
+  {
+    "id": "H050",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "supprimer une collection",
+    "typed": ["supprimer une collection"],
+    "any": ["knowledge__collection_delete"]
+  },
+  {
+    "id": "H051",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "créer une tâche",
+    "typed": ["créer une tâche"],
+    "any": ["projects__create"]
+  },
+  {
+    "id": "H052",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "modifier une tâche",
+    "typed": ["modifier une tâche"],
+    "any": ["projects__update"]
+  },
+  {
+    "id": "H053",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "supprimer une tâche",
+    "typed": ["supprimer une tâche"],
+    "any": ["projects__delete"]
+  },
+  {
+    "id": "H054",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "fusionner des tâches",
+    "typed": ["fusionner des tâches"],
+    "any": ["projects__merge"]
+  },
+  {
+    "id": "H055",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "déplacer une tâche",
+    "typed": ["déplacer une tâche"],
+    "any": ["projects__move"]
+  },
+  {
+    "id": "H056",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "modifier des tâches en lot",
+    "typed": ["modifier des tâches en lot"],
+    "any": ["projects__bulkUpdate"]
+  },
+  {
+    "id": "H057",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "créer un projet",
+    "typed": ["créer un projet"],
+    "any": ["projects__createProject"]
+  },
+  {
+    "id": "H058",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "ajouter une colonne de statut",
+    "typed": ["ajouter une colonne de statut"],
+    "any": ["projects__status_add"]
+  },
+  {
+    "id": "H059",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "modifier une colonne de statut",
+    "typed": ["modifier une colonne de statut"],
+    "any": ["projects__status_update"]
+  },
+  {
+    "id": "H060",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "supprimer une colonne de statut",
+    "typed": ["supprimer une colonne de statut"],
+    "any": ["projects__status_delete"]
+  },
+  {
+    "id": "H061",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "émettre une facture",
+    "typed": ["émettre une facture"],
+    "any": ["invoicing__invoice_issue"]
+  },
+  {
+    "id": "H062",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "créer et émettre une facture",
+    "typed": ["créer et émettre une facture"],
+    "any": ["invoicing__invoice_create_and_issue"]
+  },
+  {
+    "id": "H063",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "émettre un devis",
+    "typed": ["émettre un devis"],
+    "any": ["invoicing__quote_issue"]
+  },
+  {
+    "id": "H064",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "créer et émettre un devis",
+    "typed": ["créer et émettre un devis"],
+    "any": ["invoicing__quote_create_and_issue"]
+  },
+  {
+    "id": "H065",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "émettre une facture proforma",
+    "typed": ["émettre une facture proforma"],
+    "any": ["invoicing__proforma_issue"]
+  },
+  {
+    "id": "H066",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "créer et émettre une facture proforma",
+    "typed": ["créer et émettre une facture proforma"],
+    "any": ["invoicing__proforma_create_and_issue"]
+  },
+  {
+    "id": "H067",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "émettre un bon de commande",
+    "typed": ["émettre un bon de commande"],
+    "any": ["invoicing__po_issue"]
+  },
+  {
+    "id": "H068",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "créer et émettre un bon de commande",
+    "typed": ["créer et émettre un bon de commande"],
+    "any": ["invoicing__po_create_and_issue"]
+  },
+  {
+    "id": "H069",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "émettre un avoir",
+    "typed": ["émettre un avoir"],
+    "any": ["invoicing__credit_note_issue"]
+  },
+  {
+    "id": "H070",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "créer et émettre un avoir",
+    "typed": ["créer et émettre un avoir"],
+    "any": ["invoicing__credit_note_create_and_issue"]
+  },
+  {
+    "id": "H071",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "envoyer un document au client",
+    "typed": ["envoyer un document au client"],
+    "any": ["invoicing__documents_send_to_customer"]
+  },
+  {
+    "id": "H072",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "marquer un document comme payé",
+    "typed": ["marquer un document comme payé"],
+    "any": ["invoicing__documents_mark_paid"]
+  },
+  {
+    "id": "H073",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "enregistrer un remboursement",
+    "typed": ["enregistrer un remboursement"],
+    "any": ["invoicing__documents_record_refund"]
+  },
+  {
+    "id": "H074",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "convertir un document en facture",
+    "typed": ["convertir un document en facture"],
+    "any": ["invoicing__documents_convert_to_invoice"]
+  },
+  {
+    "id": "H075",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "réémettre les documents d'une commande",
+    "typed": ["réémettre les documents d'une commande"],
+    "any": ["invoicing__order_reissue_apply"]
+  },
+  {
+    "id": "H076",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "connecter un serveur MCP",
+    "typed": ["connecter un serveur MCP"],
+    "any": ["mcp-manager__add_connection"]
+  },
+  {
+    "id": "H077",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "créer un événement",
+    "typed": ["créer un événement"],
+    "any": ["calendar__create_event"]
+  },
+  {
+    "id": "H078",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "modifier un événement",
+    "typed": ["modifier un événement"],
+    "any": ["calendar__update_event"]
+  },
+  {
+    "id": "H079",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "supprimer un événement",
+    "typed": ["supprimer un événement"],
+    "any": ["calendar__delete_event"]
+  },
+  {
+    "id": "H080",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "déposer un fichier",
+    "typed": ["déposer un fichier"],
+    "any": ["google-drive__upload"]
+  },
+  {
+    "id": "H081",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "importer un fichier",
+    "typed": ["importer un fichier"],
+    "any": ["google-drive__import"]
+  },
+  {
+    "id": "H082",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "créer une expédition",
+    "typed": ["créer une expédition"],
+    "any": ["boxtal__create_shipment"]
+  },
+  {
+    "id": "H083",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "annuler une expédition",
+    "typed": ["annuler une expédition"],
+    "any": ["boxtal__cancel_shipment"]
+  },
+  {
+    "id": "H084",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "ouvrir une réclamation",
+    "typed": ["ouvrir une réclamation"],
+    "any": ["boxtal__claim_open"]
+  },
+  {
+    "id": "H085",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "déposer une facture fournisseur",
+    "typed": ["déposer une facture fournisseur"],
+    "any": ["pennylane__supplier_invoice_upload"]
+  },
+  {
+    "id": "H086",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "répondre à une publication",
+    "typed": ["répondre à une publication"],
+    "any": ["social__reply_to_finding"]
+  },
+  {
+    "id": "H087",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "envoyer un message privé",
+    "typed": ["envoyer un message privé"],
+    "any": ["social__send_dm"]
+  },
+  {
+    "id": "H088",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "aimer une publication",
+    "typed": ["aimer une publication"],
+    "any": ["social__like_item"]
+  },
+  {
+    "id": "H089",
+    "set": "heldout",
+    "lang": "en",
+    "say": "edit role",
+    "typed": ["edit role"],
+    "any": ["kernel__edit_role"]
+  },
+  {
+    "id": "H090",
+    "set": "heldout",
+    "lang": "en",
+    "say": "create role",
+    "typed": ["create role"],
+    "any": ["kernel__create_role"]
+  },
+  {
+    "id": "H091",
+    "set": "heldout",
+    "lang": "en",
+    "say": "delete role",
+    "typed": ["delete role"],
+    "any": ["kernel__delete_role"]
+  },
+  {
+    "id": "H092",
+    "set": "heldout",
+    "lang": "en",
+    "say": "assign role",
+    "typed": ["assign role"],
+    "any": ["kernel__assign_role"]
+  },
+  {
+    "id": "H093",
+    "set": "heldout",
+    "lang": "en",
+    "say": "remove user from role",
+    "typed": ["remove user from role"],
+    "any": ["kernel__remove_user_from_role"]
+  },
+  {
+    "id": "H094",
+    "set": "heldout",
+    "lang": "en",
+    "say": "grant user scope",
+    "typed": ["grant user scope"],
+    "any": ["kernel__grant_user_scope"]
+  },
+  {
+    "id": "H095",
+    "set": "heldout",
+    "lang": "en",
+    "say": "grant dimension value",
+    "typed": ["grant dimension value"],
+    "any": ["kernel__grant_dimension_value"]
+  },
+  {
+    "id": "H096",
+    "set": "heldout",
+    "lang": "en",
+    "say": "invite user",
+    "typed": ["invite user"],
+    "any": ["kernel__invite_user"]
+  },
+  {
+    "id": "H097",
+    "set": "heldout",
+    "lang": "en",
+    "say": "deactivate user",
+    "typed": ["deactivate user"],
+    "any": ["kernel__deactivateUser"]
+  },
+  {
+    "id": "H098",
+    "set": "heldout",
+    "lang": "en",
+    "say": "deactivate users",
+    "typed": ["deactivate users"],
+    "any": ["kernel__bulkDeactivateUsers"]
+  },
+  {
+    "id": "H099",
+    "set": "heldout",
+    "lang": "en",
+    "say": "create skill",
+    "typed": ["create skill"],
+    "any": ["kernel__create_skill"]
+  },
+  {
+    "id": "H100",
+    "set": "heldout",
+    "lang": "en",
+    "say": "update skill",
+    "typed": ["update skill"],
+    "any": ["kernel__update_skill"]
+  },
+  {
+    "id": "H101",
+    "set": "heldout",
+    "lang": "en",
+    "say": "delete skill",
+    "typed": ["delete skill"],
+    "any": ["kernel__delete_skill"]
+  },
+  {
+    "id": "H102",
+    "set": "heldout",
+    "lang": "en",
+    "say": "toggle app skill",
+    "typed": ["toggle app skill"],
+    "any": ["kernel__toggle_app_skill"]
+  },
+  {
+    "id": "H103",
+    "set": "heldout",
+    "lang": "en",
+    "say": "create routine",
+    "typed": ["create routine"],
+    "any": ["kernel__create_routine"]
+  },
+  {
+    "id": "H104",
+    "set": "heldout",
+    "lang": "en",
+    "say": "update routine",
+    "typed": ["update routine"],
+    "any": ["kernel__update_routine"]
+  },
+  {
+    "id": "H105",
+    "set": "heldout",
+    "lang": "en",
+    "say": "delete routine",
+    "typed": ["delete routine"],
+    "any": ["kernel__delete_routine"]
+  },
+  {
+    "id": "H106",
+    "set": "heldout",
+    "lang": "en",
+    "say": "run routine now",
+    "typed": ["run routine now"],
+    "any": ["kernel__run_routine_now"]
+  },
+  {
+    "id": "H107",
+    "set": "heldout",
+    "lang": "en",
+    "say": "enable routine template",
+    "typed": ["enable routine template"],
+    "any": ["kernel__enable_routine_template"]
+  },
+  {
+    "id": "H108",
+    "set": "heldout",
+    "lang": "en",
+    "say": "reset routine to template",
+    "typed": ["reset routine to template"],
+    "any": ["kernel__reset_routine_to_template"]
+  },
+  {
+    "id": "H109",
+    "set": "heldout",
+    "lang": "en",
+    "say": "set auto-approve policy",
+    "typed": ["set auto-approve policy"],
+    "any": ["kernel__policy_set"]
+  },
+  {
+    "id": "H110",
+    "set": "heldout",
+    "lang": "en",
+    "say": "tighten approval policy",
+    "typed": ["tighten approval policy"],
+    "any": ["kernel__approval_policy_set"]
+  },
+  {
+    "id": "H111",
+    "set": "heldout",
+    "lang": "en",
+    "say": "merge contacts",
+    "typed": ["merge contacts"],
+    "any": ["kernel__contacts_merge"]
+  },
+  {
+    "id": "H112",
+    "set": "heldout",
+    "lang": "en",
+    "say": "edit contact",
+    "typed": ["edit contact"],
+    "any": ["kernel__contacts_write"]
+  },
+  {
+    "id": "H113",
+    "set": "heldout",
+    "lang": "en",
+    "say": "enable app",
+    "typed": ["enable app"],
+    "any": ["kernel__enable_app"]
+  },
+  {
+    "id": "H114",
+    "set": "heldout",
+    "lang": "en",
+    "say": "export a person's data",
+    "typed": ["export a person's data"],
+    "any": ["kernel__data_subject_export"]
+  },
+  {
+    "id": "H115",
+    "set": "heldout",
+    "lang": "en",
+    "say": "create sub-agent",
+    "typed": ["create sub-agent"],
+    "any": ["kernel__subagent_create"]
+  },
+  {
+    "id": "H116",
+    "set": "heldout",
+    "lang": "en",
+    "say": "delete sub-agent",
+    "typed": ["delete sub-agent"],
+    "any": ["kernel__subagent_delete"]
+  },
+  {
+    "id": "H117",
+    "set": "heldout",
+    "lang": "en",
+    "say": "reply",
+    "typed": ["reply"],
+    "any": ["tickets__reply", "mail__reply"]
+  },
+  {
+    "id": "H118",
+    "set": "heldout",
+    "lang": "en",
+    "say": "nudge",
+    "typed": ["nudge"],
+    "any": ["tickets__nudge"]
+  },
+  {
+    "id": "H119",
+    "set": "heldout",
+    "lang": "en",
+    "say": "close",
+    "typed": ["close"],
+    "any": ["tickets__close"]
+  },
+  {
+    "id": "H120",
+    "set": "heldout",
+    "lang": "en",
+    "say": "edit note",
+    "typed": ["edit note"],
+    "any": ["tickets__editNote"]
+  },
+  {
+    "id": "H121",
+    "set": "heldout",
+    "lang": "en",
+    "say": "delete note",
+    "typed": ["delete note"],
+    "any": ["tickets__deleteNote"]
+  },
+  {
+    "id": "H122",
+    "set": "heldout",
+    "lang": "en",
+    "say": "merge tickets",
+    "typed": ["merge tickets"],
+    "any": ["tickets__merge"]
+  },
+  {
+    "id": "H123",
+    "set": "heldout",
+    "lang": "en",
+    "say": "create ticket",
+    "typed": ["create ticket"],
+    "any": ["tickets__create"]
+  },
+  {
+    "id": "H124",
+    "set": "heldout",
+    "lang": "en",
+    "say": "assign",
+    "typed": ["assign"],
+    "any": ["tickets__assign"]
+  },
+  {
+    "id": "H125",
+    "set": "heldout",
+    "lang": "en",
+    "say": "set status",
+    "typed": ["set status"],
+    "any": ["tickets__setStatus"]
+  },
+  {
+    "id": "H126",
+    "set": "heldout",
+    "lang": "en",
+    "say": "convert to mail",
+    "typed": ["convert to mail"],
+    "any": ["tickets__convertToMail"]
+  },
+  {
+    "id": "H127",
+    "set": "heldout",
+    "lang": "en",
+    "say": "forward",
+    "typed": ["forward"],
+    "any": ["mail__forward"]
+  },
+  {
+    "id": "H128",
+    "set": "heldout",
+    "lang": "en",
+    "say": "compose",
+    "typed": ["compose"],
+    "any": ["mail__compose"]
+  },
+  {
+    "id": "H129",
+    "set": "heldout",
+    "lang": "en",
+    "say": "archive",
+    "typed": ["archive"],
+    "any": ["mail__archive"]
+  },
+  {
+    "id": "H130",
+    "set": "heldout",
+    "lang": "en",
+    "say": "convert to ticket",
+    "typed": ["convert to ticket"],
+    "any": ["mail__convertToTicket"]
+  },
+  {
+    "id": "H131",
+    "set": "heldout",
+    "lang": "en",
+    "say": "create document",
+    "typed": ["create document"],
+    "any": ["knowledge__create"]
+  },
+  {
+    "id": "H132",
+    "set": "heldout",
+    "lang": "en",
+    "say": "update document",
+    "typed": ["update document"],
+    "any": ["knowledge__update"]
+  },
+  {
+    "id": "H133",
+    "set": "heldout",
+    "lang": "en",
+    "say": "archive document",
+    "typed": ["archive document"],
+    "any": ["knowledge__archive"]
+  },
+  {
+    "id": "H134",
+    "set": "heldout",
+    "lang": "en",
+    "say": "restore document",
+    "typed": ["restore document"],
+    "any": ["knowledge__restore"]
+  },
+  {
+    "id": "H135",
+    "set": "heldout",
+    "lang": "en",
+    "say": "verify document",
+    "typed": ["verify document"],
+    "any": ["knowledge__verify"]
+  },
+  {
+    "id": "H136",
+    "set": "heldout",
+    "lang": "en",
+    "say": "create collection",
+    "typed": ["create collection"],
+    "any": ["knowledge__collection_create"]
+  },
+  {
+    "id": "H137",
+    "set": "heldout",
+    "lang": "en",
+    "say": "update collection",
+    "typed": ["update collection"],
+    "any": ["knowledge__collection_update"]
+  },
+  {
+    "id": "H138",
+    "set": "heldout",
+    "lang": "en",
+    "say": "delete collection",
+    "typed": ["delete collection"],
+    "any": ["knowledge__collection_delete"]
+  },
+  {
+    "id": "H139",
+    "set": "heldout",
+    "lang": "en",
+    "say": "create task",
+    "typed": ["create task"],
+    "any": ["projects__create"]
+  },
+  {
+    "id": "H140",
+    "set": "heldout",
+    "lang": "en",
+    "say": "update task",
+    "typed": ["update task"],
+    "any": ["projects__update"]
+  },
+  {
+    "id": "H141",
+    "set": "heldout",
+    "lang": "en",
+    "say": "delete task",
+    "typed": ["delete task"],
+    "any": ["projects__delete"]
+  },
+  {
+    "id": "H142",
+    "set": "heldout",
+    "lang": "en",
+    "say": "merge tasks",
+    "typed": ["merge tasks"],
+    "any": ["projects__merge"]
+  },
+  {
+    "id": "H143",
+    "set": "heldout",
+    "lang": "en",
+    "say": "move task",
+    "typed": ["move task"],
+    "any": ["projects__move"]
+  },
+  {
+    "id": "H144",
+    "set": "heldout",
+    "lang": "en",
+    "say": "update tasks",
+    "typed": ["update tasks"],
+    "any": ["projects__bulkUpdate"]
+  },
+  {
+    "id": "H145",
+    "set": "heldout",
+    "lang": "en",
+    "say": "create project",
+    "typed": ["create project"],
+    "any": ["projects__createProject"]
+  },
+  {
+    "id": "H146",
+    "set": "heldout",
+    "lang": "en",
+    "say": "add status column",
+    "typed": ["add status column"],
+    "any": ["projects__status_add"]
+  },
+  {
+    "id": "H147",
+    "set": "heldout",
+    "lang": "en",
+    "say": "update status column",
+    "typed": ["update status column"],
+    "any": ["projects__status_update"]
+  },
+  {
+    "id": "H148",
+    "set": "heldout",
+    "lang": "en",
+    "say": "delete status column",
+    "typed": ["delete status column"],
+    "any": ["projects__status_delete"]
+  },
+  {
+    "id": "H149",
+    "set": "heldout",
+    "lang": "en",
+    "say": "issue invoice",
+    "typed": ["issue invoice"],
+    "any": ["invoicing__invoice_issue"]
+  },
+  {
+    "id": "H150",
+    "set": "heldout",
+    "lang": "en",
+    "say": "create and issue invoice",
+    "typed": ["create and issue invoice"],
+    "any": ["invoicing__invoice_create_and_issue"]
+  },
+  {
+    "id": "H151",
+    "set": "heldout",
+    "lang": "en",
+    "say": "issue quote",
+    "typed": ["issue quote"],
+    "any": ["invoicing__quote_issue"]
+  },
+  {
+    "id": "H152",
+    "set": "heldout",
+    "lang": "en",
+    "say": "create and issue quote",
+    "typed": ["create and issue quote"],
+    "any": ["invoicing__quote_create_and_issue"]
+  },
+  {
+    "id": "H153",
+    "set": "heldout",
+    "lang": "en",
+    "say": "issue proforma",
+    "typed": ["issue proforma"],
+    "any": ["invoicing__proforma_issue"]
+  },
+  {
+    "id": "H154",
+    "set": "heldout",
+    "lang": "en",
+    "say": "create and issue proforma",
+    "typed": ["create and issue proforma"],
+    "any": ["invoicing__proforma_create_and_issue"]
+  },
+  {
+    "id": "H155",
+    "set": "heldout",
+    "lang": "en",
+    "say": "issue purchase order",
+    "typed": ["issue purchase order"],
+    "any": ["invoicing__po_issue"]
+  },
+  {
+    "id": "H156",
+    "set": "heldout",
+    "lang": "en",
+    "say": "create and issue purchase order",
+    "typed": ["create and issue purchase order"],
+    "any": ["invoicing__po_create_and_issue"]
+  },
+  {
+    "id": "H157",
+    "set": "heldout",
+    "lang": "en",
+    "say": "issue credit note",
+    "typed": ["issue credit note"],
+    "any": ["invoicing__credit_note_issue"]
+  },
+  {
+    "id": "H158",
+    "set": "heldout",
+    "lang": "en",
+    "say": "create and issue credit note",
+    "typed": ["create and issue credit note"],
+    "any": ["invoicing__credit_note_create_and_issue"]
+  },
+  {
+    "id": "H159",
+    "set": "heldout",
+    "lang": "en",
+    "say": "send document to customer",
+    "typed": ["send document to customer"],
+    "any": ["invoicing__documents_send_to_customer"]
+  },
+  {
+    "id": "H160",
+    "set": "heldout",
+    "lang": "en",
+    "say": "mark document paid",
+    "typed": ["mark document paid"],
+    "any": ["invoicing__documents_mark_paid"]
+  },
+  {
+    "id": "H161",
+    "set": "heldout",
+    "lang": "en",
+    "say": "record document refund",
+    "typed": ["record document refund"],
+    "any": ["invoicing__documents_record_refund"]
+  },
+  {
+    "id": "H162",
+    "set": "heldout",
+    "lang": "en",
+    "say": "convert document to invoice",
+    "typed": ["convert document to invoice"],
+    "any": ["invoicing__documents_convert_to_invoice"]
+  },
+  {
+    "id": "H163",
+    "set": "heldout",
+    "lang": "en",
+    "say": "reissue order documents",
+    "typed": ["reissue order documents"],
+    "any": ["invoicing__order_reissue_apply"]
+  },
+  {
+    "id": "H164",
+    "set": "heldout",
+    "lang": "en",
+    "say": "connect MCP server",
+    "typed": ["connect MCP server"],
+    "any": ["mcp-manager__add_connection"]
+  },
+  {
+    "id": "H165",
+    "set": "heldout",
+    "lang": "en",
+    "say": "create event",
+    "typed": ["create event"],
+    "any": ["calendar__create_event"]
+  },
+  {
+    "id": "H166",
+    "set": "heldout",
+    "lang": "en",
+    "say": "update event",
+    "typed": ["update event"],
+    "any": ["calendar__update_event"]
+  },
+  {
+    "id": "H167",
+    "set": "heldout",
+    "lang": "en",
+    "say": "delete event",
+    "typed": ["delete event"],
+    "any": ["calendar__delete_event"]
+  },
+  {
+    "id": "H168",
+    "set": "heldout",
+    "lang": "en",
+    "say": "upload file",
+    "typed": ["upload file"],
+    "any": ["google-drive__upload"]
+  },
+  {
+    "id": "H169",
+    "set": "heldout",
+    "lang": "en",
+    "say": "import file",
+    "typed": ["import file"],
+    "any": ["google-drive__import"]
+  },
+  {
+    "id": "H170",
+    "set": "heldout",
+    "lang": "en",
+    "say": "create shipment",
+    "typed": ["create shipment"],
+    "any": ["boxtal__create_shipment"]
+  },
+  {
+    "id": "H171",
+    "set": "heldout",
+    "lang": "en",
+    "say": "cancel shipment",
+    "typed": ["cancel shipment"],
+    "any": ["boxtal__cancel_shipment"]
+  },
+  {
+    "id": "H172",
+    "set": "heldout",
+    "lang": "en",
+    "say": "open claim",
+    "typed": ["open claim"],
+    "any": ["boxtal__claim_open"]
+  },
+  {
+    "id": "H173",
+    "set": "heldout",
+    "lang": "en",
+    "say": "upload supplier invoice",
+    "typed": ["upload supplier invoice"],
+    "any": ["pennylane__supplier_invoice_upload"]
+  },
+  {
+    "id": "H174",
+    "set": "heldout",
+    "lang": "en",
+    "say": "reply to post",
+    "typed": ["reply to post"],
+    "any": ["social__reply_to_finding"]
+  },
+  {
+    "id": "H175",
+    "set": "heldout",
+    "lang": "en",
+    "say": "send direct message",
+    "typed": ["send direct message"],
+    "any": ["social__send_dm"]
+  },
+  {
+    "id": "H176",
+    "set": "heldout",
+    "lang": "en",
+    "say": "like post",
+    "typed": ["like post"],
+    "any": ["social__like_item"]
+  }
+]

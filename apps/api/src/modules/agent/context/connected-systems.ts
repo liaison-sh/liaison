@@ -25,13 +25,15 @@
 import { promptSafeName } from "@liaison/api-connector-core"
 import { listAdapterRows } from "~/apps/api-connector/store"
 import { rootLogger } from "~/lib/logger"
+import { CONNECTOR_APP } from "~/modules/agent/tools/tool-rank"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { isAppOffForOrg } from "~/modules/apps/org-apps"
 import { hasScope } from "~/modules/permissions/permissions"
 
 const log = rootLogger.child({ module: "connected-systems" })
 
-export const CONNECTOR_APP = "api-connector"
+export { CONNECTOR_APP }
+
 const READ_SCOPE = "api-connector:read"
 const WRITE_SCOPE = "api-connector:write"
 export const CONNECTOR_READ_TOOL = "connector_read"

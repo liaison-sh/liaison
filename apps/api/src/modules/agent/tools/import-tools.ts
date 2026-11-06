@@ -965,6 +965,7 @@ export function registerImportTools(orgId: string): void {
     deferLoading: true,
     description:
       "Dry-run a saved transform on the first batches or pages: counts per kind, refused records with where they came from, three samples per kind. Writes no record. Returns the previewId import_start takes.",
+    searchKeywords: ["importer", "aperçu", "csv"],
     requiredScopes: ["kernel:imports:run"],
     // The samples are the source's own text.
     taintSource: true,
@@ -979,6 +980,7 @@ export function registerImportTools(orgId: string): void {
     deferLoading: true,
     description:
       "Start the import a preview showed (gated: a person approves the counts). Runs in the background as the approver; refused above 5% preview errors. Its progress and report come from the import status tool.",
+    searchKeywords: ["importer", "csv", "excel", "migrer", "migration"],
     requiredScopes: ["kernel:imports:run"],
     trustBoundary: "user",
     gated: true,
@@ -1005,6 +1007,7 @@ export function registerImportTools(orgId: string): void {
     deferLoading: true,
     description:
       "An import run's status, counts per kind, refused records and report (a preview's too).",
+    searchKeywords: ["importer", "statut"],
     requiredScopes: ["kernel:imports:read"],
     readOnly: true,
     // Errors and the report quote the source's own values.
@@ -1032,6 +1035,7 @@ export function registerImportTools(orgId: string): void {
     deferLoading: true,
     description:
       "Undo a finished import (gated): deletes what it created. Rows changed after the import, or that gained replies or comments, are kept and listed.",
+    searchKeywords: ["importer", "annuler"],
     requiredScopes: ["kernel:imports:undo"],
     trustBoundary: "user",
     gated: true,

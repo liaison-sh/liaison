@@ -1668,6 +1668,7 @@ export async function registerSkillRoutineTools(orgId: string): Promise<void> {
     readOnly: true,
     description:
       "List every skill the caller can see, without bodies; call kernel__skill_read for one. Filter by source: personal, org or app. Each row carries its `id`, the handle kernel__update_skill and kernel__delete_skill take.",
+    searchKeywords: ["compétence", "compétences", "procédure"],
     requiredScopes: ["kernel:skills:read"],
     params: z.object({
       source: z.enum(["personal", "org", "app", "all"]).optional(),
@@ -1684,6 +1685,7 @@ export async function registerSkillRoutineTools(orgId: string): Promise<void> {
     deferLoading: true,
     description:
       "List routines with kind, schedule, enabled/status, last run and the routine's declared scope ceiling (`scopes[]`). visibility='mine' (default) returns your own routines, visibility='shared' returns the org shared ones. The result carries the audit and diagnosis notes for what it does and does not cover.",
+    searchKeywords: ["automatisations"],
     requiredScopes: ["kernel:routines:read"],
     params: z.object({ visibility: z.enum(["mine", "shared"]).optional() }),
     handler: handleListRoutines as unknown as (p: unknown, c: unknown) => Promise<unknown>,
@@ -1696,6 +1698,7 @@ export async function registerSkillRoutineTools(orgId: string): Promise<void> {
     deferLoading: true,
     description:
       "List the in-tree `app:entity:action` events a kind:'event' routine can subscribe to in this org. Call it before concluding a 'whenever X happens' request has no event and falling back to a polling cron; narrow with the optional `app` filter and `entity` substring.",
+    searchKeywords: ["historique", "log"],
     requiredScopes: ["kernel:routines:read"],
     params: z.object({ app: z.string().optional(), entity: z.string().optional() }),
     handler: handleListRoutineEvents as unknown as (p: unknown, c: unknown) => Promise<unknown>,
@@ -1741,6 +1744,7 @@ export async function registerSkillRoutineTools(orgId: string): Promise<void> {
     readOnly: true,
     description:
       "Read the user's own notification settings: which channels (in-app, desktop, phone push, email digest) each notification group uses, quiet hours, digest cadence, per-app rules, muted threads count, with a plain `summary` to quote. Use when the user asks what their settings are.",
+    searchKeywords: ["notification", "notifications", "préférences"],
     requiredScopes: ["kernel:agent:memory"],
     params: notificationsGetParams,
     handler: notifHandler(handleNotificationsGet),
@@ -1751,6 +1755,7 @@ export async function registerSkillRoutineTools(orgId: string): Promise<void> {
     deferLoading: true,
     description:
       "Change the user's own notification settings: switch a group's desktop, phone (push) or email cell on/off (e.g. do not notify me on my phone for tickets = group work, channel push, off), set quiet hours as the user says them (quietHours: from, to, allWeekend or allDayOn), time zone, digest cadence, how often you remind them of their requests waiting for a decision (approvalReminder: daily, every_3_days, weekly, off). Call it for EVERY change the user asks for, in that turn, and confirm only what its result says. Only for the user asking, in their live chat.",
+    searchKeywords: ["notification", "notifications", "préférences"],
     requiredScopes: ["kernel:agent:memory"],
     params: notificationsSetParams,
     handler: notifHandler(handleNotificationsSet),
@@ -1773,6 +1778,7 @@ export async function registerSkillRoutineTools(orgId: string): Promise<void> {
     deferLoading: true,
     description:
       "Mute or unmute one conversation thread for the user: replies there stop notifying (an @mention still does). Only for the user asking, in their live chat.",
+    searchKeywords: ["muet", "silence", "notifications"],
     requiredScopes: ["kernel:agent:memory"],
     params: threadMuteSetParams,
     handler: notifHandler(handleThreadMuteSet),
@@ -5268,6 +5274,7 @@ function registerAuthoringTools(orgId: string): void {
     deferLoading: true,
     description:
       "Create a personal or org shared SKILL: a reusable named playbook (reply macro, decision rule, tone guide) the agent later loads by name with kernel__skill_read and follows. Gated: it lands as a pending approval, never as an active skill. Read the catalog with kernel__list_skills first, since a skill that already covers the task is refused and must be updated instead.",
+    searchKeywords: ["compétence", "procédure", "playbook"],
     requiredScopes: ["kernel:skills:write"],
     trustBoundary: "user",
     gated: true,
@@ -5325,6 +5332,7 @@ function registerAuthoringTools(orgId: string): void {
     deferLoading: true,
     description:
       "Update a skill's name, description, body, requiredScopes, domain or autoAttach. `id` is the skill UUID from kernel__list_skills or kernel__skill_read. Gated: the edit lands as a pending approval, so report it as pending, never as already applied.",
+    searchKeywords: ["compétence", "modifier"],
     requiredScopes: ["kernel:skills:write"],
     trustBoundary: "user",
     gated: true,
@@ -5373,6 +5381,7 @@ function registerAuthoringTools(orgId: string): void {
     name: "delete_skill",
     deferLoading: true,
     description: "Permanently delete a personal or org-shared skill by id.",
+    searchKeywords: ["compétence", "supprimer"],
     requiredScopes: ["kernel:skills:write"],
     trustBoundary: "user",
     gated: true,
@@ -5435,6 +5444,26 @@ function registerAuthoringTools(orgId: string): void {
     deferLoading: true,
     description:
       "Author a routine: an agent task that runs unattended on one of three triggers, recurring (cron), scheduled (a one-off runAt) or event (an in-tree app:entity:action event). Pick the trigger from the user's phrasing, and read each parameter's own guidance before filling it in. Gated: it lands as a pending approval, so report it as drafted for approval, never as a live routine.",
+    searchKeywords: [
+      "routine",
+      "récurrente",
+      "récurrent",
+      "planifier",
+      "programmer",
+      "chaque",
+      "lundi",
+      "hebdo",
+      "hebdomadaire",
+      "quotidien",
+      "weekly",
+      "daily",
+      "every",
+      "schedule",
+      "scheduled",
+      "recurring",
+      "automatiser",
+      "automate",
+    ],
     requiredScopes: ["kernel:routines:write"],
     approveScope: "kernel:approve",
     trustBoundary: "user",
@@ -5486,6 +5515,7 @@ function registerAuthoringTools(orgId: string): void {
     deferLoading: true,
     description:
       "Modify a routine's schedule, prompt, scopes, or enable state. `scopes`, when sent, REPLACES the routine's scope list exactly (a prompt edit leaves the scopes as they are: nothing is added from the prompt). Before adding scopes, work out the tools the new step calls and look up their scopes with kernel__routine_tool_scopes, then call this tool with the new list: its approval card shows the change in plain words and approving it confirms the scopes. A scope the user does not hold is left out and filed as a scope request.",
+    searchKeywords: ["modifier", "suspendre", "pause", "edit"],
     requiredScopes: ["kernel:routines:write"],
     approveScope: "kernel:approve",
     trustBoundary: "user",
@@ -5510,6 +5540,7 @@ function registerAuthoringTools(orgId: string): void {
     name: "delete_routine",
     deferLoading: true,
     description: "Permanently delete a routine and its scheduler.",
+    searchKeywords: ["supprimer"],
     requiredScopes: ["kernel:routines:write"],
     approveScope: "kernel:approve",
     trustBoundary: "user",
@@ -5529,6 +5560,7 @@ function registerAuthoringTools(orgId: string): void {
     deferLoading: true,
     description:
       "Trigger one ad-hoc execution of a routine right now, outside its cron schedule. For a kind:'event' routine, pass event_data (and optionally event_entity_id) to simulate its own trigger event and target the run at a specific record.",
+    searchKeywords: ["lancer", "exécuter", "maintenant"],
     requiredScopes: ["kernel:routines:write"],
     approveScope: "kernel:approve",
     trustBoundary: "user",
@@ -5559,6 +5591,7 @@ function registerAuthoringTools(orgId: string): void {
     deferLoading: true,
     description:
       "List the org's auto-approve policies (tool + conditions + thresholds + limits). Read-only.",
+    searchKeywords: ["automatique", "approve", "auto"],
     requiredScopes: ["kernel:policies:read"],
     params: z.object({}),
     handler: handlePolicyGet as unknown as (p: unknown, c: any) => Promise<unknown>,
@@ -5569,6 +5602,7 @@ function registerAuthoringTools(orgId: string): void {
     deferLoading: true,
     description:
       "Create or update an AUTO-APPROVE policy for a gated tool: it LOOSENS a gate, letting the tool skip the human approver while your conditions and spend limits hold. It does NOT add, tighten, or impose an approval requirement, so it is the inverse of a 'refunds over 200 need a second approver' ask: use kernel__approval_policy_set for that, or kernel__capture_business_knowledge to record an operating rule. Admin authority, gated.",
+    searchKeywords: ["automatique", "autoriser", "approve", "loosen", "auto"],
     // Loosening a gate is an admin authority, like tightening one (owner ruling
     // 2026-09-28): kernel:policies:write alone no longer reaches this tool.
     requiredScopes: ["kernel:policies:admin"],
@@ -5589,6 +5623,7 @@ function registerAuthoringTools(orgId: string): void {
     deferLoading: true,
     description:
       "List the org's APPROVAL-TIGHTENING policies: which tools require approval or a second approver, and under what conditions. Read-only; use it to verify a policy you just set with kernel__approval_policy_set.",
+    searchKeywords: ["approbation", "règle"],
     requiredScopes: ["kernel:policies:read"],
     params: z.object({}),
     handler: handleApprovalPolicyGet as unknown as (p: unknown, c: any) => Promise<unknown>,
@@ -5599,6 +5634,15 @@ function registerAuthoringTools(orgId: string): void {
     deferLoading: true,
     description:
       "Configure an org APPROVAL-TIGHTENING policy: escalate a non-gated action to gated, and/or require N distinct approvers (minApprovers:2 = a second person must approve). The right tool for 'refunds over 200 EUR need a second approver'. TIGHTEN-ONLY, and the inverse of kernel__policy_set. Admin authority, gated.",
+    searchKeywords: [
+      "approbation",
+      "règle",
+      "exiger",
+      "require",
+      "tighten",
+      "deux",
+      "approbateurs",
+    ],
     requiredScopes: ["kernel:policies:admin"],
     approveScope: "kernel:approve",
     trustBoundary: "user",
@@ -5621,6 +5665,7 @@ function registerAuthoringTools(orgId: string): void {
     deferLoading: true,
     description:
       "Instantiate a routine template as one of your routines (runs with your scopes). Templates come from apps, and from the platform itself under appName 'kernel' (templateKey 'morning-brief': a weekday morning brief of overnight mail, drafts waiting for approval and tasks due, pushed to the person's phone).",
+    searchKeywords: ["modèle", "activer"],
     requiredScopes: ["kernel:routines:write"],
     approveScope: "kernel:approve",
     trustBoundary: "user",

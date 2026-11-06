@@ -346,6 +346,7 @@ export function registerConnectionTools(orgId: string): void {
       "mailbox",
       "gmail",
       "calendar",
+      "déconnecter",
     ],
     description:
       "Disconnect one connected account by its address (e.g. mail gmail ana@example.com): Liaison stops using it, revokes the grant, and DELETES what it imported from it (the provider keeps the original). The organization's connections take the connection's admin scope; a personal connection only its owner. Someone else's personal connection is refused: its owner disconnects it. When one address matches both an organization and a personal connection it refuses and lists both with their ids: ask which is meant and pass its id as account. GATED: it raises an approval naming that one connection; say what gets deleted and do not report it done until approved. To move an account between personal and organization, disconnect it, then connect it again the right way (kernel__connect_link_send for a member's own account).",

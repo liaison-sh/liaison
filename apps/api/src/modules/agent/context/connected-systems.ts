@@ -110,7 +110,7 @@ export function connectedSystemsBlock(systems: readonly ConnectedSystem[]): stri
   if (systems.length === 0) return null
   return [
     "## Connected business systems",
-    "The org's own systems, reached with the api-connector tools (connector_read; connector_write for a change). A note or change for one of their records (a company, contact, deal or order) is a connector_write there, never a Liaison ticket note or contact edit. A note asked for on a Liaison contact's page, with no system named, goes on that contact's discussion (kernel__threads_reply with contactId), whether or not the system answers.",
+    "The org's own systems, reached with the api-connector tools (connector_read; connector_write for a change). A note or change for one of their records (a company, contact, deal or order) is a connector_write there, never a Liaison ticket note or contact edit.",
     ...systems.map(connectedSystemLine),
   ].join("\n")
 }

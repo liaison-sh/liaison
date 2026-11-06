@@ -1472,7 +1472,7 @@ describe("invoicing manifest", () => {
     // 0.20.44: a credit note is never dated before the invoice it corrects, stated or moved.
     // 0.20.45: Preview and Download say why when a PDF cannot open, a pending PDF offers Retry render,
     // and the editor says beside the field when a chosen issue date would be refused.
-    // 0.20.46: drafts_create says a draft takes no date and where a stated one goes.
+    // 0.20.46: those notes reach a French reader in French.
     expect(m.version).toBe("0.20.46")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({

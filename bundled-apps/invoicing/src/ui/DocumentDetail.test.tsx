@@ -173,7 +173,7 @@ describe("DocumentDetail (Phase 17 F3)", () => {
   })
 
   it("a PDF that cannot open says so, instead of doing nothing", () => {
-    expect(source).toMatch(/if \(!res\?\.url\) \{\s*showActionNote\(\{ text: tr\(pdfNotReadyNote\(/)
+    expect(source).toMatch(/if \(!res\?\.url\) \{\s*showActionNote\(\{ text: pdfNotReadyNote\(/)
   })
 
   it("pdfStatusAffordance() respects the four declared states", () => {

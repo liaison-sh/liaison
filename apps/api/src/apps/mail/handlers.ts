@@ -2246,7 +2246,7 @@ async function appendInboundMessage(params: unknown, ctx: MailCtx): Promise<unkn
 }
 
 const LIST_ACCOUNTS_NOTE =
-  "Only the mailboxes this person can use. The organization may have others they cannot see, so an empty list never means it has no mailbox."
+  "Only what this person can use: the organization may have others."
 
 async function listAccounts(params: { includeDisconnected?: boolean }, ctx: MailCtx) {
   const allRows: AccountRow[] = JSON.parse(await ctx.db_findMany("accounts", JSON.stringify({})))

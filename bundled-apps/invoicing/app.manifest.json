@@ -2312,7 +2312,7 @@
     },
     "drafts_create": {
       "summarizer": "summarizeDraftCreate",
-      "description": "LEGACY, internal: create an unnumbered draft row. There is NO user facing draft document category any more. Do not use this to start an invoice (invoices come from paid orders or from converting a quote or proforma) or a quote (use quote_create_and_issue, which makes the Shopify draft order). Only a proforma or purchase order may still be prepared this way before proforma_issue / po_issue; prefer their create_and_issue tools. A draft takes no issue date: when the person states one, call proforma_create_and_issue or po_create_and_issue with `issued_at`, and never say a date cannot be set.",
+      "description": "LEGACY, internal: create an unnumbered draft row. There is NO user facing draft document category any more. Do not use this to start an invoice (invoices come from paid orders or from converting a quote or proforma) or a quote (use quote_create_and_issue, which makes the Shopify draft order). Only a proforma or purchase order may still be prepared this way before proforma_issue / po_issue; prefer their create_and_issue tools.",
       "searchKeywords": ["brouillon", "préparer", "nouvelle", "invoice", "document"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "draftsCreateHandler",

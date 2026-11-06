@@ -693,7 +693,7 @@ describe("mail agent handlers", () => {
       bridge,
     })) as { accounts: unknown[]; note: string }
     expect(listed.accounts).toEqual([])
-    expect(listed.note).toContain("never means it has no mailbox")
+    expect(listed.note).toContain("the organization may have others")
   })
 
   it("agentMailSearch returns conversations with documented projection", async () => {

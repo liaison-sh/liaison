@@ -551,7 +551,7 @@ describe("Mail Connections Scenario", () => {
       const accounts = res.body.data.accounts
       expect(accounts.length).toBeGreaterThanOrEqual(1)
       // What the agent reads with the list: a short list says nothing about the org.
-      expect(res.body.data.note).toContain("never means it has no mailbox")
+      expect(res.body.data.note).toContain("the organization may have others")
 
       for (const account of accounts) {
         expect(account.id).toBeDefined()

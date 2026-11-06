@@ -826,9 +826,11 @@ export function issueDateNotice(
   const today = issuer?.today
   if (!stated || !today || stated === today) return null
   if (d.type === "quote" && issuer?.shopify_shop_id) {
-    return "This issuer's quotes are made as Shopify draft orders and take the day the draft order is created. Clear this date, or pick an issuer with no shop."
+    return tr(
+      "This issuer's quotes are made as Shopify draft orders and take the day the draft order is created. Clear this date, or pick an issuer with no shop.",
+    )
   }
-  return stated > today ? "This date is after today, so it would be refused. Pick today or an earlier date." : null
+  return stated > today ? tr("This date is after today, so it would be refused. Pick today or an earlier date.") : null
 }
 
 export function defaultDraft(type: DocType = "invoice"): DraftDocument {
@@ -1503,7 +1505,7 @@ export const Editor: Component<EditorProps> = (props) => {
               <Show when={issueNotice()}>
                 {(notice) => (
                   <p data-testid="editor-issue-date-notice" class="mt-1 text-[11.5px] text-text-secondary">
-                    {tr(notice())}
+                    {notice()}
                   </p>
                 )}
               </Show>

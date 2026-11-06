@@ -759,7 +759,7 @@ export const appManifestJsonSchema = {
         type: "object",
         properties: {
           tool: { type: "string", minLength: 1 },
-          serviceMessage: { type: "string" },
+          serviceMessage: { type: "boolean" },
           pill: LABEL_SCHEMA,
         },
         required: ["tool"],

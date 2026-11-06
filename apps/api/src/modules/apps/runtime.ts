@@ -444,6 +444,9 @@ const sharedProjections = new WeakMap<object, SharedAppProjection>()
  */
 function buildManifestForBridge(desc: AppDescriptor, declaredCapabilities: string[]) {
   return {
+    ...((desc as any).sendGuardProviders
+      ? { sendGuardProviders: (desc as any).sendGuardProviders }
+      : {}),
     name: desc.name,
     schema: (desc as any).schema ?? {},
     events: (desc as any).events ?? {},

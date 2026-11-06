@@ -151,6 +151,8 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["log_warn", "sync"],
   ["mail_appendInboundMessage", "async"],
   ["mail_applyLabelDelta", "async"],
+  ["mail_buildSendGuard", "async"],
+  ["mail_checkSendGuard", "async"],
   ["mail_completeIngest", "async"],
   ["mail_conversion_markConverted", "async"],
   ["mail_conversion_readConversation", "async"],

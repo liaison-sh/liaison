@@ -702,6 +702,7 @@
       "kernel": "Accès complet à l'espace de travail",
       "kernel:users:admin": "Gérer les utilisateurs, les rôles et les invitations",
       "kernel:users:read": "Lire la liste des utilisateurs",
+      "kernel:portal:admin": "Voir et gérer les comptes de portail des clients",
       "kernel:org:admin": "Modifier les réglages de l'organisation",
       "kernel:threads:read": "Lire les discussions",
       "kernel:threads:write": "Écrire dans les discussions",

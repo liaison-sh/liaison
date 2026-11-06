@@ -702,6 +702,7 @@
       "kernel": "Full kernel access",
       "kernel:users:admin": "Manage users, roles, and invitations",
       "kernel:users:read": "Read user list",
+      "kernel:portal:admin": "See and manage clients' portal accounts",
       "kernel:org:admin": "Edit org settings",
       "kernel:threads:read": "Read threads",
       "kernel:threads:write": "Write threads",

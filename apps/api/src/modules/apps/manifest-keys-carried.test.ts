@@ -257,7 +257,7 @@ describe("manifest key shapes", () => {
           },
         ],
         sendGuardProviders: {
-          invoice: { tool: "guard", serviceMessage: "Check the invoice", pill: { label: "Check" } },
+          invoice: { tool: "guard", serviceMessage: true, pill: { label: "Check" } },
         },
         features: {
           budgets: {

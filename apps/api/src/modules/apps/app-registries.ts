@@ -76,6 +76,8 @@ export interface BridgeManifest {
    *  Phase-17+ app (invoicing, boxtal) that expects the K4 shape silently
    *  receives the legacy `{ data }` envelope and misreads every cross-app result. */
   cross_app_calls?: Array<{ target: string; reason: string }>
+  /** Per kind of record, the read-only tool that can stop a mail about it before it leaves. */
+  sendGuardProviders?: Record<string, { tool: string; serviceMessage?: boolean }>
 }
 
 // Track registered orgId:appName to prevent duplicate registration

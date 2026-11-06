@@ -42,6 +42,7 @@ Scopes are hierarchical capability strings, `app:resource:action`. Granting `app
 | `kernel:policies:admin` | Configure the org's approval policies, an admin authority: APPROVAL-TIGHTENING ones via approval_policy_set (require approval / N-eyes per tool + condition) and AUTO-APPROVE (loosening) ones via policy_set |
 | `kernel:policies:read` | Read the org's auto-approve (loosening) and approval-tightening policies |
 | `kernel:policies:write` | Read the org's auto-approve (loosening) policies; setting them (policy_set) requires kernel:policies:admin |
+| `kernel:portal:admin` | See and manage clients' portal accounts |
 | `kernel:products:read` | Read product attributes (short codes) |
 | `kernel:products:write` | Write product attributes (short codes) |
 | `kernel:roles:admin` | Create and edit roles |

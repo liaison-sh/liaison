@@ -261,7 +261,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_APP_CATALOG_DIR` | `apps/api/src/modules/apps/catalog.ts:75`, `apps/api/src/modules/permissions/scope-registry.ts:81` |
 | `LIAISON_APP_PRIVATE_HOSTS` | `apps/api/src/modules/apps/sandbox/bridge/shared.ts:193` |
 | `LIAISON_BUNDLED_APPS_FROM_SOURCE` | `apps/api/src/modules/apps/sandbox/bundle-loader.ts:25` |
-| `LIAISON_CLI_OPERATOR` | `apps/api/src/cli/agent/ask.ts:168` |
+| `LIAISON_CLI_OPERATOR` | `apps/api/src/cli/agent/ask.ts:172` |
 | `LIAISON_DATABASE_ADAPTER` | `apps/api/src/apps/database/bridge.ts:1198` |
 | `LIAISON_DATABASE_ADAPTER_PATH` | `apps/api/src/apps/database/bridge.ts:1196` |
 | `LIAISON_DATABASE_ALLOW_RAW_QUERY` | `apps/api/src/apps/database/bridge.ts:1075` |

@@ -341,6 +341,25 @@ export const toolRegistry = createTypedRegistry<
      *  when it answers true for these params (analyze_media taints only for a file that came from
      *  outside the org). A throw counts as true (fail closed). Not settable from a manifest. */
     taintSourceWhen?: (params: unknown, ctx: { orgId: string }) => Promise<boolean>
+    /** The manifest's `taintSourceWhen`: a field of a row the tool read and the value that makes
+     *  that row outside text. Carried here; the function above stays host-only. */
+    taintSourceWhenRow?: { field: string; equals: string | number | boolean }
+    /** Manifest `approvalCard`: the summary template and the `pill` shown on the card. */
+    approvalCard?: { summary?: string; pill?: { label: string; labelKey?: string } }
+    /** Manifest `resultCard`: how the tool's result is drawn as a card. */
+    resultCard?: Record<string, unknown>
+    /** Manifest `runningLabel` / `runningLabelKey`: the line shown while the tool runs. */
+    runningLabel?: string
+    runningLabelKey?: string
+    /** A call chaining `@ref` tokens to a tool with `pinnedParams` stages unpinned. */
+    pinnedOptionalOnRefs?: boolean
+    /** Manifest `feature`: the app feature this tool belongs to. */
+    feature?: string
+    /** Manifest `focusCore`: `true` loads the tool on its app's hard focus, a string only when the
+     *  focus verified that entity type. */
+    focusCore?: boolean | string
+    /** On a hidden tool: the visible tool of the same app to use instead. */
+    useInstead?: string
     /** The tool has an external side effect or an exfiltration channel. An ungated call after
      *  the turn read untrusted text parks as an approval (taint_escalation). */
     externalEffect?: boolean

@@ -3081,6 +3081,42 @@ async function registerSingleApp(
             if (tool.noAutoApprove === true) entry.noAutoApprove = true
             // Pinned params: dropped from a caller's call, set only by the preflight.
             if (Array.isArray(tool.pinnedParams)) entry.pinnedParams = tool.pinnedParams
+            // A call chaining `@ref` tokens to a tool with pinned params stages unpinned (read by
+            // execute-tool.ts); the pinned-drop above still applies.
+            if (tool.pinnedOptionalOnRefs === true) entry.pinnedOptionalOnRefs = true
+            if (tool.approvalCard !== null && typeof tool.approvalCard === "object") {
+              entry.approvalCard = tool.approvalCard
+            }
+            // Declarations the card, roll-up, feature gate, focus budget, taint and hidden-tool
+            // redirect readers take off the entry. Each one must be copied here or it reads
+            // undefined, whatever the manifest says (see the note above `decideInContext`).
+            if (tool.resultCard !== null && typeof tool.resultCard === "object") {
+              entry.resultCard = tool.resultCard
+            }
+            if (typeof tool.runningLabel === "string") entry.runningLabel = tool.runningLabel
+            if (typeof tool.runningLabelKey === "string") {
+              entry.runningLabelKey = tool.runningLabelKey
+            }
+            if (typeof tool.feature === "string") entry.feature = tool.feature
+            if (tool.focusCore === true || typeof tool.focusCore === "string") {
+              entry.focusCore = tool.focusCore
+            }
+            if (typeof tool.useInstead === "string") entry.useInstead = tool.useInstead
+            // The manifest's row condition. It lands beside, not on, the host-only
+            // `taintSourceWhen` function that taint.ts calls.
+            if (tool.taintSourceWhen !== null && typeof tool.taintSourceWhen === "object") {
+              entry.taintSourceWhenRow = tool.taintSourceWhen
+            }
+            // What a tool writes is read only by the person writing it: it narrows a scope-taint
+            // refusal, so it is a claim vouched for like readOnly, never on a manifest's own say.
+            if (
+              desc.trusted !== false ||
+              desc._firstParty === true ||
+              desc._publisherSigned === true
+            ) {
+              if (tool.sinkReadersSelf === true) entry.sinkReadersSelf = true
+              if (Array.isArray(tool.contentParams)) entry.contentParams = tool.contentParams
+            }
             // Outbound text params: a placeholder there is refused before any gate (execute-tool.ts).
             if (Array.isArray(tool.outboundTextParams)) {
               entry.outboundTextParams = tool.outboundTextParams
@@ -4086,6 +4122,7 @@ async function registerSingleApp(
                   searchable: e.searchable,
                   cardComponent: e.cardComponent,
                   readScope: e.readScope,
+                  discussion: e.discussion,
                 },
               ]),
             )

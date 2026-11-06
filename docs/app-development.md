@@ -334,6 +334,44 @@ no tokens. Accents do not matter: `clôturer` also answers to `cloturer`.
 
 ---
 
+### More tool and app keys
+
+The manifest accepts these keys. Each is checked for its shape when the app registers. A few
+are read by nothing yet; declaring one is safe, and it takes effect where its reader lands.
+
+Keys on a tool:
+
+| Key | Value | What it says |
+|---|---|---|
+| `resultCard` | object | How the tool's result is drawn as a card in chat |
+| `runningLabel`, `runningLabelKey` | string | The line shown while the tool runs, and its catalog key |
+| `pinnedOptionalOnRefs` | boolean | A call that chains `@ref` tokens stages without the pinned value; needs `pinnedParams` |
+| `approvalCard.pill` | `{label, labelKey?}` | A short tag on the approval card |
+| `feature` | string | A feature the app declares under `features` |
+| `focusCore` | `true` or an entity type | The tool is loaded when the app has the focus, or when that entity is in focus |
+| `taintSourceWhen` | `{field, equals}` | Narrows `taintSource` to the rows whose field has that value |
+| `useInstead` | string | On a hidden tool (`agentVisible: false`): the visible tool of the same app to use |
+| `sinkReadersSelf`, `contentParams` | boolean, string list | First-party apps only: what the tool writes is read only by the person writing it |
+
+Keys on the app:
+
+| Key | Value | What it says |
+|---|---|---|
+| `contextProviders` | list of `{on, tool, scope, loadTools?}` | Tools that add a short block about the entity in view to the agent's context |
+| `sendGuardProviders` | `{<kind>: {tool, serviceMessage?, pill?}}` | A read-only tool that can stop an outbound message of that kind |
+| `features` | `{<name>: {adminScope, labelKey, offMessageKey?, offNextKey?}}` | Features an org can switch off |
+| `outsideTextFields` | string list | Fields a person outside the org can set |
+| `approvalRoute` | `{<entityType>: <tool>}` | The read-only tool that says who an approval for that entity is for |
+| `entities.<type>.discussion` | boolean | One conversation per row; needs a `labelField` and a page |
+| `attention.groupLabel` | `{label, labelKey?}` | The heading over the app's attention items |
+| `attention.translations[].label`, `labelKey` | string | The words for an item |
+| `attentionItems.passesOn` | boolean | The provider's items may be passed on |
+| `routines.<name>.followUp` | boolean | The routine is a follow-up routine |
+| `slots.<key>.panels`, `.actions` | list | What an app adds to a slot: each takes `id`, `label`, `component`, `visibility_scope`, `order`, `group`, `feature` |
+
+A slot key takes `position` (the host declaring the slot) or `panels` / `actions` (an app
+contributing to it); a key with none of them is refused.
+
 ## 5. Writing a panel
 
 `Panel.tsx` is a SolidJS leaf component. Keep state in a small store

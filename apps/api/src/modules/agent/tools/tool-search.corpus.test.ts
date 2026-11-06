@@ -15,7 +15,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
-import { sql } from "~/db"
 import { isDeferredTool } from "~/modules/agent/tools/tool-bridge"
 import { rankDeferredTools } from "~/modules/agent/tools/tool-rank"
 import {
@@ -24,10 +23,9 @@ import {
   toolRegistry,
 } from "~/modules/apps/app-registries"
 import { ensureAppsForOrg } from "~/modules/apps/init"
-import { orgSetupStamp } from "~/modules/apps/setup-stamp"
+import { createTestOrg } from "~/tests/helpers/org"
 import corpus from "./tool-bench/corpus.json"
 
-const ORG_ID = "00000000-0000-0000-0000-000000db0002"
 const BUNDLED_APPS = join(import.meta.dir, "../../../../../../bundled-apps")
 const LEFT_OUT_APPS = new Set(["example", "contacts"])
 const ACCENT = /[àâäéèêëîïôöùûüçœæ]/i
@@ -103,13 +101,14 @@ function bundledTools(): CatalogTool[] {
   return out
 }
 
+let ORG_ID = ""
+
 describe("a tool is found by what people say", () => {
   let catalog: CatalogTool[] = []
   let appNames = new Set<string>()
 
   beforeAll(async () => {
-    orgSetupStamp.enabled = false
-    await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${ORG_ID}, 'ToolBenchOrg', 'tool-bench-org') ON CONFLICT (id) DO NOTHING`
+    ORG_ID = (await createTestOrg()).id
     await ensureAppsForOrg(ORG_ID)
     const { registerKernelAgentTools } = await import("./kernel-tools")
     await registerKernelAgentTools(ORG_ID)
@@ -118,14 +117,10 @@ describe("a tool is found by what people say", () => {
     appNames.delete("kernel")
   })
 
-  afterAll(async () => {
+  afterAll(() => {
     toolRegistry.deleteByPrefix([ORG_ID])
     skillRegistry.deleteByPrefix([ORG_ID])
     agentInstructionsRegistry.deleteByPrefix([ORG_ID])
-    await sql`DELETE FROM kernel.role_scope_grants WHERE role_id IN (SELECT id FROM kernel.roles WHERE org_id = ${ORG_ID})`
-    await sql`DELETE FROM kernel.user_roles WHERE org_id = ${ORG_ID}`
-    await sql`DELETE FROM kernel.roles WHERE org_id = ${ORG_ID}`
-    orgSetupStamp.enabled = true
   })
 
   /** Forms in the top 5 and the ones that are not, for the lines picked. */

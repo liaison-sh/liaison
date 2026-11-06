@@ -3,6 +3,7 @@ import { z } from "zod"
 import { runsForErrors } from "~/infra/jobs/fanout-runs-for"
 import { pinnedOverlap } from "~/modules/apps/pinned-params"
 import { validateProviderContracts } from "~/modules/apps/provider-contracts/validate"
+import { resultCardErrors } from "~/modules/apps/result-card-schema"
 
 const SEMVER_REGEX = /^\d+\.\d+\.\d+(-[\w.]+)?(\+[\w.]+)?$/
 const NAME_REGEX = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/
@@ -946,6 +947,7 @@ export function validateAppManifest(manifest: any): ValidationResult {
   errors.push(...oauthManifestKnobErrors(manifest))
   errors.push(...listingDeclarationErrors(manifest))
   errors.push(...appIconErrors(manifest))
+  errors.push(...resultCardErrors(manifest))
   errors.push(
     ...importDeclarationErrors(
       manifest.import,

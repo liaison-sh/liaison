@@ -158,7 +158,9 @@ describe("a name that is no tool the turn holds", () => {
       fixedToolList: { listed: new Set(["kernel__call_tool"]), isLoaded: () => true },
     } as unknown as RunContext
     const error = await runContextStore
-      .run(frame, () => handleCallTool({ name: "mail__getSyncStatus", arguments: {} }, { orgId: "o" }))
+      .run(frame, () =>
+        handleCallTool({ name: "mail__getSyncStatus", arguments: {} }, { orgId: "o" }),
+      )
       .then(
         () => null,
         (e: Error) => e.message,

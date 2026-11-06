@@ -50,7 +50,7 @@ import {
   checkEinvoiceGate,
   einvoiceParamsError,
 } from "../einvoicing/issue-gate"
-import { issueDateParts } from "../issue-date"
+import { type IssueDateParts, issueDateParts } from "../issue-date"
 import { issueWithFxRate } from "./fx-issue"
 
 /** What the issue step needs to know of the original invoice: id, stored regime, transmission
@@ -65,33 +65,60 @@ function originalRefOf(original: DocumentRowSummary): NonNullable<IssueInput["or
   }
 }
 
+function isCalendarDate(date: string): boolean {
+  const parsed = new Date(`${date}T00:00:00Z`)
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date
+}
+
+function dateRefused(code: string, message: string): { ok: false; error: ErrorEnvelope } {
+  return { ok: false, error: { status: "error", error: { code, message } } }
+}
+
 /**
- * A credit note may keep the date its caller states, but numbers and dates run together in a
- * series: a date before the last number of the series is refused, before a number is taken.
+ * The date and number year of a credit note. It may keep the date its caller states, and that date
+ * decides both, since a number and its date belong to one year: a stated date in a past year takes
+ * that year's series, never the current year's number. Numbers and dates also run together in a
+ * series, so a date before the series' last number is refused before a number is taken. So is a
+ * date after today: no number issued today can follow it, and every default date would precede it.
  */
-async function checkDateFollowsSeries(
-  db: MutationsCtx["db"],
-  issuerId: string,
-  yearOfIssue: number,
-  issuedAt: string,
-): Promise<ErrorEnvelope | null> {
-  const [last] = (await db.findMany("documents", {
-    where: { issuer_profile_id: issuerId, type: "credit_note", year_of_issue: yearOfIssue },
+async function creditNoteIssueDate(
+  ctx: MutationsCtx,
+  issuer: { id: string; timezone?: string | null },
+  stated: string | null | undefined,
+): Promise<({ ok: true } & IssueDateParts) | { ok: false; error: ErrorEnvelope }> {
+  const today = await issueDateParts(ctx, issuer)
+  if (!today.ok || stated == null || stated === "") return today
+  const date = dateOnly(stated)
+  if (!date || !isCalendarDate(date)) {
+    return dateRefused(
+      "issued_at_invalid",
+      `issued_at ${JSON.stringify(stated)} is not a date, so nothing was issued and no number was used. ` +
+        "Pass YYYY-MM-DD, or omit issued_at to use today.",
+    )
+  }
+  if (date > today.issued_at) {
+    return dateRefused(
+      "issue_date_in_future",
+      `issued_at ${date} is after today (${today.issued_at} in the issuer's time zone), so nothing was issued ` +
+        "and no number was used. Pass today or an earlier date, or omit issued_at to use today.",
+    )
+  }
+  const year = Number(date.slice(0, 4))
+  const [last] = (await ctx.db.findMany("documents", {
+    where: { issuer_profile_id: issuer.id, type: "credit_note", year_of_issue: year },
     orderBy: { number_int: "desc" },
     limit: 1,
   })) as Array<Record<string, unknown>>
   const lastDate = dateOnly(last?.issued_at)
-  if (!lastDate || issuedAt >= lastDate) return null
-  return {
-    status: "error",
-    error: {
-      code: "issued_at_before_series",
-      message:
-        `issued_at ${issuedAt} is before ${String(last?.number ?? "the last credit note")} (${lastDate}), the last ` +
-        "number in this series, so nothing was issued and no number was used. Pass that date or a later one, " +
+  if (lastDate && date < lastDate) {
+    return dateRefused(
+      "issue_date_before_last_number",
+      `issued_at ${date} is before ${String(last?.number ?? "the last credit note")} (${lastDate}), the last number ` +
+        `of the ${year} series, so nothing was issued and no number was used. Pass that date or a later one, ` +
         "or omit issued_at to use today.",
-    },
+    )
   }
+  return { ok: true, year_of_issue: year, issued_at: date }
 }
 
 /** Options for in-process callers of `creditNoteCreateAndIssue` (never on the wire). */
@@ -177,6 +204,7 @@ interface CreditNoteCreatePrepared {
   currency: string
   total: bigint
   absTotal: bigint
+  when: IssueDateParts
   original: {
     number: string | null
     issuedAt: string | null
@@ -363,6 +391,9 @@ async function preflightCreditNoteCreateAndIssueParams(
   })
   if (!gate.ok) return { ok: false, error: gate.error }
 
+  const when = await creditNoteIssueDate(ctx, issuer, input.issued_at)
+  if (!when.ok) return when
+
   return {
     ok: true,
     prepared: {
@@ -373,6 +404,7 @@ async function preflightCreditNoteCreateAndIssueParams(
       currency,
       total,
       absTotal,
+      when,
       original: {
         number: originalNumber,
         issuedAt: originalIssuedAt,
@@ -407,7 +439,7 @@ export async function creditNoteCreateAndIssue(
 ): Promise<MutationResult<{ document_id: string; number: string; einvoicing_warning?: EinvoicingWarning }>> {
   const pre = await preflightCreditNoteCreateAndIssueParams(ctx, rawInputIn, opts)
   if (!pre.ok) return pre.error
-  const { rawInput, input, notes, issuer, currency, total, absTotal } = pre.prepared
+  const { rawInput, input, notes, issuer, currency, total, absTotal, when } = pre.prepared
   const originalNumber = pre.prepared.original.number
   const originalIssuedAt = pre.prepared.original.issuedAt
   const originalRef = pre.prepared.original.ref
@@ -474,14 +506,6 @@ export async function creditNoteCreateAndIssue(
   // `notes.value === undefined` means the caller said nothing; an explicit null clears it.
   const effectiveNotes = notes.value === undefined ? originalNotes : notes.value
 
-  const when = await issueDateParts(ctx, issuer)
-  if (!when.ok) return when.error
-  const explicitDate = dateOnly(input.issued_at)
-  if (explicitDate) {
-    const refused = await checkDateFollowsSeries(ctx.db, issuer.id, when.year_of_issue, explicitDate)
-    if (refused) return refused
-  }
-
   const issueInput = {
     type: "credit_note" as const,
     issuer,
@@ -490,7 +514,7 @@ export async function creditNoteCreateAndIssue(
       currency,
       incoterm: input.incoterm ?? "DAP",
       year_of_issue: when.year_of_issue,
-      issued_at: input.issued_at ?? when.issued_at,
+      issued_at: when.issued_at,
       due_at: null as string | null,
       external_refs: externalRefs,
       notes: effectiveNotes ?? null,

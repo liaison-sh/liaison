@@ -1454,10 +1454,13 @@ describe("invoicing manifest", () => {
     // fragment of a person's name), its message and the guide require a solid link between the
     // company and the customer before a found VAT number is used, and the buyer_vat_id_required
     // refusal names the company of the matched Shopify order's earlier invoice (no placeholder).
+    // 0.20.37: a credit note's stated date decides its number year, and is never after today; paid
+    // dates and the editor's default date read the issuer's date; a draft order's quote refused for
+    // its zone waits with its arguments.
     // 0.20.33: issue dates and number years in the issuer's time zone, through ctx.time.civil.
     // 0.20.31: the drafts tools that park an approval declare its summary.
     // 0.20.30: the document and editor actions sit at the top of the panel, clear of the chat dock.
-    expect(m.version).toBe("0.20.36")
+    expect(m.version).toBe("0.20.37")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

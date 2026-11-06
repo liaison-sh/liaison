@@ -23,6 +23,7 @@ import {
   deferredRetryJob,
   type DeferredRetryResult,
 } from "./deferred-retry"
+import { isParkedDraftOrderQuote, retryParkedDraftOrderQuote } from "./shopify-draft-order"
 import {
   findIssuerByShopId,
   onShopifyOrderPaid,
@@ -159,6 +160,12 @@ export async function deferredRetryJobHandler(
     // that credit note alone, never the refund or cancellation handler (see parked-credit-note.ts).
     if (isParkedCreditNote(row.event_payload_json)) {
       return retryParkedCreditNote(ctx, row)
+    }
+
+    // A Shopify draft order's quote that waited for its issuer's time zone: make that quote, never
+    // the order handler (a draft order is not an order).
+    if (isParkedDraftOrderQuote(row.event_payload_json)) {
+      return retryParkedDraftOrderQuote(ctx, row)
     }
 
     // PDF render failure: invoice + lines are persisted, only the PDF is missing.

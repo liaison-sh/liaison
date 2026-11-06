@@ -445,9 +445,202 @@ describe("issue date and number year (real Postgres, sandbox, bridge)", () => {
       issued_at: "2027-01-04",
       items: negative,
     })
-    expect(JSON.stringify(before)).toContain("issued_at_before_series")
+    expect(JSON.stringify(before)).toContain("issue_date_before_last_number")
     const rows =
       await sql`SELECT id FROM app_invoicing.documents WHERE org_id = ${ORG} AND issuer_profile_id = ${issuer}`
     expect(rows.length).toBe(2)
+  }, 60_000)
+
+  describe("a credit note's stated date and its number agree", () => {
+    const creditNote = (issuer: string, issued_at?: string) =>
+      tool("credit_note_create_and_issue", {
+        counterparty: buyer,
+        issuer_profile_id: issuer,
+        currency: "EUR",
+        operation_category: "services",
+        ...(issued_at ? { issued_at } : {}),
+        items: [
+          {
+            description: "Reversal",
+            quantity: "1",
+            unit_price_minor: -10000,
+            line_kind: "software",
+          },
+        ],
+      })
+    const issued = async (res: ToolResult) => {
+      const id = documentId(res)
+      return { ...(await doc(id)), date: await storedDate(id) }
+    }
+    const series = async (issuer: string) =>
+      sql<Array<{ key: string; value: string }>>`
+        SELECT key, value::text FROM kernel.app_sequences
+        WHERE org_id = ${ORG} AND key LIKE ${`invoicing:doc_number:${issuer}:%`} ORDER BY key`
+
+    it("a past year's date takes that year's series, and the current series goes on", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      setSystemTime(new Date("2027-02-10T10:00:00Z"))
+      const first = await issued(await creditNote(issuer))
+      expect(first).toMatchObject({ date: "2027-02-10", year_of_issue: 2027 })
+
+      const past = await issued(await creditNote(issuer, "2026-12-20"))
+      expect(past).toMatchObject({ date: "2026-12-20", year_of_issue: 2026 })
+      expect(past.number).toContain("2026")
+      expect(past.number).not.toContain("2027")
+      const text = await extractPdfText(await getFileBytes(null, String(past.pdf_file_id)))
+      expect(text).toContain(past.number)
+      expect(text).toMatch(
+        /(2026-12-20|20\/12\/2026|20 December 2026|December 20, 2026|20 Dec 2026)/,
+      )
+
+      const next = await issued(await creditNote(issuer))
+      expect(next.year_of_issue).toBe(2027)
+      expect(next.number).toContain("2027")
+      expect(next.number).not.toBe(first.number)
+      expect((await series(issuer)).map((r) => [r.key.split(":").at(-1), r.value])).toEqual([
+        ["2026", "1"],
+        ["2027", "2"],
+      ])
+    }, 60_000)
+
+    it("a date before the last number of that year is refused, and no number is taken", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      setSystemTime(new Date("2027-02-10T10:00:00Z"))
+      await issued(await creditNote(issuer, "2026-12-20"))
+      const before = await series(issuer)
+
+      const refused = await creditNote(issuer, "2026-12-19")
+      expect(JSON.stringify(refused)).toContain("issue_date_before_last_number")
+      expect(await series(issuer)).toEqual(before)
+
+      // The same day as the last number follows it.
+      expect(await issued(await creditNote(issuer, "2026-12-20"))).toMatchObject({
+        date: "2026-12-20",
+        year_of_issue: 2026,
+      })
+      // An earlier year has its own series: nothing in it precedes this date.
+      expect(await issued(await creditNote(issuer, "2025-06-01"))).toMatchObject({
+        date: "2025-06-01",
+        year_of_issue: 2025,
+      })
+    }, 60_000)
+
+    it("23:59 on 31 December in Paris: 2026, and 1 January has not come yet", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      setSystemTime(new Date("2026-12-31T22:59:00Z"))
+      expect(await issued(await creditNote(issuer))).toMatchObject({
+        date: "2026-12-31",
+        year_of_issue: 2026,
+      })
+      expect(await issued(await creditNote(issuer, "2026-12-31"))).toMatchObject({
+        date: "2026-12-31",
+        year_of_issue: 2026,
+      })
+      const before = await series(issuer)
+      expect(JSON.stringify(await creditNote(issuer, "2027-01-01"))).toContain(
+        "issue_date_in_future",
+      )
+      expect(await series(issuer)).toEqual(before)
+    }, 60_000)
+
+    it("00:20 on 1 January in Paris: 31 December stays 2026, today and 1 January are 2027", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      setSystemTime(new Date("2026-12-31T23:20:00Z"))
+      const lastYear = await issued(await creditNote(issuer, "2026-12-31"))
+      expect(lastYear).toMatchObject({ date: "2026-12-31", year_of_issue: 2026 })
+      expect(lastYear.number).toContain("2026")
+      const today = await issued(await creditNote(issuer))
+      expect(today).toMatchObject({ date: "2027-01-01", year_of_issue: 2027 })
+      expect(today.number).toContain("2027")
+      const stated = await issued(await creditNote(issuer, "2027-01-01"))
+      expect(stated).toMatchObject({ date: "2027-01-01", year_of_issue: 2027 })
+      expect(stated.number).toContain("2027")
+      expect(JSON.stringify(await creditNote(issuer, "2026-12-30"))).toContain(
+        "issue_date_before_last_number",
+      )
+    }, 60_000)
+
+    it("the same instant on UTC is still 31 December", async () => {
+      const issuer = await issuerAt("Etc/UTC")
+      setSystemTime(new Date("2026-12-31T23:20:00Z"))
+      expect(await issued(await creditNote(issuer))).toMatchObject({
+        date: "2026-12-31",
+        year_of_issue: 2026,
+      })
+      expect(JSON.stringify(await creditNote(issuer, "2027-01-01"))).toContain(
+        "issue_date_in_future",
+      )
+    }, 60_000)
+
+    it("a stated date that is no real date is refused, and no number is taken", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      setSystemTime(new Date("2027-02-10T10:00:00Z"))
+      for (const bad of ["2026-02-30", "31/12/2026", "soon"]) {
+        expect(JSON.stringify(await creditNote(issuer, bad))).toContain("issued_at_invalid")
+      }
+      expect((await series(issuer)).length).toBe(0)
+    }, 60_000)
+  })
+
+  describe("a paid date nobody stated reads the issuer's date", () => {
+    const paidAt = async (id: string) => {
+      const [row] = await sql<Array<{ d: string | null; payment_status: string }>>`
+        SELECT to_char(paid_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS d, payment_status
+        FROM app_invoicing.documents WHERE id = ${id}`
+      return row
+    }
+
+    it("00:20 on 1 January in Paris reads 1 January; UTC reads 31 December", async () => {
+      const paris = await issuerAt("Europe/Paris")
+      const utc = await issuerAt("Etc/UTC")
+      setSystemTime(new Date("2026-12-20T10:00:00Z"))
+      const inParis = await invoiceOf(paris)
+      const inUtc = await invoiceOf(utc)
+
+      setSystemTime(new Date("2026-12-31T23:20:00Z"))
+      expect((await tool("documents_mark_paid", { document_id: inParis.id })).data?.status).toBe(
+        "completed",
+      )
+      expect(await paidAt(inParis.id)).toEqual({ d: "2027-01-01", payment_status: "paid" })
+      expect((await tool("documents_mark_paid", { document_id: inUtc.id })).data?.status).toBe(
+        "completed",
+      )
+      expect(await paidAt(inUtc.id)).toEqual({ d: "2026-12-31", payment_status: "paid" })
+    }, 60_000)
+
+    it("a stated date stays as stated, whatever the zone", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      setSystemTime(new Date("2026-12-20T10:00:00Z"))
+      const invoice = await invoiceOf(issuer)
+      await sql`UPDATE app_invoicing.issuer_profiles SET timezone = 'Europe/Atlantis' WHERE id = ${issuer}`
+      await tool("documents_mark_paid", { document_id: invoice.id, paid_date: "2026-12-22" })
+      expect(await paidAt(invoice.id)).toEqual({ d: "2026-12-22", payment_status: "paid" })
+    }, 60_000)
+
+    it("an unknown zone with no stated date refuses, and the document stays unpaid", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      setSystemTime(new Date("2026-12-20T10:00:00Z"))
+      const invoice = await invoiceOf(issuer)
+      await sql`UPDATE app_invoicing.issuer_profiles SET timezone = 'Europe/Atlantis' WHERE id = ${issuer}`
+      const res = await tool("documents_mark_paid", { document_id: invoice.id })
+      expect(JSON.stringify(res)).toContain("issuer_timezone_invalid")
+      expect(await paidAt(invoice.id)).toEqual({ d: null, payment_status: "unpaid" })
+    }, 60_000)
+  })
+
+  it("the issuer list states each issuer's today, for the editor's default date", async () => {
+    const paris = await issuerAt("Europe/Paris")
+    const utc = await issuerAt("Etc/UTC")
+    const unset = await issuerAt(null)
+    const broken = await issuerAt("Europe/Atlantis")
+    await setOrgZone("Europe/Paris")
+    setSystemTime(new Date("2026-12-31T23:20:00Z"))
+    const res = await tool("settings_issuer_profile_list", {})
+    const items = (res.data?.items ?? []) as Array<{ id: string; today?: string | null }>
+    const today = (id: string) => items.find((i) => i.id === id)?.today
+    expect(today(paris)).toBe("2027-01-01")
+    expect(today(utc)).toBe("2026-12-31")
+    expect(today(unset)).toBe("2027-01-01")
+    expect(today(broken)).toBeNull()
   }, 60_000)
 })

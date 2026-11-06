@@ -151,6 +151,28 @@ describe("a loaded tool's schema and an argument error", () => {
   })
 })
 
+describe("a name that is no tool the turn holds", () => {
+  it("points at a search by job, not at selecting the name, and keeps the log marker", async () => {
+    const frame = {
+      turnToolNames: new Set(["kernel__call_tool", "knowledge__get"]),
+      fixedToolList: { listed: new Set(["kernel__call_tool"]), isLoaded: () => true },
+    } as unknown as RunContext
+    const error = await runContextStore
+      .run(frame, () =>
+        handleCallTool({ name: "mail__getSyncStatus", arguments: {} }, { orgId: "o" }),
+      )
+      .then(
+        () => null,
+        (e: Error) => e.message,
+      )
+    expect(error).toContain('No tool named "mail__getSyncStatus" is available to you')
+    expect(error).toContain("renamed or replaced")
+    expect(error).toContain("describe the job in words with kernel__tool_search")
+    expect(error).toContain('"select:<exact name>" only works for a name that search has returned')
+    expect(error).not.toContain("Did you mean")
+  })
+})
+
 describe("a tool loaded on speculation is listed by name until the model asks for it", () => {
   const schemaOf = (props: Record<string, unknown>, required: string[]) =>
     jsonSchema({ type: "object", properties: props, required })

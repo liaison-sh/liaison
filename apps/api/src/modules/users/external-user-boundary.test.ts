@@ -6,9 +6,25 @@
 // real roles on the real request login; a privileged test sees past both.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
+import { app } from "~/app"
 import { extractRows, type RlsClient, sql } from "~/db"
 import { type PortalClient, withPortalContext } from "~/db/portal-rls"
+import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
+import { mcpConnections } from "~/db/schema/app_mcp_manager"
+import { env } from "~/lib/env"
+import { signAccessToken } from "~/modules/auth/jwt"
+import { countSeats } from "~/modules/org/caps"
+import {
+  eligibleApprovers,
+  eligibleApproversWithDimension,
+  everyMemberScopeFragment,
+} from "~/modules/permissions/eligible-approvers"
+import { KERNEL_EVERY_MEMBER_SCOPES } from "~/modules/permissions/every-member-scopes"
+import { everyMemberScopeGrants, mcpServerAccessGrants } from "~/modules/permissions/permissions"
+import { KERNEL_SCOPES } from "~/modules/permissions/scope-catalog"
+import { createExternalUser } from "~/modules/users/external-user"
+import { listUsers } from "~/modules/users/service"
 import { insertSql } from "~/seed/factories/org/test-rows"
 
 const ORG_ID = crypto.randomUUID()
@@ -98,6 +114,8 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
+  await sql`DELETE FROM app_mcp_manager.mcp_connections WHERE org_id = ${ORG_ID}`
+  await sql`DELETE FROM kernel.user_scope_grants WHERE org_id = ${ORG_ID}`
   await sql`DELETE FROM kernel.user_roles WHERE org_id = ${ORG_ID}`
   await sql`DELETE FROM kernel.roles WHERE org_id = ${ORG_ID}`
   await sql`DELETE FROM kernel.users WHERE org_id = ${ORG_ID}`
@@ -154,20 +172,39 @@ describe("the member side of the boundary", () => {
   })
 
   it("users_members_only keeps an index scan on users by id", async () => {
-    const plan = await withRlsContext(member, async (tx) => {
-      // On a small table the planner prefers a scan for its own reasons; with
-      // scans priced out it still picks one only if the policy blocks the index.
-      await tx.execute(drizzleSql`SELECT set_config('enable_seqscan', 'off', true)`)
-      const rows = extractRows<{ "QUERY PLAN": string }>(
-        await tx.execute(
-          drizzleSql.raw(`EXPLAIN SELECT * FROM kernel.users WHERE id = '${MEMBER_ID}'`),
-        ),
-      )
-      return rows.map((r) => r["QUERY PLAN"]).join("\n")
-    })
-    expect(plan).toContain("Index Scan using users_pkey")
-    expect(plan).toContain("Index Cond: (id = ")
-    expect(plan).not.toContain("Seq Scan")
+    // An org of real size, analyzed: on a handful of rows the org's own index
+    // can be the cheaper plan for reasons that have nothing to do with the
+    // policy, depending on what earlier tests left in the table.
+    const bigOrg = crypto.randomUUID()
+    await sql.unsafe(
+      insertSql("kernel.organizations", {
+        id: bigOrg,
+        name: "Sized org",
+        slug: `ext-sized-${bigOrg.slice(0, 8)}`,
+      }),
+    )
+    await sql`INSERT INTO kernel.users (org_id, email, name)
+      SELECT ${bigOrg}::uuid, 'sized-' || n || '-' || ${bigOrg} || '@example.com', 'Sized'
+        FROM generate_series(1, 2000) AS n`
+    await sql`ANALYZE kernel.users`
+    const [target] = await sql<{ id: string }[]>`
+      SELECT id FROM kernel.users WHERE org_id = ${bigOrg} LIMIT 1`
+    try {
+      const plan = await withRlsContext({ ...member, orgId: bigOrg }, async (tx) => {
+        const rows = extractRows<{ "QUERY PLAN": string }>(
+          await tx.execute(
+            drizzleSql.raw(`EXPLAIN SELECT * FROM kernel.users WHERE id = '${target?.id}'`),
+          ),
+        )
+        return rows.map((r) => r["QUERY PLAN"]).join("\n")
+      })
+      expect(plan).toContain("Index Scan using users_pkey")
+      expect(plan).toContain("Index Cond: (id = ")
+      expect(plan).not.toContain("Seq Scan")
+    } finally {
+      await sql`DELETE FROM kernel.users WHERE org_id = ${bigOrg}`
+      await sql`DELETE FROM kernel.organizations WHERE id = ${bigOrg}`
+    }
   })
 
   it("as liaison_rls without the portal scope, inserting a role for an external user raises", async () => {
@@ -263,5 +300,308 @@ describe("the member side of the boundary", () => {
         }),
       ),
     ).rejects.toThrow("users_external_company_check")
+  })
+})
+
+describe("the scope that sees external rows", () => {
+  it("is declared in the kernel's catalog", () => {
+    expect(KERNEL_SCOPES.map((s) => s.scope)).toContain("kernel:portal:admin")
+  })
+})
+
+describe("the routes and services a member reads people through", () => {
+  const tokenFor = (scopes: string[]) =>
+    signAccessToken(
+      {
+        userId: MEMBER_ID,
+        orgId: ORG_ID,
+        name: "Member",
+        authVersion: 1,
+        permissionVersion: 1,
+        scopes,
+      },
+      env.JWT_SECRET,
+    )
+  const get = async (path: string, scopes: string[]) =>
+    app.request(path, { headers: { Authorization: `Bearer ${await tokenFor(scopes)}` } })
+  const ids = (body: { data: { userId: string }[] }) => body.data.map((m) => m.userId)
+
+  it("listUsers shows a member no external row, a holder of the portal admin scope all of them", async () => {
+    const list = (ctx: UserContext) =>
+      withRlsContext(ctx, (tx) => listUsers(tx, { orgId: ORG_ID, page: 1, limit: 50 }))
+    expect((await list(member)).rows.map((r) => r.id)).toEqual([MEMBER_ID])
+    expect((await list(portalAdmin)).rows.map((r) => r.id).sort()).toEqual(
+      [MEMBER_ID, EXTERNAL_ID, OTHER_EXTERNAL_ID].sort(),
+    )
+  })
+
+  it("/api/sharing/members shows a member no external row, a holder of the portal admin scope all of them", async () => {
+    const asMember = await get("/api/sharing/members", [])
+    expect(asMember.status).toBe(200)
+    expect(ids(await asMember.json())).toEqual([MEMBER_ID])
+    const asHolder = await get("/api/sharing/members", ["kernel:portal:admin"])
+    expect(ids(await asHolder.json()).sort()).toEqual(
+      [MEMBER_ID, EXTERNAL_ID, OTHER_EXTERNAL_ID].sort(),
+    )
+  })
+
+  it("/api/users/:id/preview of an external row is 404 for a member, found for a holder of the portal admin scope", async () => {
+    expect((await get(`/api/users/${EXTERNAL_ID}/preview`, [])).status).toBe(404)
+    expect((await get(`/api/users/${MEMBER_ID}/preview`, [])).status).toBe(200)
+    expect((await get(`/api/users/${EXTERNAL_ID}/preview`, ["kernel:portal:admin"])).status).toBe(
+      200,
+    )
+  })
+})
+
+describe("creating an external row", () => {
+  const create = (email: string, orgId = ORG_ID) =>
+    withPrivilegedDb(orgId, "external-user-test", (tx) =>
+      createExternalUser(tx, { orgId, companyId: COMPANY_ID, email, name: "Client" }),
+    )
+  const rowsWithEmail = async (email: string) =>
+    sql<{ id: string }[]>`SELECT id FROM kernel.users
+      WHERE org_id = ${ORG_ID} AND lower(email) = lower(${email})`
+
+  it("creates an external row in the company, with no password and no role", async () => {
+    const email = `new-${crypto.randomUUID().slice(0, 8)}@client.example`
+    const result = await create(email)
+    expect(result.ok).toBe(true)
+    const [row] = await sql<
+      { user_type: string; company_id: string; password_hash: string | null; roles: number }[]
+    >`SELECT user_type, company_id, password_hash,
+        (SELECT count(*)::int FROM kernel.user_roles r WHERE r.user_id = u.id) AS roles
+      FROM kernel.users u WHERE org_id = ${ORG_ID} AND email = ${email}`
+    expect(row).toEqual({
+      user_type: "external",
+      company_id: COMPANY_ID,
+      password_hash: null,
+      roles: 0,
+    })
+  })
+
+  it("a member's address is refused with email_is_member, no row written", async () => {
+    const email = `member-${MEMBER_ID.slice(0, 8)}@example.com`
+    expect(await create(email)).toEqual({ ok: false, code: "email_is_member" })
+    expect((await rowsWithEmail(email)).map((r) => r.id)).toEqual([MEMBER_ID])
+  })
+
+  it("the same address in other capitals and with spaces is refused too", async () => {
+    const email = `  MEMBER-${MEMBER_ID.slice(0, 8).toUpperCase()}@Example.COM `
+    expect(await create(email)).toEqual({ ok: false, code: "email_is_member" })
+    expect((await rowsWithEmail(email.trim())).length).toBe(1)
+  })
+
+  it("a member row stored with capitals is still the same address", async () => {
+    const id = crypto.randomUUID()
+    const stored = `Mixed-${id.slice(0, 8)}@Example.com`
+    await sql.unsafe(
+      insertSql("kernel.users", { id, org_id: ORG_ID, email: stored, name: "Mixed" }),
+    )
+    expect(await create(stored.toLowerCase())).toEqual({ ok: false, code: "email_is_member" })
+    expect((await rowsWithEmail(stored)).map((r) => r.id)).toEqual([id])
+  })
+
+  it("a deactivated member's address is refused too", async () => {
+    const id = crypto.randomUUID()
+    const email = `gone-${id.slice(0, 8)}@example.com`
+    await sql.unsafe(
+      insertSql("kernel.users", {
+        id,
+        org_id: ORG_ID,
+        email,
+        name: "Gone",
+        status: "deactivated",
+      }),
+    )
+    expect(await create(email)).toEqual({ ok: false, code: "email_is_member" })
+  })
+
+  it("an address already held by an external row is refused and adds nothing", async () => {
+    const email = `twice-${crypto.randomUUID().slice(0, 8)}@client.example`
+    expect((await create(email)).ok).toBe(true)
+    expect(await create(email)).toEqual({ ok: false, code: "email_is_external" })
+    expect((await rowsWithEmail(email)).length).toBe(1)
+  })
+
+  it("an address taken while the create was under way is refused, with no error and one row", async () => {
+    const email = `race-${crypto.randomUUID().slice(0, 8)}@client.example`
+    let second: ReturnType<typeof create> | undefined
+    // The first create stays uncommitted while the second reads no holder and
+    // then waits on the unique index, so the second learns of it at the insert.
+    await withPrivilegedDb(ORG_ID, "external-user-race", async (tx) => {
+      const first = await createExternalUser(tx, {
+        orgId: ORG_ID,
+        companyId: COMPANY_ID,
+        email,
+        name: "Client",
+      })
+      expect(first.ok).toBe(true)
+      second = create(email)
+      await Bun.sleep(300)
+    })
+    expect(await second).toEqual({ ok: false, code: "email_is_external" })
+    expect((await rowsWithEmail(email)).length).toBe(1)
+  })
+
+  it("a member of another org with that address is no refusal here", async () => {
+    const otherOrg = crypto.randomUUID()
+    const email = `both-${otherOrg.slice(0, 8)}@example.com`
+    await sql.unsafe(
+      insertSql("kernel.organizations", {
+        id: otherOrg,
+        name: "Other",
+        slug: `ext-other-${otherOrg.slice(0, 8)}`,
+      }),
+    )
+    await sql.unsafe(
+      insertSql("kernel.users", {
+        id: crypto.randomUUID(),
+        org_id: otherOrg,
+        email,
+        name: "Other member",
+      }),
+    )
+    try {
+      expect((await create(email)).ok).toBe(true)
+    } finally {
+      await sql`DELETE FROM kernel.users WHERE org_id = ${otherOrg}`
+      await sql`DELETE FROM kernel.organizations WHERE id = ${otherOrg}`
+    }
+  })
+})
+
+describe("seats, every-member grants and approvers ignore an external row", () => {
+  const privileged = <T>(fn: (tx: Parameters<Parameters<typeof withPrivilegedDb>[2]>[0]) => T) =>
+    withPrivilegedDb(ORG_ID, "external-user-test", async (tx) => fn(tx))
+
+  it("countSeats counts active members only", async () => {
+    const before = await privileged((tx) => countSeats(tx, ORG_ID))
+    const [members] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM kernel.users
+      WHERE org_id = ${ORG_ID} AND status = 'active' AND user_type = 'member'`
+    expect(before).toBe(members?.n ?? -1)
+    const added = await privileged((tx) =>
+      createExternalUser(tx, {
+        orgId: ORG_ID,
+        companyId: COMPANY_ID,
+        email: `seat-${crypto.randomUUID().slice(0, 8)}@client.example`,
+        name: "Client",
+      }),
+    )
+    expect(added.ok).toBe(true)
+    expect(await privileged((tx) => countSeats(tx, ORG_ID))).toBe(before)
+  })
+
+  it("everyMemberScopeGrants returns none for an external row and the kernel's own for a member", async () => {
+    const grants = (userId: string) =>
+      privileged((tx) => everyMemberScopeGrants(tx, userId, ORG_ID))
+    expect(await grants(EXTERNAL_ID)).toEqual([])
+    expect((await grants(MEMBER_ID)).map((g) => g.scope)).toEqual(
+      expect.arrayContaining([...KERNEL_EVERY_MEMBER_SCOPES]),
+    )
+  })
+
+  it("an org MCP server open to everyone is no grant for an external row", async () => {
+    const slug = `everyone-${crypto.randomUUID().slice(0, 6)}`
+    await privileged((tx) =>
+      tx.insert(mcpConnections).values({
+        orgId: ORG_ID,
+        slug,
+        displayName: slug,
+        transport: "http",
+        httpUrl: "https://mcp.example/mcp",
+        ownershipScope: "org",
+        accessMode: "everyone",
+        createdBy: MEMBER_ID,
+      }),
+    )
+    const grants = (userId: string) =>
+      privileged((tx) => mcpServerAccessGrants(tx, { userId, orgId: ORG_ID, roleIds: [] }))
+    expect(await grants(MEMBER_ID)).toEqual([{ scope: `mcp:${slug}` }])
+    expect(await grants(EXTERNAL_ID)).toEqual([])
+  })
+
+  it("eligibleApprovers finds an external row by no route: a direct grant or a scope every member holds", async () => {
+    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
+      VALUES (${EXTERNAL_ID}, ${ORG_ID}, 'tickets:approve'), (${MEMBER_ID}, ${ORG_ID}, 'tickets:approve')`
+    expect(await privileged((tx) => eligibleApprovers(tx, ORG_ID, "tickets:approve"))).toEqual([
+      MEMBER_ID,
+    ])
+    const everyMember = KERNEL_EVERY_MEMBER_SCOPES[0] as string
+    const approvers = await privileged((tx) => eligibleApprovers(tx, ORG_ID, everyMember))
+    expect(approvers).toContain(MEMBER_ID)
+    expect(approvers).not.toContain(EXTERNAL_ID)
+  })
+
+  it("eligibleApproversWithDimension does not find one either", async () => {
+    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
+      VALUES (${OTHER_EXTERNAL_ID}, ${ORG_ID}, '*') ON CONFLICT DO NOTHING`
+    const approvers = await privileged((tx) =>
+      eligibleApproversWithDimension(tx, ORG_ID, "tickets:approve", {
+        key: "team",
+        values: ["a"],
+      }),
+    )
+    expect(approvers).not.toContain(OTHER_EXTERNAL_ID)
+  })
+
+  it("the approval policy's reader does not count an every-member scope for an external row", async () => {
+    const everyMember = KERNEL_EVERY_MEMBER_SCOPES[0] as string
+    const approvalId = crypto.randomUUID()
+    const threadId = crypto.randomUUID()
+    await sql.unsafe(
+      insertSql("kernel.threads", {
+        id: threadId,
+        org_id: ORG_ID,
+        handle: `ext-${threadId.slice(0, 8)}`,
+        created_by: MEMBER_ID,
+        title: "Approval",
+        type: "approval",
+      }),
+    )
+    await sql`INSERT INTO kernel.approval_requests
+      (id, org_id, handle, thread_id, originating_thread_id, tool_name, tool_params, current_payload,
+       expires_at, requested_by, status, notify_user_ids, approve_scope, reason)
+      VALUES (${approvalId}, ${ORG_ID}, ${`external-${approvalId.slice(0, 8)}`}, ${threadId}, ${threadId},
+        'tickets:reply', '{}'::jsonb, '{}'::jsonb, now() + interval '1 hour', ${MEMBER_ID}, 'pending',
+        ${`{${EXTERNAL_ID}}`}::uuid[], ${everyMember}, 'gated')`
+    try {
+      // The context carries the client's id, as a session of theirs would: the
+      // policy's reader then looks up a row the restrictive policy hides.
+      const visible = await withRlsContext({ ...member, userId: EXTERNAL_ID }, async (tx) => ({
+        covers: extractRows<{ covers: boolean }>(
+          await tx.execute(
+            drizzleSql`SELECT kernel.every_member_scope_covers(${ORG_ID}::uuid, ${EXTERNAL_ID}::uuid, ${everyMember}::text) AS covers`,
+          ),
+        )[0]?.covers,
+        rows: extractRows<{ id: string }>(
+          await tx.execute(
+            drizzleSql`SELECT id FROM kernel.approval_requests WHERE id = ${approvalId}::uuid`,
+          ),
+        ),
+      }))
+      expect(visible).toEqual({ covers: false, rows: [] })
+    } finally {
+      await sql`DELETE FROM kernel.approval_requests WHERE id = ${approvalId}`
+      await sql`DELETE FROM kernel.threads WHERE id = ${threadId}`
+    }
+  })
+
+  it("the requester-decides reader does not count an every-member scope for an external row", async () => {
+    const everyMember = KERNEL_EVERY_MEMBER_SCOPES[0] as string
+    const covers = (userId: string) =>
+      privileged(async (tx) => {
+        const fragment = everyMemberScopeFragment(
+          ORG_ID,
+          drizzleSql`${userId}::uuid`,
+          drizzleSql`${everyMember}`,
+        )
+        const rows = extractRows<{ covers: boolean }>(
+          await tx.execute(drizzleSql`SELECT ${fragment} AS covers`),
+        )
+        return rows[0]?.covers
+      })
+    expect(await covers(MEMBER_ID)).toBe(true)
+    expect(await covers(EXTERNAL_ID)).toBe(false)
   })
 })

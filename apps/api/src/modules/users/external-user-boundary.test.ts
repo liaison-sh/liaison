@@ -424,11 +424,23 @@ describe("creating an external row", () => {
     expect((await rowsWithEmail(email)).length).toBe(1)
   })
 
-  it("two creates of one address at once leave one row and one refusal", async () => {
+  it("an address taken while the create was under way is refused, with no error and one row", async () => {
     const email = `race-${crypto.randomUUID().slice(0, 8)}@client.example`
-    const results = await Promise.all([create(email), create(email)])
-    expect(results.filter((r) => r.ok).length).toBe(1)
-    expect(results.filter((r) => !r.ok)).toEqual([{ ok: false, code: "email_is_external" }])
+    let second: ReturnType<typeof create> | undefined
+    // The first create stays uncommitted while the second reads no holder and
+    // then waits on the unique index, so the second learns of it at the insert.
+    await withPrivilegedDb(ORG_ID, "external-user-race", async (tx) => {
+      const first = await createExternalUser(tx, {
+        orgId: ORG_ID,
+        companyId: COMPANY_ID,
+        email,
+        name: "Client",
+      })
+      expect(first.ok).toBe(true)
+      second = create(email)
+      await Bun.sleep(300)
+    })
+    expect(await second).toEqual({ ok: false, code: "email_is_external" })
     expect((await rowsWithEmail(email)).length).toBe(1)
   })
 

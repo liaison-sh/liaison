@@ -146,6 +146,7 @@ describe("a session mint chooses by the row's type", () => {
   it("a password change on an external row mints a portal token", async () => {
     const id = await newExternal("password")
     await sql`UPDATE kernel.users SET password_hash = ${await hashPassword("old-pass-1234")} WHERE id = ${id}`
+    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope) VALUES (${id}, ${orgId}, '*')`
     const pair = await changePassword(id, "old-pass-1234", "new-pass-5678")
     expectPortalClaims(pair.accessToken)
     expect(pair.admin).toBe(false)
@@ -324,25 +325,23 @@ describe("a portal token on the member product", () => {
     expect((await request("GET", "/api/sharing/members", memberToken)).status).toBe(200)
   })
 
-  for (const [name, prefix] of [
-    ["the MCP transport", "/mcp"],
-    ["the agent", "/api/agent"],
-    ["search", "/api/search"],
-    ["files", "/api/files"],
-    ["the WebSocket ticket", "/api/auth/ws-ticket"],
-  ] as const) {
-    it(`${name} refuses a portal token on every route under ${prefix}`, async () => {
-      const keys = registeredRoutes().filter((key) => {
-        const path = key.split(" ")[1] ?? ""
-        return (path === prefix || path.startsWith(`${prefix}/`)) && !NO_SESSION_ROUTES.has(key)
-      })
-      expect(keys.length).toBeGreaterThan(0)
-      for (const key of keys) {
-        const [method, path] = key.split(" ") as [string, string]
-        expect(`${(await request(method, path, portalToken)).status} ${key}`).toBe(`401 ${key}`)
-      }
+  async function refusedUnder(prefix: string) {
+    const keys = registeredRoutes().filter((key) => {
+      const path = key.split(" ")[1] ?? ""
+      return (path === prefix || path.startsWith(`${prefix}/`)) && !NO_SESSION_ROUTES.has(key)
     })
+    expect(keys.length).toBeGreaterThan(0)
+    for (const key of keys) {
+      const [method, path] = key.split(" ") as [string, string]
+      expect(`${(await request(method, path, portalToken)).status} ${key}`).toBe(`401 ${key}`)
+    }
   }
+
+  it("the MCP transport refuses a portal token", () => refusedUnder("/mcp"))
+  it("the agent routes refuse a portal token", () => refusedUnder("/api/agent"))
+  it("the search routes refuse a portal token", () => refusedUnder("/api/search"))
+  it("the file routes refuse a portal token", () => refusedUnder("/api/files"))
+  it("the WebSocket ticket route refuses a portal token", () => refusedUnder("/api/auth/ws-ticket"))
 })
 
 describe("a restricted session is no person's click", () => {

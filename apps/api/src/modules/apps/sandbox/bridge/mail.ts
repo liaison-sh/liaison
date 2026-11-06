@@ -505,6 +505,7 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
       const recipients = recipientsOf(params.to, params.cc, params.bcc)
       const zone = await personZone(orgId, userId)
       const built = await buildSendGuard({
+        ...zone,
         orgId,
         toolName: params.toolName,
         followUpRun,
@@ -512,7 +513,6 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
         recipients,
         contactIds: await contactIdsFor(recipients),
         ...(params.conversationId ? { conversationId: params.conversationId } : {}),
-        ...zone,
       })
       if ("commercialIdentityMissing" in built) {
         return JSON.stringify({
@@ -576,11 +576,11 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
           )
       const zone = await personZone(orgId, request?.requestedBy ?? userId)
       const checked = await evaluateSendGuard({
+        ...zone,
         orgId,
         guard,
         recipients,
         at: "send",
-        ...zone,
       })
       if (checked.state === "clear") {
         const first = recipients[0]

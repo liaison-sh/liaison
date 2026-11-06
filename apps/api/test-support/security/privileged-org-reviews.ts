@@ -83,6 +83,10 @@ export const REVIEWED_DISPATCH: Record<string, string> = {
  * follow to a trusted source, could not be traced, or is a literal: `file#enclosing` → why.
  */
 export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
+  "apps/api/src/modules/agent/runtime/tool-card-store.ts#clearToolCardsByKey":
+    "no product caller yet (an app's own retention will call it, tests only today): the org of the thread the caller names, matched again on every message row it reads and writes (messages.org_id = orgId)",
+  "apps/api/src/modules/apps/org-features.ts#setOrgAppFeature":
+    "no product caller yet (the settings door that switches a feature will call it with the org of the admin's session, tests only today): writes only the (orgId, app, feature) row it is given",
   "apps/api/src/seed/factories/support/inboxes.ts#ensureTicketMailboxInbox":
     "the /api/_test/seed route's factories (test-support/seed/factories.ts, mounted only in test builds; no product caller): the org a browser test names in its request, the one its lane seeded",
   "apps/api/src/seed/factories/support/inboxes.ts#ensureTicketMailboxAccount":
@@ -231,6 +235,8 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
  * The caller trace stops at a call made from one of them.
  */
 export const REVIEWED_ORIGINS: Record<string, string> = {
+  "apps/api/src/modules/apps/org-features.ts#setOrgAppFeature":
+    "no product caller yet (the settings door that switches a feature will call it with the org of the admin's session, tests only today); what it hands on is the org id it was given, for that one org's cache and broadcast",
   "apps/api/src/seed/factories/support/ticket.ts#createOneTicket":
     "the /api/_test/seed route's factories (test-support/seed/factories.ts, mounted only in test builds; no product caller): the org a browser test names in its request, the one its lane seeded",
   "apps/api/src/seed/factories/support/ticket.ts#closeTickets":

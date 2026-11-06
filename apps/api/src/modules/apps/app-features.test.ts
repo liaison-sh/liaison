@@ -705,7 +705,7 @@ describe("a flip", () => {
 
   it("a flip reaches a second process through the Redis channel", async () => {
     const peer = Bun.spawn(
-      ["bun", "run", "src/modules/apps/org-features.peer-process.ts", orgId, "test", FEATURE],
+      ["bun", "run", "src/modules/apps/org-features.peer.test-helpers.ts", orgId, "test", FEATURE],
       { cwd: `${import.meta.dir}/../../..`, env: process.env, stdout: "pipe", stderr: "inherit" },
     )
     const lines = peer.stdout.pipeThrough(new TextDecoderStream()).getReader()

@@ -1411,6 +1411,7 @@ export const FR: Record<string, string> = {
   "Full kernel access": "Accès complet à l'espace de travail",
   "Manage users, roles, and invitations": "Gérer les utilisateurs, les rôles et les invitations",
   "Read user list": "Lire la liste des utilisateurs",
+  "See and manage clients' portal accounts": "Voir et gérer les comptes de portail des clients",
   "Edit org settings": "Modifier les réglages de l'organisation",
   "Read threads": "Lire les discussions",
   "Write threads": "Écrire dans les discussions",

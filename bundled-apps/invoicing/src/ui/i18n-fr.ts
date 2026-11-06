@@ -185,6 +185,7 @@ export const FR: Record<string, string> = {
   "Pending approval. The editor is read-only until the request is decided.": "En attente de validation. L'éditeur est en lecture seule jusqu'à la décision.",
   "Per-line customs": "Douane par ligne",
   "Preview": "Aperçu",
+  "PDF preview": "Aperçu du PDF",
   "Preview PDF": "Aperçu du PDF",
   "Prices are tax inclusive (issuer setting). Catalog lines take the store price.": "Les prix sont TTC (réglage de l'émetteur). Les lignes du catalogue reprennent le prix de la boutique.",
   "Prices include tax": "Prix TTC",

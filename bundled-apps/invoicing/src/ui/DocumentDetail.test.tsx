@@ -299,8 +299,11 @@ describe("DocumentDetail (Phase 17 F3)", () => {
 
   // ── Inline PDF preview (PDF tab) ─────────────────────────────────────────
   describe("Inline PDF preview", () => {
-    it("source fetches the PDF inline bytes through the host fetchBlob and creates a blob URL for the <object> embed", () => {
+    it("source fetches the PDF inline bytes through the host fetchBlob and creates a blob URL for the embed", () => {
       expect(source).toContain("document-detail-pdf-embed")
+      // The CSP has object-src 'none': a plugin element can never show it.
+      expect(source).not.toMatch(/<object\b/)
+      expect(source).toMatch(/<iframe\s+data-testid="document-detail-pdf-embed"/)
       expect(source).toContain("fetchPdfBlobUrl")
       expect(source).toContain("documents_preview_pdf")
       expect(source).toContain("fetchBlob(res.url)")

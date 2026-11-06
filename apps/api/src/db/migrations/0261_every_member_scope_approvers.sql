@@ -22,6 +22,8 @@
 -- A busy table fails the migration fast instead of queueing every reader behind it.
 SET LOCAL lock_timeout = '30s';
 --> statement-breakpoint
+-- status::text: 0190 adds 'removed' to the enum, and a batch that applies both in one transaction
+-- may not use the new value yet (55P04).
 CREATE OR REPLACE FUNCTION kernel.every_member_scope_covers(p_org uuid, p_user uuid, p_required text)
 RETURNS boolean
 LANGUAGE sql
@@ -31,7 +33,7 @@ AS $fn$
   SELECT EXISTS (
     SELECT 1
       FROM kernel.users u
-      LEFT JOIN kernel.apps a ON a.org_id = u.org_id AND a.status <> 'removed'
+      LEFT JOIN kernel.apps a ON a.org_id = u.org_id AND a.status::text <> 'removed'
       CROSS JOIN LATERAL unnest(
         ARRAY['kernel:bug_reports:file']::text[] || COALESCE(a.every_member_scopes, '{}'::text[])
       ) AS m(scope)

@@ -245,6 +245,8 @@ Rules that say which document templates a record needs (a customs declaration, a
 | `enable_app` | Turn on an app for the workspace, installing it from the catalog first when the instance does not have it. | `kernel:apps:admin` | Yes |
 | `apps_set_enabled` | Turn an app on or off for everyone. | `kernel:apps:admin` | Yes |
 | `apps_set_access` | Choose who may use an app. | `kernel:apps:admin` | Yes |
+| `ai_models_get` | Read the organization's AI model settings. | `kernel:org:admin` | No |
+| `ai_models_set` | Change what Auto runs and the default reasoning level, switch models on or off, add a model from OpenRouter. | `kernel:org:admin` | Yes |
 | `audit_search` | Search the audit log. | `kernel:audit:read` | No |
 | `export` | Export the data you can see for chosen apps as a zip. | `kernel:users:admin` | No |
 | `data_subject_export` | Compile everything held on one contact into a GDPR export. | `kernel:data_subject:export` | Yes |

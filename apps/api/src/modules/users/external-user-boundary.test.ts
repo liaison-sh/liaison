@@ -324,7 +324,8 @@ describe("the routes and services a member reads people through", () => {
     )
   const get = async (path: string, scopes: string[]) =>
     app.request(path, { headers: { Authorization: `Bearer ${await tokenFor(scopes)}` } })
-  const ids = (body: { data: { userId: string }[] }) => body.data.map((m) => m.userId)
+  const ids = async (res: Response) =>
+    ((await res.json()) as { data: { userId: string }[] }).data.map((m) => m.userId)
 
   it("listUsers shows a member no external row, a holder of the portal admin scope all of them", async () => {
     const list = (ctx: UserContext) =>
@@ -338,9 +339,9 @@ describe("the routes and services a member reads people through", () => {
   it("/api/sharing/members shows a member no external row, a holder of the portal admin scope all of them", async () => {
     const asMember = await get("/api/sharing/members", [])
     expect(asMember.status).toBe(200)
-    expect(ids(await asMember.json())).toEqual([MEMBER_ID])
+    expect(await ids(asMember)).toEqual([MEMBER_ID])
     const asHolder = await get("/api/sharing/members", ["kernel:portal:admin"])
-    expect(ids(await asHolder.json()).sort()).toEqual(
+    expect((await ids(asHolder)).sort()).toEqual(
       [MEMBER_ID, EXTERNAL_ID, OTHER_EXTERNAL_ID].sort(),
     )
   })

@@ -4143,6 +4143,7 @@ async function registerSingleApp(
           bulk: (desc as any).bulk ?? undefined,
           roles: (desc as any).roles ?? undefined,
           savedViews: (desc as any).savedViews ?? undefined,
+          features: (desc as any).features ?? undefined,
           entities: safeEntities,
           tools: projectBulkToolSchemas((desc as any).bulk, desc.tools as any),
           configKeys: desc.configKeys ?? undefined,

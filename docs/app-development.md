@@ -359,7 +359,7 @@ Keys on the app:
 |---|---|---|
 | `contextProviders` | list of `{on, tool, scope, loadTools?}` | Tools that add a short block about the entity in view to the agent's context |
 | `sendGuardProviders` | `{<kind>: {tool, serviceMessage?, pill?}}` | A read-only tool that can stop an outbound message of that kind |
-| `features` | `{<name>: {adminScope, labelKey, offMessageKey?, offNextKey?}}` | Features an org can switch off |
+| `features` | `{<name>: {adminScope, labelKey, offMessageKey?, offNextKey?}}` | Features an org can switch off. A tool, tab type, slot panel or settings section names one with `feature`; while it is off they are absent, and a call that still names the tool reads `feature_off` with `message` and `next` |
 | `outsideTextFields` | string list | Fields a person outside the org can set |
 | `approvalRoute` | `{<entityType>: <tool>}` | The read-only tool that says who an approval for that entity is for |
 | `entities.<type>.discussion` | boolean | One conversation per row; needs a `labelField` and a page |

@@ -25,6 +25,7 @@ import {
   collectSettingsBlockComponentNames,
 } from "~/framework/manifest-exports"
 import { subscribeResync } from "~/framework/resync"
+import { loadOrgFeatures, setEnabledOrgFeatures } from "~/framework/org-features"
 import { isAppUnavailable, onAppsChanged, setUnavailableApps } from "~/framework/unavailable-apps"
 import { onApiReady } from "~/lib/api-ready"
 import { registerAppDisplayName } from "~/lib/capability-copy"
@@ -1522,6 +1523,7 @@ async function fetchManifestEntries(): Promise<ManifestEntry[] | null> {
         ? unavailable.filter((n): n is string => typeof n === "string")
         : [],
     )
+    await loadOrgFeatures(apiUrl("/apps/features"), accessToken() ?? token)
     return (json.data ?? []) as ManifestEntry[]
   } catch {
     // Network failure — non-fatal, manifest apps won't be registered
@@ -1831,6 +1833,7 @@ export async function reloadManifestApps(): Promise<void> {
 
 onSessionTeardown(() => {
   setUnavailableApps([])
+  setEnabledOrgFeatures([])
   clearCompatMode()
   clearManifestRetry()
   manifestAppsLoaded = false

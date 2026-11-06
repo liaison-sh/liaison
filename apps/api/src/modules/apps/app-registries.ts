@@ -1156,6 +1156,11 @@ export const manifestRegistry = createTypedRegistry<
       { defaults: Array<{ key: string; name: string; payload: unknown }> }
     >
     entities?: Record<string, any>
+    /** Manifest `features`: the switches inside the app (org-features.ts reads them). */
+    features?: Record<
+      string,
+      { adminScope: string; labelKey: string; offMessageKey?: string; offNextKey?: string }
+    >
     /** Widget hints for the bulk form: only the bulk underlying tools' shared
      *  fields (see bulk-field-schemas.ts), never the full tool catalog. */
     tools?: Record<string, BulkToolSchema>

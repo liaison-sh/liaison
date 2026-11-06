@@ -121,6 +121,12 @@ async function asPerson(tool: string, params: Record<string, unknown>): Promise<
   }
 }
 
+/** The approval a call parked, by the host's gate or by the handler's own. */
+function parkedId(res: Outcome): string | undefined {
+  if (res.blocked?.approvalRequestId) return res.blocked.approvalRequestId
+  return res.data?.status === "pending_approval" ? String(res.data.approval_id) : undefined
+}
+
 async function counts(): Promise<{ documents: number; approvals: number; lines: number }> {
   const [d] = await sql<Array<{ n: number }>>`
     SELECT count(*)::int AS n FROM app_invoicing.documents WHERE org_id = ${ORG}`
@@ -147,7 +153,7 @@ function cardTotal(card: { lines: string[] }): string {
   return String(m[1])
 }
 
-async function newestDocument(
+async function issuedDocument(
   type: string,
 ): Promise<{ number: string; grand_total_minor: string; currency: string; status: string }> {
   const [row] = await sql<
@@ -155,10 +161,16 @@ async function newestDocument(
   >`
     SELECT number, grand_total_minor::text AS grand_total_minor, currency, status
     FROM app_invoicing.documents
-    WHERE org_id = ${ORG} AND type = ${type}
+    WHERE org_id = ${ORG} AND type = ${type} AND number IS NOT NULL
     ORDER BY created_at DESC, number DESC LIMIT 1`
   if (!row) throw new Error(`no ${type} issued`)
   return row
+}
+
+async function issuedCount(): Promise<number> {
+  const [row] = await sql<Array<{ n: number }>>`
+    SELECT count(*)::int AS n FROM app_invoicing.documents WHERE org_id = ${ORG} AND number IS NOT NULL`
+  return row?.n ?? 0
 }
 
 /** Park as the agent, read the card, approve as the person, read the row. */
@@ -168,10 +180,10 @@ async function cardAgainstIssued(
   params: Record<string, unknown>,
 ): Promise<{ card: string; issued: string; number: string }> {
   const parked = await asAgent(tool, params)
-  const id = parked.blocked?.approvalRequestId
+  const id = parkedId(parked)
   if (!id) throw new Error(`${tool} did not park: ${JSON.stringify(parked)}`)
   const card = cardTotal(await cardOf(id))
-  const before = (await counts()).documents
+  const before = await issuedCount()
   const decided = await decideApproval({
     orgId: ORG,
     requestId: id,
@@ -179,10 +191,10 @@ async function cardAgainstIssued(
     decision: "approve",
   })
   expect(decided.status).toBe("approved")
-  const after = await counts()
-  if (after.documents === before)
-    throw new Error(`${tool} approved but no document: ${JSON.stringify(decided)}`)
-  const doc = await newestDocument(type)
+  const after = await issuedCount()
+  if (after === before)
+    throw new Error(`${tool} approved but nothing issued: ${JSON.stringify(decided)}`)
+  const doc = await issuedDocument(type)
   return {
     card,
     issued: formatMoneyMinor(BigInt(doc.grand_total_minor), doc.currency),
@@ -206,7 +218,8 @@ function linesFor(next: (n: number) => number, opts: { negate: boolean; discount
   const count = 1 + next(3)
   return Array.from({ length: count }, (_, i) => {
     const quantity = QUANTITIES[next(QUANTITIES.length)]!
-    const unit = PRICES[next(PRICES.length)]!
+    // A credit note of a line that rounds to nothing is refused: keep every one above that.
+    const unit = Math.max(PRICES[next(PRICES.length)]!, opts.negate ? 99 : 1)
     const line: Record<string, unknown> = {
       description: `Line ${i + 1}`,
       quantity,
@@ -396,21 +409,25 @@ describe("minor-unit money (real Postgres, sandbox, bridge)", () => {
       "credit_note_create_and_issue",
       createParams("credit_note_create_and_issue", -1500),
     )
-    const id = parked.blocked?.approvalRequestId
+    const id = parkedId(parked)
     if (!id) throw new Error(`did not park: ${JSON.stringify(parked)}`)
-    const payload = createParams("credit_note_create_and_issue", "-1260.50")
+    const payload = JSON.stringify(createParams("credit_note_create_and_issue", "-1260.50"))
     await sql`UPDATE kernel.approval_requests
-      SET current_payload = ${sql.json(payload as never)}, tool_params = ${sql.json(payload as never)}
+      SET current_payload = ${payload}::jsonb, tool_params = ${payload}::jsonb
       WHERE id = ${id}`
-    const before = (await counts()).documents
-    let refused = ""
-    try {
-      await decideApproval({ orgId: ORG, requestId: id, actor: approver, decision: "approve" })
-    } catch (err) {
-      refused = String((err as { message?: unknown }).message)
-    }
-    expect((await counts()).documents).toBe(before)
-    expect(refused).toContain("-1260.50")
+    const before = await issuedCount()
+    // The handler reads the amount as issuing reads it and refuses: the approval fails, nothing issues.
+    const refused = await decideApproval({
+      orgId: ORG,
+      requestId: id,
+      actor: approver,
+      decision: "approve",
+    }).then(
+      () => "",
+      (err: unknown) => String((err as { message?: unknown }).message),
+    )
+    expect(refused).toContain("handler_failed")
+    expect(await issuedCount()).toBe(before)
   }, 60_000)
 
   it("a credit note's total is negative: a positive one is refused and says what to send", async () => {
@@ -421,7 +438,7 @@ describe("minor-unit money (real Postgres, sandbox, bridge)", () => {
     )
     expect(res.blocked?.approvalRequestId).toBeUndefined()
     expect(res.code).toBe("credit_note_not_negative")
-    expect(res.message).toContain("5.00 EUR")
+    expect(res.message).toContain("5.95 EUR") // 5.00 plus the German rate
     expect(res.message).toContain("-500")
     expect(await counts()).toEqual(before)
   }, 60_000)
@@ -491,7 +508,7 @@ describe("minor-unit money (real Postgres, sandbox, bridge)", () => {
     const failures: string[] = []
     const types: Array<[string, string, boolean]> = [
       ["invoice_create_and_issue", "invoice", false],
-      ["quote_create_and_issue", "quote", true],
+      // A quote parks only for a declared consumer: mutations.test.ts reads its host card.
       ["proforma_create_and_issue", "proforma", true],
       ["po_create_and_issue", "purchase_order", true],
       ["credit_note_create_and_issue", "credit_note", false],

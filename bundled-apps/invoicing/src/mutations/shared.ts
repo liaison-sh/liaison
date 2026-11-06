@@ -334,7 +334,7 @@ export function invalidAmountError(field: string, value: unknown): { code: strin
   const hint = field.endsWith("discount_minor")
     ? ` ${DISCOUNT_HINT}`
     : field.endsWith("unit_price_minor")
-      ? " unit_price_minor is the price of ONE unit in minor currency units (cents)."
+      ? " unit_price_minor is the price of ONE unit in minor currency units (cents): 89900 for 899.00."
       : ""
   return {
     code: "invalid_amount",

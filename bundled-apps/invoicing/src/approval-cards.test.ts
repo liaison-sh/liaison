@@ -265,7 +265,7 @@ describe("invoicing approval cards: e-invoicing and customer settings", () => {
     const card = await cardFor(
       "received_einvoice_set_status",
       { received_id: DOC_ID, action: "refuse", reason: "DOUBLON" },
-      { status: "ok", invoice: { supplier: { name: "Fournitures Martin" }, invoice_number: "FM-881", issue_date: "2026-10-02", currency: "EUR", totals: { total: "12000" } } },
+      { status: "ok", invoice: { supplier: { name: "Fournitures Martin" }, invoice_number: "FM-881", issue_date: "2026-10-02", currency: "EUR", totals: { total: "120.00" } } },
     )
     expect(card.title).toBe("Refuse supplier invoice FM-881 from Fournitures Martin")
     expect(card.lines).toContain("Total: 120.00 EUR")
@@ -518,7 +518,8 @@ describe("credit note and purchase order cards", () => {
       undefined,
       { context: issuers },
     )
-    expect(created.title).toContain("100.00 EUR")
+    // 100.00 net at the German rate the document will charge.
+    expect(created.title).toContain("119.00 EUR")
     expect(created.lines.join("\n")).toContain("Enclosures")
     expect(created.lines).toContain("Issue date: 2026-11-02")
     const fromDraft = await summarizePoIssue({ draft_id: "d2" }, undefined, {

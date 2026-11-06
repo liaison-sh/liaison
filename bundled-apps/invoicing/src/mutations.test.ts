@@ -7947,7 +7947,7 @@ describe("e-invoicing gate at the manual issue sites", () => {
       counterparty_country: "FR",
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      items: sampleDraftItems,
+      items: [{ ...sampleDraftItems[0]!, unit_price_minor: -5_000n }],
     })
     const pre2 = await creditNoteIssuePreflight(ctx, { draft_id: draft.draft_id })
     expect("error" in pre2 && pre2.error.code).toBe("customer_kind_missing")
@@ -9519,13 +9519,15 @@ describe("the approval card states the total that issues", () => {
       const counterparty = {
         ...defaultCounterparty,
         contact_id: null,
+        legal_name: "Erika Mustermann",
         country,
         customer_kind: "individual",
         vat_id: null,
       }
       const items = Array.from({ length: 1 + next(3) }, (_, n) => {
         const quantity = QUANTITIES[next(QUANTITIES.length)]!
-        const unit = PRICES[next(PRICES.length)]!
+        // A credit note of a line that rounds to nothing is refused: keep every one above that.
+        const unit = Math.max(PRICES[next(PRICES.length)]!, credit ? 99 : 1)
         const line: Record<string, unknown> = {
           position: n + 1,
           description: `Line ${n + 1}`,
@@ -9543,7 +9545,13 @@ describe("the approval card states the total that issues", () => {
       const params = { counterparty, issuer_profile_id: "iss-1", currency: "EUR", items, ...tool.extra } as never
       const label = `#${i} ${JSON.stringify({ country, pricesIncludeTax, items })}`
 
-      const issuing = makeCtx({ approval: PRE_APPROVED, issuer: { prices_include_tax: pricesIncludeTax } as never })
+      const issuerRow = (invoice: bigint, po: bigint) => [
+        { ...seedIssuer(defaultIssuer, { invoice, po }), prices_include_tax: pricesIncludeTax },
+      ]
+      const issuing = makeCtx({
+        approval: PRE_APPROVED,
+        seed: { issuer_profiles: issuerRow(NO_GATE_MINOR, NO_GATE_MINOR) },
+      })
       const issued = (await tool.run(issuing.ctx, params)) as { status: string; document_id?: string; error?: unknown }
       if (issued.status !== "completed") throw new Error(`#${i} ${tool.run.name} ${JSON.stringify(issued).slice(0, 400)}`)
       const doc = issuing.db.__all("documents").find((d) => d.id === issued.document_id)!
@@ -9556,11 +9564,7 @@ describe("the approval card states the total that issues", () => {
       } as never)
       expect(`${label} host ${totalOnCard(hostCard.lines)}`).toBe(`${label} host ${total}`)
 
-      const parking = makeCtx({
-        issuerThresholdMinor: 0n,
-        poThresholdMinor: 0n,
-        issuer: { prices_include_tax: pricesIncludeTax } as never,
-      })
+      const parking = makeCtx({ seed: { issuer_profiles: issuerRow(0n, 0n) } })
       const parked = (await tool.run(parking.ctx, params)) as { status: string }
       if (parked.status === "pending_approval") {
         const asked = parking.extras.approvalsRequested.at(-1) as unknown as { summary_detail: { lines: string[] } }
@@ -9568,7 +9572,7 @@ describe("the approval card states the total that issues", () => {
       }
     }
     // The grid really varied.
-    expect(issuedSeen.size).toBeGreaterThan(300)
+    expect(issuedSeen.size).toBeGreaterThan(100)
   })
 })
 

@@ -174,9 +174,33 @@ export function createAgentMethods(ctx: BridgeContext): Record<string, any> {
       // `formatStreamError` — digs the nested envelope, falls back to the richest
       // signal fields instead of a bare opaque "agent stream error").
       const streamErrorMessage = formatStreamError
+      const { redactMailToolArgs, redactMailToolResult } = await import(
+        "~/modules/agent/mailbox-plaintext/mail-plaintext-redaction"
+      )
       for await (const part of chat.fullStream) {
-        if (fullChannel) await publishRedis(fullChannel, JSON.stringify(part))
         const p = part as any
+        // Invariant K: redacted once, for the row and the channel alike, as the
+        // thread path does. Every non-mail part passes through unchanged.
+        let safeInput: unknown
+        let safeOutput: unknown
+        if (p.type === "tool-call") {
+          safeInput = await redactMailToolArgs(orgId, p.toolName, p.input ?? {})
+        } else if (p.type === "tool-result") {
+          const toolName =
+            p.toolName ??
+            currentStep.toolCalls.find((tc) => tc.toolCallId === p.toolCallId)?.toolName ??
+            ""
+          safeOutput = await redactMailToolResult(orgId, toolName, p.output ?? null)
+        }
+        if (fullChannel) {
+          const published =
+            p.type === "tool-call"
+              ? { ...p, input: safeInput }
+              : p.type === "tool-result"
+                ? { ...p, output: safeOutput }
+                : part
+          await publishRedis(fullChannel, JSON.stringify(published))
+        }
         if (p.type === "text-delta") {
           text += String(p.text ?? "")
         } else if (p.type === "error") {
@@ -196,10 +220,10 @@ export function createAgentMethods(ctx: BridgeContext): Record<string, any> {
           currentStep.toolCalls.push({
             toolCallId: p.toolCallId,
             toolName: p.toolName,
-            args: p.input ?? {},
+            args: safeInput,
           })
         } else if (p.type === "tool-result") {
-          currentStep.toolResults.push({ toolCallId: p.toolCallId, result: p.output ?? null })
+          currentStep.toolResults.push({ toolCallId: p.toolCallId, result: safeOutput })
         } else if (p.type === "finish-step") {
           // AI SDK v6 reports per-step usage on `finish-step` (not the outer
           // `finish`). Accumulate across steps — matches agent-service.ts's

@@ -41,6 +41,10 @@ import {
   visitorCostMicroEur,
 } from "~/modules/agent/credits/credit-meter"
 import {
+  redactMailToolArgs,
+  redactMailToolResult,
+} from "~/modules/agent/mailbox-plaintext/mail-plaintext-redaction"
+import {
   CALL_TOOL_SDK_NAME,
   type FixedToolList,
   fixedToolListFrame,
@@ -536,31 +540,42 @@ export async function runSubRun(
           // here would slow the onStepFinish callback enough to race the
           // worker's finalize abort against the stream's natural end.
           if (promptAuthorId) {
-            const stepToolCalls = (s.toolCalls ?? []).map((tc) => {
-              const matchedResult = (s.toolResults ?? []).find(
-                (r) => r.toolCallId === tc.toolCallId,
-              )
-              return {
-                toolCallId: tc.toolCallId,
-                toolName: tc.toolName,
-                args: tc.input ?? tc.args,
-                result: matchedResult?.result,
-                status: matchedResult ? "completed" : "running",
-              }
-            })
+            const authorId = promptAuthorId
             const hasText = (s.text ?? "").length > 0
-            const hasTools = stepToolCalls.length > 0
+            const hasTools = (s.toolCalls ?? []).length > 0
             if (hasText || hasTools) {
-              void persistHiddenThreadMessage(orgId, {
-                threadId: run.threadId,
-                authorId: promptAuthorId,
-                authorType: "agent",
-                agentId: run.agentId ?? null,
-                content: s.text ?? "",
-                metadata: hasTools ? { toolCalls: stepToolCalls } : null,
-                // Everything the child had read by the end of this step.
-                requiredScopes: turnScopeAccumulator.snapshot(),
-              }).catch((err) => {
+              // Everything the child had read by the end of this step, read now:
+              // the write below happens after this callback has returned.
+              const requiredScopes = turnScopeAccumulator.snapshot()
+              void (async () => {
+                // Invariant K: what the transcript keeps of a mail tool's call is
+                // what a reply keeps. The raw args stay available to `finalize`.
+                const stepToolCalls = await Promise.all(
+                  (s.toolCalls ?? []).map(async (tc) => {
+                    const matchedResult = (s.toolResults ?? []).find(
+                      (r) => r.toolCallId === tc.toolCallId,
+                    )
+                    return {
+                      toolCallId: tc.toolCallId,
+                      toolName: tc.toolName,
+                      args: await redactMailToolArgs(orgId, tc.toolName, tc.input ?? tc.args),
+                      result: matchedResult
+                        ? await redactMailToolResult(orgId, tc.toolName, matchedResult.result)
+                        : undefined,
+                      status: matchedResult ? "completed" : "running",
+                    }
+                  }),
+                )
+                await persistHiddenThreadMessage(orgId, {
+                  threadId: run.threadId,
+                  authorId,
+                  authorType: "agent",
+                  agentId: run.agentId ?? null,
+                  content: s.text ?? "",
+                  metadata: hasTools ? { toolCalls: stepToolCalls } : null,
+                  requiredScopes,
+                })
+              })().catch((err) => {
                 log.warn({ err, runId, orgId }, "subrun-worker: hidden-thread persist failed")
               })
             }

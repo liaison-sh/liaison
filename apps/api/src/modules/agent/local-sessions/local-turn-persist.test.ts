@@ -10,11 +10,16 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test"
 import { app } from "~/app"
 import { sql } from "~/db"
+import { withSystemDb } from "~/db/privileged"
+import { userMailboxIdentities } from "~/db/schema/kernel"
 import * as jobsModule from "~/infra/jobs/jobs"
 import { historyRowTokens, loadBoundedHistory } from "~/modules/agent/context/checkpoint"
 import { estimateTokens } from "~/modules/agent/context/compaction"
 import { convertToCoreMessages } from "~/modules/agent/context/context"
+import { MailPlaintextRedactionTestAccess } from "~/modules/agent/mailbox-plaintext/mail-plaintext-redaction"
 import { getLastInputTokens } from "~/modules/agent/runtime/agent-service"
+import { seedContext } from "~/seed/context"
+import { insertUnarmedMail } from "~/seed/factories/mail/conversations"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -237,6 +242,145 @@ describe("a local turn, stored as a cloud turn is", () => {
     const row = await storedRow(data.messageId)
     expect(row.content).toBe("Created hello.txt")
     expect(row.metadata.toolCalls).toBeUndefined()
+  })
+
+  describe("Invariant K: a mail tool's call in a local turn", () => {
+    const BODY = "OBSIDIANLOCALBODY"
+    const DRAFT = "OBSIDIANLOCALDRAFT"
+    let enrolledAccount: string
+    let enrolledConversation: string
+    let sharedAccount: string
+    let sharedConversation: string
+
+    beforeAll(async () => {
+      const message = {
+        direction: "inbound" as const,
+        fromName: "Sender",
+        fromEmail: "sender@redact.test",
+        toName: "Owner",
+        toEmail: "owner@redact.test",
+        hoursAgo: 1,
+        body: "seeded",
+      }
+      const conversation = (key: string, box: string) => ({
+        key,
+        box,
+        subject: "seeded",
+        status: "open",
+        labels: ["INBOX"],
+        isRead: false,
+        isStarred: false,
+        messages: [message],
+      })
+      const { accountIds, conversationIds } = await insertUnarmedMail(
+        seedContext({ orgId: session.orgId, now: new Date() }),
+        {
+          domain: "redact.test",
+          mailboxes: [
+            { box: "own", ownerUserId: session.userId, email: "own@redact.test", displayName: "O" },
+            { box: "shared", ownerUserId: null, email: "shared@redact.test", displayName: "S" },
+          ],
+          conversations: [conversation("own", "own"), conversation("shared", "shared")],
+        },
+      )
+      ;[enrolledAccount, sharedAccount] = accountIds as [string, string]
+      ;[enrolledConversation, sharedConversation] = conversationIds as [string, string]
+      await withSystemDb("local-turn-redaction-fixture", (tx) =>
+        tx.insert(userMailboxIdentities).values({
+          orgId: session.orgId,
+          userId: session.userId,
+          keyId: 1,
+          ecdhPublicKey: Buffer.from("ecdh"),
+          signPublicKey: Buffer.from("sign"),
+          keyringAttestation: Buffer.from("attestation"),
+          status: "active",
+        } as never),
+      )
+      MailPlaintextRedactionTestAccess.resetCache()
+    })
+
+    /** What an MCP read returns for a person who allowed it: the decrypted text. */
+    const decryptedRead = (accountId: string, conversationId: string) => ({
+      conversation: { id: conversationId, account: { id: accountId } },
+      messages: [{ id: crypto.randomUUID(), textBody: BODY }],
+    })
+
+    const storedCalls = async (calls: unknown[]) => {
+      const response = await reply({ text: "Done.", turn: { toolCalls: calls } })
+      expect(response.status).toBe(201)
+      const { data } = (await response.json()) as { data: { messageId: string } }
+      const row = await storedRow(data.messageId)
+      return row.metadata.toolCalls as Array<{
+        toolName: string
+        args: Record<string, unknown>
+        result: unknown
+      }>
+    }
+
+    it("an enrolled owner's decrypted read and drafted reply stay out of the row", async () => {
+      const calls = await storedCalls([
+        {
+          toolCallId: "toolu_read",
+          toolName: "mcp__liaison__mail__read",
+          args: { conversationId: enrolledConversation },
+          result: JSON.stringify(decryptedRead(enrolledAccount, enrolledConversation)),
+          status: "completed",
+        },
+        {
+          toolCallId: "toolu_reply",
+          toolName: "mcp__liaison__mail__reply",
+          args: { conversationId: enrolledConversation, textBody: DRAFT },
+          result: "{}",
+          status: "completed",
+        },
+      ])
+      expect(calls.map((c) => c.toolName)).toEqual(["mail__read", "mail__reply"])
+      expect(calls[0]?.result).toMatchObject({ redacted: true })
+      expect(calls[1]?.args).toMatchObject({
+        conversationId: enrolledConversation,
+        redacted: true,
+        redactedFields: ["textBody"],
+      })
+      expect(JSON.stringify(calls)).not.toContain(BODY)
+      expect(JSON.stringify(calls)).not.toContain(DRAFT)
+    })
+
+    it("a result clipped past parsing names no mailbox and fails closed", async () => {
+      const calls = await storedCalls([
+        {
+          toolCallId: "toolu_clip",
+          toolName: "mail__read",
+          args: { conversationId: enrolledConversation },
+          result: `{"messages":[{"textBody":"${BODY}`,
+          status: "completed",
+        },
+      ])
+      expect(calls[0]?.result).toMatchObject({ redacted: true })
+      expect(JSON.stringify(calls)).not.toContain(BODY)
+    })
+
+    it("a shared mailbox's read keeps its text as sent, and other tools are untouched", async () => {
+      const shared = JSON.stringify(decryptedRead(sharedAccount, sharedConversation))
+      const calls = await storedCalls([
+        {
+          toolCallId: "toolu_shared",
+          toolName: "mail__read",
+          args: { conversationId: sharedConversation, textBody: DRAFT },
+          result: shared,
+          status: "completed",
+        },
+        {
+          toolCallId: "toolu_other",
+          toolName: "kpi__kpi_list_hubs",
+          args: { textBody: DRAFT },
+          result: "not json",
+          status: "completed",
+        },
+      ])
+      expect(calls[0]?.result).toBe(shared)
+      expect(calls[0]?.args).toMatchObject({ textBody: DRAFT })
+      expect(calls[1]).toMatchObject({ args: { textBody: DRAFT }, result: "not json" })
+    })
   })
 
   describe("who answered last, for the next local start's resume decision", () => {

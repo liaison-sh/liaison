@@ -140,7 +140,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `notifications_get` | Read the user's own notification settings: which channels (in-app, desktop, phone push, email digest) each notification group uses, quiet hours, digest cadence, per-app rules, muted threads count, with a plain `summary` to quote. |  | `kernel:agent:memory` |
 | `notifications_set` | Change the user's own notification settings: switch a group's desktop, phone (push) or email cell on/off (e.g. |  | `kernel:agent:memory` |
 | `notify_user` | Post a notification to the user's attention feed, to remind them of something or surface a result. |  | `kernel:agent:memory` |
-| `open_app` | Open an app or view in the user's UI, to show them where something lives. |  | `kernel:threads:read` |
+| `open_app` | Open an app, a view or one record in the user's UI. |  | `kernel:threads:read` |
 | `outside_text_clear` | Ask the person to lift this conversation's outside-text mark, after you told them what marked it (kernel__outside_text_sources) and they said they want it lifted. | yes | `kernel:threads:read` |
 | `outside_text_sources` | Say why actions in this conversation wait for a person because of OUTSIDE TEXT: lists what marked it (the tool that read text written outside the organisation, its identifying arguments, when, and a short fenced excerpt to recognise it). |  | `kernel:threads:read` |
 | `policy_get` | List the org's auto-approve policies (tool + conditions + thresholds + limits). |  | `kernel:policies:read` |

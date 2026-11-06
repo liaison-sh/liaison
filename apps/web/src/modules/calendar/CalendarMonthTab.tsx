@@ -3,8 +3,8 @@
 import type { Component } from "solid-js"
 import { CalendarShell } from "./CalendarShell"
 
-const CalendarMonthTab: Component = () => (
-  <CalendarShell initialView="month" testId="calendar-month-tab" />
+const CalendarMonthTab: Component<{ entityId?: string }> = (props) => (
+  <CalendarShell initialView="month" testId="calendar-month-tab" entityId={props.entityId} />
 )
 
 export default CalendarMonthTab

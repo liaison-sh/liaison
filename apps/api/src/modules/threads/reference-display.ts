@@ -2,7 +2,7 @@
 import { and, sql as drizzleSql, eq } from "drizzle-orm"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
-import { routines, skills, threads } from "~/db/schema/kernel"
+import { agents, nodeSessions, routines, skills, threads } from "~/db/schema/kernel"
 import { approvalRequests } from "~/db/schema/kernel/agent-memory"
 import { contacts } from "~/db/schema/kernel/contacts"
 import { entityRegistry, type SearchIndexFields, viewRegistry } from "~/modules/apps/app-registries"
@@ -81,6 +81,7 @@ interface RegistryEntityShape {
   handlePrefix: string
   tableName?: string
   external?: boolean
+  readScope?: string
   indexFields?: SearchIndexFields
 }
 
@@ -89,7 +90,7 @@ interface RegistryEntityShape {
  * registration and falling back to the wildcard one — same precedence as
  * `lookupFromRegistry` for view metadata.
  */
-function lookupEntityDecl(
+export function lookupEntityDecl(
   orgId: string,
   app: string,
   entityType: string,
@@ -169,7 +170,7 @@ async function loadAppEntityLabelAndSnippet(
     /** The name the snippet calls it by: the tab type a link opens, when one names it. */
     shownAs: string
   },
-): Promise<{ label?: string; snippet?: string } | null> {
+): Promise<{ label?: string; snippet?: string; handle?: string | null } | null> {
   const { orgId, app, entityType, entityId, shownAs } = params
   const tableName = decl.tableName
   const labelField = decl.labelField
@@ -215,6 +216,7 @@ async function loadAppEntityLabelAndSnippet(
   if (mailSuppressed) {
     return {
       label: `${entityType} ${shortId(entityId)}`,
+      handle: row.handle ?? null,
       snippet: `[Entity: ${shownAs}, id: ${entityId}] { content encrypted, readable only by the mailbox owner }`,
     }
   }
@@ -224,6 +226,7 @@ async function loadAppEntityLabelAndSnippet(
   const labelClause = row.label ? `${labelField}: "${row.label}"` : `${labelField}: "(unnamed)"`
   return {
     label,
+    handle,
     snippet: `[Entity: ${shownAs}${handle ? ` #${handle}` : ""}, id: ${entityId}] { ${labelClause} }`,
   }
 }
@@ -231,7 +234,7 @@ async function loadAppEntityLabelAndSnippet(
 async function loadKnownEntityLabelAndSnippet(
   tx: LabelReader,
   params: { orgId: string; app: string; entityType: string; entityId: string },
-): Promise<{ label?: string; snippet?: string } | null> {
+): Promise<{ label?: string; snippet?: string; handle?: string | null } | null> {
   const { orgId, entityId } = params
   const shownAs = `${params.app}:${params.entityType}`
   const { app, entityType } = tabEntity(orgId, params.app, params.entityType) ?? params
@@ -246,6 +249,7 @@ async function loadKnownEntityLabelAndSnippet(
       const label = row.title ?? `#${row.handle}`
       return {
         label,
+        handle: row.handle,
         snippet: `[Entity: kernel:thread #${row.handle}, id: ${entityId}] { title: "${row.title ?? "(untitled)"}" }`,
       }
     }
@@ -302,6 +306,30 @@ async function loadKnownEntityLabelAndSnippet(
         snippet: `[Entity: kernel:skill, id: ${entityId}] { name: "${row.name}" }`,
       }
     }
+    if (app === "kernel" && entityType === "agent") {
+      const [row] = await tx
+        .select({ name: agents.displayName })
+        .from(agents)
+        .where(and(eq(agents.id, entityId), eq(agents.orgId, orgId)))
+        .limit(1)
+      if (!row) return null
+      return {
+        label: row.name,
+        snippet: `[Entity: kernel:agent, id: ${entityId}] { name: "${row.name}" }`,
+      }
+    }
+    if (app === "kernel" && entityType === "session") {
+      const [row] = await tx
+        .select({ title: nodeSessions.title })
+        .from(nodeSessions)
+        .where(and(eq(nodeSessions.id, entityId), eq(nodeSessions.orgId, orgId)))
+        .limit(1)
+      if (!row) return null
+      return {
+        label: row.title,
+        snippet: `[Entity: kernel:session, id: ${entityId}] { title: "${row.title}" }`,
+      }
+    }
     // Non-kernel app entities resolve generically through the entity registry —
     // the declared `labelField`/`tableName`/`indexFields.handle` describe where
     // the label lives, so no per-app SQL or app-name branching is needed.
@@ -331,6 +359,19 @@ export async function resolveEntityLabel(
 ): Promise<string | null> {
   const found = await loadKnownEntityLabelAndSnippet(tx, params)
   return found?.label ?? null
+}
+
+/**
+ * The name and, when the kind has one, the generated handle of an entity, read with `tx`'s
+ * visibility: null when `resolveEntityLabel` would be. The name can be anyone's words (a customer
+ * writes a ticket's subject); the handle is the reference to give a model instead.
+ */
+export async function resolveEntityNaming(
+  tx: LabelReader,
+  params: { orgId: string; app: string; entityType: string; entityId: string },
+): Promise<{ label: string; handle: string | null } | null> {
+  const found = await loadKnownEntityLabelAndSnippet(tx, params)
+  return found?.label ? { label: found.label, handle: found.handle ?? null } : null
 }
 
 export async function resolveReferenceDisplay(

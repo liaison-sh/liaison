@@ -84,10 +84,15 @@ function unindexSocket(index: SocketIndex, key: string, ws: WsLike): void {
 }
 
 /**
- * The `agent_stream` actions that ask a client to decrypt or search the
- * requester's mailbox. They reach the requester's own connections only.
+ * The `agent_stream` actions for the requester's own connections only: asking a
+ * client to decrypt or search their mailbox, and opening a tab on their screen
+ * (its title is a record's own name, which nobody else in the room was shown).
  */
-const MAILBOX_REQUEST_ACTIONS = new Set(["mailbox_decrypt_request", "mailbox_search_request"])
+const REQUESTER_ONLY_ACTIONS = new Set([
+  "mailbox_decrypt_request",
+  "mailbox_search_request",
+  "open_tab",
+])
 
 // Entities that require thread participant membership filtering
 const THREAD_SCOPED_ENTITIES = new Set([
@@ -2048,9 +2053,10 @@ export class WebSocketManager {
   private hasStreamChunkAccess(client: ConnectedClient, payload: EventPayload): boolean {
     if (payload.actorId && payload.actorId === client.userId) return true
     // A mailbox request carries the turn's nonce and the request's answer
-    // token, which let a client answer it. It goes to the requester's own
-    // connections and nobody else's, whatever scopes they hold.
-    if (MAILBOX_REQUEST_ACTIONS.has(payload.action)) return false
+    // token, which let a client answer it, and an opened tab carries a record's
+    // name. They go to the requester's own connections and nobody else's,
+    // whatever scopes they hold.
+    if (REQUESTER_ONLY_ACTIONS.has(payload.action)) return false
     const data = payload.data as Record<string, unknown> | undefined
     const accumulated = data?.accumulatedScopes
     if (!Array.isArray(accumulated) || accumulated.some((s) => typeof s !== "string")) return false

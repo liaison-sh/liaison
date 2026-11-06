@@ -58,6 +58,7 @@ import {
 } from "~/modules/agent/runtime/tool-card-store"
 import { turnStatus } from "~/modules/agent/runtime/turn-ledger"
 import { takeStreamSlot } from "~/modules/agent/stream-slots"
+import { uiEffectRequester } from "~/modules/agent/tools/open-targets"
 import { FileServiceError, moveFilesToParent } from "~/modules/files/service"
 import { getThread } from "~/modules/threads/thread"
 import { isMessageVisible } from "~/services/security/visibility"
@@ -563,7 +564,9 @@ async function chatTurn(
             break
 
           case "tool-call": {
-            // Redacted once, for the row and the wire alike, as the thread path does.
+            // Invariant K: redacted once, for the row, the SSE body and the frames
+            // alike, as the thread path does (agent-service.ts). The model is
+            // unaffected: the SDK keeps its own copy of the call for this turn.
             const call = {
               toolCallId: part.toolCallId,
               toolName: part.toolName,
@@ -574,13 +577,20 @@ async function chatTurn(
             finalTimeline.push({ kind: "tool", toolCallId: part.toolCallId })
             liveText.toolCall()
             await writeEvent("tool-call", call)
-            emitStreamEvent("tool_call", call)
+            emitStreamEvent("tool_call", {
+              ...call,
+              ...uiEffectRequester(part.toolName, actor.userId),
+            })
             break
           }
 
           case "tool-result": {
+            // The name from the call when the chunk has none: an unnamed result
+            // would skip the mail branch and pass through whole.
             const toolName =
-              currentStepToolCalls.find((tc) => tc.toolCallId === part.toolCallId)?.toolName ?? ""
+              (part as { toolName?: string }).toolName ??
+              currentStepToolCalls.find((tc) => tc.toolCallId === part.toolCallId)?.toolName ??
+              ""
             const result = await redactMailToolResult(orgId, toolName, part.output)
             const entry = {
               toolCallId: part.toolCallId,

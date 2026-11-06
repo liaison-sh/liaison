@@ -224,7 +224,7 @@
       }
     ]
   },
-  "version": "0.20.45",
+  "version": "0.20.47",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -2247,6 +2247,22 @@
         ]
       }
     },
+    "draft_issue_preview": {
+      "description": "What an approval card reads for a saved draft: the document and the total issuing it would write. Not for agents (documents_get is).",
+      "requiredScopes": ["invoicing:documents:read"],
+      "handler": "draftIssuePreviewHandler",
+      "readOnly": true,
+      "agentVisible": false,
+      "timeoutMs": 30000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "draft_id": { "type": "string", "description": "The saved draft." }
+        },
+        "required": ["draft_id"],
+        "additionalProperties": false
+      }
+    },
     "documents_issue_preview": {
       "description": "The issuer profiles plus the VAT status of a buyer about to be issued a document: VAT number (as given or found on an earlier document), its VIES check, or why a business buyer without one is refused. Backs the issue approval cards.",
       "searchKeywords": ["aperçu", "vérifier", "check"],
@@ -2316,6 +2332,7 @@
       "searchKeywords": ["brouillon", "préparer", "nouvelle", "invoice", "document"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "draftsCreateHandler",
+      "preflight": "draftsCreatePreflightHandler",
       "timeoutMs": 30000,
       "conditionalGate": true,
       "approvalImpact": "internal",
@@ -2589,6 +2606,7 @@
       "searchKeywords": ["brouillon", "modifier", "edit", "corriger"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "draftsUpdateHandler",
+      "preflight": "draftsUpdatePreflightHandler",
       "timeoutMs": 30000,
       "conditionalGate": true,
       "approvalImpact": "internal",
@@ -2890,7 +2908,7 @@
         ]
       },
       "summarizer": "summarizeInvoiceIssue",
-      "summarizerContext": { "tool": "documents_get", "params": { "id": "draft_id" } },
+      "summarizerContext": { "tool": "draft_issue_preview", "params": { "draft_id": "draft_id" } },
       "approvalCard": {
         "summary": "Issue invoice from draft {{params.draft_id}}"
       },
@@ -3175,7 +3193,7 @@
         ]
       },
       "summarizer": "summarizeQuoteIssue",
-      "summarizerContext": { "tool": "documents_get", "params": { "id": "draft_id" } },
+      "summarizerContext": { "tool": "draft_issue_preview", "params": { "draft_id": "draft_id" } },
       "approvalCard": {
         "summary": "Issue quote from draft {{params.draft_id}}"
       },
@@ -3415,7 +3433,7 @@
         ]
       },
       "summarizer": "summarizeProformaIssue",
-      "summarizerContext": { "tool": "documents_get", "params": { "id": "draft_id" } },
+      "summarizerContext": { "tool": "draft_issue_preview", "params": { "draft_id": "draft_id" } },
       "approvalCard": {
         "summary": "Issue proforma from draft {{params.draft_id}}"
       },
@@ -3666,7 +3684,7 @@
         ]
       },
       "summarizer": "summarizePoIssue",
-      "summarizerContext": { "tool": "documents_get", "params": { "id": "draft_id" } },
+      "summarizerContext": { "tool": "draft_issue_preview", "params": { "draft_id": "draft_id" } },
       "approvalCard": {
         "summary": "Issue purchase order from draft {{params.draft_id}}"
       },
@@ -3680,6 +3698,7 @@
       "searchKeywords": ["bon", "commande", "achat", "fournisseur", "purchase", "créer"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "poCreateAndIssueHandler",
+      "preflight": "poCreateAndIssuePreflightHandler",
       "timeoutMs": 60000,
       "conditionalGate": true,
       "writesToTable": "app_invoicing.documents",
@@ -4032,7 +4051,7 @@
       }
     },
     "credit_note_create_and_issue": {
-      "description": "Create a credit note, a legal document, and issue it in one call. A credit note is a first-class legal document — its own gap-free CN-{YYYY}- number series, issued straight to 'issued' status (never a payable document — no due date, no mark_paid). Lines commonly carry NEGATIVE unit_price_minor mirroring what is reversed on the original invoice (a positive amount is also accepted). To reverse/correct an ISSUED invoice, pass `original_document_id` set to that invoice's id — it MUST reference an existing invoice (validated before issuance) and, on success, the original invoice's lifecycle_log records a `credit_note_issued` entry naming this credit note. Handler-conditional gating against issuer.invoice_approval_threshold_minor (unset means always approve, threshold 0; a credit note with no original_document_id is ALWAYS approved), compared against the ABSOLUTE VALUE of the credit note's grand total (a -6,744€ correction gates exactly like a +6,744€ invoice would). For a legally clean reversal, ALSO call documents_record_refund on the original invoice to record the payment-side event — the credit note is the legal document, record_refund is the payment status change; do BOTH, never just one. ALWAYS pass original_document_id when you reverse an invoice: without it the over_credit cap (a credit note can never push an invoice's cumulative credited total past its own grand total) cannot apply. A Shopify refund or cancellation already issues its credit note automatically, and a cancellation of a partly credited invoice reverses only the REMAINDER, so check documents_for_orders before issuing one by hand rather than crediting twice. A hand built partial credit note carries its OWN tax: mirror the original's per line rates, because only the automatic refund path allocates the VAT for you. On a split order, credit the document that actually carries the refunded line, not whichever invoice you saw first.",
+      "description": "Create a credit note, a legal document, and issue it in one call. A credit note is a first-class legal document — its own gap-free CN-{YYYY}- number series, issued straight to 'issued' status (never a payable document — no due date, no mark_paid). Lines carry NEGATIVE unit_price_minor mirroring what is reversed on the original invoice, and the total must come out negative. To reverse/correct an ISSUED invoice, pass `original_document_id` set to that invoice's id — it MUST reference an existing invoice (validated before issuance) and, on success, the original invoice's lifecycle_log records a `credit_note_issued` entry naming this credit note. Handler-conditional gating against issuer.invoice_approval_threshold_minor (unset means always approve, threshold 0; a credit note with no original_document_id is ALWAYS approved), compared against the ABSOLUTE VALUE of the credit note's grand total (a -6,744€ correction gates exactly like a +6,744€ invoice would). For a legally clean reversal, ALSO call documents_record_refund on the original invoice to record the payment-side event — the credit note is the legal document, record_refund is the payment status change; do BOTH, never just one. ALWAYS pass original_document_id when you reverse an invoice: without it the over_credit cap (a credit note can never push an invoice's cumulative credited total past its own grand total) cannot apply. A Shopify refund or cancellation already issues its credit note automatically, and a cancellation of a partly credited invoice reverses only the REMAINDER, so check documents_for_orders before issuing one by hand rather than crediting twice. A hand built partial credit note carries its OWN tax: mirror the original's per line rates, because only the automatic refund path allocates the VAT for you. On a split order, credit the document that actually carries the refunded line, not whichever invoice you saw first.",
       "searchKeywords": ["avoir", "crédit", "annulation", "remboursement", "rectificative", "émettre", "émission", "nouveau"],
       "requiredScopes": ["invoicing:documents:write"],
       "atomic": true,
@@ -4202,7 +4221,7 @@
           },
           "items": {
             "type": "array",
-            "description": "The credit note's line items. unit_price_minor is typically NEGATIVE, mirroring the portion of the original invoice being reversed (a positive value is also accepted — the sign is not enforced by the tool).",
+            "description": "The credit note's line items. unit_price_minor is NEGATIVE, mirroring the portion of the original invoice being reversed.",
             "items": {
               "type": "object",
               "additionalProperties": true,
@@ -4223,7 +4242,7 @@
                     "integer",
                     "string"
                   ],
-                  "description": "Unit price in MINOR currency units (cents) — typically NEGATIVE to mirror the reversed amount, e.g. -41940 for -€419.40. NOT a major-unit float."
+                  "description": "Unit price in MINOR currency units (cents) — NEGATIVE to mirror the reversed amount, e.g. -41940 for -€419.40. NOT a major-unit float."
                 },
                 "tax_rate_bp_override": {
                   "type": "integer",
@@ -4310,7 +4329,7 @@
         ]
       },
       "summarizer": "summarizeCreditNoteIssue",
-      "summarizerContext": { "tool": "documents_get", "params": { "id": "draft_id" } },
+      "summarizerContext": { "tool": "draft_issue_preview", "params": { "draft_id": "draft_id" } },
       "approvalCard": {
         "summary": "Issue credit note from draft {{params.draft_id}}"
       }

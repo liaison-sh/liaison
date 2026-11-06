@@ -107,7 +107,6 @@ export const KERNEL_RESULT_HINTS: Record<string, string> = {
     "Follow the setup-guide skill (kernel__skill_read setup-guide). Propose one step at a time; never call a step done unless this result shows it done. canConfigure false: say what is left, propose nothing.",
   google_setup:
     "Quote the redirect URIs, scopes and API names exactly as given here, never from memory. One guide step per message. The client ID and secret go through kernel__request_secret, never the chat. A scope in unmappedScopes: name it and say which API it needs is not known.",
-  open_app: "Use this to give a live, guided tour; otherwise just tell the user where to click.",
 }
 
 /** The short marker a web result carries once its tool's full rule is in the conversation. */

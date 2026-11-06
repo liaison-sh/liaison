@@ -248,6 +248,13 @@ only for refusals: a crash or an unexpected failure is thrown, and an
 unclassified one stays a 500 logged as an error. To pass a message safely
 when you throw, use `ToolError`.
 
+**Amounts in minor units.** A field named `*_minor` holds a whole number: 41940
+for 419.40. Read one with `readMinorAmount` from `@liaison/app-sdk`, which
+returns null for anything else, and answer null with `minorAmountRefusal(field,
+value)`, which names the amount it read and what to send. Never guess a unit
+from a decimal point. The server refuses a decimal in a declared `*_minor`
+parameter the same way.
+
 **Scopes.** Every tool declares `requiredScopes`, a non-empty list
 (`["my-app:resource:action"]`). A tool only runs if the caller holds every scope
 in it; a manifest tool carrying the old single `scope` key is refused. Scopes are hierarchical: granting

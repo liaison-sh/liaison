@@ -66,6 +66,12 @@ The agent acts with its own permissions, and anything sensitive it does waits fo
 
 A message you send while the server restarts (an upgrade) is not lost: if it reaches a server that is shutting down, another one starts the agent's reply. An answer the agent is writing when the server restarts or stops is carried on by another server, and the one reply appears in the conversation when it is done. Closing the tab does not stop the answer either. An open conversation keeps showing the answer as the other server carries it on, without repeating the part that was cut. See [How agents work](../agents/how-agents-work.md).
 
+### Ask an agent to open something
+
+Ask "Open that invoice" or "Show me the support channel" and the agent opens its tab for you, like any tab you open yourself: a ticket, a task, a project, a contact, a conversation, a document, a routine. It only opens what you can see, and it says so when it cannot. In a shared conversation, an agent working for a colleague never moves your tabs. A routine has nobody watching, so it opens nothing.
+
+A Shopify order has no tab in Liaison: the agent gives you the link to its page in Shopify.
+
 ## Follow a routine's run in a conversation
 
 A routine can post its runs in a conversation: your chat with your personal agent, or a channel such as #marketing. See [Where a routine posts its runs](../agents/routines.md#where-a-routine-posts-its-runs). There, each run shows:

@@ -1989,21 +1989,19 @@ Write numbers, amounts and dates the way that language writes them, never as a r
     visibleEntityIds.push(...refEntityIds)
     if (entityDescriptions.length > 0) {
       tailLines.push(
-        `Referenced entities (opened or attached earlier in this chat. When the user says "this ticket" / "this email" / "this thread" and no page is named as open below, resolve it to the matching entity HERE by id; do NOT search for it):\n${entityDescriptions.join("\n")}`,
+        `Referenced entities (opened or attached earlier in this chat: "this ticket" / "this email" with no record named as open below is one of these, by id; do NOT search for it):\n${entityDescriptions.join("\n")}`,
       )
     }
   }
 
   // Current navigation context — loaded under actor's RLS context
-  let openRecordKnown = false
   if (currentView) {
     const viewDesc = await loadNavigationContext(currentView, orgId, actor)
     if (viewDesc) {
-      openRecordKnown = true
       visibleEntityIds.push(currentView.entityId)
       tailLines.push(
         `The user is currently viewing: ${viewDesc}\n` +
-          'When the user says "this", "it", "this invoice", "this page", "cette facture", "la", or a similar deictic phrase, they mean THIS record, the one open on their screen now: act on its id directly. It wins over any record or unfinished job from earlier in this conversation, and over the referenced entities above, unless their message names another one. Do not resume earlier unfinished work unless they ask for it. Do NOT run a search to find what "this" refers to.',
+          '"This", "it" or a similar word means THIS record, over anything earlier in this conversation, unless their message names another: act on its id directly. Do NOT run a search to find it.',
       )
     }
   }
@@ -2039,14 +2037,8 @@ Write numbers, amounts and dates the way that language writes them, never as a r
           (taskLine ? `${taskLine}\n` : "") +
           'When the user says "this task", "this ticket" or a similar deictic phrase, they mean THIS entity: act on its id directly, and file what belongs under it (a subtask, a note, a reply) against that id. Do NOT run a search to find it.',
       )
-      openRecordKnown = true
     }
   }
-
-  // No record to point at: nothing above names one, so "this" has only the
-  // conversation to go on. A turn that picked a record by itself answered about
-  // the wrong parcel with full confidence (a list page names no record).
-  if (!openRecordKnown && !currentRunContext()?.routineId) tailLines.push(NO_OPEN_RECORD_LINE)
 
   // Who else reads the reply. Said in the volatile tail, beside the line
   // naming what the conversation is about, and only when someone else is in
@@ -2715,10 +2707,6 @@ export interface StepInputBreakdown {
 
 /** The ephemeral tail's opening marker: appended after the history, never part of it. */
 export const RUNTIME_CONTEXT_MARKER = "<runtime-context"
-/** The rule for "this" when the turn knows of no record open on the person's screen. */
-export const NO_OPEN_RECORD_LINE =
-  'No single record is known to be open on the user\'s screen. If they say "this", "it" or "that one" and neither their message, the last exchange nor a referenced entity of that kind names the record, ask which one in one short question. Never pick one yourself, not the first or latest row of a list, and do not search through records to guess it.'
-
 /** How the turn's ephemeral runtime-context tail opens (never a guide note, which is replayed). */
 export const RUNTIME_TAIL_OPEN =
   '<runtime-context note="ephemeral context injected by the Liaison platform for this turn'

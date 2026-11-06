@@ -7,6 +7,8 @@
 //
 // Pure (no DB / no fetch) so it is safe to run synchronously at gate time.
 
+import { minorToDecimal } from "./upload"
+
 interface ApprovalSummaryShape {
   kind: string
   title: string
@@ -33,8 +35,8 @@ export function summarizeSupplierInvoiceUpload(params: unknown): Promise<Approva
   const major = (v: unknown) => {
     const m = str(v)
     if (!m) return null
-    const n = Number(m) / 100
-    return Number.isFinite(n) ? `${n.toFixed(2)} ${currency}` : `${m} (minor units) ${currency}`
+    const amount = minorToDecimal(m, currency)
+    return amount === null ? `${m} (not a whole number of minor units, approving will be refused)` : `${amount} ${currency}`
   }
   const lines: string[] = []
   const number = str(p.invoice_number)

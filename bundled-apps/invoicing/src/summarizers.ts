@@ -554,8 +554,9 @@ function draftIssueSummarizer(type: string, kind: string) {
         country: draft?.counterparty_country ?? null,
         currency: draft?.currency ?? "EUR",
         lines,
-        // A saved draft carries its computed totals; trust them once they are non zero.
-        totalMinor: grand !== null && grand !== 0n ? grand : null,
+        // What issuing it would write, read by the code that writes it (draft_issue_preview). A
+        // draft's own totals carry no tax; they stand in only where the read did not run.
+        totalMinor: toMinor(draft?.issue_total_minor) ?? (grand !== null && grand !== 0n ? grand : null),
         orderNumber: draft?.shopify_order_number ?? null,
         draftOrderName: draft?.shopify_draft_order_name ?? null,
         originalNumber: typeof refs?.original_document_number === "string" ? refs.original_document_number : null,
@@ -637,10 +638,10 @@ function createAndIssueSummarizer(type: string, kind: string) {
     }
     const taxCountry = (typeof cp.tax_country === "string" && cp.tax_country.trim()) || cp.country || null
     const items = Array.isArray(params.items) ? params.items : []
-    // The plan is computed only when the issuer's country is known; a purchase order is the
-    // supplier's document, its tax is not ours to state.
+    // The plan is computed when the issuer's country is known: the total any document issues at,
+    // a purchase order's included (issuing classifies it like the others).
     const tax =
-      issuer && typeof issuer.country === "string" && issuer.country && type !== "purchase_order"
+      issuer && typeof issuer.country === "string" && issuer.country
         ? planTax({
             issuerCountry: issuer.country,
             pricesIncludeTax: issuer.prices_include_tax === true,
@@ -709,7 +710,7 @@ export function summarizeCreditNoteCreateAndIssue(
 ): Promise<ApprovalSummaryShape> {
   const issuer = issuerOf(params, meta)
   const cp = counterpartyOf(params.counterparty)
-  const original = (meta?.context as { original?: { number?: unknown; issued_at?: unknown } | null } | null)?.original
+  const original = (meta?.context as { original?: { number?: unknown; issued_at?: unknown; grand_total_minor?: unknown } | null } | null)?.original
   const stated = params.original_document_id
   const taxCountry = (typeof cp.tax_country === "string" && cp.tax_country.trim()) || cp.country || null
   const items = Array.isArray(params.items) ? params.items : []
@@ -741,6 +742,7 @@ export function summarizeCreditNoteCreateAndIssue(
       // The read gives the number and date; unread, a number the caller passed still names it.
       originalNumber: text(original?.number, 40) ?? (stated && !isOpaqueId(stated) ? stated : stated ? "the invoice referenced" : null),
       originalDate: day(original?.issued_at),
+      originalTotalMinor: original?.grand_total_minor,
       issuerName: (issuer?.legal_name as string | undefined) ?? null,
     }),
   )
@@ -860,7 +862,9 @@ export function summarizeReceivedSetStatus(
   const inv = ((meta?.context as { invoice?: Record<string, unknown> } | null)?.invoice ?? null) as Record<string, unknown> | null
   const supplier = text((inv?.supplier as { name?: unknown } | undefined)?.name, 80) ?? "the supplier"
   const number = text(inv?.invoice_number, 40)
-  const total = inv ? money((inv.totals as { total?: unknown } | undefined)?.total, String(inv.currency ?? "EUR")) : null
+  // A received invoice's totals are the decimal amounts its file states, not minor units.
+  const statedTotal = text((inv?.totals as { total?: unknown } | undefined)?.total, 40)
+  const total = statedTotal ? `${statedTotal} ${String(inv?.currency ?? "EUR")}` : null
   const verb = RECEIVED_VERB[String(params.action)] ?? capitalize(String(params.action ?? "Update"))
   const comment = text(params.comment, 120)
   return done({

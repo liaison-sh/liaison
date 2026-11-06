@@ -3,7 +3,8 @@
 // Invoicing mutations: Settings issuer-profile CRUD.
 
 import { checkIssuerTimezone, normalizeIssuerTimezone } from "../issue-date"
-import type { ErrorEnvelope, MutationsCtx, MutationResult, PreflightResult } from "./shared"
+import { readMinorAmount } from "@liaison/app-sdk"
+import { type ErrorEnvelope, type MutationsCtx, type MutationResult, type PreflightResult, invalidAmountError } from "./shared"
 
 // ─────────────────────────────────────────────────────────────────────────
 // Task F — Settings issuer-profile CRUD + PDF retry. Back the Settings page
@@ -51,11 +52,18 @@ function pickIssuerWrite(input: Record<string, unknown>): Record<string, unknown
   return out
 }
 
-/** A zone is checked against the host's table when it is saved, never first at issue time. */
-async function checkWrittenTimezone(
+/** A zone is checked against the host's table when it is saved, never first at issue time. An
+ *  approval threshold is a minor-unit amount like any other: a whole number, or nothing. */
+async function checkWrittenFields(
   ctx: MutationsCtx,
   input: Record<string, unknown>,
 ): Promise<ErrorEnvelope | null> {
+  for (const field of ["invoice_approval_threshold_minor", "po_approval_threshold_minor"]) {
+    const value = input[field]
+    if (value !== undefined && value !== null && readMinorAmount(value) === null) {
+      return { status: "error", error: invalidAmountError(field, value) }
+    }
+  }
   return typeof input.timezone === "string" ? checkIssuerTimezone(ctx, input.timezone) : null
 }
 
@@ -146,7 +154,7 @@ export async function settingsIssuerProfileWritePreflight(
 ): Promise<PreflightResult> {
   const refused =
     (await checkIssuerWriteAuthority(ctx, action, input ?? {})) ??
-    (action === "delete" ? null : await checkWrittenTimezone(ctx, input ?? {}))
+    (action === "delete" ? null : await checkWrittenFields(ctx, input ?? {}))
   return refused ? { error: refused.error } : { ok: true }
 }
 
@@ -200,7 +208,7 @@ export async function settingsIssuerProfileCreate(
     }
   }
   const refused =
-    (await checkIssuerWriteAuthority(ctx, "create", input)) ?? (await checkWrittenTimezone(ctx, input))
+    (await checkIssuerWriteAuthority(ctx, "create", input)) ?? (await checkWrittenFields(ctx, input))
   if (refused) return refused
   const row = (await ctx.db.insert("issuer_profiles", data)) as Record<string, unknown>
   await emitIssuerProfileChange(ctx, "created", String(row.id), null, data)
@@ -234,7 +242,7 @@ export async function settingsIssuerProfileUpdate(
     }
   }
   const refused =
-    (await checkIssuerWriteAuthority(ctx, "update", input)) ?? (await checkWrittenTimezone(ctx, input))
+    (await checkIssuerWriteAuthority(ctx, "update", input)) ?? (await checkWrittenFields(ctx, input))
   if (refused) return refused
   const before = (await ctx.db.findOne("issuer_profiles", id)) as Record<string, unknown> | null
   await ctx.db.update("issuer_profiles", id, data)

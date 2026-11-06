@@ -178,3 +178,4 @@ the tick and carrier scan send the tracking number with its carrier -> bundled-a
 print pack renders an issued invoice's missing PDF on demand -> bundled-apps/boxtal/src/print-pack.ts:150
 print pack refuses a draft invoice: issue it first -> bundled-apps/boxtal/src/print-pack.ts:143
 failed render names the retry action -> bundled-apps/boxtal/src/print-pack.ts:172
+an order_key naming nothing, or two keys naming different rows, is refused -> bundled-apps/boxtal/src/order-state.ts:434

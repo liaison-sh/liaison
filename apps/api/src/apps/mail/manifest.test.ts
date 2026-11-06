@@ -97,6 +97,13 @@ describe("mail app manifest validation", () => {
     }
   })
 
+  it("listAccounts says it lists what this person can use, not what the org has", () => {
+    // "No mailbox is connected to the organisation", to a person whose org has five.
+    const desc = (mailManifest.tools as any).listAccounts.description as string
+    expect(desc).toContain("this person can use")
+    expect(desc).not.toContain("connected to this org")
+  })
+
   it("requires compose accountId (no shared-box default) and steers a user writing as themselves to their own mailbox", () => {
     // A user's agent omitted accountId on a personal email and it went out from contact@.
     const params = (mailManifest.tools as any).compose.params

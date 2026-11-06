@@ -497,6 +497,38 @@ async function redactSealedApprovalEditArgs(orgId: string, args: unknown): Promi
 }
 
 /**
+ * The same redaction for a turn that ran on the user's machine. Its record comes
+ * from the client, whose sanitizer knows secrets but not mailboxes, and for an
+ * MCP read the decrypted text IS the tool result, so a stored record is the one
+ * place that text could reach the control plane. A result is text here: it is
+ * judged as the JSON it holds, and text that does not parse (a clipped result)
+ * names no mailbox, so it fails closed like any other unresolvable result.
+ */
+export async function redactStoredToolCalls<
+  T extends { toolName: string; args: unknown; result: unknown },
+>(orgId: string, calls: readonly T[]): Promise<T[]> {
+  return Promise.all(
+    calls.map(async (call) => {
+      const raw = call.result
+      let parsed = raw
+      if (typeof raw === "string") {
+        try {
+          parsed = JSON.parse(raw)
+        } catch {
+          // Stays text: fails closed for a mail tool, untouched for any other.
+        }
+      }
+      const redacted = await redactMailToolResult(orgId, call.toolName, parsed)
+      return {
+        ...call,
+        args: await redactMailToolArgs(orgId, call.toolName, call.args),
+        result: redacted === parsed ? raw : redacted,
+      }
+    }),
+  )
+}
+
+/**
  * Test access to this module's private state, grouped in one object so the
  * production surface carries a single named door. Production code never calls it.
  */

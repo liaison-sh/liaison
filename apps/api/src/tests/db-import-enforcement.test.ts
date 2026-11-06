@@ -514,6 +514,8 @@ describe("db import enforcement", () => {
     // operations (no user RLS context). Test helpers bootstrap orgs/contexts
     // outside any request.
     "modules/apps/enabled-apps.ts",
+    // `open_app`: a shop domain for a record whose only page is elsewhere, as the references route.
+    "modules/agent/tools/navigation-tool.ts",
     "modules/agent/tools/org-config-tools.ts",
     // Agent config tools (the section runner's tool path): org-scoped reads the
     // runner and its checks need regardless of the actor's own row visibility

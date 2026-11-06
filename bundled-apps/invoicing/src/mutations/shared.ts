@@ -3,6 +3,7 @@
 // Invoicing mutations: the shared document types, result envelopes, notes normalisation,
 // the mutation ctx/db contracts and the minor-amount coercion every group uses.
 
+import { minorAmountRefusal, readMinorAmount } from "@liaison/app-sdk"
 import { type BuyerVatFacts, needsHumanBuyerDecision } from "../buyer-vat"
 import type { CrossAppExecuteTool } from "../cross-app"
 import type { ReadsFetch } from "../reads"
@@ -309,30 +310,8 @@ export function toBigInt(value: unknown): bigint {
   return 0n
 }
 
-/** A money value given as a string must be a plain decimal: digits, an optional leading minus and
- *  an optional fractional part. No currency symbol or code, no thousands separator, no exponent. */
-const PLAIN_AMOUNT_RE = /^-?\d+(?:\.\d+)?$/
-
 function isAbsentAmount(value: unknown): boolean {
   return value === undefined || value === null || (typeof value === "string" && value.trim() === "")
-}
-
-/**
- * Parse an agent-supplied MONEY value into minor units (a bigint), tolerating the weak model's most
- * common mistake: passing a MAJOR-unit decimal (e.g. `"419.40"` or `699.00` meaning €419.40 / €699)
- * instead of the minor-unit integer (41940 / 69900). Minor units are integers BY DEFINITION, so any
- * fractional value is unambiguously a major-unit amount → multiply by 100. An integer is taken as
- * already-minor. Returns null when the value is present but not a plain number (`"$1"`, `"1 EUR"`,
- * `"1,00"`): the caller refuses it rather than guessing.
- */
-export function parseMinorAmount(value: unknown): bigint | null {
-  if (typeof value === "bigint") return value
-  let n: number
-  if (typeof value === "number") n = value
-  else if (typeof value === "string" && PLAIN_AMOUNT_RE.test(value.trim())) n = Number(value.trim())
-  else return null
-  if (!Number.isFinite(n)) return null
-  return Number.isInteger(n) ? BigInt(n) : BigInt(Math.round(n * 100))
 }
 
 function showValue(value: unknown): string {
@@ -343,29 +322,23 @@ function showValue(value: unknown): string {
   }
 }
 
-/** What a line money field means, said in the refusal so the caller can correct it in one go. */
-const LINE_AMOUNT_HINTS: Record<string, string> = {
-  unit_price_minor:
-    "unit_price_minor is the price of ONE unit in minor currency units (cents), as an integer or " +
-    "its string form: 89900 or \"89900\" for 899.00. No currency symbol or code, no thousands " +
-    "separator, no percent sign.",
-  discount_minor:
-    "discount_minor is the TOTAL discount for the whole line in minor currency units (cents), not " +
-    "per unit and not a percentage: for 38% off 40 units at 89900 pass 1366480 (40 x 89900 x 0.38). " +
-    "Leave it out for no discount.",
-}
+/** What a line's discount means, said in the refusal so the caller can correct it in one go. */
+const DISCOUNT_HINT =
+  "discount_minor is the TOTAL discount for the whole line in minor currency units (cents), not " +
+  "per unit and not a percentage: for 38% off 40 units at 89900 pass 1366480 (40 x 89900 x 0.38). " +
+  "Leave it out for no discount."
 
-/** The typed refusal for a money field that is present but not a plain number. `field` may be a
- *  path (`items[2].discount_minor`); its last segment picks the explanation of the field. */
+/** The typed refusal for a minor-unit field that does not hold a whole number. `field` may be a
+ *  path (`items[2].discount_minor`). */
 export function invalidAmountError(field: string, value: unknown): { code: string; message: string } {
-  const key = field.slice(field.lastIndexOf(".") + 1)
-  const hint = LINE_AMOUNT_HINTS[key]
+  const hint = field.endsWith("discount_minor")
+    ? ` ${DISCOUNT_HINT}`
+    : field.endsWith("unit_price_minor")
+      ? " unit_price_minor is the price of ONE unit in minor currency units (cents): 89900 for 899.00."
+      : ""
   return {
     code: "invalid_amount",
-    message:
-      `${field} is ${showValue(value)}, which is not a number. Nothing was created: ` +
-      `use a plain number such as 1.00 (no currency symbol or code, no thousands separator).` +
-      (hint ? ` ${hint} Correct ${field} and call the tool again.` : ""),
+    message: `${minorAmountRefusal(field, value)}${hint} Correct ${field} and call the tool again.`,
   }
 }
 
@@ -382,9 +355,9 @@ export function lineDiscountError(lines: unknown, field = "items"): ErrorEnvelop
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] as Record<string, unknown> | null
     if (!line || typeof line !== "object" || isAbsentAmount(line.discount_minor)) continue
-    const discount = parseMinorAmount(line.discount_minor)
+    const discount = readMinorAmount(line.discount_minor)
     if (discount === null) continue
-    const unit = isAbsentAmount(line.unit_price_minor) ? 0n : parseMinorAmount(line.unit_price_minor)
+    const unit = isAbsentAmount(line.unit_price_minor) ? 0n : readMinorAmount(line.unit_price_minor)
     if (unit === null) continue
     let lineAmount: bigint
     try {
@@ -466,15 +439,14 @@ export function normaliseCustomerReference(
 }
 
 /**
- * Coerce a money value into minor units (see parseMinorAmount). An ABSENT value (undefined, null,
- * blank string) is 0n as before (the empty_document / downstream validation catches it). A PRESENT
- * value that is not a plain number throws an "invalid_amount: ..." error instead of silently
- * becoming 0n, which once issued a proforma at 0 for a price of "$1". It never throws the opaque
- * BigInt SyntaxError (`toBigInt("419.40")`), which the sandbox surfaced as "Tool execution failed".
+ * A money value in minor units (readMinorAmount). An ABSENT value (undefined, null, blank string)
+ * is 0n as before (the empty_document / downstream validation catches it). A PRESENT value that is
+ * not a whole number throws an "invalid_amount: ..." error, never a guess: a price of "$1" once
+ * issued a proforma at 0, and "-1260.50" once issued a credit note at 100 times its amount.
  */
 export function coerceMinorAmount(value: unknown, field = "amount"): bigint {
   if (isAbsentAmount(value)) return 0n
-  const parsed = parseMinorAmount(value)
+  const parsed = readMinorAmount(value)
   if (parsed === null) {
     const err = invalidAmountError(field, value)
     throw new Error(`${err.code}: ${err.message}`)
@@ -483,9 +455,9 @@ export function coerceMinorAmount(value: unknown, field = "amount"): bigint {
 }
 
 /**
- * Validate the money fields of agent-supplied lines BEFORE gating, so an unparsable price never
+ * Validate the money fields of agent-supplied lines BEFORE gating, so an unreadable price never
  * parks an approval card or consumes a document number. `unit_price_minor` and `discount_minor`
- * may be absent (they keep their defaults); when present they must be plain numbers. A non-array
+ * may be absent (they keep their defaults); when present they must be whole numbers. A non-array
  * is left to normaliseDraftLines, which reports it.
  */
 export function lineAmountsError(lines: unknown, field = "items"): ErrorEnvelope | null {
@@ -495,7 +467,7 @@ export function lineAmountsError(lines: unknown, field = "items"): ErrorEnvelope
     if (!line || typeof line !== "object") continue
     for (const key of ["unit_price_minor", "discount_minor"]) {
       const value = line[key]
-      if (!isAbsentAmount(value) && parseMinorAmount(value) === null) {
+      if (!isAbsentAmount(value) && readMinorAmount(value) === null) {
         return { status: "error", error: invalidAmountError(`${field}[${i}].${key}`, value) }
       }
     }

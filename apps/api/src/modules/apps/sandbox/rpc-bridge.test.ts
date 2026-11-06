@@ -917,6 +917,78 @@ describe("createRpcBridge", () => {
       }
     })
 
+    it("Invariant K: a mail tool's call is redacted for the row and the channel alike", async () => {
+      const { AgentServiceTestAccess } = await import("~/modules/agent/runtime/agent-service")
+      const { RedisTestAccess } = await import("~/lib/redis")
+      const published: Array<[string, string]> = []
+      RedisTestAccess.setPublish((async (c: string, m: string) => {
+        published.push([c, m])
+      }) as never)
+      let finalizeParams: any = null
+      AgentServiceTestAccess.setAgentRun(async () => ({
+        userMessageId: "um-1",
+        fullStream: (async function* () {
+          yield {
+            type: "tool-call",
+            toolCallId: "tc-mail",
+            toolName: "mail__reply",
+            input: { textBody: "OBSIDIANBRIDGEDRAFT" },
+          }
+          // No tool name on the chunk: it comes from the call.
+          yield {
+            type: "tool-result",
+            toolCallId: "tc-mail",
+            output: { textBody: "OBSIDIANBRIDGERESULT" },
+          }
+          yield {
+            type: "tool-call",
+            toolCallId: "tc-other",
+            toolName: "tickets_search",
+            input: { q: "open" },
+          }
+          yield { type: "tool-result", toolCallId: "tc-other", output: "T-1" }
+          yield { type: "finish-step", finishReason: "stop", usage: {} }
+          yield { type: "finish", finishReason: "stop", usage: {} }
+        })(),
+        finalize: async (params: any) => {
+          finalizeParams = params
+          return { messageId: "am-1", creditCost: "0", finishReason: params.finishReason }
+        },
+      }))
+      try {
+        const bridge = createRpcBridge(
+          "chaos-debug",
+          TEST_USER,
+          TEST_ORG,
+          mockTx as any,
+          { name: "chaos-debug", schema: {}, capabilities: ["agent.run"] } as any,
+          ["chaos-debug:*"],
+          "user",
+          undefined,
+          { actor: userActor },
+        )
+        await bridge.agent_run(
+          JSON.stringify({
+            threadId: "t-1",
+            prompt: "go",
+            channel: "apps/chaos-debug/agent-stream/corr-k",
+          }),
+        )
+        const [step] = finalizeParams.steps
+        expect(step.toolCalls[0].args).toMatchObject({ redacted: true })
+        expect(step.toolResults[0].result).toMatchObject({ redacted: true })
+        expect(step.toolCalls[1].args).toEqual({ q: "open" })
+        expect(step.toolResults[1].result).toBe("T-1")
+        const wire = published.map(([, m]) => m).join("\n")
+        expect(wire).toContain("tc-mail")
+        expect(wire).not.toContain("OBSIDIANBRIDGE")
+        expect(JSON.stringify(finalizeParams.steps)).not.toContain("OBSIDIANBRIDGE")
+      } finally {
+        AgentServiceTestAccess.setAgentRun(undefined)
+        RedisTestAccess.setPublish(undefined)
+      }
+    })
+
     it("records tool calls/results into finalize steps from a v6 multi-step stream", async () => {
       // Regression (empty-turn bug): the loop previously keyed on `step-start`
       // (a chunk type the AI SDK v6 never emits — it emits `start-step` /

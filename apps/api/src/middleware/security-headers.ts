@@ -89,7 +89,11 @@ export function contentSecurityPolicy(options: ContentSecurityPolicyOptions = {}
     // The managed edition's Billing page embeds its payment frame
     // (LIAISON_PAY_FRAME_ORIGIN); no other edition names it.
     ...(shell ? [`frame-src 'self' blob:${frameSources}`] : []),
-    "frame-ancestors 'none'",
+    // The blob frame above inherits this directive too, and WebKit applies it to the blob
+    // itself: under 'none' the frame stayed empty there. So the web shell says 'self': another
+    // origin still cannot frame it, an app's frame is a sandbox with an opaque origin, and the
+    // file routes never serve HTML inline. Everything else keeps 'none'.
+    `frame-ancestors ${shell ? "'self'" : "'none'"}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

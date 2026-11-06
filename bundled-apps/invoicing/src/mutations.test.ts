@@ -9695,6 +9695,7 @@ describe("the other minor-unit fields read as issuing reads them", () => {
       const m = makeCtx({ approval: PRE_APPROVED })
       const res = await documentsRecordRefund(m.ctx, {
         document_id: "any",
+        refund_kind: "partial",
         refund_amount_minor: bad as never,
       })
       if (res.status !== "error") throw new Error("a fractional refund passed")

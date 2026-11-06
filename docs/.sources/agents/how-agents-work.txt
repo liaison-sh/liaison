@@ -158,3 +158,4 @@ An app's post in a direct conversation notifies like a direct message -> apps/ap
 A turn names the record open on the page, and that record wins for "this" -> apps/api/src/modules/agent/context/context.ts:2002
 A pane, drawer or expanded row reports its record -> apps/web/src/modules/shell/open-record.ts:42
 a call with wrong arguments answers what to fix, not a fault -> apps/api/src/modules/agent/tools/call-tool.ts:39
+A record is open once you opened it: apps/web/src/modules/shell/open-record.ts:9

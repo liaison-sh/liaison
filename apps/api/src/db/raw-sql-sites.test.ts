@@ -39,6 +39,11 @@ const APP_DDL =
  * fails until it has its own entry.
  */
 const REVIEWED: Record<string, Record<string, string>> = {
+  "apps/api/src/modules/cloud/storage-estimate.ts#measureSource": {
+    "relOf(s)": "schemaRef of a table in the module's literal SOURCES list",
+    's.columns.map((c) => `COALESCE(pg_column_size("${c}"), 0)`).join(" + ")':
+      "column names from the module's literal SOURCES list, quoted; no value from a request or a row",
+  },
   "apps/api/src/modules/org/transfer/closure.ts#query": {
     text: `the org transfer's one query helper: SQL its modules build from catalog names (rel / quoteIdent), every value bound as a $n parameter; ${CATALOG_IDENT}`,
   },

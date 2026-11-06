@@ -3,7 +3,7 @@
 // The org's platform rows a test needs in a given state, written in their
 // schema's shape: outbox events (pending or already processed), a durable
 // consumer's mark, an MCP connection, an export run, a control-plane message,
-// a custom app's install record, a connected account.
+// a custom app's install record, a connected account, an org's OAuth client.
 //
 // These are rows the product writes as a side effect of work no test can run
 // on demand (an outbox drain, an OAuth round trip, a control-plane queue, an
@@ -18,6 +18,7 @@ import {
   controlPlaneOutbox,
   durableConsumerMarks,
   mcpConnections,
+  oauthProviders,
   orgExports,
   pendingEvents,
 } from "~/db/schema/kernel"
@@ -117,12 +118,25 @@ export async function seedActiveAppVersion(
   })
 }
 
-/** A connected account row in a given status (no credentials); its id. */
+/**
+ * A connected account row in a given status, holding the encrypted tokens the
+ * row names and no others; its id.
+ */
 export async function seedConnectedAccountRow(
   row: typeof connectedAccounts.$inferInsert,
 ): Promise<string> {
   const [created] = await withSystemDb("seed-connected-account-row", (db) =>
     db.insert(connectedAccounts).values(row).returning({ id: connectedAccounts.id }),
+  )
+  return created?.id as string
+}
+
+/** The org's OAuth client for a provider, as the setup path stores it; its id. */
+export async function seedOAuthProviderRow(
+  row: typeof oauthProviders.$inferInsert,
+): Promise<string> {
+  const [created] = await withSystemDb("seed-oauth-provider-row", (db) =>
+    db.insert(oauthProviders).values(row).returning({ id: oauthProviders.id }),
   )
   return created?.id as string
 }

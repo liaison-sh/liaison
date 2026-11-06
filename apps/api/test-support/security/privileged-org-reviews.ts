@@ -14,6 +14,8 @@ import type { OrgTraceReviews } from "./enumerate"
 export const TRUSTED_SOURCES: Record<string, string> = {
   requireNodeCredential:
     "the node credential's row, refused unless node.orgId === c.get('orgId') and its owner is the caller (nodes/credentials.ts:51-59)",
+  claimTeardowns:
+    "rows of kernel.connection_teardowns, which only the removal's own transaction writes (stageConnectionTeardown): source_org_id is the org of the connection removed, and the work done for it is that connection's provider teardown",
   listAllOrgIds: "operator CLI sweep: every id in kernel.organizations (cli/search/reindex.ts:49)",
   listOrgsWithAppOn:
     "operator CLI sweep: the orgs whose kernel.apps row has the app active, read from the database before a rollback registers it there (cli/app/manage.ts)",
@@ -243,6 +245,8 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
  * The caller trace stops at a call made from one of them.
  */
 export const REVIEWED_ORIGINS: Record<string, string> = {
+  "apps/api/src/modules/apps/connections/revoke.ts#isAccountUsedElsewhere":
+    "the org of an active connection on the same provider account, read by this function: its apps are loaded only to learn which provider endpoints that connection declares; nothing of that org is written or returned, the answer is one boolean",
   "apps/api/src/modules/org/transfer/import.ts#importOrg":
     "an org transfer import: the org named by the bundle header the source agent streams over the operator's private channel (a uuid); the purge runs only on this instance's own copy of that org, `incoming` under the header's transfer id (or a `moved` copy the header's arrivedVia proves), and purgeTransferCopy re-checks that row",
   "apps/api/src/modules/org/transfer/agent-target.ts#TargetAgent.run":

@@ -20,9 +20,11 @@ import {
 } from "~/modules/apps/connections/revoke"
 import { disconnectConnection } from "~/modules/apps/connections/service"
 import { createTicketsMethods } from "~/modules/apps/sandbox/bridge/tickets"
+import { seedConnectedAccountRow, seedOAuthProviderRow } from "~/seed/factories/org/platform-rows"
+import * as minimal from "~/seed/tiers/minimal"
 
-const orgId = randomUUID()
-const userId = randomUUID()
+let orgId: string
+let userId: string
 let server: ReturnType<typeof Bun.serve>
 const calls: Array<{ path: string; auth: string | null; body: string }> = []
 let replies: Record<string, { status: number; body?: string }> = {}
@@ -30,10 +32,7 @@ let replies: Record<string, { status: number; body?: string }> = {}
 const url = (path: string) => `http://localhost:${server.port}${path}`
 
 beforeAll(async () => {
-  await sql`INSERT INTO kernel.organizations (id, name, slug)
-    VALUES (${orgId}, 'Teardown Org', ${`teardown-${orgId}`})`
-  await sql`INSERT INTO kernel.users (id, org_id, email, password_hash, name, status)
-    VALUES (${userId}, ${orgId}, ${`teardown-${orgId}@test.com`}, 'hash', 'Owner', 'active')`
+  ;({ orgId, adminUserId: userId } = await minimal.secondOrg({ name: "Teardown Org" }))
   server = Bun.serve({
     port: 0,
     fetch: async (req) => {
@@ -58,13 +57,15 @@ afterEach(async () => {
 
 afterAll(async () => {
   server.stop(true)
-  await sql`DELETE FROM kernel.users WHERE org_id = ${orgId}`
-  await sql`DELETE FROM kernel.organizations WHERE id = ${orgId}`
   initializedOrgRuntimes.delete(orgId)
 })
 
-function declare(appName: string, connectionName: string, opts: { stop?: boolean } = {}): void {
-  connectionConfigRegistry.set([orgId, appName, connectionName], {
+function declare(
+  appName: string,
+  connectionName: string,
+  opts: { stop?: boolean; inOrg?: string } = {},
+): void {
+  connectionConfigRegistry.set([opts.inOrg ?? orgId, appName, connectionName], {
     type: "oauth2",
     allowedDomains: [],
     tokenUrl: url("/token"),
@@ -80,18 +81,28 @@ async function insertConnection(opts: {
   expired?: boolean
   access?: string
 }): Promise<string> {
-  const expiresAt = new Date(Date.now() + (opts.expired ? -60_000 : 3_600_000)).toISOString()
-  const [row] = await sql<{ id: string }[]>`
-    INSERT INTO kernel.connected_accounts
-      (org_id, app_name, connection_name, owner_type, owner_id, provider_type, identifier,
-       access_token_encrypted, refresh_token_encrypted, token_expires_at, status, created_by)
-    VALUES (${orgId}, ${opts.appName ?? "mail"}, ${opts.connectionName ?? "gmail"}, 'user',
-      ${userId}, 'oauth2', ${opts.identifier},
-      ${encryptSecret(opts.access ?? "access-1", env.ENCRYPTION_KEY, CryptoContext.connectedAccountAccessToken)},
-      ${encryptSecret("refresh-1", env.ENCRYPTION_KEY, CryptoContext.connectedAccountRefreshToken)},
-      ${expiresAt}, 'active', ${userId})
-    RETURNING id`
-  return row!.id
+  return seedConnectedAccountRow({
+    orgId,
+    appName: opts.appName ?? "mail",
+    connectionName: opts.connectionName ?? "gmail",
+    ownerType: "user",
+    ownerId: userId,
+    providerType: "oauth2",
+    identifier: opts.identifier,
+    accessTokenEncrypted: encryptSecret(
+      opts.access ?? "access-1",
+      env.ENCRYPTION_KEY,
+      CryptoContext.connectedAccountAccessToken,
+    ),
+    refreshTokenEncrypted: encryptSecret(
+      "refresh-1",
+      env.ENCRYPTION_KEY,
+      CryptoContext.connectedAccountRefreshToken,
+    ),
+    tokenExpiresAt: new Date(Date.now() + (opts.expired ? -60_000 : 3_600_000)),
+    status: "active",
+    createdBy: userId,
+  })
 }
 
 const disconnect = (id: string) =>
@@ -180,13 +191,25 @@ describe("provider teardown of a removed connection", () => {
   })
 
   it("an expired access token is refreshed for the stop and not stored", async () => {
-    declare("mail", "gmail")
-    await sql`INSERT INTO kernel.oauth_providers
-        (org_id, name, issuer_url, client_id, client_secret_encrypted)
-      VALUES (${orgId}, 'mail:gmail', 'https://issuer.example.test', 'client-1',
-        ${encryptSecret("secret-1", env.ENCRYPTION_KEY, CryptoContext.oauthProviderClientSecret)})
-      ON CONFLICT DO NOTHING`
-    const id = await insertConnection({ identifier: `expired-${orgId}@example.com`, expired: true })
+    // Not Mail: its own client resolver refuses while the org has Gmail turned off.
+    declare("crm", "oauth")
+    await seedOAuthProviderRow({
+      orgId,
+      name: "crm:oauth",
+      issuerUrl: "https://issuer.example.test",
+      clientId: "client-1",
+      clientSecretEncrypted: encryptSecret(
+        "secret-1",
+        env.ENCRYPTION_KEY,
+        CryptoContext.oauthProviderClientSecret,
+      ),
+    })
+    const id = await insertConnection({
+      appName: "crm",
+      connectionName: "oauth",
+      identifier: `expired-${orgId}@example.com`,
+      expired: true,
+    })
     await disconnect(id)
     replies = { "/token": { status: 200, body: JSON.stringify({ access_token: "fresh-token" }) } }
     const [outcome] = await runConnectionTeardown(id)
@@ -252,15 +275,23 @@ describe("provider teardown of a removed connection", () => {
   })
 
   it("the same account in another org keeps its watch and grant", async () => {
-    const otherOrg = randomUUID()
-    await sql`INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (${otherOrg}, 'Teardown Other', ${`teardown-${otherOrg}`})`
+    const { orgId: otherOrg, adminUserId: otherAdmin } = await minimal.secondOrg({
+      name: "Teardown Other",
+    })
     const identifier = `other-org-${orgId}@example.com`
-    await sql`INSERT INTO kernel.connected_accounts
-      (org_id, app_name, connection_name, owner_type, provider_type, identifier, status, created_by)
-      VALUES (${otherOrg}, 'mail', 'gmail', 'org', 'oauth2', ${identifier.toUpperCase()}, 'active', ${userId})`
+    await seedConnectedAccountRow({
+      orgId: otherOrg,
+      appName: "mail",
+      connectionName: "gmail",
+      ownerType: "org",
+      providerType: "oauth2",
+      identifier: identifier.toUpperCase(),
+      status: "active",
+      createdBy: otherAdmin,
+    })
     try {
       declare("mail", "gmail")
+      declare("mail", "gmail", { inOrg: otherOrg })
       const id = await insertConnection({ identifier })
       await disconnect(id)
       const [outcome] = await runConnectionTeardown(id)
@@ -268,7 +299,6 @@ describe("provider teardown of a removed connection", () => {
       expect(calls).toHaveLength(0)
     } finally {
       await sql`DELETE FROM kernel.connected_accounts WHERE org_id = ${otherOrg}`
-      await sql`DELETE FROM kernel.organizations WHERE id = ${otherOrg}`
     }
   })
 

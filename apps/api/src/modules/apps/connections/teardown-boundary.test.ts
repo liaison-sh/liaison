@@ -4,7 +4,6 @@
 // that commits a disconnect is not the one that drains its outbox event, and an
 // app's manifest is what declares the Gmail watch. The provider is a local server.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
-import { randomUUID } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { Hono } from "hono"
 import type { AppEnv } from "~/app"
@@ -16,9 +15,11 @@ import { connectionConfigRegistry, initializedOrgRuntimes } from "~/modules/apps
 import { connectionRoutes } from "~/modules/apps/connections/routes"
 import { disconnectConnection } from "~/modules/apps/connections/service"
 import { createScope } from "~/modules/permissions/types"
+import { seedConnectedAccountRow } from "~/seed/factories/org/platform-rows"
+import * as minimal from "~/seed/tiers/minimal"
 
-const orgId = randomUUID()
-const userId = randomUUID()
+let orgId: string
+let userId: string
 let server: ReturnType<typeof Bun.serve>
 const calls: Array<{ path: string; auth: string | null; body: string }> = []
 
@@ -26,10 +27,7 @@ const stopUrl = () => `http://localhost:${server.port}/stop`
 const revokeUrl = () => `http://localhost:${server.port}/revoke`
 
 beforeAll(async () => {
-  await sql`INSERT INTO kernel.organizations (id, name, slug)
-    VALUES (${orgId}, 'Teardown Boundary Org', ${`teardown-boundary-${orgId}`})`
-  await sql`INSERT INTO kernel.users (id, org_id, email, password_hash, name, status)
-    VALUES (${userId}, ${orgId}, ${`boundary-${orgId}@test.com`}, 'hash', 'Owner', 'active')`
+  ;({ orgId, adminUserId: userId } = await minimal.secondOrg({ name: "Teardown Boundary Org" }))
   server = Bun.serve({
     port: 0,
     fetch: async (req) => {
@@ -53,8 +51,6 @@ afterEach(async () => {
 afterAll(async () => {
   server.stop(true)
   await sql`DELETE FROM kernel.connected_accounts WHERE org_id = ${orgId}`
-  await sql`DELETE FROM kernel.users WHERE org_id = ${orgId}`
-  await sql`DELETE FROM kernel.organizations WHERE id = ${orgId}`
   initializedOrgRuntimes.delete(orgId)
 })
 
@@ -69,16 +65,28 @@ function declare(appName: string, connectionName: string): void {
 }
 
 async function insertConnection(identifier: string): Promise<string> {
-  const [row] = await sql<{ id: string }[]>`
-    INSERT INTO kernel.connected_accounts
-      (org_id, app_name, connection_name, owner_type, owner_id, provider_type, identifier,
-       access_token_encrypted, refresh_token_encrypted, token_expires_at, status, created_by)
-    VALUES (${orgId}, 'mail', 'gmail', 'user', ${userId}, 'oauth2', ${identifier},
-      ${encryptSecret("access-1", env.ENCRYPTION_KEY, CryptoContext.connectedAccountAccessToken)},
-      ${encryptSecret("refresh-1", env.ENCRYPTION_KEY, CryptoContext.connectedAccountRefreshToken)},
-      ${new Date(Date.now() + 3_600_000).toISOString()}, 'active', ${userId})
-    RETURNING id`
-  return row!.id
+  return seedConnectedAccountRow({
+    orgId,
+    appName: "mail",
+    connectionName: "gmail",
+    ownerType: "user",
+    ownerId: userId,
+    providerType: "oauth2",
+    identifier,
+    accessTokenEncrypted: encryptSecret(
+      "access-1",
+      env.ENCRYPTION_KEY,
+      CryptoContext.connectedAccountAccessToken,
+    ),
+    refreshTokenEncrypted: encryptSecret(
+      "refresh-1",
+      env.ENCRYPTION_KEY,
+      CryptoContext.connectedAccountRefreshToken,
+    ),
+    tokenExpiresAt: new Date(Date.now() + 3_600_000),
+    status: "active",
+    createdBy: userId,
+  })
 }
 
 describe("provider teardown across process boundaries", () => {

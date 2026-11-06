@@ -21,6 +21,10 @@ import {
   tableBytes,
 } from "~/modules/cloud/storage-estimate"
 import { getOrgUsage } from "~/modules/org/caps"
+import { seedContext } from "~/seed/context"
+import { seedOrgBillingState } from "~/seed/factories/billing/billing"
+import { seedFileRow } from "~/seed/factories/files/file-row"
+import { insertUnarmedMail } from "~/seed/factories/mail/conversations"
 import * as minimal from "~/seed/tiers/minimal"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -43,38 +47,57 @@ function meiliWith(documents: number, opts: { fail?: boolean } = {}) {
 async function billedOrg(caps: Record<string, unknown>) {
   const { orgId } = await minimal.secondOrg()
   await sql`UPDATE kernel.organizations SET caps = ${JSON.stringify(caps)}::jsonb WHERE id = ${orgId}`
-  await sql`
-    INSERT INTO kernel.org_billing_state (org_id, version, plan, status, period_end, included_credits, auto_top_up)
-    VALUES (${orgId}, 1, 'base', 'active', now() + interval '30 days', 0,
-            ${JSON.stringify({ enabled: false, thresholdCredits: 0, amountCredits: 0 })}::jsonb)`
+  await seedOrgBillingState(orgId, { includedCredits: 0 })
   return orgId
 }
 
-async function mailAccount(orgId: string): Promise<string> {
-  const [account] = await sql`
-    INSERT INTO app_mail.accounts
-      (org_id, connected_account_id, owner_type, provider, email_address, sync_status, visibility)
-    VALUES (${orgId}, gen_random_uuid(), 'org', 'gmail', ${`${randomUUID()}@estimate.test`}, 'active', 'shared')
-    RETURNING id`
-  return account.id as string
-}
-
-/** `n` mail rows with a body that hardly compresses, so its stored size is near its length. */
-async function seedMail(orgId: string, n: number, bodyBytes: number) {
-  const account = await mailAccount(orgId)
-  for (let i = 0; i < n; i++) {
-    await sql`
-      INSERT INTO app_mail.messages (org_id, conversation_id, account_id, direction, text_body, raw_headers)
-      VALUES (${orgId}, ${randomUUID()}, ${account}, 'inbound',
-              ${randomBytes(bodyBytes / 2).toString("hex")}, '{"subject":"s"}'::jsonb)`
-  }
+/** `bodies.length` messages in the org's shared mailbox, stored as they are given. */
+async function seedMail(orgId: string, bodies: string[]) {
+  await insertUnarmedMail(seedContext({ orgId, now: new Date() }), {
+    domain: "estimate.test",
+    mailboxes: [
+      {
+        box: "shared",
+        ownerUserId: null,
+        email: `${randomUUID()}@estimate.test`,
+        displayName: "Shared",
+      },
+    ],
+    conversations: [
+      {
+        key: "estimate",
+        box: "shared",
+        subject: "s",
+        status: "open",
+        labels: [],
+        isRead: true,
+        isStarred: false,
+        messages: bodies.map((body) => ({
+          direction: "inbound" as const,
+          fromName: "From",
+          fromEmail: "from@estimate.test",
+          toName: "To",
+          toEmail: "to@estimate.test",
+          hoursAgo: 1,
+          body,
+        })),
+      },
+    ],
+  })
 }
 
 async function seedFile(orgId: string, sizeBytes: number, thumb: boolean) {
-  await sql`
-    INSERT INTO kernel.files (org_id, app, entity_type, entity_id, filename, mime_type, size_bytes, storage_key, thumbnail_key)
-    VALUES (${orgId}, 'knowledge', 'document', ${randomUUID()}, 'f.png', 'image/png', ${sizeBytes},
-            ${`orgs/${orgId}/${randomUUID()}`}, ${thumb ? `orgs/${orgId}/${randomUUID()}.thumb.webp` : null})`
+  await seedFileRow({
+    orgId,
+    app: "knowledge",
+    entityType: "document",
+    entityId: randomUUID(),
+    filename: "f.png",
+    mimeType: "image/png",
+    sizeBytes,
+    storageKey: `orgs/${orgId}/${randomUUID()}`,
+    thumbnailKey: thumb ? `orgs/${orgId}/${randomUUID()}.thumb.webp` : null,
+  })
 }
 
 async function estimateRow(orgId: string) {
@@ -152,7 +175,11 @@ describe("the nightly run", () => {
 
   it("counts mail, files, thumbnails and the org's share of the search index", async () => {
     const orgId = await billedOrg({ storageGb: 10 })
-    await seedMail(orgId, 5, 20_000)
+    // A body that hardly compresses, so its stored size is near its length.
+    await seedMail(
+      orgId,
+      Array.from({ length: 5 }, () => randomBytes(10_000).toString("hex")),
+    )
     await seedFile(orgId, 1_000_000, true)
     meiliWith(25)
     await runStorageEstimates(NIGHT, FAST)
@@ -169,16 +196,19 @@ describe("the nightly run", () => {
 
   it("an org with more rows than the sample is measured from the sample, times its row count", async () => {
     expect(SAMPLE_ROWS).toBeGreaterThan(0)
-    const orgId = await billedOrg({})
-    const account = await mailAccount(orgId)
-    await sql`
-      INSERT INTO app_mail.messages (org_id, conversation_id, account_id, direction, text_body)
-      SELECT ${orgId}::uuid, gen_random_uuid(), ${account}::uuid, 'inbound', repeat('x', 100)
-        FROM generate_series(1, ${SAMPLE_ROWS + 50}::int)`
+    const atSample = await billedOrg({})
+    const overSample = await billedOrg({})
+    await seedMail(atSample, Array(SAMPLE_ROWS).fill("x".repeat(100)))
+    await seedMail(overSample, Array(SAMPLE_ROWS * 2).fill("x".repeat(100)))
     meiliWith(0)
     await runStorageEstimates(NIGHT, FAST)
-    // Every row counts though only the sample's sizes were read: well above the sample alone.
-    expect((await estimateRow(orgId))?.parts.mail).toBeGreaterThan((SAMPLE_ROWS + 50) * 100)
+    // Both read the same number of rows' sizes and the same size per row, so only the
+    // row count can double the second org's part.
+    const at = (await estimateRow(atSample))?.parts.mail as number
+    const over = (await estimateRow(overSample))?.parts.mail as number
+    expect(at).toBeGreaterThan(SAMPLE_ROWS * 100)
+    expect(over).toBeGreaterThan(at * 1.9)
+    expect(over).toBeLessThan(at * 2.1)
   })
 
   it("over the cap: admins and Control are told once; back under tells Control only; a new crossing tells again", async () => {

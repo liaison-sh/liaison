@@ -620,9 +620,9 @@ export async function runDueConnectionTeardowns(): Promise<TeardownOutcome[]> {
   const out: TeardownOutcome[] = []
   try {
     for (let i = 0; i < TEARDOWN_SWEEP_BATCH; i++) {
-      const [row] = await claimTeardowns({ limit: 1 })
-      if (!row) break
-      out.push(await workTeardown(row))
+      const rows = await claimTeardowns({ limit: 1 })
+      if (rows.length === 0) break
+      for (const row of rows) out.push(await workTeardown(row))
     }
   } catch (err) {
     log.warn({ err: (err as Error).message }, "Connection teardown sweep failed; it retries")

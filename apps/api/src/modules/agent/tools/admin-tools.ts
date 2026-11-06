@@ -10,7 +10,12 @@
 // and audit `actorId` written here is that actor (`actor.userId`), the identity
 // whose scopes acted; the requester stays on the approval row.
 
-import type { ApprovalEditableField, ApprovalRequestStatus, ApprovalSummary } from "@liaison/shared"
+import type {
+  ApprovalEditableField,
+  ApprovalLastFailure,
+  ApprovalRequestStatus,
+  ApprovalSummary,
+} from "@liaison/shared"
 import { and, eq, isNull } from "drizzle-orm"
 import { HTTPException } from "hono/http-exception"
 import type { RlsClient } from "~/db"
@@ -242,6 +247,10 @@ export async function handleAuditSearch(
   }
 }
 
+/** Where a pending request with a failed attempt stands, said by the result itself. */
+const RETRYABLE_FAILURE_STATE =
+  "It was approved and its call was attempted, but the call failed, so it is waiting for a decision again. Approving it again makes the same call."
+
 export async function handleApprovalsList(
   params: { status?: string; sort?: "oldest" | "newest" },
   ctx: OrgConfigToolCtx,
@@ -274,6 +283,9 @@ export async function handleApprovalsList(
     // guessing whether terms are editable. Empty list ⇒ nothing is editable.
     editableFields: ApprovalEditableField[]
     currentPayload: unknown
+    /** Someone approved it, its call failed, and it came back to the queue. Only
+     *  present then. Without it the row read as a request nobody had decided. */
+    lastFailure?: ApprovalLastFailure & { state: string }
   }>
   /** Requests decided in the last 24 h that this user may see, newest decision
    *  first, kept apart from the pending queue and never counted in `total`. A
@@ -291,6 +303,8 @@ export async function handleApprovalsList(
     /** The decider by name; null when nobody decided (expired). */
     decidedBy: string | null
     reason: string | null
+    /** The call's failure, when it was approved and failed. */
+    lastFailure?: ApprovalLastFailure
   }>
 }> {
   const actor = await resolveActor(ctx)
@@ -317,6 +331,7 @@ export async function handleApprovalsList(
     ageDays: Math.floor((now - new Date(r.createdAt).getTime()) / 86_400_000),
     editableFields: r.editableFields,
     currentPayload: r.currentPayload,
+    ...(r.lastFailure ? { lastFailure: { ...r.lastFailure, state: RETRYABLE_FAILURE_STATE } } : {}),
   }))
   // Oldest-first by default (the "what's been waiting longest" governance ask).
   projected.sort((a, b) =>
@@ -333,6 +348,7 @@ export async function handleApprovalsList(
     decidedAt: r.decidedAt ?? null,
     decidedBy: r.decidedByName ?? null,
     reason: r.reason ?? null,
+    ...(r.lastFailure ? { lastFailure: r.lastFailure } : {}),
   }))
   return { total: projected.length, approvals: projected, recentlyDecided }
 }

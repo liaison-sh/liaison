@@ -341,10 +341,10 @@ function serializeDraftRow(d: DraftRow): Omit<DraftRow, "lines"> & {
 } {
   return {
     ...d,
-    lines: d.lines.map((l) => ({
-      ...l,
-      unit_price_minor: l.unit_price_minor.toString(),
-      ...(l.discount_minor == null ? {} : { discount_minor: l.discount_minor.toString() }),
+    lines: d.lines.map(({ unit_price_minor, discount_minor, ...line }) => ({
+      ...line,
+      unit_price_minor: unit_price_minor.toString(),
+      ...(discount_minor == null ? {} : { discount_minor: discount_minor.toString() }),
     })),
   }
 }

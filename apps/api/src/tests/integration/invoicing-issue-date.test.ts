@@ -10,7 +10,9 @@ import { randomUUID } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { sql } from "~/db"
+import { withSystemDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
+import { approvalPolicies } from "~/db/schema/kernel"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { registerApps } from "~/modules/apps/runtime"
@@ -772,4 +774,77 @@ describe("issue date and number year (real Postgres, sandbox, bridge)", () => {
     expect(today(unset)).toBe("2027-01-01")
     expect(today(broken)).toBeNull()
   }, 60_000)
+  describe("the card a person approves a credit note on", () => {
+    // An agent's call an org policy parks is gated by the host, ahead of the handler's own card.
+    const stage = async (params: Record<string, unknown>) => {
+      await withSystemDb("test-credit-note-card-policy", (db) =>
+        db
+          .insert(approvalPolicies)
+          .values({
+            orgId: ORG,
+            toolName: "invoicing:credit_note_create_and_issue",
+            enabled: true,
+            conditions: [],
+            requireApproval: true,
+            minApprovers: 1,
+            createdBy: actor.userId,
+          })
+          .onConflictDoNothing(),
+      )
+      const res = await executeTool<Record<string, unknown>>({
+        toolName: "invoicing:credit_note_create_and_issue",
+        orgId: ORG,
+        actor,
+        params,
+        threadId: THREAD,
+        origin: "in-app-agent",
+      })
+      const summary = res.blocked?.summary
+      if (!summary) throw new Error(`not parked: ${JSON.stringify(res)}`)
+      return summary
+    }
+
+    it("states the amount, the lines, the date and the invoice it reverses", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      setSystemTime(new Date("2026-06-15T10:00:00Z"))
+      const invoice = await invoiceOf(issuer)
+      const summary = await stage({
+        counterparty: buyer,
+        issuer_profile_id: issuer,
+        original_document_id: invoice.id,
+        currency: "EUR",
+        issued_at: "2026-06-15",
+        reason: "Goods returned",
+        items: [{ ...items[0], unit_price_minor: -10000 }],
+      })
+      const card = [summary.title, ...summary.lines].join("\n")
+      // A German consumer pays German VAT: the card says what the document will carry, tax included.
+      expect(summary.title).toContain(`on ${invoice.number}`)
+      expect(card).toContain("-119.00 EUR")
+      expect(card).toContain("Service")
+      expect(card).toContain("Issue date: 2026-06-15")
+      expect(card).toContain(`Reverses invoice: ${invoice.number} (${invoice.date})`)
+      expect(card).not.toContain("Counterparty,")
+    }, 60_000)
+
+    it("says when no date is stated, and the total matches the document approval issues", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      setSystemTime(new Date("2026-06-15T10:00:00Z"))
+      const invoice = await invoiceOf(issuer)
+      const params = {
+        counterparty: buyer,
+        issuer_profile_id: issuer,
+        original_document_id: invoice.id,
+        currency: "EUR",
+        items: [{ ...items[0], unit_price_minor: -4000 }],
+      }
+      const summary = await stage(params)
+      expect(summary.lines.join("\n")).toContain("Issue date: the day this is approved")
+      const issued = await tool("credit_note_create_and_issue", params)
+      const [row] = await sql<Array<{ grand_total_minor: string }>>`
+        SELECT grand_total_minor FROM app_invoicing.documents WHERE id = ${documentId(issued)}`
+      expect(row?.grand_total_minor).toBe("-4760")
+      expect(summary.lines.join("\n")).toContain("-47.60 EUR")
+    }, 60_000)
+  })
 })

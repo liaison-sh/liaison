@@ -75,6 +75,8 @@ For an issuer in the EU, a customer in another EU country is either a business o
 
 The approval card of a new document states its tax treatment and rate, whether the prices were typed with VAT included (**Prices include tax** on the issuer profile) or net, and the net, VAT and total that will be issued.
 
+A credit note's card states its total, its lines, its issue date and the invoice it reverses, with that invoice's date. With no stated date it says the note takes the day it is approved. Whatever parks the request, the card says the same.
+
 ## Turn a quote or proforma into an invoice
 
 1. Open the quote (once it is sent or accepted) or the proforma (once it is sent).

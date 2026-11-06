@@ -414,6 +414,8 @@ export async function creditNoteCreateAndIssue(
           orderNumber: originalShopifyOrderNumber,
           reason: input.reason ?? null,
           originalNumber,
+          originalDate: dateOnly(originalIssuedAt),
+          issuedAt: input.issued_at ?? null,
           issuerName: issuer.legal_name,
         }),
       ),
@@ -708,9 +710,8 @@ export async function creditNoteIssue(
           lines: draft.lines,
           totalMinor: total,
           orderNumber: draft.shopify_order_number ?? null,
-          originalNumber: originalNumber
-            ? `${originalNumber}${dateOnly(originalIssuedAt) ? ` (issued ${dateOnly(originalIssuedAt)})` : ""}`
-            : null,
+          originalNumber,
+          originalDate: dateOnly(originalIssuedAt),
           issuerName: issuer.legal_name,
           draftId: draft.id,
         }),

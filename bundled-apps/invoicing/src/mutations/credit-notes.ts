@@ -20,7 +20,6 @@ import {
   findIssuerProfile,
   dateOnly,
   deleteDraftRow,
-  isCalendarDate,
 } from "./db-helpers"
 import {
   normaliseDraftLines,
@@ -52,6 +51,7 @@ import {
   einvoiceParamsError,
 } from "../einvoicing/issue-gate"
 import { type IssueDateParts, issueDateParts } from "../issue-date"
+import { statedIssueDate } from "./stated-issue-date"
 import { issueWithFxRate } from "./fx-issue"
 
 /** What the issue step needs to know of the original invoice: id, stored regime, transmission
@@ -64,57 +64,6 @@ function originalRefOf(original: DocumentRowSummary): NonNullable<IssueInput["or
     counterparty_contact_id: original.counterparty_contact_id,
     snapshot: original.einvoice ?? null,
   }
-}
-
-function dateRefused(code: string, message: string): { ok: false; error: ErrorEnvelope } {
-  return { ok: false, error: { status: "error", error: { code, message } } }
-}
-
-/**
- * The date and number year of a credit note. It may keep the date its caller states, and that date
- * decides both, since a number and its date belong to one year: a stated date in a past year takes
- * that year's series, never the current year's number. Numbers and dates also run together in a
- * series, so a date before the series' last number is refused before a number is taken. So is a
- * date after today: no number issued today can follow it, and every default date would precede it.
- */
-async function creditNoteIssueDate(
-  ctx: MutationsCtx,
-  issuer: { id: string; timezone?: string | null },
-  stated: string | null | undefined,
-): Promise<({ ok: true } & IssueDateParts) | { ok: false; error: ErrorEnvelope }> {
-  const today = await issueDateParts(ctx, issuer)
-  if (!today.ok || stated == null || stated === "") return today
-  const date = dateOnly(stated)
-  if (!date || !isCalendarDate(date)) {
-    return dateRefused(
-      "issued_at_invalid",
-      `issued_at ${JSON.stringify(stated)} is not a date, so nothing was issued and no number was used. ` +
-        "Pass YYYY-MM-DD, or omit issued_at to use today.",
-    )
-  }
-  if (date > today.issued_at) {
-    return dateRefused(
-      "issue_date_in_future",
-      `issued_at ${date} is after today (${today.issued_at} in the issuer's time zone), so nothing was issued ` +
-        "and no number was used. Pass today or an earlier date, or omit issued_at to use today.",
-    )
-  }
-  const year = Number(date.slice(0, 4))
-  const [last] = (await ctx.db.findMany("documents", {
-    where: { issuer_profile_id: issuer.id, type: "credit_note", year_of_issue: year },
-    orderBy: { number_int: "desc" },
-    limit: 1,
-  })) as Array<Record<string, unknown>>
-  const lastDate = dateOnly(last?.issued_at)
-  if (lastDate && date < lastDate) {
-    return dateRefused(
-      "issue_date_before_last_number",
-      `issued_at ${date} is before ${String(last?.number ?? "the last credit note")} (${lastDate}), the last number ` +
-        `of the ${year} series, so nothing was issued and no number was used. Pass that date or a later one, ` +
-        "or omit issued_at to use today.",
-    )
-  }
-  return { ok: true, year_of_issue: year, issued_at: date }
 }
 
 /** Options for in-process callers of `creditNoteCreateAndIssue` (never on the wire). */
@@ -387,7 +336,7 @@ async function preflightCreditNoteCreateAndIssueParams(
   })
   if (!gate.ok) return { ok: false, error: gate.error }
 
-  const when = await creditNoteIssueDate(ctx, issuer, input.issued_at)
+  const when = await statedIssueDate(ctx, issuer, "credit_note", input.issued_at)
   if (!when.ok) return when
 
   return {

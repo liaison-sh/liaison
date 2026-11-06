@@ -16,6 +16,7 @@ import {
 } from "./issue-date"
 import { einvoicingReadiness } from "./einvoicing/readiness"
 import { settingsIssuerProfileUpdate } from "./mutations/issuer-profiles"
+import { draftOrderDateRefusal } from "./mutations/stated-issue-date"
 import type { MutationsCtx } from "./mutations/shared"
 import { settingsIssuerProfileList } from "./reads"
 import { pickIssuerSaveFields } from "./ui/settings"
@@ -72,6 +73,22 @@ describe("issueDateParts", () => {
   test("a host failure that is not about the zone is not dressed up as one", async () => {
     const time = { civil: async () => Promise.reject(new Error("bridge down")) }
     await expect(issueDateParts({ time }, paris)).rejects.toThrow("bridge down")
+  })
+})
+
+describe("draftOrderDateRefusal", () => {
+  const paris = { timezone: "Europe/Paris" }
+
+  test("nothing stated, or today in the issuer's zone, is no date to refuse", async () => {
+    setSystemTime(new Date("2026-12-31T23:20:00Z"))
+    expect(await draftOrderDateRefusal({ time: testTime() }, paris, null)).toBeNull()
+    expect(await draftOrderDateRefusal({ time: testTime() }, paris, "2027-01-01")).toBeNull()
+  })
+
+  test("another day is refused", async () => {
+    setSystemTime(new Date("2026-12-31T23:20:00Z"))
+    const refused = await draftOrderDateRefusal({ time: testTime() }, paris, "2026-12-31")
+    expect(refused?.error.code).toBe("issue_date_set_by_draft_order")
   })
 })
 

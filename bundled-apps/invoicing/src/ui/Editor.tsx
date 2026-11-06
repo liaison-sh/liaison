@@ -800,6 +800,16 @@ export function issuedAtForIssuer(
   return today && shownDefault !== null && current === shownDefault ? today : current
 }
 
+/**
+ * The date a new document's create tool receives: only one a person chose. The default the field
+ * was given is no choice (it can be stale, or this computer's date), so the server dates that
+ * document. An invoice's tool takes no date: its date is the day its number is taken.
+ */
+export function statedIssuedAt(d: DraftDocument, shownDefault: string | null): string | undefined {
+  if (d.type === "invoice" || !d.issued_at || d.issued_at === shownDefault) return undefined
+  return d.issued_at
+}
+
 export function defaultDraft(type: DocType = "invoice"): DraftDocument {
   return {
     type,
@@ -1102,6 +1112,8 @@ export const Editor: Component<EditorProps> = (props) => {
       base.counterparty = { ...buildCounterparty(d), ...einvoiceCounterparty(d) }
       base.operation_category = d.operation_category ?? null
     }
+    const issuedAt = statedIssuedAt(d, issuedAtDefault)
+    if (issuedAt) base.issued_at = issuedAt
     return base
   }
 

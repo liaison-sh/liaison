@@ -451,6 +451,79 @@ describe("issue date and number year (real Postgres, sandbox, bridge)", () => {
     expect(rows.length).toBe(2)
   }, 60_000)
 
+  describe("a date stated on a new quote, proforma or purchase order", () => {
+    const series = async (issuer: string) =>
+      sql<Array<{ key: string; value: string }>>`
+        SELECT key, value::text AS value FROM kernel.app_sequences
+         WHERE org_id = ${ORG} AND key LIKE ${`invoicing:doc_number:${issuer}:quote:%`} ORDER BY key`
+    const issueQuote = (issuer: string, issuedAt: unknown) =>
+      tool("quote_create_and_issue", {
+        counterparty: buyer,
+        issuer_profile_id: issuer,
+        currency: "EUR",
+        items,
+        issued_at: issuedAt,
+      })
+
+    it("the document takes the date, and the date decides the number's year", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      setSystemTime(new Date("2027-01-20T10:00:00Z"))
+      const quote = documentId(await issueQuote(issuer, "2026-12-15"))
+      expect(await storedDate(quote)).toBe("2026-12-15")
+      expect((await doc(quote)).year_of_issue).toBe(2026)
+
+      const proforma = await tool("proforma_create_and_issue", {
+        counterparty: buyer,
+        issuer_profile_id: issuer,
+        currency: "EUR",
+        reason: "Customs",
+        items,
+        issued_at: "2027-01-05",
+      })
+      expect(await storedDate(documentId(proforma))).toBe("2027-01-05")
+
+      const po = await tool("po_create_and_issue", {
+        counterparty: buyer,
+        issuer_profile_id: issuer,
+        currency: "EUR",
+        items,
+        issued_at: "2027-01-06",
+      })
+      expect(await storedDate(documentId(po))).toBe("2027-01-06")
+    }, 60_000)
+
+    it("no date still means today in the issuer's time zone", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      setSystemTime(new Date("2026-12-31T23:20:00Z"))
+      const quote = await tool("quote_create_and_issue", {
+        counterparty: buyer,
+        issuer_profile_id: issuer,
+        currency: "EUR",
+        items,
+      })
+      expect(await storedDate(documentId(quote))).toBe("2027-01-01")
+    }, 60_000)
+
+    it("a date after today, or no real date, is refused and no number is taken", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      setSystemTime(new Date("2026-06-15T10:00:00Z"))
+      const before = await series(issuer)
+      expect(JSON.stringify(await issueQuote(issuer, "2026-06-16"))).toContain(
+        "issue_date_in_future",
+      )
+      expect(JSON.stringify(await issueQuote(issuer, "2026-02-31"))).toContain("issued_at_invalid")
+      expect(await series(issuer)).toEqual(before)
+    }, 60_000)
+
+    it("a quote on a shop-linked issuer takes its draft order's day: another date is refused first", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      await sql`UPDATE app_invoicing.issuer_profiles SET shopify_shop_id = 'shop.example' WHERE id = ${issuer}`
+      setSystemTime(new Date("2026-06-15T10:00:00Z"))
+      const refused = await issueQuote(issuer, "2026-06-10")
+      expect(JSON.stringify(refused)).toContain("issue_date_set_by_draft_order")
+    }, 60_000)
+  })
+
   describe("documents_update on an issued document's date", () => {
     /** Two invoices 10 and 15 June 2026, as a document with no legal original has them. */
     async function twoInvoices(issuer: string) {

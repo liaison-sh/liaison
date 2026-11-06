@@ -33,6 +33,7 @@ import { mailAppManifest } from "~/apps/mail/manifest-descriptor"
 import { extractRows, type PrivilegedDb } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
+import { ApprovalDecisionError, decideApproval } from "~/modules/approvals/decide"
 import type { AppDescriptor } from "~/modules/apps/runtime"
 import { registerApps } from "~/modules/apps/runtime"
 import {
@@ -42,6 +43,7 @@ import {
   recordVerifiedAck,
   verifyMailboxAck,
 } from "~/modules/mailbox-crypto/ack-verify"
+import { sealMailApprovalPayload } from "~/modules/mailbox-crypto/approval-payload"
 import { runMailboxBackfillForUser } from "~/modules/mailbox-crypto/backfill-job"
 import { type PurgeResult, purgeMailboxPlaintext } from "~/modules/mailbox-crypto/purge"
 import * as minimal from "~/seed/tiers/minimal"
@@ -60,6 +62,8 @@ const THREAD_PHRASE = "WITNESSTHREADPHRASE"
 const APPROVAL_PHRASE = "WITNESSAPPROVALPHRASE"
 const TOOLCALL_PHRASE = "WITNESSTOOLCALLPHRASE"
 const BODY_PHRASE = "WITNESSBODYPHRASE"
+/** Outside this mailbox's residue: must survive the purge. */
+const COLLATERAL_PHRASE = "WITNESSCOLLATERALPHRASE"
 
 describe("the purge tells the truth about itself, and step 7d clears real residue", () => {
   let orgId: string
@@ -68,7 +72,11 @@ describe("the purge tells the truth about itself, and step 7d clears real residu
   let conversationId: string
   let threadId: string
   let signKeys: CryptoKeyPair
+  let colleagueId: string
   let result: PurgeResult
+  let draftApprovalId: string
+  let sealedApprovalId: string
+  let sealedPayload: Record<string, unknown>
 
   async function sys<T>(reason: string, fn: (tx: AckSqlExecutor) => Promise<T>): Promise<T> {
     return withSystemDb(reason, (tx) => fn(tx as unknown as AckSqlExecutor))
@@ -81,6 +89,26 @@ describe("the purge tells the truth about itself, and step 7d clears real residu
       fn: (tx: Pick<PrivilegedDb, "execute">) => Promise<T>,
     ) => withSystemDb(reason, (tx) => fn(tx as unknown as Pick<PrivilegedDb, "execute">)),
     deleteSearchDocuments: async () => {},
+  }
+
+  /** Rows outside this mailbox's residue that hold cleartext. */
+  async function collateralCounts() {
+    return withSystemDb("b19-witness-collateral", async (tx) => ({
+      approvals: extractRows<{ tool_name: string }>(
+        await tx.execute(drizzleSql`
+          SELECT tool_name FROM ${K}.approval_requests
+           WHERE org_id = ${orgId}::uuid
+             AND tool_params::text LIKE ${`%${COLLATERAL_PHRASE}%`}
+             AND current_payload::text LIKE ${`%${COLLATERAL_PHRASE}%`}
+             AND summary::text LIKE ${`%${COLLATERAL_PHRASE}%`}
+           ORDER BY tool_name`),
+      ).map((r) => r.tool_name),
+      toolCalls: extractRows<{ n: number }>(
+        await tx.execute(drizzleSql`
+          SELECT count(*)::int AS n FROM ${K}.messages
+           WHERE org_id = ${orgId}::uuid AND metadata::text LIKE ${`%${COLLATERAL_PHRASE}%`}`),
+      )[0]?.n,
+    }))
   }
 
   /** Every residue surface step 7d names, counted by its own phrase. */
@@ -134,6 +162,9 @@ describe("the purge tells the truth about itself, and step 7d clears real residu
       const user = await minimal.person((await createTestOrg()).id)
       orgId = user.orgId
       userId = user.id
+      colleagueId = (await minimal.person(orgId)).id
+      // What a real requester holds, so an approved send reaches its tool.
+      for (const scope of ["mail:conversations:write"]) await minimal.grantScope(userId, scope)
       await registerApps([mailAppManifest as unknown as AppDescriptor], orgId)
 
       accountId = crypto.randomUUID()
@@ -202,16 +233,63 @@ describe("the purge tells the truth about itself, and step 7d clears real residu
           VALUES (${orgId}::uuid, ${userId}::uuid, 'user', 'mail', 'message', ${messageId},
                   'update', ${JSON.stringify({ subject: `${AUDIT_PHRASE} the old subject` })}::jsonb)`)
 
+        // Approvals as the real write path stores them: `tool_name` is the
+        // canonical `app:tool`, and the payload names its target.
+        const seedApproval = async (
+          toolName: string,
+          payload: Record<string, unknown>,
+          summaryText: string,
+          requestedBy: string,
+        ) =>
+          (
+            extractRows<{ id: string }>(
+              await tx.execute(drizzleSql`
+                INSERT INTO ${K}.approval_requests
+                  (org_id, handle, thread_id, originating_thread_id, tool_name, tool_params,
+                   current_payload, expires_at, requested_by, resource_owner_id, summary)
+                VALUES (${orgId}::uuid, ${`witness-approval-${crypto.randomUUID()}`},
+                        ${threadId}::uuid, ${threadId}::uuid, ${toolName},
+                        ${JSON.stringify(payload)}::jsonb, ${JSON.stringify(payload)}::jsonb,
+                        now() + interval '1 day', ${requestedBy}::uuid, ${userId}::uuid,
+                        ${JSON.stringify({ text: summaryText })}::jsonb)
+                RETURNING id::text AS id`),
+            )[0] as { id: string }
+          ).id
+
+        // Cleartext from before the cutover, on this mailbox: the purge's job,
+        // whoever asked for the send.
+        draftApprovalId = await seedApproval(
+          "mail:reply",
+          { conversationId, textBody: `${APPROVAL_PHRASE} draft reply` },
+          `${APPROVAL_PHRASE} summary`,
+          userId,
+        )
+        await seedApproval(
+          "mail:reply",
+          { conversationId, textBody: `${APPROVAL_PHRASE} a colleague's draft` },
+          `${APPROVAL_PHRASE} summary`,
+          colleagueId,
+        )
+
+        // Not this mailbox's residue, though each resembles it.
+        const sharedAccountId = crypto.randomUUID()
         await tx.execute(drizzleSql`
-          INSERT INTO ${K}.approval_requests
-            (org_id, handle, thread_id, originating_thread_id, tool_name, tool_params,
-             current_payload, expires_at, requested_by, summary)
-          VALUES (${orgId}::uuid, ${`witness-approval-${crypto.randomUUID()}`}, ${threadId}::uuid,
-                  ${threadId}::uuid, 'mail__reply',
-                  ${JSON.stringify({ body: `${APPROVAL_PHRASE} draft reply` })}::jsonb,
-                  ${JSON.stringify({ body: `${APPROVAL_PHRASE} draft reply` })}::jsonb,
-                  now() + interval '1 day', ${userId}::uuid,
-                  ${JSON.stringify({ text: `${APPROVAL_PHRASE} summary` })}::jsonb)`)
+          INSERT INTO ${MAIL}.accounts
+            (id, org_id, connected_account_id, owner_type, provider, email_address, sync_status)
+          VALUES (${sharedAccountId}::uuid, ${orgId}::uuid, ${crypto.randomUUID()}::uuid, 'org',
+                  'gmail', ${`${sharedAccountId}@witness.test`}, 'active')`)
+        for (const [toolName, payload] of [
+          ["mail:reply", { accountId: sharedAccountId }],
+          ["mail:compose", {}],
+          ["mailchimp:send", { accountId }],
+        ] as const) {
+          await seedApproval(
+            toolName,
+            { ...payload, textBody: `${COLLATERAL_PHRASE} draft` },
+            `${COLLATERAL_PHRASE} summary`,
+            userId,
+          )
+        }
 
         // `required_scopes` is named explicitly: 0066 dropped the 0059 default,
         // so an INSERT that omits it now raises 23502. `{}` is the honest value
@@ -251,6 +329,23 @@ describe("the purge tells the truth about itself, and step 7d clears real residu
                     ],
                   })}::jsonb)`)
 
+        // Another app's tool call in the same thread. Only an unescaped `_` in
+        // the filter could take `mailchimp__send` for a mail tool.
+        await tx.execute(drizzleSql`
+          INSERT INTO ${K}.messages (thread_id, org_id, author_id, author_type, author_agent_id,
+                                     content, required_scopes, metadata)
+          VALUES (${threadId}::uuid, ${orgId}::uuid, ${userId}::uuid, 'agent', ${agentId}::uuid,
+                  'sent a campaign',
+                  '{}'::text[],
+                  ${JSON.stringify({
+                    toolCalls: [
+                      {
+                        toolName: "mailchimp__send",
+                        result: { textBody: `${COLLATERAL_PHRASE} body` },
+                      },
+                    ],
+                  })}::jsonb)`)
+
         // An attachment object nothing ever seals. This is what makes the
         // cutover incomplete, which is the whole point of the fixture.
         await tx.execute(drizzleSql`
@@ -279,6 +374,35 @@ describe("the purge tells the truth about itself, and step 7d clears real residu
                   ${Buffer.from("attestation")}, 'active')`),
       )
       await runMailboxBackfillForUser(userId, orgId, { batchIntervalMs: 0, batchSize: 50 })
+
+      // A draft staged AFTER the mailbox was sealed, in the real sealed shape,
+      // waiting for its owner: the purge must leave it decidable.
+      sealedApprovalId = crypto.randomUUID()
+      sealedPayload = await sealMailApprovalPayload({
+        orgId,
+        appName: "mail",
+        toolShortName: "compose",
+        approvalRequestId: sealedApprovalId,
+        toolParams: {
+          accountId,
+          to: ["someone@witness.test"],
+          subject: "A sealed subject",
+          textBody: "A sealed draft",
+        },
+      })
+      expect(sealedPayload.mailboxSealed).toBe(true)
+      expect(typeof sealedPayload.bodyCiphertext).toBe("string")
+      await withSystemDb("b19-witness-sealed-approval", (tx) =>
+        tx.execute(drizzleSql`
+          INSERT INTO ${K}.approval_requests
+            (id, org_id, handle, thread_id, originating_thread_id, tool_name, tool_params,
+             current_payload, expires_at, requested_by, summary)
+          VALUES (${sealedApprovalId}::uuid, ${orgId}::uuid, ${`sealed-${sealedApprovalId}`},
+                  ${threadId}::uuid, ${threadId}::uuid, 'mail:compose',
+                  ${JSON.stringify(sealedPayload)}::jsonb, ${JSON.stringify(sealedPayload)}::jsonb,
+                  now() + interval '1 day', ${userId}::uuid,
+                  ${JSON.stringify({ title: "Email to someone@witness.test" })}::jsonb)`),
+      )
     } catch (err) {
       await releaseAppSchemaJsLock("app_mail")
       throw err
@@ -307,8 +431,12 @@ describe("the purge tells the truth about itself, and step 7d clears real residu
     const residue = await residueCounts()
     expect(residue.audit).toBe(1)
     expect(residue.thread).toBe(1)
-    expect(residue.approval).toBe(1)
+    expect(residue.approval).toBe(2)
     expect(residue.toolCall).toBe(1)
+    expect(await collateralCounts()).toEqual({
+      approvals: ["mail:compose", "mail:reply", "mailchimp:send"],
+      toolCalls: 1,
+    })
 
     const row = await ledgerRow()
     expect(row?.plaintext_purged_at ?? null).toBeNull()
@@ -377,5 +505,58 @@ describe("the purge tells the truth about itself, and step 7d clears real residu
     expect(residue.thread).toBe(0)
     expect(residue.approval).toBe(0)
     expect(residue.toolCall).toBe(0)
+  })
+
+  it("step 7d leaves what is not this mailbox's residue: another app, another mailbox, no mailbox", async () => {
+    expect(await collateralCounts()).toEqual({
+      approvals: ["mail:compose", "mail:reply", "mailchimp:send"],
+      toolCalls: 1,
+    })
+  })
+
+  it("step 7d leaves a sealed draft exactly as it was, so its owner can still decide it", async () => {
+    const [row] = await withSystemDb("b19-witness-sealed-after", async (tx) =>
+      extractRows<{
+        status: string
+        tool_params: Record<string, unknown>
+        current_payload: Record<string, unknown>
+        summary: Record<string, unknown> | null
+      }>(
+        await tx.execute(drizzleSql`
+          SELECT status, tool_params, current_payload, summary FROM ${K}.approval_requests
+           WHERE id = ${sealedApprovalId}::uuid`),
+      ),
+    )
+    expect(row).toEqual({
+      status: "pending",
+      tool_params: sealedPayload,
+      current_payload: sealedPayload,
+      summary: { title: "Email to someone@witness.test" },
+    })
+  })
+
+  it("approving a pending draft the purge emptied is refused, and nothing runs", async () => {
+    let err: unknown
+    try {
+      await decideApproval({
+        orgId,
+        requestId: draftApprovalId,
+        actor: { actorType: "user", userId, orgId, scopes: ["*"], dimensionGrants: {} },
+        decision: "approve",
+      })
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(ApprovalDecisionError)
+    expect((err as ApprovalDecisionError).code).toBe("mail_draft_removed")
+    expect((err as ApprovalDecisionError).status).toBe(422)
+    const [row] = await withSystemDb("b19-witness-emptied-after", async (tx) =>
+      extractRows<{ status: string; decided_by: string | null }>(
+        await tx.execute(drizzleSql`
+          SELECT status, decided_by FROM ${K}.approval_requests
+           WHERE id = ${draftApprovalId}::uuid`),
+      ),
+    )
+    expect(row).toEqual({ status: "pending", decided_by: null })
   })
 })

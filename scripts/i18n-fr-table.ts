@@ -2113,6 +2113,8 @@ export const FR: Record<string, string> = {
   "Allow once": "Autoriser une fois",
   "This email is encrypted to its mailbox owner. Unlock the mailbox, then approve it from its card.":
     "Ce mail est chiffré pour le propriétaire de la boîte. Déverrouillez la boîte, puis approuvez depuis sa carte.",
+  "This email's draft was removed when its mailbox was encrypted, so it cannot be sent. Reject this request and draft the email again.":
+    "Le brouillon de ce mail a été supprimé lors du chiffrement de sa boîte : il ne peut pas être envoyé. Refusez cette demande et rédigez à nouveau le mail.",
   "Tool execution failed: {{cause}}.": "L'exécution de l'outil a échoué : {{cause}}.",
   "handler error": "erreur du gestionnaire",
   "Tool run failed: {{cause}}. The request needs operator review.":

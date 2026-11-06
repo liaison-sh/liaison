@@ -42,6 +42,21 @@ describe("applyMailboxFulfilment", () => {
     expect(out).toEqual(payload)
   })
 
+  it("refuses a mail send whose payload a mailbox purge emptied", () => {
+    for (const toolName of ["mail:reply", "mail:forward", "mail:compose", "mail:composeForApp"]) {
+      let err: unknown
+      try {
+        applyMailboxFulfilment({ toolName, payload: {} })
+      } catch (e) {
+        err = e
+      }
+      expect(err).toBeInstanceOf(MailboxFulfilmentError)
+      expect((err as MailboxFulfilmentError).code).toBe("draft_removed")
+    }
+    // Another tool's empty payload is none of this module's business.
+    expect(applyMailboxFulfilment({ toolName: "tickets:reply", payload: {} })).toEqual({})
+  })
+
   it("refuses a SEALED payload that arrives with no fulfilment at all", () => {
     // The header of this module names this exact scenario as the thing it
     // exists to prevent: "a gated send that reaches its handler with an empty

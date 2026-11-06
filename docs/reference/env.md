@@ -77,6 +77,7 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `LIAISON_SETUP_KICKOFF_ORG_MAX_AGE_DAYS` | `number` | `14` | no | A workspace older than this many days never gets the first-run card, whatever it holds: an org that runs on mail and tickets alone writes no chat message, and a deploy must not greet it as new. |
 | `BUG_REPORT_INBOX_ID` | `string` |  | no | In-app bug reports (POST /api/bug-reports) file a ticket into this inbox (UUID). Unset/empty → the org's default-for-create inbox. A bad id falls back to the default inbox at request time (logged), never drops a report. |
 | `LIAISON_CONSOLE_EMAIL_BODIES` | `boolean` | `false` | no | Without SMTP or Resend, mail goes to the log. Only its recipient and subject, unless this is set: then the body too, which holds sign-in codes, magic links, invite and reset links. For a local trial without a mail server (deploy/quickstart.sh sets it); never for an instance other people sign in to. |
+| `MAIL_SEND_GUARD_ENFORCE` | `boolean` | `true` | no | Operator-only, for an incident: 0 switches off the send check on staged mail, except the opt-out check. Off nowhere by default, logged at error on boot. |
 | `SMTP_HOST` | `string` |  | no | Email (SMTP) — optional. When SMTP_HOST is absent, emails are logged to console. |
 | `SMTP_PORT` | `number` | `587` | no |  |
 | `SMTP_USER` | `string` | `""` | no |  |
@@ -269,11 +270,11 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/apps/database/bridge.ts:374`, `apps/api/src/apps/database/bridge.ts:394` |
 | `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/apps/database/bridge.ts:383` |
 | `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:154` |
-| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1430` |
+| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1433` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:469`, `apps/api/src/modules/apps/app-frame.ts:35` |
 | `LIAISON_SANDBOX_FETCH_TIMEOUT_MS` | `apps/api/src/modules/apps/sandbox/bridge/egress.ts:48` |
-| `LIAISON_TRUSTED_SUMMARIZER_APPS` | `apps/api/src/modules/apps/runtime.ts:1268` |
+| `LIAISON_TRUSTED_SUMMARIZER_APPS` | `apps/api/src/modules/apps/runtime.ts:1271` |
 | `LIAISON_WEB_TOOLS_ALLOW_PRIVATE` | `apps/api/src/modules/agent/tools/web-tools.ts:149`, `apps/api/src/modules/agent/tools/web-tools.ts:242` |
 | `MAIL_INGEST_STALE_SEC` | `apps/api/src/modules/monitor/index.ts:302` |
 | `MAILBOX_DECRYPT_WAIT_BUDGET_MS` | `apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:101` |
@@ -302,7 +303,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `ROUTINE_EVENT_RECONCILE_MAX_RETRIES` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:64` |
 | `ROUTINE_OVERLAP_DEFER_DELAY_MS` | `apps/api/src/infra/jobs/kernel-jobs.ts:69` |
 | `ROUTINE_OVERLAP_MAX_DEFERRALS` | `apps/api/src/infra/jobs/kernel-jobs.ts:73` |
-| `SANDBOX_BOOT_RAMP_MS` | `apps/api/src/index.ts:360` |
+| `SANDBOX_BOOT_RAMP_MS` | `apps/api/src/index.ts:365` |
 | `SANDBOX_POOL_REPORT_INTERVAL_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:91` |
 | `SANDBOX_QUEUE_WAIT_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:88` |
 | `SANDBOX_WORKER_HOLD_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:89` |

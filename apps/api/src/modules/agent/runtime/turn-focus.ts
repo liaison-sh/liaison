@@ -39,6 +39,7 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { routines, threads } from "~/db/schema/kernel"
 import { estimateToolSchemaTokens } from "~/modules/agent/context/context"
 import { entityRegistry, viewRegistry } from "~/modules/apps/app-registries"
+import { tabEntity } from "~/modules/threads/reference-display"
 
 export interface FocusApp {
   /** Loaded from the first step and shed last; otherwise it only fills headroom. */
@@ -109,7 +110,10 @@ export async function resolveTurnFocus(input: TurnFocusInput): Promise<TurnFocus
     }
     if (source === "server" || input.visitorTurn) entry.hard = true
     if (entityType && isRegisteredEntityType(input.orgId, app, entityType)) {
-      ;(source === "server" ? entry.verifiedEntityTypes : entry.viewEntityTypes).add(entityType)
+      const named = tabEntity(input.orgId, app, entityType)
+      ;(source === "server" ? entry.verifiedEntityTypes : entry.viewEntityTypes).add(
+        named?.app === app ? named.entityType : entityType,
+      )
     }
     focus.set(app, entry)
   }

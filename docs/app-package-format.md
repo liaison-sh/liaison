@@ -103,12 +103,14 @@ satisfy, and an installed app whose range it does not satisfy is not loaded and
 shows as errored in the App store, with the reason:
 
 ```
-my-app 2.0.0 needs host API ^2; this server provides host API 1.1.0. Update Liaison first.
+my-app 2.0.0 needs host API ^2; this server provides host API 1.2.0. Update Liaison first.
 ```
 
 Host API 1.1 added `currentPath()` (the page's path and query, which an app
 whose UI runs framed cannot read from its own `location`), the frame's `path`
 message, and in-app links and `history.pushState` in a frame moving the page.
+Host API 1.2 added `app.trackOpenRecord()` (the record a page has open inside its
+tab, which a turn sent from that tab names) and the frame's `setOpenRecord` call.
 
 `GET /api/apps/host-api` (public, no credential) answers the host API majors a
 server supports: `{ "data": { "majors": [1] } }`.
@@ -303,6 +305,13 @@ The error names the field and the value, for example
 
 The App store page of every app names its publisher: the listing's `publisher`,
 or, for an app installed without a listing, the manifest's `author`.
+
+## The record a tab shows (`views.tabTypes.*.entity`)
+
+A turn sent from a tab tells the agent which record is open, by resolving the
+tab's id through the entity named like the tab. A tab named for the page sets
+`entity` to the entity its id belongs to: `"document"` in the same app, or
+`"kernel:contact"` for another's. Without it the agent is not told what is open.
 
 ## Tab routes (`views.tabTypes.*.urlPattern`)
 

@@ -24,8 +24,8 @@ import {
   collectDeclaredComponentNames,
   collectSettingsBlockComponentNames,
 } from "~/framework/manifest-exports"
-import { subscribeResync } from "~/framework/resync"
 import { loadOrgFeatures, setEnabledOrgFeatures } from "~/framework/org-features"
+import { subscribeResync } from "~/framework/resync"
 import { isAppUnavailable, onAppsChanged, setUnavailableApps } from "~/framework/unavailable-apps"
 import { onApiReady } from "~/lib/api-ready"
 import { registerAppDisplayName } from "~/lib/capability-copy"

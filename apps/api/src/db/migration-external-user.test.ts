@@ -200,7 +200,7 @@ describe("the external-user migrations on a live database, by a non-superuser lo
     const rows = await fresh<{ data_type: string; is_nullable: string }[]>`
       SELECT data_type, is_nullable FROM information_schema.columns
        WHERE table_schema = 'app_calendar' AND table_name = 'events' AND column_name = 'event_type'`
-    expect(rows).toEqual([{ data_type: "text", is_nullable: "YES" }])
+    expect([...rows]).toEqual([{ data_type: "text", is_nullable: "YES" }])
   })
 
   test("portal.company_id returns the caller's company under FORCE RLS on that login", async () => {

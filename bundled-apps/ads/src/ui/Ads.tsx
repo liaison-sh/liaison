@@ -122,6 +122,7 @@ export const AdsTab: Component = () => {
   }
 
   const [openAdId, setOpenAdId] = createSignal<string | null>(null)
+  app.trackOpenRecord("ad", openAdId)
   const [placement, setPlacement] = createSignal("DESKTOP_FEED_STANDARD")
 
   const openAd = createMemo(() => {

@@ -127,7 +127,7 @@ describe("@liaison/host runtime", () => {
   })
 
   it("the host API is 1.1: currentPath and the frame's path message are additions", () => {
-    expect(HOST_API_VERSION).toBe("1.1.0")
+    expect(HOST_API_VERSION).toBe("1.2.0")
   })
 
   it("navigate falls back to globalThis.location.assign when host.navigate is absent", () => {

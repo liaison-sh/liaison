@@ -136,7 +136,7 @@ async function seed(): Promise<void> {
   })
   put("tickets:ticket", ticket.id, "Pump is leaking")
 
-  const key = `launch-${tag()}`
+  const key = `L${tag().toUpperCase()}`
   const seededProject = await seedProject(ctx, admin, {
     people: { me: { userId: viewer } },
     spec: {

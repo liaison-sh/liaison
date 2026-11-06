@@ -130,9 +130,9 @@ describe("a turn just over the budget", () => {
     )
     const out = evictByRecency({ names, tools, recency: new Map(), total, cap: total - bigTokens })
     expect(out.dropped.sort()).toEqual(names.filter((n) => n.startsWith("big__")).sort())
-    expect(
-      evictByRecency({ names, tools, recency: new Map(), total, cap: 0 }).dropped.length,
-    ).toBe(53)
+    expect(evictByRecency({ names, tools, recency: new Map(), total, cap: 0 }).dropped.length).toBe(
+      53,
+    )
   })
 
   it("age still comes first: an older app goes before a newer small one", () => {

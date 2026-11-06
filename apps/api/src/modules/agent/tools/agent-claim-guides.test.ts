@@ -8,7 +8,7 @@ import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
-const ROOT = join(import.meta.dir, "../../../..")
+const ROOT = join(import.meta.dir, "../../../../../..")
 
 function tool(manifestPath: string, name: string): string {
   const manifest = JSON.parse(readFileSync(join(ROOT, manifestPath, "app.manifest.json"), "utf8"))

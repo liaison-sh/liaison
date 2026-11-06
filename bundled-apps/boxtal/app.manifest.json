@@ -153,13 +153,12 @@
           "prep_list",
           "prep_sync",
           "prep_set_status",
-          "prep_set_validated",
           "prep_exclude",
           "prep_restore",
           "prep_unlinked_list",
           "prep_set_note"
         ],
-        "text": "ORDER-PREP QUEUE (To prepare): the worklist is the set of OPEN, UNFULFILLED Shopify orders, one row per order, NOT one row per issued invoice. An order with no invoice yet is still a row (state needs_document, invoice.state missing), and can be excluded like any other. Rows are keyed by `order_key`: 'so:<shopify order id>' for an order row, 'doc:<document id>' or 'pending:<token>' for an order-less shipment. The row's `document_ref` is its ANCHOR: the document its packages, customs articles and quote derive from, and it can be null. Each row has ONE status set by prep_set_status: to_prepare, validated, or on_hold (a warehouse fact, so it can be set on a row with no document and it disables shipping without touching Shopify). prep_set_validated is an alias onto that status."
+        "text": "ORDER-PREP QUEUE (To prepare): the worklist is the set of OPEN, UNFULFILLED Shopify orders, one row per order, NOT one row per issued invoice. An order with no invoice yet is still a row (state needs_document, invoice.state missing), and can be excluded like any other. Rows are keyed by `order_key`: 'so:<shopify order id>' for an order row, 'doc:<document id>' or 'pending:<token>' for an order-less shipment. The row's `document_ref` is its ANCHOR: the document its packages, customs articles and quote derive from, and it can be null. Each row has ONE status set by prep_set_status: to_prepare, validated, or on_hold (a warehouse fact, so it can be set on a row with no document and it disables shipping without touching Shopify)."
       },
       {
         "tools": [
@@ -195,7 +194,7 @@
       }
     ]
   },
-  "version": "0.23.5",
+  "version": "0.23.6",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {
@@ -2937,6 +2936,7 @@
     },
     "prep_set_validated": {
       "description": "ALIAS for prep_set_status: mark an order-prep row VALIDATED (true) or return it to 'to prepare' (false). The row carries ONE status (to_prepare / validated / on_hold); prefer prep_set_status, which can also put a row on hold. Does not ship anything and does not change the queue's contents.",
+      "agentVisible": false,
       "requiredScopes": ["boxtal:shipments:write"],
       "handler": "prepSetValidatedHandler",
       "writesToTable": "app_boxtal.prep_order_state",
@@ -3315,6 +3315,10 @@
             "type": "string",
             "description": "The prep row key, e.g. 'so:5123456789' for a Shopify order row or 'doc:<document id>' for an order-less row."
           },
+          "document_ref": {
+            "type": "string",
+            "description": "Alternative to order_key: the invoice id of the row. Resolved to its order_key."
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -3330,7 +3334,6 @@
           }
         },
         "required": [
-          "order_key",
           "status"
         ]
       }

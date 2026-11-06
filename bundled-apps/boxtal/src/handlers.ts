@@ -314,7 +314,7 @@ export const prepSetAddressChoicePreflight = (params: PrepSetAddressChoiceInput,
 export const prepSetValidatedHandler = (params: PrepSetValidatedInput, ctx: Ctx) =>
   prepSetValidated(ctx, params)
 // One status per row (to_prepare / validated / on_hold), keyed by order_key: the row-level
-// state the whole grid tints off. prep_set_validated above is an alias onto it.
+// state the whole grid tints off. prep_set_validated above is an alias onto it, hidden from agents.
 export const prepSetStatusHandler = (params: PrepSetStatusInput, ctx: Ctx) =>
   prepSetStatus(ctx, params)
 // The Shopify order's internal staff note, saved back through shopify:order_note_set with a

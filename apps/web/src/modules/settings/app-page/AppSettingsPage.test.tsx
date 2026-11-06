@@ -155,6 +155,78 @@ describe("AppSettingsPage from a newer server", () => {
   })
 })
 
+describe("AppSettingsPage: the scope badge of a section holding connections", () => {
+  const register = () => {
+    // As in production: the connections come from the API, the manifest feed has none.
+    api.on("get", `/apps/${FIXTURE_APP}/connections`, () => [
+      { name: "drive", type: "oauth2" },
+      { name: "api", type: "credentials", multiInstance: true },
+    ])
+    api.on("get", `/connections/${FIXTURE_APP}/drive/accounts`, () => [])
+    api.on("get", `/connections/${FIXTURE_APP}/api/accounts`, () => [])
+    resetAppSettingsPages()
+    registerAppSettingsPage({
+      appId: FIXTURE_APP,
+      manifest: {
+        ...fixtureManifest,
+        settings: {
+          sections: [
+            {
+              id: "drive",
+              title: "Connection",
+              scope: "org",
+              blocks: [{ block: "connections", names: ["drive"] }],
+            },
+            {
+              id: "all",
+              title: "All connections",
+              scope: "org",
+              blocks: [{ block: "connections" }],
+            },
+            {
+              id: "named",
+              title: "Named instances",
+              scope: "org",
+              blocks: [{ block: "connections", names: ["api"] }],
+            },
+            {
+              id: "plain",
+              title: "Org fields",
+              scope: "org",
+              blocks: [{ block: "field", key: "f.text", type: "text", label: "Text" }],
+            },
+            {
+              id: "mine",
+              title: "My calendars",
+              scope: "user",
+              blocks: [{ block: "connections", names: ["drive"] }],
+            },
+          ],
+        } as never,
+      },
+    })
+  }
+
+  it("carries no Organization badge where a person can connect their own account", async () => {
+    register()
+    renderPage()
+    // Once the named-instance section knows its connections, this one's are known too.
+    await screen.findByTestId("settings-section-scope-named")
+    expect(screen.queryByTestId("settings-section-scope-drive")).toBeNull()
+    expect(screen.queryByTestId("settings-section-scope-all")).toBeNull()
+  })
+
+  it("keeps it where only the organization can hold what the section shows", async () => {
+    register()
+    renderPage()
+    expect((await screen.findByTestId("settings-section-scope-named")).textContent).toBe(
+      "Organization",
+    )
+    expect(screen.getByTestId("settings-section-scope-plain").textContent).toBe("Organization")
+    expect(screen.getByTestId("settings-section-scope-mine").textContent).toBe("Just you")
+  })
+})
+
 describe("AppSettingsPage field round trips (one PATCH { path, value } per field)", () => {
   const cases: Array<{
     type: string

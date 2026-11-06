@@ -2245,8 +2245,7 @@ async function appendInboundMessage(params: unknown, ctx: MailCtx): Promise<unkn
   )
 }
 
-const LIST_ACCOUNTS_NOTE =
-  "Only what this person can use: the organization may have others."
+const LIST_ACCOUNTS_NOTE = "Only what this person can use: the organization may have others."
 
 async function listAccounts(params: { includeDisconnected?: boolean }, ctx: MailCtx) {
   const allRows: AccountRow[] = JSON.parse(await ctx.db_findMany("accounts", JSON.stringify({})))

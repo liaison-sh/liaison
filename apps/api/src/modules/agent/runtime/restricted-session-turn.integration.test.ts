@@ -13,6 +13,9 @@ import crypto from "node:crypto"
 import { z } from "zod"
 import { app } from "~/app"
 import { sql } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
+import { creditBalances, modelPricing, threadParticipants } from "~/db/schema/kernel"
+import { agents } from "~/db/schema/kernel/agents"
 import * as eventBusModule from "~/infra/events/event-bus"
 import { env } from "~/lib/env"
 import {
@@ -49,8 +52,14 @@ async function freshThread(): Promise<string> {
   const threadId = await minimal.thread(owner.orgId, owner.userId)
   scriptedThreads.push(threadId)
   await sql`UPDATE kernel.threads SET type = 'agent_chat' WHERE id = ${threadId}`
-  await sql`INSERT INTO kernel.thread_participants (thread_id, agent_id, org_id, participant_type)
-    VALUES (${threadId}, ${agentId}, ${owner.orgId}, 'agent')`
+  await withPrivilegedDb(owner.orgId, "test-restricted-turn-participant", (tx) =>
+    tx.insert(threadParticipants).values({
+      threadId,
+      agentId,
+      orgId: owner.orgId,
+      participantType: "agent",
+    }),
+  )
   return threadId
 }
 
@@ -107,17 +116,44 @@ describe("a restricted session's message", () => {
     process.env.LIAISON_ANTHROPIC_API_KEY = "sk-test-key"
     process.env.LIAISON_MODEL_PROVIDER = "scripted"
     owner = await minimal.adminSession((await createTestOrg()).id)
-    const [agent] = await sql<{ id: string }[]>`
-      INSERT INTO kernel.agents (org_id, kind, handle, display_name, scope_ceiling, owner_user_id)
-      VALUES (${owner.orgId}, 'personal', ${`@rs-${crypto.randomUUID().slice(0, 8)}`}, 'Sam',
-              '["*"]'::jsonb, ${owner.userId})
-      RETURNING id`
-    agentId = agent.id
-    await sql`INSERT INTO kernel.credit_balances (org_id, included_balance, purchased_balance, currency)
-      VALUES (${owner.orgId}, '10.00000000', '0.00000000', 'EUR') ON CONFLICT DO NOTHING`
-    await sql`INSERT INTO kernel.model_pricing (provider, model_id, display_name, input_cost_per_m, output_cost_per_m, context_window, auto_eligible, tier_minimum)
-      VALUES ('anthropic', 'claude-haiku-4-5', 'Claude Haiku 4.5', '1.00000000', '5.00000000', 200000, true, 'starter')
-      ON CONFLICT DO NOTHING`
+    const [agent] = await withPrivilegedDb(owner.orgId, "test-restricted-turn-agent", (tx) =>
+      tx
+        .insert(agents)
+        .values({
+          orgId: owner.orgId,
+          kind: "personal",
+          handle: `@rs-${crypto.randomUUID().slice(0, 8)}`,
+          displayName: "Sam",
+          scopeCeiling: ["*"],
+          ownerUserId: owner.userId,
+        })
+        .returning({ id: agents.id }),
+    )
+    agentId = agent!.id
+    await withPrivilegedDb(owner.orgId, "test-restricted-turn-credits", async (tx) => {
+      await tx
+        .insert(creditBalances)
+        .values({
+          orgId: owner.orgId,
+          includedBalance: "10.00000000",
+          purchasedBalance: "0.00000000",
+          currency: "EUR",
+        })
+        .onConflictDoNothing()
+      await tx
+        .insert(modelPricing)
+        .values({
+          provider: "anthropic",
+          modelId: "claude-haiku-4-5",
+          displayName: "Claude Haiku 4.5",
+          inputCostPerM: "1.00000000",
+          outputCostPerM: "5.00000000",
+          contextWindow: 200000,
+          autoEligible: true,
+          tierMinimum: "starter",
+        })
+        .onConflictDoNothing()
+    })
     toolRegistry.set([owner.orgId, "kernel", "test_restricted_probe"], {
       appName: "kernel",
       name: "test_restricted_probe",

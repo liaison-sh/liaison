@@ -16,7 +16,6 @@
  * - An org connection with no drive chosen reads nothing; admins get an
  *   attention item until they choose ("pick the shared drives").
  */
-import type { AttentionItem } from "@liaison/shared"
 import { and, eq } from "drizzle-orm"
 import { makeDriveFetchers } from "~/apps/google-drive/drive-rest"
 import {
@@ -24,12 +23,10 @@ import {
   type SharedDrive,
   sharedDrivesOf,
 } from "~/apps/google-drive/drive-scope"
-import type { RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { connectedAccounts } from "~/db/schema/kernel"
 import { appsLogger as log } from "~/lib/logger"
 import { connectionAdminScope } from "~/modules/apps/connections/admin-scope"
-import { appSettingsPath } from "~/modules/apps/settings-paths"
 import { writeAuditLog } from "~/modules/audit/service"
 import { hasScope } from "~/modules/permissions/permissions"
 
@@ -278,41 +275,4 @@ export async function chooseSharedDrives(
     account: viewOf({ ...row, metadata: { ...(row.metadata ?? {}), sharedDrives: chosen } }),
     changed,
   }
-}
-
-/**
- * Attention provider (kernel-registered, init.ts): one item per organization
- * Drive connection that shares no shared drive yet, for the admins who can
- * choose. Without it, a connection made before the shared-drives rule (or one
- * just connected) would read nothing with no one told why.
- */
-export async function computeSharedDrivesAttentionItems(
-  _tx: RlsClient,
-  orgId: string,
-  _userId: string,
-): Promise<AttentionItem[]> {
-  const rows = await orgDriveAccounts(orgId)
-  return rows
-    .map(viewOf)
-    .filter((a) => a.needsSharedDrives)
-    .map(
-      (a): AttentionItem => ({
-        id: `google-drive:shared_drives:${a.id}`,
-        app: "kernel",
-        entity: "connected_account",
-        entityId: a.id,
-        kind: "system_alert",
-        summary: `Google Drive (${a.identifier}): pick the shared drives the team should see. Until then Liaison reads none of this connection's files.`,
-        urgency: 60,
-        occurredAt: new Date().toISOString(),
-        action: { type: "open_entity", tabType: "kernel:settings", entityId: a.id },
-        metadata: {
-          appName: DRIVE_APP,
-          settingsRoute: appSettingsPath(orgId, DRIVE_APP),
-          connectionName: DRIVE_CONNECTION,
-          identifier: a.identifier,
-          reason: "shared_drives_not_chosen",
-        },
-      }),
-    )
 }

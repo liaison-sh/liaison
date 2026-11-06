@@ -120,7 +120,7 @@ describe("HomeAttentionSidebar", () => {
 
   // Rule 6: the Home badge is THE badge (direct asks), so of Needs you it
   // counts the approvals the viewer decides; system alerts are not asks.
-  it("the Home badge counts the approvals of Needs you, not its system alerts", () => {
+  it("the Home badge is the total of Needs you, its system alerts included", () => {
     attentionStore._setForTest({ items: busy })
     render(() => (
       <>
@@ -128,9 +128,8 @@ describe("HomeAttentionSidebar", () => {
         <HomeAttentionSidebar />
       </>
     ))
-    const badge = screen.getByTestId("activity-bar-home-badge").textContent
-    expect(count("home-side-approvals")).toBe(badge)
     expect(screen.getByTestId("home-side-needs-total").textContent).toBe("6")
+    expect(screen.getByTestId("activity-bar-home-badge").textContent).toBe("6")
   })
 
   it("shows a member no access requests, and the badge agrees", () => {
@@ -145,7 +144,7 @@ describe("HomeAttentionSidebar", () => {
     expect(screen.queryByTestId("home-side-approvals-kernel:access_requests")).toBeNull()
     expect(count("home-side-approvals")).toBe("3")
     expect(screen.getByTestId("home-side-needs-total").textContent).toBe("5")
-    expect(screen.getByTestId("activity-bar-home-badge").textContent).toBe("3")
+    expect(screen.getByTestId("activity-bar-home-badge").textContent).toBe("5")
   })
 
   it("says Nothing needs you, and hides the empty sections", () => {

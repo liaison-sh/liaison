@@ -303,7 +303,7 @@ approval's thread is named after the approval, for example **Approval: Refund or
 ## The badge
 
 One badge, one meaning. The badge counts the unread things that ask for you, and shows the same
-number on the phone's icon, the desktop app's icon, the browser tab title and Home:
+number on the phone's icon, the desktop app's icon and the browser tab title:
 
 - every unread message in a direct conversation (a direct message, a group direct message, a chat
   with an agent), unless you muted or archived it;
@@ -312,11 +312,13 @@ number on the phone's icon, the desktop app's icon, the browser tab title and Ho
 - an approval you are asked to decide (another person's request they could approve themselves is
   left out, as Home folds it), an access request you can grant, a routine run waiting for your
   private mailbox, a computer session asking your permission;
-- a critical alert (an app kind ending in `.critical`, such as a critical monitoring incident).
+- a critical alert (an app kind ending in `.critical`, such as a critical monitoring incident) scored
+  urgency 70 or more.
 
 Channel messages that do not mention you, tickets, tasks, mail and the rest of Home are not counted;
-Home shows a small dot when only those are waiting. The Messages entry keeps its own number: every
-unread message in your conversations.
+The Home entry keeps its own number, the rows of its **Needs you** section, and a small dot when only
+other things are waiting. The Messages entry keeps its own number: every unread message in your
+conversations.
 
 Every surface counts with one function (`countBadge`, `packages/shared/src/notifications/badge.ts`).
 The server counts it for the phone (`computeBadgeCount`, `apps/api/src/modules/push/badge-count.ts`)

@@ -230,12 +230,6 @@ registerKernelAttentionProvider({
   bundlePath: new URL("./modules/apps/connections/attention.ts", import.meta.url).pathname,
 })
 registerKernelAttentionProvider({
-  appName: "kernel.drive_shared_drives",
-  handler: "computeSharedDrivesAttentionItems",
-  scope: "google-drive:accounts:admin",
-  bundlePath: new URL("./apps/google-drive/shared-drives.ts", import.meta.url).pathname,
-})
-registerKernelAttentionProvider({
   appName: "kernel.mailbox_enrollment",
   handler: "computeMailboxEnrollmentAttentionItems",
   bundlePath: new URL("./modules/mailbox-keys/attention.ts", import.meta.url).pathname,

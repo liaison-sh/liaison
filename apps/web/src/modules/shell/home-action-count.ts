@@ -36,7 +36,7 @@ import {
 } from "~/modules/agent/routine-mailbox-wait-item"
 import { hasScope, userFromToken } from "~/modules/auth/auth-store"
 import { isApprovalItem, partitionPeerRequests } from "~/modules/shell/approval-facets"
-import { splitFeed, urgentStripItems } from "~/modules/shell/attention-groups"
+import { newestPromptPerChat, splitFeed, urgentStripItems } from "~/modules/shell/attention-groups"
 import { attentionStore } from "~/modules/shell/attention-store"
 
 const SHOW_PEER_REQUESTS_KEY = "liaison.home.showPeerRequests"
@@ -152,7 +152,12 @@ let count: (() => number) | null = null
 export function homeActionCount(): number {
   count ??= createRoot(() =>
     createMemo(
-      () => homeActionItems(attentionStore.items, peerRequestsShown(), currentHomeViewer()).length,
+      () =>
+        homeActionItems(
+          newestPromptPerChat(attentionStore.items),
+          peerRequestsShown(),
+          currentHomeViewer(),
+        ).length,
     ),
   )
   return count()

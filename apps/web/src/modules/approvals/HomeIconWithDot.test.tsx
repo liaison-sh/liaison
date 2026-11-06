@@ -79,15 +79,15 @@ describe("HomeIconWithDot", () => {
       action: { type: "decide_approval", approvalId: id },
     })
 
-    // Rule 6: Home shows THE badge, the direct asks, like the phone and the dock.
-    it("counts pending approvals, not an SLA risk or a channel's traffic", () => {
+    // The rows of Needs you, nothing the section cannot open (owner, 2026-11-06).
+    it("counts pending approvals and an SLA risk, not a channel's traffic", () => {
       addThread(makeThread("t1", 5))
       attentionStore._setForTest({
         items: [approval("a1"), item({ id: "sla-1" })],
         errors: [],
       })
       const { queryByTestId } = render(() => <HomeIconWithDot />)
-      expect(queryByTestId("activity-bar-home-badge")?.textContent).toBe("1")
+      expect(queryByTestId("activity-bar-home-badge")?.textContent).toBe("2")
       expect(queryByTestId("activity-bar-home-dot")).toBeNull()
     })
 
@@ -97,14 +97,14 @@ describe("HomeIconWithDot", () => {
       expect(queryByTestId("activity-bar-home-badge")).toBeNull()
     })
 
-    it("counts the unread messages of a direct conversation", () => {
+    it("leaves the unread messages of a direct conversation to Messages", () => {
       addThread(makeThread("dm1", 3, false, null))
       addThread(makeThread("dm2", 4, true, null))
       const { queryByTestId } = render(() => <HomeIconWithDot />)
-      expect(queryByTestId("activity-bar-home-badge")?.textContent).toBe("3")
+      expect(queryByTestId("activity-bar-home-badge")).toBeNull()
     })
 
-    it("counts a mention, not a channel reply", () => {
+    it("leaves a mention and a channel reply to Messages, with the quiet dot", () => {
       attentionStore._setForTest({
         items: [
           item({ id: "r1", app: "kernel", kind: "thread_reply", urgency: 30 }),
@@ -113,7 +113,8 @@ describe("HomeIconWithDot", () => {
         errors: [],
       })
       const { queryByTestId } = render(() => <HomeIconWithDot />)
-      expect(queryByTestId("activity-bar-home-badge")?.textContent).toBe("1")
+      expect(queryByTestId("activity-bar-home-badge")).toBeNull()
+      expect(queryByTestId("activity-bar-home-dot")).not.toBeNull()
     })
 
     it("does not count peer requests Home folds away", () => {

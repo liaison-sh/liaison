@@ -13,7 +13,6 @@ import { createGoogleDriveBridgeExtension } from "~/apps/google-drive/bridge"
 import { resolveDriveAccess } from "~/apps/google-drive/drive-access"
 import {
   chooseSharedDrives,
-  computeSharedDrivesAttentionItems,
   SharedDrivesError,
   sharedDrivesState,
 } from "~/apps/google-drive/shared-drives"
@@ -33,7 +32,6 @@ const MEMBER_SCOPES = ["google-drive:accounts:read"]
 let orgId: string
 let admin: string
 let member: string
-let orgAccount: string
 
 async function user(name: string): Promise<string> {
   const [u] = extractRows<{ id: string }>(
@@ -144,7 +142,7 @@ beforeAll(async () => {
   admin = await user("admin")
   member = await user("member")
   // An org connection made before shared drives existed: nothing chosen.
-  orgAccount = await driveAccount({ type: "org" }, "ops@acme.example", "org-token")
+  await driveAccount({ type: "org" }, "ops@acme.example", "org-token")
 })
 
 afterEach(() => OutboundFetchTestAccess.setFetch(null))
@@ -167,9 +165,6 @@ describe("an organization's Drive connection", () => {
     expect(read).toMatchObject({ error: { code: "shared_drives_not_chosen" } })
     expect(calls).toEqual([])
 
-    const items = await computeSharedDrivesAttentionItems({} as never, orgId, admin)
-    expect(items.map((i) => i.entityId)).toEqual([orgAccount])
-    expect(items[0]?.metadata).toMatchObject({ reason: "shared_drives_not_chosen" })
     const state = await sharedDrivesState({ orgId, userId: member, scopes: MEMBER_SCOPES })
     expect(state).toMatchObject({ canManage: false, accounts: [{ needsSharedDrives: true }] })
   })
@@ -195,7 +190,6 @@ describe("an organization's Drive connection", () => {
       changed: true,
       account: { sharedDrives: [{ id: "DRIVE_TEAM", name: "Team" }], needsSharedDrives: false },
     })
-    expect(await computeSharedDrivesAttentionItems({} as never, orgId, admin)).toEqual([])
   })
 
   it("with a drive chosen: the agent reads that drive, never My Drive or another drive", async () => {

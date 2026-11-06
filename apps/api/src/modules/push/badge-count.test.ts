@@ -274,12 +274,18 @@ async function askPost(threadId: string, content: string): Promise<void> {
 async function attention(
   kind: string,
   entityId: string,
-  opts: { read?: boolean; emailOnly?: boolean; metadata?: Record<string, unknown> } = {},
+  opts: {
+    read?: boolean
+    emailOnly?: boolean
+    urgency?: number
+    metadata?: Record<string, unknown>
+  } = {},
 ): Promise<void> {
+  const urgency = opts.urgency ?? (kind.endsWith(".critical") ? 90 : 50)
   await sql`INSERT INTO kernel.attention_events
       (org_id, user_id, app, entity_type, entity_id, kind, urgency, summary, actor_type,
        metadata, occurred_at, read_at, digest_eligible_at, email_only, source_key)
-    VALUES (${ASK_ORG}, ${ASK_READER}, 'kernel', 'thread', ${entityId}, ${kind}, 50, 'x', 'user',
+    VALUES (${ASK_ORG}, ${ASK_READER}, 'kernel', 'thread', ${entityId}, ${kind}, ${urgency}, 'x', 'user',
       ${JSON.stringify(opts.metadata ?? {})}::jsonb, now(),
       ${opts.read ? new Date().toISOString() : null}::timestamptz, now(), ${opts.emailOnly ?? false},
       ${opts.emailOnly ? `src-${kind}-${entityId}` : null})`
@@ -328,6 +334,7 @@ describe("the app badge counts direct asks (rule 6)", () => {
     await attention("mention", "old-thread", { read: true })
     await attention("monitoring:incident.warning", "inc-2")
     await attention("monitoring:incident.critical", "inc-3", { emailOnly: true })
+    await attention("monitoring:incident.critical", "inc-low", { urgency: 65 })
     expect(await computeBadgeCount(ASK_READER, ASK_ORG)).toBe(5)
   })
 

@@ -267,7 +267,7 @@ export async function replyToFinding(
   if (!ctx.approval) {
     const requested = (await ctx.requestApproval?.({
       tool_name: "social:reply_to_finding",
-      summary: `Reply to social finding ${params.finding_id}: ${clipLine(params.reply_text)}`,
+      summary: `Reply publicly on ${finding.platform}: ${clipLine(params.reply_text)}`,
       summary_detail: {
         subtitle: `Posts publicly on ${finding.platform}`,
         lines: [
@@ -560,7 +560,7 @@ export async function likeItem(
   if (!ctx.approval) {
     const requested = (await ctx.requestApproval?.({
       tool_name: "social:like_item",
-      summary: `Like the item behind social finding ${params.finding_id}`,
+      summary: "Like a post or comment",
       summary_detail: {
         subtitle: `Likes an item on ${finding.platform}`,
         lines: [

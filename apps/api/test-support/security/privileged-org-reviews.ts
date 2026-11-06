@@ -565,8 +565,6 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "demo seed only (served-summary.ts:11): called for the demo org it seeded",
   "apps/api/src/modules/apps/connections/attention.ts#computeConnectionHealthAttentionItems":
     "attention computer registered by name: called for the org being computed",
-  "apps/api/src/apps/google-drive/shared-drives.ts#computeSharedDrivesAttentionItems":
-    "attention computer registered by name (app.ts, init.ts): called for the org being computed",
   "apps/api/src/modules/apps/runtime.ts#unregisterAppEverywhere":
     "app teardown sweep: each org the app is registered in",
   "apps/api/src/modules/apps/sandbox/worker-pool.ts#SandboxWorkerPool.acquire":

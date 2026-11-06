@@ -16,15 +16,17 @@
  *     request they can grant, a routine run waiting for their private mailbox,
  *     a computer session asking them for permission;
  *   - a critical alert (an app kind ending in `.critical`, such as a critical
- *     monitoring incident).
+ *     monitoring incident) scored `NOW_URGENCY` or more. A row scored lower is
+ *     not presented as needing anyone now, so nobody could find what it counts.
  *
  * Channel traffic that names nobody, task and ticket work, mail and the rest
  * of the feed are not in it: they wait in the inbox without a number.
  *
  * The phone's icon (the server, `computeBadgeCount`, sent in every push and
- * in the badge sync push after a read), the desktop dock, the browser tab
- * title and Home all count with THIS function, so they cannot disagree on the
- * same data.
+ * in the badge sync push after a read), the desktop dock and the browser tab
+ * title all count with THIS function, so they cannot disagree on the same
+ * data. The Home entry shows its own number: the rows of its "Needs you"
+ * section (`homeActionCount`), so that number can always be opened.
  */
 import { isDirectMessageShape } from "../threads/conversation-shape"
 import type { AttentionItem } from "../types/attention"
@@ -44,6 +46,7 @@ export interface BadgeThread {
 
 /** One attention row as the badge needs it (a feed item satisfies it). */
 export type BadgeItem = Pick<AttentionItem, "kind" | "entity" | "entityId"> & {
+  urgency?: AttentionItem["urgency"]
   action?: AttentionItem["action"]
   metadata?: Record<string, unknown>
 }
@@ -56,6 +59,9 @@ export interface BadgeViewer {
 
 /** The kind suffix an app gives an alert that is critical for the people on call. */
 export const CRITICAL_ALERT_KIND_SUFFIX = ".critical"
+
+/** Items scored at or above this need the person now, whatever their kind. */
+export const NOW_URGENCY = 70
 
 /** Whether a conversation's unread messages count: a direct conversation, not muted or archived. */
 export function isBadgeThread(thread: BadgeThread): boolean {
@@ -88,7 +94,7 @@ export function isBadgeAsk(item: BadgeItem, viewer: BadgeViewer): boolean {
   if (item.action?.type === "decide_approval" || kind === "approval_pending") {
     return item.metadata?.peerSelfApprovable !== true
   }
-  return kind.endsWith(CRITICAL_ALERT_KIND_SUFFIX)
+  return kind.endsWith(CRITICAL_ALERT_KIND_SUFFIX) && (item.urgency ?? NOW_URGENCY) >= NOW_URGENCY
 }
 
 /** The badge: unread messages of direct conversations plus the direct asks among the rows, each once. */

@@ -61,7 +61,9 @@ export async function ensureGoogleLoginProvider(
 
   const wrote = await withPrivilegedDb(orgId, "ensure-google-login-provider", async (tx) => {
     // An org's create and its first sign-in can land here together; no unique key says one row.
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`liaison:google-login:${orgId}`}))`)
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${`liaison:google-login:${orgId}`}))`,
+    )
     const [existing] = await tx
       .select({
         id: oauthProviders.id,

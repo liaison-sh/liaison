@@ -768,9 +768,10 @@ describe("org transfer between two instances", () => {
     const [fromA] = await A<{ id: string }[]>`
       SELECT id::text AS id FROM kernel.credit_transactions WHERE org_id = ${orgId} LIMIT 1`
     const meteredOnA = fromA!.id
-    const [fromB] = await B<{ id: string }[]>`
-      INSERT INTO kernel.credit_transactions (org_id, type, amount, balance_after, raw_cost_usd)
-      VALUES (${orgId}, 'usage', '-0.01', '1', '0.001') RETURNING id::text AS id`
+    const [fromB] = await ormB
+      .insert(creditTransactions)
+      .values({ orgId, type: "usage", amount: "-0.01", balanceAfter: "1", rawCostUsd: "0.001" })
+      .returning({ id: creditTransactions.id })
     const meteredOnB = fromB!.id
     const transferY = randomUUID()
     const back = await exportFrom(B, KEYS_B, orgId, transferY)

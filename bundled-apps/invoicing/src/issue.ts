@@ -359,6 +359,7 @@ export interface IssueDb {
       orderBy?: Record<string, "asc" | "desc">
       limit?: number
       offset?: number
+      select?: string[]
     },
   ): Promise<unknown[]>
   findOne(entity: string, id: string): Promise<unknown | null>

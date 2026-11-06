@@ -20,6 +20,10 @@ import { extractRlsContext, withRequestRls } from "~/lib/request-rls"
 import { zValidator } from "~/lib/validate"
 import { checkRateLimit } from "~/middleware/rate-limiter"
 import { attachedFilesNote } from "~/modules/agent/context/context"
+import {
+  redactMailToolArgs,
+  redactMailToolResult,
+} from "~/modules/agent/mailbox-plaintext/mail-plaintext-redaction"
 import { forwardMailboxAnswer } from "~/modules/agent/mailbox-plaintext/mailbox-forward"
 import {
   type MailboxAnswerInput,
@@ -550,41 +554,42 @@ async function chatTurn(
             await writeEvent("reasoning-end", {})
             break
 
-          case "tool-call":
-            currentStepToolCalls.push({
+          case "tool-call": {
+            // Invariant K: redacted once, for the row, the SSE body and the frames
+            // alike, as the thread path does (agent-service.ts). The model is
+            // unaffected: the SDK keeps its own copy of the call for this turn.
+            const call = {
               toolCallId: part.toolCallId,
               toolName: part.toolName,
-              args: part.input,
-            })
+              args: await redactMailToolArgs(orgId, part.toolName, part.input),
+            }
+            currentStepToolCalls.push(call)
             finalTimeline.push({ kind: "tool", toolCallId: part.toolCallId })
             liveText.toolCall()
-            await writeEvent("tool-call", {
-              toolCallId: part.toolCallId,
-              toolName: part.toolName,
-              args: part.input,
-            })
+            await writeEvent("tool-call", call)
             emitStreamEvent("tool_call", {
-              toolCallId: part.toolCallId,
-              toolName: part.toolName,
-              args: part.input,
+              ...call,
               ...uiEffectRequester(part.toolName, actor.userId),
             })
             break
+          }
 
-          case "tool-result":
-            currentStepToolResults.push({
+          case "tool-result": {
+            // The name from the call when the chunk has none: an unnamed result
+            // would skip the mail branch and pass through whole.
+            const toolName =
+              (part as { toolName?: string }).toolName ??
+              currentStepToolCalls.find((tc) => tc.toolCallId === part.toolCallId)?.toolName ??
+              ""
+            const entry = {
               toolCallId: part.toolCallId,
-              result: part.output,
-            })
-            await writeEvent("tool-result", {
-              toolCallId: part.toolCallId,
-              result: part.output,
-            })
-            emitStreamEvent("tool_result", {
-              toolCallId: part.toolCallId,
-              result: part.output,
-            })
+              result: await redactMailToolResult(orgId, toolName, part.output),
+            }
+            currentStepToolResults.push(entry)
+            await writeEvent("tool-result", entry)
+            emitStreamEvent("tool_result", entry)
             break
+          }
 
           case "finish-step": {
             stepNumber++

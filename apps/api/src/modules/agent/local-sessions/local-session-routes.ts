@@ -47,6 +47,7 @@ import {
   mintTurnCredential,
   revokeTurnCredentials,
 } from "~/modules/agent/local-sessions/turn-credential"
+import { redactStoredToolCalls } from "~/modules/agent/mailbox-plaintext/mail-plaintext-redaction"
 import { betweenTurnsUpkeep, coldResumeAdvanceForTurn } from "~/modules/agent/runtime/agent-service"
 import { persistAgentTurn } from "~/modules/agent/runtime/persist-agent-turn"
 import { computeEffectiveScopeForTurn } from "~/modules/agent/scopes/effective-scope"
@@ -1331,6 +1332,7 @@ localSessionRoutes.post(
     // history replays the tool calls, the checkpoint budget counts them and
     // the compaction trigger reads the usage, wherever the turn ran.
     const record = rawTurn ? sanitizeLocalTurnRecord(rawTurn) : null
+    const toolCalls = record ? await redactStoredToolCalls(orgId, record.toolCalls) : []
     const content = text.trim()
       ? text
       : // A cloud turn that ends with no text stores an explicit line, never a
@@ -1347,7 +1349,7 @@ localSessionRoutes.post(
       ...(record
         ? {
             modelId: record.modelId ?? undefined,
-            toolCalls: record.toolCalls.length > 0 ? record.toolCalls : undefined,
+            toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
             stepCount: record.stepCount,
             usage: record.usage,
             reasoning: record.reasoning || undefined,

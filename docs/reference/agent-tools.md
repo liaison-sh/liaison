@@ -437,6 +437,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `documents_send_to_customer` | Email a document PDF to the counterparty. | yes | `invoicing:documents:write` |
 | `documents_update` | Edit a document. | yes | `invoicing:documents:write` |
 | `documents_update_preview` | The document plus the VAT status a documents_update would give its buyer (evidence when the agent declares a private consumer). |  | `invoicing:documents:read` |
+| `draft_issue_preview` | What an approval card reads for a saved draft: the document and the total issuing it would write. |  | `invoicing:documents:read` |
 | `drafts_create` | LEGACY, internal: create an unnumbered draft row. |  | `invoicing:documents:write` |
 | `drafts_discard` | LEGACY, internal: discard an unnumbered draft row (never consumes a number). |  | `invoicing:documents:write` |
 | `drafts_update` | LEGACY, internal: update an unnumbered draft row before it is issued. |  | `invoicing:documents:write` |

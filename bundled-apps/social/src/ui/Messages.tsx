@@ -199,7 +199,9 @@ export const Messages: Component = () => {
     return visible()[0]?.id ?? null
   })
   const selectedRow = createMemo(() => visible().find((r) => r.id === selectedId()) ?? null)
-  app.trackOpenRecord("dm_conversation", selectedId)
+  // What the agent is told is open: the row the person picked, still listed. The
+  // first row filling the pane by itself is not one.
+  app.trackOpenRecord("dm_conversation", () => (selected() === selectedId() ? selected() : null))
 
   return (
     <div class="flex h-full min-h-0 flex-col">

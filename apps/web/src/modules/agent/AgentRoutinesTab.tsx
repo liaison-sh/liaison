@@ -42,6 +42,8 @@ interface Props {
   selected?: string
   /** The viewer picked another row, so the page drops the param. */
   onSelectedCleared?: () => void
+  /** This tab is the one showing. Absent means yes. */
+  active?: boolean
   /** A deep link's `&run=<run id>`, under the routine `selected` names. */
   run?: string
   /** The run pane opened or closed, so the page's URL can say so. */
@@ -52,7 +54,11 @@ const AgentRoutinesTab: Component<Props> = (props) => {
   const i18n = useI18n()
   // `new` is the create sentinel `RoutineDetail` already understands.
   const [selected, setSelected] = createSignal<string | null>(null)
-  trackOpenRecord("kernel", "routine", selected)
+  /** The row the viewer opened: the first row selecting itself is not one. */
+  const [opened, setOpened] = createSignal<string | null>(null)
+  trackOpenRecord("kernel", "routine", () =>
+    props.active !== false && selected() === opened() ? opened() : null,
+  )
   /** The run whose transcript replaces the routine's detail, if any. */
   const [run, setRun] = createSignal<string | null>(null)
 
@@ -68,6 +74,7 @@ const AgentRoutinesTab: Component<Props> = (props) => {
     const id = props.selected
     if (!id || id === consumedSelection) return
     consumedSelection = id
+    setOpened(id)
     setSelected(id)
     setRun(props.run ?? null)
   })
@@ -108,6 +115,7 @@ const AgentRoutinesTab: Component<Props> = (props) => {
           onSelect={(routine) => {
             props.onSelectedCleared?.()
             setRun(null)
+            setOpened(routine.id)
             setSelected(routine.id)
           }}
           onNew={() => {
@@ -160,7 +168,10 @@ const AgentRoutinesTab: Component<Props> = (props) => {
                 <RoutineDetail
                   entityId={id}
                   ownerAgentId={props.agentId}
-                  onCreated={(routine) => setSelected(routine.id)}
+                  onCreated={(routine) => {
+                    setOpened(routine.id)
+                    setSelected(routine.id)
+                  }}
                   onCancelCreate={() => setSelected(null)}
                   onOpenRun={(runId) => openRun(id, runId)}
                 />

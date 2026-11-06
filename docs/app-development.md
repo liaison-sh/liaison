@@ -402,7 +402,9 @@ frame. Write it so that it works there too:
   row, a drawer) says which one, so a person who asks the agent about "this" gets
   that record: `app.trackOpenRecord("shipment", () => selectedId())` from
   `@liaison/host`, in the component body, with an entity of your manifest. Return
-  null while no record is on screen, a phone layout that hides the pane included.
+  the record the person opened (a click, a deep link), never a first row your list
+  shows by default, and null while no record is on screen, a phone layout that hides
+  the pane included.
   An entity in another system (`"external": true`, no local table) works the same:
   the agent is told its id. A tab whose own id is the record needs none of this:
   when the tab is not named for its entity, it declares it instead

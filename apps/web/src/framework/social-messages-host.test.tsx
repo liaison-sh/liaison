@@ -92,7 +92,8 @@ describe("social Messages surface (ticket-9967)", () => {
     )
     expect(openRecord?.app).toBe("social")
     expect(openRecord?.entityType).toBe("dm_conversation")
-    expect(openRecord?.id()).toBe("dm-1")
+    // The first conversation fills the pane by itself: nobody opened it.
+    expect(openRecord?.id()).toBeNull()
     second.click()
     expect(openRecord?.id()).toBe("dm-2")
   })

@@ -23,6 +23,7 @@ describe("db import enforcement", () => {
   const connectionAllowlist = new Set([
     "db/rls.ts",
     "db/privileged.ts",
+    "db/portal-rls.ts", // withPortalContext: the portal role on the request pool, as db/rls.ts does for liaison_rls
     "db/index.ts",
     "infra/events/outbox-worker.ts",
     "modules/health/routes.ts",

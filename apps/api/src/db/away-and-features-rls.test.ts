@@ -1,0 +1,190 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// Two kernel tables a member reads and never writes: who is away, and which of
+// an app's features an org has on. Under the real liaison_rls role.
+import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { sql as drizzleSql } from "drizzle-orm"
+import { extractRows, type RlsClient, sql } from "~/db"
+import { type UserContext, withRlsContext } from "~/db/rls"
+
+const ORG_ID = crypto.randomUUID()
+const OTHER_ORG_ID = crypto.randomUUID()
+const ANNA = crypto.randomUUID()
+const BEN = crypto.randomUUID()
+const OUTSIDER = crypto.randomUUID()
+
+function ctx(userId: string, orgId: string = ORG_ID): UserContext {
+  return { actorType: "user", userId, orgId, scopes: [], dimensionGrants: {} }
+}
+
+function pgCode(err: unknown): string {
+  const e = err as { code?: string; cause?: { code?: string } } | null
+  return e?.cause?.code ?? e?.code ?? "unknown"
+}
+
+async function attempt(tx: Pick<RlsClient, "transaction">, statement: string): Promise<string> {
+  try {
+    await tx.transaction(async (sp) => {
+      await sp.execute(drizzleSql.raw(statement))
+    })
+    return "allowed"
+  } catch (err) {
+    return pgCode(err)
+  }
+}
+
+async function awayStatuses(reader: UserContext): Promise<string[]> {
+  return withRlsContext(reader, async (tx) =>
+    extractRows<{ status: string }>(
+      await tx.execute(drizzleSql`SELECT status FROM kernel.away_ranges ORDER BY status`),
+    ).map((r) => r.status),
+  )
+}
+
+beforeAll(async () => {
+  for (const id of [ORG_ID, OTHER_ORG_ID]) {
+    await sql`INSERT INTO kernel.organizations (id, name, slug)
+      VALUES (${id}, 'Away and features', ${`away-${id.slice(0, 8)}`})`
+  }
+  await sql`INSERT INTO kernel.users (id, org_id, email, name) VALUES
+    (${ANNA}, ${ORG_ID}, ${`anna-${ANNA.slice(0, 8)}@example.com`}, 'Anna'),
+    (${BEN}, ${ORG_ID}, ${`ben-${BEN.slice(0, 8)}@example.com`}, 'Ben'),
+    (${OUTSIDER}, ${OTHER_ORG_ID}, ${`out-${OUTSIDER.slice(0, 8)}@example.com`}, 'Outsider')`
+  await sql`INSERT INTO kernel.away_ranges (org_id, user_id, starts_on, ends_on, source, status, source_event_ref) VALUES
+    (${ORG_ID}, ${ANNA}, '2026-12-01', '2026-12-05', 'said', 'active', NULL),
+    (${ORG_ID}, ${ANNA}, '2026-12-10', '2026-12-11', 'calendar', 'asked', 'cal:1'),
+    (${ORG_ID}, ${ANNA}, '2026-12-20', '2026-12-21', 'calendar', 'declined', 'cal:2')`
+  await sql`INSERT INTO kernel.org_app_features (org_id, app_name, feature, enabled)
+    VALUES (${ORG_ID}, 'projects', 'time_budgets', true)`
+})
+
+afterAll(async () => {
+  await sql`DELETE FROM kernel.away_ranges WHERE org_id IN (${ORG_ID}, ${OTHER_ORG_ID})`
+  await sql`DELETE FROM kernel.org_app_features WHERE org_id IN (${ORG_ID}, ${OTHER_ORG_ID})`
+  await sql`DELETE FROM kernel.users WHERE org_id IN (${ORG_ID}, ${OTHER_ORG_ID})`
+  await sql`DELETE FROM kernel.organizations WHERE id IN (${ORG_ID}, ${OTHER_ORG_ID})`
+})
+
+describe("kernel.away_ranges", () => {
+  it("column list of away_ranges holds no title or reason", async () => {
+    const rows = await sql<{ column_name: string }[]>`
+      SELECT column_name FROM information_schema.columns
+       WHERE table_schema = 'kernel' AND table_name = 'away_ranges'
+       ORDER BY column_name`
+    // A closed list: an added free-text column would carry what must stay private.
+    expect(rows.map((r) => r.column_name)).toEqual(
+      [
+        "created_at",
+        "ended_early_on",
+        "ends_on",
+        "id",
+        "next_in_line_id",
+        "org_id",
+        "set_by",
+        "source",
+        "source_event_ref",
+        "starts_on",
+        "status",
+        "updated_at",
+        "user_id",
+        "weekdays",
+      ].sort(),
+    )
+  })
+
+  it("asked and declined rows read 0 by a second member under liaison_rls", async () => {
+    expect(await awayStatuses(ctx(BEN))).toEqual(["active"])
+  })
+
+  it("the person reads their own asked and declined rows", async () => {
+    expect(await awayStatuses(ctx(ANNA))).toEqual(["active", "asked", "declined"])
+  })
+
+  it("a member of another org reads none of them", async () => {
+    expect(await awayStatuses(ctx(OUTSIDER, OTHER_ORG_ID))).toEqual([])
+  })
+
+  it("a member has no write path, not on their own row either", async () => {
+    const outcome = await withRlsContext(ctx(ANNA), async (tx) => ({
+      insert: await attempt(
+        tx,
+        `INSERT INTO kernel.away_ranges (org_id, user_id, starts_on, ends_on, source)
+         VALUES ('${ORG_ID}', '${ANNA}', '2027-01-01', '2027-01-02', 'said')`,
+      ),
+      update: await attempt(
+        tx,
+        `UPDATE kernel.away_ranges SET ends_on = '2028-01-01' WHERE user_id = '${ANNA}'`,
+      ),
+      remove: await attempt(tx, `DELETE FROM kernel.away_ranges WHERE user_id = '${ANNA}'`),
+    }))
+    expect(outcome).toEqual({ insert: "42501", update: "42501", remove: "42501" })
+  })
+
+  it("a range with neither an end nor weekdays violates the check", async () => {
+    await expect(
+      sql`INSERT INTO kernel.away_ranges (org_id, user_id, starts_on, source)
+          VALUES (${ORG_ID}, ${ANNA}, '2027-02-01', 'said')`,
+    ).rejects.toThrow("check")
+  })
+
+  it("a calendar range needs its event reference, and only a calendar range may be asked", async () => {
+    await expect(
+      sql`INSERT INTO kernel.away_ranges (org_id, user_id, starts_on, ends_on, source)
+          VALUES (${ORG_ID}, ${ANNA}, '2027-02-01', '2027-02-02', 'calendar')`,
+    ).rejects.toThrow("check")
+    await expect(
+      sql`INSERT INTO kernel.away_ranges (org_id, user_id, starts_on, ends_on, source, status)
+          VALUES (${ORG_ID}, ${ANNA}, '2027-02-01', '2027-02-02', 'said', 'asked')`,
+    ).rejects.toThrow("check")
+  })
+})
+
+describe("kernel.org_app_features", () => {
+  const read = (reader: UserContext) =>
+    withRlsContext(reader, async (tx) =>
+      extractRows<{ feature: string; enabled: boolean }>(
+        await tx.execute(drizzleSql`SELECT feature, enabled FROM kernel.org_app_features`),
+      ),
+    )
+
+  it("a member reads own org's org_app_features, INSERT refused", async () => {
+    expect(await read(ctx(BEN))).toEqual([{ feature: "time_budgets", enabled: true }])
+    const refused = await withRlsContext(ctx(BEN), (tx) =>
+      attempt(
+        tx,
+        `INSERT INTO kernel.org_app_features (org_id, app_name, feature, enabled)
+         VALUES ('${ORG_ID}', 'projects', 'another', true)`,
+      ),
+    )
+    expect(refused).toBe("42501")
+    const [row] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM kernel.org_app_features
+       WHERE org_id = ${ORG_ID} AND feature = 'another'`
+    expect(row?.n).toBe(0)
+  })
+
+  it("a member cannot update or delete a feature row", async () => {
+    const outcome = await withRlsContext(ctx(BEN), async (tx) => ({
+      update: await attempt(tx, "UPDATE kernel.org_app_features SET enabled = false"),
+      remove: await attempt(tx, "DELETE FROM kernel.org_app_features"),
+    }))
+    expect(outcome).toEqual({ update: "42501", remove: "42501" })
+  })
+
+  it("a member of another org reads none of it", async () => {
+    expect(await read(ctx(OUTSIDER, OTHER_ORG_ID))).toEqual([])
+  })
+
+  it("deleting a user who changed a feature leaves changed_by null", async () => {
+    const changer = crypto.randomUUID()
+    await sql`INSERT INTO kernel.users (id, org_id, email, name)
+      VALUES (${changer}, ${ORG_ID}, ${`changer-${changer.slice(0, 8)}@example.com`}, 'Changer')`
+    await sql`INSERT INTO kernel.org_app_features (org_id, app_name, feature, enabled, changed_by, changed_at)
+      VALUES (${ORG_ID}, 'projects', 'changed', true, ${changer}, now())`
+    await sql`DELETE FROM kernel.users WHERE id = ${changer}`
+    const [row] = await sql<{ changed_by: string | null; enabled: boolean }[]>`
+      SELECT changed_by, enabled FROM kernel.org_app_features
+       WHERE org_id = ${ORG_ID} AND feature = 'changed'`
+    expect(row).toEqual({ changed_by: null, enabled: true })
+  })
+})

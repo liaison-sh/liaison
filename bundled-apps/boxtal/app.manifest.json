@@ -194,7 +194,7 @@
       }
     ]
   },
-  "version": "0.23.9",
+  "version": "0.23.10",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {
@@ -2218,7 +2218,7 @@
       "timeoutMs": 25000
     },
     "get_documents": {
-      "description": "Fetch a Boxtal shipment's shipping/customs documents (fresh signed URLs).",
+      "description": "Fetch a Boxtal shipment's shipping/customs documents.",
       "searchKeywords": ["étiquette", "bordereau", "label", "douane", "cn23", "shipping", "colis", "expédition"],
       "requiredScopes": ["boxtal:documents:read"],
       "handler": "getDocumentsHandler",

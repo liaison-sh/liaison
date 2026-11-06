@@ -2245,6 +2245,8 @@ async function appendInboundMessage(params: unknown, ctx: MailCtx): Promise<unkn
   )
 }
 
+const LIST_ACCOUNTS_NOTE = "Only what this person can use: the organization may have others."
+
 async function listAccounts(params: { includeDisconnected?: boolean }, ctx: MailCtx) {
   const allRows: AccountRow[] = JSON.parse(await ctx.db_findMany("accounts", JSON.stringify({})))
   const rows = params.includeDisconnected
@@ -2263,7 +2265,7 @@ async function listAccounts(params: { includeDisconnected?: boolean }, ctx: Mail
   // An account in error says why and when it is tried again, so "is the
   // mailbox working?" is answered from this one list (the agent otherwise
   // reports "it is in error, I can't tell why").
-  return rows.map((row) => {
+  const accounts = rows.map((row) => {
     const kernel = kernelMap.get(row.connected_account_id)
     const nextRetryAt =
       typeof row.sync_state?.nextRetryAt === "string" ? row.sync_state.nextRetryAt : null
@@ -2284,6 +2286,10 @@ async function listAccounts(params: { includeDisconnected?: boolean }, ctx: Mail
         : {}),
     }
   })
+  // RLS and inbox grants decide what this person sees here. An agent told "the
+  // mailboxes connected to this org" read an empty list as "this org has no
+  // mailbox", to a person whose org has five.
+  return { accounts, note: LIST_ACCOUNTS_NOTE }
 }
 
 /**

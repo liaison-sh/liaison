@@ -161,6 +161,8 @@ describe("free reads", () => {
     expect(pending.tracking_number).toBeNull()
     expect(pending.tracking_note).toMatch(/not scanned/)
     expect(pending.tracking_note).toMatch(/label/i)
+    // It never read the label, so it must not hand the agent a fact about one.
+    expect(pending.tracking_note).not.toMatch(/already carries/)
   })
 
   it("get_documents re-fetches live; PENDING with no LABEL → generating:true", async () => {

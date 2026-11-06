@@ -20,7 +20,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `approval_withdraw` | Retract a PENDING approval request that you raised. |  | `kernel:approvals:write` |
 | `approvals_list` | List the approvals waiting on this user to decide, oldest first, each tagged with its origin app, requester, summary and ageDays. |  | `kernel:approvals:read` |
 | `apps_set_access` | Set who may use an app (admin): mode "everyone", or "restricted" to the listed roleIds and userIds (org admins always keep it). | yes | `kernel:apps:admin` |
-| `apps_set_enabled` | Turn an app the workspace has On or Off (enable or disable it) for EVERYONE (admin). | yes | `kernel:apps:admin` |
+| `apps_set_enabled` | Turn an installed app On or Off (enable or disable it) for EVERYONE (admin). | yes | `kernel:apps:admin` |
 | `assign_role` | Assign an existing team member to a role. | yes | `kernel:users:admin` |
 | `audit_search` | Search the org audit log by action + optional date window (since/until ISO dates). |  | `kernel:audit:read` |
 | `call_tool` | Call a loaded tool that is not in your tool list (one a "tools just loaded" note describes). |  | `kernel:threads:read` |
@@ -91,7 +91,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `documents_print` | Print the documents for a record (a shipment, an order, any printable record) with the org's templates: pass app, entity, recordId and templateIds (from kernel__document_templates_list for that record type). |  | `kernel:files:read` |
 | `drive_picker` | Show the card where the person picks the Google Drive files Liaison can see (Drive in picked mode), with their Drive mode and what is picked. |  | `kernel:threads:read` |
 | `edit_role` | Edit an EXISTING org role — rename it, change its description, and/or ADD (grantScopes) and REMOVE (revokeScopes) scopes on it. | yes | `kernel:roles:admin` |
-| `enable_app` | Install a catalog app for the workspace (install intent: adds it to the workspace's enabled apps so the catalog installs and keeps it). | yes | `kernel:apps:admin` |
+| `enable_app` | Install an app from the catalog for the workspace (install intent: adds it to the workspace's enabled apps so the catalog installs and keeps it). | yes | `kernel:apps:admin` |
 | `enable_routine_template` | Instantiate a routine template as one of your routines (runs with your scopes). | yes | `kernel:routines:write` |
 | `export` | Export the data the requester can see for one or more apps as a downloadable zip (per-app file + manifest.json). |  | `kernel:users:admin` |
 | `files_list` | List the files attached to one entity: pass its app, entityType and entityId. |  | `kernel:files:read` |
@@ -273,7 +273,7 @@ Boxtal: ship orders with Boxtal carriers, with quotes, shipments, tracking and c
 | `create_shipment` | Create a Boxtal shipment from a resolved draft + selected carrier offer. | yes | `boxtal:shipments:write`, `boxtal:quotes:read` |
 | `exceptions_list` | List shipments stuck in a carrier exception state (INCIDENT, RETURNED, or LOST) so the operator can chase them. |  | `boxtal:shipments:read` |
 | `get_documents` | Fetch a Boxtal shipment's shipping/customs documents (fresh signed URLs). |  | `boxtal:documents:read` |
-| `get_shipment` | Refresh a Boxtal shipment's live order + tracking status. |  | `boxtal:shipments:read` |
+| `get_shipment` | The shipment record, refreshed: a Boxtal shipment's live order + tracking status. |  | `boxtal:shipments:read` |
 | `import_label_document` | Backfill-import a created shipment's LABEL PDF into Liaison's file store and return its `label_file_id` (a kernel file id attachable to a tickets__reply / mail message). |  | `boxtal:shipments:write` |
 | `import_shipments` | Import existing Boxtal orders into the local shipment list by their Boxtal order id (fetches live order + tracking + document descriptors per id; local-only writes, creates nothing at Boxtal). |  | `boxtal:shipments:write` |
 | `list_content_categories` | List Boxtal content categories (customs classification). |  | `boxtal:quotes:read` |
@@ -284,7 +284,7 @@ Boxtal: ship orders with Boxtal carriers, with quotes, shipments, tracking and c
 | `prep_add_shipment` | Create an order-prep row for a parcel that has NO Shopify order behind it: a repaired unit going back to its owner, or a sample going to a dealer. |  | `boxtal:shipments:write` |
 | `prep_document_pdf` | Render an order-prep row's shipping document (the issued commercial invoice, or the app-issued proforma for a repair or sample row) and return the kernel file id of its PDF. |  | `boxtal:shipments:read` |
 | `prep_exclude` | Dismiss an order-prep row from the default prep_list view (e.g. |  | `boxtal:shipments:write` |
-| `prep_list` | The ORDER PREP DASHBOARD worklist: every to-prepare invoice (issued goods invoice, no live shipment yet) joined with its cached Shopify order name/tags, its auto-derived parcels + products summary, its cached shipping quote (cheapest offer + up to 2 alternates), and its editable category (sale/repair/gift/return) + exclusion state. |  | `boxtal:shipments:read` |
+| `prep_list` | The ORDER PREP DASHBOARD worklist people see, with offers and status: every to-prepare invoice (issued goods invoice, no live shipment yet) joined with its cached Shopify order name/tags, its auto-derived parcels + products summary, its cached shipping quote (cheapest offer + up to 2 alternates), and its editable category (sale/repair/gift/return) + exclusion state. |  | `boxtal:shipments:read` |
 | `prep_order_prefill` | Read what an existing Shopify order would contribute to an ORDER-LESS shipment: its ship-to address and its physical line items. |  | `boxtal:shipments:read` |
 | `prep_restore` | Undo prep_exclude — restores a previously-excluded order-prep row to the default prep_list view. |  | `boxtal:shipments:write` |
 | `prep_select_offer` | Choose which cached shipping offer a prep-dashboard row stages, ONLY when someone wants an offer other than the cheapest: never call it to book the cheapest offer, since create_shipment already buys the cheapest when no offer is chosen. |  | `boxtal:shipments:write` |
@@ -295,7 +295,7 @@ Boxtal: ship orders with Boxtal carriers, with quotes, shipments, tracking and c
 | `prep_set_validated` | ALIAS for prep_set_status: mark an order-prep row VALIDATED (true) or return it to 'to prepare' (false). |  | `boxtal:shipments:write` |
 | `prep_sync` | Refresh pass for the order-prep dashboard: for each in-scope row, fetches Shopify order name/tags when missing, and re-quotes the shipping cost when the route/parcels/category changed (a cache-invalidating edit) or the cached quote is older than 12 hours — storing the offers (cheapest first) for the row's shipping estimate + offer dropdown. |  | `boxtal:shipments:write` |
 | `prep_unlinked_list` | Shippable orders the To-prepare worklist CANNOT show. |  | `boxtal:shipments:read` |
-| `print_pack` | Prepare the print-station documents for ONE ready-to-ship shipment as TWO SEPARATE print jobs, never merged into one PDF: (1) the shipping LABEL alone, orientation-normalized server-side (Boxtal labels carry a Letter-landscape /Rotate 270 flag that label printers ignore; the rotation is baked into the page content) for the self-adhesive label printer, and (2) the INVOICE PDF for the A4 printer with the route's required copy count: 1 copy for an EU/domestic route, 3 copies for an export outside the EU. |  | `boxtal:shipments:read` |
+| `print_pack` | Print a shipment's labels and shipping papers: prepare the print-station documents for ONE ready-to-ship shipment as TWO SEPARATE print jobs, never merged into one PDF: (1) the shipping LABEL alone, orientation-normalized server-side (Boxtal labels carry a Letter-landscape /Rotate 270 flag that label printers ignore; the rotation is baked into the page content) for the self-adhesive label printer, and (2) the INVOICE PDF for the A4 printer with the route's required copy count: 1 copy for an EU/domestic route, 3 copies for an export outside the EU. |  | `boxtal:shipments:read` |
 | `print_pack_batch` | Print a SELECTION of ready-to-ship shipments as TWO merged documents: every label in one PDF for the label printer, every invoice in one PDF for A4 (already collated to each destination's copy count). |  | `boxtal:shipments:read` |
 | `print_record_get` | Read ONE shipment as its print record: the data the organisation's document templates fill (a customs declaration, a certificate, a thank-you letter). |  | `boxtal:shipments:read` |
 | `product_profile_delete` | Delete a shipping profile no variant uses. |  | `boxtal:catalog:write` |
@@ -309,7 +309,7 @@ Boxtal: ship orders with Boxtal carriers, with quotes, shipments, tracking and c
 | `ready_list` | List live (PENDING or CONFIRMED) shipments whose label is ready, for the operator print station. |  | `boxtal:shipments:read` |
 | `ready_set_packed` | Tick ONE Ready-to-ship row as PACKED (boxed, taped, waiting for the carrier pickup), which FULFILS its Shopify order with the parcel's tracking number, or untick it. |  | `boxtal:shipments:write` |
 | `returns_list` | List inbound return shipments (the parcels coming BACK to you — RMA / warranty / exchange returns, kind='return'). |  | `boxtal:shipments:read` |
-| `search` | Search the local Boxtal shipment index. |  | `boxtal:shipments:read` |
+| `search` | Find a shipment by name, order or number in the local Boxtal shipment index. |  | `boxtal:shipments:read` |
 | `settings_carrier_allowlist_get` | Read the org's carrier allowlist: the shipping companies (brands) surfaced in routine quoting. |  | `boxtal:catalog:read` |
 | `settings_carrier_allowlist_set` | Set the org's carrier allowlist -- the shipping companies (brands) surfaced in ROUTINE quoting (an advisory guideline for the default carrier set, NOT a buy-time gate: create_shipment still ships a non-allowlisted carrier an operator explicitly picked once a human approves). |  | `boxtal:catalog:write` |
 | `settings_form_get` | The settings page's own read: the pickup-point policy and the label format, in the shape settings_form_set takes back. |  | `boxtal:catalog:read` |
@@ -329,8 +329,8 @@ Boxtal: ship orders with Boxtal carriers, with quotes, shipments, tracking and c
 | `shipment_draft_set_customs` | Edit a customs article on the draft by index (correct its HS/tariff code, customs description, declared value, weight, or country of origin). |  | `boxtal:shipments:read` |
 | `shipment_draft_set_package` | Replace the draft's auto-resolved parcel set with an explicit carton set: ONE carton, OR an ARRAY of cartons for a MIXED multi-carton shipment (e.g. |  | `boxtal:shipments:read` |
 | `stuck_list` | The SINGLE needs-attention queue: every shipment in a STUCK state, across ALL families, in ONE call — so you do NOT have to enumerate the whole fleet with search and classify each tracking_status enum yourself. |  | `boxtal:shipments:read` |
-| `to_prepare_list` | A WORKLIST of issued invoices with shippable goods that have NO live shipment yet, returned as a SERVER-SIDE AUTHORITATIVE PARTITION (not a bounded sample): `total` + `ready_count` + `needs_fix_count` are the exact denominators, and the rows come PRE-SPLIT into `ready_to_prepare` (render THESE as the trustworthy ready-to-pack list) and `needs_fix` (each carries its blocking `reason`). |  | `boxtal:shipments:read` |
-| `track` | Get live tracking for a Boxtal shipment (latest carrier status + checkpoint message + the carrier tracking_number + a pickup_deadline). |  | `boxtal:shipments:read` |
+| `to_prepare_list` | Exact counts of what is left to ship, ready against needs a fix: a WORKLIST of issued invoices with shippable goods that have NO live shipment yet, returned as a SERVER-SIDE AUTHORITATIVE PARTITION (not a bounded sample): `total` + `ready_count` + `needs_fix_count` are the exact denominators, and the rows come PRE-SPLIT into `ready_to_prepare` (render THESE as the trustworthy ready-to-pack list) and `needs_fix` (each carries its blocking `reason`). |  | `boxtal:shipments:read` |
+| `track` | Where a parcel is now, for the person: live tracking for a Boxtal shipment (latest carrier status + checkpoint message + the carrier tracking_number + a pickup_deadline). |  | `boxtal:shipments:read` |
 | `webhooks_repair` | Re-register the Boxtal v3 webhook subscriptions (tracking-changed, document-created) with the CURRENT kernel webhook secret, reusing each stored subscription's callback URL. |  | `boxtal:catalog:write` |
 
 ## calendar
@@ -417,7 +417,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `counterparty_identity_lookup` | Look a French company up in the official business registry (recherche-entreprises.api.gouv.fr) by name, SIREN or SIRET, optionally narrowed to a postcode. |  | `invoicing:contacts:read` |
 | `counterparty_identity_set` | Record a counterparty's e-invoicing identity: customer_kind (business, individual, public_entity, non_registered_entity), SIREN / SIRET, with its provenance (source registry when picked from counterparty_identity_lookup, vat_derived when read off a French VAT id, agent_web with source_url when found on the web, manual when typed by a person). |  | `invoicing:contacts:write` |
 | `counterparty_territory_set` | Administrator decision for a buyer whose territory is not decided automatically (Monaco, overseas departments and collectivities): treat it as French (as_fr) or foreign (as_foreign), with the reason. | yes | `invoicing:contacts:write` |
-| `credit_note_create_and_issue` | Create a credit note and issue it in one call. |  | `invoicing:documents:write` |
+| `credit_note_create_and_issue` | Create a credit note, a legal document, and issue it in one call. |  | `invoicing:documents:write` |
 | `credit_note_issue` | Issue a credit note from a draft (drafts_create with type='credit_note'). |  | `invoicing:documents:write` |
 | `customer_history` | A customer's past sales with each line's unit price, the latest sale of a product (last_sale) and their Shopify orders. |  | `invoicing:documents:read` |
 | `deferred_list` | List parked/deferred auto-flow events for the org: Shopify orders whose invoice did not issue automatically. |  | `invoicing:documents:read` |
@@ -429,9 +429,9 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `documents_issue_preview` | The issuer profiles plus the VAT status of a buyer about to be issued a document: VAT number (as given or found on an earlier document), its VIES check, or why a business buyer without one is refused. |  | `invoicing:settings:read` |
 | `documents_mark_paid` | Mark a document as paid (full payment recorded). | yes | `invoicing:documents:write` |
 | `documents_preview_pdf` | Resolve a document's rendered-PDF file id + inline URL for preview. |  | `invoicing:documents:read` |
-| `documents_record_refund` | Record a refund against a document (full or partial). | yes | `invoicing:documents:write` |
+| `documents_record_refund` | Record a refund against a document (full or partial): records only, moves no money. | yes | `invoicing:documents:write` |
 | `documents_retry_pdf` | Re-render a document's PDF (when pdf_status is failed). |  | `invoicing:documents:write` |
-| `documents_search` | Search invoicing documents by query, type, status, contact, date range, or tax treatment. |  | `invoicing:documents:read` |
+| `documents_search` | Search invoices, quotes, credit notes, proformas and purchase orders issued here, by query, type, status, contact, date range, or tax treatment. |  | `invoicing:documents:read` |
 | `documents_send_to_customer` | Email a document PDF to the counterparty. | yes | `invoicing:documents:write` |
 | `documents_update` | Edit a document. | yes | `invoicing:documents:write` |
 | `documents_update_preview` | The document plus the VAT status a documents_update would give its buyer (evidence when the agent declares a private consumer). |  | `invoicing:documents:read` |
@@ -470,7 +470,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `received_einvoice_action_request` | Ask for the approval to refuse, dispute, or withdraw the dispute on ONE received supplier e-invoice. |  | `invoicing:received:write` |
 | `received_einvoice_set_status` | Refuse, dispute or withdraw the dispute on one received supplier e-invoice at the supplier's e-invoicing platform. | yes | `invoicing:received:write` |
 | `received_einvoices_get` | One received supplier e-invoice: supplier, number, dates, totals (the platform's, and the original file's own figures when they differ), status with its official code and history, its files (the original as received, the platform's PDF), and the actions possible now with their reasons. |  | `invoicing:received:read` |
-| `received_einvoices_list` | List the supplier e-invoices received through the e-invoicing platform (the invoicing app's Received tab): supplier, number, issue and due dates, total with currency, status (received, approved, in_dispute, refused, rejected, partially_collected, collected), received date, newest first. |  | `invoicing:received:read` |
+| `received_einvoices_list` | List the supplier e-invoices delivered by the e-invoicing platform (the invoicing app's Received tab): supplier, number, issue and due dates, total with currency, status (received, approved, in_dispute, refused, rejected, partially_collected, collected), received date, newest first. |  | `invoicing:received:read` |
 | `received_einvoices_refresh` | Re-read received supplier e-invoices from the e-invoicing platform now: with received_id, that one; without, everything new since the last check plus the statuses of open ones. |  | `invoicing:received:write` |
 | `settings_hs_code_list` | List the org's HS-code library entries. |  | `invoicing:settings:read` |
 | `settings_issuer_profile_create` | Create an issuer profile. | yes | `invoicing:settings:write` |
@@ -564,7 +564,7 @@ Pennylane: accounting connector for Pennylane, with invoices, balances, cash pos
 | Tool | Description | Approval-gated | Required scopes |
 | --- | --- | --- | --- |
 | `cash_position` | Current cash position — per-account balances and total_by_currency (minor units). |  | `pennylane:cash:read` |
-| `customer_invoices_list` | List CUSTOMER (accounts-receivable / revenue) invoices AS BOOKED IN THE ACCOUNTING LEDGER — id, customer, total (minor units), status, due date. |  | `pennylane:invoices:read` |
+| `customer_invoices_list` | List CUSTOMER (accounts-receivable / revenue) invoices as booked in the accounting system; to act on an invoice use invoicing. |  | `pennylane:invoices:read` |
 | `einvoicing_advance` | E-invoicing provider op (advance_einvoice): one step of the deposit (validation wait, then the transmission request). |  | `pennylane:internal` |
 | `einvoicing_book` | E-invoicing provider op (book_sale): book a reported sale (not e-invoiced) as a customer invoice in the ledger, with the legal original attached; never transmitted. |  | `pennylane:internal` |
 | `einvoicing_find` | E-invoicing provider op (find_einvoice): an existing deposit for an invoice number and issue date. |  | `pennylane:internal` |
@@ -583,7 +583,7 @@ Pennylane: accounting connector for Pennylane, with invoices, balances, cash pos
 | `spend_by_category` | Spend aggregated by P&L class (revenue/cogs/opex/other) for a period — total_minor per class. |  | `pennylane:reports:read` |
 | `supplier_invoice_get` | Get one supplier invoice header by id (normalized projection, no raw payload). |  | `pennylane:invoices:read` |
 | `supplier_invoice_upload` | Book a received vendor/supplier/carrier bill (a PDF the caller can read, e.g. | yes | `pennylane:invoices:write` |
-| `supplier_invoices_list` | List SUPPLIER (accounts-payable) invoices — the bills YOU OWE to vendors/carriers/suppliers — id, supplier, total (minor units), status, due date. |  | `pennylane:invoices:read` |
+| `supplier_invoices_list` | List all SUPPLIER (accounts-payable) bills booked in accounting — the bills YOU OWE to vendors/carriers/suppliers — id, supplier, total (minor units), status, due date. |  | `pennylane:invoices:read` |
 | `transactions_list` | List bank transactions (burn side) — amount (minor units), currency. |  | `pennylane:cash:read` |
 | `trial_balance_get` | Read the trial balance for a period — account_code, label, balance_minor (minor units, on the account's natural side: credits − debits for revenue accounts, debits − credits otherwise), plus the period_start/period_end window used. |  | `pennylane:reports:read` |
 | `webhooks_setup` | Subscribe Pennylane's e-invoicing events (status changes of sent e-invoices, received supplier e-invoices) to this instance's webhook, replacing an earlier subscription to the same address. | yes | `pennylane:admin:connection` |
@@ -674,8 +674,8 @@ Shopify orders, customers, products, refunds, fulfilments and returns.
 | `metafields_list` | List metafields for a Shopify resource (Product, Customer, Order, …) |  | `shopify:metafields:read` |
 | `metafields_set` | Create or update one or more metafields on a Shopify resource | yes | `shopify:metafields:write` |
 | `order_cancel` | Cancel a Shopify order (optionally refund + restock). | yes | `shopify:orders:write` |
-| `order_note_set` | Set or clear a Shopify order's internal staff note. |  | `shopify:orders:write` |
-| `order_update` | Update a Shopify order's tags or note. | yes | `shopify:orders:write` |
+| `order_note_set` | Set or clear a Shopify order's internal staff note, applied at once. |  | `shopify:orders:write` |
+| `order_update` | Update a Shopify order's tags or a note, through approval. | yes | `shopify:orders:write` |
 | `orders_get` | Get one Shopify order by id (line items, fulfillments, refunds, returns, customer). |  | `shopify:orders:read` |
 | `orders_invoice_links` | Resolve linked invoicing documents for a set of Shopify orders. |  | `shopify:orders:read` |
 | `orders_search` | Search Shopify orders by query (email, customer name, order name/number, financial_status, fulfillment_status, tag, …) AND/OR by a placed-date window. |  | `shopify:orders:read` |
@@ -689,13 +689,13 @@ Shopify orders, customers, products, refunds, fulfilments and returns.
 | `products_short_codes` | The organisation's short display code per product SKU ("E2"), for an abbreviated cart summary ("1×E2, 2×FS"). |  | `shopify:orders:read` |
 | `products_unpublish` | Take a Shopify product OFFLINE by unpublishing it from its sales channels (e.g. | yes | `shopify:products:write` |
 | `products_update` | Update a Shopify product | yes | `shopify:products:write` |
-| `refunds_create` | Refund a Shopify order. | yes | `shopify:refunds:create` |
+| `refunds_create` | Refund a Shopify order: moves money on the order. | yes | `shopify:refunds:create` |
 | `refunds_get` | Get one Shopify refund by id |  | `shopify:orders:read` |
 | `repeat_rate` | Base-wide repeat-PURCHASE rate, computed server-side in one call: the share of customers with more than one order (and the count + a sample of repeat customers). |  | `shopify:customers:read` |
 | `returns_approve` | Approve a pending Shopify return request (accept the return). | yes | `shopify:returns:write` |
 | `returns_close` | Close a Shopify return | yes | `shopify:returns:write` |
 | `returns_decline` | Decline a pending Shopify return request (reject the return). | yes | `shopify:returns:write` |
-| `returns_refund` | Issue a refund against a Shopify return | yes | `shopify:returns:write` |
+| `returns_refund` | Issue a refund against a Shopify return: moves money on the order. | yes | `shopify:returns:write` |
 | `returns_request` | Open a Shopify RETURN REQUEST for one or more shipped line items — the platform record that QUEUES a unit as inbound so it is inspected and restocked ON RECEIPT (use this to 'queue a unit to be restocked when it comes back', NOT an immediate inventory bump). | yes | `shopify:returns:write` |
 | `returns_search` | Search Shopify returns |  | `shopify:returns:read` |
 | `settings_load` | Load the Shopify Settings panel bundle: connection snapshot, identity-mapping rows, sync diagnostics, inventory allowlist, and Plus-only seed suggestions. |  | `shopify:admin:identity-map` |

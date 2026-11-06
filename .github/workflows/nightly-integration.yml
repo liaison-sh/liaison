@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: FSL-1.1-ALv2
 #
-# The integration and security suites (Postgres, Redis, MeiliSearch) once a night
-# on main. Per-PR CI (ci.yml) runs only the checks that need no services, so a
-# broken database test can otherwise sit on main unnoticed. This runs at 03:00 Paris
+# The integration and security suites (Postgres, Redis, MeiliSearch) and the
+# bundled apps' own test suites once a night on main. Per-PR CI (ci.yml) runs only
+# the checks that need no services and no workspace globs reach bundled-apps/, so a
+# broken test in either can otherwise sit on main unnoticed. This runs at 03:00 Paris
 # time (02:00 UTC; 04:00 in summer time is fine too), only on days main moved
 # since the last nightly. GitHub emails the workflow's owner when a scheduled
 # run fails; a green run sends nothing.
@@ -97,6 +98,105 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: integration-logs
+          path: logs/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  bundled-apps:
+    # Bundled-app tests are not auto-discovered, so each suite is named here, one
+    # step each. Every step runs when an earlier one failed, so a night reports
+    # them all.
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TEST_MEM_RESERVE_MB: "1024"
+      LIAISON_TEST_SLOTS: "1"
+    steps:
+      - name: Skip when main has not moved since the last nightly
+        id: changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          last=$(gh run list --workflow nightly-integration.yml --branch main --status completed --limit 1 --json headSha --jq '.[0].headSha // ""')
+          if [ "$EVENT_NAME" = "schedule" ] && [ "$last" = "$GITHUB_SHA" ]; then
+            echo "main is still at $last, already tested: nothing to run."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: steps.changed.outputs.run == 'true'
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        if: steps.changed.outputs.run == 'true'
+        with:
+          bun-version: "1.4.x"
+      - name: Install dependencies
+        if: steps.changed.outputs.run == 'true'
+        run: bun install --frozen-lockfile
+      - name: Install postgres/redis CLIs
+        if: steps.changed.outputs.run == 'true'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client redis-tools
+      - name: Test env with throwaway secrets
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          cp .env.test.example .env.test
+          sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|; s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=$(openssl rand -hex 32)|" .env.test
+      - name: Bring up test infra (Postgres, Redis, MeiliSearch, SeaweedFS)
+        if: steps.changed.outputs.run == 'true'
+        run: bun run infra:up
+      - name: bundled-ads
+        if: "!cancelled() && steps.changed.outputs.run == 'true'"
+        run: bun run scripts/test-run.ts bundled-ads
+      - name: bundled-shopify
+        if: "!cancelled() && steps.changed.outputs.run == 'true'"
+        run: bun run scripts/test-run.ts bundled-shopify
+      - name: bundled-invoicing
+        if: "!cancelled() && steps.changed.outputs.run == 'true'"
+        run: bun run scripts/test-run.ts bundled-invoicing
+      - name: bundled-boxtal
+        if: "!cancelled() && steps.changed.outputs.run == 'true'"
+        run: bun run scripts/test-run.ts bundled-boxtal
+      - name: bundled-monitoring
+        if: "!cancelled() && steps.changed.outputs.run == 'true'"
+        run: bun run scripts/test-run.ts bundled-monitoring
+      - name: bundled-pennylane
+        if: "!cancelled() && steps.changed.outputs.run == 'true'"
+        run: bun run scripts/test-run.ts bundled-pennylane
+      - name: bundled-calls
+        if: "!cancelled() && steps.changed.outputs.run == 'true'"
+        run: bun run scripts/test-run.ts bundled-calls
+      - name: bundled-social
+        if: "!cancelled() && steps.changed.outputs.run == 'true'"
+        run: bun run scripts/test-run.ts bundled-social
+      - name: bundled-freeze
+        if: "!cancelled() && steps.changed.outputs.run == 'true'"
+        run: bun run scripts/test-run.ts bundled-freeze
+      - name: bundled-ads-ui
+        if: "!cancelled() && steps.changed.outputs.run == 'true'"
+        run: bun run scripts/test-run.ts bundled-ads-ui
+      - name: bundled-invoicing-ui
+        if: "!cancelled() && steps.changed.outputs.run == 'true'"
+        run: bun run scripts/test-run.ts bundled-invoicing-ui
+      - name: bundled-social-ui
+        if: "!cancelled() && steps.changed.outputs.run == 'true'"
+        run: bun run scripts/test-run.ts bundled-social-ui
+      - name: bundled-boxtal-ui
+        if: "!cancelled() && steps.changed.outputs.run == 'true'"
+        run: bun run scripts/test-run.ts bundled-boxtal-ui
+      - name: bundled-monitoring-ui
+        if: "!cancelled() && steps.changed.outputs.run == 'true'"
+        run: bun run scripts/test-run.ts bundled-monitoring-ui
+      - name: Keep the run's logs
+        if: always() && steps.changed.outputs.run == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: bundled-apps-logs
           path: logs/
           retention-days: 14
           if-no-files-found: ignore

@@ -138,9 +138,10 @@ jobs:
       - name: Install dependencies
         if: steps.changed.outputs.run == 'true'
         run: bun install --frozen-lockfile
-      - name: Install postgres/redis CLIs
+      - name: Install postgres/redis CLIs and xmllint
+        # The invoicing suite's e-invoice conformance tests validate with xmllint.
         if: steps.changed.outputs.run == 'true'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client redis-tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client redis-tools libxml2-utils
       - name: Test env with throwaway secrets
         if: steps.changed.outputs.run == 'true'
         run: |

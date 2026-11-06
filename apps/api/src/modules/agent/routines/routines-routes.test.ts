@@ -906,6 +906,51 @@ describe("routines-routes — /api/agent/routines", () => {
 
   // ----- GET /:id/runs -----------------------------------------------------
   describe("GET /api/agent/routines/:id/runs", () => {
+    it("whoever may read a shared routine may read its runs; a private one stays 404 (walk)", async () => {
+      // The agent's page lists a role agent's routines to anyone holding the read scope, then
+      // asked for the runs of the row it showed and got "Routine not found" on every visit.
+      const [{ id: agentId }] = await sql<{ id: string }[]>`
+        INSERT INTO kernel.agents (org_id, kind, handle, display_name, scope_ceiling)
+        VALUES (${ORG_ID}, 'role', '@runs-role', 'Runs Role', '["*"]'::jsonb) RETURNING id`
+      const [shared, personal] = await withPrivilegedDb(ORG_ID, "rt-runs-visible-seed", (tx) =>
+        tx
+          .insert(routinesTbl)
+          .values(
+            (["shared", "personal"] as const).map((visibility) => ({
+              orgId: ORG_ID,
+              ownerUserId: ALICE_ID,
+              ownerAgentId: visibility === "shared" ? agentId : null,
+              name: `runs-${visibility}`,
+              description: "x",
+              cron: "0 9 * * *",
+              timezone: "UTC",
+              prompt: "p",
+              scopes: [],
+              visibility,
+              createdByUserId: ALICE_ID,
+              createdByActorType: "user" as const,
+            })),
+          )
+          .returning(),
+      )
+      await withPrivilegedDb(ORG_ID, "rt-runs-visible-rows", (tx) =>
+        tx.insert(routineRuns).values({
+          orgId: ORG_ID,
+          routineId: shared.id,
+          ranAt: new Date(),
+          status: "succeeded",
+        }),
+      )
+      const headers = { Authorization: `Bearer ${bobToken}` }
+
+      const res = await app.request(`/api/agent/routines/${shared.id}/runs`, { headers })
+      expect(res.status).toBe(200)
+      expect(((await res.json()) as { data: unknown[] }).data).toHaveLength(1)
+
+      const hidden = await app.request(`/api/agent/routines/${personal.id}/runs`, { headers })
+      expect(hidden.status).toBe(404)
+    })
+
     it("returns up to 50 rows ordered by ranAt DESC", async () => {
       const created = await withPrivilegedDb(ORG_ID, "rt-runs-seed", (tx) =>
         tx

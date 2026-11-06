@@ -1070,6 +1070,15 @@ describe("invoicing manifest", () => {
     expect(entity?.indexFields?.title, "document entity must declare indexFields.title").toBe("number")
   })
 
+  it("a document's handle is its number: ours, and the reference the agent reads (A37)", () => {
+    const fields = (manifest as unknown as {
+      entities: Record<string, { indexFields?: { handle?: string; bodyFields?: string[] } }>
+    }).entities.document?.indexFields
+    expect(fields?.handle).toBe("number")
+    // A PO number is the customer's text, so it never names the record. Search still finds it.
+    expect(fields?.bodyFields).toContain("po_number")
+  })
+
   it("documents table indexes include po_number for the document search entity", () => {
     const schema = (manifest as unknown as {
       schema: Record<string, { indexes?: unknown[][] } | undefined>
@@ -1475,7 +1484,7 @@ describe("invoicing manifest", () => {
     // 0.20.46: those notes reach a French reader in French.
     // 0.20.47: a minor-unit amount is a whole number, a credit note's total is negative, and the card
     //   states the total that issues.
-    expect(m.version).toBe("0.20.47")
+    expect(m.version).toBe("0.20.48")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

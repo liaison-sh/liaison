@@ -823,21 +823,25 @@ routinesRoutes.post("/:id/mailbox-waits/:runId/dismiss", async (c) => {
 // started it, whether it has a transcript, how many messages it wrote and its
 // last agent line as a summary. The summary and the count are read under the
 // caller's own RLS context, so they never say more than the thread would.
-async function ownedRoutine(c: Context<AppEnv>, id: string) {
+async function readableRoutine(c: Context<AppEnv>, id: string) {
   const actor = extractRlsContext(c)
-  // Confirm ownership so we don't leak run history.
-  const [routine] = await withPrivilegedDb(actor.orgId, "routines-runs-check", (tx) =>
-    tx
-      .select({ id: routinesTbl.id, outputThreadId: routinesTbl.outputThreadId })
-      .from(routinesTbl)
-      .where(
-        and(
-          eq(routinesTbl.id, id),
-          eq(routinesTbl.orgId, actor.orgId),
-          eq(routinesTbl.ownerUserId, actor.userId),
-        ),
-      ),
+  const columns = { id: routinesTbl.id, outputThreadId: routinesTbl.outputThreadId }
+  const thisRoutine = and(eq(routinesTbl.id, id), eq(routinesTbl.orgId, actor.orgId))
+  // Who may read the routine may read its history: the listing shows a shared routine to
+  // everyone the select policy lets in, and answering "not found" for its runs broke that page
+  // for all but the owner. Its owner too, as in the listing: a personal routine on a role agent
+  // is outside that policy.
+  const [visible] = await withRlsContext(actor, (tx) =>
+    tx.select(columns).from(routinesTbl).where(thisRoutine),
   )
+  const [routine] = visible
+    ? [visible]
+    : await withPrivilegedDb(actor.orgId, "routines-runs-check", (tx) =>
+        tx
+          .select(columns)
+          .from(routinesTbl)
+          .where(and(thisRoutine, eq(routinesTbl.ownerUserId, actor.userId))),
+      )
   if (!routine) throw new HTTPException(404, { message: "Routine not found" })
   return { actor, routine }
 }
@@ -847,7 +851,7 @@ const RUNS_PAGE = 50
 
 routinesRoutes.get("/:id/runs", async (c) => {
   const id = c.req.param("id")
-  const { actor, routine } = await ownedRoutine(c, id)
+  const { actor, routine } = await readableRoutine(c, id)
   // Paged newest first: `before=<run id>` returns the page older than that run
   // (a busy event routine has thousands of runs), `limit` caps a page at 100.
   const limit = Math.min(Math.max(Number(c.req.query("limit") ?? RUNS_PAGE) || RUNS_PAGE, 1), 100)
@@ -932,7 +936,7 @@ const RUN_TRANSCRIPT_PAGE = 100
 routinesRoutes.get("/:id/runs/:runId/messages", async (c) => {
   const id = c.req.param("id")
   const runId = c.req.param("runId")
-  const { actor, routine } = await ownedRoutine(c, id)
+  const { actor, routine } = await readableRoutine(c, id)
   const [run] = await withPrivilegedDb(actor.orgId, "routines-run-get", (tx) =>
     tx
       .select()

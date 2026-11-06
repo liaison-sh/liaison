@@ -14,6 +14,8 @@ import { resetAgentMemoryStore } from "~/modules/agent/agent-memory-store"
 import { resetRoutinesStore } from "~/modules/agent/routines-store"
 import { resetSkillsStore } from "~/modules/agent/skills-store"
 import { ApiContext } from "~/modules/shell/ApiContext"
+import { openRecordOf } from "~/modules/shell/open-record"
+import { TabVisibilityProvider } from "~/modules/shell/TabVisibilityContext"
 import { openTab, resetTabStore, tabStore, updateTabRoutePath } from "~/modules/shell/tab-store"
 import { addToast, resetToastStore, toasts } from "~/modules/shell/toast-store"
 import { addThread, resetThreadStore } from "~/modules/threads/thread-store"
@@ -74,6 +76,9 @@ interface SetupOptions {
   forbid?: string[]
 }
 
+/** The shell tab the page sits in: the record it reports is kept under this id. */
+const PAGE_TAB = "agent-page-tab"
+
 function setup(opts: SetupOptions = {}) {
   const api: any = {
     get: vi.fn(async (path: string) => {
@@ -113,9 +118,11 @@ function setup(opts: SetupOptions = {}) {
     delete: vi.fn(),
   }
   render(() => (
-    <ApiContext.Provider value={api as never}>
-      <AgentPage entityId={opts.entityId ?? ROLE_AGENT} />
-    </ApiContext.Provider>
+    <TabVisibilityProvider value={() => true} tabId={PAGE_TAB}>
+      <ApiContext.Provider value={api as never}>
+        <AgentPage entityId={opts.entityId ?? ROLE_AGENT} />
+      </ApiContext.Provider>
+    </TabVisibilityProvider>
   ))
   return api
 }
@@ -966,5 +973,120 @@ describe("AgentPage create mode", () => {
     // Nothing to browse on an agent that does not exist yet: the create form is the page.
     expect(tabNames()).toEqual([])
     expect(tabStore.tabs.find((t) => t.entityId === "new")?.routePath).toBe("/agents/new/settings")
+  })
+})
+
+describe("AgentPage: the record a turn is told is open", () => {
+  const routine = (id: string, name: string) => ({
+    id,
+    name,
+    description: name,
+    kind: "recurring",
+    cron: "0 9 * * 1-5",
+    timezone: "UTC",
+    prompt: "p",
+    ownerAgentId: ROLE_AGENT,
+    enabled: true,
+    status: "active",
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+    canWrite: true,
+  })
+  const skill = (id: string, name: string) => ({
+    id,
+    name,
+    description: name,
+    body: "b",
+    source: "personal",
+    requiredScopes: [],
+    domain: null,
+    ownerAgentId: ROLE_AGENT,
+    canWrite: true,
+  })
+
+  function setupPage() {
+    grants.add("kernel:routines:read")
+    grants.add("kernel:skills:read")
+    grants.add("kernel:agent:memory:read")
+    return setup({
+      routines: [routine("rt-1", "backlog-triage"), routine("rt-2", "weekly-sweep")],
+      skills: [skill("sk-1", "reply-voice"), skill("sk-2", "refund-steps")],
+      files: [file("project/one.md")],
+    })
+  }
+  const openTabOf = (id: string) =>
+    fireEvent.click(
+      screen.getByTestId(id === "memory" ? "agent-profile-tab-memory" : `agent-page-tab-${id}`),
+    )
+
+  it("a row that selected itself is not open, on any tab", async () => {
+    setupPage()
+    // Both lists arrive and pick their first row, with nobody having clicked.
+    await waitFor(() =>
+      expect(screen.getByTestId("routine-row-backlog-triage")).toHaveClass("bg-surface-active"),
+    )
+    await waitFor(() => expect(screen.getByTestId("skill-row-reply-voice")).toBeInTheDocument())
+    expect(openRecordOf(PAGE_TAB)).toBeUndefined()
+    openTabOf("routines")
+    expect(openRecordOf(PAGE_TAB)).toBeUndefined()
+    openTabOf("skills")
+    expect(openRecordOf(PAGE_TAB)).toBeUndefined()
+  })
+
+  it("a row the person clicked is open while its tab shows, and only then", async () => {
+    setupPage()
+    await waitFor(() =>
+      expect(screen.getByTestId("routine-row-backlog-triage")).toHaveClass("bg-surface-active"),
+    )
+    openTabOf("routines")
+    fireEvent.click(screen.getByTestId("routine-open-weekly-sweep"))
+    expect(openRecordOf(PAGE_TAB)).toEqual({ tabType: "kernel:routine", entityId: "rt-2" })
+
+    openTabOf("overview")
+    expect(openRecordOf(PAGE_TAB)).toBeUndefined()
+
+    openTabOf("routines")
+    expect(openRecordOf(PAGE_TAB)).toEqual({ tabType: "kernel:routine", entityId: "rt-2" })
+  })
+
+  it("clicking the row already selected opens it", async () => {
+    setupPage()
+    await waitFor(() => expect(screen.getByTestId("skill-row-reply-voice")).toBeInTheDocument())
+    openTabOf("skills")
+    expect(openRecordOf(PAGE_TAB)).toBeUndefined()
+    fireEvent.click(screen.getByTestId("skill-row-reply-voice"))
+    expect(openRecordOf(PAGE_TAB)).toEqual({ tabType: "kernel:skill", entityId: "sk-1" })
+  })
+
+  it("two tabs with something open each hand over whichever order their effects run", async () => {
+    setupPage()
+    await waitFor(() => expect(screen.getByTestId("skill-row-reply-voice")).toBeInTheDocument())
+    openTabOf("routines")
+    fireEvent.click(screen.getByTestId("routine-open-weekly-sweep"))
+    openTabOf("skills")
+    fireEvent.click(screen.getByTestId("skill-row-refund-steps"))
+    expect(openRecordOf(PAGE_TAB)).toEqual({ tabType: "kernel:skill", entityId: "sk-2" })
+    openTabOf("routines")
+    expect(openRecordOf(PAGE_TAB)).toEqual({ tabType: "kernel:routine", entityId: "rt-2" })
+    openTabOf("skills")
+    expect(openRecordOf(PAGE_TAB)).toEqual({ tabType: "kernel:skill", entityId: "sk-2" })
+  })
+
+  it("the memory file the person opened is open, under the agent it belongs to", async () => {
+    setupPage()
+    await waitFor(() =>
+      expect(screen.getByTestId("agent-memory-file-project/one.md")).toBeInTheDocument(),
+    )
+    openTabOf("memory")
+    expect(openRecordOf(PAGE_TAB)).toBeUndefined()
+    fireEvent.click(screen.getByTestId("agent-memory-file-project/one.md"))
+    await waitFor(() =>
+      expect(openRecordOf(PAGE_TAB)).toEqual({
+        tabType: "kernel:memory_file",
+        entityId: `${ROLE_AGENT}:project/one.md`,
+      }),
+    )
+    openTabOf("overview")
+    expect(openRecordOf(PAGE_TAB)).toBeUndefined()
   })
 })

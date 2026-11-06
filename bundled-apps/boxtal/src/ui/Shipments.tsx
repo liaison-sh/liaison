@@ -246,10 +246,13 @@ export const Shipments: Component = () => {
     resolveSelectedShipmentId(selectedId(), visible()),
   )
 
-  // What the agent is told is open. Below the kit's 640 px tier the detail pane
-  // is not on screen, so nothing is.
+  // What the agent is told is open: the row the person clicked, still listed. The
+  // first row filling the pane by itself is not one. Below the kit's 640 px tier
+  // the detail pane is not on screen, so nothing is.
   const hasDetailPane = createMediaMatch("(min-width: 640px)")
-  app.trackOpenRecord("shipment", () => (hasDetailPane() ? effectiveSelectedId() : null))
+  app.trackOpenRecord("shipment", () =>
+    hasDetailPane() && selectedId() === effectiveSelectedId() ? selectedId() : null,
+  )
 
   const selected = createMemo<ShipmentRow | null>(() => {
     const id = effectiveSelectedId()

@@ -564,7 +564,7 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.8: get_documents answers to "colis" and "expédition" in tool search.
     // 0.23.9: the create tab names the document it ships; Shipments reports the open row.
     // 0.23.10: the tracking note states nothing about a label it never read; import_label_document only attaches.
-    expect(m.version).toBe("0.23.11")
+    expect(m.version).toBe("0.23.12")
     expect(m.packageFormat).toBe(1)
   })
 

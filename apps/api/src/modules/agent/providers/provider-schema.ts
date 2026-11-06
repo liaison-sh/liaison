@@ -102,6 +102,55 @@ export function sanitizeJsonSchemaForProviders(node: unknown): unknown {
   return out
 }
 
+/** The formats that already say what a `pattern` beside them would spell out. */
+const FORMATS_THAT_NAME_THEIR_PATTERN = new Set(["uuid", "email"])
+
+/** The copy of a schema node without the `pattern` its format already says, all the way down. */
+function withoutFormatPatterns(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(withoutFormatPatterns)
+  if (!isPlainObject(node)) return node
+  const out: JsonObject = { ...node }
+  if (typeof out.format === "string" && FORMATS_THAT_NAME_THEIR_PATTERN.has(out.format)) {
+    delete out.pattern
+  }
+  for (const key of SCHEMA_MAP_KEYS) {
+    const map = out[key]
+    if (isPlainObject(map)) {
+      out[key] = Object.fromEntries(
+        Object.entries(map).map(([name, value]) => [name, withoutFormatPatterns(value)]),
+      )
+    }
+  }
+  for (const key of SCHEMA_LIST_KEYS) {
+    if (Array.isArray(out[key])) out[key] = withoutFormatPatterns(out[key])
+  }
+  for (const key of ["items", "additionalProperties", "not"]) {
+    if (isPlainObject(out[key])) out[key] = withoutFormatPatterns(out[key])
+  }
+  return out
+}
+
+/**
+ * What a model is sent for a tool's input: the provider-safe projection without
+ * what tells it nothing. The `$schema` URI names the JSON Schema draft, and a
+ * uuid's or an email's `pattern` repeats its `format` at about 40 tokens each.
+ * This is the projection only: the validator stays the Zod schema's, so what a
+ * tool accepts does not change. External MCP clients do not get this form (a
+ * client may validate with the `pattern`): they stay on `toProviderSafeInputSchema`.
+ */
+export function toModelInputSchema(schema: z.ZodTypeAny): z.ZodTypeAny | Schema<unknown> {
+  let projected: Schema<unknown>
+  try {
+    projected = asSchema(schema as never) as Schema<unknown>
+  } catch {
+    return schema
+  }
+  const { $schema: _uri, ...rest } = sanitizeJsonSchemaForProviders(
+    projected.jsonSchema,
+  ) as JsonObject
+  return jsonSchema(withoutFormatPatterns(rest) as never, { validate: projected.validate })
+}
+
 /**
  * Every violation of the provider invariant in a projected JSON Schema:
  * `items` is a single schema, and only ever on a node describing an array.

@@ -213,17 +213,19 @@ describe("a thread holding a kernel tool whose cost the meter used to miss", () 
 describe("entity protection reads what the tool bridge hands out", () => {
   const entity = new Set(["ticket"])
 
-  it("reads a Zod object, a manifest's params through the bridge", () => {
+  it("reads the schema the bridge hands a model for a manifest's params", () => {
     const reply = manifestTools("apps/api/src/apps/tickets/app.manifest.json").tickets__reply
-    expect("shape" in (reply.inputSchema as object)).toBe(true)
     expect(actsOnEntity(reply.inputSchema, entity)).toBe(true)
   })
 
-  it("reads the SDK schema a tuple argument is rewritten to", () => {
+  it("reads a Zod object", () => {
+    expect(actsOnEntity(z.object({ ticketId: z.string() }), entity)).toBe(true)
+  })
+
+  it("reads the schema a tuple argument is rewritten to", () => {
     const rewritten = providerInputSchemaOf(
       z.object({ ticketId: z.string(), pair: z.tuple([z.string(), z.number()]) }),
     )
-    expect("shape" in (rewritten as object)).toBe(false)
     expect(actsOnEntity(rewritten, entity)).toBe(true)
   })
 
@@ -330,5 +332,76 @@ describe("the tool order on a real entity page", () => {
     const lastActing = out.findLastIndex((n) => entityRank(n, tools, focus) === 1)
     expect(lastActing).toBeGreaterThanOrEqual(0)
     if (firstOther !== -1) expect(lastActing).toBeLessThan(firstOther)
+  })
+})
+
+describe("the schema a model is sent, over the real catalog", () => {
+  /** Every node of a JSON Schema's schema positions, data under `enum` or `default` aside. */
+  function* schemaNodes(node: unknown): Generator<Record<string, unknown>> {
+    if (Array.isArray(node)) {
+      for (const entry of node) yield* schemaNodes(entry)
+      return
+    }
+    if (typeof node !== "object" || node === null) return
+    const schema = node as Record<string, unknown>
+    yield schema
+    for (const key of ["properties", "$defs", "definitions", "patternProperties"]) {
+      const map = schema[key]
+      if (typeof map === "object" && map !== null) yield* schemaNodes(Object.values(map))
+    }
+    for (const key of ["anyOf", "oneOf", "allOf", "items", "additionalProperties", "not"]) {
+      yield* schemaNodes(schema[key])
+    }
+  }
+
+  const isFormatPattern = (n: Record<string, unknown>) =>
+    (n.format === "uuid" || n.format === "email") && "pattern" in n
+
+  it("carries no $schema and no uuid or email pattern on any tool", () => {
+    const tools: ToolDefs = { ...kernelTools }
+    for (const { manifest } of LARGE_APPS) Object.assign(tools, manifestTools(manifest))
+    const offenders: string[] = []
+    for (const [name, def] of Object.entries(tools)) {
+      const json = asSchema(def.inputSchema as never).jsonSchema
+      if (typeof json === "object" && json !== null && "$schema" in json) offenders.push(name)
+      if ([...schemaNodes(json)].some(isFormatPattern)) offenders.push(name)
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it("removes only the pattern Zod generates for the format, never one a tool wrote", () => {
+    const generated = new Set(
+      [z.uuid(), z.email()].map((s) => (z.toJSONSchema(s) as { pattern: string }).pattern),
+    )
+    const removed = new Set<string>()
+    for (const [key, def] of toolRegistry.entries()) {
+      if (key[0] !== ORG_ID) continue
+      const params = (def as { params?: unknown }).params
+      if (typeof (params as { safeParse?: unknown } | undefined)?.safeParse !== "function") continue
+      for (const node of schemaNodes(asSchema(params as never).jsonSchema)) {
+        if (isFormatPattern(node)) removed.add(node.pattern as string)
+      }
+    }
+    expect(removed.size).toBeGreaterThan(0)
+    expect([...removed].filter((pattern) => !generated.has(pattern))).toEqual([])
+  })
+
+  it("still refuses a bad uuid on a real tool, and passes a valid one", async () => {
+    const zodKernelTool = [...toolRegistry.entries()].flatMap(([key, def]) => {
+      const params = (def as { params?: z.ZodObject }).params
+      if (key[0] !== ORG_ID || typeof params?.safeParse !== "function") return []
+      const json = asSchema(params as never).jsonSchema as {
+        properties?: Record<string, { format?: string }>
+        required?: string[]
+      }
+      const id = Object.entries(json.properties ?? {}).find(([, p]) => p.format === "uuid")?.[0]
+      const required = json.required ?? []
+      return id && required.length === 1 && required[0] === id ? [{ key, id }] : []
+    })[0]
+    expect(zodKernelTool).toBeDefined()
+    const { key, id } = zodKernelTool
+    const { validate } = asSchema(kernelTools[`${key[1]}__${key[2]}`].inputSchema as never)
+    expect((await validate?.({ [id]: "not-a-uuid" }))?.success).toBe(false)
+    expect((await validate?.({ [id]: "3f2b8c1e-6a4d-4e9b-8f10-2c7d5e9a1b34" }))?.success).toBe(true)
   })
 })

@@ -11,6 +11,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { createGoogle } from "@ai-sdk/google"
 import { asSchema, generateText } from "ai"
+import { z } from "zod"
 import type { UserContext } from "~/db/rls"
 import { ALL_DEFERRED_TOOLS_UNLOCKED, buildToolSet } from "~/modules/agent/tools/tool-bridge"
 import { toolRegistry } from "~/modules/apps/app-registries"
@@ -180,5 +181,102 @@ describe("manifest tool schemas keep what the model needs", () => {
       "active_members",
       "panel",
     ])
+  })
+})
+
+describe("the schema on the wire and who validates", () => {
+  const ORG_UUID = "00000000-0000-0000-0000-00000000fd02"
+  const VALID_ID = "3f2b8c1e-6a4d-4e9b-8f10-2c7d5e9a1b34"
+  const uuidActor = { ...actor, orgId: ORG_UUID }
+
+  beforeAll(() => {
+    toolRegistry.set([ORG_UUID, "crm", "get_thing"], {
+      appName: "crm",
+      name: "get_thing",
+      description: "Read a thing.",
+      requiredScopes: ["crm:things:read"],
+      params: z.object({ thingId: z.uuid(), notify: z.email().optional() }),
+      handler: async (p: unknown) => ({ received: p }),
+    } as never)
+  })
+
+  afterAll(() => {
+    toolRegistry.deleteByPrefix([ORG_UUID])
+  })
+
+  /** One Gemini step answering with a call of this tool: what was sent, and what the SDK made of it. */
+  async function geminiCall(args: Json) {
+    let body: Json | null = null
+    const google = createGoogle({
+      apiKey: "test-key",
+      fetch: (async (_url: string, init: { body: string }) => {
+        body = JSON.parse(init.body)
+        return new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  role: "model",
+                  parts: [{ functionCall: { name: "crm__get_thing", args } }],
+                },
+                finishReason: "STOP",
+              },
+            ],
+            usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1, totalTokenCount: 2 },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        )
+      }) as never,
+    })
+    const tools = buildToolSet(ORG_UUID, uuidActor, undefined, ALL_DEFERRED_TOOLS_UNLOCKED)
+    // No `execute`: the step stops at the SDK's own validation of the call.
+    const { execute: _execute, ...withoutExecute } = tools.crm__get_thing as Json
+    const result = await generateText({
+      model: google("gemini-2.5-flash"),
+      prompt: "hi",
+      tools: { crm__get_thing: withoutExecute as never },
+    })
+    const decl = (body as unknown as Json).tools[0].functionDeclarations[0] as Json
+    return { sent: (decl.parametersJsonSchema ?? decl.parameters) as Json, result }
+  }
+
+  it("a provider receives no $schema and no uuid or email pattern, and keeps the format", async () => {
+    const { sent } = await geminiCall({ thingId: VALID_ID })
+    expect("$schema" in sent).toBe(false)
+    expect(sent.properties.thingId.format).toBe("uuid")
+    expect("pattern" in sent.properties.thingId).toBe(false)
+    expect(sent.properties.notify.format).toBe("email")
+    expect("pattern" in sent.properties.notify).toBe(false)
+    expect(sent.required).toEqual(["thingId"])
+  })
+
+  it("a call with a valid id passes the SDK's validation", async () => {
+    const { result } = await geminiCall({ thingId: VALID_ID })
+    expect(result.toolCalls).toHaveLength(1)
+    expect((result.toolCalls[0] as { invalid?: boolean }).invalid).toBeFalsy()
+    expect(result.content.some((part) => part.type === "tool-error")).toBe(false)
+  })
+
+  it("a call with a bad id is refused, by the same validator", async () => {
+    const { result } = await geminiCall({ thingId: "not-a-uuid" })
+    expect((result.toolCalls[0] as { invalid?: boolean }).invalid).toBe(true)
+    expect(result.content.some((part) => part.type === "tool-error")).toBe(true)
+  })
+
+  it("an external client's tools/list keeps its schema as it was", () => {
+    const tools = buildToolSet(
+      ORG_UUID,
+      uuidActor,
+      undefined,
+      ALL_DEFERRED_TOOLS_UNLOCKED,
+      "gateway",
+    )
+    const listed = toJsonSchema(tools.crm__get_thing.inputSchema) as Json
+    expect(typeof listed.$schema).toBe("string")
+    expect(typeof listed.properties.thingId.pattern).toBe("string")
+    expect(typeof listed.properties.notify.pattern).toBe("string")
+    expect(listed).toEqual(
+      z.toJSONSchema(z.object({ thingId: z.uuid(), notify: z.email().optional() })) as Json,
+    )
   })
 })

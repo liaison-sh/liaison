@@ -50,6 +50,22 @@ export interface Logger {
   debug(msg: string, data?: unknown): void
 }
 
+/** What `ctx.time.civil` answers: the date and clock a person in `zone` reads at that instant. */
+export interface CivilTime {
+  /** `YYYY-MM-DD` */
+  date: string
+  year: number
+  month: number
+  day: number
+  /** 0 to 23 */
+  hour: number
+  minute: number
+  /** ISO weekday: 1 is Monday, 7 is Sunday. */
+  weekday: number
+  /** The zone the answer was computed in. */
+  zone: string
+}
+
 export interface AppContext {
   userId: string
   orgId: string
@@ -324,6 +340,19 @@ export interface AppContext {
    */
   sequences: {
     allocate(params: { key: string }): Promise<{ value: number }>
+  }
+  /**
+   * The wall clock of an instant in a named IANA zone, read on the host: the sandbox has no `Intl`
+   * and no zone table, and `new Date()` only knows UTC. No capability needed.
+   */
+  time: {
+    /**
+     * `timezone` is an IANA name. `UTC`, the column default of issuer and org zones, means "not
+     * set": the organization's zone answers, and UTC when it has none. `Etc/UTC` is UTC, exactly.
+     * `at` (ISO date-time or epoch milliseconds) defaults to now. An unknown zone rejects with
+     * `code: "invalid_timezone"`.
+     */
+    civil(params: { timezone: string; at?: string | number }): Promise<CivilTime>
   }
   /**
    * The effect ledger: an outside call claimed before it runs and stored after,

@@ -22,6 +22,7 @@
 // -> assert the PERSISTED row and the ISSUED totals, not any component's
 // internal state.
 
+import { testTime } from "./test-time"
 import { describe, expect, test } from "bun:test"
 import type { Counterparty, IssuerProfile } from "./issue"
 import { draftsCreate, draftsUpdate, invoiceIssue, type MutationsCtx } from "./mutations"
@@ -104,6 +105,7 @@ function makeCtx(): { ctx: MutationsCtx; readsCtx: ReadsCtx; db: MockDb } {
     getUserId: async () => "user-1",
     approval: null,
     db,
+    time: testTime(),
     sequences: {
       async allocate(p) {
         const existing = await db.findMany("__sequences", { where: { key: p.key }, limit: 1 })

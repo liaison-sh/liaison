@@ -70,6 +70,7 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   codec_base64UrlEncodeUtf8: "read",
   codec_markdownToEmail: "read",
   config_get: "read",
+  time_civil: "read",
   connections_describe: "read",
   connections_getAccounts: "read",
   connections_getCredentials: "read",

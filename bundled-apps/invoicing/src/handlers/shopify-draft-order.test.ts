@@ -16,6 +16,7 @@
 //   * completed -> invoiced (and NOT an invoice issued here: the order flow does that),
 //     deleted -> rejected.
 
+import { testTime } from "../test-time"
 import { describe, expect, test } from "bun:test"
 import type { CrossAppEnvelope } from "../cross-app"
 import type { MutationsCtx } from "../mutations"
@@ -151,6 +152,7 @@ function makeCtx(opts?: {
     getUserId: async () => "user-1",
     approval: null,
     db,
+    time: testTime(),
     sequences: {
       async allocate({ key }) {
         const existing = await db.findMany("__sequences", { where: { key }, limit: 1 })

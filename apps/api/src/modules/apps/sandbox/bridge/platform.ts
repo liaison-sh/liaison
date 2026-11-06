@@ -4,6 +4,7 @@ import { sql as drizzleSql } from "drizzle-orm"
 import { enqueueAppJob } from "~/infra/jobs/jobs"
 import { emailBody } from "~/lib/email/email-body"
 import { quoteIdent } from "~/lib/sql-utils"
+import { civilTimeAt, instantOf } from "~/modules/apps/sandbox/bridge/civil-time"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import { snakeCase } from "~/modules/apps/sandbox/bridge/shared"
 
@@ -24,7 +25,7 @@ export function withoutHostJobFields(raw: unknown): Record<string, unknown> {
   return out
 }
 
-/** Kernel platform services: events, jobs, realtime, handles, idempotency, sequences, PDF and codecs. */
+/** Kernel platform services: events, jobs, realtime, handles, idempotency, sequences, clock, PDF and codecs. */
 export function createPlatformMethods(ctx: BridgeContext): Record<string, any> {
   const {
     appName,
@@ -205,6 +206,30 @@ export function createPlatformMethods(ctx: BridgeContext): Record<string, any> {
       } catch (err) {
         return errorEnvelope(err)
       }
+    },
+
+    // `ctx.time.civil({timezone, at?})`: the wall clock of an instant in a zone. No capability: it
+    // reads nothing of the org's beyond its zone. `UTC` is the default of the issuer and org
+    // columns and so means "not set": the org's own zone answers. `Etc/UTC` is UTC, exactly.
+    time_civil: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as { timezone?: unknown; at?: unknown }
+      const at = instantOf(params.at)
+      let zone = typeof params.timezone === "string" ? params.timezone : ""
+      if (zone === "UTC") {
+        // Privileged: kernel.organizations is closed to the handler's RLS role, and a denied read
+        // comes back empty, which would silently mean UTC.
+        const { extractRows } = await import("~/db")
+        const { withPrivilegedDb } = await import("~/db/privileged")
+        const { schemaRef } = await import("~/db/schema-ref")
+        const KS = drizzleSql.raw(schemaRef("kernel"))
+        const rows = await withPrivilegedDb(orgId, "time-civil-org-zone", (tx) =>
+          tx.execute(
+            drizzleSql`SELECT timezone FROM ${KS}.organizations WHERE id = ${orgId} LIMIT 1`,
+          ),
+        )
+        zone = extractRows<{ timezone: string | null }>(rows)[0]?.timezone || "UTC"
+      }
+      return JSON.stringify(civilTimeAt(zone, at))
     },
 
     // Phase 17 K2 — `ctx.pdf.render(p)` bridge. Capability-gated by the

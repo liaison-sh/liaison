@@ -22,6 +22,7 @@ import type { CrossAppExecuteTool } from "./cross-app"
 import { csvCell } from "./csv"
 import { needsHumanReview } from "./deferred"
 import { type LinkedShipment, linkedShipments } from "./handlers/link-shipments"
+import { issuerTimezoneUnset } from "./issue-date"
 import { deliveryFileId } from "./legal-originals/delivery"
 import { toBigInt } from "./mutations/shared"
 
@@ -1289,6 +1290,8 @@ export async function settingsIssuerProfileList(
         // the list view only needs a stable shape, so default to 0 (the count is
         // computed lazily by the detail tool when that lands).
         reference_count: Number(r.reference_count ?? 0),
+        // Nobody chose this issuer's zone yet: see `issue-date.ts`.
+        timezone_choice_needed: issuerTimezoneUnset(r),
       }
     }),
   }

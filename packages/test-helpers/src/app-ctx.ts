@@ -52,5 +52,17 @@ export function stubAppContext(): Record<string, unknown> {
     messages: { post: async () => ({ message_id: "m", thread_id: "t" }) },
     pdf: { render: async () => ({ file_id: "f", byte_size: 0, page_count: 0 }) },
     sequences: { allocate: async () => ({ value: 1 }) },
+    time: {
+      civil: async ({ timezone }: { timezone: string }) => ({
+        date: "2026-01-01",
+        year: 2026,
+        month: 1,
+        day: 1,
+        hour: 0,
+        minute: 0,
+        weekday: 4,
+        zone: timezone,
+      }),
+    },
   }
 }

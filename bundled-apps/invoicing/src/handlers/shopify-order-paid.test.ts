@@ -8,7 +8,8 @@
 // order id under `external_refs.shopify_order_id`. Deferred rows go to
 // `deferred_events`.
 
-import { describe, expect, test } from "bun:test"
+import { testTime } from "../test-time"
+import { describe, expect, setSystemTime, test } from "bun:test"
 import type { CrossAppEnvelope } from "../cross-app"
 import { creditNoteCreateAndIssue, documentsSendToCustomer, type MutationsCtx } from "../mutations"
 import { deferredRetryJobHandler } from "./deferred-dispatch"
@@ -157,6 +158,7 @@ function makeCtx(opts?: {
     getUserId: async () => "user-1",
     approval: opts?.approval ?? null,
     db,
+    time: testTime(),
     sequences: {
       async allocate({ key }) {
         const existing = await db.findMany("__sequences", {
@@ -359,6 +361,49 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
     const doc = db.__all("documents")[0]!
     expect((doc.external_refs as Record<string, unknown>).shopify_order_number).toBe("#1149")
     expect(doc.shopify_order_number).toBe("#1149")
+  })
+
+  test("an issuer zone the host does not know parks the order on the config: no document, no number", async () => {
+    const { ctx, db } = makeCtx({
+      issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
+    })
+    const issuerRow = db.__all("issuer_profiles")[0]!
+    await db.update("issuer_profiles", String(issuerRow.id), { timezone: "Europe/Atlantis" })
+
+    const res = await onShopifyOrderPaid(basePayload(), ctx)
+
+    expect(res).toMatchObject({ status: "deferred", reason: "awaiting_config" })
+    expect(db.__all("documents")).toHaveLength(0)
+    expect(db.__all("__sequences")).toHaveLength(0)
+    const [park] = db.__all("deferred_events")
+    expect(park).toMatchObject({
+      status: "awaiting_config",
+      reason: "issuer_timezone_invalid",
+      blocked_on: { kind: "issuer_timezone", issuer_profile_id: issuerRow.id },
+    })
+
+    // Fixed on the profile: the same order issues on the retry.
+    await db.update("issuer_profiles", String(issuerRow.id), { timezone: "Europe/Paris" })
+    expect((await onShopifyOrderPaid(basePayload(), ctx)).status).not.toBe("deferred")
+    expect(db.__all("documents")).toHaveLength(1)
+  })
+
+  test("the issue date of an order follows the issuer's zone, on the bill and in the number year", async () => {
+    const { ctx, db } = makeCtx({
+      issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
+    })
+    const issuerRow = db.__all("issuer_profiles")[0]!
+    await db.update("issuer_profiles", String(issuerRow.id), { timezone: "Europe/Paris" })
+    setSystemTime(new Date("2026-12-31T23:20:00Z"))
+    try {
+      await onShopifyOrderPaid(basePayload(), ctx)
+    } finally {
+      setSystemTime()
+    }
+    const doc = db.__all("documents")[0]!
+    expect(String(doc.issued_at)).toBe("2027-01-01")
+    expect(doc.year_of_issue).toBe(2027)
+    expect(String(doc.number)).toContain("2027")
   })
 
   test("no order name on the payload -> no order number recorded (never synthesised from the id)", async () => {

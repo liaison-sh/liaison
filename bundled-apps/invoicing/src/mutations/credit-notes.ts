@@ -50,6 +50,7 @@ import {
   checkEinvoiceGate,
   einvoiceParamsError,
 } from "../einvoicing/issue-gate"
+import { issueDateParts } from "../issue-date"
 import { issueWithFxRate } from "./fx-issue"
 
 /** What the issue step needs to know of the original invoice: id, stored regime, transmission
@@ -61,6 +62,35 @@ function originalRefOf(original: DocumentRowSummary): NonNullable<IssueInput["or
     transmissionStatus: original.einvoice_state ?? null,
     counterparty_contact_id: original.counterparty_contact_id,
     snapshot: original.einvoice ?? null,
+  }
+}
+
+/**
+ * A credit note may keep the date its caller states, but numbers and dates run together in a
+ * series: a date before the last number of the series is refused, before a number is taken.
+ */
+async function checkDateFollowsSeries(
+  db: MutationsCtx["db"],
+  issuerId: string,
+  yearOfIssue: number,
+  issuedAt: string,
+): Promise<ErrorEnvelope | null> {
+  const [last] = (await db.findMany("documents", {
+    where: { issuer_profile_id: issuerId, type: "credit_note", year_of_issue: yearOfIssue },
+    orderBy: { number_int: "desc" },
+    limit: 1,
+  })) as Array<Record<string, unknown>>
+  const lastDate = dateOnly(last?.issued_at)
+  if (!lastDate || issuedAt >= lastDate) return null
+  return {
+    status: "error",
+    error: {
+      code: "issued_at_before_series",
+      message:
+        `issued_at ${issuedAt} is before ${String(last?.number ?? "the last credit note")} (${lastDate}), the last ` +
+        "number in this series, so nothing was issued and no number was used. Pass that date or a later one, " +
+        "or omit issued_at to use today.",
+    },
   }
 }
 
@@ -444,6 +474,14 @@ export async function creditNoteCreateAndIssue(
   // `notes.value === undefined` means the caller said nothing; an explicit null clears it.
   const effectiveNotes = notes.value === undefined ? originalNotes : notes.value
 
+  const when = await issueDateParts(ctx, issuer)
+  if (!when.ok) return when.error
+  const explicitDate = dateOnly(input.issued_at)
+  if (explicitDate) {
+    const refused = await checkDateFollowsSeries(ctx.db, issuer.id, when.year_of_issue, explicitDate)
+    if (refused) return refused
+  }
+
   const issueInput = {
     type: "credit_note" as const,
     issuer,
@@ -451,8 +489,8 @@ export async function creditNoteCreateAndIssue(
     draft: {
       currency,
       incoterm: input.incoterm ?? "DAP",
-      year_of_issue: new Date().getUTCFullYear(),
-      issued_at: input.issued_at ?? new Date().toISOString().slice(0, 10),
+      year_of_issue: when.year_of_issue,
+      issued_at: input.issued_at ?? when.issued_at,
       due_at: null as string | null,
       external_refs: externalRefs,
       notes: effectiveNotes ?? null,
@@ -718,8 +756,10 @@ export async function creditNoteIssue(
     }
   }
 
+  const when = await issueDateParts(ctx, issuer)
+  if (!when.ok) return when.error
   const issueInput = {
-    ...buildIssueInputFromDraft(draft, issuer, counterparty),
+    ...buildIssueInputFromDraft(draft, issuer, counterparty, when),
     original_invoice_number: originalNumber,
     original_invoice_date: dateOnly(originalIssuedAt),
     original: originalRef,

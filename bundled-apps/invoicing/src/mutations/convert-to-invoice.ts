@@ -30,6 +30,7 @@ import {
   normaliseNotes,
   toPreflightResult,
 } from "./shared"
+import { issueDateParts } from "../issue-date"
 import { issueWithFxRate } from "./fx-issue"
 
 // ── documents.convert_to_invoice ──────────────────────────────────────────
@@ -213,6 +214,10 @@ export async function documentsConvertToInvoice(
     return convertViaShopifyDraftOrder(ctx, source, draftOrderId, trans.next)
   }
 
+  // Before anything changes: a refused zone leaves the source as it was.
+  const when = await issueDateParts(ctx, issuer)
+  if (!when.ok) return when.error
+
   await ctx.db.update("documents", source.id, {
     status: trans.next,
     lifecycle_log: [
@@ -236,8 +241,8 @@ export async function documentsConvertToInvoice(
     draft: {
       currency: source.currency,
       incoterm: source.incoterm,
-      year_of_issue: new Date().getUTCFullYear(),
-      issued_at: new Date().toISOString().slice(0, 10),
+      year_of_issue: when.year_of_issue,
+      issued_at: when.issued_at,
       due_at: null as string | null,
       // Persist the resolved uuid on the external_refs link, not whatever identifier the
       // caller passed in (a document number), so downstream joins/back-links stay uuid-stable.

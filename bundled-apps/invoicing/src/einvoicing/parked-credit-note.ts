@@ -208,7 +208,7 @@ export async function issueOrParkAutoCreditNote(
     {
       event_id: parkedCreditNoteEventId(note),
       event_payload_json: payload,
-      status: "awaiting_data",
+      status: code === "issuer_timezone_invalid" ? "awaiting_config" : "awaiting_data",
       reason: code,
       blocked_on: {
         kind: AUTO_CREDIT_NOTE_PARK_KIND,

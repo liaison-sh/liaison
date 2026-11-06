@@ -17,6 +17,7 @@ import {
 import { sirenFromFrVat } from "./identity"
 import { deriveKind } from "./identity-derive"
 import { readEinvoiceRowColumns } from "./issue-gate"
+import { issuerTimezoneUnset } from "../issue-date"
 
 type Row = Record<string, unknown>
 
@@ -372,6 +373,22 @@ export async function einvoicingReadiness(
     for (const b of blockers) push(itemFor(b, { contact_id: contactId, ...(p.label ? { label: p.label } : {}) }, null))
   }
 
+  // Never a blocker: documents keep issuing. One line per live issuer, gone once a zone is chosen.
+  const unsetZones = issuerRows
+    .filter((r) => !r.archived_at && issuerTimezoneUnset(r))
+    .map((r) => ({
+      issuer_profile_id: String(r.id),
+      legal_name: str(r.legal_name),
+      message:
+        "No time zone was chosen for this issuer. Its issue dates and number years follow the organization's " +
+        "time zone, or UTC when the organization has none. Ask which zone it issues in, once.",
+      action: {
+        tool: "settings_issuer_profile_update",
+        label: "Choose the issuer's time zone",
+        params_hint: { id: String(r.id), timezone: "Europe/Paris" },
+      },
+    }))
+
   items.sort((a, b) => {
     const da = a.last_document_date ?? ""
     const db = b.last_document_date ?? ""
@@ -383,5 +400,6 @@ export async function einvoicingReadiness(
     count: items.length,
     ...(docsRead.truncated || idsRead.truncated ? { truncated: true } : {}),
     ...(items.length === 0 ? { message: READINESS_EMPTY } : {}),
+    ...(unsetZones.length > 0 ? { issuer_time_zones_to_choose: unsetZones } : {}),
   }
 }

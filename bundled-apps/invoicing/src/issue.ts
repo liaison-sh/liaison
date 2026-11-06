@@ -29,6 +29,7 @@ import type { CrossAppExecuteTool } from "./cross-app"
 import { documentRollup, lineSubtotal, lineTax, lineTotal } from "./money"
 import { allocateNumber } from "./numbering"
 import { classifyRegime } from "./einvoicing/classify"
+import type { TimeSurface } from "./issue-date"
 import type { CustomerKind, Regime } from "./einvoicing/classify"
 import type { OperationCategory, PaymentState } from "./einvoicing/classify-operation"
 import {
@@ -68,6 +69,8 @@ export interface IssuerProfile {
   prefix_proforma?: string
   prefix_po?: string
   prefix_credit_note?: string
+  /** IANA zone of the issue date and number year (`issue-date.ts`). */
+  timezone?: string | null
   /** Defaults the `vat_on_debits` flag recorded on each issued document. */
   vat_on_debits_default?: boolean | null
   /** Structured seller address and e-invoicing routing (Factur-X BT-34..BT-40). */
@@ -387,6 +390,8 @@ export interface IssueCtx {
   sequences: {
     allocate(p: { key: string }): Promise<{ value: number }>
   }
+  /** The host's clock in a time zone: the issue date and number year (`issue-date.ts`). */
+  time: TimeSurface["time"]
   pdf: {
     render(p: {
       template_kind: string

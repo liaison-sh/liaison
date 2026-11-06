@@ -224,6 +224,7 @@ export async function items_create(
 | `ctx.enqueueJob` | Enqueue a background job |
 | `ctx.connections` | Per-connection OAuth/credential tokens |
 | `ctx.fetch` | Call an external API (kernel-mediated, allowlist-checked) |
+| `ctx.time.civil` | The date and clock of an instant in a named IANA zone. The sandbox has no `Intl`, so `new Date()` only knows UTC. `UTC`, the column default, follows the organization's zone; `Etc/UTC` is UTC exactly; an unknown zone rejects with `invalid_timezone` |
 | `ctx.resolveContact` | Resolve or create a contact |
 | `ctx.logger` | Structured logging |
 

@@ -2,6 +2,7 @@
 //
 // Invoicing mutations: Settings issuer-profile CRUD.
 
+import { checkIssuerTimezone, normalizeIssuerTimezone } from "../issue-date"
 import type { ErrorEnvelope, MutationsCtx, MutationResult, PreflightResult } from "./shared"
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -45,7 +46,17 @@ function pickIssuerWrite(input: Record<string, unknown>): Record<string, unknown
   for (const c of ISSUER_WRITE_COLUMNS) {
     if (input[c] !== undefined) out[c] = input[c]
   }
+  // `UTC` in a write is someone's choice; the column default is what no write ever touched.
+  if (typeof out.timezone === "string") out.timezone = normalizeIssuerTimezone(out.timezone)
   return out
+}
+
+/** A zone is checked against the host's table when it is saved, never first at issue time. */
+async function checkWrittenTimezone(
+  ctx: MutationsCtx,
+  input: Record<string, unknown>,
+): Promise<ErrorEnvelope | null> {
+  return typeof input.timezone === "string" ? checkIssuerTimezone(ctx, input.timezone) : null
 }
 
 /** Columns whose change redirects money or loosens a control (payout bank details, approval
@@ -133,7 +144,9 @@ export async function settingsIssuerProfileWritePreflight(
   action: "create" | "update" | "delete",
   input: Record<string, unknown>,
 ): Promise<PreflightResult> {
-  const refused = await checkIssuerWriteAuthority(ctx, action, input ?? {})
+  const refused =
+    (await checkIssuerWriteAuthority(ctx, action, input ?? {})) ??
+    (action === "delete" ? null : await checkWrittenTimezone(ctx, input ?? {}))
   return refused ? { error: refused.error } : { ok: true }
 }
 
@@ -186,7 +199,8 @@ export async function settingsIssuerProfileCreate(
       error: { code: "invalid_params", message: "legal_name and country are required" },
     }
   }
-  const refused = await checkIssuerWriteAuthority(ctx, "create", input)
+  const refused =
+    (await checkIssuerWriteAuthority(ctx, "create", input)) ?? (await checkWrittenTimezone(ctx, input))
   if (refused) return refused
   const row = (await ctx.db.insert("issuer_profiles", data)) as Record<string, unknown>
   await emitIssuerProfileChange(ctx, "created", String(row.id), null, data)
@@ -219,7 +233,8 @@ export async function settingsIssuerProfileUpdate(
       },
     }
   }
-  const refused = await checkIssuerWriteAuthority(ctx, "update", input)
+  const refused =
+    (await checkIssuerWriteAuthority(ctx, "update", input)) ?? (await checkWrittenTimezone(ctx, input))
   if (refused) return refused
   const before = (await ctx.db.findOne("issuer_profiles", id)) as Record<string, unknown> | null
   await ctx.db.update("issuer_profiles", id, data)

@@ -341,9 +341,7 @@ describe("the routes and services a member reads people through", () => {
     expect(asMember.status).toBe(200)
     expect(await ids(asMember)).toEqual([MEMBER_ID])
     const asHolder = await get("/api/sharing/members", ["kernel:portal:admin"])
-    expect((await ids(asHolder)).sort()).toEqual(
-      [MEMBER_ID, EXTERNAL_ID, OTHER_EXTERNAL_ID].sort(),
-    )
+    expect((await ids(asHolder)).sort()).toEqual([MEMBER_ID, EXTERNAL_ID, OTHER_EXTERNAL_ID].sort())
   })
 
   it("/api/users/:id/preview of an external row is 404 for a member, found for a holder of the portal admin scope", async () => {

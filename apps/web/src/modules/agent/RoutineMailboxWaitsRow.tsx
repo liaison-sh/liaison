@@ -64,12 +64,6 @@ import { Dialog } from "~/ui/Dialog"
 const [progress, setProgress] = createSignal<{ done: number; total: number } | null>(null)
 const [awaitingUnlock, setAwaitingUnlock] = createSignal(false)
 
-/** Test seam: the batch's state outlives a row, so it outlives a test too. */
-export function resetMailboxWaitsBatchForTest(): void {
-  setProgress(null)
-  setAwaitingUnlock(false)
-}
-
 interface WaitingRun {
   item: AttentionItem
   wait: RoutineMailboxWait

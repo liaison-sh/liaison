@@ -57,9 +57,7 @@ vi.mock("~/modules/mailbox/mailbox-agent-runtime", () => ({
   },
 }))
 
-import RoutineMailboxWaitsRow, {
-  resetMailboxWaitsBatchForTest,
-} from "~/modules/agent/RoutineMailboxWaitsRow"
+import RoutineMailboxWaitsRow from "~/modules/agent/RoutineMailboxWaitsRow"
 import {
   collapseMailboxWaits,
   type RoutineMailboxWait,
@@ -130,7 +128,6 @@ beforeEach(() => {
 
 afterEach(() => {
   resetToastStore()
-  resetMailboxWaitsBatchForTest()
   attentionStore._setForTest({ items: [], errors: [] })
   vi.clearAllMocks()
 })

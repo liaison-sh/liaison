@@ -54,8 +54,13 @@ jobs:
         if: steps.changed.outputs.run == 'true'
         run: bun install --frozen-lockfile
       - name: Install postgres/redis CLIs
+        # The client's major matches docker-compose's postgres: pg_dump refuses a
+        # newer server, and the security suite's export test runs it.
         if: steps.changed.outputs.run == 'true'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client redis-tools
+        run: |
+          set -euo pipefail
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y --no-install-recommends postgresql-client-17 redis-tools
       - name: Test env with throwaway secrets
         # .env.test is gitignored; the run namespace pins the database, Redis
         # and MeiliSearch coordinates, so only the secrets need values here.
@@ -139,9 +144,13 @@ jobs:
         if: steps.changed.outputs.run == 'true'
         run: bun install --frozen-lockfile
       - name: Install postgres/redis CLIs and xmllint
-        # The invoicing suite's e-invoice conformance tests validate with xmllint.
+        # The client's major matches docker-compose's postgres. The invoicing suite's
+        # e-invoice conformance tests validate with xmllint.
         if: steps.changed.outputs.run == 'true'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client redis-tools libxml2-utils
+        run: |
+          set -euo pipefail
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y --no-install-recommends postgresql-client-17 redis-tools libxml2-utils
       - name: Test env with throwaway secrets
         if: steps.changed.outputs.run == 'true'
         run: |

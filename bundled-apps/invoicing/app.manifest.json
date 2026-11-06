@@ -224,7 +224,7 @@
       }
     ]
   },
-  "version": "0.20.36",
+  "version": "0.20.37",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -4148,7 +4148,7 @@
               "string",
               "null"
             ],
-            "description": "Issue date, ISO date (YYYY-MM-DD). Defaults to today in the issuer's time zone. A date before the last credit note number in the series is refused (issued_at_before_series)."
+            "description": "Issue date, ISO date (YYYY-MM-DD). Defaults to today in the issuer's time zone. The date decides the number's year: a date in a past year takes that year's series. A date before the last number of that series is refused (issue_date_before_last_number), and so is a date after today (issue_date_in_future)."
           },
           "original_document_id": {
             "type": [

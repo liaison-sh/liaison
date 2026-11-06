@@ -42,13 +42,13 @@ function isInvalidTimezone(err: unknown): err is { code: string; message?: strin
   return (err as { code?: unknown } | null | undefined)?.code === "invalid_timezone"
 }
 
-function timezoneInvalid(detail: string): ErrorEnvelope {
+function timezoneInvalid(detail: string, outcome = "Nothing was issued and no number was used"): ErrorEnvelope {
   return {
     status: "error",
     error: {
       code: "issuer_timezone_invalid",
       message:
-        `${detail}. Nothing was issued and no number was used. Set the issuer's time zone with ` +
+        `${detail}. ${outcome}. Set the issuer's time zone with ` +
         'settings_issuer_profile_update, for example "Europe/Paris".',
     },
   }
@@ -64,6 +64,30 @@ export async function issueDateParts(
     return { ok: true, year_of_issue: now.year, issued_at: now.date }
   } catch (err) {
     if (isInvalidTimezone(err)) return { ok: false, error: timezoneInvalid(String(err.message ?? "Unknown time zone")) }
+    throw err
+  }
+}
+
+/**
+ * The issuer's civil date of an instant: what a paid date reads when nobody stated one, and the
+ * editor's default date. `at` is an instant as Shopify writes it, in any offset; a bare date is
+ * already civil and stays as it is; nothing, or a value that names no instant, reads as now.
+ */
+export async function civilDateOf(
+  ctx: TimeSurface,
+  issuer: { timezone?: string | null },
+  at?: string | null,
+): Promise<{ ok: true; date: string } | { ok: false; error: ErrorEnvelope }> {
+  if (at && /^\d{4}-\d{2}-\d{2}$/.test(at)) return { ok: true, date: at }
+  const timezone = issuer.timezone || DEFAULT_ZONE
+  const named = at && !Number.isNaN(new Date(at).getTime()) ? { at } : {}
+  try {
+    const civil = await ctx.time.civil({ timezone, ...named })
+    return { ok: true, date: civil.date }
+  } catch (err) {
+    if (isInvalidTimezone(err)) {
+      return { ok: false, error: timezoneInvalid(String(err.message ?? "Unknown time zone"), "Nothing was changed") }
+    }
     throw err
   }
 }

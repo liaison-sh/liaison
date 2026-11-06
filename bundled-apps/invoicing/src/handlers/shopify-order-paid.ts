@@ -44,7 +44,7 @@ import { ensureDerivedIdentity } from "../einvoicing/identity-derive"
 import { type FxFetchCtx, FxRateUnavailableError, fxIssueDate, warmFxRate } from "../einvoicing/fx"
 import { checkEinvoiceGate } from "../einvoicing/issue-gate"
 import { formatMoneyMinor, lineSubtotal, lineTax, majorDecimalToMinor, netOfTax } from "../money"
-import { type IssueDateParts, issueDateParts } from "../issue-date"
+import { civilDateOf, type IssueDateParts, issueDateParts } from "../issue-date"
 import { isFullyCredited } from "../mutations"
 import { classify, EXEMPT_TREATMENTS } from "../tax"
 
@@ -872,7 +872,6 @@ export async function onShopifyOrderPaid(
   // to "paid" would silently drop paid physical orders from shipping). A non-"paid" financial_status
   // (pending/authorized/…) issues unpaid.
   const settled = isPaidFinancialStatus(payload.financial_status)
-  const paidAt = dateOnly(payload.createdAt) ?? new Date().toISOString().slice(0, 10)
   // PO inheritance -- the order's own PO always wins. Only when Shopify carries none do we
   // look for the quote this order was converted from (mutations.ts convertViaShopifyDraftOrder
   // writes shopify_order_id back onto that quote once its draft order completes) and borrow
@@ -884,6 +883,7 @@ export async function onShopifyOrderPaid(
     scope: "goods" | "software",
     items: OrderPaidPayload["line_items"],
     when: IssueDateParts,
+    paidAt: string,
   ): IssueInput => ({
     type: "invoice",
     scope,
@@ -965,6 +965,9 @@ export async function onShopifyOrderPaid(
     })
     return { status: "deferred", deferred_id: def.id, reason: "awaiting_config" }
   }
+  // The date the order states is an instant: it reads as the issuer's date, like the issue date.
+  const paid = settled ? await civilDateOf(ctx, issuer, payload.createdAt) : null
+  const paidAt = paid?.ok ? paid.date : when.issued_at
 
   // E-invoicing gate, per document, before anything is issued. The kind is derived from the
   // checkout signals (VAT id or billing company -> business, neither -> consumer) and recorded
@@ -973,7 +976,7 @@ export async function onShopifyOrderPaid(
   // attention item per contact. Warn: the document issues and records the warning.
   let derivedRecorded = false
   for (const split of splits) {
-    const input = buildIssueInput(split.scope, split.items, when)
+    const input = buildIssueInput(split.scope, split.items, when, paidAt)
     const check = await checkEinvoiceGate(ctx, {
       type: input.type,
       issuer: input.issuer,
@@ -1068,7 +1071,7 @@ export async function onShopifyOrderPaid(
   for (const split of splits) {
     let issueResult: Awaited<ReturnType<typeof issueDocument>>
     try {
-      issueResult = await issueDocument(ctx, buildIssueInput(split.scope, split.items, when))
+      issueResult = await issueDocument(ctx, buildIssueInput(split.scope, split.items, when, paidAt))
     } catch (err) {
       // A foreign-currency e-invoice the ECB could not price is refused before numbering (its
       // Factur-X needs the EUR VAT total). Defer it: the deferred retry re-runs this handler,

@@ -481,6 +481,9 @@ async function preflightCreateAndIssueParams(
   if (buyer.vat_id && !input.counterparty.vat_id) {
     input.counterparty = { ...input.counterparty, vat_id: buyer.vat_id }
   }
+  // An unknown zone is refused at stage time too, before an approval card exists.
+  const zone = await issueDateParts(ctx, issuer)
+  if (!zone.ok) return { ok: false, error: zone.error }
   return { ok: true, input, notes, customerReference: customerReference.value ?? null, issuer, currency, buyer }
 }
 
@@ -830,6 +833,10 @@ export async function quoteCreateAndIssue(
   if (!issuerResolution.ok) return issuerResolution.error
   const shopId = issuerResolution.issuer.shopify_shop_id
   if (shopId) {
+    // Refused before the draft order exists: a person is here to fix the zone and call again, and
+    // a draft order left behind in Shopify would make that second call a duplicate.
+    const when = await issueDateParts(ctx, issuerResolution.issuer)
+    if (!when.ok) return when.error
     // The draft order is created in Shopify first, so the business-buyer guard runs here too.
     const buyerCheck = await checkBuyerVat(ctx, {
       issuerCountry: issuerResolution.issuer.country,

@@ -7,7 +7,13 @@ import { afterEach, describe, expect, setSystemTime, test } from "bun:test"
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { onOrAfterCutover } from "./einvoicing/transmit"
-import { checkIssuerTimezone, issueDateParts, issuerTimezoneUnset, normalizeIssuerTimezone } from "./issue-date"
+import {
+  checkIssuerTimezone,
+  civilDateOf,
+  issueDateParts,
+  issuerTimezoneUnset,
+  normalizeIssuerTimezone,
+} from "./issue-date"
 import { einvoicingReadiness } from "./einvoicing/readiness"
 import { settingsIssuerProfileUpdate } from "./mutations/issuer-profiles"
 import type { MutationsCtx } from "./mutations/shared"
@@ -69,6 +75,38 @@ describe("issueDateParts", () => {
   })
 })
 
+describe("civilDateOf", () => {
+  const paris = { timezone: "Europe/Paris" }
+  const ctx = { time: testTime() }
+
+  test("an instant reads as the issuer's date, whatever offset it was written with", async () => {
+    setSystemTime(new Date("2026-06-15T12:00:00Z"))
+    for (const at of ["2026-12-31T23:20:00Z", "2026-12-31T18:20:00-05:00"]) {
+      expect(await civilDateOf(ctx, paris, at)).toEqual({ ok: true, date: "2027-01-01" })
+    }
+    expect(await civilDateOf(ctx, { timezone: "Etc/UTC" }, "2026-12-31T23:20:00Z")).toEqual({
+      ok: true,
+      date: "2026-12-31",
+    })
+  })
+
+  test("a bare date is already civil and stays as it is", async () => {
+    expect(await civilDateOf(ctx, paris, "2026-12-31")).toEqual({ ok: true, date: "2026-12-31" })
+  })
+
+  test("nothing, or a value that names no instant, reads as now", async () => {
+    setSystemTime(new Date("2026-12-31T23:20:00Z"))
+    for (const at of [null, undefined, "", "not a date"]) {
+      expect(await civilDateOf(ctx, paris, at)).toEqual({ ok: true, date: "2027-01-01" })
+    }
+  })
+
+  test("an unknown zone is the typed refusal", async () => {
+    const res = await civilDateOf(ctx, { timezone: "Europe/Atlantis" })
+    expect(res).toMatchObject({ ok: false, error: { error: { code: "issuer_timezone_invalid" } } })
+  })
+})
+
 describe("the cut-over reads the stored civil date", () => {
   test("midnight UTC of the stored date is that day, in either form the row comes back in", () => {
     for (const stored of ["2026-09-01", "2026-09-01T00:00:00.000Z", "2026-09-01 00:00:00+00"]) {
@@ -117,7 +155,7 @@ describe("the zone is asked once per issuer", () => {
     const db = createMockDb({
       seed: { issuer_profiles: [{ ...row, timezone: "UTC" }, { ...row, id: "i-2", legal_name: "Bcme", timezone: "Asia/Tokyo" }] },
     })
-    const { items } = await settingsIssuerProfileList({ db } as never)
+    const { items } = await settingsIssuerProfileList({ db, time: testTime() } as never)
     expect(items.map((i) => [i.id, i.timezone_choice_needed])).toEqual([
       ["i-1", true],
       ["i-2", false],
@@ -190,6 +228,15 @@ describe("guard: one door for the issue date", () => {
     expect(offenders(/getUTCFullYear/)).toEqual([])
     expect(offenders(/yearInTimezone/)).toEqual([])
     expect(offenders(/\bissued_at\s*[:=].*toISOString\(\)\.slice\(0,\s*10\)/)).toEqual([])
+  })
+
+  test("no UTC date and no bare slice of an instant assigned to a paid date", () => {
+    expect(offenders(/paid_?at\b.*(toISOString\(\)|dateOnly\()/i)).toEqual([])
+  })
+
+  test("the editor's default date is not a UTC date", () => {
+    const editor = readFileSync(join(SRC, "ui", "Editor.tsx"), "utf8")
+    expect(editor).not.toMatch(/\bissued_at\s*[:=].*toISOString\(\)/)
   })
 
   test("every builder of a draft takes both from issueDateParts", () => {

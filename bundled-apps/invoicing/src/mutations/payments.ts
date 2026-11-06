@@ -3,7 +3,8 @@
 // Invoicing mutations: documents.mark_paid and documents.record_refund.
 
 import { transition } from "../state"
-import { findDocumentSummary, sumPriorRefundedMinor } from "./db-helpers"
+import { civilDateOf } from "../issue-date"
+import { findDocumentSummary, findIssuerProfile, sumPriorRefundedMinor } from "./db-helpers"
 import { ensureDocumentPdf } from "./pdf"
 import {
   type MutationsCtx,
@@ -25,9 +26,9 @@ import {
  */
 async function preflightMarkPaidParams(
   ctx: MutationsCtx,
-  input: { document_id: string },
+  input: { document_id: string; paid_date?: string },
 ): Promise<
-  { ok: true; doc: DocumentRowSummary; nextStatus: string } | { ok: false; error: ErrorEnvelope }
+  { ok: true; doc: DocumentRowSummary; nextStatus: string; paidAt: string } | { ok: false; error: ErrorEnvelope }
 > {
   const doc = await findDocumentSummary(ctx.db, input.document_id)
   if (!doc) {
@@ -56,7 +57,12 @@ async function preflightMarkPaidParams(
       },
     }
   }
-  return { ok: true, doc, nextStatus: trans.next }
+  if (input.paid_date) return { ok: true, doc, nextStatus: trans.next, paidAt: input.paid_date }
+  // Nobody stated the date: today, in the issuer's time zone, like the issue date beside it.
+  const issuer = await findIssuerProfile(ctx.db, doc.issuer_profile_id)
+  const today = await civilDateOf(ctx, issuer ?? {})
+  if (!today.ok) return today
+  return { ok: true, doc, nextStatus: trans.next, paidAt: today.date }
 }
 
 /**
@@ -67,7 +73,7 @@ async function preflightMarkPaidParams(
  */
 export async function documentsMarkPaidPreflight(
   ctx: MutationsCtx,
-  input: { document_id: string },
+  input: { document_id: string; paid_date?: string },
 ): Promise<PreflightResult> {
   return toPreflightResult(await preflightMarkPaidParams(ctx, input))
 }
@@ -83,7 +89,7 @@ export async function documentsMarkPaid(
   if (!pre.ok) return pre.error
   const { doc } = pre
   const trans = { next: pre.nextStatus }
-  const paidAt = input.paid_date ?? new Date().toISOString().slice(0, 10)
+  const { paidAt } = pre
   await ctx.db.update("documents", doc.id, {
     status: trans.next,
     payment_status: "paid",

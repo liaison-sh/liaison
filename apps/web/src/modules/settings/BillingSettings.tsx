@@ -119,10 +119,32 @@ function formatDate(iso: string): string {
 }
 
 /** N credits at Control's unit price, in Control's currency. */
-export function topUpPrice(credits: number, terms: BillingSummary["topUp"]): string {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency: terms.currency }).format(
+export function topUpPrice(
+  credits: number,
+  terms: BillingSummary["topUp"],
+  locale?: string,
+): string {
+  return new Intl.NumberFormat(locale, { style: "currency", currency: terms.currency }).format(
     (credits * terms.unitPriceCents) / 100,
   )
+}
+
+const CURRENCY_OF_SYMBOL: Record<string, string> = { "€": "EUR", $: "USD", "£": "GBP" }
+
+/**
+ * Control words its amounts one way ("€99.00", "€29 / month"), whoever reads them. This writes them
+ * in the reader's language; anything it cannot read stays as it came.
+ */
+export function localMoney(display: string, locale: string, perMonth?: string): string {
+  const m = /^(-?)([€$£])(\d+)(?:\.(\d{2}))?( \/ month)?$/.exec(display.trim())
+  const currency = m ? CURRENCY_OF_SYMBOL[m[2] as string] : undefined
+  if (!m || !currency) return display
+  const amount = new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency,
+    minimumFractionDigits: m[4] ? 2 : 0,
+  }).format(Number(`${m[3]}.${m[4] ?? "0"}`) * (m[1] ? -1 : 1))
+  return m[5] && perMonth ? `${amount} ${perMonth}` : amount
 }
 
 /**
@@ -164,7 +186,7 @@ const COMPARED_CAPS = ["seats", "storageGb", "customApps", "auditDays", "jobsPer
  * unlimited, as it is on the cell.
  */
 const PlanComparison: Component<{ plans: BillingSummary["plans"]; current: PlanId }> = (props) => {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const capValue = (kind: (typeof COMPARED_CAPS)[number], value: number | null | undefined) => {
     if (typeof value !== "number") return t("cloud-billing.compare.unlimited")
     if (kind === "storageGb") return t("cloud-billing.compare.gb", { n: String(value) })
@@ -202,7 +224,13 @@ const PlanComparison: Component<{ plans: BillingSummary["plans"]; current: PlanI
               <th scope="row" class={th}>
                 {t("cloud-billing.compare.price")}
               </th>
-              <For each={props.plans}>{(p) => <td class={td}>{p.priceDisplay}</td>}</For>
+              <For each={props.plans}>
+                {(p) => (
+                  <td class={td}>
+                    {localMoney(p.priceDisplay, locale(), t("cloud-billing.plan.perMonth"))}
+                  </td>
+                )}
+              </For>
             </tr>
             <tr data-testid="billing-compare-credits">
               <th scope="row" class={th}>
@@ -240,7 +268,7 @@ const PlanComparison: Component<{ plans: BillingSummary["plans"]; current: PlanI
 
 const BillingSettings: Component = () => {
   const api = useApi()
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const [notApplied, setNotApplied] = createSignal<PlanId | null>(null)
   const [summary, { refetch }] = createResource(async () => {
     const s = await api.get<BillingSummary>("/billing/managed/summary")
@@ -531,7 +559,7 @@ const BillingSettings: Component = () => {
                         <>
                           <p class="text-text-secondary" data-testid="billing-open-invoice">
                             {t("cloud-limits.billing.openInvoice", {
-                              amount: inv().amountDisplay,
+                              amount: localMoney(inv().amountDisplay, locale()),
                               date: formatDate(inv().dueAt),
                             })}
                           </p>
@@ -597,7 +625,7 @@ const BillingSettings: Component = () => {
                         >
                           {(n) =>
                             t("cloud-billing.plan.nextInvoice", {
-                              amount: n().amountDisplay,
+                              amount: localMoney(n().amountDisplay, locale()),
                               date: formatDate(n().date),
                             })
                           }
@@ -652,7 +680,9 @@ const BillingSettings: Component = () => {
                         data-testid="billing-payment-action"
                       >
                         <span>
-                          {t("cloud-billing.plan.paymentAction", { amount: pa().amountDisplay })}
+                          {t("cloud-billing.plan.paymentAction", {
+                            amount: localMoney(pa().amountDisplay, locale()),
+                          })}
                         </span>
                         <Button
                           size="sm"
@@ -675,7 +705,9 @@ const BillingSettings: Component = () => {
                           data-testid={`billing-plan-${p.id}`}
                         >
                           <p class="font-semibold text-text">{planName(p.id)}</p>
-                          <p class="text-text">{p.priceDisplay}</p>
+                          <p class="text-text">
+                            {localMoney(p.priceDisplay, locale(), t("cloud-billing.plan.perMonth"))}
+                          </p>
                           <p class="mt-1 text-xs text-text-secondary">
                             {t("cloud-billing.plan.includedCredits", {
                               credits: p.includedCredits,
@@ -801,7 +833,7 @@ const BillingSettings: Component = () => {
                             <span class="text-text-secondary" data-testid="billing-topup-price">
                               {valid()
                                 ? t("cloud-billing.topUp.price", {
-                                    price: topUpPrice(credits(), s().topUp),
+                                    price: topUpPrice(credits(), s().topUp, locale()),
                                   })
                                 : t("cloud-billing.topUp.minimum", {
                                     min: String(s().topUp.minCredits),
@@ -926,7 +958,9 @@ const BillingSettings: Component = () => {
                                   {inv.number ?? ""}
                                 </span>
                                 <span class="text-text-secondary">{formatDate(inv.issuedAt)}</span>
-                                <span class="text-text">{inv.amountDisplay}</span>
+                                <span class="text-text">
+                                  {localMoney(inv.amountDisplay, locale())}
+                                </span>
                                 <span class="text-text-secondary">
                                   {t(`cloud-billing.invoices.status.${inv.status}`)}
                                 </span>

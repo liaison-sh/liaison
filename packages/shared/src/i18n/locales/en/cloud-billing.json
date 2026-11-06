@@ -21,6 +21,7 @@
     "renews": "Renews on {{date}}",
     "previewEnds": "Preview ends on {{date}}",
     "cancelAt": "Ends on {{date}}. Your workspace stays available until then.",
+    "perMonth": "per month",
     "nextInvoice": "Next invoice: {{amount}} on {{date}}",
     "noNextInvoice": "No upcoming invoice.",
     "pendingUpgrade": "Switch to {{plan}} waiting for payment.",

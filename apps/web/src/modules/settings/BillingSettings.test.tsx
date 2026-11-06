@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { I18nProvider } from "~/modules/i18n/i18n-context"
 import BillingSettings, {
   type BillingSummary,
+  localMoney,
   topUpPrice,
 } from "~/modules/settings/BillingSettings"
 import {
@@ -100,6 +101,22 @@ function renderPage() {
     </I18nProvider>
   ))
 }
+
+describe("localMoney", () => {
+  it("writes Control's amount in the reader's language", () => {
+    expect(localMoney("€99.00", "fr")).toBe("99,00\u00a0€")
+    expect(localMoney("-€70.50", "fr")).toBe("-70,50\u00a0€")
+    expect(localMoney("€99.00", "en")).toBe("€99.00")
+  })
+  it("keeps what it cannot read as it came", () => {
+    expect(localMoney("99 CHF", "fr")).toBe("99 CHF")
+    expect(localMoney("a price", "fr")).toBe("a price")
+  })
+  it("translates a monthly price and drops decimals only where Control's text has none", () => {
+    expect(localMoney("€29 / month", "fr", "par mois")).toBe("29\u00a0€ par mois")
+    expect(localMoney("€29 / month", "en", "per month")).toBe("€29 per month")
+  })
+})
 
 describe("BillingSettings", () => {
   afterEach(() => {

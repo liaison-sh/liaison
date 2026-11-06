@@ -21,6 +21,7 @@
     "renews": "Renouvellement le {{date}}",
     "previewEnds": "La période Preview se termine le {{date}}",
     "cancelAt": "Se termine le {{date}}. Votre espace reste disponible jusque-là.",
+    "perMonth": "par mois",
     "nextInvoice": "Prochaine facture : {{amount}} le {{date}}",
     "noNextInvoice": "Aucune facture à venir.",
     "pendingUpgrade": "Passage à {{plan}} en attente de paiement.",

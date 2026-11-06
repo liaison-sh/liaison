@@ -379,6 +379,16 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
     REASONS.SETTINGS,
   ],
   [
+    "apps/web/src/modules/settings/app-page/SectionView.tsx",
+    'return props.section.scope === "user"',
+    REASONS.SETTINGS,
+  ],
+  [
+    "apps/web/src/modules/settings/app-page/SectionView.tsx",
+    'personalSection={props.section.scope === "user"}',
+    REASONS.SETTINGS,
+  ],
+  [
     "apps/web/src/modules/settings/app-page/page-model.ts",
     'if (section.scope === "user") return null',
     REASONS.SETTINGS,

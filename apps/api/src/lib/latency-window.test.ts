@@ -47,7 +47,7 @@ describe("latency window", () => {
       "/api/assist/transcribe",
       "/api/assist/proofread",
       "/api/cloud/orgs",
-      "/webhooks/org/stripe",
+      "/webhooks/org/some-provider",
       "/mcp",
     ]) {
       await app.request(path, { method: "POST" })

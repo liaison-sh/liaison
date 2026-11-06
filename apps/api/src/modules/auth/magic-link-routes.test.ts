@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 import { app } from "~/app"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -141,6 +141,7 @@ describe("passwordless magic-link login", () => {
         `${env.BASE_URL}/login/magic?challengeId=${encodeURIComponent(off.challengeId)}&token=${off.token}`,
       )
 
+      await clearRedisPatterns(["magic:cooldown:*"])
       env.LIAISON_ORG_HOST_TEMPLATE = "https://{slug}.example.com"
       const on = await requestChallenge(MAGIC_EMAIL, `${org.slug}.example.com`)
       expect(on.sent?.text ?? "").toContain(
@@ -165,6 +166,78 @@ describe("passwordless magic-link login", () => {
     expect(res.status).toBe(200)
     const body = (await res.json()) as { data: { accessToken: string } }
     expect(body.data.accessToken).toBeDefined()
+  })
+
+  describe("how often a code can be asked for", () => {
+    const request = (email: string, peer = "198.51.100.7") =>
+      app.request("/api/auth/magic-link/request", {
+        method: "POST",
+        headers: { ...JSON_HEADERS, "x-bun-socket-ip": peer },
+        body: JSON.stringify({ email }),
+      })
+    const overCooldown = () => clearRedisPatterns(["magic:cooldown:*"])
+    let capture: ConsoleEmailProvider
+    let previous: EmailProvider
+
+    beforeEach(() => {
+      previous = getEmailProvider()
+      capture = new ConsoleEmailProvider()
+      setEmailProvider(capture)
+    })
+    afterEach(() => setEmailProvider(previous))
+
+    it("a second request inside 60 s is a 429 that says how long, known or unknown address alike", async () => {
+      expect((await request(MAGIC_EMAIL)).status).toBe(200)
+      expect((await request("nobody-here@test.com")).status).toBe(200)
+      expect(capture.sent).toHaveLength(1)
+
+      const known = await request(MAGIC_EMAIL)
+      const unknown = await request("nobody-here@test.com")
+      expect(known.status).toBe(429)
+      expect(unknown.status).toBe(429)
+      expect(await known.text()).toBe(await unknown.text())
+      for (const res of [known, unknown]) {
+        const wait = Number(res.headers.get("Retry-After"))
+        expect(wait).toBeGreaterThan(0)
+        expect(wait).toBeLessThanOrEqual(60)
+      }
+      expect(capture.sent).toHaveLength(1)
+    })
+
+    it("the same address gets 10 codes an hour, and the 11th says when", async () => {
+      for (let i = 0; i < 10; i++) {
+        expect((await request(MAGIC_EMAIL)).status).toBe(200)
+        await overCooldown()
+      }
+      expect(capture.sent).toHaveLength(10)
+      const refused = await request(MAGIC_EMAIL)
+      expect(refused.status).toBe(429)
+      expect(Number(refused.headers.get("Retry-After"))).toBeGreaterThan(60)
+      expect(capture.sent).toHaveLength(10)
+    })
+
+    it("the same address gets 20 codes a day", async () => {
+      for (let i = 0; i < 20; i++) {
+        expect((await request(MAGIC_EMAIL)).status).toBe(200)
+        await clearRedisPatterns(["magic:cooldown:*", "magic:email-hour:*", "magic:issued:*"])
+      }
+      expect(capture.sent).toHaveLength(20)
+      expect((await request(MAGIC_EMAIL)).status).toBe(429)
+    })
+
+    it("one address on the network gets 30 requests an hour, whatever the emails", async () => {
+      for (let i = 0; i < 30; i++) {
+        expect((await request(`someone-${i}@test.com`)).status).toBe(200)
+      }
+      expect((await request("someone-30@test.com")).status).toBe(429)
+    })
+
+    it("a request refused by the cooldown spends nothing", async () => {
+      expect((await request(MAGIC_EMAIL)).status).toBe(200)
+      for (let i = 0; i < 12; i++) expect((await request(MAGIC_EMAIL)).status).toBe(429)
+      await overCooldown()
+      expect((await request(MAGIC_EMAIL)).status).toBe(200)
+    })
   })
 
   it("rejects a wrong code but keeps the challenge alive for retries", async () => {
@@ -409,7 +482,7 @@ describe("passwordless magic-link login", () => {
       it("an account past its issue cap does not take it, and one held back spends none of its cap", async () => {
         await inOutage()
         const issuedKey = `magic:issued:${await firstUserId("outage@test.com")}`
-        await redis.set(issuedKey, "5", "EX", 600)
+        await redis.set(issuedKey, "10", "EX", 600)
         await refused(await request("outage@test.com"))
         expect(await redis.get(PROBE)).toBeNull()
         expect(calls).toBe(0)

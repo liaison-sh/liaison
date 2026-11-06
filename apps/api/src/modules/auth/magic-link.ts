@@ -63,8 +63,14 @@ const TOTP_CHALLENGE_TTL_SECONDS = 300
 const MAX_WRONG_CODES_PER_USER = 10
 const WRONG_CODE_WINDOW_SECONDS = 24 * 60 * 60
 /** Challenges issued per account per hour, whatever the requesting address. */
-const MAX_CHALLENGES_PER_USER = 5
+const MAX_CHALLENGES_PER_USER = 10
 const CHALLENGE_WINDOW_SECONDS = 60 * 60
+
+/** Between two codes to one address, and how many one address or one peer may ask for. */
+const SEND_COOLDOWN_SECONDS = 60
+const MAX_SENDS_PER_EMAIL_PER_HOUR = 10
+const MAX_SENDS_PER_EMAIL_PER_DAY = 20
+const MAX_SENDS_PER_PEER_PER_HOUR = 30
 
 const CHALLENGE_PREFIX = "magic:challenge"
 const WRONG_CODES_PREFIX = "magic:wrong"
@@ -168,6 +174,30 @@ export async function resolveUser(email: string, orgSlug?: string): Promise<Reso
   // Ambiguous (email in >1 org without an orgSlug) → unresolvable.
   if (matches.length !== 1) return null
   return matches[0]
+}
+
+/**
+ * Takes one code send for this address and this peer. Answers the seconds to wait when it is
+ * refused, null when the send may go ahead. It is keyed on the address as typed, known to us or
+ * not, and runs before any lookup, so the answer says nothing about which accounts exist. A request
+ * refused by the cooldown spends none of the counts.
+ */
+export async function takeSignInCodeSend(email: string, ip: string): Promise<number | null> {
+  const address = email.toLowerCase()
+  const cooldownKey = `magic:cooldown:${address}`
+  const free = await redis.set(cooldownKey, "1", "EX", SEND_COOLDOWN_SECONDS, "NX")
+  if (free !== "OK") return Math.max(await redis.ttl(cooldownKey), 1)
+  const limits: Array<[string, number, number]> = [
+    [`magic-rate:${ip}`, MAX_SENDS_PER_PEER_PER_HOUR, 60 * 60],
+    [`magic:email-hour:${address}`, MAX_SENDS_PER_EMAIL_PER_HOUR, 60 * 60],
+    [`magic:email-day:${address}`, MAX_SENDS_PER_EMAIL_PER_DAY, 24 * 60 * 60],
+  ]
+  for (const [key, max, window] of limits) {
+    const count = await redis.incr(key)
+    if (count === 1) await redis.expire(key, window)
+    if (count > max) return Math.max(await redis.ttl(key), 1)
+  }
+  return null
 }
 
 /**

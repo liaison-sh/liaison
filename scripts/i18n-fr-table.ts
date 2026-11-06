@@ -8,6 +8,10 @@
  * by the generator and intentionally absent here.
  */
 export const FR: Record<string, string> = {
+  "Send a new code": "Envoyer un nouveau code",
+  "Send a new code in {{seconds}} s": "Envoyer un nouveau code dans {{seconds}} s",
+  "We sent a new 6-digit code to {{email}}. It expires in 10 minutes.":
+    "Nous avons envoy\u00e9 un nouveau code \u00e0 6 chiffres \u00e0 {{email}}. Il expire dans 10 minutes.",
   "We can't send email right now. Try again later, or sign in with your password if you have one.":
     "Nous ne pouvons pas envoyer d'e-mails pour le moment. R\u00e9essayez plus tard, ou connectez-vous avec votre mot de passe si vous en avez un.",
   "Which looks most like your company?": "Qu'est-ce qui ressemble le plus à votre entreprise ?",

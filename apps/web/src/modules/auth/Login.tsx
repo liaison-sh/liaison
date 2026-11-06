@@ -74,6 +74,8 @@ interface OAuthProvider {
 
 type Step = "email" | "code" | "password"
 
+const RESEND_COOLDOWN_SECONDS = 60
+
 const GoogleIcon: Component = () => (
   <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true">
     <path
@@ -116,6 +118,27 @@ const Login: Component = () => {
   const [loading, setLoading] = createSignal(false)
   const [providersUnreachable, setProvidersUnreachable] = createSignal(false)
   const [mailUnavailable, setMailUnavailable] = createSignal(false)
+  // The server allows one code a minute per address: the code step counts down to the next.
+  const [resendIn, setResendIn] = createSignal(0)
+  let resendUntil = 0
+  let resendTimer: ReturnType<typeof setInterval> | undefined
+  let sent: { email: string; challengeId: string } | null = null
+  const stopResendTimer = () => {
+    if (resendTimer !== undefined) clearInterval(resendTimer)
+    resendTimer = undefined
+  }
+  const tickResend = () => {
+    const left = Math.max(0, Math.ceil((resendUntil - Date.now()) / 1000))
+    setResendIn(left)
+    if (left === 0) stopResendTimer()
+  }
+  const startResendCountdown = (seconds: number) => {
+    resendUntil = Date.now() + seconds * 1000
+    stopResendTimer()
+    resendTimer = setInterval(tickResend, 1000)
+    tickResend()
+  }
+  onCleanup(stopResendTimer)
 
   /**
    * P6d-T15: THE DESKTOP'S TWO STEPS, IN THIS CARD.
@@ -451,16 +474,32 @@ const Login: Component = () => {
     setError("")
     setNotice("")
     setMailUnavailable(false)
+    // Back to the same address inside the minute: the code already mailed still holds.
+    if (sent?.email === email() && resendIn() > 0) {
+      setChallengeId(sent.challengeId)
+      setCode("")
+      setStep("code")
+      setNotice(i18n.t("kernel.auth.codeSent", { email: email() }))
+      return
+    }
     setLoading(true)
+    const resending = step() === "code"
     try {
       const res = await api.post<MagicRequestResponse>(authApiPath("/magic-link/request"), {
         email: email(),
       })
+      sent = { email: email(), challengeId: res.challengeId }
       setChallengeId(res.challengeId)
       setCode("")
       setStep("code")
-      setNotice(i18n.t("kernel.auth.codeSent", { email: email() }))
+      setNotice(
+        i18n.t(resending ? "kernel.auth.codeResent" : "kernel.auth.codeSent", { email: email() }),
+      )
+      startResendCountdown(RESEND_COOLDOWN_SECONDS)
     } catch (err) {
+      if (err instanceof ApiError && err.status === 429 && err.retryAfter) {
+        startResendCountdown(err.retryAfter)
+      }
       if (err instanceof ApiError && err.code === "EMAIL_SIGN_IN_UNAVAILABLE") {
         // Instance-wide (same answer for every address): open the password
         // form with the email kept, and say why.
@@ -759,6 +798,17 @@ const Login: Component = () => {
               <Button fullWidth type="button" loading={loading()} onClick={() => verifyCode()}>
                 {i18n.t("kernel.auth.verifyCode")}
               </Button>
+              <button
+                type="button"
+                data-testid="code-step-resend"
+                class="text-xs text-accent-muted tabular-nums hover:text-accent disabled:cursor-not-allowed disabled:text-text-tertiary disabled:hover:text-text-tertiary"
+                disabled={resendIn() > 0 || loading()}
+                onClick={requestCode}
+              >
+                {resendIn() > 0
+                  ? i18n.t("kernel.auth.resendCodeIn", { seconds: resendIn() })
+                  : i18n.t("kernel.auth.resendCode")}
+              </button>
               <button
                 type="button"
                 class="text-xs text-accent-muted hover:text-accent"

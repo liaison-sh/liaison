@@ -91,6 +91,7 @@ import {
   EmailSignInUnavailableError,
   requestMagicLink,
   resolveUser,
+  takeSignInCodeSend,
   verifyMagicLink,
 } from "~/modules/auth/magic-link"
 import { assertUnrestrictedSession } from "~/modules/auth/session-ceiling"
@@ -430,47 +431,28 @@ auth.post("/magic-link/request", zValidator("json", magicLinkRequestSchema), asy
   // nothing about which accounts exist (anti-enumeration holds).
   if (!systemEmailLeavesThisInstance()) throw new EmailSignInUnavailableError()
 
-  // Per-IP sliding-window cap (mirrors /password-reset/request): bounds email
-  // bombing regardless of address validity. Fail-closed on Redis error.
-  const ipKey = `magic-rate:${ip}`
-  try {
-    const count = await redis.incr(ipKey)
-    if (count === 1) await redis.expire(ipKey, 3600)
-    if (count > 15) throw new HTTPException(429, { message: "Too many requests" })
-  } catch (err) {
-    if (err instanceof HTTPException) throw err
-    log.error({ err }, "magic-link rate-limit check failed — blocking (fail-closed)")
-    throw new HTTPException(503, { message: "Service temporarily unavailable" })
-  }
-
-  // Per-email brute-force check
-  try {
-    const bruteCheck = await checkBruteForce(redis, `magic:${email.toLowerCase()}`, ip)
-    if (!bruteCheck.allowed) {
-      c.header("Retry-After", String(bruteCheck.retryAfter))
-      throw new HTTPException(429, { message: "Too many attempts" })
-    }
-  } catch (err) {
-    if (err instanceof HTTPException) throw err
-    log.error({ err }, "brute-force check failed — blocking request (fail-closed)")
-    throw new HTTPException(503, { message: "Service temporarily unavailable" })
-  }
-
   // The provider is refusing mail: the answer below is the refusal, for any address, and only
   // the minute's one send tries (see infra/email-outage.ts). Nobody's attempt counts meanwhile,
   // or those who keep trying would be locked out when mail is back.
   const outageAtStart = await mailOutageNow()
 
-  const result = await requestMagicLink(email, signInOrgSlug(c, orgSlug))
-
-  // Record per-email attempt to throttle repeated requests (same as reset).
+  // How often a code can be asked for bounds email bombing whatever the address. Guessing a code
+  // has its own budget per account (magic-link.ts). Fail-closed on a Redis error.
   if (!outageAtStart) {
+    let wait: number | null
     try {
-      await recordFailedAttempt(redis, `magic:${email.toLowerCase()}`, ip)
+      wait = await takeSignInCodeSend(email, ip)
     } catch (err) {
-      log.warn({ err }, "brute-force record failed for magic-link")
+      log.error({ err }, "magic-link send limit check failed — blocking (fail-closed)")
+      throw new HTTPException(503, { message: "Service temporarily unavailable" })
+    }
+    if (wait !== null) {
+      c.header("Retry-After", String(wait))
+      throw new HTTPException(429, { message: "Too many requests" })
     }
   }
+
+  const result = await requestMagicLink(email, signInOrgSlug(c, orgSlug))
 
   // Uniform response — never reveals whether the email exists, by body or by timing.
   await padToResponseFloor(magicStartedAt)

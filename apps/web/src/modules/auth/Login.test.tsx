@@ -81,6 +81,69 @@ describe("Login", () => {
     })
   })
 
+  describe("asking for a new code", () => {
+    const sentOk = (id: string) => jsonResponse({ data: { challengeId: id, message: "sent" } })
+    const ask = async () => {
+      fireEvent.input(screen.getByPlaceholderText("you@company.com"), {
+        target: { value: "test@test.com" },
+      })
+      fireEvent.click(screen.getByRole("button", { name: /continue with email/i }))
+      await waitFor(() => expect(screen.getByPlaceholderText("000000")).toBeInTheDocument())
+    }
+    beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }))
+    afterEach(() => vi.useRealTimers())
+
+    it("counts down on the button, then sends a new code and starts again", async () => {
+      fetchMock.mockResolvedValueOnce(sentOk("chal-1"))
+      renderWithRouter()
+      await ask()
+      const resend = screen.getByTestId("code-step-resend") as HTMLButtonElement
+      expect(resend).toBeDisabled()
+      expect(resend).toHaveTextContent("Send a new code in 60 s")
+      await vi.advanceTimersByTimeAsync(18_000)
+      expect(resend).toHaveTextContent("Send a new code in 42 s")
+      await vi.advanceTimersByTimeAsync(42_000)
+      expect(resend).toBeEnabled()
+      expect(resend).toHaveTextContent(/^Send a new code$/)
+
+      fetchMock.mockResolvedValueOnce(sentOk("chal-2"))
+      fireEvent.click(resend)
+      await waitFor(() =>
+        expect(screen.getByText(/we sent a new 6-digit code/i)).toBeInTheDocument(),
+      )
+      expect(resend).toHaveTextContent("Send a new code in 60 s")
+    })
+
+    it("back to the same address inside the minute: no new request, the code mailed still holds", async () => {
+      fetchMock.mockResolvedValueOnce(sentOk("chal-1"))
+      renderWithRouter()
+      await ask()
+      const requests = () =>
+        fetchMock.mock.calls.filter(([u]) => String(u).includes("/magic-link/request")).length
+      expect(requests()).toBe(1)
+      fireEvent.click(screen.getByRole("button", { name: /use a different email/i }))
+      await waitFor(() =>
+        expect(screen.getByPlaceholderText("you@company.com")).toBeInTheDocument(),
+      )
+      fireEvent.click(screen.getByRole("button", { name: /continue with email/i }))
+      await waitFor(() => expect(screen.getByPlaceholderText("000000")).toBeInTheDocument())
+      expect(requests()).toBe(1)
+    })
+
+    it("a throttled request starts the countdown from what the server said", async () => {
+      fetchMock.mockResolvedValueOnce(sentOk("chal-1"))
+      renderWithRouter()
+      await ask()
+      await vi.advanceTimersByTimeAsync(60_000)
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ error: { message: "Too many requests" } }, 429, { "Retry-After": "1800" }),
+      )
+      fireEvent.click(screen.getByTestId("code-step-resend"))
+      await waitFor(() => expect(screen.getByText(/too many attempts/i)).toBeInTheDocument())
+      expect(screen.getByTestId("code-step-resend")).toBeDisabled()
+    })
+  })
+
   it("reveals the retained password form (with forgot-password) via the toggle", async () => {
     renderWithRouter()
     fireEvent.click(screen.getByRole("button", { name: /sign in with a password/i }))

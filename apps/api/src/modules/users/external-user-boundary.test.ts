@@ -9,6 +9,7 @@ import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type RlsClient, sql } from "~/db"
 import { type PortalClient, withPortalContext } from "~/db/portal-rls"
 import { type UserContext, withRlsContext } from "~/db/rls"
+import { insertSql } from "~/seed/factories/org/test-rows"
 
 const ORG_ID = crypto.randomUUID()
 const COMPANY_ID = crypto.randomUUID()
@@ -60,16 +61,40 @@ const inPortal = (tx: PortalClient, statement: string) =>
   )
 
 beforeAll(async () => {
-  await sql`INSERT INTO kernel.organizations (id, name, slug)
-    VALUES (${ORG_ID}, 'External boundary', ${`ext-boundary-${ORG_ID.slice(0, 8)}`})`
-  await sql`INSERT INTO kernel.users (id, org_id, email, name)
-    VALUES (${MEMBER_ID}, ${ORG_ID}, ${`member-${MEMBER_ID.slice(0, 8)}@example.com`}, 'Member')`
+  await sql.unsafe(
+    insertSql("kernel.organizations", {
+      id: ORG_ID,
+      name: "External boundary",
+      slug: `ext-boundary-${ORG_ID.slice(0, 8)}`,
+    }),
+  )
+  await sql.unsafe(
+    insertSql("kernel.users", {
+      id: MEMBER_ID,
+      org_id: ORG_ID,
+      email: `member-${MEMBER_ID.slice(0, 8)}@example.com`,
+      name: "Member",
+    }),
+  )
   for (const id of [EXTERNAL_ID, OTHER_EXTERNAL_ID]) {
-    await sql`INSERT INTO kernel.users (id, org_id, email, name, user_type, company_id)
-      VALUES (${id}, ${ORG_ID}, ${`client-${id.slice(0, 8)}@example.com`}, 'Client', 'external', ${COMPANY_ID})`
+    await sql.unsafe(
+      insertSql("kernel.users", {
+        id,
+        org_id: ORG_ID,
+        email: `client-${id.slice(0, 8)}@example.com`,
+        name: "Client",
+        user_type: "external",
+        company_id: COMPANY_ID,
+      }),
+    )
   }
-  await sql`INSERT INTO kernel.roles (id, org_id, name)
-    VALUES (${ROLE_ID}, ${ORG_ID}, ${`plain-${ROLE_ID.slice(0, 8)}`})`
+  await sql.unsafe(
+    insertSql("kernel.roles", {
+      id: ROLE_ID,
+      org_id: ORG_ID,
+      name: `plain-${ROLE_ID.slice(0, 8)}`,
+    }),
+  )
 })
 
 afterAll(async () => {
@@ -149,8 +174,11 @@ describe("the member side of the boundary", () => {
     const result = await withRlsContext(member, (tx) =>
       inRls(
         tx,
-        `INSERT INTO kernel.user_roles (user_id, role_id, org_id)
-         VALUES ('${EXTERNAL_ID}', '${ROLE_ID}', '${ORG_ID}') RETURNING user_id`,
+        insertSql(
+          "kernel.user_roles",
+          { user_id: EXTERNAL_ID, role_id: ROLE_ID, org_id: ORG_ID },
+          { returning: "user_id" },
+        ),
       ),
     )
     // The trigger's own words: the row is invisible to this role, so a trigger
@@ -163,16 +191,19 @@ describe("the member side of the boundary", () => {
 
   it("inserting a role for an external user raises on a privileged connection too", async () => {
     await expect(
-      sql`INSERT INTO kernel.user_roles (user_id, role_id, org_id)
-          VALUES (${EXTERNAL_ID}, ${ROLE_ID}, ${ORG_ID})`,
+      sql.unsafe(
+        insertSql("kernel.user_roles", { user_id: EXTERNAL_ID, role_id: ROLE_ID, org_id: ORG_ID }),
+      ),
     ).rejects.toThrow("an external user holds no role")
   })
 
   it("a role for a member still inserts", async () => {
     await withRlsContext(member, async (tx) => {
-      await tx.execute(drizzleSql`
-        INSERT INTO kernel.user_roles (user_id, role_id, org_id)
-        VALUES (${MEMBER_ID}, ${ROLE_ID}, ${ORG_ID})`)
+      await tx.execute(
+        drizzleSql.raw(
+          insertSql("kernel.user_roles", { user_id: MEMBER_ID, role_id: ROLE_ID, org_id: ORG_ID }),
+        ),
+      )
     })
     const [count] = await sql<{ n: number }[]>`
       SELECT count(*)::int AS n FROM kernel.user_roles WHERE user_id = ${MEMBER_ID}`
@@ -207,16 +238,30 @@ describe("the member side of the boundary", () => {
   it("external with null company_id violates the check", async () => {
     const id = crypto.randomUUID()
     await expect(
-      sql`INSERT INTO kernel.users (id, org_id, email, name, user_type)
-          VALUES (${id}, ${ORG_ID}, ${`nocompany-${id.slice(0, 8)}@example.com`}, 'X', 'external')`,
+      sql.unsafe(
+        insertSql("kernel.users", {
+          id,
+          org_id: ORG_ID,
+          email: `nocompany-${id.slice(0, 8)}@example.com`,
+          name: "X",
+          user_type: "external",
+        }),
+      ),
     ).rejects.toThrow("users_external_company_check")
   })
 
   it("a member with a company_id violates the check", async () => {
     const id = crypto.randomUUID()
     await expect(
-      sql`INSERT INTO kernel.users (id, org_id, email, name, company_id)
-          VALUES (${id}, ${ORG_ID}, ${`membercompany-${id.slice(0, 8)}@example.com`}, 'X', ${COMPANY_ID})`,
+      sql.unsafe(
+        insertSql("kernel.users", {
+          id,
+          org_id: ORG_ID,
+          email: `membercompany-${id.slice(0, 8)}@example.com`,
+          name: "X",
+          company_id: COMPANY_ID,
+        }),
+      ),
     ).rejects.toThrow("users_external_company_check")
   })
 })

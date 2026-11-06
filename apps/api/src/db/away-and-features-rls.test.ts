@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type RlsClient, sql } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
+import { insertSql } from "~/seed/factories/org/test-rows"
 
 const ORG_ID = crypto.randomUUID()
 const OTHER_ORG_ID = crypto.randomUUID()
@@ -43,19 +44,63 @@ async function awayStatuses(reader: UserContext): Promise<string[]> {
 
 beforeAll(async () => {
   for (const id of [ORG_ID, OTHER_ORG_ID]) {
-    await sql`INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (${id}, 'Away and features', ${`away-${id.slice(0, 8)}`})`
+    await sql.unsafe(
+      insertSql("kernel.organizations", {
+        id,
+        name: "Away and features",
+        slug: `away-${id.slice(0, 8)}`,
+      }),
+    )
   }
-  await sql`INSERT INTO kernel.users (id, org_id, email, name) VALUES
-    (${ANNA}, ${ORG_ID}, ${`anna-${ANNA.slice(0, 8)}@example.com`}, 'Anna'),
-    (${BEN}, ${ORG_ID}, ${`ben-${BEN.slice(0, 8)}@example.com`}, 'Ben'),
-    (${OUTSIDER}, ${OTHER_ORG_ID}, ${`out-${OUTSIDER.slice(0, 8)}@example.com`}, 'Outsider')`
-  await sql`INSERT INTO kernel.away_ranges (org_id, user_id, starts_on, ends_on, source, status, source_event_ref) VALUES
-    (${ORG_ID}, ${ANNA}, '2026-12-01', '2026-12-05', 'said', 'active', NULL),
-    (${ORG_ID}, ${ANNA}, '2026-12-10', '2026-12-11', 'calendar', 'asked', 'cal:1'),
-    (${ORG_ID}, ${ANNA}, '2026-12-20', '2026-12-21', 'calendar', 'declined', 'cal:2')`
-  await sql`INSERT INTO kernel.org_app_features (org_id, app_name, feature, enabled)
-    VALUES (${ORG_ID}, 'projects', 'time_budgets', true)`
+  await sql.unsafe(
+    insertSql("kernel.users", [
+      { id: ANNA, org_id: ORG_ID, email: `anna-${ANNA.slice(0, 8)}@example.com`, name: "Anna" },
+      { id: BEN, org_id: ORG_ID, email: `ben-${BEN.slice(0, 8)}@example.com`, name: "Ben" },
+      {
+        id: OUTSIDER,
+        org_id: OTHER_ORG_ID,
+        email: `out-${OUTSIDER.slice(0, 8)}@example.com`,
+        name: "Outsider",
+      },
+    ]),
+  )
+  const away = { org_id: ORG_ID, user_id: ANNA }
+  await sql.unsafe(
+    insertSql("kernel.away_ranges", [
+      {
+        ...away,
+        starts_on: "2026-12-01",
+        ends_on: "2026-12-05",
+        source: "said",
+        status: "active",
+        source_event_ref: null,
+      },
+      {
+        ...away,
+        starts_on: "2026-12-10",
+        ends_on: "2026-12-11",
+        source: "calendar",
+        status: "asked",
+        source_event_ref: "cal:1",
+      },
+      {
+        ...away,
+        starts_on: "2026-12-20",
+        ends_on: "2026-12-21",
+        source: "calendar",
+        status: "declined",
+        source_event_ref: "cal:2",
+      },
+    ]),
+  )
+  await sql.unsafe(
+    insertSql("kernel.org_app_features", {
+      org_id: ORG_ID,
+      app_name: "projects",
+      feature: "time_budgets",
+      enabled: true,
+    }),
+  )
 })
 
 afterAll(async () => {
@@ -108,8 +153,13 @@ describe("kernel.away_ranges", () => {
     const outcome = await withRlsContext(ctx(ANNA), async (tx) => ({
       insert: await attempt(
         tx,
-        `INSERT INTO kernel.away_ranges (org_id, user_id, starts_on, ends_on, source)
-         VALUES ('${ORG_ID}', '${ANNA}', '2027-01-01', '2027-01-02', 'said')`,
+        insertSql("kernel.away_ranges", {
+          org_id: ORG_ID,
+          user_id: ANNA,
+          starts_on: "2027-01-01",
+          ends_on: "2027-01-02",
+          source: "said",
+        }),
       ),
       update: await attempt(
         tx,
@@ -122,19 +172,40 @@ describe("kernel.away_ranges", () => {
 
   it("a range with neither an end nor weekdays violates the check", async () => {
     await expect(
-      sql`INSERT INTO kernel.away_ranges (org_id, user_id, starts_on, source)
-          VALUES (${ORG_ID}, ${ANNA}, '2027-02-01', 'said')`,
+      sql.unsafe(
+        insertSql("kernel.away_ranges", {
+          org_id: ORG_ID,
+          user_id: ANNA,
+          starts_on: "2027-02-01",
+          source: "said",
+        }),
+      ),
     ).rejects.toThrow("check")
   })
 
   it("a calendar range needs its event reference, and only a calendar range may be asked", async () => {
     await expect(
-      sql`INSERT INTO kernel.away_ranges (org_id, user_id, starts_on, ends_on, source)
-          VALUES (${ORG_ID}, ${ANNA}, '2027-02-01', '2027-02-02', 'calendar')`,
+      sql.unsafe(
+        insertSql("kernel.away_ranges", {
+          org_id: ORG_ID,
+          user_id: ANNA,
+          starts_on: "2027-02-01",
+          ends_on: "2027-02-02",
+          source: "calendar",
+        }),
+      ),
     ).rejects.toThrow("check")
     await expect(
-      sql`INSERT INTO kernel.away_ranges (org_id, user_id, starts_on, ends_on, source, status)
-          VALUES (${ORG_ID}, ${ANNA}, '2027-02-01', '2027-02-02', 'said', 'asked')`,
+      sql.unsafe(
+        insertSql("kernel.away_ranges", {
+          org_id: ORG_ID,
+          user_id: ANNA,
+          starts_on: "2027-02-01",
+          ends_on: "2027-02-02",
+          source: "said",
+          status: "asked",
+        }),
+      ),
     ).rejects.toThrow("check")
   })
 })
@@ -152,8 +223,12 @@ describe("kernel.org_app_features", () => {
     const refused = await withRlsContext(ctx(BEN), (tx) =>
       attempt(
         tx,
-        `INSERT INTO kernel.org_app_features (org_id, app_name, feature, enabled)
-         VALUES ('${ORG_ID}', 'projects', 'another', true)`,
+        insertSql("kernel.org_app_features", {
+          org_id: ORG_ID,
+          app_name: "projects",
+          feature: "another",
+          enabled: true,
+        }),
       ),
     )
     expect(refused).toBe("42501")
@@ -177,10 +252,24 @@ describe("kernel.org_app_features", () => {
 
   it("deleting a user who changed a feature leaves changed_by null", async () => {
     const changer = crypto.randomUUID()
-    await sql`INSERT INTO kernel.users (id, org_id, email, name)
-      VALUES (${changer}, ${ORG_ID}, ${`changer-${changer.slice(0, 8)}@example.com`}, 'Changer')`
-    await sql`INSERT INTO kernel.org_app_features (org_id, app_name, feature, enabled, changed_by, changed_at)
-      VALUES (${ORG_ID}, 'projects', 'changed', true, ${changer}, now())`
+    await sql.unsafe(
+      insertSql("kernel.users", {
+        id: changer,
+        org_id: ORG_ID,
+        email: `changer-${changer.slice(0, 8)}@example.com`,
+        name: "Changer",
+      }),
+    )
+    await sql.unsafe(
+      insertSql("kernel.org_app_features", {
+        org_id: ORG_ID,
+        app_name: "projects",
+        feature: "changed",
+        enabled: true,
+        changed_by: changer,
+        changed_at: { raw: "now()" },
+      }),
+    )
     await sql`DELETE FROM kernel.users WHERE id = ${changer}`
     const [row] = await sql<{ changed_by: string | null; enabled: boolean }[]>`
       SELECT changed_by, enabled FROM kernel.org_app_features

@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, sql } from "~/db"
 import { PortalContextRefusedError, withPortalContext } from "~/db/portal-rls"
+import { insertSql } from "~/seed/factories/org/test-rows"
 
 const ORG_ID = crypto.randomUUID()
 const OTHER_ORG_ID = crypto.randomUUID()
@@ -16,15 +17,45 @@ const MEMBER_ID = crypto.randomUUID()
 
 beforeAll(async () => {
   for (const id of [ORG_ID, OTHER_ORG_ID]) {
-    await sql`INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (${id}, 'Portal context', ${`portal-ctx-${id.slice(0, 8)}`})`
+    await sql.unsafe(
+      insertSql("kernel.organizations", {
+        id,
+        name: "Portal context",
+        slug: `portal-ctx-${id.slice(0, 8)}`,
+      }),
+    )
   }
-  await sql`INSERT INTO kernel.users (id, org_id, email, name, user_type, company_id)
-    VALUES (${EXTERNAL_ID}, ${ORG_ID}, ${`client-${EXTERNAL_ID.slice(0, 8)}@example.com`}, 'Client', 'external', ${COMPANY_ID})`
-  await sql`INSERT INTO kernel.users (id, org_id, email, name, user_type, company_id, status)
-    VALUES (${SUSPENDED_ID}, ${ORG_ID}, ${`gone-${SUSPENDED_ID.slice(0, 8)}@example.com`}, 'Gone', 'external', ${COMPANY_ID}, 'deactivated')`
-  await sql`INSERT INTO kernel.users (id, org_id, email, name)
-    VALUES (${MEMBER_ID}, ${ORG_ID}, ${`member-${MEMBER_ID.slice(0, 8)}@example.com`}, 'Member')`
+  await sql.unsafe(
+    insertSql("kernel.users", [
+      {
+        id: EXTERNAL_ID,
+        org_id: ORG_ID,
+        email: `client-${EXTERNAL_ID.slice(0, 8)}@example.com`,
+        name: "Client",
+        user_type: "external",
+        company_id: COMPANY_ID,
+        status: "active",
+      },
+      {
+        id: SUSPENDED_ID,
+        org_id: ORG_ID,
+        email: `gone-${SUSPENDED_ID.slice(0, 8)}@example.com`,
+        name: "Gone",
+        user_type: "external",
+        company_id: COMPANY_ID,
+        status: "deactivated",
+      },
+      {
+        id: MEMBER_ID,
+        org_id: ORG_ID,
+        email: `member-${MEMBER_ID.slice(0, 8)}@example.com`,
+        name: "Member",
+        user_type: "member",
+        company_id: null,
+        status: "active",
+      },
+    ]),
+  )
 })
 
 afterAll(async () => {

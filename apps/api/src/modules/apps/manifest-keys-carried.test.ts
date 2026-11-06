@@ -10,6 +10,7 @@ import { sql } from "~/db/connection"
 import { resetAppRegistries, toolRegistry } from "~/modules/apps/app-registries"
 import { validateAppManifest } from "~/modules/apps/contract"
 import { registerApps } from "~/modules/apps/runtime"
+import { insertSql } from "~/seed/factories/org/test-rows"
 
 const TEST_ORG = "00000000-0000-0000-0000-000000120004"
 const APP = "carried-keys-app"
@@ -121,9 +122,13 @@ async function cleanup() {
 
 describe("manifest keys carried onto the registry", () => {
   beforeAll(async () => {
-    await sql`INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (${TEST_ORG}, 'Carried Keys Org', 'carried-keys')
-      ON CONFLICT (id) DO NOTHING`
+    await sql.unsafe(
+      insertSql(
+        "kernel.organizations",
+        { id: TEST_ORG, name: "Carried Keys Org", slug: "carried-keys" },
+        { onConflictDoNothing: true },
+      ),
+    )
   })
 
   afterEach(async () => {

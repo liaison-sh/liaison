@@ -23,6 +23,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import postgres from "postgres"
 import { runMigrations } from "~/db/migrate"
+import { insertSql } from "~/seed/factories/org/test-rows"
 
 const MIGRATIONS = join(import.meta.dir, "migrations")
 const FIRST_NEW_TAG = "0263_mail_inbound_sender_index"
@@ -98,11 +99,16 @@ beforeAll(async () => {
 
   fresh = postgres(freshAsSuperuser.toString(), { max: 1, onnotice: () => {} })
   // People who are already there when the migrations run.
-  await fresh`INSERT INTO kernel.organizations (id, name, slug) VALUES (${ORG_ID}, 'Existing', 'existing')`
-  await fresh`INSERT INTO kernel.users (id, org_id, email, name, status) VALUES
-    (${ACTIVE_A}, ${ORG_ID}, 'a@example.com', 'A', 'active'),
-    (${ACTIVE_B}, ${ORG_ID}, 'b@example.com', 'B', 'active'),
-    (${DEACTIVATED}, ${ORG_ID}, 'c@example.com', 'C', 'deactivated')`
+  await fresh.unsafe(
+    insertSql("kernel.organizations", { id: ORG_ID, name: "Existing", slug: "existing" }),
+  )
+  await fresh.unsafe(
+    insertSql("kernel.users", [
+      { id: ACTIVE_A, org_id: ORG_ID, email: "a@example.com", name: "A", status: "active" },
+      { id: ACTIVE_B, org_id: ORG_ID, email: "b@example.com", name: "B", status: "active" },
+      { id: DEACTIVATED, org_id: ORG_ID, email: "c@example.com", name: "C", status: "deactivated" },
+    ]),
+  )
   seatsBefore = (await seatQuery(fresh))[0]?.n ?? -1
   // A database whose calendar app registered before the column was declared.
   await fresh.unsafe(`CREATE SCHEMA app_calendar`)
@@ -204,8 +210,16 @@ describe("the external-user migrations on a live database, by a non-superuser lo
   })
 
   test("portal.company_id returns the caller's company under FORCE RLS on that login", async () => {
-    await fresh`INSERT INTO kernel.users (id, org_id, email, name, user_type, company_id)
-      VALUES (${EXTERNAL}, ${ORG_ID}, 'client@example.com', 'Client', 'external', ${COMPANY})`
+    await fresh.unsafe(
+      insertSql("kernel.users", {
+        id: EXTERNAL,
+        org_id: ORG_ID,
+        email: "client@example.com",
+        name: "Client",
+        user_type: "external",
+        company_id: COMPANY,
+      }),
+    )
     // The premise: the login itself reads nothing here, so a definer it owned would too.
     const [plain] = await asLogin<{ n: number }[]>`SELECT count(*)::int AS n FROM kernel.users`
     expect(plain?.n).toBe(0)
@@ -221,14 +235,15 @@ describe("the external-user migrations on a live database, by a non-superuser lo
   })
 
   test("a role for an external user raises as liaison_rls on that login", async () => {
-    await fresh`INSERT INTO kernel.roles (id, org_id, name) VALUES (${ROLE_ID}, ${ORG_ID}, 'plain')`
+    await fresh.unsafe(insertSql("kernel.roles", { id: ROLE_ID, org_id: ORG_ID, name: "plain" }))
     await expect(
       asLogin.begin(async (tx) => {
         await tx`SELECT set_config('app.current_org_id', ${ORG_ID}, true)`
         await tx`SELECT set_config('app.current_user_id', ${ACTIVE_A}, true)`
         await tx`SELECT set_config('role', 'liaison_rls', true)`
-        await tx`INSERT INTO kernel.user_roles (user_id, role_id, org_id)
-                 VALUES (${EXTERNAL}, ${ROLE_ID}, ${ORG_ID})`
+        await tx.unsafe(
+          insertSql("kernel.user_roles", { user_id: EXTERNAL, role_id: ROLE_ID, org_id: ORG_ID }),
+        )
       }),
     ).rejects.toThrow("an external user holds no role")
   })

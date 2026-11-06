@@ -203,7 +203,7 @@ async function seedEnrolledMailbox(orgId?: string): Promise<Seeded> {
             (org_id, handle, thread_id, originating_thread_id, tool_name, tool_params,
              current_payload, expires_at, requested_by, resource_owner_id)
           VALUES (${user.orgId}::uuid, ${`reset-approval-${stamp}`}, ${threadId}::uuid,
-                  ${threadId}::uuid, 'mail__compose',
+                  ${threadId}::uuid, 'mail:compose',
                   ${JSON.stringify({ accountId, mailboxSealed: true, bodyCiphertext: "AAAA" })}::jsonb,
                   ${JSON.stringify({ accountId, mailboxSealed: true, bodyCiphertext: "AAAA" })}::jsonb,
                   now() + interval '1 day', ${user.id}::uuid, ${user.id}::uuid)
@@ -664,6 +664,43 @@ describe("POST /api/mailbox-keys/reset", () => {
     expect(armed[0]?.armed).toBe(false)
   })
 
+  test("leaves another app's approval that names the mailbox", async () => {
+    const mine = await seedEnrolledMailbox(orgId)
+    const payload = JSON.stringify({ accountId: mine.accountId, textBody: "not a mail draft" })
+    const approvalId = await withSystemDb("mailbox-reset-test-other-app", async (tx) => {
+      const threadId = crypto.randomUUID()
+      await tx.execute(drizzleSql`
+        INSERT INTO kernel.threads (id, org_id, handle, title, created_by)
+        VALUES (${threadId}::uuid, ${orgId}::uuid, ${`other-app-${threadId}`}, 'Chat',
+                ${mine.user.id}::uuid)`)
+      return (
+        extractRows<{ id: string }>(
+          await tx.execute(drizzleSql`
+            INSERT INTO kernel.approval_requests
+              (org_id, handle, thread_id, originating_thread_id, tool_name, tool_params,
+               current_payload, expires_at, requested_by)
+            VALUES (${orgId}::uuid, ${`other-app-${threadId}`}, ${threadId}::uuid,
+                    ${threadId}::uuid, 'mailchimp:send', ${payload}::jsonb, ${payload}::jsonb,
+                    now() + interval '1 day', ${mine.user.id}::uuid)
+            RETURNING id::text AS id`),
+        )[0] as { id: string }
+      ).id
+    })
+    const res = await post(mine.app, "/api/mailbox-keys/reset", {
+      stepUpCode: await stepUpCode(mine.user.id),
+    })
+    expect(res.status).toBe(200)
+    const row = await withSystemDb("mailbox-reset-test-other-app-after", async (tx) =>
+      extractRows<{ status: string; current_payload: { textBody?: string } }>(
+        await tx.execute(drizzleSql`
+          SELECT status, current_payload FROM kernel.approval_requests
+           WHERE id = ${approvalId}::uuid`),
+      ),
+    )
+    expect(row[0]?.status).toBe("pending")
+    expect(row[0]?.current_payload.textBody).toBe("not a mail draft")
+  })
+
   test("cancels a pending UNSEALED mail approval on the mailbox too", async () => {
     const mine = await seedEnrolledMailbox(orgId)
     const approvalId = await withSystemDb("mailbox-reset-test-unsealed", async (tx) => {
@@ -679,7 +716,7 @@ describe("POST /api/mailbox-keys/reset", () => {
               (org_id, handle, thread_id, originating_thread_id, tool_name, tool_params,
                current_payload, expires_at, requested_by)
             VALUES (${orgId}::uuid, ${`unsealed-${threadId}`}, ${threadId}::uuid,
-                    ${threadId}::uuid, 'mail__reply',
+                    ${threadId}::uuid, 'mail:reply',
                     ${JSON.stringify({ conversationId: mine.conversationId })}::jsonb,
                     ${JSON.stringify({ conversationId: mine.conversationId })}::jsonb,
                     now() + interval '1 day', ${mine.user.id}::uuid)

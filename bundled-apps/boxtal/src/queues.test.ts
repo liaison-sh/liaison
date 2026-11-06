@@ -371,12 +371,15 @@ describe("every queue speaks the same row shape", () => {
 // the carrier, so the rows still to do are distinguishable from the ones that are done. The mark
 // lives on the SHIPMENT row as a timestamp, ships nothing, and is reversible.
 describe("ready_set_packed: the warehouse bench mark", () => {
+  // Shipment row ids are UUIDs (findShipmentByRef only asks the id column for a UUID-shaped reference).
+  const S1_ID = "11111111-1111-4111-8111-111111111111"
+  const S2_ID = "22222222-2222-4222-8222-222222222222"
   function packedCtx() {
     return makeCtx({
       seed: {
         shipment: [
-          { id: "s1", order_status: "CONFIRMED", recipient_summary: "Globex", document_ref: "inv-1", boxtal_order_id: "BX-777" },
-          { id: "s2", order_status: "CONFIRMED", recipient_summary: "Acme", document_ref: "inv-2" },
+          { id: S1_ID, order_status: "CONFIRMED", recipient_summary: "Globex", document_ref: "inv-1", boxtal_order_id: "BX-777" },
+          { id: S2_ID, order_status: "CONFIRMED", recipient_summary: "Acme", document_ref: "inv-2" },
         ],
       },
     })
@@ -385,27 +388,27 @@ describe("ready_set_packed: the warehouse bench mark", () => {
   it("sets the mark: stamps packed_at on that row only", async () => {
     const ctx = packedCtx()
     const before = Date.now()
-    const res = await readySetPacked(ctx, { shipment_id: "s1", packed: true })
+    const res = await readySetPacked(ctx, { shipment_id: S1_ID, packed: true })
     expect(res.error).toBeUndefined()
-    expect(res.shipment_id).toBe("s1")
+    expect(res.shipment_id).toBe(S1_ID)
     expect(res.packed).toBe(true)
     expect(typeof res.packed_at).toBe("string")
     expect(new Date(res.packed_at as string).getTime()).toBeGreaterThanOrEqual(before - 1000)
-    const stored = (await ctx.db.findMany("shipment", { where: { id: "s1" }, limit: 1 })) as Array<{ packed_at?: string | null }>
+    const stored = (await ctx.db.findMany("shipment", { where: { id: S1_ID }, limit: 1 })) as Array<{ packed_at?: string | null }>
     expect(stored[0]!.packed_at).toBe(res.packed_at)
     // The sibling row is untouched: the mark is per parcel.
-    const other = (await ctx.db.findMany("shipment", { where: { id: "s2" }, limit: 1 })) as Array<{ packed_at?: string | null }>
+    const other = (await ctx.db.findMany("shipment", { where: { id: S2_ID }, limit: 1 })) as Array<{ packed_at?: string | null }>
     expect(other[0]!.packed_at ?? null).toBeNull()
   })
 
   it("clears the mark: un-ticking sets packed_at back to null", async () => {
     const ctx = packedCtx()
-    await readySetPacked(ctx, { shipment_id: "s1", packed: true })
-    const res = await readySetPacked(ctx, { shipment_id: "s1", packed: false })
+    await readySetPacked(ctx, { shipment_id: S1_ID, packed: true })
+    const res = await readySetPacked(ctx, { shipment_id: S1_ID, packed: false })
     expect(res.error).toBeUndefined()
     expect(res.packed).toBe(false)
     expect(res.packed_at).toBeNull()
-    const stored = (await ctx.db.findMany("shipment", { where: { id: "s1" }, limit: 1 })) as Array<{ packed_at?: string | null }>
+    const stored = (await ctx.db.findMany("shipment", { where: { id: S1_ID }, limit: 1 })) as Array<{ packed_at?: string | null }>
     expect(stored[0]!.packed_at).toBeNull()
   })
 
@@ -414,7 +417,7 @@ describe("ready_set_packed: the warehouse bench mark", () => {
     const res = await readySetPacked(ctx, { shipment_id: "BX-777", packed: true })
     expect(res.error).toBeUndefined()
     // Answers with the LOCAL row id, whichever reference came in.
-    expect(res.shipment_id).toBe("s1")
+    expect(res.shipment_id).toBe(S1_ID)
     expect(res.packed).toBe(true)
   })
 
@@ -433,12 +436,12 @@ describe("ready_set_packed: the warehouse bench mark", () => {
     const fresh = await readyList(ctx)
     expect(fresh.rows.every((r) => r.packed === false)).toBe(true)
     expect(fresh.rows.every((r) => r.packed_at === null)).toBe(true)
-    const set = await readySetPacked(ctx, { shipment_id: "s1", packed: true })
+    const set = await readySetPacked(ctx, { shipment_id: S1_ID, packed: true })
     const after = await readyList(ctx)
-    const s1 = after.rows.find((r) => r.id === "s1")!
+    const s1 = after.rows.find((r) => r.id === S1_ID)!
     expect(s1.packed).toBe(true)
     expect(s1.packed_at).toBe(set.packed_at)
-    expect(after.rows.find((r) => r.id === "s2")!.packed).toBe(false)
+    expect(after.rows.find((r) => r.id === S2_ID)!.packed).toBe(false)
     // The mark must not reorder the queue: the print station works it top down.
     expect(after.rows.map((r) => r.id)).toEqual(fresh.rows.map((r) => r.id))
   })
@@ -570,7 +573,7 @@ describe("toPrepareList", () => {
     const ctx = makeCtx({
       seed: { app_config: [SENDER_CONFIG] },
       invoices: [{ id: "inv-svc", counterparty_name: "Consulting Co", counterparty_country: "FR" }],
-      docs: invoiceDoc({ id: "inv-svc", lines: [{ id: "l1", description: "Consulting", quantity: 1, unit_price_minor: "10000", hs_code: null, country_of_origin: null, customs_description: null, product_source: null, external_id: null }] }),
+      docs: invoiceDoc({ id: "inv-svc", lines: [{ id: "l1", line_kind: "software", description: "Consulting", quantity: 1, unit_price_minor: "10000", hs_code: null, country_of_origin: null, customs_description: null, product_source: null, external_id: null }] }),
     })
     const { rows } = await toPrepareList(ctx)
     // Previously dropped as "services-only" — but the badge estimate counts every

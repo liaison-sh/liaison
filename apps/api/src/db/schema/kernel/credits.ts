@@ -52,16 +52,16 @@ export const creditTransactions = kernel.table(
     inputTokens: integer("input_tokens"),
     outputTokens: integer("output_tokens"),
     rawCost: numeric("raw_cost", { precision: 16, scale: 8 }),
-    /** The provider-reported (or token-estimated) cost in USD (migration 0264). */
+    /** The provider-reported (or token-estimated) cost in USD (migration 0265). */
     rawCostUsd: numeric("raw_cost_usd", { precision: 16, scale: 8 }),
-    /** USD per EUR, the daily ECB rate the meter used for this row (migration 0264). */
+    /** USD per EUR, the daily ECB rate the meter used for this row (migration 0265). */
     usdEurRate: numeric("usd_eur_rate", { precision: 12, scale: 6 }),
     description: text("description"),
     externalPaymentRef: text("external_payment_ref"),
     cycleId: text("cycle_id"),
     /**
      * The transfer this row arrived through when its org moved here; NULL for a
-     * row metered on this instance (migration 0270). The daily usage report
+     * row metered on this instance (migration 0271). The daily usage report
      * counts NULL rows only.
      */
     arrivedVia: uuid("arrived_via"),

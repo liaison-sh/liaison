@@ -50,6 +50,12 @@ export function dateOnly(v: unknown): string | null {
   return m ? m[1]! : null
 }
 
+/** True when `date` is `YYYY-MM-DD` and names a real day, so `2026-02-31` is no date. */
+export function isCalendarDate(date: string): boolean {
+  const parsed = new Date(`${date}T00:00:00Z`)
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date
+}
+
 /**
  * Lifecycle-log event names that record a refund against a document. Both the
  * agent path (documents.record_refund → *_refund_recorded) and the Shopify
@@ -108,6 +114,7 @@ export async function findIssuerProfile(
     bank_name: (row.bank_name as string | null) ?? null,
     default_language:
       (row.default_language as "en" | "fr" | "de") ?? "en",
+    timezone: (row.timezone as string | null) ?? null,
     logo_file_id: (row.logo_file_id as string | null) ?? null,
     // Defaults mirror the manifest schema defaults — older fixtures and
     // partial INSERTs sometimes land without these, so we fall back here

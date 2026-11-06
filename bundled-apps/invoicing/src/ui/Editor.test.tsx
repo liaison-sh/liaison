@@ -53,6 +53,8 @@ import {
   pendingApprovalMessage,
   buildItems,
   buildDocumentsUpdatePatch,
+  defaultDraft,
+  statedIssuedAt,
   NOTES_MAX_LENGTH,
   minorToPriceInput,
   priceInputToMinor,
@@ -63,6 +65,8 @@ import {
   type DraftDocument,
   type DraftLine,
   type EditorIssuerProfile,
+  issuedAtForIssuer,
+  localCivilDate,
 } from "./Editor"
 
 const sourceEditor = readFileSync(join(import.meta.dir, "Editor.tsx"), "utf-8")
@@ -1172,5 +1176,62 @@ describe("Editor e-invoicing fields", () => {
     expect(sourceEditor).toContain("einvoicing_classify")
     // Calm: the e-invoicing note is never painted as an error.
     expect(sourceEditor).toMatch(/data-testid="editor-einvoicing-note"[^>]*class="[^"]*text-text-secondary/)
+  })
+})
+
+describe("the default issue date", () => {
+  it("a new document takes its issuer's today while the field holds the default", () => {
+    expect(issuedAtForIssuer("2026-12-31", "2026-12-31", "2027-01-01")).toBe("2027-01-01")
+  })
+
+  it("a date somebody typed stays", () => {
+    expect(issuedAtForIssuer("2026-12-15", "2026-12-31", "2027-01-01")).toBe("2026-12-15")
+  })
+
+  it("an opened document keeps its date", () => {
+    expect(issuedAtForIssuer("2026-12-31", null, "2027-01-01")).toBe("2026-12-31")
+  })
+
+  it("an issuer whose zone is unknown leaves the date as it is", () => {
+    expect(issuedAtForIssuer("2026-12-31", "2026-12-31", null)).toBe("2026-12-31")
+  })
+
+  it("the date shown before the issuer is known is this computer's, not UTC's", () => {
+    // Noon-free local parts: 00:20 local on 1 January is 1 January, whatever the offset to UTC.
+    expect(localCivilDate(new Date(2027, 0, 1, 0, 20))).toBe("2027-01-01")
+    expect(localCivilDate(new Date(2026, 11, 31, 23, 59))).toBe("2026-12-31")
+  })
+})
+
+describe("the issue date of a new document", () => {
+  const chosen = { ...defaultDraft("quote"), issued_at: "2026-10-30" }
+
+  it("a date the person chose is sent", () => {
+    for (const type of ["quote", "proforma", "purchase_order", "credit_note"] as const) {
+      expect(statedIssuedAt({ ...chosen, type }, "2026-11-06")).toBe("2026-10-30")
+    }
+  })
+
+  it("the default the field was given is not a choice: the server dates it", () => {
+    expect(statedIssuedAt({ ...chosen, issued_at: "2026-11-06" }, "2026-11-06")).toBeUndefined()
+  })
+
+  it("an emptied field sends nothing", () => {
+    expect(statedIssuedAt({ ...chosen, issued_at: null }, "2026-11-06")).toBeUndefined()
+  })
+
+  it("an invoice takes its date from the moment its number is taken", () => {
+    expect(statedIssuedAt({ ...chosen, type: "invoice" }, "2026-11-06")).toBeUndefined()
+  })
+
+  // An unknown top-level parameter is refused outright, so sending the date to a tool that does
+  // not declare it would stop every new document of that type from being created.
+  it("every create tool the date is sent to declares it", () => {
+    const manifest = JSON.parse(readFileSync(join(import.meta.dir, "../../app.manifest.json"), "utf8")) as {
+      tools: Record<string, { params: { properties: Record<string, unknown> } }>
+    }
+    for (const tool of ["quote_create_and_issue", "proforma_create_and_issue", "po_create_and_issue", "credit_note_create_and_issue"]) {
+      expect(manifest.tools[tool]?.params.properties.issued_at, tool).toBeDefined()
+    }
   })
 })

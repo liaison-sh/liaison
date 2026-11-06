@@ -542,6 +542,50 @@ export async function demoLedgerAdd(
 }
 
 /**
+ * Move every email counter still under a plain address to `keyOf(address)`,
+ * adding to what that key already holds. Returns how many moved.
+ */
+export async function demoLedgerRekeyPlainEmails(
+  keyOf: (email: string) => string,
+): Promise<number> {
+  const k = drizzleSql.raw(schemaRef("kernel"))
+  return withSystemDb("demo-ledger-rekey", async (tx) => {
+    const rows = rowsOf(
+      await tx.execute(drizzleSql`
+        DELETE FROM ${k}.demo_spend WHERE budget = 'email' AND key LIKE '%@%'
+        RETURNING key, period, spent_micro_eur AS v
+      `),
+    ) as Array<{ key: string; period: string; v: unknown }>
+    for (const r of rows) {
+      await tx.execute(drizzleSql`
+        INSERT INTO ${k}.demo_spend (budget, key, period, spent_micro_eur, updated_at)
+        VALUES ('email', ${keyOf(r.key)}, ${r.period}, ${Number(r.v)}, now())
+        ON CONFLICT (budget, key, period) DO UPDATE
+          SET spent_micro_eur = ${k}.demo_spend.spent_micro_eur + ${Number(r.v)}, updated_at = now()
+      `)
+    }
+    return rows.length
+  })
+}
+
+/**
+ * Delete the per-network counters of UTC days before `day`. Only the current
+ * day's counter is ever read, and its key is the visitor's network range, which
+ * is kept no longer than it serves. Returns how many went.
+ */
+export async function demoLedgerPruneNetworkDays(day: string): Promise<number> {
+  const k = drizzleSql.raw(schemaRef("kernel"))
+  return withSystemDb("demo-ledger-prune-net", async (tx) => {
+    const rows = rowsOf(
+      await tx.execute(drizzleSql`
+        DELETE FROM ${k}.demo_spend WHERE budget = 'net' AND period < ${day} RETURNING key
+      `),
+    )
+    return rows.length
+  })
+}
+
+/**
  * A visitor spend refusal as an HTTP error: its real status and its `code`
  * (`errorHandler` passes a typed `{ status, code }` error through as is).
  */

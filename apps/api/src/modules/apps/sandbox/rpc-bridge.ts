@@ -150,8 +150,8 @@ export function createRpcBridge(
  * read here only makes a disclosed answer thinner, which FX7 already accepts as
  * the cost, while missing a write repeats a side effect the requester never
  * asked to repeat. Pure reads (`*_get`, `*_search`, `*_list*`, `db_findMany`,
- * `db_findOne`, `db_count`, `config_get`, `connections_get*`, the log and codec
- * helpers) are absent, so a rerun can still answer.
+ * `db_findOne`, `db_count`, `config_get`, `connections_get*`, `time_civil`, the log
+ * and codec helpers) are absent, so a rerun can still answer.
  *
  * A new write method goes here in the same change:
  * `tests/security/tool-side-effect-invariant.test.ts` enumerates the bridge and

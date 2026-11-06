@@ -4,6 +4,7 @@
 // two-eyes check and the issue input built from a draft.
 
 import { type EinvoiceRowColumns, counterpartyEinvoiceFields } from "../einvoicing/issue-gate"
+import type { IssueDateParts } from "../issue-date"
 import { lineSubtotal, lineTax, netOfIncludedTax } from "../money"
 import {
   type Counterparty,
@@ -270,6 +271,7 @@ export function buildIssueInputFromDraft(
   draft: DraftRow,
   issuer: IssuerProfile,
   counterparty: Counterparty,
+  when: IssueDateParts,
 ): {
   type: DocumentType
   issuer: IssuerProfile
@@ -299,8 +301,8 @@ export function buildIssueInputFromDraft(
     draft: {
       currency: draft.currency,
       incoterm: draft.incoterm ?? "DAP",
-      year_of_issue: new Date().getUTCFullYear(),
-      issued_at: new Date().toISOString().slice(0, 10),
+      year_of_issue: when.year_of_issue,
+      issued_at: when.issued_at,
       due_at: draft.due_at ?? null,
       external_refs: draft.external_refs ?? {},
       // Carried from the draft onto the issued document: a note typed while drafting is

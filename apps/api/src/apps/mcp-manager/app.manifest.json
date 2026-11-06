@@ -1,7 +1,7 @@
 {
   "name": "mcp-manager",
   "agentInstructions": "MCP Manager administers external MCP server connections and their aggregated tools. Reach for it to ADD an http/sse MCP server (e.g. an ERP/inventory server the user gives you a URL + API key for), LIST existing connections, or inspect the tools they expose. Key handles: connection id, server name, exposed tool names. To connect a server: call add_connection with displayName + httpUrl + (for an API key) authFlavor:'bearer' and the bearerToken. The flow is connect→test→policy→discover: the server's own tools only become discoverable to the agent (via tool_search) once the connection has been dialed/tested and an access policy permits them — so after add_connection, tell the user its tools will become available after it's tested and policy-allowed (point them to the MCP Manager test/policy step). Do NOT fabricate that the ERP's stock tools are already callable. MCP servers are remote (http/sse). The agent does NOT handle OAuth flows — those stay in the MCP Manager wizard. Silent-failure gotcha: a flapping or disconnected server surfaces in a degraded state, not as an error — report the degraded state rather than assuming its tools are available.",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "description": "Inbound MCP aggregator: connect, gate, audit external MCP servers",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -17,6 +17,7 @@
   "tools": {
     "add_connection": {
       "description": "Add an external MCP server (http/sse) so its tools can be aggregated. Only for a system that offers one; a REST API with a key goes through api-connector__connector_adapter_save. Gated: not live until approved, then tested and checked.",
+      "searchKeywords": ["mcp", "serveur", "server", "connecter"],
       "requiredScopes": ["mcp_manager:personal_connection:write"],
       "trustBoundary": "user",
       "handler": "addConnection",
@@ -82,6 +83,7 @@
     },
     "list_connections": {
       "description": "List the org's MCP server connections (id, name, transport, auth flavor, visibility, default policy, enabled/disabled). Read-only.",
+      "searchKeywords": ["mcp", "serveur", "serveurs", "server"],
       "readOnly": true,
       "requiredScopes": ["mcp_manager:connection:read"],
       "trustBoundary": "user",

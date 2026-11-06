@@ -224,6 +224,7 @@ export async function items_create(
 | `ctx.enqueueJob` | Enqueue a background job |
 | `ctx.connections` | Per-connection OAuth/credential tokens |
 | `ctx.fetch` | Call an external API (kernel-mediated, allowlist-checked) |
+| `ctx.time.civil` | The date and clock of an instant in a named IANA zone. The sandbox has no `Intl`, so `new Date()` only knows UTC. `UTC`, the column default, follows the organization's zone; `Etc/UTC` is UTC exactly; an unknown zone rejects with `invalid_timezone` |
 | `ctx.resolveContact` | Resolve or create a contact |
 | `ctx.logger` | Structured logging |
 
@@ -314,6 +315,22 @@ parameter pattern run on the server. The install refuses a pattern longer than
 a repeated part must not match the same text in two ways. A pattern whose check
 takes too long is refused too, so keep patterns short. See
 [the package format](app-package-format.md#regular-expressions-in-a-manifest).
+
+
+### Let people find it
+
+An agent finds most tools by searching. Add the words people use for what the
+tool does, when its name and description do not carry them, in
+`searchKeywords`: single words, in any language, the words on your screens
+included. They are read only by the search, never sent to a model, so they cost
+no tokens. Accents do not matter: `clôturer` also answers to `cloturer`.
+
+```json
+"close": {
+  "description": "Close a ticket.",
+  "searchKeywords": ["fermer", "clôturer", "résoudre"]
+}
+```
 
 ---
 

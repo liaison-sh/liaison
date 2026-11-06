@@ -1078,7 +1078,7 @@ async function agentReferenceColumns(tx: PrivilegedDb): Promise<AgentRefColumn[]
       WHERE c.relkind IN ('r', 'p') AND NOT c.relispartition
         AND a.attnum > 0 AND NOT a.attisdropped
         AND (a.atttypid = 'uuid'::regtype OR (a.atttypid = 'text'::regtype AND a.attname = 'entity_id'))
-        AND (n.nspname = 'kernel' OR n.nspname LIKE 'app\_%')
+        AND (n.nspname = 'kernel' OR n.nspname LIKE 'app\\_%')
         AND NOT (n.nspname = 'kernel' AND c.relname = 'agents')
         AND EXISTS (SELECT 1 FROM pg_attribute o
                     WHERE o.attrelid = c.oid AND o.attname = 'org_id' AND NOT o.attisdropped)

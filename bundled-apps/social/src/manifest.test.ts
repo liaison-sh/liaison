@@ -31,7 +31,8 @@ describe("social manifest (B1)", () => {
     // 0.6.55: in the managed edition, Meta webhook setup points at the server-level callback routed per org.
     // 0.6.56: the app's own install resolves the control-plane contract through an override
     // (the shared package depends on it by workspace protocol); no change to what it does.
-    expect(manifest.version).toBe("0.6.56")
+    // 0.6.57: the same number (0.6.56) carried different content on two lines of work; this one has both.
+    expect(manifest.version).toBe("0.6.57")
     expect(manifest.packageFormat).toBe(1)
   })
 

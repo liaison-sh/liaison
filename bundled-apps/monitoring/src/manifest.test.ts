@@ -72,7 +72,8 @@ describe("monitoring app.manifest.json", () => {
     // 0.4.8: every HUMAN setup step says its own minutes.
     // 0.4.11: the app's own install resolves the control-plane contract through an override
     // (the shared package depends on it by workspace protocol); no change to what it does.
-    expect(MANIFEST.version).toBe("0.4.11")
+    // 0.4.12: the same number (0.4.11) carried different content on two lines of work; this one has both.
+    expect(MANIFEST.version).toBe("0.4.12")
   })
 
   // The declarative settings page (/settings/apps/monitoring): the detailed

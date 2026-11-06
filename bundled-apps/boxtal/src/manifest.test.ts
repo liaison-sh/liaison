@@ -562,7 +562,8 @@ describe("Boxtal app.manifest.json", () => {
     // PDF on demand instead of failing the invoice job.
     // 0.23.4: the app's own install resolves the control-plane contract through an override (the
     // shared package depends on it by workspace protocol).
-    expect(m.version).toBe("0.23.4")
+    // 0.23.7: above 0.23.6, so an instance on either line of work upgrades; no change of its own.
+    expect(m.version).toBe("0.23.7")
     expect(m.packageFormat).toBe(1)
   })
 

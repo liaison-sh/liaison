@@ -106,7 +106,7 @@
       }
     ]
   },
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Customer-facing ticketing: local foundations (7.1)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -732,6 +732,7 @@
   "tools": {
     "search": {
       "description": "Search tickets. Filter by status (open/awaiting_customer/awaiting_followup/closed), priority, assignedTo, contactId, and free-text q. Returns a PAGED/truncated list — do NOT report a COUNT by tallying these results (that under-counts). inboxCounts is authoritative ONLY for the UNREAD count PER INBOX — it is NOT a status breakdown (open vs awaiting_customer vs awaiting_followup) and NOT a total-open count, so do NOT use an inbox's unread number as 'how many open tickets'. For a status breakdown / total-open / by-category / oldest / backlog-health read there IS an authoritative aggregate — use the backlogHealth tool (exact server-side GROUP BY over the whole backlog), NOT a tally of search pages. (backlogHealth ALSO returns authoritative SLA COUNTS — bySla.approaching + bySla.breached with named exemplars — so the count of at-risk/breached tickets comes from there, not a search tally. For a weekly SLA POST-MORTEM — which tickets breached in a date window, the breach MARGIN, PER-AGENT breach counts, and the overall SLA-ATTAINMENT RATE — there IS now an authoritative aggregate: use the slaReport tool (exact server-side counts + rate over the window), NOT a search tally. The only remaining gaps are resolution-time AVERAGES and an aggregate CSAT score/trend, which stay a bounded per-ticket sample / honest unavailability, never a fabricated percentage.) Use search to retrieve the actual matching ticket ROWS (e.g. the slaApproaching set, or the tickets behind a backlogHealth count when the user wants the list), noting any such list is a bounded page, not an exact total. OLDEST / BACKLOG-BURNDOWN — 'the 10 oldest still-open tickets, how long each has been open, what state they're stuck in, and who owns them': search is age-sortable — call search({ smartFilter: 'all-open', sort: 'oldest', limit: 10 }) to get the actual N OLDEST open tickets in ONE bounded call (sort='oldest' orders by created_at, so you get the real global oldest, not the first relevance page). Each returned row carries createdAt (compute age from it / now), status (open or awaiting_followup = on our plate / awaiting_customer = waiting on the customer — the stuck-state), and assigneeName (the OWNER — null = unassigned), so present age + stuck-state + owner per ticket WITHOUT a per-ticket get. (backlogHealth.oldest also returns the same oldest-10 with ageDays + assigneeName as an authoritative aggregate; either is the right oldest-first read — never present the default unsorted page as 'the oldest'.) 'OPEN' / BACKLOG SCOPE — when a request asks for someone's 'open tickets', a 'backlog' digest, or a list GROUPED BY STATUS (and especially one that must surface an 'awaiting customer / to nudge' section), 'open' means the WHOLE NON-CLOSED set — open AND awaiting_customer AND awaiting_followup — NOT the literal status='open' bucket alone. status='open' silently DROPS the awaiting_customer and awaiting_followup tickets, which (a) guts the awaiting-customer/nudge section entirely (those tickets ARE the awaiting_customer status), and (b) collapses a status-grouped digest to a single group. So read the full backlog with search({ smartFilter: 'all-open' }) (= status IN open/awaiting_customer/awaiting_followup, closed excluded) — or pass status: ['open','awaiting_customer','awaiting_followup'] explicitly — then GROUP the returned rows by their status field yourself. When the backlog is the CALLER'S OWN in INTERACTIVE chat ('my open tickets', 'my backlog', 'my queue'), use search({ smartFilter: 'my-backlog' }) — it returns exactly that non-closed set ASSIGNED TO YOU in ONE call (auto-scoped to the caller, NO assignee UUID to look up, and you can NOT accidentally fall into a whole-org read). CAUTION — in a ROUTINE PROMPT do NOT use smartFilter:'my-backlog' or assignedTo:'me': at tick time those resolve to the ROUTINE'S OWNER, which for an agent-authored, admin-approved routine may NOT be the person who asked — so they silently read the wrong queue. A routine that digests a specific person's tickets must filter by that person's EXPLICIT user id (resolved once at authoring time and baked into the prompt). Only filter to a single status when the user explicitly asks for that one bucket. AGING / 'OLDER THAN N DAYS' — THE SERVER COMPUTES IT, YOU RENDER IT. To flag tickets 'aging past N days', pass `agingThresholdDays: N` (e.g. `agingThresholdDays: 3` for 'aging past 3 days'; default 3) and EACH returned row then carries an `aging` BOOLEAN — already computed server-side as `ageDays > N`. Just RENDER each row's `aging` flag into your digest (true → flag it as aging, false → leave it unflagged). Do NOT recompute the comparison yourself, and do NOT mark a row 'aging' unless its `aging` field is true — copying the per-row boolean is the whole point (it removes the fragile in-context date arithmetic where rows get mis-flagged). Each row also carries `ageDays` (whole days open, = floor((now − createdAt)/1 day), the same figure backlogHealth.oldest reports) for display. The result is a real DISCRIMINATION: in a backlog some rows have aging:true and some aging:false, so the flagged set is EXACTLY the over-threshold rows — never the whole set, never none. CUSTOMER-SILENCE / 'NO REPLY FOR N+ DAYS' (auto-close) — THE SERVER COMPUTES IT, YOU RENDER IT. To find the awaiting_customer tickets that have gone SILENT (no inbound customer reply for N+ days — the stale-auto-close window), pass `silentForDays: N` (e.g. silentForDays: 7) ALONGSIDE status:'awaiting_customer' (or smartFilter:'awaiting-customer'). EACH returned row then carries `customerSilentDays` (whole days since the customer last wrote, from last_inbound_at) AND a `customerSilent` BOOLEAN (= customerSilentDays >= N) — already computed server-side. The STALE set to act on (final-notice reply + close) is EXACTLY the rows where customerSilent is true; the FRESH set to SKIP is the rows where it is false. Just RENDER each row's `customerSilent` flag — do NOT recompute the last-inbound age yourself, and do NOT act on a row whose customerSilent is false (a customer who replied 1-2 days ago is FRESH, not stale). This removes the fragile in-context staleness arithmetic where a tick acted on fresh tickets, sending a 'we haven't heard from you in over a week' notice to someone who just replied — copying the per-row boolean is the whole point. WHEN TO USE THE STRUCTURED FILTERS (not free-text q): to find a TOPIC's tickets that are AT SLA RISK — e.g. 'shipping tickets at SLA risk' — call search({ category: 'Shipping', slaApproaching: true }), NOT a free-text q of keywords. q matches subject+body text ONLY, so it both MISSES correctly-categorized tickets whose words differ and surfaces unrelated noise — the precise, grounded set comes from the category + slaApproaching filters. Each returned row carries categoryName (the topic) and slaDeadline. ANTI-FABRICATION: every ticket field you report (id, subject, priority, slaDeadline, order ref, category) MUST come from a search/get tool result row — NEVER reconstruct or 'flesh out' ticket cards from a sidebar/summary line, and NEVER assert a shipment↔ticket correlation unless a returned ticket's order ref actually matches the shipment's; if a shipment has no matching ticket, say so.",
+      "searchKeywords": ["chercher", "rechercher", "retrouver", "trouver", "find"],
       "readOnly": true,
       "requiredScopes": ["tickets:tickets:read"],
       "readsFromTable": "app_tickets.tickets",
@@ -936,6 +937,7 @@
     },
     "get": {
       "description": "Fetch a single ticket and its recent messages. The default view is SLIM: the 12 most recent messages, text-only, with each email's quoted reply-chain tail stripped (replaced by a '[quoted history trimmed]' note) — right for triage and replies, since quoted tails only duplicate the thread's own earlier messages. totalMessageCount reports the real thread size; page older messages with messagesCursor. To dig deeper ONLY when needed: page older messages with messagesCursor, fetch ONE message in full with messageId, pass stripQuoted:false for full quoted chains, includeHtml:true for HTML rendering. Each message carries its attachments (with any analysis summary); use kernel analyze_media / files_read on an attachment id to inspect linked media. Read the ticket ONCE per run and work from what you have — do not re-read it between steps. `pendingReplyDrafts` lists the reply drafts already waiting for approval on this ticket (approvalId, textBody, who drafted it): when one is there, do not draft another; tell the user it is waiting, or change its text with kernel__approval_update_payload on its approvalId.",
+      "searchKeywords": ["lire", "voir", "ouvrir", "read", "open"],
       "readOnly": true,
       "requiredScopes": ["tickets:tickets:read"],
       "readsFromTable": "app_tickets.tickets",
@@ -980,6 +982,7 @@
     },
     "create": {
       "description": "Create a ticket. When the ticket is about a specific customer (e.g. promoting a complaint from a thread/chat or mail, or opening a proactive case from a shipment/order event), LINK them: pass contactEmail (the tool find-or-creates that contact and links it) or a contactId obtained from contacts_search. contactId MUST be a contact id (UUID) from contacts_search — NEVER another object's id (a shipment/order/tracking id is NOT a contactId; passing one is rejected). If you only know the customer by name and have no email, either contacts_search to resolve their contactId first, or simply OMIT contactId/contactEmail (every reference field is OPTIONAL — a ticket still opens unlinked) and put the customer name + the relevant reference (e.g. the shipment tracking number) in the subject and initialMessage. Provide a clear subject + the detail (put the reported/affecting text in initialMessage.textBody — initialMessage is an OBJECT, e.g. {\"kind\":\"inbound\",\"textBody\":\"...the detail...\"}; passing the raw text as a bare string also works) and a sensible category.",
+      "searchKeywords": ["nouveau", "créer", "ouvrir", "open", "new"],
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "trustBoundary": "user",
@@ -1137,6 +1140,7 @@
     },
     "addNote": {
       "description": "Append an INTERNAL note to a Liaison ticket (seen by teammates on that ticket), never a note on a record in an external system such as a CRM company, contact or deal: that is api-connector connector_write. It is the durable place to record a finding, analysis, or hand-off that a teammate (the assignee, sales, finance, fulfillment) must SEE on the ticket. Reach for this whenever the user asked you to CAPTURE A LOOKED-UP DATA FINDING (a Shopify on-hand/inventory STOCK level, an order/payment STATUS, an amount) and ROUTE it to a colleague: gather the finding FIRST (run the lookup), then write a note that contains the ACTUAL figure you read AND the routing line together (e.g. 'RAL-44 on hand: 31 units read live from Shopify — routing the 25-unit volume quote to Theo/sales'). A figure stated only in your chat reply does NOT reach the teammate who reads the ticket, so it is not 'recorded' until it is in a note here (or passed via mail__convertToTicket's note param). If you converted a mail thread to a ticket before you had the figure, add it here afterward. Do NOT claim the stock/finding is recorded on the ticket unless this call (or the convert note) succeeded this turn.",
+      "searchKeywords": ["note", "interne", "internal", "commentaire", "add", "ajouter"],
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
@@ -1177,6 +1181,7 @@
     },
     "editNote": {
       "description": "Edit the text of an EXISTING internal note on a ticket (kind='note' messages only — customer-visible inbound/outbound messages can never be edited). Use when a note is stale, wrong, or misleading and would confuse a teammate or a future agent run; prefer correcting the note over stacking a contradicting note on top of it. Pass the note's messageId plus the FULL replacement text (this replaces the whole note body, it does not append). Gated: your call stages an approval a human reviews before the edit lands.",
+      "searchKeywords": ["note", "modifier", "edit"],
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
@@ -1219,6 +1224,7 @@
     },
     "deleteNote": {
       "description": "Delete an internal note from a ticket (kind='note' messages only — customer-visible inbound/outbound messages can never be deleted). Use when a note is obsolete or actively misleading (e.g. it records staged work that was since denied or cancelled) and keeping it would poison future triage. Deletion is permanent. Gated: your call stages an approval a human reviews before the note is removed.",
+      "searchKeywords": ["note", "supprimer"],
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
@@ -1249,6 +1255,7 @@
     },
     "assign": {
       "description": "Assign a ticket to a user. To assign it to YOURSELF (the current user), pass assignedTo:'me' — you do NOT need to look up your own id. To assign to a TEAMMATE, resolve their name like 'Liam' to their UUID with users_search FIRST; this tool does not accept a teammate's name. Pass null to unassign. TRIAGE GATE: when you are claiming tickets by a CRITERION (e.g. only the French/German/Italian threads in a shared inbox), call this ONLY on tickets that PASS the criterion — do NOT assign a ticket that fails it (e.g. an English ticket in an FR/DE/IT-only claim). Decide the criterion (read the body / detect the language) BEFORE assigning, and skip non-matching tickets entirely. Tagging a ticket's language is NOT a reason to claim it. SHARED-INBOX RACE — CLAIM SAFELY WITH onlyIfUnassigned:true: when you are claiming UNASSIGNED tickets out of a SHARED inbox where a teammate may be working the SAME queue at the SAME time (a post-launch spike, two agents both told to 'grab the high-priority ones'), a plain assign is a blind overwrite — you can stomp a ticket your colleague just grabbed and BOTH of you then think you own it. To claim safely, pass onlyIfUnassigned:true: the assign then succeeds ONLY while the ticket is still unowned, and if a teammate beat you to it the call returns an error with code 'conflict' (and currentAssignee = who holds it now) instead of clobbering their claim. On a 'conflict' result you MUST SKIP that ticket — do NOT retry, do NOT blind-reassign it to yourself, and do NOT report that you own it. ACKNOWLEDGE it was already taken (e.g. 'ticket X was already claimed by a teammate — left it with them') so your summary reflects the REAL post-claim state. ALWAYS pass the assignee too — to claim a ticket for yourself you MUST send BOTH assignedTo:'me' AND onlyIfUnassigned:true; onlyIfUnassigned WITHOUT an assignedTo is rejected (it would unassign, not claim). VERIFY THE RESULT BEFORE REPORTING: a successful claim returns assignedTo set to the new owner's id; only report a ticket as 'assigned to you' when the response's assignedTo is your id (not null) — if assignedTo came back null or the call errored, the claim did NOT take, so do NOT claim ownership. Only the tickets whose assign SUCCEEDED with a non-null assignedTo are yours; never claim ownership of a ticket you lost the race for or whose assign returned null. Use expectedAssignee to require a specific current owner before swapping (general compare-and-swap).",
+      "searchKeywords": ["attribuer", "assigner", "affecter", "responsable", "assignee"],
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
@@ -1288,6 +1295,7 @@
     },
     "setStatus": {
       "description": "Update ticket status",
+      "searchKeywords": ["status", "statut", "set", "changer"],
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
@@ -1313,6 +1321,7 @@
     },
     "setPriority": {
       "description": "Update ticket priority",
+      "searchKeywords": ["priority", "priorité", "urgent", "urgence", "set", "changer"],
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
@@ -1342,6 +1351,7 @@
     },
     "setCategory": {
       "description": "Set the ticket's TOPIC category. A ticket holds exactly ONE category (a single scalar categoryId), so this REPLACES whatever category was set before — it does NOT stack/add. Calling it twice (e.g. once for a language tag, once for a topic) leaves only the LAST one; the first is overwritten and lost. To tag a ticket's LANGUAGE use the separate setLanguage tool (a distinct field that coexists with the topic category) — do NOT try to encode language as a second setCategory call.",
+      "searchKeywords": ["category", "catégorie", "set", "changer"],
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
@@ -1370,6 +1380,7 @@
     },
     "setLanguage": {
       "description": "Tag the ticket's LANGUAGE (the language the customer wrote in — e.g. 'French', 'German', 'Italian', 'English'). This is a DEDICATED field separate from the topic category, so a ticket can carry BOTH a language tag AND a topic category at once. Use this for the language; use setCategory for the topic. Pass null to clear the language. Ungated — applies immediately.",
+      "searchKeywords": ["language", "langue", "set"],
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
@@ -1398,6 +1409,7 @@
     },
     "setTeam": {
       "description": "Set the ticket's TEAM (the desk/queue that owns it — e.g. a site, a brand, a region). This is a DEDICATED free-text field, separate from the topic category and the language tag, so a ticket carries all three at once. There is no team registry: any label is accepted, and the first ticket tagged with a new label creates that team. Call teams.list first and REUSE an existing label exactly — inventing a near-duplicate spelling ('acme' vs 'Acme') silently splits that desk's history in two. Pass null to clear. Ungated — applies immediately.",
+      "searchKeywords": ["team", "équipe", "transférer", "set", "changer"],
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
@@ -1426,6 +1438,7 @@
     },
     "setAudience": {
       "description": "Set the ticket's AUDIENCE — which SIDE the requester is on: \"b2b\" (a partner: a shopping-centre operator, an integrator, a CSM) or \"b2c\" (an end customer: a loyalty-programme member). This is ORTHOGONAL to `team`, which says WHICH shopping centre the ticket concerns: the same centre carries tickets of both kinds, so knowing one tells you nothing about the other. Only these two values exist and the database enforces it — there is no third, and no free-text variant. Pass null to clear; null is a REAL state meaning nobody has established which side wrote (mail arriving at the shared address carries no such signal), and leaving it null is correct until someone knows. Ungated — applies immediately.",
+      "searchKeywords": ["audience", "b2b", "b2c", "set"],
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
@@ -1459,6 +1472,7 @@
     },
     "setFollowup": {
       "description": "Schedule a follow-up",
+      "searchKeywords": ["followup", "relance", "relancer", "programmer", "rappel", "reminder", "set"],
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
@@ -1492,6 +1506,7 @@
     },
     "clearFollowup": {
       "description": "Clear scheduled follow-up",
+      "searchKeywords": ["followup", "relance", "supprimer", "clear"],
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
@@ -1512,6 +1527,7 @@
     },
     "reopen": {
       "description": "Reopen a closed ticket",
+      "searchKeywords": ["rouvrir", "réouvrir"],
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
@@ -1532,6 +1548,7 @@
     },
     "merge": {
       "description": "Merge sources into a target",
+      "searchKeywords": ["fusionner", "doublon", "duplicate"],
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "trustBoundary": "user",
@@ -1594,6 +1611,7 @@
     },
     "markRead": {
       "description": "Record this user has read this ticket up to the current inbound message",
+      "searchKeywords": ["lu", "read", "mark", "marquer"],
       "requiredScopes": ["tickets:tickets:read"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
@@ -1621,6 +1639,7 @@
     },
     "inboxCounts": {
       "description": "Per-inbox UNREAD counts only (tickets with an unread inbound message, derived from org-global read state) — keyed by inboxId. Without an inboxIds filter it also returns totalUnread: every unread ticket you can see, including tickets with no source inbox (so it can exceed the sum of the per-inbox rows). This is NOT a status breakdown and NOT a total-open count: never report an inbox's unread number as 'how many open tickets'. For a backlog-health / status-split / total-open / by-category / oldest read, use the backlogHealth tool (authoritative server-side aggregate).",
+      "searchKeywords": ["compteur", "nombre", "combien", "inbox", "non", "lus", "counts"],
       "readOnly": true,
       "requiredScopes": ["tickets:tickets:read"],
       "readsFromTable": "app_tickets.inboxes",
@@ -1641,6 +1660,7 @@
     },
     "backlogHealth": {
       "description": "AUTHORITATIVE backlog-health aggregate — the tool for 'how many open tickets / awaiting customer vs awaiting us / which are oldest / where are we bunching by category / are we drowning'. Computes EXACT server-side counts over the WHOLE open (non-closed, non-merged) backlog you can see, via a real GROUP BY (NOT a paged search sample): byStatus {open, awaitingCustomer (we're waiting on the customer), awaitingFollowup, totalOpen}, byCategory (open count per category — the bunching), byAge (0-7d / 7-14d / 14-30d / 30d+ buckets), oldest (the oldest open tickets, oldest first, with ageDays + category + assignee), unassignedOpen, and bySla {approaching, breached, approachingTop[], breachedTop[]} — the EXACT server-side counts of SLA-approaching vs already-breached tickets (same predicates as search slaApproaching/slaBreached) with up to 3 named exemplars each. So this single read DOES answer 'any SLA breaches / what's at risk': read bySla.breached and bySla.approaching — and NEVER claim zero breaches/at-risk from the ABSENCE of an SLA field (the field is bySla; 0 means a real 0, not 'not measured'). These totals are EXACT and authoritative — there is no pagination caveat and no need to sample or estimate. Use THIS instead of tallying search pages or reading inboxCounts when asked for a backlog/status/aging/category-distribution read. The result is the definitive answer to give even when the user demands 'a number I can trust' — it IS the trusted number, because it counts the entire backlog server-side. Note: awaitingCustomer = tickets where the customer owes us a reply; the live 'awaiting us / on our plate' set is open + awaitingFollowup.",
+      "searchKeywords": ["backlog", "arriéré", "retard", "file", "charge"],
       "readOnly": true,
       "requiredScopes": ["tickets:tickets:read"],
       "readsFromTable": "app_tickets.tickets",
@@ -1659,6 +1679,7 @@
     },
     "slaReport": {
       "description": "AUTHORITATIVE weekly SLA-breach post-mortem aggregate — the tool for 'which tickets breached SLA in the last 7 days, by how much, per-agent breach counts, and our overall SLA-attainment rate this week'. Computes EXACT server-side counts over EVERY ticket you can see whose first-response SLA clock STARTED in the window (default last 7 days, override with windowDays), via a real aggregate (NOT a paged search sample, which has no 'breached' filter and no rate/margin/per-agent rollup): totalInWindow, breachedCount, metCount, attainmentRatePct (metCount/totalInWindow*100, 1 decimal — null ONLY when the window is empty, never fabricate a rate), perAgent[] (per-assignee breach counts with assigneeName, descending, including an unassigned bucket), and breachedTickets[] (every breached ticket, most-overdue first, each with assigneeName, slaDeadline, firstResponseAt, breachMarginSeconds + breachMarginHours = how LATE the first response was, and stillUnanswered). 'Breached' uses the SAME predicate as search slaBreached=true (an explicit slaBreachedAt OR a past slaDeadline on a non-paused SLA). These totals are EXACT and authoritative — there is no pagination caveat and no need to sample or estimate. Use THIS for any SLA post-mortem / attainment-rate / breach-margin / per-agent-breach question — NEVER tally search pages or invent a percentage. Report attainmentRatePct, breachedCount, and the perAgent split AS the definitive answer.",
+      "searchKeywords": ["sla", "délai", "délais", "retard", "report", "rapport", "temps"],
       "readOnly": true,
       "requiredScopes": ["tickets:tickets:read"],
       "readsFromTable": "app_tickets.tickets",
@@ -1677,6 +1698,7 @@
     },
     "listForContact": {
       "description": "List recent tickets for a contact",
+      "searchKeywords": ["contact", "client", "customer", "historique", "history"],
       "readOnly": true,
       "requiredScopes": ["tickets:tickets:read"],
       "readsFromTable": "app_tickets.tickets",
@@ -1702,6 +1724,7 @@
     },
     "teams.list": {
       "description": "List every TEAM that appears on this org's tickets, with openCount (not closed, not merged away) and totalCount per team. Teams are free text on the ticket — there is no teams table — so this reads the live set off the tickets themselves, under your own visibility. It is the authoritative answer to 'which desks/queues exist' and the ONLY safe way to get an exact team label: call it BEFORE passing `team` to search, backlogHealth or setTeam, and copy a label verbatim (they can differ by case or a stray space). Near-duplicate labels in the output mean a desk's history is split; teams.rename merges them.",
+      "searchKeywords": ["équipe", "équipes", "team"],
       "readOnly": true,
       "requiredScopes": ["tickets:tickets:read"],
       "readsFromTable": "app_tickets.tickets",
@@ -1715,6 +1738,7 @@
     },
     "teams.rename": {
       "description": "Rename a team across EVERY ticket in the org in one statement, and re-point any inbox whose default_team used the old label (otherwise new arrivals recreate it). Renaming onto a label that ALREADY exists MERGES the two — that is the intended way to repair near-duplicate spellings that split one desk's history. `from` is matched EXACTLY (spaces and case included) and must already exist; an unknown label is a loud error naming the near matches, never a silent no-op. Pass dryRun:true first to get the affected counts without changing anything.",
+      "searchKeywords": ["équipe", "renommer"],
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "trustBoundary": "user",
@@ -1743,6 +1767,7 @@
     },
     "categories.list": {
       "description": "List categories",
+      "searchKeywords": ["catégorie", "catégories"],
       "readOnly": true,
       "requiredScopes": ["tickets:tickets:read"],
       "readsFromTable": "app_tickets.categories",
@@ -1755,6 +1780,7 @@
     },
     "categories.create": {
       "description": "Create a category",
+      "searchKeywords": ["catégorie", "créer"],
       "requiredScopes": ["tickets:categories:admin"],
       "writesToTable": "app_tickets.categories",
       "trustBoundary": "user",
@@ -1785,6 +1811,7 @@
     },
     "templates.list": {
       "description": "List saved reply templates (canned-response macros) for the org. Optionally filter by category. Returns each template's id, name, category, and body so you can reuse a saved reply.",
+      "searchKeywords": ["modèle", "modèles", "réponse"],
       "readOnly": true,
       "requiredScopes": ["tickets:tickets:read"],
       "readsFromTable": "app_tickets.reply_templates",
@@ -1802,6 +1829,7 @@
     },
     "templates.create": {
       "description": "Create a saved reply template (canned-response macro) the support team can reuse. Provide a unique name + the reply body text; optionally a category. Ground the body in the relevant Knowledge article. Names are unique per org — reusing one returns name_exists (pick a different name). NOT A SEND / BROADCAST / MASS-NOTIFY mechanism: creating a template contacts NO customer and notifies NO ONE — it only stores reusable wording in the team's internal macro library. To actually deliver a notice (e.g. a recall/incident message) to customers you must still send it per-recipient via tickets__reply or mail__compose, EACH gated and individually approved; there is NO mass-send / broadcast / segment primitive that blasts one notice to N customers in one action. So when you save a recall/announcement as a template, do NOT tell the user it is now ready to 'send to all affected customers' or imply an easy mass send — state plainly that the template is just reusable wording and the notice must still go out one approved send per recipient (or per ticket), or is out of reach for a single blast.",
+      "searchKeywords": ["modèle", "réponse", "créer"],
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.reply_templates",
       "trustBoundary": "user",
@@ -1830,6 +1858,7 @@
     },
     "templates.update": {
       "description": "Edit a saved reply template (canned-response macro): change its body, name, or category. Pass the template id + the fields to change.",
+      "searchKeywords": ["modèle", "réponse", "modifier"],
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.reply_templates",
       "targetRowParam": "id",
@@ -1865,6 +1894,7 @@
     },
     "templates.delete": {
       "description": "Delete a saved reply template (canned-response macro) by id. Removes it from the team's macro library.",
+      "searchKeywords": ["modèle", "réponse", "supprimer"],
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.reply_templates",
       "targetRowParam": "id",
@@ -1886,6 +1916,7 @@
     "csat.request": {
       "externalEffect": true,
       "description": "Dispatch a post-resolution CSAT satisfaction survey to the customers of one or more CLOSED tickets (one survey per ticket). First find the closed tickets with tickets__search (status=closed, closedAfter=<window>), then pass their ids here. This DISPATCHES the surveys (status=pending) and creates the rating records; the customer's rating is RECORDED only when they respond, so freshly-dispatched surveys have NO score yet. Report how many were dispatched and that ratings will accrue as customers respond — never claim a satisfaction score was captured. Tickets that are not closed, not found, or already surveyed are skipped (returned in skippedDetail).",
+      "searchKeywords": ["satisfaction", "csat", "avis", "enquête", "demander", "survey"],
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketIds",
@@ -1909,6 +1940,7 @@
     },
     "csat.summary": {
       "description": "Read the aggregate CSAT result over RECORDED survey responses (total dispatched, responded, pending, declined, averageScore, responseRate, and a week-over-week `trend` array bucketed by response week). averageScore is null and `trend` is EMPTY until customers actually respond — when there are no responses there is NO aggregate CSAT score or trend to report, so say so honestly and never fabricate a percentage, average, or movement. When responses DO exist, report the trend ONLY across the weeks that actually carry responses; never extrapolate a satisfaction movement from an empty or single-week trend.",
+      "searchKeywords": ["satisfaction", "csat", "avis", "score", "customer"],
       "readOnly": true,
       "requiredScopes": ["tickets:tickets:read"],
       "readsFromTable": "app_tickets.ticket_csat",
@@ -1921,6 +1953,7 @@
     },
     "csat.list": {
       "description": "List individual CSAT survey records (ticket handle/subject, status, score, sent/responded timestamps), optionally filtered by status (pending|responded|declined).",
+      "searchKeywords": ["satisfaction", "csat", "avis", "réponses"],
       "readOnly": true,
       "requiredScopes": ["tickets:tickets:read"],
       "readsFromTable": "app_tickets.ticket_csat",
@@ -1943,6 +1976,7 @@
     },
     "categories.update": {
       "description": "Update a category",
+      "searchKeywords": ["catégorie", "modifier"],
       "requiredScopes": ["tickets:categories:admin"],
       "writesToTable": "app_tickets.categories",
       "targetRowParam": "id",
@@ -1978,6 +2012,7 @@
     },
     "categories.archive": {
       "description": "Archive a category",
+      "searchKeywords": ["catégorie", "archiver"],
       "requiredScopes": ["tickets:categories:admin"],
       "writesToTable": "app_tickets.categories",
       "targetRowParam": "id",
@@ -2046,6 +2081,7 @@
     },
     "inboxes.list": {
       "description": "List inboxes",
+      "searchKeywords": ["boîte", "boîtes", "réception", "inbox"],
       "readOnly": true,
       "requiredScopes": ["tickets:inboxes:read"],
       "readsFromTable": "app_tickets.inboxes",
@@ -2058,6 +2094,7 @@
     },
     "inboxes.create": {
       "description": "Create an inbox",
+      "searchKeywords": ["boîte", "réception", "inbox", "connecter"],
       "requiredScopes": ["tickets:inboxes:admin"],
       "writesToTable": "app_tickets.inboxes",
       "gated": true,
@@ -2200,6 +2237,7 @@
     },
     "inboxes.update": {
       "description": "Update an inbox",
+      "searchKeywords": ["boîte", "réception", "signature", "modifier"],
       "requiredScopes": ["tickets:inboxes:admin"],
       "writesToTable": "app_tickets.inboxes",
       "targetRowParam": "id",
@@ -2362,6 +2400,7 @@
     },
     "inboxes.disconnect": {
       "description": "Disconnect an inbox",
+      "searchKeywords": ["boîte", "déconnecter"],
       "requiredScopes": ["tickets:inboxes:admin"],
       "writesToTable": "app_tickets.inboxes",
       "targetRowParam": "id",
@@ -2382,6 +2421,7 @@
     },
     "idSegment.get": {
       "description": "Read the org's ticket-id prefix setting (Settings > Tickets > Ticket id prefix): `by` is the ticket field that picks the prefix (none, audience, team, category or inbox) and `codes` maps each value of that field to its code, so a b2b ticket 12 displays as ticket-B2B-12. `examples` shows what ticket 123 displays as for each code. Stored handles never change; every form resolves by number.",
+      "searchKeywords": ["préfixe", "identifiant", "numérotation"],
       "readOnly": true,
       "requiredScopes": ["tickets:settings:admin"],
       "trustBoundary": "user",
@@ -2393,6 +2433,7 @@
     },
     "idSegment.set": {
       "description": "Set the org's ticket-id prefix (the same setting as Settings > Tickets > Ticket id prefix). It changes what every ticket DISPLAYS as, everywhere: the inbox, approval cards, search, and the [#ticket-...] tag in the subject of emails CUSTOMERS receive, so confirm the codes with the requester first. `by`: the ticket field that picks the prefix (none, audience, team, category, inbox); `codes`: value of that field -> code (1-8 letters or digits, uppercased, unique), e.g. by=audience, codes={b2b:B2B, b2c:B2C}. A ticket whose value has no code keeps ticket-<n>. by=none turns prefixes off. Numbers never change and old tags still thread inbound replies. REPLACES the whole setting; read it with idSegment.get first. Gated: your call stages an approval a human reviews before the change lands. Returns the stored setting, `examples` for ticket 123, and how many tickets were queued for search re-indexing.",
+      "searchKeywords": ["préfixe", "identifiant", "numérotation"],
       "requiredScopes": ["tickets:settings:admin"],
       "gated": true,
       "trustBoundary": "user",
@@ -2452,6 +2493,7 @@
     },
     "apiKeys.list": {
       "description": "List the API keys that still work (a revoked key is left out)",
+      "searchKeywords": ["clé", "clés", "key"],
       "readOnly": true,
       "requiredScopes": ["tickets:settings:admin"],
       "readsFromTable": "app_tickets.api_keys",
@@ -2466,6 +2508,7 @@
       "gated": true,
       "approvalImpact": "internal",
       "description": "Create an API key",
+      "searchKeywords": ["clé", "générer", "key"],
       "requiredScopes": ["tickets:settings:admin"],
       "writesToTable": "app_tickets.api_keys",
       "trustBoundary": "user",
@@ -2493,6 +2536,7 @@
     },
     "apiKeys.revoke": {
       "description": "Revoke an API key",
+      "searchKeywords": ["clé", "révoquer", "key"],
       "requiredScopes": ["tickets:settings:admin"],
       "writesToTable": "app_tickets.api_keys",
       "targetRowParam": "id",
@@ -2514,6 +2558,7 @@
     "reply": {
       "outboundTextParams": ["textBody", "htmlBody"],
       "description": "Reply to a customer on a TICKET (pass the ticketId from tickets__search/tickets__get). Do NOT use this to answer an email/mail conversation — that lives in Mail; use mail__reply for it (a mail conversation id is not a ticketId and this tool fails with 'ticket not found'). GATED: calling this does NOT send — it creates a pending approval the human reviews and approves before it goes out. When asked to draft/propose a ticket reply, CALL this tool with the body; never paste the draft into chat and ask whether to send. Do NOT end the body with a sign-off, closing name, or signature: the team's configured reply signature is appended into your draft automatically (the approver sees and can edit it), and you must never sign as yourself or as the signed-in user (that 'Current user' identity is internal for resolving 'me'/'my', NOT a customer-facing sender name). Write the textBody as PLAIN TEXT (the support default): no markdown syntax (no **bold**, no # headings, no markdown bullets, no backticks, no [text](url) links) unless formatting genuinely helps the customer; markdown is sent as formatted email with a plain-text part. Write URLs bare and structure with blank-line paragraphs. This holds for REVISED drafts too: when reworking an existing draft, the new body stays plain text. ONE pending reply draft per ticket: when tickets__get lists a draft under pendingReplyDrafts, do NOT draft another; update that one with kernel__approval_update_payload (requestId = its approvalId), even when a colleague drafted it. A second call is refused with approval_already_pending when someone else drafted the waiting one, and replaces your own waiting draft otherwise.",
+      "searchKeywords": ["répondre", "réponse", "answer", "respond", "client", "customer"],
       "requiredScopes": ["tickets:tickets:reply"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
@@ -2589,6 +2634,7 @@
     "nudge": {
       "outboundTextParams": ["textBody", "htmlBody"],
       "description": "Send a polite follow-up to the customer. Gated — only when awaiting_customer.",
+      "searchKeywords": ["relance", "relancer", "rappeler", "remind", "followup"],
       "requiredScopes": ["tickets:tickets:reply"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
@@ -2630,6 +2676,7 @@
     },
     "convertToMail": {
       "description": "Convert a ticket back to a Mail conversation (de-escalate / hand a mis-filed ticket back to email); closes the ticket as converted_to_mail and copies non-note messages. The new conversation is hosted on the mail account you pass as accountId — this may be EITHER your own personal user-owned mailbox OR a visible org/shared mailbox in your org (e.g. a shared support/sales inbox), so handing a mis-filed ticket back to a team queue is fully supported.",
+      "searchKeywords": ["convertir", "mail", "email"],
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
@@ -2835,6 +2882,7 @@
     "close": {
       "outboundTextParams": ["textBody", "htmlBody"],
       "description": "Close a ticket. Optionally send a final email. closedReason defaults to resolved. Gated.",
+      "searchKeywords": ["fermer", "clôturer", "clore", "résoudre", "résolu", "terminer"],
       "requiredScopes": ["tickets:tickets:close"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",

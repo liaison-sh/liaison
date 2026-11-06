@@ -8,12 +8,14 @@
  * by the generator and intentionally absent here.
  */
 export const FR: Record<string, string> = {
-  "Send a new code": "Envoyer un nouveau code",
   "Send a new code in {{seconds}} s": "Envoyer un nouveau code dans {{seconds}} s",
   "We sent a new 6-digit code to {{email}}. It expires in 10 minutes.":
     "Nous avons envoy\u00e9 un nouveau code \u00e0 6 chiffres \u00e0 {{email}}. Il expire dans 10 minutes.",
   "We can't send email right now. Try again later, or sign in with your password if you have one.":
     "Nous ne pouvons pas envoyer d'e-mails pour le moment. R\u00e9essayez plus tard, ou connectez-vous avec votre mot de passe si vous en avez un.",
+  "Send me occasional news about Liaison": "M'envoyer de temps en temps des nouvelles de Liaison",
+  "We use your email to send your confirmation code. Unless you tick the box and confirm your email, your name and email are deleted when your demo ends, after 72 hours.":
+    "Nous utilisons votre mail pour vous envoyer votre code de confirmation. Sauf si vous cochez la case et confirmez votre mail, votre nom et votre mail sont supprimés à la fin de votre démo, après 72 heures.",
   "Which looks most like your company?": "Qu'est-ce qui ressemble le plus à votre entreprise ?",
   "What does your company do? (optional)": "Que fait votre entreprise ? (facultatif)",
   "We picked a few scenarios for that. Change them as you like.":
@@ -1567,8 +1569,6 @@ export const FR: Record<string, string> = {
   "Start the demo": "Lancer la démo",
   "Enter your name and email to start.": "Saisissez votre nom et votre mail pour commencer.",
   "Setting things up": "Préparation en cours",
-  "We'll use your email to send you a few messages about Liaison. You can opt out anytime.":
-    "Nous utiliserons votre mail pour vous envoyer quelques messages sur Liaison. Vous pouvez vous désinscrire à tout moment.",
   "Privacy policy": "Politique de confidentialité",
   "Unsubscribe from Liaison messages": "Se désinscrire des messages Liaison",
   "Press the button and we won't email you about Liaison again.":
@@ -2140,6 +2140,8 @@ export const FR: Record<string, string> = {
   "Allow once": "Autoriser une fois",
   "This email is encrypted to its mailbox owner. Unlock the mailbox, then approve it from its card.":
     "Ce mail est chiffré pour le propriétaire de la boîte. Déverrouillez la boîte, puis approuvez depuis sa carte.",
+  "This email's draft was removed when its mailbox was encrypted, so it cannot be sent. Reject this request and draft the email again.":
+    "Le brouillon de ce mail a été supprimé lors du chiffrement de sa boîte : il ne peut pas être envoyé. Refusez cette demande et rédigez à nouveau le mail.",
   "Tool execution failed: {{cause}}.": "L'exécution de l'outil a échoué : {{cause}}.",
   "handler error": "erreur du gestionnaire",
   "Tool run failed: {{cause}}. The request needs operator review.":
@@ -6749,9 +6751,10 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.demo.next.remainingOther": "Encore {{count}} scénarios à jouer :",
   "kernel.demo.next.remainingKeyOne": "Encore {{count}} scénario à jouer avec votre clé :",
   "kernel.demo.next.remainingKeyOther": "Encore {{count}} scénarios à jouer avec votre clé :",
-  "kernel.demo.next.notify": "Me prévenir quand la version hébergée ouvre",
+  "kernel.demo.next.notify":
+    "M'envoyer de temps en temps des nouvelles de Liaison, notamment l'ouverture de la version hébergée",
   "kernel.demo.next.notifyDone":
-    "C'est noté. Nous vous écrirons à l'ouverture de la version hébergée.",
+    "C'est noté. Nous vous enverrons de temps en temps des nouvelles de Liaison, notamment l'ouverture de la version hébergée.",
   "kernel.demo.next.continue": "Continuer à explorer",
   "kernel.demo.next.close": "Fermer",
   "kernel.demo.next.bannerLink": "Envie de Liaison pour votre entreprise ?",
@@ -7437,6 +7440,34 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.routineMailboxWait.whyShort":
     "Les routines ne peuvent pas lire le courrier privé quand vous n'êtes pas connecté. Elle tourne depuis cette fenêtre.",
   "kernel.routineMailboxWait.yourRoutine": "Votre routine",
+  "kernel.routineMailboxWait.group.label":
+    "Exécutions de routines en attente de votre boîte privée",
+  "kernel.routineMailboxWait.group.titleOne": "{{name}} : {{count}} exécutions vous attendent",
+  "kernel.routineMailboxWait.group.titleMany": "{{count}} exécutions de routines vous attendent",
+  "kernel.routineMailboxWait.group.triggerEmails": "Lancées par de nouveaux e-mails",
+  "kernel.routineMailboxWait.group.triggerMixed":
+    "Lancées par des événements ou selon leur planning",
+  "kernel.routineMailboxWait.group.why":
+    "Les routines ne peuvent pas lire le courrier privé quand vous n'êtes pas connecté. « Tout lancer » les démarre depuis cette fenêtre.",
+  "kernel.routineMailboxWait.group.yourRoutines": "Vos routines",
+  "kernel.routineMailboxWait.group.runAll": "Tout lancer",
+  "kernel.routineMailboxWait.group.dismissAll": "Tout ignorer",
+  "kernel.routineMailboxWait.group.starting": "Démarrage {{done}} sur {{total}}",
+  "kernel.routineMailboxWait.group.unlockBody":
+    "Déverrouillez votre boîte pour les lancer. Elles démarrent d'elles-mêmes dès que votre boîte est ouverte.",
+  "kernel.routineMailboxWait.group.started":
+    "{{count}} exécutions lancées, une à la fois pour chaque routine. Gardez cette fenêtre ouverte pendant qu'elles lisent votre courrier privé.",
+  "kernel.routineMailboxWait.group.startedHandoff":
+    "{{count}} exécutions lancées, une à la fois pour chaque routine. Vous pouvez fermer cette fenêtre : les e-mails qui les ont déclenchées ont été ouverts pour ces exécutions.",
+  "kernel.routineMailboxWait.group.partial":
+    "{{started}} exécutions lancées sur {{total}}. Les autres restent dans votre liste : ouvrez Détails pour les lancer une par une.",
+  "kernel.routineMailboxWait.group.dismissTitle": "Ignorer {{count}} exécutions en attente ?",
+  "kernel.routineMailboxWait.group.dismissBody":
+    "Ces exécutions n'auront pas lieu : ces routines ne traiteront donc pas ce qui les a déclenchées. Les routines repartent à leur prochaine échéance.",
+  "kernel.routineMailboxWait.group.dismissed":
+    "{{count}} exécutions ignorées. Les routines repartent à leur prochaine échéance.",
+  "kernel.routineMailboxWait.group.dismissPartial":
+    "{{dismissed}} exécutions ignorées sur {{total}}. Les autres restent dans votre liste.",
   "kernel.routineMailboxWait.expiredStatus": "Expirée",
   "kernel.routineMailboxWait.waitingForUnlock": "En attente du déverrouillage",
   "kernel.routineMailboxWait.factRoutine": "Routine",

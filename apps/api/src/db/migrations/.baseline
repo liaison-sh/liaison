@@ -1,7 +1,7 @@
 {
   "tag": "v0.1.0",
   "frozenAt": "2026-05-26T00:00:00.000Z",
-  "prelaunch": true,
+  "prelaunch": false,
   "protected": [
     {
       "path": "apps/api/src/db/migrations/0000_initial.sql",

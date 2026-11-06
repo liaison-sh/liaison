@@ -55,8 +55,7 @@
         "tools": [
           "listAccounts",
           "getAccount",
-          "disconnectAccount",
-          "getSyncStatus"
+          "disconnectAccount"
         ],
         "text": "CONNECTING A MAILBOX HAPPENS ON A CARD IN THIS CONVERSATION, never through a mail tool: mail has listAccounts/getAccount/disconnectAccount and NO connect tool. When asked to connect a mailbox: (1) call mail__listAccounts to show what is ALREADY connected; (2) a Gmail or Google Workspace mailbox connects on a Connect card: kernel__request_secret kind oauth_connect, app mail, connection gmail, with mode personal for the person's OWN mailbox ('my Gmail', 'just for me': post that card straight away, any member may connect their own) or mode org for a mailbox the organization shares (an admin connects it). When the workspace has no Google client yet, or the card is refused, follow the google-setup skill (kernel__google_setup says what is missing). (3) another provider connects over IMAP with an app password: the google-setup skill's IMAP path. Never point the person to a Settings button or menu by name instead of the card. NEVER claim you connected the mailbox before the card says it is connected, and NEVER fabricate a completed connection by creating a tickets inbox bound to a DIFFERENT account's address (tickets:inboxes.create rejects an emailAddress that does not match the bound connected account, and a tickets inbox is not a mail connection anyway). No phantom account should appear in listAccounts afterward."
       },
@@ -68,7 +67,7 @@
       }
     ]
   },
-  "version": "1.8.1",
+  "version": "1.8.3",
   "description": "Email integration: Gmail and IMAP/SMTP",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -625,6 +624,7 @@
   "tools": {
     "listAccounts": {
       "description": "List the mailboxes connected to this org, each with its sync status, last sync error and next retry. Disconnected ones are hidden unless includeDisconnected=true. A mailbox is connected by calling kernel__config_mail, then kernel__request_secret; to the person, say you will connect the mailbox, never a tool name.",
+      "searchKeywords": ["compte", "comptes", "boîte", "boîtes", "account", "accounts", "gmail", "imap", "synchronisation", "sync"],
       "readOnly": true,
       "requiredScopes": ["mail:accounts:read"],
       "handler": "listAccounts",
@@ -639,6 +639,7 @@
     },
     "getAccount": {
       "description": "Get a connected email account by ID",
+      "searchKeywords": ["compte", "boîte", "account"],
       "readOnly": true,
       "requiredScopes": ["mail:accounts:read"],
       "handler": "getAccount",
@@ -656,6 +657,7 @@
     },
     "disconnectAccount": {
       "description": "Disconnect an EXISTING connected email account (soft-delete). Note the asymmetry: there is a disconnect tool but NO matching connect/add-account tool — do NOT assume a symmetric 'connectAccount' exists. Connecting a NEW mailbox is done on a Connect card (kernel__request_secret kind oauth_connect, app mail, connection gmail, mode personal or org), not by a mail tool; never claim you connected a mailbox.",
+      "searchKeywords": ["déconnecter", "compte", "boîte", "disconnect", "account"],
       "requiredScopes": ["mail:accounts:write"],
       "handler": "disconnectAccount",
       "writesToTable": "app_mail.accounts",
@@ -673,6 +675,7 @@
     },
     "getSyncStatus": {
       "description": "Get sync status for a connected email account",
+      "agentVisible": false,
       "readOnly": true,
       "requiredScopes": ["mail:accounts:read"],
       "handler": "getSyncStatus",
@@ -690,6 +693,7 @@
     },
     "search": {
       "description": "Search the synced mail database for conversations matching filters.\n\nReturns up to 20 conversations by default with subject, snippet, sender, status, and assignment metadata. `totalCount` counts matching CONVERSATIONS (threads), not messages: say 'N conversations', never 'N messages'. Use cursor for pagination. All filters are optional. `accountId` is OPTIONAL — OMIT it to search ALL mailboxes you can see (across accounts); only pass it to scope to ONE mail account, and a tickets/inbox id from another app is NOT a mail accountId (use mail `listAccounts` to get a real one, or just omit it). For an 'unread in the shared inbox' triage, mail `search(unreadOnly: true)` returns your visible unread conversations directly.\n\nPREFER STRUCTURED FILTERS over free-text `query` when you know WHO sent it or WHEN. To find email from a specific sender/vendor (e.g. a carrier or supplier invoice 'from Boxtal'), use `from` (sender-email substring, case-insensitive) — do NOT guess at subject words via `query`, which is brittle and may match the wrong thread or miss it. Scope a time window with `since`/`until` (ISO timestamps over the received date) when the ask names a month/period (e.g. 'this month's bill'). `body` searches synced message text only (an unsynced mailbox returns no body matches — report that partial honestly). `query` is a last-resort free-text match over subject+snippet; reach for `from`/`since`/`until` first. `category` defaults to `primary` on personal Gmail mailboxes (Gmail's Primary tab: CATEGORY_PERSONAL or no category); shared and non-Gmail mailboxes are searched whole. Pass `all` to include newsletters, promotions and notifications, or `other` for those alone.",
+      "searchKeywords": ["email", "emails", "chercher", "rechercher", "trouver", "retrouver", "find", "courriel", "mails"],
       "readOnly": true,
       "requiredScopes": ["mail:conversations:read"],
       "handler": "agentMailSearch",
@@ -760,6 +764,7 @@
     },
     "read": {
       "description": "Read a mail conversation. Default: returns the last 5 messages with snippets only. Use includeBody=true for plain-text bodies (<=4KB each, with each email's quoted reply-chain tail stripped — a '[quoted history trimmed]' note marks it), or messageId to return one message in FULL (untrimmed, <=200KB) when you actually need its chain. The returned `contact` field is the conversation's LINKED CRM contact ({id,name,email}) or null: `contact: null` means the sender is NOT yet a CRM contact — to add them, extract their name/email/company from the message + signature and call contacts_write (after a contacts_search to confirm they don't already exist). Do NOT treat a per-message sender, or a null contact, as proof a CRM contact already exists. Each message carries an `attachments` array — the files attached to that email ({id, filename, mimeType, sizeBytes, disposition}); an empty array means none. To pull/forward/re-attach an attached file (e.g. a supplier's PDF invoice), use the file `id` from there — no separate files_list lookup needed. To read or analyse one (text, a description), call kernel__mail_attachment_read with its id. `pendingReplyDrafts` lists the reply drafts already waiting for approval on this conversation (approvalId, textBody, to, cc): when one is there, do not draft another; update it with kernel__approval_update_payload on its approvalId.",
+      "searchKeywords": ["lire", "ouvrir", "email", "open"],
       "readOnly": true,
       "requiredScopes": ["mail:conversations:read"],
       "handler": "agentMailRead",
@@ -790,6 +795,7 @@
     },
     "export_conversations": {
       "description": "Compile a SCOPED set of mail conversations into ONE downloadable file artifact (a kernel file you can hand back) — for an audit bundle / quarterly review / 'export all the correspondence with X' ask. This is the export-to-FILE tool: it does NOT just list in chat, it WRITES a real downloadable artifact (RFC-4180 CSV by default, or format:'markdown') and returns its `fileId`, so when asked to 'compile/export/bundle/give me a file of' a correspondence set you CALL this rather than pasting a list and saying no export exists. The scope params are IDENTICAL to mail__search (contactId, accountId, status, from, since, until, body, query) and the bundle contains EXACTLY the conversations that scope would return — so to export 'this quarter's correspondence with a dealer', first contacts_search the dealer to a contactId, then call export_conversations(contactId, since=<quarter-start ISO>, until=<quarter-end ISO>); the since/until window is enforced server-side over the received date, same as search. It compiles the FULL matched set (every page), one row per conversation (contact, mailbox, subject, sender, lastMessageAt, status, messageCount, snippet). To bundle MULTIPLE dealers into ONE file, call once per contactId (each returns its own fileId); there is no multi-contact single-file mode. UNGATED read-to-file: it sends nothing and changes no mail — it only materializes a file from conversations you can already read (so an empty scope yields a header-only file, not an error). The returned `conversationCount`/`scope`/`truncated` let you report what was bundled honestly; `truncated:true` means the scan cap was hit and the bundle is partial.",
+      "searchKeywords": ["exporter"],
       "requiredScopes": ["mail:conversations:read"],
       "handler": "exportConversations",
       "params": {
@@ -849,6 +855,7 @@
     "reply": {
       "outboundTextParams": ["textBody", "htmlBody"],
       "description": "Reply to an existing mail conversation. GATED: calling this does NOT send — it creates a pending approval holding your drafted body that the human reviews, edits, and approves before it goes out. Calling this tool IS how a human 'looks it over before it goes out', so when asked to draft/propose/prepare a reply you must CALL this tool with the body; never paste the draft into chat and ask whether to send. The reply targets the LAST INBOUND SENDER by default; pass `to` (array of email strings) to override the recipients gmail-style, e.g. when the latest synced message is your own outbound (you were only cc'd) and the default would address a teammate instead of the customer. ONE pending reply draft per conversation: when mail__read lists a draft under pendingReplyDrafts, do NOT draft another; update that one with kernel__approval_update_payload (requestId = its approvalId), even when a colleague drafted it. A second call is refused with approval_already_pending when someone else drafted the waiting one, and replaces your own waiting draft otherwise.",
+      "searchKeywords": ["répondre", "réponse", "answer", "respond", "email", "courriel"],
       "requiredScopes": ["mail:conversations:write"],
       "handler": "agentMailReply",
       "timeoutMs": 60000,
@@ -985,6 +992,7 @@
     "forward": {
       "outboundTextParams": ["note"],
       "description": "Forward an existing inbound mail message to new recipients — re-sending the ORIGINAL message's body AND its attachments faithfully, the way a human hits 'Forward'. Use this (NOT compose) when asked to 'forward' an email — especially one that came in WITH an attachment (a PDF, a spec sheet, an invoice): you do NOT need to find the attachment file id yourself or re-type the body, because forward carries the original message's body (quoted under a 'Forwarded message' header) and re-attaches every original attachment automatically. The subject is prefixed 'Fwd:'. GATED: calling this does NOT send — it creates a pending approval holding the forwarded message (recipients, quoted body, and the carried-over attachments listed by filename + origin) that the human reviews, edits, and approves before it goes out. So forwarding is one call: mail__forward(conversationId, to=[recipient]); report it is QUEUED for approval, never that it was sent. Provide `note` to add a short lead-in line above the quoted original (e.g. 'Theo — can you quote this?'). By default forwards the latest inbound message in the conversation; pass `messageId` to forward a specific one. RESOLVING THE RECIPIENT: when the user names a COLLEAGUE to forward to (e.g. 'forward this to Theo in sales'), resolve that person's address with contacts_search by their name (a teammate/colleague's email lives in contacts) — do NOT substitute a DIFFERENT person than the one named. If you cannot resolve the EXACT named person, say so rather than forwarding to someone else (a same-team but different individual is a wrong recipient, not a fallback). If the user already gave the literal address, use it verbatim.",
+      "searchKeywords": ["transférer", "renvoyer", "email", "courriel"],
       "requiredScopes": ["mail:conversations:write"],
       "handler": "agentMailForward",
       "timeoutMs": 60000,
@@ -1135,6 +1143,7 @@
     },
     "convertToTicket": {
       "description": "Escalate a mail conversation to a Tickets ticket; closes the source conversation as escalated and copies messages into the new ticket.",
+      "searchKeywords": ["ticket", "convertir", "transformer"],
       "requiredScopes": ["mail:conversations:write"],
       "trustBoundary": "user",
       "handler": "convertToTicket",
@@ -1179,6 +1188,7 @@
     },
     "archive": {
       "description": "Archive one or more mail conversations (inbox hygiene — moves them out of the active inbox by setting status='archived'). Pass conversationIds (an array of ids from mail__search/mail__read). Internal mailbox change only — does NOT send or notify the customer. Use it to clear newsletters/promos out of the inbox.",
+      "searchKeywords": ["archiver", "classer", "email"],
       "requiredScopes": ["mail:conversations:write"],
       "trustBoundary": "user",
       "handler": "agentMailArchive",
@@ -1201,6 +1211,7 @@
     },
     "setLabels": {
       "description": "Apply labels to one or more mail conversations (e.g. tag non-customer mail as 'Spam/Noise'). Pass conversationIds + labels. mode 'add' (default) merges with existing labels; 'replace' overwrites. Internal organization only — does NOT message the customer.",
+      "searchKeywords": ["label", "labels", "étiquette", "libellé", "tag", "set"],
       "requiredScopes": ["mail:conversations:write"],
       "trustBoundary": "user",
       "handler": "agentMailSetLabels",
@@ -1333,6 +1344,7 @@
     "compose": {
       "outboundTextParams": ["subject", "textBody", "htmlBody"],
       "description": "Compose a new mail message. This sends a REAL EMAIL: to message a teammate in this organization, post in a Liaison conversation instead (kernel__threads_create with their user id, or kernel__threads_reply), unless the user explicitly asks for an email. GATED: calling this does NOT send — it creates a pending approval holding your drafted message that the human reviews, edits, and approves before it goes out. Calling this tool IS how a human 'looks it over before it goes out', so when asked to draft/propose/prepare a message you must CALL this tool with the body; never paste the draft into chat and ask whether to send. NOT A BROADCAST / MASS-SEND / SEGMENT primitive: this composes ONE single message with ONE shared body to the literal envelope you pass — every address in `to`/`cc`/`bcc` receives that one identical message and (for `to`/`cc`) sees the other recipients. There is NO per-recipient personalization, mail-merge, or segment/campaign send anywhere in this product: a template variable like {{firstName}} or {{orderName}} is sent VERBATIM (it is never interpolated per recipient), and putting many customers in one `to`/`cc` array leaks their addresses to each other. So 'email all the affected customers' / 'send the recall notice to everyone' is NOT one call: to reach N customers with a personalized, privacy-safe notice you must send N separate per-recipient messages (one compose or mail__reply per customer, EACH gated and individually approved) — OR, when that exceeds your step budget, stage a bounded few and tell the user plainly that there is no mass-send/segment tool so the rest must be approved one per recipient (or are out of reach for a single blast). Do NOT collapse a multi-customer outreach into a single multi-recipient compose.",
+      "searchKeywords": ["email", "envoyer", "send", "courriel", "écrire", "nouveau", "message", "write", "mail"],
       "requiredScopes": ["mail:conversations:write"],
       "handler": "agentMailCompose",
       "timeoutMs": 60000,

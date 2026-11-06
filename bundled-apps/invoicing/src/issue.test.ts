@@ -9,6 +9,7 @@
 // `findMany / findOne / insert / update` calls in tests as it does in
 // real runtime.
 
+import { testTime } from "./test-time"
 import { describe, expect, test } from "bun:test"
 import { issueDocument, type IssueCtx, type IssueInput } from "./issue"
 import { createMockDb, type MockDb } from "./test-db"
@@ -93,6 +94,7 @@ function makeCtx(opts?: {
   const ctx: IssueCtx = {
     getUserId: async () => "user-1",
     db,
+    time: testTime(),
     sequences: {
       async allocate({ key }) {
         const next = (state.sequences[key] ?? 0) + 1

@@ -83,7 +83,8 @@ describe("ads app.manifest.json", () => {
     // 0.1.52: a bunfig.toml wires the Solid JSX preload for `bun test` run from the app dir.
     // 0.1.53: the app's own install resolves the control-plane contract through an override
     // (the shared package depends on it by workspace protocol); no change to what it does.
-    expect(m.version).toBe("0.1.53")
+    // 0.1.55: above 0.1.54, so an instance on either line of work upgrades; no change of its own.
+    expect(m.version).toBe("0.1.55")
     for (const name of ["insights_query", "metrics_list", "metrics_run"]) {
       expect(m.tools[name]?.readOnly).toBe(true)
       expect(m.tools[name]?.writesToTable).toBeUndefined()

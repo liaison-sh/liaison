@@ -17,7 +17,7 @@
       }
     ]
   },
-  "version": "0.1.41",
+  "version": "0.1.43",
   "iconName": "calculator",
   "kind": "connector",
   "description": "Pennylane accounting connector: supplier/customer invoices, trial balance, derived P&L, cash position, transactions, spend-by-category, runway",
@@ -665,7 +665,8 @@
       }
     },
     "supplier_invoices_list": {
-      "description": "List SUPPLIER (accounts-payable) invoices — the bills YOU OWE to vendors/carriers/suppliers — id, supplier, total (minor units), status, due date. These are NOT your customer/dealer receivables: for 'dealer invoices', 'customer invoices', or 'overdue invoices we are owed' use the invoicing app's documents_search instead (this list is money you owe OUT, not money owed to you). Supports cursor paging and a filter array of {field,operator,value} clauses (see the filter param — it is an ARRAY of OBJECTS, never a bare string like \"status=unpaid\").",
+      "description": "List all SUPPLIER (accounts-payable) bills booked in accounting — the bills YOU OWE to vendors/carriers/suppliers — id, supplier, total (minor units), status, due date. These are NOT your customer/dealer receivables: for 'dealer invoices', 'customer invoices', or 'overdue invoices we are owed' use the invoicing app's documents_search instead (this list is money you owe OUT, not money owed to you). Supports cursor paging and a filter array of {field,operator,value} clauses (see the filter param — it is an ARRAY of OBJECTS, never a bare string like \"status=unpaid\").",
+      "searchKeywords": ["fournisseur", "factures", "achats", "bills", "charges", "comptabilité", "compta", "facture"],
       "readOnly": true,
       "requiredScopes": ["pennylane:invoices:read"],
       "handler": "supplierInvoicesListHandler",
@@ -703,6 +704,7 @@
     },
     "supplier_invoice_get": {
       "description": "Get one supplier invoice header by id (normalized projection, no raw payload).",
+      "searchKeywords": ["fournisseur", "achat"],
       "readOnly": true,
       "requiredScopes": ["pennylane:invoices:read"],
       "handler": "supplierInvoiceGetHandler",
@@ -717,7 +719,8 @@
       }
     },
     "customer_invoices_list": {
-      "description": "List CUSTOMER (accounts-receivable / revenue) invoices AS BOOKED IN THE ACCOUNTING LEDGER — id, customer, total (minor units), status, due date. Use this for accounting/AR-from-the-books questions. For the operational 'dealer invoices' / 'overdue invoices' a sales or ops person means day-to-day (the issued documents in the Invoicing app), prefer the invoicing app's documents_search (status=issued, derive overdue by comparing due_date to today). Cursor paging + filter array of {field,operator,value} objects (same shape as supplier_invoices_list — never a bare string).",
+      "description": "List CUSTOMER (accounts-receivable / revenue) invoices as booked in the accounting system; to act on an invoice use invoicing. Returns id, customer, total (minor units), status, due date. Use this for accounting/AR-from-the-books questions. For the operational 'dealer invoices' / 'overdue invoices' a sales or ops person means day-to-day (the issued documents in the Invoicing app), prefer the invoicing app's documents_search (status=issued, derive overdue by comparing due_date to today). Cursor paging + filter array of {field,operator,value} objects (same shape as supplier_invoices_list — never a bare string).",
+      "searchKeywords": ["comptabilité", "compta", "comptable", "ventes", "booked"],
       "readOnly": true,
       "requiredScopes": ["pennylane:invoices:read"],
       "handler": "customerInvoicesListHandler",
@@ -754,6 +757,7 @@
     },
     "trial_balance_get": {
       "description": "Read the trial balance for a period — account_code, label, balance_minor (minor units, on the account's natural side: credits − debits for revenue accounts, debits − credits otherwise), plus the period_start/period_end window used. Reconstructs from ledger entries when trial_balance is firm-scoped (403).",
+      "searchKeywords": ["comptable", "grand", "livre", "ledger"],
       "readOnly": true,
       "requiredScopes": ["pennylane:reports:read"],
       "handler": "trialBalanceGetHandler",
@@ -769,6 +773,7 @@
     },
     "pnl_summary": {
       "description": "Derived P&L summary for a period — returns revenue_minor, cogs_minor, opex_minor, other_minor, gross_margin_minor (gross_margin_minor = revenue_minor − cogs_minor). EVERY money field is in MINOR UNITS (the smallest currency unit, e.g. cents) — the `_minor` suffix says so — so DIVIDE BY 100 before displaying euros: revenue_minor:\"100000\" is €1,000.00, NOT €100,000. Buckets the trial balance by the org account_class_map (longest-prefix wins; 601 is COGS). Returns the period_start/period_end window used.",
+      "searchKeywords": ["résultat", "marge", "profit", "bénéfice", "perte", "rentabilité", "compte", "loss"],
       "readOnly": true,
       "requiredScopes": ["pennylane:reports:read"],
       "handler": "pnlSummaryHandler",
@@ -784,6 +789,7 @@
     },
     "cash_position": {
       "description": "Current cash position — per-account balances and total_by_currency (minor units). Returns cash_status:'unavailable' with empty totals when the bank scope is descoped (403), never a fabricated number.",
+      "searchKeywords": ["trésorerie", "banque", "solde", "tréso", "bank", "balance", "argent"],
       "readOnly": true,
       "requiredScopes": ["pennylane:cash:read"],
       "handler": "cashPositionHandler",
@@ -794,6 +800,7 @@
     },
     "transactions_list": {
       "description": "List bank transactions (burn side) — amount (minor units), currency. Cursor paging + filter array.",
+      "searchKeywords": ["banque", "relevé", "mouvements", "bank", "statement"],
       "readOnly": true,
       "requiredScopes": ["pennylane:cash:read"],
       "handler": "transactionsListHandler",
@@ -830,6 +837,7 @@
     },
     "spend_by_category": {
       "description": "Spend aggregated by P&L class (revenue/cogs/opex/other) for a period — total_minor per class. Classes the trial balance by the org account_class_map. Returns the period_start/period_end window used.",
+      "searchKeywords": ["dépense", "dépenses", "charges", "expense", "expenses"],
       "readOnly": true,
       "requiredScopes": ["pennylane:reports:read"],
       "handler": "spendByCategoryHandler",
@@ -845,6 +853,7 @@
     },
     "runway_estimate": {
       "description": "Runway estimate in whole months = cash / trailing net burn. Returns months:null when net burn is non-positive (cash-flow positive) OR cash_status:'unavailable' when the bank scope is descoped (403). Single-currency only (no automated FX).",
+      "searchKeywords": ["trésorerie", "autonomie", "mois", "cash"],
       "readOnly": true,
       "requiredScopes": ["pennylane:reports:read"],
       "handler": "runwayEstimateHandler",
@@ -865,6 +874,7 @@
     },
     "supplier_invoice_upload": {
       "description": "Book a received vendor/supplier/carrier bill (a PDF the caller can read, e.g. a mail attachment) into Pennylane's accounts payable. GATED: a person approves first; the approved call imports it (file attachment + supplier invoice import) with the figures you pass (Pennylane does no OCR) and answers posted_to_pennylane:true with the Pennylane id. The supplier is supplier_id, else the one Pennylane supplier named exactly supplier_name (refuses supplier_not_found / supplier_ambiguous with candidates, creating nothing). The same file imported twice reuses the first import. Never for supplier e-invoices received through the e-invoicing network: they are already in Pennylane. Use this (not a self-issued invoicing document) to record a received payable: invoicing is issue-only.",
+      "searchKeywords": ["fournisseur", "déposer", "téléverser", "importer"],
       "requiredScopes": ["pennylane:invoices:write"],
       "handler": "supplier_invoice_upload",
       "summarizer": "summarizeSupplierInvoiceUpload",

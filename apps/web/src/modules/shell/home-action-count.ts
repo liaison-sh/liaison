@@ -30,10 +30,13 @@
 
 import type { AttentionItem } from "@liaison/shared"
 import { createMemo, createRoot, createSignal } from "solid-js"
-import { isExpiredMailboxWait } from "~/modules/agent/routine-mailbox-wait-item"
+import {
+  collapseMailboxWaits,
+  isExpiredMailboxWait,
+} from "~/modules/agent/routine-mailbox-wait-item"
 import { hasScope, userFromToken } from "~/modules/auth/auth-store"
 import { isApprovalItem, partitionPeerRequests } from "~/modules/shell/approval-facets"
-import { splitFeed, urgentStripItems } from "~/modules/shell/attention-groups"
+import { newestPromptPerChat, splitFeed, urgentStripItems } from "~/modules/shell/attention-groups"
 import { attentionStore } from "~/modules/shell/attention-store"
 
 const SHOW_PEER_REQUESTS_KEY = "liaison.home.showPeerRequests"
@@ -70,19 +73,21 @@ export function reloadShowPeerRequests(): void {
 
 /** The rows Home's Approvals card lists, before its action facet: approvals,
  *  access requests (only for someone who can grant them) and routine runs
- *  waiting for a private mailbox. A waiting run whose 24 hours are over has
- *  left the list (its run history says it expired; the server's sweep marks
- *  its row read too). */
+ *  waiting for a private mailbox, all of them as one row. A waiting run whose
+ *  24 hours are over has left the list (its run history says it expired; the
+ *  server's sweep marks its row read too). */
 export function homeApprovalItems(
   nowItems: AttentionItem[],
   peersShown: boolean,
   viewer: HomeViewer = { userId: "", canGrantAccess: true },
 ): AttentionItem[] {
-  const approvals = nowItems.filter(
-    (item) =>
-      isApprovalItem(item) &&
-      !isExpiredMailboxWait(item) &&
-      (item.kind !== "scope_request" || viewer.canGrantAccess),
+  const approvals = collapseMailboxWaits(
+    nowItems.filter(
+      (item) =>
+        isApprovalItem(item) &&
+        !isExpiredMailboxWait(item) &&
+        (item.kind !== "scope_request" || viewer.canGrantAccess),
+    ),
   )
   return peersShown ? approvals : partitionPeerRequests(approvals).mine
 }
@@ -147,7 +152,12 @@ let count: (() => number) | null = null
 export function homeActionCount(): number {
   count ??= createRoot(() =>
     createMemo(
-      () => homeActionItems(attentionStore.items, peerRequestsShown(), currentHomeViewer()).length,
+      () =>
+        homeActionItems(
+          newestPromptPerChat(attentionStore.items),
+          peerRequestsShown(),
+          currentHomeViewer(),
+        ).length,
     ),
   )
   return count()

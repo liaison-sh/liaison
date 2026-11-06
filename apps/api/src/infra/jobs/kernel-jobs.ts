@@ -1518,12 +1518,23 @@ export async function syncDemoResetScheduler(): Promise<void> {
     })
     // The reaper alone, every 10 minutes (DEMO_REAP_CRON): expired workspaces
     // are collected soon after expiry instead of waiting for the night.
-    // The same tick also deletes leads past their retention window (the
-    // published privacy notice promises it).
+    // The same tick also empties the identity of signups whose workspace has
+    // expired and that did not opt in, deletes rows past their retention window
+    // (the published privacy notice promises both) and moves any budget counter
+    // still under a plain address to its keyed form. After the reap: the scenarios
+    // a visitor tried are read while their row is still whole.
     await registerScheduledJob("kernel", "demo-reap", DEMO_REAP_CRON, async () => {
       await reapExpiredDemoOrgs()
-      const { purgeStaleDemoLeads } = await import("~/modules/demo/demo-leads")
+      const { eraseExpiredDemoIdentities, purgeStaleDemoLeads } = await import(
+        "~/modules/demo/demo-leads"
+      )
+      await eraseExpiredDemoIdentities()
       await purgeStaleDemoLeads()
+      const { pruneElapsedNetworkBudgets, rekeyPlainBudgetAddresses } = await import(
+        "~/modules/demo/demo-budget"
+      )
+      await rekeyPlainBudgetAddresses()
+      await pruneElapsedNetworkBudgets()
     })
     return
   }

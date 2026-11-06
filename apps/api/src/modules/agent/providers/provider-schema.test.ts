@@ -5,6 +5,7 @@ import { z } from "zod"
 import {
   findProviderSchemaViolations,
   sanitizeJsonSchemaForProviders,
+  toModelInputSchema,
   toProviderSafeInputSchema,
 } from "./provider-schema"
 
@@ -71,5 +72,70 @@ describe("provider schema normalization", () => {
   it("passes a schema that is already provider-safe through untouched", () => {
     const schema = z.object({ q: z.string(), tags: z.array(z.string()) })
     expect(toProviderSafeInputSchema(schema as never)).toBe(schema as never)
+  })
+})
+
+describe("the schema a model is sent", () => {
+  const schema = z.object({
+    id: z.uuid(),
+    email: z.email().optional(),
+    sku: z.string().regex(/^[A-Z]{3}$/),
+    pattern: z.string().describe("a property that happens to be called pattern"),
+    rows: z.array(z.object({ ownerId: z.uuid() })),
+    either: z.union([z.uuid(), z.number()]).optional(),
+    pair: z.tuple([z.string(), z.string()]).optional(),
+  })
+  const VALID = {
+    id: "3f2b8c1e-6a4d-4e9b-8f10-2c7d5e9a1b34",
+    email: "a@example.com",
+    sku: "ABC",
+    pattern: "x",
+    rows: [{ ownerId: "3f2b8c1e-6a4d-4e9b-8f10-2c7d5e9a1b34" }],
+  }
+  const projected = asSchema(toModelInputSchema(schema) as never)
+  const json = projected.jsonSchema as Record<string, any>
+
+  it("carries no $schema and no pattern beside a uuid or an email, all the way down", () => {
+    expect("$schema" in json).toBe(false)
+    expect(json.properties.id).toEqual({ type: "string", format: "uuid" })
+    expect(json.properties.email).toEqual({ type: "string", format: "email" })
+    expect(json.properties.rows.items.properties.ownerId).toEqual({
+      type: "string",
+      format: "uuid",
+    })
+    expect(json.properties.either.anyOf[0]).toEqual({ type: "string", format: "uuid" })
+  })
+
+  it("keeps every other pattern, a property called pattern, and the provider rewrites", () => {
+    expect(json.properties.sku.pattern).toBe("^[A-Z]{3}$")
+    expect(json.properties.pattern.description).toContain("happens to be called")
+    expect(findProviderSchemaViolations(json)).toEqual([])
+    expect(json.required).toEqual(["id", "sku", "pattern", "rows"])
+  })
+
+  it("accepts and refuses exactly what the Zod schema does", async () => {
+    const check = async (value: unknown) => ({
+      projected: (await projected.validate?.(value))?.success,
+      zod: schema.safeParse(value).success,
+    })
+    expect(await check(VALID)).toEqual({ projected: true, zod: true })
+    for (const bad of [
+      { ...VALID, id: "not-a-uuid" },
+      { ...VALID, email: "not-an-email" },
+      { ...VALID, sku: "abc" },
+      { ...VALID, rows: [{ ownerId: "not-a-uuid" }] },
+      { ...VALID, either: "not-a-uuid" },
+    ]) {
+      expect(await check(bad)).toEqual({ projected: false, zod: false })
+    }
+  })
+
+  it("does not touch the form an external client reads", () => {
+    const full = asSchema(toProviderSafeInputSchema(schema as never) as never).jsonSchema as Record<
+      string,
+      any
+    >
+    expect(typeof full.$schema).toBe("string")
+    expect(typeof full.properties.id.pattern).toBe("string")
   })
 })

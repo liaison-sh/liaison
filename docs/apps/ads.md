@@ -90,7 +90,7 @@ Every tool marked "Always" files an approval and changes nothing until a person 
 | --- | --- | --- |
 | `insights_query`, `graph_get` | Meta insights and raw Graph API reads | No |
 | `campaigns_list`, `adsets_list`, `ads_list`, `creative_get`, `ad_preview`, `media_list`, `audiences_list` | Read Meta objects | No |
-| `account_info`, `pages_list`, `targeting_search`, `counts`, `pending_approvals_list` | Account details, Pages, targeting options, counts, your pending approvals | No |
+| `account_info`, `pages_list`, `targeting_search`, `pending_approvals_list` | Account details, Pages, targeting options, your pending approvals | No |
 | `create_campaign`, `create_adset`, `create_ad`, `create_creative`, `upload_image` | Create Meta objects (ads are created paused) | Always |
 | `update_budget` | Change a campaign or ad set budget | Always |
 | `set_status` | Resume a Meta object | Always |

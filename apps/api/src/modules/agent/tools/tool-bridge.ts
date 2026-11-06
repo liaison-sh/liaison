@@ -13,7 +13,10 @@ import {
   fulfilMailboxMarker,
   readMailboxMarker,
 } from "~/modules/agent/mailbox-plaintext/mailbox-plaintext-broker"
-import { toProviderSafeInputSchema } from "~/modules/agent/providers/provider-schema"
+import {
+  toModelInputSchema,
+  toProviderSafeInputSchema,
+} from "~/modules/agent/providers/provider-schema"
 import { checkReadOnlyRun, isReadOnlyTool } from "~/modules/agent/runtime/read-only-run"
 import { truncateToolResultForModel } from "~/modules/agent/runtime/result-truncation"
 import type { RunContext } from "~/modules/agent/runtime/run-context"
@@ -328,7 +331,7 @@ function convertParams(params: unknown): z.ZodObject<any> {
  * stores a new object), so the result is reused for as long as the
  * registration lives.
  */
-const providerInputSchemas = new WeakMap<object, ReturnType<typeof toProviderSafeInputSchema>>()
+const providerInputSchemas = new WeakMap<object, ReturnType<typeof toModelInputSchema>>()
 
 /** The tool's parameters as a model or an MCP client may set them: no host-only parameter
  *  (host-only-params.ts), which only the bridge's own retry fills in. */
@@ -339,16 +342,29 @@ function modelFacingParams(params: unknown): z.ZodObject<any> {
   return zodObj.omit(Object.fromEntries(hidden.map((key) => [key, true])))
 }
 
-export function providerInputSchemaOf(
-  params: unknown,
-): ReturnType<typeof toProviderSafeInputSchema> {
+export function providerInputSchemaOf(params: unknown): ReturnType<typeof toModelInputSchema> {
   if (typeof params !== "object" || params === null) {
-    return toProviderSafeInputSchema(modelFacingParams(params))
+    return toModelInputSchema(modelFacingParams(params))
   }
   let schema = providerInputSchemas.get(params)
   if (!schema) {
-    schema = toProviderSafeInputSchema(modelFacingParams(params))
+    schema = toModelInputSchema(modelFacingParams(params))
     providerInputSchemas.set(params, schema)
+  }
+  return schema
+}
+
+/** The same parameters as an external MCP client reads them, in full (`toModelInputSchema`). */
+const gatewayInputSchemas = new WeakMap<object, ReturnType<typeof toProviderSafeInputSchema>>()
+
+function gatewayInputSchemaOf(params: unknown): ReturnType<typeof toProviderSafeInputSchema> {
+  if (typeof params !== "object" || params === null) {
+    return toProviderSafeInputSchema(modelFacingParams(params))
+  }
+  let schema = gatewayInputSchemas.get(params)
+  if (!schema) {
+    schema = toProviderSafeInputSchema(modelFacingParams(params))
+    gatewayInputSchemas.set(params, schema)
   }
   return schema
 }
@@ -884,7 +900,10 @@ export function buildToolSet(
       description: toolDef.description,
       // Normalized on the way to the provider (tuple `items` lists 400 Gemini
       // for the whole turn); the Zod schema and what it accepts are unchanged.
-      inputSchema: providerInputSchemaOf(toolDef.params),
+      inputSchema:
+        audience === "gateway"
+          ? gatewayInputSchemaOf(toolDef.params)
+          : providerInputSchemaOf(toolDef.params),
       // A failed call goes to the model as an error output (`status: "failed"`), never as a
       // plain JSON result it could read as success or as pending (tool-failure-output.ts).
       // Everything else gets the SDK's own default: text for a string, JSON otherwise.

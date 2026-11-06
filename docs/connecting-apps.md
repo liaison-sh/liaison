@@ -557,6 +557,8 @@ same way after the erasure commits.
 
 ## 6. Headless connect: the MCP device flow
 
+A program holding a device sign-in token that calls an app's tools over REST (`POST /api/apps/run-tool` and its siblings, bulk actions, tool-backed settings) is judged like an MCP client, never as a person's click: a gated tool parks an approval, and outside-text and host rules apply. Its reads are marked on one hidden thread per sign-in, so a `threadId` it sends is ignored. A message it posts to an agent is not a person typing either: a tool that needs a typed message waits for approval, and the message does not clear a conversation's outside-text mark.
+
 For a headless MCP client (a CLI, a bot) that has no browser session, the device
 flow mints an MCP token that then acts **as** the approving user:
 

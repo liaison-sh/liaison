@@ -50,6 +50,8 @@ import {
   checkEinvoiceGate,
   einvoiceParamsError,
 } from "../einvoicing/issue-gate"
+import { type IssueDateParts, issueDateParts } from "../issue-date"
+import { statedIssueDate } from "./stated-issue-date"
 import { issueWithFxRate } from "./fx-issue"
 
 /** What the issue step needs to know of the original invoice: id, stored regime, transmission
@@ -147,6 +149,7 @@ interface CreditNoteCreatePrepared {
   currency: string
   total: bigint
   absTotal: bigint
+  when: IssueDateParts
   original: {
     number: string | null
     issuedAt: string | null
@@ -333,6 +336,9 @@ async function preflightCreditNoteCreateAndIssueParams(
   })
   if (!gate.ok) return { ok: false, error: gate.error }
 
+  const when = await statedIssueDate(ctx, issuer, "credit_note", input.issued_at)
+  if (!when.ok) return when
+
   return {
     ok: true,
     prepared: {
@@ -343,6 +349,7 @@ async function preflightCreditNoteCreateAndIssueParams(
       currency,
       total,
       absTotal,
+      when,
       original: {
         number: originalNumber,
         issuedAt: originalIssuedAt,
@@ -377,7 +384,7 @@ export async function creditNoteCreateAndIssue(
 ): Promise<MutationResult<{ document_id: string; number: string; einvoicing_warning?: EinvoicingWarning }>> {
   const pre = await preflightCreditNoteCreateAndIssueParams(ctx, rawInputIn, opts)
   if (!pre.ok) return pre.error
-  const { rawInput, input, notes, issuer, currency, total, absTotal } = pre.prepared
+  const { rawInput, input, notes, issuer, currency, total, absTotal, when } = pre.prepared
   const originalNumber = pre.prepared.original.number
   const originalIssuedAt = pre.prepared.original.issuedAt
   const originalRef = pre.prepared.original.ref
@@ -451,8 +458,8 @@ export async function creditNoteCreateAndIssue(
     draft: {
       currency,
       incoterm: input.incoterm ?? "DAP",
-      year_of_issue: new Date().getUTCFullYear(),
-      issued_at: input.issued_at ?? new Date().toISOString().slice(0, 10),
+      year_of_issue: when.year_of_issue,
+      issued_at: when.issued_at,
       due_at: null as string | null,
       external_refs: externalRefs,
       notes: effectiveNotes ?? null,
@@ -718,8 +725,10 @@ export async function creditNoteIssue(
     }
   }
 
+  const when = await issueDateParts(ctx, issuer)
+  if (!when.ok) return when.error
   const issueInput = {
-    ...buildIssueInputFromDraft(draft, issuer, counterparty),
+    ...buildIssueInputFromDraft(draft, issuer, counterparty, when),
     original_invoice_number: originalNumber,
     original_invoice_date: dateOnly(originalIssuedAt),
     original: originalRef,

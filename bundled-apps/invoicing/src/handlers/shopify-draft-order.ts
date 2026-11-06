@@ -27,6 +27,7 @@
 // Shopify. Parking an approval card would leave the quote invisible behind a request nobody
 // is expecting, so the create path runs with gatingKind "none".
 
+import { type DeferredRow, park, resolveOpenParks } from "../deferred"
 import { counterpartyCompletenessError, type DraftLineInput } from "../issue"
 import { majorDecimalToMinor, netOfIncludedTax } from "../money"
 import {
@@ -152,6 +153,7 @@ export type SyncResult =
       shopify_draft_order_name: string | null
     }
   | { status: "invoiced" | "rejected" | "noop"; document_id: string }
+  | { status: "deferred"; deferred_id: string; reason: string }
   | {
       status: "skipped"
       reason:
@@ -403,6 +405,50 @@ function warn(ctx: DraftOrderCtx, message: string): void {
   else console.warn(message)
 }
 
+// ── A quote waiting for its issuer's time zone ─────────────────────────────
+
+const ISSUER_TIMEZONE_INVALID = "issuer_timezone_invalid"
+const PARKED_DRAFT_ORDER_QUOTE_KIND = "parked_draft_order_quote"
+
+/** The arguments of a sync refused for its zone: everything needed to make the quote later. */
+interface ParkedDraftOrderQuote {
+  kind: typeof PARKED_DRAFT_ORDER_QUOTE_KIND
+  /** What `deferred_list` shows, as it does for an order. */
+  order_number: string | null
+  draft_order_id: string
+  draft: NormalizedDraftOrder
+  counterparty_fallback: Parameters<typeof syncQuoteFromDraftOrder>[1]["counterpartyFallback"]
+  customer_reference: string | null
+}
+
+export function isParkedDraftOrderQuote(payload: unknown): payload is ParkedDraftOrderQuote {
+  return (payload as { kind?: unknown } | null | undefined)?.kind === PARKED_DRAFT_ORDER_QUOTE_KIND
+}
+
+/**
+ * Make the quote a park was waiting for. A quote that exists by now settles it, and is never
+ * rewritten from the stored arguments: only a later Shopify event moves an open quote.
+ */
+export async function retryParkedDraftOrderQuote(
+  ctx: MutationsCtx,
+  row: Pick<DeferredRow, "event_payload_json">,
+): Promise<{ status: "ok" } | { status: "still_blocked"; reason: string }> {
+  if (!isParkedDraftOrderQuote(row.event_payload_json)) {
+    return { status: "still_blocked", reason: "parked_draft_order_unreadable" }
+  }
+  const parked = row.event_payload_json
+  if (await findQuoteByDraftOrderId(ctx as DraftOrderCtx, parked.draft_order_id)) return { status: "ok" }
+  const synced = await syncQuoteFromDraftOrder(ctx, {
+    draftOrderId: parked.draft_order_id,
+    draft: parked.draft,
+    counterpartyFallback: parked.counterparty_fallback,
+    customerReference: parked.customer_reference,
+  })
+  if (synced.status === "deferred") return { status: "still_blocked", reason: synced.reason }
+  if (synced.status === "error") return { status: "still_blocked", reason: synced.error.code }
+  return { status: "ok" }
+}
+
 // ── The sync ───────────────────────────────────────────────────────────────
 
 export async function syncQuoteFromDraftOrder(
@@ -436,6 +482,8 @@ export async function syncQuoteFromDraftOrder(
 
   // A delete carries no usable body: act on the quote we already have.
   if (input.deleted) {
+    // The offer is off the table, so a quote still waiting for its issuer's zone is not owed.
+    await resolveOpenParks(c, draftOrderId, "draft_order_deleted")
     const existing = await findQuoteByDraftOrderId(c, draftOrderId)
     if (!existing) return { status: "skipped", reason: "no_quote" }
     const status = String(existing.status ?? "")
@@ -510,6 +558,7 @@ export async function syncQuoteFromDraftOrder(
   //    is issued by the existing shopify/order:created auto-flow, never here.
   const completed = draft.status === "completed" || !!draft.orderId
   if (completed) {
+    await resolveOpenParks(c, draftOrderId, "draft_order_completed")
     if (!existing) return { status: "skipped", reason: "no_quote" }
     const status = String(existing.status ?? "")
     if (status !== "sent" && status !== "accepted") {
@@ -623,6 +672,28 @@ export async function syncQuoteFromDraftOrder(
       ...(poNumber ? { po_number: poNumber, po_number_source: "shopify_sync" } : {}),
       ...(input.customerReference ? { customer_reference: input.customerReference } : {}),
     })
+    // Nobody is waiting on this event, so a quote refused for its issuer's zone must not be lost:
+    // it waits for the setting with its arguments, and the deferred retry makes it. No number
+    // was taken.
+    if (created.status === "error" && created.error.code === ISSUER_TIMEZONE_INVALID) {
+      const parked: ParkedDraftOrderQuote = {
+        kind: PARKED_DRAFT_ORDER_QUOTE_KIND,
+        order_number: draft.name,
+        draft_order_id: draftOrderId,
+        draft,
+        counterparty_fallback: input.counterpartyFallback ?? null,
+        customer_reference: input.customerReference ?? null,
+      }
+      const def = await park(c, {
+        event_id: draftOrderId,
+        event_payload_json: parked,
+        status: "awaiting_config",
+        reason: ISSUER_TIMEZONE_INVALID,
+        blocked_on: { kind: "issuer_timezone", issuer_profile_id: issuer.id },
+      })
+      warn(c, `[invoicing] draft order ${draftOrderId}: quote waits for the issuer's time zone`)
+      return { status: "deferred", deferred_id: def.id, reason: ISSUER_TIMEZONE_INVALID }
+    }
     if (created.status !== "completed") {
       const message =
         created.status === "error"
@@ -638,6 +709,8 @@ export async function syncQuoteFromDraftOrder(
       }
     }
     await warnOnTotalDrift(c, draft, created.document_id, currency)
+    // An update that arrived after the zone was fixed: the sweep has nothing left to make.
+    await resolveOpenParks(c, draftOrderId, "quote_created")
     return {
       status: "created",
       document_id: created.document_id,

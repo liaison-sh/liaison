@@ -117,7 +117,6 @@ settings_issuer_profile_update gated -> bundled-apps/invoicing/app.manifest.json
 settings_issuer_profile_delete gated -> bundled-apps/invoicing/app.manifest.json:4298
 documents_update gated -> bundled-apps/invoicing/app.manifest.json:4321
 documents_retry_pdf -> bundled-apps/invoicing/app.manifest.json:4509
-documents_preview_pdf -> bundled-apps/invoicing/app.manifest.json:4526
 documents_download_pdf -> bundled-apps/invoicing/app.manifest.json:4543
 einvoicing_classify -> bundled-apps/invoicing/app.manifest.json:4560
 counterparty_identity_get -> bundled-apps/invoicing/app.manifest.json:4595
@@ -189,3 +188,9 @@ customer_history: lines with list unit price and price paid after the line disco
 A search that finds nothing points to customer_history or the Shopify order search -> bundled-apps/invoicing/src/reads.ts:604-626
 The global search indexes the address, email, order number and line descriptions -> bundled-apps/invoicing/app.manifest.json:288-306; apps/api/src/modules/search/doc-builder.ts:150-216
 Draft card names a private consumer only when the call declares one -> bundled-apps/invoicing/src/summarizers.ts:489
+A credit note's stated date decides its number year; before the last number of the series or after today is refused -> bundled-apps/invoicing/src/mutations/credit-notes.ts:84
+A payment date nobody states reads the issuer's time zone -> bundled-apps/invoicing/src/mutations/payments.ts:92; bundled-apps/invoicing/src/handlers/shopify-order-paid.ts:969
+A paid order or draft order on an unknown zone waits in deferred_list -> bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:678
+A draft order deleted or completed meanwhile closes its wait -> bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:486; bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:561
+An issued document's date stays in its number's year; an invoice or credit note's date stays between its neighbouring numbers and on or before today -> bundled-apps/invoicing/src/mutations/documents-update.ts:330
+A date picked on a new quote, proforma or purchase order decides its number year; after today is refused; a shop-linked quote takes its draft order's day -> bundled-apps/invoicing/src/mutations/stated-issue-date.ts:13; bundled-apps/invoicing/src/ui/Editor.tsx:803

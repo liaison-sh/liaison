@@ -300,7 +300,7 @@ export const KERNEL_RESET_RULES: Record<string, KernelResetRule> = {
   // The billing status the control plane pushes (managed edition only; a
   // demo server has none): not content a reset rewrites.
   org_billing_state: "keep",
-  // The org moves this instance took part in (0269): transfer ids and
+  // The org moves this instance took part in (0270): transfer ids and
   // directions only, written by the transfer import/export, never by a visitor.
   // The reverse-move rule reads them, so a reset must not forget a move.
   org_transfer_ledger: "keep",

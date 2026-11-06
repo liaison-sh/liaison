@@ -27,6 +27,7 @@
 // one-time `rerender-settled-pdfs` backfill (since removed), never these renders.
 
 import type { IssueCtx } from "../issue"
+import { civilDateOf, type TimeSurface } from "../issue-date"
 import { ensureDocumentPdf } from "../mutations"
 
 /** Max PDF re-renders per reconcile run (defensive bound — real late-settlement runs flip a
@@ -35,6 +36,7 @@ const MAX_RERENDERS_PER_RUN = 40
 
 export interface ReconcileCandidateRow {
   id: string
+  issuer_profile_id: string | null
   type: string
   number: string | null
   currency: string
@@ -71,7 +73,7 @@ export interface ReconcileCrossAppEnvelope {
   approval_id?: string
 }
 
-export interface ReconcileCtx {
+export interface ReconcileCtx extends TimeSurface {
   db: ReconcileDb
   executeTool(
     target: string,
@@ -121,6 +123,7 @@ function toCandidateRow(row: unknown): ReconcileCandidateRow {
   const r = row as Record<string, unknown>
   return {
     id: String(r.id),
+    issuer_profile_id: (r.issuer_profile_id as string | null) ?? null,
     type: String(r.type ?? "invoice"),
     number: (r.number as string | null) ?? null,
     currency: String(r.currency ?? "EUR"),
@@ -143,12 +146,6 @@ function resolveOrderId(doc: ReconcileCandidateRow): string | null {
 
 function toGid(orderId: string): string {
   return orderId.startsWith("gid://") ? orderId : `gid://shopify/Order/${orderId}`
-}
-
-function dateOnly(v: unknown): string | null {
-  if (typeof v !== "string" || v.length === 0) return null
-  const m = v.match(/^(\d{4}-\d{2}-\d{2})/)
-  return m ? m[1]! : null
 }
 
 interface OrderFacts {
@@ -180,20 +177,18 @@ function extractOrderFacts(result: unknown): OrderFacts {
 }
 
 /**
- * Compute the desired {status, payment_status, paid_at} for one invoice given
+ * Compute the desired {status, payment_status} for one invoice given
  * its order's facts, per the reconciliation rule. Returns null when the order
  * is not (yet, or no longer relevantly) in a state this job should touch.
  */
 function computeDesiredState(
   doc: ReconcileCandidateRow,
   facts: OrderFacts,
-  now: Date,
-): { status: string; payment_status: string; paid_at: string } | null {
+): { status: string; payment_status: string } | null {
   const financial = (facts.financialStatus ?? "").trim().toLowerCase()
   if (financial !== "paid") return null // refunded/voided/pending/etc. — caller buckets the reason
 
   const fulfillment = (facts.fulfillmentStatus ?? "").trim().toLowerCase()
-  const paidAt = dateOnly(facts.processedAt) ?? dateOnly(facts.createdAt) ?? now.toISOString().slice(0, 10)
   const shipsPhysically = doc.scope !== "software"
   const isFulfilled = fulfillment === "fulfilled"
   // Two INDEPENDENT axes on the invoice list:
@@ -207,7 +202,7 @@ function computeDesiredState(
   // and never sits in the overdue/dunning scope (which is issued + unpaid).
   const status = !shipsPhysically || isFulfilled ? "fulfilled" : "issued"
 
-  return { status, payment_status: "paid", paid_at: paidAt }
+  return { status, payment_status: "paid" }
 }
 
 /**
@@ -281,7 +276,7 @@ export async function reconcileShopifyPayments(
       continue
     }
 
-    const desired = computeDesiredState(docs[0]!, facts, now)
+    const desired = computeDesiredState(docs[0]!, facts)
     if (!desired) {
       result.skipped_unpaid += docs.length
       continue
@@ -296,7 +291,7 @@ export async function reconcileShopifyPayments(
       }
       // Per-document desired state — scope varies per document within an
       // order (a split goods+software order), so recompute per doc.
-      const docDesired = computeDesiredState(doc, facts, now)!
+      const docDesired = computeDesiredState(doc, facts)!
       const statusChanged = doc.status !== docDesired.status
       const paymentChanged = doc.payment_status !== docDesired.payment_status
       if (!statusChanged && !paymentChanged) continue
@@ -307,9 +302,25 @@ export async function reconcileShopifyPayments(
       // inside its timeout even on an unusually large backlog of late settlements.
       if (paymentChanged && ctx.pdf && renderBudget <= 0) continue
 
+      // The order's own instant, as the issuer's date. An issuer whose zone the host does not know
+      // stays un-reconciled and is reported: the next tick flips it once the zone is fixed.
+      const [issuer] = (await ctx.db.findMany("issuer_profiles", {
+        where: { id: doc.issuer_profile_id },
+        limit: 1,
+      })) as Array<{ timezone?: string | null }>
+      const paid = await civilDateOf(
+        ctx,
+        issuer ?? {},
+        facts.processedAt || facts.createdAt || now.toISOString(),
+      )
+      if (!paid.ok) {
+        result.errors.push({ order_id: orderId, message: paid.error.error.message ?? paid.error.error.code ?? "" })
+        continue
+      }
+
       const patch: Record<string, unknown> = {
         payment_status: docDesired.payment_status,
-        paid_at: docDesired.paid_at,
+        paid_at: paid.date,
       }
       if (statusChanged) patch.status = docDesired.status
       patch.lifecycle_log = [
@@ -338,7 +349,7 @@ export async function reconcileShopifyPayments(
             status: (patch.status as string | undefined) ?? doc.status,
             currency: doc.currency,
             grand_total_minor: doc.grand_total_minor,
-            paid_at: docDesired.paid_at,
+            paid_at: paid.date,
             payment_status: docDesired.payment_status,
           },
         })

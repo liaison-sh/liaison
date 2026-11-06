@@ -579,6 +579,7 @@ interface CreateAndIssueParams {
   items?: CardLineItem[]
   issuer_profile_id?: string
   currency?: string
+  issued_at?: string | null
   due_at?: string
   shopify_order_number?: string | null
   shopify_draft_order_name?: string | null
@@ -660,6 +661,7 @@ function createAndIssueSummarizer(type: string, kind: string) {
         draftOrderName: params.shopify_draft_order_name ?? null,
         poNumber: params.po_number ?? null,
         customerReference: params.customer_reference ?? null,
+        issuedAt: params.issued_at ?? null,
         dueAt: params.due_at ?? null,
         reason: params.reason ?? null,
         declaredValueMinor: params.declared_value_minor,

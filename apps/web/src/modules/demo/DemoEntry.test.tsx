@@ -274,17 +274,17 @@ describe("three pages: scenarios, the company, your details", () => {
 })
 
 describe("the notice under the button", () => {
-  it("tells the visitor what the address is for, with no extra step and no link when none is set", () => {
+  it("tells the visitor what the address is for, with an unticked news box and no link when none is set", () => {
     serve({})
     renderEntry()
     fireEvent.click(screen.getByTestId("demo-needs-support"))
     fireEvent.click(screen.getByTestId("demo-continue"))
     fireEvent.click(screen.getByTestId("demo-company-continue"))
     expect(screen.getByTestId("demo-lead-notice").textContent).toContain(
-      "We'll use your email to send you a few messages about Liaison. You can opt out anytime.",
+      "Unless you tick the box and confirm your email, your name and email are deleted when your demo ends, after 72 hours.",
     )
     expect(screen.queryByTestId("demo-privacy-link")).toBeNull()
-    expect(screen.queryByRole("checkbox")).toBeNull()
+    expect((screen.getByTestId("demo-news-opt-in") as HTMLInputElement).checked).toBe(false)
   })
 
   it("links the instance's privacy policy when the server names one", async () => {

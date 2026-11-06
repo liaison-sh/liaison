@@ -10,6 +10,7 @@ import {
   personalAgentLabel,
   relabelAgentMentions,
 } from "@liaison/shared"
+import { asSchema } from "ai"
 import { and, asc, desc, eq, inArray, isNull, ne } from "drizzle-orm"
 import {
   loadDiscussionTask,
@@ -2758,12 +2759,43 @@ export function stepInputBreakdown(params: {
   }
 }
 
+/** The JSON text of an input schema as a provider receives it, once per schema object. */
+const providerSchemaTexts = new WeakMap<object, string>()
+
+/**
+ * What the SDK sends for a tool's input schema: its JSON Schema projection, not
+ * the object the tool holds. A Zod object stringifies to Zod's internals and
+ * without any `.describe()`, which read invoicing about a quarter too high and
+ * a tool whose arguments carry the text about nine times too low. Anything the
+ * SDK cannot project, such as a bare JSON Schema object, counts as written.
+ */
+function providerSchemaText(inputSchema: unknown): string {
+  if (typeof inputSchema !== "object" && typeof inputSchema !== "function") {
+    return safeJson(inputSchema)
+  }
+  if (inputSchema === null) return ""
+  const known = providerSchemaTexts.get(inputSchema)
+  if (known !== undefined) return known
+  let projected: unknown
+  try {
+    projected = asSchema(inputSchema as Parameters<typeof asSchema>[0]).jsonSchema
+  } catch {
+    projected = inputSchema
+  }
+  const isAsync = typeof (projected as { then?: unknown } | null)?.then === "function"
+  const text = safeJson(isAsync ? inputSchema : projected)
+  providerSchemaTexts.set(inputSchema, text)
+  return text
+}
+
 /** What ONE tool schema costs a request: name, description and input schema. */
 export function estimateToolSchemaTokens(
   name: string,
   def: { description?: string; inputSchema?: unknown } | undefined,
 ): number {
-  return estimateTokens(`${name}\n${def?.description ?? ""}\n${safeJson(def?.inputSchema)}`)
+  return estimateTokens(
+    `${name}\n${def?.description ?? ""}\n${providerSchemaText(def?.inputSchema)}`,
+  )
 }
 
 /**

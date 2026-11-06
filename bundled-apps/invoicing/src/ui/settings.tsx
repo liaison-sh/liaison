@@ -13,6 +13,7 @@
 // are extracted so the bundled-app bun:test suite can pin every branch
 // without jsdom.
 import { tr } from "./i18n"
+import { CHOSEN_UTC, DEFAULT_ZONE, issuerTimezoneUnset } from "../issue-date"
 import {
   createResource,
   createSignal,
@@ -55,6 +56,8 @@ export interface IssuerProfileDraft {
   /** Typed unit prices are gross (tax included). Mirrors the Shopify shop's
    *  "include tax in prices" setting for a profile mapped to a shop. */
   prices_include_tax?: boolean
+  /** IANA zone of issue dates. The column default `UTC` means nobody chose (see issue-date.ts). */
+  timezone?: string | null
   email_templates?: Record<string, string>
   archived_at?: string | null
 }
@@ -91,6 +94,8 @@ const ISSUER_SAVE_FIELDS = [
 export function pickIssuerSaveFields(row: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const k of ISSUER_SAVE_FIELDS) if (row[k] !== undefined) out[k] = row[k]
+  // The column default, untouched: resending it would read as someone choosing UTC.
+  if (issuerTimezoneUnset(out)) delete out.timezone
   return out
 }
 
@@ -414,6 +419,21 @@ export const InvoicingIssuerProfiles: Component = () => {
                     />
                   </label>
                   <label class="flex items-center gap-2">
+                    <span class="w-32 text-text-tertiary">{tr("Time zone")}</span>
+                    <input
+                      data-testid="settings-issuer-profile-field-timezone"
+                      value={issuerTimezoneUnset(d()) ? "" : (d().timezone ?? "")}
+                      placeholder={tr("Not chosen, for example Europe/Paris")}
+                      title={tr("Issue dates and number years use this zone. Not chosen: they follow the organization's time zone, or UTC when it has none.")}
+                      onChange={(e) => {
+                        const typed = e.currentTarget.value.trim()
+                        const zone = !typed ? DEFAULT_ZONE : typed === DEFAULT_ZONE ? CHOSEN_UTC : typed
+                        setEditing({ ...d(), timezone: zone })
+                      }}
+                      class={inputClass}
+                    />
+                  </label>
+                  <label class="flex items-center gap-2">
                     <span class="w-32 text-text-tertiary">{tr("Default currency *")}</span>
                     <input
                       data-testid="settings-issuer-profile-field-currency"
@@ -559,6 +579,7 @@ export const InvoicingIssuerProfiles: Component = () => {
                   cell: (row) => <span title={row.legal_name}>{row.legal_name}</span>,
                 },
                 { key: "country", header: tr("Country"), role: "secondary", fit: true, cell: (row) => row.country },
+                { key: "timezone", header: tr("Time zone"), role: "secondary", fit: true, cell: (row) => (issuerTimezoneUnset(row) ? tr("Not chosen") : row.timezone) },
                 {
                   key: "vat-id",
                   header: tr("VAT ID"),

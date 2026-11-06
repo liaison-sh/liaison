@@ -20,7 +20,7 @@ A link from liaison.sh that names a scenario opens the demo with it already pick
 
 Your answer to the company question stays with your temporary workspace and is deleted with it. The server's logs count the answers by type, without your words or any link to you.
 
-The demo uses your email to send you a few messages about Liaison. You can opt out at any time from the link in those messages.
+The demo uses your email to send your confirmation code. You join no list by signing up: **Send me occasional news about Liaison** on the form is unticked. Unless you tick it and confirm your email, your name and email are deleted when your demo ends, after 72 hours.
 
 | Scenario | What happens |
 |---|---|
@@ -47,7 +47,7 @@ Once your email is confirmed, the agents run on the demo's key within a small bu
 - **Continue now with your key**: **Add my key** opens the key form described below.
 - **Install it yourself**: **See the guide** opens the self-hosting guide.
 
-With a work address, **We set it up for you** comes first; with a personal one (Gmail, Outlook, Yahoo and the like), your own key does. **Tell me when the hosted version opens** at the bottom signs you up for one email when the hosted version opens.
+With a work address, **We set it up for you** comes first; with a personal one (Gmail, Outlook, Yahoo and the like), your own key does. **Send me occasional news about Liaison, including when the hosted version opens** at the bottom is the same choice as the box on the form, if you did not tick it.
 
 When you finish your last scenario, the same window opens in place of the scenario's end card: **Keep exploring** shows what is left of your budget, with a request to try, above the same three options.
 

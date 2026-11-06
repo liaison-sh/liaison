@@ -238,6 +238,8 @@ export interface EditorIssuerProfile {
   invoice_approval_threshold_minor?: string | null
   /** Typed unit prices are gross (tax included) under this profile. */
   prices_include_tax?: boolean | null
+  /** Today in this issuer's time zone, as the host states it. Null when its zone is unknown. */
+  today?: string | null
   /** Some issuer-profile schemas mark a single default/primary profile —
    *  accepted under either common flag name; when neither is present the
    *  first profile in list order (already sorted by legal_name asc) wins. */
@@ -780,6 +782,34 @@ export interface EditorProps {
   documentId?: string
 }
 
+/** Today on this computer's calendar: the date shown until the issuer's own date is known. */
+export function localCivilDate(now: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
+
+/**
+ * The issue date a new document shows once its issuer is known: that issuer's today, as long as
+ * the field still holds the default it was given. A date somebody typed stays.
+ */
+export function issuedAtForIssuer(
+  current: string | null,
+  shownDefault: string | null,
+  today: string | null | undefined,
+): string | null {
+  return today && shownDefault !== null && current === shownDefault ? today : current
+}
+
+/**
+ * The date a new document's create tool receives: only one a person chose. The default the field
+ * was given is no choice (it can be stale, or this computer's date), so the server dates that
+ * document. An invoice's tool takes no date: its date is the day its number is taken.
+ */
+export function statedIssuedAt(d: DraftDocument, shownDefault: string | null): string | undefined {
+  if (d.type === "invoice" || !d.issued_at || d.issued_at === shownDefault) return undefined
+  return d.issued_at
+}
+
 export function defaultDraft(type: DocType = "invoice"): DraftDocument {
   return {
     type,
@@ -796,7 +826,7 @@ export function defaultDraft(type: DocType = "invoice"): DraftDocument {
     counterparty_shipping_address: null,
     counterparty_shipping_name: null,
     counterparty_country: null,
-    issued_at: new Date().toISOString().slice(0, 10),
+    issued_at: localCivilDate(),
     due_at: null,
     tax_treatment: "domestic",
     original_document_id: null,
@@ -897,14 +927,19 @@ export const Editor: Component<EditorProps> = (props) => {
   // once from the default profile, so a later manual issuer switch doesn't
   // clobber values the user may since have edited.
   let defaultsApplied = false
+  // The default a new document's date field holds; an opened document has none.
+  let issuedAtDefault = props.initial.id ? null : props.initial.issued_at
 
   const applyIssuer = (p: EditorIssuerProfile, opts: { applyDefaults: boolean }) => {
     const current = draft()
+    const issuedAt = issuedAtForIssuer(current.issued_at, issuedAtDefault, p.today)
+    if (issuedAt !== current.issued_at) issuedAtDefault = issuedAt
     const patch: Partial<DraftDocument> = {
       issuer_profile_id: p.id,
       issuer_country: p.country,
       issuer_vat_id: p.vat_id ?? null,
       prices_include_tax: !!p.prices_include_tax,
+      issued_at: issuedAt,
     }
     if (opts.applyDefaults && !defaultsApplied) {
       const base = defaultDraft(current.type)
@@ -1077,6 +1112,8 @@ export const Editor: Component<EditorProps> = (props) => {
       base.counterparty = { ...buildCounterparty(d), ...einvoiceCounterparty(d) }
       base.operation_category = d.operation_category ?? null
     }
+    const issuedAt = statedIssuedAt(d, issuedAtDefault)
+    if (issuedAt) base.issued_at = issuedAt
     return base
   }
 

@@ -29,6 +29,20 @@ const _checkPdfRender: (p: {
 }> = null as unknown as _PdfRender
 void _checkPdfRender
 
+// ctx.time.civil
+type _TimeCivil = AppContext["time"]["civil"]
+const _checkTimeCivil: (params: { timezone: string; at?: string | number }) => Promise<{
+  date: string
+  year: number
+  month: number
+  day: number
+  hour: number
+  minute: number
+  weekday: number
+  zone: string
+}> = null as unknown as _TimeCivil
+void _checkTimeCivil
+
 // K3 — sequences.allocate
 type _SeqAllocate = AppContext["sequences"]["allocate"]
 const _checkSeqAllocate: (p: { key: string }) => Promise<{ value: number }> =

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // THE BADGE (rule 6, one badge, one meaning). The phone's icon, the desktop
-// dock, the browser tab title and Home show ONE number: the unread things that
+// dock and the browser tab title show ONE number: the unread things that
 // ask for the person (direct conversations, mentions, replies in reply threads
 // they follow, approvals they decide, critical alerts). It is counted by the
 // shared `countBadge` (packages/shared/src/notifications/badge.ts), the same
@@ -60,7 +60,7 @@ export function localAppBadgeCount(): number {
   })
 }
 
-/** The number every badge shows: the phone's, the dock's, the tab title's and Home's. */
+/** The number every badge shows: the phone's, the dock's and the tab title's. */
 export function appBadgeCount(): number {
   const local = localAppBadgeCount()
   const r = reading()

@@ -57,7 +57,7 @@
       }
     ]
   },
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Knowledge workspace for local documents and curated source links",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -708,6 +708,7 @@
     },
     "search": {
       "description": "Federated search across Knowledge and enabled remote sources",
+      "searchKeywords": ["politique", "procédure", "doc", "documentation", "chercher", "rechercher", "connaissances", "policy", "article", "find", "trouver", "retrouver"],
       "readOnly": true,
       "requiredScopes": ["knowledge:documents:read"],
       "trustBoundary": "user",
@@ -738,6 +739,7 @@
     },
     "review_queue": {
       "description": "List Knowledge items that need attention — documents or source links that are flagged needs_review/stale, are missing an owner, or are past their review-due date. Read-only; verified items are excluded. Use this to find what to verify or refresh.",
+      "searchKeywords": ["revoir", "relire", "doc", "document"],
       "readOnly": true,
       "requiredScopes": ["knowledge:documents:read"],
       "trustBoundary": "user",
@@ -754,6 +756,7 @@
     },
     "verify": {
       "description": "Mark a Knowledge document (or a linked source item) as verified — confirming its content is current. Pass exactly one of documentId or sourceLinkId. For a source link, the remote is re-probed; if it is no longer reachable the link is marked stale instead. Requires the update scope.",
+      "searchKeywords": ["vérifier", "valider", "doc", "document"],
       "requiredScopes": ["knowledge:documents:update"],
       "writesToTable": "app_knowledge.documents",
       "trustBoundary": "user",
@@ -774,6 +777,7 @@
     },
     "add_folder_source": {
       "description": "Bulk-ingest an external FOLDER-shaped source into Knowledge in one bounded call: a Google Drive folder, a GitLab repo path, or the connected database's KB. This is the right tool whenever the task is to bring an external source in as an auto-syncing folder, not to hand-copy its content. Pass `source`: 'google-drive' (default, back-compat), 'gitlab', or 'database'. It enumerates the source, READS each item's real content, and creates ONE Knowledge document per item (name to title, the item's actual text to body), each with a review-queue entry, so you never hand-import items one by one and never fabricate a body. Set oneShot:true to harvest once and then archive the source (a one-time bulk import); omit it to keep syncing on a schedule. Pass scope:'organization' (with sources:manage) to make the docs available org-wide. Returns syncedSourceId and documentsCreated, the real number of documents ingested.",
+      "searchKeywords": ["synchroniser", "drive", "dossier", "sync"],
       "requiredScopes": ["knowledge:sources:manage"],
       "trustBoundary": "user",
       "handler": "addFolderSource",
@@ -828,6 +832,7 @@
     },
     "source_link_create": {
       "description": "Register a LIVING source_link in Knowledge that POINTS at a single remote document (e.g. a specific Google Drive file) — it always reflects the CURRENT remote doc and is NEVER a frozen copy of its content. This is the right tool when the user wants to 'register / track / link / reference' an external doc 'that keeps changing' / 'always points to the live version' / 'don't want a frozen copy' / 'this is the canonical X' — register the live pointer, do NOT use `create` (which freezes a local document copy of the body). FIRST resolve the real remote file id with the connector's search (e.g. google-drive__search — never guess the id from the file's name), then pass `source` (the connector id, e.g. 'google-drive') + `externalId` (the file id from that search hit) + a concise `title`. The remote is re-probed before the link is stored, so a link can only be registered for a doc that actually exists and is visible — never assert a link without a successful result + id. Requires the knowledge:links:create scope. (Use `create` instead only when the user wants to SAVE / SUMMARISE / IMPORT the content as an editable local copy.)",
+      "searchKeywords": ["lien", "source", "link"],
       "requiredScopes": ["knowledge:links:create"],
       "trustBoundary": "user",
       "handler": "source_link_create",
@@ -868,6 +873,7 @@
     },
     "get": {
       "description": "Fetch the full content of a Knowledge document OR a remote connected-source item. Pass `id` for a local Knowledge document. To read a file that lives in a connected source (e.g. a Google Doc found via google-drive__search), pass `source` (the connector id, e.g. 'google-drive') + `sourceEntityId` (the file id from the search hit) — this returns the file's REAL text content (Google Docs/Sheets are exported to text), so you can ground a new Knowledge document's body in it instead of inventing one. Remote content reads require the knowledge:sources:read scope.",
+      "searchKeywords": ["lire", "ouvrir", "doc", "document", "read"],
       "readOnly": true,
       "requiredScopes": ["knowledge:documents:read"],
       "trustBoundary": "user",
@@ -896,6 +902,7 @@
     },
     "find_by_title": {
       "description": "Look up a Knowledge document by its EXACT title — DB-backed, never rides the search index, so a document created moments ago resolves immediately (unlike `search`, which is Meilisearch-backed and can lag behind a fresh write under load). Use this when you already know (or another tool told you) the precise title to check for — e.g. a connector app's deterministic per-entity doc naming convention — not for keyword discovery (use `search` for that). Returns found:false + document:null when no exact match exists or you cannot read it; pass includeArchived:true to also match an archived document.",
+      "searchKeywords": ["titre", "doc", "document"],
       "readOnly": true,
       "requiredScopes": ["knowledge:documents:read"],
       "trustBoundary": "user",
@@ -919,6 +926,7 @@
     },
     "create": {
       "description": "Create a local Knowledge document. SEARCH BEFORE YOU CREATE: the knowledge base is curated and org-wide, so first look for a document that already covers this subject (search by topic, find_by_title when you know the exact title). If one exists, UPDATE it instead: a second doc on a subject someone already wrote splits the truth in two and both become untrustworthy. Create only when the subject is genuinely new. EVERY document MUST be filed into a collection via collectionId (never free-floating). ORGANIZATION documents must additionally be access-classified: pass an explicit sensitivity, and for 'confidential'/'restricted' pass shareWithRoles naming who may access it (roles_list gives role ids; finance, pricing, margin, revenue and contract material belongs to the executive/C-Level role, NOT org-wide). Missing placement or access rules returns a structured error listing existing collections so you can retry. Create a local Knowledge document. The result includes the new document's id, a `resourceUrl`, and a ready-made `mentionTag` (an @[Title](knowledge:document:<id>) entity tag) — after creating, ALWAYS confirm to the user by pasting the returned mentionTag verbatim in your reply (it renders as a clickable entity pill that opens the doc), never just a bare success sentence. NEVER FABRICATE DATES OR AN EVENT SCHEDULE INTO A DOC: do not author a document containing SPECIFIC dates (an event/expo/launch start or end date, a 'schedule', a 'calendar', a date-bounded window like 'July 1–14') unless those exact dates came from a source you actually READ (a retrieved Knowledge article, a project task's real due date, an order/invoice). If the user frames a request with a RELATIVE window ('in the two weeks before the launch', 'in the run-up to the expo', 'until the event') but the SPECIFIC dates are not in any readable source, do NOT search-then-invent and do NOT create a 'Schedule'/'Launch Calendar' doc to fill the gap — manufacturing concrete dates and persisting them here is a fabrication. Just report the real records you read (e.g. the project's open + overdue tasks) and, for a recurring digest, bound the recurrence with the cron schedule, not with an invented date doc.",
+      "searchKeywords": ["rédiger", "écrire", "write", "doc", "document", "politique", "policy", "procédure", "nouveau", "connaissances"],
       "requiredScopes": ["knowledge:documents:create"],
       "writesToTable": "app_knowledge.documents",
       "trustBoundary": "user",
@@ -1035,6 +1043,7 @@
     },
     "update": {
       "description": "Update a local Knowledge document with revision check The result includes a `mentionTag` (@[Title](knowledge:document:<id>)) — paste it verbatim in your confirmation so the updated doc is one click away.",
+      "searchKeywords": ["modifier", "edit", "doc", "document", "mettre"],
       "requiredScopes": ["knowledge:documents:update"],
       "writesToTable": "app_knowledge.documents",
       "trustBoundary": "user",
@@ -1112,6 +1121,7 @@
     },
     "archive": {
       "description": "Archive (retire) a Knowledge document — a reversible soft-archive that removes it from the active KB and from search. Use this to retire a wrong, superseded, or stray DUPLICATE document you created; restore reverses it. Do NOT rename a doc to '[ARCHIVED]'/'OLD' as a fake cleanup — archive it. Pass the document id.",
+      "searchKeywords": ["archiver", "doc", "document"],
       "requiredScopes": ["knowledge:documents:archive"],
       "writesToTable": "app_knowledge.documents",
       "trustBoundary": "user",
@@ -1133,6 +1143,7 @@
     },
     "restore": {
       "description": "Restore a previously-archived Knowledge document back into the active KB. Reverses archive; a no-op (no event) if the document is already active. Pass the document id.",
+      "searchKeywords": ["restaurer", "doc", "document"],
       "requiredScopes": ["knowledge:documents:archive"],
       "writesToTable": "app_knowledge.documents",
       "trustBoundary": "user",
@@ -1151,6 +1162,7 @@
     },
     "collection_create": {
       "description": "Create a Knowledge collection (folder).",
+      "searchKeywords": ["dossier", "folder"],
       "requiredScopes": ["knowledge:collections:manage"],
       "trustBoundary": "user",
       "handler": "collection_create",
@@ -1181,6 +1193,7 @@
     },
     "collection_update": {
       "description": "Update a Knowledge collection's name, description, or parent.",
+      "searchKeywords": ["dossier", "folder", "renommer", "rename"],
       "requiredScopes": ["knowledge:collections:manage"],
       "trustBoundary": "user",
       "handler": "collection_update",
@@ -1214,6 +1227,7 @@
     },
     "collection_delete": {
       "description": "Archive a Knowledge collection (removes it from the active tree).",
+      "searchKeywords": ["dossier", "folder", "supprimer"],
       "requiredScopes": ["knowledge:collections:manage"],
       "trustBoundary": "user",
       "handler": "collection_delete",
@@ -1232,6 +1246,7 @@
     },
     "add_to_collection": {
       "description": "Add a Knowledge document to a collection.",
+      "searchKeywords": ["dossier", "folder", "ranger", "classer"],
       "requiredScopes": ["knowledge:collections:manage"],
       "trustBoundary": "user",
       "handler": "add_to_collection",
@@ -1254,6 +1269,7 @@
     },
     "remove_from_collection": {
       "description": "Remove a Knowledge document from a collection.",
+      "searchKeywords": ["dossier", "folder", "retirer"],
       "requiredScopes": ["knowledge:collections:manage"],
       "trustBoundary": "user",
       "handler": "remove_from_collection",

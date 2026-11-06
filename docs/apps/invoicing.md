@@ -19,6 +19,12 @@ An issuer profile is the legal entity your documents are issued from. Nothing ca
 
 Reading profiles needs `invoicing:settings:read` and editing their ordinary fields needs `invoicing:settings:write`. Changing a bank or control field (`iban`, `swift_bic`, `bank_name`, the approval thresholds, `require_two_eyes`, `auto_email_enabled`, `mail_account_id`) or deleting a profile also needs `invoicing:issuer:admin`. Only the admin role holds that scope by default. A profile still referenced by documents cannot be deleted.
 
+A document's issue date and its number year are the date in the issuer's time zone when its number is taken. Set the zone in **Time zone** on the profile, for example `Europe/Paris`; an unknown name is refused. A profile with no zone chosen follows the organization's time zone, or UTC when the organization has none, and the profile list shows **Not chosen** until someone picks one. To keep UTC on purpose, type `UTC`. An agent reads the same reminder from `einvoicing_readiness` and sets the zone with `settings_issuer_profile_update`.
+
+A credit note can state an earlier date. The date decides the number's year: a date in a past year takes that year's series, never this year's number. A date before the last number of that series is refused, and so is a date after today. A payment date nobody states, from **Mark paid** or from a Shopify order, is read in the same time zone.
+
+If the issuer's zone is not one the host knows, nothing is numbered. A paid order or a Shopify draft order waits in `deferred_list` with what it needs, and its invoice or quote is made once the zone is fixed. A draft order deleted or completed meanwhile closes its wait.
+
 You can also create issuer profiles from a config file with [`liaison config apply`](../reference/config.md), including the Shopify shop mapping, approval threshold and auto-email that the form does not show.
 
 An agent can propose an issuer profile too. Its approval card lists every legal identity field the profile sets: legal form, address, SIREN, SIRET, VAT number, IBAN. The agent takes these from you. A SIREN, SIRET, VAT number, IBAN, BIC or tax id that is in no message you wrote and no file you attached in the conversation is refused, whichever tool the agent uses, and so is a SIREN or SIRET whose checksum fails: the agent then asks you to type the right one. A VAT number computed from a SIREN you gave counts as given. Spaces, dots and dashes in a SIREN or SIRET are ignored. The address and legal form are not checked: read them on the card. An invoice import into a workspace with no issuer profile is refused until one exists.
@@ -41,7 +47,7 @@ When an order cannot be invoiced automatically, it appears under **Deferred** in
 Only quotes, proformas and purchase orders are started by hand. Invoices come from paid orders or from converting a quote or proforma.
 
 1. Open **Invoicing** and click **+ New quote** in the sidebar. Use the arrow next to it to pick **New proforma** or **New purchase order** instead. The button is shown to people who hold `invoicing:documents:write`.
-2. Pick the **Issuer**, then the **Issue date** and **Due date**.
+2. Pick the **Issuer**, then the **Issue date** and **Due date**. A date you pick decides the year of the document's number: a date in a past year takes that year's series. A date after today is refused. A quote from an issuer mapped to a Shopify shop takes the day its draft order is created, so another date is refused there.
 3. Optionally, search a contact in **Contact** and pick it: the document is linked to that contact, which shows by its name, and an empty customer name and email are filled from it. **Unlink** removes the link.
 4. Fill in **Customer name**, **Customer email**, **Customer VAT ID**, **Customer country** and **Customer address**. Add a **Shipping address (if different)** when the parcel goes elsewhere.
 5. Click **+ Add line** for each line.
@@ -88,7 +94,7 @@ Open a document from **Documents** in the sidebar (**All**, **Invoices**, **Quot
 | **Convert to invoice** | Quotes and proformas only, see above. |
 | **Preview PDF** / **Download PDF** | Open or download the rendered PDF. |
 
-Issued documents are never deleted. A correction is a credit note, with its own `CN-` number series. A refund or cancellation taken in Shopify issues the matching credit note automatically.
+Issued documents are never deleted. A correction is a credit note, with its own `CN-` number series. The date of an issued document stays in its number's year: a date in another year is refused, and the correction is a credit note and a new invoice (for a quote, proforma or purchase order, a new one). The date of an issued invoice or credit note also stays between the numbers just before and just after it, and is never after today. A refund or cancellation taken in Shopify issues the matching credit note automatically.
 
 **Pending Approval** in the sidebar lists the invoicing approvals waiting for a decision. Deciding them needs `invoicing:approve`; the row is shown to people who hold it or `invoicing:documents:write`. See [Approve what agents do](../agents/approvals.md).
 
@@ -156,7 +162,7 @@ Invoices, credit notes and proformas issued in another tool can be imported with
 | --- | --- | --- |
 | `documents_search`, `documents_get`, `documents_for_orders` | Find and read documents, including those of Shopify orders | No |
 | `customer_history` | A customer's earlier sales: each line's unit price, the latest sale of a product and their Shopify orders | No |
-| `documents_preview_pdf`, `documents_download_pdf` | Get a document's PDF | No |
+| `documents_download_pdf` | Get a document's PDF | No |
 | `pending_approvals_list` | List your pending invoicing approvals (read only) | No |
 | `deferred_list` | List paid orders whose invoice did not issue, and why | No |
 | `vat_validate` | Check an EU VAT number with the EU VIES service | No |

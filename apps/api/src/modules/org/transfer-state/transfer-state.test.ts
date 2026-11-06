@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// An org moving to another instance (migration 0268, modules/org/transfer-state/),
+// An org moving to another instance (migration 0269, modules/org/transfer-state/),
 // against the real database, Redis, middleware and job dispatch:
 //  - frozen: a write answers 503 `org_moving` with Retry-After, a read 200;
 //  - draining: only the routes that start an agent turn are refused;

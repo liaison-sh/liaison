@@ -23,7 +23,7 @@
 // (bundled-apps/invoicing/src/handlers/shopify-order-paid.ts and
 // shopify-draft-order.ts). Every assertion reads persisted Postgres state
 // (or the raw event envelope actually queued), never a hand-built fixture.
-import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { afterAll, afterEach, beforeAll, describe, expect, it, setSystemTime } from "bun:test"
 import { createHmac, randomUUID } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -32,6 +32,8 @@ import { sql } from "~/db"
 import type { UserContext } from "~/db/rls"
 import { flushEventHandlers } from "~/infra/events/event-bus"
 import { processOutboxBatch } from "~/infra/events/outbox-worker"
+import { dispatchAppJobWithContext } from "~/infra/jobs/job-context"
+import { JobsTestAccess } from "~/infra/jobs/jobs"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { env } from "~/lib/env"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
@@ -253,9 +255,13 @@ describe("shopify -> invoicing PO number seam (real webhook -> real outbox -> re
     // the org's active `shop` account, as the OAuth callback leaves it.
     await sql`DELETE FROM app_shopify.install_metadata WHERE org_id = ${ORG}`
     await sql`DELETE FROM kernel.connected_accounts WHERE org_id = ${ORG} AND app_name = 'shopify'`
-    await sql`INSERT INTO kernel.connected_accounts
-      (org_id, app_name, connection_name, owner_type, provider_type, identifier, status, created_by)
-      VALUES (${ORG}, 'shopify', 'shop', 'org', 'oauth2', ${SHOP_DOMAIN}, 'active', ${USER})`
+    await sql`INSERT INTO kernel.connected_accounts (
+        id, org_id, app_name, connection_name, owner_type, owner_id,
+        provider_type, identifier, status, created_by, access_token_encrypted
+      ) VALUES (
+        ${randomUUID()}, ${ORG}, 'shopify', 'shop', 'org', NULL,
+        'oauth2', ${SHOP_DOMAIN}, 'active', ${USER}, 'encrypted-token'
+      )`
 
     issuerProfileId = await insertIssuerProfile()
     await seedConfirmedBuyers()
@@ -274,6 +280,295 @@ describe("shopify -> invoicing PO number seam (real webhook -> real outbox -> re
     await sql`DELETE FROM kernel.connected_accounts WHERE org_id = ${ORG} AND app_name = 'shopify'`
     await releaseTestLock()
   }, 60_000)
+
+  // Handlers run in QuickJS, which has no `Intl`: only this path, the real one, could tell that the
+  // order flow's year was always UTC. The webhook arrives under the real clock, then the clock moves
+  // to the instant the outbox hands the order to invoicing.
+  describe("the issue date of an order is the issuer's", () => {
+    const orderBody = (id: string, suffix: string) => ({
+      id,
+      name: `#TZ-${suffix}`,
+      currency: "EUR",
+      total_price: "50.00",
+      financial_status: "paid",
+      customer: {
+        id: 71000,
+        email: "buyer1@po-seam.example",
+        first_name: "Seam",
+        last_name: "Buyer1",
+      },
+      billing_address: {
+        company: "PO Seam Buyer SARL",
+        address1: "1 rue Seam",
+        zip: "75002",
+        city: "Paris",
+        country_code: "FR",
+      },
+      line_items: [
+        {
+          id: 81900,
+          variant_id: 91900,
+          title: "Widget",
+          quantity: 1,
+          price: "50.00",
+          requires_shipping: true,
+        },
+      ],
+    })
+    const setIssuerZone = (zone: string) =>
+      sql`UPDATE app_invoicing.issuer_profiles SET timezone = ${zone} WHERE org_id = ${ORG} AND shopify_shop_id = ${SHOP_DOMAIN}`
+
+    afterEach(async () => {
+      setSystemTime()
+      await setIssuerZone("UTC")
+    })
+
+    it("00:20 on 1 January in Paris: the order's invoice is dated 2027 and numbered in 2027", async () => {
+      const orderId = "tz-seam-order-1"
+      await setIssuerZone("Europe/Paris")
+      expect(
+        (await postWebhook("orders-create", orderBody(orderId, "1"), `tz-seam-1-${randomUUID()}`))
+          .status,
+      ).toBe(200)
+
+      setSystemTime(new Date("2026-12-31T23:20:00Z"))
+      expect(await processOutboxBatch()).toBeGreaterThan(0)
+      await flushEventHandlers()
+
+      const [row] = await sql<Array<{ d: string; year_of_issue: number; number: string }>>`
+        SELECT to_char(issued_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS d, year_of_issue, number
+        FROM app_invoicing.documents WHERE org_id = ${ORG} AND shopify_order_id = ${orderId}`
+      expect(row).toMatchObject({ d: "2027-01-01", year_of_issue: 2027 })
+      expect(row?.number).toContain("2027")
+    })
+
+    const paidDate = async (orderId: string) => {
+      const [row] = await sql<Array<{ paid: string | null; issued: string }>>`
+        SELECT to_char(paid_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS paid,
+               to_char(issued_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS issued
+        FROM app_invoicing.documents WHERE org_id = ${ORG} AND shopify_order_id = ${orderId}`
+      return row
+    }
+
+    it("a paid order placed at 00:20 on 1 January in Paris is paid on 1 January", async () => {
+      const orderId = "tz-seam-order-3"
+      await setIssuerZone("Europe/Paris")
+      const body = { ...orderBody(orderId, "3"), created_at: "2026-12-31T23:20:00Z" }
+      expect((await postWebhook("orders-create", body, `tz-seam-3-${randomUUID()}`)).status).toBe(
+        200,
+      )
+      setSystemTime(new Date("2026-12-31T23:20:00Z"))
+      expect(await processOutboxBatch()).toBeGreaterThan(0)
+      await flushEventHandlers()
+      expect(await paidDate(orderId)).toEqual({ paid: "2027-01-01", issued: "2027-01-01" })
+    })
+
+    it("a paid order with no date of its own is paid on the issuer's date", async () => {
+      const orderId = "tz-seam-order-4"
+      await setIssuerZone("Europe/Paris")
+      expect(
+        (await postWebhook("orders-create", orderBody(orderId, "4"), `tz-seam-4-${randomUUID()}`))
+          .status,
+      ).toBe(200)
+      setSystemTime(new Date("2026-12-31T23:20:00Z"))
+      expect(await processOutboxBatch()).toBeGreaterThan(0)
+      await flushEventHandlers()
+      expect(await paidDate(orderId)).toEqual({ paid: "2027-01-01", issued: "2027-01-01" })
+    })
+
+    describe("a draft order refused for its zone waits, and is not lost", () => {
+      const draftBody = (id: number, name: string, price: string, po?: string) => ({
+        id,
+        name,
+        status: "open",
+        currency: "EUR",
+        presentment_currency: "EUR",
+        ...(po ? { po_number: po } : {}),
+        email: "quotebuyer@po-seam.example",
+        customer: {
+          id: 73001,
+          email: "quotebuyer@po-seam.example",
+          first_name: "Quote",
+          last_name: "Buyer",
+        },
+        billing_address: {
+          company: "PO Seam Quote Buyer SARL",
+          address1: "3 rue Seam",
+          zip: "75002",
+          city: "Paris",
+          country_code: "FR",
+        },
+        line_items: [{ id: id + 1, variant_id: 95001, title: "Widget", quantity: 1, price }],
+      })
+      const deliver = async (topic: string, body: Record<string, unknown>) => {
+        expect((await postWebhook(topic, body, `tz-draft-${randomUUID()}`)).status).toBe(200)
+        expect(await processOutboxBatch()).toBeGreaterThan(0)
+        await flushEventHandlers()
+      }
+      const parksOf = (gid: string) =>
+        sql<
+          Array<{
+            status: string
+            reason: string | null
+            event_payload_json: {
+              kind?: string
+              order_number?: string
+              draft?: { lineItems?: Array<{ unitPrice?: string }> }
+            }
+            blocked_on: { kind?: string }
+          }>
+        >`SELECT status, reason, event_payload_json, blocked_on FROM app_invoicing.deferred_events
+          WHERE org_id = ${ORG} AND event_id = ${gid}`
+      const runDeferredRetry = async () => {
+        const handler = JobsTestAccess.getHandler("invoicing", "deferred-retry")
+        if (!handler) throw new Error("deferred-retry job handler not registered")
+        await dispatchAppJobWithContext(
+          handler,
+          { orgId: ORG },
+          { actorType: "system", orgId: ORG, purpose: "job", scopes: ["invoicing:*"] },
+          "ambient",
+        )
+      }
+      /**
+       * A sweep at this instant of the host's clock, which is the one the issue date reads. The
+       * job's own clock, in the sandbox, stays real, so a park tried before is made due by hand.
+       */
+      const sweepAt = async (iso: string, gid: string) => {
+        await sql`UPDATE app_invoicing.deferred_events SET retried_at = now() - interval '1 day'
+          WHERE org_id = ${ORG} AND event_id = ${gid}`
+        setSystemTime(new Date(iso))
+        await runDeferredRetry()
+      }
+      const quotes = (gid: string) =>
+        sql<
+          Array<{ number: string; year_of_issue: number; po_number: string | null; total: string }>
+        >`
+          SELECT number, year_of_issue, po_number, subtotal_minor::text AS total
+          FROM app_invoicing.documents WHERE org_id = ${ORG} AND shopify_draft_order_id = ${gid}`
+      const quoteSequences = () =>
+        sql<Array<{ key: string; value: string }>>`
+          SELECT key, value::text FROM kernel.app_sequences
+          WHERE org_id = ${ORG} AND key LIKE 'invoicing:doc_number:%:quote:%' ORDER BY key`
+
+      it("parks with its arguments, takes no number, and becomes a quote once the zone is fixed", async () => {
+        const gid = "gid://shopify/DraftOrder/92101"
+        const before = await quoteSequences()
+        await setIssuerZone("Europe/Atlantis")
+        await deliver("draft-orders-create", draftBody(92101, "#D-TZ-1", "60.00", "PO-TZ-1"))
+
+        expect((await quotes(gid)).length).toBe(0)
+        expect(await quoteSequences()).toEqual(before)
+        const [park, ...others] = await parksOf(gid)
+        expect(others).toEqual([])
+        expect(park).toMatchObject({
+          status: "awaiting_config",
+          reason: "issuer_timezone_invalid",
+          blocked_on: { kind: "issuer_timezone" },
+          event_payload_json: { order_number: "#D-TZ-1" },
+        })
+
+        // Still broken: a sweep keeps it waiting, and still no number.
+        await sweepAt("2026-12-01T10:00:00Z", gid)
+        expect((await parksOf(gid))[0]?.status).toBe("awaiting_config")
+        expect((await quotes(gid)).length).toBe(0)
+
+        await setIssuerZone("Europe/Paris")
+        await sweepAt("2026-12-31T23:20:00Z", gid)
+        const [quote, ...more] = await quotes(gid)
+        expect(more).toEqual([])
+        expect(quote).toMatchObject({ year_of_issue: 2027, po_number: "PO-TZ-1" })
+        expect(quote?.number).toContain("2027")
+        expect((await parksOf(gid))[0]?.status).toBe("resolved")
+
+        // A later sweep has nothing left to do: one quote stays one quote.
+        await sweepAt("2027-02-01T10:00:00Z", gid)
+        expect((await quotes(gid)).length).toBe(1)
+      })
+
+      it("a later update while it waits refreshes the one park, and the quote has the last lines", async () => {
+        const gid = "gid://shopify/DraftOrder/92102"
+        await setIssuerZone("Europe/Atlantis")
+        await deliver("draft-orders-create", draftBody(92102, "#D-TZ-2", "60.00"))
+        await deliver("draft-orders-update", draftBody(92102, "#D-TZ-2", "75.00"))
+        const parks = await parksOf(gid)
+        expect(parks.length).toBe(1)
+        expect(parks[0]?.event_payload_json.draft?.lineItems?.[0]?.unitPrice).toBe("75.00")
+
+        await setIssuerZone("Europe/Paris")
+        await sweepAt("2026-12-01T10:00:00Z", gid)
+        const [quote] = await quotes(gid)
+        expect(quote?.total).toBe("7500")
+      })
+
+      it("a draft order deleted while it waits closes the park, and no quote appears", async () => {
+        const gid = "gid://shopify/DraftOrder/92103"
+        await setIssuerZone("Europe/Atlantis")
+        await deliver("draft-orders-create", draftBody(92103, "#D-TZ-3", "60.00"))
+        expect((await parksOf(gid))[0]?.status).toBe("awaiting_config")
+        await deliver("draft-orders-delete", { id: 92103 })
+        expect((await parksOf(gid))[0]?.status).toBe("resolved")
+
+        await setIssuerZone("Europe/Paris")
+        await sweepAt("2026-12-01T10:00:00Z", gid)
+        expect((await quotes(gid)).length).toBe(0)
+      })
+
+      it("an update after the zone was fixed makes the quote, and the sweep does not overwrite it", async () => {
+        const gid = "gid://shopify/DraftOrder/92104"
+        await setIssuerZone("Europe/Atlantis")
+        await deliver("draft-orders-create", draftBody(92104, "#D-TZ-4", "60.00"))
+        await setIssuerZone("Europe/Paris")
+        await deliver("draft-orders-update", draftBody(92104, "#D-TZ-4", "80.00"))
+        expect((await quotes(gid))[0]?.total).toBe("8000")
+        await sweepAt("2026-12-01T10:00:00Z", gid)
+        expect((await quotes(gid)).map((q) => q.total)).toEqual(["8000"])
+      })
+    })
+
+    it("an unknown zone parks the order on the config and takes no number", async () => {
+      const orderId = "tz-seam-order-2"
+      await setIssuerZone("Europe/Atlantis")
+      expect(
+        (await postWebhook("orders-create", orderBody(orderId, "2"), `tz-seam-2-${randomUUID()}`))
+          .status,
+      ).toBe(200)
+      expect(await processOutboxBatch()).toBeGreaterThan(0)
+      await flushEventHandlers()
+
+      const docs =
+        await sql`SELECT id FROM app_invoicing.documents WHERE org_id = ${ORG} AND shopify_order_id = ${orderId}`
+      expect(docs.length).toBe(0)
+      const parks = await sql`
+        SELECT status, reason FROM app_invoicing.deferred_events WHERE org_id = ${ORG} AND event_id = ${orderId}`
+      expect([...parks]).toEqual([{ status: "awaiting_config", reason: "issuer_timezone_invalid" }])
+    })
+
+    it("an order parked on an unknown zone issues once the zone is fixed", async () => {
+      const orderId = "tz-seam-order-5"
+      await setIssuerZone("Europe/Atlantis")
+      expect(
+        (await postWebhook("orders-create", orderBody(orderId, "5"), `tz-seam-5-${randomUUID()}`))
+          .status,
+      ).toBe(200)
+      expect(await processOutboxBatch()).toBeGreaterThan(0)
+      await flushEventHandlers()
+      await setIssuerZone("Europe/Paris")
+
+      const handler = JobsTestAccess.getHandler("invoicing", "deferred-retry")
+      if (!handler) throw new Error("deferred-retry job handler not registered")
+      setSystemTime(new Date("2026-12-31T23:20:00Z"))
+      await dispatchAppJobWithContext(
+        handler,
+        { orgId: ORG },
+        { actorType: "system", orgId: ORG, purpose: "job", scopes: ["invoicing:*"] },
+        "ambient",
+      )
+      const parks = await sql`
+        SELECT status, reason FROM app_invoicing.deferred_events WHERE org_id = ${ORG} AND event_id = ${orderId}`
+      expect([...parks]).toContainEqual({ status: "resolved", reason: "issuer_timezone_invalid" })
+      expect(await paidDate(orderId)).toEqual({ paid: "2027-01-01", issued: "2027-01-01" })
+    })
+  })
 
   it("an orders webhook carrying a PO results in an invoice whose po_number column holds it", async () => {
     const shopifyOrderId = "po-seam-order-1"

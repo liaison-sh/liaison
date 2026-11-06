@@ -19,6 +19,7 @@ import { env } from "~/lib/env"
 import { redis } from "~/lib/redis"
 import { errorHandler } from "~/middleware/error-handler"
 import { resetOperatorOrgCache } from "~/modules/apps/operator-org"
+import { pruneElapsedNetworkBudgets, rekeyPlainBudgetAddresses } from "~/modules/demo/demo-budget"
 import {
   enableDemoDoorForTest,
   passingTurnstileToken,
@@ -27,11 +28,14 @@ import {
 import {
   DEMO_LEAD_NOTICE_VERSION,
   DEMO_LEAD_RETENTION_DAYS,
+  eraseExpiredDemoIdentities,
+  optOutDemoLead,
   purgeStaleDemoLeads,
 } from "~/modules/demo/demo-leads"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { invalidateDemoMarker } from "~/modules/demo/demo-org"
 import { DEMO_COMPANY_NAME, DemoSeederTestAccess, setDemoSeeder } from "~/modules/demo/demo-seeder"
+import { demoBudgetEmailKey } from "~/modules/demo/demo-verification"
 import {
   DEMO_INTERNAL_LOGIN_DOMAIN,
   demoOrgSlug,
@@ -849,7 +853,7 @@ describe("demo leads: export and opt-out", () => {
     expect(csv.headers.get("content-type")).toContain("text/csv")
     const text = await csv.text()
     expect(text.split("\r\n")[0]).toBe(
-      "email,name,created_at,notice_version,demo_org_id,opted_out_at,opt_out_token,unsubscribe_url,verified,verified_at,notify_managed_at,needs",
+      "email,name,created_at,notice_version,demo_org_id,opted_out_at,opt_out_token,unsubscribe_url,verified,verified_at,notify_managed_at,needs,identity_erased_at",
     )
     // Each row carries the link a message uses to unsubscribe.
     const unsubscribe = new URL(String(lead?.unsubscribeUrl))
@@ -895,6 +899,144 @@ describe("demo leads: export and opt-out", () => {
     const left = await sql<{ email: string }[]>`
       SELECT email FROM kernel.demo_leads WHERE email LIKE ${`%-${tag}@example.com`} ORDER BY email`
     expect(left.map((r) => r.email)).toEqual([`fresh-${tag}@example.com`, `out-${tag}@example.com`])
+  })
+
+  it("empties the identity of expired rows not on the news list, and only those", async () => {
+    const tag = Date.now().toString(36)
+    const old = new Date(Date.now() - 73 * 3600_000).toISOString()
+    const seed = async (
+      who: string,
+      over: { notified?: boolean; verified?: boolean; out?: boolean; at?: string } = {},
+    ) =>
+      sql`
+        INSERT INTO kernel.demo_leads
+          (email, email_normalized, email_cap_key, signup_network, name, notice_version,
+           opt_out_token, needs, created_at, notify_managed_at, verified_at, opted_out_at)
+        VALUES (${`${who}-${tag}@example.com`}, ${`${who}-${tag}@example.com`}, 'example.com',
+                '203.0.113.0/24', ${over.out ? "" : "Ada"}, 'v', ${`${who}-${tag}-${"t".repeat(40)}`},
+                ${["support"]}, ${over.at ?? old},
+                ${over.notified ? old : null}, ${over.verified ? old : null}, ${over.out ? old : null})`
+    await seed("plain")
+    await seed("ticked", { notified: true })
+    await seed("verified", { verified: true })
+    await seed("listed", { notified: true, verified: true })
+    await seed("out", { out: true })
+    await seed("fresh", { at: new Date().toISOString() })
+
+    expect(await eraseExpiredDemoIdentities()).toBeGreaterThanOrEqual(3)
+    const rows = await sql<
+      {
+        token: string
+        email: string
+        name: string
+        email_normalized: string | null
+        email_cap_key: string | null
+        signup_network: string | null
+        notify_managed_at: Date | null
+        needs: string[]
+        created_at: Date
+      }[]
+    >`
+      SELECT opt_out_token AS token, email, name, email_normalized, email_cap_key, signup_network,
+             notify_managed_at, needs, created_at
+        FROM kernel.demo_leads WHERE opt_out_token LIKE ${`%-${tag}-%`}`
+    const of = (who: string) => rows.find((r) => r.token.startsWith(`${who}-`))
+    for (const who of ["plain", "ticked", "verified"]) {
+      expect(of(who)).toMatchObject({
+        email: "",
+        name: "",
+        email_normalized: null,
+        email_cap_key: null,
+        signup_network: null,
+        notify_managed_at: null,
+        needs: ["support"],
+      })
+      expect(new Date(of(who)?.created_at as Date).toISOString()).toBe(old)
+    }
+    expect(of("listed")).toMatchObject({ email: `listed-${tag}@example.com`, name: "Ada" })
+    expect(of("out")).toMatchObject({ email: `out-${tag}@example.com`, name: "" })
+    expect(of("fresh")).toMatchObject({ email: `fresh-${tag}@example.com`, name: "Ada" })
+    // Nothing left to do: a second sweep touches none of these rows.
+    const before = await sql`SELECT identity_erased_at FROM kernel.demo_leads
+                              WHERE opt_out_token LIKE ${`plain-${tag}-%`}`
+    await eraseExpiredDemoIdentities()
+    const after = await sql`SELECT identity_erased_at FROM kernel.demo_leads
+                             WHERE opt_out_token LIKE ${`plain-${tag}-%`}`
+    expect(after).toEqual(before)
+  })
+
+  it("one unsubscribe covers every row with the same address", async () => {
+    const tag = Date.now().toString(36)
+    const mailbox = `same-${tag}@example.com`
+    for (const n of ["a", "b"]) {
+      await sql`INSERT INTO kernel.demo_leads (email, email_normalized, name, notice_version, opt_out_token)
+                VALUES (${mailbox}, ${mailbox}, 'Ada', 'v', ${`${n}-${tag}-${"t".repeat(40)}`})`
+    }
+    expect(await optOutDemoLead(`a-${tag}-${"t".repeat(40)}`)).toBe(true)
+    const rows = await sql<{ name: string; out: boolean }[]>`
+      SELECT name, opted_out_at IS NOT NULL AS out FROM kernel.demo_leads WHERE email = ${mailbox}`
+    expect([...rows]).toEqual([
+      { name: "", out: true },
+      { name: "", out: true },
+    ])
+  })
+
+  it("the news checkbox is the consent: on the row only when ticked", async () => {
+    const start = async (email: string, newsOptIn?: boolean) => {
+      const res = await demoApp.request("/api/demo/orgs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-bun-socket-ip": "203.0.113.77" },
+        body: JSON.stringify({
+          name: "Ada",
+          email,
+          needs: ["support"],
+          turnstileToken: passingTurnstileToken(),
+          ...(newsOptIn === undefined ? {} : { newsOptIn }),
+        }),
+      })
+      expect(res.status).toBe(201)
+    }
+    const tag = Date.now().toString(36)
+    await start(`ticked-${tag}@example.com`, true)
+    await start(`unticked-${tag}@example.com`)
+    const rows = await sql<{ email: string; notified: boolean }[]>`
+      SELECT email, notify_managed_at IS NOT NULL AS notified FROM kernel.demo_leads
+       WHERE email LIKE ${`%-${tag}@example.com`} ORDER BY email`
+    expect([...rows]).toEqual([
+      { email: `ticked-${tag}@example.com`, notified: true },
+      { email: `unticked-${tag}@example.com`, notified: false },
+    ])
+  })
+
+  it("budgets never hold a plain address: the ledger and Redis move once", async () => {
+    await sql`DELETE FROM kernel.demo_spend WHERE budget = 'email'`
+    const address = "moved@example.com"
+    await sql`INSERT INTO kernel.demo_spend (budget, key, period, spent_micro_eur)
+              VALUES ('email', ${address}, 'life', 150), ('email', ${demoBudgetEmailKey(address)}, 'life', 50)`
+    await redis.set(`demo:b:s:email:${address}`, "150")
+    await rekeyPlainBudgetAddresses()
+    const rows = await sql<{ key: string; spent: string }[]>`
+      SELECT key, spent_micro_eur::text AS spent FROM kernel.demo_spend WHERE budget = 'email'`
+    expect([...rows]).toEqual([{ key: demoBudgetEmailKey(address), spent: "200" }])
+    expect(await redis.exists(`demo:b:s:email:${address}`)).toBe(0)
+    await sql`DELETE FROM kernel.demo_spend WHERE budget = 'email'`
+  })
+
+  it("a network's counter is deleted once its UTC day is over; today's and the others stay", async () => {
+    await sql`DELETE FROM kernel.demo_spend WHERE budget IN ('net', 'box')`
+    await sql`INSERT INTO kernel.demo_spend (budget, key, period, spent_micro_eur)
+              VALUES ('net', '203.0.113.0/24', '2026-11-05', 10),
+                     ('net', '203.0.113.0/24', '2026-11-06', 20),
+                     ('box', 'box', '2026-11-05', 30)`
+    const pruned = await pruneElapsedNetworkBudgets(Date.parse("2026-11-06T00:10:00.000Z"))
+    expect(pruned).toBe(1)
+    const rows = await sql<{ budget: string; period: string }[]>`
+      SELECT budget, period FROM kernel.demo_spend WHERE budget IN ('net', 'box') ORDER BY budget, period`
+    expect([...rows]).toEqual([
+      { budget: "box", period: "2026-11-05" },
+      { budget: "net", period: "2026-11-06" },
+    ])
+    await sql`DELETE FROM kernel.demo_spend WHERE budget IN ('net', 'box')`
   })
 })
 

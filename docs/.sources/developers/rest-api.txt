@@ -47,3 +47,5 @@ Public tickets endpoints answer 403 org_suspended while suspended or closed (man
 503 org_moving with retryAfterSeconds and Retry-After 2 s while the org moves -> apps/api/src/modules/org/transfer-state/gate.ts:33 ; packages/control-plane-contract/src/moves.ts:86
 Frozen refuses writes, reads served; draining refuses turn-starting calls -> apps/api/src/modules/org/transfer-state/gate.ts:55 ; apps/api/src/modules/org/transfer-state/gate.ts:63
 Websocket closes 4005 and the client retries every 2 s -> apps/web/src/primitives/createWebSocket.ts:496 ; packages/control-plane-contract/src/moves.ts:96
+a device sign-in's tool call is judged as a program's -> apps/api/src/modules/apps/rest-tool-call.ts:32-42
+A device sign-in's posted message is not a person typing -> apps/api/src/modules/agent/runtime/agent-service.ts:1931-1938

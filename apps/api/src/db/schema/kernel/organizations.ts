@@ -46,7 +46,7 @@ export const organizations = kernel.table("organizations", {
    */
   deletingAt: timestamp("deleting_at", { withTimezone: true }),
   /**
-   * The org's move to another instance (migration 0268,
+   * The org's move to another instance (migration 0269,
    * `modules/org/transfer-state/`): `draining`, `frozen`, `incoming` or
    * `moved`, with the move's id and when the state was entered. All three
    * null on an org that is not moving.

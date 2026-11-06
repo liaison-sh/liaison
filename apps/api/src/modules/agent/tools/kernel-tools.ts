@@ -873,6 +873,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "Routine only: fetch and extract a page, then diff the normalized extraction against the previous tick stored under `key` in this routine's state. Returns newItems (the server computed set of entries that are new since the last tick), newItemCount, currentItemCount, `changed` and a numeric delta, and emits routine:watch:changed on a real change. Use it for price, competitor, review and sentiment monitoring of public pages. It is not callable from interactive chat.",
+    searchKeywords: ["surveiller", "veille", "changement", "site", "monitor"],
     requiredScopes: ["kernel:agent:web"],
     params: z.object({
       url: z.string().url(),
@@ -903,6 +904,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     readOnly: true,
     description:
       "List recent threads the user participates in, with ids, handles, titles, participants, last message metadata, unreadCount and paging. Pass unreadOnly for unread triage. When the user already named a topic or a thread, use kernel__threads_search or kernel__threads_read instead.",
+    searchKeywords: ["discussion", "discussions", "conversation", "conversations"],
     requiredScopes: ["kernel:threads:read"],
     params: z.object({
       limit: z.number().min(1).max(50).default(20),
@@ -947,6 +949,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "Put a LOCAL file into Liaison so a send tool can attach it. Step 1: call this with filename, mimeType and sizeBytes, then PUT the bytes out of band (curl -X PUT -H 'Content-Type: <mimeType>' --data-binary @file '<uploadUrl>'). Step 2: kernel__files_upload_confirm(fileToken) returns the fileId to pass in any send tool's attachments.",
+    searchKeywords: ["téléverser", "upload"],
     requiredScopes: ["kernel:files:read"],
     params: z.object({
       filename: z.string().min(1).max(255).describe("The file name, with its extension."),
@@ -999,6 +1002,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "Merge stored PDFs into ONE new PDF, in the order you list them, and return { fileId, byteSize, pageCount, title }: a new kernel file you can download with kernel__files_read or pass to a send tool's attachments. Pass 1 to 20 kernel file ids in file_ids, never URLs, filenames or paths. Duplicates are allowed and meaningful: repeating an id repeats that PDF's pages. A single id is allowed too, and normalizes a rotated PDF upright.",
+    searchKeywords: ["fusionner", "combiner"],
     requiredScopes: ["kernel:files:read"],
     params: z.object({
       file_ids: z.array(z.string().min(1)).min(1).max(20),
@@ -1022,6 +1026,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     readOnly: true,
     description:
       "Analyze an image, video or PDF attachment and return a summary for support: a visual diagnostic for media, and for a document a faithful extraction of sender, line items with prices and totals, dates, reference numbers, addresses and payment terms. Pass the file id plus an optional `context` briefing the model on what to look for. Analysis sends the file to Google Gemini and consumes credits.",
+    searchKeywords: ["image", "photo", "vidéo", "analyser", "audio", "transcrire"],
     requiredScopes: ["kernel:files:analyze"],
     params: z.object({
       fileId: z.string().min(1),
@@ -1114,6 +1119,18 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "Create a new thread with the given participants. People who ALREADY have a thread together do not get a second one: an untitled create returns the existing thread, and a titled create fails with duplicate_thread naming that thread's id. This is how to message a teammate (someone in this organization) directly: participantIds [their user id, from kernel__users_search], no title, the text as initialMessage. It posts into your existing direct conversation with them, or opens one. Never email a teammate with mail__compose unless the user asks for an email. To post into a group thread or a titled thread you already share, find it (kernel__threads_search) and use kernel__threads_reply. Use a title or forceCreate only when the user asks for a separate conversation.",
+    searchKeywords: [
+      "message",
+      "discussion",
+      "conversation",
+      "écrire",
+      "envoyer",
+      "collègue",
+      "ping",
+      "tell",
+      "ask",
+      "demander",
+    ],
     requiredScopes: ["kernel:threads:write"],
     params: z.object({
       participantIds: z.array(z.string().uuid()),
@@ -1739,6 +1756,17 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     readOnly: true,
     description:
       "Search your organisation's TEAM members (colleagues) by name or email: up to 20 active users with id, name and email. Use it to resolve a teammate's user id before routing work to them, since assignee fields take a user UUID. For external people (customers, leads) use kernel__contacts_search instead.",
+    searchKeywords: [
+      "collègue",
+      "utilisateur",
+      "personne",
+      "membre",
+      "teammate",
+      "people",
+      "trouver",
+      "chercher",
+      "find",
+    ],
     requiredScopes: ["kernel:users:read"],
     params: z.object({
       query: z.string().optional(),
@@ -1776,6 +1804,16 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "Create or update a contact in Liaison's own contact list; omit contactId to create. This is not the org's CRM or ERP: a change the user asks for in an external system (\"add a note in the CRM\") goes through that system's API connection (api-connector connector_write), and a write here must never be described as a CRM write. Search with kernel__contacts_search before creating, so you update the existing record instead of making a duplicate. The only first class columns are name, email, phone, company, externalIds and tags: every other field (city, role, postal address, profile links, VAT id, source URL) goes in metadata, and a note about the person goes in the contact's discussion (kernel__threads_reply with contactId), while phone and email each have their own top level parameter. An email collision returns EMAIL_IN_USE, and the fix is kernel__contacts_merge. GATED: a person approves the edit (or the new contact) before it is saved, unless the organisation's auto-approve policy covers this tool, so report a pending result as waiting for approval, never as done, and a field you leave out is simply not saved.",
+    searchKeywords: [
+      "contact",
+      "modifier",
+      "créer",
+      "ajouter",
+      "edit",
+      "client",
+      "fiche",
+      "update",
+    ],
     requiredScopes: ["kernel:contacts:write"],
     trustBoundary: "user",
     // An agent's edit waits for a person; a person's own call runs (execute-tool.ts
@@ -1808,6 +1846,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "Export the contacts you can see to a CSV file (returns a file id). Scope to a stored segment (`segmentId`) or a single `tag`, else exports all visible contacts. GATED — a bulk PII export raises an approval before it runs; requires the kernel:contacts:export and kernel:contacts:read scopes.",
+    searchKeywords: ["exporter"],
     requiredScopes: ["kernel:contacts:export", "kernel:contacts:read"],
     // Two required scopes: the export one decides (a kernel tool is decided by its own scope).
     approveScope: "kernel:contacts:export",
@@ -1841,6 +1880,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
       "USE THIS FIRST for any dedup task instead of guessing names one-by-one. Each cluster carries: `confidence` ('high' = name agrees AND a corroborating signal — same normalized email, same company, or a shared externalId — or a shared provider id on its own → SAFE to merge; 'needs_confirmation' = a shared surname with a DIFFERENT first-name root, or a name variant with no corroboration → SURFACE to the user, do NOT auto-merge), `signal` (e.g. 'email', 'externalId:shopify', 'name+company', 'surname+company'), and `contacts[]` with each id/name/email/company + `matchedOn`. " +
       "ACT on the result: for each HIGH-confidence cluster, propose kernel__contacts_merge for the pair (it is still GATED + IRREVERSIBLE — pick the more complete record as survivor). For each NEEDS_CONFIRMATION cluster, LIST it and ASK the user to confirm before any merge — these are the traps (e.g. 'Mikkel Holm' vs 'Michael Holm' at the same company are DIFFERENT people; merging them destroys real data). " +
       "HONEST COVERAGE: the scan is bounded (`scanCap`, default 500). The result reports `scannedCount` / `totalCount` and `coveragePartial` — if `coveragePartial` is true you scanned only part of the list, so say so and do NOT claim you found EVERY duplicate. The cluster list itself is capped (`maxClusters`); a clean run over a small list with coveragePartial=false means you can report you scanned all of them.",
+    searchKeywords: ["doublon", "doublons"],
     requiredScopes: ["kernel:contacts:read"],
     params: z.object({
       scanCap: z.number().min(1).max(1000).optional(),
@@ -1859,6 +1899,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
       // including different people, then claiming completeness. Require a real per-pair confidence bar.
       "Because the delete is permanent, only stage a merge when the name matches AND a corroborating signal agrees (same email local-part, same company/domain, or an obvious accent/spelling/abbreviation variant of an otherwise-identical name). When a pair DISAGREES on a meaningful signal — a different given-name root (Michael vs Mikkel), a different company or email domain, or merely a shared surname with a different first name — do NOT stage it: SURFACE it to the user and ask them to confirm those are the same person first. Merging two records that are actually different people destroys real data irreversibly. " +
       "Pick the MORE COMPLETE record as the survivor (keep 'Beatriz Carvalho', not the abbreviated 'B. Carvalho') and use resolvedFields to carry the winning email onto it. Only ever pass `sourceId`/`targetId` you ACTUALLY saw in a kernel__contacts_search/contacts_read result — never a guessed or half-remembered id.",
+    searchKeywords: ["fusionner", "doublon"],
     requiredScopes: ["kernel:contacts:write"],
     trustBoundary: "user",
     // A merge permanently DELETES the source contact and reassigns its conversations — an irreversible
@@ -1979,6 +2020,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "List a contact's postal addresses (billing, delivery, other) with their verification: verified, verifiedAt, verifiedByName and verificationSource (purchase_order, email, phone_call, other). Verified addresses come first. An address that is not verified was copied or typed without a person checking it: say so when you use it, and never present it as confirmed. stale means someone marked it as possibly out of date.",
+    searchKeywords: ["adresse", "adresses", "address"],
     requiredScopes: ["kernel:contacts:read"],
     params: z.object({
       contactId: addressContactId,
@@ -1992,7 +2034,17 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     appName: "kernel",
     name: "contacts_address_upsert",
     deferLoading: true,
-    searchKeywords: ["postal address", "shipping address", "billing address", "delivery address"],
+    searchKeywords: [
+      "adresse",
+      "livraison",
+      "postale",
+      "facturation",
+      "address",
+      "shipping",
+      "billing",
+      "delivery",
+      "modifier",
+    ],
     description:
       "Add a postal address to a contact (omit addressId) or change one (pass addressId from kernel__contacts_addresses_list); only the fields you pass change. The address is ALWAYS saved as NOT verified, and changing a verified address makes it not verified again: you cannot verify with this tool. To record that a person checked an address, use kernel__contacts_address_verify. GATED: a person approves the change before it is saved, unless the organisation's auto-approve policy covers this tool, so report a pending result as waiting for approval, never as done.",
     requiredScopes: ["kernel:contacts:write"],
@@ -2023,7 +2075,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     appName: "kernel",
     name: "contacts_address_verify",
     deferLoading: true,
-    searchKeywords: ["verify address", "confirm address", "check address"],
+    searchKeywords: ["adresse", "vérifier", "verify", "confirm", "check"],
     description:
       "Propose to mark a contact's address as VERIFIED: a person checked it against a source. Verification needs a source and a person's approval: always pass source (purchase_order, email, phone_call or other), a note saying what was checked (e.g. 'PO 4512 ship-to'), and fileId of the source document when there is one. Never verify from an email alone, never because an address appears in an order or a mail, and never on your own initiative: only when a person asks you to and names what they checked it against. ALWAYS GATED, with no auto-approval: the card shows the full address and the source, and the person who approves it is recorded as the verifier. Report a pending result as waiting for approval, never as verified.",
     requiredScopes: ["kernel:contacts:write"],
@@ -2085,6 +2137,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "List the organisation's contact groups: named groups of hand-picked contacts, with each group's id, name and memberCount (the members you can see). Use the id with kernel__contacts_group_members, kernel__contacts_group_add and kernel__contacts_group_remove.",
+    searchKeywords: ["groupe", "groupes", "liste", "listes"],
     requiredScopes: [GROUPS_READ_SCOPE],
     params: z.object({}),
     handler: handleContactsGroupsList as (params: unknown, ctx: any) => Promise<unknown>,
@@ -2117,6 +2170,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "Create a contact group: a named group the organisation's contact readers see, to which you add contacts by hand with kernel__contacts_group_add. Names are unique, ignoring case; an existing name returns CONFLICT, so list the groups first and reuse one rather than creating a near duplicate.",
+    searchKeywords: ["groupe", "liste"],
     requiredScopes: ["kernel:contacts:write"],
     trustBoundary: "user",
     params: z.object({ name: z.string().min(1).max(80) }),
@@ -2163,6 +2217,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "Add contacts to a contact group. Already-members are reported in alreadyMembers; ids you cannot see come back in notFound and are not added. Report the counts this call returned, not the ids you passed. Commits immediately.",
+    searchKeywords: ["groupe", "liste", "ajouter"],
     requiredScopes: ["kernel:contacts:write"],
     trustBoundary: "user",
     params: z.object({ groupId: groupIdParam, contactIds: groupContactIds }),
@@ -2197,6 +2252,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       'List the organisation\'s product attributes: small facts kept per product SKU, whichever store or shipping app sells or ships it. Each row is { sku, key, value }. Narrow with `skus` (the SKUs you saw on order lines or variants) and `keys`. The documented key `short_code` is the short code a product reads as in a cart summary ("E2"); other keys are free-form. A SKU with no row simply has no such attribute: never invent a code for it.',
+    searchKeywords: ["attribut", "attributs", "produit", "caractéristique"],
     requiredScopes: ["kernel:products:read"],
     params: z.object({
       skus: productSkus.optional().describe("Only these SKUs (exact match)."),
@@ -2217,6 +2273,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "Set or remove product attributes by SKU: each item is { sku, key, value }, and a null or empty value removes that attribute. Keys are lowercase identifiers; `short_code` (at most 12 characters) is the code the product shows as in cart summaries. Writing a value that is already stored changes nothing. GATED: a person approves the change before it is saved, unless the organisation's auto-approve policy covers this tool, so report a pending result as waiting for approval, never as done.",
+    searchKeywords: ["attribut", "produit", "caractéristique"],
     requiredScopes: ["kernel:products:write"],
     trustBoundary: "user",
     gated: true,
@@ -2409,7 +2466,16 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     appName: "kernel",
     name: "documents_print",
     deferLoading: true,
-    searchKeywords: [...DOCUMENT_WORDS, "template", "shipment", "order", "record", "generate"],
+    searchKeywords: [
+      ...DOCUMENT_WORDS,
+      "template",
+      "shipment",
+      "order",
+      "record",
+      "generate",
+      "imprimer",
+      "lot",
+    ],
     description:
       "Print the documents for a record (a shipment, an order, any printable record) with the org's templates: pass app, entity, recordId and templateIds (from kernel__document_templates_list for that record type). The values always come from the record's own app; there is no way to pass values. Each PDF is stored on the record; merge: true also makes one merged PDF. The result lists blanks: fields the record had no value for, printed as grey placeholders. Tell the person exactly which to fill in; never invent them.",
     requiredScopes: ["kernel:files:read"],
@@ -2569,6 +2635,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "Retract a PENDING approval request that you raised. It can never approve, deny or edit anything. Use it when the request should not exist at all, for instance when it was raised on stale or wrong information: withdraw it, then create a corrected request. When only the content is wrong but the request should still exist, edit it with kernel__approval_update_payload instead.",
+    searchKeywords: ["retirer", "annuler", "approbation"],
     requiredScopes: ["kernel:approvals:write"],
     // No trust boundary: retracting one's own pending request is an undo that sends nothing
     // out, so outside text read earlier never makes it wait for a person either.
@@ -2713,7 +2780,8 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     appName: "kernel",
     name: "enable_app",
     deferLoading: true,
-    description: `Install a catalog app for the workspace (install intent: adds it to the workspace's enabled apps so the catalog installs and keeps it). Use when the user describes a business need a catalog app covers. An app the workspace already has is switched by kernel__apps_set_enabled instead. An app the instance has not installed yet is installed from the catalog first (as the App store does). Idempotent. A name the catalog does not have is refused with the catalog's app names: never fabricate an app.`,
+    description: `Install an app from the catalog for the workspace (install intent: adds it to the workspace's enabled apps so the catalog installs and keeps it). Use when the user describes a business need a catalog app covers. An app the workspace already has is switched by kernel__apps_set_enabled instead. An app the instance has not installed yet is installed from the catalog first (as the App store does). Idempotent. A name the catalog does not have is refused with the catalog's app names: never fabricate an app.`,
+    searchKeywords: ["installer", "activer", "catalogue", "install", "ajouter", "application"],
     requiredScopes: ["kernel:apps:admin"],
     approveScope: "kernel:approve",
     // Turning an app on gives every member its tools and pages and the agent its tools: a
@@ -2733,7 +2801,8 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     appName: "kernel",
     name: "apps_set_enabled",
     deferLoading: true,
-    description: `Turn an app the workspace has On or Off (enable or disable it) for EVERYONE (admin). Off stops everything: its navigation, every agent tool (in-app agent and MCP clients), its jobs, crons, event handlers and webhooks; its data is kept, and enabled:true resumes it (connections are re-checked, events received while Off are not replayed). Refused for kernel, knowledge and contacts, and for an app another On app requires (the answer names it). Returns {error:"app not installed"} for an unknown app -- never fabricate one. Gated: lands as an approval a human decides.`,
+    description: `Turn an installed app On or Off (enable or disable it) for EVERYONE (admin). Off stops everything: its navigation, every agent tool (in-app agent and MCP clients), its jobs, crons, event handlers and webhooks; its data is kept, and enabled:true resumes it (connections are re-checked, events received while Off are not replayed). Refused for kernel, knowledge and contacts, and for an app another On app requires (the answer names it). Returns {error:"app not installed"} for an unknown app -- never fabricate one. Gated: lands as an approval a human decides.`,
+    searchKeywords: ["activer", "désactiver", "éteindre", "allumer", "application", "turn", "off"],
     requiredScopes: ["kernel:apps:admin"],
     approveScope: "kernel:approve",
     trustBoundary: "user",
@@ -2755,6 +2824,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     name: "apps_set_access",
     deferLoading: true,
     description: `Set who may use an app (admin): mode "everyone", or "restricted" to the listed roleIds and userIds (org admins always keep it). Everyone else loses the app's pages, agent tools, routes and approvals. Only apps with permissions of their own can be restricted (otherwise {error:"This app has no permissions to restrict"}). Gated: lands as an approval a human decides.`,
+    searchKeywords: ["accès", "application"],
     requiredScopes: ["kernel:apps:admin"],
     approveScope: "kernel:approve",
     trustBoundary: "user",
@@ -2782,6 +2852,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     name: "create_role",
     deferLoading: true,
     description: `Create an org role with scope grants. Use to set up team roles. You can only grant scopes you hold. Returns {error:"role already exists"} on duplicate name. When you map a natural-language permission request to scopes, AFTER kernel__create_role succeeds your reply MUST ENUMERATE the exact scopes you granted (list each one) AND explicitly CONFIRM the sensitive scopes you deliberately EXCLUDED (e.g. 'this role does NOT include refunds, Shopify writes, or org-admin'). A vague 'created with the requested scopes' is INCOMPLETE — the role record / approval card does not surface the scope list, so your reply is the only place the admin can verify the role grants exactly the intended permissions and none of the excluded ones. Grant ONLY the scopes the request explicitly names — do NOT add an adjacent WRITE scope the user did not ask for (for 'read and reply to tickets', grant tickets:tickets:read + tickets:tickets:reply, NOT tickets:tickets:write; for 'read knowledge', knowledge:documents:read, NOT :create/:update). Every scope is a REAL 3-part app:resource:action id — tickets:tickets:read, tickets:tickets:reply, knowledge:documents:read, kernel:contacts:read, mail:conversations:read — there is NO 2-part form (tickets:reply / tickets:read is wrong) and no tickets:tickets:write for a read+reply role; using a malformed or non-existent scope id silently grants nothing. INVOICING scopes are invoicing:documents:read, invoicing:documents:write, invoicing:settings:read, invoicing:settings:write, invoicing:contacts:read, invoicing:contacts:write — there is NO invoicing:drafts:create and NO invoicing:*:approve/send (don't invent them): DRAFTING / creating / issuing an invoice or credit note is invoicing:documents:write, and refund / credit-note APPROVAL is enforced by the gated two-eyes approval flow, not by a scope. A role that must DRAFT, CREATE, WRITE, or RECONCILE needs the relevant WRITE scope (e.g. invoicing:documents:write) — a read-only grant CANNOT draft, so do NOT under-grant a 'can draft/create X' request down to read-only; grant the write scope and rely on the gated approval flow (not scope withholding) to keep approve/send to senior staff.`,
+    searchKeywords: ["rôle", "créer"],
     requiredScopes: ["kernel:roles:admin"],
     approveScope: "kernel:approve",
     trustBoundary: "user",
@@ -2805,6 +2876,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     name: "edit_role",
     deferLoading: true,
     description: `Edit an EXISTING org role — rename it, change its description, and/or ADD (grantScopes) and REMOVE (revokeScopes) scopes on it. This is the role-level complement to kernel__grant_user_scope (which edits ONE person): use it to STRENGTHEN or trim a role for EVERYONE who holds it — e.g. add every \`<app>:approve\` scope (shopify:approve, invoicing:approve, boxtal:approve, …) to a role so its members can APPROVE gated actions across apps, or drop a scope the role should no longer grant. Identify the role by \`roleId\` (a real role uuid — get it from kernel__roles_list); read its CURRENT exact scopes first with kernel__get_role so you know what to add vs what is already there (grants are idempotent, so re-granting an existing scope is a harmless no-op). You can only grant or revoke scopes you hold yourself (over-reach returns SCOPE_ESCALATION and needs a higher approver); the whole edit is atomic, so if any one scope over-reaches, NONE of the batch applies. \`revokeScopes\` removes a scope the role GRANTS (it does not touch members' direct per-user grants — use kernel__grant_user_scope's revoke for those). Renaming a system-managed role (e.g. "Full Member") is refused (INVALID_EDIT) because the app runtime re-creates such roles by name; its scopes and description are still editable. Every scope is a real \`app:resource:action\` id (or an \`<app>:approve\` approver scope) — never invent one; if unsure, kernel__list_scopes is the catalog. Returns the role's resulting name/description/scopes so you can confirm the change; a bad id returns ROLE_NOT_FOUND (never a fabricated result). Gated — lands as an approval a human decides.`,
+    searchKeywords: ["rôle", "modifier"],
     requiredScopes: ["kernel:roles:admin"],
     approveScope: "kernel:approve",
     trustBoundary: "user",
@@ -2839,6 +2911,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     name: "delete_role",
     deferLoading: true,
     description: `PERMANENTLY delete an org role definition by \`roleId\` — the destructive complement to kernel__create_role. This is NOT kernel__remove_user_from_role: that one detaches ONE member and leaves the role standing, this erases the role itself. Use it to retire a role that should no longer exist (a superseded or mis-created one); to merely stop a person using a role, call kernel__remove_user_from_role instead. A role that ANY member still holds is refused (ROLE_IN_USE) — deleting a role can therefore never strip a live member's access; detach every member first (kernel__get_role lists them). A system-managed role (e.g. "Full Member") is refused (ROLE_SYSTEM_MANAGED) because the app runtime re-creates such roles by name, so the delete would be silently undone — trim its scopes with kernel__edit_role instead. You can only delete a role whose scopes you yourself hold (over-reach returns SCOPE_ESCALATION and needs a higher approver), so a limited admin cannot erase a more powerful role's definition. A bad id returns ROLE_NOT_FOUND. IRREVERSIBLE: re-creating the role later means re-granting every scope by hand, so read its exact scopes with kernel__get_role and state them in your reply BEFORE the human approves. Gated — lands as an approval a human decides.`,
+    searchKeywords: ["rôle", "supprimer"],
     requiredScopes: ["kernel:roles:admin"],
     approveScope: "kernel:approve",
     trustBoundary: "user",
@@ -2862,6 +2935,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "List org roles, each with its scope-grant COUNT + member count — NOT the scope STRINGS. It tells you HOW MANY scopes a role has, never WHICH ones. Use it with kernel__users_list to audit who holds which ROLE. To read a role's SPECIFIC scopes (e.g. a refund-issue scope like shopify:refunds:create vs an approver scope like shopify:approve / <app>:approve — a CREATE/ISSUE capability and its APPROVE capability are always SEPARATE scopes), call kernel__get_role with that role's id — it returns the exact per-role scope strings (you no longer need to defer to Settings for them). For a who-can-do-X / separation-of-duties audit, proactively CALL kernel__users_list (to enumerate the members + their roles), kernel__get_role (for the exact scopes of a role in question), AND kernel__audit_search (action-filtered, to surface who actually ISSUED vs who APPROVED the relevant past actions) YOURSELF — produce the real enumeration; do NOT merely OFFER to run them. Then present that enumeration + the SoD model naming BOTH sides' scopes (the issuer scope, e.g. shopify:refunds:create, AND the approver scope, e.g. shopify:approve / <app>:approve). NEVER fabricate which roles grant a scope, or a roster of who-can-do-X, that you did not derive from kernel__roles_list / kernel__get_role / kernel__users_list / kernel__audit_search. A zero-member role still lists.",
+    searchKeywords: ["rôle", "rôles", "droits", "permissions"],
     requiredScopes: ["kernel:users:admin"],
     params: z.object({
       limit: z.number().min(1).max(100).optional(),
@@ -2875,6 +2949,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     readOnly: true,
     deferLoading: true,
     description: `Read ONE role's FULL detail by roleId — its exact scope STRINGS (the list kernel__roles_list deliberately withholds, giving only a COUNT), its dimension grants, and its assigned members. This is the role-side counterpart to kernel__describe_user_access (which reads a USER's effective scopes). Use it to answer "exactly which scopes does the <role> role grant" for a separation-of-duties audit, and ALWAYS call it before kernel__edit_role so you see the role's CURRENT scopes and add only what's missing. Resolve the roleId from kernel__roles_list first. Read-only, org-scoped; a bad id returns ROLE_NOT_FOUND (never a fabricated scope list). With this tool you CAN name a role's exact scopes — do not fall back to "defer to Settings" for the per-role scope list.`,
+    searchKeywords: ["rôle", "voir", "droits"],
     requiredScopes: ["kernel:users:admin"],
     params: z.object({ roleId: z.string().uuid() }),
     handler: handleGetRole as (p: unknown, c: any) => Promise<unknown>,
@@ -2886,6 +2961,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "List org team members (id, name, email, role memberships). Use for onboarding/offboarding and permission audits. For EXTERNAL people use kernel__contacts_search instead.",
+    searchKeywords: ["utilisateurs", "équipe", "membres", "collègues", "team", "people"],
     requiredScopes: ["kernel:users:admin"],
     params: z.object({
       limit: z.number().min(1).max(100).optional(),
@@ -2901,6 +2977,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     description:
       "Read ONE teammate's RESOLVED EFFECTIVE ACCESS by user id — their role memberships, the full set of effective scope STRINGS (each tagged with provenance: `fromRoles` for a scope inherited from a role, `direct:true` for a per-user grant), and any dimension grants. This is the DIAGNOSIS tool for permission troubleshooting: when someone reports a tool 'returns nothing' / 'does nothing' (the silent signature of a MISSING SCOPE — a tool the user lacks the scope for is filtered out of their tool set entirely, with NO error), call this on that person to VERIFY exactly which scope they hold vs lack, rather than guessing. It is the ONLY tool that returns a specific person's exact scope strings — kernel__roles_list gives only per-role scope COUNTS, never the strings. First resolve the person to a user id with kernel__users_search (it turns 'Theo' into an id), then pass that id here. Cross-reference the result against kernel__list_scopes (the catalog of every grantable scope) to name the precise missing capability — e.g. someone who can't SEND a quote and whose effectiveScopes lack `invoicing:documents:write` is missing exactly that scope. Read-only and org-scoped (never another org). After diagnosing, FIX with kernel__grant_user_scope (add the one missing scope directly, least-privilege) or kernel__assign_role (move them to a role that has it) — both gated. NEVER fabricate a person's scopes; if the id does not resolve this returns USER_NOT_FOUND. " +
       'DETERMINISTIC SCOPE CHECK — pass `checkScopes: ["shopify:refunds:create", "shopify:approve", …]` to get back a `scopeChecks` map answering, EXACTLY and per scope, whether this user HOLDS each one (honoring scope hierarchy: an exact grant, a `*` wildcard, or a covering parent like `shopify:refunds` → `shopify:refunds:create`), with the provenance (`via`: exact/wildcard/parent, plus the role(s) or direct grant). USE THIS for a separation-of-duties / who-can-issue-vs-who-can-approve audit instead of eyeballing the `effectiveScopes` array — a power user\'s list can be 40–60+ strings and gets summarized/truncated in your view, so a decision scope may be off-screen; `scopeChecks` is the untruncatable, grounded YES/NO you cite (never guess from a truncated list, and never report a who-can-refund verdict a `scopeChecks` result doesn\'t back).',
+    searchKeywords: ["droits", "accès", "permissions", "peut", "voir", "permission"],
     requiredScopes: ["kernel:users:admin"],
     params: z.object({ userId: z.string().uuid(), checkScopes: z.array(z.string()).optional() }),
     handler: handleDescribeUserAccess as (p: unknown, c: any) => Promise<unknown>,
@@ -2914,6 +2991,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "List the org's FULL SCOPE CATALOG — every grantable permission in this org (kernel scopes + every installed app's scopes), each as {scope, app, description}. Read-only, org-scoped (never another org's). This is the AUTHORITATIVE universe of permissions: call it whenever you need to map a natural-language access request ('she runs customer success', 'give him read-only finance') to concrete scope strings BEFORE kernel__create_role / kernel__grant_user_scope, so you grant REAL scope ids and never invent one. Pass `app` (e.g. 'tickets', 'invoicing') to narrow to one app's scopes when the full catalog is large. Every scope is a real `app:resource:action` id; if the catalog has no scope matching what the user asked for, that capability does not exist here — say so rather than fabricating a scope. Use this together with kernel__roles_list (what bundles exist) to decide whether to assign an existing role or compose a new one.",
+    searchKeywords: ["droits", "permissions"],
     requiredScopes: ["kernel:users:admin"],
     params: z.object({ app: z.string().optional() }),
     handler: handleListScopes as (p: unknown, c: any) => Promise<unknown>,
@@ -2925,6 +3003,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "Search the org audit log by action + optional date window (since/until ISO dates). Returns each entry's actor, approver (metadata.approverUserId, for gated actions), and timestamp. Use for governance asks like 'which refunds were approved this month and by whom'. The `action` filter is a CASE-INSENSITIVE SUBSTRING match — pass a KEYWORD, not the exact internal action string: e.g. action='refund' matches 'shopify:refunds:create' and any other refund action, filtering at the DB so it cuts through a high-volume log. (It does NOT search the body — only the action label.) Then map each entry's approverUserId back to a person via kernel__users_list/users_search. If an id (actor OR approver) does NOT resolve to a user your lookup returned, report the raw id or 'unresolved' — NEVER invent or guess a name; and report only the columns you can ground (don't add a 'requester'/approver name you could not resolve). Honest bounds: ≤100 rows per call (page the window with since/until if needed) and approver appears ONLY where metadata.approverUserId was recorded on the gated re-entry — say so rather than implying every entry has an approver, and don't claim a window is 'exhaustive' beyond what the call returned.",
+    searchKeywords: ["audit", "journal", "historique", "log", "logs", "trace"],
     requiredScopes: ["kernel:audit:read"],
     params: z.object({
       action: z.string().optional(),
@@ -2942,6 +3021,18 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     readOnly: true,
     description:
       "List the approvals waiting on this user to decide, oldest first, each tagged with its origin app, requester, summary and ageDays. Returns { total, approvals[], recentlyDecided[] }, where total is the authoritative, never truncated count of the pending queue. recentlyDecided is a separate list, never part of total or approvals: the requests this user may see that were decided in the last 24 hours, newest first, each with its status (approved, approving = approved and executing, denied, withdrawn, expired, cancelled), decidedAt, decidedBy and reason. A request leaves approvals the moment it is decided, so to answer whether a requested action happened, look it up by handle in BOTH lists: found in recentlyDecided with status denied, withdrawn, expired or cancelled means it did not happen; found in neither means you cannot tell from here. Use it for approval inbox triage, before staging a gated action to see whether the same intent is already queued, and whenever the user reports that something never happened, never arrived, or is not working.",
+    searchKeywords: [
+      "attente",
+      "approbation",
+      "approbations",
+      "valider",
+      "validation",
+      "approuver",
+      "pending",
+      "waiting",
+      "approve",
+      "demandes",
+    ],
     requiredScopes: ["kernel:approvals:read"],
     params: z.object({
       status: z.string().optional(),
@@ -2955,6 +3046,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     name: "create_pinned_thread",
     deferLoading: true,
     description: `Create an org-wide pinned thread visible in every member's sidebar (e.g. Announcements).`,
+    searchKeywords: ["épingler"],
     requiredScopes: ["kernel:threads:admin"],
     params: z.object({ title: z.string().min(1).max(THREAD_TITLE_MAX_CHARS) }),
     handler: handleCreatePinnedThread as (p: unknown, c: any) => Promise<unknown>,
@@ -2966,6 +3058,18 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "Capture a piece of company knowledge (a policy, a process, a shared fact) as an ORGANIZATION scoped Knowledge document every member can find, auto-enabling the Knowledge app if needed. Use this, not kernel__user_memory_set, whenever the user asks to write down, record or document a shared business fact such as a support inbox address, a company policy or operating rule, or company contact info: kernel__user_memory_set is private to the one operator and invisible to the org.",
+    searchKeywords: [
+      "retenir",
+      "noter",
+      "mémoriser",
+      "apprendre",
+      "remember",
+      "politique",
+      "policy",
+      "règle",
+      "procédure",
+      "write",
+    ],
     requiredScopes: ["knowledge:documents:create"],
     // Decided like the knowledge app's own document writes.
     approveScope: "knowledge:approve",
@@ -3010,6 +3114,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     name: "export",
     deferLoading: true,
     description: `Export the data the requester can see for one or more apps as a downloadable zip (per-app file + manifest.json). Admin-scoped — denied by scope for non-admins. Use when a user asks to back up, download, or take their org's data out. Returns { downloadRef, apps (the apps actually exported), skipped? } — the user retrieves the downloadRef. PARTIAL SUCCESS: an app with no LOCAL data — a pure live connector like shopify (orders are fetched live from Shopify, not stored locally) — is returned in \`skipped\`, NOT exported; report that honestly to the user (e.g. "exported your invoicing data; Shopify orders live in Shopify and aren't in this local export — use the Shopify admin to export those") rather than claiming it was exported. Never escalates RLS: only rows the caller can see are included.`,
+    searchKeywords: ["exporter", "télécharger", "csv", "excel", "download"],
     requiredScopes: ["kernel:users:admin"],
     params: z.object({
       appName: z.string().optional(),
@@ -3027,6 +3132,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     name: "data_subject_export",
     deferLoading: true,
     description: `Compile EVERYTHING the org holds on ONE data subject (a contact) across apps into a single downloadable GDPR data-subject-request (DSR) export bundle, and return its fileId. Use this for a GDPR/data-access request — "export everything we have on <person> so I can send it to them". This is the PER-SUBJECT export: pass the subject's contactId (resolve it FIRST with kernel__contacts_search by name/email) and it assembles their contact record + support tickets (tickets__listForContact) + invoices (invoicing documents by contact) into ONE bundle written as a real downloadable file (returns { fileId, filename, counts, shopifyIncluded }). It contains ONLY the subject's REAL records you can see (runs under your RLS — never an org-wide dump, never invented data). It is DISTINCT from the admin \`export\` tool, which is org-admin-scoped and dumps WHOLE APPS with no per-subject filter. SHOPIFY orders are a LIVE connector (fetched live, NOT stored locally), so they are NOT auto-included — BUT if the request needs them in the SAME single bundle (e.g. "I need one complete file including her orders"), FIRST retrieve them with the shopify orders read (customers_search → orders_search/orders_get for that subject) and pass the returned order records as the \`shopifyOrders\` array — this tool then FOLDS them into the one bundle file and returns its single real fileId. If you do NOT include them, say honestly that Shopify orders are a live connector not in this file (point to the shopify orders read / Shopify admin export). CRITICAL ANTI-FABRICATION: the deliverable is the SINGLE fileId THIS tool returns — NEVER claim you "generated" a separate or supplemental file, and NEVER emit a \`file:<id>\` reference for any id this tool did not return; to put orders in the package, pass them via \`shopifyOrders\` and hand back this tool's one real fileId (do not invent a second file). Scoped to the dedicated DSR authority (a privacy/finance handler can run it WITHOUT org-admin powers); a caller lacking that scope is denied (and should ask whoever holds the DSR/privacy authority). UNGATED read-to-file: it sends nothing and changes no business data — it only materializes a file from records you can already read.`,
+    searchKeywords: ["rgpd", "gdpr", "données", "personnelles"],
     requiredScopes: ["kernel:data_subject:export"],
     params: z.object({
       contactId: z.string().uuid(),
@@ -3058,6 +3164,16 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "Invite a new team member by email and grant them a role. Identify the role by `roleName` (its exact name) OR `roleId` (a real role uuid) — provide EXACTLY ONE. PREFER roleName when you are ALSO creating that role this turn (kernel__create_role + kernel__invite_user together): the new role does not exist yet — it materializes only when its kernel__create_role approval is acted on — so you have NO uuid to pass; name it instead and this invite's own approval resolves the role AFTER it has been created. Do NOT invent a roleId for a role you have not yet created (a guessed/placeholder uuid returns NOT_FOUND when the invite is approved). You can only grant a role whose scopes you hold (over-reach returns SCOPE_ESCALATION). Returns {error:{code:'USER_EXISTS'|'INVITE_PENDING'|'NOT_FOUND'|...}} for the obvious clashes. Use for onboarding; for EXTERNAL people use contacts, not this.",
+    searchKeywords: [
+      "inviter",
+      "collègue",
+      "ajouter",
+      "teammate",
+      "membre",
+      "utilisateur",
+      "nouveau",
+      "add",
+    ],
     requiredScopes: ["kernel:users:admin"],
     approveScope: "kernel:approve",
     trustBoundary: "user",
@@ -3089,6 +3205,17 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "Assign an existing team member to a role. You can only assign a role whose scopes (and dimension grants) you hold — over-reach returns SCOPE_ESCALATION / DIMENSION_ESCALATION and needs a higher approver. Use for permission changes; never fabricate scopes.",
+    searchKeywords: [
+      "rôle",
+      "donner",
+      "attribuer",
+      "grant",
+      "accorder",
+      "droit",
+      "droits",
+      "permission",
+      "nommer",
+    ],
     requiredScopes: ["kernel:users:admin"],
     approveScope: "kernel:approve",
     trustBoundary: "user",
@@ -3109,6 +3236,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "Remove a team member FROM a role they currently hold — the inverse of kernel__assign_role. Strips every scope that role granted them (a member can hold several roles; this removes ONE, so to fully revoke access call it for EACH role the member holds — get the member's roles from kernel__users_list). You can only remove a role whose scopes (and dimension grants) you yourself hold — over-reach returns SCOPE_ESCALATION / DIMENSION_ESCALATION and needs a higher approver. Removing a role the member does not hold is an idempotent no-op (removed:false), not an error. IMPORTANT: this removes ROLE membership only — it does NOT deactivate the account (closing/disabling a person's account is an admin action in Settings > Members, with no agent tool), and it does NOT strip DIRECT per-user scope grants (use kernel__grant_user_scope's `revoke` for those). Use this for offboarding/permission-reduction; never claim an account was deactivated when you only removed roles.",
+    searchKeywords: ["rôle", "retirer"],
     requiredScopes: ["kernel:users:admin"],
     approveScope: "kernel:approve",
     trustBoundary: "user",
@@ -3163,6 +3291,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "Edit ONE team member's scopes directly, at fine granularity — the granular complement to kernel__assign_role (which grants a whole preset bundle). Pass `grant` and/or `revoke` arrays of exact scope ids to add/remove DIRECT user-level grants. Use this to fine-tune a single person without minting a role — e.g. 'give July refunds on top of her CS role' (grant) or 'take away her export ability' (revoke a direct grant). You can only grant/revoke scopes you hold yourself (over-reach returns SCOPE_ESCALATION and needs a higher approver). FIRST call kernel__list_scopes to get real scope ids — never invent one. IMPORTANT: a `revoke` only removes a DIRECT user grant; it does NOT strip a scope the member inherits from a ROLE (to remove that, change their role with kernel__assign_role). Granting a scope already held, or revoking one not directly granted, is an idempotent no-op. Prefer kernel__assign_role / kernel__create_role when the same permission set will apply to MANY people (roles stay auditable); use this for genuine per-person exceptions.",
+    searchKeywords: ["droit", "droits", "accès", "permission", "autoriser", "access"],
     requiredScopes: ["kernel:users:admin"],
     approveScope: "kernel:approve",
     trustBoundary: "user",
@@ -3307,6 +3436,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
 Design the \`scopeCeiling\` as the LEAST PRIVILEGE the role needs — e.g. a web-research role wants \`kernel:agent:web\` plus a light read like \`kernel:contacts:read\`, and NO write scopes. Use \`kernel__subagent_list\` to see existing roles.
 
 When to use: When an admin asks to set up a reusable role they will spawn repeatedly. When NOT to use: For a one-off task — \`kernel__spawn_agent\` accepts an ad-hoc prompt and is the right primitive when no durable role abstraction adds value.`,
+    searchKeywords: ["créer"],
     requiredScopes: ["kernel:agents:admin"],
     params: z.object({
       appName: z.string().min(1).optional(),
@@ -3416,6 +3546,7 @@ When to use: When an admin asks to set up a reusable role they will spawn repeat
     name: "subagent_delete",
     deferLoading: true,
     description: `Delete a sub-agent role definition. Existing in-flight runs keep going against their snapshotted definition; future \`kernel__spawn_agent\` calls with that \`agentType\` will error with E_UNKNOWN_AGENT_TYPE.`,
+    searchKeywords: ["supprimer"],
     requiredScopes: ["kernel:agents:admin"],
     params: z.object({ agentType: z.string().min(1) }),
     handler: (async (params: unknown, ctx: any) => {

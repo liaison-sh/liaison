@@ -162,10 +162,14 @@ describe("the demo store, driven through the real app runtime", () => {
     invalidateDemoMarker()
     resetDemoShopifyOverlay()
     await shutdownSandboxPool()
-    await sql`DELETE FROM kernel.connected_accounts WHERE org_id = ${orgId}`
-    // Uninstall while the install root still points at these installs: their
-    // rows, their registrations in every org and their files all go.
-    for (const name of APPS) await uninstallApp({ name })
+    // A setup that stopped before the org exists has nothing to remove, and must
+    // not report a second failure over the one that stopped it.
+    if (orgId) {
+      await sql`DELETE FROM kernel.connected_accounts WHERE org_id = ${orgId}`
+      // Uninstall while the install root still points at these installs: their
+      // rows, their registrations in every org and their files all go.
+      for (const name of APPS) await uninstallApp({ name })
+    }
     if (priorAppsDir === undefined) delete process.env.LIAISON_APPS_DIR
     else process.env.LIAISON_APPS_DIR = priorAppsDir
     if (stagedAppsRoot) rmSync(stagedAppsRoot, { recursive: true, force: true })

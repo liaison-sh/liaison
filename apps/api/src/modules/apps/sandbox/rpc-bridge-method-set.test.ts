@@ -237,6 +237,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["tickets_summary_regenerate", "async"],
   ["tickets_summary_runJob", "async"],
   ["tickets_validateAndApply", "async"],
+  ["time_civil", "async"],
 ]
 
 const poisonTx = new Proxy(

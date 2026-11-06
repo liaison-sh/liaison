@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
+import { asSchema } from "ai"
 import { z } from "zod"
 import { sql } from "~/db"
 import type { UserContext } from "~/db/rls"
@@ -239,7 +240,7 @@ describe("tool-bridge", () => {
   // projected Zod field is a real number/integer schema, and that both a
   // number and a numeric STRING (MCP transport can round-trip either) parse
   // successfully.
-  it("projects a JSON-Schema `integer` param as a coercing integer Zod field, not z.any()", () => {
+  it("projects a JSON-Schema `integer` param as a coercing integer Zod field, not z.any()", async () => {
     const actor: UserContext = {
       actorType: "user",
       userId: "user1",
@@ -247,9 +248,17 @@ describe("tool-bridge", () => {
       scopes: ["*"],
       dimensionGrants: {},
     }
-    const tools = buildToolSet(ORG_ID, actor, undefined, ALL_DEFERRED_TOOLS_UNLOCKED)
+    const tools = buildToolSet(ORG_ID, actor, undefined, ALL_DEFERRED_TOOLS_UNLOCKED, "gateway")
     const revisionTool = tools.test__revisionTool
     expect(revisionTool).toBeDefined()
+    // A model's tool set validates the same way, through the SDK's schema.
+    const forModel = buildToolSet(ORG_ID, actor, undefined, ALL_DEFERRED_TOOLS_UNLOCKED)
+    const validate = asSchema(forModel.test__revisionTool.inputSchema).validate
+    expect((await validate?.({ id: "a", revision: "not-a-number" }))?.success).toBe(false)
+    expect(await validate?.({ id: "a", revision: "2" })).toEqual({
+      success: true,
+      value: { id: "a", revision: 2 },
+    })
     const shape = (revisionTool as any).inputSchema.shape as Record<string, z.ZodTypeAny>
     // A dropped-to-z.any() field would happily parse a non-numeric string too —
     // the real regression signature. Assert it rejects one.

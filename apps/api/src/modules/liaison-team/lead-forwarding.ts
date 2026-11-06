@@ -81,8 +81,9 @@ export async function forwardDemoLeadUpdate(leadId: string, change: LeadChange):
       if (!(await forwardingOn(tx))) return
       const lead = await realLead(tx, leadId)
       if (!lead || (lead.optedOutAt && !change.optedOut)) return
+      let cancelled = 0
       if (change.optedOut) {
-        const cancelled = extractRows(
+        cancelled = extractRows(
           await tx.execute(drizzleSql`
             UPDATE ${K()}.control_plane_outbox
                SET status = 'cancelled', lease_until = NULL, last_error = 'opted_out',
@@ -90,8 +91,7 @@ export async function forwardDemoLeadUpdate(leadId: string, change: LeadChange):
              WHERE type = 'lead' AND data ->> 'leadId' = ${leadId} AND status = 'pending'
                AND attempts = 0
             RETURNING id`),
-        )
-        if (cancelled.length > 0) return
+        ).length
       }
       const [pending] = extractRows<{ id: string }>(
         await tx.execute(drizzleSql`
@@ -100,6 +100,8 @@ export async function forwardDemoLeadUpdate(leadId: string, change: LeadChange):
              AND status IN ('pending', 'sending', 'delivered')
            ORDER BY created_at DESC LIMIT 1`),
       )
+      // Everything cancelled and nothing went out: the team never had this lead.
+      if (cancelled > 0 && !pending) return
       await enqueue(tx, "lead-update", leadUpdateData(leadId, change), {
         ...(pending ? { dependsOn: pending.id } : {}),
       })
@@ -107,6 +109,50 @@ export async function forwardDemoLeadUpdate(leadId: string, change: LeadChange):
   } catch (err) {
     log.error({ err, leadId }, "failed to queue a demo lead update for the Liaison team")
   }
+}
+
+/**
+ * Queue the full lead again the moment its visitor is on the news list (opted in
+ * AND verified). The team's copy may have dropped the name and address already,
+ * because an update can arrive after its own deletion date; a copy that still
+ * holds them acknowledges and changes nothing. Never throws.
+ */
+export async function forwardOptedInLead(leadId: string): Promise<void> {
+  if (!enabled()) return
+  try {
+    await withSystemDb("liaison-team:lead-forward", async (tx) => {
+      if (!(await forwardingOn(tx))) return
+      const lead = await realLead(tx, leadId)
+      if (!lead?.verifiedAt || !lead.notifyManagedAt || lead.optedOutAt) return
+      if (lead.identityErasedAt) return
+      await enqueue(tx, "lead", leadData(lead))
+    })
+  } catch (err) {
+    log.error({ err, leadId }, "failed to queue an opted-in demo lead for the Liaison team")
+  }
+}
+
+/**
+ * The outbox holds the name and address of each lead message: an erased lead
+ * leaves none behind. A lead still waiting is cancelled (what it depends on goes
+ * with it), a finished one has its data emptied. A row being sent right now
+ * finishes on its own and the housekeeping empties it after its 7 days.
+ */
+export async function dropErasedLeadsFromOutbox(
+  tx: Pick<PrivilegedDb, "execute">,
+  leadIds: readonly string[],
+): Promise<void> {
+  if (leadIds.length === 0) return
+  const ids = drizzleSql.join(
+    leadIds.map((id) => drizzleSql`${id}`),
+    drizzleSql`, `,
+  )
+  await tx.execute(drizzleSql`
+    UPDATE ${K()}.control_plane_outbox
+       SET status = CASE WHEN status = 'pending' THEN 'cancelled' ELSE status END,
+           last_error = CASE WHEN status = 'pending' THEN 'identity_erased' ELSE last_error END,
+           data = '{}'::jsonb, purged_at = now(), updated_at = now()
+     WHERE type = 'lead' AND data ->> 'leadId' IN (${ids}) AND status <> 'sending'`)
 }
 
 /**

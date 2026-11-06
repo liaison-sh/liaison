@@ -512,6 +512,13 @@ const toolSchema = {
     // as "external" downstream — fail-safe: nothing risky may read as safe.
     approvalImpact: { type: "string", enum: ["external", "internal"] },
     deferLoading: { type: "boolean" },
+    // Words people use for what the tool does, single words, in any language: read
+    // only by the `tool_search` ranker, never sent to a model.
+    searchKeywords: {
+      type: "array",
+      items: { type: "string", minLength: 1, maxLength: 40, pattern: "^\\S+$" },
+      maxItems: 30,
+    },
     agentVisible: { type: "boolean" },
     trustBoundary: { type: "string", enum: ["internal", "agent", "user"] },
     // A provider-contract op (see top-level `implements`): reachable ONLY through the kernel

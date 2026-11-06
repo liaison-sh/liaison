@@ -8,7 +8,7 @@
 // work (ticket queues, order digests, stale nudges) and reads better as a
 // grouped ledger than as a wall of rows.
 
-import type { AttentionItem } from "@liaison/shared"
+import { type AttentionItem, NOW_URGENCY } from "@liaison/shared"
 import { tNow } from "~/modules/i18n/i18n-context"
 import { pluralFormFor } from "~/modules/projects/plural"
 import type { RowLocale } from "~/modules/shell/attention-row-format"
@@ -33,9 +33,6 @@ const NOW_KINDS = new Set<string>([
 // belong in the collapsible Notifications group below, not in "needs you now".
 // Genuinely urgent ones still surface individually via the >= NOW_URGENCY
 // score rule (notify_user / routine emitters set urgency per item).
-
-/** Items scored at or above this are NOW even for non-NOW kinds. */
-const NOW_URGENCY = 70
 
 // --- Card redesign (liaison-messaging-visibility, Task 8) ---
 // Two of the NOW_KINDS now render in their own Home cards (Approvals,

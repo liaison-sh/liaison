@@ -26,7 +26,7 @@ export interface InstalledPdfTemplate {
 
 // Runtime-installed apps (`.liaisonapp` packages). Instance-wide (`orgId` NULL),
 // except an org-private custom app of the managed edition, whose rows carry the
-// one org that may see and run it (modules/apps/app-org-scope.ts, 0266).
+// one org that may see and run it (modules/apps/app-org-scope.ts, 0267).
 //
 // The composite (name, version) primary key lets multiple versions of one app
 // coexist in the table. This is required for atomic upgrade swap: the install
@@ -72,9 +72,9 @@ export const appsInstalled = kernel.table(
      * install root. NULL on rows installed before it was recorded.
      */
     manifestSchema: jsonb("manifest_schema").$type<{ schema: unknown }>(),
-    /** The org an org-private custom app belongs to; NULL = an instance app (0266). */
+    /** The org an org-private custom app belongs to; NULL = an instance app (0267). */
     orgId: uuid("org_id"),
-    // The operator disabled this custom app (0267, modules/cloud/custom-app-disable.ts):
+    // The operator disabled this custom app (0268, modules/cloud/custom-app-disable.ts):
     // nothing runs it until the operator enables it again. NULL = not disabled.
     disabledAt: timestamp("disabled_at", { withTimezone: true }),
     disabledReason: text("disabled_reason"),
@@ -91,7 +91,7 @@ export const appsInstalled = kernel.table(
 // `previousVersion` and an operator can roll back to it. Written only by the
 // activation service (activation.ts). `orgId` is copied from the active
 // version's `apps_installed` row: NULL for an instance app, the owning org for
-// an org-private custom app (0266).
+// an org-private custom app (0267).
 export const appsActiveVersion = kernel.table("apps_active_version", {
   name: text("name").primaryKey(),
   version: text("version").notNull(),

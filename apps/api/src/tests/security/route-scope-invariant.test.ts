@@ -45,6 +45,12 @@ const ANY_MEMBER: Record<string, string> = {
   "GET /api/users/me": "the caller's own profile",
   "PATCH /api/users/me": "the caller's own profile",
   "DELETE /api/users/me/avatar": "the caller's own profile",
+  "GET /api/notifications/badge":
+    "the caller's own unread count, read as that user: a number with no content",
+  "GET /api/notifications/conversations":
+    "the caller's own muted and all-posts conversations, read under their RLS",
+  "GET /api/notifications/on-call":
+    "who is on call for incidents, shown to every member as names; the member list takes kernel:org:admin",
   "GET /api/notifications/settings": "the caller's own notification settings and devices",
   "PATCH /api/notifications/settings": "the caller's own notification settings and devices",
   "DELETE /api/notifications/desktop-devices/:deviceId":
@@ -54,11 +60,6 @@ const ANY_MEMBER: Record<string, string> = {
   "POST /api/notifications/test": "the caller's own notification settings and devices",
   "GET /api/notifications/web-push/config": "the caller's own notification settings and devices",
   "GET /api/notifications/devices": "the caller's own notification settings and devices",
-  "GET /api/notifications/badge": "the caller's own badge count (countBadge of their own items)",
-  "GET /api/notifications/conversations":
-    "the caller's own muted and every-post conversations, read under their own RLS",
-  "GET /api/notifications/on-call":
-    "who is on call for incidents, readable by every member; the member list and editing need the on-call scope",
   "GET /api/user/preferences": "the caller's own notification settings and devices",
   "GET /api/nodes/me/attachments": "the caller's own computers",
   "GET /api/nodes/me": "the caller's own computers",

@@ -4,6 +4,7 @@
 // tests of the Shopify order handlers (shopify-order-cancelled.test.ts and
 // shopify-refund-credit-note.test.ts): they run the ACTUAL
 // creditNoteCreateAndIssue pipeline against the in-memory mock db.
+import { testTime } from "../test-time"
 import type { MutationsCtx } from "../mutations"
 import type { MockDb } from "../test-db"
 
@@ -88,6 +89,7 @@ export function lineRow(over: Record<string, unknown>): Record<string, unknown> 
 export function issuePipelineCtx(db: MockDb): {
   getUserId(): Promise<string>
   emit(): Promise<void>
+  time: MutationsCtx["time"]
   sequences: MutationsCtx["sequences"]
   pdf: MutationsCtx["pdf"]
   messages: MutationsCtx["messages"]
@@ -105,6 +107,7 @@ export function issuePipelineCtx(db: MockDb): {
     // undefined), and that throw escapes the whole autoIssueRefundCreditNotes
     // loop, silently dropping every target still queued behind it.
     emit: async () => {},
+    time: testTime(),
     sequences: {
       async allocate(p) {
         const ex = (await db.findMany("__sequences", { where: { key: p.key }, limit: 1 })) as Array<

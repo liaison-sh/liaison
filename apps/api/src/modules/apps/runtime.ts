@@ -3111,6 +3111,7 @@ async function registerSingleApp(
               entry.decideInContext = tool.decideInContext
             }
             if (typeof tool.deferLoading === "boolean") entry.deferLoading = tool.deferLoading
+            if (Array.isArray(tool.searchKeywords)) entry.searchKeywords = tool.searchKeywords
             // Per-tool sandbox execution budget (see manifest-schema toolSchema.timeoutMs).
             if (typeof tool.timeoutMs === "number") entry.timeoutMs = tool.timeoutMs
             if (typeof tool.agentVisible === "boolean") entry.agentVisible = tool.agentVisible

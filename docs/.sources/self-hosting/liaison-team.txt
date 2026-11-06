@@ -57,7 +57,7 @@ Own-origin CORS and refresh origin, __Host- cookies -> apps/api/src/lib/org-host
 Non-org hosts serve only control, health, diag, webhooks; no web app -> apps/api/src/lib/org-host.ts:154 ; apps/api/src/lib/server.ts:541
 Handoff link: one time, 10 minutes, Continue -> apps/api/src/modules/cloud/handoff.ts:3 ; apps/api/src/modules/auth/magic-link.ts:76 ; apps/web/src/modules/auth/MagicLinkVerify.tsx:78 ; packages/shared/src/i18n/locales/en/kernel.json:3173
 New org resolves at once; deletion frees the slug -> apps/api/src/lib/org-host.ts:74 ; apps/api/src/modules/org/purge/purge-org.ts:216
-Managed metering: USD -> EUR at the ECB rate x credit rate, USD and rate per row -> apps/api/src/modules/agent/credits/credit-meter.ts:1968 ; apps/api/src/db/migrations/0264_credit_usage_usd.sql:11
+Managed metering: USD -> EUR at the ECB rate x credit rate, USD and rate per row -> apps/api/src/modules/agent/credits/credit-meter.ts:1968 ; apps/api/src/db/migrations/0265_credit_usage_usd.sql:11
 Money messages via the outbox to /cell-billing, v2 -> apps/api/src/modules/liaison-team/outbox.ts:555 ; apps/api/src/modules/cloud/usage-report.ts:75 ; apps/api/src/infra/jobs/kernel-jobs.ts:1180 ; apps/api/src/modules/cloud/auto-topup-trigger.ts:44
 Managed server requires OPENROUTER_API_KEY -> apps/api/src/lib/managed-boot.ts:110
 Managed server refuses every other provider key and GEMINI_* -> apps/api/src/lib/managed-boot.ts:52 ; apps/api/src/lib/managed-boot.ts:116 ; apps/api/src/modules/agent/credits/platform-key-env.ts:6

@@ -51,7 +51,6 @@ account_info -> bundled-apps/ads/app.manifest.json:586
 graph_get -> bundled-apps/ads/app.manifest.json:596
 creative_get -> bundled-apps/ads/app.manifest.json:618
 ad_preview -> bundled-apps/ads/app.manifest.json:637
-counts -> bundled-apps/ads/app.manifest.json:667
 pending_approvals_list -> bundled-apps/ads/app.manifest.json:677
 create_campaign gated -> bundled-apps/ads/app.manifest.json:697
 create_adset gated -> bundled-apps/ads/app.manifest.json:786

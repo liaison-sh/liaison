@@ -171,12 +171,36 @@ describe("needs picker", () => {
     expect(screen.getByTestId("demo-signup-error").textContent).toContain("could not confirm")
     const post = calls.find((c) => c.url.includes("/demo/orgs"))
     expect(post?.body).toMatchObject({ needs: ["sales", "support"] })
+    expect(post?.body).not.toHaveProperty("newsOptIn")
 
     fireEvent.click(screen.getByTestId("demo-details-back"))
     fireEvent.click(screen.getByTestId("demo-change-picks"))
     fireEvent.click(screen.getByTestId("demo-needs-all"))
     expect(screen.getByTestId("demo-needs-rank-dev").textContent).toBe("6")
     expect(screen.getByTestId("demo-needs-rank-knowledge").textContent).toBe("7")
+  })
+
+  it("offers news as an unticked checkbox and posts the consent only when ticked", async () => {
+    const calls = serve([
+      ["/demo/orgs", { status: 400, body: { error: { message: "x", code: "turnstile_failed" } } }],
+    ])
+    mount(() => <DemoEntry onSignedIn={() => {}} />)
+    fireEvent.click(screen.getByTestId("demo-needs-sales"))
+    fireEvent.click(screen.getByTestId("demo-continue"))
+    fireEvent.click(screen.getByTestId("demo-company-continue"))
+    fireEvent.input(screen.getByTestId("demo-name"), { target: { value: "Jane" } })
+    fireEvent.input(screen.getByTestId("demo-email"), { target: { value: "j@example.com" } })
+    const box = screen.getByTestId("demo-news-opt-in") as HTMLInputElement
+    expect(box.checked).toBe(false)
+    expect(screen.getByTestId("demo-signup-door").textContent).toContain(
+      "Send me occasional news about Liaison",
+    )
+    expect(screen.getByTestId("demo-lead-notice").textContent).toContain("deleted")
+    fireEvent.click(box)
+    fireEvent.click(screen.getByTestId("demo-create"))
+    await waitFor(() => expect(screen.getByTestId("demo-signup-error")).toBeTruthy())
+    const post = calls.find((c) => c.url.includes("/demo/orgs"))
+    expect(post?.body).toMatchObject({ newsOptIn: true })
   })
 
   it("says what is missing beside the button it stops", () => {

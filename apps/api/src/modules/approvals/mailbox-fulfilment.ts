@@ -80,6 +80,7 @@ export type MailboxFulfilmentErrorCode =
   | "not_a_mail_send"
   | "payload_not_sealed"
   | "fulfilment_required"
+  | "draft_removed"
   | "malformed"
   | "too_large"
 
@@ -231,6 +232,15 @@ export function applyMailboxFulfilment(
         "fulfilment_required",
         "this send is sealed to the mailbox owner: unlock the mailbox in Mail and approve from there, " +
           "so the decrypted draft is supplied with the approval",
+      )
+    }
+    // A mailbox purge emptied this draft. Without a recipient or a body there is
+    // nothing to send, and running it would only fail after the row was claimed,
+    // leaving its outcome unknown.
+    if (MAILBOX_FULFILLABLE_TOOLS.has(input.toolName) && Object.keys(payload).length === 0) {
+      throw new MailboxFulfilmentError(
+        "draft_removed",
+        "this email's draft was removed when its mailbox was encrypted, so it cannot be sent: deny this request and draft the email again",
       )
     }
     return payload

@@ -45,7 +45,7 @@ const KNOWN_CONVENTION_GAPS = new Set<string>([
   // always NULL today: the catalog pointer is instance-wide, so there is no org
   // to reference yet.
   "kernel.apps_active_version",
-  // org_transfer_ledger (0269) records the moves an org took part in on this
+  // org_transfer_ledger (0270) records the moves an org took part in on this
   // instance. A copy of the org that was moved out may be purged here while its
   // ledger row must stay (the reverse-move rule reads it), so it carries no FK.
   "kernel.org_transfer_ledger",

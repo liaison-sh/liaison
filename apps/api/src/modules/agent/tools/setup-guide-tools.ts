@@ -619,6 +619,7 @@ export function registerSetupGuideTools(orgId: string): void {
     deferLoading: true,
     description:
       "Show the card for the person's own personal mailbox: set the mailbox password a private mailbox waits for, or, with private true and only when the person asks for it, make a transparent mailbox private (zero-access).",
+    searchKeywords: ["boîte", "gmail", "imap", "connecter"],
     // The caller's own personal mailboxes only (owner_id = the caller): no other record.
     requiredScopes: ["kernel:threads:read"],
     readOnly: true,

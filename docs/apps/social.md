@@ -60,7 +60,7 @@ Newer Meta apps offer only **API setup with Unified login** for Instagram. Socia
 
 The approval card for a reply shows what it answers: the comment (shortened when long), the post it is under, and a link that opens the comment on the platform (or its post, when the platform gives no comment link). The comment and the post are shown as quotes from outside the organization, and the agent reads them as outside text, never as instructions. The link only ever opens Facebook, Instagram or YouTube.
 
-A reply or like you send from here still goes through approval when your role requires it. If the original comment was edited after the reply was drafted, the finding says so: re-check before posting.
+Each pending reply is named by the words it would post, and a reply or direct message gets 30 seconds to reach the platform. A reply or like you send from here still goes through approval when your role requires it. If the original comment was edited after the reply was drafted, the finding says so: re-check before posting.
 
 ## Read direct messages
 

@@ -93,6 +93,8 @@ On a managed instance, two refusals come from the workspace's subscription rathe
 - `403` with `code: "org_suspended"`, plus `accessUntil` (until when admins can still export and pay, or `null`) and `contact` (the billing address, or `null`): the subscription is suspended or closed. While suspended, an admin's own session keeps the billing and export routes; every other call is refused.
 - `503` with `code: "org_moving"`, `retryAfterSeconds` and a `Retry-After` header (2 seconds): the organization is being moved to another server. For a few seconds writes are refused while reads still answer; just before, only the calls that start an agent turn (a chat or thread message) are refused. Retry after the delay: the same call then goes to the server the organization now lives on. The websocket closes with code `4005` and reconnects the same way.
 
+A device sign-in (a command-line tool or another program holding a token capped to the scopes it declared) can run tools through these routes, and its calls count as a program's, never as a person's click. A gated tool waits for a person's approval and answers `{ "data": { "blocked": { … } } }`, and outside-text and host rules apply as they do for an [MCP client](mcp.md). A message it posts to an agent does not count as a person typing either.
+
 For automation, prefer the tools made for it:
 
 - [`liaison` CLI](../provisioning-cli.md) for provisioning: org, users, roles, mailboxes, API keys, connectors (`liaison config apply`).

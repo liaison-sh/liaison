@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // The billing state the control plane pushes to a managed cell (migration
-// 0263, `modules/cloud/billing.ts`): one row per org, applied only when its
+// 0264, `modules/cloud/billing.ts`): one row per org, applied only when its
 // `version` is newer than the stored one. `GET /api/billing/state` serves it.
 // Readable by the row's org under RLS; written through the privileged pool only.
 
@@ -39,17 +39,17 @@ export const orgBillingState = kernel.table("org_billing_state", {
   periodEnd: timestamp("period_end", { withTimezone: true }).notNull(),
   includedCredits: numeric("included_credits", { precision: 20, scale: 8 }).notNull(),
   caps: jsonb("caps").$type<Record<string, number | null>>().notNull().default({}),
-  /** The plan above and its caps, for the refusal copy; null on the largest (migration 0271). */
+  /** The plan above and its caps, for the refusal copy; null on the largest (migration 0272). */
   nextPlan: jsonb("next_plan").$type<{ id: string; caps: Record<string, number | null> }>(),
   previewEndsAt: timestamp("preview_ends_at", { withTimezone: true }),
   autoTopUp: jsonb("auto_top_up").$type<CloudAutoTopUp>().notNull(),
-  /** While suspended: until when admins keep export and Billing (migration 0265). */
+  /** While suspended: until when admins keep export and Billing (migration 0266). */
   accessUntil: timestamp("access_until", { withTimezone: true }),
-  /** When the control plane closed the org; the deletion fence reads it (migration 0265). */
+  /** When the control plane closed the org; the deletion fence reads it (migration 0266). */
   closedAt: timestamp("closed_at", { withTimezone: true }),
-  /** The address the suspended page shows (migration 0265). */
+  /** The address the suspended page shows (migration 0266). */
   billingContact: text("billing_contact"),
-  /** The nightly storage estimate (migration 0272, modules/cloud/storage-estimate.ts); never pushed. */
+  /** The nightly storage estimate (migration 0273, modules/cloud/storage-estimate.ts); never pushed. */
   storageEstimate: jsonb("storage_estimate").$type<StorageEstimate>(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 })

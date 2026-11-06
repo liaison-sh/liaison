@@ -23,7 +23,10 @@ import {
   Show,
 } from "solid-js"
 import { createStore, produce } from "solid-js/store"
-import { isExpiredMailboxWait } from "~/modules/agent/routine-mailbox-wait-item"
+import {
+  collapseMailboxWaits,
+  isExpiredMailboxWait,
+} from "~/modules/agent/routine-mailbox-wait-item"
 import ApprovalCard, { minutesLeft } from "~/modules/approvals/ApprovalCard"
 import { decidableByMe, loadDecidableByMe } from "~/modules/approvals/approvals-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
@@ -85,10 +88,12 @@ export const ApprovalsScreen: Component = () => {
   // approvals list shows (homeApprovalItems' rules), the lapsed waits gone.
   const waits = createMemo(() => {
     const viewer = currentHomeViewer()
-    return attentionStore.items.filter((item) =>
-      item.kind === "scope_request"
-        ? viewer.canGrantAccess
-        : item.kind === "routine_mailbox_wait" && !isExpiredMailboxWait(item, now()),
+    return collapseMailboxWaits(
+      attentionStore.items.filter((item) =>
+        item.kind === "scope_request"
+          ? viewer.canGrantAccess
+          : item.kind === "routine_mailbox_wait" && !isExpiredMailboxWait(item, now()),
+      ),
     )
   })
 

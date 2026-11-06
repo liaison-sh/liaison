@@ -32,6 +32,7 @@ import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { getInstallTrust } from "~/modules/apps/install-trust"
 import { isAppUnavailableFor, primeOrgApps, unavailableAppsFor } from "~/modules/apps/org-apps"
+import { restToolCall } from "~/modules/apps/rest-tool-call"
 import { boundHost, signUiBundleToken } from "~/modules/apps/ui-bundle-token"
 import { invokeAppExport, toHttpException } from "~/modules/export/invoke-export"
 import { hasScope } from "~/modules/permissions/permissions"
@@ -64,15 +65,16 @@ const KNOWN_LABELS: Record<string, string> = {
 // the kernel uses internally.
 appRoutes.post("/tools/:toolName", async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+  // The REST entry point a browser UI action calls directly: there the click IS
+  // the approval, and a restricted session's call is no click.
+  const call = await restToolCall(c, body.threadId)
   const result = await executeTool({
     toolName: c.req.param("toolName"),
     orgId: c.get("orgId"),
     actor: extractRlsContext(c),
-    threadId: typeof body.threadId === "string" ? body.threadId : undefined,
+    threadId: call.threadId,
     params: body.params ?? body,
-    // This route is the REST entry point a browser UI action calls directly:
-    // the human click IS the approval. See execute-tool.ts isDirectHumanCall.
-    origin: "human-ui",
+    origin: call.origin,
     // Propagate the incoming request's cancellation so an abandoned caller
     // (e.g. after the request timeout middleware responds 504) never later
     // occupies a sandbox worker for a caller that is already gone.
@@ -114,14 +116,15 @@ appRoutes.post("/:appName/tools/:toolName", async (c) => {
     return success(c, { panels })
   }
 
+  // Plugin-friendly REST form: same direct browser UI call as /tools/:toolName.
+  const call = await restToolCall(c, body.threadId)
   const result = await executeTool({
     toolName: `${appName}:${toolName}`,
     orgId: c.get("orgId"),
     actor: extractRlsContext(c),
-    threadId: typeof body.threadId === "string" ? body.threadId : undefined,
+    threadId: call.threadId,
     params: body.params ?? body,
-    // Plugin-friendly REST form: same direct browser UI call as /tools/:toolName.
-    origin: "human-ui",
+    origin: call.origin,
     signal: getRequestSignal(c),
   })
   if (result.blocked) {
@@ -135,14 +138,15 @@ appRoutes.post("/run-tool", async (c) => {
   if (typeof body.toolName !== "string") {
     throw new HTTPException(400, { message: "toolName is required" })
   }
+  // Direct browser UI call, same as /tools/:toolName.
+  const call = await restToolCall(c, body.threadId)
   const result = await executeTool({
     toolName: body.toolName,
     orgId: c.get("orgId"),
     actor: extractRlsContext(c),
-    threadId: typeof body.threadId === "string" ? body.threadId : undefined,
+    threadId: call.threadId,
     params: body.params ?? {},
-    // Direct browser UI call, same as /tools/:toolName.
-    origin: "human-ui",
+    origin: call.origin,
     signal: getRequestSignal(c),
   })
   return success(c, result.blocked ? { blocked: result.blocked } : result.data)

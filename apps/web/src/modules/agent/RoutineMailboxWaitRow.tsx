@@ -14,6 +14,9 @@
 // this login may not have finished), the row runs that same restore and waits
 // for it, so an open mailbox never shows a card.
 //
+// Several waiting runs show as one row (RoutineMailboxWaitsRow); this row is
+// the single case, and each run's line under that row's Details.
+//
 // Pressing it opens a turn scope in THIS browser (the same nonce a typed turn
 // gets) and asks the server to run the routine with it. The answer carries the
 // run's request for the email that started it (the handoff), which this
@@ -32,21 +35,15 @@ import { Lock, Play, X } from "lucide-solid"
 import { type Component, createEffect, createSignal, Show, untrack } from "solid-js"
 import { ApiError } from "~/lib/api-error"
 import type { RoutineMailboxWait } from "~/modules/agent/routine-mailbox-wait-item"
+import {
+  knownMailboxStatus,
+  MAILBOX_WAIT_TOAST_MS,
+  mailboxWaitDismissPath,
+  startMailboxWaitRun,
+} from "~/modules/agent/routine-mailbox-wait-run"
 import { useI18n } from "~/modules/i18n/i18n-context"
-import { startMailboxCryptoWorker } from "~/modules/mailbox/crypto-worker-boot"
 import { MailboxLockedPanel } from "~/modules/mailbox/MailboxLockedPanel"
-import {
-  answerMailboxHandoff,
-  beginMailboxAgentTurn,
-  endMailboxAgentTurn,
-  type MailboxHandoffRequest,
-} from "~/modules/mailbox/mailbox-agent-runtime"
-import {
-  isMailboxUnlocked,
-  loadMailboxKeyring,
-  type MailboxStatus,
-  mailboxStore,
-} from "~/modules/mailbox/mailbox-store"
+import { isMailboxUnlocked } from "~/modules/mailbox/mailbox-store"
 import { useApi } from "~/modules/shell/ApiContext"
 import {
   formatRelativeTime,
@@ -70,22 +67,13 @@ export {
   routineMailboxWaitOf,
 } from "~/modules/agent/routine-mailbox-wait-item"
 
-/** How long this window keeps the run's turn scope open: past the routine lock. */
-export const MAILBOX_WAIT_TURN_OPEN_MS = 12 * 60 * 1000
-
-const mailboxWaitPath = (wait: RoutineMailboxWait, verb: "run" | "dismiss") =>
-  `/agent/routines/${encodeURIComponent(wait.routineId)}/mailbox-waits/${encodeURIComponent(wait.runId)}/${verb}`
-
-export const mailboxWaitRunPath = (wait: RoutineMailboxWait) => mailboxWaitPath(wait, "run")
-export const mailboxWaitDismissPath = (wait: RoutineMailboxWait) => mailboxWaitPath(wait, "dismiss")
-
-/** What Run now answers (routines-routes.ts). */
-export interface MailboxWaitRunResponse {
-  started?: boolean
-  runId?: string
-  queued?: boolean
-  handoff?: MailboxHandoffRequest | null
-}
+export {
+  MAILBOX_WAIT_TOAST_MS,
+  MAILBOX_WAIT_TURN_OPEN_MS,
+  type MailboxWaitRunResponse,
+  mailboxWaitDismissPath,
+  mailboxWaitRunPath,
+} from "~/modules/agent/routine-mailbox-wait-run"
 
 /** A new email is any mail app message or email create event. */
 function isNewEmail(trigger: RoutineMailboxWait["trigger"]): boolean {
@@ -97,7 +85,7 @@ function isNewEmail(trigger: RoutineMailboxWait["trigger"]): boolean {
 }
 
 /** What the toast says once Run now answered (the row has left the list). */
-function startedKey(queued: boolean, handedOff: boolean): string {
+export function startedKey(queued: boolean, handedOff: boolean): string {
   if (queued) {
     return handedOff
       ? "kernel.routineMailboxWait.queuedHandoff"
@@ -107,9 +95,6 @@ function startedKey(queued: boolean, handedOff: boolean): string {
     ? "kernel.routineMailboxWait.startedHandoff"
     : "kernel.routineMailboxWait.started"
 }
-
-/** How long the toast saying it runs stays: a few seconds. */
-export const MAILBOX_WAIT_TOAST_MS = 6_000
 
 const RoutineMailboxWaitRow: Component<{ item: AttentionItem; wait: RoutineMailboxWait }> = (
   props,
@@ -168,22 +153,6 @@ const RoutineMailboxWaitRow: Component<{ item: AttentionItem; wait: RoutineMailb
     }
   })
 
-  /**
-   * The lock state once it is KNOWN. "unknown" is not locked: a mailbox this
-   * device unlocked earlier in the login re-opens from its persisted handles at
-   * startup, and that may still be under way. Run the same boot-and-restore
-   * (both are shared, so an in-flight one is waited for, not repeated).
-   */
-  async function knownMailboxStatus(): Promise<MailboxStatus> {
-    if (mailboxStore.status !== "unknown") return mailboxStore.status
-    try {
-      if (await startMailboxCryptoWorker()) await loadMailboxKeyring(api)
-    } catch {
-      // Still unknown: said below, never shown as locked.
-    }
-    return mailboxStore.status
-  }
-
   /** The row leaves the list now; the feed reload confirms. */
   function leaveList(): void {
     setGone(true)
@@ -195,9 +164,8 @@ const RoutineMailboxWaitRow: Component<{ item: AttentionItem; wait: RoutineMailb
   async function runNow() {
     if (submitting() || gone() || expired()) return
     setSubmitting(true)
-    let turnNonce: string | null = null
     try {
-      const status = await knownMailboxStatus()
+      const status = await knownMailboxStatus(api)
       if (status === "locked") {
         setAwaitingUnlock(true)
         return
@@ -206,35 +174,18 @@ const RoutineMailboxWaitRow: Component<{ item: AttentionItem; wait: RoutineMailb
         addToast({ message: t("kernel.routineMailboxWait.statusUnknown"), type: "error" })
         return
       }
-      // The same turn scope a typed turn opens: the server's reads for this run
-      // are answered only because THIS window started it.
-      turnNonce = beginMailboxAgentTurn()
-      if (!turnNonce) {
+      const started = await startMailboxWaitRun(api, props.wait)
+      if (!started) {
         addToast({ message: t("kernel.routineMailboxWait.notReady"), type: "error" })
         return
       }
-      const nonce = turnNonce
-      const response = await api.post<MailboxWaitRunResponse | undefined>(
-        mailboxWaitRunPath(props.wait),
-        { turnNonce: nonce },
-      )
-      // The email that started the run, opened here in this click: the run
-      // then needs no browser for it.
-      const handoff = response?.handoff ?? null
-      const answered = handoff ? await answerMailboxHandoff(nonce, handoff).catch(() => null) : null
-      const isQueued = response?.queued === true
-      const isHandedOff = answered?.accepted === true
-      // The run reports in its own thread; the scope closes after it can have
-      // ended, for any read it asks this window while it stays open.
-      setTimeout(() => endMailboxAgentTurn(nonce), MAILBOX_WAIT_TURN_OPEN_MS)
       addToast({
-        message: t(startedKey(isQueued, isHandedOff), { name: name() }),
+        message: t(startedKey(started.queued, started.handedOff), { name: name() }),
         type: "info",
         durationMs: MAILBOX_WAIT_TOAST_MS,
       })
       leaveList()
     } catch (error) {
-      endMailboxAgentTurn(turnNonce)
       if (error instanceof ApiError && error.status === 410) {
         setExpiredByServer(true)
         return

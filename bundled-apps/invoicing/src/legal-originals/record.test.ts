@@ -5,6 +5,7 @@
 // render is the Factur-X (PDF/A-3B with the CII attached, S7). Later renders never replace it,
 // a Factur-X build failure leaves `facturx_failed` + attention and the retry fixes it.
 
+import { testTime } from "../test-time"
 import { describe, expect, test } from "bun:test"
 import { validateFacturxXml } from "../../../../tools/schematron/validate"
 import { sha256OfBase64 } from "../einvoicing/backfill-sha256"
@@ -51,6 +52,7 @@ function makeCtx() {
   const ctx: IssueCtx & { files_importAttachment(a: string): Promise<string> } = {
     getUserId: async () => "user-1",
     db,
+    time: testTime(),
     sequences: {
       async allocate() {
         seq += 1

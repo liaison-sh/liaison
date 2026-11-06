@@ -34,6 +34,9 @@ export interface BulkDispatchArgs {
   // (now that origin is required) fail to compile rather than default to a
   // human-ui bypass.
   origin: ToolOrigin
+  // The thread the items are judged and parked on, when the caller already has
+  // one (a restricted session's, rest-tool-call.ts). Absent: as below.
+  threadId?: string | undefined
 }
 
 export interface BulkItem {
@@ -328,8 +331,8 @@ export async function runBulkDispatch(
     // gets its own anchor thread lazily (executeToolCore), so no shared origin
     // thread is created here for a person.
     const personOrigin = args.origin === "human-ui" && args.actor.actorType === "user"
-    let originatingThreadId: string | undefined
-    if (tool.gated && !personOrigin) {
+    let originatingThreadId = args.threadId
+    if (!originatingThreadId && tool.gated && !personOrigin) {
       originatingThreadId = await ensureOriginThread({
         orgId,
         userId: actorUserId,

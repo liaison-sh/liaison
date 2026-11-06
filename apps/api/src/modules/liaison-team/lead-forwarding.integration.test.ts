@@ -19,7 +19,12 @@ import {
   passingTurnstileToken,
   restoreDemoDoorEnv,
 } from "~/modules/demo/demo-door.test-fixtures"
-import { optOutDemoLead, recordDemoLead, setDemoLeadNotifyManaged } from "~/modules/demo/demo-leads"
+import {
+  eraseExpiredDemoIdentities,
+  optOutDemoLead,
+  recordDemoLead,
+  setDemoLeadNotifyManaged,
+} from "~/modules/demo/demo-leads"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
 import { purgeDemoOrg } from "~/modules/demo/demo-reset"
@@ -85,7 +90,7 @@ async function someoneWaitsOnALock(): Promise<boolean> {
 
 let peer = 0
 let emails = 0
-async function signup(): Promise<{ orgId: string; email: string }> {
+async function signup(newsOptIn?: boolean): Promise<{ orgId: string; email: string }> {
   peer += 1
   emails += 1
   const email = `lea.${emails}.${Date.now()}@example.com`
@@ -96,6 +101,7 @@ async function signup(): Promise<{ orgId: string; email: string }> {
       name: "Lea Martin",
       email,
       needs: ["support", "chat"],
+      ...(newsOptIn ? { newsOptIn } : {}),
       turnstileToken: passingTurnstileToken(),
     }),
   })
@@ -134,6 +140,8 @@ beforeEach(async () => {
 afterEach(async () => {
   await clearRedisPatterns(["ratelimit:*", "bruteforce:*", "demo:*"])
   await sql`DELETE FROM kernel.demo_spend`
+  // Verified rows on one test domain count against the daily cap of later files.
+  await sql`DELETE FROM kernel.demo_leads`
   invalidateDemoMarker()
   DemoVerificationTestAccess.reset()
 })
@@ -314,6 +322,53 @@ describe("demo leads through the Liaison team outbox", () => {
     expect(await setDemoLeadNotifyManaged(orgId)).toBe(true)
     const updates = (await queued()).filter((r) => r.type === "lead-update")
     expect(updates.map((r) => r.data.notifyManaged)).toEqual([true])
+  })
+
+  it("a ticked lead goes with notifyManaged, and in full again once verified", async () => {
+    const { orgId, email } = await signup(true)
+    const code = lastCapturedCode(email)?.code
+    await verifyDemoCode(orgId, code as string)
+    const rows = await queued()
+    expect(rows.map((r) => r.type)).toEqual(["lead", "lead-update", "lead"])
+    expect(rows[0]?.data).toMatchObject({ email, notifyManaged: true, verified: false })
+    expect(rows[2]?.data).toMatchObject({ email, notifyManaged: true, verified: true })
+  })
+
+  it("an unticked lead is not sent a second time on verification", async () => {
+    const { orgId, email } = await signup()
+    await verifyDemoCode(orgId, lastCapturedCode(email)?.code as string)
+    expect((await queued()).map((r) => r.type)).toEqual(["lead", "lead-update"])
+  })
+
+  it("an opt-out with the first copy delivered and a second waiting still reaches the team", async () => {
+    const { orgId } = await signup()
+    await sql`UPDATE kernel.demo_leads SET verified_at = now() WHERE demo_org_id = ${orgId}`
+    await sql`UPDATE kernel.control_plane_outbox SET status = 'delivered' WHERE type = 'lead'`
+    await setDemoLeadNotifyManaged(orgId)
+    const [lead] = await sql<{ opt_out_token: string }[]>`
+      SELECT opt_out_token FROM kernel.demo_leads WHERE demo_org_id = ${orgId}`
+    await optOutDemoLead(lead?.opt_out_token as string)
+    const rows = await queued()
+    expect(rows.filter((r) => r.type === "lead").map((r) => r.status)).toEqual([
+      "delivered",
+      "cancelled",
+    ])
+    expect(rows.at(-1)).toMatchObject({ type: "lead-update", data: { optedOut: true } })
+  })
+
+  it("an erased lead leaves no name or address in the outbox", async () => {
+    const first = await signup()
+    const second = await signup()
+    await sql`UPDATE kernel.control_plane_outbox SET status = 'delivered'
+               WHERE type = 'lead' AND data ->> 'email' = ${first.email}`
+    await sql`UPDATE kernel.demo_leads SET created_at = now() - interval '73 hours'
+               WHERE demo_org_id IN (${first.orgId}, ${second.orgId})`
+    expect(await eraseExpiredDemoIdentities()).toBeGreaterThanOrEqual(2)
+    const rows = await queued()
+    expect(rows.map((r) => [r.status, r.data])).toEqual([
+      ["delivered", {}],
+      ["cancelled", {}],
+    ])
   })
 
   it("verification enqueues lead-update verified", async () => {

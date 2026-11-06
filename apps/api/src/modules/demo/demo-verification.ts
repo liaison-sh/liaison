@@ -50,9 +50,19 @@ import { emailDomain, isDisposableDomain, maskDemoEmail } from "~/modules/demo/d
 import { type DemoOrgLead, leadForDemoOrg } from "~/modules/demo/demo-leads"
 import { loadDemoMarker } from "~/modules/demo/demo-org"
 import { resumeWorldBeats } from "~/modules/demo/world/registry"
-import { forwardDemoLeadUpdate } from "~/modules/liaison-team/lead-forwarding"
+import { forwardDemoLeadUpdate, forwardOptedInLead } from "~/modules/liaison-team/lead-forwarding"
 
 const log = rootLogger.child({ module: "demo-verification" })
+
+/**
+ * What a verified address is charged under in the spend budgets: a keyed hash,
+ * never the address. The per-address budget is lifetime, so its counter outlives
+ * the name and address the lead sweep deletes; the hash still finds a returning
+ * address and cannot be read back without the server's secret.
+ */
+export function demoBudgetEmailKey(emailNormalized: string): string {
+  return crypto.createHmac("sha256", env.JWT_SECRET).update(emailNormalized).digest("hex")
+}
 
 /** The identity a verified visitor org spends against. */
 export interface DemoVerifiedIdentity {
@@ -336,6 +346,7 @@ async function completeVerification(orgId: string, ownerUserId?: string): Promis
   if (!lead.verifiedAt) {
     await markVerifiedWithinCaps(lead, await isLoadOrg(orgId))
     await forwardDemoLeadUpdate(lead.id, { verified: true })
+    await forwardOptedInLead(lead.id)
   }
   await redis.del(codeKey(orgId))
   verifiedCache.delete(orgId)
@@ -464,7 +475,7 @@ export async function demoVerifiedIdentity(orgId: string): Promise<DemoVerifiedI
   const lead = await leadForDemoOrg(orgId)
   if (!lead?.verifiedAt || !lead.emailNormalized) return null
   const identity = {
-    emailNormalized: lead.emailNormalized,
+    emailNormalized: demoBudgetEmailKey(lead.emailNormalized),
     network: lead.signupNetwork ?? "unknown-network",
   }
   rememberVerified(orgId, identity)

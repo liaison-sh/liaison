@@ -214,6 +214,14 @@ describe("the budget moment", () => {
     )
   })
 
+  it("a tick on the form is done only once the address is confirmed", async () => {
+    world({ notifyManaged: true, verified: false })
+    mount()
+    openDemoNextSteps("budget")
+    expect(await screen.findByTestId("demo-next-notify")).toBeTruthy()
+    expect(screen.queryByTestId("demo-next-notify-done")).toBeNull()
+  })
+
   it("speaks French", async () => {
     world()
     mount("fr")

@@ -1,38 +1,48 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The lead a public demo signup leaves behind.
+// The row a public demo signup leaves behind.
 //
 // The visitor types a name and an address into "Start the demo". The address is
 // NOT their login (routes.ts gives the account a generated internal address, so
 // typing somebody's email can never reach anybody's workspace); it is kept here,
-// in `kernel.demo_leads`, as the record of who tried the product.
+// in `kernel.demo_leads`, to send the confirmation code. A visitor is someone
+// trying the product, not a prospect, and joins no list by signing up.
 //
-// CONSENT WITHOUT A STEP. The form shows a one-line notice under the button
-// saying the address will be used for a few messages about the product and that
-// the visitor can opt out at any time. That is information at collection plus an
-// easy opt-out, the rule for prospecting a professional about a professional
-// product, so there is no checkbox. What the visitor was told is recorded with
-// the row (`notice_version`), and every row carries its own unguessable opt-out
-// token so any future message can carry a one-click unsubscribe link.
+// NEWS IS OPT-IN. One consent, `notify_managed_at`: the unticked checkbox on the
+// form, or the later button in the "next steps" dialog (verified visitors only).
+// A person is on the news list only when that consent and `verified_at` are both
+// set and `opted_out_at` is not. What the visitor was told is recorded with the
+// row (`notice_version`), and every row carries its own unguessable opt-out token.
+//
+// NO CONSENT, NO IDENTITY. When the workspace has expired, a row not on the list
+// keeps no name, no address and nothing derived from them
+// (`eraseExpiredDemoIdentities`, run by the demo reaper's tick): the signup date
+// and the needs stay. A workspace expires its TTL after signup; starting over
+// keeps that clock, so the same age test holds for every row.
 //
 // THE ROW OUTLIVES THE ORG. A visitor org expires and the reaper deletes it; the
-// lead must not go with it, so `demo_org_id` has no foreign key and the table has
+// row must not go with it, so `demo_org_id` has no foreign key and the table has
 // no `org_id` (which also keeps it out of the per-org reset rules).
 //
 // WHAT THE PRIVACY NOTICE PROMISES, ENFORCED HERE. An opt-out keeps only the
 // address (the name is wiped) so the row works as a do-not-contact entry, and a
-// lead nobody opted out of is deleted `DEMO_LEAD_RETENTION_DAYS` after signup
-// (`purgeStaleDemoLeads`, run by the hourly demo reaper). Change either and the
-// published policy must change with it.
+// row nobody opted out of is deleted `DEMO_LEAD_RETENTION_DAYS` after signup
+// (`purgeStaleDemoLeads`, the same tick). Change any of this and the published
+// policy must change with it.
 //
 // Instance data, not tenant data: written and read only through the privileged
 // connection, exported only to the instance operator's org (routes.ts).
 import crypto from "node:crypto"
-import { and, asc, desc, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm"
+import { and, asc, desc, eq, gte, isNotNull, isNull, lt, or, sql } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import { demoLeads } from "~/db/schema/kernel"
 import { env } from "~/lib/env"
-import { forwardDemoLeadUpdate, forwardNewDemoLead } from "~/modules/liaison-team/lead-forwarding"
+import {
+  dropErasedLeadsFromOutbox,
+  forwardDemoLeadUpdate,
+  forwardNewDemoLead,
+  forwardOptedInLead,
+} from "~/modules/liaison-team/lead-forwarding"
 
 /**
  * The version of the notice a lead is told about: the text shown under the
@@ -41,9 +51,10 @@ import { forwardDemoLeadUpdate, forwardNewDemoLead } from "~/modules/liaison-tea
  * what it was actually told. 2026-11-02: the privacy notice names the copy kept
  * by the Liaison team, the door picks, the confirmed-address flag and the
  * scenarios opened. 2026-11-05: it names the door's company question, kept with
- * the workspace and counted without a name.
+ * the workspace and counted without a name. 2026-11-06: news by opt-in only,
+ * name and address deleted with the workspace otherwise.
  */
-export const DEMO_LEAD_NOTICE_VERSION = "2026-11-05"
+export const DEMO_LEAD_NOTICE_VERSION = "2026-11-06"
 
 export interface DemoLeadRow {
   id: string
@@ -59,13 +70,15 @@ export interface DemoLeadRow {
   /** Did the visitor confirm the address (code or link)? */
   verified: boolean
   verifiedAt: string | null
-  /** When the visitor asked to hear about the managed launch, or null. */
+  /** When the visitor opted in to news (checkbox or later click), or null. */
   notifyManagedAt: string | null
+  /** When the name and address were emptied, or null. */
+  identityErasedAt: string | null
   /** The needs picked on the door, in pick order. */
   needs: string[]
 }
 
-/** How long a lead that never opted out is kept, from signup. Three years. */
+/** How long a row that never opted out is kept, from signup. Three years. */
 export const DEMO_LEAD_RETENTION_DAYS = 3 * 365
 
 /** The web page that opts a lead out (`/demo/unsubscribe` in the web app). */
@@ -94,6 +107,8 @@ export async function recordDemoLead(input: {
   emailCapKey?: string | null
   needs?: readonly string[]
   signupNetwork?: string
+  /** The visitor ticked the news checkbox. */
+  newsOptIn?: boolean
 }): Promise<{ id: string }> {
   const [row] = await withSystemDb("demo-lead-record", (tx) =>
     tx
@@ -108,6 +123,7 @@ export async function recordDemoLead(input: {
         emailCapKey: input.emailCapKey ?? null,
         needs: input.needs ? [...input.needs] : [],
         signupNetwork: input.signupNetwork ?? null,
+        ...(input.newsOptIn ? { notifyManagedAt: sql`now()` } : {}),
       })
       .returning({ id: demoLeads.id }),
   )
@@ -135,6 +151,7 @@ export async function listDemoLeads(): Promise<DemoLeadRow[]> {
     verifiedAt: r.verifiedAt ? r.verifiedAt.toISOString() : null,
     notifyManagedAt: r.notifyManagedAt ? r.notifyManagedAt.toISOString() : null,
     needs: r.needs,
+    identityErasedAt: r.identityErasedAt ? r.identityErasedAt.toISOString() : null,
   }))
 }
 
@@ -187,9 +204,9 @@ export async function moveDemoLead(leadId: string, toOrgId: string): Promise<voi
 }
 
 /**
- * Set "tell me when managed launches" on the org's lead. Verified leads only;
- * idempotent (the first time is kept). Returns false when the lead is absent
- * or unverified.
+ * The later opt-in to news, the same consent as the signup checkbox. Verified
+ * leads only; idempotent (the first time is kept). Returns false when the lead
+ * is absent or unverified.
  */
 export async function setDemoLeadNotifyManaged(orgId: string): Promise<boolean> {
   const lead = await leadForDemoOrg(orgId)
@@ -202,7 +219,10 @@ export async function setDemoLeadNotifyManaged(orgId: string): Promise<boolean> 
       .where(and(eq(demoLeads.id, lead.id), isNull(demoLeads.notifyManagedAt)))
       .returning({ id: demoLeads.id }),
   )
-  if (changed.length > 0) await forwardDemoLeadUpdate(lead.id, { notifyManaged: true })
+  if (changed.length > 0) {
+    await forwardDemoLeadUpdate(lead.id, { notifyManaged: true })
+    await forwardOptedInLead(lead.id)
+  }
   return true
 }
 
@@ -233,35 +253,83 @@ export async function countDemoVerifiedSince(
 }
 
 /**
- * Opt the lead holding this token out, wiping the name: what stays is the
- * address and the time, which is all a do-not-contact list needs. Idempotent:
- * the first opt-out's time is kept. Returns whether a lead holds the token, which the public route does NOT
- * reveal (it answers the same either way).
+ * Opt the person holding this token out, on every row with the same address:
+ * one unsubscribe, however many demos they started. The name is wiped: what
+ * stays is the address and the time, which is all a do-not-contact list needs.
+ * Idempotent: the first opt-out's time is kept. Returns whether a lead holds the
+ * token, which the public route does NOT reveal (it answers the same either way).
  */
 export async function optOutDemoLead(token: string): Promise<boolean> {
   if (token.length < 32 || token.length > 128) return false
-  const first = await withSystemDb("demo-lead-opt-out", async (tx) => {
-    const updated = await tx
-      .update(demoLeads)
-      .set({ optedOutAt: sql`now()`, name: "" })
-      .where(sql`${eq(demoLeads.optOutToken, token)} AND ${isNull(demoLeads.optedOutAt)}`)
-      .returning({ id: demoLeads.id })
-    if (updated.length > 0) return { leadId: updated[0]?.id ?? null, found: true }
-    const [existing] = await tx
-      .select({ id: demoLeads.id })
+  const result = await withSystemDb("demo-lead-opt-out", async (tx) => {
+    const [holder] = await tx
+      .select({ id: demoLeads.id, emailNormalized: demoLeads.emailNormalized })
       .from(demoLeads)
       .where(eq(demoLeads.optOutToken, token))
       .limit(1)
-    return { leadId: null, found: existing !== undefined }
+    if (!holder) return { found: false, leadIds: [] as string[] }
+    const updated = await tx
+      .update(demoLeads)
+      .set({ optedOutAt: sql`now()`, name: "" })
+      .where(
+        and(
+          isNull(demoLeads.optedOutAt),
+          holder.emailNormalized
+            ? or(eq(demoLeads.id, holder.id), eq(demoLeads.emailNormalized, holder.emailNormalized))
+            : eq(demoLeads.id, holder.id),
+        ),
+      )
+      .returning({ id: demoLeads.id })
+    return { found: true, leadIds: updated.map((r) => r.id) }
   })
   // The first opt-out only: the Liaison team's copy is told once (never throws).
-  if (first.leadId) await forwardDemoLeadUpdate(first.leadId, { optedOut: true })
-  return first.found
+  for (const leadId of result.leadIds) await forwardDemoLeadUpdate(leadId, { optedOut: true })
+  return result.found
 }
 
 /**
- * Delete every lead older than the retention window that never opted out.
- * Opted-out rows stay: they are the do-not-contact list, and they hold no name.
+ * Empty the identity of every row whose workspace has expired and that is not
+ * on the news list: name, address, what is derived from the address and the
+ * signup network, and the copy waiting in the Liaison team outbox. A tick with
+ * the box unticked and a tick with the code never confirmed are the same: not
+ * on the list. An opted-out row keeps its address (the do-not-contact entry).
+ * Returns how many rows were emptied.
+ */
+export async function eraseExpiredDemoIdentities(now: Date = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - env.LIAISON_DEMO_VISITOR_TTL_HOURS * 60 * 60 * 1000)
+  return withSystemDb("demo-lead-erase", async (tx) => {
+    const erased = await tx
+      .update(demoLeads)
+      .set({
+        email: "",
+        name: "",
+        emailNormalized: null,
+        emailCapKey: null,
+        signupNetwork: null,
+        notifyManagedAt: null,
+        identityErasedAt: now,
+      })
+      .where(
+        and(
+          isNull(demoLeads.identityErasedAt),
+          isNull(demoLeads.optedOutAt),
+          lt(demoLeads.createdAt, cutoff),
+          or(isNull(demoLeads.notifyManagedAt), isNull(demoLeads.verifiedAt)),
+        ),
+      )
+      .returning({ id: demoLeads.id })
+    await dropErasedLeadsFromOutbox(
+      tx,
+      erased.map((r) => r.id),
+    )
+    return erased.length
+  })
+}
+
+/**
+ * Delete every row older than the retention window that never opted out, the
+ * anonymous ones included. Opted-out rows stay: they are the do-not-contact
+ * list, and they hold no name.
  * Returns how many rows went.
  */
 export async function purgeStaleDemoLeads(now: Date = new Date()): Promise<number> {
@@ -288,6 +356,7 @@ const CSV_COLUMNS: Array<[keyof DemoLeadRow, string]> = [
   ["verifiedAt", "verified_at"],
   ["notifyManagedAt", "notify_managed_at"],
   ["needs", "needs"],
+  ["identityErasedAt", "identity_erased_at"],
 ]
 
 /**

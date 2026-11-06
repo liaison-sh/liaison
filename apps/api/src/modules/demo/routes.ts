@@ -193,6 +193,8 @@ const createDemoOrgSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
   /** What the visitor wants to see, one or more, in pick order. */
   needs: demoNeedsSchema,
+  /** The unticked-by-default "send me news" checkbox. Absent means no. */
+  newsOptIn: z.boolean().optional(),
   /** The door's company question. Optional: the visitor can skip it. */
   entry: demoEntrySchema.optional(),
   /** A fresh invisible Turnstile token for `demo_start`. */
@@ -522,7 +524,7 @@ demoRoutes.post("/orgs", zValidator("json", createDemoOrgSchema), async (c) => {
   // indistinguishable from the not-mounted case for anyone probing.
   if (!isDemoModeEnabled()) throw new HTTPException(404, { message: "Not found" })
 
-  const { name, email, needs, entry, turnstileToken, signupKey } = c.req.valid("json")
+  const { name, email, needs, newsOptIn, entry, turnstileToken, signupKey } = c.req.valid("json")
   const clientIp = demoClientIp(c)
   const peer = demoPeerBucket(c)
   const signupNetwork = demoNetworkKey(clientIp)
@@ -566,6 +568,7 @@ demoRoutes.post("/orgs", zValidator("json", createDemoOrgSchema), async (c) => {
       name,
       email,
       needs,
+      newsOptIn,
       entry,
       peer,
       signupNetwork,
@@ -587,6 +590,7 @@ async function startVisitorSignup(
     name: string
     email: string
     needs: DemoNeed[]
+    newsOptIn?: boolean
     entry?: DemoEntry
     peer: string
     signupNetwork: string
@@ -595,7 +599,7 @@ async function startVisitorSignup(
     synthetic: boolean
   },
 ) {
-  const { name, email, needs, entry, peer, locale, synthetic } = input
+  const { name, email, needs, newsOptIn, entry, peer, locale, synthetic } = input
   if (synthetic) {
     // A signed harness start: the address is the harness's own, so the address
     // rules and the per-network counters do not apply; the load lane's own
@@ -607,6 +611,7 @@ async function startVisitorSignup(
       emailNormalized: normalizeDemoEmail(email),
       emailCapKey: null,
       needs,
+      newsOptIn,
       entry,
       signupNetwork: input.signupNetwork,
       ipBucket: peer,
@@ -667,6 +672,7 @@ async function startVisitorSignup(
       emailNormalized,
       emailCapKey,
       needs,
+      newsOptIn,
       entry,
       signupNetwork: input.signupNetwork,
       ipBucket: peer,
@@ -888,6 +894,7 @@ interface VisitorOrgInput {
   emailNormalized: string
   emailCapKey: string | null
   needs: DemoNeed[]
+  newsOptIn?: boolean
   entry?: DemoEntry
   signupNetwork: string
   ipBucket: string
@@ -1114,6 +1121,7 @@ async function completeVisitorSignup(
       emailCapKey: input.emailCapKey,
       needs,
       signupNetwork: input.signupNetwork,
+      newsOptIn: input.newsOptIn,
     })
   } catch (err) {
     log.error({ err, orgId, alert: "demo_lead_not_recorded" }, "failed to record a demo lead")
@@ -1386,7 +1394,7 @@ demoRoutes.post("/next-steps/shown", authMiddleware(env.JWT_SECRET), async (c) =
   return success(c, { nextStepsShown: true })
 })
 
-/** "Tell me when managed launches": one click, verified leads only, idempotent. */
+/** The later opt-in to news: one click, verified leads only, idempotent. */
 demoRoutes.post("/notify-managed", authMiddleware(env.JWT_SECRET), async (c) => {
   const orgId = await requireVisitorOrg(c)
   if (!(await setDemoLeadNotifyManaged(orgId))) {

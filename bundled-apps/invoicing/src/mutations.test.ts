@@ -4332,6 +4332,30 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
 // ── order_reissue_apply — operator-approved order-edit reissue ────────────
 
 describe("orderReissueApply", () => {
+  test("states no date, so an original dated after today still gets its credit note", async () => {
+    const { ctx, db } = makeCtx()
+    const original = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: defaultCounterparty,
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      shopify_order_id: "shop-order-10",
+      shopify_order_number: "#1010",
+      items: sampleDraftItems,
+    })
+    if (original.status !== "completed") throw new Error("unreachable")
+    db.__all("documents").find((d) => d.id === original.document_id)!.issued_at = "2099-01-01T00:00:00.000Z"
+    const result = await orderReissueApply(ctx, {
+      original_document_id: original.document_id,
+      shopify_order_id: "shop-order-10",
+      shopify_order_number: "#1010",
+      billing_signature: "sig-d",
+      dedupe_key: "shop-order-10:sig-d",
+      items: [{ description: "Widget", quantity: "1", unit_price_minor: 5_000, product_source: null, external_id: null }],
+    })
+    expect(result.status).toBe("completed")
+  })
+
   test("reissue after a refused original books an internal cancellation and issues the replacement under a new number", async () => {
     const { ctx, db } = makeCtx()
     const original = await invoiceCreateAndIssue(ctx, {

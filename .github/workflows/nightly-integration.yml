@@ -59,8 +59,12 @@ jobs:
         if: steps.changed.outputs.run == 'true'
         run: |
           set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-common
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt-get install -y --no-install-recommends postgresql-client-17 redis-tools
+          # pg_wrapper in /usr/bin picks the runner's own older cluster, not the newest client.
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
       - name: Test env with throwaway secrets
         # .env.test is gitignored; the run namespace pins the database, Redis
         # and MeiliSearch coordinates, so only the secrets need values here.
@@ -149,8 +153,12 @@ jobs:
         if: steps.changed.outputs.run == 'true'
         run: |
           set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-common
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt-get install -y --no-install-recommends postgresql-client-17 redis-tools libxml2-utils
+          # pg_wrapper in /usr/bin picks the runner's own older cluster, not the newest client.
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
       - name: Test env with throwaway secrets
         if: steps.changed.outputs.run == 'true'
         run: |

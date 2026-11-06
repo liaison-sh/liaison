@@ -849,7 +849,7 @@ function PdfBody(p: {
               </div>
             }
           >
-            {/* A frame, not <object>: the app's CSP allows no plugin content (object-src 'none'),
+            {/* A frame, not a plugin element: the app's CSP allows no plugin content (object-src 'none'),
                 and allows a frame from a blob: URL, which only this page can make. */}
             <iframe
               data-testid="document-detail-pdf-embed"

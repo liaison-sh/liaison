@@ -27,7 +27,12 @@ test.describe("Invoicing: the document's PDF tab", () => {
       bundlePath: INVOICING_BUNDLE,
       issuerCountry: "FR",
       additionalContacts: [
-        { country: "FR", name: "Pdf Tab Customer", email: "pdf-tab@e2e.test", customerKind: "individual" },
+        {
+          country: "FR",
+          name: "Pdf Tab Customer",
+          email: "pdf-tab@e2e.test",
+          customerKind: "individual",
+        },
       ],
     })
     const contact = installed.additionalContactIds[0]
@@ -47,7 +52,14 @@ test.describe("Invoicing: the document's PDF tab", () => {
           issuer_profile_id: installed.primaryIssuerProfileId,
           currency: "EUR",
           operation_category: "services",
-          items: [{ description: "Service", quantity: "1", unit_price_minor: "10000", line_kind: "software" }],
+          items: [
+            {
+              description: "Service",
+              quantity: "1",
+              unit_price_minor: "10000",
+              line_kind: "software",
+            },
+          ],
         },
       },
     })

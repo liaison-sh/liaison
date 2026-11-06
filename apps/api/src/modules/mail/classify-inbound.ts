@@ -24,16 +24,19 @@ const BOUNCE_SENDERS = new Set(["mailer-daemon", "postmaster"])
 
 const ACTION_FIELD = /^[ \t]*action[ \t]*:[ \t]*([a-z-]+)/gim
 
+/** The delivery report actions that do not say the mail failed (RFC 3464). */
+const NOT_A_FAILURE = new Set(["delayed", "delivered", "relayed", "expanded"])
+
 /**
  * Gmail mail stores only the text and HTML parts, so a delivery report arrives
  * here without its `Action:` field. Only the wording of the common mail servers
- * is left to tell a delay from a failure. Anything not named reads as a failure,
- * which stops the send.
+ * is left to tell a delay from a failure, in English and French. Anything not
+ * named, in any language, reads as a failure, which stops the send.
  */
 const DELAY_SUBJECT =
-  /^(?:delivery status notification \(delay\)|delayed mail\b|delivery delayed\b|warning: (?:message .*delayed|could not send message))/i
+  /^(?:delivery status notification \(delay\)|delayed mail\b|delivery delayed\b|warning: (?:message .*delayed|could not send message)|remise (?:différée|retardée)|distribution retardée|retard de (?:remise|distribution)|retardée? ?:)/i
 const DELAY_BODY =
-  /\b(?:this is a warning only|will retry for \d|still being retried|delivery is delayed to these recipients)\b/i
+  /\b(?:this is a warning only|will retry for \d|still being retried|delivery is delayed to these recipients)\b|ceci est un simple avertissement|(?:la remise|l'envoi|la distribution) (?:de ce message )?(?:a été|est) (?:retardée?|différée?)|nouvelles? tentatives? (?:de remise|d'envoi|de distribution)/i
 
 function headerValues(raw: unknown, name: string): string[] {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return []
@@ -64,9 +67,10 @@ function senderLocalPart(sender: string): string {
   return (address.split("@")[0] ?? "").trim().replace(/^"|"$/g, "").toLowerCase()
 }
 
-function isDelayNotice(subject: string | null, textBody: string | null): boolean {
+/** A delivery report that says nothing failed yet: delayed, delivered or relayed. */
+function isNoFailureNotice(subject: string | null, textBody: string | null): boolean {
   const actions = [...(textBody ?? "").matchAll(ACTION_FIELD)].map((m) => m[1]?.toLowerCase())
-  if (actions.length > 0) return actions.every((action) => action === "delayed")
+  if (actions.length > 0) return actions.every((action) => NOT_A_FAILURE.has(action ?? ""))
   return DELAY_SUBJECT.test(subject ?? "") || DELAY_BODY.test(textBody ?? "")
 }
 
@@ -91,13 +95,13 @@ export function classifyInbound(
     const reportType = /;\s*report-type\s*=\s*"?([^";\s]+)/i.exec(contentType)?.[1]?.toLowerCase()
     if (reportType === "disposition-notification") return "ignored"
     if (reportType === "delivery-status") {
-      return isDelayNotice(subject, textBody) ? "ignored" : "bounce"
+      return isNoFailureNotice(subject, textBody) ? "ignored" : "bounce"
     }
   }
 
   const senderName = sender || (header("from")[0] ?? "")
   if (BOUNCE_SENDERS.has(senderLocalPart(senderName))) {
-    return isDelayNotice(subject, textBody) ? "ignored" : "bounce"
+    return isNoFailureNotice(subject, textBody) ? "ignored" : "bounce"
   }
 
   const precedence = header("precedence").map((value) => value.toLowerCase())

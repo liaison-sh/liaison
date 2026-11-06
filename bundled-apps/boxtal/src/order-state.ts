@@ -368,10 +368,20 @@ export async function orderKeyForDocumentRef(
       { code: "order_key_unresolved", retryable: true },
     )
   }
-  const live = numericOrderId((env.result as { shopify_order_id?: string | null } | null)?.shopify_order_id)
+  // A completed read that carries no document means invoicing knows nothing by this reference. That
+  // is not an order-less document: writing `doc:<ref>` for it minted a phantom row.
+  const found = env.result as { id?: unknown; shopify_order_id?: string | null } | null
+  if (!found || typeof found !== "object") {
+    throw new ToolError(
+      `No invoicing document matches "${documentRef}". Pass the document's id or number as shown by invoicing__documents_search, or the row's order_key.`,
+      { code: "document_not_found", retryable: false },
+    )
+  }
+  const live = numericOrderId(found.shopify_order_id)
   if (live) return orderKeyForShopifyOrder(live)
   // Answered, and there is no order behind it: an order-less document is a legitimate row of its own.
-  return orderKeyForDocument(documentRef)
+  // Keyed by the document's own id, so a reference given as its number lands on the same row.
+  return orderKeyForDocument(typeof found.id === "string" && found.id ? found.id : documentRef)
 }
 
 /**

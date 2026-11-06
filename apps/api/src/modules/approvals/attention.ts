@@ -751,8 +751,8 @@ export async function computeApprovalAttentionItems(
           : {}),
         expiresAt: new Date(r.expires_at).toISOString(),
         expiresInSeconds: Math.max(0, Math.round(expiresMs / 1000)),
-        // Lets the card render "approved, execution stalled -- decide again to
-        // retry" instead of a countdown that means nothing for this row.
+        // Lets the card render "approved, execution stalled" with its close-out
+        // instead of a countdown that means nothing for this row.
         ...(wedged ? { wedged: true as const } : {}),
         baseTitle: rowTitle,
         titleKind,

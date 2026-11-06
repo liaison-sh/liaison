@@ -35,7 +35,7 @@ A message an agent drafts for a person never reaches the queue with a blank left
 
 ## Decide a request
 
-1. Open **Home** and find the **Approvals** card. Each request you are asked to decide counts in the badge on **Home** and on the app icon (see [Notifications](../notifications.md#the-badge)). On a phone, the **Approvals** screen lists the same requests full width, with their count and **Soonest expires in** the time left (or **Nothing expiring soon**).
+1. Open **Home** and find the **Approvals** card. Each request you are asked to decide counts in the number on **Home**, which is the total of its **Needs you** section, and in the badge on the app icon (see [Notifications](../notifications.md#the-badge)). On a phone, the **Approvals** screen lists the same requests full width, with their count and **Soonest expires in** the time left (or **Nothing expiring soon**).
 2. Read the card. It names who asked (**Requested by**): the agent or routine that proposed the action (your own agent shows as "{your name}'s agent", a routine as "Routine {name}"), or a person when they made the request themselves. It also shows what the action does and the exact payload. **Exact payload** and **Technical details** show the raw call.
 3. Click **Approve**, **Reject**, or **Edit** (see below). **Edit** only appears when the tool exposes editable fields.
 4. If you click **Reject**, **Why are you rejecting this?** asks for an optional reason, then click **Reject** again.

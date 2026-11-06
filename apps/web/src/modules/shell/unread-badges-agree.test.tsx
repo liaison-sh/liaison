@@ -17,6 +17,7 @@ import { attentionStore } from "~/modules/shell/attention-store"
 import { ChatsTab } from "~/modules/shell/ChatsTab"
 import { resetChatsRootStore } from "~/modules/shell/chats-root-store"
 import { resetDockStore } from "~/modules/shell/dock-store"
+import { homeActionCount } from "~/modules/shell/home-action-count"
 import { PhoneTabBar } from "~/modules/shell/PhoneTabBar"
 import { resetTabStore } from "~/modules/shell/tab-store"
 import { WsProvider } from "~/modules/shell/WsContext"
@@ -191,5 +192,36 @@ describe("unread-chat badges agree (S8, A14)", () => {
     await refreshUnreadCount()
     expect(railBadge().textContent).toBe("8")
     expect(screen.getByTestId("activity-bar-home-badge").textContent).toBe("1")
+  })
+
+  it("Home's number is its Needs you rows: nothing it cannot open", () => {
+    const row = (id: string, kind: string, urgency: number, metadata = {}) => ({
+      id,
+      app: "kernel",
+      entity: "thing",
+      entityId: id,
+      kind: kind as "system_alert",
+      summary: id,
+      urgency,
+      occurredAt: "2026-10-12T08:00:00.000Z",
+      action: { type: "open_entity" as const, tabType: "kernel:home", entityId: id },
+      metadata,
+    })
+    const link = { link: { tabType: "thread", entityId: "chat-1" } }
+    attentionStore._setForTest({
+      items: [
+        row("alert-1", "system_alert", 60),
+        // Scored below NOW: the feed files it away from Needs you.
+        row("inc-old", "monitoring:incident.critical", 65),
+        // Two prompts of one chat are one row.
+        row("p-1", "system_alert", 80, { ...link, nodePermissionPromptId: "p1" }),
+        row("p-2", "system_alert", 80, { ...link, nodePermissionPromptId: "p2" }),
+      ],
+    })
+    renderAllBadges()
+    expect(screen.getByTestId("activity-bar-home-badge").textContent).toBe(
+      String(homeActionCount()),
+    )
+    expect(homeActionCount()).toBe(2)
   })
 })

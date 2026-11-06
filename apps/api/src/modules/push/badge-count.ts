@@ -2,7 +2,7 @@
 //
 // Two counts, one query. `computeUnreadMessageCount` is the Messages entry's
 // number: every unread message the Messages list shows. `computeBadgeCount` is
-// THE badge (the app icon on the phone, the dock, the tab title, Home): the
+// THE badge (the app icon on the phone, the dock, the tab title): the
 // unread messages of direct conversations plus the direct asks among the
 // person's attention rows, counted by the shared `countBadge`
 // (packages/shared/src/notifications/badge.ts) that the web counts with too.
@@ -151,10 +151,11 @@ async function askRows(tx: RlsClient, userId: string, orgId: string) {
     kind: string
     entity_type: string
     entity_id: string
+    urgency: number | string
     metadata: Record<string, unknown> | null
   }>(
     await tx.execute(drizzleSql`
-      SELECT kind, entity_type, entity_id, metadata
+      SELECT kind, entity_type, entity_id, urgency, metadata
       FROM ${k}.attention_events
       WHERE org_id = ${orgId}
         AND user_id = ${userId}
@@ -175,6 +176,7 @@ async function askRows(tx: RlsClient, userId: string, orgId: string) {
     kind: r.kind as AttentionItem["kind"],
     entity: r.entity_type,
     entityId: r.entity_id,
+    urgency: Number(r.urgency),
     metadata: r.metadata ?? undefined,
   }))
 }

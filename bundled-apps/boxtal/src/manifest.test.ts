@@ -561,7 +561,8 @@ describe("Boxtal app.manifest.json", () => {
     // ready_set_packed, import_label_document), and print_pack renders an issued invoice's missing
     // PDF on demand instead of failing the invoice job.
     // 0.23.7: a prep reference that names no invoicing document is refused instead of minting a row.
-    expect(m.version).toBe("0.23.7")
+    // 0.23.8: get_documents answers to "colis" and "expédition" in tool search.
+    expect(m.version).toBe("0.23.8")
     expect(m.packageFormat).toBe(1)
   })
 

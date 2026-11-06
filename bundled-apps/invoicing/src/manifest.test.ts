@@ -1466,8 +1466,9 @@ describe("invoicing manifest", () => {
     // 0.20.30: the document and editor actions sit at the top of the panel, clear of the chat dock.
     // 0.20.40: credit note and purchase order cards state the amount, lines and date when the host
     //   parks the call (an org policy, what the turn read), not only when the handler does.
-    // 0.20.41: the PDF tab shows the document in a frame, which the CSP allows, not an <object>.
-    expect(m.version).toBe("0.20.41")
+    // 0.20.41: search words for credit note, refund and quote tools.
+    // 0.20.42: the PDF tab shows the document in a frame, which the CSP allows, not an <object>.
+    expect(m.version).toBe("0.20.42")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

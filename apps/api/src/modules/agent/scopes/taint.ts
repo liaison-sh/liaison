@@ -262,9 +262,9 @@ export async function restoreTaintMark(
 
 /**
  * A turn the person typed directly: a foreground chat message of an in-app agent. A routine tick,
- * a background or job-driven re-invocation, a sub-run, an agent-to-agent ask, the MCP gateway and a
- * call with no run frame at all (a trigger, an inbound event) are NOT: nobody is looking at what
- * they decide to do. Fails closed: the frame must say so.
+ * a background or job-driven re-invocation, a sub-run, an agent-to-agent ask, a restricted session's
+ * message, the MCP gateway and a call with no run frame at all (a trigger, an inbound event) are
+ * NOT: nothing proves a person is looking at what they decide to do. Fails closed: the frame must say so.
  */
 export function isHumanTypedTurn(frame: { humanTurn?: boolean } | undefined): boolean {
   return frame?.humanTurn === true

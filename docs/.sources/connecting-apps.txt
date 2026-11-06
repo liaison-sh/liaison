@@ -26,3 +26,4 @@ scopesFromAppConfiguration manifest field -> apps/api/src/modules/apps/manifest-
 attention: add to the app's configuration, release, then reconnect -> apps/api/src/modules/apps/connections/attention.ts:344
 Dev Dashboard values: scopes and API version with Shopify-managed installation -> packages/shared/src/setup-guides.ts:860
 REST tool call from a device sign-in judged like MCP, one hidden thread per sign-in -> apps/api/src/modules/apps/rest-tool-call.ts:32-42
+A message a device sign-in posts is not a typed turn: tools that need one park, the outside-text mark stays -> apps/api/src/modules/agent/runtime/agent-service.ts:1931-1938

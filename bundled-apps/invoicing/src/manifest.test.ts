@@ -1464,7 +1464,11 @@ describe("invoicing manifest", () => {
     // 0.20.33: issue dates and number years in the issuer's time zone, through ctx.time.civil.
     // 0.20.31: the drafts tools that park an approval declare its summary.
     // 0.20.30: the document and editor actions sit at the top of the panel, clear of the chat dock.
-    expect(m.version).toBe("0.20.40")
+    // 0.20.40: credit note and purchase order cards state the amount, lines and date when the host
+    //   parks the call (an org policy, what the turn read), not only when the handler does.
+    // 0.20.41: search words for credit note, refund and quote tools.
+    // 0.20.42: record pages name the entity their id belongs to.
+    expect(m.version).toBe("0.20.42")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

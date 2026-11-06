@@ -46,7 +46,7 @@ function setEnv<K extends EnvKey>(key: K, value: (typeof env)[K]): () => void {
 }
 
 const ORG = "00000000-0000-4000-8000-0000000000b1"
-const MODEL = "deepseek/deepseek-v4.1-flash"
+const MODEL = "deepseek/deepseek-v4.1-flash-1017"
 let seq = 0
 function who(network = `198.51.100.0/24-${seq}`): DemoSpendIdentity {
   seq += 1

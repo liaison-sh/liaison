@@ -46,6 +46,14 @@ function declaredCodes(dir: string): string[] {
         if (!NOT_A_CODE.has(lit[1]!)) codes.add(lit[1]!)
       }
     }
+    // A local helper that takes the code first: `fail("x", ...)`, `err("x", ...)`,
+    // `dateRefused("x", ...)`. The code literal is not next to `code:`, and such refusals answered
+    // 500 unseen. `refuseTool` and its wrappers are not listed: the host makes those a 4xx itself.
+    for (const m of text.matchAll(
+      /\b(?:fail|err|dateRefused)\(\s*"([a-z][a-z0-9]*(?:_[a-z0-9]+)*)"\s*,/g,
+    )) {
+      if (!NOT_A_CODE.has(m[1]!)) codes.add(m[1]!)
+    }
   }
   return [...codes].sort()
 }
@@ -101,6 +109,17 @@ describe("statusForToolError: every deliberate app code is a non-500", () => {
     expect(statusForToolError("not_linked")).toBe(422)
     expect(statusForToolError("partial_without_sku")).toBe(422)
     expect(statusForToolError("shopify_error")).toBe(502)
+  })
+
+  // A person typing a wrong date: refused with a plain message, nothing written. Each answered 500,
+  // with the agent reading "HTTP 500" and the watchdog counting a fault.
+  it("the invoicing date refusals are 4xx", () => {
+    expect(statusForToolError("issued_at_invalid")).toBe(400)
+    expect(statusForToolError("issue_date_in_future")).toBe(422)
+    expect(statusForToolError("issue_date_before_last_number")).toBe(409)
+    expect(statusForToolError("issue_date_crosses_number_year")).toBe(409)
+    expect(statusForToolError("issue_date_breaks_number_order")).toBe(409)
+    expect(statusForToolError("issue_date_set_by_draft_order")).toBe(409)
   })
 
   it("kernel and database tool refusals are 4xx: a bad read name, raw query off, not found", () => {

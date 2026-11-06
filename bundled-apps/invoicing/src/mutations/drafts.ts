@@ -337,7 +337,7 @@ async function createDraft(ctx: MutationsCtx, input: DraftsCreateInput, park: bo
  * nor read back the persisted lines (the export multi-step scenarios stalled here).
  */
 function serializeDraftRow(d: DraftRow): Omit<DraftRow, "lines"> & {
-  lines: Array<Omit<DraftLine, "unit_price_minor"> & { unit_price_minor: string }>
+  lines: Array<Omit<DraftLine, "unit_price_minor" | "discount_minor"> & { unit_price_minor: string; discount_minor?: string }>
 } {
   return {
     ...d,

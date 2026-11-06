@@ -1524,8 +1524,11 @@ export async function syncDemoResetScheduler(): Promise<void> {
       )
       await eraseExpiredDemoIdentities()
       await purgeStaleDemoLeads()
-      const { rekeyPlainBudgetAddresses } = await import("~/modules/demo/demo-budget")
+      const { pruneElapsedNetworkBudgets, rekeyPlainBudgetAddresses } = await import(
+        "~/modules/demo/demo-budget"
+      )
       await rekeyPlainBudgetAddresses()
+      await pruneElapsedNetworkBudgets()
     })
     return
   }

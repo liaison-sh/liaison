@@ -58,6 +58,7 @@ import {
   type DemoSpendCode,
   DemoSpendRefusedError,
   demoLedgerAdd,
+  demoLedgerPruneNetworkDays,
   demoLedgerRead,
   demoLedgerRekeyPlainEmails,
 } from "~/modules/demo/demo-spend"
@@ -186,6 +187,11 @@ export async function rekeyPlainBudgetAddresses(): Promise<void> {
   } while (cursor !== "0")
   await redis.set(PLAIN_KEYS_MOVED, "1")
   log.info({ moved, dropped }, "demo budgets moved off plain addresses")
+}
+
+/** Per-network counters of past days name a network and serve nothing: delete them. */
+export async function pruneElapsedNetworkBudgets(now: number = Date.now()): Promise<number> {
+  return demoLedgerPruneNetworkDays(utcDay(now))
 }
 
 function hourBuckets(bucket: number): number[] {

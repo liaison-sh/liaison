@@ -274,7 +274,7 @@
       }
     ]
   },
-  "version": "0.4.2",
+  "version": "0.4.3",
   "iconName": "shopping-cart",
   "description": "Shopify integration: orders, customers, products, markets, draft orders, refunds, fulfillments, returns",
   "listing": {
@@ -1875,7 +1875,7 @@
       "readOnly": true
     },
     "refunds_create": {
-      "description": "Refund a Shopify order. For a FLAT goodwill / courtesy / partial refund of a fixed sum (e.g. a 50 EUR goodwill credit), pass `amount` (a money value like \"50.00\") and OMIT refundLineItems — the refund returns exactly that amount and is NOT tied to line items. To refund specific units, pass refundLineItems instead. Omit BOTH amount and refundLineItems to refund the whole order. You only need to specify HOW MUCH (amount) or WHICH items (refundLineItems) — the transaction plumbing (gateway/parent transaction) is derived from the order automatically; do not hand-build a transactions entry or split a goodwill amount onto shipping. Invoicing issues the matching credit note automatically once this refund lands, so never also call invoicing__credit_note_create_and_issue for it.",
+      "description": "Refund a Shopify order: moves money on the order. For a FLAT goodwill / courtesy / partial refund of a fixed sum (e.g. a 50 EUR goodwill credit), pass `amount` (a money value like \"50.00\") and OMIT refundLineItems — the refund returns exactly that amount and is NOT tied to line items. To refund specific units, pass refundLineItems instead. Omit BOTH amount and refundLineItems to refund the whole order. You only need to specify HOW MUCH (amount) or WHICH items (refundLineItems) — the transaction plumbing (gateway/parent transaction) is derived from the order automatically; do not hand-build a transactions entry or split a goodwill amount onto shipping. Invoicing issues the matching credit note automatically once this refund lands, so never also call invoicing__credit_note_create_and_issue for it.",
       "searchKeywords": ["rembourser", "remboursement", "refund", "argent", "commande", "order", "rembourse"],
       "requiredScopes": ["shopify:refunds:create"],
       "handler": "refunds_create",
@@ -3141,7 +3141,7 @@
       }
     },
     "returns_refund": {
-      "description": "Issue a refund against a Shopify return",
+      "description": "Issue a refund against a Shopify return: moves money on the order.",
       "searchKeywords": ["retour", "rembourser", "remboursement", "refund", "rembourse"],
       "requiredScopes": ["shopify:returns:write"],
       "handler": "returns_refund",
@@ -3524,7 +3524,7 @@
       }
     },
     "order_update": {
-      "description": "Update a Shopify order's tags or note. Do NOT record a customer's purchase order number here: a PO-852875 tag or a line in the note is the old workaround and changes nothing on the document the customer holds. The PO belongs on the invoicing document, as po_number on the issue tool or via invoicing__documents_update on an already issued one.",
+      "description": "Update a Shopify order's tags or a note, through approval. Do NOT record a customer's purchase order number here: a PO-852875 tag or a line in the note is the old workaround and changes nothing on the document the customer holds. The PO belongs on the invoicing document, as po_number on the issue tool or via invoicing__documents_update on an already issued one.",
       "searchKeywords": ["commande", "modifier", "tags", "tag", "edit"],
       "requiredScopes": ["shopify:orders:write"],
       "handler": "order_update",
@@ -3622,7 +3622,7 @@
       }
     },
     "order_note_set": {
-      "description": "Set or clear a Shopify order's internal staff note. Pass expected_note (the note value you last read, or null if you read no note) to make the write refuse instead of applying when the note changed since you read it; omit expected_note to overwrite unconditionally. This is the only ungated write tool in this app: every other write tool here is gated. It is ungated because a cross app call into a gated tool always parks a pending approval, which would put an approval card on every note save and make inline editing unusable. It is contained instead by trustBoundary: internal, so only an app that declared this tool in cross_app_calls can reach it. The blast radius is one internal staff text field on one order: no email, no money, no fulfillment.",
+      "description": "Set or clear a Shopify order's internal staff note, applied at once. Pass expected_note (the note value you last read, or null if you read no note) to make the write refuse instead of applying when the note changed since you read it; omit expected_note to overwrite unconditionally. This is the only ungated write tool in this app: every other write tool here is gated. It is ungated because a cross app call into a gated tool always parks a pending approval, which would put an approval card on every note save and make inline editing unusable. It is contained instead by trustBoundary: internal, so only an app that declared this tool in cross_app_calls can reach it. The blast radius is one internal staff text field on one order: no email, no money, no fulfillment.",
       "searchKeywords": ["note", "commande", "staff", "interne"],
       "requiredScopes": ["shopify:orders:write"],
       "handler": "order_note_set",

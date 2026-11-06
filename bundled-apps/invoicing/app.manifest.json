@@ -224,7 +224,7 @@
       }
     ]
   },
-  "version": "0.20.34",
+  "version": "0.20.35",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1529,7 +1529,7 @@
       }
     },
 "received_einvoices_list": {
-      "description": "List the supplier e-invoices received through the e-invoicing platform (the invoicing app's Received tab): supplier, number, issue and due dates, total with currency, status (received, approved, in_dispute, refused, rejected, partially_collected, collected), received date, newest first. Read only.",
+      "description": "List the supplier e-invoices delivered by the e-invoicing platform (the invoicing app's Received tab): supplier, number, issue and due dates, total with currency, status (received, approved, in_dispute, refused, rejected, partially_collected, collected), received date, newest first. Read only.",
       "searchKeywords": ["fournisseur", "fournisseurs", "supplier", "reçue", "reçues", "facture", "factures", "achat", "électronique"],
       "requiredScopes": [
         "invoicing:received:read"
@@ -1860,7 +1860,7 @@
       }
     },
     "documents_search": {
-      "description": "Search invoicing documents by query, type, status, contact, date range, or tax treatment. The free-text `query` matches, word by word and in any case, the document NUMBER, the COUNTERPARTY NAME, ADDRESS and EMAIL (billing and shipping), the SHOPIFY ORDER (e.g. query='#1149'), the PO NUMBER, the notes and the line descriptions; best matches come first. To find a customer's invoices, search their name directly (e.g. query='Claudine Moreau'): a person named only in a company invoice's address is found too. `contact_id` also returns the documents made out to the contact's email or address. For a customer's earlier prices ('same price as last time') use customer_history.",
+      "description": "Search invoices, quotes, credit notes, proformas and purchase orders issued here, by query, type, status, contact, date range, or tax treatment. The free-text `query` matches, word by word and in any case, the document NUMBER, the COUNTERPARTY NAME, ADDRESS and EMAIL (billing and shipping), the SHOPIFY ORDER (e.g. query='#1149'), the PO NUMBER, the notes and the line descriptions; best matches come first. To find a customer's invoices, search their name directly (e.g. query='Claudine Moreau'): a person named only in a company invoice's address is found too. `contact_id` also returns the documents made out to the contact's email or address. For a customer's earlier prices ('same price as last time') use customer_history.",
       "searchKeywords": ["facture", "factures", "invoice", "invoices", "devis", "quote", "quotes", "avoir", "proforma", "chercher", "rechercher", "trouver", "retrouver", "find", "numéro", "number", "impayé", "impayée", "impayées", "unpaid", "overdue", "retard", "list", "liste", "issued"],
       "requiredScopes": ["invoicing:documents:read"],
       "handler": "documentsSearchHandler",
@@ -3924,7 +3924,7 @@
       }
     },
     "documents_record_refund": {
-      "description": "Record a refund against a document (full or partial). PAYMENT STATUS ONLY: it does not issue a credit note, and a partial marks the document 'partial' while a full one marks it 'refunded'. A refund or cancellation taken in Shopify already auto issues the matching credit note, so check documents_for_orders before adding one by hand. On a split order (goods plus software) record the refund against the document that actually carries the refunded line.",
+      "description": "Record a refund against a document (full or partial): records only, moves no money. PAYMENT STATUS ONLY: it does not issue a credit note, and a partial marks the document 'partial' while a full one marks it 'refunded'. A refund or cancellation taken in Shopify already auto issues the matching credit note, so check documents_for_orders before adding one by hand. On a split order (goods plus software) record the refund against the document that actually carries the refunded line.",
       "searchKeywords": ["remboursement", "rembourser", "refund", "enregistrer", "noter"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "documentsRecordRefundHandler",
@@ -4010,7 +4010,7 @@
       }
     },
     "credit_note_create_and_issue": {
-      "description": "Create a credit note and issue it in one call. A credit note is a first-class legal document — its own gap-free CN-{YYYY}- number series, issued straight to 'issued' status (never a payable document — no due date, no mark_paid). Lines commonly carry NEGATIVE unit_price_minor mirroring what is reversed on the original invoice (a positive amount is also accepted). To reverse/correct an ISSUED invoice, pass `original_document_id` set to that invoice's id — it MUST reference an existing invoice (validated before issuance) and, on success, the original invoice's lifecycle_log records a `credit_note_issued` entry naming this credit note. Handler-conditional gating against issuer.invoice_approval_threshold_minor (unset means always approve, threshold 0; a credit note with no original_document_id is ALWAYS approved), compared against the ABSOLUTE VALUE of the credit note's grand total (a -6,744€ correction gates exactly like a +6,744€ invoice would). For a legally clean reversal, ALSO call documents_record_refund on the original invoice to record the payment-side event — the credit note is the legal document, record_refund is the payment status change; do BOTH, never just one. ALWAYS pass original_document_id when you reverse an invoice: without it the over_credit cap (a credit note can never push an invoice's cumulative credited total past its own grand total) cannot apply. A Shopify refund or cancellation already issues its credit note automatically, and a cancellation of a partly credited invoice reverses only the REMAINDER, so check documents_for_orders before issuing one by hand rather than crediting twice. A hand built partial credit note carries its OWN tax: mirror the original's per line rates, because only the automatic refund path allocates the VAT for you. On a split order, credit the document that actually carries the refunded line, not whichever invoice you saw first.",
+      "description": "Create a credit note, a legal document, and issue it in one call. A credit note is a first-class legal document — its own gap-free CN-{YYYY}- number series, issued straight to 'issued' status (never a payable document — no due date, no mark_paid). Lines commonly carry NEGATIVE unit_price_minor mirroring what is reversed on the original invoice (a positive amount is also accepted). To reverse/correct an ISSUED invoice, pass `original_document_id` set to that invoice's id — it MUST reference an existing invoice (validated before issuance) and, on success, the original invoice's lifecycle_log records a `credit_note_issued` entry naming this credit note. Handler-conditional gating against issuer.invoice_approval_threshold_minor (unset means always approve, threshold 0; a credit note with no original_document_id is ALWAYS approved), compared against the ABSOLUTE VALUE of the credit note's grand total (a -6,744€ correction gates exactly like a +6,744€ invoice would). For a legally clean reversal, ALSO call documents_record_refund on the original invoice to record the payment-side event — the credit note is the legal document, record_refund is the payment status change; do BOTH, never just one. ALWAYS pass original_document_id when you reverse an invoice: without it the over_credit cap (a credit note can never push an invoice's cumulative credited total past its own grand total) cannot apply. A Shopify refund or cancellation already issues its credit note automatically, and a cancellation of a partly credited invoice reverses only the REMAINDER, so check documents_for_orders before issuing one by hand rather than crediting twice. A hand built partial credit note carries its OWN tax: mirror the original's per line rates, because only the automatic refund path allocates the VAT for you. On a split order, credit the document that actually carries the refunded line, not whichever invoice you saw first.",
       "searchKeywords": ["avoir", "crédit", "annulation", "remboursement", "rectificative"],
       "requiredScopes": ["invoicing:documents:write"],
       "atomic": true,

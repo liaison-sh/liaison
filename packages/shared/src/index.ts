@@ -16,8 +16,14 @@ export * from "./app-signing/verify"
 export * from "./app-tab-routes"
 export type {
   ApprovalAuthorityFacts,
+  ApprovalRoute,
   AuthorityViewer,
+  AwayDays,
+  AwayRangeDays,
+  HomePlacement,
   PeerRequestFacts,
+  RoutingFacts,
+  RoutingWorld,
 } from "./approvals/authority"
 export {
   canDecidePure,
@@ -28,12 +34,16 @@ export {
   decidingScopeForToolDef,
   factsFromSummary,
   holdsDecidingScope,
+  homePlacement,
+  isAwayOn,
   isNotified,
   isOwnerRouted,
   isPeerSelfApprovable,
   isRequester,
   isSharedSurfaceFacts,
   MAIL_DRAFT_READ_SCOPE,
+  personLocalDate,
+  routeApproval,
   SHARED_SURFACE_APPROVAL_TOOLS,
   sharedSurfaceDraftReadScope,
   TICKET_DRAFT_READ_SCOPE,

@@ -57,7 +57,7 @@ describe("mail app manifest validation", () => {
       "smtpPort",
       "username",
     ])
-    expect(mailManifest.version).toBe("1.8.4")
+    expect(mailManifest.version).toBe("1.9.0")
   })
 
   it("passes manifest validation", () => {
@@ -76,6 +76,25 @@ describe("mail app manifest validation", () => {
     expect(ai).toMatch(/complaint/i)
     expect(ai).toMatch(/contactId/)
     expect(ai).toMatch(/EMPTY result from a free-text NAME query does NOT prove/i)
+  })
+
+  it("the send check's value is the server's on compose and reply, and a chained step builds it at execute", () => {
+    const tools = mailManifest.tools as Record<string, Record<string, any>>
+    for (const name of ["compose", "reply"]) {
+      expect(tools[name]?.pinnedParams).toEqual(["sendGuard", "guardKey"])
+      expect(tools[name]?.pinnedOptionalOnRefs).toBe(true)
+      expect(Object.keys(tools[name]?.params.properties)).toEqual(
+        expect.arrayContaining(["followUp", "sendGuard", "guardKey"]),
+      )
+    }
+    expect(tools.compose?.approvalDedupeKeyParam).toBe("guardKey")
+    expect(tools.compose?.approvalDedupeSameRequester).toBe(true)
+    // No editable field reaches the check's value.
+    for (const name of ["compose", "reply"]) {
+      for (const field of tools[name]?.editableFields ?? []) {
+        expect(String(field.field)).not.toMatch(/^(?:sendGuard|guardKey)/)
+      }
+    }
   })
 
   it("requires compose accountId (no shared-box default) and steers a user writing as themselves to their own mailbox", () => {

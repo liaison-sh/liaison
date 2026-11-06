@@ -4482,7 +4482,13 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   const paramsCarryRefTokens = findRefTokens(validatedParams).length > 0
   // A token-bearing call skips the preflight (below), so a tool whose approval binds pinned
   // values would be staged with none: refused at stage time instead. Nothing is staged.
-  if ((tool.gated || tool.conditionalGate) && pinnedKeys.length > 0 && paramsCarryRefTokens) {
+  // A tool may build the value at execute instead (`pinnedOptionalOnRefs`): such a call stages unpinned.
+  if (
+    (tool.gated || tool.conditionalGate) &&
+    pinnedKeys.length > 0 &&
+    paramsCarryRefTokens &&
+    tool.pinnedOptionalOnRefs !== true
+  ) {
     return {
       error: {
         code: "ref_not_allowed",

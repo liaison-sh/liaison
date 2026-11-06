@@ -121,6 +121,61 @@ describe("classifyInbound: reports that are not bounces", () => {
     expect(classifyInbound({ "content-type": READ_RECEIPT }, null, null)).toBe("ignored")
   })
 
+  it("action=delivered is not a bounce", () => {
+    expect(
+      classifyInbound({ "content-type": DELIVERY_REPORT }, "Report", dsnBody("delivered")),
+    ).toBe("ignored")
+  })
+
+  it("action=relayed is not a bounce", () => {
+    expect(classifyInbound({ "content-type": DELIVERY_REPORT }, "Report", dsnBody("relayed"))).toBe(
+      "ignored",
+    )
+  })
+
+  it("one delivered and one failed recipient is a bounce", () => {
+    expect(
+      classifyInbound(
+        { "content-type": DELIVERY_REPORT },
+        "Report",
+        dsnBody("delivered", "failed"),
+      ),
+    ).toBe("bounce")
+  })
+
+  it("a French delay notice is not a bounce", () => {
+    for (const [subject, body] of [
+      ["Remise différée : votre commande", "Le message est en attente."],
+      ["Retard de distribution", ""],
+      ["Avis du serveur", "La remise de ce message a été retardée."],
+      ["Avis du serveur", "Ceci est un simple avertissement, rien à faire."],
+      ["Avis du serveur", "Nouvelle tentative de remise dans quatre heures."],
+    ] as const) {
+      expect(classifyInbound({ "content-type": DELIVERY_REPORT }, subject, body)).toBe("ignored")
+      expect(classifyInbound({}, subject, body, "mailer-daemon@mx.example.com")).toBe("ignored")
+    }
+  })
+
+  it("a French failure notice, or wording nobody listed, stays a bounce", () => {
+    expect(
+      classifyInbound(
+        { "content-type": DELIVERY_REPORT },
+        "Non remis : votre commande",
+        "Votre message n'a pas pu être remis.",
+      ),
+    ).toBe("bounce")
+    expect(classifyInbound({}, "Zustellung verzögert", "", "mailer-daemon@mx.example.com")).toBe(
+      "bounce",
+    )
+  })
+
+  it("the stored sender decides, not the headers an IMAP mailbox never kept", () => {
+    expect(
+      classifyInbound({}, "Returned mail", "Could not deliver.", "MAILER-DAEMON@mx.test"),
+    ).toBe("bounce")
+    expect(classifyInbound({}, "Merci", "Bien reçu.", "client@client.test")).toBe("reply")
+  })
+
   it("action=delayed is not a bounce", () => {
     expect(classifyInbound({ "content-type": DELIVERY_REPORT }, "Report", dsnBody("delayed"))).toBe(
       "ignored",

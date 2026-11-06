@@ -74,6 +74,9 @@ export const ORGLESS_JOB_AUDIT: Readonly<Record<string, OrglessJobEntry>> = {
   "kernel:cloud-usage-report": audited(
     "reads credit usage and queues reports in the instance-level outbox (idempotent per org and day); writes no per-org rows",
   ),
+  "kernel:org-storage-estimate": audited(
+    "writes each org's estimate on its own billing row and queues its warnings; a frozen org keeps a stale estimate until the next night's measure on its cell",
+  ),
   "kernel:demo-reset": audited(
     "touches demo workspaces only; a demo workspace is never moved (the export refuses it)",
   ),

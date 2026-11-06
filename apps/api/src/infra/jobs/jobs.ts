@@ -1083,6 +1083,7 @@ export const SUSPENDED_ORG_EXEMPT_JOBS: ReadonlySet<string> = new Set([
   "files-delete-object",
   "files-orphan-gc",
   "cloud-usage-report",
+  "org-storage-estimate",
   "control-plane-outbox",
   "control-plane-heartbeat",
 ])

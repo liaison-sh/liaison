@@ -103,4 +103,16 @@ export interface OrgUsage {
   mailboxes: OrgUsageEntry
   storageGb: OrgUsageEntry
   jobsThisHour: OrgUsageEntry
+  /**
+   * The nightly estimate of everything the org occupies (managed edition),
+   * null before its first measure and on a self-hosted server. Warns, never blocks.
+   */
+  storageEstimate?: {
+    usedGb: number
+    limitGb: number | null
+    measuredAt: string
+    /** A part could not be measured: the figure is a floor. */
+    partial: boolean
+    overCap: boolean
+  } | null
 }

@@ -180,7 +180,7 @@ export {
   type ReceiptOutcome,
 } from "./notification-devices"
 export { oauthAccounts, oauthProviders } from "./oauth"
-export { type OrgBillingStateRow, orgBillingState } from "./org-billing-state"
+export { type OrgBillingStateRow, orgBillingState, type StorageEstimate } from "./org-billing-state"
 export {
   type LegalArchiveRow,
   legalArchives,

@@ -265,6 +265,12 @@ export const moneyVectors = {
         rawCostUsd: "3.14159265",
         rows: 42,
       }),
+      "storage.estimate": cellMessage("storage.estimate", {
+        day: "2026-11-01",
+        estimatedBytes: 12_884_901_888,
+        capBytes: 10_737_418_240,
+        over: true,
+      }),
       "mail.domain_add": cellMessage("mail.domain_add", { domain: MAIL_DOMAIN }),
       "mail.domain_status": cellMessage("mail.domain_status", {}),
       "mail.domain_verify": cellMessage("mail.domain_verify", {}),
@@ -320,6 +326,15 @@ export const moneyVectors = {
       "usage.report": {
         message: cellMessage("usage.report", { day: "2026-11-01", rawCostUsd: "-1", rows: 1 }),
         path: ["data", "rawCostUsd"],
+      },
+      "storage.estimate": {
+        message: cellMessage("storage.estimate", {
+          day: "2026-11-01",
+          estimatedBytes: -1,
+          capBytes: null,
+          over: false,
+        }),
+        path: ["data", "estimatedBytes"],
       },
       "mail.domain_add": {
         message: cellMessage("mail.domain_add", { domain: "Mail.Example.COM" }),
@@ -439,6 +454,7 @@ export const moneyVectors = {
       "billing.auto_topup_settings": [{ ok: true, autoTopUp }],
       "billing.auto_topup_request": [{ ok: true, invoiceId: INVOICE_ID, credits: 25 }],
       "usage.report": [{ ok: true }],
+      "storage.estimate": [{ ok: true }],
       "mail.domain_add": [{ ok: true, domain: mailDomain }],
       "mail.domain_status": [
         { ok: true, domain: { ...mailDomain, status: "verified" } },

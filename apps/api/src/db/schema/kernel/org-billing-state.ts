@@ -9,6 +9,25 @@ import type { CloudAutoTopUp } from "@liaison/control-plane-contract"
 import { bigint, jsonb, numeric, text, timestamp, uuid } from "drizzle-orm/pg-core"
 import { kernel, organizations } from "./organizations"
 
+/** Bytes per part; `search` is null when the index could not be measured. */
+export interface StorageEstimate {
+  bytes: number
+  parts: {
+    files: number
+    thumbnails: number
+    mail: number
+    tickets: number
+    conversations: number
+    knowledge: number
+    search: number | null
+  }
+  measuredAt: string
+  /** A part could not be measured: the total is a floor. */
+  partial: boolean
+  /** Above the plan's storage cap at the last measure: admins and Control were told. */
+  overCap: boolean
+}
+
 export const orgBillingState = kernel.table("org_billing_state", {
   orgId: uuid("org_id")
     .primaryKey()
@@ -30,6 +49,8 @@ export const orgBillingState = kernel.table("org_billing_state", {
   closedAt: timestamp("closed_at", { withTimezone: true }),
   /** The address the suspended page shows (migration 0265). */
   billingContact: text("billing_contact"),
+  /** The nightly storage estimate (migration 0272, modules/cloud/storage-estimate.ts); never pushed. */
+  storageEstimate: jsonb("storage_estimate").$type<StorageEstimate>(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 })
 

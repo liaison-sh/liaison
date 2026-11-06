@@ -36,6 +36,7 @@ import {
   cloudMailSenderReplySchema,
   cloudMailSenderRequestSchema,
   cloudPaths,
+  cloudPlanUsageSchema,
   contractVectors,
   ENDPOINTS,
   managedBillingStateSchema,
@@ -74,6 +75,7 @@ describe("cell-billing endpoint and message types", () => {
         "billing.auto_topup_settings",
         "billing.auto_topup_request",
         "usage.report",
+        "storage.estimate",
         "mail.domain_add",
         "mail.domain_status",
         "mail.domain_verify",
@@ -186,6 +188,16 @@ describe("cell-billing messages", () => {
     expect(
       schema.safeParse({ ...base, data: { ...base.data, targetPlan: "enterprise" } }).success,
     ).toBe(false)
+  })
+
+  test("the plan usage takes the storage estimate as an optional field; other fields stay refused", () => {
+    const usage = { seats: 1, storageBytes: 5, customApps: 0 }
+    expect(cloudPlanUsageSchema.safeParse(usage).success).toBe(true)
+    expect(cloudPlanUsageSchema.safeParse({ ...usage, storageEstimateBytes: 9 }).success).toBe(true)
+    expect(cloudPlanUsageSchema.safeParse({ ...usage, storageEstimateBytes: -1 }).success).toBe(
+      false,
+    )
+    expect(cloudPlanUsageSchema.safeParse({ ...usage, other: 1 }).success).toBe(false)
   })
 
   test("usage.report day is a calendar day and the cost a non-negative decimal string", () => {

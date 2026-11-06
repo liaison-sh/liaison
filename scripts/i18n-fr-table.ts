@@ -60,6 +60,17 @@ export const FR: Record<string, string> = {
   "The cheapest model": "Le modèle le moins cher",
   "New files from people and agents are refused until you move to a plan with more storage in Billing or free space.":
     "Les nouveaux fichiers des personnes et des agents sont refusés jusqu'à ce que vous passiez à une offre avec plus de stockage dans Facturation ou libériez de l'espace.",
+  "Everything stored (estimate)": "Tout ce qui est stocké (estimation)",
+  "Files plus mail, tickets, conversations, knowledge and the search index. Measured each night. Going over warns you and never blocks anything.":
+    "Les fichiers, plus les e-mails, tickets, conversations, connaissances et l'index de recherche. Mesuré chaque nuit. Un dépassement vous avertit et ne bloque jamais rien.",
+  "About {{used}} GB of {{limit}} GB": "Environ {{used}} Go sur {{limit}} Go",
+  "About {{used}} GB": "Environ {{used}} Go",
+  "Measured {{date}}": "Mesuré le {{date}}",
+  "Measured {{date}}, some parts could not be read":
+    "Mesuré le {{date}}, certaines parties n'ont pas pu être lues",
+  "Over the plan": "Au-delà de l'offre",
+  "Your organization's data is estimated at about {{used}} GB, over your plan's {{limit}} GB of storage. Nothing is blocked. To stay within your plan, move to a plan with more storage in Billing or remove data you no longer need.":
+    "Les données de votre organisation sont estimées à environ {{used}} Go, au-delà des {{limit}} Go de stockage de votre offre. Rien n'est bloqué. Pour rester dans votre offre, passez à une offre avec plus de stockage dans Facturation ou supprimez les données dont vous n'avez plus besoin.",
   "Move to a plan with more storage in Billing or free space, otherwise new files will be refused once storage is full.":
     "Passez à une offre avec plus de stockage dans Facturation ou libérez de l'espace, sinon les nouveaux fichiers seront refusés une fois le stockage plein.",
   "Your plan sets this limit. A larger plan in Billing raises it.":

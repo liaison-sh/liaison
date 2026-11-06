@@ -128,6 +128,61 @@ const OrgUsageSection: Component = () => {
                 )
               }}
             </For>
+            <Show when={u().storageEstimate}>
+              {(est) => (
+                <li
+                  data-testid="org-usage-storage-estimate"
+                  data-state={est().overCap ? "over" : "under"}
+                  class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2 text-sm"
+                >
+                  <span class="flex flex-col">
+                    <span class="text-text">{i18n.t("kernel.orgUsage.storageEstimate")}</span>
+                    <span class="text-xs text-text-secondary">
+                      {i18n.t("kernel.orgUsage.storageEstimateHelp")}
+                    </span>
+                    <span
+                      class="text-xs text-text-secondary"
+                      data-testid="org-usage-storage-estimate-measured"
+                    >
+                      {i18n.t(
+                        est().partial
+                          ? "kernel.orgUsage.storageEstimatePartial"
+                          : "kernel.orgUsage.storageEstimateMeasured",
+                        {
+                          date: new Date(est().measuredAt).toLocaleDateString(i18n.locale()),
+                        },
+                      )}
+                    </span>
+                  </span>
+                  <span class="flex items-baseline gap-2">
+                    <Show when={est().overCap}>
+                      <span
+                        class="text-xs text-text-secondary"
+                        data-testid="org-usage-storage-estimate-over"
+                      >
+                        {i18n.t("kernel.orgUsage.storageEstimateOver")}
+                      </span>
+                    </Show>
+                    <span
+                      data-testid="org-usage-storage-estimate-value"
+                      class={est().overCap ? "font-medium text-text" : "text-text-secondary"}
+                    >
+                      {(() => {
+                        const limit = est().limitGb
+                        return limit === null
+                          ? i18n.t("kernel.orgUsage.storageEstimateValueUnlimited", {
+                              used: num(est().usedGb),
+                            })
+                          : i18n.t("kernel.orgUsage.storageEstimateValue", {
+                              used: num(est().usedGb),
+                              limit: num(limit),
+                            })
+                      })()}
+                    </span>
+                  </span>
+                </li>
+              )}
+            </Show>
           </ul>
         )}
       </Show>

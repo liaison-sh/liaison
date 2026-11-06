@@ -380,6 +380,7 @@ export const CELL_BILLING_MESSAGE_TYPES = [
   "billing.auto_topup_settings",
   "billing.auto_topup_request",
   "usage.report",
+  "storage.estimate",
   "mail.domain_add",
   "mail.domain_status",
   "mail.domain_verify",
@@ -409,6 +410,12 @@ export const cloudPlanUsageSchema = z
     seats: z.number().int().nonnegative(),
     storageBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     customApps: z.number().int().nonnegative(),
+    /**
+     * The nightly estimate of everything the org occupies (files, mail, tickets, conversations,
+     * knowledge, search). Information only: a plan's caps never compare to it, and it never blocks
+     * a change. Absent from older cells and before the first measure.
+     */
+    storageEstimateBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   })
   .strict()
 
@@ -482,6 +489,19 @@ export const cellBillingDataSchemas = {
       computedAt: z.iso.datetime().optional(),
     })
     .strict(),
+  /**
+   * The org's nightly storage estimate crossed its plan's cap, up (`over`) or back down. Sent on a
+   * crossing only, so Control gets nothing about an org under its cap. Information only.
+   */
+  "storage.estimate": z
+    .object({
+      ...requestFields,
+      day: daySchema,
+      estimatedBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+      capBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable(),
+      over: z.boolean(),
+    })
+    .strict(),
   /** Register `domain` as the org's sending domain (one per org unless Control says otherwise). */
   "mail.domain_add": z.object({ ...requestFields, domain: mailDomainNameSchema }).strict(),
   /** The org's sending domain as Control holds it, or null. */
@@ -525,6 +545,7 @@ export const cellBillingMessageSchemas = {
   "billing.auto_topup_settings": cellBillingEnvelope("billing.auto_topup_settings"),
   "billing.auto_topup_request": cellBillingEnvelope("billing.auto_topup_request"),
   "usage.report": cellBillingEnvelope("usage.report"),
+  "storage.estimate": cellBillingEnvelope("storage.estimate"),
   "mail.domain_add": cellBillingEnvelope("mail.domain_add"),
   "mail.domain_status": cellBillingEnvelope("mail.domain_status"),
   "mail.domain_verify": cellBillingEnvelope("mail.domain_verify"),
@@ -546,6 +567,7 @@ export const cellBillingMessageSchema = z.discriminatedUnion("type", [
   cellBillingMessageSchemas["billing.auto_topup_settings"],
   cellBillingMessageSchemas["billing.auto_topup_request"],
   cellBillingMessageSchemas["usage.report"],
+  cellBillingMessageSchemas["storage.estimate"],
   cellBillingMessageSchemas["mail.domain_add"],
   cellBillingMessageSchemas["mail.domain_status"],
   cellBillingMessageSchemas["mail.domain_verify"],
@@ -812,6 +834,7 @@ export const cellBillingOkReplySchemas = {
     .object({ ok: z.literal(true), invoiceId: providerIdSchema, credits: wholeCreditsSchema })
     .strict(),
   "usage.report": okOnly,
+  "storage.estimate": okOnly,
   "mail.domain_add": mailDomainReplySchema,
   "mail.domain_status": z
     .object({ ok: z.literal(true), domain: mailDomainSchema.nullable() })

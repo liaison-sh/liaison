@@ -684,6 +684,7 @@ describe("usage API", () => {
     expect(res.status).toBe(200)
     const { data } = (await res.json()) as { data: Record<string, unknown> }
     expect(data).toEqual({
+      storageEstimate: null,
       seats: { used: 1, limit: 4 },
       mailboxes: { used: 0, limit: null },
       storageGb: { used: 0, limit: null },

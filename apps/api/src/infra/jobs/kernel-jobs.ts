@@ -1218,6 +1218,12 @@ export async function registerKernelJobs(): Promise<void> {
     const { sendDailyUsageReports } = await import("~/modules/cloud/usage-report")
     await sendDailyUsageReports(new Date())
   })
+  // Nightly storage estimate (modules/cloud/storage-estimate.ts), managed
+  // edition only: paced, one org at a time, and it never blocks anything.
+  await registerScheduledJob("kernel", "org-storage-estimate", "40 2 * * *", async () => {
+    const { runStorageEstimates } = await import("~/modules/cloud/storage-estimate")
+    await runStorageEstimates(new Date())
+  })
   // Liaison team heartbeat (modules/liaison-team/heartbeat.ts) — every 10
   // minutes it checks whether this server's daily minute (derived from its
   // instance id) has come and queues one heartbeat for a registered server.

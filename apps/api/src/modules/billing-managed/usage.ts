@@ -6,18 +6,22 @@
 //  - seats: the members the seat cap counts (modules/org/caps.ts countSeats);
 //  - storageBytes: the bytes of the org's stored files;
 //  - customApps: the org's own private apps, the count the cap refuses at
-//    (org/caps.ts countCustomApps).
+//    (org/caps.ts countCustomApps);
+//  - storageEstimateBytes: the nightly estimate of everything the org occupies
+//    (cloud/storage-estimate.ts), absent before a first measure. Information
+//    only: Control compares a plan's caps to storageBytes, never to this.
 
 import type { cloudPlanUsageSchema } from "@liaison/control-plane-contract"
 import { sql as drizzleSql, eq } from "drizzle-orm"
 import type { z } from "zod"
 import { withSystemDb } from "~/db/privileged"
 import { files } from "~/db/schema/kernel"
-import { countCustomApps, countSeats } from "~/modules/org/caps"
+import { countCustomApps, countSeats, storageEstimateOf } from "~/modules/org/caps"
 
 export type PlanUsage = z.infer<typeof cloudPlanUsageSchema>
 
 export async function currentPlanUsage(orgId: string): Promise<PlanUsage> {
+  const estimate = await storageEstimateOf(orgId)
   return withSystemDb("billing-managed:usage", async (db) => {
     const seats = await countSeats(db, orgId)
     const [bytes] = await db
@@ -28,6 +32,7 @@ export async function currentPlanUsage(orgId: string): Promise<PlanUsage> {
       seats,
       storageBytes: Math.min(Number(bytes?.total ?? 0), Number.MAX_SAFE_INTEGER),
       customApps: await countCustomApps(db, orgId),
+      ...(estimate ? { storageEstimateBytes: estimate.bytes } : {}),
     }
   })
 }

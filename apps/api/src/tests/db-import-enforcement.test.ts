@@ -762,6 +762,7 @@ describe("db import enforcement", () => {
     // billed rows from a job, the auto top-up check reads the org's pushed
     // setting after a deduction, and the managed AI-usage view reads the org's
     // own balance and billing state by id (credits_balance is privileged only).
+    "modules/cloud/storage-estimate.ts",
     "modules/cloud/usage-report.ts",
     "modules/cloud/auto-topup-trigger.ts",
     // The billing status the control plane pushed (kernel.org_billing_state,

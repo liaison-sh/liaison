@@ -69,7 +69,15 @@ import {
 import { and, sql as drizzleSql, eq, inArray, ne } from "drizzle-orm"
 import type { PrivilegedDb, RlsClient } from "~/db"
 import { privilegedFrom, withSystemDb } from "~/db/privileged"
-import { appsInstalled, connectedAccounts, files, organizations, users } from "~/db/schema/kernel"
+import {
+  appsInstalled,
+  connectedAccounts,
+  files,
+  organizations,
+  orgBillingState,
+  type StorageEstimate,
+  users,
+} from "~/db/schema/kernel"
 import { isManagedEdition } from "~/lib/edition"
 import { rootLogger } from "~/lib/logger"
 import { redis } from "~/lib/redis"
@@ -417,21 +425,45 @@ async function storageBytes(orgId: string): Promise<number> {
 
 const GB = 1024 ** 3
 
+const gbUp = (bytes: number) => Math.ceil((bytes / GB) * 100) / 100
+
+/** The last nightly estimate (cloud/storage-estimate.ts), null before one or on a self-hosted server. */
+export async function storageEstimateOf(orgId: string): Promise<StorageEstimate | null> {
+  const [row] = await withSystemDb("org-caps-storage-estimate", (db) =>
+    db
+      .select({ estimate: orgBillingState.storageEstimate })
+      .from(orgBillingState)
+      .where(eq(orgBillingState.orgId, orgId))
+      .limit(1),
+  )
+  return row?.estimate ?? null
+}
+
 /** The usage block's numbers: each cap as used / limit (null = unlimited). */
 export async function getOrgUsage(orgId: string): Promise<OrgUsage> {
   const caps = await readOrgCaps(orgId)
-  const [seats, mailboxes, bytes, jobs] = await Promise.all([
+  const [seats, mailboxes, bytes, jobs, estimate] = await Promise.all([
     withSystemDb("org-caps-usage-seats", (db) => countSeats(db, orgId)),
     mailboxAddresses(orgId).then((s) => s.size),
     storageBytes(orgId),
     jobsThisHour(orgId),
+    storageEstimateOf(orgId),
   ])
-  const storageGb = Math.ceil((bytes / GB) * 100) / 100
+  const storageGb = gbUp(bytes)
   return {
     seats: { used: seats, limit: capOf(caps, "seats") },
     mailboxes: { used: mailboxes, limit: capOf(caps, "mailboxes") },
     storageGb: { used: storageGb, limit: capOf(caps, "storageGb") },
     jobsThisHour: { used: jobs, limit: capOf(caps, "jobsPerHour") },
+    storageEstimate: estimate
+      ? {
+          usedGb: gbUp(estimate.bytes),
+          limitGb: capOf(caps, "storageGb"),
+          measuredAt: estimate.measuredAt,
+          partial: estimate.partial,
+          overCap: estimate.overCap,
+        }
+      : null,
   }
 }
 
@@ -490,7 +522,7 @@ const CAP_LABEL_KEY: Record<OrgCapKind, string> = {
   auditDays: "kernel.orgUsage.auditDays",
 }
 
-function uuidFrom(text: string): string {
+export function uuidFrom(text: string): string {
   const h = createHash("sha256").update(text).digest("hex")
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`
 }
@@ -537,7 +569,7 @@ export function noticeSummary(
   return `${head} ${tail}`
 }
 
-async function orgLocale(orgId: string): Promise<ShippedLocale> {
+export async function orgLocale(orgId: string): Promise<ShippedLocale> {
   const [row] = await withSystemDb("org-cap-notice-locale", (db) =>
     db
       .select({ locale: organizations.defaultLocale })

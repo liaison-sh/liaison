@@ -1475,7 +1475,7 @@ describe("invoicing manifest", () => {
     // 0.20.46: those notes reach a French reader in French.
     // 0.20.47: a minor-unit amount is a whole number, a credit note's total is negative, and the card
     //   states the total that issues.
-    expect(m.version).toBe("0.20.47")
+    expect(m.version).toBe("0.20.48")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

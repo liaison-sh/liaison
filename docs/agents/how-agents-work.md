@@ -26,7 +26,7 @@ To see them all, open **Agents**. Your own agent is marked **Your agent** in the
 
 Some tool calls draw a card under the agent's message that you act on, such as a Connect card or, for a Drive that sees only picked files, **Choose files for Liaison**, or, on a server that sends bug reports only to the Liaison team, the bug report the agent prepared with **Send to the Liaison team** (only you see it, and nothing is sent until you click).
 
-The agent knows the page you send from. When a record is open there, whether the page is its own or a pane, a drawer or an expanded row of a list, "this" means that record, even if the conversation was about another one before. When no single record is open and nothing in the conversation names one, the agent asks which one you mean.
+The agent knows the page you send from. When a record is open there, whether the page is its own or a pane, a drawer or an expanded row of a list, "this" means that record, even if the conversation was about another one before.
 
 A file you attach reaches the agent with your message, whether you type text with it or not, so you can attach an export and write "please import this".
 

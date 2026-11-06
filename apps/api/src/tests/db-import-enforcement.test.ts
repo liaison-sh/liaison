@@ -65,6 +65,8 @@ describe("db import enforcement", () => {
     "modules/auth/oauth-routes.ts",
     "modules/auth/device-flow-routes.ts",
     "modules/apps/runtime.ts",
+    // A stored tool card: a person's card action changes one field of an agent's row (whose write the RLS policy leaves to its author), after the caller's read was checked under their own context.
+    "modules/agent/runtime/tool-card-store.ts",
     // Package store: instance-wide apps_installed rows (no org), read and written by the
     // install, boot repair and peer materialise paths, which run outside any request.
     "modules/apps/package-store.ts",

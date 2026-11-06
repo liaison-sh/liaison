@@ -20,6 +20,10 @@ import { extractRlsContext, withRequestRls } from "~/lib/request-rls"
 import { zValidator } from "~/lib/validate"
 import { checkRateLimit } from "~/middleware/rate-limiter"
 import { attachedFilesNote } from "~/modules/agent/context/context"
+import {
+  redactMailToolArgs,
+  redactMailToolResult,
+} from "~/modules/agent/mailbox-plaintext/mail-plaintext-redaction"
 import { forwardMailboxAnswer } from "~/modules/agent/mailbox-plaintext/mailbox-forward"
 import {
   type MailboxAnswerInput,
@@ -46,6 +50,12 @@ import {
   type RecordedFrame,
   recordAgentStreamEvent,
 } from "~/modules/agent/runtime/stream-registry"
+import {
+  type ToolCallPresentation,
+  type ToolCardFields,
+  toolCallPresentation,
+  toolCardFieldsForResult,
+} from "~/modules/agent/runtime/tool-card-store"
 import { turnStatus } from "~/modules/agent/runtime/turn-ledger"
 import { takeStreamSlot } from "~/modules/agent/stream-slots"
 import { FileServiceError, moveFilesToParent } from "~/modules/files/service"
@@ -113,6 +123,9 @@ const chatRequestSchema = z
     message: "content is required unless fileIds are provided",
     path: ["content"],
   })
+
+type StepToolCall = { toolCallId: string; toolName: string; args: unknown } & ToolCallPresentation
+type StepToolResult = { toolCallId: string; result: unknown } & ToolCardFields
 
 export const agentRoutes = new Hono<AppEnv>()
 
@@ -495,11 +508,11 @@ async function chatTurn(
     let finalFinishReason = "stop"
     let stepNumber = 0
     const allSteps: Array<{
-      toolCalls?: Array<{ toolCallId: string; toolName: string; args: unknown }>
-      toolResults?: Array<{ toolCallId: string; result: unknown }>
+      toolCalls?: StepToolCall[]
+      toolResults?: StepToolResult[]
     }> = []
-    let currentStepToolCalls: Array<{ toolCallId: string; toolName: string; args: unknown }> = []
-    let currentStepToolResults: Array<{ toolCallId: string; result: unknown }> = []
+    let currentStepToolCalls: StepToolCall[] = []
+    let currentStepToolResults: StepToolResult[] = []
 
     // Track whether the stream yielded an error event so we skip the success
     // done event. `finalized` guards against double-finalize; the `finally`
@@ -549,40 +562,36 @@ async function chatTurn(
             await writeEvent("reasoning-end", {})
             break
 
-          case "tool-call":
-            currentStepToolCalls.push({
+          case "tool-call": {
+            // Redacted once, for the row and the wire alike, as the thread path does.
+            const call = {
               toolCallId: part.toolCallId,
               toolName: part.toolName,
-              args: part.input,
-            })
+              args: await redactMailToolArgs(orgId, part.toolName, part.input),
+              ...toolCallPresentation(orgId, part.toolName),
+            }
+            currentStepToolCalls.push(call)
             finalTimeline.push({ kind: "tool", toolCallId: part.toolCallId })
             liveText.toolCall()
-            await writeEvent("tool-call", {
-              toolCallId: part.toolCallId,
-              toolName: part.toolName,
-              args: part.input,
-            })
-            emitStreamEvent("tool_call", {
-              toolCallId: part.toolCallId,
-              toolName: part.toolName,
-              args: part.input,
-            })
+            await writeEvent("tool-call", call)
+            emitStreamEvent("tool_call", call)
             break
+          }
 
-          case "tool-result":
-            currentStepToolResults.push({
+          case "tool-result": {
+            const toolName =
+              currentStepToolCalls.find((tc) => tc.toolCallId === part.toolCallId)?.toolName ?? ""
+            const result = await redactMailToolResult(orgId, toolName, part.output)
+            const entry = {
               toolCallId: part.toolCallId,
-              result: part.output,
-            })
-            await writeEvent("tool-result", {
-              toolCallId: part.toolCallId,
-              result: part.output,
-            })
-            emitStreamEvent("tool_result", {
-              toolCallId: part.toolCallId,
-              result: part.output,
-            })
+              result,
+              ...(await toolCardFieldsForResult(orgId, toolName, result, part.output)),
+            }
+            currentStepToolResults.push(entry)
+            await writeEvent("tool-result", entry)
+            emitStreamEvent("tool_result", entry)
             break
+          }
 
           case "finish-step": {
             stepNumber++

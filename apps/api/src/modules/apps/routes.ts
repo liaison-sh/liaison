@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { SUPPORTED_HOST_API_MAJORS } from "@liaison/host"
 import { sql as drizzleSql } from "drizzle-orm"
+import type { Context } from "hono"
 import { Hono } from "hono"
 import { HTTPException } from "hono/http-exception"
 import type { AppEnv } from "~/app"
@@ -12,6 +13,13 @@ import { success } from "~/lib/response"
 import { quoteIdent } from "~/lib/sql-utils"
 import { getRequestSignal } from "~/middleware/request-timeout"
 import { requireScope } from "~/middleware/require-scope"
+import {
+  currentToolCard,
+  type OpenedToolCardRef,
+  openToolCardRef,
+  parseToolCardRef,
+  replaceToolCard,
+} from "~/modules/agent/runtime/tool-card-store"
 import {
   checkAppConfigWriteForOrg,
   declaredAppConfigKeys,
@@ -85,6 +93,32 @@ appRoutes.post("/tools/:toolName", async (c) => {
   return success(c, result.data)
 })
 
+/** Why a `cardRef` stopped the call. On each of these nothing ran and no card changed. */
+function cardRefRefused(c: Context<AppEnv>, opened: OpenedToolCardRef & { ok: false }) {
+  if (opened.refusal === "not_readable") {
+    const message = "This card's conversation cannot be read here. Nothing ran."
+    return c.json({ error: { message, code: "card_not_found" } }, 404)
+  }
+  if (opened.refusal === "other_app") {
+    const message = "This card came from another app's tool. Nothing ran."
+    return c.json({ error: { message, code: "card_other_app" } }, 422)
+  }
+  const message = opened.card
+    ? "This card changed since it was drawn. Nothing was saved. The latest card is attached."
+    : "This card is no longer there. Nothing was saved."
+  return c.json(
+    {
+      error: {
+        message,
+        code: "card_changed",
+        card: opened.card,
+        cardRevision: opened.cardRevision,
+      },
+    },
+    409,
+  )
+}
+
 // Phase 16.6 — Plugin-friendly form: `/api/apps/<appName>/tools/<toolName>`.
 // Built so plugin UIs can call `host.invokeTool(appName, toolName, args)`
 // without composing the namespaced `<appName>:<toolName>` themselves. The
@@ -115,21 +149,55 @@ appRoutes.post("/:appName/tools/:toolName", async (c) => {
     return success(c, { panels })
   }
 
+  // A call from a stored card names that card. It is no parameter of the tool.
+  const { cardRef: rawCardRef, ...toolBody } = body
+  const cardRef = parseToolCardRef(rawCardRef)
+  if (cardRef === "invalid") {
+    throw new HTTPException(422, { message: "cardRef needs a messageId and a toolCallId" })
+  }
+  const orgId = c.get("orgId")
+  const actor = extractRlsContext(c)
+  const opened = cardRef ? await openToolCardRef(actor, orgId, appName, cardRef) : null
+  if (opened && !opened.ok) return cardRefRefused(c, opened)
+
   // Plugin-friendly REST form: same direct browser UI call as /tools/:toolName.
-  const call = await restToolCall(c, body.threadId)
-  const result = await executeTool({
-    toolName: `${appName}:${toolName}`,
-    orgId: c.get("orgId"),
-    actor: extractRlsContext(c),
-    threadId: call.threadId,
-    params: body.params ?? body,
-    origin: call.origin,
-    signal: getRequestSignal(c),
-  })
+  const call = await restToolCall(c, toolBody.threadId ?? opened?.threadId)
+  let result: Awaited<ReturnType<typeof executeTool>>
+  try {
+    result = await executeTool({
+      toolName: `${appName}:${toolName}`,
+      orgId,
+      actor,
+      threadId: call.threadId,
+      params: toolBody.params ?? toolBody,
+      origin: call.origin,
+      signal: getRequestSignal(c),
+    })
+  } catch (err) {
+    // The tool's own revision moved: it refused, so draw what is stored now.
+    if (cardRef && (err as { code?: unknown } | null)?.code === "card_changed") {
+      const current = await currentToolCard(actor, orgId, appName, cardRef)
+      if (!current.ok) return cardRefRefused(c, current)
+    }
+    throw err
+  }
   if (result.blocked) {
     return success(c, { blocked: result.blocked })
   }
-  return success(c, result.data)
+  if (!cardRef) return success(c, result.data)
+  const { card, cardRevision, stored, why } = await replaceToolCard(cardRef, {
+    orgId,
+    actorId: c.get("userId"),
+    appName,
+    toolName,
+    result: result.data,
+  })
+  return success(c, result.data, {
+    card,
+    cardRevision,
+    cardStored: stored,
+    ...(why ? { why } : {}),
+  })
 })
 
 appRoutes.post("/run-tool", async (c) => {

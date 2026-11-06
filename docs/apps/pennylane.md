@@ -37,6 +37,7 @@ P&L and runway are derived figures: gross margin is revenue minus cost of goods 
 An agent can book a received supplier bill (a PDF it can read, for example a mail attachment) into Pennylane's accounts payable with `supplier_invoice_upload`.
 
 1. Ask the agent to book the bill, giving the supplier and the figures. Pennylane does no OCR, so the figures come from the request.
+   Amounts are whole minor units (41260 for 412.60). Anything else is refused before the approval, and the refusal says what to send.
 2. The call waits for approval. See [Approve what agents do](../agents/approvals.md).
 3. Once approved, the bill is imported into Pennylane. The same file imported twice reuses the first import.
 

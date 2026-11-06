@@ -42,3 +42,5 @@ A page tells the host which record is open with app.trackOpenRecord -> packages/
 A turn sent from the tab names that record -> apps/web/src/modules/threads/thread-send.ts:42
 An external entity is named by the id the page reported -> apps/api/src/modules/threads/reference-display.ts:141
 A tab type declares the entity its id belongs to -> apps/api/src/modules/apps/manifest-schema.ts:1564
+A field named *_minor holds a whole number; readMinorAmount and minorAmountRefusal -> packages/app-sdk/src/minor-amount.ts:15
+The server refuses a decimal in a declared *_minor parameter -> apps/api/src/modules/apps/execute-tool-params.ts:298

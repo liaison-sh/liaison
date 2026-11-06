@@ -63,6 +63,8 @@ import {
   proformaCreateAndIssue,
   poIssue,
   poCreateAndIssue,
+  poCreateAndIssuePreflight,
+  draftIssuePreview,
   creditNoteCreateAndIssue,
   creditNoteIssue,
   orderReissueApply,
@@ -93,6 +95,7 @@ import {
   creditNoteCreateAndIssuePreflight,
   creditNoteIssuePreflight,
 } from "./mutations"
+import { lineAmountsError } from "./mutations/shared"
 import { untrustedCounterparty } from "./einvoicing/issue-gate"
 import type { Counterparty } from "./issue"
 
@@ -438,6 +441,23 @@ export const proformaIssuePreflightHandler = (
   params: Parameters<typeof proformaIssuePreflight>[1],
   ctx: Parameters<typeof proformaIssuePreflight>[0],
 ) => proformaIssuePreflight(ctx, params)
+export const draftIssuePreviewHandler = (
+  params: Parameters<typeof draftIssuePreview>[1],
+  ctx: Parameters<typeof draftIssuePreview>[0],
+) => draftIssuePreview(ctx, params)
+export const poCreateAndIssuePreflightHandler = (
+  params: Parameters<typeof poCreateAndIssuePreflight>[1],
+  ctx: Parameters<typeof poCreateAndIssuePreflight>[0],
+) => poCreateAndIssuePreflight(ctx, fromWire(params))
+/** A draft's money is refused before anything parks, as it is on the create-and-issue tools. */
+export const draftsCreatePreflightHandler = (params: { items?: unknown }) => {
+  const refused = lineAmountsError(params.items)
+  return refused ? { error: refused.error } : { ok: true }
+}
+export const draftsUpdatePreflightHandler = (params: { patch?: { lines?: unknown } }) => {
+  const refused = lineAmountsError(params.patch?.lines, "patch.lines")
+  return refused ? { error: refused.error } : { ok: true }
+}
 export const proformaCreateAndIssuePreflightHandler = (
   params: Parameters<typeof proformaCreateAndIssuePreflight>[1],
   ctx: Parameters<typeof proformaCreateAndIssuePreflight>[0],

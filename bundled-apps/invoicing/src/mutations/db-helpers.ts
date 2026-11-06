@@ -344,6 +344,7 @@ export async function loadDraftLines(
       description: String(r.description ?? ""),
       quantity: String(r.quantity ?? "0"),
       unit_price_minor: toBigInt(r.unit_price_minor),
+      discount_minor: toBigInt(r.discount_minor),
       tax_rate_bp_override:
         r.tax_rate_bp != null ? Number(r.tax_rate_bp) : undefined,
       hs_code: (r.hs_code as string | null) ?? null,
@@ -363,11 +364,12 @@ async function insertDraftLines(
   let position = 0
   for (const l of lines) {
     position += 1
-    // Line subtotal = quantity x unit_price. Storing "0" made a draft (and drafts_update's returned
-    // state) show zero totals for lines that clearly had a price — the agent + judge read it as a
-    // broken/empty draft (the export multi-step scenarios). Tax is still 0 on a draft (applied at
-    // issue), so total = subtotal here.
-    const subtotal = lineSubtotal({ quantity: l.quantity, unit_price_minor: l.unit_price_minor })
+    // Line subtotal = quantity x unit_price, less the line's discount. Storing "0" made a draft (and
+    // drafts_update's returned state) show zero totals for lines that clearly had a price — the agent
+    // + judge read it as a broken/empty draft (the export multi-step scenarios). Tax is still 0 on a
+    // draft (applied at issue), so total = subtotal here.
+    const discount = l.discount_minor ?? 0n
+    const subtotal = lineSubtotal({ quantity: l.quantity, unit_price_minor: l.unit_price_minor }) - discount
     await db.insert("document_lines", {
       document_id: documentId,
       // Agent-supplied lines carry NO `position` (only DB-loaded lines do). Inserting `undefined`
@@ -377,6 +379,8 @@ async function insertDraftLines(
       description: l.description,
       quantity: l.quantity,
       unit_price_minor: l.unit_price_minor.toString(),
+      // Without it a draft's discount was lost on the way to issue, and the document billed the full price.
+      discount_minor: discount.toString(),
       // Persist NULL (not 0) when there is no per-line override, so issuing the
       // draft falls back to the tax classifier's domestic rate. Writing 0 here
       // would round-trip back as an explicit 0% override and drop all VAT.

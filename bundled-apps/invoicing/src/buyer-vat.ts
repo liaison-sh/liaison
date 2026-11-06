@@ -783,7 +783,7 @@ export async function documentsIssuePreview(
   items: Record<string, unknown>[]
   buyer: BuyerVatFacts | null
   refusal: string | null
-  original?: { number: string | null; issued_at: string | null } | null
+  original?: { number: string | null; issued_at: string | null; grand_total_minor: string | null } | null
 }> {
   const { items } = await settingsIssuerProfileList(ctx)
   // A credit note's card names the invoice it reverses by its number and date, never its id.
@@ -797,7 +797,14 @@ export async function documentsIssuePreview(
       items,
       buyer: null,
       refusal: null,
-      original: doc?.type === "invoice" ? { number: str(doc.number), issued_at: doc.issued_at instanceof Date ? doc.issued_at.toISOString() : str(doc.issued_at) } : null,
+      original:
+        doc?.type === "invoice"
+          ? {
+              number: str(doc.number),
+              issued_at: doc.issued_at instanceof Date ? doc.issued_at.toISOString() : str(doc.issued_at),
+              grand_total_minor: doc.grand_total_minor == null ? null : String(doc.grand_total_minor),
+            }
+          : null,
     }
   }
   const live = items.filter((r) => !r.archived_at)

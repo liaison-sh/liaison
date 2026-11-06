@@ -265,7 +265,7 @@ describe("invoicing approval cards: e-invoicing and customer settings", () => {
     const card = await cardFor(
       "received_einvoice_set_status",
       { received_id: DOC_ID, action: "refuse", reason: "DOUBLON" },
-      { status: "ok", invoice: { supplier: { name: "Fournitures Martin" }, invoice_number: "FM-881", issue_date: "2026-10-02", currency: "EUR", totals: { total: "12000" } } },
+      { status: "ok", invoice: { supplier: { name: "Fournitures Martin" }, invoice_number: "FM-881", issue_date: "2026-10-02", currency: "EUR", totals: { total: "120.00" } } },
     )
     expect(card.title).toBe("Refuse supplier invoice FM-881 from Fournitures Martin")
     expect(card.lines).toContain("Total: 120.00 EUR")
@@ -458,6 +458,42 @@ describe("credit note and purchase order cards", () => {
     expect(text).not.toContain("1949cceb")
   })
 
+  // A step of a sequence skips the stage-time check (its params carry @ref tokens): the card is then
+  // all a person has. The walk's card said "Credit 0.00 EUR" over a credit note that issued -1,500.00.
+  it("a call whose amount cannot be read says it will be refused, and prints no amount", async () => {
+    for (const bad of ["-1260.50", "899.00", -550.5, "$1"]) {
+      const card = await summarizeCreditNoteCreateAndIssue(
+        { counterparty, items: [{ description: "Thing", quantity: "1", unit_price_minor: bad }] },
+        undefined,
+        { context: issuers },
+      )
+      const text = [card.title, ...card.lines].join("\n")
+      expect(card.title).toContain("will be refused")
+      expect(text).toContain("REFUSED")
+      expect(text).toContain(JSON.stringify(bad))
+      expect(text).not.toMatch(/\d\.\d\d EUR/)
+    }
+  })
+
+  it("a positive credit note says it will be refused", async () => {
+    const card = await summarizeCreditNoteCreateAndIssue(
+      { counterparty, items: [{ description: "Thing", quantity: "1", unit_price_minor: 500 }], original_document_id: "INV-1" },
+      undefined,
+      { context: { ...issuers, original: { number: "INV-1", grand_total_minor: "9000" } } },
+    )
+    expect(card.title).toContain("will be refused")
+    expect(card.lines[0]).toContain("must be negative")
+  })
+
+  it("a zero credit note on a zero-value invoice stays a plain card", async () => {
+    const card = await summarizeCreditNoteCreateAndIssue(
+      { counterparty, items: [{ description: "Warranty", quantity: "1", unit_price_minor: 0 }], original_document_id: "INV-1" },
+      undefined,
+      { context: { ...issuers, original: { number: "INV-1", grand_total_minor: "0" } } },
+    )
+    expect(card.title).not.toContain("will be refused")
+  })
+
   it("a credit note from a draft names its invoice and its total", async () => {
     const card = await summarizeCreditNoteIssue({ draft_id: "d1" }, undefined, {
       context: {
@@ -482,7 +518,8 @@ describe("credit note and purchase order cards", () => {
       undefined,
       { context: issuers },
     )
-    expect(created.title).toContain("100.00 EUR")
+    // 100.00 net at the German rate the document will charge.
+    expect(created.title).toContain("119.00 EUR")
     expect(created.lines.join("\n")).toContain("Enclosures")
     expect(created.lines).toContain("Issue date: 2026-11-02")
     const fromDraft = await summarizePoIssue({ draft_id: "d2" }, undefined, {

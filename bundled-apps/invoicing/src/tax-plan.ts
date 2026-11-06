@@ -6,7 +6,8 @@
 // per-line subtotal and tax. Pure, so the approval card (summarizer, gate time) and the handlers
 // show the same numbers the issued document will carry.
 
-import { lineSubtotal, lineTax, netOfIncludedTax } from "./money"
+import { readMinorAmount } from "@liaison/app-sdk"
+import { lineAmounts, lineSubtotal, netOfIncludedTax } from "./money"
 import { classify, type TaxTreatment } from "./tax"
 
 export interface TaxPlanLine {
@@ -40,11 +41,10 @@ export interface TaxPlan {
   total_minor: bigint
 }
 
+/** An absent amount is 0. An unreadable one is refused before a plan matters (lineAmountsError),
+ *  and a card that still meets one says so (unreadableLineAmount). */
 function minor(v: unknown): bigint {
-  if (typeof v === "bigint") return v
-  if (typeof v === "number" && Number.isFinite(v)) return BigInt(Math.round(v))
-  if (typeof v === "string" && /^-?\d+$/.test(v.trim())) return BigInt(v.trim())
-  return 0n
+  return readMinorAmount(v) ?? 0n
 }
 
 function qty(v: unknown): string | number {
@@ -78,15 +78,14 @@ export function planTax(input: TaxPlanInput): TaxPlan {
       discount = netOfIncludedTax(discount, rate)
       netted = true
     }
-    let s = 0n
-    try {
-      s = lineSubtotal({ quantity: qty(l.quantity), unit_price_minor: unit }) - discount
-    } catch {
-      s = 0n
-    }
-    subtotal += s
     if (rate > 0) anyTax = true
-    tax += lineTax({ subtotal_minor: s, tax_rate_bp: rate })
+    try {
+      const amounts = lineAmounts({ quantity: qty(l.quantity), unit_price_minor: unit, discount_minor: discount }, rate)
+      subtotal += amounts.subtotal_minor
+      tax += amounts.tax_minor
+    } catch {
+      // A quantity that cannot be read is refused at issue; it adds nothing here.
+    }
   }
   const price_basis: PriceBasis = netted ? "gross_netted" : anyTax || input.lines.length === 0 ? "net" : "no_tax"
   return {

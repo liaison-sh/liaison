@@ -26,7 +26,7 @@
 
 import { type EinvCtx, stageSendAfterIssue } from "./einvoicing/transmit"
 import type { CrossAppExecuteTool } from "./cross-app"
-import { documentRollup, lineSubtotal, lineTax, lineTotal } from "./money"
+import { documentRollup, lineAmounts } from "./money"
 import { allocateNumber } from "./numbering"
 import { classifyRegime } from "./einvoicing/classify"
 import type { TimeSurface } from "./issue-date"
@@ -1043,13 +1043,10 @@ export async function issueDocument(
     const discount_minor = dl.discount_minor ?? 0n
     // Discount is subtracted from the line subtotal and rendered explicitly on
     // the document — never folded into the unit price.
-    const subtotal_minor =
-      lineSubtotal({
-        quantity: dl.quantity,
-        unit_price_minor: dl.unit_price_minor,
-      }) - discount_minor
-    const tax_minor = lineTax({ subtotal_minor, tax_rate_bp })
-    const total_minor = lineTotal({ subtotal_minor, tax_minor })
+    const { subtotal_minor, tax_minor, total_minor } = lineAmounts(
+      { quantity: dl.quantity, unit_price_minor: dl.unit_price_minor, discount_minor },
+      tax_rate_bp,
+    )
     snapshotLines.push({
       // Agent create-and-issue items carry no `position` (only DB-loaded draft lines do); fall back
       // to the loop index so the NOT-NULL `document_lines.position` is always set (was: a null

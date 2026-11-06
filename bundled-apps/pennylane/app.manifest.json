@@ -17,7 +17,7 @@
       }
     ]
   },
-  "version": "0.1.42",
+  "version": "0.1.43",
   "iconName": "calculator",
   "kind": "connector",
   "description": "Pennylane accounting connector: supplier/customer invoices, trial balance, derived P&L, cash position, transactions, spend-by-category, runway",
@@ -877,6 +877,7 @@
       "searchKeywords": ["fournisseur", "déposer", "téléverser", "importer"],
       "requiredScopes": ["pennylane:invoices:write"],
       "handler": "supplier_invoice_upload",
+      "preflight": "supplier_invoice_upload_preflight",
       "summarizer": "summarizeSupplierInvoiceUpload",
       "gated": true,
       "approvalImpact": "external",

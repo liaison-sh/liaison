@@ -9,8 +9,9 @@
 //
 // Pure (no I/O): summarizers run at gate time, possibly in the empty-bridge sandbox.
 
+import { readMinorAmount } from "@liaison/app-sdk"
 import type { BuyerVatFacts } from "./buyer-vat"
-import { formatMoneyMinor } from "./money"
+import { formatMoneyMinor, lineAmounts } from "./money"
 import { type TaxPlan, treatmentWords } from "./tax-plan"
 
 export interface CardLink {
@@ -78,16 +79,8 @@ export function text(v: unknown, max = 120): string | null {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s
 }
 
-/** Minor units as BigInt, tolerating numeric strings and numbers; null when not a number. */
-export function toMinor(v: unknown): bigint | null {
-  if (typeof v === "bigint") return v
-  if (typeof v === "number") return Number.isFinite(v) ? BigInt(Math.round(v)) : null
-  if (typeof v === "string" && v.trim() !== "") {
-    const n = Number(v)
-    return Number.isFinite(n) ? BigInt(Math.round(n)) : null
-  }
-  return null
-}
+/** Minor units as BigInt, read as issuing reads them; null when not a whole number. */
+export const toMinor = readMinorAmount
 
 /** "1.00 USD" from minor units; null when the amount is unreadable. */
 export function money(minor: unknown, currency: string): string | null {
@@ -130,15 +123,46 @@ export function lineText(l: CardLineItem, currency: string): string {
 export function linesTotal(lines: CardLineItem[]): bigint {
   let sum = 0n
   for (const l of lines) {
-    const unit = toMinor(l.unit_price_minor) ?? 0n
-    const q = qtyOf(l.quantity)
-    // Fractional quantities: multiply in thousandths, round once.
-    const lineMinor = Number.isInteger(q)
-      ? BigInt(q) * unit
-      : (BigInt(Math.round(q * 1000)) * unit) / 1000n
-    sum += lineMinor - (toMinor(l.discount_minor) ?? 0n)
+    try {
+      sum += lineAmounts(
+        {
+          quantity: qtyOf(l.quantity),
+          unit_price_minor: toMinor(l.unit_price_minor) ?? 0n,
+          discount_minor: toMinor(l.discount_minor) ?? 0n,
+        },
+        0,
+      ).subtotal_minor
+    } catch {
+      // A quantity that cannot be read is refused at issue; it adds nothing here.
+    }
   }
   return sum
+}
+
+/** The first line amount issuing would refuse, in words; null when every one can be read. */
+export function unreadableLineAmount(lines: CardLineItem[]): string | null {
+  for (const [i, l] of lines.entries()) {
+    for (const [value, label] of [
+      [l.unit_price_minor, "price"],
+      [l.discount_minor, "discount"],
+    ] as const) {
+      const absent = value === undefined || value === null || (typeof value === "string" && value.trim() === "")
+      if (!absent && toMinor(value) === null) {
+        return `the ${label} on line ${i + 1} is ${JSON.stringify(value)}, not a whole number of cents`
+      }
+    }
+  }
+  return null
+}
+
+/** What a card says when approving cannot issue: no amount, since none would issue. */
+function refusedCard(f: IssueCardFacts, type: string, customer: string, why: string): ApprovalCard {
+  return finishCard({
+    kind: f.kind,
+    title: `This ${type} for ${customer} will be refused, nothing would issue`,
+    subtitle: "Deny it: the agent has to send the call again with a correct amount",
+    lines: [`WARNING: this will be REFUSED and takes no number: ${why}`, `Customer: ${customer}`],
+  })
 }
 
 /** Up to `max` line texts plus "and N more lines". */
@@ -241,6 +265,8 @@ export interface IssueCardFacts {
   originalNumber?: string | null
   /** The date of the invoice a credit note reverses, shown beside its number. */
   originalDate?: string | null
+  /** The total of that invoice, when known: only a zero-value invoice takes a zero credit note. */
+  originalTotalMinor?: unknown
   /** A credit note with no invoice to reverse. */
   standaloneCredit?: boolean
   draftId?: string | null
@@ -311,10 +337,22 @@ export function consumerOverrideCardLines(buyer: Partial<Pick<BuyerVatFacts, "co
 
 export function issueCard(f: IssueCardFacts): ApprovalCard {
   const type = docTypeLabel(f.type)
+  const customer = text(f.customer, 80) ?? "the customer"
+  // Reached only by a call whose stage-time check could not run (a step of a sequence, an edited
+  // payload): the card says issuing refuses it, and never prints an amount that will not exist.
+  const unreadable = unreadableLineAmount(f.lines)
+  if (unreadable) return refusedCard(f, type, customer, unreadable)
   const exact = (f.totalMinor !== undefined && f.totalMinor !== null) || !!f.tax
   const totalMinor = f.tax ? f.tax.total_minor : exact ? (f.totalMinor as bigint) : linesTotal(f.lines)
   const total = formatMoneyMinor(totalMinor, f.currency)
-  const customer = text(f.customer, 80) ?? "the customer"
+  // The original's total may be unknown here: a zero then waits for the stage-time check's answer.
+  const originalTotal = toMinor(f.originalTotalMinor)
+  if (
+    f.type === "credit_note" &&
+    (totalMinor > 0n || (totalMinor === 0n && (!f.originalNumber || (originalTotal !== null && originalTotal !== 0n))))
+  ) {
+    return refusedCard(f, type, customer, `a credit note's total must be negative, these lines total ${total}`)
+  }
   const order = orderName(f.orderNumber)
   const draftOrder = orderName(f.draftOrderName)
   const orderPart = order ? `, order ${order}` : draftOrder ? `, draft order ${draftOrder}` : ""

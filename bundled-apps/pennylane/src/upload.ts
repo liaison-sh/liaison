@@ -15,6 +15,7 @@
 // Supplier e-invoices received through the e-invoicing network are already in Pennylane (the
 // invoicing app mirrors them): they are never uploaded again. The host refuses to send a file
 // stored as one (`RECEIVED_EINVOICE_PARENT`), and the tool answers `received_einvoice_in_pennylane`.
+import { minorAmountRefusal, readMinorAmount } from "@liaison/app-sdk"
 import type { PennylaneToolCtx } from "./ctx"
 import { opError, fromException, type OpError } from "./einvoicing/errors"
 import { getClient } from "./lib/get-client"
@@ -57,6 +58,17 @@ export function minorToDecimal(minor: string, currency: string): string | null {
   const abs = neg ? -n : n
   const s = `${abs / 100n}.${String(abs % 100n).padStart(2, "0")}`
   return neg ? `-${s}` : s
+}
+
+/** What is wrong with the amounts of a bill, before anything parks and again at execution. */
+export function minorAmountsRefusal(input: { amount_minor?: unknown; tax_minor?: unknown }): string | null {
+  for (const [field, value] of [
+    ["amount_minor", input.amount_minor],
+    ["tax_minor", input.tax_minor ?? "0"],
+  ] as const) {
+    if (value !== undefined && readMinorAmount(value) === null) return minorAmountRefusal(field, value)
+  }
+  return null
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/
@@ -114,7 +126,8 @@ export async function supplierInvoiceUpload(ctx: UploadCtx, input: UploadInput):
   if (!/^[A-Z]{3}$/.test(currency)) return opError("invalid_input", "currency must be a 3-letter code")
   const total = minorToDecimal(String(input.amount_minor ?? ""), currency)
   const tax = minorToDecimal(String(input.tax_minor ?? "0"), currency)
-  if (total === null || tax === null) return opError("invalid_input", "amount_minor and tax_minor are whole numbers of minor units")
+  const refused = minorAmountsRefusal(input)
+  if (refused || total === null || tax === null) return opError("invalid_amount", refused ?? "amount_minor is required")
   const beforeTax = minorToDecimal(String(BigInt(String(input.amount_minor).trim()) - BigInt(String(input.tax_minor ?? "0").trim())), currency)!
   const externalReference = `liaison-${input.file_id}`
   try {

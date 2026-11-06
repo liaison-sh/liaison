@@ -30,6 +30,7 @@
 // only when the billed amount changes; fulfillment/tag/payment-status churn
 // leaves the signature untouched and is silently ignored.
 
+import { majorDecimalToMinor } from "../money"
 import { findBillingDocumentsForOrder } from "./billing-documents"
 
 export interface OrderUpdatedPayload {
@@ -187,19 +188,12 @@ async function findDocumentsByShopifyOrderId(
   }))
 }
 
-/** Convert the webhook's normalized order lines into the shape
- *  `order_reissue_apply`'s `items` param expects. Mirrors the money-string ->
- *  minor-unit convention `coerceMinorAmount` uses elsewhere in this app: a
- *  fractional decimal ("419.40") is a MAJOR-unit amount, so it is multiplied
- *  by 100; an already-integer value is taken as already-minor. */
-function toMinorUnitAmount(amount: string | number | null | undefined): number {
-  const n = typeof amount === "number" ? amount : typeof amount === "string" ? Number(amount) : Number.NaN
-  if (!Number.isFinite(n)) return 0
-  return Number.isInteger(n) ? n : Math.round(n * 100)
-}
-
+/** Convert the webhook's normalized order lines into the shape `order_reissue_apply`'s `items`
+ *  param expects. A store's money is always in major units ("155.00" is 155 EUR, never 155 cents),
+ *  whatever its fraction reads like. */
 function orderLinesToReissueItems(
   lines: OrderLineLike[] | null | undefined,
+  currency: string,
 ): Array<{
   description: string
   quantity: number
@@ -210,7 +204,7 @@ function orderLinesToReissueItems(
   return (lines ?? []).map((li) => ({
     description: li.title ?? li.variant?.sku ?? li.variant?.id ?? "Item",
     quantity: li.quantity ?? 1,
-    unit_price_minor: toMinorUnitAmount(li.priceSet?.amount),
+    unit_price_minor: Number(majorDecimalToMinor(li.priceSet?.amount, li.priceSet?.currencyCode ?? currency)),
     product_source: "shopify",
     external_id: li.variant?.id ?? null,
   }))
@@ -337,7 +331,7 @@ export async function observeShopifyOrderUpdated(
           billing_signature: currentSig,
           dedupe_key: dedupeKey,
           currency: src.totalPrice?.currencyCode ?? undefined,
-          items: orderLinesToReissueItems(src.lineItems),
+          items: orderLinesToReissueItems(src.lineItems, src.totalPrice?.currencyCode ?? "EUR"),
         })
       }
     }

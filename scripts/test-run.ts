@@ -557,6 +557,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/invoicing-facturx-issue.test.ts",
             // The issue date and number year at instants set on the host clock, through the sandbox.
             "src/tests/integration/invoicing-issue-date.test.ts",
+            // Minor-unit money through the real sandbox: refused before parking, card equals issue.
+            "src/tests/integration/invoicing-minor-amounts.test.ts",
             // E-invoice send through the einvoicing-pa@1 provider contract (Pennylane fake behind
             // the egress override): approvals, two-phase transmission, webhooks, fault windows.
             "src/tests/integration/einvoicing-send.test.ts",

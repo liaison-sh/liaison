@@ -47,3 +47,25 @@ export function isExpiredMailboxWait(item: AttentionItem, nowMs: number = Date.n
   const at = Date.parse(wait.expiresAt)
   return Number.isFinite(at) && at <= nowMs
 }
+
+/** The runs waiting now, oldest first: the order Run all starts them in. */
+export function pendingMailboxWaitItems(
+  items: readonly AttentionItem[],
+  nowMs: number = Date.now(),
+): AttentionItem[] {
+  return items
+    .filter((item) => routineMailboxWaitOf(item) !== null && !isExpiredMailboxWait(item, nowMs))
+    .sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt))
+}
+
+/**
+ * Waiting runs are one thing to do, not one decision each: they would have run
+ * by themselves if the mailbox were not private. A list keeps only the oldest,
+ * in its place, and that row stands for them all (RoutineMailboxWaitsRow), so
+ * the list's counts and fold count one row. The oldest because it stays the same
+ * while new mail parks more runs.
+ */
+export function collapseMailboxWaits(items: AttentionItem[]): AttentionItem[] {
+  const [oldest] = pendingMailboxWaitItems(items)
+  return items.filter((item) => item.kind !== "routine_mailbox_wait" || item.id === oldest?.id)
+}

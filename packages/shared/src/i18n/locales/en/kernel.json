@@ -6121,6 +6121,26 @@
     "refused": "Nothing was connected."
   },
   "routineMailboxWait": {
+    "group": {
+      "label": "Routine runs waiting for your private mailbox",
+      "titleOne": "{{name}}: {{count}} runs wait for you",
+      "titleMany": "{{count}} routine runs wait for you",
+      "triggerEmails": "Started by new emails",
+      "triggerMixed": "Started by events or on their schedule",
+      "why": "Routines can't read private mail while you're offline. Run all starts them from this window.",
+      "yourRoutines": "Your routines",
+      "runAll": "Run all",
+      "dismissAll": "Dismiss all",
+      "starting": "Starting {{done}} of {{total}}",
+      "unlockBody": "Unlock your mailbox to run them. They start by themselves once your mailbox is open.",
+      "started": "{{count}} routine runs started, one at a time for each routine. Keep this window open while they read your private mail.",
+      "startedHandoff": "{{count}} routine runs started, one at a time for each routine. You can close this window: the emails that started them were opened for these runs.",
+      "partial": "{{started}} of {{total}} runs started. The others stay in your list: open Details to run them one by one.",
+      "dismissTitle": "Dismiss {{count}} waiting runs?",
+      "dismissBody": "These runs won't happen, so what started them won't be handled by these routines. The routines run again at their next time.",
+      "dismissed": "{{count}} waiting runs dismissed. The routines run again at their next time.",
+      "dismissPartial": "{{dismissed}} of {{total}} runs dismissed. The others stay in your list."
+    },
     "label": "Routine run waiting for your private mailbox",
     "title": "{{name}} waits for you",
     "why": "For security, routines can't read private mail while you're offline. Run it now from this window: your mailbox opens the mail it needs, as when you ask yourself.",

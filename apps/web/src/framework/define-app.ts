@@ -595,8 +595,12 @@ export interface AppManifest {
     saveable?: string[]
     wsHandlers?: Record<string, string | { key: string; handler: string }>
   }
-  slots?: Record<string, { position: string }>
-  contributions?: Record<string, { label: string; component: string }>
+  /** A host declares `position`; an app contributes `panels` or `actions`. */
+  slots?: Record<string, { position?: string; panels?: unknown[]; actions?: unknown[] }>
+  contributions?: Record<
+    string,
+    { label: string; component: string; visibility_scope?: string; order?: number; group?: string }
+  >
   bulk?: Record<string, any>
   savedViews?: Record<string, any>
   entities?: Record<string, any>
@@ -1012,7 +1016,11 @@ export function registerAppFromManifest(
         }
       }
       // Legacy `{position}` declaration — passed through to `def.slots`.
-      if (raw && typeof raw === "object" && "position" in (raw as object)) {
+      if (
+        raw &&
+        typeof raw === "object" &&
+        typeof (raw as { position?: unknown }).position === "string"
+      ) {
         legacyDecl[slotKey] = raw as { position: string }
       }
     }

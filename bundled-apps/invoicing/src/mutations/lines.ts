@@ -5,7 +5,7 @@
 
 import { type EinvoiceRowColumns, counterpartyEinvoiceFields } from "../einvoicing/issue-gate"
 import type { IssueDateParts } from "../issue-date"
-import { lineSubtotal, lineTax, netOfIncludedTax } from "../money"
+import { lineAmounts, netOfIncludedTax } from "../money"
 import {
   type Counterparty,
   type DraftLine,
@@ -20,6 +20,7 @@ import {
   type DraftRow,
   type DocumentType,
   coerceMinorAmount,
+  lineAmountsError,
 } from "./shared"
 
 // ── Invoice issuance (threshold-gated) ────────────────────────────────────
@@ -144,7 +145,7 @@ export function liftMisplacedCountryOnLine(line: DraftLine): DraftLine {
 }
 
 /** Apply normaliseDraftLine over an array, preserving order. */
-export function normaliseDraftLines(lines: DraftLineInput[]): DraftLine[] {
+export function normaliseDraftLines(lines: DraftLineInput[], field = "items"): DraftLine[] {
   // Defensive boundary: the type says DraftLine[], but a re-entry / edited approval payload can
   // deliver `items` as a NON-array (a stringified JSON, an object, a scalar). `.map` on that throws
   // QuickJS's contentless "not a function", which aborts the WHOLE gated issuance as a terse
@@ -154,6 +155,8 @@ export function normaliseDraftLines(lines: DraftLineInput[]): DraftLine[] {
       `invoicing: draft lines must be an array, got ${typeof lines} (${JSON.stringify(lines)?.slice(0, 160)})`,
     )
   }
+  const amounts = lineAmountsError(lines, field)
+  if (amounts) throw new Error(`${amounts.error.code}: ${amounts.error.message}`)
   return lines.map(normaliseDraftLine)
 }
 
@@ -210,14 +213,18 @@ export function computeLineFinancials(
   let subtotal = 0n
   let tax = 0n
   for (const l of lines) {
-    const s = lineSubtotal({
-      quantity: l.quantity,
-      unit_price_minor: coerceMinorAmount(l.unit_price_minor, "unit_price_minor"),
-    })
-    subtotal += s
     const rate =
       typeof l.tax_rate_bp_override === "number" ? l.tax_rate_bp_override : default_rate_bp
-    tax += lineTax({ subtotal_minor: s, tax_rate_bp: rate })
+    const amounts = lineAmounts(
+      {
+        quantity: l.quantity,
+        unit_price_minor: coerceMinorAmount(l.unit_price_minor, "unit_price_minor"),
+        discount_minor: l.discount_minor == null ? 0n : coerceMinorAmount(l.discount_minor, "discount_minor"),
+      },
+      rate,
+    )
+    subtotal += amounts.subtotal_minor
+    tax += amounts.tax_minor
   }
   return { subtotal, tax, grand: subtotal + tax }
 }

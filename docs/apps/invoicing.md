@@ -77,6 +77,10 @@ The approval card of a new document states its tax treatment and rate, whether t
 
 A credit note's card states its total, its lines, its issue date and the invoice it reverses, with that invoice's date. With no stated date it says the note takes the day it is approved. Whatever parks the request, the card says the same.
 
+A credit note's total must be negative: a positive one, or one of nothing, is refused before anything parks and takes no number. A positive line against a larger negative one is fine (a restocking fee against a return). A zero credit note is accepted only against an invoice whose own total is zero.
+
+An amount in minor units is a whole number: 41940 for 419.40. Anything else, such as `899.00` or `-1260.50`, is refused before anything parks, and the refusal says what to send. It is never read as a guess. A card that still meets such an amount says the request will be refused and prints no total.
+
 ## Turn a quote or proforma into an invoice
 
 1. Open the quote (once it is sent or accepted) or the proforma (once it is sent).
@@ -117,7 +121,7 @@ Issued documents are never deleted. A correction is a credit note, with its own 
 Invoices, credit notes and proformas issued in another tool can be imported with their original numbers, dates, totals and PDFs: with `liaison invoicing import` (see [Config as code](../provisioning-cli.md)) or as **Invoicing documents** (`invoicing.document`) records. The import needs `invoicing:documents:write`.
 
 - Each document keeps its number. Numbering then continues after the highest imported number for that issuer, type and year, so a new document never reuses one.
-- A credit note is linked to its original invoice when that invoice was imported too.
+- A credit note is linked to its original invoice when that invoice was imported too. It keeps the sign its source states.
 - With several issuer profiles, each record names its issuer profile. With none, or several and none named, the record fails with `issuer_ambiguous`. A preview of the import runs the same checks, so it already counts these refusals before anyone approves the run.
 - A document imported before is skipped. A document whose number the issuer already used, or that an earlier document of the same import uses (in any batch of it, in a preview too), fails with `numberTaken`, and so does one whose number and number_int disagree or whose status contradicts its payment.
 - An imported document keeps its PDF as its original: marking it paid or editing it never renders a new one.

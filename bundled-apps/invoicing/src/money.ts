@@ -145,6 +145,24 @@ export function lineTotal({ subtotal_minor, tax_minor }: LineTotalInput): bigint
   return subtotal_minor + tax_minor
 }
 
+export interface LineAmountsInput extends LineSubtotalInput {
+  /** The TOTAL discount of the line, subtracted once from quantity x unit price. */
+  discount_minor?: bigint
+}
+
+/**
+ * What one line charges at a rate: the one computation behind the stored line, the document total
+ * and every approval card, so what a person approves is what issues.
+ */
+export function lineAmounts(
+  { quantity, unit_price_minor, discount_minor }: LineAmountsInput,
+  tax_rate_bp: number,
+): { subtotal_minor: bigint; tax_minor: bigint; total_minor: bigint } {
+  const subtotal_minor = lineSubtotal({ quantity, unit_price_minor }) - (discount_minor ?? 0n)
+  const tax_minor = lineTax({ subtotal_minor, tax_rate_bp })
+  return { subtotal_minor, tax_minor, total_minor: lineTotal({ subtotal_minor, tax_minor }) }
+}
+
 export interface LineRollupInput {
   subtotal_minor: bigint
   /** Basis points: 2000 = 20%, 0 = tax-exempt. */

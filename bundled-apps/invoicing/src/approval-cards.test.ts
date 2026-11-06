@@ -458,6 +458,42 @@ describe("credit note and purchase order cards", () => {
     expect(text).not.toContain("1949cceb")
   })
 
+  // A step of a sequence skips the stage-time check (its params carry @ref tokens): the card is then
+  // all a person has. The walk's card said "Credit 0.00 EUR" over a credit note that issued -1,500.00.
+  it("a call whose amount cannot be read says it will be refused, and prints no amount", async () => {
+    for (const bad of ["-1260.50", "899.00", -550.5, "$1"]) {
+      const card = await summarizeCreditNoteCreateAndIssue(
+        { counterparty, items: [{ description: "Thing", quantity: "1", unit_price_minor: bad }] },
+        undefined,
+        { context: issuers },
+      )
+      const text = [card.title, ...card.lines].join("\n")
+      expect(card.title).toContain("will be refused")
+      expect(text).toContain("REFUSED")
+      expect(text).toContain(JSON.stringify(bad))
+      expect(text).not.toMatch(/\d\.\d\d EUR/)
+    }
+  })
+
+  it("a positive credit note says it will be refused", async () => {
+    const card = await summarizeCreditNoteCreateAndIssue(
+      { counterparty, items: [{ description: "Thing", quantity: "1", unit_price_minor: 500 }], original_document_id: "INV-1" },
+      undefined,
+      { context: { ...issuers, original: { number: "INV-1", grand_total_minor: "9000" } } },
+    )
+    expect(card.title).toContain("will be refused")
+    expect(card.lines[0]).toContain("must be negative")
+  })
+
+  it("a zero credit note on a zero-value invoice stays a plain card", async () => {
+    const card = await summarizeCreditNoteCreateAndIssue(
+      { counterparty, items: [{ description: "Warranty", quantity: "1", unit_price_minor: 0 }], original_document_id: "INV-1" },
+      undefined,
+      { context: { ...issuers, original: { number: "INV-1", grand_total_minor: "0" } } },
+    )
+    expect(card.title).not.toContain("will be refused")
+  })
+
   it("a credit note from a draft names its invoice and its total", async () => {
     const card = await summarizeCreditNoteIssue({ draft_id: "d1" }, undefined, {
       context: {

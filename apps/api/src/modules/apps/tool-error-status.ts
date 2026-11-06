@@ -40,6 +40,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   document_not_found: 404,
   order_not_found: 404,
   row_not_found: 404,
+  // A write naming two different rows: the caller says which one it means.
+  order_key_mismatch: 409,
   // A pick between the order's address and the verified one: needed, gone stale or not needed.
   address_differs: 409,
   address_choice_not_needed: 409,
@@ -109,6 +111,7 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   invalid_input: 400,
   invalid_type: 400,
   invalid_amount: 400,
+  credit_note_not_negative: 400,
   invalid_hs_code: 400,
   invalid_relationship: 400,
   invalid_original_document: 400,

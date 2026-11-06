@@ -77,7 +77,7 @@ describe("pennylane app.manifest.json", () => {
     // 0.1.35: the icon as data (`iconName`), drawn when the UI runs framed.
     // 0.1.38: every HUMAN setup step says its own minutes.
     // 0.1.40: webhook health waits 3 h for a received e-invoice's delivery (deliveryGraceSec).
-    expect(m.version).toBe("0.1.42")
+    expect(m.version).toBe("0.1.43")
     expect(m.packageFormat).toBe(1)
   })
 

@@ -293,15 +293,7 @@ export async function prepSetStatus(
       { code: "invalid_status", retryable: false },
     )
   }
-  const orderKey =
-    input.order_key ??
-    (input.document_ref ? await orderKeyForDocumentRef(ctx, input.document_ref) : undefined)
-  if (typeof orderKey !== "string" || !parseOrderKey(orderKey)) {
-    throw new ToolError(
-      `"${String(orderKey)}" is not a prep row key. Expected so:<order id>, doc:<document id> or pending:<token>.`,
-      { code: "invalid_order_key", retryable: false },
-    )
-  }
+  const orderKey = await prepRowKey(ctx, input)
   const existing = await getOrderState(ctx, orderKey)
   const changed = !existing || existing.status !== input.status
   const patch: Partial<PrepOrderStateRow> = {
@@ -384,6 +376,85 @@ export async function orderKeyForDocumentRef(
   return orderKeyForDocument(typeof found.id === "string" && found.id ? found.id : documentRef)
 }
 
+function given(value: unknown): string | null {
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null
+}
+
+function notAPrepRowKey(value: unknown): ToolError {
+  return new ToolError(
+    `${JSON.stringify(value)} is not a prep row key, so nothing was changed. Pass an order_key from boxtal__prep_list ` +
+      `(so:<numeric Shopify order id>, doc:<document id>), or the document_ref of the row's invoice.`,
+    { code: "invalid_order_key", retryable: false },
+  )
+}
+
+/**
+ * An order_key is checked before it writes, as a document_ref is: a row key that names nothing would
+ * otherwise mint a row the worklist lists for ever. A key that already has a row is its own proof;
+ * otherwise the order or document must exist. A FAILED read is not an answer (orderKeyForDocumentRef).
+ */
+async function checkedOrderKey(ctx: BoxtalToolCtx, orderKey: string): Promise<string> {
+  const parsed = parseOrderKey(orderKey)
+  if (!parsed) throw notAPrepRowKey(orderKey)
+  if (parsed.kind === "order" && !/^\d+$/.test(parsed.id)) throw notAPrepRowKey(orderKey)
+  if (await getOrderState(ctx, orderKey)) return orderKey
+  // A pending row is written only by the proforma flow, with its first state row.
+  if (parsed.kind === "pending") throw notAPrepRowKey(orderKey)
+  if (parsed.kind === "document") return orderKeyForDocumentRef(ctx, parsed.id)
+  let env: Awaited<ReturnType<BoxtalToolCtx["executeTool"]>>
+  try {
+    env = await ctx.executeTool("shopify:orders_get", { id: `gid://shopify/Order/${parsed.id}` })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    throw new ToolError(`Could not check order ${parsed.id}: ${message}. Nothing was changed. Try again in a moment.`, {
+      code: "order_key_unresolved",
+      retryable: true,
+    })
+  }
+  if (env.status !== "completed") {
+    const message = env.status === "error" ? env.error.message : "the read is awaiting approval"
+    throw new ToolError(`Could not check order ${parsed.id}: ${message}. Nothing was changed. Try again in a moment.`, {
+      code: "order_key_unresolved",
+      retryable: true,
+    })
+  }
+  if (!env.result || typeof env.result !== "object") {
+    throw new ToolError(
+      `No Shopify order has the id ${parsed.id}, so nothing was changed. Pass an order_key from boxtal__prep_list.`,
+      { code: "order_not_found", retryable: false },
+    )
+  }
+  return orderKey
+}
+
+/**
+ * The prep row a write names, by order_key, document_ref or both. Both must agree: a document_ref
+ * beside a different order_key was silently ignored, and the write landed on another row.
+ */
+export async function prepRowKey(
+  ctx: BoxtalToolCtx,
+  input: { order_key?: unknown; document_ref?: unknown },
+): Promise<string> {
+  const orderKey = given(input.order_key)
+  const documentRef = given(input.document_ref)
+  if (!orderKey && !documentRef) {
+    throw new ToolError(
+      "Pass the row's order_key (so:<numeric Shopify order id>, doc:<document id>, from boxtal__prep_list) or the document_ref of its invoice; nothing was changed.",
+      { code: "invalid_order_key", retryable: false },
+    )
+  }
+  const fromDocument = documentRef ? await orderKeyForDocumentRef(ctx, documentRef) : null
+  if (!orderKey) return fromDocument as string
+  const checked = await checkedOrderKey(ctx, orderKey)
+  if (fromDocument && fromDocument !== checked) {
+    throw new ToolError(
+      `order_key ${checked} and document_ref ${documentRef} name different rows (that document's row is ${fromDocument}), so nothing was changed. Pass the one you mean.`,
+      { code: "order_key_mismatch", retryable: false },
+    )
+  }
+  return checked
+}
+
 /**
  * The pre-rework validated checkbox, kept as an ALIAS onto the status enum so an agent (or a stale
  * UI bundle) that still calls it lands on the same single status field. true -> validated,
@@ -393,15 +464,7 @@ export async function prepSetValidated(
   ctx: BoxtalToolCtx,
   input: PrepSetValidatedInput,
 ): Promise<PrepOrderStateRow> {
-  const key =
-    input.order_key ??
-    (input.document_ref ? await orderKeyForDocumentRef(ctx, input.document_ref) : null)
-  if (!key) {
-    throw new ToolError("prep_set_validated needs an order_key or a document_ref.", {
-      code: "invalid_order_key",
-      retryable: false,
-    })
-  }
+  const key = await prepRowKey(ctx, input)
   return prepSetStatus(ctx, {
     order_key: key,
     status: input.validated ? "validated" : "to_prepare",
@@ -416,27 +479,18 @@ export interface PrepExcludeInput {
   document_ref?: string
 }
 
-async function resolveExclusionKey(ctx: BoxtalToolCtx, input: PrepExcludeInput): Promise<string> {
-  if (input.order_key && parseOrderKey(input.order_key)) return input.order_key
-  if (input.document_ref) return orderKeyForDocumentRef(ctx, input.document_ref)
-  throw new ToolError("Pass the row's order_key (so:<order id> / doc:<document id>).", {
-    code: "invalid_order_key",
-    retryable: false,
-  })
-}
-
 export async function prepExclude(
   ctx: BoxtalToolCtx,
   input: PrepExcludeInput,
 ): Promise<PrepOrderStateRow> {
-  return upsertPrepOrderState(ctx, await resolveExclusionKey(ctx, input), { excluded: true })
+  return upsertPrepOrderState(ctx, await prepRowKey(ctx, input), { excluded: true })
 }
 
 export async function prepRestore(
   ctx: BoxtalToolCtx,
   input: PrepExcludeInput,
 ): Promise<PrepOrderStateRow> {
-  return upsertPrepOrderState(ctx, await resolveExclusionKey(ctx, input), { excluded: false })
+  return upsertPrepOrderState(ctx, await prepRowKey(ctx, input), { excluded: false })
 }
 
 /**

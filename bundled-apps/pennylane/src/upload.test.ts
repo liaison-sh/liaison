@@ -8,7 +8,7 @@ import { describe, expect, it } from "bun:test"
 import { createMockDb } from "@liaison/test-helpers/mock-db"
 import type { PennylaneToolCtx } from "./ctx"
 import { PennylaneFake } from "./einvoicing/fake/server"
-import { minorToDecimal, supplierInvoiceUpload } from "./upload"
+import { minorAmountsRefusal, minorToDecimal, supplierInvoiceUpload } from "./upload"
 
 function setup() {
   const fake = new PennylaneFake()
@@ -114,11 +114,21 @@ describe("supplier_invoice_upload", () => {
 
   it("refuses bad input before any call", async () => {
     const { fake, ctx } = setup()
-    for (const bad of [{ invoice_date: "30/06/2026" }, { amount_minor: "412.60" }, { currency: "euro" }, { due_date: "soon" }]) {
+    for (const bad of [{ invoice_date: "30/06/2026" }, { currency: "euro" }, { due_date: "soon" }]) {
       const r = (await supplierInvoiceUpload(ctx, { ...INPUT, ...bad })) as R
       expect(r.error.code).toBe("invalid_input")
     }
     expect(fake.calls).toHaveLength(0)
+  })
+
+  it("refuses an amount with a decimal point, naming what to send, before any call", async () => {
+    const { fake, ctx } = setup()
+    const r = (await supplierInvoiceUpload(ctx, { ...INPUT, amount_minor: "412.60" })) as R
+    expect(r.error.code).toBe("invalid_amount")
+    expect(r.error.message).toContain("41260")
+    expect(fake.calls).toHaveLength(0)
+    expect(minorAmountsRefusal({ amount_minor: "41260", tax_minor: "68.5" })).toContain("tax_minor")
+    expect(minorAmountsRefusal({ amount_minor: "41260" })).toBeNull()
   })
 
   it("converts minor units by the currency's decimals", () => {

@@ -307,7 +307,8 @@ async function preflightInvoiceCreateAndIssueParams(
   // or consumes a document number: trimmed, blank becomes null, over the cap is a typed error.
   const notes = normaliseNotes(rawInput.notes)
   if (!notes.ok) return { ok: false, error: notes.error }
-  // A price that is not a plain number ("$1") is refused here, before gating, never read as 0.
+  // A price that is not a whole number of minor units ("$1", "899.00") is refused here, before
+  // gating, never guessed.
   const amountsErr = lineAmountsError(rawInput.items)
   if (amountsErr) return { ok: false, error: amountsErr }
   // Wire payloads deliver bigint fields as strings (JSON); coerce at the

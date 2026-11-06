@@ -2,6 +2,7 @@
 //
 // Invoicing mutations: credit notes (create and issue, issue from a draft).
 
+import { readMinorAmount } from "@liaison/app-sdk"
 import { formatMoneyMinor } from "../money"
 import {
   type Counterparty,
@@ -86,18 +87,50 @@ function autoSourceGateFields(
 // A credit note is a first-class legal document type — its own gap-free
 // CN-{YYYY}- number series (issuer_profiles.prefix_credit_note), issued
 // straight to 'issued' (never payable — no due date, no mark_paid /
-// mark_refunded transition; see state.ts). Lines commonly carry NEGATIVE
-// unit_price_minor (mirroring what is reversed on the original invoice) but
-// a positive amount is also accepted — the sign is the caller's choice, not
-// enforced here. When `original_document_id` is given it MUST reference an
+// mark_refunded transition; see state.ts). Lines carry NEGATIVE unit_price_minor
+// (mirroring what is reversed on the original invoice), and the document's total
+// must come out negative (creditNoteSignError). When `original_document_id` is given it MUST reference an
 // existing document of type='invoice'; on success the ORIGINAL invoice's
 // lifecycle_log gets an appended `credit_note_issued` entry (id + number) so
 // the reversal is discoverable from the invoice side too.
 //
 // Approval gating mirrors invoice_create_and_issue's threshold check, but
 // compares the gate against ABS(grand_total) — a credit note's total is
-// typically negative, and "issue a -6,744€ correction" must gate exactly
-// like a +6,744€ invoice would.
+// negative, and "issue a -6,744€ correction" must gate exactly like a +6,744€
+// invoice would.
+
+/**
+ * The sign of a credit note, on every path that issues one. It credits, so its total is negative:
+ * the refund and cancellation flows only ever build such lines, the card leaves the sign off, the
+ * accounting booking flips it, and the over-credit guard compares absolute values, so a positive
+ * one would pass as a reversal and add to the books. Lines may be mixed (a restocking fee against a
+ * return). Zero only mirrors an invoice whose own total is zero. Imported legal originals do not
+ * come through here: they are stored as their source states them, and are never re-issued.
+ */
+function creditNoteSignError(
+  lines: ReadonlyArray<{ unit_price_minor?: unknown }>,
+  total: bigint,
+  originalTotal: bigint | null,
+  currency: string,
+): ErrorEnvelope | null {
+  if (total < 0n || (total === 0n && originalTotal === 0n)) return null
+  const positive = lines
+    .map((l, i) => ({ i, unit: readMinorAmount(l.unit_price_minor) ?? 0n }))
+    .find((l) => l.unit > 0n)
+  const example = positive
+    ? ` For example, line ${positive.i + 1}'s unit_price_minor is ${positive.unit}: send ${-positive.unit}.`
+    : ""
+  return {
+    status: "error",
+    error: {
+      code: "credit_note_not_negative",
+      message:
+        `These lines total ${formatMoneyMinor(total, currency)}, and a credit note's total must be negative, ` +
+        `because it reverses what was invoiced. Nothing was created and no number was taken. ` +
+        `Send the amounts being reversed as negative unit_price_minor values.${example}`,
+    },
+  }
+}
 
 export interface CreditNoteCreateAndIssueInput {
   issuer_profile_id?: string | null
@@ -159,6 +192,7 @@ interface CreditNoteCreatePrepared {
     shopifyOrderNumber: string | null
     poNumber: string | null
     notes: string | null
+    grandTotalMinor: bigint | null
   }
 }
 
@@ -182,7 +216,8 @@ async function preflightCreditNoteCreateAndIssueParams(
   // or consumes a document number: trimmed, blank becomes null, over the cap is a typed error.
   const notes = normaliseNotes(rawInput.notes)
   if (!notes.ok) return { ok: false, error: notes.error }
-  // A price that is not a plain number ("$1") is refused here, before gating, never read as 0.
+  // A price that is not a whole number of minor units ("$1", "899.00") is refused here, before
+  // gating, never guessed.
   const amountsErr = lineAmountsError(rawInput.items)
   if (amountsErr) return { ok: false, error: amountsErr }
   const input: Omit<CreditNoteCreateAndIssueInput, "items"> & { items: DraftLine[] } = {
@@ -274,6 +309,9 @@ async function preflightCreditNoteCreateAndIssueParams(
   }
   const { grand: total } = computeLineFinancials(input.items, classifyInput)
   const absTotal = total < 0n ? -total : total
+  const originalForSign = originalDocumentUuid ? await findDocumentSummary(ctx.db, originalDocumentUuid) : null
+  const signErr = creditNoteSignError(input.items, total, originalForSign?.grand_total_minor ?? null, currency)
+  if (signErr) return { ok: false, error: signErr }
 
   // Over-credit guard: a credit note against an invoice can never push the invoice's
   // cumulative credited total past the invoice's own grand total. Without this, a credit
@@ -286,7 +324,7 @@ async function preflightCreditNoteCreateAndIssueParams(
   // uncredited -- stay unaffected; only a credit note that would exceed the remainder is
   // refused.
   if (originalDocumentUuid) {
-    const original = await findDocumentSummary(ctx.db, originalDocumentUuid)
+    const original = originalForSign
     if (original) {
       const candidateDocs = originalShopifyOrderId
         ? ((await ctx.db.findMany("documents", {
@@ -354,6 +392,7 @@ async function preflightCreditNoteCreateAndIssueParams(
       absTotal,
       when,
       original: {
+        grandTotalMinor: originalForSign?.grand_total_minor ?? null,
         number: originalNumber,
         issuedAt: originalIssuedAt,
         ref: originalRef,
@@ -418,6 +457,7 @@ export async function creditNoteCreateAndIssue(
           reason: input.reason ?? null,
           originalNumber,
           originalDate: dateOnly(originalIssuedAt),
+          originalTotalMinor: pre.prepared.original.grandTotalMinor,
           issuedAt: input.issued_at ?? null,
           issuerName: issuer.legal_name,
         }),
@@ -607,6 +647,7 @@ async function preflightCreditNoteIssueParams(
   let originalRef: IssueInput["original"] = null
   let originalIssuedAt: string | null = null
   let originalDocumentUuid: string | null = null
+  let originalTotal: bigint | null = null
   if (originalDocumentId) {
     const original = await findDocumentSummary(ctx.db, originalDocumentId)
     if (!original) {
@@ -637,6 +678,7 @@ async function preflightCreditNoteIssueParams(
     originalIssuedAt = original.issued_at
     originalRef = originalRefOf(original)
     originalDocumentUuid = original.id
+    originalTotal = original.grand_total_minor
   }
 
   const counterparty = counterpartyFromRow(draft, issuer)
@@ -647,6 +689,13 @@ async function preflightCreditNoteIssueParams(
     counterparty_country: taxCountryOf(counterparty),
     has_vat_id: !!counterparty.vat_id,
   }
+  const signErr = creditNoteSignError(
+    draft.lines,
+    computeLineFinancials(draft.lines, classifyInput).grand,
+    originalTotal,
+    draft.currency ?? "EUR",
+  )
+  if (signErr) return { ok: false, error: signErr }
   // E-invoicing gate (credit note follows its original; a legacy original is classified from
   // the current data).
   const gate = await checkEinvoiceGate(ctx, {

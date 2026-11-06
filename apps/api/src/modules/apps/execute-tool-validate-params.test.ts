@@ -229,6 +229,51 @@ describe("validateParamsForTool — manifest (ajv) error messages", () => {
   })
 })
 
+describe("validateParamsForTool — money in minor units", () => {
+  const schema = {
+    type: "object",
+    properties: {
+      refund_amount_minor: { type: "integer" },
+      threshold_minor: { type: ["integer", "string", "null"] },
+      count: { type: "integer" },
+      amount_minor: { type: "string" },
+      items: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { unit_price_minor: { type: ["integer", "string"] } },
+        },
+      },
+    },
+  }
+
+  it("a decimal string is not made a number: 899.00 could mean 899 cents or 899 euros", () => {
+    const msg = invalidMessage(manifestTool(schema), { refund_amount_minor: "899.00" })
+    expect(msg).toContain('"refund_amount_minor" is "899.00"')
+    expect(msg).toContain("send 89900")
+    expect(msg).toContain("send 899.")
+  })
+
+  it("a fractional number on a line says what to send", () => {
+    const msg = invalidMessage(manifestTool(schema), { items: [{ unit_price_minor: -550.5 }] })
+    expect(msg).toContain('"items.0.unit_price_minor" is -550.5')
+    expect(msg).toContain("send -55050")
+    expect(msg).toContain("send -550 or -551")
+  })
+
+  it("a whole number string still arrives as a number, and other fields keep their coercion", () => {
+    expect(validate(manifestTool(schema), { refund_amount_minor: "89900" })).toMatchObject({
+      refund_amount_minor: 89900,
+    })
+    expect(validate(manifestTool(schema), { count: "2.0" })).toMatchObject({ count: 2 })
+  })
+
+  it("a number where a string form is declared keeps the plain type message", () => {
+    const msg = invalidMessage(manifestTool(schema), { amount_minor: 41260 })
+    expect(msg).toContain('"amount_minor" must be string, but number was provided')
+  })
+})
+
 describe("validateParamsForTool — kernel (Zod) error messages", () => {
   const schema = z.object({
     threadId: z.string(),

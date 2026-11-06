@@ -130,18 +130,77 @@ describe("prep_set_status by document_ref", () => {
     expect(orderState(db, "so:5123")!.status).toBe("on_hold")
   })
 
-  it("an order_key wins over a document_ref", async () => {
+  it("an order_key and a document_ref naming different rows are refused, and nothing is written", async () => {
     const { ctx, db } = makeCtx({
       prep_meta: [{ id: "m1", document_ref: "doc-1", shopify_order_id: "5123" }],
     })
-    await prepSetStatus(ctx, { order_key: "so:777", document_ref: "doc-1", status: "validated" })
-    expect(orderState(db, "so:777")!.status).toBe("validated")
-    expect(orderState(db, "so:5123")).toBeFalsy()
+    await expect(
+      prepSetStatus(ctx, { order_key: "so:777", document_ref: "doc-1", status: "validated" }),
+    ).rejects.toMatchObject({ code: "order_key_mismatch", message: expect.stringContaining("so:5123") })
+    expect(db.__all("prep_order_state")).toHaveLength(0)
   })
 
-  it("refuses a call with neither", async () => {
+  it("an order_key and a document_ref naming the same row write it", async () => {
+    const { ctx, db } = makeCtx({
+      prep_meta: [{ id: "m1", document_ref: "doc-1", shopify_order_id: "5123" }],
+    })
+    await prepSetStatus(ctx, { order_key: "so:5123", document_ref: "doc-1", status: "validated" })
+    expect(orderState(db, "so:5123")!.status).toBe("validated")
+  })
+
+  it("refuses a call with neither, and with an empty one, saying what to pass", async () => {
     const { ctx } = makeCtx()
-    await expect(prepSetStatus(ctx, { status: "validated" })).rejects.toThrow("not a prep row key")
+    for (const input of [{}, { document_ref: "" }, { order_key: " " }]) {
+      await expect(prepSetStatus(ctx, { ...input, status: "validated" })).rejects.toMatchObject({
+        code: "invalid_order_key",
+        message: expect.stringContaining("order_key"),
+      })
+    }
+  })
+
+  // The walk's case: `so:not-real` answered success and wrote that row into the worklist.
+  it("refuses an order_key that names nothing, and writes no row", async () => {
+    const answers: Record<string, CrossAppEnvelope> = {
+      "shopify:orders_get": { status: "completed", result: null },
+      "invoicing:documents_get": { status: "completed", result: null },
+    }
+    const refused: Array<[string, string]> = [
+      ["so:not-real", "invalid_order_key"],
+      ["bogus", "invalid_order_key"],
+      ["pending:never-made", "invalid_order_key"],
+      ["so:424242", "order_not_found"],
+      ["doc:not-a-document", "document_not_found"],
+    ]
+    for (const [key, code] of refused) {
+      const { ctx, db } = makeCtx({}, async (target) => answers[target]!)
+      await expect(prepSetStatus(ctx, { order_key: key, status: "validated" })).rejects.toMatchObject({ code })
+      await expect(prepExclude(ctx, { order_key: key })).rejects.toMatchObject({ code })
+      await expect(prepSetValidated(ctx, { order_key: key, validated: true })).rejects.toMatchObject({ code })
+      expect(db.__all("prep_order_state")).toHaveLength(0)
+    }
+  })
+
+  it("a read that failed is not an answer: the order_key is refused as retryable", async () => {
+    const { ctx, db } = makeCtx({}, async () => ({
+      status: "error",
+      error: { code: "throttled", message: "429", retryable: true },
+    }))
+    await expect(prepSetStatus(ctx, { order_key: "so:5123", status: "validated" })).rejects.toMatchObject({
+      code: "order_key_unresolved",
+      retryable: true,
+    })
+    expect(db.__all("prep_order_state")).toHaveLength(0)
+  })
+
+  it("a key that already has a row is its own proof: no read, so an old row can still be restored", async () => {
+    let reads = 0
+    const { ctx, db } = makeCtx({ prep_order_state: [{ id: "s1", order_key: "pending:tok", status: "to_prepare" }] }, async () => {
+      reads++
+      return { status: "completed", result: null }
+    })
+    await prepRestore(ctx, { order_key: "pending:tok" })
+    expect(reads).toBe(0)
+    expect(orderState(db, "pending:tok")!.excluded).toBe(false)
   })
 })
 

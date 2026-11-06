@@ -4,6 +4,7 @@
  * weak-model JSON-string and bare-scalar repairs, the unknown-parameter check
  * and the readable ajv / Zod error messages.
  */
+import { minorAmountRefusal, readMinorAmount } from "@liaison/app-sdk"
 import type { ErrorObject, SchemaObject } from "ajv"
 import { HTTPException } from "hono/http-exception"
 import { isManifestHandler, type toolRegistry } from "~/modules/apps/app-registries"
@@ -73,7 +74,9 @@ function coerceJsonStringParams(params: unknown, schema: unknown): unknown {
     // (Scoped to a purely-numeric param so a number|array/object union still
     // reaches the JSON-parse branch below.)
     if (wantsNumber && !wantsArray && !wantsObject && typeof value === "string") {
-      if (isNumericString(value)) {
+      // A minor-unit amount never comes through as a number from a string with a decimal point:
+      // "899.00" must not become 899 (8.99) when it may well mean 899.00.
+      if (isNumericString(value) && (!key.endsWith("_minor") || readMinorAmount(value) !== null)) {
         out ??= { ...src }
         out[key] = Number(value)
       }
@@ -292,7 +295,9 @@ function formatAjvParamError(
     } else if (e.keyword === "type") {
       const want = String(p.type ?? "the declared type")
       const got = jsTypeAtPath(params, field)
-      if ((want === "array" || want === "object") && got === "string") {
+      if (field.endsWith("_minor") && readMinorAmount(valueAtPath(params, field)) === null) {
+        lines.push(`- ${minorAmountRefusal(`"${field}"`, valueAtPath(params, field))}`)
+      } else if ((want === "array" || want === "object") && got === "string") {
         lines.push(
           `- "${field}" must be ${want === "array" ? "an array" : "an object"}.${jsonStringHint(want)}`,
         )

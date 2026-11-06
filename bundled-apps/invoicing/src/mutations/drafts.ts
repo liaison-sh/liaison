@@ -439,7 +439,7 @@ async function updateDraft(
     }
   }
   if (lines) {
-    const normalised = normaliseDraftLines(lines)
+    const normalised = normaliseDraftLines(lines, "patch.lines")
     // A drafts_update line replacement is typed input exactly like drafts_create's `items` (the
     // manifest documents ONE rule for typed prices on quote/proforma/PO lines, with no carve-out
     // for update): under an issuer with `prices_include_tax`, the price the caller put in the

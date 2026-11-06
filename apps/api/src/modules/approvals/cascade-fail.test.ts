@@ -319,7 +319,7 @@ describe("bundle failure path", () => {
     }
   })
 
-  it("the sequence-failed notice carries the requester's scopes and RLS hides it from a member lacking them", async () => {
+  it("the sequence-failed notice carries what its steps could reveal and RLS hides it from a member lacking them", async () => {
     const LACKER = "00000000-0000-4000-8000-0000000a7006"
     await sql`INSERT INTO kernel.users (id, org_id, email, name, status, password_hash)
       VALUES (${LACKER}, ${ORG}, 'cascade-fail-lacker-2@test.com', 'Lacker', 'active', 'hash') ON CONFLICT DO NOTHING`
@@ -348,7 +348,8 @@ describe("bundle failure path", () => {
       const lackerSees = await visibleIds(LACKER, [])
       const requesterSees = await visibleIds(USER, actor.scopes)
       for (const row of rows) {
-        expect(row.required_scopes).toEqual(["seq_test:approve", "seq_test:write"])
+        // The steps' tool scope, not everything the requester holds.
+        expect(row.required_scopes).toEqual(["seq_test:write"])
         expect(lackerSees).not.toContain(row.id)
         expect(requesterSees).toContain(row.id)
       }

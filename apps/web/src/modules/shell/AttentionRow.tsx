@@ -177,7 +177,11 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
   // fresh request the moment the toast faded.
   const [localFailure, setLocalFailure] = createSignal<string | null>(null)
   const lastFailureMessage = (): string | null => {
-    if (!isApproval() || wedged()) return null
+    if (!isApproval()) return null
+    if (wedged()) {
+      const reason = props.item.metadata?.failureReason
+      return typeof reason === "string" && reason.length > 0 ? reason : null
+    }
     const local = localFailure()
     if (local) return local
     const f = props.item.metadata?.lastFailure as { message?: unknown } | undefined

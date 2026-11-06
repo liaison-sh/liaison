@@ -188,3 +188,14 @@ customer_history: lines with list unit price and price paid after the line disco
 A search that finds nothing points to customer_history or the Shopify order search -> bundled-apps/invoicing/src/reads.ts:604-626
 The global search indexes the address, email, order number and line descriptions -> bundled-apps/invoicing/app.manifest.json:288-306; apps/api/src/modules/search/doc-builder.ts:150-216
 Draft card names a private consumer only when the call declares one -> bundled-apps/invoicing/src/summarizers.ts:489
+A credit note's stated date decides its number year; before the last number of the series or after today is refused -> bundled-apps/invoicing/src/mutations/credit-notes.ts:84
+A payment date nobody states reads the issuer's time zone -> bundled-apps/invoicing/src/mutations/payments.ts:92; bundled-apps/invoicing/src/handlers/shopify-order-paid.ts:969
+A paid order or draft order on an unknown zone waits in deferred_list -> bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:678
+A draft order deleted or completed meanwhile closes its wait -> bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:486; bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:561
+An issued document's date stays in its number's year; an invoice or credit note's date stays between its neighbouring numbers and on or before today -> bundled-apps/invoicing/src/mutations/documents-update.ts:330
+A date picked on a new quote, proforma or purchase order decides its number year; after today is refused; a shop-linked quote takes its draft order's day -> bundled-apps/invoicing/src/mutations/stated-issue-date.ts:13; bundled-apps/invoicing/src/ui/Editor.tsx:803
+The PDF tab frames the document where the browser has a PDF viewer -> bundled-apps/invoicing/src/ui/DocumentDetail.tsx:772
+credit note approval card states total, lines, date, original -> bundled-apps/invoicing/src/approval-cards.ts:334
+Preview and Download say why when a PDF cannot open; pending offers Retry render -> bundled-apps/invoicing/src/ui/DocumentDetail.tsx:338
+The editor says under Issue date when a chosen date would be refused -> bundled-apps/invoicing/src/ui/Editor.tsx:815
+A credit note cannot predate the invoice it corrects, stated or moved; an import keeps its date -> bundled-apps/invoicing/src/mutations/stated-issue-date.ts:45; bundled-apps/invoicing/src/mutations/documents-update.ts:322; bundled-apps/invoicing/src/import-kind.ts:336

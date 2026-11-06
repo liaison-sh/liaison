@@ -139,3 +139,4 @@ Case-insensitive match -> apps/api/src/modules/agent/providers/openrouter-provid
 At most 20 hosts -> packages/shared/src/validation/org-kernel-settings.ts:174
 Admin only: AI models API behind kernel:org:admin -> apps/api/src/modules/settings/ai-models-routes.ts:3
 Blocked hosts saved through PATCH /settings/ai/models -> apps/api/src/modules/settings/ai-models-routes.ts:354
+AI model settings tools for agents and MCP clients -> apps/api/src/modules/agent/tools/kernel-tools.ts:2876

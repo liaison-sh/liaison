@@ -1454,10 +1454,25 @@ describe("invoicing manifest", () => {
     // fragment of a person's name), its message and the guide require a solid link between the
     // company and the customer before a found VAT number is used, and the buyer_vat_id_required
     // refusal names the company of the matched Shopify order's earlier invoice (no placeholder).
+    // 0.20.37: a credit note's stated date decides its number year, and is never after today; paid
+    // dates and the editor's default date read the issuer's date; a draft order's quote refused for
+    // its zone waits with its arguments.
+    // 0.20.39: quote, proforma and po_create_and_issue take a stated issue date, which the editor
+    // now sends; a quote on a shop-linked issuer refuses another day than its draft order's.
+    // 0.20.38: documents_update keeps an issued document's date in its number's year, and an issued
+    // invoice or credit note's date between its neighbouring numbers and on or before today.
     // 0.20.33: issue dates and number years in the issuer's time zone, through ctx.time.civil.
     // 0.20.31: the drafts tools that park an approval declare its summary.
     // 0.20.30: the document and editor actions sit at the top of the panel, clear of the chat dock.
-    expect(m.version).toBe("0.20.36")
+    // 0.20.40: credit note and purchase order cards state the amount, lines and date when the host
+    //   parks the call (an org policy, what the turn read), not only when the handler does.
+    // 0.20.41: search words for credit note, refund and quote tools.
+    // 0.20.42: record pages name the entity their id belongs to.
+    // 0.20.43: the PDF tab shows the document in a frame, which the CSP allows, not an <object>.
+    // 0.20.44: a credit note is never dated before the invoice it corrects, stated or moved.
+    // 0.20.45: Preview and Download say why when a PDF cannot open, a pending PDF offers Retry render,
+    // and the editor says beside the field when a chosen issue date would be refused.
+    expect(m.version).toBe("0.20.45")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

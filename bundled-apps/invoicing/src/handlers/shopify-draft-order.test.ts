@@ -19,7 +19,7 @@
 import { testTime } from "../test-time"
 import { describe, expect, test } from "bun:test"
 import type { CrossAppEnvelope } from "../cross-app"
-import type { MutationsCtx } from "../mutations"
+import { type MutationsCtx, quoteCreateAndIssue } from "../mutations"
 import { createMockDb, type MockDb } from "../test-db"
 import {
   draftOrderLinesToItems,
@@ -30,6 +30,7 @@ import {
   syncQuoteFromDraftOrder,
   onShopifyDraftOrderDeleted,
   onShopifyDraftOrderUpdated,
+  retryParkedDraftOrderQuote,
   type DraftOrderCtx,
   type NormalizedDraftOrder,
 } from "./shopify-draft-order"
@@ -826,5 +827,94 @@ describe("issuer prices_include_tax vs the shop setting", () => {
     const q = quotes(db)[0]!
     // 2 x 50.00 gross at 20% -> 2 x 41.67 net.
     expect(String(q.subtotal_minor)).toBe("8334")
+  })
+})
+
+describe("a draft order refused for its zone", () => {
+  const brokenIssuer = (db: MockDb) => db.update("issuer_profiles", "iss-1", { timezone: "Europe/Atlantis" })
+  const parks = (db: MockDb) =>
+    db.findMany("deferred_events", { where: { event_id: DRAFT_GID } }) as Promise<Array<Record<string, unknown>>>
+
+  test("parks awaiting_config with its arguments, and takes no number", async () => {
+    const { ctx, db } = makeCtx()
+    await brokenIssuer(db)
+    const fallback = { email: "known@buyersarl.example", vat_id: "FR12345678901" }
+    const res = await syncQuoteFromDraftOrder(ctx, {
+      draftOrderId: DRAFT_GID,
+      draft: draftOrder(),
+      counterpartyFallback: fallback,
+      customerReference: "REF-1",
+    })
+    expect(res).toMatchObject({ status: "deferred", reason: "issuer_timezone_invalid" })
+    expect(await db.findMany("documents", {})).toEqual([])
+    expect(await db.findMany("__sequences", {})).toEqual([])
+    const [park, ...others] = await parks(db)
+    expect(others).toEqual([])
+    expect(park).toMatchObject({
+      status: "awaiting_config",
+      reason: "issuer_timezone_invalid",
+      blocked_on: { kind: "issuer_timezone", issuer_profile_id: "iss-1" },
+      event_payload_json: {
+        order_number: "#D77",
+        draft_order_id: DRAFT_GID,
+        counterparty_fallback: fallback,
+        customer_reference: "REF-1",
+      },
+    })
+  })
+
+  test("the same webhook again refreshes the one park", async () => {
+    const { ctx, db } = makeCtx()
+    await brokenIssuer(db)
+    await onShopifyDraftOrderCreated({ entityId: DRAFT_GID, data: draftOrder() } as never, ctx)
+    await onShopifyDraftOrderUpdated({ entityId: DRAFT_GID, data: draftOrder({ note: "edited" }) } as never, ctx)
+    const all = await parks(db)
+    expect(all.length).toBe(1)
+    expect((all[0]?.event_payload_json as { draft: { note: string } }).draft.note).toBe("edited")
+  })
+
+  test("a retry with the zone fixed makes the quote from its arguments, and closes nothing twice", async () => {
+    const { ctx, db } = makeCtx()
+    await brokenIssuer(db)
+    await syncQuoteFromDraftOrder(ctx, { draftOrderId: DRAFT_GID, draft: draftOrder(), customerReference: "REF-1" })
+    const [row] = await parks(db)
+    expect(await retryParkedDraftOrderQuote(ctx, row as never)).toEqual({ status: "still_blocked", reason: "issuer_timezone_invalid" })
+    expect(await db.findMany("documents", {})).toEqual([])
+
+    await db.update("issuer_profiles", "iss-1", { timezone: "Europe/Paris" })
+    expect(await retryParkedDraftOrderQuote(ctx, row as never)).toEqual({ status: "ok" })
+    const docs = (await db.findMany("documents", {})) as Array<Record<string, unknown>>
+    expect(docs.length).toBe(1)
+    expect((docs[0]?.external_refs as Record<string, unknown>).customer_reference).toBe("REF-1")
+
+    // Again: the quote exists, nothing is rewritten from the stored arguments.
+    expect(await retryParkedDraftOrderQuote(ctx, row as never)).toEqual({ status: "ok" })
+    expect((await db.findMany("documents", {})).length).toBe(1)
+  })
+
+  test("a draft order completed while it waits closes the park: the order's invoice follows", async () => {
+    const { ctx, db } = makeCtx()
+    await brokenIssuer(db)
+    await onShopifyDraftOrderCreated({ entityId: DRAFT_GID, data: draftOrder() } as never, ctx)
+    await onShopifyDraftOrderCompleted(
+      { entityId: DRAFT_GID, data: draftOrder({ status: "completed", orderId: "gid://shopify/Order/5" }) } as never,
+      ctx,
+    )
+    expect((await parks(db))[0]?.status).toBe("resolved")
+    expect(await db.findMany("documents", {})).toEqual([])
+  })
+
+  test("the quote tool refuses before a draft order exists, so a retry cannot duplicate it", async () => {
+    const { ctx, db, extras } = makeCtx()
+    await brokenIssuer(db)
+    const res = await quoteCreateAndIssue(ctx, {
+      counterparty: { legal_name: "Buyer SARL", country: "FR", address: "1 rue Buyer, 75002 Paris", email: "ap@buyersarl.example" },
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: [{ description: "Widget", quantity: "1", unit_price_minor: 1000 }],
+    } as never)
+    expect(res).toMatchObject({ status: "error", error: { code: "issuer_timezone_invalid" } })
+    expect(extras.executeToolCalls.filter((c) => c.name === "shopify:draft_orders_create")).toEqual([])
+    expect(await parks(db)).toEqual([])
   })
 })

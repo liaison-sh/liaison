@@ -87,7 +87,7 @@
           "order_reissue_apply",
           "documents_for_orders"
         ],
-        "text": "On a DRAFT, documents_update can change anything (counterparty details, dates, incoterm, tax_treatment, and a full line replacement; totals recompute and the PDF re-renders; every edit is logged). Once a document is ISSUED its NUMBER, TYPE, STATUS, ISSUER, and CURRENCY are immutable AND its FINANCIAL SUBSTANCE is FROZEN: on an issued invoice you can no longer edit lines, tax_treatment, counterparty_name, or counterparty_vat_id in place (documents_update returns issued_document_immutable). An issued invoice is legally immutable. That freeze is for invoices and credit notes ONLY: an issued PROFORMA, QUOTE or PURCHASE ORDER is not an accounting document, so documents_update edits its lines, tax_treatment and recipient in place like a draft, and that is how you change an issued proforma's amount. On an issued invoice, only harmless metadata (address, email, linked contact, incoterm, issued_at/due_at) stays editable post-issue for a typo fix, still via documents_update; it works on any status except voided/cancelled. To correct an issued invoice's amounts, tax treatment, or the counterparty's legal identity, issue a CREDIT NOTE with credit_note_create_and_issue (original_document_id = that invoice, negative lines mirroring the correction), NEVER an in-place edit. For a FINANCIAL reversal (customer returns goods, order cancelled, overcharge), record a refund (documents_record_refund) alongside the credit note; do not edit an invoice's amounts to simulate a refund that actually happened. When the correction comes from a Shopify ORDER EDIT that changed the line set or the amounts, use order_reissue_apply, never a hand built credit note plus a hand built invoice: one human approval covers both documents together, the payment stays on the ORIGINAL and the replacement issues UNPAID. An issued invoice stays immutable throughout, so stop offering to edit one and offer the credit note or the reissue path instead. A Shopify refund or cancellation ALREADY auto issues its credit note, so check documents_for_orders before issuing one by hand or you will credit the customer twice."
+        "text": "On a DRAFT, documents_update can change anything (counterparty details, dates, incoterm, tax_treatment, and a full line replacement; totals recompute and the PDF re-renders; every edit is logged). Once a document is ISSUED its NUMBER, TYPE, STATUS, ISSUER, and CURRENCY are immutable AND its FINANCIAL SUBSTANCE is FROZEN: on an issued invoice you can no longer edit lines, tax_treatment, counterparty_name, or counterparty_vat_id in place (documents_update returns issued_document_immutable). An issued invoice is legally immutable. That freeze is for invoices and credit notes ONLY: an issued PROFORMA, QUOTE or PURCHASE ORDER is not an accounting document, so documents_update edits its lines, tax_treatment and recipient in place like a draft, and that is how you change an issued proforma's amount. On an issued invoice, only harmless metadata (address, email, linked contact, incoterm, issued_at/due_at) stays editable post-issue for a typo fix, still via documents_update; it works on any status except voided/cancelled. An issued document's date stays in its number's year: a refusal with issue_date_crosses_number_year means offer a credit note and a new invoice, never another date. To correct an issued invoice's amounts, tax treatment, or the counterparty's legal identity, issue a CREDIT NOTE with credit_note_create_and_issue (original_document_id = that invoice, negative lines mirroring the correction), NEVER an in-place edit. For a FINANCIAL reversal (customer returns goods, order cancelled, overcharge), record a refund (documents_record_refund) alongside the credit note; do not edit an invoice's amounts to simulate a refund that actually happened. When the correction comes from a Shopify ORDER EDIT that changed the line set or the amounts, use order_reissue_apply, never a hand built credit note plus a hand built invoice: one human approval covers both documents together, the payment stays on the ORIGINAL and the replacement issues UNPAID. An issued invoice stays immutable throughout, so stop offering to edit one and offer the credit note or the reissue path instead. A Shopify refund or cancellation ALREADY auto issues its credit note, so check documents_for_orders before issuing one by hand or you will credit the customer twice."
       },
       {
         "tools": [
@@ -224,7 +224,7 @@
       }
     ]
   },
-  "version": "0.20.36",
+  "version": "0.20.45",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -332,6 +332,11 @@
           "readScope": "invoicing:documents:read",
           "writeScope": "invoicing:documents:write"
         }
+      },
+      "received_einvoice": {
+        "labelField": "invoice_number",
+        "tableName": "received_einvoices",
+        "readScope": "invoicing:received:read"
       },
       "received_file": {
         "labelField": "kind",
@@ -2253,7 +2258,8 @@
         "properties": {
           "issuer_profile_id": { "type": ["string", "null"], "description": "Issuer profile id." },
           "counterparty": { "type": ["object", "string"], "additionalProperties": true, "description": "The counterparty as passed to a create_and_issue tool." },
-          "buyer_is_consumer": { "type": ["boolean", "null"], "description": "As passed to a create_and_issue tool." }
+          "buyer_is_consumer": { "type": ["boolean", "null"], "description": "As passed to a create_and_issue tool." },
+          "original_document_id": { "type": ["string", "null"], "description": "The invoice a credit note reverses, by id or number: returns its number and date as `original`, with no buyer check." }
         }
       },
       "readOnly": true
@@ -3180,7 +3186,7 @@
     },
     "quote_create_and_issue": {
       "description": "Create a quote and issue it in one call. A quote IS a Shopify draft order when the issuer profile is mapped to a shop. Creating one here creates the draft order in Shopify (custom lines go over at the price given, which the shop treats as tax inclusive, so set prices_include_tax on the issuer profile to match the shop and a typed price then means the same thing on both sides; catalog lines with product_source 'shopify' and a variant gid external_id take the store price) and the quote comes back numbered with its PDF, linked by shopify_draft_order_id. Equivalent: shopify__draft_orders_create, after which the quote appears by itself, so NEVER create both for one offer. Editing the draft order in Shopify updates the quote, deleting it rejects the quote. To turn the quote into an invoice call documents_convert_to_invoice (it completes the draft order with payment pending, Shopify creates the order and the invoice is issued automatically). Without a shop mapping this is a local quote gated on the issuer's invoice approval threshold. Returns document_id, number, pdf_file_id (the issued PDF's file id, to attach to a reply; null with pdf_error saying what to do when the PDF did not render), pdf_status, grand_total_minor (tax included, discounts applied, minor units) and currency, plus shopify_draft_order_id and shopify_draft_order_name on a shop; or pending_approval when the Shopify draft order creation is waiting for a human. In a sequenced approval bundle a later step can cite @ref:<this approval id>:pdf_file_id, :number, :document_id, :grand_total_minor or :currency.",
-      "searchKeywords": ["devis", "estimate", "offre", "créer"],
+      "searchKeywords": ["devis", "estimate", "offre", "créer", "client", "nouveau"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "quoteCreateAndIssueHandler",
       "preflight": "quoteCreateAndIssuePreflightHandler",
@@ -3322,6 +3328,10 @@
           },
           "incoterm": {
             "type": "string"
+          },
+          "issued_at": {
+            "type": ["string", "null"],
+            "description": "Issue date, ISO date (YYYY-MM-DD), for a date a person chose. Defaults to today in the issuer's time zone. The date decides the number's year: a date in a past year takes that year's series. A date after today is refused (issue_date_in_future). On an issuer linked to a Shopify shop the quote takes the day its draft order is created, so another date is refused (issue_date_set_by_draft_order)."
           },
           "due_at": {
             "type": "string"
@@ -3565,6 +3575,10 @@
           "incoterm": {
             "type": "string"
           },
+          "issued_at": {
+            "type": ["string", "null"],
+            "description": "Issue date, ISO date (YYYY-MM-DD), for a date a person chose. Defaults to today in the issuer's time zone. The date decides the number's year: a date in a past year takes that year's series. A date after today is refused (issue_date_in_future)."
+          },
           "due_at": {
             "type": "string"
           },
@@ -3651,6 +3665,8 @@
           "draft_id"
         ]
       },
+      "summarizer": "summarizePoIssue",
+      "summarizerContext": { "tool": "documents_get", "params": { "id": "draft_id" } },
       "approvalCard": {
         "summary": "Issue purchase order from draft {{params.draft_id}}"
       },
@@ -3798,6 +3814,10 @@
           "incoterm": {
             "type": "string"
           },
+          "issued_at": {
+            "type": ["string", "null"],
+            "description": "Issue date, ISO date (YYYY-MM-DD), for a date a person chose. Defaults to today in the issuer's time zone. The date decides the number's year: a date in a past year takes that year's series. A date after today is refused (issue_date_in_future)."
+          },
           "due_at": {
             "type": "string"
           },
@@ -3828,6 +3848,8 @@
           "items"
         ]
       },
+      "summarizer": "summarizePoCreateAndIssue",
+      "summarizerContext": { "tool": "documents_issue_preview", "params": { "issuer_profile_id": "issuer_profile_id" } },
       "approvalCard": {
         "summary": "Issue PO for {{params.counterparty.legal_name}}"
       },
@@ -3925,7 +3947,7 @@
     },
     "documents_record_refund": {
       "description": "Record a refund against a document (full or partial): records only, moves no money. PAYMENT STATUS ONLY: it does not issue a credit note, and a partial marks the document 'partial' while a full one marks it 'refunded'. A refund or cancellation taken in Shopify already auto issues the matching credit note, so check documents_for_orders before adding one by hand. On a split order (goods plus software) record the refund against the document that actually carries the refunded line.",
-      "searchKeywords": ["remboursement", "rembourser", "refund", "enregistrer", "noter"],
+      "searchKeywords": ["remboursement", "rembourser", "refund", "enregistrer", "noter", "facture", "factures", "paiement"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "documentsRecordRefundHandler",
       "preflight": "documentsRecordRefundPreflightHandler",
@@ -4011,7 +4033,7 @@
     },
     "credit_note_create_and_issue": {
       "description": "Create a credit note, a legal document, and issue it in one call. A credit note is a first-class legal document — its own gap-free CN-{YYYY}- number series, issued straight to 'issued' status (never a payable document — no due date, no mark_paid). Lines commonly carry NEGATIVE unit_price_minor mirroring what is reversed on the original invoice (a positive amount is also accepted). To reverse/correct an ISSUED invoice, pass `original_document_id` set to that invoice's id — it MUST reference an existing invoice (validated before issuance) and, on success, the original invoice's lifecycle_log records a `credit_note_issued` entry naming this credit note. Handler-conditional gating against issuer.invoice_approval_threshold_minor (unset means always approve, threshold 0; a credit note with no original_document_id is ALWAYS approved), compared against the ABSOLUTE VALUE of the credit note's grand total (a -6,744€ correction gates exactly like a +6,744€ invoice would). For a legally clean reversal, ALSO call documents_record_refund on the original invoice to record the payment-side event — the credit note is the legal document, record_refund is the payment status change; do BOTH, never just one. ALWAYS pass original_document_id when you reverse an invoice: without it the over_credit cap (a credit note can never push an invoice's cumulative credited total past its own grand total) cannot apply. A Shopify refund or cancellation already issues its credit note automatically, and a cancellation of a partly credited invoice reverses only the REMAINDER, so check documents_for_orders before issuing one by hand rather than crediting twice. A hand built partial credit note carries its OWN tax: mirror the original's per line rates, because only the automatic refund path allocates the VAT for you. On a split order, credit the document that actually carries the refunded line, not whichever invoice you saw first.",
-      "searchKeywords": ["avoir", "crédit", "annulation", "remboursement", "rectificative"],
+      "searchKeywords": ["avoir", "crédit", "annulation", "remboursement", "rectificative", "émettre", "émission", "nouveau"],
       "requiredScopes": ["invoicing:documents:write"],
       "atomic": true,
       "handler": "creditNoteCreateAndIssueHandler",
@@ -4148,7 +4170,7 @@
               "string",
               "null"
             ],
-            "description": "Issue date, ISO date (YYYY-MM-DD). Defaults to today in the issuer's time zone. A date before the last credit note number in the series is refused (issued_at_before_series)."
+            "description": "Issue date, ISO date (YYYY-MM-DD). Defaults to today in the issuer's time zone. The date decides the number's year: a date in a past year takes that year's series. A date before the last number of that series is refused (issue_date_before_last_number), so is a date before the invoice it corrects (issue_date_before_original), and so is a date after today (issue_date_in_future)."
           },
           "original_document_id": {
             "type": [
@@ -4252,6 +4274,11 @@
           "items"
         ]
       },
+      "summarizer": "summarizeCreditNoteCreateAndIssue",
+      "summarizerContext": {
+        "tool": "documents_issue_preview",
+        "params": { "issuer_profile_id": "issuer_profile_id", "original_document_id": "original_document_id" }
+      },
       "approvalCard": {
         "summary": "Issue credit note for {{params.counterparty.legal_name}}"
       },
@@ -4282,6 +4309,8 @@
           "draft_id"
         ]
       },
+      "summarizer": "summarizeCreditNoteIssue",
+      "summarizerContext": { "tool": "documents_get", "params": { "id": "draft_id" } },
       "approvalCard": {
         "summary": "Issue credit note from draft {{params.draft_id}}"
       }
@@ -4659,7 +4688,7 @@
       }
     },
     "documents_update": {
-      "description": "Edit a document. On a DRAFT, every field is editable: counterparty snapshot fields (name/address/VAT id/email/country/linked contact), incoterm, issued_at/due_at, po_number, notes, tax_treatment, and a full LINE REPLACEMENT (when `lines` is passed it REPLACES every line and totals, subtotal/tax/grand total, are recomputed exactly like issuance). Once an INVOICE or a CREDIT NOTE is ISSUED its FINANCIAL SUBSTANCE is FROZEN: `lines`, `tax_treatment`, `counterparty_name`, and `counterparty_vat_id` can no longer be changed in place (the call fails `issued_document_immutable`). An issued invoice is legally immutable; to correct amounts, tax treatment, or the counterparty's legal identity, issue a CREDIT NOTE with credit_note_create_and_issue (referencing this invoice), never an in-place edit. A PROFORMA, a QUOTE or a PURCHASE ORDER is not an accounting document and is never frozen: on an issued one, every field above stays editable exactly like a draft, including a full `lines` replacement (totals recompute, the PDF re-renders, the edit is logged). This is THE way to change an issued proforma's amount or lines (e.g. a 0 value proforma that must declare 1.00): calling proforma_create_and_issue again for the same order does not change it. Harmless metadata (address, email, linked contact, incoterm, issued_at/due_at, po_number, notes) stays editable post-issue for a Sufio-style typo fix. `number`, `type`, `status`, `issuer_profile_id`, and `currency` are never editable here (no such params). The customer's purchase order number IS a non financial reference like the address or due date: set or correct it with `po_number` on a draft or an already-issued document alike, and the PDF re-renders with the new value. Editing the underlying Shopify order is NOT a substitute for this: it changes the order without changing the document that was already sent to the customer. `notes` is free text in the same class: a contract reference, extra customs information or a special mention, printed on the PDF and settable on a draft or on an already issued, sent or paid document, capped at 2000 characters. A voided or cancelled document is fully immutable (the call fails `document_not_editable`). Every applied edit appends a lifecycle_log entry recording the changed field names and forces a fresh PDF re-render (a render FAILURE does not undo the edit: the edit persists and pdf_status reflects the failure; retry with documents_retry_pdf).",
+      "description": "Edit a document. On a DRAFT, every field is editable: counterparty snapshot fields (name/address/VAT id/email/country/linked contact), incoterm, issued_at/due_at, po_number, notes, tax_treatment, and a full LINE REPLACEMENT (when `lines` is passed it REPLACES every line and totals, subtotal/tax/grand total, are recomputed exactly like issuance). Once an INVOICE or a CREDIT NOTE is ISSUED its FINANCIAL SUBSTANCE is FROZEN: `lines`, `tax_treatment`, `counterparty_name`, and `counterparty_vat_id` can no longer be changed in place (the call fails `issued_document_immutable`). An issued invoice is legally immutable; to correct amounts, tax treatment, or the counterparty's legal identity, issue a CREDIT NOTE with credit_note_create_and_issue (referencing this invoice), never an in-place edit. A PROFORMA, a QUOTE or a PURCHASE ORDER is not an accounting document and is never frozen: on an issued one, every field above stays editable exactly like a draft, including a full `lines` replacement (totals recompute, the PDF re-renders, the edit is logged). This is THE way to change an issued proforma's amount or lines (e.g. a 0 value proforma that must declare 1.00): calling proforma_create_and_issue again for the same order does not change it. Harmless metadata (address, email, linked contact, incoterm, issued_at/due_at, po_number, notes) stays editable post-issue for a Sufio-style typo fix. An issued document's date stays in its number's year (issue_date_crosses_number_year, and an invoice or credit note then needs a credit note, never another date); an issued invoice or credit note's date also stays between its neighbouring numbers (issue_date_breaks_number_order) and on or before today (issue_date_in_future), a credit note stays on or after the invoice it corrects (issue_date_before_original) and that invoice on or before its credit notes (issue_date_after_credit_note), and an issued document cannot lose its date (issued_at_invalid). `number`, `type`, `status`, `issuer_profile_id`, and `currency` are never editable here (no such params). The customer's purchase order number IS a non financial reference like the address or due date: set or correct it with `po_number` on a draft or an already-issued document alike, and the PDF re-renders with the new value. Editing the underlying Shopify order is NOT a substitute for this: it changes the order without changing the document that was already sent to the customer. `notes` is free text in the same class: a contract reference, extra customs information or a special mention, printed on the PDF and settable on a draft or on an already issued, sent or paid document, capped at 2000 characters. A voided or cancelled document is fully immutable (the call fails `document_not_editable`). Every applied edit appends a lifecycle_log entry recording the changed field names and forces a fresh PDF re-render (a render FAILURE does not undo the edit: the edit persists and pdf_status reflects the failure; retry with documents_retry_pdf).",
       "searchKeywords": ["modifier", "corriger", "edit", "fix", "correct", "invoice"],
       "requiredScopes": ["invoicing:documents:write"],
       "gated": true,
@@ -4753,7 +4782,7 @@
               "string",
               "null"
             ],
-            "description": "ISO date (YYYY-MM-DD), or null to clear."
+            "description": "ISO date (YYYY-MM-DD). On a draft, null clears it. On an issued document it stays in the number's year; an issued invoice or credit note's date also stays between its neighbouring numbers and on or before today."
           },
           "due_at": {
             "type": [
@@ -6243,6 +6272,7 @@
         "referenceable": false
       },
       "editor": {
+        "entity": "document",
         "component": "InvoicingEditor",
         "sidebar": "InvoicingSidebar",
         "icon": "InvoicingAppIcon",
@@ -6252,6 +6282,7 @@
         "referenceable": false
       },
       "detail": {
+        "entity": "document",
         "component": "InvoicingDocumentDetail",
         "sidebar": "InvoicingSidebar",
         "icon": "InvoicingAppIcon",
@@ -6271,6 +6302,7 @@
         "referenceable": false
       },
       "identity": {
+        "entity": "kernel:contact",
         "component": "InvoicingIdentity",
         "sidebar": "InvoicingSidebar",
         "icon": "InvoicingAppIcon",
@@ -6289,6 +6321,7 @@
         "referenceable": false
       },
       "received_detail": {
+        "entity": "received_einvoice",
         "component": "InvoicingReceivedDetail",
         "sidebar": "InvoicingSidebar",
         "icon": "InvoicingAppIcon",

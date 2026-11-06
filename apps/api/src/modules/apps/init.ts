@@ -576,14 +576,6 @@ export async function initAppsForOrg(
     scope: "kernel:apps:admin",
     bundlePath: new URL("./connections/attention.ts", import.meta.url).pathname,
   })
-  // An organization's Google Drive connection reads only the shared drives an
-  // admin chose: until one is chosen, its admins are told to pick.
-  registerKernelAttentionProvider({
-    appName: "kernel.drive_shared_drives",
-    handler: "computeSharedDrivesAttentionItems",
-    scope: "google-drive:accounts:admin",
-    bundlePath: new URL("../../apps/google-drive/shared-drives.ts", import.meta.url).pathname,
-  })
   registerKernelAttentionProvider({
     appName: "kernel.mailbox_enrollment",
     handler: "computeMailboxEnrollmentAttentionItems",

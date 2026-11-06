@@ -251,6 +251,7 @@ describe("AttentionRow", () => {
         wedged: true,
         expiresInSeconds: 0,
         subtitle: "Pending approval",
+        failureReason: "App execution timed out",
         summaryLines: ['{"hub_id":"h-1","customer_id":"c-12"}'],
         actionLabel: "Remediation: delete rgpd customer",
       },
@@ -270,6 +271,8 @@ describe("AttentionRow", () => {
     expect(text).not.toContain('{"hub_id"')
     expect(text).toContain("hub_id: h-1")
     expect(text).not.toContain("Pending approval")
+    // Says why it stalled on the row, not only in the logs.
+    expect(getByTestId(`${id}-last-failure`).textContent).toContain("App execution timed out")
   })
 
   it("a notification about this approval opens its card and scrolls it into view (LIF-18)", async () => {

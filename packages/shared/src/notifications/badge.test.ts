@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { type BadgeItem, type BadgeThread, countBadge, isBadgeAsk, isBadgeThread } from "./badge"
+import {
+  type BadgeItem,
+  type BadgeThread,
+  countBadge,
+  isBadgeAsk,
+  isBadgeThread,
+  NOW_URGENCY,
+} from "./badge"
 
 const viewer = { canGrantAccess: false }
 
@@ -26,6 +33,14 @@ describe("the badge counts direct asks only", () => {
       { ...agentChat, isArchived: true },
     ]
     expect(countBadge({ threads, items: [], viewer })).toBe(0)
+  })
+
+  it("leaves out a critical alert scored below what Home presents as needing someone now", () => {
+    const incident = { entity: "incident", entityId: "i1" }
+    const low = item("monitoring:incident.critical", { ...incident, urgency: NOW_URGENCY - 5 })
+    const now = item("monitoring:incident.critical", { ...incident, urgency: NOW_URGENCY })
+    expect(isBadgeAsk(low, viewer)).toBe(false)
+    expect(isBadgeAsk(now, viewer)).toBe(true)
   })
 
   it("counts a mention in a channel once, and not again when it sits in a direct conversation", () => {

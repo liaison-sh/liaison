@@ -246,6 +246,13 @@ export interface HostServices {
   /** The page's path and query (see `currentPath`). Host API 1.1; optional so
    *  older shims stay valid. */
   currentPath?: () => string
+  /** The record a page has open in a pane (see `app.trackOpenRecord`). Host API
+   *  1.2; optional so older shims stay valid. */
+  trackOpenRecord?: (
+    appName: string,
+    entityType: string,
+    id: () => string | null | undefined,
+  ) => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -418,6 +425,18 @@ export const app = {
       )
     }
     return host.createResource<T>(fetcher, opts)
+  },
+  /**
+   * Say which record this page has open in a pane, for a page that keeps one tab
+   * for many records (a list beside a detail, an expanded row, a drawer). A turn
+   * the person sends from the tab then names that record, so the agent knows what
+   * "this" is; the tab's own id says nothing about it. `entityType` is an entity in
+   * this app's manifest, and `id` returns the open record's id, or null when none
+   * is on screen (mind a phone layout that hides the pane). Call it synchronously
+   * in the component body: it stops with the component. A no-op on an older host.
+   */
+  trackOpenRecord: (entityType: string, id: () => string | null | undefined): void => {
+    getHost().trackOpenRecord?.(getAppName(), entityType, id)
   },
   /**
    * Host-driven cross-app slot-body mount. Renders another app's contributed

@@ -11,7 +11,7 @@
 // runtime against the real bridge.
 
 import { testTime } from "./test-time"
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test"
 import type { CrossAppEnvelope, CrossAppExecuteTool } from "./cross-app"
 import type { Counterparty, DraftLine, IssuerProfile } from "./issue"
 import {
@@ -4003,7 +4003,7 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
     expect(r.status).toBe("pending_approval")
     expect(extras.approvalsRequested[0]!.tool_name).toBe("invoicing:credit_note_create_and_issue")
     const detail = extras.approvalsRequested[0]!.summary_detail!
-    expect(detail.lines).toContain("Customer: Buyer SARL")
+    expect(extras.approvalsRequested[0]!.summary).toContain("Buyer SARL")
     expect(detail.lines).toContain("Line: x x 1 @ -50.00 EUR")
   })
 
@@ -4332,6 +4332,30 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
 // ── order_reissue_apply — operator-approved order-edit reissue ────────────
 
 describe("orderReissueApply", () => {
+  test("states no date, so an original dated after today still gets its credit note", async () => {
+    const { ctx, db } = makeCtx()
+    const original = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: defaultCounterparty,
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      shopify_order_id: "shop-order-10",
+      shopify_order_number: "#1010",
+      items: sampleDraftItems,
+    })
+    if (original.status !== "completed") throw new Error("unreachable")
+    db.__all("documents").find((d) => d.id === original.document_id)!.issued_at = "2099-01-01T00:00:00.000Z"
+    const result = await orderReissueApply(ctx, {
+      original_document_id: original.document_id,
+      shopify_order_id: "shop-order-10",
+      shopify_order_number: "#1010",
+      billing_signature: "sig-d",
+      dedupe_key: "shop-order-10:sig-d",
+      items: [{ description: "Widget", quantity: "1", unit_price_minor: 5_000, product_source: null, external_id: null }],
+    })
+    expect(result.status).toBe("completed")
+  })
+
   test("reissue after a refused original books an internal cancellation and issues the replacement under a new number", async () => {
     const { ctx, db } = makeCtx()
     const original = await invoiceCreateAndIssue(ctx, {
@@ -5554,6 +5578,171 @@ describe("counterparty snapshot — persisted at issue time", () => {
 // ─────────────────────────────────────────────────────────────────────────
 // Part 2 — documents_update (post-issue editing)
 // ─────────────────────────────────────────────────────────────────────────
+
+describe("documents_update: an issued document's date and its number", () => {
+  afterEach(() => setSystemTime())
+
+  const row = (n: number, issuedAt: string | null, overrides: Record<string, unknown> = {}) => ({
+    id: crypto.randomUUID(),
+    type: "invoice",
+    status: "issued",
+    number: `INV-2026-${String(n).padStart(4, "0")}`,
+    number_int: n,
+    year_of_issue: 2026,
+    issuer_profile_id: defaultIssuer.id,
+    counterparty_name: "Buyer",
+    currency: "EUR",
+    subtotal_minor: "10000",
+    tax_total_minor: "0",
+    grand_total_minor: "10000",
+    incoterm: "DAP",
+    issued_at: issuedAt,
+    pdf_status: "ready",
+    external_refs: {},
+    lifecycle_log: [],
+    ...overrides,
+  })
+
+  /** Three numbers of one series, dated 1, 10 and 20 March 2026; today is 15 June 2026. */
+  async function series(overrides: Record<string, unknown> = {}) {
+    setSystemTime(new Date("2026-06-15T10:00:00Z"))
+    const m = makeCtx({ issuerThresholdMinor: null })
+    const rows = [row(1, "2026-03-01", overrides), row(2, "2026-03-10", overrides), row(3, "2026-03-20", overrides)]
+    for (const r of rows) await m.db.insert("documents", r)
+    const [first, middle, last] = rows.map((r) => r.id) as [string, string, string]
+    const stored = (id: string) => m.db.__all("documents").find((d) => d.id === id)?.issued_at
+    return { m, first, middle, last, stored }
+  }
+
+  const code = (res: { status: string; error?: { code?: string } }) => (res.status === "error" ? res.error?.code : "completed")
+
+  test("a date in another year is refused and steers to a credit note; nothing changes", async () => {
+    const { m, middle, stored } = await series()
+    for (const date of ["2025-12-31", "2027-01-03"]) {
+      const res = await documentsUpdate(m.ctx, { id: middle, issued_at: date })
+      expect(code(res)).toBe("issue_date_crosses_number_year")
+      if (res.status === "error") {
+        expect(res.error.message).toContain("INV-2026-0002")
+        expect(res.error.message).toContain("credit note")
+      }
+    }
+    expect(stored(middle)).toBe("2026-03-10")
+  })
+
+  test("the refusal comes at stage time, before an approval card exists", async () => {
+    const { m, middle } = await series()
+    const res = await documentsUpdatePreflight(m.ctx, { id: middle, issued_at: "2027-01-03" })
+    expect(res).toMatchObject({ error: { code: "issue_date_crosses_number_year" } })
+  })
+
+  test("re-sending the same date is not a change: the editor's save carries every field", async () => {
+    const { m, middle } = await series()
+    for (const date of ["2026-03-10", "2026-03-10T00:00:00.000Z"]) {
+      expect(code(await documentsUpdate(m.ctx, { id: middle, issued_at: date, notes: "Merci" }))).toBe("completed")
+    }
+  })
+
+  test("a typo fix between the neighbouring numbers still goes through", async () => {
+    const { m, first, middle, last, stored } = await series()
+    for (const date of ["2026-03-01", "2026-03-05", "2026-03-20"]) {
+      expect(code(await documentsUpdate(m.ctx, { id: middle, issued_at: date }))).toBe("completed")
+      expect(stored(middle)).toBe(date)
+    }
+    await documentsUpdate(m.ctx, { id: middle, issued_at: "2026-03-10" })
+    expect(code(await documentsUpdate(m.ctx, { id: first, issued_at: "2026-01-02" }))).toBe("completed")
+    expect(code(await documentsUpdate(m.ctx, { id: last, issued_at: "2026-06-15" }))).toBe("completed")
+  })
+
+  test("a date before the previous number or after the next one is refused, naming it", async () => {
+    const { m, middle, stored } = await series()
+    const before = await documentsUpdate(m.ctx, { id: middle, issued_at: "2026-02-28" })
+    expect(code(before)).toBe("issue_date_breaks_number_order")
+    if (before.status === "error") expect(before.error.message).toContain("INV-2026-0001")
+    const after = await documentsUpdate(m.ctx, { id: middle, issued_at: "2026-03-21" })
+    expect(code(after)).toBe("issue_date_breaks_number_order")
+    if (after.status === "error") expect(after.error.message).toContain("INV-2026-0003")
+    expect(stored(middle)).toBe("2026-03-10")
+  })
+
+  test("a date after today is refused: no number issued today could follow it", async () => {
+    const { m, last, stored } = await series()
+    expect(code(await documentsUpdate(m.ctx, { id: last, issued_at: "2026-06-16" }))).toBe("issue_date_in_future")
+    expect(stored(last)).toBe("2026-03-20")
+  })
+
+  test("a credit note keeps its own series", async () => {
+    const { m, middle } = await series()
+    const note = row(1, "2026-04-01", { type: "credit_note", number: "CN-2026-0001" })
+    await m.db.insert("documents", note)
+    // Nothing in the credit note series constrains the invoice, and the reverse.
+    expect(code(await documentsUpdate(m.ctx, { id: middle, issued_at: "2026-03-15" }))).toBe("completed")
+    expect(code(await documentsUpdate(m.ctx, { id: note.id, issued_at: "2026-02-01" }))).toBe("completed")
+    const crossing = await documentsUpdate(m.ctx, { id: note.id, issued_at: "2025-12-31" })
+    expect(code(crossing)).toBe("issue_date_crosses_number_year")
+    if (crossing.status === "error") expect(crossing.error.message).toContain("credit note")
+  })
+
+  test("a number that was voided still holds its place in the order", async () => {
+    setSystemTime(new Date("2026-06-15T10:00:00Z"))
+    const m = makeCtx({ issuerThresholdMinor: null })
+    const voided = row(1, "2026-03-01", { status: "voided" })
+    const live = row(2, "2026-03-10")
+    await m.db.insert("documents", voided)
+    await m.db.insert("documents", live)
+    expect(code(await documentsUpdate(m.ctx, { id: live.id, issued_at: "2026-02-28" }))).toBe("issue_date_breaks_number_order")
+  })
+
+  test("an issued document cannot lose its date, or take something that is no date", async () => {
+    const { m, middle, stored } = await series()
+    for (const date of [null, "", "someday", "2026-02-31"]) {
+      expect(code(await documentsUpdate(m.ctx, { id: middle, issued_at: date as string | null }))).toBe("issued_at_invalid")
+    }
+    expect(stored(middle)).toBe("2026-03-10")
+  })
+
+  test("a quote keeps its number's year, but a new quote is the way out, and no order binds it", async () => {
+    const { m, middle, stored } = await series({ type: "quote", status: "sent" })
+    const crossing = await documentsUpdate(m.ctx, { id: middle, issued_at: "2027-01-03" })
+    expect(code(crossing)).toBe("issue_date_crosses_number_year")
+    if (crossing.status === "error") {
+      expect(crossing.error.message).toContain("new quote")
+      expect(crossing.error.message).not.toContain("credit note")
+    }
+    expect(code(await documentsUpdate(m.ctx, { id: middle, issued_at: "2026-11-30" }))).toBe("completed")
+    expect(stored(middle)).toBe("2026-11-30")
+  })
+
+  test("a draft has no number yet: its date is free", async () => {
+    setSystemTime(new Date("2026-06-15T10:00:00Z"))
+    const m = makeCtx({ issuerThresholdMinor: null })
+    const draft = row(0, null, { status: "draft", number: null, number_int: null, year_of_issue: null })
+    await m.db.insert("documents", draft)
+    expect(code(await documentsUpdate(m.ctx, { id: draft.id, issued_at: "2027-01-03" }))).toBe("completed")
+  })
+
+  test("an imported document with no place in a sequence keeps its year but no neighbour binds it", async () => {
+    setSystemTime(new Date("2026-06-15T10:00:00Z"))
+    const m = makeCtx({ issuerThresholdMinor: null })
+    const imported = row(0, "2026-03-10", {
+      number: "LEGACY-77",
+      number_int: null,
+      pdf_file_id: "imported-file-1",
+      external_refs: { import_source: "77.pdf", import_file_id: "imported-file-1" },
+    })
+    await m.db.insert("documents", row(5, "2026-03-20"))
+    await m.db.insert("documents", imported)
+    expect(code(await documentsUpdate(m.ctx, { id: imported.id, issued_at: "2026-03-25" }))).toBe("completed")
+    expect(code(await documentsUpdate(m.ctx, { id: imported.id, issued_at: "2027-01-03" }))).toBe("issue_date_crosses_number_year")
+  })
+
+  test("a date already in the wrong year can be brought back to the number's year", async () => {
+    setSystemTime(new Date("2027-02-01T10:00:00Z"))
+    const m = makeCtx({ issuerThresholdMinor: null })
+    const wrong = row(1, "2027-01-03")
+    await m.db.insert("documents", wrong)
+    expect(code(await documentsUpdate(m.ctx, { id: wrong.id, issued_at: "2026-12-30" }))).toBe("completed")
+  })
+})
 
 describe("documents.update", () => {
   async function issueSampleInvoice(

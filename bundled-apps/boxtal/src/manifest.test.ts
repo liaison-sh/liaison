@@ -560,7 +560,10 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.2: a carrier order id no longer reaches the uuid row-id lookup (print_pack,
     // ready_set_packed, import_label_document), and print_pack renders an issued invoice's missing
     // PDF on demand instead of failing the invoice job.
-    expect(m.version).toBe("0.23.6")
+    // 0.23.7: a prep reference that names no invoicing document is refused instead of minting a row.
+    // 0.23.8: get_documents answers to "colis" and "expédition" in tool search.
+    // 0.23.9: the create tab names the document it ships; Shipments reports the open row.
+    expect(m.version).toBe("0.23.9")
     expect(m.packageFormat).toBe(1)
   })
 

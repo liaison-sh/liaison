@@ -1,6 +1,6 @@
 {
   "name": "social",
-  "version": "0.6.55",
+  "version": "0.6.57",
   "iconName": "message-square",
   "description": "Social 'Ground Control': monitors Facebook, Instagram and YouTube for brand-relevant activity, drafts human-approved replies, and manages DMs.",
   "listing": {
@@ -554,6 +554,7 @@
       "searchKeywords": ["répondre", "commentaire", "mention"],
       "requiredScopes": ["social:findings:write"],
       "handler": "replyToFindingHandler",
+      "timeoutMs": 30000,
       "summarizer": "summarizeReplyToFinding",
       "summarizerContext": { "tool": "findings_get", "params": { "finding_id": "finding_id" } },
       "preflight": "replyToFindingPreflightHandler",
@@ -570,7 +571,7 @@
         "required": ["finding_id", "reply_text"]
       },
       "approvalCard": {
-        "summary": "Reply to social finding {{params.finding_id}}: {{params.reply_text}}"
+        "summary": "Reply publicly: {{params.reply_text}}"
       }
     },
     "send_dm": {
@@ -579,6 +580,7 @@
       "searchKeywords": ["message", "envoyer", "privé", "instagram"],
       "requiredScopes": ["social:dm:write"],
       "handler": "sendDmHandler",
+      "timeoutMs": 30000,
       "summarizer": "summarizeSendDm",
       "summarizerContext": { "tool": "dm_get", "params": { "conversation_id": "conversation_id" } },
       "preflight": "sendDmPreflightHandler",
@@ -617,7 +619,7 @@
         "required": ["finding_id"]
       },
       "approvalCard": {
-        "summary": "Like the item behind social finding {{params.finding_id}}"
+        "summary": "Like a post or comment"
       }
     },
     "findings_get": {

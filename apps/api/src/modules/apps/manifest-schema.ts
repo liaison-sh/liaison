@@ -1678,6 +1678,10 @@ export const appManifestJsonSchema = {
               referenceable: { type: "boolean" },
               resolveLabel: { type: "string" },
               feature: { type: "string", minLength: 1 },
+              // The entity this tab's id names, when the tab is not named for it:
+              // `document`, or `kernel:contact` for another app's. It is how a turn
+              // sent from the tab learns which record is open.
+              entity: { type: "string", pattern: "^[a-z][a-z0-9_-]*(:[a-zA-Z][a-zA-Z0-9_-]*)?$" },
             },
             additionalProperties: false,
           },

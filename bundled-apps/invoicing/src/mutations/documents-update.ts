@@ -7,12 +7,14 @@ import { type DraftLine, type DraftLineInput, enrichLineCustoms, readRefString }
 import { type ClassifyInput, classify } from "../tax"
 import { type DocumentFull, documentsGet, isUuid, type ReadsCtx } from "../reads"
 import { type BuyerVatFacts, checkBuyerVat, consumerDeclaredAgainstEvidence } from "../buyer-vat"
-import { FOREIGN_ID_CHARS, findIssuerProfile, deleteAllLines } from "./db-helpers"
+import { dateOnly, FOREIGN_ID_CHARS, findIssuerProfile, deleteAllLines, isCalendarDate } from "./db-helpers"
+import { issueDateParts } from "../issue-date"
 import { liftMisplacedCountry, normaliseDraftLine, netLinesForIssuer } from "./lines"
 import { ensureDocumentPdf } from "./pdf"
 import {
   type MutationsCtx,
   type MutationResult,
+  type ErrorEnvelope,
   type PreflightResult,
   lineAmountsError,
   toPreflightResult,
@@ -269,6 +271,164 @@ export async function documentsUpdatePreview(
   return { ...(doc ?? {}), buyer_preview: buyerPreview, buyer_refusal: refusal }
 }
 
+function dateRefused(code: string, message: string): ErrorEnvelope {
+  return { status: "error", error: { code, message } }
+}
+
+/** How to correct a date this document cannot take: an accounting document needs a credit note. */
+function dateCorrectionHint(doc: Record<string, unknown>, isAccountingDocument: boolean): string {
+  if (!isAccountingDocument) {
+    const noun = doc.type === "purchase_order" ? "purchase order" : String(doc.type)
+    return `To date it differently, issue a new ${noun}.`
+  }
+  return doc.type === "credit_note"
+    ? "To correct it, issue a new credit note with the right date."
+    : "To correct it, issue a credit note (credit_note_create_and_issue, referencing this invoice) and a new invoice."
+}
+
+/**
+ * The nearest numbers before and after `numberInt` in its series that carry a date. Pages through
+ * the (issuer, type, year) series: the bridge's `where` has equality and `in`, no range. A date
+ * change on an issued document is rare and a person decides it, so reading the series is fine.
+ */
+async function neighbouringNumbers(
+  ctx: MutationsCtx,
+  doc: Record<string, unknown>,
+  numberInt: number,
+): Promise<{ previous: Record<string, unknown> | null; next: Record<string, unknown> | null }> {
+  const PAGE = 500
+  let previous: Record<string, unknown> | null = null
+  for (let offset = 0; ; offset += PAGE) {
+    const rows = (await ctx.db.findMany("documents", {
+      where: { issuer_profile_id: doc.issuer_profile_id, type: doc.type, year_of_issue: doc.year_of_issue },
+      orderBy: { number_int: "asc" },
+      limit: PAGE,
+      offset,
+      select: ["id", "number", "number_int", "issued_at"],
+    })) as Array<Record<string, unknown>>
+    for (const row of rows) {
+      if (row.number_int == null || !dateOnly(row.issued_at)) continue
+      const n = Number(row.number_int)
+      if (n < numberInt) previous = row
+      else if (n > numberInt) return { previous, next: row }
+    }
+    if (rows.length < PAGE) return { previous, next: null }
+  }
+}
+
+/** The date a change would give an invoice or credit note, against the other side of the correction. */
+async function correctionOrderRefusal(
+  ctx: MutationsCtx,
+  doc: Record<string, unknown>,
+  date: string,
+  label: string,
+): Promise<ErrorEnvelope | null> {
+  if (doc.type === "credit_note") {
+    const refs = (doc.external_refs ?? {}) as Record<string, unknown>
+    const originalId = doc.original_document_id ?? refs.original_document_id
+    if (typeof originalId !== "string" || !originalId) return null
+    const [original] = (await ctx.db.findMany("documents", {
+      where: { id: originalId },
+      select: ["number", "issued_at"],
+      limit: 1,
+    })) as Array<Record<string, unknown>>
+    const originalDate = dateOnly(original?.issued_at)
+    if (!originalDate || date >= originalDate) return null
+    return dateRefused(
+      "issue_date_before_original",
+      `${date} is before ${String(original?.number)} (${originalDate}), the invoice ${label} corrects. Nothing was ` +
+        "changed. Pass that date or a later one.",
+    )
+  }
+  if (doc.type !== "invoice") return null
+  const notes = (await ctx.db.findMany("documents", {
+    where: { original_document_id: doc.id, type: "credit_note" },
+    orderBy: { issued_at: "asc" },
+    select: ["number", "issued_at"],
+    limit: 1,
+  })) as Array<Record<string, unknown>>
+  const noteDate = dateOnly(notes[0]?.issued_at)
+  if (!noteDate || date <= noteDate) return null
+  return dateRefused(
+    "issue_date_after_credit_note",
+    `${date} is after ${String(notes[0]?.number)} (${noteDate}), a credit note that corrects ${label}. Nothing was ` +
+      "changed. Pass that date or an earlier one.",
+  )
+}
+
+/**
+ * A number and its date belong to one year, and numbers and dates run together in a series
+ * (mutations/credit-notes.ts takes a stated date by the same rules). An issued document whose date
+ * changes keeps both true, or the change is refused:
+ *  - the date stays a real date, in the year of the number; every numbered type answers to this;
+ *  - an invoice or credit note also stays between its neighbouring numbers and on or before today,
+ *    since no number issued today could follow a later date. A quote, proforma or purchase order
+ *    records no sale, so no order binds it.
+ *  - a credit note stays on or after the invoice it corrects, and that invoice on or before its
+ *    credit notes: moving either one must not put the correction first.
+ * The same date again is no change: the editor's save carries every field. A date that already
+ * disagrees with its number can still be brought back to the number's year.
+ */
+async function issuedDateChangeRefusal(
+  ctx: MutationsCtx,
+  doc: Record<string, unknown>,
+  stated: unknown,
+  isAccountingDocument: boolean,
+): Promise<ErrorEnvelope | null> {
+  const label = String(doc.number ?? doc.id)
+  const date = dateOnly(stated)
+  if (date !== null && date === dateOnly(doc.issued_at)) return null
+  if (!date || !isCalendarDate(date)) {
+    return dateRefused(
+      "issued_at_invalid",
+      `issued_at ${JSON.stringify(stated ?? null)} is not a date, and ${label} is issued so it must keep one. ` +
+        "Nothing was changed. Pass YYYY-MM-DD.",
+    )
+  }
+  const year = doc.year_of_issue == null ? null : Number(doc.year_of_issue)
+  if (year !== null && Number(date.slice(0, 4)) !== year) {
+    return dateRefused(
+      "issue_date_crosses_number_year",
+      `${label} is numbered in ${year}, so its date cannot move to ${date}. Nothing was changed. ` +
+        dateCorrectionHint(doc, isAccountingDocument),
+    )
+  }
+  if (!isAccountingDocument) return null
+
+  const issuer = await findIssuerProfile(ctx.db, String(doc.issuer_profile_id))
+  const today = await issueDateParts(ctx, issuer ?? {})
+  if (!today.ok) return today.error
+  if (date > today.issued_at) {
+    return dateRefused(
+      "issue_date_in_future",
+      `${date} is after today (${today.issued_at} in the issuer's time zone), and no number issued today could ` +
+        `follow it. Nothing was changed. Pass today or an earlier date.`,
+    )
+  }
+  const correctionRefusal = await correctionOrderRefusal(ctx, doc, date, label)
+  if (correctionRefusal) return correctionRefusal
+  if (doc.number_int == null || year === null) return null
+  const { previous, next } = await neighbouringNumbers(ctx, doc, Number(doc.number_int))
+  const previousDate = dateOnly(previous?.issued_at)
+  const nextDate = dateOnly(next?.issued_at)
+  const hint = dateCorrectionHint(doc, isAccountingDocument)
+  if (previousDate && date < previousDate) {
+    return dateRefused(
+      "issue_date_breaks_number_order",
+      `${date} is before ${String(previous?.number)} (${previousDate}), the number just before ${label}, and ` +
+        `numbers and dates run together. Nothing was changed. Pass that date or a later one. ${hint}`,
+    )
+  }
+  if (nextDate && date > nextDate) {
+    return dateRefused(
+      "issue_date_breaks_number_order",
+      `${date} is after ${String(next?.number)} (${nextDate}), the number just after ${label}, and ` +
+        `numbers and dates run together. Nothing was changed. Pass that date or an earlier one. ${hint}`,
+    )
+  }
+  return null
+}
+
 async function documentsUpdateRun(
   ctx: MutationsCtx,
   rawInput: DocumentsUpdateInput,
@@ -365,6 +525,11 @@ async function documentsUpdateRun(
         },
       }
     }
+  }
+
+  if ("issued_at" in rawInput && currentStatus !== "draft") {
+    const refused = await issuedDateChangeRefusal(ctx, doc, rawInput.issued_at, isAccountingDocument)
+    if (refused) return refused
   }
 
   const { counterparty_country, tax_treatment } = liftMisplacedCountry({

@@ -310,7 +310,7 @@
     "list_events": {
       "taintSource": true,
       "description": "List events in a time window, optionally scoped to one calendar. Recurring events are expanded into their occurrences within the window.",
-      "searchKeywords": ["agenda", "planning", "rdv", "réunion", "réunions", "meetings", "événements"],
+      "searchKeywords": ["agenda", "planning", "rdv", "réunion", "réunions", "meetings", "événements", "rendez", "semaine", "week"],
       "readOnly": true,
       "requiredScopes": ["calendar:events:read"],
       "trustBoundary": "user",

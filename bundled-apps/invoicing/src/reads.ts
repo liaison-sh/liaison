@@ -22,7 +22,7 @@ import type { CrossAppExecuteTool } from "./cross-app"
 import { csvCell } from "./csv"
 import { needsHumanReview } from "./deferred"
 import { type LinkedShipment, linkedShipments } from "./handlers/link-shipments"
-import { issuerTimezoneUnset } from "./issue-date"
+import { civilDateOf, issuerTimezoneUnset, type TimeSurface } from "./issue-date"
 import { deliveryFileId } from "./legal-originals/delivery"
 import { toBigInt } from "./mutations/shared"
 
@@ -1274,27 +1274,30 @@ export async function viewerAccess(
  *  thresholds cross the bridge as strings (postgres.js bigint serialisation),
  *  which is exactly the `string | null` shape the UI's IssuerProfileRow reads. */
 export async function settingsIssuerProfileList(
-  ctx: Pick<ReadsCtx, "db">,
+  ctx: Pick<ReadsCtx, "db"> & TimeSurface,
 ): Promise<{ items: Record<string, unknown>[] }> {
   const rows = await ctx.db.findMany("issuer_profiles", {
     orderBy: { legal_name: "asc" },
     limit: READS_MAX_LIMIT,
   })
-  return {
-    items: rows.map((row) => {
-      const r = row as Record<string, unknown>
-      return {
-        ...r,
-        id: String(r.id ?? ""),
-        // The detail view shows how many issued documents reference the profile;
-        // the list view only needs a stable shape, so default to 0 (the count is
-        // computed lazily by the detail tool when that lands).
-        reference_count: Number(r.reference_count ?? 0),
-        // Nobody chose this issuer's zone yet: see `issue-date.ts`.
-        timezone_choice_needed: issuerTimezoneUnset(r),
-      }
-    }),
+  const items: Record<string, unknown>[] = []
+  for (const row of rows) {
+    const r = row as Record<string, unknown>
+    // The browser has the zone table but not the org's zone: the host states the issuer's date.
+    const today = await civilDateOf(ctx, { timezone: (r.timezone as string | null | undefined) ?? null })
+    items.push({
+      ...r,
+      id: String(r.id ?? ""),
+      // The detail view shows how many issued documents reference the profile;
+      // the list view only needs a stable shape, so default to 0 (the count is
+      // computed lazily by the detail tool when that lands).
+      reference_count: Number(r.reference_count ?? 0),
+      // Nobody chose this issuer's zone yet: see `issue-date.ts`.
+      timezone_choice_needed: issuerTimezoneUnset(r),
+      today: today.ok ? today.date : null,
+    })
   }
+  return { items }
 }
 
 /** settings_tax_regime_list — the org's tax-regime overrides. */

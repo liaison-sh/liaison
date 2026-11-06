@@ -46,6 +46,7 @@ import { quoteCreateViaShopifyDraftOrder } from "./shopify-quote"
 import { asHandlerSummary, issueCard } from "../approval-cards"
 import { type BuyerVatFacts, checkBuyerVat, needsHumanBuyerDecision } from "../buyer-vat"
 import { issueDateParts } from "../issue-date"
+import { draftOrderDateRefusal, statedIssueDate } from "./stated-issue-date"
 import { planTax } from "../tax-plan"
 
 // ── Quote / Proforma / PO issuance (E7) ──────────────────────────────────
@@ -276,6 +277,8 @@ export interface QuoteCreateAndIssueInput {
   issuer_profile_id?: string | null
   currency: string
   incoterm?: string
+  /** The issue date, when the caller states one; today in the issuer's time zone otherwise. */
+  issued_at?: string | null
   due_at?: string | null
   items: DraftLineInput[]
   /** The Shopify draft order this quote mirrors ("gid://shopify/DraftOrder/123").
@@ -481,6 +484,14 @@ async function preflightCreateAndIssueParams(
   if (buyer.vat_id && !input.counterparty.vat_id) {
     input.counterparty = { ...input.counterparty, vat_id: buyer.vat_id }
   }
+  // An unknown zone or a date that cannot be taken is refused at stage time too, before an approval
+  // card exists.
+  const zone = await statedIssueDate(ctx, issuer, type, input.issued_at)
+  if (!zone.ok) return { ok: false, error: zone.error }
+  if (type === "quote" && issuer.shopify_shop_id && !input.shopify_draft_order_id) {
+    const refused = await draftOrderDateRefusal(ctx, issuer, input.issued_at)
+    if (refused) return { ok: false, error: refused }
+  }
   return { ok: true, input, notes, customerReference: customerReference.value ?? null, issuer, currency, buyer }
 }
 
@@ -566,6 +577,7 @@ async function createAndIssueGenerically(
           draftOrderName: input.shopify_draft_order_name ?? null,
           poNumber: input.po_number ?? null,
           customerReference: input.customer_reference ?? null,
+          issuedAt: input.issued_at ?? null,
           dueAt: input.due_at ?? null,
           reason: input.reason ?? null,
           declaredValueMinor: input.declared_value_minor,
@@ -604,7 +616,7 @@ async function createAndIssueGenerically(
     externalRefs.shopify_draft_order_name = input.shopify_draft_order_name
   if (input.po_number) externalRefs.po_number = input.po_number
   if (customerReference) externalRefs.customer_reference = customerReference
-  const when = await issueDateParts(ctx, issuer)
+  const when = await statedIssueDate(ctx, issuer, type, input.issued_at)
   if (!when.ok) return when.error
   const issueInput = {
     type,
@@ -830,6 +842,14 @@ export async function quoteCreateAndIssue(
   if (!issuerResolution.ok) return issuerResolution.error
   const shopId = issuerResolution.issuer.shopify_shop_id
   if (shopId) {
+    const stated = await statedIssueDate(ctx, issuerResolution.issuer, "quote", input.issued_at)
+    if (!stated.ok) return stated.error
+    const dateRefused = await draftOrderDateRefusal(ctx, issuerResolution.issuer, input.issued_at)
+    if (dateRefused) return dateRefused
+    // Refused before the draft order exists: a person is here to fix the zone and call again, and
+    // a draft order left behind in Shopify would make that second call a duplicate.
+    const when = await issueDateParts(ctx, issuerResolution.issuer)
+    if (!when.ok) return when.error
     // The draft order is created in Shopify first, so the business-buyer guard runs here too.
     const buyerCheck = await checkBuyerVat(ctx, {
       issuerCountry: issuerResolution.issuer.country,

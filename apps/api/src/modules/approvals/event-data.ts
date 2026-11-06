@@ -610,8 +610,8 @@ export async function emitApprovalStateChange(
   args: {
     /** What `content` and `metadata` may quote. `[]` only for a fixed notice
      *  that carries no handler output: the error variants quote the handler's
-     *  own message and carry its raw error object, so they fail closed to the
-     *  requester's scope set (see `failureContextRequiredScopes`). */
+     *  own message and carry its raw error object, so they require what the call
+     *  could reveal (see `approvalFailureRequiredScopes`). */
     requiredScopes: string[]
     orgId: string
     requestId: string

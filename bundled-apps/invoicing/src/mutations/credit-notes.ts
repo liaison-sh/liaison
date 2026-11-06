@@ -50,7 +50,8 @@ import {
   checkEinvoiceGate,
   einvoiceParamsError,
 } from "../einvoicing/issue-gate"
-import { issueDateParts } from "../issue-date"
+import { type IssueDateParts, issueDateParts } from "../issue-date"
+import { statedIssueDate } from "./stated-issue-date"
 import { issueWithFxRate } from "./fx-issue"
 
 /** What the issue step needs to know of the original invoice: id, stored regime, transmission
@@ -62,35 +63,6 @@ function originalRefOf(original: DocumentRowSummary): NonNullable<IssueInput["or
     transmissionStatus: original.einvoice_state ?? null,
     counterparty_contact_id: original.counterparty_contact_id,
     snapshot: original.einvoice ?? null,
-  }
-}
-
-/**
- * A credit note may keep the date its caller states, but numbers and dates run together in a
- * series: a date before the last number of the series is refused, before a number is taken.
- */
-async function checkDateFollowsSeries(
-  db: MutationsCtx["db"],
-  issuerId: string,
-  yearOfIssue: number,
-  issuedAt: string,
-): Promise<ErrorEnvelope | null> {
-  const [last] = (await db.findMany("documents", {
-    where: { issuer_profile_id: issuerId, type: "credit_note", year_of_issue: yearOfIssue },
-    orderBy: { number_int: "desc" },
-    limit: 1,
-  })) as Array<Record<string, unknown>>
-  const lastDate = dateOnly(last?.issued_at)
-  if (!lastDate || issuedAt >= lastDate) return null
-  return {
-    status: "error",
-    error: {
-      code: "issued_at_before_series",
-      message:
-        `issued_at ${issuedAt} is before ${String(last?.number ?? "the last credit note")} (${lastDate}), the last ` +
-        "number in this series, so nothing was issued and no number was used. Pass that date or a later one, " +
-        "or omit issued_at to use today.",
-    },
   }
 }
 
@@ -177,6 +149,7 @@ interface CreditNoteCreatePrepared {
   currency: string
   total: bigint
   absTotal: bigint
+  when: IssueDateParts
   original: {
     number: string | null
     issuedAt: string | null
@@ -363,6 +336,12 @@ async function preflightCreditNoteCreateAndIssueParams(
   })
   if (!gate.ok) return { ok: false, error: gate.error }
 
+  const when = await statedIssueDate(ctx, issuer, "credit_note", input.issued_at, {
+    number: originalNumber,
+    issued_at: originalIssuedAt,
+  })
+  if (!when.ok) return when
+
   return {
     ok: true,
     prepared: {
@@ -373,6 +352,7 @@ async function preflightCreditNoteCreateAndIssueParams(
       currency,
       total,
       absTotal,
+      when,
       original: {
         number: originalNumber,
         issuedAt: originalIssuedAt,
@@ -407,7 +387,7 @@ export async function creditNoteCreateAndIssue(
 ): Promise<MutationResult<{ document_id: string; number: string; einvoicing_warning?: EinvoicingWarning }>> {
   const pre = await preflightCreditNoteCreateAndIssueParams(ctx, rawInputIn, opts)
   if (!pre.ok) return pre.error
-  const { rawInput, input, notes, issuer, currency, total, absTotal } = pre.prepared
+  const { rawInput, input, notes, issuer, currency, total, absTotal, when } = pre.prepared
   const originalNumber = pre.prepared.original.number
   const originalIssuedAt = pre.prepared.original.issuedAt
   const originalRef = pre.prepared.original.ref
@@ -437,6 +417,8 @@ export async function creditNoteCreateAndIssue(
           orderNumber: originalShopifyOrderNumber,
           reason: input.reason ?? null,
           originalNumber,
+          originalDate: dateOnly(originalIssuedAt),
+          issuedAt: input.issued_at ?? null,
           issuerName: issuer.legal_name,
         }),
       ),
@@ -474,14 +456,6 @@ export async function creditNoteCreateAndIssue(
   // `notes.value === undefined` means the caller said nothing; an explicit null clears it.
   const effectiveNotes = notes.value === undefined ? originalNotes : notes.value
 
-  const when = await issueDateParts(ctx, issuer)
-  if (!when.ok) return when.error
-  const explicitDate = dateOnly(input.issued_at)
-  if (explicitDate) {
-    const refused = await checkDateFollowsSeries(ctx.db, issuer.id, when.year_of_issue, explicitDate)
-    if (refused) return refused
-  }
-
   const issueInput = {
     type: "credit_note" as const,
     issuer,
@@ -490,7 +464,7 @@ export async function creditNoteCreateAndIssue(
       currency,
       incoterm: input.incoterm ?? "DAP",
       year_of_issue: when.year_of_issue,
-      issued_at: input.issued_at ?? when.issued_at,
+      issued_at: when.issued_at,
       due_at: null as string | null,
       external_refs: externalRefs,
       notes: effectiveNotes ?? null,
@@ -739,9 +713,8 @@ export async function creditNoteIssue(
           lines: draft.lines,
           totalMinor: total,
           orderNumber: draft.shopify_order_number ?? null,
-          originalNumber: originalNumber
-            ? `${originalNumber}${dateOnly(originalIssuedAt) ? ` (issued ${dateOnly(originalIssuedAt)})` : ""}`
-            : null,
+          originalNumber,
+          originalDate: dateOnly(originalIssuedAt),
           issuerName: issuer.legal_name,
           draftId: draft.id,
         }),

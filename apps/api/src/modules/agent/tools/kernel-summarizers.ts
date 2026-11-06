@@ -66,6 +66,25 @@ export const summarizeEnableApp: ApprovalSummarizer = async (raw, ctx) => {
   }
 }
 
+/** kernel:ai_models_set: the organization's default model and reasoning level. */
+export const summarizeAiModelsSet: ApprovalSummarizer = async (raw) => {
+  const p = asParams(raw)
+  const list = (v: unknown) => (Array.isArray(v) ? v.filter((k) => typeof k === "string") : [])
+  const lines: string[] = []
+  const add = text(p.addFromOpenRouter)
+  if (add) lines.push(`Add ${add} from OpenRouter, after a test call.`)
+  if (p.autoModelKey === null) lines.push("Auto goes back to the cheapest model with a key.")
+  else if (text(p.autoModelKey)) lines.push(`Auto runs ${text(p.autoModelKey)}.`)
+  if (p.defaultReasoningLevel === null) lines.push("Default reasoning level: the built-in one.")
+  else if (text(p.defaultReasoningLevel)) {
+    lines.push(`Default reasoning level: ${text(p.defaultReasoningLevel)}.`)
+  }
+  if (list(p.enable).length > 0) lines.push(`Switch on: ${list(p.enable).join(", ")}.`)
+  if (list(p.disable).length > 0) lines.push(`Switch off: ${list(p.disable).join(", ")}.`)
+  lines.push("Applies to everything left on Auto, for everyone in the organization.")
+  return { kind: "ai_models_set", title: "Change the organization's AI models", lines }
+}
+
 /** kernel:apps_set_enabled: an app turned On or Off for the whole workspace. */
 export const summarizeAppsSetEnabled: ApprovalSummarizer = async (raw) => {
   const p = asParams(raw)

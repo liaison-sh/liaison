@@ -146,6 +146,13 @@ jobs:
           JWT_SECRET: replace-with-at-least-32-char-secret
           ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
         run: bun test src/modules/demo/demo-reset-rules.test.ts
+      # The rest of the api-guards suite's pure source scans, which only `unit` and
+      # that suite run, so no PR check saw them: a hidden thread missing from the
+      # thread census reached main red this way. The suite itself also holds tests
+      # that need Redis or a database, so its pure scans are named here.
+      - name: Thread census, raw fetch, Stripe imports, retired vocabulary, tool scopes, monitoring kinds
+        working-directory: apps/api
+        run: bun test src/modules/threads/thread-creation-census.test.ts src/tests/raw-fetch-discipline.test.ts src/tests/no-stripe-imports.test.ts src/tests/retired-vocabulary.test.ts src/modules/apps/tool-required-scopes-guard.test.ts src/modules/notifications/monitoring-group.test.ts
       # Erasing a user refuses to run while a kernel user column has no rule, and
       # the live check needs a database. This reads the migrations instead.
       - name: Erasure rules

@@ -232,11 +232,15 @@ export interface IssueCardFacts {
   poNumber?: string | null
   /** The customer's id in another system (a CRM record), printed as "Customer ref". */
   customerReference?: string | null
+  /** The issue date the caller stated. Nothing stated means the day the number is taken. */
+  issuedAt?: string | null
   dueAt?: string | null
   reason?: string | null
   declaredValueMinor?: unknown
   issuerName?: string | null
   originalNumber?: string | null
+  /** The date of the invoice a credit note reverses, shown beside its number. */
+  originalDate?: string | null
   /** A credit note with no invoice to reverse. */
   standaloneCredit?: boolean
   draftId?: string | null
@@ -322,29 +326,40 @@ export function issueCard(f: IssueCardFacts): ApprovalCard {
       : `Issue a credit note of ${total.replace(/^-/, "")} to ${customer}`
     : `Issue ${type} for ${customer}, ${total}${orderPart}`
   const override = consumerOverrideCardLines(f.buyer)
-  const lines: string[] = [
-    ...override,
-    // The title names the document; with the warning on top, its line gives the room back.
-    ...(override.length > 0
-      ? []
-      : [
-          f.fromDraft
-            ? `Document: new ${type} from a saved draft (number assigned on issue)`
-            : `Document: new ${type} (number assigned on issue)`,
-        ]),
-    `Customer: ${customer}`,
-    // The tax lines (or, when the issuer's tax setup is unknown, the typed lines total, said as
-    // such: a card never claims a tax basis it did not compute).
-    ...(f.tax
-      ? taxCardLines(f)
-      : [exact ? `Total: ${total}` : `Lines total: ${total} as typed (tax not computed here, check the document)`]),
-  ]
+  const issued = day(f.issuedAt)
+  const originalDate = day(f.originalDate)
+  const totalLines = f.tax
+    ? // The tax lines (or, when the issuer's tax setup is unknown, the typed lines total, said as
+      // such: a card never claims a tax basis it did not compute).
+      taxCardLines(f)
+    : [exact ? `Total: ${total}` : `Lines total: ${total} as typed (tax not computed here, check the document)`]
+  const lines: string[] = isCredit
+    ? [
+        // The title names the document, the customer and the amount. What a person decides on then
+        // comes first, so the eight lines of a card can never lose it: how much, the invoice it
+        // reverses and the date its number follows. A credit note's lines are always net as typed.
+        ...totalLines.slice(0, 2),
+        original
+          ? `Reverses invoice: ${original}${originalDate ? ` (${originalDate})` : ""}`
+          : "WARNING: no original invoice referenced (standalone credit note)",
+        `Issue date: ${issued ?? "the day this is approved"}`,
+      ]
+    : [
+        ...override,
+        // The title names the document; with the warning on top, its line gives the room back.
+        ...(override.length > 0
+          ? []
+          : [
+              f.fromDraft
+                ? `Document: new ${type} from a saved draft (number assigned on issue)`
+                : `Document: new ${type} (number assigned on issue)`,
+            ]),
+        `Customer: ${customer}`,
+        ...totalLines,
+      ]
   const factCount = lines.length
   if (order) lines.push(`Order: ${order}`)
   else if (draftOrder) lines.push(`Shopify draft order: ${draftOrder}`)
-  if (isCredit) {
-    lines.push(original ? `Reverses invoice: ${original}` : "WARNING: no original invoice referenced (standalone credit note)")
-  }
   const declared = money(f.declaredValueMinor, f.currency)
   if (declared) lines.push(`Declared customs value: ${declared}`)
   const reason = text(f.reason, 120)
@@ -353,6 +368,7 @@ export function issueCard(f: IssueCardFacts): ApprovalCard {
   if (po) lines.push(`Customer PO number: ${po}`)
   const customerRef = text(f.customerReference, 120)
   if (customerRef) lines.push(`Customer ref: ${customerRef}`)
+  if (issued && !isCredit) lines.push(`Issue date: ${issued}`)
   const due = day(f.dueAt)
   // A quote's date is how long the offer holds, not a payment due date.
   if (due) lines.push(f.type === "quote" ? `Valid until: ${due}` : `Due date: ${due}`)

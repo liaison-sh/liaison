@@ -82,7 +82,7 @@
       }
     ]
   },
-  "version": "1.10.1",
+  "version": "1.10.2",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -903,7 +903,7 @@
     },
     "tasks_byProject": {
       "description": "List the tasks IN a single project (by project id), each with its status label + whether that status is terminal/done (`statusTerminal`) + the assignee's display name (`assigneeName`, null when unassigned). Use this to enumerate or summarize a project's tasks — a backlog/roadmap/weekly digest, a per-status rollup (group by the terminal/done flag for a DONE-vs-REMAINING count), a per-PERSON workload tally (group by `assigneeName` to find the most-loaded person), 'what's in project X', or reading a source project's task list to copy it. This single call answers a 'sprint board / burndown / who's overloaded' proxy (done-vs-remaining task counts + per-assignee counts) WITHOUT a per-id user lookup — though burndown/velocity/story-points themselves are not modeled (see agentInstructions). NOTE: `search` is title-text only and `tasks_byAssignee` is per-person across projects — neither lists a project's tasks; this is the tool for that. DERIVING BOARD-HEALTH FIGURES (a roadmap/board digest's per-status + overdue + blocked + unassigned counts): each row carries `statusLabel`, `statusTerminal`, `dueDate`, `assigneeName`, AND a server-computed `overdue` boolean. OVERDUE is the one you should TRUST DIRECTLY: each row's `overdue` field is TRUE iff that task has a due date in the PAST and is NON-terminal (the server already excludes done/cancelled tasks), so the overdue set = the rows where `overdue === true` — do NOT re-derive it by comparing `dueDate` ISO strings to today yourself; just filter/flag on `overdue`. There is still NO separate boolean `blocked` / `isBlocked` flag, so compute BLOCKED from the status label, not a blocked field: BLOCKED = tasks whose `statusLabel` is the board's blocked column (a status named 'Blocked' / 'On Hold' / 'Stuck') — count by that status label; UNASSIGNED = tasks whose `assigneeName` is null; per-status counts = group by `statusLabel`; OPEN = the non-terminal tasks (statusTerminal false). Keep the blocked count CONSISTENT with the per-status breakdown — if the status rollup shows N tasks in the 'Blocked' status, the blocked figure is N (a digest that says 'Blocked status: 2' in one section and 'Blocked: 0' in another, because it looked for a nonexistent blocked flag, is wrong). Returns up to 100 tasks by default (max 200), ordered by status then board position. Each row carries a `threadId` for the task's discussion; it is participant-gated, so do not hand it to kernel threads_read directly — use `comments` (and `comment` to post). Each task row carries `labels`: its effective value per label group (own, or inherited from the nearest parent, with `inherited` and `inheritedFromKey`).",
-      "searchKeywords": ["project", "projet", "avancement", "statut", "status", "kanban", "tableau", "board"],
+      "searchKeywords": ["project", "projet", "avancement", "statut", "status", "kanban", "tableau", "board", "tâche", "tâches", "task", "tasks"],
       "readOnly": true,
       "requiredScopes": ["projects:tasks:read"],
       "trustBoundary": "user",

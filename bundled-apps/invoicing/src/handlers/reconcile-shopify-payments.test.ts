@@ -5,6 +5,7 @@
 // Mirrors the shopify-order-paid.test.ts harness (createMockDb + a stubbed
 // executeTool keyed by tool name).
 
+import { testTime } from "../test-time"
 import { describe, expect, test } from "bun:test"
 import { createMockDb, type MockDb } from "../test-db"
 import {
@@ -23,11 +24,13 @@ interface SeedDocOptions {
   shopify_order_id?: string | null
   external_refs?: Record<string, unknown> | null
   lifecycle_log?: Array<Record<string, unknown>>
+  issuer_profile_id?: string
 }
 
 function seedDoc(over: SeedDocOptions = {}): Record<string, unknown> {
   return {
     id: over.id ?? "doc-1",
+    issuer_profile_id: over.issuer_profile_id ?? null,
     type: over.type ?? "invoice",
     status: over.status ?? "issued",
     payment_status: over.payment_status ?? "unpaid",
@@ -74,6 +77,7 @@ function makeCtx(opts?: {
   }> = []
   const ctx: ReconcileCtx = {
     db,
+    time: testTime(),
     emit: async (event) => {
       emittedAttention.push({
         entity: event.entity,
@@ -634,5 +638,45 @@ describe("reconcileShopifyPayments", () => {
     })
     await reconcileShopifyPayments(ctx)
     expect(emittedAttention.find((e) => e.action === "paid")).toBeUndefined()
+  })
+})
+
+describe("the paid date reads the issuer's date", () => {
+  const PARIS = { id: "iss-paris", timezone: "Europe/Paris" }
+  const paidOrder = (over: { processedAt?: string; createdAt?: string }) => ({
+    "gid://shopify/Order/9001": orderResult({ financialStatus: "PAID", fulfillmentStatus: "FULFILLED", ...over }),
+  })
+  const doc = () => seedDoc({ id: "doc-1", shopify_order_id: "9001", scope: "goods", issuer_profile_id: PARIS.id })
+
+  test("an order processed at 00:20 on 1 January in Paris", async () => {
+    const { ctx, db } = makeCtx({
+      docs: [doc()],
+      issuerProfiles: [PARIS],
+      ordersByGid: paidOrder({ processedAt: "2026-12-31T23:20:00Z" }),
+    })
+    await reconcileShopifyPayments(ctx)
+    expect(db.__all("documents")[0]!.paid_at).toBe("2027-01-01")
+  })
+
+  test("an order with no date of its own: the run's instant, in Paris", async () => {
+    const { ctx, db } = makeCtx({
+      docs: [doc()],
+      issuerProfiles: [PARIS],
+      ordersByGid: paidOrder({}),
+    })
+    await reconcileShopifyPayments(ctx, { now: new Date("2026-12-31T23:20:00Z") })
+    expect(db.__all("documents")[0]!.paid_at).toBe("2027-01-01")
+  })
+
+  test("an unknown zone leaves the invoice for the next run and says why", async () => {
+    const { ctx, db } = makeCtx({
+      docs: [doc()],
+      issuerProfiles: [{ ...PARIS, timezone: "Europe/Atlantis" }],
+      ordersByGid: paidOrder({ processedAt: "2026-12-31T23:20:00Z" }),
+    })
+    const result = await reconcileShopifyPayments(ctx)
+    expect(result.marked_paid).toBe(0)
+    expect(result.errors[0]?.message).toContain("Atlantis")
+    expect(db.__all("documents")[0]!.payment_status).toBe("unpaid")
   })
 })

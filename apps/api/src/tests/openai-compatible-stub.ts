@@ -177,8 +177,8 @@ export function startOpenAICompatibleStub(options: StubOptions = {}): OpenAIComp
 /** A trimmed OpenRouter `/models` catalogue for tests. */
 export const STUB_OPENROUTER_CATALOGUE = [
   {
-    id: "deepseek/deepseek-v4.1-flash",
-    name: "DeepSeek: DeepSeek V4.1 Flash",
+    id: "deepseek/deepseek-v4.1-flash-1017",
+    name: "DeepSeek: DeepSeek V4.1 Flash 1017",
     context_length: 1048576,
     pricing: { prompt: "0.0000003", completion: "0.0000012" },
     supported_parameters: ["max_tokens", "reasoning", "tools", "tool_choice"],

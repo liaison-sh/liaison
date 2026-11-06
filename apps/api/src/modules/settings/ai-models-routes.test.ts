@@ -40,7 +40,7 @@ const MEMBER_ID = "00000000-0000-4000-8000-0000000f0003"
 const THREAD_ID = "00000000-0000-4000-8000-0000000f0010"
 const FLASH_LITE = "airoutes-flash-lite"
 const PRO = "airoutes-pro"
-const OR_KEY = "openrouter/deepseek/deepseek-v4.1-flash"
+const OR_KEY = "openrouter/deepseek/deepseek-v4.1-flash-1017"
 
 let stub: OpenAICompatibleStub
 let adminToken: string
@@ -332,7 +332,7 @@ describe("AI models API", () => {
     const before = chats()
     try {
       const res = await call("POST", "/api/settings/ai/openrouter/models", {
-        upstreamId: "deepseek/deepseek-v4.1-flash",
+        upstreamId: "deepseek/deepseek-v4.1-flash-1017",
       })
       expect(res.status).toBe(412)
       expect(res.json.error.code).toBe("byok_required")
@@ -360,12 +360,12 @@ describe("AI models API", () => {
     expect(res.status).toBe(200)
     const rows = res.json.data.models
     expect(rows.map((r: any) => r.upstreamId)).toEqual([
-      "deepseek/deepseek-v4.1-flash",
+      "deepseek/deepseek-v4.1-flash-1017",
       "acme/always-thinks",
     ])
     expect(rows[0]).toEqual({
-      upstreamId: "deepseek/deepseek-v4.1-flash",
-      displayName: "DeepSeek: DeepSeek V4.1 Flash",
+      upstreamId: "deepseek/deepseek-v4.1-flash-1017",
+      displayName: "DeepSeek: DeepSeek V4.1 Flash 1017",
       contextWindow: 1048576,
       inputCostPerM: "0.24000000",
       outputCostPerM: "0.96000000",
@@ -437,7 +437,7 @@ describe("AI models API", () => {
     }
     try {
       const res = await call("POST", "/api/settings/ai/openrouter/models", {
-        upstreamId: "deepseek/deepseek-v4.1-flash",
+        upstreamId: "deepseek/deepseek-v4.1-flash-1017",
       })
       expect(res.status).toBe(422)
       expect(res.json.error.message).toContain("No endpoints found matching your data policy")
@@ -450,7 +450,7 @@ describe("AI models API", () => {
   it("adds an OpenRouter model after a test call that calls the tool, with the routing options", async () => {
     const before = stub.requests.length
     const res = await call("POST", "/api/settings/ai/openrouter/models", {
-      upstreamId: "deepseek/deepseek-v4.1-flash",
+      upstreamId: "deepseek/deepseek-v4.1-flash-1017",
     })
     expect(res.status).toBe(201)
     expect(res.json.data).toMatchObject({
@@ -471,20 +471,20 @@ describe("AI models API", () => {
         require_parameters: true,
         ignore: ["OpenInference"],
       })
-      expect(c.body.model).toBe("deepseek/deepseek-v4.1-flash")
+      expect(c.body.model).toBe("deepseek/deepseek-v4.1-flash-1017")
     }
     const stored = (await orgModels()).added
     expect(stored).toHaveLength(1)
     expect(stored[0]).toMatchObject({
       key: OR_KEY,
-      upstreamId: "deepseek/deepseek-v4.1-flash",
+      upstreamId: "deepseek/deepseek-v4.1-flash-1017",
       reasoningEfforts: ["low", "high"],
       canDisableReasoning: true,
       enabled: true,
     })
 
     const dup = await call("POST", "/api/settings/ai/openrouter/models", {
-      upstreamId: "deepseek/deepseek-v4.1-flash",
+      upstreamId: "deepseek/deepseek-v4.1-flash-1017",
     })
     expect(dup.status).toBe(409)
 

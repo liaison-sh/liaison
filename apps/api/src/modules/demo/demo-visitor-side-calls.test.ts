@@ -605,7 +605,7 @@ describe("a demo visitor's paid calls outside a turn", () => {
           id: "gen-flush",
           object: "chat.completion",
           created: 1,
-          model: "deepseek/deepseek-v4.1-flash",
+          model: "deepseek/deepseek-v4.1-flash-1017",
           choices: [
             {
               index: 0,

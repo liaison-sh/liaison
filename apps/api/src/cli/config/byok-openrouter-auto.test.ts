@@ -148,7 +148,7 @@ describe("config apply with an OpenRouter key alone", () => {
       .slice(before)
       .filter((r) => r.path === "/api/v1/chat/completions" && r.body.stream === true)
     expect(turn.length).toBeGreaterThanOrEqual(1)
-    expect(turn[0]!.body.model).toBe("deepseek/deepseek-v4.1-flash")
+    expect(turn[0]!.body.model).toBe("deepseek/deepseek-v4.1-flash-1017")
     expect(turn[0]!.authorization).toBe(`Bearer ${ORG_KEY}`)
 
     const [reply] = await sql`

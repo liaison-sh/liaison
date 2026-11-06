@@ -4003,7 +4003,7 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
     expect(r.status).toBe("pending_approval")
     expect(extras.approvalsRequested[0]!.tool_name).toBe("invoicing:credit_note_create_and_issue")
     const detail = extras.approvalsRequested[0]!.summary_detail!
-    expect(detail.lines).toContain("Customer: Buyer SARL")
+    expect(extras.approvalsRequested[0]!.summary).toContain("Buyer SARL")
     expect(detail.lines).toContain("Line: x x 1 @ -50.00 EUR")
   })
 

@@ -224,7 +224,7 @@
       }
     ]
   },
-  "version": "0.20.39",
+  "version": "0.20.40",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -2253,7 +2253,8 @@
         "properties": {
           "issuer_profile_id": { "type": ["string", "null"], "description": "Issuer profile id." },
           "counterparty": { "type": ["object", "string"], "additionalProperties": true, "description": "The counterparty as passed to a create_and_issue tool." },
-          "buyer_is_consumer": { "type": ["boolean", "null"], "description": "As passed to a create_and_issue tool." }
+          "buyer_is_consumer": { "type": ["boolean", "null"], "description": "As passed to a create_and_issue tool." },
+          "original_document_id": { "type": ["string", "null"], "description": "The invoice a credit note reverses, by id or number: returns its number and date as `original`, with no buyer check." }
         }
       },
       "readOnly": true
@@ -3659,6 +3660,8 @@
           "draft_id"
         ]
       },
+      "summarizer": "summarizePoIssue",
+      "summarizerContext": { "tool": "documents_get", "params": { "id": "draft_id" } },
       "approvalCard": {
         "summary": "Issue purchase order from draft {{params.draft_id}}"
       },
@@ -3840,6 +3843,8 @@
           "items"
         ]
       },
+      "summarizer": "summarizePoCreateAndIssue",
+      "summarizerContext": { "tool": "documents_issue_preview", "params": { "issuer_profile_id": "issuer_profile_id" } },
       "approvalCard": {
         "summary": "Issue PO for {{params.counterparty.legal_name}}"
       },
@@ -4264,6 +4269,11 @@
           "items"
         ]
       },
+      "summarizer": "summarizeCreditNoteCreateAndIssue",
+      "summarizerContext": {
+        "tool": "documents_issue_preview",
+        "params": { "issuer_profile_id": "issuer_profile_id", "original_document_id": "original_document_id" }
+      },
       "approvalCard": {
         "summary": "Issue credit note for {{params.counterparty.legal_name}}"
       },
@@ -4294,6 +4304,8 @@
           "draft_id"
         ]
       },
+      "summarizer": "summarizeCreditNoteIssue",
+      "summarizerContext": { "tool": "documents_get", "params": { "id": "draft_id" } },
       "approvalCard": {
         "summary": "Issue credit note from draft {{params.draft_id}}"
       }

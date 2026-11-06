@@ -104,6 +104,47 @@ describe("the tool budget sheds least recently useful first", () => {
   })
 })
 
+describe("a turn just over the budget", () => {
+  // Logged on a live turn: 20,433 tokens over a 20,000 cap dropped 50 of 70 tools.
+  it("sheds the smallest equally old app that covers the excess, not the largest", () => {
+    const tools: Defs = { ...appTools("big", 50), ...appTools("small", 3) }
+    const names = Object.keys(tools)
+    const total = tokensOf(tools, names)
+    const out = evictByRecency({
+      names,
+      tools,
+      recency: new Map(),
+      total,
+      cap: total - 100,
+    })
+    expect(out.dropped.sort()).toEqual(names.filter((n) => n.startsWith("small__")).sort())
+  })
+
+  it("when no one app covers it, the largest still goes first, whole", () => {
+    const tools: Defs = { ...appTools("big", 50), ...appTools("small", 3) }
+    const names = Object.keys(tools)
+    const total = tokensOf(tools, names)
+    const bigTokens = tokensOf(
+      tools,
+      names.filter((n) => n.startsWith("big__")),
+    )
+    const out = evictByRecency({ names, tools, recency: new Map(), total, cap: total - bigTokens })
+    expect(out.dropped.sort()).toEqual(names.filter((n) => n.startsWith("big__")).sort())
+    expect(evictByRecency({ names, tools, recency: new Map(), total, cap: 0 }).dropped.length).toBe(
+      53,
+    )
+  })
+
+  it("age still comes first: an older app goes before a newer small one", () => {
+    const tools: Defs = { ...appTools("old", 30), ...appTools("newer", 2) }
+    const names = Object.keys(tools)
+    const recency = new Map(names.map((n) => [n, n.startsWith("old__") ? 9 : 2]))
+    const total = tokensOf(tools, names)
+    const out = evictByRecency({ names, tools, recency, total, cap: total - 10 })
+    expect(out.dropped.every((n) => n.startsWith("old__"))).toBe(true)
+  })
+})
+
 describe("recent turns, then a vague message, under a large focus preload", () => {
   // The live demo case: the last turns booked a shipment (boxtal), the
   // visitor's open tab is the shop app (a hard focus app on a visitor turn)

@@ -2,9 +2,9 @@
 import { and, sql as drizzleSql, eq } from "drizzle-orm"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
+import { routines, skills, threads } from "~/db/schema/kernel"
 import { approvalRequests } from "~/db/schema/kernel/agent-memory"
 import { contacts } from "~/db/schema/kernel/contacts"
-import { threads } from "~/db/schema/kernel/threads"
 import { entityRegistry, type SearchIndexFields, viewRegistry } from "~/modules/apps/app-registries"
 import { isMailEntitySuppressed } from "~/modules/mailbox-crypto/content-suppression"
 
@@ -80,6 +80,7 @@ interface RegistryEntityShape {
   labelField: string
   handlePrefix: string
   tableName?: string
+  external?: boolean
   indexFields?: SearchIndexFields
 }
 
@@ -102,6 +103,55 @@ function lookupEntityDecl(
 }
 
 /**
+ * THE ENTITY A TAB'S ID NAMES. A tab type is named for the page (`invoicing:detail`,
+ * `contacts:contact-detail`), and its id is a record of an entity with another
+ * name, so a lookup by the tab's name found nothing and the turn never said which
+ * record was open. The tab type declares it (`views.tabTypes.<tab>.entity`): an
+ * entity of the same app (`document`), or of another (`kernel:contact`).
+ */
+export function tabEntity(
+  orgId: string,
+  app: string,
+  tabType: string,
+): { app: string; entityType: string } | null {
+  for (const id of orgId ? [orgId, "*"] : ["*"]) {
+    const views = viewRegistry.get([id, app]) as
+      | { tabTypes?: Record<string, { entity?: unknown }> }
+      | undefined
+    const entity = views?.tabTypes?.[tabType]?.entity
+    if (typeof entity !== "string" || !entity) continue
+    const sep = entity.indexOf(":")
+    return sep === -1
+      ? { app, entityType: entity }
+      : { app: entity.slice(0, sep), entityType: entity.slice(sep + 1) }
+  }
+  return null
+}
+
+/** An id a page reported, fit to be named back to the model: nothing that could open a tag. */
+const REPORTED_ID = /^[\w:/.@-]{1,200}$/
+
+/**
+ * A record of an entity that lives in another system (an ad, a Shopify order)
+ * has no row to read its name from. What is known is the id the person's own
+ * page reported, which tells them nothing they do not hold, so the turn names
+ * it. An entity with a local table never comes here without being `external`:
+ * no row there means the reader may not see it.
+ */
+export function externalEntitySnippet(params: {
+  orgId: string
+  app: string
+  entityType: string
+  entityId: string
+}): string | null {
+  const { orgId, app, entityType, entityId } = params
+  const target = tabEntity(orgId, app, entityType) ?? { app, entityType }
+  if (!lookupEntityDecl(orgId, target.app, target.entityType)?.external) return null
+  if (!REPORTED_ID.test(entityId)) return null
+  return `[Entity: ${app}:${entityType}, id: ${entityId}]`
+}
+
+/**
  * Resolve an app entity's label (and snippet) generically from its registry
  * declaration, with no per-app SQL. The label comes from the declared
  * `labelField`; an optional `indexFields.handle` column lets us render a
@@ -111,9 +161,16 @@ function lookupEntityDecl(
 async function loadAppEntityLabelAndSnippet(
   tx: LabelReader,
   decl: RegistryEntityShape,
-  params: { orgId: string; app: string; entityType: string; entityId: string },
+  params: {
+    orgId: string
+    app: string
+    entityType: string
+    entityId: string
+    /** The name the snippet calls it by: the tab type a link opens, when one names it. */
+    shownAs: string
+  },
 ): Promise<{ label?: string; snippet?: string } | null> {
-  const { orgId, app, entityType, entityId } = params
+  const { orgId, app, entityType, entityId, shownAs } = params
   const tableName = decl.tableName
   const labelField = decl.labelField
   const handleField = decl.indexFields?.handle
@@ -122,6 +179,14 @@ async function loadAppEntityLabelAndSnippet(
   if (!SAFE_IDENT.test(app)) return null
 
   const schema = `app_${app}`
+  // An external entity may have no local table at all, and a failed read would
+  // abort the caller's transaction.
+  if (decl.external) {
+    const found = await tx.execute(
+      drizzleSql`SELECT to_regclass(${`"${schema}"."${tableName}"`}) IS NOT NULL AS present`,
+    )
+    if (!extractRows<{ present: boolean }>(found)[0]?.present) return null
+  }
   const labelCol = drizzleSql.raw(`"${labelField}"`)
   const tableRef = drizzleSql.raw(`"${schema}"."${tableName}"`)
   const selectCols = handleField
@@ -150,7 +215,7 @@ async function loadAppEntityLabelAndSnippet(
   if (mailSuppressed) {
     return {
       label: `${entityType} ${shortId(entityId)}`,
-      snippet: `[Entity: ${app}:${entityType}, id: ${entityId}] { content encrypted, readable only by the mailbox owner }`,
+      snippet: `[Entity: ${shownAs}, id: ${entityId}] { content encrypted, readable only by the mailbox owner }`,
     }
   }
 
@@ -159,7 +224,7 @@ async function loadAppEntityLabelAndSnippet(
   const labelClause = row.label ? `${labelField}: "${row.label}"` : `${labelField}: "(unnamed)"`
   return {
     label,
-    snippet: `[Entity: ${app}:${entityType}${handle ? ` #${handle}` : ""}, id: ${entityId}] { ${labelClause} }`,
+    snippet: `[Entity: ${shownAs}${handle ? ` #${handle}` : ""}, id: ${entityId}] { ${labelClause} }`,
   }
 }
 
@@ -167,7 +232,9 @@ async function loadKnownEntityLabelAndSnippet(
   tx: LabelReader,
   params: { orgId: string; app: string; entityType: string; entityId: string },
 ): Promise<{ label?: string; snippet?: string } | null> {
-  const { orgId, app, entityType, entityId } = params
+  const { orgId, entityId } = params
+  const shownAs = `${params.app}:${params.entityType}`
+  const { app, entityType } = tabEntity(orgId, params.app, params.entityType) ?? params
   try {
     if (app === "kernel" && entityType === "thread") {
       const [row] = await tx
@@ -211,12 +278,42 @@ async function loadKnownEntityLabelAndSnippet(
         snippet: `[Entity: kernel:approval_request ${row.handle}, id: ${entityId}] { title: "${label}" }`,
       }
     }
+    if (app === "kernel" && entityType === "routine") {
+      const [row] = await tx
+        .select({ name: routines.name })
+        .from(routines)
+        .where(and(eq(routines.id, entityId), eq(routines.orgId, orgId)))
+        .limit(1)
+      if (!row) return null
+      return {
+        label: row.name,
+        snippet: `[Entity: kernel:routine, id: ${entityId}] { name: "${row.name}" }`,
+      }
+    }
+    if (app === "kernel" && entityType === "skill") {
+      const [row] = await tx
+        .select({ name: skills.name })
+        .from(skills)
+        .where(and(eq(skills.id, entityId), eq(skills.orgId, orgId)))
+        .limit(1)
+      if (!row) return null
+      return {
+        label: row.name,
+        snippet: `[Entity: kernel:skill, id: ${entityId}] { name: "${row.name}" }`,
+      }
+    }
     // Non-kernel app entities resolve generically through the entity registry —
     // the declared `labelField`/`tableName`/`indexFields.handle` describe where
     // the label lives, so no per-app SQL or app-name branching is needed.
     const decl = lookupEntityDecl(orgId, app, entityType)
     if (decl) {
-      return await loadAppEntityLabelAndSnippet(tx, decl, params)
+      return await loadAppEntityLabelAndSnippet(tx, decl, {
+        orgId,
+        app,
+        entityType,
+        entityId,
+        shownAs,
+      })
     }
   } catch {
     return null

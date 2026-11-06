@@ -7,7 +7,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import crypto from "node:crypto"
 import { estimateToolSchemaTokens } from "~/modules/agent/context/context"
-import { entityRegistry } from "~/modules/apps/app-registries"
+import { entityRegistry, viewRegistry } from "~/modules/apps/app-registries"
 import {
   actsOnEntity,
   FOCUS_ENTITY_TOOLS_CEILING_FACTOR,
@@ -50,6 +50,21 @@ afterAll(() => {
 })
 
 describe("the app and entity a view or an event names", () => {
+  it("a tab named for the page counts as the entity it declares", async () => {
+    viewRegistry.set([ORG, "invoicing"], { tabTypes: { detail: { entity: "document" } } } as never)
+    try {
+      const focus = await resolveTurnFocus({
+        orgId: ORG,
+        threadId: crypto.randomUUID(),
+        currentView: { tabType: "invoicing:detail", entityId: crypto.randomUUID() },
+        appsWithTools: new Set(["invoicing"]),
+      })
+      expect([...(focus.get("invoicing")?.viewEntityTypes ?? [])]).toEqual(["document"])
+    } finally {
+      viewRegistry.delete([ORG, "invoicing"])
+    }
+  })
+
   it("reads app:entity and app:entity:action, never the kernel", () => {
     expect(parseQualifiedName("tickets:ticket")).toEqual({ app: "tickets", entityType: "ticket" })
     expect(parseQualifiedName("tickets:ticket:create")).toEqual({

@@ -25,6 +25,7 @@ export const FRAME_METHODS = [
   "navigate",
   "openTab",
   "toast",
+  "setOpenRecord",
 ] as const
 export type FrameMethod = (typeof FRAME_METHODS)[number]
 

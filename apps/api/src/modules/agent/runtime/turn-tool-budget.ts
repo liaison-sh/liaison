@@ -15,8 +15,10 @@
 // The order is now least recently useful first:
 //
 //  1. Discoveries the last RECENT_TOOL_TURNS turns did not use or load, oldest
-//     use first (never used before any use), the larger app first among
-//     equally old ones, so an app with no recent use still leaves whole.
+//     use first (never used before any use). Among equally old ones the smallest
+//     app that covers the excess, else the largest, so an app with no recent use
+//     still leaves whole and a turn just over the cap does not lose a large app
+//     when a small one would do: a dropped tool costs the next turn its cache.
 //  2. A hard focus app's PRELOAD (tools the turn added for the app it is
 //     about, which no turn has used) past FOCUS_PRELOAD_TOKEN_SHARE of the
 //     cap: a focus app is loaded first, never to the whole budget. Then the
@@ -52,7 +54,8 @@ export const FOCUS_PRELOAD_TOKEN_SHARE = 0.5
 /**
  * Shed `names` until `total` fits `cap`, least recently used first. Tools of
  * the same app last used in the same turn (or never) go together, so an app
- * only ever leaves part loaded when its tools were used at different times.
+ * only ever leaves part loaded when its tools were used at different times, and
+ * a weak model never holds half of an app it may take for the whole.
  */
 export function evictByRecency(params: {
   names: readonly string[]
@@ -76,8 +79,15 @@ export function evictByRecency(params: {
   )
   let total = params.total
   const dropped: string[] = []
-  for (const g of ordered) {
-    if (total <= params.cap) break
+  while (total > params.cap && ordered.length > 0) {
+    const oldest = ordered[0].ago
+    const excess = total - params.cap
+    let pick = 0
+    // `ordered` is largest first among equally old: walk to the last that still covers it.
+    for (let i = 0; i < ordered.length && ordered[i].ago === oldest; i++) {
+      if (ordered[i].tokens >= excess) pick = i
+    }
+    const [g] = ordered.splice(pick, 1)
     total -= g.tokens
     dropped.push(...g.names)
   }

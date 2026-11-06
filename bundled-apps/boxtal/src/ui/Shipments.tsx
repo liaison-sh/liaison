@@ -8,7 +8,7 @@
 // come from the shared kit so this surface stays pixel-identical to invoicing.
 import { type Component, createMemo, createResource, createSignal, For, Show } from "solid-js"
 import { app, currentPath } from "@liaison/host"
-import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"
+import { CardTable, type CardTableColumn, createMediaMatch } from "@liaison/app-ui/card-table"
 import {
   Button,
   cx,
@@ -245,6 +245,11 @@ export const Shipments: Component = () => {
   const effectiveSelectedId = createMemo<string | null>(() =>
     resolveSelectedShipmentId(selectedId(), visible()),
   )
+
+  // What the agent is told is open. Below the kit's 640 px tier the detail pane
+  // is not on screen, so nothing is.
+  const hasDetailPane = createMediaMatch("(min-width: 640px)")
+  app.trackOpenRecord("shipment", () => (hasDetailPane() ? effectiveSelectedId() : null))
 
   const selected = createMemo<ShipmentRow | null>(() => {
     const id = effectiveSelectedId()

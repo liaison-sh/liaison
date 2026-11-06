@@ -185,6 +185,7 @@ export const FR: Record<string, string> = {
   "Pending approval. The editor is read-only until the request is decided.": "En attente de validation. L'éditeur est en lecture seule jusqu'à la décision.",
   "Per-line customs": "Douane par ligne",
   "Preview": "Aperçu",
+  "PDF preview": "Aperçu du PDF",
   "Preview PDF": "Aperçu du PDF",
   "This PDF is not ready yet. If it stays that way, use Retry render on the PDF tab.": "Ce PDF n'est pas encore prêt. S'il le reste, utilisez Relancer le rendu dans l'onglet PDF.",
   "This PDF could not be rendered. Use Retry render on the PDF tab.": "Ce PDF n'a pas pu être généré. Utilisez Relancer le rendu dans l'onglet PDF.",

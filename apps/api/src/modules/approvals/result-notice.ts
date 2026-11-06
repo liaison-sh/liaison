@@ -25,9 +25,12 @@
 // (system-event-replay.ts). The scope taint rides on the row's required scopes,
 // which the history loader records on every turn that replays it.
 
-import type { PrivilegedDb } from "~/db"
+import { sql as drizzleSql } from "drizzle-orm"
+import { extractRows, type PrivilegedDb } from "~/db"
+import { schemaRef } from "~/db/schema-ref"
 import { appsLogger as log } from "~/lib/logger"
 import { UUID_RE } from "~/lib/uuid"
+import { failureContextRequiredScopes } from "~/modules/agent/runtime/reinvoke"
 import { markThreadsForTaintSourceResult } from "~/modules/agent/scopes/taint"
 import {
   approvalReentryWriteScopes,
@@ -112,6 +115,63 @@ export function approvalResultRequiredScopes(args: {
     ...approvalReentryWriteScopes(args.proposingTurnScopes, args.requesterScopes),
     ...toolScopes,
   ])
+}
+
+/**
+ * The scopes a notice about a FAILED approved call requires of a reader. It can
+ * quote the handler's error, which holds at most what the call's result could:
+ * so the same set as the result notice, what the proposing turn read plus what
+ * the tool reads.
+ *
+ * Stamping the requester's whole scope set here instead tainted the conversation:
+ * the next turn read the notice as history, and its taint became everything the
+ * person may read. A gated write in that thread was then refused for good, on a
+ * scope the turn's actor did not hold, when it was only a date the handler had
+ * turned down. The whole set is the answer only when nothing says what the call
+ * read: a proposal with no record of its turn's scopes, or a tool no longer
+ * registered.
+ */
+export function approvalFailureRequiredScopes(args: {
+  orgId: string
+  toolName: string
+  proposingTurnScopes: unknown
+  requesterScopes: string[]
+}): string[] {
+  const { appName, toolShortName } = splitToolName(args.toolName)
+  const tool = toolRegistry.get([args.orgId, appName, toolShortName]) as
+    | { requiredScopes?: unknown }
+    | undefined
+  if (!Array.isArray(args.proposingTurnScopes) || !Array.isArray(tool?.requiredScopes)) {
+    return failureContextRequiredScopes(args.requesterScopes, args.orgId)
+  }
+  return approvalResultRequiredScopes(args)
+}
+
+/**
+ * {@link approvalFailureRequiredScopes} for a notice that describes a whole
+ * bundle (the failed step and what its siblings returned): the union over its steps.
+ */
+export async function bundleFailureRequiredScopes(
+  tx: Pick<PrivilegedDb, "execute">,
+  args: { orgId: string; bundleId: string; failedStepId?: string; requesterScopes: string[] },
+): Promise<string[]> {
+  const steps = extractRows<{ tool_name: string; proposing_turn_scopes: unknown }>(
+    await tx.execute(drizzleSql`
+      SELECT tool_name, proposing_turn_scopes FROM ${drizzleSql.raw(schemaRef("kernel"))}.approval_requests
+      WHERE org_id = ${args.orgId}::uuid
+        AND (id = ${args.failedStepId ?? args.bundleId}::uuid OR bundle_id = ${args.bundleId}::uuid)`),
+  )
+  if (steps.length === 0) return failureContextRequiredScopes(args.requesterScopes, args.orgId)
+  return normalizeRequiredScopes(
+    steps.flatMap((step) =>
+      approvalFailureRequiredScopes({
+        orgId: args.orgId,
+        toolName: step.tool_name,
+        proposingTurnScopes: step.proposing_turn_scopes,
+        requesterScopes: args.requesterScopes,
+      }),
+    ),
+  )
 }
 
 /**

@@ -47,7 +47,7 @@ describe("db import enforcement", () => {
     "modules/assist/transcription-models.ts",
     // AI models (admin, kernel:org:admin): reads and writes the org's own settings row
     // (`ai.models`, provider keys) under the row lock, and the global model catalogue.
-    "modules/settings/ai-models-routes.ts",
+    "modules/settings/ai-models-admin.ts",
     "modules/agent/credits/ai-models-store.ts",
     // Daily refresh of every org's added OpenRouter prices: a cross-org system job.
     "modules/agent/credits/openrouter-price-job.ts",

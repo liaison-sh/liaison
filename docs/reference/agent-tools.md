@@ -13,6 +13,8 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | --- | --- | --- | --- |
 | `agents_ask` | Ask another agent in your organization a question, or hand it one piece of work: the way to involve another agent. |  | `kernel:threads:write` |
 | `agents_invite` | Add another agent of your organization to this conversation as a lasting member. | yes | `kernel:threads:write` |
+| `ai_models_get` | Read the organization's AI model settings (admin), the same as Settings &gt; Models: what Auto runs, the default reasoning level, each model with its key, whether it is on and available, its price and reasoning levels. |  | `kernel:org:admin` |
+| `ai_models_set` | Change the organization's default AI model and reasoning level (admin), the same as Settings &gt; Models, for EVERYONE: choose what Auto runs, set the default reasoning level, switch models on or off, add a model from OpenRouter after a test call. | yes | `kernel:org:admin` |
 | `analyze_media` | Analyze an image, video or PDF attachment and return a summary for support: a visual diagnostic for media, and for a document a faithful extraction of sender, line items with prices and totals, dates, reference numbers, addresses and payment terms. |  | `kernel:files:analyze` |
 | `approval_policy_get` | List the org's APPROVAL-TIGHTENING policies: which tools require approval or a second approver, and under what conditions. |  | `kernel:policies:read` |
 | `approval_policy_set` | Configure an org APPROVAL-TIGHTENING policy: escalate a non-gated action to gated, and/or require N distinct approvers (minApprovers:2 = a second person must approve). | yes | `kernel:policies:admin` |

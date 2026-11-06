@@ -98,6 +98,7 @@
       },
       "contact-detail": {
         "component": "ContactDetail",
+        "entity": "kernel:contact",
         "label": "Contact",
         "resolveLabel": "resolveContactTabLabel",
         "sidebar": "ContactsSidebar",

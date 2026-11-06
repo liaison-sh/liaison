@@ -33,6 +33,7 @@ import { ChevronLeft } from "lucide-solid"
 import { type Component, createEffect, createSignal, Show } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
+import { trackOpenRecord } from "~/modules/shell/open-record"
 import { shellTier } from "~/modules/shell/shell-tier"
 import SkillDetail from "./SkillDetail"
 import SkillsList from "./SkillsList"
@@ -52,6 +53,7 @@ const AgentSkillsTab: Component<Props> = (props) => {
   const api = useApi()
   const i18n = useI18n()
   const [selected, setSelected] = createSignal<string | null>(null)
+  trackOpenRecord("kernel", "skill", selected)
   const [creating, setCreating] = createSignal(false)
   const [name, setName] = createSignal("")
   const [description, setDescription] = createSignal("")

@@ -765,6 +765,13 @@ describe("org transfer between two instances", () => {
       .values({ orgId, payload: { t10: "after the move" } })
       .returning({ id: pendingEvents.id })
     await ormB.insert(durableConsumerMarks).values({ consumer: "t10-reverse", eventId: ev!.id })
+    const [fromA] = await A<{ id: string }[]>`
+      SELECT id::text AS id FROM kernel.credit_transactions WHERE org_id = ${orgId} LIMIT 1`
+    const meteredOnA = fromA!.id
+    const [fromB] = await B<{ id: string }[]>`
+      INSERT INTO kernel.credit_transactions (org_id, type, amount, balance_after, raw_cost_usd)
+      VALUES (${orgId}, 'usage', '-0.01', '1', '0.001') RETURNING id::text AS id`
+    const meteredOnB = fromB!.id
     const transferY = randomUUID()
     const back = await exportFrom(B, KEYS_B, orgId, transferY)
     expect(back.header.arrivedVia).toBe(transferX)
@@ -785,6 +792,16 @@ describe("org transfer between two instances", () => {
     const result = await importInto("A", back.lines, back.transferKeys)
     expect(result.replacedTransferId).toBe(transferX)
     expect(await snapshot(A, KEYS_A)).toEqual(await snapshot(B, KEYS_B))
+
+    // Usage comes back to the instance that metered it, unstamped: A reports what its key spent
+    // before the move, however soon the org returned; what B metered arrives stamped.
+    const stampOnA = async (id: string) => {
+      const [r] = await A<{ v: string | null }[]>`
+        SELECT arrived_via::text AS v FROM kernel.credit_transactions WHERE id = ${id}::uuid`
+      return r!.v
+    }
+    expect(await stampOnA(meteredOnA)).toBeNull()
+    expect(await stampOnA(meteredOnB)).toBe(transferY)
     const [t] = await A<{ n: number }[]>`SELECT count(*)::int AS n FROM kernel.threads
       WHERE org_id = ${orgId} AND title = 'Written on B'`
     expect(t!.n).toBe(1)

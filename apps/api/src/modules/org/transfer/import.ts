@@ -528,10 +528,13 @@ export async function importOrg(opts: ImportOptions): Promise<ImportResult> {
           // Metered on another instance's key: stamped with the transfer it
           // arrived through, so this instance's daily usage report never
           // counts it (it reports only what its own key spent). A row that
-          // already arrived through an earlier move keeps that stamp.
+          // already arrived through an earlier move keeps that stamp, unless
+          // that move took the org away from here: this key spent it, so this
+          // instance reports it, as if the org had never left.
           data = data.map((d) => {
             const row = JSON.parse(d) as Record<string, unknown>
             if (row.arrived_via == null) row.arrived_via = transferId
+            else if (row.arrived_via === replacedTransferId) row.arrived_via = null
             return JSON.stringify(row)
           })
         }

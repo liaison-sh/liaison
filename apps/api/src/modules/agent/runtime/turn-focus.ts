@@ -152,15 +152,21 @@ export function appOfSdkToolName(name: string): string {
   return sep > 0 ? name.slice(0, sep) : name
 }
 
-/** The property names of a tool's input schema (a JSON schema object, or a Zod-wrapped one). */
+/**
+ * The property names of a tool's input schema, in the forms the tool bridge
+ * hands out (`providerInputSchemaOf`): a Zod object, or the SDK's `Schema` when
+ * the JSON projection had to be rewritten for providers. A bare JSON Schema
+ * object counts too.
+ */
 function inputPropertyNames(inputSchema: unknown): string[] {
   const schema = inputSchema as
     | {
+        shape?: Record<string, unknown>
         properties?: Record<string, unknown>
         jsonSchema?: { properties?: Record<string, unknown> }
       }
     | undefined
-  const props = schema?.jsonSchema?.properties ?? schema?.properties
+  const props = schema?.shape ?? schema?.jsonSchema?.properties ?? schema?.properties
   return props && typeof props === "object" ? Object.keys(props) : []
 }
 

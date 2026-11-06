@@ -6,14 +6,21 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { asSchema, jsonSchema } from "ai"
+import { asSchema, jsonSchema, tool } from "ai"
 import { z } from "zod"
 import { sql } from "~/db"
 import {
   estimateToolSchemaTokens,
   TURN_TOOL_SCHEMA_TOKEN_CAP,
 } from "~/modules/agent/context/context"
-import type { TurnFocus } from "~/modules/agent/runtime/turn-focus"
+import {
+  actsOnEntity,
+  entityRank,
+  FOCUS_ENTITY_TOOLS_CEILING_FACTOR,
+  focusHeadroomFill,
+  focusOverflow,
+  type TurnFocus,
+} from "~/modules/agent/runtime/turn-focus"
 import { planTurnToolBudget } from "~/modules/agent/runtime/turn-tool-budget"
 import { isDeferredTool, providerInputSchemaOf } from "~/modules/agent/tools/tool-bridge"
 import {
@@ -190,9 +197,138 @@ describe("a thread holding a kernel tool whose cost the meter used to miss", () 
     expect(out.toolSchemaTokens).toBeLessThanOrEqual(TURN_TOOL_SCHEMA_TOKEN_CAP)
   })
 
-  it("keeps it when the last turn used it, and the focus app pays the true cost", () => {
+  it("keeps it when the last turn used it, beside the tools acting on the ticket", () => {
     const out = plan(new Map([["kernel__create_routine", 0]]))
     expect(out.drop).not.toContain(out.heavy)
-    expect(out.toolSchemaTokens).toBeLessThanOrEqual(TURN_TOOL_SCHEMA_TOKEN_CAP)
+    for (const name of ["reply", "get", "addNote"]) {
+      expect(out.drop).not.toContain(`tickets__${name}`)
+    }
+    expect(out.drop).toContain("tickets__search")
+    expect(out.toolSchemaTokens).toBeLessThanOrEqual(
+      Math.round(TURN_TOOL_SCHEMA_TOKEN_CAP * FOCUS_ENTITY_TOOLS_CEILING_FACTOR),
+    )
+  })
+})
+
+describe("entity protection reads what the tool bridge hands out", () => {
+  const entity = new Set(["ticket"])
+
+  it("reads a Zod object, a manifest's params through the bridge", () => {
+    const reply = manifestTools("apps/api/src/apps/tickets/app.manifest.json").tickets__reply
+    expect("shape" in (reply.inputSchema as object)).toBe(true)
+    expect(actsOnEntity(reply.inputSchema, entity)).toBe(true)
+  })
+
+  it("reads the SDK schema a tuple argument is rewritten to", () => {
+    const rewritten = providerInputSchemaOf(
+      z.object({ ticketId: z.string(), pair: z.tuple([z.string(), z.number()]) }),
+    )
+    expect("shape" in (rewritten as object)).toBe(false)
+    expect(actsOnEntity(rewritten, entity)).toBe(true)
+  })
+
+  it("reads the schema a built tool carries, unchanged by the SDK's tool()", () => {
+    const inputSchema = providerInputSchemaOf({
+      type: "object",
+      properties: { ticketId: { type: "string" } },
+    })
+    const built = tool({ description: "d", inputSchema: inputSchema as never })
+    expect(actsOnEntity(built.inputSchema, entity)).toBe(true)
+  })
+
+  it("does not count an input naming another entity", () => {
+    expect(actsOnEntity(providerInputSchemaOf(z.object({ taskId: z.string() })), entity)).toBe(
+      false,
+    )
+  })
+})
+
+describe("the tool order on a real entity page", () => {
+  const ticketTools = () => manifestTools("apps/api/src/apps/tickets/app.manifest.json")
+  const projectTools = () => manifestTools("apps/api/src/apps/projects/app.manifest.json")
+
+  it("ranks the tools of the entity on a ticket's and a task's thread", () => {
+    const tickets = ticketTools()
+    const ticket = hardFocus("tickets", "ticket")
+    for (const name of ["reply", "get", "addNote", "close", "setStatus"]) {
+      expect(entityRank(`tickets__${name}`, tickets, ticket)).toBe(2)
+    }
+    for (const name of ["search", "backlogHealth", "templates.list"]) {
+      expect(entityRank(`tickets__${name}`, tickets, ticket)).toBe(0)
+    }
+    const projects = projectTools()
+    const task = hardFocus("projects", "task")
+    for (const name of ["comment", "comments", "get", "update"]) {
+      expect(entityRank(`projects__${name}`, projects, task)).toBe(2)
+    }
+    expect(entityRank("projects__createProject", projects, task)).toBe(0)
+  })
+
+  it("does not rank another app's tool because its input names the entity", () => {
+    const tools = {
+      ...ticketTools(),
+      ...manifestTools("apps/api/src/apps/mail/app.manifest.json"),
+    }
+    expect(entityRank("mail__convertToTicket", tools, hardFocus("tickets", "ticket"))).toBe(0)
+  })
+
+  it("sheds every other tool of the app before any tool acting on the entity", () => {
+    const tools = ticketTools()
+    const names = Object.keys(tools)
+    const focus = hardFocus("tickets", "ticket")
+    const visibleTokens = names.reduce(
+      (n, name) => n + estimateToolSchemaTokens(name, tools[name]),
+      0,
+    )
+    const others = names.filter((n) => entityRank(n, tools, focus) === 0)
+    const entityTools = names.filter((n) => entityRank(n, tools, focus) === 2)
+    expect(entityTools.length).toBeGreaterThan(5)
+
+    const out = focusOverflow({ candidates: names, tools, focus, visibleTokens, cap: 1000 })
+    expect(out.slice(0, others.length).sort()).toEqual([...others].sort())
+    expect(out.slice(0, others.length)[0]).toBe("tickets__search")
+  })
+
+  it("keeps a task's own tools under pressure from what the thread loaded", () => {
+    const appTools = projectTools()
+    const names = Object.keys(appTools)
+    const tools = { ...kernelTools, ...appTools }
+    const heavy = "kernel__create_routine"
+    const plan = planTurnToolBudget({
+      visible: [...coreTools, heavy, ...names],
+      tools,
+      droppable: (n) => n === heavy || n in appTools,
+      preloaded: new Set(names),
+      hardFocusApps: new Set(["projects"]),
+      focus: hardFocus("projects", "task"),
+      recency: new Map([[heavy, 0]]),
+      cap: TURN_TOOL_SCHEMA_TOKEN_CAP,
+    })
+    for (const name of ["comment", "comments", "get", "update"]) {
+      expect(plan.drop).not.toContain(`projects__${name}`)
+    }
+    expect(plan.drop).toContain("projects__createProject")
+    expect(plan.drop).not.toContain(heavy)
+  })
+
+  it("loads the tools of the entity in view first when only a little room is left", () => {
+    const tools = ticketTools()
+    const names = Object.keys(tools)
+    const focus: TurnFocus = new Map([
+      [
+        "tickets",
+        {
+          hard: false,
+          verifiedEntityTypes: new Set<string>(),
+          viewEntityTypes: new Set(["ticket"]),
+        },
+      ],
+    ])
+    const out = focusHeadroomFill({ candidates: names, tools, focus, visibleTokens: 0, cap: 3000 })
+    expect(out.length).toBeGreaterThan(0)
+    const firstOther = out.findIndex((n) => entityRank(n, tools, focus) === 0)
+    const lastActing = out.findLastIndex((n) => entityRank(n, tools, focus) === 1)
+    expect(lastActing).toBeGreaterThanOrEqual(0)
+    if (firstOther !== -1) expect(lastActing).toBeLessThan(firstOther)
   })
 })

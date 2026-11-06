@@ -264,7 +264,7 @@ describe("what a card action can reach", () => {
     expect(external("https://docs.example.com?id={{result.id}}")).toContain("continue with a path")
     expect(external("http://docs.example.com/x")).toContain("must start with https://")
     expect(external("https://user@docs.example.com/x")).toContain("literal host name")
-    expect(external("https://10.0.0.1/x")).toContain("literal host name")
+    expect(external("https://192.0.2.1/x")).toContain("literal host name")
   })
 
   it("refuses a gated tool without a confirm, and accepts it with one", () => {

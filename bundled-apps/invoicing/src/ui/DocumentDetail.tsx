@@ -338,8 +338,8 @@ export interface PdfAffordance {
 /** What the header's Preview and Download say when there is no PDF to open. */
 export function pdfNotReadyNote(s: PdfStatus | undefined | null): string {
   return s === "failed"
-    ? "This PDF could not be rendered. Use Retry render on the PDF tab."
-    : "This PDF is not ready yet. If it stays that way, use Retry render on the PDF tab."
+    ? tr("This PDF could not be rendered. Use Retry render on the PDF tab.")
+    : tr("This PDF is not ready yet. If it stays that way, use Retry render on the PDF tab.")
 }
 
 export function pdfStatusAffordance(s: PdfStatus | undefined | null): PdfAffordance {
@@ -1001,7 +1001,7 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
         id: props.documentId,
       })
       if (!res?.url) {
-        showActionNote({ text: tr(pdfNotReadyNote(data()?.document?.pdf_status)), isError: false })
+        showActionNote({ text: pdfNotReadyNote(data()?.document?.pdf_status), isError: false })
         return
       }
       const blob = await fetchBlob(res.url)

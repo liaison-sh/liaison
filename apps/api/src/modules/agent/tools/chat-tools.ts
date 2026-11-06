@@ -680,7 +680,7 @@ export async function handleThreadsRead(
 export const ANSWERING_THREAD_CODE = "answering_thread"
 
 type ThreadsReplyResult =
-  | { message: any }
+  | { message: any; postedTo?: string }
   | { error: string }
   | { error: { code: string; message: string } }
 
@@ -728,7 +728,15 @@ export async function handleThreadsReply(
     }
     threadId = opened.threadId
   }
-  return postThreadReply({ ...params, threadId: threadId as string }, ctx)
+  const posted = await postThreadReply({ ...params, threadId: threadId as string }, ctx)
+  // Where it went, in the result the agent reports from: a post here is not a
+  // write to the org's CRM, and with one connected the two read alike.
+  return params.contactId && "message" in posted
+    ? {
+        ...posted,
+        postedTo: `The discussion of contact ${params.contactId}, in Liaison only: not in any connected system.`,
+      }
+    : posted
 }
 
 async function postThreadReply(

@@ -56,7 +56,7 @@ interface DeductParams {
   inputTokens: number
   outputTokens: number
   rawCost: string
-  /** The raw cost in USD and the USD per EUR rate used (migration 0262), when known. */
+  /** The raw cost in USD and the USD per EUR rate used (migration 0264), when known. */
   rawCostUsd?: string | null
   usdEurRate?: string | null
   creditCost: string

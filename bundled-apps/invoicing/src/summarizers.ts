@@ -475,6 +475,64 @@ export function summarizeDocumentUpdate(
 // Issue a saved draft (invoice_issue, quote_issue, proforma_issue): context = the draft.
 // ─────────────────────────────────────────────────────────────────────────
 
+
+/** A card line stating what the call itself declares: the kernel's card reads params, not the org's data. */
+const DECLARED_CONSUMER_LINE =
+  "This call declares the buyer a private consumer (consumer VAT, no reverse charge). Approve only if you know it is a private person."
+
+/**
+ * The drafts tools. These two park in more than one way, and this card must hold for all of them:
+ * a consumer declared against evidence parks with its own card (mutations/drafts.ts
+ * parkConsumerDeclaration), so what lands here is every other park, a tainted turn above all. The
+ * card therefore says what the call does, and names a private consumer only when the call declares one.
+ */
+export function summarizeDraftCreate(params: Record<string, unknown>): Promise<ApprovalSummaryShape> {
+  const type = docTypeLabel(params.type)
+  const customer = text(params.counterparty_name, 80)
+  const currency = text(params.currency, 3) ?? "EUR"
+  const items = Array.isArray(params.items) ? (params.items as CardLineItem[]) : []
+  const order = orderName(params.shopify_order_number)
+  return done({
+    kind: "drafts_create",
+    title: `Create a draft ${type}${customer ? ` for ${customer}` : ""}`,
+    lines: [
+      ...(params.buyer_is_consumer === true ? [DECLARED_CONSUMER_LINE] : []),
+      ...(customer ? [`Customer: ${customer}`] : []),
+      ...(order ? [`Order: ${order}`] : []),
+      ...lineTexts(items, currency),
+    ],
+  })
+}
+
+export function summarizeDraftUpdate(
+  params: { patch?: unknown },
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
+  const doc = docOf(meta)
+  const patch = params.patch && typeof params.patch === "object" ? (params.patch as Record<string, unknown>) : {}
+  const changes: string[] = []
+  for (const [key, next] of Object.entries(patch)) {
+    if (key === "buyer_is_consumer" || next === undefined) continue
+    if (key === "lines") {
+      const count = Array.isArray(next) ? next.length : 0
+      changes.push(`Lines: replaced with ${count} line${count === 1 ? "" : "s"}`)
+    } else {
+      changes.push(`${DOC_FIELD_LABEL[key] ?? humanKey(key)}: set to ${docFieldValue(key, next)}`)
+    }
+  }
+  return done({
+    kind: "drafts_update",
+    title: `Update ${docWithCustomer(doc, "a draft")}`,
+    lines: [
+      ...(patch.buyer_is_consumer === true ? [DECLARED_CONSUMER_LINE] : []),
+      ...(patch.buyer_is_consumer === false ? ["This call removes the declaration that the buyer is a private consumer."] : []),
+      ...docFacts(doc, { total: false }),
+      ...changes,
+    ],
+    links: openLink(doc?.id, doc),
+  })
+}
 function draftIssueSummarizer(type: string, kind: string) {
   return (params: { draft_id?: string; due_at?: string }, _ctx?: unknown, meta?: SummarizerMeta): Promise<ApprovalSummaryShape> => {
     const draft = docOf(meta)
@@ -876,58 +934,4 @@ export function summarizeDeferredTaxOverride(
       ...(text(row?.reason, 120) ? [`Parked because: ${text(row?.reason, 120)!.replace(/_/g, " ")}`] : []),
     ],
   })
-}
-
-
-// ─────────────────────────────────────────────────────────────────────────
-// drafts_create / drafts_update (conditionalGate): a card for when the kernel parks the call
-// itself (an org approval policy, a tainted turn). The handler's own consumer-declaration card
-// is built in mutations/drafts.ts.
-// ─────────────────────────────────────────────────────────────────────────
-
-interface DraftCreateParams {
-  type?: string
-  counterparty_name?: string | null
-  counterparty_country?: string | null
-  currency?: string | null
-  shopify_order_number?: string | null
-  po_number?: string | null
-  buyer_is_consumer?: boolean | null
-  items?: CardLineItem[]
-}
-
-export function summarizeDraftCreate(params: DraftCreateParams): Promise<ApprovalSummaryShape> {
-  const typeLabel = docTypeLabel(params.type)
-  const customer = text(params.counterparty_name, 80)
-  const currency = (typeof params.currency === "string" && params.currency) || "EUR"
-  const items = Array.isArray(params.items) ? params.items : []
-  const total = items.length > 0 ? money(linesTotal(items), currency) : null
-  const order = orderName(params.shopify_order_number)
-  const po = text(params.po_number, 60)
-  const country = text(params.counterparty_country, 4)
-  return done({
-    kind: "drafts_create",
-    title: `Create a ${typeLabel} draft${customer ? ` for ${customer}` : ""}`,
-    subtitle: "A draft is unnumbered and can still be edited or discarded",
-    lines: [
-      ...(params.buyer_is_consumer === true ? ["The agent declares this buyer a private consumer"] : []),
-      `Document: ${capitalize(typeLabel)} draft`,
-      ...(customer ? [`Customer: ${customer}${country ? ` (${country})` : ""}`] : []),
-      ...(total ? [`Lines total: ${total} (before tax)`] : []),
-      ...(order ? [`Order: ${order}`] : []),
-      ...(po ? [`PO number: ${po}`] : []),
-      ...lineTexts(items, currency, 3),
-    ],
-  })
-}
-
-/** drafts_update: the documents_update card over the draft (context = documents_get on it). */
-export async function summarizeDraftUpdate(
-  params: { draft_id?: string; patch?: Record<string, unknown> | null },
-  _ctx?: unknown,
-  meta?: SummarizerMeta,
-): Promise<ApprovalSummaryShape> {
-  const patch = params.patch && typeof params.patch === "object" ? params.patch : {}
-  const card = await summarizeDocumentUpdate({ ...patch, id: params.draft_id }, _ctx, meta)
-  return { ...card, kind: "drafts_update" }
 }

@@ -16,6 +16,9 @@
  * left one out would only send them to the form (effective-scope.ts
  * `turnToolScopes`). Only add a scope here when that holds.
  *
+ * Migration 0261's `kernel.every_member_scope_covers` carries this list for the readers of the
+ * grant tables: a change here needs a forward migration (eligible-approvers.test.ts fails without).
+ *
  *  - `kernel:bug_reports:file`: report a bug about Liaison itself, the
  *    "Report a bug" dialog's REST route (open to every member) and the agent's
  *    `kernel:report_bug`, filed under the person's own name.

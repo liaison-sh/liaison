@@ -7,7 +7,7 @@
 // org only. Its package name carries the org's key (`<base>-o<orgKey>`, orgKey
 // = the first 8 hex of sha256(org id)), so every registry, schema, scope, route
 // and webhook that keys on the app name stays unique without re-keying the
-// kernel, and its `kernel.apps_installed` rows carry the org (`org_id`, 0264).
+// kernel, and its `kernel.apps_installed` rows carry the org (`org_id`, 0266).
 //
 // ONE predicate, `appVisibleToOrg(name, orgId)`, decides whether `orgId` may see
 // or run app `name`: an instance app (no owner) is visible to every org, an
@@ -136,7 +136,7 @@ export async function appOwnerOrg(name: string): Promise<string | null> {
   return (await orgScope()).map.get(name) ?? null
 }
 
-/** Whether the operator disabled this org-private app (0265). */
+/** Whether the operator disabled this org-private app (0267). */
 export async function isCustomAppDisabled(name: string): Promise<boolean> {
   if (!isManagedEdition()) return false
   return (await orgScope()).disabled.has(name)

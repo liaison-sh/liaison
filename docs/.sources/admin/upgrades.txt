@@ -56,3 +56,16 @@ Restart signal = 503 RESTARTING -> apps/web/src/lib/api-client.ts:466
 Updating / still updating / connection lost / offline labels -> packages/shared/src/i18n/locales/en/kernel.json:1807
 90 seconds -> apps/web/src/modules/shell/ServerPauseNotice.tsx:26
 3 seconds, shorter drop shows nothing -> apps/web/src/modules/shell/ServerPauseNotice.tsx:24
+Channels release and nightly, default release, refused otherwise -> apps/api/src/lib/env.ts:72
+Channel label, Releases, Nightly -> packages/shared/src/i18n/locales/en/kernel.json:2747
+Channel compared against newest release / newest nightly or newer release -> apps/api/src/modules/admin/version-check.ts:221
+Security release counts on both channels -> apps/api/src/modules/admin/version-check.ts:250
+Nightly image tags, version nightly-YYYYMMDD-shortsha, green main, daily -> .github/workflows/nightly.yml:1
+Pre-release carries compose and .env.example, notes list commits -> .github/workflows/nightly.yml:193
+Keep 14 pre-releases, images not pruned -> .github/workflows/nightly.yml:16
+Quickstart --channel, keeps the channel on a later run -> deploy/quickstart.sh:20
+cosign identity is the nightly workflow on main -> .github/workflows/nightly.yml:46
+Older image refuses to start, message, override -> apps/api/src/db/schema-guard.ts:62
+Refused before migrate, reconcile and serve -> apps/api/scripts/entrypoint.sh:88
+Running containers are not touched -> apps/api/src/db/schema-guard.ts:13
+Promoted from a nightly -> CONTRIBUTING.md:63

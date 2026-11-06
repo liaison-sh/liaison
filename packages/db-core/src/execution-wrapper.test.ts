@@ -187,3 +187,25 @@ describe("wrapWithRowCap — a trailing line comment cannot swallow the cap", ()
     expect(lastLine).toBe(") AS __liaison_row_cap LIMIT 501")
   })
 })
+
+describe("wrapWithRowCap — trailing semicolons", () => {
+  const statement = (sql: string) => wrapWithRowCap(sql, 9).split("\n").slice(1, -1).join("\n")
+
+  test("drops the semicolons that end the statement and nothing else", () => {
+    expect(statement("SELECT 1")).toBe("SELECT 1")
+    expect(statement("SELECT 1;")).toBe("SELECT 1")
+    expect(statement("  SELECT 1;;;  \n")).toBe("SELECT 1")
+    expect(statement("SELECT 1 ;")).toBe("SELECT 1 ")
+    expect(statement("SELECT 1; ;")).toBe("SELECT 1; ")
+    expect(statement("SELECT ';'")).toBe("SELECT ';'")
+    expect(statement(";;;")).toBe("")
+  })
+
+  test("stays fast on a long statement, whatever it holds", () => {
+    const long = `SELECT '${";".repeat(1_000_000)}'`
+    const started = performance.now()
+    expect(statement(long)).toBe(long)
+    expect(statement(`SELECT 1${";".repeat(1_000_000)}`)).toBe("SELECT 1")
+    expect(performance.now() - started).toBeLessThan(500)
+  })
+})

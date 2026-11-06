@@ -188,3 +188,4 @@ Search by contact also returns documents made out to its email or one of its add
 customer_history: lines with list unit price and price paid after the line discount (before VAT), latest sale of a product at the price paid, Shopify orders by name, email or order number -> bundled-apps/invoicing/src/customer-history.ts:114-286
 A search that finds nothing points to customer_history or the Shopify order search -> bundled-apps/invoicing/src/reads.ts:604-626
 The global search indexes the address, email, order number and line descriptions -> bundled-apps/invoicing/app.manifest.json:288-306; apps/api/src/modules/search/doc-builder.ts:150-216
+Draft card names a private consumer only when the call declares one -> bundled-apps/invoicing/src/summarizers.ts:489

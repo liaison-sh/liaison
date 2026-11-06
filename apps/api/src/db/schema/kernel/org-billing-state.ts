@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // The billing state the control plane pushes to a managed cell (migration
-// 0261, `modules/cloud/billing.ts`): one row per org, applied only when its
+// 0263, `modules/cloud/billing.ts`): one row per org, applied only when its
 // `version` is newer than the stored one. `GET /api/billing/state` serves it.
 // Readable by the row's org under RLS; written through the privileged pool only.
 
@@ -22,11 +22,11 @@ export const orgBillingState = kernel.table("org_billing_state", {
   caps: jsonb("caps").$type<Record<string, number | null>>().notNull().default({}),
   previewEndsAt: timestamp("preview_ends_at", { withTimezone: true }),
   autoTopUp: jsonb("auto_top_up").$type<CloudAutoTopUp>().notNull(),
-  /** While suspended: until when admins keep export and Billing (migration 0263). */
+  /** While suspended: until when admins keep export and Billing (migration 0265). */
   accessUntil: timestamp("access_until", { withTimezone: true }),
-  /** When the control plane closed the org; the deletion fence reads it (migration 0263). */
+  /** When the control plane closed the org; the deletion fence reads it (migration 0265). */
   closedAt: timestamp("closed_at", { withTimezone: true }),
-  /** The address the suspended page shows (migration 0263). */
+  /** The address the suspended page shows (migration 0265). */
   billingContact: text("billing_contact"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 })

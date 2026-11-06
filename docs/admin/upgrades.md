@@ -1,13 +1,13 @@
 ---
 title: Upgrade Liaison
-description: Check your version, back up, move your Docker Compose stack to a new release, roll back a failed upgrade, and update installed apps.
+description: Check your version, choose the release or nightly channel, back up, move your Docker Compose stack to a new version, roll back a failed upgrade, and update installed apps.
 ---
 
 An upgrade is: back up, point the stack at the new image tag, restart. Database migrations run when the container starts. This page covers the Docker Compose stack in `deploy/docker-compose.yml`.
 
 ## Check your version
 
-Open **Settings › System**. It shows the **Running** version and the **Latest** one. When a newer release exists, an **Update available** line links to its **Release notes**. When a release newer than yours fixes a security issue, the line reads **Security update available** instead: upgrade soon. Liaison checks GitHub for releases periodically; **Disable update checks** turns that off. Registering this server with the Liaison team does not change this check ([Share with the Liaison team](../self-hosting/liaison-team.md)).
+Open **Settings › System**. It shows your **Channel**, the **Running** version and the **Latest** one on that channel. When a newer version exists, an **Update available** line links to its **Release notes**. When a release newer than yours fixes a security issue, the line reads **Security update available** instead: upgrade soon. Liaison checks GitHub for releases periodically; **Disable update checks** turns that off. Registering this server with the Liaison team does not change this check ([Share with the Liaison team](../self-hosting/liaison-team.md)).
 
 What changed in each release is in the [release notes](../release-notes.md).
 
@@ -21,6 +21,67 @@ git push origin v1.2.3
 ```
 
 The tag has to be annotated (`-a`): a lightweight tag has no message, so it is never marked.
+
+## Choose a channel
+
+An instance follows one of two channels. The desktop and phone apps have no channels: they follow releases only.
+
+|  | `release` (the default) | `nightly` |
+|---|---|---|
+| What you get | Versions promoted from a nightly that has run on the maintainers' instances | A signed build of the newest `main` commit whose CI is green, once a day. It has had no soak |
+| Image | `ghcr.io/mathieufro/liaison:latest`, or pinned: `:vX.Y.Z` | `ghcr.io/mathieufro/liaison:nightly`, or pinned: `:nightly-YYYYMMDD` |
+| The version it reports | `vX.Y.Z` | `nightly-YYYYMMDD-<shortsha>`, also an image tag |
+| **Settings › System** compares it with | The newest release | The newest nightly, or a release whose commit is newer |
+
+Choose `release` unless you want fixes the day they land and can take a bad build now and then. A security release shows **Security update available** on both channels when it is newer than what you run.
+
+### Set the channel
+
+On a new install, pass it to the quickstart. It picks the image and writes `LIAISON_RELEASE_CHANNEL` and `LIAISON_IMAGE` to `deploy/.env`, and a later run keeps them:
+
+```bash
+./deploy/quickstart.sh --channel nightly
+```
+
+On a running stack, set both in `deploy/.env`, then follow [Upgrade the stack](#upgrade-the-stack). `LIAISON_RELEASE_CHANNEL` only decides what **Settings › System** compares against; `LIAISON_IMAGE` decides what runs, so keep them in step:
+
+```bash
+LIAISON_RELEASE_CHANNEL=nightly
+LIAISON_IMAGE=ghcr.io/mathieufro/liaison:nightly-20270115
+```
+
+Without `LIAISON_RELEASE_CHANNEL`, an instance is on `release`. Any other value stops it at startup. Pin a dated tag on a server, so a restart never changes the version by surprise.
+
+The channel's GitHub pre-release, `nightly-YYYYMMDD`, carries the matching `docker-compose.yml` and `.env.example` (GitHub names that asset `default.env.example`; save it as `.env.example`), and lists the commits since the previous nightly. The newest 14 pre-releases are kept. Images are not removed with them, so a pinned nightly can still be pulled after its pre-release is gone.
+
+To check a signature:
+
+```bash
+cosign verify ghcr.io/mathieufro/liaison:nightly-20270115 \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity https://github.com/mathieufro/liaison/.github/workflows/nightly.yml@refs/heads/main
+```
+
+### Migrations only go forward
+
+You can move from `release` to `nightly` at any time: the nightly is newer and migrates the database when it starts.
+
+Going from `nightly` back to `release` means staying on your version until a release includes it. Set `LIAISON_RELEASE_CHANNEL=release` and keep `LIAISON_IMAGE` on your nightly: **Settings › System** then shows **Update available** once a newer release exists. Move to that release as usual.
+
+Rolling back onto an older image on a newer schema is not supported. An image older than the database's schema refuses to start. The container exits before it migrates, reinstalls apps or serves traffic, and its log says:
+
+```text
+FATAL: this image (Liaison v1.2.0) is older than the database schema: ...
+```
+
+To get out of it, do one of these:
+
+- Point `LIAISON_IMAGE` at the version that migrated this database, or a later one.
+- Restore a backup taken before the upgrade, then start the older image. See [Roll back a failed upgrade](#roll-back-a-failed-upgrade).
+
+Only in an emergency, `LIAISON_ALLOW_OLDER_IMAGE=true` starts the older image anyway, with a warning in its log. That is not supported: nothing tests it, and the image reinstalls its older first-party apps. Remove it as soon as you have moved forward or restored.
+
+Containers that are already running are not stopped by this. During a deploy the old ones keep serving on the new schema until they drain.
 
 ## Upgrade the stack
 
@@ -72,7 +133,7 @@ To migrate before you start new containers (for example when you run several API
 
 ## Know what a new release may change in the database
 
-While new containers start, the old ones keep serving against the new schema. So a release only adds to the schema: new tables, new columns that are nullable or have a default, new indexes. A column, table or value is removed only in a later release, once no running release uses it. Rolling back to the previous image therefore works against the new schema.
+While new containers start, the old ones keep serving against the new schema. So a release only adds to the schema: new tables, new columns that are nullable or have a default, new indexes. A column, table or value is removed only in a later release, once no running release uses it. That protects the old containers still serving during a deploy. It does not make the old image safe to start again: see [Migrations only go forward](#migrations-only-go-forward).
 
 ## Roll back a failed upgrade
 
@@ -84,7 +145,7 @@ While new containers start, the old ones keep serving against the new schema. So
    ./deploy/restore.sh <archive> --force
    ```
 
-Do not only switch back to the old image without restoring: `restore.sh` refuses a backup newer than the stack's image, and migrations only move forward.
+Do not only switch back to the old image without restoring: it refuses to start on the newer schema, `restore.sh` refuses a backup newer than the stack's image, and migrations only move forward.
 
 ## Update an installed app
 

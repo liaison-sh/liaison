@@ -166,7 +166,7 @@ A value that is missing never prints a default: it prints as a grey placeholder.
 
 ### Check the version and turn off update checks
 
-**Settings › System** shows the **Running** and **Latest** versions, an **Update available** line with **Release notes** when one exists (**Security update available** when a newer release fixes a security issue), and the health of each dependency. Liaison periodically checks GitHub for newer releases. Click **Disable update checks** to opt out. See [Upgrade Liaison](upgrades.md).
+**Settings › System** shows the instance's **Channel** (see [Choose a channel](upgrades.md#choose-a-channel)), the **Running** and **Latest** versions, an **Update available** line with **Release notes** when one exists (**Security update available** when a newer release fixes a security issue), and the health of each dependency. Liaison periodically checks GitHub for newer releases. Click **Disable update checks** to opt out. See [Upgrade Liaison](upgrades.md).
 
 ### Share with the Liaison team
 

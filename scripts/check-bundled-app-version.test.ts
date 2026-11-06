@@ -167,6 +167,75 @@ describe("check-bundled-app-version", () => {
       expect(await checkBundledAppVersions(root, "base", never)).toEqual([])
     })
 
+    // `bun install` in an app (scripts/build-bundled-app.sh, so any test that builds the
+    // catalog) installs its workspace packages as copies, and the bundlers read those.
+    describe("through the app's installed copy of a workspace package", () => {
+      const SDK = "packages/app-sdk/src/index.ts"
+      const COPY = "bundled-apps/demo/node_modules/@liaison/app-sdk/src/index.ts"
+      const sdk = (k: number) => `export const k = ${k}\nconsole.log(k)\n`
+      const packageJson = JSON.stringify({ name: "@liaison/app-sdk", main: "src/index.ts" })
+
+      /** A repo whose demo app imports the SDK from an installed copy of it. */
+      function repoWithCopy(): string {
+        const root = mkdtempSync(join(tmpdir(), "bundled-copy-"))
+        dirs.push(root)
+        git(root, "init", "-q", "-b", "base")
+        git(root, "config", "user.email", "t@example.com")
+        git(root, "config", "user.name", "t")
+        write(root, ".gitignore", "node_modules\n")
+        for (const dir of ["packages/app-sdk", "bundled-apps/demo/node_modules/@liaison/app-sdk"]) {
+          write(root, `${dir}/package.json`, packageJson)
+          write(root, `${dir}/src/index.ts`, sdk(1))
+        }
+        write(
+          root,
+          "bundled-apps/demo/app.manifest.json",
+          JSON.stringify({
+            name: "copy-demo",
+            version: "1.0.0",
+            packageFormat: 1,
+            license: "MIT",
+            scopes: [],
+          }),
+        )
+        write(
+          root,
+          "bundled-apps/demo/handlers.ts",
+          'import { k } from "@liaison/app-sdk"\nexport const a = k\n',
+        )
+        commit(root)
+        git(root, "checkout", "-qb", "work")
+        return root
+      }
+
+      it("reports the workspace file, never the copy, and an overlay reaches the bytes", async () => {
+        const root = repoWithCopy()
+        const now = await freezePackage(root, "demo")
+        expect(now.sources).toContain(SDK)
+        expect(now.sources).not.toContain(COPY)
+        const same = await freezePackage(root, "demo", new Map([[SDK, sdk(1)]]))
+        expect(Buffer.from(same.bytes).equals(Buffer.from(now.bytes))).toBe(true)
+        const other = await freezePackage(root, "demo", new Map([[SDK, sdk(2)]]))
+        expect(Buffer.from(other.bytes).equals(Buffer.from(now.bytes))).toBe(false)
+      })
+
+      it("still refuses a shared change that keeps the version", async () => {
+        const root = repoWithCopy()
+        write(root, SDK, sdk(2))
+        write(root, COPY, sdk(2))
+        commit(root)
+        expect(await checkBundledAppVersions(root, "base")).toEqual([
+          { app: "demo", base: "1.0.0", head: "1.0.0", files: [SDK] },
+        ])
+      })
+
+      it("refuses to build from a copy older than its source", async () => {
+        const root = repoWithCopy()
+        write(root, SDK, sdk(2))
+        await expect(freezePackage(root, "demo")).rejects.toThrow("the installed copy is stale")
+      })
+    })
+
     // The real packager: the files it reports, and a base overlay that reaches the bytes.
     it("the packager reports the shared files it inlines, never a test file, and overlays them", async () => {
       const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..")

@@ -2456,6 +2456,9 @@ export const FR: Record<string, string> = {
   inherited: "hérité",
   "Running:": "En cours :",
   "Latest:": "Dernière :",
+  "Channel:": "Canal :",
+  Releases: "Versions stables",
+  Nightly: "Nightly",
   "(stale)": "(obsolète)",
   granted: "accordé",
   kind: "type",
@@ -3599,6 +3602,7 @@ export const FR: Record<string, string> = {
   "Replies in your threads": "Réponses dans vos fils",
   "Replies in threads you follow": "Réponses dans les fils suivis",
   "New orders": "Nouvelles commandes",
+  "New tickets in notified inboxes": "Nouveaux tickets des boîtes à surveiller",
   "Orders waiting to ship": "Commandes en attente d'expédition",
   "Refunds made in Shopify": "Remboursements faits dans Shopify",
   "Return requests": "Demandes de retour",
@@ -3772,6 +3776,9 @@ export const FR: Record<string, string> = {
     "Boîte de surveillance : exclue du fil d'alertes",
   "Tickets from this inbox raise no attention items and are not counted as awaiting a reply (backlog health, needs-attention sweeps). Use for automated streams like bug reports. Explicit follow-ups you schedule still surface.":
     "Les tickets de cette boîte ne créent pas d'alertes et ne comptent pas comme en attente de réponse (santé du backlog, relevés des tickets à traiter). À utiliser pour des flux automatiques comme les signalements de bugs. Les relances que vous programmez restent visibles.",
+  "Notify on new ticket": "Prévenir à chaque nouveau ticket",
+  "Each new ticket in this inbox raises an attention item for the people who administer inboxes. Phone, computer, digest and quiet hours follow each person's notification settings. A monitoring inbox stays silent.":
+    "Chaque nouveau ticket de cette boîte crée une alerte pour les personnes qui administrent les boîtes. Téléphone, ordinateur, récapitulatif et heures calmes suivent les réglages de notification de chacun. Une boîte de surveillance reste silencieuse.",
   "No SLA: exempt this inbox's tickets from SLA":
     "Sans SLA : les tickets de cette boîte en sont exemptés",
   "Tickets created in this inbox get no SLA deadline and never breach or show an SLA countdown. Use for automated streams like bug reports that never await a reply.":

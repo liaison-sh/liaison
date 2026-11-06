@@ -27,6 +27,7 @@ import { type UserContext, withRlsContext } from "~/db/rls"
 import { messages } from "~/db/schema/kernel"
 import { computeEffectiveScopeForTurn } from "~/modules/agent/scopes/effective-scope"
 import { resolveRoomFloor } from "~/modules/agent/scopes/room-floor"
+import { KERNEL_EVERY_MEMBER_SCOPES } from "~/modules/permissions/every-member-scopes"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { filterByVisibility, type VisibilityViewer } from "~/services/security/visibility"
 
@@ -228,7 +229,10 @@ describe("an agent's context read of a room's history is floor gated", () => {
     if (floor.kind === "routine_tick") throw new Error("unreachable")
     // Both humans in the room, with the grants their own rows carry.
     expect(floor.memberGrants.map(sorted).sort()).toEqual(
-      [sorted([FINANCE, SHARED]), [SHARED]].sort(),
+      [
+        sorted([FINANCE, SHARED, ...KERNEL_EVERY_MEMBER_SCOPES]),
+        sorted([SHARED, ...KERNEL_EVERY_MEMBER_SCOPES]),
+      ].sort(),
     )
 
     const { effectiveScope, withheld } = await effectiveScopeFor(CHANNEL)

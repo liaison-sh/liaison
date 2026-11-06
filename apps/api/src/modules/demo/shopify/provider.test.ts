@@ -29,10 +29,9 @@ import { forgetDemoShopifyStore } from "./replica"
 import { DEMO_SHOP_DOMAIN, DEMO_SHOPIFY_SENTINEL_TOKEN } from "./sentinel"
 
 const SHOP_URL = `https://${DEMO_SHOP_DOMAIN}/admin/api/2026-04/graphql.json`
-// A customer's own store. The fixed demo shop above is the seeded fixture
-// connection, which never reaches Shopify on any box (fixture-credential.ts), so
-// "goes out as it always did" is proved on a store that is not the fixture.
-const REAL_SHOP_URL = "https://customer-store.myshopify.com/admin/api/2026-04/graphql.json"
+// A customer's own store. The fixed demo shop above never goes out on any box
+// (fixture-credential.ts), so "goes out as it always did" is read off this one.
+const REAL_SHOP_URL = "https://a-real-store.myshopify.com/admin/api/2026-04/graphql.json"
 // A host no demo provider answers (Boxtal has its own demo carrier now, so a
 // Boxtal URL is fixture-answered rather than refused).
 const OTHER_URL = "https://api.carrier.example/v1/shipments"

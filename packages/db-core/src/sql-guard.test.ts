@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, test } from "bun:test"
-import { assertReadOnlySelect, SqlGuardError } from "./sql-guard"
+import { assertReadOnlySelect, MAX_RAW_SQL_CHARS, SqlGuardError } from "./sql-guard"
 
 function expectAccept(sql: string) {
   expect(() => assertReadOnlySelect(sql)).not.toThrow()
@@ -165,5 +165,30 @@ describe("assertReadOnlySelect — unicode-escaped names", () => {
 
   test("a column named u is not affected", () => {
     expect(() => assertReadOnlySelect("SELECT u FROM t WHERE u & 1 = 1")).not.toThrow()
+  })
+})
+
+describe("assertReadOnlySelect — query length", () => {
+  const ofLength = (length: number) => {
+    const head = "SELECT '"
+    return `${head}${"a".repeat(length - head.length - 1)}'`
+  }
+
+  test("accepts a query at the limit", () => {
+    expect(ofLength(MAX_RAW_SQL_CHARS)).toHaveLength(MAX_RAW_SQL_CHARS)
+    expectAccept(ofLength(MAX_RAW_SQL_CHARS))
+  })
+
+  test("refuses a longer one, saying how long it is and what the limit is", () => {
+    expectReject(ofLength(MAX_RAW_SQL_CHARS + 1), "query_too_long")
+    expect(() => assertReadOnlySelect(ofLength(MAX_RAW_SQL_CHARS + 1))).toThrow(
+      `${MAX_RAW_SQL_CHARS + 1} characters, the limit is ${MAX_RAW_SQL_CHARS}`,
+    )
+  })
+
+  test("refuses an oversized query without scanning it", () => {
+    const started = performance.now()
+    expectReject(`SELECT '${"'".repeat(1_000_000)}`, "query_too_long")
+    expect(performance.now() - started).toBeLessThan(100)
   })
 })

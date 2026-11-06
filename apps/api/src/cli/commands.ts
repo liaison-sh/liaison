@@ -370,7 +370,7 @@ export const COMMANDS = [
   {
     name: "tickets inbox create",
     usage:
-      "liaison tickets inbox create --name <name> [--org <slug>] [--kind api] [--reply-via <inboxId> | --reply-from <email>] [--default-team <team>] [--default-audience <audience>] [--mint-key] [--reply-to <email>] [--from-name <name>] [--signature-html <html>] [--signature-text <text>] [--ack-enabled true|false] [--ack-body <text>] [--sla-promise <phrase>]",
+      "liaison tickets inbox create --name <name> [--org <slug>] [--kind api] [--reply-via <inboxId> | --reply-from <email>] [--default-team <team>] [--default-audience <audience>] [--mint-key] [--reply-to <email>] [--from-name <name>] [--signature-html <html>] [--signature-text <text>] [--ack-enabled true|false] [--ack-body <text>] [--sla-promise <phrase>] [--notify-new-ticket true|false]",
     summary:
       "Create an API inbox: a receiving bucket (bug reports, website contact, a per-tenant endpoint) with no connected mailbox; replies go through a reply-via mailbox. Mailbox inboxes are not created here: they come from `tickets.inboxes` or `connect tickets/gmail`.",
     flags: [
@@ -397,12 +397,17 @@ export const COMMANDS = [
         arg: "<phrase>",
         summary: "The SLA promise phrase used in the acknowledgement.",
       },
+      {
+        name: "--notify-new-ticket",
+        arg: "true|false",
+        summary: "Raise an attention item for the inbox admins on each new ticket (default false).",
+      },
     ],
   },
   {
     name: "tickets inbox update",
     usage:
-      "liaison tickets inbox update --id <inboxId> [--org <slug>] [--reply-via <mailboxInboxId>] [--from-name <name>] [--reply-to <email>] [--signature-html <html>] [--signature-text <text>] [--ack-enabled true|false] [--ack-body <text>] [--sla-promise <phrase>] [--attention-cutoff <iso>|now|none]",
+      "liaison tickets inbox update --id <inboxId> [--org <slug>] [--reply-via <mailboxInboxId>] [--from-name <name>] [--reply-to <email>] [--signature-html <html>] [--signature-text <text>] [--ack-enabled true|false] [--ack-body <text>] [--sla-promise <phrase>] [--attention-cutoff <iso>|now|none] [--notify-new-ticket true|false]",
     summary:
       'Configure an inbox\'s email identity ("virtual mailbox"): From display name, reply-to base address, signature, acknowledgement on/off and body, and the SLA promise phrase, the same fields as Settings > Tickets > Inboxes. Needs at least one of them.',
     flags: [
@@ -432,6 +437,11 @@ export const COMMANDS = [
         name: "--attention-cutoff",
         arg: "<iso>|now|none",
         summary: "The attention cutoff date (`now`, or `none` to clear it).",
+      },
+      {
+        name: "--notify-new-ticket",
+        arg: "true|false",
+        summary: "Raise an attention item for the inbox admins on each new ticket (default false).",
       },
     ],
   },

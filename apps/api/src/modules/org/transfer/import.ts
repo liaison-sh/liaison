@@ -59,7 +59,7 @@ import {
   importSearchDocuments,
 } from "./search"
 
-/** Usage rows: stamped with the transfer on arrival (migration 0268, cloud/usage-report.ts). */
+/** Usage rows: stamped with the transfer on arrival (migration 0270, cloud/usage-report.ts). */
 const CREDIT_TRANSACTIONS_TABLE = "kernel.credit_transactions"
 
 const log = rootLogger.child({ module: "org-transfer-import" })

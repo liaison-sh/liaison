@@ -118,7 +118,7 @@ describe("pdf.render (K2)", () => {
     const appId = `pdflazy${randomUUID().slice(0, 8)}`
     const kind = `${appId}:test_v1`
     // The org first: creating a test org truncates the org tables, and
-    // apps_installed carries an org column (org-private apps) since 0264.
+    // apps_installed carries an org column (org-private apps) since 0266.
     const { id: orgId } = await createTestOrg()
     await withSystemDb("test-pdf-lazy", async (db) => {
       await db.execute(sql`INSERT INTO kernel.apps_installed

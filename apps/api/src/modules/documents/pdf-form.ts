@@ -161,12 +161,14 @@ function runInIsolate(req: PdfFormRequest): Promise<PdfFormWireResult> {
     }
     // Soft CPU limit N (SIGXCPU, which ends a Bun process), hard N + 1
     // (SIGKILL): with both at N, Linux sends SIGKILL and the cause is lost.
+    // No core file where the limit reaches it (the isolate also turns dumps off
+    // on Linux, pdf-form-worker.ts).
     // exec keeps the pid, so the kill below and the IPC channel reach the
     // isolate itself.
     const cmd = [
       "/bin/sh",
       "-c",
-      'ulimit -S -t "$1" && ulimit -H -t $(($1 + 1)) || exit 70; shift; exec "$@"',
+      'ulimit -c 0 && ulimit -S -t "$1" && ulimit -H -t $(($1 + 1)) || exit 70; shift; exec "$@"',
       "pdf-form-isolate",
       String(limits.cpuSeconds),
       process.execPath,

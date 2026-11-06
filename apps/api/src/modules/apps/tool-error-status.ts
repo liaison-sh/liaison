@@ -17,6 +17,7 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   // ── boxtal ────────────────────────────────────────────────────────────────
   // Bad or incomplete input.
   invalid_order_key: 400,
+  invalid_choice: 400,
   validation: 400,
   recipient_phone_invalid: 400,
   too_many: 400,
@@ -38,6 +39,10 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   shipment_not_found: 404,
   order_not_found: 404,
   row_not_found: 404,
+  // A pick between the order's address and the verified one: needed, gone stale or not needed.
+  address_differs: 409,
+  address_choice_not_needed: 409,
+  address_choice_stale: 409,
   // The state moved or does not allow it (re-quote, wait, or pick another row).
   duplicate: 409,
   row_locked: 409,
@@ -248,5 +253,7 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   customs_fetch_failed: 502,
   thread_post_failed: 502,
   render_failed: 502,
+  // The order could not be read just now: the address it would compare is unknown.
+  order_unreadable: 503,
   target_app_unavailable: 503,
 }

@@ -334,6 +334,11 @@ characters or one whose matching time is not linear in the input, such as
 `^(a|a)+$`, `(\d+)*` or `\d*\d*\d*!`: a repeated part must not be able to match
 the same text in two ways. The error names the pattern and where it sits.
 
+A pattern is checked when it first compiles in a process, and it is refused if the
+check has not settled after 10 seconds. A long pattern with lookaheads can take
+seconds on a small server, so keep patterns short: a slow check can leave the app in
+`error` on such a server. A later restart checks it again.
+
 ## Update channel (`updateUrl`)
 
 `updateUrl` must be a **stable** URL that always serves the most recent

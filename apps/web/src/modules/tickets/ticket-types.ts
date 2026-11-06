@@ -163,6 +163,10 @@ export interface TicketInbox {
   sla_promise_phrase?: string | null
   suppressAttention?: boolean
   suppress_attention?: boolean
+  // Notify on new ticket: each new ticket raises an attention item for the inbox
+  // admins. Off by default. Wire format is snake_case off the admin row.
+  notifyNewTicket?: boolean
+  notify_new_ticket?: boolean
   // SLA-exempt inbox: its tickets carry no SLA (no deadline/breach). Admin toggle,
   // independent of suppress_attention. Wire format is snake_case off the admin row.
   slaExempt?: boolean

@@ -80,7 +80,7 @@ Sign-in is passwordless by default: a person enters their email, clicks **Contin
 
 A sign-in link that someone else sent you, such as the one that opens a new hosted workspace for its owner, does not sign you in by itself: the page first shows **Sign in to** the workspace's name and the account it signs in as, and signs in only when you click **Continue**. Such a link works once, for 10 minutes, and only at the workspace's own address.
 
-A sign-in stays open for 30 days from its last use. A browser that loses the answer to a session renewal on a bad network (a train, a tunnel) and retries within 3 minutes stays signed in. If an old renewal token is used again after its replacement was already in use, Liaison treats it as stolen and ends every session of that sign-in; the person signs in again.
+A sign-in stays open for 30 days from its last use. A browser that loses the answer to a session renewal on a bad network (a train, a tunnel) and retries within 3 minutes stays signed in. If an old renewal token is used again after its replacement was already in use, Liaison treats it as stolen and ends that one sign-in (the device or browser that presented it), which then asks the person to sign in again. The person's other sign-ins, on other devices and browsers, stay open.
 
 Admins with `kernel:org:admin` see a **Sign-in methods** section in **Settings › Security**:
 

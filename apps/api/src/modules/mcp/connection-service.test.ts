@@ -26,6 +26,7 @@ import {
   seedOrgWithUser,
   sqlUpdateCeiling,
 } from "~/modules/mcp/test-helpers"
+import { KERNEL_EVERY_MEMBER_SCOPES } from "~/modules/permissions/every-member-scopes"
 
 describe("mcp connection service", () => {
   const orgs: string[] = []
@@ -345,6 +346,8 @@ describe("mcp connection service", () => {
   // ---- P3-T05: mint narrows to ceiling INTERSECT the grantor's live grants -
 
   const GRANTOR_SCOPES = ["kernel:agents:admin", "finance:read", "logistics:read"]
+  /** What the grantor resolves to: the grants plus what every member holds. */
+  const GRANTOR_TOKEN_SCOPES = [...GRANTOR_SCOPES, ...KERNEL_EVERY_MEMBER_SCOPES]
 
   async function seedGrantor() {
     const seeded = await seedOrgWithUser()
@@ -386,7 +389,7 @@ describe("mcp connection service", () => {
     })
     const { token } = await mintAccessToken(connection.id)
     const decoded = await verifyAccessToken(token, env.JWT_SECRET)
-    expect([...(decoded.scopes ?? [])].sort()).toEqual([...GRANTOR_SCOPES].sort())
+    expect([...(decoded.scopes ?? [])].sort()).toEqual([...GRANTOR_TOKEN_SCOPES].sort())
     expect(decoded.agentId).toBeUndefined()
     expect(decoded.grantorUserId).toBeUndefined()
     const [row] = await withSystemDb("t", (db) =>
@@ -471,7 +474,7 @@ describe("mcp connection service", () => {
     // A demotion applies on the next call, not at the end of the token's 15 minutes.
     expect(resolved.scopes).not.toContain("logistics:read")
     expect([...resolved.scopes].sort()).toEqual(
-      GRANTOR_SCOPES.filter((sc) => sc !== "logistics:read").sort(),
+      GRANTOR_TOKEN_SCOPES.filter((sc) => sc !== "logistics:read").sort(),
     )
     expect(resolved.agentId).toBeUndefined()
   })

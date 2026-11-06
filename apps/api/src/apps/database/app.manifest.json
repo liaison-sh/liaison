@@ -210,7 +210,8 @@
         "properties": {
           "sql": {
             "type": "string",
-            "description": "A single SELECT (or WITH ... SELECT) statement"
+            "maxLength": 100000,
+            "description": "A single SELECT (or WITH ... SELECT) statement, at most 100000 characters"
           },
           "connection": {
             "type": "string",

@@ -96,11 +96,6 @@ jobs:
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: bun run check:docs
-      # Every integration test file is listed in exactly one suite of
-      # scripts/test-run.ts. A file in no suite runs in no lane and rots unseen.
-      # A pure file scan, no database or service.
-      - name: Suite coverage
-        run: bun test scripts/test-run.suites.test.ts
       # The repo-root script tests (lints, runner helpers, seeds): pure file reads
       # and small spawns, no database or service. test-run.ts takes a slot and
       # the namespace lock itself, in the runner's own temp dir.
@@ -113,6 +108,14 @@ jobs:
         env:
           TEST_MEM_RESERVE_MB: "1024"
         run: bun run test:root
+      # The guards suite the release's unit job runs (scripts/test-run.ts): suite
+      # coverage (every test file in exactly one suite), the Dockerfile and workflow
+      # guards, the bundled-app version guard's own tests. Seconds of file reads and
+      # small spawns, no database or service; here so it cannot rot until a release.
+      - name: Guards
+        env:
+          TEST_MEM_RESERVE_MB: "1024"
+        run: bun run test:guards
       # A pure source scan (no database), but it sits in the `integration`
       # suite, which no workflow runs: privileged database imports with no
       # reviewed allowlist entry reached main unnoticed.

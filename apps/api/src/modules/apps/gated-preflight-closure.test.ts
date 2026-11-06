@@ -49,6 +49,8 @@ const NO_PREFLIGHT_NEEDED: Record<string, string> = {
 
   // Validate before they call ctx.requestApproval, so an incomplete call never
   // reaches a human in the first place.
+  "invoicing:drafts_create": "validates before parking",
+  "invoicing:drafts_update": "validates before parking",
   "invoicing:quote_issue": "validates before parking",
   "invoicing:quote_create_and_issue": "validates before parking",
   "invoicing:credit_note_issue": "validates before parking",

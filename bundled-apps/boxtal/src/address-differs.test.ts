@@ -7,7 +7,7 @@
 import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { prepSetAddressChoice, prepSetAddressChoicePreflight } from "./address-choice"
+import { type PrepSetAddressChoiceInput, prepSetAddressChoice, prepSetAddressChoicePreflight } from "./address-choice"
 import { deriveDraftFacts } from "./draft-cache"
 import { type GoldenCase, type GoldenShopifyAddress, goldenCases } from "./__fixtures__/address-golden"
 import { docId, goldenCtx } from "./__fixtures__/address-harness"
@@ -15,7 +15,7 @@ import { buildRow } from "./prep"
 import { cacheShipToIfStale, SHIP_TO_CACHE_TTL_MS, shipToTtlMs } from "./prep-meta"
 import type { CrossAppEnvelope } from "./ctx"
 import { createShipment, createShipmentPreflight, shipmentDraftCreate } from "./shipment"
-import { summarizeCreateShipment } from "./summarizers"
+import { summarizeAddressChoice, summarizeCreateShipment } from "./summarizers"
 
 const ORDER_SITE: GoldenShopifyAddress = {
   name: "Lena Brandt",
@@ -66,6 +66,20 @@ function differsCase(over: Partial<GoldenCase> = {}): GoldenCase {
   }
 }
 
+type Ctx = Parameters<typeof prepSetAddressChoice>[0]
+
+/** The params the kernel stages: the caller's, with what the preflight pinned. */
+async function staged(ctx: Ctx, input: PrepSetAddressChoiceInput): Promise<PrepSetAddressChoiceInput> {
+  const res = await prepSetAddressChoicePreflight(ctx, input)
+  if ("error" in res) throw new Error(`the preflight refused: ${res.error.code}`)
+  return { ...input, ...res.pinnedParams }
+}
+
+/** A pick made the way the kernel runs it: staged, then executed. */
+async function pickAddress(ctx: Ctx, input: PrepSetAddressChoiceInput) {
+  return prepSetAddressChoice(ctx, await staged(ctx, input))
+}
+
 const stageParams = (c: GoldenCase) => ({ draft_id: docId(c), offer_code: "MONR-CpourToi", quoted_price_ttc: 9.5 })
 
 describe("address differs: the label is held until a person picks", () => {
@@ -80,7 +94,7 @@ describe("address differs: the label is held until a person picks", () => {
   it("a pick lets it stage and ships to the picked address", async () => {
     const c = differsCase()
     const { ctx } = goldenCtx(c)
-    const picked = await prepSetAddressChoice(ctx, { document_ref: docId(c), choice: "verified" })
+    const picked = await pickAddress(ctx, { document_ref: docId(c), choice: "verified" })
     expect(picked.address_check?.choice?.pick).toBe("verified")
     const draft = await shipmentDraftCreate(ctx, { document_ref: docId(c) })
     expect(draft.recipient_address).toMatchObject({ street: "Industriepark 3", phone: "+492642000000" })
@@ -95,7 +109,7 @@ describe("address differs: the label is held until a person picks", () => {
   it("picking the order's address ships to the order's address", async () => {
     const c = differsCase()
     const { ctx } = goldenCtx(c)
-    await prepSetAddressChoice(ctx, { document_ref: docId(c), choice: "order" })
+    await pickAddress(ctx, { document_ref: docId(c), choice: "order" })
     const draft = await shipmentDraftCreate(ctx, { document_ref: docId(c) })
     expect(draft.recipient_address).toMatchObject({ street: "Werkstr. 6", phone: "+492642111111" })
     expect(draft.address_check?.choice?.pick).toBe("order")
@@ -104,7 +118,7 @@ describe("address differs: the label is held until a person picks", () => {
   it("a pick then an address change: refused again", async () => {
     const c = differsCase()
     const { ctx } = goldenCtx(c)
-    await prepSetAddressChoice(ctx, { document_ref: docId(c), choice: "order" })
+    await pickAddress(ctx, { document_ref: docId(c), choice: "order" })
     // The order is edited in the store: another street at the same postal code.
     c.order!.shippingAddress = { ...ORDER_SITE, address1: "Werkstr. 9" }
     const res = await createShipmentPreflight(ctx, stageParams(c))
@@ -113,15 +127,17 @@ describe("address differs: the label is held until a person picks", () => {
     // Same for an edit of the verified address.
     const c2 = differsCase({ id: "case-96" })
     const two = goldenCtx(c2)
-    await prepSetAddressChoice(two.ctx, { document_ref: docId(c2), choice: "verified" })
+    await pickAddress(two.ctx, { document_ref: docId(c2), choice: "verified" })
     c2.book = [verifiedRow({ street1: "Industriepark 5" })]
     expect(await createShipmentPreflight(two.ctx, stageParams(c2))).toMatchObject({ error: { code: "address_differs" } })
   })
 
-  it("refuses a pick when there is nothing to pick", async () => {
+  it("refuses a pick when there is nothing to pick, before anyone is asked", async () => {
     const c = differsCase({ book: [verifiedRow({ street1: "Werkstrasse 6" })] })
     const { ctx } = goldenCtx(c)
-    await expect(prepSetAddressChoice(ctx, { document_ref: docId(c), choice: "order" })).rejects.toThrow(/Nothing to pick/)
+    expect(await prepSetAddressChoicePreflight(ctx, { document_ref: docId(c), choice: "order" })).toMatchObject({
+      error: { code: "address_choice_not_needed", message: expect.stringContaining("Nothing to pick") },
+    })
   })
 
   it("the stage-time preflight refuses what the pick would refuse, and writes nothing", async () => {
@@ -138,7 +154,7 @@ describe("address differs: the label is held until a person picks", () => {
     expect(
       await prepSetAddressChoicePreflight(b.ctx, { document_ref: docId(c), choice: "verified", address_id: "stale-id" }),
     ).toMatchObject({ error: { code: "address_choice_stale" } })
-    expect(await prepSetAddressChoicePreflight(b.ctx, { document_ref: docId(c), choice: "verified" })).toEqual({ ok: true })
+    expect(await prepSetAddressChoicePreflight(b.ctx, { document_ref: docId(c), choice: "verified" })).toMatchObject({ ok: true })
     // Read-only: the label is still held after an accepted preflight (no pick was stored).
     expect(await createShipmentPreflight(b.ctx, stageParams(c))).toMatchObject({ error: { code: "address_differs" } })
   })
@@ -267,7 +283,7 @@ describe("approval card: which address, and whether it is verified", () => {
   it("says not verified when a person picked the order's address over the verified one", async () => {
     const c = differsCase()
     const { ctx } = goldenCtx(c)
-    await prepSetAddressChoice(ctx, { document_ref: docId(c), choice: "order" })
+    await pickAddress(ctx, { document_ref: docId(c), choice: "order" })
     const lines = await card(c, await shipmentDraftCreate(ctx, { document_ref: docId(c) }))
     expect(lines).toContain("Address: from the order, picked by a person, not verified")
   })
@@ -344,9 +360,9 @@ describe("a failed order read on the label path refuses, never guesses", () => {
     expect(draft.address_check?.order_read).toBe("failed")
     expect(await createShipmentPreflight(ctx, stageParams(c))).toMatchObject({ error: { code: "order_unreadable" } })
     // Nor can a pick be made against an order nobody could read.
-    await expect(prepSetAddressChoice(ctx, { document_ref: docId(c), choice: "order" })).rejects.toThrow(
-      /Could not read the order's address/,
-    )
+    expect(await prepSetAddressChoicePreflight(ctx, { document_ref: docId(c), choice: "order" })).toMatchObject({
+      error: { code: "order_unreadable", retryable: true, message: expect.stringContaining("Could not read the order's address") },
+    })
   })
 
   it("a customer with no verified address is not refused: the legacy precedence, as before the address book", async () => {
@@ -415,7 +431,7 @@ describe("a return whose addresses differ", () => {
     expect(held).toMatchObject({ error: { code: "address_differs" } })
     expect("error" in held && held.error.message).toContain("prep_set_address_choice")
     expect("error" in held && held.error.message).not.toContain("To prepare row")
-    await prepSetAddressChoice(ctx, { document_ref: docId(c), choice: "order" })
+    await pickAddress(ctx, { document_ref: docId(c), choice: "order" })
     const after = await createShipmentPreflight(ctx, params)
     expect("error" in after ? after.error.code : "ok").not.toBe("address_differs")
   })
@@ -426,9 +442,93 @@ describe("who picked", () => {
     const c = differsCase()
     const h = goldenCtx(c)
     const ctx = { ...h.ctx, getUserId: async () => "user-42" }
-    await prepSetAddressChoice(ctx, { document_ref: docId(c), choice: "order" })
+    await pickAddress(ctx, { document_ref: docId(c), choice: "order" })
     const rows = (await ctx.db.findMany("prep_order_state", { limit: 10 })) as Array<{ address_choice?: unknown }>
     const stored = rows.map((r) => (typeof r.address_choice === "string" ? JSON.parse(r.address_choice) : r.address_choice))
     expect(stored.find(Boolean)).toMatchObject({ pick: "order", chosen_by: "user-42" })
+  })
+})
+
+describe("a pick is bound to the addresses on its card", () => {
+  const storedPicks = async (ctx: Ctx) => {
+    const rows = (await ctx.db.findMany("prep_order_state", { limit: 10 })) as Array<{ address_choice?: unknown }>
+    return rows.map((r) => r.address_choice).filter(Boolean)
+  }
+
+  it("the tool declares the preflight and the pin, and carries no exemption from them", () => {
+    const manifest = JSON.parse(readFileSync(join(import.meta.dir, "..", "app.manifest.json"), "utf8"))
+    const tool = manifest.tools.prep_set_address_choice
+    expect(tool.preflight).toBe("prepSetAddressChoicePreflight")
+    expect(tool.pinnedParams).toEqual(["shown_addresses"])
+    expect(tool.params.properties.shown_addresses).toBeDefined()
+    expect(tool.editableFields).toBeUndefined()
+  })
+
+  it("staging pins the addresses it read and writes nothing", async () => {
+    const c = differsCase()
+    const { ctx } = goldenCtx(c)
+    const res = await prepSetAddressChoicePreflight(ctx, { document_ref: docId(c), choice: "verified" })
+    if ("error" in res) throw new Error(res.error.message)
+    expect(res.pinnedParams.shown_addresses.order_address).toMatchObject({ street: "Werkstr. 6" })
+    expect(res.pinnedParams.shown_addresses.verified_address).toMatchObject({ street: "Industriepark 3" })
+    expect(res.pinnedParams.shown_addresses.hash).toMatch(/^[0-9a-f]+$/)
+    expect(await storedPicks(ctx)).toEqual([])
+  })
+
+  it("the card shows the pinned addresses, not a later read", async () => {
+    const c = differsCase()
+    const { ctx } = goldenCtx(c)
+    const params = await staged(ctx, { document_ref: docId(c), choice: "verified" })
+    const later = { address_check: { order_address: { street: "Somewhere else" }, verified_address: { street: "Elsewhere" } } }
+    const card = await summarizeAddressChoice(params, undefined, { context: later })
+    const text = card.lines.join("\n")
+    expect(text).toContain("Werkstr. 6")
+    expect(text).toContain("Industriepark 3")
+    expect(text).not.toContain("Somewhere else")
+    expect(text).toContain("The label goes to the verified address")
+  })
+
+  it.each([
+    ["the order is edited", (c: GoldenCase) => { c.order!.shippingAddress = { ...ORDER_SITE, address1: "Werkstr. 9" } }],
+    ["the verified address is edited", (c: GoldenCase) => { c.book = [verifiedRow({ street1: "Industriepark 5" })] }],
+    ["the two come to agree", (c: GoldenCase) => { c.order!.shippingAddress = { ...ORDER_SITE, address1: "Industriepark 3" } }],
+  ])("%s after staging: the approved pick is void, and says so", async (_what, change) => {
+    const c = differsCase()
+    const { ctx } = goldenCtx(c)
+    const params = await staged(ctx, { document_ref: docId(c), choice: "order" })
+    change(c)
+    const err = await prepSetAddressChoice(ctx, params).catch((e: unknown) => e)
+    expect(err).toMatchObject({ code: "address_choice_stale", retryable: false })
+    expect((err as Error).message).toContain("changed after this pick was requested")
+    expect(await storedPicks(ctx)).toEqual([])
+  })
+
+  it("the row stays held after a voided pick", async () => {
+    const c = differsCase()
+    const { ctx } = goldenCtx(c)
+    const params = await staged(ctx, { document_ref: docId(c), choice: "order" })
+    c.order!.shippingAddress = { ...ORDER_SITE, address1: "Werkstr. 9" }
+    await prepSetAddressChoice(ctx, params).catch(() => {})
+    expect(await createShipmentPreflight(ctx, stageParams(c))).toMatchObject({ error: { code: "address_differs" } })
+  })
+
+  it("a call staged without pinned addresses is refused, not applied", async () => {
+    const c = differsCase()
+    const { ctx } = goldenCtx(c)
+    await expect(prepSetAddressChoice(ctx, { document_ref: docId(c), choice: "order" })).rejects.toMatchObject({
+      code: "address_choice_stale",
+    })
+    expect(await storedPicks(ctx)).toEqual([])
+  })
+
+  it("refuses at staging: a verified address that is not this row's, a bad choice", async () => {
+    const c = differsCase()
+    const { ctx } = goldenCtx(c)
+    expect(
+      await prepSetAddressChoicePreflight(ctx, { document_ref: docId(c), choice: "verified", address_id: "addr-other" }),
+    ).toMatchObject({ error: { code: "address_choice_stale" } })
+    expect(
+      await prepSetAddressChoicePreflight(ctx, { document_ref: docId(c), choice: "nope" as "order" }),
+    ).toMatchObject({ error: { code: "invalid_choice" } })
   })
 })

@@ -18,6 +18,12 @@ export class SqlGuardError extends Error {
   }
 }
 
+/** The longest raw query accepted, in characters: far above a hand-written or
+ *  model-written report (many CTEs fit in 20 KB) and room for an `IN` list of
+ *  about 2,400 quoted UUIDs. The `db_query` tool declares the same number as
+ *  its `sql` param's `maxLength`. */
+export const MAX_RAW_SQL_CHARS = 100_000
+
 /** Dangerous function names (case-insensitive), matched at call position —
  *  i.e. immediately followed by `(` — never as a bare substring, so a column
  *  named `pg_sleep_at` is not rejected. Matched on the bare function name, so
@@ -266,6 +272,12 @@ function isEffectivelyEmpty(t: Token): boolean {
  * `SqlGuardError` with a distinct, non-leaky message per violation kind.
  */
 export function assertReadOnlySelect(sql: string): void {
+  if (sql.length > MAX_RAW_SQL_CHARS) {
+    throw new SqlGuardError(
+      `Query is too long: ${sql.length} characters, the limit is ${MAX_RAW_SQL_CHARS}. Shorten it or split it into smaller queries.`,
+      "query_too_long",
+    )
+  }
   assertReadOnlyTokens(tokenize(sql, false))
   assertReadOnlyTokens(tokenize(sql, true))
 }

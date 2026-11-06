@@ -13,7 +13,7 @@
 // AN ORG THAT MOVED (who reports which org-day). Each cell reports only what
 // ITS key spent: the rows it metered itself. Rows an org brought with it from
 // another cell carry `arrived_via` (set by the transfer import, migration
-// 0268) and are never counted here; the cell that metered them reports them,
+// 0270) and are never counted here; the cell that metered them reports them,
 // from its held `moved` copy, and the control plane accepts that report from a
 // cell the org left on or after that day (cloud/cell-billing.ts there). So a
 // move just after midnight gives: the source reports the whole previous day,

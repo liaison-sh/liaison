@@ -6,7 +6,7 @@
 // This walks every non-test source file under apps/api/src and finds every
 // site that inserts a `threads` row, in either shape production code uses:
 // a raw Drizzle `.insert(threads)` call (the table import may be aliased,
-// e.g. `threads as kernelThreads` in spawn-agent.ts) or a call to the named
+// e.g. `threads as kernelThreads`; the "bites" fixture proves it) or a call to the named
 // helper `insertThreadWithParticipants` (thread.ts), which wraps the one raw
 // insert every plain/DM/channel thread funnels through. Every site found
 // must be on the allowlist below, keyed by file + enclosing function; an
@@ -49,18 +49,13 @@ const ALLOWLIST: AllowlistEntry[] = [
     note: "The routine output-thread anchor, created once per routine and reused on every tick.",
   },
   {
-    file: "modules/agent/subruns/spawn-agent.ts",
-    function: "spawnAgent",
+    file: "modules/agent/subruns/subrun-thread.ts",
+    function: "insertSubrunThread",
     note:
       "The hidden sub-run anchor thread (type: 'subrun', hiddenFromList: true) a spawned " +
-      "agent's own turns write into; it seats no human DM partner and is never surfaced as a chat.",
-  },
-  {
-    file: "seed/factories/agent/sub-runs.ts",
-    function: "seedSubRuns",
-    note:
-      "The seed engine's copy of the hidden sub-run anchor (type: 'subrun', hiddenFromList: true) " +
-      "spawnAgent writes, for the sub-runs a seeded world shows. Seed data only, never a chat.",
+      "agent's own turns write into; it seats no human DM partner and is never surfaced as a chat. " +
+      "Called by spawnAgent (spawn-agent.ts) and by the seed engine's sub run history " +
+      "(seed/factories/agent/sub-runs.ts), so a seeded sub run has the spawn's exact thread shape.",
   },
   {
     file: "modules/mcp/connection-thread.ts",
@@ -344,8 +339,14 @@ describe("thread creation census: every threads insert is an accounted-for ancho
     const fixtureRel = "modules/threads/__census_fixture_offender.ts"
     const fixturePath = join(SRC, fixtureRel)
     const fixtureBody = `// SPDX-License-Identifier: FSL-1.1-ALv2
-import { threads } from "~/db/schema/kernel"
+import { threads, threads as aliasedThreads } from "~/db/schema/kernel"
 import { withPrivilegedDb } from "~/db/privileged"
+
+export async function planAliasedThreadInsert(orgId: string): Promise<void> {
+  await withPrivilegedDb(orgId, "census-fixture-aliased", async (tx) => {
+    await tx.insert(aliasedThreads).values({ orgId, handle: "aliased", type: "thread" })
+  })
+}
 
 export async function planEphemeralHiddenAgentChat(orgId: string): Promise<void> {
   await withPrivilegedDb(orgId, "census-fixture-offender", async (tx) => {
@@ -367,6 +368,9 @@ export async function planEphemeralHiddenAgentChat(orgId: string): Promise<void>
       const sites = census()
       const planted = sites.filter((s) => s.file === fixtureRel)
       expect(planted.length).toBeGreaterThan(0)
+      // An aliased table import is found too (no allowlisted file aliases
+      // `threads` on its insert any more, so the fixture carries that proof).
+      expect(planted.some((s) => s.function === "planAliasedThreadInsert")).toBe(true)
       const unlisted = planted.filter((s) => !ALLOWLIST_KEYS.has(allowlistKey(s)))
       // This is the assertion that would need to pass for the census to be
       // silently defeated by a dropped file; it must NOT pass.
@@ -382,10 +386,11 @@ export async function planEphemeralHiddenAgentChat(orgId: string): Promise<void>
     // Every current production anchor is a channel/DM (thread.ts), a routine
     // output thread (routine-worker.ts), a hidden approval anchor
     // (execute-tool.ts x2), a hidden sub-run thread
-    // (spawn-agent.ts), a hidden MCP connection anchor
-    // (connection-thread.ts) or a hidden bulk-dispatch origin bucket
-    // (bulk-dispatch.ts), or the seed engine's copy of the sub-run anchor
-    // (seed/factories/agent/sub-runs.ts). The QA seed harness lives outside src. There is no
+    // (subrun-thread.ts, shared by spawn-agent.ts and the seed engine), a
+    // hidden MCP connection anchor (connection-thread.ts) or a hidden
+    // bulk-dispatch origin bucket (bulk-dispatch.ts). The seed engine
+    // (src/seed) creates threads only through these product paths
+    // (createThread, createOrGetAgentDm, insertSubrunThread). There is no
     // OTHER "open a discussion thread for entity X" generic creator left in
     // the tree: if one is added, its insert or insertThreadWithParticipants
     // call surfaces above as an unlisted site. This list is intentionally
@@ -402,8 +407,7 @@ export async function planEphemeralHiddenAgentChat(orgId: string): Promise<void>
         "modules/mcp/connection-thread.ts",
         "modules/threads/thread.ts",
         "modules/agent/routines/routine-worker.ts",
-        "modules/agent/subruns/spawn-agent.ts",
-        "seed/factories/agent/sub-runs.ts",
+        "modules/agent/subruns/subrun-thread.ts",
       ].sort(),
     )
   })

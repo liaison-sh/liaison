@@ -156,6 +156,14 @@ export function capRows<T>(rows: T[], maxRows: number): CapRowsResult<T> {
   return { rows: rows.slice(0, maxRows), truncated: true }
 }
 
+/** `sql` without the semicolons that end it. A backward scan, linear in their
+ *  number; the caller has already trimmed the text. */
+function stripTrailingSemicolons(sql: string): string {
+  let end = sql.length
+  while (end > 0 && sql.charCodeAt(end - 1) === 0x3b) end--
+  return sql.slice(0, end)
+}
+
 /**
  * Wraps an arbitrary single-statement SQL string in an outer
  * `SELECT * FROM (<sql>) AS __liaison_row_cap LIMIT <maxRows + 1>` so the
@@ -171,7 +179,7 @@ export function capRows<T>(rows: T[], maxRows: number): CapRowsResult<T> {
  * WITH statement. Pure — string transform, no I/O.
  */
 export function wrapWithRowCap(sql: string, maxRows: number): string {
-  const trimmed = sql.trim().replace(/;+\s*$/, "")
+  const trimmed = stripTrailingSemicolons(sql.trim())
   // The statement sits on its own lines so a trailing `-- comment` ends at the
   // newline instead of swallowing the wrapper's `)` and LIMIT.
   return `SELECT * FROM (\n${trimmed}\n) AS __liaison_row_cap LIMIT ${maxRows + 1}`

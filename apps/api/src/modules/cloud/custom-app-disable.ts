@@ -5,7 +5,7 @@
 // an incident (a busy-looping webhook, egress abuse) the operator stops ONE
 // tenant's app without suspending or purging the org and without SQL:
 //   - disabled: the install rows keep the app, its files and its data, and
-//     `disabled_at` (0265) makes the tenant boundary refuse it everywhere
+//     `disabled_at` (0267) makes the tenant boundary refuse it everywhere
 //     (`appVisibleToOrg` answers false, its owner included), so no tool,
 //     webhook, event, job, MCP tool or interface of it runs; its schedulers and
 //     this process's registrations go at once, other processes drop it on

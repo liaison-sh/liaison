@@ -249,7 +249,7 @@ liaison tickets inbox list [--org <slug>]
 Create an API inbox: a receiving bucket (bug reports, website contact, a per-tenant endpoint) with no connected mailbox; replies go through a reply-via mailbox. Mailbox inboxes are not created here: they come from `tickets.inboxes` or `connect tickets/gmail`.
 
 ```
-liaison tickets inbox create --name <name> [--org <slug>] [--kind api] [--reply-via <inboxId> | --reply-from <email>] [--default-team <team>] [--default-audience <audience>] [--mint-key] [--reply-to <email>] [--from-name <name>] [--signature-html <html>] [--signature-text <text>] [--ack-enabled true|false] [--ack-body <text>] [--sla-promise <phrase>]
+liaison tickets inbox create --name <name> [--org <slug>] [--kind api] [--reply-via <inboxId> | --reply-from <email>] [--default-team <team>] [--default-audience <audience>] [--mint-key] [--reply-to <email>] [--from-name <name>] [--signature-html <html>] [--signature-text <text>] [--ack-enabled true|false] [--ack-body <text>] [--sla-promise <phrase>] [--notify-new-ticket true|false]
 ```
 
 | Flag | Required | Description |
@@ -269,13 +269,14 @@ liaison tickets inbox create --name <name> [--org <slug>] [--kind api] [--reply-
 | `--ack-enabled true\|false` | no | Turn the acknowledgement email on or off. |
 | `--ack-body <text>` | no | The acknowledgement body. |
 | `--sla-promise <phrase>` | no | The SLA promise phrase used in the acknowledgement. |
+| `--notify-new-ticket true\|false` | no | Raise an attention item for the inbox admins on each new ticket (default false). |
 
 ## tickets inbox update
 
 Configure an inbox's email identity ("virtual mailbox"): From display name, reply-to base address, signature, acknowledgement on/off and body, and the SLA promise phrase, the same fields as Settings &gt; Tickets &gt; Inboxes. Needs at least one of them.
 
 ```
-liaison tickets inbox update --id <inboxId> [--org <slug>] [--reply-via <mailboxInboxId>] [--from-name <name>] [--reply-to <email>] [--signature-html <html>] [--signature-text <text>] [--ack-enabled true|false] [--ack-body <text>] [--sla-promise <phrase>] [--attention-cutoff <iso>|now|none]
+liaison tickets inbox update --id <inboxId> [--org <slug>] [--reply-via <mailboxInboxId>] [--from-name <name>] [--reply-to <email>] [--signature-html <html>] [--signature-text <text>] [--ack-enabled true|false] [--ack-body <text>] [--sla-promise <phrase>] [--attention-cutoff <iso>|now|none] [--notify-new-ticket true|false]
 ```
 
 | Flag | Required | Description |
@@ -291,6 +292,7 @@ liaison tickets inbox update --id <inboxId> [--org <slug>] [--reply-via <mailbox
 | `--ack-body <text>` | no | The acknowledgement body. |
 | `--sla-promise <phrase>` | no | The SLA promise phrase used in the acknowledgement. |
 | `--attention-cutoff <iso>\|now\|none` | no | The attention cutoff date (`now`, or `none` to clear it). |
+| `--notify-new-ticket true\|false` | no | Raise an attention item for the inbox admins on each new ticket (default false). |
 
 ## tickets inbox move
 

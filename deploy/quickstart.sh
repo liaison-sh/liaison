@@ -9,13 +9,18 @@
 #   - check for docker, docker compose v2, and openssl;
 #   - create deploy/.env from deploy/.env.example on first run only, filling
 #     in every required secret and the local URLs the app needs to boot;
-#   - pull the published image (ghcr.io/mathieufro/liaison:latest) if it is
-#     reachable, otherwise build it locally from apps/api/Dockerfile;
+#   - pull the published image of the chosen channel (ghcr.io/mathieufro/liaison:latest
+#     or :nightly) if it is reachable, otherwise build it locally from
+#     apps/api/Dockerfile;
 #   - bring the stack up and wait for /healthz to report every dependency ok;
 #   - print the URL and exactly how to log in for the first time.
 #
 # Flags:
 #   --port <n>       Publish the app on this host port instead of 3000.
+#   --channel <name> release (the default) or nightly: picks the image and sets
+#                    LIAISON_RELEASE_CHANNEL. A later run keeps the channel in
+#                    deploy/.env. Migrations only go forward, so nightly cannot go
+#                    back to an older release: see docs/admin/upgrades.md.
 #   --pull           Force pulling the published image (error out if it can't be pulled).
 #   --build          Force a local build from apps/api/Dockerfile, even if the
 #                    published image is reachable.
@@ -35,21 +40,22 @@ DEPLOY_DIR="${SCRIPT_DIR}"
 COMPOSE_FILE="${DEPLOY_DIR}/docker-compose.yml"
 ENV_FILE="${DEPLOY_DIR}/.env"
 ENV_EXAMPLE="${DEPLOY_DIR}/.env.example"
-IMAGE_REF="ghcr.io/mathieufro/liaison:latest"
+IMAGE_REPO="ghcr.io/mathieufro/liaison"
 LOCAL_IMAGE_TAG="liaison:local"
 
 PROJECT_NAME="liaison"
 APP_PORT="3000"
 MODE="auto" # auto | pull | build
 ACTION="up"
+CHANNEL="" # release | nightly; empty: what deploy/.env says, else release
 
 log()  { printf '%s\n' "$*"; }
 err()  { printf 'error: %s\n' "$*" >&2; }
 die()  { err "$*"; exit 1; }
 
 print_help() {
-  # Print the header comment block above (lines 2-29) as help text.
-  sed -n '2,29p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  # Print the header comment block above (lines 2-33) as help text.
+  sed -n '2,33p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 while [ $# -gt 0 ]; do
@@ -57,6 +63,14 @@ while [ $# -gt 0 ]; do
     --port)
       [ $# -ge 2 ] || die "--port requires a value"
       APP_PORT="$2"
+      shift 2
+      ;;
+    --channel)
+      [ $# -ge 2 ] || die "--channel requires a value (release or nightly)"
+      case "$2" in
+        release | nightly) CHANNEL="$2" ;;
+        *) die "unknown channel: $2 (release or nightly)" ;;
+      esac
       shift 2
       ;;
     --pull)
@@ -190,6 +204,20 @@ set_var() {
 # Image selection
 # ---------------------------------------------------------------------------
 
+# The channel: the flag, else what deploy/.env already says, so a plain rerun
+# never moves a nightly instance to an older release. Then the image it means.
+resolve_channel() {
+  if [ -z "${CHANNEL}" ] && [ -f "${ENV_FILE}" ]; then
+    CHANNEL="$(sed -n 's/^LIAISON_RELEASE_CHANNEL=//p' "${ENV_FILE}" | tail -n 1)"
+  fi
+  CHANNEL="${CHANNEL:-release}"
+  case "${CHANNEL}" in
+    release) IMAGE_REF="${IMAGE_REPO}:latest" ;;
+    nightly) IMAGE_REF="${IMAGE_REPO}:nightly" ;;
+    *) die "deploy/.env has an unknown LIAISON_RELEASE_CHANNEL: ${CHANNEL} (release or nightly)" ;;
+  esac
+}
+
 select_image() {
   local image=""
   case "${MODE}" in
@@ -208,7 +236,7 @@ select_image() {
         log "Pulled ${IMAGE_REF}."
         image="${IMAGE_REF}"
       else
-        log "${IMAGE_REF} is not reachable yet (no release published). Building locally instead."
+        log "${IMAGE_REF} is not reachable yet (nothing published on the ${CHANNEL} channel). Building locally instead."
         build_local
         image="${LOCAL_IMAGE_TAG}"
       fi
@@ -253,6 +281,14 @@ wait_healthy() {
     sleep 2
   done
   err "timed out after $((attempts * 2))s waiting for ${url} to become healthy."
+  # A refused start (for example an image older than the database schema)
+  # prints one FATAL line and restarts; surface it instead of making the
+  # reader dig through the logs.
+  local fatal
+  fatal="$(docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" logs --no-log-prefix --tail 50 app 2>/dev/null | grep -m1 '^FATAL:' || true)"
+  if [ -n "${fatal}" ]; then
+    err "The app refused to start: ${fatal}"
+  fi
   err "Inspect the logs with:"
   err "  docker compose -p ${PROJECT_NAME} -f ${COMPOSE_FILE} logs"
   exit 1
@@ -332,7 +368,9 @@ do_up() {
   # knowledge files). Create it as the current user before compose would
   # create it as root.
   mkdir -p "${DEPLOY_DIR}/setup"
+  resolve_channel
   select_image
+  set_var LIAISON_RELEASE_CHANNEL "${CHANNEL}"
   # Remember the image in .env: a later plain `docker compose up -d`, and
   # deploy/backup.sh / deploy/restore.sh, then run this same image instead of
   # the compose file's default tag.

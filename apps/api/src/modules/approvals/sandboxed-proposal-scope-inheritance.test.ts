@@ -166,19 +166,34 @@ function bridgeFor(opts: {
   return opts.frame ? runContextStore.run(opts.frame, build) : build()
 }
 
-/** Propose the gated write from OUTSIDE the frame, as the sandbox hop does. */
-async function proposeViaSandbox(
+/** Call the gated write from OUTSIDE the frame, as the sandbox hop does. */
+async function callViaSandbox(
   frame: RunContext | undefined,
   body: string,
   extra: { callerScopes?: string[] } = {},
-): Promise<string> {
+): Promise<Envelope> {
   const bridge = bridgeFor({ frame, ...extra })
-  const env = await runContextStore.exit(async () => {
+  return runContextStore.exit(async () => {
     expect(runContextStore.getStore()).toBeUndefined()
     return JSON.parse(
       await bridge.executeTool!(`${APP}:postScoped`, JSON.stringify({ body })),
     ) as Envelope
   })
+}
+
+async function approvalCount(): Promise<number> {
+  const [row] =
+    await sql`SELECT count(*)::int AS n FROM kernel.approval_requests WHERE org_id = ${ORG}`
+  return row?.n as number
+}
+
+/** Propose the gated write and return the approval it parked. */
+async function proposeViaSandbox(
+  frame: RunContext | undefined,
+  body: string,
+  extra: { callerScopes?: string[] } = {},
+): Promise<string> {
+  const env = await callViaSandbox(frame, body, extra)
   if (!env.blocked?.approvalRequestId) {
     throw new Error(`expected the call to be gated, got ${JSON.stringify(env)}`)
   }
@@ -340,33 +355,24 @@ describe("a gated call from a sandboxed app records the real proposing scopes (F
     expect(await messagesVisibleTo(LACKER, [])).toContain(await messageIdOf(body))
   })
 
-  it("a sandboxed proposal whose turn is undeterminable is refused before any approval exists", async () => {
+  it("a sandboxed proposal whose turn is undeterminable is refused, and parks nothing", async () => {
     // A frame with no accumulator and no effective scope, reached with no caller
-    // scopes either: nothing can answer what this turn read, so the turn is
-    // tainted with scopes that could not be determined. An approval of a tainted
-    // turn must be decided by someone holding the taint, and nobody holds an
-    // undeterminable taint: the call is refused outright (scope-taint rule 8,
-    // SCOPE_TAINT_NO_DECIDER_MESSAGE) rather than parked with NULL scopes for an
-    // approver who could never safely decide it. Nothing is written or parked.
-    const body = "written by a re-entry whose proposing turn could not be determined"
-    const [{ n: before }] = (await sql`SELECT count(*)::int AS n FROM kernel.approval_requests
-      WHERE org_id = ${ORG}`) as unknown as [{ n: number }]
-    const bridge = bridgeFor({ frame: frameOf({}) })
-    const env = await runContextStore.exit(
-      async () =>
-        JSON.parse(
-          await bridge.executeTool!(`${APP}:postScoped`, JSON.stringify({ body })),
-        ) as Envelope,
-    )
+    // scopes either: nothing can answer what this turn read. Unknown taint is held
+    // by nobody, so no approver can see the result and the gate refuses. (A row
+    // with SQL NULL, from before the column existed, keeps its re-entry fallback:
+    // approved-reentry-scope-inheritance.test.ts.)
+    const body = "written by a turn that could not be determined"
+    const before = await approvalCount()
+    const env = await callViaSandbox(frameOf({}), body)
 
     expect(env.blocked).toBeUndefined()
     expect(env.error?.code).toBe("E_SCOPE_TAINT_BLOCKED")
     expect(env.error?.message).toContain("scopes could not be determined")
     expect(env.error?.message).toContain("No approval was created")
-    const [{ n: after }] = (await sql`SELECT count(*)::int AS n FROM kernel.approval_requests
-      WHERE org_id = ${ORG}`) as unknown as [{ n: number }]
-    expect(after).toBe(before)
-    expect(await messageTag(body)).toBeUndefined()
+    expect(await approvalCount()).toBe(before)
+    expect(
+      await sql`SELECT id FROM kernel.messages WHERE org_id = ${ORG} AND content = ${body}`,
+    ).toHaveLength(0)
   })
 
   it("outside any turn a sandboxed proposal still records the empty assertion", async () => {

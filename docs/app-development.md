@@ -311,7 +311,8 @@ expected, so a placeholder never reaches a record or a customer.
 field's `validation.pattern` and a connection's template variable or authorize
 parameter pattern run on the server. The install refuses a pattern longer than
 512 characters or one whose matching time is not linear, such as `^(a|a)+$`:
-a repeated part must not match the same text in two ways. See
+a repeated part must not match the same text in two ways. A pattern whose check
+takes too long is refused too, so keep patterns short. See
 [the package format](app-package-format.md#regular-expressions-in-a-manifest).
 
 ---
@@ -653,6 +654,25 @@ door. The gap log is how Phases 16-18 (Shopify, Invoicing, Boxtal) drive SDK
 growth, and it is how your app should too.
 
 ---
+
+## 12. Tell people about an event
+
+An app raises items in the attention feed from its own events, in `attention.translations` of the manifest. Each person's notification settings then decide the channels.
+
+```json
+{
+  "event": "ticket:create",
+  "kind": "tickets:ticket.created",
+  "urgency": 40,
+  "when": { "op": "eq", "path": "data.notifyNewTicket", "value": true },
+  "summary": "New ticket in {{data.inboxName}}: {{data.subject}}",
+  "recipients": { "kind": "scope_holders", "scope": "tickets:inboxes:admin", "excludeActor": true }
+}
+```
+
+- `when` keeps the translation to the events that match it (`eq`, `in`, `exists`, `and`, `or`, `not` on a path of the event).
+- `recipients.kind` is `field`, `participants`, `mentions`, `actor` or `scope_holders`. `excludeActor` (on `participants` and `scope_holders`) leaves out the person who caused the event.
+- `resolveWhen` makes the translation end an item instead of raising one, for an event that means the condition is over: `{ "always": true }`, or `{ "field": ..., "equals": ... }`.
 
 ## See also
 

@@ -15,12 +15,15 @@ import { sql } from "~/db"
 import { env } from "~/lib/env"
 import { createSession, refreshSession } from "~/modules/auth/auth"
 import { verifyAccessToken } from "~/modules/auth/jwt"
+import { KERNEL_EVERY_MEMBER_SCOPES } from "~/modules/permissions/every-member-scopes"
 
 const ORG_ID = "00000000-0000-0000-0000-5c0000000001"
 const USER_ID = "00000000-0000-0000-0000-5c0000000002"
 const ROLE_ID = "00000000-0000-0000-0000-5c0000000003"
 const EXTRA_ROLE_ID = "00000000-0000-0000-0000-5c0000000004"
 const USER_SCOPES = ["kernel", "threads:read", "mail:read"]
+/** What such a user's token carries with no ceiling: the grants plus what every member holds. */
+const USER_TOKEN_SCOPES = [...USER_SCOPES, ...KERNEL_EVERY_MEMBER_SCOPES]
 
 async function scopesOf(accessToken: string): Promise<string[]> {
   const payload = await verifyAccessToken(accessToken, env.JWT_SECRET)
@@ -120,12 +123,12 @@ describe("session scope ceiling", () => {
       ORDER BY created_at DESC LIMIT 1`
     expect(row?.scope_ceiling).toBeNull()
     const refreshed = await refreshSession(first.refreshToken)
-    expect(await scopesOf(refreshed.accessToken)).toEqual([...USER_SCOPES].sort())
+    expect(await scopesOf(refreshed.accessToken)).toEqual([...USER_TOKEN_SCOPES].sort())
   })
 
   it("a device flow without declared scopes behaves as before (no ceiling)", async () => {
     const first = await pollApproved(app, null)
     const refreshed = await refreshSession(first.refreshToken)
-    expect(await scopesOf(refreshed.accessToken)).toEqual([...USER_SCOPES].sort())
+    expect(await scopesOf(refreshed.accessToken)).toEqual([...USER_TOKEN_SCOPES].sort())
   })
 })

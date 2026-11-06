@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/postgres-js"
 import { migrate } from "drizzle-orm/postgres-js/migrator"
 import postgres from "postgres"
 import { advisoryLockKey } from "~/db/advisory-lock"
+import { assertImageNotOlderThanSchema, type OlderImagePolicy } from "~/db/schema-guard"
 import { boundedBy } from "~/lib/bounded"
 
 // The unprivileged app role. DATABASE_URL connects as this role; migrations must NOT.
@@ -350,10 +351,18 @@ export function migrationConnectionIsDirect(url: string, serverPort: number | nu
  * which the pooler hands to other clients after each transaction, so it would
  * be held by, and released by, whoever got that connection next. There the
  * lease alone serialises runners.
+ *
+ * An image older than the database's schema stops here, before anything runs
+ * (`db/schema-guard.ts`): to drizzle it would just be "nothing to do".
  */
 export async function runMigrations(
   url: string,
-  opts: MigrationLeaseOptions & { migrationsFolder?: string; requestPassword?: string } = {},
+  opts: MigrationLeaseOptions & {
+    migrationsFolder?: string
+    requestPassword?: string
+    /** Default: `olderImagePolicy()`, refuse in production. */
+    olderImage?: OlderImagePolicy
+  } = {},
 ): Promise<void> {
   const migrationsFolder =
     opts.migrationsFolder ?? new URL("./migrations", import.meta.url).pathname
@@ -369,6 +378,7 @@ export async function runMigrations(
             String(advisoryLockKey(MIGRATION_FENCE_LOCK)),
           ])
         }
+        await assertImageNotOlderThanSchema(sql, migrationsFolder, opts.olderImage)
         await ensurePolicyRoles(sql)
         await migrate(drizzle(sql), { migrationsFolder })
         if (opts.requestPassword) {

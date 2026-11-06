@@ -907,6 +907,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // Which failed unit files the sharded runner retries (never one whose
             // failure already reproduced alone) and its wall-clock split.
             "scripts/lib/unit-retry.test.ts",
+            // The silence watchdog that kills and names a wedged unit process.
+            "scripts/lib/unit-watchdog.test.ts",
             // The junit report the sharded runner reads: per file, which tests failed and why.
             "scripts/lib/unit-junit.test.ts",
             // Where the sharded runner keeps its per-file timings (shared by every
@@ -916,6 +918,9 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "scripts/test-gate.test.ts",
             // The docs guard's own tests (#207), listed by no suite until now.
             "scripts/check-docs.test.ts",
+            // Shipped manifest regexes: the proven list is exactly them, each proves
+            // linear, none costs a small server more than a share of the check's ceiling.
+            "scripts/manifest-regex-proven.test.ts",
             // The private Redis namespace a wrapped run gets, so two processes on one
             // Redis database stop consuming each other's jobs.
             "scripts/lib/redis-prefix.test.ts",
@@ -938,6 +943,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // deploy/rolling-deploy.sh against a docker shim: migrate, start new
             // beside old, wait ready, only then drain old; never a bare `up`.
             "deploy/rolling-deploy.test.ts",
+            "deploy/quickstart.test.ts",
             "scripts/lib/deploy-counters.test.ts",
             // deploy/backup.sh carries every key stored data needs, in step with the code.
             "scripts/backup-secrets.test.ts",
@@ -2196,9 +2202,9 @@ const logFile = path.join(runDir, "output.log")
 // from a previous shape) was the source of multiple flake classes.
 const NEEDS_CLEAN_SUBSTRATE = CLEAN_SUBSTRATE_SUITES
 // Suites with no substrate at all: no database to prepare, no preflight (see
-// the preflight note below). `root` is file reads and small spawns, so a hosted
-// runner with no services and no .env.test can run it.
-const NO_SUBSTRATE = new Set(["desktop", "desktop-ui", "root"])
+// the preflight note below). `root` and `guards` are file reads and small spawns,
+// so a hosted runner with no services and no .env.test can run them.
+const NO_SUBSTRATE = new Set(["desktop", "desktop-ui", "root", "guards"])
 let cleanup: Promise<void> = Promise.resolve()
 if (NEEDS_CLEAN_SUBSTRATE.has(suite)) {
   console.log(

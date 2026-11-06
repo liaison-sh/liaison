@@ -142,7 +142,7 @@ async function readPointer(name: string): Promise<Pointer | null> {
 
 async function writePointer(name: string, pointer: Pointer): Promise<void> {
   await withSystemDb("app-activation-swap", async (db) => {
-    // The owner of an org-private app comes with its version's row (0264):
+    // The owner of an org-private app comes with its version's row (0266):
     // NULL for an instance app.
     const [owned] = await db
       .select({ orgId: appsInstalled.orgId })

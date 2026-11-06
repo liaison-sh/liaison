@@ -1285,6 +1285,7 @@ export const appManifestJsonSchema = {
                       kind: { const: "scope_holders" },
                       scope: { type: "string", minLength: 1 },
                       dimensionFilter: { type: "object" },
+                      excludeActor: { type: "boolean" },
                     },
                     required: ["kind", "scope"],
                     additionalProperties: false,

@@ -87,6 +87,15 @@ describe("manifest regular expressions run bounded on the host", () => {
         },
       },
       { settings: settingsWithPattern("(\\d+)*z") },
+      {
+        import: {
+          kinds: {
+            "a.b": {
+              schema: { type: "object", properties: { x: { type: "string", pattern: EVIL } } },
+            },
+          },
+        },
+      },
       { connections: { c: { templateVars: { shop: { pattern: "^(a|aa)+$" } } } } },
       {
         connections: {
@@ -114,18 +123,20 @@ describe("manifest regular expressions run bounded on the host", () => {
   })
 
   test("every first-party manifest declares only safe patterns", () => {
-    const root = join(import.meta.dir, "..", "..", "..", "..", "..", "bundled-apps")
+    const repo = join(import.meta.dir, "..", "..", "..", "..", "..")
     let checked = 0
-    for (const name of readdirSync(root)) {
-      const p = join(root, name, "app.manifest.json")
-      try {
-        if (!statSync(p).isFile()) continue
-      } catch {
-        continue
+    for (const root of [join(repo, "bundled-apps"), join(repo, "apps", "api", "src", "apps")]) {
+      for (const name of readdirSync(root)) {
+        const p = join(root, name, "app.manifest.json")
+        try {
+          if (!statSync(p).isFile()) continue
+        } catch {
+          continue
+        }
+        assertManifestPatternsSafe(JSON.parse(readFileSync(p, "utf8")))
+        checked++
       }
-      assertManifestPatternsSafe(JSON.parse(readFileSync(p, "utf8")))
-      checked++
     }
-    expect(checked).toBeGreaterThan(5)
+    expect(checked).toBeGreaterThan(15)
   })
 })

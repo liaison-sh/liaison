@@ -223,6 +223,9 @@ const ticketInboxSchema = z
     // The team every ticket arriving on this inbox inherits (`inbound.ts` ->
     // `team: inbox.default_team`). Without it inbound tickets land team-less.
     defaultTeam: z.string().min(1).optional(),
+    // Each new ticket raises an attention item for the holders of
+    // tickets:inboxes:admin. Absent leaves the stored value as is (default off).
+    notifyNewTicket: z.boolean().optional(),
     // The inbox that tickets created without an explicit inbox land in.
     default: z.boolean().optional(),
   })

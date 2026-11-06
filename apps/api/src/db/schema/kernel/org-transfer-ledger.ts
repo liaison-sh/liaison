@@ -2,7 +2,7 @@
 import { index, text, timestamp, uuid } from "drizzle-orm/pg-core"
 import { kernel } from "./organizations"
 
-/** The moves of an org this instance took part in (migration 0267, modules/org/transfer/). */
+/** The moves of an org this instance took part in (migration 0269, modules/org/transfer/). */
 export const orgTransferLedger = kernel.table(
   "org_transfer_ledger",
   {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Restore drill markers (migration 0266): one row written when a restore drill
+// Restore drill markers (migration 0268): one row written when a restore drill
 // starts, in the transaction that records the counts the restore must match.
 // Instance-wide (no org column). Privileged pool only (RLS forced, no policy).
 

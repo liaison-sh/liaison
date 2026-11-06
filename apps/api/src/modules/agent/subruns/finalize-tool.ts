@@ -15,7 +15,7 @@
 import { tool } from "ai"
 import Ajv, { type Options, type ValidateFunction } from "ajv"
 import { withFormats } from "~/lib/ajv-formats"
-import { manifestAjvRegExp } from "~/lib/manifest-regex"
+import { modelSchemaAjvRegExp } from "~/lib/manifest-regex"
 import { jsonSchemaToZod } from "~/modules/mcp-client/json-schema-to-zod"
 
 const AJV_OPTIONS: Options = { allErrors: true }
@@ -64,7 +64,7 @@ function compile(schema: Record<string, unknown>): ValidateFunction {
   // backtracking-prone or over-long one fails the compile instead of running
   // on the event loop.
   const v = withFormats(
-    new Ajv({ ...AJV_OPTIONS, validateSchema: false, code: { regExp: manifestAjvRegExp } }),
+    new Ajv({ ...AJV_OPTIONS, validateSchema: false, code: { regExp: modelSchemaAjvRegExp } }),
   ).compile(schema)
   if (key !== "__unstringifiable__") {
     validatorCache.set(key, v)

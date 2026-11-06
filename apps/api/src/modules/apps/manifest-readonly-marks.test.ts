@@ -183,7 +183,7 @@ const READ_ONLY: Record<string, string[]> = {
     "hs_codes_lookup",
     "pending_approvals_list",
     "vat_validate",
-    // A business buyer's VAT number from a web search and VIES, written nowhere.
+    // Reads the web and VIES for a buyer's number; writes nothing.
     "vat_lookup",
     "viewer_access",
     "contact_relationships_get",

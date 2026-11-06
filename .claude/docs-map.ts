@@ -238,6 +238,7 @@ export const DOCS_EXEMPT: { glob: string; reason: string }[] = [
   // (mapped to reference/env above): subfolders, files not starting with "e",
   // and the "e" files other than env.ts by name. A new lib/e*.ts is unmapped
   // and fails the check until it is listed here.
+  { glob: "apps/api/src/lib/manifest-regex-proven.json", reason: "generated; its behaviour is documented in app-package-format" },
   { glob: "apps/api/src/lib/*/**", reason: "internal helpers" },
   { glob: "apps/api/src/lib/[!e]*.ts", reason: "internal helpers" },
   { glob: "apps/api/src/lib/{edition,env-boolean,error-tracker,external-content}.ts", reason: "internal helpers" },

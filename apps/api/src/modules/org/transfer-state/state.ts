@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// An org's transfer state while it moves to another instance (migration 0266):
+// An org's transfer state while it moves to another instance (migration 0268):
 // the one reader every org entry point consults, the writer the move's driver
 // uses, and the confirmations every process gives back.
 //

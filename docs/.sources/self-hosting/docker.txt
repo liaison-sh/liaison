@@ -6,7 +6,7 @@ Creates deploy/.env from .env.example first run, fills secrets -> deploy/quickst
 Pulls :latest or builds from apps/api/Dockerfile -> deploy/quickstart.sh:12
 Waits for /healthz all ok, prints URL and login -> deploy/quickstart.sh:14
 Register with setup token -> README.md:80
-Flags --port, --pull, --build, --project, --down, --help -> deploy/quickstart.sh:18
+Flags --port, --pull, --build, --project, --down, --help -> deploy/quickstart.sh:20
 Compose -p -f form -> .claude/skills/setup-liaison/SKILL.md:18
 postgres:17-alpine -> deploy/docker-compose.yml:25
 postgres mem 2g -> deploy/docker-compose.yml:87
@@ -274,3 +274,7 @@ Mail and Tickets verify with them when an org set none -> apps/api/src/modules/a
 CONTROL_PLANE_URL/API_KEY both or neither; without LIAISON_EDITION the server refuses to start -> apps/api/src/lib/env.ts:1573 ; apps/api/src/lib/managed-boot.ts:197 ; apps/api/src/index.ts:126 ; deploy/.env.example:225
 Mail encryption variables are set in deploy/.env and passed to the app by compose -> deploy/docker-compose.yml:559 ; deploy/docker-compose.yml:560
 hard deadline watchdog: a Worker kills the process 3 s past the hard deadline when the main thread is wedged, fatal line first -> apps/api/src/lib/shutdown.ts:57-63 ; apps/api/src/lib/shutdown.ts:285-288 ; apps/api/src/lib/shutdown-watchdog.ts:11-30
+LIAISON_RELEASE_CHANNEL, LIAISON_ALLOW_OLDER_IMAGE env -> deploy/docker-compose.yml:364
+LIAISON_RELEASE_CHANNEL values and default -> apps/api/src/lib/env.ts:72
+LIAISON_ALLOW_OLDER_IMAGE behaviour -> apps/api/src/db/schema-guard.ts:30
+quickstart --channel -> deploy/quickstart.sh:20

@@ -88,6 +88,25 @@ describe("manifest-schema entity index, permission, file-parent and attention fi
     expect(r.success).toBe(false)
   })
 
+  it("accepts excludeActor on scope_holders recipients", () => {
+    const r = validateAppManifest({
+      ...baseValid,
+      attention: {
+        translations: [
+          {
+            ...baseValid.attention.translations[0],
+            recipients: {
+              kind: "scope_holders",
+              scope: "tickets:inboxes:admin",
+              excludeActor: true,
+            },
+          },
+        ],
+      },
+    })
+    expect(r.success).toBe(true)
+  })
+
   it("rejects unknown attention.translations.kind", () => {
     const r = validateAppManifest({
       ...baseValid,

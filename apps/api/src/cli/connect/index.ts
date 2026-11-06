@@ -32,7 +32,7 @@
  *     - `tickets/gmail` connects a ticket inbox. The server's tickets app creates
  *       the inbox for the authorized address; once it appears, the settings of
  *       the matching `tickets.inboxes[]` entry (name, fromDisplayName,
- *       defaultTeam, default) are applied.
+ *       defaultTeam, notifyNewTicket, default) are applied.
  *
  * Container-friendly: the redirect targets the SERVER's public
  * `/api/connections/callback`, so the CLI needs no inbound port.

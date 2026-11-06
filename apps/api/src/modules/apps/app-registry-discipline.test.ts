@@ -103,6 +103,17 @@ function normalizeLine(line: string): string {
  * unavoidable, triaged here.
  */
 const KNOWN_LITERAL_USES: LiteralPin[] = [
+  // Private mailboxes: an encrypted mailbox's attachment is the mail app's by
+  // definition, and these two read mail-private state to refuse to expose it.
+  {
+    file: "modules/agent/media/media-analysis-tool.ts",
+    branch:
+      'if (file.app === "mail" && persistAllowed && (await deps.isPrivateMailFile(ctx.orgId, file.id))) {',
+  },
+  {
+    file: "modules/mailbox-crypto/content-suppression.ts",
+    branch: 'if (file.app !== "mail") return false',
+  },
   // connections service — kernel connections flow branches on the mail app to
   // pick settings paths and to read mail-app-private tables (app_mail.accounts)
   // that the kernel cannot enumerate generically. WS-1/P1 drains.

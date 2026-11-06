@@ -172,8 +172,13 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   { glob: "scripts/check-migration-safety*", suites: ["guards"] },
   { glob: "scripts/check-bundled-app-version*", suites: ["guards"] },
   { glob: "scripts/migration-safety-baseline.json", suites: ["guards"] },
+  { glob: "scripts/manifest-regex-proven*", suites: ["guards"] },
+  { glob: "scripts/gen-manifest-regex-proven*", suites: ["guards"] },
+  { glob: "scripts/lib/shipped-manifest-patterns*", suites: ["guards"] },
+  { glob: "apps/api/src/lib/manifest-regex*", suites: ["unit", "guards"] },
   { glob: "scripts/__fixtures__/migration-safety/**", suites: ["guards"] },
   { glob: ".github/workflows/**", suites: ["guards"] },
+  { glob: ".github/actions/**", suites: ["guards"] },
   { glob: "apps/api/Dockerfile", suites: ["guards"] },
 
   // Desktop shell, demo seeder, and the compose files the root suite validates.

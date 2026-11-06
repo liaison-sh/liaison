@@ -203,6 +203,7 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `RESEND_API_KEY` | `string` | `""` | no | Phase 10: Resend (transactional email) |
 | `SYSTEM_RESEND_API_KEY` | `string` | `""` | no | System/auth email channel (sign-in codes, magic links, password resets, 2FA, team invites, attention digest). When set, these sends go through Resend to REAL inboxes even if the DEFAULT provider is a sink (e.g. staging → Mailpit). Empty → auth/team mail follows the default provider. See infra/email.ts getSystemEmailProvider(). Customer-facing app mail is never on this channel, so it stays in the sink. |
 | `LIAISON_VERSION` | `string` | `"dev"` | no | Phase 14: release version injected at build time. Used by /healthz and System settings. "dev" when running locally without an image build. |
+| `LIAISON_RELEASE_CHANNEL` | `"release" \| "nightly"` | `"release"` | no | The update channel Settings &gt; System compares the running version against (modules/admin/version-check.ts). It picks nothing by itself: the image an instance runs is LIAISON_IMAGE. docs/admin/upgrades.md explains both. |
 | `PARALLEL_APPROVAL_BUNDLING` | `boolean` | `false` | no | Step-scoped parallel approval bundling. Off by default. When on, every gated approval created within one agent step shares the same bundle_id; the bundle is reactively discovered at execute time, not pre-declared. |
 | `GITHUB_API_BASE` | `string (URL)` | `"https://api.github.com"` | no | Override the GitHub API base URL for the admin version-check route. Defaults to the canonical https://api.github.com. Useful in environments where GitHub is not reachable directly (air-gapped, corporate proxy, tests). |
 
@@ -268,6 +269,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `GITLAB_API_BASE_URL` | `apps/api/src/apps/gitlab/gitlab-rest.ts:23` |
 | `GS_BIN` | `apps/api/src/modules/pdf/render.ts:376` |
 | `INBOUND_TRUSTED_AUTHSERV_IDS` | `apps/api/src/lib/email/sender-auth.ts:44` |
+| `LIAISON_ALLOW_OLDER_IMAGE` | `apps/api/src/db/schema-guard.ts:32` |
 | `LIAISON_ALLOW_PRIVATE_API_CONNECTOR_HOSTS` | `apps/api/src/apps/api-connector/adapter-policy.ts:25` |
 | `LIAISON_ALLOW_PRIVATE_MODEL_SERVERS` | `apps/api/src/modules/agent/providers/model-server.ts:33` |
 | `LIAISON_APP_CATALOG_DIR` | `apps/api/src/modules/apps/catalog.ts:75`, `apps/api/src/modules/permissions/scope-registry.ts:81` |
@@ -281,7 +283,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/apps/database/bridge.ts:374`, `apps/api/src/apps/database/bridge.ts:394` |
 | `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/apps/database/bridge.ts:383` |
 | `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:154` |
-| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1577` |
+| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1587` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:504`, `apps/api/src/modules/apps/app-frame.ts:35` |
 | `LIAISON_SANDBOX_FETCH_TIMEOUT_MS` | `apps/api/src/modules/apps/sandbox/bridge/egress.ts:49` |
@@ -297,7 +299,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `MCP_RATE_CAP_PER_MINUTE_DEFAULT` | `apps/api/src/modules/mcp-client/call.ts:369` |
 | `MCP_TOOL_LIST_BACKFILL_WAIT_MS` | `apps/api/src/modules/mcp-client/index.ts:537` |
 | `MEDIA_TRANSFER_HOST_WHITELIST` | `apps/api/src/modules/agent/media/media-analysis-constants.ts:121` |
-| `MIGRATION_DATABASE_URL` | `apps/api/src/cli/export-full.ts:74`, `apps/api/src/cli/org-transfer.ts:244`, `apps/api/src/db/migrate.ts:395` and 2 more |
+| `MIGRATION_DATABASE_URL` | `apps/api/src/cli/export-full.ts:74`, `apps/api/src/cli/org-transfer.ts:244`, `apps/api/src/db/migrate.ts:405` and 3 more |
 | `MIGRATION_DATABASE_URL_TEST` | `apps/api/src/cli/export-full.ts:74` |
 | `NESTED_PRIVILEGED_STRICT` | `apps/api/src/db/privileged.ts:203` |
 | `OPENROUTER_API_KEY` | `apps/api/src/modules/agent/credits/credit-meter.ts:374`, `apps/api/src/modules/agent/providers/openrouter.ts:168` |
@@ -309,6 +311,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `QA_DRIVE_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/knowledge.ts:79` |
 | `QA_GMAIL_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/rows.ts:462` |
 | `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:551`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
+| `RECHECK_SYNC_BACKEND` | `apps/api/src/lib/manifest-regex.ts:33` |
 | `ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:62` |
 | `ROUTINE_EVENT_RECONCILE_MAX_RETRIES` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:65` |
 | `ROUTINE_OVERLAP_DEFER_DELAY_MS` | `apps/api/src/infra/jobs/kernel-jobs.ts:69` |

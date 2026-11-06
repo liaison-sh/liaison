@@ -433,9 +433,11 @@ export function summarizeAddressChoice(
     const who = [str(a.company), str(a.name)].filter(Boolean).join(" / ")
     return [who || null, str(a.street), locality || null, str(a.countryIsoCode)].filter(Boolean).join(", ") || "(empty)"
   }
+  // The addresses the execution is bound to (pinned by the preflight), never a later read of them.
+  const shown = isRec(p.shown_addresses) ? p.shown_addresses : check
   const lines = [
-    `Order address: ${line(check?.order_address)}`,
-    `Verified address: ${line(check?.verified_address)}`,
+    `Order address: ${line(shown?.order_address)}`,
+    `Verified address: ${line(shown?.verified_address)}`,
     `The label goes to the ${pick === "verified" ? "verified address" : "order's address"}`,
   ]
   const what = str(draft?.order_name) ?? str(draft?.document_number) ?? str(p.document_ref) ?? "this row"

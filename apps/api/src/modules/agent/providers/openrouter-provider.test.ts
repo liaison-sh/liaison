@@ -60,18 +60,20 @@ async function captureBody(providerOptions?: Record<string, unknown>) {
   return bodies
 }
 
+/** The routing every request carries, the host deny-list's default included (env.ts). */
+const ROUTING = {
+  data_collection: "deny",
+  require_parameters: true,
+  ignore: ["OpenInference"],
+}
+
 describe("OpenRouter provider (S1)", () => {
   it("sends the upstream id with the data policy and parameter routing on the request", async () => {
     const bodies = await captureBody()
     expect(bodies.length).toBe(1)
     expect(bodies[0]!.url).toBe("https://openrouter.ai/api/v1/chat/completions")
     expect(bodies[0]!.body.model).toBe("deepseek/deepseek-v4.1-flash")
-    expect(bodies[0]!.body.provider).toEqual({
-      data_collection: "deny",
-      require_parameters: true,
-      // LIAISON_OPENROUTER_IGNORE_HOSTS defaults to OpenInference (env.ts).
-      ignore: ["OpenInference"],
-    })
+    expect(bodies[0]!.body.provider).toEqual(ROUTING)
   })
 
   it("keeps the routing options next to the reasoning options", async () => {
@@ -80,12 +82,7 @@ describe("OpenRouter provider (S1)", () => {
       canDisableReasoning: true,
     })
     const bodies = await captureBody(plan.providerOptions)
-    expect(bodies[0]!.body.provider).toEqual({
-      data_collection: "deny",
-      require_parameters: true,
-      // LIAISON_OPENROUTER_IGNORE_HOSTS defaults to OpenInference (env.ts).
-      ignore: ["OpenInference"],
-    })
+    expect(bodies[0]!.body.provider).toEqual(ROUTING)
     expect(bodies[0]!.body.reasoning).toEqual({ effort: "low" })
   })
 

@@ -211,7 +211,7 @@ All responses use the envelope `{ data: T, meta?: {...} }` for success and `{ er
 **Token pair strategy:**
 - **Access token** — short-lived JWT (15 min), carried in `Authorization: Bearer` header, stored in memory on the client.
 - **Refresh token** — long-lived (30 days), stored as an HttpOnly/SameSite=Strict/Secure cookie: `__Host-liaison_rt` (path `/`) in production, so a sibling subdomain cannot plant one, and `liaison_rt` (path `/api/auth`) over development http. Optionally exposed in response body via `EXPOSE_REFRESH_TOKEN_IN_BODY` for non-browser clients.
-- Refresh rotates both tokens and spends the old refresh hash in the sessions table. The spent row is kept 24 h, linked to its successor and its family (every session from one sign-in, migration 0224). A spent token presented again is judged by its successor (`refreshSession` in `modules/auth/auth.ts`): under 30 s after the successor was issued it is a concurrent refresh (409 `REFRESH_RACE`); within 3 minutes of the rotation, from the same User-Agent, with the successor never used (no request authenticated with its access token, whose `sid` claim the auth middleware stamps in `sessions.used_at`, and no refresh of it), the response was lost and the successor is replaced by a new one in the same family; anything else is reuse, and the whole family is revoked (401).
+- Refresh rotates both tokens and spends the old refresh hash in the sessions table. The spent row is kept 24 h, linked to its successor and its family (every session from one sign-in, migration 0224). A spent token presented again is judged by its successor (`refreshSession` in `modules/auth/auth.ts`): under 30 s after the successor was issued it is a concurrent refresh (409 `REFRESH_RACE`); within 3 minutes of the rotation, from the same User-Agent, with the successor never used (no request authenticated with its access token, whose `sid` claim the auth middleware stamps in `sessions.used_at`, and no refresh of it), the response was lost and the successor is replaced by a new one in the same family; anything else is reuse: that token's family is revoked (401), and only that family. The user's other sign-ins (other devices, other browsers) are families of their own and keep their sessions; the security event `refresh_token_reuse` is logged at warn with the family and the number of rows revoked.
 
 **Auth cache:** In-memory `Map<userId, { authVersion, permissionVersion, expiresAt }>` with 15s TTL, swept every 60s. On cache hit, the middleware skips DB queries. On version mismatch (authVersion or permissionVersion changed), the cache entry is evicted and the token is rejected — forcing the client to refresh.
 
@@ -490,7 +490,8 @@ During a deploy the previous release runs against the new schema, so release N's
 
 - Expand, migrate the code, contract. A column, table, enum value or jsonb key is removed only after a release that no longer reads or writes it.
 - Code that reads an enum, a `state` value or a jsonb shape tolerates values it does not know: it skips them or treats them as opaque, and never throws.
-- Rolling back to the previous image is always schema-compatible, because a contract only follows a release that stopped using the object.
+- The previous image's running processes stay schema-compatible, because a contract only follows a release that stopped using the object.
+- Starting an image older than the schema is refused (`apps/api/src/db/schema-guard.ts`, in the migration step and in the entrypoint): migrations only go forward. `LIAISON_ALLOW_OLDER_IMAGE=true` is the unsupported emergency override.
 
 `bun run check:migration-safety` (CI) refuses a new migration that breaks this, unless the file says why it is safe:
 

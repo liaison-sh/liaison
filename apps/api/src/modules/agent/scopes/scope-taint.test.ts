@@ -365,6 +365,7 @@ describe("writesToTable annotations on kernel tools", () => {
       approval_withdraw: "kernel.approval_requests",
       // S24: turning an app On/Off and setting who may use it write kernel.apps.
       apps_set_access: "kernel.apps",
+      ai_models_set: "kernel.organizations",
       apps_set_enabled: "kernel.apps",
       create_pinned_thread: "kernel.threads",
       data_subject_export: "kernel.files",

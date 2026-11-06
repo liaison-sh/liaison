@@ -324,3 +324,5 @@ Word, Excel, PowerPoint read as text without a model call -> apps/api/src/module
 mail surface defaults: documents on, images and videos off -> apps/api/src/modules/agent/media/media-analysis-constants.ts:156
 shopify_app_toml: managed installation, file posted again after full order history or a missing scope -> apps/api/src/modules/agent/tools/setup-guide-tools.ts:663
 A message from a device sign-in is not a typed turn -> apps/api/src/modules/agent/runtime/agent-service.ts:1931-1938
+ai_models_get tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2857
+ai_models_set tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2876

@@ -665,6 +665,7 @@ const AgentPage: Component<Props> = (props) => {
                 canCreate={canAdminister()}
                 selected={selectedFor("skills")}
                 onSelectedCleared={clearSelected}
+                active={tab() === "skills"}
               />
             </Show>
           </div>
@@ -684,6 +685,7 @@ const AgentPage: Component<Props> = (props) => {
                 run={selectedFor("routines") ? (selectedRun() ?? undefined) : undefined}
                 onSelectedCleared={clearSelected}
                 onRunChanged={onRunChanged}
+                active={tab() === "routines"}
               />
             </Show>
           </div>
@@ -705,6 +707,7 @@ const AgentPage: Component<Props> = (props) => {
                 agentName={agentName()}
                 selected={selectedFor("memory")}
                 onSelectedCleared={clearSelected}
+                active={tab() === "memory"}
               />
             </Show>
           </div>

@@ -508,7 +508,9 @@ describe("issue date and number year (real Postgres, sandbox, bridge)", () => {
       const issuer = await issuerAt("Europe/Paris")
       setSystemTime(new Date("2026-06-15T10:00:00Z"))
       const before = await series(issuer)
-      expect(JSON.stringify(await issueQuote(issuer, "2026-06-16"))).toContain("issue_date_in_future")
+      expect(JSON.stringify(await issueQuote(issuer, "2026-06-16"))).toContain(
+        "issue_date_in_future",
+      )
       expect(JSON.stringify(await issueQuote(issuer, "2026-02-31"))).toContain("issued_at_invalid")
       expect(await series(issuer)).toEqual(before)
     }, 60_000)

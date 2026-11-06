@@ -3,10 +3,10 @@ import { expandWildcardStamp } from "~/modules/agent/scopes/taint-read-scopes"
 import { KERNEL_EVERY_MEMBER_SCOPES } from "~/modules/permissions/every-member-scopes"
 
 /**
- * The scopes the failure-context message carries. It quotes step results and
- * errors from the failed bundle, so it needs the failed turn's accumulated
- * scopes, but no record keeps them: the turn is long over and approval rows
- * store no scope snapshot. Fail closed to the requester's own scope set. Every
+ * The scopes a failure notice carries when nothing records what the failed call
+ * read (see `approvalFailureRequiredScopes`): an approval row with no
+ * `proposing_turn_scopes`, a tool no longer registered, a turn gone with no
+ * record. Fail closed to the requester's own scope set. Every
  * turn the requester ran had an effective scope bounded by it (runAgentChat
  * intersects with the actor's scopes), so it covers whatever that turn read.
  * Recomputing an effective scope here could under-tag, because a routine turn
@@ -45,6 +45,7 @@ export async function runAgentReinvoke(payload: {
   const { invokeAgentForThread } = await import("~/modules/agent/runtime/agent-service")
   const { loadEffectivePermissions } = await import("~/modules/permissions/permissions")
   const { withPrivilegedDb } = await import("~/db/privileged")
+  const { bundleFailureRequiredScopes } = await import("~/modules/approvals/result-notice")
   const { messages } = await import("~/db/schema/kernel")
 
   // Idempotency guard (I-REL-10). The enqueue dedups concurrent jobs by jobId,
@@ -96,6 +97,14 @@ export async function runAgentReinvoke(payload: {
   )
   const replyRootId = bundleRow?.replyRootId ?? null
 
+  const requiredScopes = await withPrivilegedDb(payload.orgId, "reinvoke-stamp", (pdb) =>
+    bundleFailureRequiredScopes(pdb, {
+      orgId: payload.orgId,
+      bundleId: payload.bundleId,
+      requesterScopes: perms.scopes,
+    }),
+  )
+
   let messageId = ""
   await withRlsContext(
     {
@@ -107,7 +116,7 @@ export async function runAgentReinvoke(payload: {
     },
     async (tx) => {
       const msg = await sendMessage(tx, {
-        requiredScopes: failureContextRequiredScopes(perms.scopes, payload.orgId),
+        requiredScopes,
         threadId: payload.threadId,
         userId: payload.requesterId,
         orgId: payload.orgId,

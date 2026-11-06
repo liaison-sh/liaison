@@ -6,7 +6,6 @@ import { extractRows } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { jobsLogger as log } from "~/lib/logger"
-import { failureContextRequiredScopes } from "~/modules/agent/runtime/reinvoke"
 import { enqueueRoutineDecisionTurn } from "~/modules/approvals/approval-result-turn"
 import {
   emitApprovalStateChange,
@@ -14,6 +13,7 @@ import {
   postDualSystemMessages,
 } from "~/modules/approvals/event-data"
 import { hasLandedEffect, promoteLandedEffect } from "~/modules/approvals/handler-protocol"
+import { approvalFailureRequiredScopes } from "~/modules/approvals/result-notice"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 
 const K = drizzleSql.raw(schemaRef("kernel"))
@@ -22,6 +22,7 @@ interface StaleRow {
   id: string
   org_id: string
   tool_name: string
+  proposing_turn_scopes: unknown
   thread_id: string
   originating_thread_id: string
   notify_user_ids: string[]
@@ -34,7 +35,7 @@ export async function runApprovingReaper() {
   const result = await withSystemDb("approving-reaper-scan", (db) =>
     db.execute(drizzleSql`
       SELECT id, org_id, tool_name, thread_id, originating_thread_id, notify_user_ids,
-             requested_by, current_payload,
+             requested_by, current_payload, proposing_turn_scopes,
              (metadata ? 'reaperFlaggedAt') AS operator_flagged
       FROM ${K}.approval_requests
       WHERE status = 'approving'
@@ -179,12 +180,17 @@ async function reapOne(row: StaleRow) {
       // The text is fixed, but `meta.error` is the handler's own error object
       // verbatim and listMessages serves metadata to every reader of the row,
       // so a handler that failed while holding scoped data would disclose it
-      // here. Fail closed to the requester's scope set, like the other
+      // here. It requires what the call could reveal, like the other
       // post-approval failure notices.
       const requesterScopes = (await loadEffectivePermissions(tx, row.requested_by, row.org_id))
         .scopes
       await postDualSystemMessages(tx, {
-        requiredScopes: failureContextRequiredScopes(requesterScopes, row.org_id),
+        requiredScopes: approvalFailureRequiredScopes({
+          orgId: row.org_id,
+          toolName: row.tool_name,
+          proposingTurnScopes: row.proposing_turn_scopes,
+          requesterScopes,
+        }),
         orgId: row.org_id,
         threadId: row.thread_id,
         originatingThreadId: row.originating_thread_id,

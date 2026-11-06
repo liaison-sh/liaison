@@ -5,9 +5,9 @@ import { extractRows, type PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { enqueueAppJob } from "~/infra/jobs/jobs"
-import { failureContextRequiredScopes } from "~/modules/agent/runtime/reinvoke"
 import { enqueueRoutineDecisionTurn } from "~/modules/approvals/approval-result-turn"
 import { postDualSystemMessages } from "~/modules/approvals/event-data"
+import { bundleFailureRequiredScopes } from "~/modules/approvals/result-notice"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 
 const K = drizzleSql.raw(schemaRef("kernel"))
@@ -167,12 +167,16 @@ export async function failBundle(orgId: string, approvalId: string, reason: stri
         AND bundle_position > 0`)
 
     const context = await describeBundleFailure(tx, orgId, failure)
-    // The reason can quote a tool or poll error and no record keeps the failed
-    // turn's scopes, so the notice fails closed to the requester's whole scope
-    // set, exactly as the re-invocation's failure context does.
+    // The reason can quote a tool or poll error, and the context what earlier
+    // steps returned: the notice requires what those steps could reveal.
     const requesterScopes = (await loadEffectivePermissions(tx, self.requested_by, orgId)).scopes
     await postDualSystemMessages(tx, {
-      requiredScopes: failureContextRequiredScopes(requesterScopes, orgId),
+      requiredScopes: await bundleFailureRequiredScopes(tx, {
+        orgId,
+        bundleId,
+        failedStepId: approvalId,
+        requesterScopes,
+      }),
       orgId,
       threadId: self.thread_id,
       originatingThreadId: self.originating_thread_id,

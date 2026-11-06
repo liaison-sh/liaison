@@ -158,7 +158,7 @@ Invoices, credit notes and proformas issued in another tool can be imported with
 | --- | --- | --- |
 | `documents_search`, `documents_get`, `documents_for_orders` | Find and read documents, including those of Shopify orders | No |
 | `customer_history` | A customer's earlier sales: each line's unit price, the latest sale of a product and their Shopify orders | No |
-| `documents_preview_pdf`, `documents_download_pdf` | Get a document's PDF | No |
+| `documents_download_pdf` | Get a document's PDF | No |
 | `pending_approvals_list` | List your pending invoicing approvals (read only) | No |
 | `deferred_list` | List paid orders whose invoice did not issue, and why | No |
 | `vat_validate` | Check an EU VAT number with the EU VIES service | No |

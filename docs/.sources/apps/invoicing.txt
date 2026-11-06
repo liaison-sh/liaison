@@ -117,7 +117,6 @@ settings_issuer_profile_update gated -> bundled-apps/invoicing/app.manifest.json
 settings_issuer_profile_delete gated -> bundled-apps/invoicing/app.manifest.json:4298
 documents_update gated -> bundled-apps/invoicing/app.manifest.json:4321
 documents_retry_pdf -> bundled-apps/invoicing/app.manifest.json:4509
-documents_preview_pdf -> bundled-apps/invoicing/app.manifest.json:4526
 documents_download_pdf -> bundled-apps/invoicing/app.manifest.json:4543
 einvoicing_classify -> bundled-apps/invoicing/app.manifest.json:4560
 counterparty_identity_get -> bundled-apps/invoicing/app.manifest.json:4595

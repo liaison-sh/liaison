@@ -268,7 +268,9 @@ export async function upsertPrepOrderState(
 // ── prep_set_status ──────────────────────────────────────────────────────────
 
 export interface PrepSetStatusInput {
-  order_key: string
+  /** The row key. A caller holding only the invoice id passes `document_ref` instead. */
+  order_key?: string
+  document_ref?: string
   status: PrepStatus
   note?: string | null
 }
@@ -291,20 +293,23 @@ export async function prepSetStatus(
       { code: "invalid_status", retryable: false },
     )
   }
-  if (typeof input.order_key !== "string" || !parseOrderKey(input.order_key)) {
+  const orderKey =
+    input.order_key ??
+    (input.document_ref ? await orderKeyForDocumentRef(ctx, input.document_ref) : undefined)
+  if (typeof orderKey !== "string" || !parseOrderKey(orderKey)) {
     throw new ToolError(
-      `"${String(input?.order_key)}" is not a prep row key. Expected so:<order id>, doc:<document id> or pending:<token>.`,
+      `"${String(orderKey)}" is not a prep row key. Expected so:<order id>, doc:<document id> or pending:<token>.`,
       { code: "invalid_order_key", retryable: false },
     )
   }
-  const existing = await getOrderState(ctx, input.order_key)
+  const existing = await getOrderState(ctx, orderKey)
   const changed = !existing || existing.status !== input.status
   const patch: Partial<PrepOrderStateRow> = {
     status: input.status,
     ...(changed ? { status_changed_at: new Date().toISOString() } : {}),
     ...(input.note !== undefined ? { status_note: input.note ?? null } : {}),
   }
-  return upsertPrepOrderState(ctx, input.order_key, patch)
+  return upsertPrepOrderState(ctx, orderKey, patch)
 }
 
 // ── prep_set_validated (legacy alias) ────────────────────────────────────────

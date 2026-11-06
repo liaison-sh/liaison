@@ -121,6 +121,30 @@ describe("prep_set_validated alias", () => {
   })
 })
 
+describe("prep_set_status by document_ref", () => {
+  it("resolves the row from the invoice id, as the alias does", async () => {
+    const { ctx, db } = makeCtx({
+      prep_meta: [{ id: "m1", document_ref: "doc-1", shopify_order_id: "5123" }],
+    })
+    await prepSetStatus(ctx, { document_ref: "doc-1", status: "on_hold" })
+    expect(orderState(db, "so:5123")!.status).toBe("on_hold")
+  })
+
+  it("an order_key wins over a document_ref", async () => {
+    const { ctx, db } = makeCtx({
+      prep_meta: [{ id: "m1", document_ref: "doc-1", shopify_order_id: "5123" }],
+    })
+    await prepSetStatus(ctx, { order_key: "so:777", document_ref: "doc-1", status: "validated" })
+    expect(orderState(db, "so:777")!.status).toBe("validated")
+    expect(orderState(db, "so:5123")).toBeFalsy()
+  })
+
+  it("refuses a call with neither", async () => {
+    const { ctx } = makeCtx()
+    await expect(prepSetStatus(ctx, { status: "validated" })).rejects.toThrow("not a prep row key")
+  })
+})
+
 describe("order_key resolution from a document_ref", () => {
   it("uses the LIVE documents_get answer when prep_meta has never been written", async () => {
     // The cached branch is the fast path; this one is the authoritative path the comment calls out,

@@ -55,8 +55,7 @@
         "tools": [
           "listAccounts",
           "getAccount",
-          "disconnectAccount",
-          "getSyncStatus"
+          "disconnectAccount"
         ],
         "text": "CONNECTING A MAILBOX HAPPENS ON A CARD IN THIS CONVERSATION, never through a mail tool: mail has listAccounts/getAccount/disconnectAccount and NO connect tool. When asked to connect a mailbox: (1) call mail__listAccounts to show what is ALREADY connected; (2) a Gmail or Google Workspace mailbox connects on a Connect card: kernel__request_secret kind oauth_connect, app mail, connection gmail, with mode personal for the person's OWN mailbox ('my Gmail', 'just for me': post that card straight away, any member may connect their own) or mode org for a mailbox the organization shares (an admin connects it). When the workspace has no Google client yet, or the card is refused, follow the google-setup skill (kernel__google_setup says what is missing). (3) another provider connects over IMAP with an app password: the google-setup skill's IMAP path. Never point the person to a Settings button or menu by name instead of the card. NEVER claim you connected the mailbox before the card says it is connected, and NEVER fabricate a completed connection by creating a tickets inbox bound to a DIFFERENT account's address (tickets:inboxes.create rejects an emailAddress that does not match the bound connected account, and a tickets inbox is not a mail connection anyway). No phantom account should appear in listAccounts afterward."
       },
@@ -68,7 +67,7 @@
       }
     ]
   },
-  "version": "1.8.2",
+  "version": "1.8.3",
   "description": "Email integration: Gmail and IMAP/SMTP",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -676,6 +675,7 @@
     },
     "getSyncStatus": {
       "description": "Get sync status for a connected email account",
+      "agentVisible": false,
       "readOnly": true,
       "requiredScopes": ["mail:accounts:read"],
       "handler": "getSyncStatus",

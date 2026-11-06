@@ -62,7 +62,6 @@ mail:conversations:read (search) -> apps/api/src/apps/mail/app.manifest.json:653
 mail:conversations:write (reply) -> apps/api/src/apps/mail/app.manifest.json:811
 listAccounts hides disconnected by default -> apps/api/src/apps/mail/app.manifest.json:588
 getAccount -> apps/api/src/apps/mail/app.manifest.json:602
-getSyncStatus -> apps/api/src/apps/mail/app.manifest.json:636
 disconnectAccount, no connect tool -> apps/api/src/apps/mail/app.manifest.json:619
 search filters -> apps/api/src/apps/mail/app.manifest.json:653
 read -> apps/api/src/apps/mail/app.manifest.json:723

@@ -43,7 +43,7 @@ Two ids per row:
 and the whole row is tinted from it. `on_hold` is a warehouse fact (waiting on
 stock, on a customer, on a repair), so it lives here rather than in a Shopify tag:
 it must be settable on a row with no document and it must block shipping without
-touching the store. `prep_set_validated` is an alias onto it.
+touching the store. `prep_set_validated` is an alias onto it, kept for screens and hidden from agents.
 
 **Category decides the shipping document** (`prep_set_category`):
 

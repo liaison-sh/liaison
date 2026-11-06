@@ -1,7 +1,7 @@
 {
   "name": "ads",
   "displayName": "Ads",
-  "version": "0.1.53",
+  "version": "0.1.54",
   "iconName": "bar-chart",
   "packageFormat": 1,
   "license": "FSL-1.1-ALv2",
@@ -21,8 +21,7 @@
         "tools": [
           "campaigns_list",
           "adsets_list",
-          "ads_list",
-          "counts"
+          "ads_list"
         ],
         "text": "Meta Ads Manager, key rules you must follow every time:\n\n1. DELIVERY STATE: Always read `effective_status`, NOT `status`. `status:ACTIVE` with `effective_status:CAMPAIGN_PAUSED` means the ad is NOT delivering. Never claim an ad is live from `status` alone: check `effective_status`."
       },
@@ -741,6 +740,7 @@
     },
     "counts": {
       "description": "Return active/paused/total campaign counts for the dashboard sidebar. Tallied from effective_status over campaigns_list. Cached ~30s per ad account to avoid rate-limit pressure on sidebar mounts.",
+      "agentVisible": false,
       "readOnly": true,
       "requiredScopes": ["ads:campaigns:read"],
       "handler": "counts",

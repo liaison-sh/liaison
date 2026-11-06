@@ -578,7 +578,7 @@ describe("issue date and number year (real Postgres, sandbox, bridge)", () => {
       for (const bad of ["2026-02-30", "31/12/2026", "soon"]) {
         expect(JSON.stringify(await creditNote(issuer, bad))).toContain("issued_at_invalid")
       }
-      expect(await series(issuer)).toEqual([])
+      expect((await series(issuer)).length).toBe(0)
     }, 60_000)
   })
 

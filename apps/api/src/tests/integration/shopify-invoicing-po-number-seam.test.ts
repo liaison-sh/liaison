@@ -395,7 +395,7 @@ describe("shopify -> invoicing PO number seam (real webhook -> real outbox -> re
         },
         line_items: [{ id: id + 1, variant_id: 95001, title: "Widget", quantity: 1, price }],
       })
-      const deliver = async (topic: string, body: unknown) => {
+      const deliver = async (topic: string, body: Record<string, unknown>) => {
         expect((await postWebhook(topic, body, `tz-draft-${randomUUID()}`)).status).toBe(200)
         expect(await processOutboxBatch()).toBeGreaterThan(0)
         await flushEventHandlers()

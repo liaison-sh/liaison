@@ -10,6 +10,7 @@ import {
   type OpenTab,
   type OpenView,
   openViewsOf,
+  readScopeOf,
   runHasNoViewer,
   tabForId,
 } from "~/modules/agent/tools/open-targets"

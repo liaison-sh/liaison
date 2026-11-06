@@ -489,7 +489,9 @@ describe("issue date and number year (real Postgres, sandbox, bridge)", () => {
       expect(past.number).not.toContain("2027")
       const text = await extractPdfText(await getFileBytes(null, String(past.pdf_file_id)))
       expect(text).toContain(past.number)
-      expect(text).toMatch(/(2026-12-20|20\/12\/2026|20 December 2026|December 20, 2026|20 Dec 2026)/)
+      expect(text).toMatch(
+        /(2026-12-20|20\/12\/2026|20 December 2026|December 20, 2026|20 Dec 2026)/,
+      )
 
       const next = await issued(await creditNote(issuer))
       expect(next.year_of_issue).toBe(2027)

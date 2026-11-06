@@ -68,6 +68,13 @@ jobs:
         # creates and migrates the test database, waits for every service.
         if: steps.changed.outputs.run == 'true'
         run: bun run infra:up
+      - name: Build the apps the demo store test installs
+        # demo-shopify-runtime.test.ts installs these from their frozen tarballs.
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          for app in shopify boxtal invoicing; do
+            bash scripts/build-bundled-app.sh "$app" --skip-sign --skip-typecheck
+          done
       - name: Integration suite
         if: steps.changed.outputs.run == 'true'
         # The defaults share a machine with other work: 8 GiB kept free and two

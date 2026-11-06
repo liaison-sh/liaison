@@ -769,6 +769,11 @@ async function fetchPdfBlobUrl(documentId: string): Promise<string | null> {
   }
 }
 
+/** False in a browser that downloads a PDF instead of showing it, such as most phones. */
+function hasPdfViewer(): boolean {
+  return typeof navigator === "undefined" || navigator.pdfViewerEnabled !== false
+}
+
 function PdfBody(p: {
   doc: DocumentSummary
   affordance: PdfAffordance
@@ -836,17 +841,24 @@ function PdfBody(p: {
       </Show>
       <Show when={embed()}>
         {(url) => (
-          <object
-            data-testid="document-detail-pdf-embed"
-            data={url()}
-            type="application/pdf"
-            class="w-full flex-1 rounded-md border border-border-subtle"
-            style={{ "min-height": "70vh", width: "100%" }}
+          <Show
+            when={hasPdfViewer()}
+            fallback={
+              <div data-testid="document-detail-pdf-unavailable" class="p-3 text-text-tertiary">
+                {tr("Inline preview unavailable: use Preview or Download above.")}
+              </div>
+            }
           >
-            <div class="p-3 text-text-tertiary">
-              {tr("Inline preview unavailable: use Preview or Download above.")}
-            </div>
-          </object>
+            {/* A frame, not a plugin element: the app's CSP allows no plugin content (object-src 'none'),
+                and allows a frame from a blob: URL, which only this page can make. */}
+            <iframe
+              data-testid="document-detail-pdf-embed"
+              src={url()}
+              title={tr("PDF preview")}
+              class="w-full flex-1 rounded-md border border-border-subtle"
+              style={{ "min-height": "70vh", width: "100%" }}
+            />
+          </Show>
         )}
       </Show>
     </div>

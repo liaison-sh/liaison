@@ -96,6 +96,8 @@ Open a document from **Documents** in the sidebar (**All**, **Invoices**, **Quot
 | **Convert to invoice** | Quotes and proformas only, see above. |
 | **Preview PDF** / **Download PDF** | Open or download the rendered PDF. |
 
+The **PDF** tab shows the document in the page, in browsers with a PDF viewer. A browser with none, such as most phones, says so and leaves **Preview** and **Download**.
+
 Issued documents are never deleted. A correction is a credit note, with its own `CN-` number series. The date of an issued document stays in its number's year: a date in another year is refused, and the correction is a credit note and a new invoice (for a quote, proforma or purchase order, a new one). The date of an issued invoice or credit note also stays between the numbers just before and just after it, and is never after today. A refund or cancellation taken in Shopify issues the matching credit note automatically.
 
 **Pending Approval** in the sidebar lists the invoicing approvals waiting for a decision. Deciding them needs `invoicing:approve`; the row is shown to people who hold it or `invoicing:documents:write`. See [Approve what agents do](../agents/approvals.md).

@@ -569,6 +569,23 @@ export async function demoLedgerRekeyPlainEmails(
 }
 
 /**
+ * Delete the per-network counters of UTC days before `day`. Only the current
+ * day's counter is ever read, and its key is the visitor's network range, which
+ * is kept no longer than it serves. Returns how many went.
+ */
+export async function demoLedgerPruneNetworkDays(day: string): Promise<number> {
+  const k = drizzleSql.raw(schemaRef("kernel"))
+  return withSystemDb("demo-ledger-prune-net", async (tx) => {
+    const rows = rowsOf(
+      await tx.execute(drizzleSql`
+        DELETE FROM ${k}.demo_spend WHERE budget = 'net' AND period < ${day} RETURNING key
+      `),
+    )
+    return rows.length
+  })
+}
+
+/**
  * A visitor spend refusal as an HTTP error: its real status and its `code`
  * (`errorHandler` passes a typed `{ status, code }` error through as is).
  */

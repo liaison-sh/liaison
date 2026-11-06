@@ -19,7 +19,7 @@ import { env } from "~/lib/env"
 import { redis } from "~/lib/redis"
 import { errorHandler } from "~/middleware/error-handler"
 import { resetOperatorOrgCache } from "~/modules/apps/operator-org"
-import { rekeyPlainBudgetAddresses } from "~/modules/demo/demo-budget"
+import { pruneElapsedNetworkBudgets, rekeyPlainBudgetAddresses } from "~/modules/demo/demo-budget"
 import {
   enableDemoDoorForTest,
   passingTurnstileToken,
@@ -1020,6 +1020,23 @@ describe("demo leads: export and opt-out", () => {
     expect([...rows]).toEqual([{ key: demoBudgetEmailKey(address), spent: "200" }])
     expect(await redis.exists(`demo:b:s:email:${address}`)).toBe(0)
     await sql`DELETE FROM kernel.demo_spend WHERE budget = 'email'`
+  })
+
+  it("a network's counter is deleted once its UTC day is over; today's and the others stay", async () => {
+    await sql`DELETE FROM kernel.demo_spend WHERE budget IN ('net', 'box')`
+    await sql`INSERT INTO kernel.demo_spend (budget, key, period, spent_micro_eur)
+              VALUES ('net', '203.0.113.0/24', '2026-11-05', 10),
+                     ('net', '203.0.113.0/24', '2026-11-06', 20),
+                     ('box', 'box', '2026-11-05', 30)`
+    const pruned = await pruneElapsedNetworkBudgets(Date.parse("2026-11-06T00:10:00.000Z"))
+    expect(pruned).toBe(1)
+    const rows = await sql<{ budget: string; period: string }[]>`
+      SELECT budget, period FROM kernel.demo_spend WHERE budget IN ('net', 'box') ORDER BY budget, period`
+    expect([...rows]).toEqual([
+      { budget: "box", period: "2026-11-05" },
+      { budget: "net", period: "2026-11-06" },
+    ])
+    await sql`DELETE FROM kernel.demo_spend WHERE budget IN ('net', 'box')`
   })
 })
 

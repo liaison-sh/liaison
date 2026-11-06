@@ -60,6 +60,10 @@ import { deleteObject } from "~/infra/storage/object-storage"
 import { rootLogger } from "~/lib/logger"
 import { loadApprovalSummary } from "~/modules/approvals/event-data"
 import { writeAuditLog } from "~/modules/audit/service"
+import {
+  mailApprovalScope,
+  SEALED_MAIL_APPROVAL,
+} from "~/modules/mailbox-crypto/mail-approval-scope"
 import { advanceOwnerEncryptionState } from "~/modules/mailbox-keys/encryption-state"
 import { documentId } from "~/modules/search/document-id"
 import { deleteSearchDocumentsNow } from "~/modules/search/index-writer"
@@ -147,33 +151,9 @@ function mailFileScope(accountIds: string[]) {
     )`
 }
 
-/**
- * Mail approvals that act on one of these mailboxes, sealed or not. The
- * target's ids stay in clear in both shapes (`accountId`, `conversationId`,
- * `messageId`, `draftId`), which is what ties the approval to a mailbox.
- */
-function mailApprovalScope(orgId: string, accountIds: string[]) {
-  const ids = idList(accountIds)
-  const param = (key: string) =>
-    drizzleSql`coalesce(ar.tool_params ->> ${key}, ar.current_payload ->> ${key})`
-  return drizzleSql`
-    ar.org_id = ${orgId}::uuid
-    AND ar.tool_name LIKE 'mail\\_\\_%'
-    AND (
-      ${param("accountId")} IN (SELECT id::text FROM ${MAIL}.accounts WHERE id IN (${ids}))
-      OR ${param("conversationId")} IN (
-        SELECT id::text FROM ${MAIL}.conversations WHERE account_id IN (${ids}))
-      OR ${param("messageId")} IN (
-        SELECT id::text FROM ${MAIL}.messages WHERE account_id IN (${ids}))
-      OR ${param("draftId")} IN (
-        SELECT id::text FROM ${MAIL}.drafts WHERE account_id IN (${ids}))
-    )`
-}
-
 /** Of those, the ones whose payload was SEALED under the key the reset destroys. */
 function sealedMailApprovalScope(orgId: string, accountIds: string[]) {
-  return drizzleSql`${mailApprovalScope(orgId, accountIds)}
-    AND (ar.tool_params ->> 'mailboxSealed' = 'true' OR ar.current_payload ->> 'mailboxSealed' = 'true')`
+  return drizzleSql`${mailApprovalScope(orgId, accountIds)} AND ${SEALED_MAIL_APPROVAL}`
 }
 
 /** What an approval list shows for an approval the reset cancelled. */
@@ -277,8 +257,6 @@ export async function resetMailbox(
       let searchIds: string[] = []
       let storageKeys: string[] = []
       let cancelledApprovalIds: string[] = []
-      const sealedFlag = drizzleSql`(ar.tool_params ->> 'mailboxSealed' = 'true'
-        OR ar.current_payload ->> 'mailboxSealed' = 'true')`
 
       if (accountIds.length > 0) {
         const ids = idList(accountIds)
@@ -328,8 +306,8 @@ export async function resetMailbox(
                    reason = 'Cancelled: mailbox was reset',
                    approving_started_at = NULL,
                    summary = ${JSON.stringify(RESET_CANCELLED_SUMMARY)}::jsonb,
-                   tool_params = CASE WHEN ${sealedFlag} THEN '{}'::jsonb ELSE ar.tool_params END,
-                   current_payload = CASE WHEN ${sealedFlag} THEN '{}'::jsonb
+                   tool_params = CASE WHEN ${SEALED_MAIL_APPROVAL} THEN '{}'::jsonb ELSE ar.tool_params END,
+                   current_payload = CASE WHEN ${SEALED_MAIL_APPROVAL} THEN '{}'::jsonb
                                           ELSE ar.current_payload END
              WHERE ar.status = 'pending' AND ${mailApprovalScope(orgId, accountIds)}
             RETURNING ar.id::text AS id`),

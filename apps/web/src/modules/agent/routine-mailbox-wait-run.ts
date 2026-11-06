@@ -6,6 +6,7 @@
 // gets), and the server's handoff is answered right away, inside the same bounds
 // as any turn's read. Nothing here decrypts anything itself.
 
+import type { ApiClient } from "~/lib/api-client"
 import type { RoutineMailboxWait } from "~/modules/agent/routine-mailbox-wait-item"
 import { startMailboxCryptoWorker } from "~/modules/mailbox/crypto-worker-boot"
 import {
@@ -19,7 +20,6 @@ import {
   type MailboxStatus,
   mailboxStore,
 } from "~/modules/mailbox/mailbox-store"
-import type { ApiClient } from "~/modules/shell/ApiContext"
 
 /** How long this window keeps the run's turn scope open: past the routine lock. */
 export const MAILBOX_WAIT_TURN_OPEN_MS = 12 * 60 * 1000

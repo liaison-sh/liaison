@@ -224,7 +224,7 @@
       }
     ]
   },
-  "version": "0.20.42",
+  "version": "0.20.44",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -332,6 +332,11 @@
           "readScope": "invoicing:documents:read",
           "writeScope": "invoicing:documents:write"
         }
+      },
+      "received_einvoice": {
+        "labelField": "invoice_number",
+        "tableName": "received_einvoices",
+        "readScope": "invoicing:received:read"
       },
       "received_file": {
         "labelField": "kind",
@@ -3181,7 +3186,7 @@
     },
     "quote_create_and_issue": {
       "description": "Create a quote and issue it in one call. A quote IS a Shopify draft order when the issuer profile is mapped to a shop. Creating one here creates the draft order in Shopify (custom lines go over at the price given, which the shop treats as tax inclusive, so set prices_include_tax on the issuer profile to match the shop and a typed price then means the same thing on both sides; catalog lines with product_source 'shopify' and a variant gid external_id take the store price) and the quote comes back numbered with its PDF, linked by shopify_draft_order_id. Equivalent: shopify__draft_orders_create, after which the quote appears by itself, so NEVER create both for one offer. Editing the draft order in Shopify updates the quote, deleting it rejects the quote. To turn the quote into an invoice call documents_convert_to_invoice (it completes the draft order with payment pending, Shopify creates the order and the invoice is issued automatically). Without a shop mapping this is a local quote gated on the issuer's invoice approval threshold. Returns document_id, number, pdf_file_id (the issued PDF's file id, to attach to a reply; null with pdf_error saying what to do when the PDF did not render), pdf_status, grand_total_minor (tax included, discounts applied, minor units) and currency, plus shopify_draft_order_id and shopify_draft_order_name on a shop; or pending_approval when the Shopify draft order creation is waiting for a human. In a sequenced approval bundle a later step can cite @ref:<this approval id>:pdf_file_id, :number, :document_id, :grand_total_minor or :currency.",
-      "searchKeywords": ["devis", "estimate", "offre", "créer"],
+      "searchKeywords": ["devis", "estimate", "offre", "créer", "client", "nouveau"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "quoteCreateAndIssueHandler",
       "preflight": "quoteCreateAndIssuePreflightHandler",
@@ -3942,7 +3947,7 @@
     },
     "documents_record_refund": {
       "description": "Record a refund against a document (full or partial): records only, moves no money. PAYMENT STATUS ONLY: it does not issue a credit note, and a partial marks the document 'partial' while a full one marks it 'refunded'. A refund or cancellation taken in Shopify already auto issues the matching credit note, so check documents_for_orders before adding one by hand. On a split order (goods plus software) record the refund against the document that actually carries the refunded line.",
-      "searchKeywords": ["remboursement", "rembourser", "refund", "enregistrer", "noter"],
+      "searchKeywords": ["remboursement", "rembourser", "refund", "enregistrer", "noter", "facture", "factures", "paiement"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "documentsRecordRefundHandler",
       "preflight": "documentsRecordRefundPreflightHandler",
@@ -4028,7 +4033,7 @@
     },
     "credit_note_create_and_issue": {
       "description": "Create a credit note, a legal document, and issue it in one call. A credit note is a first-class legal document — its own gap-free CN-{YYYY}- number series, issued straight to 'issued' status (never a payable document — no due date, no mark_paid). Lines commonly carry NEGATIVE unit_price_minor mirroring what is reversed on the original invoice (a positive amount is also accepted). To reverse/correct an ISSUED invoice, pass `original_document_id` set to that invoice's id — it MUST reference an existing invoice (validated before issuance) and, on success, the original invoice's lifecycle_log records a `credit_note_issued` entry naming this credit note. Handler-conditional gating against issuer.invoice_approval_threshold_minor (unset means always approve, threshold 0; a credit note with no original_document_id is ALWAYS approved), compared against the ABSOLUTE VALUE of the credit note's grand total (a -6,744€ correction gates exactly like a +6,744€ invoice would). For a legally clean reversal, ALSO call documents_record_refund on the original invoice to record the payment-side event — the credit note is the legal document, record_refund is the payment status change; do BOTH, never just one. ALWAYS pass original_document_id when you reverse an invoice: without it the over_credit cap (a credit note can never push an invoice's cumulative credited total past its own grand total) cannot apply. A Shopify refund or cancellation already issues its credit note automatically, and a cancellation of a partly credited invoice reverses only the REMAINDER, so check documents_for_orders before issuing one by hand rather than crediting twice. A hand built partial credit note carries its OWN tax: mirror the original's per line rates, because only the automatic refund path allocates the VAT for you. On a split order, credit the document that actually carries the refunded line, not whichever invoice you saw first.",
-      "searchKeywords": ["avoir", "crédit", "annulation", "remboursement", "rectificative"],
+      "searchKeywords": ["avoir", "crédit", "annulation", "remboursement", "rectificative", "émettre", "émission", "nouveau"],
       "requiredScopes": ["invoicing:documents:write"],
       "atomic": true,
       "handler": "creditNoteCreateAndIssueHandler",
@@ -6267,6 +6272,7 @@
         "referenceable": false
       },
       "editor": {
+        "entity": "document",
         "component": "InvoicingEditor",
         "sidebar": "InvoicingSidebar",
         "icon": "InvoicingAppIcon",
@@ -6276,6 +6282,7 @@
         "referenceable": false
       },
       "detail": {
+        "entity": "document",
         "component": "InvoicingDocumentDetail",
         "sidebar": "InvoicingSidebar",
         "icon": "InvoicingAppIcon",
@@ -6295,6 +6302,7 @@
         "referenceable": false
       },
       "identity": {
+        "entity": "kernel:contact",
         "component": "InvoicingIdentity",
         "sidebar": "InvoicingSidebar",
         "icon": "InvoicingAppIcon",
@@ -6313,6 +6321,7 @@
         "referenceable": false
       },
       "received_detail": {
+        "entity": "received_einvoice",
         "component": "InvoicingReceivedDetail",
         "sidebar": "InvoicingSidebar",
         "icon": "InvoicingAppIcon",

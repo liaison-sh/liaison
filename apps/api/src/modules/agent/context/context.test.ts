@@ -13,6 +13,7 @@ import {
   enforceSystemPromptTokenCap,
   fullAgentPurpose,
   logMemoryBudgets,
+  NO_OPEN_RECORD_LINE,
   systemPartsToText,
   TURN_SYSTEM_PROMPT_TOKEN_CAP,
 } from "~/modules/agent/context/context"
@@ -23,7 +24,11 @@ import { memoryRoot, resolvePath } from "~/modules/agent/memory/memory-tree"
 import { _resetAnthropicCacheTtlWarning } from "~/modules/agent/providers/anthropic-cache-ttl"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { ALL_DEFERRED_TOOLS_UNLOCKED, isDeferredTool } from "~/modules/agent/tools/tool-bridge"
-import { agentInstructionsRegistry, toolRegistry } from "~/modules/apps/app-registries"
+import {
+  agentInstructionsRegistry,
+  toolRegistry,
+  viewRegistry,
+} from "~/modules/apps/app-registries"
 import { listMcpTools } from "~/modules/mcp/tool-projection"
 import { atClockOffset, CLOCK_JUMP_MS } from "~/tests/helpers/clock"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -491,6 +496,46 @@ describe("context-assembler", () => {
     } finally {
       await sql`DELETE FROM kernel.contacts WHERE id = ${contactId}`
     }
+  })
+
+  it("names the record a tab declares, and the open page wins over earlier ones (walk D3)", async () => {
+    // `contacts:contact-detail`, like `invoicing:detail`, is named for the page. Looked up by
+    // that name it resolved to nothing, so the turn only listed every record opened so far in
+    // the chat, and the agent acted on an earlier one.
+    const contactId = "00000000-0000-0000-0000-000000ca0041"
+    viewRegistry.set([ORG_ID, "contacts"], {
+      tabTypes: { "contact-detail": { entity: "kernel:contact" } },
+    } as never)
+    await sql`INSERT INTO kernel.contacts (id, org_id, handle, name, email, created_by) VALUES (${contactId}, ${ORG_ID}, 'nav-contact-tab', 'Open Page Contact', 'nav-contact-tab@test.com', ${USER_ID})`
+    try {
+      const result = await assembleContext({
+        threadId: THREAD_ID,
+        orgId: ORG_ID,
+        actor,
+        currentView: { tabType: "contacts:contact-detail", entityId: contactId },
+      })
+      const text = fullText(result)
+      expect(text).toContain("currently viewing")
+      expect(text).toContain("Open Page Contact")
+      expect(text).toContain("It wins over any record or unfinished job from earlier")
+      expect(text).not.toContain(NO_OPEN_RECORD_LINE)
+    } finally {
+      viewRegistry.delete([ORG_ID, "contacts"])
+      await sql`DELETE FROM kernel.contacts WHERE id = ${contactId}`
+    }
+  })
+
+  it("with no record open, tells the agent to ask what 'this' is (walk D1)", async () => {
+    // A list page names no record: the agent asked about "this" parcel picked one itself.
+    const result = await assembleContext({
+      threadId: THREAD_ID,
+      orgId: ORG_ID,
+      actor,
+      currentView: { tabType: "boxtal:shipments", entityId: "boxtal/shipments" },
+    })
+    const text = fullText(result)
+    expect(text).not.toContain("currently viewing")
+    expect(text).toContain(NO_OPEN_RECORD_LINE)
   })
 
   it("names the entity the conversation was made for, with no view sent (walk D26)", async () => {

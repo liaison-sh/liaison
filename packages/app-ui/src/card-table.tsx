@@ -72,7 +72,7 @@ const MIN_COLUMN_REM = 7.5
 
 /** Reactive `true` while `query` matches. Falls back to `false` wherever
  *  `matchMedia` is absent, so a non-DOM render is never blank. */
-function createMediaMatch(query: string): () => boolean {
+export function createMediaMatch(query: string): () => boolean {
   const mm = typeof window !== "undefined" && typeof window.matchMedia === "function"
   if (!mm) return () => false
   const list = window.matchMedia(query)

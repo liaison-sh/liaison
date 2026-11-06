@@ -27,6 +27,7 @@
 import { ChevronLeft } from "lucide-solid"
 import { type Component, createEffect, createSignal, Show } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
+import { trackOpenRecord } from "~/modules/shell/open-record"
 import { shellTier } from "~/modules/shell/shell-tier"
 import RoutineDetail from "./RoutineDetail"
 import RoutineRunTranscript from "./RoutineRunTranscript"
@@ -51,6 +52,7 @@ const AgentRoutinesTab: Component<Props> = (props) => {
   const i18n = useI18n()
   // `new` is the create sentinel `RoutineDetail` already understands.
   const [selected, setSelected] = createSignal<string | null>(null)
+  trackOpenRecord("kernel", "routine", selected)
   /** The run whose transcript replaces the routine's detail, if any. */
   const [run, setRun] = createSignal<string | null>(null)
 

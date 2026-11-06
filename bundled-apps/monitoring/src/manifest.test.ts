@@ -70,7 +70,7 @@ describe("monitoring app.manifest.json", () => {
     // 0.4.2: the fork's incident refs and comments (0.4.1) with the declarative
     // settings page (manifest `settings`, upstream 0.3.6).
     // 0.4.8: every HUMAN setup step says its own minutes.
-    expect(MANIFEST.version).toBe("0.4.11")
+    expect(MANIFEST.version).toBe("0.4.12")
   })
 
   // The declarative settings page (/settings/apps/monitoring): the detailed

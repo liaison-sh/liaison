@@ -32,6 +32,8 @@ See [Invite and manage users](users.md#set-how-people-sign-in), [Connect a compu
 
 **Ask for approval after outside content** is on by default and recommended. Once a conversation has read text from outside the organization (an inbound email, a web page, a tool result), the agent's actions that leave the organization and its writes to memory and Knowledge wait for a person's approval, unless an auto-approve policy covers them. If you turn it off, anyone who can email you or publish a page the agent reads may be able to steer what it sends or saves.
 
+An agent or an MCP client changes the same settings, apart from keys and **Blocked hosts**, with the `ai_models_set` tool, after approval.
+
 A provider key saved on **Models** also answers an agent that asked for that key on a card in a conversation: the card reads saved and the agent carries on.
 
 See [Choose models](../agents/models.md) and [Approve what agents do](../agents/approvals.md).

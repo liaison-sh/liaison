@@ -8,7 +8,6 @@ import type { UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
 import { appsLogger as log } from "~/lib/logger"
-import { failureContextRequiredScopes } from "~/modules/agent/runtime/reinvoke"
 import { enqueueRoutineDecisionTurn } from "~/modules/approvals/approval-result-turn"
 import { authorityFacts, decidingScope } from "~/modules/approvals/authority"
 import { cascadeDeferredDependents, executeApprovedStep } from "~/modules/approvals/cascade"
@@ -36,6 +35,7 @@ import {
 } from "~/modules/approvals/mailbox-fulfilment"
 import { approvalPayloadHash } from "~/modules/approvals/payload-hash"
 import { enqueuePoll } from "~/modules/approvals/poll-output"
+import { approvalFailureRequiredScopes } from "~/modules/approvals/result-notice"
 import { rowTaintMustHold } from "~/modules/approvals/taint-narrow"
 import type { ToolOrigin } from "~/modules/apps/execute-tool"
 import {
@@ -175,6 +175,8 @@ interface ApprovalRow {
   approve_scope: string | null
   dimension_constraint: { key: string; values: string[] } | null
   bundle_id: string | null
+  /** What the proposing turn had read (`proposing_turn_scopes`), NULL when not known. */
+  proposing_turn_scopes: unknown
   metadata: {
     origin?: ToolOrigin
     // N-eyes (BL-268): when an org approval-tightening policy demanded ≥2
@@ -191,7 +193,7 @@ interface ApprovalRow {
 export async function decideApproval(args: DecideArgs): Promise<DecideResult> {
   const row = await withRlsContext(args.actor, async (tx) => {
     const result = await tx.execute(drizzleSql`
-      SELECT id, org_id, tool_name, thread_id, originating_thread_id, current_payload, requested_by, status, approving_started_at, notify_user_ids, resource_owner_id, approve_scope, dimension_constraint, bundle_id, metadata
+      SELECT id, org_id, tool_name, thread_id, originating_thread_id, current_payload, proposing_turn_scopes, requested_by, status, approving_started_at, notify_user_ids, resource_owner_id, approve_scope, dimension_constraint, bundle_id, metadata
       FROM ${K}.approval_requests
       WHERE id = ${args.requestId}
     `)
@@ -470,12 +472,17 @@ async function healWedgedApproving(args: DecideArgs, row: ApprovalRow): Promise<
     })
     if (!healed) return
     // The metadata carries the previous attempt's handler error verbatim, which
-    // can quote whatever that handler was holding, so the notice fails closed to
-    // the requester's scope set rather than to the empty set every member holds.
+    // can quote whatever that handler was holding, so the notice requires what
+    // the call could reveal rather than the empty set every member holds.
     const requesterScopes = (await loadEffectivePermissions(tx, row.requested_by, args.orgId))
       .scopes
     await emitApprovalStateChange(tx, {
-      requiredScopes: failureContextRequiredScopes(requesterScopes, args.orgId),
+      requiredScopes: approvalFailureRequiredScopes({
+        orgId: args.orgId,
+        toolName: row.tool_name,
+        proposingTurnScopes: row.proposing_turn_scopes,
+        requesterScopes,
+      }),
       orgId: args.orgId,
       requestId: row.id,
       threadId: row.thread_id,
@@ -785,7 +792,12 @@ async function approveFlow(args: DecideArgs, row: ApprovalRow): Promise<DecideRe
         const requesterScopes = (await loadEffectivePermissions(tx, row.requested_by, args.orgId))
           .scopes
         await emitApprovalStateChange(tx, {
-          requiredScopes: failureContextRequiredScopes(requesterScopes, args.orgId),
+          requiredScopes: approvalFailureRequiredScopes({
+            orgId: args.orgId,
+            toolName: row.tool_name,
+            proposingTurnScopes: row.proposing_turn_scopes,
+            requesterScopes,
+          }),
           orgId: args.orgId,
           requestId: row.id,
           threadId: row.thread_id,
@@ -945,11 +957,16 @@ async function revertToPending(
     const failureCode =
       details && typeof details.code === "string" ? details.code : (err.code ?? "handler_failed")
     // `err.message` is the handler's own text and the metadata carries its raw
-    // error and details, so the notice fails closed to the requester's scopes.
+    // error and details, so the notice requires what the call could reveal.
     const requesterScopes = (await loadEffectivePermissions(tx, row.requested_by, args.orgId))
       .scopes
     await emitApprovalStateChange(tx, {
-      requiredScopes: failureContextRequiredScopes(requesterScopes, args.orgId),
+      requiredScopes: approvalFailureRequiredScopes({
+        orgId: args.orgId,
+        toolName: row.tool_name,
+        proposingTurnScopes: row.proposing_turn_scopes,
+        requesterScopes,
+      }),
       orgId: args.orgId,
       requestId: row.id,
       threadId,

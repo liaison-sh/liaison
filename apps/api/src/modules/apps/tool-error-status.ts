@@ -37,6 +37,7 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   source_document_unreadable: 409,
   // Names nothing that exists.
   shipment_not_found: 404,
+  document_not_found: 404,
   order_not_found: 404,
   row_not_found: 404,
   // A pick between the order's address and the verified one: needed, gone stale or not needed.

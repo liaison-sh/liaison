@@ -825,7 +825,8 @@ describe("issue date and number year (real Postgres, sandbox, bridge)", () => {
         status: 409,
         code: "issue_date_before_last_number",
       })
-      await sql`UPDATE app_invoicing.issuer_profiles SET shopify_shop_id = 'shop.example' WHERE id = ${issuer}`
+      // A shop links to one issuer per organisation.
+      await sql`UPDATE app_invoicing.issuer_profiles SET shopify_shop_id = ${`${randomUUID()}.example`} WHERE id = ${issuer}`
       expect(
         await refusal("quote_create_and_issue", {
           counterparty: buyer,

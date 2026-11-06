@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: FSL-1.1-ALv2
 #
-# The integration suite (Postgres, Redis, MeiliSearch) once a night on main.
-# Per-PR CI (ci.yml) runs only the checks that need no services, so a broken
-# database test can otherwise sit on main unnoticed. This runs at 03:00 Paris
+# The integration and security suites (Postgres, Redis, MeiliSearch) once a night
+# on main. Per-PR CI (ci.yml) runs only the checks that need no services, so a
+# broken database test can otherwise sit on main unnoticed. This runs at 03:00 Paris
 # time (02:00 UTC; 04:00 in summer time is fine too), only on days main moved
 # since the last nightly. GitHub emails the workflow's owner when a scheduled
 # run fails; a green run sends nothing.
@@ -83,6 +83,15 @@ jobs:
           TEST_MEM_RESERVE_MB: "1024"
           LIAISON_TEST_SLOTS: "1"
         run: bun run test:integration
+      - name: Security suite
+        # src/tests/security (route auth and scope invariants, permission
+        # boundaries) is its own suite: no other workflow runs it. It runs when
+        # the integration suite failed too, so a night reports both.
+        if: "!cancelled() && steps.changed.outputs.run == 'true'"
+        env:
+          TEST_MEM_RESERVE_MB: "1024"
+          LIAISON_TEST_SLOTS: "1"
+        run: bun run scripts/test-run.ts security
       - name: Keep the run's logs
         if: always() && steps.changed.outputs.run == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

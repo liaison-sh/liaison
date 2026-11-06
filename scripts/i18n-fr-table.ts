@@ -7405,6 +7405,34 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.routineMailboxWait.whyShort":
     "Les routines ne peuvent pas lire le courrier privé quand vous n'êtes pas connecté. Elle tourne depuis cette fenêtre.",
   "kernel.routineMailboxWait.yourRoutine": "Votre routine",
+  "kernel.routineMailboxWait.group.label":
+    "Exécutions de routines en attente de votre boîte privée",
+  "kernel.routineMailboxWait.group.titleOne": "{{name}} : {{count}} exécutions vous attendent",
+  "kernel.routineMailboxWait.group.titleMany": "{{count}} exécutions de routines vous attendent",
+  "kernel.routineMailboxWait.group.triggerEmails": "Lancées par de nouveaux e-mails",
+  "kernel.routineMailboxWait.group.triggerMixed":
+    "Lancées par des événements ou selon leur planning",
+  "kernel.routineMailboxWait.group.why":
+    "Les routines ne peuvent pas lire le courrier privé quand vous n'êtes pas connecté. « Tout lancer » les démarre depuis cette fenêtre.",
+  "kernel.routineMailboxWait.group.yourRoutines": "Vos routines",
+  "kernel.routineMailboxWait.group.runAll": "Tout lancer",
+  "kernel.routineMailboxWait.group.dismissAll": "Tout ignorer",
+  "kernel.routineMailboxWait.group.starting": "Démarrage {{done}} sur {{total}}",
+  "kernel.routineMailboxWait.group.unlockBody":
+    "Déverrouillez votre boîte pour les lancer. Elles démarrent d'elles-mêmes dès que votre boîte est ouverte.",
+  "kernel.routineMailboxWait.group.started":
+    "{{count}} exécutions lancées, une à la fois pour chaque routine. Gardez cette fenêtre ouverte pendant qu'elles lisent votre courrier privé.",
+  "kernel.routineMailboxWait.group.startedHandoff":
+    "{{count}} exécutions lancées, une à la fois pour chaque routine. Vous pouvez fermer cette fenêtre : les e-mails qui les ont déclenchées ont été ouverts pour ces exécutions.",
+  "kernel.routineMailboxWait.group.partial":
+    "{{started}} exécutions lancées sur {{total}}. Les autres restent dans votre liste : ouvrez Détails pour les lancer une par une.",
+  "kernel.routineMailboxWait.group.dismissTitle": "Ignorer {{count}} exécutions en attente ?",
+  "kernel.routineMailboxWait.group.dismissBody":
+    "Ces exécutions n'auront pas lieu : ces routines ne traiteront donc pas ce qui les a déclenchées. Les routines repartent à leur prochaine échéance.",
+  "kernel.routineMailboxWait.group.dismissed":
+    "{{count}} exécutions ignorées. Les routines repartent à leur prochaine échéance.",
+  "kernel.routineMailboxWait.group.dismissPartial":
+    "{{dismissed}} exécutions ignorées sur {{total}}. Les autres restent dans votre liste.",
   "kernel.routineMailboxWait.expiredStatus": "Expirée",
   "kernel.routineMailboxWait.waitingForUnlock": "En attente du déverrouillage",
   "kernel.routineMailboxWait.factRoutine": "Routine",

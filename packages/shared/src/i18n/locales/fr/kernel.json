@@ -6118,6 +6118,26 @@
     "refused": "Rien n'a été connecté."
   },
   "routineMailboxWait": {
+    "group": {
+      "label": "Exécutions de routines en attente de votre boîte privée",
+      "titleOne": "{{name}} : {{count}} exécutions vous attendent",
+      "titleMany": "{{count}} exécutions de routines vous attendent",
+      "triggerEmails": "Lancées par de nouveaux e-mails",
+      "triggerMixed": "Lancées par des événements ou selon leur planning",
+      "why": "Les routines ne peuvent pas lire le courrier privé quand vous n'êtes pas connecté. « Tout lancer » les démarre depuis cette fenêtre.",
+      "yourRoutines": "Vos routines",
+      "runAll": "Tout lancer",
+      "dismissAll": "Tout ignorer",
+      "starting": "Démarrage {{done}} sur {{total}}",
+      "unlockBody": "Déverrouillez votre boîte pour les lancer. Elles démarrent d'elles-mêmes dès que votre boîte est ouverte.",
+      "started": "{{count}} exécutions lancées, une à la fois pour chaque routine. Gardez cette fenêtre ouverte pendant qu'elles lisent votre courrier privé.",
+      "startedHandoff": "{{count}} exécutions lancées, une à la fois pour chaque routine. Vous pouvez fermer cette fenêtre : les e-mails qui les ont déclenchées ont été ouverts pour ces exécutions.",
+      "partial": "{{started}} exécutions lancées sur {{total}}. Les autres restent dans votre liste : ouvrez Détails pour les lancer une par une.",
+      "dismissTitle": "Ignorer {{count}} exécutions en attente ?",
+      "dismissBody": "Ces exécutions n'auront pas lieu : ces routines ne traiteront donc pas ce qui les a déclenchées. Les routines repartent à leur prochaine échéance.",
+      "dismissed": "{{count}} exécutions ignorées. Les routines repartent à leur prochaine échéance.",
+      "dismissPartial": "{{dismissed}} exécutions ignorées sur {{total}}. Les autres restent dans votre liste."
+    },
     "label": "Exécution de routine en attente de votre boîte privée",
     "title": "{{name}} vous attend",
     "why": "Par sécurité, les routines ne peuvent pas lire le courrier privé quand vous n'êtes pas connecté. Lancez-la depuis cette fenêtre : votre boîte ouvre le courrier dont elle a besoin, comme quand vous demandez vous-même.",

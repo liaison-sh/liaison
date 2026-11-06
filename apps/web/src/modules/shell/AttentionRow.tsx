@@ -33,7 +33,8 @@ import { type Component, createEffect, createSignal, For, Match, Show, Switch } 
 import { ApiError } from "~/lib/api-error"
 import { isPendingSubtitle, readableSummaryLines } from "~/lib/approval-summary-lines"
 import AccessRequestRow, { accessRequestOf } from "~/modules/admin-scope-requests/AccessRequestRow"
-import RoutineMailboxWaitRow, { routineMailboxWaitOf } from "~/modules/agent/RoutineMailboxWaitRow"
+import { routineMailboxWaitOf } from "~/modules/agent/RoutineMailboxWaitRow"
+import RoutineMailboxWaitsRow from "~/modules/agent/RoutineMailboxWaitsRow"
 import ApprovalCard, { shortApprovalId } from "~/modules/approvals/ApprovalCard"
 import {
   approvalActionLabel,
@@ -1221,7 +1222,7 @@ const AttentionRow: Component<AttentionRowProps> = (props) => {
   const access = () => accessRequestOf(props.item)
   return (
     <Switch fallback={<AttentionRowBody item={item()} />}>
-      <Match when={wait()}>{(w) => <RoutineMailboxWaitRow item={props.item} wait={w()} />}</Match>
+      <Match when={wait()}>{(w) => <RoutineMailboxWaitsRow item={props.item} wait={w()} />}</Match>
       <Match when={access()}>{(a) => <AccessRequestRow item={props.item} facts={a()} />}</Match>
     </Switch>
   )

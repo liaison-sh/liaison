@@ -27,7 +27,7 @@ An action can also wait because of what the agent read. See [Hold actions after 
 The same list holds everything else that waits on your decision, in the same row layout:
 
 - An **Access request**: an agent or a colleague asks for a permission, for example **Sales agent asks for access to Shopify**, with what it allows and why. Its pill takes the colour of the app the permission belongs to. Decide it with **Grant** or **Deny** on the row, or open **Details** to read every permission asked for. Only people who can decide access requests see it. See [Decide access requests](permissions.md#decide-access-requests).
-- A run of your own routine that waits for your private mailbox: **Private mailbox**, ***name* waits for you**, with **Run now** and **Dismiss**, and **Details** for the run's facts. It is not an agent's action to approve, so only you see it and no approval permission is involved. See [When a run waits for your private mailbox](routines.md#when-a-run-waits-for-your-private-mailbox).
+- A run of your own routine that waits for your private mailbox: **Private mailbox**, ***name* waits for you**, with **Run now** and **Dismiss**, and **Details** for the run's facts. It is not an agent's action to approve, so only you see it and no approval permission is involved. See [When a run waits for your private mailbox](routines.md#when-a-run-waits-for-your-private-mailbox). Several waiting runs show as one item with **Run all** and **Dismiss all** ([routines](routines.md)).
 
 When several kinds wait, the filter chips above the list include **Access requests** and **Routine runs**.
 

@@ -545,6 +545,23 @@ describe("POST /api/cloud/lookup (S43)", () => {
 })
 
 describe("GET /api/billing/state", () => {
+  test("serves the plan's caps and the next plan, for the refusal copy any member can hit", async () => {
+    const orgId = await createOrg("state-next-plan", "next@acme.test")
+    const nextPlan = { id: "pro", caps: { seats: null, storageGb: 500 } }
+    await push(orgId, 1, { caps: { seats: null, storageGb: 50 }, nextPlan })
+    const { origin, headers } = await ownerSession(orgId)
+    const r = await app.request(`${origin}/api/billing/state`, { headers })
+    const body = (await r.json()) as { data: Record<string, unknown> }
+    expect(managedBillingStateSchema.safeParse(body.data).success).toBe(true)
+    expect(body.data.caps).toEqual({ seats: null, storageGb: 50 })
+    expect(body.data.nextPlan).toEqual(nextPlan)
+    // A push from a Control that predates the field reads as no next plan.
+    await push(orgId, 2)
+    const again = await app.request(`${origin}/api/billing/state`, { headers })
+    const later = (await again.json()) as { data: Record<string, unknown> }
+    expect(later.data.nextPlan).toBeNull()
+  })
+
   const realFetch = globalThis.fetch
   afterEach(() => {
     globalThis.fetch = realFetch
@@ -587,6 +604,8 @@ describe("GET /api/billing/state", () => {
       includedCredits: "250",
       previewEndsAt: null,
       autoTopUp: { enabled: true, thresholdCredits: 20, amountCredits: 100 },
+      caps: { seats: 5 },
+      nextPlan: null,
       // the suspension window (null outside suspension); no contact pushed here.
       accessUntil: null,
     })

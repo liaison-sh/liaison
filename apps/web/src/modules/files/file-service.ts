@@ -270,7 +270,11 @@ export class FileStorageUnavailableError extends Error {
 }
 
 export class FileQuotaExceededError extends Error {
-  constructor(message = "File quota exceeded") {
+  constructor(
+    message = "File quota exceeded",
+    /** The server's refusal code: the org's storage cap, or this file's size limit. */
+    readonly code?: string,
+  ) {
     super(message)
     this.name = "FileQuotaExceededError"
   }
@@ -379,8 +383,8 @@ async function uploadFileBytes(
       sizeBytes: file.size,
     })
   } catch (err) {
-    if (err instanceof ApiError && err.status === 413) {
-      throw new FileQuotaExceededError(err.message)
+    if (err instanceof ApiError && (err.status === 413 || err.code === "STORAGE_QUOTA_EXCEEDED")) {
+      throw new FileQuotaExceededError(err.message, err.code)
     }
     if (err instanceof ApiError && err.status === 503) {
       throw new FileStorageUnavailableError()

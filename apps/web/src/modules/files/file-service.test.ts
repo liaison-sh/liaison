@@ -338,6 +338,23 @@ describe("file-service", () => {
     ).rejects.toBeInstanceOf(FileStorageUnavailableError)
   })
 
+  it("uploadFile maps the org's storage refusal (409) to FileQuotaExceededError with its code", async () => {
+    const api = mockApi({
+      post: {
+        "/files/upload-url": {
+          __error: { status: 409, message: "quota", code: "STORAGE_QUOTA_EXCEEDED" },
+        },
+      },
+    })
+    const err = await uploadFile(api, new File([""], "x"), {
+      app: "kernel",
+      entityType: "thread",
+      entityId: "t",
+    }).catch((e) => e)
+    expect(err).toBeInstanceOf(FileQuotaExceededError)
+    expect(err.code).toBe("STORAGE_QUOTA_EXCEEDED")
+  })
+
   it("uploadFile maps 413 to FileQuotaExceededError", async () => {
     const api = mockApi({
       post: { "/files/upload-url": { __error: { status: 413, message: "quota" } } },

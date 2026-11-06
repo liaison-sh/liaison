@@ -2,6 +2,16 @@
 import { createEffect, createResource, createSignal, type ResourceReturn } from "solid-js"
 import type { ApiClient } from "~/lib/api-client"
 
+type PlanId = "preview" | "base" | "pro"
+type PlanCaps = Record<string, number | null>
+
+/** What the last billing push says about this org's plan and the plan above it. */
+export interface PlanFacts {
+  plan: PlanId
+  caps: PlanCaps
+  nextPlan: { id: PlanId; caps: PlanCaps } | null
+}
+
 export type BillingState =
   | {
       mode: "self_hosted"
@@ -11,12 +21,14 @@ export type BillingState =
       // The managed edition: the state the control plane last pushed to this
       // server, served by the server itself. It carries no payment page URL.
       mode: "managed"
-      plan: "preview" | "base" | "pro"
+      plan: PlanId
       tier: string
       status: string
       periodEnd: string
       includedCredits: string
       previewEndsAt: string | null
+      caps?: PlanCaps
+      nextPlan?: { id: PlanId; caps: PlanCaps } | null
       autoTopUp: {
         enabled: boolean
         thresholdCredits: number
@@ -54,14 +66,24 @@ export function createBillingState(api: ApiClient): ResourceReturn<BillingState>
   // any later refetch.
   createEffect(() => {
     const value = state()
-    if (value) setBillingMode(value.mode)
+    if (value) noteBillingState(value)
   })
   return result
 }
 
 const [billingMode, setBillingMode] = createSignal<"self_hosted" | "managed" | null>(null)
+const [planFacts, setPlanFacts] = createSignal<PlanFacts | null>(null)
 
-export { billingMode }
+export { billingMode, planFacts }
+
+function noteBillingState(state: BillingState): void {
+  setBillingMode(state.mode)
+  setPlanFacts(
+    isManagedAvailable(state) && state.caps
+      ? { plan: state.plan, caps: state.caps, nextPlan: state.nextPlan ?? null }
+      : null,
+  )
+}
 
 /**
  * Fetch /billing/state once and populate the global mode signal. Sidebar
@@ -70,8 +92,7 @@ export { billingMode }
  */
 export async function ensureBillingModeLoaded(api: ApiClient): Promise<void> {
   try {
-    const state = await api.get<BillingState>("/billing/state")
-    setBillingMode(state.mode)
+    noteBillingState(await api.get<BillingState>("/billing/state"))
   } catch {
     // Non-fatal — leave the previous value in place
   }
@@ -85,6 +106,7 @@ export const BillingStateTestAccess = {
   /** Reset to initial state. */
   reset(): void {
     setBillingMode(null)
+    setPlanFacts(null)
   },
 
   /** Force a specific billing mode synchronously. */

@@ -251,7 +251,7 @@ describe("mailboxes", () => {
   })
 })
 
-describe("mailboxes in the managed edition: the cap counts org mailboxes, one personal per member", () => {
+describe("mailboxes in the managed edition: a plan never refuses one", () => {
   async function connect(
     orgId: string,
     userId: string,
@@ -269,49 +269,46 @@ describe("mailboxes in the managed edition: the cap counts org mailboxes, one pe
     )
   }
 
-  it("a member's personal mailbox never counts; the cap, the usage block and the plan usage count org mailboxes alike", async () => {
+  it("org mailboxes pass even when an older push left a mailbox cap in the caps", async () => {
     const { orgId, adminUserId } = await minimal.secondOrg()
-    const member = await minimal.person(orgId)
     await setCaps(orgId, { mailboxes: 1 })
     _setEdition("managed")
     try {
       await connect(orgId, adminUserId, "tickets", "support@managed-caps.test", "org")
-      // Personal (Mail): outside the org's cap even when the cap is full.
-      await connect(orgId, member.id, "mail", "member@managed-caps.test", "user")
-      expect((await getOrgUsage(orgId)).mailboxes).toEqual({ used: 1, limit: 1 })
-      expect((await currentPlanUsage(orgId)).sharedMailboxes).toBe(1)
-      const refused = await capRefusal(
-        connect(orgId, adminUserId, "mail", "sales@managed-caps.test", "org"),
-      )
-      expect(refused).toBeInstanceOf(CapLimitError)
-      expect(refused.code).toBe("MAILBOX_LIMIT_REACHED")
-      expect(refused.details).toEqual({ limit: 1, used: 1 })
-      // The customer cannot raise a managed cap: the way out is a larger plan.
-      expect(refused.message).toContain("plan with more in Billing")
-      expect(refused.message).not.toContain("runs the server")
+      await connect(orgId, adminUserId, "mail", "sales@managed-caps.test", "org")
+      expect(Object.keys(await currentPlanUsage(orgId)).sort()).toEqual([
+        "customApps",
+        "seats",
+        "storageBytes",
+      ])
     } finally {
       _setEdition(null)
     }
   })
 
-  it("a second personal mailbox for the same member is refused; reconnecting the first is not", async () => {
+  it("a member may connect more than one personal mailbox", async () => {
     const { orgId } = await minimal.secondOrg()
     const member = await minimal.person(orgId)
     _setEdition("managed")
     try {
       await connect(orgId, member.id, "mail", "first@managed-caps.test", "user")
-      // A personal mailbox for another app: a second address all the same.
-      const refused = await capRefusal(
-        connect(orgId, member.id, "tickets", "second@managed-caps.test", "user"),
-      )
-      expect(refused).toBeInstanceOf(CapLimitError)
-      expect(refused.code).toBe("PERSONAL_MAILBOX_LIMIT_REACHED")
-      expect(refused.details).toEqual({ limit: 1, used: 1 })
-      // The same address for another app is the same mailbox.
-      await connect(orgId, member.id, "tickets", "first@managed-caps.test", "user")
+      await connect(orgId, member.id, "tickets", "second@managed-caps.test", "user")
     } finally {
       _setEdition(null)
     }
+  })
+
+  it("self-hosted keeps the operator's cap, personal mailboxes included", async () => {
+    const { orgId, adminUserId } = await minimal.secondOrg()
+    const member = await minimal.person(orgId)
+    await setCaps(orgId, { mailboxes: 1 })
+    await connect(orgId, member.id, "mail", "member@self-hosted-caps.test", "user")
+    const refused = await capRefusal(
+      connect(orgId, adminUserId, "mail", "sales@self-hosted-caps.test", "org"),
+    )
+    expect(refused).toBeInstanceOf(CapLimitError)
+    expect(refused.code).toBe("MAILBOX_LIMIT_REACHED")
+    expect(refused.message).toContain("runs the server")
   })
 })
 

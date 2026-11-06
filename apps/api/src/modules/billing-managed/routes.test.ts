@@ -13,10 +13,8 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test"
 import { createHash, createHmac, randomUUID } from "node:crypto"
 import { cellBillingMessageSchema } from "@liaison/control-plane-contract"
-import { eq } from "drizzle-orm"
 import { app } from "~/app"
 import { withSystemDb } from "~/db/privileged"
-import { connectedAccounts } from "~/db/schema/kernel"
 import { _setEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
 import { contentSecurityPolicy } from "~/middleware/security-headers"
@@ -87,7 +85,6 @@ const SUMMARY = {
 
 let admin: { bearer: string; orgId: string }
 let member: { bearer: string }
-let adminUserId: string
 
 async function call(path: string, init: RequestInit = {}, bearer = admin.bearer) {
   return app.request(`http://localhost/api/billing/managed${path}`, {
@@ -113,7 +110,6 @@ beforeAll(async () => {
   await withSystemDb("test-billing-identity", (db) => writeIdentity(db, identity))
   const a = await minimal.adminSession((await createTestOrg()).id)
   admin = { bearer: a.bearer, orgId: a.orgId }
-  adminUserId = a.userId
   const m = await minimal.session(a.orgId, { role: "member" })
   member = { bearer: m.bearer }
 })
@@ -204,55 +200,23 @@ describe("forwarding", () => {
     expect((await call("/summary")).status).toBe(503)
   })
 
-  test("shared mailboxes count the org's mailbox connections only, not a member's own", async () => {
-    const row = (ownerType: "org" | "user", identifier: string) => ({
-      orgId: admin.orgId,
-      appName: "mail",
-      connectionName: "imap",
-      ownerType,
-      ownerId: ownerType === "user" ? adminUserId : null,
-      providerType: "credentials",
-      identifier,
-      createdBy: adminUserId,
-    })
-    const tag = randomUUID().slice(0, 8)
-    await withSystemDb("test-billing-usage", (db) =>
-      db
-        .insert(connectedAccounts)
-        .values([row("org", `shared-${tag}@example.test`), row("user", `own-${tag}@example.test`)]),
-    )
-    try {
-      control({ ok: false, code: "caps_exceeded", caps: ["sharedMailboxes"] })
-      await call("/change-plan", {
-        method: "POST",
-        body: JSON.stringify({ targetPlan: "preview", requestId: randomUUID() }),
-      })
-      const usage = (sent[0] as Sent).body.data.usage as Record<string, number>
-      expect(usage.sharedMailboxes).toBe(1)
-    } finally {
-      await withSystemDb("test-billing-usage", (db) =>
-        db.delete(connectedAccounts).where(eq(connectedAccounts.orgId, admin.orgId)),
-      )
-    }
-  })
-
   test("change plan sends the org's usage and the browser's request id; caps_exceeded lists caps", async () => {
     const requestId = randomUUID()
-    control({ ok: false, code: "caps_exceeded", caps: ["seats", "sharedMailboxes"] })
+    control({ ok: false, code: "caps_exceeded", caps: ["seats", "storageGb"] })
     const r = await call("/change-plan", {
       method: "POST",
-      body: JSON.stringify({ targetPlan: "preview", requestId }),
+      body: JSON.stringify({ targetPlan: "base", requestId }),
     })
     expect(r.status).toBe(409)
     const err = ((await r.json()) as { error: { code: string; details: { caps: string[] } } }).error
     expect(err.code).toBe("caps_exceeded")
-    expect(err.details.caps).toEqual(["seats", "sharedMailboxes"])
+    expect(err.details.caps).toEqual(["seats", "storageGb"])
     const data = (sent[0] as Sent).body.data
     expect(data.requestId).toBe(requestId)
-    expect(data.targetPlan).toBe("preview")
+    expect(data.targetPlan).toBe("base")
     const usage = data.usage as Record<string, number>
     expect(usage.seats).toBeGreaterThanOrEqual(2)
-    expect(usage.sharedMailboxes).toBe(0)
+    expect(usage).not.toHaveProperty("sharedMailboxes")
     expect(usage.customApps).toBe(0)
     expect(typeof usage.storageBytes).toBe("number")
   })

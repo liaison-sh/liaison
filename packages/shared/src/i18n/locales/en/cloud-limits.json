@@ -46,8 +46,42 @@
   },
   "caps": {
     "seatLimitReached": "This organization uses all the seats its plan includes. Move to a plan with more in Billing, or an admin can deactivate someone first.",
-    "mailboxLimitReached": "This organization uses all the shared mailboxes its plan includes. Move to a plan with more in Billing, or an admin can disconnect one first.",
     "customAppLimitReached": "This organization uses all the custom apps its plan includes. Remove one first, or move to a plan with more.",
-    "auditDaysLimitReached": "The plan keeps the audit log for fewer days. Choose a shorter retention."
+    "auditDaysLimitReached": "The plan keeps the audit log for fewer days. Choose a shorter retention.",
+    "storageLimitReached": "This organization uses all the storage its plan includes. Move to a plan with more in Billing, or free some space first."
+  },
+  "planCaps": {
+    "seats": {
+      "preview": "Preview is limited to {{limit}} people: it is only meant for a quick look at Liaison.",
+      "base": "Base is limited to {{limit}} people: it is meant for a small company running its day-to-day on Liaison.",
+      "pro": "Pro is limited to {{limit}} people: it is meant for larger teams with heavier use.",
+      "next": "{{plan}} allows {{limit}}. Move to it in Billing, or an admin can deactivate someone first.",
+      "nextUnlimited": "{{plan}} has no limit on people. Move to it in Billing, or an admin can deactivate someone first.",
+      "largest": "This is the largest plan, so an admin needs to deactivate someone first."
+    },
+    "storageGb": {
+      "preview": "Preview is limited to {{limit}} GB of storage: it is only meant for a quick look at Liaison, not for years of files.",
+      "base": "Base is limited to {{limit}} GB of storage: it is meant for a small company's everyday files and mail attachments.",
+      "pro": "Pro is limited to {{limit}} GB of storage: it is meant for larger teams with a long history of files.",
+      "next": "{{plan}} gives {{limit}} GB. Move to it in Billing, or free some space first.",
+      "nextUnlimited": "{{plan}} has no limit on storage. Move to it in Billing, or free some space first.",
+      "largest": "This is the largest plan, so some space needs to be freed first."
+    },
+    "customApps": {
+      "preview": "Preview's custom app limit is {{limit}}: it is only meant for trying one out.",
+      "base": "Base's custom app limit is {{limit}}: it is meant for the few tools a small company adds to its day-to-day.",
+      "pro": "Pro's custom app limit is {{limit}}: it is meant for teams that build a lot on Liaison.",
+      "next": "{{plan}} allows {{limit}}. Move to it in Billing, or remove one first.",
+      "nextUnlimited": "{{plan}} has no limit on custom apps. Move to it in Billing, or remove one first.",
+      "largest": "This is the largest plan, so one needs to be removed first."
+    },
+    "auditDays": {
+      "preview": "Preview keeps the audit log for up to {{limit}} days: it is only meant for a quick look at Liaison.",
+      "base": "Base keeps the audit log for up to {{limit}} days: it is meant for a small company's everyday checks.",
+      "pro": "Pro keeps the audit log for up to {{limit}} days: it is meant for teams with longer review or compliance needs.",
+      "next": "{{plan}} keeps it for {{limit}} days. Choose a shorter retention, or move to it in Billing.",
+      "nextUnlimited": "{{plan}} has no limit on it. Choose a shorter retention, or move to it in Billing.",
+      "largest": "This is the largest plan, so choose a shorter retention."
+    }
   }
 }

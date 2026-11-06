@@ -46,8 +46,42 @@
   },
   "caps": {
     "seatLimitReached": "Cette organisation utilise toutes les places de son offre. Passez à une offre qui en compte davantage dans Facturation, ou un admin peut d'abord désactiver quelqu'un.",
-    "mailboxLimitReached": "Cette organisation utilise toutes les boîtes mail partagées de son offre. Passez à une offre qui en compte davantage dans Facturation, ou un admin peut d'abord en déconnecter une.",
     "customAppLimitReached": "Cette organisation utilise toutes les applications personnalisées de son offre. Supprimez-en une d'abord, ou passez à une offre qui en compte davantage.",
-    "auditDaysLimitReached": "L'offre conserve le journal d'audit moins longtemps. Choisissez une durée plus courte."
+    "auditDaysLimitReached": "L'offre conserve le journal d'audit moins longtemps. Choisissez une durée plus courte.",
+    "storageLimitReached": "Cette organisation utilise tout le stockage de son offre. Passez à une offre qui en compte davantage dans Facturation, ou libérez d'abord de l'espace."
+  },
+  "planCaps": {
+    "seats": {
+      "preview": "L'offre Preview est limitée à {{limit}} personnes : elle sert seulement à découvrir Liaison.",
+      "base": "L'offre Base est limitée à {{limit}} personnes : elle est faite pour une petite entreprise qui gère son quotidien sur Liaison.",
+      "pro": "L'offre Pro est limitée à {{limit}} personnes : elle est faite pour les grandes équipes à l'usage soutenu.",
+      "next": "{{plan}} en permet {{limit}}. Passez-y dans Facturation, ou un admin peut d'abord désactiver quelqu'un.",
+      "nextUnlimited": "{{plan}} n'a pas de limite de personnes. Passez-y dans Facturation, ou un admin peut d'abord désactiver quelqu'un.",
+      "largest": "C'est la plus grande offre : un admin doit d'abord désactiver quelqu'un."
+    },
+    "storageGb": {
+      "preview": "L'offre Preview est limitée à {{limit}} Go de stockage : elle sert seulement à découvrir Liaison, pas à garder des années de fichiers.",
+      "base": "L'offre Base est limitée à {{limit}} Go de stockage : elle est faite pour les fichiers et pièces jointes du quotidien d'une petite entreprise.",
+      "pro": "L'offre Pro est limitée à {{limit}} Go de stockage : elle est faite pour les grandes équipes qui gardent un long historique de fichiers.",
+      "next": "{{plan}} offre {{limit}} Go. Passez-y dans Facturation, ou libérez d'abord de l'espace.",
+      "nextUnlimited": "{{plan}} n'a pas de limite de stockage. Passez-y dans Facturation, ou libérez d'abord de l'espace.",
+      "largest": "C'est la plus grande offre : il faut d'abord libérer de l'espace."
+    },
+    "customApps": {
+      "preview": "La limite d'applications personnalisées de l'offre Preview est de {{limit}} : elle sert seulement à en essayer une.",
+      "base": "La limite d'applications personnalisées de l'offre Base est de {{limit}} : elle est faite pour les quelques outils qu'une petite entreprise ajoute à son quotidien.",
+      "pro": "La limite d'applications personnalisées de l'offre Pro est de {{limit}} : elle est faite pour les équipes qui construisent beaucoup sur Liaison.",
+      "next": "{{plan}} en permet {{limit}}. Passez-y dans Facturation, ou supprimez-en d'abord une.",
+      "nextUnlimited": "{{plan}} n'a pas de limite d'applications personnalisées. Passez-y dans Facturation, ou supprimez-en d'abord une.",
+      "largest": "C'est la plus grande offre : il faut d'abord en supprimer une."
+    },
+    "auditDays": {
+      "preview": "L'offre Preview conserve le journal d'audit {{limit}} jours au plus : elle sert seulement à découvrir Liaison.",
+      "base": "L'offre Base conserve le journal d'audit {{limit}} jours au plus : elle est faite pour les contrôles courants d'une petite entreprise.",
+      "pro": "L'offre Pro conserve le journal d'audit {{limit}} jours au plus : elle est faite pour les équipes aux besoins de contrôle ou de conformité plus longs.",
+      "next": "{{plan}} le conserve {{limit}} jours. Choisissez une durée plus courte, ou passez-y dans Facturation.",
+      "nextUnlimited": "{{plan}} n'a pas de limite sur ce point. Choisissez une durée plus courte, ou passez-y dans Facturation.",
+      "largest": "C'est la plus grande offre : choisissez une durée plus courte."
+    }
   }
 }

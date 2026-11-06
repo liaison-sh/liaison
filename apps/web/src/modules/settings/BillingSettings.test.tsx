@@ -139,8 +139,9 @@ describe("BillingSettings", () => {
     )
     expect(topUpPrice(13, SUMMARY.topUp)).toContain("15.21")
     expect(await screen.findByTestId("billing-invoice-in_1")).toHaveTextContent("LS-0001")
-    // No link anywhere on the page.
-    expect(screen.getByTestId("billing-settings").querySelectorAll("a")).toHaveLength(0)
+    // The one link on the page is the plan comparison on the public site, never a payment page.
+    const links = [...screen.getByTestId("billing-settings").querySelectorAll("a")]
+    expect(links.map((a) => a.getAttribute("href"))).toEqual(["https://liaison.sh/pricing"])
   })
 
   it("shows the credit balance like the rest of the UI, without trailing zeros", async () => {
@@ -182,6 +183,21 @@ describe("BillingSettings", () => {
     expect(screen.getByTestId("billing-topup-price")).toHaveTextContent("At least 13 credits")
   })
 
+  const proSummary = (over: Partial<BillingSummary> = {}) => ({
+    body: {
+      data: {
+        ok: true,
+        ...SUMMARY,
+        plan: "pro",
+        plans: [
+          { id: "preview", priceDisplay: "€9.11", includedCredits: "3", caps: {} },
+          ...SUMMARY.plans,
+        ],
+        ...over,
+      },
+    },
+  })
+
   it("a refused plan change lists the exceeded caps", async () => {
     stubApi((url, init) => {
       if (url.includes("/billing/managed/change-plan") && init?.method === "POST") {
@@ -191,32 +207,188 @@ describe("BillingSettings", () => {
             error: {
               message: "too small",
               code: "caps_exceeded",
-              details: { caps: ["seats", "sharedMailboxes"] },
+              details: { caps: ["seats", "storageGb"] },
             },
           },
         }
       }
-      if (url.includes("/billing/managed/summary")) {
-        return {
-          body: {
-            data: {
-              ok: true,
-              ...SUMMARY,
-              plans: [
-                ...SUMMARY.plans,
-                { id: "preview", priceDisplay: "€0.00", includedCredits: "50", caps: {} },
-              ],
-            },
-          },
-        }
+      if (url.includes("/billing/managed/summary")) return proSummary()
+      return baseRoutes(url)
+    })
+    renderPage()
+    fireEvent.click(await screen.findByTestId("billing-switch-base"))
+    const problem = await screen.findByTestId("billing-problem")
+    expect(problem).toHaveTextContent("members")
+    expect(problem).toHaveTextContent("storage")
+  })
+
+  it("Preview is not offered from Base or Pro, on the cards or in the comparison", async () => {
+    stubApi((url) => (url.includes("/billing/managed/summary") ? proSummary() : baseRoutes(url)))
+    renderPage()
+    await screen.findByTestId("billing-plan-pro")
+    expect(screen.getByTestId("billing-plan-base")).toBeInTheDocument()
+    expect(screen.queryByTestId("billing-plan-preview")).toBeNull()
+    expect(screen.queryByTestId("billing-switch-preview")).toBeNull()
+    expect(screen.queryByTestId("billing-compare-head-preview")).toBeNull()
+  })
+
+  it("on Preview, its own card stays and the larger plans are offered", async () => {
+    stubApi((url) =>
+      url.includes("/billing/managed/summary")
+        ? proSummary({ plan: "preview", previewEndsAt: "2027-01-01T00:00:00.000Z" })
+        : baseRoutes(url),
+    )
+    renderPage()
+    await screen.findByTestId("billing-plan-preview")
+    expect(screen.queryByTestId("billing-switch-preview")).toBeNull()
+    expect(screen.getByTestId("billing-switch-base")).toBeInTheDocument()
+    expect(screen.getByTestId("billing-switch-pro")).toBeInTheDocument()
+  })
+
+  it("Control refusing Preview as a target is told in words", async () => {
+    stubApi((url, init) => {
+      if (url.includes("/billing/managed/change-plan") && init?.method === "POST") {
+        return { status: 409, body: { error: { message: "no", code: "plan_not_offered" } } }
       }
       return baseRoutes(url)
     })
     renderPage()
-    fireEvent.click(await screen.findByTestId("billing-switch-preview"))
-    const problem = await screen.findByTestId("billing-problem")
-    expect(problem).toHaveTextContent("members")
-    expect(problem).toHaveTextContent("shared mailboxes")
+    fireEvent.click(await screen.findByTestId("billing-switch-pro"))
+    expect(await screen.findByTestId("billing-problem")).toHaveTextContent(
+      "only available when you first sign up",
+    )
+  })
+
+  it("the comparison shows what each plan really gives, from the summary alone", async () => {
+    const caps = (c: Record<string, number | null>) => c
+    stubApi((url) =>
+      url.includes("/billing/managed/summary")
+        ? {
+            body: {
+              data: {
+                ok: true,
+                ...SUMMARY,
+                plans: [
+                  {
+                    id: "base",
+                    priceDisplay: "€31.11",
+                    includedCredits: "250",
+                    // A mailbox cap in an older reply is never shown.
+                    caps: caps({
+                      seats: null,
+                      storageGb: 53,
+                      customApps: 7,
+                      auditDays: 91,
+                      mailboxes: 11,
+                    }),
+                  },
+                  {
+                    id: "pro",
+                    priceDisplay: "€77.77",
+                    includedCredits: "1000",
+                    caps: caps({
+                      seats: 17,
+                      storageGb: 509,
+                      customApps: 57,
+                      auditDays: 367,
+                      jobsPerHour: 601,
+                    }),
+                  },
+                ],
+              },
+            },
+          }
+        : baseRoutes(url),
+    )
+    renderPage()
+    const compare = await screen.findByTestId("billing-plan-compare")
+    const cells = (id: string) =>
+      [...screen.getByTestId(id).querySelectorAll("td")].map((c) => c.textContent)
+    expect(cells("billing-compare-price")).toEqual(["€31.11", "€77.77"])
+    expect(cells("billing-compare-credits")).toEqual(["250", "1000"])
+    expect(cells("billing-compare-seats")).toEqual(["Unlimited", "17"])
+    expect(cells("billing-compare-storageGb")).toEqual(["53 GB", "509 GB"])
+    expect(cells("billing-compare-customApps")).toEqual(["7", "57"])
+    expect(cells("billing-compare-auditDays")).toEqual(["91 days", "367 days"])
+    expect(cells("billing-compare-jobsPerHour")).toEqual(["Unlimited", "601"])
+    expect(compare.textContent?.toLowerCase()).not.toContain("mailbox")
+    const site = screen.getByTestId("billing-compare-site") as HTMLAnchorElement
+    expect(site.href).toBe("https://liaison.sh/pricing")
+    expect(site.rel).toContain("noopener")
+  })
+
+  it("the top-up's field, price and button share one centred row, the label above it", async () => {
+    stubApi(baseRoutes)
+    renderPage()
+    const row = await screen.findByTestId("billing-topup-row")
+    expect(row.className).toContain("items-center")
+    expect(row.className).not.toContain("items-end")
+    const input = screen.getByTestId("billing-topup-credits")
+    const price = screen.getByTestId("billing-topup-price")
+    const buy = screen.getByTestId("billing-topup-buy")
+    for (const el of [input, price, buy]) expect(el.parentElement).toBe(row)
+    expect(price.className).not.toMatch(/\bp[bt]-/)
+    expect(input.className).toContain("h-8")
+    expect(buy.className).toContain("h-8")
+    expect(row.querySelector("label")).toBeNull()
+    expect(screen.getByLabelText("Credits")).toBe(input)
+  })
+
+  it("plan cards keep their action on the last line, and automatic top-up rows share a height", async () => {
+    stubApi(baseRoutes)
+    renderPage()
+    const card = await screen.findByTestId("billing-plan-pro")
+    expect(card.className).toContain("flex-col")
+    const action = screen.getByTestId("billing-switch-pro").parentElement
+    expect(action?.className).toContain("mt-auto")
+    expect(screen.getByTestId("billing-auto-topup-threshold").className).toContain("h-8")
+    expect(screen.getByTestId("billing-auto-topup-amount").className).toContain("h-8")
+    expect(screen.getByTestId("billing-auto-topup-enabled").closest(".min-h-8")).not.toBeNull()
+  })
+
+  it("invoice rows line their columns up on a fixed grid", async () => {
+    stubApi(baseRoutes)
+    renderPage()
+    const row = await screen.findByTestId("billing-invoice-in_1")
+    expect(row.className).toContain("sm:grid")
+    expect(row.className).toContain("items-center")
+  })
+
+  it("a subscription cancelled at period end is headed as such, with the date and Resume", async () => {
+    stubApi((url) =>
+      url.includes("/billing/managed/summary")
+        ? {
+            body: {
+              data: {
+                ok: true,
+                ...SUMMARY,
+                nextInvoice: null,
+                cancelAt: "2026-12-01T12:00:00.000Z",
+              },
+            },
+          }
+        : baseRoutes(url),
+    )
+    renderPage()
+    const section = await screen.findByTestId("billing-cancel")
+    expect(section.querySelector("h2")).toHaveTextContent("Subscription cancelled")
+    expect(section.querySelector("h2")).not.toHaveTextContent("Cancel subscription")
+    const when = new Date("2026-12-01T12:00:00.000Z").toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })
+    expect(section).toHaveTextContent(`ends on ${when}`)
+    expect(screen.getByTestId("billing-resume-action")).toHaveTextContent("Resume subscription")
+    expect(screen.queryByTestId("billing-cancel-action")).toBeNull()
+  })
+
+  it("an active subscription keeps the Cancel heading and action", async () => {
+    stubApi(baseRoutes)
+    renderPage()
+    const section = await screen.findByTestId("billing-cancel")
+    expect(section.querySelector("h2")).toHaveTextContent("Cancel subscription")
+    expect(screen.getByTestId("billing-cancel-action")).toBeInTheDocument()
   })
 
   it("an unpaid upgrade shows 'waiting for payment' and a confirm action", async () => {

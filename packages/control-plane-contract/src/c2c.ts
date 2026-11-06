@@ -16,8 +16,7 @@ import { z } from "zod"
  * re-exports this table) are both built from it, and Control reads it through
  * this package, so a bound cannot drift between the three. Key order is the
  * order the kinds are listed in.
- *  - `mailboxes`: org-owned mailboxes in the managed edition (the usage block
- *    of `billing.change_plan` calls the same count `sharedMailboxes`);
+ *  - `mailboxes`: the self-hosted operator's cap; a managed plan never sets it;
  *  - `customApps`: org-private custom apps installed;
  *  - `auditDays`: the most days of audit log the org keeps.
  */

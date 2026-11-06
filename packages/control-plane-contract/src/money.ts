@@ -133,6 +133,8 @@ export const cloudPaths = {
  * per-tenant Control sequence: the cell applies a push only when it is newer than
  * the one it holds, and answers `applied: false` otherwise.
  */
+export const cloudNextPlanSchema = z.object({ id: cloudPlanSchema, caps: cloudCapsSchema }).strict()
+
 export const cloudBillingPushRequestSchema = z
   .object({
     orgId: z.uuid(),
@@ -143,6 +145,11 @@ export const cloudBillingPushRequestSchema = z
     /** The plan's included credits per period. */
     includedCredits: decimalStringSchema,
     caps: cloudCapsSchema,
+    /**
+     * The plan above this one and its caps, for the cell's refusal copy; null on
+     * the largest plan; absent from a Control that predates it (read as null).
+     */
+    nextPlan: cloudNextPlanSchema.nullable().optional(),
     /** When Preview moves to Base; null outside Preview. */
     previewEndsAt: z.iso.datetime().nullable(),
     autoTopUp: cloudAutoTopUpSchema,
@@ -400,7 +407,6 @@ const plainRequest = z.object(requestFields).strict()
 export const cloudPlanUsageSchema = z
   .object({
     seats: z.number().int().nonnegative(),
-    sharedMailboxes: z.number().int().nonnegative(),
     storageBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     customApps: z.number().int().nonnegative(),
   })
@@ -582,6 +588,8 @@ export const CELL_BILLING_ERROR_CODES = {
   /** The bank asks for 3-D Secure off-session (auto top-up turns off, S22). */
   authenticationRequired: "authentication_required",
   samePlan: "same_plan",
+  /** The target plan cannot be chosen from this one: Preview is an entry plan. */
+  planNotOffered: "plan_not_offered",
   /** Another plan change is pending (unpaid upgrade or scheduled downgrade). */
   changePending: "change_pending",
   /** The org has no subscription to change, cancel or resume. */
@@ -852,6 +860,10 @@ export const managedBillingStateSchema = z
     includedCredits: decimalStringSchema,
     previewEndsAt: z.iso.datetime().nullable(),
     autoTopUp: cloudAutoTopUpSchema,
+    /** From the last push: this plan's caps, for the refusal copy. */
+    caps: cloudCapsSchema.optional(),
+    /** From the last push: the plan above and its caps; null on the largest plan. */
+    nextPlan: cloudNextPlanSchema.nullable().optional(),
     /** From the last push: until when a suspended org keeps export and Billing. */
     accessUntil: z.iso.datetime().nullable().optional(),
     /** From the last push: the address the suspended page shows. */

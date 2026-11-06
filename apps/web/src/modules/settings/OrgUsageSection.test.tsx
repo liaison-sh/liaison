@@ -73,6 +73,9 @@ describe("OrgUsageSection", () => {
       await screen.findByTestId("org-usage-list")
       const help = screen.getByTestId("org-usage-help").textContent ?? ""
       expect(help).toContain("Your plan sets these limits")
+      // A plan does not limit mailboxes, so the row is not there at all.
+      expect(screen.queryByTestId("org-usage-mailboxes")).toBeNull()
+      expect(screen.getByTestId("org-usage-storage")).toBeInTheDocument()
       expect(help).not.toContain("whoever runs the server")
     } finally {
       BillingStateTestAccess.reset()

@@ -7508,8 +7508,6 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.aiModels.autoRunsCredits": "Actuellement {{model}}, {{multiplier}}",
   "kernel.aiModels.multiplierHint": "Crédits consommés par un tour, comparés à Auto",
   "kernel.aiModels.voicePerMinuteCredits": "{{amount}} crédits / min",
-  "kernel.orgUsage.personalMailboxLimitReached":
-    "Vous avez déjà une boîte mail personnelle connectée, et chaque personne en a une. Déconnectez-la d'abord, ou demandez à un administrateur de connecter cette adresse comme boîte partagée.",
   "kernel.deviceApproval.stepUpPrompt":
     "L'accès complet demande une confirmation de plus : un code que nous vous envoyons par mail.",
   "kernel.deviceApproval.stepUpCodeLabel": "Code reçu par mail",

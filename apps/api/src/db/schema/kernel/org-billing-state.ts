@@ -20,6 +20,8 @@ export const orgBillingState = kernel.table("org_billing_state", {
   periodEnd: timestamp("period_end", { withTimezone: true }).notNull(),
   includedCredits: numeric("included_credits", { precision: 20, scale: 8 }).notNull(),
   caps: jsonb("caps").$type<Record<string, number | null>>().notNull().default({}),
+  /** The plan above and its caps, for the refusal copy; null on the largest (migration 0271). */
+  nextPlan: jsonb("next_plan").$type<{ id: string; caps: Record<string, number | null> }>(),
   previewEndsAt: timestamp("preview_ends_at", { withTimezone: true }),
   autoTopUp: jsonb("auto_top_up").$type<CloudAutoTopUp>().notNull(),
   /** While suspended: until when admins keep export and Billing (migration 0265). */

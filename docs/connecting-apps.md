@@ -221,11 +221,8 @@ address is refused with `MAILBOX_LIMIT_REACHED` (409, or the connect failure of
 the same name after an OAuth consent); reconnecting a connected address always
 works.
 
-In the managed edition the limit is the plan's shared mailboxes: only the mailboxes
-the organization owns count. A person's own mailbox never counts, and each
-person can connect one; a second personal address is refused with
-`PERSONAL_MAILBOX_LIMIT_REACHED` (409). The same address for another app is the
-same mailbox.
+In the managed edition plans do not limit mailboxes, shared or personal: connecting
+one is never refused. What mail stores counts towards the plan's storage.
 
 ### Which path an address takes
 

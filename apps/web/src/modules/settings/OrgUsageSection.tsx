@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // Settings → Organization → Usage and limits: four read-only rows (seats,
-// mailboxes, storage, background jobs this hour), each "used of limit" or
+// mailboxes, storage, background jobs this hour; plans do not limit mailboxes,
+// so no mailbox row in the managed edition), each "used of limit" or
 // "used · unlimited" (`GET /api/org/usage`), and one line saying the limits are
 // set by whoever runs the server. Calm on purpose: no edit control and no alarm
 // colour; a cap at or past its limit gets one neutral emphasis (stronger text
@@ -93,7 +94,7 @@ const OrgUsageSection: Component = () => {
       <Show when={!usage.error && usage()}>
         {(u) => (
           <ul data-testid="org-usage-list" class="flex flex-col divide-y divide-border-subtle">
-            <For each={ROWS}>
+            <For each={ROWS.filter((r) => billingMode() !== "managed" || r.id !== "mailboxes")}>
               {(row) => {
                 const e = () => row.entry(u())
                 const reached = () => atLimit(e())

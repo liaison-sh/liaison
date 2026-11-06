@@ -5905,8 +5905,7 @@
     "noticeTailStorageFullManaged": "New files from people and agents are refused until you move to a plan with more storage in Billing or free space.",
     "noticeTailStorageNearManaged": "Move to a plan with more storage in Billing or free space, otherwise new files will be refused once storage is full.",
     "noticeTailOtherManaged": "Your plan sets this limit. A larger plan in Billing raises it.",
-    "mailboxLimitReached": "This organization uses all of its mailboxes. Whoever runs the server can raise the limit, or an admin can disconnect a mailbox first.",
-    "personalMailboxLimitReached": "You already have a personal mailbox connected, and each person has one. Disconnect it first, or ask an admin to connect this address as a shared mailbox."
+    "mailboxLimitReached": "This organization uses all of its mailboxes. Whoever runs the server can raise the limit, or an admin can disconnect a mailbox first."
   },
   "appStore": {
     "title": "App store",

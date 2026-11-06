@@ -157,7 +157,7 @@ export const MailAccounts: Component = () => {
     const params = new URLSearchParams(window.location.search)
     if (params.get("oauth_error")) {
       setConnectError(
-        capLimitMessage((k) => i18n.t(k), params.get("oauth_error")) ??
+        capLimitMessage((k, p) => i18n.t(k, p), params.get("oauth_error")) ??
           (params.get("oauth_error_description") || params.get("oauth_error")),
       )
     }
@@ -1322,7 +1322,9 @@ const ImapForm: Component<{
       })
       props.onSuccess()
     } catch (err: any) {
-      setError(capLimitMessage((k) => i18n.t(k), err?.code) ?? err.message ?? "Connection failed")
+      setError(
+        capLimitMessage((k, p) => i18n.t(k, p), err?.code) ?? err.message ?? "Connection failed",
+      )
     } finally {
       setSubmitting(false)
     }

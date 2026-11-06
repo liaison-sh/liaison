@@ -5,9 +5,6 @@ import { createBillingState, isManagedAvailable } from "~/modules/settings/Billi
 import { useApi } from "~/modules/shell/ApiContext"
 import { Skeleton } from "~/ui/Skeleton"
 
-// The plan's name as sold and as Billing shows it, never the internal tier behind it.
-const PLAN_LABELS: Record<string, string> = { preview: "Preview", base: "Base", pro: "Pro" }
-
 const PlanSettings: Component = () => {
   const api = useApi()
   const { t } = useI18n()
@@ -40,7 +37,8 @@ const PlanSettings: Component = () => {
                     {t("kernel.usage.currentTier")}
                   </p>
                   <p class="mt-1 text-2xl font-semibold text-text">
-                    {PLAN_LABELS[managed.plan] ?? managed.plan}
+                    {/* The plan's name as sold and as Billing shows it, never the internal tier. */}
+                    {t(`cloud-billing.plan.name.${managed.plan}`)}
                   </p>
                   <p class="mt-2 text-sm text-text-secondary">
                     {t("kernel.usage.status")}: <span class="text-text">{managed.status}</span>

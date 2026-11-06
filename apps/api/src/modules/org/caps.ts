@@ -15,12 +15,9 @@
 //    sentinel are `deactivated`, so none of them count);
 //  - mailboxes: the distinct addresses of the org's mailbox connections
 //    (`gmail` / `imap`, for Mail or Tickets, mail-domains.ts) that are not
-//    disconnected. The same address connected twice is one mailbox. In the
-//    managed edition the cap is the plan's shared mailboxes: only ORG-owned
-//    mailboxes count, and a member's personal mailboxes never do; instead each
-//    member may hold one personal mailbox (PERSONAL_MAILBOXES_PER_MEMBER). The
-//    plan usage the control plane checks counts the same set
-//    (billing-managed/usage.ts, orgMailboxAddressesOn);
+//    disconnected. The same address connected twice is one mailbox. This is the
+//    self-hosted operator's cap: in the managed edition a plan limits storage,
+//    not mailboxes, so connecting one is never refused there;
 //  - storage: the bytes of the org's files (files/service.ts enforces it);
 //  - jobs per hour: infra/jobs/org-job-cap.ts (delays, never refuses);
 //  - custom apps: the org's own private apps (`countCustomApps`), refused at
@@ -81,13 +78,9 @@ import { type ServerTParams, serverT } from "~/modules/i18n/server-i18n"
 
 const log = rootLogger.child({ service: "org-caps" })
 
-/** Personal mailboxes one member may connect in the managed edition. */
-export const PERSONAL_MAILBOXES_PER_MEMBER = 1
-
 const CAP_LIMIT_CODES = {
   seats: "SEAT_LIMIT_REACHED",
   mailboxes: "MAILBOX_LIMIT_REACHED",
-  personalMailboxes: "PERSONAL_MAILBOX_LIMIT_REACHED",
   customApps: "CUSTOM_APP_LIMIT_REACHED",
   auditDays: "AUDIT_DAYS_LIMIT_REACHED",
 } as const
@@ -101,11 +94,7 @@ function capLimitMessage(kind: keyof typeof CAP_LIMIT_CODES, limit: number): str
         ? `This organization uses all of its ${limit} seats. Move to a plan with more in Billing, or an admin can deactivate someone first.`
         : `This organization uses all of its ${limit} seats. Whoever runs the server can raise the limit, or an admin can deactivate someone first.`
     case "mailboxes":
-      return isManagedEdition()
-        ? `This organization uses all of its ${limit} shared mailboxes. Move to a plan with more in Billing, or an admin can disconnect one first.`
-        : `This organization uses all of its ${limit} mailboxes. Whoever runs the server can raise the limit, or an admin can disconnect a mailbox first.`
-    case "personalMailboxes":
-      return "You already have a personal mailbox connected, and each person has one. Disconnect it first, or ask an admin to connect this address as a shared mailbox."
+      return `This organization uses all of its ${limit} mailboxes. Whoever runs the server can raise the limit, or an admin can disconnect a mailbox first.`
     case "customApps":
       return `This organization uses all of its ${limit} custom apps. Remove one first, or move to a plan with more.`
     case "auditDays":
@@ -236,15 +225,8 @@ export async function countSeats(db: RlsClient | PrivilegedDb, orgId: string): P
   return Number(row?.n ?? 0)
 }
 
-/** Whose mailboxes a count covers: every one, the org's own, or one member's. */
-type MailboxOwners = "all" | "org" | { userId: string }
-
 /** The distinct addresses of the org's connected mailboxes (not disconnected). */
-async function mailboxAddressesOn(
-  db: PrivilegedDb,
-  orgId: string,
-  owners: MailboxOwners = "all",
-): Promise<Set<string>> {
+async function mailboxAddressesOn(db: PrivilegedDb, orgId: string): Promise<Set<string>> {
   const rows = await db
     .selectDistinct({ identifier: connectedAccounts.identifier })
     .from(connectedAccounts)
@@ -253,33 +235,13 @@ async function mailboxAddressesOn(
         eq(connectedAccounts.orgId, orgId),
         inArray(connectedAccounts.connectionName, [...MAILBOX_CONNECTIONS]),
         ne(connectedAccounts.status, "disconnected"),
-        ...(owners === "all"
-          ? []
-          : owners === "org"
-            ? [eq(connectedAccounts.ownerType, "org")]
-            : [
-                eq(connectedAccounts.ownerType, "user"),
-                eq(connectedAccounts.ownerId, owners.userId),
-              ]),
       ),
     )
   return new Set(rows.map((r) => r.identifier.toLowerCase()))
 }
 
-/** The org-owned (shared, support) mailbox addresses: the managed plan's cap. */
-export function orgMailboxAddressesOn(db: PrivilegedDb, orgId: string): Promise<Set<string>> {
-  return mailboxAddressesOn(db, orgId, "org")
-}
-
-/** The mailboxes the cap counts: the org's own in the managed edition, every one otherwise. */
-function cappedMailboxOwners(): MailboxOwners {
-  return isManagedEdition() ? "org" : "all"
-}
-
 export async function mailboxAddresses(orgId: string): Promise<Set<string>> {
-  return withSystemDb("org-caps-mailboxes", (db) =>
-    mailboxAddressesOn(db, orgId, cappedMailboxOwners()),
-  )
+  return withSystemDb("org-caps-mailboxes", (db) => mailboxAddressesOn(db, orgId))
 }
 
 /**
@@ -328,28 +290,15 @@ export async function assertSeatRoomSoft(
  * app) adds nothing and always passes. Call it in the transaction that then
  * writes the connection, before the write.
  *
- * In the managed edition a member's personal mailbox is outside the org's cap
- * and limited to PERSONAL_MAILBOXES_PER_MEMBER per member instead; the cap
- * counts org-owned mailboxes only.
+ * Never refuses in the managed edition, whatever an older billing push left in
+ * the caps: a plan limits storage, not mailboxes.
  */
 export async function assertMailboxRoom(
   tx: RlsClient | PrivilegedDb,
   orgId: string,
   identifier: string,
-  owner: { type: "org" } | { type: "user"; userId: string },
 ): Promise<void> {
-  const managed = isManagedEdition()
-  if (managed && owner.type === "user") {
-    await lockCap(tx, orgId, "mailboxes")
-    const mine = await privilegedFrom(tx, orgId, "org-caps-personal-mailboxes", (db) =>
-      mailboxAddressesOn(db, orgId, { userId: owner.userId }),
-    )
-    if (mine.has(identifier.toLowerCase())) return
-    if (mine.size + 1 > PERSONAL_MAILBOXES_PER_MEMBER) {
-      throw new CapLimitError("personalMailboxes", PERSONAL_MAILBOXES_PER_MEMBER, mine.size)
-    }
-    return
-  }
+  if (isManagedEdition()) return
   const limit = capOf(await readOrgCapsOn(tx, orgId), "mailboxes")
   if (limit === null) return
   await lockCap(tx, orgId, "mailboxes")
@@ -358,7 +307,7 @@ export async function assertMailboxRoom(
   // connection under the lock. Read after the lock, so a concurrent connect
   // that held it has committed and is counted.
   const addresses = await privilegedFrom(tx, orgId, "org-caps-mailboxes", (db) =>
-    mailboxAddressesOn(db, orgId, managed ? "org" : "all"),
+    mailboxAddressesOn(db, orgId),
   )
   if (addresses.has(identifier.toLowerCase())) return
   const used = addresses.size

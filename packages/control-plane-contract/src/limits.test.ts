@@ -81,13 +81,30 @@ describe("cap kinds and bounds: one table", () => {
     expect(cloudCapsSchema.safeParse({ sharedMailboxes: 1 }).success).toBe(false)
   })
 
-  test("the plan caps in the vectors carry all six kinds", () => {
+  test("the vectors exercise all six kinds the schema takes", () => {
     const push = moneyVectors.controlToCell["billing push"].body
     expect(Object.keys(push.caps).sort()).toEqual([...CLOUD_CAP_KINDS].sort())
     const signed = c2c.sign.find((s) => s.name === "billing push")
     expect(Object.keys(JSON.parse(signed?.body ?? "{}").caps).sort()).toEqual(
       [...CLOUD_CAP_KINDS].sort(),
     )
+  })
+})
+
+describe("the next plan in the billing push", () => {
+  const body = moneyVectors.controlToCell["billing push"].body
+  test("carried with its caps, null on the largest plan, absent from an older Control", () => {
+    expect(cloudBillingPushRequestSchema.safeParse(body).success).toBe(true)
+    expect(body.nextPlan?.id).toBe("base")
+    expect(cloudBillingPushRequestSchema.safeParse({ ...body, nextPlan: null }).success).toBe(true)
+    const { nextPlan: _n, ...without } = body
+    expect(cloudBillingPushRequestSchema.safeParse(without).success).toBe(true)
+  })
+  test("a plan change no longer reports a mailbox count", () => {
+    const m = moneyVectors.cellBilling.valid["billing.change_plan"]
+    expect(Object.keys(m.data.usage).sort()).toEqual(["customApps", "seats", "storageBytes"])
+    const bad = { ...m, data: { ...m.data, usage: { ...m.data.usage, sharedMailboxes: 1 } } }
+    expect(cellBillingMessageSchemas["billing.change_plan"].safeParse(bad).success).toBe(false)
   })
 })
 

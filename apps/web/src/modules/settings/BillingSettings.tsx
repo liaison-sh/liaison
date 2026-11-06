@@ -152,6 +152,92 @@ export function createIntentKeys(mint: () => string = () => crypto.randomUUID())
   }
 }
 
+/** A field beside a small button: the same height, so a row's centres line up. */
+const FIELD = "h-8 rounded-sm border border-border bg-transparent px-2 text-text"
+
+/** What the plan comparison shows, in this order; a plan never caps mailboxes. */
+const COMPARED_CAPS = ["seats", "storageGb", "customApps", "auditDays", "jobsPerHour"] as const
+
+/**
+ * What each plan offers, from the control plane's plan data only: nothing here
+ * can drift from what the plan really gives. A cap a plan does not set is
+ * unlimited, as it is on the cell.
+ */
+const PlanComparison: Component<{ plans: BillingSummary["plans"]; current: PlanId }> = (props) => {
+  const { t } = useI18n()
+  const capValue = (kind: (typeof COMPARED_CAPS)[number], value: number | null | undefined) => {
+    if (typeof value !== "number") return t("cloud-billing.compare.unlimited")
+    if (kind === "storageGb") return t("cloud-billing.compare.gb", { n: String(value) })
+    if (kind === "auditDays") return t("cloud-billing.compare.days", { n: String(value) })
+    return String(value)
+  }
+  const th = "px-3 py-2 text-left font-medium text-text-secondary"
+  const td = "px-3 py-2 text-text"
+  return (
+    <details class="mt-4 text-sm" data-testid="billing-plan-compare">
+      <summary class="cursor-pointer text-text-secondary hover:text-text">
+        {t("cloud-billing.compare.toggle")}
+      </summary>
+      <div class="mt-3 overflow-x-auto rounded-md border border-border">
+        <table class="w-full">
+          <thead>
+            <tr class="border-b border-border">
+              <th scope="col" class={th} />
+              <For each={props.plans}>
+                {(p) => (
+                  <th scope="col" class={th} data-testid={`billing-compare-head-${p.id}`}>
+                    {t(`cloud-billing.plan.name.${p.id}`)}
+                    <Show when={p.id === props.current}>
+                      <span class="ml-1 text-xs font-normal text-text-tertiary">
+                        {t("cloud-billing.plan.current")}
+                      </span>
+                    </Show>
+                  </th>
+                )}
+              </For>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            <tr data-testid="billing-compare-price">
+              <th scope="row" class={th}>
+                {t("cloud-billing.compare.price")}
+              </th>
+              <For each={props.plans}>{(p) => <td class={td}>{p.priceDisplay}</td>}</For>
+            </tr>
+            <tr data-testid="billing-compare-credits">
+              <th scope="row" class={th}>
+                {t("cloud-billing.compare.credits")}
+              </th>
+              <For each={props.plans}>{(p) => <td class={td}>{p.includedCredits}</td>}</For>
+            </tr>
+            <For each={COMPARED_CAPS}>
+              {(kind) => (
+                <tr data-testid={`billing-compare-${kind}`}>
+                  <th scope="row" class={th}>
+                    {t(`cloud-billing.compare.${kind}`)}
+                  </th>
+                  <For each={props.plans}>
+                    {(p) => <td class={td}>{capValue(kind, p.caps[kind])}</td>}
+                  </For>
+                </tr>
+              )}
+            </For>
+          </tbody>
+        </table>
+      </div>
+      <a
+        class="mt-2 inline-block text-text-secondary underline hover:text-text"
+        data-testid="billing-compare-site"
+        href={t("cloud-billing.compare.siteUrl")}
+        target="_blank"
+        rel="noopener"
+      >
+        {t("cloud-billing.compare.site")}
+      </a>
+    </details>
+  )
+}
+
 const BillingSettings: Component = () => {
   const api = useApi()
   const { t } = useI18n()
@@ -224,6 +310,7 @@ const BillingSettings: Component = () => {
       }
       if (err.code === "change_pending") return t("cloud-billing.plan.changePending")
       if (err.code === "same_plan") return t("cloud-billing.plan.samePlan")
+      if (err.code === "plan_not_offered") return t("cloud-billing.plan.notOffered")
       if (err.code === "payment_failed") return t("cloud-billing.topUp.failed")
       if (err.code === "payment_required") return t("cloud-limits.billing.paymentRequired")
       if (err.code === "below_minimum") {
@@ -362,6 +449,10 @@ const BillingSettings: Component = () => {
     if (result.ok) refreshAfterPayment()
     void refetch()
   }
+
+  // Preview is an entry plan: offered to nobody who has left it (Control refuses it too).
+  const offeredPlans = (s: BillingSummary) =>
+    s.plans.filter((p) => p.id !== "preview" || s.plan === "preview")
 
   const row = (children: JSX.Element) => (
     <div class="rounded-md border border-border p-4 text-sm text-text">{children}</div>
@@ -577,10 +668,10 @@ const BillingSettings: Component = () => {
                     )}
                   </Show>
                   <div class="mt-4 grid gap-2 sm:grid-cols-3" data-testid="billing-plans">
-                    <For each={s().plans}>
+                    <For each={offeredPlans(s())}>
                       {(p) => (
                         <div
-                          class="rounded-md border border-border p-3 text-sm"
+                          class="flex flex-col rounded-md border border-border p-3 text-sm"
                           data-testid={`billing-plan-${p.id}`}
                         >
                           <p class="font-semibold text-text">{planName(p.id)}</p>
@@ -590,7 +681,8 @@ const BillingSettings: Component = () => {
                               credits: p.includedCredits,
                             })}
                           </p>
-                          <div class="mt-2">
+                          {/* The action sits on the card's last line, whatever the text above it. */}
+                          <div class="mt-auto flex min-h-8 items-center pt-2">
                             <Show
                               when={p.id !== s().plan}
                               fallback={
@@ -614,6 +706,7 @@ const BillingSettings: Component = () => {
                       )}
                     </For>
                   </div>
+                  <PlanComparison plans={offeredPlans(s())} current={s().plan} />
                 </SettingsPageSection>
 
                 <SettingsPageSection
@@ -685,39 +778,45 @@ const BillingSettings: Component = () => {
                       const valid = () =>
                         Number.isInteger(credits()) && credits() >= s().topUp.minCredits
                       return (
-                        <div class="flex flex-wrap items-end gap-3 text-sm">
-                          <label class="flex flex-col gap-1">
-                            <span class="text-text-secondary">
-                              {t("cloud-billing.topUp.amount")}
-                            </span>
+                        <div class="flex flex-col gap-1 text-sm">
+                          <label for="billing-topup-credits" class="text-text-secondary">
+                            {t("cloud-billing.topUp.amount")}
+                          </label>
+                          {/* One line: the field, its price and the button share a centre. */}
+                          <div
+                            class="flex flex-wrap items-center gap-3"
+                            data-testid="billing-topup-row"
+                          >
                             <input
+                              id="billing-topup-credits"
                               type="number"
                               min={s().topUp.minCredits}
                               step="1"
                               inputMode="numeric"
                               data-testid="billing-topup-credits"
-                              class="w-32 rounded-sm border border-border bg-transparent px-2 py-1.5 text-text"
+                              class={`w-32 ${FIELD}`}
                               value={credits()}
                               onInput={(e) => setTopUpCredits(Number(e.currentTarget.value))}
                             />
-                          </label>
-                          <span class="pb-2 text-text-secondary" data-testid="billing-topup-price">
-                            {valid()
-                              ? t("cloud-billing.topUp.price", {
-                                  price: topUpPrice(credits(), s().topUp),
-                                })
-                              : t("cloud-billing.topUp.minimum", {
-                                  min: String(s().topUp.minCredits),
-                                })}
-                          </span>
-                          <Button
-                            size="sm"
-                            disabled={busy() || !valid()}
-                            data-testid="billing-topup-buy"
-                            onClick={() => void buyCredits(credits())}
-                          >
-                            {t("cloud-billing.topUp.buy", { credits: String(credits()) })}
-                          </Button>
+                            <span class="text-text-secondary" data-testid="billing-topup-price">
+                              {valid()
+                                ? t("cloud-billing.topUp.price", {
+                                    price: topUpPrice(credits(), s().topUp),
+                                  })
+                                : t("cloud-billing.topUp.minimum", {
+                                    min: String(s().topUp.minCredits),
+                                  })}
+                            </span>
+                            <Button
+                              size="sm"
+                              class="h-8"
+                              disabled={busy() || !valid()}
+                              data-testid="billing-topup-buy"
+                              onClick={() => void buyCredits(credits())}
+                            >
+                              {t("cloud-billing.topUp.buy", { credits: String(credits()) })}
+                            </Button>
+                          </div>
                         </div>
                       )
                     })()}
@@ -744,7 +843,7 @@ const BillingSettings: Component = () => {
                               </p>
                             )}
                           </Show>
-                          <div class="flex items-center justify-between gap-3">
+                          <div class="flex min-h-8 items-center justify-between gap-3">
                             <span>{t("cloud-billing.autoTopUp.enabled")}</span>
                             <Switch
                               checked={a().enabled}
@@ -760,7 +859,7 @@ const BillingSettings: Component = () => {
                               min="0"
                               step="1"
                               data-testid="billing-auto-topup-threshold"
-                              class="w-28 rounded-sm border border-border bg-transparent px-2 py-1.5"
+                              class={`w-28 ${FIELD}`}
                               value={a().thresholdCredits}
                               onInput={(e) =>
                                 edit({ thresholdCredits: Number(e.currentTarget.value) })
@@ -774,7 +873,7 @@ const BillingSettings: Component = () => {
                               min={s().topUp.minCredits}
                               step="1"
                               data-testid="billing-auto-topup-amount"
-                              class="w-28 rounded-sm border border-border bg-transparent px-2 py-1.5"
+                              class={`w-28 ${FIELD}`}
                               value={a().amountCredits}
                               onInput={(e) =>
                                 edit({ amountCredits: Number(e.currentTarget.value) })
@@ -817,7 +916,7 @@ const BillingSettings: Component = () => {
                           <For each={list().invoices}>
                             {(inv) => (
                               <li
-                                class="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
+                                class="flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:grid sm:grid-cols-[minmax(0,1fr)_9rem_5rem_5rem_auto]"
                                 data-testid={`billing-invoice-${inv.id}`}
                               >
                                 <span class="text-text">
@@ -848,8 +947,18 @@ const BillingSettings: Component = () => {
                 </SettingsPageSection>
 
                 <SettingsPageSection
-                  title={t("cloud-billing.cancel.title")}
-                  description={t("cloud-billing.cancel.description")}
+                  title={
+                    s().cancelAt
+                      ? t("cloud-billing.cancel.cancelledTitle")
+                      : t("cloud-billing.cancel.title")
+                  }
+                  description={
+                    s().cancelAt
+                      ? t("cloud-billing.cancel.cancelledDescription", {
+                          date: formatDate(s().cancelAt as string),
+                        })
+                      : t("cloud-billing.cancel.description")
+                  }
                   scope="org"
                   data-testid="billing-cancel"
                 >

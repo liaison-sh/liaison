@@ -29,7 +29,7 @@ Guides show the redirect base (Shopify, generic connection setup) -> apps/api/sr
 Server checklist shows the redirect base -> apps/api/src/modules/connection-guides/server-setup.ts:80
 MCP sign-ins keep the org's own host -> apps/api/src/apps/mcp-manager/oauth-registration.ts:45
 Connect dialog: one Connect + whose account when a client is configured, own client behind a disclosure, never on a managed instance with the instance client -> apps/web/src/modules/settings/ConnectAppDialog.tsx:305
-Mailbox limit, managed edition: org-owned mailboxes only, one personal per member, PERSONAL_MAILBOX_LIMIT_REACHED, same address for another app is the same mailbox -> apps/api/src/modules/org/caps.ts:317 ; apps/api/src/modules/org/caps.ts:324
+Mailbox limit, managed edition: plans do not limit mailboxes, connecting one is never refused -> apps/api/src/modules/org/caps.ts:296
 managed server: shared push topic only for workspaces on the server's client; own client keeps the Pub/Sub step -> apps/api/src/modules/connection-guides/google.ts:317
 Facebook and Instagram (Facebook login) instance client META_APP_ID/META_APP_SECRET, managed only -> apps/api/src/modules/apps/connections/oauth-client.ts (CELL_META_ENV, instanceOAuthClient)
 Managed: cell Gmail push values and Meta secret/callback win while on the cell's client; writes refused cell_config_locked -> apps/api/src/modules/apps/cell-locked-config.ts ; apps/api/src/modules/apps/app-config.ts (checkAppConfigWriteForOrg) ; apps/api/src/modules/apps/sandbox/bridge/identity.ts (config_get) ; apps/api/src/modules/webhooks/routes.ts (config_get)

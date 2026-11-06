@@ -37,14 +37,13 @@
     "capsExceeded": "This plan is too small for your current usage: {{caps}}. Reduce it first, then switch.",
     "cap": {
       "seats": "members",
-      "sharedMailboxes": "shared mailboxes",
-      "mailboxes": "mailboxes",
       "storageGb": "storage",
       "customApps": "custom apps",
       "auditDays": "audit history"
     },
     "changePending": "Another plan change is already in progress.",
-    "samePlan": "This is already your plan."
+    "samePlan": "This is already your plan.",
+    "notOffered": "Preview is only available when you first sign up."
   },
   "card": {
     "title": "Payment card",
@@ -100,12 +99,29 @@
     "action": "Cancel at period end",
     "confirm": "Cancel your subscription at the end of the period?",
     "resume": "Resume subscription",
-    "resumed": "Your subscription continues."
+    "resumed": "Your subscription continues.",
+    "cancelledTitle": "Subscription cancelled",
+    "cancelledDescription": "Your subscription ends on {{date}} and your workspace stays available until then. You can resume it before that date."
   },
   "frame": {
     "title": "Secure payment",
     "loading": "Opening the secure payment form…",
     "close": "Close",
     "failed": "The payment form could not be opened. Try again shortly."
+  },
+  "compare": {
+    "toggle": "See what each plan offers",
+    "price": "Price",
+    "credits": "Credits included each month",
+    "seats": "People",
+    "storageGb": "Storage",
+    "customApps": "Custom apps",
+    "auditDays": "Audit history",
+    "jobsPerHour": "Background jobs per hour",
+    "unlimited": "Unlimited",
+    "gb": "{{n}} GB",
+    "days": "{{n}} days",
+    "site": "See the full comparison on liaison.sh",
+    "siteUrl": "https://liaison.sh/pricing"
   }
 }

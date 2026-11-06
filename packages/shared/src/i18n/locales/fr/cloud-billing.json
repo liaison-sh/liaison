@@ -37,14 +37,13 @@
     "capsExceeded": "Cette offre est trop petite pour votre usage actuel : {{caps}}. Réduisez-le d'abord, puis changez d'offre.",
     "cap": {
       "seats": "membres",
-      "sharedMailboxes": "boîtes partagées",
-      "mailboxes": "boîtes mail",
       "storageGb": "stockage",
       "customApps": "applications personnalisées",
       "auditDays": "historique d'audit"
     },
     "changePending": "Un autre changement d'offre est déjà en cours.",
-    "samePlan": "C'est déjà votre offre."
+    "samePlan": "C'est déjà votre offre.",
+    "notOffered": "L'offre Preview n'est disponible qu'à la première inscription."
   },
   "card": {
     "title": "Carte de paiement",
@@ -100,12 +99,29 @@
     "action": "Résilier en fin de période",
     "confirm": "Résilier votre abonnement à la fin de la période ?",
     "resume": "Reprendre l'abonnement",
-    "resumed": "Votre abonnement continue."
+    "resumed": "Votre abonnement continue.",
+    "cancelledTitle": "Abonnement annulé",
+    "cancelledDescription": "Votre abonnement se termine le {{date}} et votre espace reste disponible jusque-là. Vous pouvez le reprendre avant cette date."
   },
   "frame": {
     "title": "Paiement sécurisé",
     "loading": "Ouverture du formulaire de paiement sécurisé…",
     "close": "Fermer",
     "failed": "Le formulaire de paiement n'a pas pu s'ouvrir. Réessayez dans un instant."
+  },
+  "compare": {
+    "toggle": "Voir ce que comprend chaque offre",
+    "price": "Prix",
+    "credits": "Crédits inclus chaque mois",
+    "seats": "Personnes",
+    "storageGb": "Stockage",
+    "customApps": "Applications personnalisées",
+    "auditDays": "Historique d'audit",
+    "jobsPerHour": "Tâches de fond par heure",
+    "unlimited": "Illimité",
+    "gb": "{{n}} Go",
+    "days": "{{n}} jours",
+    "site": "Voir la comparaison complète sur liaison.sh",
+    "siteUrl": "https://liaison.sh/fr/pricing"
   }
 }

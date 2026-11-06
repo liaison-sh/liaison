@@ -239,7 +239,7 @@ const mailDomain = {
     },
   ],
 }
-const usage = { seats: 4, sharedMailboxes: 1, storageBytes: 1_048_576, customApps: 0 }
+const usage = { seats: 4, storageBytes: 1_048_576, customApps: 0 }
 
 export const moneyVectors = {
   cellBilling: {
@@ -470,6 +470,7 @@ export const moneyVectors = {
       { ok: false, code: "payment_failed" },
       { ok: false, code: "authentication_required" },
       { ok: false, code: "same_plan" },
+      { ok: false, code: "plan_not_offered" },
       { ok: false, code: "change_pending" },
       { ok: false, code: "no_subscription" },
       { ok: false, code: "rate_limited", retryAfterSeconds: 3600 },
@@ -491,6 +492,7 @@ export const moneyVectors = {
         periodEnd: "2026-12-02T00:00:00.000Z",
         includedCredits: "40",
         caps: previewCaps,
+        nextPlan: { id: "base", caps: { ...previewCaps, seats: null } },
         previewEndsAt: "2027-01-02T00:00:00.000Z",
         autoTopUp,
         accessUntil: null,

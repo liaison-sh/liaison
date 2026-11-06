@@ -148,7 +148,7 @@ const AdminUsers: Component = () => {
       const body = err?.body ?? err
       const code = body?.error?.code ?? body?.code
       const message =
-        capLimitMessage((k) => i18n.t(k), code) ??
+        capLimitMessage((k, p) => i18n.t(k, p), code) ??
         body?.error?.message ??
         body?.message ??
         "Failed to send invitation"
@@ -183,7 +183,7 @@ const AdminUsers: Component = () => {
         message:
           code === "IMPORT_PLACEHOLDER"
             ? i18n.t("kernel.settingsUi.importedUserCannotBeReactivated")
-            : (capLimitMessage((k) => i18n.t(k), code) ??
+            : (capLimitMessage((k, p) => i18n.t(k, p), code) ??
               i18n.t("kernel.settingsUi.failedToReactivateUser")),
         type: "error",
       })

@@ -71,6 +71,8 @@ describe("Plan settings tab — edition-conditional visibility", () => {
 
     renderSidebar()
     expect(screen.queryByTestId("settings-link-kernel:plan")).toBeNull()
+    // Nor Billing: a self-hosted server has no plans, invoices or credits to sell.
+    expect(screen.queryByTestId("settings-link-kernel:billing")).toBeNull()
   })
 
   it("Plan tab is visible in managed mode", async () => {
@@ -95,5 +97,6 @@ describe("Plan settings tab — edition-conditional visibility", () => {
 
     renderSidebar()
     expect(screen.getByTestId("settings-link-kernel:plan")).toBeInTheDocument()
+    expect(screen.getByTestId("settings-link-kernel:billing")).toBeInTheDocument()
   })
 })

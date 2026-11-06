@@ -166,6 +166,7 @@ export async function applyBillingPush(
       periodEnd: new Date(req.periodEnd),
       includedCredits: req.includedCredits,
       caps: req.caps,
+      nextPlan: req.nextPlan ?? null,
       previewEndsAt: req.previewEndsAt === null ? null : new Date(req.previewEndsAt),
       autoTopUp: req.autoTopUp,
       // Absent from a Control that predates them: read as null (the contract).
@@ -239,6 +240,8 @@ export async function readManagedBillingState(orgId: string): Promise<ManagedBil
     includedCredits: trimDecimal(row.includedCredits),
     previewEndsAt: row.previewEndsAt === null ? null : row.previewEndsAt.toISOString(),
     autoTopUp: row.autoTopUp,
+    caps: row.caps,
+    nextPlan: (row.nextPlan as ManagedBillingState["nextPlan"]) ?? null,
     accessUntil: row.accessUntil === null ? null : row.accessUntil.toISOString(),
     ...(row.billingContact !== null ? { billingContact: row.billingContact } : {}),
   }

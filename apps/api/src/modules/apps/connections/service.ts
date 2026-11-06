@@ -1422,12 +1422,7 @@ export async function createCredentialConnection(
   // new mailbox, or a disconnected one coming back, must fit. Re-entering the
   // credentials of a connected mailbox is an update and is never refused.
   if (isMailbox && (!existing[0] || existing[0].status === "disconnected")) {
-    await assertMailboxRoom(
-      tx,
-      orgId,
-      input.identifier,
-      resolvedOwnerId === null ? { type: "org" } : { type: "user", userId: resolvedOwnerId },
-    )
+    await assertMailboxRoom(tx, orgId, input.identifier)
   }
 
   // ONE ACTIVE ACCOUNT PER IDENTIFIER, WHOEVER OWNS IT (a credentials
@@ -3210,14 +3205,7 @@ async function storeOAuthGrant(
     // The org's mailbox cap (modules/org/caps.ts), under its mailboxes lock. A
     // reconnect of a connected address replaces its row below and adds nothing.
     if (isMailboxConnection(connectionName)) {
-      await assertMailboxRoom(
-        tx,
-        orgId,
-        identifier,
-        resolvedOwnerType === "org" || !resolvedOwnerId
-          ? { type: "org" }
-          : { type: "user", userId: resolvedOwnerId },
-      )
+      await assertMailboxRoom(tx, orgId, identifier)
     }
 
     const takenOver =

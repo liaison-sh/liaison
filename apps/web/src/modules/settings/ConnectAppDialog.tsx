@@ -137,7 +137,7 @@ export const ConnectAppDialog: Component<ConnectAppDialogProps> = (props) => {
       props.onClose()
     } catch (err) {
       setError(
-        capLimitMessage((k) => i18n.t(k), (err as { code?: unknown } | null)?.code) ??
+        capLimitMessage((k, p) => i18n.t(k, p), (err as { code?: unknown } | null)?.code) ??
           (err instanceof Error ? err.message : "Connection failed"),
       )
     } finally {

@@ -9,6 +9,7 @@ import {
   uploadFile,
 } from "~/modules/files/file-service"
 import { useI18n } from "~/modules/i18n/i18n-context"
+import { capLimitMessage } from "~/modules/settings/cap-limit-message"
 import { useApi } from "~/modules/shell/ApiContext"
 
 interface Props {
@@ -38,7 +39,7 @@ const FileUploadButton: Component<Props> = (props) => {
       if (e instanceof FileStorageUnavailableError) {
         setError("Storage unavailable. Try again in a moment.")
       } else if (e instanceof FileQuotaExceededError) {
-        setError("File exceeds quota.")
+        setError(capLimitMessage((k, p) => i18n.t(k, p), e.code) ?? "File exceeds quota.")
       } else {
         setError("Upload failed.")
       }

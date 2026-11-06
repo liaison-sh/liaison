@@ -188,3 +188,19 @@ describe("kernel.org_app_features", () => {
     expect(row).toEqual({ changed_by: null, enabled: true })
   })
 })
+
+describe("kernel.approval_requests route_person_id", () => {
+  it("the user-delete lookup on route_person_id uses the partial index, not a scan", async () => {
+    const plan = await sql.begin(async (tx) => {
+      // On a small table the planner prefers a scan for its own reasons; with
+      // scans priced out it picks the index only if one can serve the lookup.
+      await tx`SELECT set_config('enable_seqscan', 'off', true)`
+      const rows = await tx.unsafe(
+        `EXPLAIN SELECT 1 FROM kernel.approval_requests WHERE route_person_id = '${ANNA}'`,
+      )
+      return rows.map((r) => String(r["QUERY PLAN"])).join("\n")
+    })
+    expect(plan).toContain("approval_requests_route_person_idx")
+    expect(plan).not.toContain("Seq Scan")
+  })
+})

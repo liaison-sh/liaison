@@ -8,6 +8,9 @@
 -- an `asked` or `declined` one is its person's alone. A member has no direct
 -- write path, not on their own row either: writes go through one kernel module.
 --
+-- approval_requests_route_person_idx serves the ON DELETE SET NULL of route_person_id:
+-- without it, removing a user scans every approval request.
+--
 -- The foreign keys take a share lock on kernel.users: writes to users wait until
 -- the batch commits, reads do not.
 SET LOCAL lock_timeout = '30s';
@@ -16,6 +19,10 @@ SET LOCAL lock_timeout = '30s';
 ALTER TABLE kernel.approval_requests
   ADD COLUMN route_person_id uuid REFERENCES kernel.users(id) ON DELETE SET NULL,
   ADD COLUMN route_company_id uuid;
+--> statement-breakpoint
+-- index-build: kernel.approval_requests 1000000 949
+CREATE INDEX approval_requests_route_person_idx ON kernel.approval_requests (route_person_id)
+  WHERE route_person_id IS NOT NULL;
 --> statement-breakpoint
 -- expand-safe: a nullable column, no default; the previous release never writes it
 ALTER TABLE kernel.user_preferences

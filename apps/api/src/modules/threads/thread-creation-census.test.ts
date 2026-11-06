@@ -92,6 +92,15 @@ const ALLOWLIST: AllowlistEntry[] = [
       "seat, created lazily only from the arm that actually inserts the approval request. " +
       "Not in Table 1.",
   },
+  {
+    file: "modules/apps/rest-tool-call.ts",
+    function: "restrictedSessionThread",
+    note:
+      "The anchor a restricted session's REST tool calls hang off, one per sign-in and kept " +
+      "across a refresh: its approvals point at it and its reads mark it for outside-text " +
+      "taint, as an MCP connection's thread does (type: 'approval', hiddenFromList, the signed " +
+      "in person only, no agent seat). Never shown in a sidebar.",
+  },
 ]
 
 function allowlistKey(entry: { file: string; function: string }): string {
@@ -387,7 +396,8 @@ export async function planEphemeralHiddenAgentChat(orgId: string): Promise<void>
     // output thread (routine-worker.ts), a hidden approval anchor
     // (execute-tool.ts x2), a hidden sub-run thread
     // (subrun-thread.ts, shared by spawn-agent.ts and the seed engine), a
-    // hidden MCP connection anchor (connection-thread.ts) or a hidden
+    // hidden MCP connection anchor (connection-thread.ts), a hidden
+    // restricted session anchor (rest-tool-call.ts) or a hidden
     // bulk-dispatch origin bucket (bulk-dispatch.ts). The seed engine
     // (src/seed) creates threads only through these product paths
     // (createThread, createOrGetAgentDm, insertSubrunThread). There is no
@@ -395,7 +405,7 @@ export async function planEphemeralHiddenAgentChat(orgId: string): Promise<void>
     // the tree: if one is added, its insert or insertThreadWithParticipants
     // call surfaces above as an unlisted site. This list is intentionally
     // wider than the P4c-T01 read-only census's Table 1 (which counted 6
-    // production rows): three of the six files here were not in that
+    // production rows): three of the original six files here were not in that
     // table, found instead by this walk actually resolving import aliases
     // and helper calls rather than a literal `insert(threads)` grep.
     const sites = census()
@@ -404,6 +414,7 @@ export async function planEphemeralHiddenAgentChat(orgId: string): Promise<void>
       [
         "modules/apps/bulk-dispatch.ts",
         "modules/apps/execute-tool.ts",
+        "modules/apps/rest-tool-call.ts",
         "modules/mcp/connection-thread.ts",
         "modules/threads/thread.ts",
         "modules/agent/routines/routine-worker.ts",

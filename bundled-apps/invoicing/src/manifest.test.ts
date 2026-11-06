@@ -1470,7 +1470,9 @@ describe("invoicing manifest", () => {
     // 0.20.42: record pages name the entity their id belongs to.
     // 0.20.43: the PDF tab shows the document in a frame, which the CSP allows, not an <object>.
     // 0.20.44: a credit note is never dated before the invoice it corrects, stated or moved.
-    expect(m.version).toBe("0.20.44")
+    // 0.20.45: Preview and Download say why when a PDF cannot open, a pending PDF offers Retry render,
+    // and the editor says beside the field when a chosen issue date would be refused.
+    expect(m.version).toBe("0.20.45")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

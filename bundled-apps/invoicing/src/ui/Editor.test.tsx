@@ -66,6 +66,7 @@ import {
   type DraftLine,
   type EditorIssuerProfile,
   issuedAtForIssuer,
+  issueDateNotice,
   localCivilDate,
 } from "./Editor"
 
@@ -1233,5 +1234,36 @@ describe("the issue date of a new document", () => {
     for (const tool of ["quote_create_and_issue", "proforma_create_and_issue", "po_create_and_issue", "credit_note_create_and_issue"]) {
       expect(manifest.tools[tool]?.params.properties.issued_at, tool).toBeDefined()
     }
+  })
+})
+
+describe("issueDateNotice: a date the server will refuse shows before the click", () => {
+  const today = "2026-11-06"
+  const quote = (issued_at: string | null) => ({ ...defaultDraft("quote"), issued_at })
+  const shop = { id: "i", legal_name: "S", country: "FR", today, shopify_shop_id: "shop.example" }
+  const plain = { id: "i", legal_name: "S", country: "FR", today }
+
+  it("a quote on a shop-linked issuer takes its draft order's day", () => {
+    expect(issueDateNotice(quote("2026-10-15"), today, shop)).toContain("Shopify draft order")
+  })
+
+  it("the default date, no date and today are no choice to refuse", () => {
+    expect(issueDateNotice(quote(today), today, shop)).toBeNull()
+    expect(issueDateNotice(quote(null), today, shop)).toBeNull()
+    expect(issueDateNotice(quote(today), null, shop)).toBeNull()
+  })
+
+  it("a date after today is refused for any type that takes one", () => {
+    expect(issueDateNotice(quote("2026-12-25"), today, plain)).toContain("after today")
+    expect(issueDateNotice({ ...defaultDraft("proforma"), issued_at: "2026-12-25" }, today, plain)).toContain("after today")
+  })
+
+  it("a past date on an issuer with no shop is fine, and so is an unknown today", () => {
+    expect(issueDateNotice(quote("2026-10-15"), today, plain)).toBeNull()
+    expect(issueDateNotice(quote("2026-12-25"), today, { ...plain, today: null })).toBeNull()
+  })
+
+  it("an invoice takes no date, so it never warns", () => {
+    expect(issueDateNotice({ ...defaultDraft("invoice"), issued_at: "2026-12-25" }, today, plain)).toBeNull()
   })
 })

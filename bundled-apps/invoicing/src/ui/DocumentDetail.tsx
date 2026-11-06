@@ -335,6 +335,13 @@ export interface PdfAffordance {
   statusLabel: string
 }
 
+/** What the header's Preview and Download say when there is no PDF to open. */
+export function pdfNotReadyNote(s: PdfStatus | undefined | null): string {
+  return s === "failed"
+    ? "This PDF could not be rendered. Use Retry render on the PDF tab."
+    : "This PDF is not ready yet. If it stays that way, use Retry render on the PDF tab."
+}
+
 export function pdfStatusAffordance(s: PdfStatus | undefined | null): PdfAffordance {
   switch (s) {
     case "ready":
@@ -352,8 +359,9 @@ export function pdfStatusAffordance(s: PdfStatus | undefined | null): PdfAfforda
         statusLabel: "Render failed",
       }
     case "pending":
+      // Normally a moment. A render that never ran stays pending until someone asks for it again.
       return {
-        showRetry: false,
+        showRetry: true,
         downloadEnabled: false,
         showA3SkippedNote: false,
         statusLabel: "Rendering…",
@@ -986,13 +994,16 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
   // navigation carries no credentials and the file route answers
   // {"error":"Unauthorized"}. A page-relative fetch is wrong too: under the
   // desktop or mobile shell it lands on the shell's own index.html.
-  // No-op if the PDF has not rendered yet (the tool returns url: null).
+  // Says so if the PDF has not rendered yet (the tool returns url: null).
   const openPdf = async (tool: string, mode: "preview" | "download") => {
     try {
       const res = await app.invokeTool<{ file_id: string | null; url: string | null }>(tool, {
         id: props.documentId,
       })
-      if (!res?.url) return
+      if (!res?.url) {
+        showActionNote({ text: tr(pdfNotReadyNote(data()?.document?.pdf_status)), isError: false })
+        return
+      }
       const blob = await fetchBlob(res.url)
       // Force the PDF mime so the browser renders a preview tab instead of
       // downloading (the inline route serves non-image mimes as attachment).

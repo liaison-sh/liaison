@@ -108,6 +108,7 @@ export async function findIssuerProfile(
     bank_name: (row.bank_name as string | null) ?? null,
     default_language:
       (row.default_language as "en" | "fr" | "de") ?? "en",
+    timezone: (row.timezone as string | null) ?? null,
     logo_file_id: (row.logo_file_id as string | null) ?? null,
     // Defaults mirror the manifest schema defaults — older fixtures and
     // partial INSERTs sometimes land without these, so we fall back here

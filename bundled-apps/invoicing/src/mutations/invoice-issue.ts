@@ -48,6 +48,7 @@ import {
   normaliseNotes,
   lineAmountsError,
 } from "./shared"
+import { issueDateParts } from "../issue-date"
 import { issueWithFxRate } from "./fx-issue"
 import { checkDraftBuyer } from "./quote-proforma-po"
 
@@ -228,7 +229,9 @@ export async function invoiceIssue(
       return { status: "pending_approval", approval_id: approval.approval_id }
     }
   }
-  const issueInput = buildIssueInputFromDraft(draft, issuer, counterparty)
+  const when = await issueDateParts(ctx, issuer)
+  if (!when.ok) return when.error
+  const issueInput = buildIssueInputFromDraft(draft, issuer, counterparty, when)
   const issued = await issueWithFxRate(ctx, issueInput)
   if (!issued.ok) return issued.error
   const result = issued.result
@@ -465,6 +468,8 @@ export async function invoiceCreateAndIssue(
     }
   }
 
+  const when = await issueDateParts(ctx, issuer)
+  if (!when.ok) return when.error
   const issueInput = {
     type: "invoice" as const,
     issuer,
@@ -473,8 +478,8 @@ export async function invoiceCreateAndIssue(
     draft: {
       currency: input.currency,
       incoterm: input.incoterm ?? "DAP",
-      year_of_issue: new Date().getUTCFullYear(),
-      issued_at: new Date().toISOString().slice(0, 10),
+      year_of_issue: when.year_of_issue,
+      issued_at: when.issued_at,
       due_at: input.due_at ?? null,
       external_refs: {
         ...(input.shopify_order_id ? { shopify_order_id: input.shopify_order_id } : {}),

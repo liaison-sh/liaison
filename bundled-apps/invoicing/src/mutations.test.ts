@@ -10,6 +10,7 @@
 // (`db.__all('documents')`, etc.) so what passes here must also pass at
 // runtime against the real bridge.
 
+import { testTime } from "./test-time"
 import { describe, expect, test } from "bun:test"
 import type { CrossAppEnvelope, CrossAppExecuteTool } from "./cross-app"
 import type { Counterparty, DraftLine, IssuerProfile } from "./issue"
@@ -271,6 +272,7 @@ function makeCtx(opts?: {
     getUserId: async () => opts?.actorUserId ?? "user-1",
     approval: opts?.approval ?? null,
     db,
+    time: testTime(),
     sequences: {
       async allocate(p) {
         const key = p.key

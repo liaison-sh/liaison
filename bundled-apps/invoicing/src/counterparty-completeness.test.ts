@@ -16,6 +16,7 @@
 // persisted `documents` row, not against the helper in isolation, so a future refactor that
 // reintroduces a stub anywhere in that chain fails here.
 
+import { testTime } from "./test-time"
 import { describe, expect, test } from "bun:test"
 import {
   CounterpartyIncompleteError,
@@ -102,6 +103,7 @@ function makeCtx(): { ctx: MutationsCtx; db: MockDb } {
     getUserId: async () => "user-1",
     approval: null,
     db,
+    time: testTime(),
     sequences: {
       async allocate(p) {
         const existing = await db.findMany("__sequences", { where: { key: p.key }, limit: 1 })
@@ -184,6 +186,7 @@ describe("issueDocument recipient backstop", () => {
     return {
       getUserId: async () => "user-1",
       db,
+      time: testTime(),
       sequences: {
         async allocate() {
           return { value: 1 }

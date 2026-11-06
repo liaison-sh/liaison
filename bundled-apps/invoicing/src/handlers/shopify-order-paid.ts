@@ -44,6 +44,7 @@ import { ensureDerivedIdentity } from "../einvoicing/identity-derive"
 import { type FxFetchCtx, FxRateUnavailableError, fxIssueDate, warmFxRate } from "../einvoicing/fx"
 import { checkEinvoiceGate } from "../einvoicing/issue-gate"
 import { formatMoneyMinor, lineSubtotal, lineTax, majorDecimalToMinor, netOfTax } from "../money"
+import { type IssueDateParts, issueDateParts } from "../issue-date"
 import { isFullyCredited } from "../mutations"
 import { classify, EXEMPT_TREATMENTS } from "../tax"
 
@@ -393,22 +394,6 @@ function marketplaceTaxRef(items: OrderPaidPayload["line_items"]): { marketplace
   let sum = 0n
   for (const li of items) sum += toBigIntMinor(li.marketplace_tax_minor)
   return sum > 0n ? { marketplace_tax_minor: sum.toString() } : {}
-}
-
-/**
- * Compute the calendar year for `now` in the given IANA timezone. Falls
- * back to UTC if the timezone string is invalid.
- */
-export function yearInTimezone(now: Date, timezone: string): number {
-  try {
-    const fmt = new Intl.DateTimeFormat("en-US", {
-      timeZone: timezone,
-      year: "numeric",
-    })
-    return Number.parseInt(fmt.format(now), 10)
-  } catch {
-    return now.getUTCFullYear()
-  }
 }
 
 function toIssuerProfileRow(row: unknown): IssuerProfileRow {
@@ -898,6 +883,7 @@ export async function onShopifyOrderPaid(
   const buildIssueInput = (
     scope: "goods" | "software",
     items: OrderPaidPayload["line_items"],
+    when: IssueDateParts,
   ): IssueInput => ({
     type: "invoice",
     scope,
@@ -916,8 +902,8 @@ export async function onShopifyOrderPaid(
     draft: {
       currency: payload.currency,
       incoterm: "DAP",
-      year_of_issue: yearInTimezone(new Date(), issuer.timezone ?? "UTC"),
-      issued_at: new Date().toISOString().slice(0, 10),
+      year_of_issue: when.year_of_issue,
+      issued_at: when.issued_at,
       due_at: null,
       // `shopify_shop_domain` (the store's myshopify domain, carried as
       // `payload.shop_id`) is persisted alongside the order id so the invoice
@@ -966,6 +952,20 @@ export async function onShopifyOrderPaid(
     return { status: "skipped", reason: "duplicate_document" }
   }
 
+  // An issuer whose zone the host does not know issues nothing and takes no number: the order waits
+  // for the setting, and the deferred retry re-runs this handler once it is fixed.
+  const when = await issueDateParts(ctx, issuer)
+  if (!when.ok) {
+    const def = await insertDeferred(ctx.db, {
+      event_id: payload.id,
+      event_payload_json: parkPayload,
+      status: "awaiting_config",
+      reason: when.error.error.code,
+      blocked_on: { kind: "issuer_timezone", issuer_profile_id: issuer.id },
+    })
+    return { status: "deferred", deferred_id: def.id, reason: "awaiting_config" }
+  }
+
   // E-invoicing gate, per document, before anything is issued. The kind is derived from the
   // checkout signals (VAT id or billing company -> business, neither -> consumer) and recorded
   // on the contact as a derived identity; a SIREN read off a VAT id stays unconfirmed until a
@@ -973,7 +973,7 @@ export async function onShopifyOrderPaid(
   // attention item per contact. Warn: the document issues and records the warning.
   let derivedRecorded = false
   for (const split of splits) {
-    const input = buildIssueInput(split.scope, split.items)
+    const input = buildIssueInput(split.scope, split.items, when)
     const check = await checkEinvoiceGate(ctx, {
       type: input.type,
       issuer: input.issuer,
@@ -1064,11 +1064,11 @@ export async function onShopifyOrderPaid(
   const issued: IssuedDocumentRef[] = []
   // The ECB rate of a foreign-currency order, fetched once here (issueDocument only reads the
   // cache); every split and every other order issued today reuses it.
-  await warmFxRate(ctx as OrderPaidCtx & FxFetchCtx, payload.currency, fxIssueDate(null))
+  await warmFxRate(ctx as OrderPaidCtx & FxFetchCtx, payload.currency, fxIssueDate(when.issued_at))
   for (const split of splits) {
     let issueResult: Awaited<ReturnType<typeof issueDocument>>
     try {
-      issueResult = await issueDocument(ctx, buildIssueInput(split.scope, split.items))
+      issueResult = await issueDocument(ctx, buildIssueInput(split.scope, split.items, when))
     } catch (err) {
       // A foreign-currency e-invoice the ECB could not price is refused before numbering (its
       // Factur-X needs the EUR VAT total). Defer it: the deferred retry re-runs this handler,

@@ -15,6 +15,7 @@
 // The JSON is either the event envelope ({ entity, action, data, ... }) or its `data` object, as
 // stored in kernel.pending_events.payload, OR a Shopify Admin GraphQL `Order` node (detected by its
 // `legacyResourceId`), converted below to the shape the shopify app's orders/create webhook emits.
+import { testTime } from "../src/test-time"
 import { readFileSync } from "node:fs"
 import {
   adaptShopifyOrderCreatedEvent,
@@ -56,6 +57,7 @@ const ctx: OrderPaidCtx = {
   getUserId: async () => "replay",
   approval: null,
   db,
+  time: testTime(),
   sequences: { allocate: async () => ({ value: ++seq }) },
   pdf: { render: async () => ({ file_id: `replay-pdf-${seq}`, byte_size: 0, page_count: 1 }) },
   messages: { post: async () => ({ message_id: "replay" }) },

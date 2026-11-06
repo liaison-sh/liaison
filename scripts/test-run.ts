@@ -553,6 +553,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/invoicing-legal-original-retention.test.ts",
             // Factur-X legal original at issue through the real sandbox and kernel renderer.
             "src/tests/integration/invoicing-facturx-issue.test.ts",
+            // The issue date and number year at instants set on the host clock, through the sandbox.
+            "src/tests/integration/invoicing-issue-date.test.ts",
             // E-invoice send through the einvoicing-pa@1 provider contract (Pennylane fake behind
             // the egress override): approvals, two-phase transmission, webhooks, fault windows.
             "src/tests/integration/einvoicing-send.test.ts",
@@ -1289,6 +1291,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // CSV formula cells, currency exponents, gated settings tools (pure).
             "src/csv-money-and-gated-settings.test.ts",
             "src/numbering.test.ts",
+            // The one door of the issue date and number year, with its guard over the issue paths.
+            "src/issue-date.test.ts",
             "src/state.test.ts",
             "src/tax.test.ts",
             // E-invoicing pure core (territory, identity, regime classifier, operation type).

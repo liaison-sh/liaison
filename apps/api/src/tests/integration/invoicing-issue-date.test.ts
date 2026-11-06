@@ -1,0 +1,453 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// The issue date and number year of a document, proven where the bug lived: through executeTool ->
+// sandbox -> bridge. The sandbox has no `Intl`, so a mock that skips QuickJS passes on code that
+// always lands on UTC. The clock is the host's: the bridge reads it, so `setSystemTime` sets the
+// instant the number is taken, and the rows and PDF text below are what the instant produced.
+
+import { afterAll, afterEach, beforeAll, describe, expect, it, setSystemTime } from "bun:test"
+import { randomUUID } from "node:crypto"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+import { sql } from "~/db"
+import type { UserContext } from "~/db/rls"
+import { resetAppRegistries } from "~/modules/apps/app-registries"
+import { executeTool } from "~/modules/apps/execute-tool"
+import { registerApps } from "~/modules/apps/runtime"
+import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
+import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { extractPdfText } from "~/modules/pdf/pdf-text"
+import { registerTemplate } from "~/modules/pdf/registry"
+import { getFileBytes } from "~/modules/pdf/render"
+import * as minimal from "~/seed/tiers/minimal"
+import { createTestOrg } from "~/tests/helpers/org"
+import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { onOrAfterCutover } from "../../../../../bundled-apps/invoicing/src/einvoicing/transmit"
+
+const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
+
+function invoicingDescriptor(): Record<string, unknown> {
+  const manifest = JSON.parse(
+    readFileSync(join(REPO_ROOT, "bundled-apps", "invoicing", "app.manifest.json"), "utf8"),
+  ) as Record<string, unknown>
+  return {
+    ...manifest,
+    trusted: false,
+    _format: "manifest",
+    _bundlePath: join(
+      REPO_ROOT,
+      "bundled-apps",
+      "invoicing",
+      String(manifest.version),
+      "bundle.js",
+    ),
+  }
+}
+
+/** The invoice and credit note PDF templates, built as the package build makes them. */
+async function registerInvoicingTemplates(): Promise<void> {
+  for (const kind of ["invoice", "credit_note", "quote", "proforma", "po"]) {
+    const build = Bun.spawnSync(
+      [
+        process.execPath,
+        "build",
+        join(REPO_ROOT, "bundled-apps", "invoicing", "templates", `${kind}.ts`),
+        "--target",
+        "bun",
+        "--external",
+        "node:*",
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    )
+    if (build.exitCode !== 0)
+      throw new Error(`template ${kind} build failed: ${build.stderr.toString()}`)
+    let js = build.stdout.toString()
+    const block = /export\s*\{([^}]*)\};?\s*$/.exec(js)
+    const local = block?.[1]
+      ?.split(",")
+      .map((x) => x.trim())
+      .map(
+        (x) => /^(\w+)\s+as\s+renderTemplate$/.exec(x)?.[1] ?? (x === "renderTemplate" ? x : null),
+      )
+      .find((x) => x)
+    if (!block || !local) throw new Error(`template ${kind} exports no renderTemplate`)
+    js = `${js.slice(0, block.index)}\nglobalThis.renderTemplate = ${local};\n`
+    registerTemplate("invoicing", `invoicing:${kind}_v1`, js)
+  }
+}
+
+let ORG = ""
+let THREAD = ""
+
+const SCOPES = [
+  "invoicing:documents:read",
+  "invoicing:documents:write",
+  "invoicing:contacts:read",
+  "invoicing:contacts:write",
+  "invoicing:settings:read",
+  "invoicing:settings:write",
+  "invoicing:approve",
+]
+let actor: UserContext
+
+// A German consumer: plain VAT, no e-invoice gate, no e-invoicing prerequisites to set up here.
+const buyer = {
+  legal_name: "Erika Mustermann",
+  country: "DE",
+  address: "Hauptstrasse 1, 10115 Berlin",
+  email: "erika@example.com",
+  customer_kind: "individual",
+}
+const items = [
+  { description: "Service", quantity: "1", unit_price_minor: 10000, line_kind: "software" },
+]
+
+interface ToolResult {
+  status?: string
+  code?: unknown
+  message?: string
+  data?: Record<string, unknown>
+}
+
+/** A refusal either way the tool reports it: a thrown typed error, or an error envelope in `data`. */
+async function tool(toolName: string, params: Record<string, unknown>): Promise<ToolResult> {
+  try {
+    const res = await executeTool<Record<string, unknown>>({
+      toolName: `invoicing:${toolName}`,
+      orgId: ORG,
+      actor,
+      params,
+      threadId: THREAD,
+      origin: "human-ui",
+    })
+    return { data: res.data }
+  } catch (err) {
+    return { status: "error", code: (err as { code?: unknown }).code, message: String(err) }
+  }
+}
+
+function documentId(res: ToolResult): string {
+  const id = res.data?.document_id
+  if (!id) throw new Error(`no document issued: ${JSON.stringify(res)}`)
+  return String(id)
+}
+
+/** An issuer as a person creates one; `zone` then sets the stored value as it may already be. */
+async function issuerAt(zone: string | null): Promise<string> {
+  const created = await tool("settings_issuer_profile_create", {
+    legal_name: `Issuer ${randomUUID().slice(0, 8)}`,
+    country: "FR",
+    vat_id: "FR40902000009",
+    address: "1 rue de Test, 75011 Paris",
+    default_currency: "EUR",
+    default_language: "en",
+  })
+  const id = created.data?.id
+  if (!id) throw new Error(`issuer not created: ${JSON.stringify(created)}`)
+  if (zone !== null) {
+    await sql`UPDATE app_invoicing.issuer_profiles SET timezone = ${zone} WHERE id = ${String(id)}`
+  }
+  return String(id)
+}
+
+async function setOrgZone(zone: string): Promise<void> {
+  await sql`UPDATE kernel.organizations SET timezone = ${zone} WHERE id = ${ORG}`
+}
+
+interface DocRow {
+  id: string
+  issued_at: Date | string
+  year_of_issue: number
+  number: string
+  pdf_file_id: string | null
+  pdf_status: string
+  status: string
+}
+
+async function doc(id: unknown): Promise<DocRow> {
+  const [row] = await sql<DocRow[]>`SELECT * FROM app_invoicing.documents WHERE id = ${String(id)}`
+  if (!row) throw new Error(`no document ${String(id)}`)
+  return row
+}
+
+/** The stored date as Postgres holds it, read in UTC: the same day the document states. */
+async function storedDate(id: unknown): Promise<string> {
+  const [row] = await sql<Array<{ d: string }>>`
+    SELECT to_char(issued_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS d FROM app_invoicing.documents WHERE id = ${String(id)}`
+  return String(row?.d)
+}
+
+async function invoiceOf(issuerId: string): Promise<DocRow & { date: string }> {
+  const res = await tool("invoice_create_and_issue", {
+    counterparty: buyer,
+    issuer_profile_id: issuerId,
+    currency: "EUR",
+    operation_category: "services",
+    items,
+  })
+  const id = res.data?.document_id
+  if (!id) throw new Error(`issue failed: ${JSON.stringify(res)}`)
+  return { ...(await doc(id)), date: await storedDate(id) }
+}
+
+describe("issue date and number year (real Postgres, sandbox, bridge)", () => {
+  beforeAll(async () => {
+    await acquireTestLock()
+    process.env.LIAISON_BUNDLED_APPS_FROM_SOURCE = "1"
+    const org = await createTestOrg()
+    ORG = org.id
+    const admin = await minimal.person(ORG, { role: "admin" })
+    THREAD = await minimal.thread(ORG, admin.id)
+    actor = { actorType: "user", userId: admin.id, orgId: ORG, scopes: SCOPES, dimensionGrants: {} }
+    await initSandboxPool()
+    await initWorkerPool()
+    await registerApps([invoicingDescriptor() as never], ORG)
+    await registerInvoicingTemplates()
+  }, 120_000)
+
+  afterEach(async () => {
+    setSystemTime()
+    if (ORG) await setOrgZone("UTC")
+  })
+
+  afterAll(async () => {
+    setSystemTime()
+    await shutdownWorkerPool()
+    await shutdownSandboxPool()
+    resetAppRegistries()
+    await releaseTestLock()
+  })
+
+  it("00:20 on 1 January in Paris: dated 1 January, numbered in the new year, printed so", async () => {
+    const issuer = await issuerAt("Europe/Paris")
+    setSystemTime(new Date("2026-12-31T23:20:00Z"))
+    const d = await invoiceOf(issuer)
+    expect(d.date).toBe("2027-01-01")
+    expect(d.year_of_issue).toBe(2027)
+    expect(d.number).toContain("2027")
+    expect(d.pdf_status).toBe("ready")
+    const text = await extractPdfText(await getFileBytes(null, String(d.pdf_file_id)))
+    expect(text).toContain(d.number)
+    expect(text).toMatch(/(2027-01-01|01\/01\/2027|1 January 2027|Jan(uary)? 1, 2027|01 Jan 2027)/)
+    expect(text).not.toMatch(
+      /(2026-12-31|31\/12\/2026|31 December 2026|December 31, 2026|31 Dec 2026)/,
+    )
+  }, 60_000)
+
+  it("00:20 on the cut-over day counts as on it, and the stored date says why", async () => {
+    const issuer = await issuerAt("Europe/Paris")
+    setSystemTime(new Date("2026-08-31T22:20:00Z"))
+    const d = await invoiceOf(issuer)
+    expect(d.date).toBe("2026-09-01")
+    expect(d.year_of_issue).toBe(2026)
+    // As `sendSwitchProblem` reads it: the row's value, in the form the bridge returns it.
+    const [viaJson] = JSON.parse(JSON.stringify([d.issued_at])) as string[]
+    expect(onOrAfterCutover(viaJson, "2026-09-01")).toBe(true)
+    expect(onOrAfterCutover(viaJson, "2026-09-02")).toBe(false)
+  }, 60_000)
+
+  it("the night the clocks change", async () => {
+    const issuer = await issuerAt("Europe/Paris")
+    setSystemTime(new Date("2027-03-28T01:30:00Z"))
+    expect((await invoiceOf(issuer)).date).toBe("2027-03-28")
+    // One hour after local midnight the winter before: still the offset of that day.
+    setSystemTime(new Date("2027-03-27T23:30:00Z"))
+    expect((await invoiceOf(issuer)).date).toBe("2027-03-28")
+    setSystemTime(new Date("2027-03-27T22:30:00Z"))
+    expect((await invoiceOf(issuer)).date).toBe("2027-03-27")
+  }, 60_000)
+
+  it("an issuer on the default UTC follows its org; both on UTC stay on UTC", async () => {
+    setSystemTime(new Date("2026-12-31T23:20:00Z"))
+    const issuer = await issuerAt("UTC")
+    const both = await invoiceOf(issuer)
+    expect(both.date).toBe("2026-12-31")
+    expect(both.year_of_issue).toBe(2026)
+    await setOrgZone("Europe/Paris")
+    const follows = await invoiceOf(issuer)
+    expect(follows.date).toBe("2027-01-01")
+    expect(follows.year_of_issue).toBe(2027)
+    const untouched = await issuerAt(null)
+    expect((await invoiceOf(untouched)).date).toBe("2027-01-01")
+  }, 60_000)
+
+  it("UTC chosen on purpose stays UTC in an org on another zone, and clears the readiness line", async () => {
+    await setOrgZone("Europe/Paris")
+    const issuer = await issuerAt("UTC")
+    const line = async () => {
+      const res = await tool("einvoicing_readiness", {})
+      const zones = (res.data?.issuer_time_zones_to_choose ?? []) as Array<{
+        issuer_profile_id: string
+      }>
+      return zones.some((z) => z.issuer_profile_id === issuer)
+    }
+    expect(await line()).toBe(true)
+    const listed = async () => {
+      const res = await tool("settings_issuer_profile_list", {})
+      const rows = (res.data?.items ?? []) as Array<Record<string, unknown>>
+      return rows.find((r) => r.id === issuer)
+    }
+    expect((await listed())?.timezone_choice_needed).toBe(true)
+
+    const saved = await tool("settings_issuer_profile_update", { id: issuer, timezone: "UTC" })
+    expect(saved.data?.id ?? saved.data?.status).toBeTruthy()
+    expect(await line()).toBe(false)
+    expect((await listed())?.timezone_choice_needed).toBe(false)
+
+    setSystemTime(new Date("2026-12-31T23:20:00Z"))
+    const d = await invoiceOf(issuer)
+    expect(d.date).toBe("2026-12-31")
+    expect(d.year_of_issue).toBe(2026)
+  }, 60_000)
+
+  it("choosing a zone clears the line and takes effect; an unknown one is refused when saved", async () => {
+    const issuer = await issuerAt("UTC")
+    const bad = await tool("settings_issuer_profile_update", {
+      id: issuer,
+      timezone: "Europe/Atlantis",
+    })
+    expect(JSON.stringify(bad)).toContain("issuer_timezone_invalid")
+    const [row] = await sql<
+      Array<{ timezone: string }>
+    >`SELECT timezone FROM app_invoicing.issuer_profiles WHERE id = ${issuer}`
+    expect(row?.timezone).toBe("UTC")
+
+    await tool("settings_issuer_profile_update", { id: issuer, timezone: "Asia/Tokyo" })
+    setSystemTime(new Date("2026-12-31T16:00:00Z"))
+    expect((await invoiceOf(issuer)).date).toBe("2027-01-01")
+  }, 60_000)
+
+  it("an unknown zone already on file refuses the issue, and no number is taken", async () => {
+    const issuer = await issuerAt("Europe/Atlantis")
+    const res = await tool("invoice_create_and_issue", {
+      counterparty: buyer,
+      issuer_profile_id: issuer,
+      currency: "EUR",
+      operation_category: "services",
+      items,
+    })
+    expect(JSON.stringify(res)).toContain("issuer_timezone_invalid")
+    const rows =
+      await sql`SELECT id FROM app_invoicing.documents WHERE org_id = ${ORG} AND issuer_profile_id = ${issuer}`
+    expect(rows.length).toBe(0)
+    const seqs =
+      await sql`SELECT key FROM kernel.app_sequences WHERE org_id = ${ORG} AND key LIKE ${`invoicing:doc_number:${issuer}:%`}`
+    expect(seqs.length).toBe(0)
+  }, 60_000)
+
+  it("every other issuing tool takes the same date: draft, quote, proforma, purchase order, conversion", async () => {
+    const issuer = await issuerAt("Europe/Paris")
+    setSystemTime(new Date("2026-12-31T23:20:00Z"))
+    const expectNewYear = async (id: unknown) => {
+      expect(await storedDate(id)).toBe("2027-01-01")
+      const d = await doc(id)
+      expect(d.year_of_issue).toBe(2027)
+      expect(d.number).toContain("2027")
+    }
+
+    const draft = await tool("drafts_create", {
+      type: "invoice",
+      issuer_profile_id: issuer,
+      counterparty_name: buyer.legal_name,
+      counterparty_country: buyer.country,
+      counterparty_address: buyer.address,
+      counterparty_email: buyer.email,
+      customer_kind: buyer.customer_kind,
+      currency: "EUR",
+      operation_category: "services",
+      items,
+    })
+    const draftId = draft.data?.draft_id ?? draft.data?.id ?? draft.data?.document_id
+    if (!draftId) throw new Error(`draft failed: ${JSON.stringify(draft)}`)
+    const fromDraft = await tool("invoice_issue", { draft_id: draftId })
+    await expectNewYear(documentId(fromDraft))
+
+    const proforma = await tool("proforma_create_and_issue", {
+      counterparty: buyer,
+      issuer_profile_id: issuer,
+      currency: "EUR",
+      items,
+    })
+    await expectNewYear(documentId(proforma))
+
+    const po = await tool("po_create_and_issue", {
+      counterparty: buyer,
+      issuer_profile_id: issuer,
+      currency: "EUR",
+      items,
+    })
+    await expectNewYear(documentId(po))
+
+    const quote = await tool("quote_create_and_issue", {
+      counterparty: buyer,
+      issuer_profile_id: issuer,
+      currency: "EUR",
+      items,
+    })
+    await expectNewYear(documentId(quote))
+
+    const converted = await tool("documents_convert_to_invoice", {
+      source_document_id: documentId(quote),
+      operation_category: "services",
+    })
+    await expectNewYear(converted.data?.document_id ?? converted.data?.invoice_id)
+  }, 120_000)
+
+  it("a conversion refused for its zone leaves the quote as it was", async () => {
+    const issuer = await issuerAt("Europe/Paris")
+    const quote = await tool("quote_create_and_issue", {
+      counterparty: buyer,
+      issuer_profile_id: issuer,
+      currency: "EUR",
+      items,
+    })
+    await sql`UPDATE app_invoicing.issuer_profiles SET timezone = 'Europe/Atlantis' WHERE id = ${issuer}`
+    const res = await tool("documents_convert_to_invoice", {
+      source_document_id: documentId(quote),
+      operation_category: "services",
+    })
+    expect(JSON.stringify(res)).toContain("issuer_timezone_invalid")
+    expect((await doc(documentId(quote))).status).toBe("sent")
+  }, 60_000)
+
+  it("a credit note keeps its stated date, never one before the last number of its series", async () => {
+    const issuer = await issuerAt("Europe/Paris")
+    setSystemTime(new Date("2026-12-31T23:20:00Z"))
+    const negative = [
+      { description: "Reversal", quantity: "1", unit_price_minor: -10000, line_kind: "software" },
+    ]
+    const today = await tool("credit_note_create_and_issue", {
+      counterparty: buyer,
+      issuer_profile_id: issuer,
+      currency: "EUR",
+      operation_category: "services",
+      items: negative,
+    })
+    expect(await storedDate(documentId(today))).toBe("2027-01-01")
+    expect((await doc(documentId(today))).year_of_issue).toBe(2027)
+
+    setSystemTime(new Date("2027-01-10T10:00:00Z"))
+    const stated = await tool("credit_note_create_and_issue", {
+      counterparty: buyer,
+      issuer_profile_id: issuer,
+      currency: "EUR",
+      operation_category: "services",
+      issued_at: "2027-01-05",
+      items: negative,
+    })
+    expect(await storedDate(documentId(stated))).toBe("2027-01-05")
+
+    const before = await tool("credit_note_create_and_issue", {
+      counterparty: buyer,
+      issuer_profile_id: issuer,
+      currency: "EUR",
+      operation_category: "services",
+      issued_at: "2027-01-04",
+      items: negative,
+    })
+    expect(JSON.stringify(before)).toContain("issued_at_before_series")
+    const rows =
+      await sql`SELECT id FROM app_invoicing.documents WHERE org_id = ${ORG} AND issuer_profile_id = ${issuer}`
+    expect(rows.length).toBe(2)
+  }, 60_000)
+})

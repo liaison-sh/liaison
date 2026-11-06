@@ -5,6 +5,7 @@
 // buyer's identity is fixed: never the whole refund or cancellation handler (which would see the
 // refund already recorded and issue nothing, or re-append the cancellation and re-raise its
 // attention item). Real issue pipeline against the in-memory mock db.
+import { testTime } from "../test-time"
 import { describe, expect, test } from "bun:test"
 import { type DeferredRow, park } from "../deferred"
 import { deferredRetryJobHandler } from "../handlers/deferred-dispatch"
@@ -120,6 +121,7 @@ function makeCtx(db: MockDb): { ctx: RefundCtx & OrderCancelledCtx; emitted: Emi
     emit: async (e: Emitted) => {
       emitted.push(e)
     },
+    time: testTime(),
     sequences: {
       async allocate(p: { key: string }) {
         const ex = (await db.findMany("__sequences", { where: { key: p.key }, limit: 1 })) as Array<
@@ -237,6 +239,23 @@ describe("refund credit note parked on the buyer's identity", () => {
     const third = await sweep(ctx, new Date(t0.getTime() + 3 * 3_600_000))
     expect(third.scanned).toBe(0)
     expect(creditNotes(db)).toHaveLength(1)
+  })
+
+  test("a refund on an issuer whose zone the host does not know parks its credit note on the config", async () => {
+    const db = seededDb()
+    const { ctx } = makeCtx(db)
+    await fixIdentity(db, new Date("2026-10-14T10:00:00Z"))
+    await db.update("issuer_profiles", String(ISSUER_ROW.id), { timezone: "Europe/Atlantis" })
+
+    const res = await onShopifyRefundCreated(
+      { data: { id: "refund-tz", order_id: ORDER, refund_amount_minor: 3000n } },
+      ctx,
+    )
+
+    expect(res.status).toBe("ok")
+    expect(creditNotes(db)).toHaveLength(0)
+    const [park] = parks(db)
+    expect(park).toMatchObject({ status: "awaiting_config", reason: "issuer_timezone_invalid" })
   })
 
   test("re-driving the same parked credit note twice issues it once", async () => {

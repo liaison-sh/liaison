@@ -23,7 +23,7 @@
 // (bundled-apps/invoicing/src/handlers/shopify-order-paid.ts and
 // shopify-draft-order.ts). Every assertion reads persisted Postgres state
 // (or the raw event envelope actually queued), never a hand-built fixture.
-import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { afterAll, afterEach, beforeAll, describe, expect, it, setSystemTime } from "bun:test"
 import { createHmac, randomUUID } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -248,6 +248,16 @@ describe("shopify -> invoicing PO number seam (real webhook -> real outbox -> re
       })}::jsonb
       WHERE org_id = ${ORG} AND name = 'shopify'`
 
+    // The webhook is only accepted from a shop this org connected.
+    await sql`DELETE FROM kernel.connected_accounts WHERE org_id = ${ORG} AND app_name = 'shopify'`
+    await sql`INSERT INTO kernel.connected_accounts (
+        id, org_id, app_name, connection_name, owner_type, owner_id,
+        provider_type, identifier, status, created_by, access_token_encrypted
+      ) VALUES (
+        ${randomUUID()}, ${ORG}, 'shopify', 'shop', 'org', NULL,
+        'oauth2', ${SHOP_DOMAIN}, 'active', ${USER}, 'encrypted-token'
+      )`
+
     issuerProfileId = await insertIssuerProfile()
     await seedConfirmedBuyers()
   }, 60_000)
@@ -263,6 +273,86 @@ describe("shopify -> invoicing PO number seam (real webhook -> real outbox -> re
     await sql`DELETE FROM app_shopify.webhook_deliveries WHERE org_id = ${ORG}`
     await releaseTestLock()
   }, 60_000)
+
+  // Handlers run in QuickJS, which has no `Intl`: only this path, the real one, could tell that the
+  // order flow's year was always UTC. The webhook arrives under the real clock, then the clock moves
+  // to the instant the outbox hands the order to invoicing.
+  describe("the issue date of an order is the issuer's", () => {
+    const orderBody = (id: string, suffix: string) => ({
+      id,
+      name: `#TZ-${suffix}`,
+      currency: "EUR",
+      total_price: "50.00",
+      financial_status: "paid",
+      customer: {
+        id: 71000,
+        email: "buyer1@po-seam.example",
+        first_name: "Seam",
+        last_name: "Buyer1",
+      },
+      billing_address: {
+        company: "PO Seam Buyer SARL",
+        address1: "1 rue Seam",
+        zip: "75002",
+        city: "Paris",
+        country_code: "FR",
+      },
+      line_items: [
+        {
+          id: 81900,
+          variant_id: 91900,
+          title: "Widget",
+          quantity: 1,
+          price: "50.00",
+          requires_shipping: true,
+        },
+      ],
+    })
+    const setIssuerZone = (zone: string) =>
+      sql`UPDATE app_invoicing.issuer_profiles SET timezone = ${zone} WHERE org_id = ${ORG} AND shopify_shop_id = ${SHOP_DOMAIN}`
+
+    afterEach(async () => {
+      setSystemTime()
+      await setIssuerZone("UTC")
+    })
+
+    it("00:20 on 1 January in Paris: the order's invoice is dated 2027 and numbered in 2027", async () => {
+      const orderId = "tz-seam-order-1"
+      await setIssuerZone("Europe/Paris")
+      expect(
+        (await postWebhook("orders-create", orderBody(orderId, "1"), `tz-seam-1-${randomUUID()}`))
+          .status,
+      ).toBe(200)
+
+      setSystemTime(new Date("2026-12-31T23:20:00Z"))
+      expect(await processOutboxBatch()).toBeGreaterThan(0)
+      await flushEventHandlers()
+
+      const [row] = await sql<Array<{ d: string; year_of_issue: number; number: string }>>`
+        SELECT to_char(issued_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS d, year_of_issue, number
+        FROM app_invoicing.documents WHERE org_id = ${ORG} AND shopify_order_id = ${orderId}`
+      expect(row).toMatchObject({ d: "2027-01-01", year_of_issue: 2027 })
+      expect(row?.number).toContain("2027")
+    })
+
+    it("an unknown zone parks the order on the config and takes no number", async () => {
+      const orderId = "tz-seam-order-2"
+      await setIssuerZone("Europe/Atlantis")
+      expect(
+        (await postWebhook("orders-create", orderBody(orderId, "2"), `tz-seam-2-${randomUUID()}`))
+          .status,
+      ).toBe(200)
+      expect(await processOutboxBatch()).toBeGreaterThan(0)
+      await flushEventHandlers()
+
+      const docs =
+        await sql`SELECT id FROM app_invoicing.documents WHERE org_id = ${ORG} AND shopify_order_id = ${orderId}`
+      expect(docs.length).toBe(0)
+      const parks = await sql`
+        SELECT status, reason FROM app_invoicing.deferred_events WHERE org_id = ${ORG} AND event_id = ${orderId}`
+      expect([...parks]).toEqual([{ status: "awaiting_config", reason: "issuer_timezone_invalid" }])
+    })
+  })
 
   it("an orders webhook carrying a PO results in an invoice whose po_number column holds it", async () => {
     const shopifyOrderId = "po-seam-order-1"

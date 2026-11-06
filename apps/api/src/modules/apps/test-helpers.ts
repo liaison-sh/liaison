@@ -165,6 +165,23 @@ export function mockAppContext(opts: MockAppContextOpts): MockAppContext {
         value: 1,
       })),
     },
+    // UTC, like the host answers for an org with no zone.
+    time: {
+      civil: mock(async (params: Parameters<AppContext["time"]["civil"]>[0]) => {
+        const at = params.at === undefined ? new Date() : new Date(params.at)
+        const iso = at.toISOString()
+        return {
+          date: iso.slice(0, 10),
+          year: at.getUTCFullYear(),
+          month: at.getUTCMonth() + 1,
+          day: at.getUTCDate(),
+          hour: at.getUTCHours(),
+          minute: at.getUTCMinutes(),
+          weekday: at.getUTCDay() || 7,
+          zone: params.timezone,
+        }
+      }),
+    },
     // An in-memory effect ledger: claimed, then done or released.
     effects: {
       claim: mock(async (key: string) => {

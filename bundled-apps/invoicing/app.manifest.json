@@ -224,7 +224,7 @@
       }
     ]
   },
-  "version": "0.20.32",
+  "version": "0.20.33",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -2147,7 +2147,7 @@
       "readOnly": true
     },
     "settings_issuer_profile_list": {
-      "description": "List the org's issuer profiles — the legal-entity senders invoices are issued from. Each profile carries the AUTO-INVOICE-ON-PAID-ORDER configuration: its Shopify shop mapping (shopify_shop_id, see settings_shop_mapping_list), its invoice_approval_threshold (amounts over it land as an approval, under it auto-issue when an order is paid), and auto_email. These drive invoicing's built-in app-internal order-paid auto-flow that issues the invoice automatically when a Shopify order is paid — so 'auto-issue an invoice whenever an order is paid' is a CONFIGURATION of the issuer profile + shop mapping, NOT an agent routine (there is no order:paid kernel event to bind a routine to; paid is an app-internal Shopify webhook).",
+      "description": "List the org's issuer profiles — the legal-entity senders invoices are issued from. timezone_choice_needed is true while nobody chose a time zone for the profile: ask which zone once, and set it with settings_issuer_profile_update. Each profile carries the AUTO-INVOICE-ON-PAID-ORDER configuration: its Shopify shop mapping (shopify_shop_id, see settings_shop_mapping_list), its invoice_approval_threshold (amounts over it land as an approval, under it auto-issue when an order is paid), and auto_email. These drive invoicing's built-in app-internal order-paid auto-flow that issues the invoice automatically when a Shopify order is paid — so 'auto-issue an invoice whenever an order is paid' is a CONFIGURATION of the issuer profile + shop mapping, NOT an agent routine (there is no order:paid kernel event to bind a routine to; paid is an app-internal Shopify webhook).",
       "requiredScopes": ["invoicing:settings:read"],
       "handler": "settingsIssuerProfileListHandler",
       "params": {
@@ -4118,7 +4118,7 @@
               "string",
               "null"
             ],
-            "description": "Issue date, ISO date (YYYY-MM-DD). Defaults to today."
+            "description": "Issue date, ISO date (YYYY-MM-DD). Defaults to today in the issuer's time zone. A date before the last credit note number in the series is refused (issued_at_before_series)."
           },
           "original_document_id": {
             "type": [
@@ -4538,7 +4538,7 @@
           "require_two_eyes": { "type": "boolean" },
           "auto_email_enabled": { "type": "boolean" },
           "mail_account_id": { "type": ["string", "null"], "description": "Mailbox invoices are sent from. Changing it needs invoicing:issuer:admin." },
-          "timezone": { "type": "string" },
+          "timezone": { "type": "string", "description": "IANA time zone of this issuer's issue dates and number years, e.g. Europe/Paris. An unknown name is refused (issuer_timezone_invalid). UTC chosen on purpose is stored as Etc/UTC. Left unset, dates follow the organization's time zone, then UTC." },
           "email_templates": { "type": ["object", "null"], "additionalProperties": true },
           "shopify_shop_id": { "type": ["string", "null"] },
           "prices_include_tax": {
@@ -4587,7 +4587,7 @@
           "require_two_eyes": { "type": "boolean" },
           "auto_email_enabled": { "type": "boolean" },
           "mail_account_id": { "type": ["string", "null"], "description": "Mailbox invoices are sent from. Changing it needs invoicing:issuer:admin." },
-          "timezone": { "type": "string" },
+          "timezone": { "type": "string", "description": "IANA time zone of this issuer's issue dates and number years, e.g. Europe/Paris. An unknown name is refused (issuer_timezone_invalid). UTC chosen on purpose is stored as Etc/UTC. Left unset, dates follow the organization's time zone, then UTC." },
           "email_templates": { "type": ["object", "null"], "additionalProperties": true },
           "shopify_shop_id": { "type": ["string", "null"] },
           "prices_include_tax": {
@@ -5206,7 +5206,7 @@
       }
     },
     "einvoicing_readiness": {
-      "description": "What still blocks e-invoicing, by counterparty and draft: each item names its subject (contact_id and/or document_id, label), the blocker_code (the same code the issue gate refuses with), the one action that fixes it (action.tool, action.label, action.params_hint) and the date of the counterparty's last document. Most recent first. An empty list means nothing blocks. Read only. It lists what blocks e-invoicing across customers: to answer whether one customer or order is e-invoiced and why, call einvoicing_classify.",
+      "description": "What still blocks e-invoicing, by counterparty and draft: each item names its subject (contact_id and/or document_id, label), the blocker_code (the same code the issue gate refuses with), the one action that fixes it (action.tool, action.label, action.params_hint) and the date of the counterparty's last document. Most recent first. An empty list means nothing blocks. Separately, issuer_time_zones_to_choose lists each issuer nobody chose a time zone for: it blocks nothing (dates follow the organization's zone, then UTC), so ask which zone once and set it with settings_issuer_profile_update (timezone; UTC on purpose counts). Read only. It lists what blocks e-invoicing across customers: to answer whether one customer or order is e-invoiced and why, call einvoicing_classify.",
       "requiredScopes": [
         "invoicing:documents:read"
       ],

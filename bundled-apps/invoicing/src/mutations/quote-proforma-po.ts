@@ -45,6 +45,7 @@ import {
 import { quoteCreateViaShopifyDraftOrder } from "./shopify-quote"
 import { asHandlerSummary, issueCard } from "../approval-cards"
 import { type BuyerVatFacts, checkBuyerVat, needsHumanBuyerDecision } from "../buyer-vat"
+import { issueDateParts } from "../issue-date"
 import { planTax } from "../tax-plan"
 
 // ── Quote / Proforma / PO issuance (E7) ──────────────────────────────────
@@ -195,7 +196,9 @@ async function issueFromDraftWithGating(
       return { status: "pending_approval", approval_id: approval.approval_id }
     }
   }
-  const issueInput = buildIssueInputFromDraft(draft, issuer, counterparty)
+  const when = await issueDateParts(ctx, issuer)
+  if (!when.ok) return when.error
+  const issueInput = buildIssueInputFromDraft(draft, issuer, counterparty, when)
   const result = await issueDocument(ctx, issueInput)
   await deleteDraftRow(ctx.db, draft.id)
   return {
@@ -601,6 +604,8 @@ async function createAndIssueGenerically(
     externalRefs.shopify_draft_order_name = input.shopify_draft_order_name
   if (input.po_number) externalRefs.po_number = input.po_number
   if (customerReference) externalRefs.customer_reference = customerReference
+  const when = await issueDateParts(ctx, issuer)
+  if (!when.ok) return when.error
   const issueInput = {
     type,
     issuer,
@@ -613,8 +618,8 @@ async function createAndIssueGenerically(
     draft: {
       currency,
       incoterm: input.incoterm ?? "DAP",
-      year_of_issue: new Date().getUTCFullYear(),
-      issued_at: new Date().toISOString().slice(0, 10),
+      year_of_issue: when.year_of_issue,
+      issued_at: when.issued_at,
       due_at: input.due_at ?? null,
       external_refs: externalRefs,
       notes: notes.value ?? null,

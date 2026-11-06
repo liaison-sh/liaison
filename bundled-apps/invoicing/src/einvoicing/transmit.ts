@@ -140,7 +140,9 @@ function lastSunday(year: number, month: number): number {
 /**
  * The civil date in France (Europe/Paris) of an instant: CET (UTC+1), CEST (UTC+2) from the last
  * Sunday of March 01:00 UTC to the last Sunday of October 01:00 UTC (EU rule). Computed here
- * because the sandbox has no time-zone database. A bare `YYYY-MM-DD` is already a civil date.
+ * because the sandbox has no time-zone database. A bare `YYYY-MM-DD` is already a civil date, and
+ * so is a stored `issued_at`: `issueDateParts` writes the issuer's own date, which the column keeps
+ * as midnight UTC, and midnight UTC is that same day in France.
  */
 export function parisCivilDate(at: unknown): string | null {
   if (typeof at === "string" && /^\d{4}-\d{2}-\d{2}$/.test(at)) return at

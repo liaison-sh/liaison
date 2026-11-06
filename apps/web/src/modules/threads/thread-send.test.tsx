@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { createRoot } from "solid-js"
+import { batch, createRoot, createSignal } from "solid-js"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { openRecordOf, setOpenRecord, trackOpenRecord } from "~/modules/shell/open-record"
 import { TabVisibilityProvider } from "~/modules/shell/TabVisibilityContext"
@@ -68,6 +68,38 @@ describe("trackOpenRecord", () => {
     expect(openRecordOf("tab-1")).toEqual({ tabType: "boxtal:shipment", entityId: "ship-9" })
     dispose()
     expect(openRecordOf("tab-1")).toBeUndefined()
+  })
+
+  it("a page clears only the record it set, whichever effect runs first", () => {
+    const [routine, setRoutine] = createSignal<string | null>("rt-1")
+    const [skill, setSkill] = createSignal<string | null>(null)
+    let dispose = () => {}
+    createRoot((d) => {
+      dispose = d
+      const Page = () => {
+        trackOpenRecord("kernel", "routine", routine)
+        trackOpenRecord("kernel", "skill", skill)
+        return null
+      }
+      return (
+        <TabVisibilityProvider value={() => true} tabId="tab-2">
+          <Page />
+        </TabVisibilityProvider>
+      )
+    })
+    expect(openRecordOf("tab-2")).toEqual({ tabType: "kernel:routine", entityId: "rt-1" })
+    batch(() => {
+      setSkill("sk-1")
+      setRoutine(null)
+    })
+    expect(openRecordOf("tab-2")).toEqual({ tabType: "kernel:skill", entityId: "sk-1" })
+    batch(() => {
+      setSkill(null)
+      setRoutine("rt-1")
+    })
+    expect(openRecordOf("tab-2")).toEqual({ tabType: "kernel:routine", entityId: "rt-1" })
+    dispose()
+    expect(openRecordOf("tab-2")).toBeUndefined()
   })
 
   it("outside a tab it does nothing", () => {

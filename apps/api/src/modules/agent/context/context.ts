@@ -5,6 +5,7 @@ import * as path from "node:path"
 import {
   type ClientSurface,
   capabilityCategories,
+  isLegalMemoryPath,
   ownerFirstName,
   PERSONAL_AGENT_DISPLAY_NAME,
   personalAgentLabel,
@@ -16,6 +17,7 @@ import {
   loadDiscussionTask,
   renderDiscussionTaskContext,
 } from "~/apps/projects/service/discussion-task"
+import type { RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
@@ -3424,6 +3426,62 @@ async function loadDiscussionTaskLine(
   }
 }
 
+const AGENT_VIEW_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const AGENT_VIEW_PURPOSE_MAX = 300
+
+/**
+ * The agent on the page a turn was sent from. Its tab holds whatever the link said:
+ * an id, a handle with or without its `@`, or `self`. Read under the actor's RLS.
+ */
+async function agentPageSnippet(
+  tx: RlsClient,
+  entityId: string,
+  orgId: string,
+  userId: string,
+): Promise<string | null> {
+  const which =
+    entityId === "self"
+      ? and(eq(agents.kind, "personal"), eq(agents.ownerUserId, userId))
+      : AGENT_VIEW_ID.test(entityId)
+        ? eq(agents.id, entityId)
+        : eq(agents.handle, entityId.startsWith("@") ? entityId : `@${entityId}`)
+  const [row] = await tx
+    .select({
+      id: agents.id,
+      handle: agents.handle,
+      name: agents.displayName,
+      purpose: agents.purpose,
+    })
+    .from(agents)
+    .where(and(eq(agents.orgId, orgId), which))
+    .limit(1)
+  if (!row) return null
+  const purpose = row.purpose?.trim().slice(0, AGENT_VIEW_PURPOSE_MAX)
+  return `[Entity: kernel:agent, id: ${row.id}] { name: ${JSON.stringify(row.name)}, handle: ${JSON.stringify(row.handle)}${purpose ? `, purpose: ${JSON.stringify(purpose)}` : ""} }`
+}
+
+/**
+ * A memory file open on an agent's page, `<agent id>:<path in its tree>`, named by the
+ * path `memory_view` reads. That tool reads the acting agent's own tree and says so when
+ * the path is another's, so the full path is what tells the model which case this is.
+ */
+async function memoryFileSnippet(
+  tx: RlsClient,
+  entityId: string,
+  orgId: string,
+): Promise<string | null> {
+  const sep = entityId.indexOf(":")
+  const agentId = entityId.slice(0, sep)
+  const path = entityId.slice(sep + 1)
+  if (sep < 0 || !AGENT_VIEW_ID.test(agentId) || !isLegalMemoryPath(path)) return null
+  const [row] = await tx
+    .select({ handle: agents.handle })
+    .from(agents)
+    .where(and(eq(agents.orgId, orgId), eq(agents.id, agentId)))
+    .limit(1)
+  return row ? `[Entity: kernel:memory_file, path: ${memoryRoot(row.handle)}${path}]` : null
+}
+
 /**
  * Describe the entity the user is currently viewing, resolved GENERICALLY via
  * the same registry-driven resolver the referenced-entities block uses
@@ -3440,6 +3498,14 @@ async function loadNavigationContext(
   actor: UserContext,
 ): Promise<string | null> {
   try {
+    if (currentView.tabType === "agents:agent") {
+      return await withRlsContext(actor, (tx) =>
+        agentPageSnippet(tx, currentView.entityId, orgId, actor.userId),
+      )
+    }
+    if (currentView.tabType === "kernel:memory_file") {
+      return await withRlsContext(actor, (tx) => memoryFileSnippet(tx, currentView.entityId, orgId))
+    }
     const sep = currentView.tabType.indexOf(":")
     const app = sep === -1 ? "kernel" : currentView.tabType.slice(0, sep)
     const entityType = sep === -1 ? currentView.tabType : currentView.tabType.slice(sep + 1)

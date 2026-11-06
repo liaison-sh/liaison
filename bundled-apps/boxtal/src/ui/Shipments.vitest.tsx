@@ -98,10 +98,12 @@ describe("the record the agent is told is open", () => {
     }))
   afterEach(() => vi.unstubAllGlobals())
 
-  it("is the row in the detail pane: the first by default, then the one clicked", async () => {
+  it("is the row the person clicked, not the first one the pane shows by default", async () => {
     stubWidth(true)
     await mount()
     expect(openRecord.entityType).toBe("shipment")
+    expect(openRecord.id()).toBeNull()
+    fireEvent.click(screen.getByTestId("boxtal-shipment-row-s1"))
     expect(openRecord.id()).toBe("s1")
     fireEvent.click(screen.getByTestId("boxtal-shipment-row-s2"))
     expect(openRecord.id()).toBe("s2")
@@ -110,6 +112,7 @@ describe("the record the agent is told is open", () => {
   it("is nothing on a phone, where the pane is not on screen", async () => {
     stubWidth(false)
     await mount()
+    fireEvent.click(screen.getByTestId("boxtal-shipment-row-s1"))
     expect(openRecord.id()).toBeNull()
   })
 })

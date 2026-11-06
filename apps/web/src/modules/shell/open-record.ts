@@ -7,6 +7,12 @@
 // in a pane says which (`app.trackOpenRecord` in an app, `trackOpenRecord` here in
 // a kernel page), and a turn sent while that tab is active names the record
 // instead of the page (`currentViewForTurn`).
+//
+// A record is open when the person opened it (a click, a deep link) and the pane
+// showing it is on screen. A list that fills its detail pane with the first row
+// has opened nothing: an agent told that row was open answered "what is this
+// agent for?" about a routine nobody had looked at. So `id()` is the person's
+// pick, never the display default, and a pane in a hidden tab reports null.
 
 import { type Accessor, createEffect, getOwner, onCleanup } from "solid-js"
 import { onSessionTeardown } from "~/lib/session-lifecycle"
@@ -46,9 +52,16 @@ export function trackOpenRecord(
   const tabId = useTabId()
   if (!tabId || !getOwner()) return
   const tabType = `${app}:${entityType}`
+  // A page can hold several trackers, one per pane, with one tab between them.
+  // Each clears only what it set, or a pane closing would wipe the next one's
+  // record, depending on the order their effects ran.
+  const clearOwn = () => {
+    if (openByTab.get(tabId)?.tabType === tabType) setOpenRecord(tabId, null)
+  }
   createEffect(() => {
     const entityId = id()
-    setOpenRecord(tabId, entityId ? { tabType, entityId } : null)
+    if (entityId) setOpenRecord(tabId, { tabType, entityId })
+    else clearOwn()
   })
-  onCleanup(() => setOpenRecord(tabId, null))
+  onCleanup(clearOwn)
 }

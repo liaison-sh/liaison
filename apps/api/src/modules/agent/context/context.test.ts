@@ -523,6 +523,63 @@ describe("context-assembler", () => {
     }
   })
 
+  it("an agent's page names that agent, by its handle (walk N1)", async () => {
+    const agentId = "00000000-0000-0000-0000-000000ca0043"
+    await sql`INSERT INTO kernel.agents (id, org_id, kind, handle, display_name, purpose) VALUES (${agentId}, ${ORG_ID}, 'role', '@nav-support', 'Nav Support', 'Answers the support queue.')`
+    try {
+      const result = await assembleContext({
+        threadId: THREAD_ID,
+        orgId: ORG_ID,
+        actor,
+        currentView: { tabType: "agents:agent", entityId: "nav-support" },
+      })
+      const text = fullText(result)
+      expect(text).toContain("currently viewing")
+      expect(text).toContain(`[Entity: kernel:agent, id: ${agentId}]`)
+      expect(text).toContain('handle: "@nav-support"')
+      expect(text).toContain("Answers the support queue.")
+    } finally {
+      await sql`DELETE FROM kernel.agents WHERE id = ${agentId}`
+    }
+  })
+
+  it("an agent page naming no agent says nothing is open", async () => {
+    const result = await assembleContext({
+      threadId: THREAD_ID,
+      orgId: ORG_ID,
+      actor,
+      currentView: { tabType: "agents:agent", entityId: "nobody-here" },
+    })
+    expect(fullText(result)).not.toContain("currently viewing")
+  })
+
+  it("a memory file open on an agent's page gives the path memory_view reads (walk MT)", async () => {
+    const agentId = "00000000-0000-0000-0000-000000ca0044"
+    await sql`INSERT INTO kernel.agents (id, org_id, kind, handle, display_name) VALUES (${agentId}, ${ORG_ID}, 'role', '@nav-memory', 'Nav Memory')`
+    try {
+      const result = await assembleContext({
+        threadId: THREAD_ID,
+        orgId: ORG_ID,
+        actor,
+        currentView: { tabType: "kernel:memory_file", entityId: `${agentId}:project/one.md` },
+      })
+      const text = fullText(result)
+      expect(text).toContain("currently viewing")
+      expect(text).toContain(
+        "[Entity: kernel:memory_file, path: /memories/nav-memory/project/one.md]",
+      )
+      const refused = await assembleContext({
+        threadId: THREAD_ID,
+        orgId: ORG_ID,
+        actor,
+        currentView: { tabType: "kernel:memory_file", entityId: `${agentId}:../../etc/passwd` },
+      })
+      expect(fullText(refused)).not.toContain("currently viewing")
+    } finally {
+      await sql`DELETE FROM kernel.agents WHERE id = ${agentId}`
+    }
+  })
+
   it("a list page names no record: nothing says one is open", async () => {
     const result = await assembleContext({
       threadId: THREAD_ID,

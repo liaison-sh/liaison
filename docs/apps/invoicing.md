@@ -47,7 +47,7 @@ When an order cannot be invoiced automatically, it appears under **Deferred** in
 Only quotes, proformas and purchase orders are started by hand. Invoices come from paid orders or from converting a quote or proforma.
 
 1. Open **Invoicing** and click **+ New quote** in the sidebar. Use the arrow next to it to pick **New proforma** or **New purchase order** instead. The button is shown to people who hold `invoicing:documents:write`.
-2. Pick the **Issuer**, then the **Issue date** and **Due date**. A date you pick decides the year of the document's number: a date in a past year takes that year's series. A date after today is refused. A quote from an issuer mapped to a Shopify shop takes the day its draft order is created, so another date is refused there.
+2. Pick the **Issuer**, then the **Issue date** and **Due date**. A date you pick decides the year of the document's number: a date in a past year takes that year's series. A date after today is refused. A quote from an issuer mapped to a Shopify shop takes the day its draft order is created, so another date is refused there. A date that would be refused says why under the field, before you click.
 3. Optionally, search a contact in **Contact** and pick it: the document is linked to that contact, which shows by its name, and an empty customer name and email are filled from it. **Unlink** removes the link.
 4. Fill in **Customer name**, **Customer email**, **Customer VAT ID**, **Customer country** and **Customer address**. Add a **Shipping address (if different)** when the parcel goes elsewhere.
 5. Click **+ Add line** for each line.
@@ -94,7 +94,7 @@ Open a document from **Documents** in the sidebar (**All**, **Invoices**, **Quot
 | **Mark paid** | Record full payment. Not shown on credit notes. |
 | **Send to customer** | Email the PDF to the customer. |
 | **Convert to invoice** | Quotes and proformas only, see above. |
-| **Preview PDF** / **Download PDF** | Open or download the rendered PDF. |
+| **Preview PDF** / **Download PDF** | Open or download the rendered PDF. When it is not ready, they say so. |
 
 Issued documents are never deleted. A correction is a credit note, with its own `CN-` number series. The date of an issued document stays in its number's year: a date in another year is refused, and the correction is a credit note and a new invoice (for a quote, proforma or purchase order, a new one). The date of an issued invoice or credit note also stays between the numbers just before and just after it, and is never after today. A refund or cancellation taken in Shopify issues the matching credit note automatically.
 

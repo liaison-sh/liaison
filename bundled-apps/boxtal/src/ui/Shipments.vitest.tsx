@@ -18,9 +18,15 @@ interface Deferred {
 
 const searches: Deferred[] = []
 
+const openRecord = vi.hoisted(() => ({ entityType: "", id: (): string | null | undefined => null }))
+
 vi.mock("@liaison/host", () => ({
   currentPath: () => `${window.location.pathname}${window.location.search}`,
   app: {
+    trackOpenRecord: (entityType: string, id: () => string | null | undefined) => {
+      openRecord.entityType = entityType
+      openRecord.id = id
+    },
     invokeTool: (name: string, args: { query?: string }) => {
       if (name === "search") {
         return new Promise((resolve) => searches.push({ query: args.query ?? "", resolve }))
@@ -82,6 +88,31 @@ beforeEach(() => {
   window.history.replaceState({}, "", "/boxtal/shipments")
 })
 afterEach(() => cleanup())
+
+describe("the record the agent is told is open", () => {
+  const stubWidth = (wide: boolean) =>
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: wide && query === "(min-width: 640px)",
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }))
+  afterEach(() => vi.unstubAllGlobals())
+
+  it("is the row in the detail pane: the first by default, then the one clicked", async () => {
+    stubWidth(true)
+    await mount()
+    expect(openRecord.entityType).toBe("shipment")
+    expect(openRecord.id()).toBe("s1")
+    fireEvent.click(screen.getByTestId("boxtal-shipment-row-s2"))
+    expect(openRecord.id()).toBe("s2")
+  })
+
+  it("is nothing on a phone, where the pane is not on screen", async () => {
+    stubWidth(false)
+    await mount()
+    expect(openRecord.id()).toBeNull()
+  })
+})
 
 describe("Shipments search box", () => {
   it("typing keeps the input focused and mounted, never suspends, and sends one debounced search", async () => {

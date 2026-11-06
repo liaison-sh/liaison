@@ -25,6 +25,7 @@ import { canOpenDownloadedFile, openDownloadedFile } from "~/modules/desktop/des
 import { currentLocale } from "~/modules/i18n/i18n-context"
 import { openConnectDialog } from "~/modules/settings/connect-dialog-host"
 import { connectWithOAuth } from "~/modules/settings/oauth-connect"
+import { trackOpenRecord } from "~/modules/shell/open-record"
 import { createStaleResource } from "~/primitives/createStaleResource"
 
 /** 3-part `<host>.<slot>.<kind>` → 2-part registry key `<host>.<slot>`
@@ -132,6 +133,10 @@ export function buildHostServices(opts: BuildHostServicesOptions): HostServices 
         ? `${window.location.pathname}${window.location.search}`
         : routed
     },
+
+    // The record this page has open in a pane (shell/open-record.ts). The app is
+    // the one the SDK bound the call to, so it can only name its own entities.
+    trackOpenRecord,
 
     navigate: (path: string): void => {
       if (opts.inAppNavigate) {

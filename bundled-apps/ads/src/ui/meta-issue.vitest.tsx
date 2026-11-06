@@ -24,6 +24,7 @@ vi.mock("@liaison/host", () => ({
     },
     createResource: (fetcher: () => unknown) => createResource(fetcher),
     openConnect: async () => {},
+    trackOpenRecord: () => {},
   },
   navigate: () => {},
 }))

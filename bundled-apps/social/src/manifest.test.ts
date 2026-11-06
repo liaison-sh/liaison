@@ -28,7 +28,7 @@ describe("social manifest (B1)", () => {
     // 0.6.53: reply, DM and like approvals use their summarizers again (the comment, the post, a link).
     // 0.6.54: an upstream timeout during the DM sync logs a warning with a reason, not an error;
     // six deferred syncs in a row log one error.
-    expect(manifest.version).toBe("0.6.55")
+    expect(manifest.version).toBe("0.6.57")
     expect(manifest.packageFormat).toBe(1)
   })
 

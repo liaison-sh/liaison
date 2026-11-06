@@ -8,6 +8,8 @@ import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
 import { appsLogger } from "~/lib/logger"
+import { assembleContext } from "~/modules/agent/context/context"
+import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { runApprovingReaper } from "~/modules/approvals/approving-reaper"
 import { AlreadyDecidedError, decideApproval } from "~/modules/approvals/decide"
 import {
@@ -565,10 +567,12 @@ describe("decideApproval lifecycle", () => {
     )
   }
 
-  async function expectRequesterScopedErrorNotice() {
+  async function expectRequesterScopedErrorNotice(id: string) {
+    // No record of what the proposing turn read: only then the requester's whole set.
     const rows = await sql<{ id: string; required_scopes: string[] }[]>`
       SELECT id, required_scopes FROM kernel.messages
-      WHERE org_id = ${ORG} AND metadata->>'type' = 'approval-error'`
+      WHERE org_id = ${ORG} AND metadata->>'type' = 'approval-error'
+        AND metadata->>'requestHandle' = (SELECT handle FROM kernel.approval_requests WHERE id = ${id})`
     expect(rows.length).toBeGreaterThan(0)
     const lackerSees = await visibleIds(LACKER, [])
     const requesterSees = await visibleIds(USER, actor.scopes)
@@ -584,10 +588,11 @@ describe("decideApproval lifecycle", () => {
     await seedLacker()
     try {
       const id = await createRequest("failNoEffect")
+      await sql`UPDATE kernel.approval_requests SET proposing_turn_scopes = NULL WHERE id = ${id}`
       await expect(
         decideApproval({ orgId: ORG, requestId: id, actor, decision: "approve" }),
       ).rejects.toMatchObject({ code: "handler_failed", status: 422 })
-      await expectRequesterScopedErrorNotice()
+      await expectRequesterScopedErrorNotice(id)
     } finally {
       await dropLacker()
     }
@@ -598,10 +603,60 @@ describe("decideApproval lifecycle", () => {
     await seedLacker()
     try {
       const id = await createRequest("ambiguous")
+      await sql`UPDATE kernel.approval_requests SET proposing_turn_scopes = NULL WHERE id = ${id}`
       await expect(
         decideApproval({ orgId: ORG, requestId: id, actor, decision: "approve" }),
       ).rejects.toMatchObject({ code: "handler_ambiguous", status: 422 })
-      await expectRequesterScopedErrorNotice()
+      await expectRequesterScopedErrorNotice(id)
+    } finally {
+      await dropLacker()
+    }
+  })
+
+  it("a failed approval does not hand its whole scope set to the conversation (walk: stuck thread)", async () => {
+    // A person approved a card, the handler turned the date down. The notice was
+    // stamped with everything that person may read, the next turn read it as
+    // history, and every later gated write in the thread was refused for good, on
+    // scopes the turn's actor does not hold.
+    await grantScopes([
+      "decide_test:gated:write",
+      "decide_test:approve",
+      "decide_test:elsewhere:read",
+      "decide_test:docs:read",
+    ])
+    await seedLacker()
+    // The thread is shared in this file: only this request's notice is under test.
+    await sql`DELETE FROM kernel.messages WHERE thread_id = ${THREAD}`
+    try {
+      const id = await createRequest("failNoEffect")
+      await sql`UPDATE kernel.approval_requests
+        SET proposing_turn_scopes = ARRAY['decide_test:docs:read'] WHERE id = ${id}`
+      await expect(
+        decideApproval({ orgId: ORG, requestId: id, actor, decision: "approve" }),
+      ).rejects.toMatchObject({ code: "handler_failed", status: 422 })
+
+      const rows = await sql<{ id: string; required_scopes: string[] }[]>`
+        SELECT id, required_scopes FROM kernel.messages
+        WHERE org_id = ${ORG} AND metadata->>'type' = 'approval-error'
+          AND metadata->>'requestHandle' = (SELECT handle FROM kernel.approval_requests WHERE id = ${id})`
+      expect(rows.length).toBeGreaterThan(0)
+      for (const row of rows) {
+        expect(row.required_scopes).toEqual(["decide_test:docs:read", "decide_test:gated:write"])
+      }
+      // Still hidden from someone who could not have run the call.
+      const lackerSees = await visibleIds(LACKER, [])
+      for (const row of rows) expect(lackerSees).not.toContain(row.id)
+
+      // And the next turn's taint, read through the real history loader, holds no more.
+      const accumulator = createTurnScopeAccumulator({ orgId: ORG })
+      await assembleContext({
+        threadId: THREAD,
+        orgId: ORG,
+        actor: { ...actor, scopes: ["decide_test:docs:read", "decide_test:gated:write"] },
+        turnScopeAccumulator: accumulator,
+      })
+      expect(accumulator.snapshot()).not.toContain("decide_test:elsewhere:read")
+      expect(accumulator.snapshot()).not.toContain("decide_test:approve")
     } finally {
       await dropLacker()
     }

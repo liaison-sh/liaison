@@ -1466,7 +1466,10 @@ describe("invoicing manifest", () => {
     // 0.20.30: the document and editor actions sit at the top of the panel, clear of the chat dock.
     // 0.20.40: credit note and purchase order cards state the amount, lines and date when the host
     //   parks the call (an org policy, what the turn read), not only when the handler does.
-    expect(m.version).toBe("0.20.40")
+    // 0.20.41: search words for credit note, refund and quote tools.
+    // 0.20.42: record pages name the entity their id belongs to.
+    // 0.20.43: drafts_create says a draft takes no date and where a stated one goes.
+    expect(m.version).toBe("0.20.43")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

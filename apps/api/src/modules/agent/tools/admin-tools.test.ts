@@ -510,6 +510,59 @@ describe("kernel-admin reads — audit_search / approvals_list", () => {
     })
   })
 
+  it("approvals_list says a pending request was approved, attempted and failed, and why (walk N3)", async () => {
+    await withAdminToolTest({ scopes: ["kernel:users:admin", "shopify:approve"] }, async (t) => {
+      const { sql: drizzleSql } = await import("drizzle-orm")
+      const threadId = crypto.randomUUID()
+      const requestId = crypto.randomUUID()
+      await withPrivilegedDb(t.orgId, "approvals-list-failure-seed", async (db) => {
+        await db.execute(drizzleSql`
+          INSERT INTO kernel.threads (id, org_id, handle, type, created_by)
+          VALUES (${threadId}, ${t.orgId}, ${`appr-${crypto.randomUUID()}`}, 'thread', ${t.userId})
+        `)
+        await db.execute(drizzleSql`
+          INSERT INTO kernel.approval_requests
+            (id, org_id, handle, status, tool_name, tool_params, current_payload, thread_id, originating_thread_id, requested_by, notify_user_ids, expires_at)
+          VALUES
+            (${requestId}, ${t.orgId}, 'request-9301', 'pending', 'shopify:order_cancel', '{}'::jsonb, '{}'::jsonb, ${threadId}, ${threadId}, ${t.userId}, ARRAY[${t.userId}]::uuid[], now() + interval '1 day')
+        `)
+        await db.execute(drizzleSql`
+          INSERT INTO kernel.approved_handler_executions
+            (org_id, approval_request_id, tool_name, status, actor_id, attempts, last_attempt_at, finished_at, error)
+          VALUES
+            (${t.orgId}, ${requestId}, 'shopify:order_cancel', 'failed_no_effect', ${t.userId}, 1, now(), now(), ${JSON.stringify({ code: "order_closed", message: "The order is already closed" })}::jsonb)
+        `)
+      })
+      const r = await t.callHandler("approvals_list", {})
+      const failure = r.approvals[0].lastFailure as Record<string, unknown>
+      expect(failure.code).toBe("order_closed")
+      expect(failure.message).toBe("The order is already closed")
+      expect(failure.state).toContain("was approved and its call was attempted")
+      expect(failure.state).toContain("waiting for a decision again")
+    })
+  })
+
+  it("approvals_list carries no failure line on a request that never failed", async () => {
+    await withAdminToolTest({ scopes: ["kernel:users:admin", "shopify:approve"] }, async (t) => {
+      const { sql: drizzleSql } = await import("drizzle-orm")
+      const threadId = crypto.randomUUID()
+      await withPrivilegedDb(t.orgId, "approvals-list-clean-seed", async (db) => {
+        await db.execute(drizzleSql`
+          INSERT INTO kernel.threads (id, org_id, handle, type, created_by)
+          VALUES (${threadId}, ${t.orgId}, ${`appr-${crypto.randomUUID()}`}, 'thread', ${t.userId})
+        `)
+        await db.execute(drizzleSql`
+          INSERT INTO kernel.approval_requests
+            (org_id, handle, status, tool_name, tool_params, current_payload, thread_id, originating_thread_id, requested_by, notify_user_ids, expires_at)
+          VALUES
+            (${t.orgId}, 'request-9302', 'pending', 'shopify:order_cancel', '{}'::jsonb, '{}'::jsonb, ${threadId}, ${threadId}, ${t.userId}, ARRAY[${t.userId}]::uuid[], now() + interval '1 day')
+        `)
+      })
+      const r = await t.callHandler("approvals_list", {})
+      expect("lastFailure" in r.approvals[0]).toBe(false)
+    })
+  })
+
   it("approvals_list surfaces editableFields + currentPayload + toolName so the agent can correct an editable field (edit-gated-invoice-payment-terms-before-approve)", async () => {
     await withAdminToolTest({ scopes: ["kernel:users:admin", "invoicing:approve"] }, async (t) => {
       // Register an editable `due_at` field for the gated invoice-issue tool, exactly as the manifest

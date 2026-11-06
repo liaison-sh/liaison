@@ -224,7 +224,7 @@
       }
     ]
   },
-  "version": "0.20.38",
+  "version": "0.20.39",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -3323,6 +3323,10 @@
           "incoterm": {
             "type": "string"
           },
+          "issued_at": {
+            "type": ["string", "null"],
+            "description": "Issue date, ISO date (YYYY-MM-DD), for a date a person chose. Defaults to today in the issuer's time zone. The date decides the number's year: a date in a past year takes that year's series. A date after today is refused (issue_date_in_future). On an issuer linked to a Shopify shop the quote takes the day its draft order is created, so another date is refused (issue_date_set_by_draft_order)."
+          },
           "due_at": {
             "type": "string"
           },
@@ -3565,6 +3569,10 @@
           "incoterm": {
             "type": "string"
           },
+          "issued_at": {
+            "type": ["string", "null"],
+            "description": "Issue date, ISO date (YYYY-MM-DD), for a date a person chose. Defaults to today in the issuer's time zone. The date decides the number's year: a date in a past year takes that year's series. A date after today is refused (issue_date_in_future)."
+          },
           "due_at": {
             "type": "string"
           },
@@ -3797,6 +3805,10 @@
           },
           "incoterm": {
             "type": "string"
+          },
+          "issued_at": {
+            "type": ["string", "null"],
+            "description": "Issue date, ISO date (YYYY-MM-DD), for a date a person chose. Defaults to today in the issuer's time zone. The date decides the number's year: a date in a past year takes that year's series. A date after today is refused (issue_date_in_future)."
           },
           "due_at": {
             "type": "string"

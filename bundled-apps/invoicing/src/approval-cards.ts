@@ -232,6 +232,8 @@ export interface IssueCardFacts {
   poNumber?: string | null
   /** The customer's id in another system (a CRM record), printed as "Customer ref". */
   customerReference?: string | null
+  /** The issue date the caller stated. Nothing stated means the day the number is taken. */
+  issuedAt?: string | null
   dueAt?: string | null
   reason?: string | null
   declaredValueMinor?: unknown
@@ -353,6 +355,8 @@ export function issueCard(f: IssueCardFacts): ApprovalCard {
   if (po) lines.push(`Customer PO number: ${po}`)
   const customerRef = text(f.customerReference, 120)
   if (customerRef) lines.push(`Customer ref: ${customerRef}`)
+  const issued = day(f.issuedAt)
+  if (issued) lines.push(`Issue date: ${issued}`)
   const due = day(f.dueAt)
   // A quote's date is how long the offer holds, not a payment due date.
   if (due) lines.push(f.type === "quote" ? `Valid until: ${due}` : `Due date: ${due}`)

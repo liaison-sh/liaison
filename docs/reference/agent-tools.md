@@ -274,9 +274,9 @@ Boxtal: ship orders with Boxtal carriers, with quotes, shipments, tracking and c
 | `claim_open` | Open a carrier claim against a shipment that is in an exception state (incident / lost / returned), e.g. | yes | `boxtal:shipments:write` |
 | `create_shipment` | Create a Boxtal shipment from a resolved draft + selected carrier offer. | yes | `boxtal:shipments:write`, `boxtal:quotes:read` |
 | `exceptions_list` | List shipments stuck in a carrier exception state (INCIDENT, RETURNED, or LOST) so the operator can chase them. |  | `boxtal:shipments:read` |
-| `get_documents` | Fetch a Boxtal shipment's shipping/customs documents, each with a download link fetched just now. |  | `boxtal:documents:read` |
+| `get_documents` | Fetch a Boxtal shipment's shipping/customs documents. |  | `boxtal:documents:read` |
 | `get_shipment` | The shipment record, refreshed: a Boxtal shipment's live order + tracking status. |  | `boxtal:shipments:read` |
-| `import_label_document` | Import a created shipment's LABEL PDF into Liaison's file store, only to ATTACH it to a reply or message the person asked for (to show or hand over a label, get_documents is enough), and return its `label_file_id` (a kernel file id attachable to a tickets__reply / mail message). |  | `boxtal:shipments:write` |
+| `import_label_document` | Backfill-import a created shipment's LABEL PDF into Liaison's file store and return its `label_file_id` (a kernel file id attachable to a tickets__reply / mail message). |  | `boxtal:shipments:write` |
 | `import_shipments` | Import existing Boxtal orders into the local shipment list by their Boxtal order id (fetches live order + tracking + document descriptors per id; local-only writes, creates nothing at Boxtal). |  | `boxtal:shipments:write` |
 | `list_content_categories` | List Boxtal content categories (customs classification). |  | `boxtal:quotes:read` |
 | `local_product_upsert` | Create or update a local (non-Shopify) product by SKU. |  | `boxtal:catalog:write` |

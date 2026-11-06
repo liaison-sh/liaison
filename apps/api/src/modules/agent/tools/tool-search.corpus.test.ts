@@ -33,7 +33,7 @@ const ACCENT = /[àâäéèêëîïôöùûüçœæ]/i
 const FLOOR_SEED = 93 // of 107
 const FLOOR_SCREEN = 38 // of 40
 const FLOOR_ACCENTED = 26 // of 29
-const FLOOR_HELDOUT_FR = 75 // of 88
+const FLOOR_HELDOUT_FR = 76 // of 88
 const FLOOR_HELDOUT_EN = 87 // of 88
 
 interface CatalogTool {

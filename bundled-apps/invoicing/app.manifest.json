@@ -224,7 +224,7 @@
       }
     ]
   },
-  "version": "0.20.47",
+  "version": "0.20.48",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -293,10 +293,11 @@
       "readScope": "invoicing:documents:read",
       "indexFields": {
         "title": "number",
-        "handle": "po_number",
+        "handle": "number",
         "labelSecondary": "counterparty_name",
         "body": "shopify_order_number",
         "bodyFields": [
+          "po_number",
           "counterparty_address",
           "counterparty_email",
           "counterparty_shipping_name",

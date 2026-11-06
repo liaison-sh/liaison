@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { classify, docsRelevant, projects } from "./ci-scope"
+import { bundledApps, classify, docsRelevant, projects } from "./ci-scope"
 
 const m = (path: string) => ({ status: "M", path })
 
@@ -81,5 +81,13 @@ describe("ci-scope projects", () => {
     expect(dirs).toContain("apps/desktop/sidecar")
     expect(dirs).toContain("packages/shared")
     expect(dirs.at(-1)).toBe("scripts")
+  })
+
+  it("lists the bundled apps apart: the workspace projects never reach them", () => {
+    const apps = bundledApps().map((p) => p.dir)
+    expect(apps).toContain("bundled-apps/invoicing")
+    expect(apps).toContain("bundled-apps/shopify")
+    const workspace = new Set(projects().map((p) => p.dir))
+    expect(apps.filter((dir) => workspace.has(dir))).toEqual([])
   })
 })

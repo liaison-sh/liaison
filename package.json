@@ -38,6 +38,7 @@
     "typecheck:scripts": "bun run scripts/with-test-lock.ts --slot-only -- tsc --noEmit -p scripts/tsconfig.json",
     "typecheck:fast": "bun run scripts/with-test-lock.ts --slot-only -- bun run scripts/ci-scope.ts typecheck --all --tool tsgo",
     "typecheck:changed": "bun run scripts/with-test-lock.ts --slot-only -- bun run scripts/ci-scope.ts typecheck --tool tsgo",
+    "typecheck:apps": "bun run scripts/with-test-lock.ts --slot-only -- bun run scripts/ci-scope.ts typecheck-apps",
     "test": "bun run scripts/with-test-lock.ts --slot-only -- bun run test:in-slot",
     "test:in-slot": "bun --filter '@liaison/api' test && bun --filter '@liaison/web' test && bun run test:root",
     "test:web": "bun run scripts/with-test-lock.ts --slot-only -- bun --filter '@liaison/web' test",

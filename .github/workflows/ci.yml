@@ -52,6 +52,10 @@ jobs:
       # errors on this repo.
       - name: TypeScript check
         run: bun run typecheck:changed
+      # Bundled apps are not workspaces, so the step above does not reach them, and a
+      # default app build stops on the same check.
+      - name: Bundled apps TypeScript check
+        run: bun run typecheck:apps
       # Generated dictionaries and the French locale match their sources: a
       # string added by hand to fr/*.json without its scripts/i18n-fr-table.ts
       # entry is overwritten with English on the next regeneration.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// `bun run scripts/ci-scope.ts scope|biome|typecheck [--base <ref>] [--all] [--tool tsgo|tsc]`
+// `bun run scripts/ci-scope.ts scope|biome|typecheck|typecheck-apps [--base <ref>] [--all] [--tool tsgo|tsc]`
 //
 // What a pull request has to check, and the checks themselves run on that
 // scope. A pull request (GITHUB_BASE_REF set, or --base given) is scoped to the
@@ -18,6 +18,9 @@
 //              --tool tsgo (default) or tsc. Both are incremental: tsc keeps its
 //              build info at the path in the project's tsconfig, tsgo beside it in
 //              <name>.tsgo.tsbuildinfo (the formats differ, they must not share a file).
+//   typecheck-apps  the same for the bundled apps, which are not workspaces: each
+//              installs its own dependencies, then runs its own `typecheck` script,
+//              the check a default `build-bundled-app.sh` stops on.
 //
 // Anything that can change every program or every lint result falls back to a
 // full run: a package.json, the lockfile, a tsconfig, the Biome config, the CI
@@ -162,8 +165,21 @@ export function projects(root: string = ROOT): Project[] {
       for (const d of readdirSync(join(root, parent)).sort()) dirs.push(`${parent}/${d}`)
     } else dirs.push(pattern)
   }
+  const out = typecheckedDirs(root, [...new Set(dirs)].sort())
+  out.push({ dir: "scripts", tsconfig: "scripts/tsconfig.json" })
+  return out
+}
+
+/** Every bundled app with a `typecheck` script. */
+export function bundledApps(root: string = ROOT): Project[] {
+  const parent = "bundled-apps"
+  const dirs = readdirSync(join(root, parent)).map((d) => `${parent}/${d}`)
+  return typecheckedDirs(root, dirs.sort())
+}
+
+function typecheckedDirs(root: string, dirs: string[]): Project[] {
   const out: Project[] = []
-  for (const dir of [...new Set(dirs)].sort()) {
+  for (const dir of dirs) {
     const manifest = join(root, dir, "package.json")
     if (!existsSync(manifest) || !existsSync(join(root, dir, "tsconfig.json"))) continue
     const scripts = (JSON.parse(readFileSync(manifest, "utf8")).scripts ?? {}) as Record<
@@ -172,7 +188,6 @@ export function projects(root: string = ROOT): Project[] {
     >
     if (scripts.typecheck) out.push({ dir, tsconfig: `${dir}/tsconfig.json` })
   }
-  out.push({ dir: "scripts", tsconfig: "scripts/tsconfig.json" })
   return out
 }
 
@@ -276,8 +291,26 @@ async function main(argv: string[]): Promise<number> {
     }
     return failed === 0 ? 0 : 1
   }
+  if (command === "typecheck-apps") {
+    if (!scope.full && !scope.typescript && !scope.typescriptAll) {
+      console.log(`typecheck-apps: no TypeScript file changed (${describe(scope)})`)
+      return 0
+    }
+    const all = bundledApps()
+    // An app's program lists its dependencies, so they come first.
+    for (const p of all) {
+      if (run(["bun", "install"], join(ROOT, p.dir)) !== 0) return 1
+    }
+    const selected = selectProjects(scope, all)
+    console.log(`typecheck-apps: ${selected.length}/${all.length} apps (${describe(scope)})`)
+    let failed = 0
+    for (const p of selected) {
+      if (run(["bun", "run", "typecheck"], join(ROOT, p.dir)) !== 0) failed++
+    }
+    return failed === 0 ? 0 : 1
+  }
   console.error(
-    "Usage: bun run scripts/ci-scope.ts scope|biome|typecheck [--base <ref>] [--all] [--tool tsgo|tsc]",
+    "Usage: bun run scripts/ci-scope.ts scope|biome|typecheck|typecheck-apps [--base <ref>] [--all] [--tool tsgo|tsc]",
   )
   return 2
 }

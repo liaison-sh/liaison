@@ -156,7 +156,7 @@ describe("resolveToolCard", () => {
       how: { label: "Active subscriptions, monthly" },
       source: "{{result.source}}",
     }
-    const result = { mrr: { minor: 540000, currency: "EUR" }, change: "+4%", source: "Stripe" }
+    const result = { mrr: { minor: 540000, currency: "EUR" }, change: "+4%", source: "Ledger" }
     expect(plain(resolved(number, result))).toEqual({
       kind: "number",
       pill: { label: "Revenue" },
@@ -164,7 +164,7 @@ describe("resolveToolCard", () => {
       value: { t: "money", minor: 540000, currency: "EUR" },
       delta: "+4%",
       how: { label: "Active subscriptions, monthly" },
-      source: "Stripe",
+      source: "Ledger",
     })
   })
 

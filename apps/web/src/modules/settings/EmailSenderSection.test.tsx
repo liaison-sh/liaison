@@ -88,6 +88,8 @@ describe("EmailSenderSection", () => {
     const init = post?.[1] as RequestInit | undefined
     expect(JSON.parse(String(init?.body)).domain).toBe("mail.fabrikam.example")
     const row0 = screen.getByTestId("email-sender-record-0")
+    // A record name stays on one line: the value takes the wrapping.
+    expect(screen.getByTestId("email-sender-name-0")).toHaveClass("whitespace-nowrap")
     expect(row0).toHaveTextContent("MX")
     expect(row0).toHaveTextContent("send.mail")
     expect(row0).toHaveTextContent("feedback-smtp.example")

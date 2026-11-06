@@ -203,7 +203,12 @@ const EmailSenderSection: Component<{ orgName: string }> = (props) => {
                         <td class="py-1 pr-3 font-mono">{r.type}</td>
                         <td class="py-1 pr-3">
                           <div class="flex items-center gap-1">
-                            <span class="break-all font-mono">{r.name}</span>
+                            <span
+                              class="whitespace-nowrap font-mono"
+                              data-testid={`email-sender-name-${i()}`}
+                            >
+                              {r.name}
+                            </span>
                             <CopyButton id={`name-${i()}`} value={r.name} />
                           </div>
                         </td>

@@ -260,7 +260,10 @@ export const DemoNextSteps: Component = () => {
       setNotifyState("idle")
     }
   }
-  const notified = () => notifyState() === "done" || b()?.notifyManaged === true
+  // Ticked on the form but not confirmed yet is not done: the button stays, and
+  // pressing it asks for the code.
+  const notified = () =>
+    notifyState() === "done" || (b()?.notifyManaged === true && b()?.verified === true)
 
   const card = (id: PathId): JSX.Element => {
     const title = () =>

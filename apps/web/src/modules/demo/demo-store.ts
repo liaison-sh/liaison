@@ -321,6 +321,8 @@ export async function createDemoWorkspace(input: {
   name: string
   email: string
   needs: DemoNeed[]
+  /** The visitor ticked "send me news". */
+  newsOptIn?: boolean
   /** The door's company question; absent when the visitor skipped it. */
   entry?: DemoEntry
   /** A fresh Turnstile token per attempt: the server checks one on every retry. */
@@ -349,6 +351,7 @@ export async function createDemoWorkspace(input: {
         name: input.name.trim(),
         email: input.email.trim(),
         needs: input.needs,
+        ...(input.newsOptIn ? { newsOptIn: true } : {}),
         ...(input.entry ? { entry: input.entry } : {}),
         turnstileToken,
         signupKey,
@@ -719,6 +722,7 @@ export interface DemoBudgetState {
   email?: string | null
   /** The next-steps dialog already opened by itself in this workspace. */
   nextStepsShown?: boolean
+  /** Opted in to news (checkbox or button). On the list only once verified too. */
   notifyManaged: boolean
   budget: { usedMicroEur: number; capMicroEur: number }
   box: { exhausted: boolean }
@@ -769,7 +773,7 @@ export function demoBudgetHeadline(b: DemoBudgetState | null): DemoBudgetHeadlin
   return "open"
 }
 
-/** One click in the next-steps dialog. Verified only (403 otherwise). */
+/** The later opt-in to news, in the next-steps dialog. Verified only (403 otherwise). */
 export async function requestManagedNotice(api: ApiClient): Promise<boolean> {
   try {
     await api.post("/demo/notify-managed", {}, { suppressGlobalError: true })

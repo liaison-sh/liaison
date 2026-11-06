@@ -4,7 +4,7 @@ import { kernel } from "./organizations"
 
 /**
  * One row per public demo signup (migration 0164; verification, needs and the
- * signup network in 0190). Instance-level, reached only
+ * signup network in 0179). Instance-level, reached only
  * through the privileged connection. `demoOrgId` has no foreign key on purpose:
  * the lead outlives the throwaway org it was created with.
  */
@@ -24,11 +24,14 @@ export const demoLeads = kernel.table(
     /** What the per-domain verification cap counts on; null = major provider. */
     emailCapKey: text("email_cap_key"),
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    /** The one news consent: the signup checkbox or the later click. */
     notifyManagedAt: timestamp("notify_managed_at", { withTimezone: true }),
     /** The needs picked on the door, in pick order. */
     needs: text("needs").array().notNull().default([]),
     /** Client network at Start (IPv4 /24, IPv6 /48); never changed after. */
     signupNetwork: text("signup_network"),
+    /** When the name and address were emptied (migration 0262); the row is anonymous. */
+    identityErasedAt: timestamp("identity_erased_at", { withTimezone: true }),
   },
   (table) => [
     uniqueIndex("demo_leads_opt_out_token_idx").on(table.optOutToken),

@@ -8,6 +8,9 @@
  * by the generator and intentionally absent here.
  */
 export const FR: Record<string, string> = {
+  "Send me occasional news about Liaison": "M'envoyer de temps en temps des nouvelles de Liaison",
+  "We use your email to send your confirmation code. Unless you tick the box and confirm your email, your name and email are deleted when your demo ends, after 72 hours.":
+    "Nous utilisons votre mail pour vous envoyer votre code de confirmation. Sauf si vous cochez la case et confirmez votre mail, votre nom et votre mail sont supprimés à la fin de votre démo, après 72 heures.",
   "Which looks most like your company?": "Qu'est-ce qui ressemble le plus à votre entreprise ?",
   "What does your company do? (optional)": "Que fait votre entreprise ? (facultatif)",
   "We picked a few scenarios for that. Change them as you like.":
@@ -1539,8 +1542,6 @@ export const FR: Record<string, string> = {
   "Start the demo": "Lancer la démo",
   "Enter your name and email to start.": "Saisissez votre nom et votre mail pour commencer.",
   "Setting things up": "Préparation en cours",
-  "We'll use your email to send you a few messages about Liaison. You can opt out anytime.":
-    "Nous utiliserons votre mail pour vous envoyer quelques messages sur Liaison. Vous pouvez vous désinscrire à tout moment.",
   "Privacy policy": "Politique de confidentialité",
   "Unsubscribe from Liaison messages": "Se désinscrire des messages Liaison",
   "Press the button and we won't email you about Liaison again.":
@@ -6717,9 +6718,10 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.demo.next.remainingOther": "Encore {{count}} scénarios à jouer :",
   "kernel.demo.next.remainingKeyOne": "Encore {{count}} scénario à jouer avec votre clé :",
   "kernel.demo.next.remainingKeyOther": "Encore {{count}} scénarios à jouer avec votre clé :",
-  "kernel.demo.next.notify": "Me prévenir quand la version hébergée ouvre",
+  "kernel.demo.next.notify":
+    "M'envoyer de temps en temps des nouvelles de Liaison, notamment l'ouverture de la version hébergée",
   "kernel.demo.next.notifyDone":
-    "C'est noté. Nous vous écrirons à l'ouverture de la version hébergée.",
+    "C'est noté. Nous vous enverrons de temps en temps des nouvelles de Liaison, notamment l'ouverture de la version hébergée.",
   "kernel.demo.next.continue": "Continuer à explorer",
   "kernel.demo.next.close": "Fermer",
   "kernel.demo.next.bannerLink": "Envie de Liaison pour votre entreprise ?",

@@ -8,7 +8,7 @@
 // Redis Lua script that checks four budgets and holds the step's full worst
 // cost on all of them, or on none:
 //
-//   email:<normalized>          lifetime          LIAISON_DEMO_BUDGET_PER_EMAIL_EUR
+//   email:<keyed address hash>  lifetime          LIAISON_DEMO_BUDGET_PER_EMAIL_EUR
 //   net:<network>:<UTC day>     per day           LIAISON_DEMO_BUDGET_PER_NETWORK_EUR
 //   box:<UTC day>               per day           LIAISON_DEMO_BOX_DAILY_EUR
 //   boxhour:<5-minute bucket>   rolling hour      LIAISON_DEMO_BOX_HOURLY_EUR
@@ -49,7 +49,7 @@
 import crypto from "node:crypto"
 import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
-import { redis } from "~/lib/redis"
+import { REDIS_PREFIX, redis } from "~/lib/redis"
 import { demoVisitorSpendState, notifyDemoSpendSettled } from "~/modules/demo/demo-alerts"
 import { loadDemoOrg } from "~/modules/demo/demo-org"
 import {
@@ -59,15 +59,21 @@ import {
   DemoSpendRefusedError,
   demoLedgerAdd,
   demoLedgerRead,
+  demoLedgerRekeyPlainEmails,
 } from "~/modules/demo/demo-spend"
 import { eurToMicroEur } from "~/modules/demo/demo-spend-ceiling"
-import { demoCodeOnRecord, demoVerifiedIdentity } from "~/modules/demo/demo-verification"
+import {
+  demoBudgetEmailKey,
+  demoCodeOnRecord,
+  demoVerifiedIdentity,
+} from "~/modules/demo/demo-verification"
 import { serverT } from "~/modules/i18n/server-i18n"
 
 const log = rootLogger.child({ module: "demo-budget" })
 
 /** Who a visitor's spend is charged to (demo-verification.ts `demoVerifiedIdentity`). */
 export interface DemoSpendIdentity {
+  /** The address's keyed hash (`demoBudgetEmailKey`), never the address. */
   emailNormalized: string
   network: string
 }
@@ -147,11 +153,40 @@ export function demoBudgetCaps(): { email: number; net: number; box: number; hou
 }
 
 const P = "demo:b"
+const PLAIN_KEYS_MOVED = `${P}:plain-addresses-moved`
 const spentEmail = (e: string) => `${P}:s:email:${e}`
 const spentNet = (n: string, day: string) => `${P}:s:net:${n}:${day}`
 const spentBox = (day: string) => `${P}:s:box:${day}`
 const spentHour = (bucket: number) => `${P}:s:boxhour:${bucket}`
 const resvKey = (id: string) => `${P}:r:${id}`
+
+/**
+ * Budgets used to be keyed on the plain address. Move the ledger's rows to the
+ * keyed form and drop the Redis keys that name an address (a counter rehydrates
+ * from the ledger). Runs its work once per Redis; a failure retries next tick.
+ */
+export async function rekeyPlainBudgetAddresses(): Promise<void> {
+  if (await redis.get(PLAIN_KEYS_MOVED)) return
+  const moved = await demoLedgerRekeyPlainEmails(demoBudgetEmailKey)
+  let cursor = "0"
+  let dropped = 0
+  do {
+    // SCAN takes and returns full keys; every other command adds the prefix itself.
+    const [next, keys] = await redis.scan(
+      cursor,
+      "MATCH",
+      `${REDIS_PREFIX}${P}:*email:*@*`,
+      "COUNT",
+      500,
+    )
+    cursor = next
+    if (keys.length > 0) {
+      dropped += await redis.del(...keys.map((k) => k.slice(REDIS_PREFIX.length)))
+    }
+  } while (cursor !== "0")
+  await redis.set(PLAIN_KEYS_MOVED, "1")
+  log.info({ moved, dropped }, "demo budgets moved off plain addresses")
+}
 
 function hourBuckets(bucket: number): number[] {
   return Array.from({ length: HOUR_BUCKETS }, (_, i) => bucket - i * BUCKET_MS)

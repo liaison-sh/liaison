@@ -135,6 +135,7 @@ export const DemoEntry: Component<DemoEntryProps> = (props) => {
 
   const [name, setName] = createSignal("")
   const [email, setEmail] = createSignal("")
+  const [newsOptIn, setNewsOptIn] = createSignal(false)
   // Read once: the link only sets where the question and the picker start.
   const returnTo = firstParam(searchParams.returnTo)
   const linkEntry = linkedEntry({ entry: firstParam(searchParams.entry), returnTo })
@@ -212,6 +213,7 @@ export const DemoEntry: Component<DemoEntryProps> = (props) => {
         name: name(),
         email: email(),
         needs: needs(),
+        newsOptIn: newsOptIn(),
         entry: answer(),
         turnstileToken: () => turnstile.token("demo_start"),
         onPreparing: () => setPreparing(true),
@@ -634,6 +636,16 @@ export const DemoEntry: Component<DemoEntryProps> = (props) => {
                   data-testid="demo-email"
                   onInput={(e) => setEmail(e.currentTarget.value)}
                 />
+                <label class="flex items-start gap-2 text-[13px] leading-snug text-text-secondary">
+                  <input
+                    type="checkbox"
+                    data-testid="demo-news-opt-in"
+                    checked={newsOptIn()}
+                    onChange={(e) => setNewsOptIn(e.currentTarget.checked)}
+                    class="mt-0.5"
+                  />
+                  <span>{i18n.t("kernel.demo.newsOptIn")}</span>
+                </label>
               </div>
               <div class="flex flex-col gap-3">
                 <turnstile.Widget />
@@ -676,8 +688,7 @@ export const DemoEntry: Component<DemoEntryProps> = (props) => {
                     {signupError()}
                   </p>
                 </Show>
-                {/* Information at collection, no extra step: the address is used for a
-                few messages and the visitor can opt out at any time. */}
+                {/* Information at collection: what happens to the address, ticked or not. */}
                 <p
                   data-testid="demo-lead-notice"
                   class="text-[11px] leading-snug text-text-tertiary"

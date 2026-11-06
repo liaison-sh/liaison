@@ -774,6 +774,95 @@ describe("issue date and number year (real Postgres, sandbox, bridge)", () => {
     expect(today(unset)).toBe("2027-01-01")
     expect(today(broken)).toBeNull()
   }, 60_000)
+
+  describe("a refused date is a typed 4xx with its plain message, through the sandbox", () => {
+    /** The class and words the caller gets: what the route answers and the agent reads. */
+    const refusal = async (toolName: string, params: Record<string, unknown>) => {
+      try {
+        const res = await executeTool<Record<string, unknown>>({
+          toolName: `invoicing:${toolName}`,
+          orgId: ORG,
+          actor,
+          params,
+          threadId: THREAD,
+          origin: "human-ui",
+        })
+        throw new Error(`not refused: ${JSON.stringify(res.data)}`)
+      } catch (err) {
+        const e = err as Error & { status?: number; code?: string }
+        return { status: e.status, code: e.code, message: e.message }
+      }
+    }
+    const creditNote = (issuer: string, issued_at: string) => ({
+      counterparty: buyer,
+      issuer_profile_id: issuer,
+      currency: "EUR",
+      issued_at,
+      items: [{ ...items[0], unit_price_minor: -1000 }],
+    })
+
+    it("on a new credit note and quote", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      setSystemTime(new Date("2026-06-15T10:00:00Z"))
+      expect(
+        await refusal("credit_note_create_and_issue", creditNote(issuer, "2026-02-31")),
+      ).toMatchObject({
+        status: 400,
+        code: "issued_at_invalid",
+        message: expect.stringContaining("is not a date, so nothing was issued"),
+      })
+      expect(
+        await refusal("credit_note_create_and_issue", creditNote(issuer, "2026-06-16")),
+      ).toMatchObject({
+        status: 422,
+        code: "issue_date_in_future",
+        message: expect.stringContaining("is after today"),
+      })
+      await tool("credit_note_create_and_issue", creditNote(issuer, "2026-06-10"))
+      expect(
+        await refusal("credit_note_create_and_issue", creditNote(issuer, "2026-06-09")),
+      ).toMatchObject({
+        status: 409,
+        code: "issue_date_before_last_number",
+      })
+      await sql`UPDATE app_invoicing.issuer_profiles SET shopify_shop_id = 'shop.example' WHERE id = ${issuer}`
+      expect(
+        await refusal("quote_create_and_issue", {
+          counterparty: buyer,
+          issuer_profile_id: issuer,
+          currency: "EUR",
+          issued_at: "2026-06-01",
+          items,
+        }),
+      ).toMatchObject({ status: 409, code: "issue_date_set_by_draft_order" })
+    }, 60_000)
+
+    it("on an issued invoice's date", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      setSystemTime(new Date("2026-06-15T10:00:00Z"))
+      const first = await invoiceOf(issuer)
+      const later = await invoiceOf(issuer)
+      // These rules sit behind the legal original's own lock, which an invoice with no stored file
+      // does not have.
+      for (const d of [first, later]) {
+        await sql`UPDATE app_invoicing.documents SET legal_original_id = NULL WHERE id = ${d.id}`
+      }
+      expect(
+        await refusal("documents_update", { id: later.id, issued_at: "2025-06-15" }),
+      ).toMatchObject({
+        status: 409,
+        code: "issue_date_crosses_number_year",
+        message: expect.stringContaining("credit note"),
+      })
+      expect(
+        await refusal("documents_update", { id: later.id, issued_at: "2026-06-01" }),
+      ).toMatchObject({
+        status: 409,
+        code: "issue_date_breaks_number_order",
+      })
+    }, 60_000)
+  })
+
   describe("the card a person approves a credit note on", () => {
     // An agent's call an org policy parks is gated by the host, ahead of the handler's own card.
     const stage = async (params: Record<string, unknown>) => {

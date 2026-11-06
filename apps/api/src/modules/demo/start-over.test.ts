@@ -171,7 +171,12 @@ describe("POST /api/demo/start-over", () => {
     await markVerified(first.orgId)
     const identity = await demoVerifiedIdentity(first.orgId)
     if (!identity) throw new Error("visitor not verified")
-    const held = await reserveStep(identity, "deepseek/deepseek-v4.1-flash-1017", 50_000, first.orgId)
+    const held = await reserveStep(
+      identity,
+      "deepseek/deepseek-v4.1-flash-1017",
+      50_000,
+      first.orgId,
+    )
     await settleStep(held, 40_000)
     const spent = (await snapshot(identity)).usedMicroEur
     expect(spent).toBeGreaterThan(0)

@@ -88,6 +88,8 @@ On a managed instance the plan also limits the organization's custom apps (apps 
 
 Limits are set by whoever runs the server; you cannot change them here. A row at its limit says **Limit reached**. You get a notification when a limit reaches 80 % and 100 %, once per crossing: it comes again only after use has dropped back under 80 %. A notification that could not be sent is sent at the next change in use. The notification is written in the organization's default language. For **Storage**, the 80 % notification asks you to upgrade or free space, otherwise new files will be refused once storage is full; at the limit, files from people and agents are refused, while incoming mail attachments and legal records such as issued invoices are still kept. Background work past its hourly limit waits for the next hour; nothing is lost. How the limits work: [Limit an organization](../provisioning-cli.md#limit-an-organization).
 
+On a managed instance, **Everything stored (estimate)** adds what the organization occupies beyond its files: mail, tickets, conversations, knowledge, thumbnails and the search index. It is measured each night and it is an estimate. Above the plan's storage limit, admins get one notification per crossing; it never blocks anything. Self-hosted servers do not measure it.
+
 ### Send email from your own domain
 
 On a managed instance, an admin can have the organization's invitations, notification digests and survey emails sent from the organization's own domain.

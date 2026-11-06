@@ -171,3 +171,4 @@ Default quiet hours 20:00-08:00 weekdays and all weekend, once the time zone is 
 Muted conversations, Unmute, Channels that notify you of every message, Mentions only -> apps/web/src/modules/settings/notification-settings/ConversationsSection.tsx:106
 On call edited by admins, admins by default -> apps/web/src/modules/settings/notification-settings/OnCallSection.tsx:70 ; apps/api/src/modules/notifications/on-call.ts:25
 Channel on System -> apps/web/src/modules/settings/SystemSettings.tsx:78
+Managed Everything stored (estimate): nightly, warns once per crossing, never blocks, not on self-hosted -> apps/api/src/modules/cloud/storage-estimate.ts ; apps/web/src/modules/settings/OrgUsageSection.tsx

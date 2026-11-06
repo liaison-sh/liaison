@@ -847,4 +847,84 @@ describe("issue date and number year (real Postgres, sandbox, bridge)", () => {
       expect(summary.lines.join("\n")).toContain("-47.60 EUR")
     }, 60_000)
   })
+
+  describe("a credit note is never dated before the invoice it corrects", () => {
+    const credit = (issuer: string, invoice: string, issued_at?: string) =>
+      tool("credit_note_create_and_issue", {
+        counterparty: buyer,
+        issuer_profile_id: issuer,
+        original_document_id: invoice,
+        currency: "EUR",
+        ...(issued_at === undefined ? {} : { issued_at }),
+        items: [{ ...items[0], unit_price_minor: -1000 }],
+      })
+    const series = async (issuer: string) =>
+      sql`SELECT key, value::text FROM kernel.app_sequences
+        WHERE org_id = ${ORG} AND key LIKE ${`invoicing:doc_number:${issuer}:credit_note:%`}
+        ORDER BY key`
+
+    it("a stated date before the invoice is refused with a plain typed error, and no number is used", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      setSystemTime(new Date("2026-06-15T10:00:00Z"))
+      const invoice = await invoiceOf(issuer)
+      const before = await series(issuer)
+      const refused = await credit(issuer, invoice.id, "2025-03-15")
+      expect(refused).toMatchObject({ code: "issue_date_before_original" })
+      expect(refused.message).toContain("2025-03-15 is before")
+      expect(refused.message).toContain(`${invoice.number} (2026-06-15)`)
+      expect(JSON.stringify(await credit(issuer, invoice.id, "2026-06-14"))).toContain(
+        "issue_date_before_original",
+      )
+      expect(await series(issuer)).toEqual(before)
+    }, 60_000)
+
+    it("the invoice's own day, a later one and no date at all are issued", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      setSystemTime(new Date("2026-06-15T10:00:00Z"))
+      const invoice = await invoiceOf(issuer)
+      expect(await storedDate(documentId(await credit(issuer, invoice.id, "2026-06-15")))).toBe(
+        "2026-06-15",
+      )
+      setSystemTime(new Date("2026-06-20T10:00:00Z"))
+      expect(await storedDate(documentId(await credit(issuer, invoice.id, "2026-06-18")))).toBe(
+        "2026-06-18",
+      )
+      expect(await storedDate(documentId(await credit(issuer, invoice.id)))).toBe("2026-06-20")
+    }, 60_000)
+
+    it("a standalone credit note keeps its earlier date", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      setSystemTime(new Date("2026-06-15T10:00:00Z"))
+      const res = await tool("credit_note_create_and_issue", {
+        counterparty: buyer,
+        issuer_profile_id: issuer,
+        currency: "EUR",
+        issued_at: "2025-03-15",
+        items: [{ ...items[0], unit_price_minor: -1000 }],
+      })
+      expect(await storedDate(documentId(res))).toBe("2025-03-15")
+    }, 60_000)
+
+    it("moving either date afterwards cannot put the credit note first", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      setSystemTime(new Date("2026-06-10T10:00:00Z"))
+      const invoice = await invoiceOf(issuer)
+      setSystemTime(new Date("2026-06-20T10:00:00Z"))
+      const note = documentId(await credit(issuer, invoice.id, "2026-06-15"))
+      // These rules sit behind the legal original's lock, which a document with no stored file does not have.
+      await sql`UPDATE app_invoicing.documents SET legal_original_id = NULL
+        WHERE id IN (${invoice.id}, ${note})`
+
+      expect(await tool("documents_update", { id: note, issued_at: "2026-06-09" })).toMatchObject({
+        code: "issue_date_before_original",
+      })
+      expect(await storedDate(note)).toBe("2026-06-15")
+      expect(
+        await tool("documents_update", { id: invoice.id, issued_at: "2026-06-16" }),
+      ).toMatchObject({
+        code: "issue_date_after_credit_note",
+      })
+      expect(await storedDate(invoice.id)).toBe("2026-06-10")
+    }, 60_000)
+  })
 })

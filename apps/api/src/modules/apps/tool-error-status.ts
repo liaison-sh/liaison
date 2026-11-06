@@ -125,6 +125,9 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   // An invoice's legal original (fixed at issue) carries these values; changing them needs a
   // credit note and a new invoice, never an in-place edit.
   legal_original_locked: 409,
+  // A credit note dated before the invoice it corrects, or that invoice moved past it.
+  issue_date_before_original: 409,
+  issue_date_after_credit_note: 409,
   document_not_editable: 409,
   already_invoiced: 409,
   hs_code_in_use: 409,

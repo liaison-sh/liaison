@@ -316,6 +316,46 @@ async function neighbouringNumbers(
   }
 }
 
+/** The date a change would give an invoice or credit note, against the other side of the correction. */
+async function correctionOrderRefusal(
+  ctx: MutationsCtx,
+  doc: Record<string, unknown>,
+  date: string,
+  label: string,
+): Promise<ErrorEnvelope | null> {
+  if (doc.type === "credit_note") {
+    const refs = (doc.external_refs ?? {}) as Record<string, unknown>
+    const originalId = doc.original_document_id ?? refs.original_document_id
+    if (typeof originalId !== "string" || !originalId) return null
+    const [original] = (await ctx.db.findMany("documents", {
+      where: { id: originalId },
+      select: ["number", "issued_at"],
+      limit: 1,
+    })) as Array<Record<string, unknown>>
+    const originalDate = dateOnly(original?.issued_at)
+    if (!originalDate || date >= originalDate) return null
+    return dateRefused(
+      "issue_date_before_original",
+      `${date} is before ${String(original?.number)} (${originalDate}), the invoice ${label} corrects. Nothing was ` +
+        "changed. Pass that date or a later one.",
+    )
+  }
+  if (doc.type !== "invoice") return null
+  const notes = (await ctx.db.findMany("documents", {
+    where: { original_document_id: doc.id, type: "credit_note" },
+    orderBy: { issued_at: "asc" },
+    select: ["number", "issued_at"],
+    limit: 1,
+  })) as Array<Record<string, unknown>>
+  const noteDate = dateOnly(notes[0]?.issued_at)
+  if (!noteDate || date <= noteDate) return null
+  return dateRefused(
+    "issue_date_after_credit_note",
+    `${date} is after ${String(notes[0]?.number)} (${noteDate}), a credit note that corrects ${label}. Nothing was ` +
+      "changed. Pass that date or an earlier one.",
+  )
+}
+
 /**
  * A number and its date belong to one year, and numbers and dates run together in a series
  * (mutations/credit-notes.ts takes a stated date by the same rules). An issued document whose date
@@ -324,6 +364,8 @@ async function neighbouringNumbers(
  *  - an invoice or credit note also stays between its neighbouring numbers and on or before today,
  *    since no number issued today could follow a later date. A quote, proforma or purchase order
  *    records no sale, so no order binds it.
+ *  - a credit note stays on or after the invoice it corrects, and that invoice on or before its
+ *    credit notes: moving either one must not put the correction first.
  * The same date again is no change: the editor's save carries every field. A date that already
  * disagrees with its number can still be brought back to the number's year.
  */
@@ -363,6 +405,8 @@ async function issuedDateChangeRefusal(
         `follow it. Nothing was changed. Pass today or an earlier date.`,
     )
   }
+  const correctionRefusal = await correctionOrderRefusal(ctx, doc, date, label)
+  if (correctionRefusal) return correctionRefusal
   if (doc.number_int == null || year === null) return null
   const { previous, next } = await neighbouringNumbers(ctx, doc, Number(doc.number_int))
   const previousDate = dateOnly(previous?.issued_at)

@@ -22,7 +22,9 @@
 //     cap: a focus app is loaded first, never to the whole budget. Then the
 //     focus app's tools that have not been used recently, in focusOverflow's
 //     order.
-//  3. Only then the recently used tools, oldest use first.
+//  3. Only then the recently used tools, oldest use first. The tools acting on
+//     the entity the server read may hold the turn past the cap (turn-focus.ts),
+//     and that excess does not count against what the last turns used.
 //
 // Never shed: the core (non deferred) tools, kernel__tool_search among them,
 // and anything a turn without tool_search could not load back. The tools a
@@ -35,6 +37,7 @@ import { RECENT_TOOL_TURNS } from "~/modules/agent/context/discovery-window"
 import {
   appOfSdkToolName,
   entityRank,
+  FOCUS_ENTITY_TOOLS_CEILING_FACTOR,
   focusOverflow,
   type TurnFocus,
 } from "~/modules/agent/runtime/turn-focus"
@@ -149,8 +152,20 @@ export function planTurnToolBudget(params: {
   })
   total -= focusOver.reduce((n, name) => n + cost(name), 0)
 
-  // 3. The recently used tools, only when nothing else is left.
-  const tier3 = evictByRecency({ names: recent, tools, recency, total, cap })
+  // 3. The recently used tools, only when nothing else is left. What the tools
+  // acting on the server-read entity cost past the cap is theirs (focusOverflow
+  // keeps them up to its ceiling), so it never pushes out what the last turn used.
+  const shedFocus = new Set(focusOver)
+  const entityHeld = focusTools
+    .filter((n) => !shed.has(n) && !shedFocus.has(n) && entityRank(n, tools, focus) === 2)
+    .reduce((n, name) => n + cost(name), 0)
+  const tier3 = evictByRecency({
+    names: recent,
+    tools,
+    recency,
+    total,
+    cap: Math.min(cap + entityHeld, Math.round(cap * FOCUS_ENTITY_TOOLS_CEILING_FACTOR)),
+  })
   total = tier3.total
 
   const drop = [...tier1.dropped, ...overShare, ...focusOver, ...tier3.dropped]

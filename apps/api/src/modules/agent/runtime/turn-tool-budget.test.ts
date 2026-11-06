@@ -155,3 +155,63 @@ describe("recent turns, then a vague message, under a large focus preload", () =
     expect(out.toolSchemaTokens).toBeLessThanOrEqual(cap)
   })
 })
+
+describe("the tools acting on the entity and what the last turn used", () => {
+  const schema = (input: string) => ({ jsonSchema: { properties: { [input]: {} } } })
+  const sized = (chars: number, input: string) => ({
+    description: "d".repeat(chars),
+    inputSchema: schema(input),
+  })
+  const focus: TurnFocus = new Map([
+    [
+      "tickets",
+      { hard: true, verifiedEntityTypes: new Set(["ticket"]), viewEntityTypes: new Set<string>() },
+    ],
+  ])
+  const run = (tools: Record<string, { description: string; inputSchema: unknown }>, cap: number) =>
+    planTurnToolBudget({
+      visible: Object.keys(tools),
+      tools,
+      droppable: () => true,
+      preloaded: new Set(Object.keys(tools).filter((n) => n.startsWith("tickets__"))),
+      hardFocusApps: new Set(["tickets"]),
+      focus,
+      recency: new Map(
+        Object.keys(tools)
+          .filter((n) => n.startsWith("boxtal__"))
+          .map((n, i) => [n, i]),
+      ),
+      cap,
+    })
+
+  it("does not shed a tool the last turn used for what the entity's tools cost past the cap", () => {
+    const tools = {
+      tickets__reply: sized(4000, "ticketId"),
+      boxtal__book: sized(4000, "orderKey"),
+    }
+    const out = run(tools, 1500)
+    expect(out.drop).toEqual([])
+    expect(out.toolSchemaTokens).toBeGreaterThan(1500)
+    expect(out.toolSchemaTokens).toBeLessThanOrEqual(2250)
+  })
+
+  it("still sheds the recent tools past what the entity's tools hold", () => {
+    const tools = {
+      tickets__reply: sized(800, "ticketId"),
+      boxtal__book: sized(2000, "orderKey"),
+      boxtal__quote: sized(3000, "orderKey"),
+    }
+    const out = run(tools, 1000)
+    expect(out.drop).toEqual(["boxtal__quote"])
+  })
+
+  it("past the ceiling the entity's tools go, and the turn is back under the cap", () => {
+    const tools = {
+      tickets__reply: sized(6000, "ticketId"),
+      boxtal__book: sized(4000, "orderKey"),
+    }
+    const out = run(tools, 1500)
+    expect(out.drop).toEqual(["tickets__reply"])
+    expect(out.toolSchemaTokens).toBeLessThanOrEqual(1500)
+  })
+})

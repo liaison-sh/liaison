@@ -61,7 +61,7 @@ function manifestWith(card: unknown, extraTools: Record<string, unknown> = {}) {
 
 function judge(card: unknown, extraTools: Record<string, unknown> = {}): string {
   const out = validateAppManifest(manifestWith(card, extraTools))
-  return out.success ? "" : out.error
+  return out.success ? "" : (out.error ?? "")
 }
 
 const ENTITY = { kind: "entity", pill: { label: "Item" }, title: "{{result.name}}" }

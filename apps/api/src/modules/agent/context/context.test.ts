@@ -13,7 +13,6 @@ import {
   enforceSystemPromptTokenCap,
   fullAgentPurpose,
   logMemoryBudgets,
-  NO_OPEN_RECORD_LINE,
   systemPartsToText,
   TURN_SYSTEM_PROMPT_TOKEN_CAP,
 } from "~/modules/agent/context/context"
@@ -492,7 +491,7 @@ describe("context-assembler", () => {
       const text = fullText(result)
       expect(text).toContain("currently viewing")
       expect(text).toContain("Navigation Contact")
-      expect(text).toContain('Do NOT run a search to find what "this" refers to')
+      expect(text).toContain("Do NOT run a search to find it")
     } finally {
       await sql`DELETE FROM kernel.contacts WHERE id = ${contactId}`
     }
@@ -517,25 +516,21 @@ describe("context-assembler", () => {
       const text = fullText(result)
       expect(text).toContain("currently viewing")
       expect(text).toContain("Open Page Contact")
-      expect(text).toContain("It wins over any record or unfinished job from earlier")
-      expect(text).not.toContain(NO_OPEN_RECORD_LINE)
+      expect(text).toContain("over anything earlier in this conversation")
     } finally {
       viewRegistry.delete([ORG_ID, "contacts"])
       await sql`DELETE FROM kernel.contacts WHERE id = ${contactId}`
     }
   })
 
-  it("with no record open, tells the agent to ask what 'this' is (walk D1)", async () => {
-    // A list page names no record: the agent asked about "this" parcel picked one itself.
+  it("a list page names no record: nothing says one is open", async () => {
     const result = await assembleContext({
       threadId: THREAD_ID,
       orgId: ORG_ID,
       actor,
       currentView: { tabType: "boxtal:shipments", entityId: "boxtal/shipments" },
     })
-    const text = fullText(result)
-    expect(text).not.toContain("currently viewing")
-    expect(text).toContain(NO_OPEN_RECORD_LINE)
+    expect(fullText(result)).not.toContain("currently viewing")
   })
 
   it("names the entity the conversation was made for, with no view sent (walk D26)", async () => {

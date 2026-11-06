@@ -263,6 +263,8 @@ async function publishThreadCreatedEvents(
 }
 
 interface InsertThreadWithParticipantsParams {
+  /** A caller-derived id, for a thread that exists at most once per key. Default: a random one. */
+  id?: string
   orgId: string
   userId: string
   participantIds: string[]
@@ -324,7 +326,7 @@ export async function insertThreadWithParticipants(
   // Insert thread without RETURNING — RLS SELECT policy requires participant
   // membership, but participants don't exist yet (chicken-and-egg).
   // Generate ID in JS, insert participants, then SELECT the thread back.
-  const threadId = crypto.randomUUID()
+  const threadId = params.id ?? crypto.randomUUID()
   await tx.insert(threads).values({
     id: threadId,
     orgId,

@@ -5,6 +5,7 @@ import type { AppEnv } from "~/app"
 import { extractRlsContext } from "~/lib/request-rls"
 import { success } from "~/lib/response"
 import { BulkDispatchError, runBulkDispatch } from "~/modules/apps/bulk-dispatch"
+import { restToolCall } from "~/modules/apps/rest-tool-call"
 
 export const bulkRoutes = new Hono<AppEnv>()
 
@@ -39,6 +40,9 @@ bulkRoutes.post("/:app/bulk/:action", async (c) => {
   }
 
   try {
+    // REST entry point: a browser bulk-select action, same as the single-tool
+    // REST route in modules/apps/routes.ts.
+    const call = await restToolCall(c)
     const result = await runBulkDispatch({
       app,
       action,
@@ -46,9 +50,8 @@ bulkRoutes.post("/:app/bulk/:action", async (c) => {
       params: parsed.data.params,
       idempotencyKey: parsed.data.idempotencyKey,
       actor: extractRlsContext(c),
-      // REST entry point: a browser bulk-select action, same as the single-tool
-      // REST route in modules/apps/routes.ts. The human click IS the approval.
-      origin: "human-ui",
+      origin: call.origin,
+      threadId: call.threadId,
     })
     return success(c, result)
   } catch (err) {

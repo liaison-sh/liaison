@@ -34,6 +34,9 @@
 // the turn's (token-derived) scopes; the sub-run drill-down now narrows the
 // live grants by the session's scopes (threads/message.ts); the rest are jobs,
 // consumers and audience checks about OTHER users, not the caller's token.
+//
+// A tool run over REST is allowed, and is never read as a person's click: gates,
+// outside-text taint and host rules apply as for an MCP client (apps/rest-tool-call.ts).
 import type { Context } from "hono"
 import { HTTPException } from "hono/http-exception"
 import type { AppEnv } from "~/app"

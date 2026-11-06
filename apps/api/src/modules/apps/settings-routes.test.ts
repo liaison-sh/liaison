@@ -31,6 +31,7 @@ import { processOutboxBatch } from "~/infra/events/outbox-worker"
 import { env } from "~/lib/env"
 import { settingsFixtureApp } from "~/modules/apps/__fixtures__/settings-app/descriptor"
 import { registerApps } from "~/modules/apps/runtime"
+import { createSession } from "~/modules/auth/auth"
 import { signAccessToken } from "~/modules/auth/jwt"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { invalidateScopeCatalog } from "~/modules/permissions/scope-catalog"
@@ -365,6 +366,22 @@ describe("declarative settings routes", () => {
       expect(r.body.data?.result).toEqual({
         stored: { remote: { mode: "a", gated: true }, untouched: "kept" },
       })
+    })
+
+    // Before the two-approver policy below: under the single-approver one, a person's write
+    // saved at once just above. The same write from a capped client is no person's click.
+    test("a restricted device session's write of a gated tool field parks, it does not save", async () => {
+      const restrictedToken = (
+        await createSession(adminId, orgId, [`${APP}:remote`, `${APP}:limits:admin`])
+      ).accessToken
+      const r = await patchOrg(restrictedToken, "remote.gated", true)
+      expect(r.status).toBe(202)
+      const approvalId = r.body.data?.pending?.approvalRequestId
+      expect(typeof approvalId).toBe("string")
+      // Withdrawn again: the tests below count this tool's pending approvals.
+      await withPrivilegedDb(orgId, "settings-routes-restricted-clear", (tx) =>
+        tx.delete(approvalRequests).where(eq(approvalRequests.id, approvalId)),
+      )
     })
 
     test("a set that parks for approval answers 202 pending, not saved", async () => {

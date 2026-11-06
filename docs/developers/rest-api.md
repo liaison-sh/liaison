@@ -87,6 +87,8 @@ Responses follow one envelope:
 { "error": { "message": "Contact not found", "code": "…" } }
 ```
 
+A device sign-in (a command-line tool or another program holding a token capped to the scopes it declared) can run tools through these routes, and its calls count as a program's, never as a person's click. A gated tool waits for a person's approval and answers `{ "data": { "blocked": { … } } }`, and outside-text and host rules apply as they do for an [MCP client](mcp.md).
+
 For automation, prefer the tools made for it:
 
 - [`liaison` CLI](../provisioning-cli.md) for provisioning: org, users, roles, mailboxes, API keys, connectors (`liaison config apply`).

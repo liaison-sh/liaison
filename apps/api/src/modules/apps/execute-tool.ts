@@ -288,7 +288,8 @@ function validateSingleResult(item: unknown, schema: Record<string, string>): bo
 // product UI and IS the approval; the others are non-human callers that must
 // never be mistaken for a direct human click:
 //   "in-app-agent" - the in-app agent loop
-//   "mcp"          - an MCP client
+//   "mcp"          - an MCP client, or a restricted session's REST call
+//                    (rest-tool-call.ts): a program, whichever door it used
 //   "system"       - a webhook, job, or routine tick with no human in the
 //                    loop at all, even when it runs under an actorType:"user"
 //                    RLS context (acting AS a user for data visibility, not
@@ -5964,7 +5965,7 @@ export async function executeTool<TData = unknown>(
 ): Promise<ExecuteToolResult<TData>> {
   const { agentId, ...rest } = params
   // Fail-closed default for a caller that passed no origin at all: never
-  // "human-ui" (that literal is reserved for the REST entry, routes.ts, where
+  // "human-ui" (that literal is reserved for the REST entry, rest-tool-call.ts, where
   // the human click IS the approval). "in-app-agent" gates the same as any
   // other non-human origin, so an omitted origin can only ever be gated, never
   // silently bypass the approval check.

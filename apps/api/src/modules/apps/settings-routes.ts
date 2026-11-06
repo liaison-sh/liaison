@@ -70,6 +70,7 @@ import {
 import { appSettingsRegistry } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { restToolCall } from "~/modules/apps/rest-tool-call"
 import type {
   ManifestSettingsEntry,
   RegisteredSettingsField,
@@ -123,16 +124,18 @@ type ToolOutcome =
   | { ok: false; pending: string | null }
   | { ok: false; status: number; code: string; message: string }
 
-/** Run one of the app's tools as the caller, from the settings page (a person's click). */
+/** Run one of the app's tools as the caller, from the settings page (a person's click, rest-tool-call.ts). */
 async function runAppTool(c: Ctx, tool: string, params: unknown): Promise<ToolOutcome> {
   const app = c.req.param("app") ?? ""
   try {
+    const call = await restToolCall(c)
     const result = await executeTool({
       toolName: `${app}:${tool}`,
       orgId: c.get("orgId"),
       actor: extractRlsContext(c),
       params,
-      origin: "human-ui",
+      threadId: call.threadId,
+      origin: call.origin,
       signal: getRequestSignal(c),
     })
     if (result.blocked) return { ok: false, pending: result.blocked.approvalRequestId ?? null }

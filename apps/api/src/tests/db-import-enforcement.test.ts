@@ -68,6 +68,9 @@ describe("db import enforcement", () => {
     // install, boot repair and peer materialise paths, which run outside any request.
     "modules/apps/package-store.ts",
     "modules/apps/bulk-dispatch.ts",
+    // A restricted session's hidden thread: its session family (kernel.sessions has no RLS
+    // path for this read) and the thread, created for the token's own org and user.
+    "modules/apps/rest-tool-call.ts",
     "modules/apps/kernel-bulk.ts",
     "modules/apps/execute-tool.ts",
     // Background and pre-session paths with no request RLS context, each scoped

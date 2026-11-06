@@ -18,6 +18,7 @@ import {
   MCP_DEVICE_CLIENT_PREFIX,
   normalizeDeviceLabel,
 } from "~/modules/auth/device-flow-request"
+import { generateDeviceUserCode } from "~/modules/auth/device-user-code"
 import {
   createMcpConnection,
   loadBindableAgent,
@@ -82,11 +83,7 @@ mcpDeviceGrant.post("/initiate", zValidator("json", initiateSchema), async (c) =
   }
 
   const deviceCode = randomBytes(32).toString("hex")
-  const SAFE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
-  const codeBytes = randomBytes(8)
-  const userCode = Array.from(codeBytes)
-    .map((b) => SAFE_ALPHABET[b % SAFE_ALPHABET.length])
-    .join("")
+  const userCode = generateDeviceUserCode()
   const expiresAt = new Date(Date.now() + DEVICE_CODE_EXPIRY_SECONDS * 1000)
   const storedClientId = `${MCP_DEVICE_CLIENT_PREFIX}${clientId}`
 

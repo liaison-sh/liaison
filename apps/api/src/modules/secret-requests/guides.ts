@@ -26,6 +26,7 @@ import { connectionConfigRegistry } from "~/modules/apps/app-registries"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import {
   connectionSetupExtraSteps,
+  isShopifyAuthorizeUrl,
   setupStepMarkdown,
 } from "~/modules/connection-guides/connection-setup"
 import { computeGoogleSetupValues, isGoogleConnection } from "~/modules/connection-guides/google"
@@ -41,7 +42,7 @@ export type SecretRequestGuide =
 
 /** Whether a connection signs in at a Shopify store (its authorize URL is per store). */
 function isShopifyConnection(app: string, authorizationUrl: string | undefined): boolean {
-  return app === "shopify" || (authorizationUrl ?? "").includes(".myshopify.com")
+  return app === "shopify" || isShopifyAuthorizeUrl(authorizationUrl)
 }
 
 /** The steps for this card, or null when it shows none. */

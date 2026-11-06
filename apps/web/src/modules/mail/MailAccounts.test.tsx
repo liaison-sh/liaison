@@ -1060,4 +1060,14 @@ describe("imapConnectProblem", () => {
     expect(imapConnectProblem("IMAP connection refused: self-signed certificate")).toBe("tls")
     expect(imapConnectProblem("something else")).toBeNull()
   })
+
+  it("reads the bridge's own wording at the start only, the system's error codes anywhere", () => {
+    expect(imapConnectProblem("IMAP timeout after 30s")).toBe("timeout")
+    expect(imapConnectProblem("sync failed: connect ETIMEDOUT 10.0.0.1:993")).toBe("timeout")
+    expect(imapConnectProblem("the server Timed Out")).toBe("timeout")
+    expect(imapConnectProblem("IMAP connection refused")).toBe("unreachable")
+    expect(imapConnectProblem("sync failed: read ECONNRESET")).toBe("unreachable")
+    expect(imapConnectProblem("folder named IMAP timeout is empty")).toBeNull()
+    expect(imapConnectProblem("folder named IMAP connection refused is empty")).toBeNull()
+  })
 })

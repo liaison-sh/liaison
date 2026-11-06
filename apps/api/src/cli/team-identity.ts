@@ -10,7 +10,7 @@
 // read from a file only its owner can read (mode 0600), never from the command
 // line. Managed edition only. STDOUT carries one JSON report.
 
-import { readFileSync, statSync } from "node:fs"
+import { NotOwnerOnlyError, readOwnerOnlyFile } from "~/cli/owner-only-file"
 import { isManagedEdition } from "~/lib/edition"
 import {
   installProvisionedKey,
@@ -63,11 +63,9 @@ export async function runTeamIdentityCli(argv: string[]): Promise<TeamIdentityCl
   const path = rest[1]
   let key: string
   try {
-    if ((statSync(path).mode & 0o077) !== 0) {
-      return usage(`${path} must be readable by its owner only (chmod 0600)`)
-    }
-    key = readFileSync(path, "utf8")
+    key = readOwnerOnlyFile(path)
   } catch (err) {
+    if (err instanceof NotOwnerOnlyError) return usage(err.message)
     return usage(`Cannot read ${path}: ${(err as Error).message}`)
   }
   try {

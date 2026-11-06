@@ -109,6 +109,11 @@ function hostOf(url: string | undefined): string | null {
   }
 }
 
+/** Whether a connection signs in at a Shopify store: its authorize host, per store or fixed. */
+export function isShopifyAuthorizeUrl(url: string | undefined): boolean {
+  return hostOf(url)?.endsWith(".myshopify.com") ?? false
+}
+
 export function connectionFamily(
   app: string,
   name: string,
@@ -116,8 +121,7 @@ export function connectionFamily(
 ): ConnectionFamily {
   const host = hostOf(decl.authorizationUrl)
   if (decl.type === "oauth2" && host === GOOGLE_AUTHORIZE_HOST) return "google"
-  if (app === "shopify" || (decl.authorizationUrl ?? "").includes(".myshopify.com"))
-    return "shopify"
+  if (app === "shopify" || isShopifyAuthorizeUrl(decl.authorizationUrl)) return "shopify"
   if (decl.type === "credentials" && name === "imap") return "imap"
   return "app"
 }

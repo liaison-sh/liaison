@@ -216,7 +216,7 @@ const KNOWN_LITERAL_USES: LiteralPin[] = [
   { file: "modules/secret-requests/guides.ts", branch: 'return app === "shopify" ||' }, // isShopifyConnection
   {
     file: "modules/connection-guides/connection-setup.ts",
-    branch: 'if (app === "shopify" || (decl.authorizationUrl ?? "").includes(".myshopify.com"))',
+    branch: 'if (app === "shopify" || isShopifyAuthorizeUrl(decl.authorizationUrl))',
   }, // connectionFamily
   {
     file: "modules/connection-guides/google.ts",

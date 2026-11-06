@@ -49,9 +49,12 @@ type ImapConnectProblem = "unreachable" | "not_found" | "timeout" | "tls"
 /** The known ways an IMAP connection fails before sign-in, from the stored error. */
 export function imapConnectProblem(error: string): ImapConnectProblem | null {
   if (/ENOTFOUND|EAI_AGAIN/.test(error)) return "not_found"
-  if (/^IMAP timeout|ETIMEDOUT|timed out/i.test(error)) return "timeout"
+  if (error.startsWith("IMAP timeout") || /ETIMEDOUT|timed out/i.test(error)) return "timeout"
   if (/certificate|self[- ]signed|\bTLS\b|\bSSL\b|wrong version number/i.test(error)) return "tls"
-  if (/^IMAP connection refused|ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|ECONNRESET/.test(error)) {
+  if (
+    error.startsWith("IMAP connection refused") ||
+    /ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|ECONNRESET/.test(error)
+  ) {
     return "unreachable"
   }
   return null

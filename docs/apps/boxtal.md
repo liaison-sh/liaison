@@ -38,7 +38,7 @@ A new label format applies to shipments created after the change.
 
 1. Open **Boxtal** and click **To prepare** in the sidebar.
 2. Click **Pull orders** to fetch new orders and refresh quotes. **Refresh stale** re-quotes only the rows whose estimate is out of date.
-3. On each row, set the status: **To prepare**, **Validated** or **On hold** (waiting on stock, a customer or a repair).
+3. On each row, set the status: **To prepare**, **Validated** or **On hold** (waiting on stock, a customer or a repair). An agent's call names the row by its `order_key` or its invoice's `document_ref`: one that names no row, order or document is refused and writes nothing, and so are two that name different rows.
 4. Set the category, which decides the shipping document: **Sale** ships on the order's issued invoice. **Repair** and **Sample** ship on a proforma the app issues through [Invoicing](invoicing.md). That proforma may wait for approval, and the category is locked until it is decided.
 5. Pick the carrier offer if you do not want the cheapest one.
 6. Click **Ship**. A label purchase waits for approval. Someone who can approve sees **Approve and buy** and **Decline** on the row.

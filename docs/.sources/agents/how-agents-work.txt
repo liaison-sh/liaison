@@ -157,3 +157,4 @@ A refused, failed or stopped turn notifies like a finished one -> apps/api/src/m
 An app's post in a direct conversation notifies like a direct message -> apps/api/src/modules/push/fanout-consumer.ts:796
 A turn names the record open on the page, and that record wins for "this" -> apps/api/src/modules/agent/context/context.ts:2002
 A pane, drawer or expanded row reports its record -> apps/web/src/modules/shell/open-record.ts:42
+a call with wrong arguments answers what to fix, not a fault -> apps/api/src/modules/agent/tools/call-tool.ts:39

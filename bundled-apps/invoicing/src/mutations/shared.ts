@@ -331,7 +331,11 @@ const DISCOUNT_HINT =
 /** The typed refusal for a minor-unit field that does not hold a whole number. `field` may be a
  *  path (`items[2].discount_minor`). */
 export function invalidAmountError(field: string, value: unknown): { code: string; message: string } {
-  const hint = field.endsWith("discount_minor") ? ` ${DISCOUNT_HINT}` : ""
+  const hint = field.endsWith("discount_minor")
+    ? ` ${DISCOUNT_HINT}`
+    : field.endsWith("unit_price_minor")
+      ? " unit_price_minor is the price of ONE unit in minor currency units (cents)."
+      : ""
   return {
     code: "invalid_amount",
     message: `${minorAmountRefusal(field, value)}${hint} Correct ${field} and call the tool again.`,

@@ -116,6 +116,10 @@ When an agent reads your private mail, any of your Liaison apps where your mailb
 
 An answer that points you at a card (a secret card, or an approval card "above") gets the same one more try when no such card is open in the conversation, and the new answer replaces all of the first one's text. Each turn also reads how the imports started in the conversation stand at that moment, so an agent never answers from an older "still running".
 
+### When a call has the wrong arguments
+
+A tool called with arguments it does not take answers with what is wrong and what it takes, and nothing runs. The agent corrects the call and tries again. It is not counted as a fault.
+
 ## What an agent remembers and does on its own
 
 - **Memory.** Each agent keeps its own memory, which you can read on the agent's **Memory** tab when you have access. An agent writes to it only when you ask it to remember something, or when you correct it or tell it how you want it to work. It does not copy into memory what an app already holds, such as contacts, orders or prices, and it does not write memory on its own as part of a task. When a conversation goes quiet, Liaison may save such a preference from it, reading only the messages you typed, never the agent's replies or what an app returned. It saves nothing from a conversation in which you declined a memory approval.

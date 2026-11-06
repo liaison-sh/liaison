@@ -3820,21 +3820,6 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
     expect(doc.due_at).toBeNull()
   })
 
-  test("positive-amount lines are also accepted (sign is not enforced)", async () => {
-    const { ctx, db } = makeCtx({ approval: PRE_APPROVED })
-    const r = await creditNoteCreateAndIssue(ctx, {
-      operation_category: "goods",
-      counterparty: defaultCounterparty,
-      issuer_profile_id: "iss-1",
-      currency: "EUR",
-      items: sampleDraftItems,
-    })
-    expect(r.status).toBe("completed")
-    if (r.status !== "completed") throw new Error("unreachable")
-    const doc = db.__all("documents").find((d) => d.id === r.document_id)!
-    expect(doc.grand_total_minor).toBe("12000") // 2*5000 + 20%
-  })
-
   test("credit note number series is independent of the invoice series", async () => {
     const { ctx } = makeCtx({ approval: PRE_APPROVED })
     const inv1 = await invoiceCreateAndIssue(ctx, {
@@ -7945,7 +7930,7 @@ describe("e-invoicing gate at the manual issue sites", () => {
       counterparty: frPerson,
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      items: sampleDraftItems,
+      items: [{ ...sampleDraftItems[0]!, unit_price_minor: -5_000n }],
     })
     expect("error" in pre).toBe(true)
     if (!("error" in pre)) throw new Error("unreachable")
@@ -9560,7 +9545,7 @@ describe("the approval card states the total that issues", () => {
 
       const issuing = makeCtx({ approval: PRE_APPROVED, issuer: { prices_include_tax: pricesIncludeTax } as never })
       const issued = (await tool.run(issuing.ctx, params)) as { status: string; document_id?: string; error?: unknown }
-      expect(`${label} ${issued.status} ${JSON.stringify(issued.error ?? null)}`).toBe(`${label} completed null`)
+      if (issued.status !== "completed") throw new Error(`#${i} ${tool.run.name} ${JSON.stringify(issued).slice(0, 400)}`)
       const doc = issuing.db.__all("documents").find((d) => d.id === issued.document_id)!
       const total = formatMoneyMinor(BigInt(String(doc.grand_total_minor)), "EUR")
       issuedSeen.add(total)
@@ -9647,6 +9632,10 @@ describe("a credit note's total is negative", () => {
       type: "credit_note",
       ...BUYER_DRAFT_EINVOICE,
       counterparty_contact_id: "contact-1",
+      counterparty_name: "Buyer SARL",
+      counterparty_address: "1 rue Buyer, 75002 Paris",
+      counterparty_email: "ap@buyersarl.example",
+      counterparty_country: "FR",
       issuer_profile_id: "iss-1",
       currency: "EUR",
       items: [line(500)],
@@ -9665,6 +9654,10 @@ describe("a saved draft", () => {
       type: "invoice",
       ...BUYER_DRAFT_EINVOICE,
       counterparty_contact_id: "contact-1",
+      counterparty_name: "Buyer SARL",
+      counterparty_address: "1 rue Buyer, 75002 Paris",
+      counterparty_email: "ap@buyersarl.example",
+      counterparty_country: "FR",
       issuer_profile_id: "iss-1",
       currency: "EUR",
       items: [

@@ -774,6 +774,7 @@ describe("issue date and number year (real Postgres, sandbox, bridge)", () => {
     expect(today(unset)).toBe("2027-01-01")
     expect(today(broken)).toBeNull()
   }, 60_000)
+
   describe("a refused date is a typed 4xx with its plain message, through the sandbox", () => {
     /** The class and words the caller gets: what the route answers and the agent reads. */
     const refusal = async (toolName: string, params: Record<string, unknown>) => {
@@ -859,6 +860,8 @@ describe("issue date and number year (real Postgres, sandbox, bridge)", () => {
         status: 409,
         code: "issue_date_breaks_number_order",
       })
+    }, 60_000)
+  })
 
   describe("the card a person approves a credit note on", () => {
     // An agent's call an org policy parks is gated by the host, ahead of the handler's own card.

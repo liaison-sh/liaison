@@ -24,11 +24,16 @@ interface KeyCase {
   expected: unknown
 }
 
-const CARD = { kind: "entity", title: { path: "result.name" } }
+const CARD = { kind: "entity", pill: { label: "Item" }, title: "{{result.name}}" }
 const WHEN = { field: "origin", equals: "outside" }
 
 const CASES: KeyCase[] = [
-  { key: "resultCard", tool: { resultCard: CARD }, registry: "resultCard", expected: CARD },
+  {
+    key: "resultCard",
+    tool: { resultCard: CARD, returns: { schema: { name: "string" } } },
+    registry: "resultCard",
+    expected: CARD,
+  },
   {
     key: "runningLabel",
     tool: { runningLabel: "Reading items" },

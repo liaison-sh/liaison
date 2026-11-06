@@ -20,7 +20,6 @@ import {
   findIssuerProfile,
   dateOnly,
   deleteDraftRow,
-  isCalendarDate,
 } from "./db-helpers"
 import {
   normaliseDraftLines,

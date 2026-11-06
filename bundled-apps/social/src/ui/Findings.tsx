@@ -12,7 +12,6 @@
 // unsupported (own-Page FB / own-media IG comments only).
 import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js"
 import { app, fetch as hostFetch } from "@liaison/host"
-import { createMediaMatch } from "@liaison/app-ui/card-table"
 import {
   Badge,
   type BadgeTone,
@@ -447,9 +446,9 @@ export const Findings: Component = () => {
   // row on its own, which would hand the phone to the detail before the
   // operator has chosen anything.
   const panes = createMemo(() => splitPaneClasses(selected() !== null))
-  // What the agent is told is open: both panes from md up, on a phone only a pick.
-  const bothPanes = createMediaMatch("(min-width: 768px)")
-  app.trackOpenRecord("finding", () => (bothPanes() ? selectedId() : selected()))
+  // What the agent is told is open: the row the person picked, still listed. The
+  // first row filling the pane by itself is not one.
+  app.trackOpenRecord("finding", () => (selected() === selectedId() ? selected() : null))
 
   return (
     <div class="flex h-full min-h-0 flex-col">

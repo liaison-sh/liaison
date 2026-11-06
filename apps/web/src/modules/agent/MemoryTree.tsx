@@ -47,6 +47,7 @@ import { cn } from "~/lib/cn"
 import { hasScope } from "~/modules/auth/auth-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
+import { trackOpenRecord } from "~/modules/shell/open-record"
 import { shellTier } from "~/modules/shell/shell-tier"
 import { ResponsiveDetail } from "~/ui/ResponsiveDetail"
 import { ResponsiveList } from "~/ui/ResponsiveList"
@@ -83,6 +84,8 @@ interface Props {
   selected?: string
   /** The viewer picked something else, so the page drops the param. */
   onSelectedCleared?: () => void
+  /** This tab is the one showing. Absent means yes. */
+  active?: boolean
 }
 
 /** The name rule the flat create form enforced, unchanged. */
@@ -127,6 +130,14 @@ const MemoryTree: Component<Props> = (props) => {
   const [confirmDelete, setConfirmDelete] = createSignal(false)
   const [deleteError, setDeleteError] = createSignal<string | null>(null)
   const [deleteBusy, setDeleteBusy] = createSignal(false)
+
+  // The file the viewer opened, under the agent whose tree it is: the turn may
+  // be talking to another agent, and only the server can say what path that is.
+  trackOpenRecord("kernel", "memory_file", () => {
+    const path = agentMemoryStore.openPath
+    if (props.active === false || !path || agentMemoryStore.agentId !== props.agentId) return null
+    return `${props.agentId}:${path}`
+  })
 
   /** The scrolling tree column, so the create form can be scrolled into view. */
   let listRef: HTMLDivElement | undefined

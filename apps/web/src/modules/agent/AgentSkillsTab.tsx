@@ -47,13 +47,19 @@ interface Props {
   selected?: string
   /** The viewer picked another row, so the page drops the param. */
   onSelectedCleared?: () => void
+  /** This tab is the one showing. Absent means yes. */
+  active?: boolean
 }
 
 const AgentSkillsTab: Component<Props> = (props) => {
   const api = useApi()
   const i18n = useI18n()
   const [selected, setSelected] = createSignal<string | null>(null)
-  trackOpenRecord("kernel", "skill", selected)
+  /** The row the viewer opened: the first row selecting itself is not one. */
+  const [opened, setOpened] = createSignal<string | null>(null)
+  trackOpenRecord("kernel", "skill", () =>
+    props.active !== false && selected() === opened() ? opened() : null,
+  )
   const [creating, setCreating] = createSignal(false)
   const [name, setName] = createSignal("")
   const [description, setDescription] = createSignal("")
@@ -69,6 +75,7 @@ const AgentSkillsTab: Component<Props> = (props) => {
     if (!id || id === consumedSelection) return
     consumedSelection = id
     setCreating(false)
+    setOpened(id)
     setSelected(id)
   })
 
@@ -117,6 +124,7 @@ const AgentSkillsTab: Component<Props> = (props) => {
         ownerAgentId: props.agentId,
       })
       setCreating(false)
+      setOpened(created.id)
       setSelected(created.id)
     } catch (err) {
       setError(err instanceof Error ? err.message : i18n.t("kernel.agents.saveFailed"))
@@ -145,6 +153,7 @@ const AgentSkillsTab: Component<Props> = (props) => {
           onSelect={(skill) => {
             props.onSelectedCleared?.()
             setCreating(false)
+            setOpened(skill.id)
             setSelected(skill.id)
           }}
           onNew={() => {

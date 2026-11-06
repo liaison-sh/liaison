@@ -3,7 +3,7 @@
 // Invoicing mutations: quote, proforma and purchase order issuance (issue from a draft with
 // threshold gating, and the generic create and issue path).
 
-import { documentsGet } from "../reads"
+import { documentsGet, type ReadsCtx } from "../reads"
 import {
   type Counterparty,
   type DraftLine,
@@ -985,7 +985,7 @@ export async function proformaCreateAndIssuePreflight(
  * write, by the code that writes it. A draft stores no tax, so its own totals cannot say.
  */
 export async function draftIssuePreview(
-  ctx: MutationsCtx,
+  ctx: MutationsCtx & ReadsCtx,
   input: { draft_id: string },
 ): Promise<Record<string, unknown> | null> {
   const doc = (await documentsGet(ctx, { id: input.draft_id })) as unknown as Record<string, unknown> | null

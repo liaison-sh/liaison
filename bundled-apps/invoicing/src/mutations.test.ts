@@ -9675,7 +9675,7 @@ describe("a saved draft", () => {
     expect(String(stored.discount_minor)).toBe("500")
     expect(String(stored.subtotal_minor)).toBe("19500")
 
-    const preview = await draftIssuePreview(m.ctx, { draft_id })
+    const preview = await draftIssuePreview(m.ctx as never, { draft_id })
     const card = await summarizers.summarizeInvoiceIssue({ draft_id }, undefined, { context: preview } as never)
 
     const issued = await invoiceIssue(m.ctx, { draft_id })

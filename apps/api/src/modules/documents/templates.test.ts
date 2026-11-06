@@ -10,16 +10,20 @@
 // template's body round-trips as stored and is bounded in size.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { randomUUID } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import { eq } from "drizzle-orm"
 import { PDFDict, PDFDocument, PDFName, PDFString } from "pdf-lib"
 import { app } from "~/app"
 import { sql } from "~/db"
+import { withSystemDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
-import { documentTemplates } from "~/db/schema/kernel"
+import { documentTemplates, organizations } from "~/db/schema/kernel"
 import { rebuildFilesSelectPolicy } from "~/infra/boot-phase10"
 import { getObjectBytes } from "~/lib/storage/get-object-bytes"
 import { handleFilesUploadUrl } from "~/modules/agent/tools/file-tools"
+import { seedFileRow } from "~/seed/factories/files/file-row"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -250,6 +254,57 @@ describe("pdf_form templates from a staged upload", () => {
     const res = await call(admin, "PATCH", `/${created.data.id}`, { body: { blocks: [] } })
     expect(res.status).toBe(409)
     expect((await json<{ error: { code: string } }>(res)).error.code).toBe("wrong_kind")
+  }, 60_000)
+})
+
+describe("at the org's storage cap", () => {
+  it("refuses a new template and a new file for one, and stores neither", async () => {
+    // An org of its own: the cap below must not reach the other tests.
+    const { orgId, adminUserId } = await minimal.secondOrg()
+    const owner = await actor(orgId, adminUserId)
+    const created = await call(owner, "POST", "", {
+      name: "Before the cap",
+      stagedFileId: await stage(owner, await formPdf()),
+    })
+    expect(created.status).toBe(201)
+    const { data: template } = await json<{ data: TemplateJson }>(created)
+    const forNew = await stage(owner, await formPdf())
+    const forReplace = await stage(owner, await formPdf({ extraField: "customer.vat" }))
+
+    // 1 GB cap, 1 GB stored: the uploads above were staged while there was room.
+    await withSystemDb("template-quota-test-cap", (db) =>
+      db
+        .update(organizations)
+        .set({ caps: { storageGb: 1 } })
+        .where(eq(organizations.id, orgId)),
+    )
+    await seedFileRow({
+      orgId,
+      app: "kernel",
+      entityType: "file_upload_session",
+      entityId: randomUUID(),
+      filename: "filler.bin",
+      mimeType: "application/octet-stream",
+      sizeBytes: 1024 * 1024 * 1024,
+      storageKey: `template-quota-test/${randomUUID()}`,
+      uploadedBy: owner.userId,
+    })
+    const before = { rows: await templateRows(orgId), files: await templateFileRows(orgId) }
+
+    const refusedNew = await call(owner, "POST", "", { name: "Over", stagedFileId: forNew })
+    expect(refusedNew.status).toBe(409)
+    expect((await json<{ error: { code: string } }>(refusedNew)).error.code).toBe(
+      "storage_quota_exceeded",
+    )
+    const refusedReplace = await call(owner, "POST", `/${template.id}/file`, {
+      stagedFileId: forReplace,
+    })
+    expect(refusedReplace.status).toBe(409)
+    expect((await json<{ error: { code: string } }>(refusedReplace)).error.code).toBe(
+      "storage_quota_exceeded",
+    )
+    expect(await templateRows(orgId)).toBe(before.rows)
+    expect(await templateFileRows(orgId)).toBe(before.files)
   }, 60_000)
 })
 

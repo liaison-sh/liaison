@@ -52,6 +52,13 @@ const REVIEWED: Record<string, string> = {
   // org that has no caps yet (caps are set by the operator afterwards).
   "modules/auth/auth.ts#bootstrapRegister":
     "first admin of the instance's first org, before any cap exists",
+  // The check sits one step earlier: both callers store the object through
+  // putTemplateObject, which refuses at the cap before the row is written.
+  // modules/documents/templates.test.ts proves it for a new template and a new file.
+  "modules/documents/service.ts#insertTemplateFile":
+    "putTemplateObject checks the cap before this row",
+  // A row written by the test harness's seed factory, with no object behind it.
+  "seed/factories/files/file-row.ts#*": "test seed data, no org member reaches it",
 }
 
 /**

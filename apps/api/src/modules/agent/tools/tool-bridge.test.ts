@@ -841,6 +841,15 @@ describe("tool bridge: scope taint in the execute path", () => {
       })
     // Reads scoped data into the turn: the prior call that taints it.
     testTool("scoped_read", { readOnly: true })
+    toolRegistry.set([TAINT_ORG, "taint_t", "strict_read"], {
+      appName: "taint_t",
+      name: "strict_read",
+      description: "A read with a required argument",
+      requiredScopes: ["taint_t:strict-read:run"],
+      readOnly: true,
+      params: z.object({ id: z.string() }).strict(),
+      handler: spy("strict_read"),
+    })
     testTool("undeclared_write", {})
     testTool("declared_other", { writesToTable: "app_taint_t.items" })
     // Taint-free but a write: it must not taint the turn, and its own write is still checked.
@@ -933,6 +942,19 @@ describe("tool bridge: scope taint in the execute path", () => {
     const frame = frameWith(["a:b:read"])
     await call(frame, "taint_t__undeclared_write")
     expect(frame.turnScopeAccumulator?.snapshot()).toEqual(["a:b:read"])
+  })
+
+  // Walk N5. The turn's scopes stamp its reply, so a refused call's scopes would outlive the turn.
+  it("a call refused for bad arguments read nothing, so the turn records nothing", async () => {
+    ran.length = 0
+    const frame = frameWith()
+    const refused = (await call(frame, "taint_t__strict_read", { nope: 1 })) as { error?: string }
+    expect(refused.error).toContain("strict_read")
+    expect(ran).toEqual([])
+    expect(frame.turnScopeAccumulator?.snapshot()).toEqual([])
+    await call(frame, "taint_t__strict_read", { id: "a" })
+    expect(ran).toEqual(["strict_read"])
+    expect(frame.turnScopeAccumulator?.snapshot()).toEqual(["taint_t:strict-read:run"])
   })
 
   it("tool_search then an app write: discovery does not taint the turn, so the write runs", async () => {

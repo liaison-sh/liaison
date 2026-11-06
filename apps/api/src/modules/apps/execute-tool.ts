@@ -181,6 +181,7 @@ import {
   contentParamsRetryHint,
   isPlatformTaintRefusal,
   markPlatformTaintRefusal,
+  markRefusedBeforeRun,
   mcpReadOfOwnServer,
   returnsToOwnMcpServer,
   SCOPE_TAINT_BLOCKED_MESSAGE,
@@ -195,6 +196,7 @@ import {
   targetRowIds,
   UNDECLARED_WRITE_TARGET,
   UNKNOWN_TURN_TAINT,
+  wasRefusedBeforeRun,
 } from "~/modules/agent/scopes/scope-taint"
 import {
   checkTaintEscalation,
@@ -4249,11 +4251,14 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
           `then run it again.`
         : ""
     return {
-      error: {
-        code: "forbidden",
-        message: `missing scope: ${missing}${routineHint}`,
-        retryable: false,
-      },
+      error: markRefusedBeforeRun(
+        {
+          code: "forbidden",
+          message: `missing scope: ${missing}${routineHint}`,
+          retryable: false,
+        },
+        opts.toolName,
+      ),
     }
   }
 
@@ -4271,11 +4276,14 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       : []
   if (malformedRefs.length > 0) {
     return {
-      error: {
-        code: "invalid_ref",
-        message: `invalid_ref: ${malformedRefMessage(opts.toolName, malformedRefs)}`,
-        retryable: true,
-      },
+      error: markRefusedBeforeRun(
+        {
+          code: "invalid_ref",
+          message: `invalid_ref: ${malformedRefMessage(opts.toolName, malformedRefs)}`,
+          retryable: true,
+        },
+        opts.toolName,
+      ),
     }
   }
 
@@ -4301,7 +4309,12 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     const message = err instanceof Error ? err.message : "Invalid parameters"
     // A parameter-format error is the retryable class — the caller (or the
     // model) can correct the arguments from the detailed message and try again.
-    return { error: { code: "invalid_params", message, retryable: true } }
+    return {
+      error: markRefusedBeforeRun(
+        { code: "invalid_params", message, retryable: true },
+        opts.toolName,
+      ),
+    }
   }
 
   // Bulk agent tools: dispatch through runBulkDispatch using the full actor context.
@@ -6034,6 +6047,9 @@ export async function executeTool<TData = unknown>(
         SANDBOX_TENANT_RETRY_AFTER_SECONDS
     }
     if (isPlatformTaintRefusal(envelope.error)) markPlatformTaintRefusal(err)
+    if (wasRefusedBeforeRun(envelope.error, params.toolName)) {
+      markRefusedBeforeRun(err, params.toolName)
+    }
     throw err
   }
   if ("blocked" in envelope) return { data: null as TData, blocked: envelope.blocked }

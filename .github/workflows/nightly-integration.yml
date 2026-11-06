@@ -151,6 +151,14 @@ jobs:
       - name: Bring up test infra (Postgres, Redis, MeiliSearch, SeaweedFS)
         if: steps.changed.outputs.run == 'true'
         run: bun run infra:up
+      - name: Build the apps under test
+        # Each app's own install, as the suites' pretest bootstrap would do: its UI
+        # suite resolves Solid from there, and bundled-freeze builds only three.
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          for app in ads shopify invoicing boxtal monitoring pennylane calls social; do
+            bash scripts/build-bundled-app.sh "$app" --skip-sign --skip-typecheck
+          done
       - name: bundled-ads
         if: "!cancelled() && steps.changed.outputs.run == 'true'"
         run: bun run scripts/test-run.ts bundled-ads

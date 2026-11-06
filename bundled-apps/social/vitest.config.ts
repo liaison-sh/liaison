@@ -4,21 +4,17 @@
 // transform, so these render under vitest + jsdom. The toolchain (vitest,
 // vite-plugin-solid, jsdom, @solidjs/testing-library) is the one
 // packages/app-ui already installs for its own kit tests; it is borrowed from
-// there rather than duplicated here. Solid resolves to one copy (this app's, else the root's) so the
+// there rather than duplicated here. Solid resolves to this app's copy so the
 // renderer and the components share one runtime.
 //
 // Run: packages/app-ui/node_modules/.bin/vitest run --config bundled-apps/social/vitest.config.ts
-import { existsSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const here = dirname(fileURLToPath(import.meta.url))
 const toolchain = resolve(here, "../../packages/app-ui/node_modules")
 const { default: solid } = await import(resolve(toolchain, "vite-plugin-solid/dist/esm/index.mjs"))
-// An app's own node_modules exists only after it was frozen; a fresh install hoists to the root.
-const installed = (pkg: string) =>
-  [resolve(here, "node_modules", pkg), resolve(here, "../../node_modules", pkg)].find((p) => existsSync(p)) as string
-const solidRoot = installed("solid-js")
+const solidRoot = resolve(here, "node_modules/solid-js")
 
 export default {
   root: here,
@@ -38,7 +34,7 @@ export default {
       // fine. Aliasing to the CJS entry sidesteps the broken ESM live-binding
       // transform — CJS interop exposes the whole `module.exports` object,
       // `z` included, intact.
-      { find: /^zod$/, replacement: resolve(installed("zod"), "index.cjs") },
+      { find: /^zod$/, replacement: resolve(here, "node_modules/zod/index.cjs") },
     ],
   },
   test: {

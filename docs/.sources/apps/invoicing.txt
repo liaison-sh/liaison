@@ -192,3 +192,4 @@ A credit note's stated date decides its number year; before the last number of t
 A payment date nobody states reads the issuer's time zone -> bundled-apps/invoicing/src/mutations/payments.ts:92; bundled-apps/invoicing/src/handlers/shopify-order-paid.ts:969
 A paid order or draft order on an unknown zone waits in deferred_list -> bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:678
 A draft order deleted or completed meanwhile closes its wait -> bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:486; bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:561
+An issued document's date stays in its number's year; an invoice or credit note's date stays between its neighbouring numbers and on or before today -> bundled-apps/invoicing/src/mutations/documents-update.ts:330

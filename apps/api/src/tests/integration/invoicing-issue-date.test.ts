@@ -451,6 +451,62 @@ describe("issue date and number year (real Postgres, sandbox, bridge)", () => {
     expect(rows.length).toBe(2)
   }, 60_000)
 
+  describe("documents_update on an issued document's date", () => {
+    /** Two invoices 10 and 15 June 2026, as a document with no legal original has them. */
+    async function twoInvoices(issuer: string) {
+      setSystemTime(new Date("2026-06-10T10:00:00Z"))
+      const first = await invoiceOf(issuer)
+      setSystemTime(new Date("2026-06-15T10:00:00Z"))
+      const second = await invoiceOf(issuer)
+      setSystemTime(new Date("2026-06-20T10:00:00Z"))
+      for (const d of [first, second]) {
+        await sql`UPDATE app_invoicing.documents SET legal_original_id = NULL WHERE id = ${d.id}`
+      }
+      return { first, second }
+    }
+
+    it("a date in another year is refused and steers to a credit note", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      const { second } = await twoInvoices(issuer)
+      const refused = await tool("documents_update", { id: second.id, issued_at: "2027-01-03" })
+      expect(JSON.stringify(refused)).toContain("issue_date_crosses_number_year")
+      expect(JSON.stringify(refused)).toContain("credit note")
+      expect(await storedDate(second.id)).toBe("2026-06-15")
+    }, 60_000)
+
+    it("inside the year, the date stays between the neighbouring numbers and on or before today", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      const { first, second } = await twoInvoices(issuer)
+      expect(
+        JSON.stringify(await tool("documents_update", { id: second.id, issued_at: "2026-06-09" })),
+      ).toContain("issue_date_breaks_number_order")
+      expect(
+        JSON.stringify(await tool("documents_update", { id: first.id, issued_at: "2026-06-16" })),
+      ).toContain("issue_date_breaks_number_order")
+      expect(
+        JSON.stringify(await tool("documents_update", { id: second.id, issued_at: "2026-06-21" })),
+      ).toContain("issue_date_in_future")
+      expect(await storedDate(second.id)).toBe("2026-06-15")
+
+      await tool("documents_update", { id: second.id, issued_at: "2026-06-12" })
+      expect(await storedDate(second.id)).toBe("2026-06-12")
+    }, 60_000)
+
+    it("the same date again is no change, in the form the row comes back in", async () => {
+      const issuer = await issuerAt("Europe/Paris")
+      const { second } = await twoInvoices(issuer)
+      const got = await tool("documents_get", { id: second.id })
+      const sent = got.data?.issued_at
+      expect(sent).toBeTruthy()
+      const res = await tool("documents_update", { id: second.id, issued_at: sent, notes: "Merci" })
+      expect(JSON.stringify(res)).not.toContain("issue_date")
+      expect((await doc(second.id)).status).toBe("issued")
+      const [row] = await sql<Array<{ notes: string }>>`
+        SELECT notes FROM app_invoicing.documents WHERE id = ${second.id}`
+      expect(row?.notes).toBe("Merci")
+    }, 60_000)
+  })
+
   describe("a credit note's stated date and its number agree", () => {
     const creditNote = (issuer: string, issued_at?: string) =>
       tool("credit_note_create_and_issue", {

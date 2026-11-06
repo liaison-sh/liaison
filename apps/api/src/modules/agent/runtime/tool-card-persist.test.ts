@@ -31,6 +31,7 @@ import {
 } from "~/modules/agent/runtime/tool-card-store"
 import { manifestRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { sendMessage } from "~/modules/threads/message"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -272,12 +273,22 @@ async function seedCard(opts: {
       },
     ],
   }
-  const [row] = await sql<{ id: string }[]>`
-    INSERT INTO kernel.messages
-      (thread_id, org_id, author_id, author_type, author_agent_id, content, required_scopes, metadata)
-    VALUES (${opts.thread ?? threadId}, ${orgId}, ${userId}, 'agent', ${agentId}, 'Seeded',
-            ${opts.requiredScopes ?? [READ_SCOPE]}::text[], ${JSON.stringify(metadata)}::text::jsonb)
-    RETURNING id`
+  const [row] = await sql.unsafe<{ id: string }[]>(
+    insertSql(
+      "kernel.messages",
+      {
+        thread_id: opts.thread ?? threadId,
+        org_id: orgId,
+        author_id: userId,
+        author_type: "agent",
+        author_agent_id: agentId,
+        content: "Seeded",
+        required_scopes: `{${(opts.requiredScopes ?? [READ_SCOPE]).join(",")}}`,
+        metadata: JSON.stringify(metadata),
+      },
+      { returning: "id" },
+    ),
+  )
   return { messageId: row?.id as string, toolCallId }
 }
 
@@ -312,12 +323,30 @@ beforeAll(async () => {
     SELECT id FROM kernel.agents WHERE org_id = ${orgId} AND owner_user_id = ${userId} LIMIT 1`
   agentId = agent?.id as string
   registerFixtures()
-  await sql`INSERT INTO kernel.credit_balances (org_id, included_balance, purchased_balance, currency)
-    VALUES (${orgId}, '10.00000000', '0', 'EUR')
-    ON CONFLICT (org_id) DO UPDATE SET included_balance = '10.00000000'`
-  await sql`INSERT INTO kernel.model_pricing (provider, model_id, display_name, input_cost_per_m, output_cost_per_m, context_window, auto_eligible, tier_minimum)
-    VALUES ('anthropic', ${MODEL_ID}, 'Tool card fixture', '1.00', '5.00', 200000, true, 'starter')
-    ON CONFLICT DO NOTHING`
+  await sql.unsafe(
+    insertSql(
+      "kernel.credit_balances",
+      { org_id: orgId, included_balance: "10.00000000", purchased_balance: "0", currency: "EUR" },
+      { onConflictDoNothing: true },
+    ),
+  )
+  await sql`UPDATE kernel.credit_balances SET included_balance = '10.00000000' WHERE org_id = ${orgId}`
+  await sql.unsafe(
+    insertSql(
+      "kernel.model_pricing",
+      {
+        provider: "anthropic",
+        model_id: MODEL_ID,
+        display_name: "Tool card fixture",
+        input_cost_per_m: "1.00",
+        output_cost_per_m: "5.00",
+        context_window: 200000,
+        auto_eligible: true,
+        tier_minimum: "starter",
+      },
+      { onConflictDoNothing: true },
+    ),
+  )
 })
 
 afterEach(() => {

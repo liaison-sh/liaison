@@ -183,9 +183,16 @@ describe("the member side of the boundary", () => {
         slug: `ext-sized-${bigOrg.slice(0, 8)}`,
       }),
     )
-    await sql`INSERT INTO kernel.users (org_id, email, name)
-      SELECT ${bigOrg}::uuid, 'sized-' || n || '-' || ${bigOrg} || '@example.com', 'Sized'
-        FROM generate_series(1, 2000) AS n`
+    await sql.unsafe(
+      insertSql(
+        "kernel.users",
+        Array.from({ length: 2000 }, (_, i) => ({
+          org_id: bigOrg,
+          email: `sized-${i + 1}-${bigOrg}@example.com`,
+          name: "Sized",
+        })),
+      ),
+    )
     await sql`ANALYZE kernel.users`
     const [target] = await sql<{ id: string }[]>`
       SELECT id FROM kernel.users WHERE org_id = ${bigOrg} LIMIT 1`
@@ -521,8 +528,12 @@ describe("seats, every-member grants and approvers ignore an external row", () =
   })
 
   it("eligibleApprovers finds an external row by no route: a direct grant or a scope every member holds", async () => {
-    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
-      VALUES (${EXTERNAL_ID}, ${ORG_ID}, 'tickets:approve'), (${MEMBER_ID}, ${ORG_ID}, 'tickets:approve')`
+    await sql.unsafe(
+      insertSql("kernel.user_scope_grants", [
+        { user_id: EXTERNAL_ID, org_id: ORG_ID, scope: "tickets:approve" },
+        { user_id: MEMBER_ID, org_id: ORG_ID, scope: "tickets:approve" },
+      ]),
+    )
     expect(await privileged((tx) => eligibleApprovers(tx, ORG_ID, "tickets:approve"))).toEqual([
       MEMBER_ID,
     ])
@@ -533,8 +544,13 @@ describe("seats, every-member grants and approvers ignore an external row", () =
   })
 
   it("eligibleApproversWithDimension does not find one either", async () => {
-    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
-      VALUES (${OTHER_EXTERNAL_ID}, ${ORG_ID}, '*') ON CONFLICT DO NOTHING`
+    await sql.unsafe(
+      insertSql(
+        "kernel.user_scope_grants",
+        { user_id: OTHER_EXTERNAL_ID, org_id: ORG_ID, scope: "*" },
+        { onConflictDoNothing: true },
+      ),
+    )
     const approvers = await privileged((tx) =>
       eligibleApproversWithDimension(tx, ORG_ID, "tickets:approve", {
         key: "team",
@@ -558,12 +574,24 @@ describe("seats, every-member grants and approvers ignore an external row", () =
         type: "approval",
       }),
     )
-    await sql`INSERT INTO kernel.approval_requests
-      (id, org_id, handle, thread_id, originating_thread_id, tool_name, tool_params, current_payload,
-       expires_at, requested_by, status, notify_user_ids, approve_scope, reason)
-      VALUES (${approvalId}, ${ORG_ID}, ${`external-${approvalId.slice(0, 8)}`}, ${threadId}, ${threadId},
-        'tickets:reply', '{}'::jsonb, '{}'::jsonb, now() + interval '1 hour', ${MEMBER_ID}, 'pending',
-        ${`{${EXTERNAL_ID}}`}::uuid[], ${everyMember}, 'gated')`
+    await sql.unsafe(
+      insertSql("kernel.approval_requests", {
+        id: approvalId,
+        org_id: ORG_ID,
+        handle: `external-${approvalId.slice(0, 8)}`,
+        thread_id: threadId,
+        originating_thread_id: threadId,
+        tool_name: "tickets:reply",
+        tool_params: "{}",
+        current_payload: "{}",
+        expires_at: { raw: "now() + interval '1 hour'" },
+        requested_by: MEMBER_ID,
+        status: "pending",
+        notify_user_ids: `{${EXTERNAL_ID}}`,
+        approve_scope: everyMember,
+        reason: "gated",
+      }),
+    )
     try {
       // The context carries the client's id, as a session of theirs would: the
       // policy's reader then looks up a row the restrictive policy hides.

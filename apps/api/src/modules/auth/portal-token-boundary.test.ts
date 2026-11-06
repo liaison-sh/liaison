@@ -24,6 +24,7 @@ import { changePassword, createSession, refreshSession } from "~/modules/auth/au
 import { signAccessToken, signPortalToken, verifyAccessToken } from "~/modules/auth/jwt"
 import { cleanupSeededOrg, seedOrgWithUser } from "~/modules/mcp/test-helpers"
 import { createExternalUser } from "~/modules/users/external-user"
+import { insertSql } from "~/seed/factories/org/test-rows"
 
 let orgId: string
 let memberId: string
@@ -113,7 +114,9 @@ describe("a session mint chooses by the row's type", () => {
 
   it("a direct wildcard grant on an external row adds nothing: portal token, not an admin", async () => {
     const id = await newExternal("wildcard")
-    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope) VALUES (${id}, ${orgId}, '*')`
+    await sql.unsafe(
+      insertSql("kernel.user_scope_grants", { user_id: id, org_id: orgId, scope: "*" }),
+    )
     const pair = await createSession(id, orgId)
     expectPortalClaims(pair.accessToken)
     expect(pair.admin).toBe(false)
@@ -126,7 +129,9 @@ describe("a session mint chooses by the row's type", () => {
 
   it("the second-factor branch of a session mint is a portal token too", async () => {
     const id = await newExternal("second-factor")
-    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope) VALUES (${id}, ${orgId}, '*')`
+    await sql.unsafe(
+      insertSql("kernel.user_scope_grants", { user_id: id, org_id: orgId, scope: "*" }),
+    )
     await sql`UPDATE kernel.organizations SET settings = jsonb_set(settings, '{requireAdminSecondFactor}', 'true') WHERE id = ${orgId}`
     try {
       const token = (await createSession(id, orgId)).accessToken
@@ -146,7 +151,9 @@ describe("a session mint chooses by the row's type", () => {
   it("a password change on an external row mints a portal token", async () => {
     const id = await newExternal("password")
     await sql`UPDATE kernel.users SET password_hash = ${await hashPassword("old-pass-1234")} WHERE id = ${id}`
-    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope) VALUES (${id}, ${orgId}, '*')`
+    await sql.unsafe(
+      insertSql("kernel.user_scope_grants", { user_id: id, org_id: orgId, scope: "*" }),
+    )
     const pair = await changePassword(id, "old-pass-1234", "new-pass-5678")
     expectPortalClaims(pair.accessToken)
     expect(pair.admin).toBe(false)

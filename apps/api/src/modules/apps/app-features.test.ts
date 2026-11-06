@@ -65,6 +65,7 @@ import {
   seedOrgWithTicketsApp,
 } from "~/modules/mcp/test-helpers"
 import { handleToolCall } from "~/modules/mcp/tool-call"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { resetOrgRuntimeForTest } from "~/tests/helpers/org-runtime"
@@ -144,8 +145,14 @@ async function setUpOrg(): Promise<{ orgId: string; owner: minimal.Session }> {
 
 async function freshThread(): Promise<string> {
   const threadId = await minimal.thread(orgId, owner.userId)
-  await sql`INSERT INTO kernel.thread_participants (thread_id, agent_id, org_id, participant_type)
-    VALUES (${threadId}, ${agentId}, ${orgId}, 'agent')`
+  await sql.unsafe(
+    insertSql("kernel.thread_participants", {
+      thread_id: threadId,
+      agent_id: agentId,
+      org_id: orgId,
+      participant_type: "agent",
+    }),
+  )
   return threadId
 }
 
@@ -230,17 +237,49 @@ beforeAll(async () => {
   process.env.LIAISON_MODEL_PROVIDER = "scripted"
   registerEventSubscribers()
   ;({ orgId, owner } = await setUpOrg())
-  const [agent] = await sql<{ id: string }[]>`
-    INSERT INTO kernel.agents (org_id, kind, handle, display_name, scope_ceiling, owner_user_id)
-    VALUES (${orgId}, 'personal', ${`@ff-${crypto.randomUUID().slice(0, 8)}`}, 'Sam',
-            '["*"]'::jsonb, ${owner.userId})
-    RETURNING id`
+  const [agent] = await sql.unsafe<{ id: string }[]>(
+    insertSql(
+      "kernel.agents",
+      {
+        org_id: orgId,
+        kind: "personal",
+        handle: `@ff-${crypto.randomUUID().slice(0, 8)}`,
+        display_name: "Sam",
+        scope_ceiling: '["*"]',
+        owner_user_id: owner.userId,
+      },
+      { returning: "id" },
+    ),
+  )
   agentId = agent!.id
-  await sql`INSERT INTO kernel.credit_balances (org_id, included_balance, purchased_balance, currency)
-    VALUES (${orgId}, '10.00000000', '0.00000000', 'EUR') ON CONFLICT DO NOTHING`
-  await sql`INSERT INTO kernel.model_pricing (provider, model_id, display_name, input_cost_per_m, output_cost_per_m, context_window, auto_eligible, tier_minimum)
-      VALUES ('anthropic', 'claude-haiku-4-5', 'Claude Haiku 4.5', '1.00000000', '5.00000000', 200000, true, 'starter')
-      ON CONFLICT DO NOTHING`
+  await sql.unsafe(
+    insertSql(
+      "kernel.credit_balances",
+      {
+        org_id: orgId,
+        included_balance: "10.00000000",
+        purchased_balance: "0.00000000",
+        currency: "EUR",
+      },
+      { onConflictDoNothing: true },
+    ),
+  )
+  await sql.unsafe(
+    insertSql(
+      "kernel.model_pricing",
+      {
+        provider: "anthropic",
+        model_id: "claude-haiku-4-5",
+        display_name: "Claude Haiku 4.5",
+        input_cost_per_m: "1.00000000",
+        output_cost_per_m: "5.00000000",
+        context_window: 200000,
+        auto_eligible: true,
+        tier_minimum: "starter",
+      },
+      { onConflictDoNothing: true },
+    ),
+  )
 }, 120_000)
 
 afterEach(async () => {

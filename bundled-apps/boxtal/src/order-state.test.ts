@@ -191,6 +191,27 @@ describe("order_key resolution from a document_ref", () => {
     expect((thrown2 as { code?: string })?.code).toBe("order_key_unresolved")
   })
 
+  it("refuses a reference that names no document, with a typed error and no row written", async () => {
+    const missing = makeCtx({}, async () => ({ status: "completed", result: null }))
+    let thrown: unknown
+    try {
+      await prepSetStatus(missing.ctx, { document_ref: "not-a-uuid", status: "validated" })
+    } catch (e) {
+      thrown = e
+    }
+    expect((thrown as { code?: string })?.code).toBe("document_not_found")
+    expect((thrown as { retryable?: boolean })?.retryable).toBe(false)
+    expect(missing.db.__all("prep_order_state")).toHaveLength(0)
+  })
+
+  it("keys an order-less document by its own id when the reference was its number", async () => {
+    const byNumber = makeCtx({}, async () => ({
+      status: "completed",
+      result: { id: "doc-uuid-1", shopify_order_id: null },
+    }))
+    expect(await orderKeyForDocumentRef(byNumber.ctx, "INV-2026-0016")).toBe("doc:doc-uuid-1")
+  })
+
   it("still prefers the cached prep_meta order over any live read", async () => {
     const { ctx } = makeCtx(
       { prep_meta: [{ id: "m1", document_ref: "doc-1", shopify_order_id: "5123" }] },

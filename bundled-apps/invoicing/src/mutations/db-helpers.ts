@@ -50,6 +50,12 @@ export function dateOnly(v: unknown): string | null {
   return m ? m[1]! : null
 }
 
+/** True when `date` is `YYYY-MM-DD` and names a real day, so `2026-02-31` is no date. */
+export function isCalendarDate(date: string): boolean {
+  const parsed = new Date(`${date}T00:00:00Z`)
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date
+}
+
 /**
  * Lifecycle-log event names that record a refund against a document. Both the
  * agent path (documents.record_refund → *_refund_recorded) and the Shopify

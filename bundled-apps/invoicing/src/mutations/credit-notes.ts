@@ -20,6 +20,7 @@ import {
   findIssuerProfile,
   dateOnly,
   deleteDraftRow,
+  isCalendarDate,
 } from "./db-helpers"
 import {
   normaliseDraftLines,
@@ -63,11 +64,6 @@ function originalRefOf(original: DocumentRowSummary): NonNullable<IssueInput["or
     counterparty_contact_id: original.counterparty_contact_id,
     snapshot: original.einvoice ?? null,
   }
-}
-
-function isCalendarDate(date: string): boolean {
-  const parsed = new Date(`${date}T00:00:00Z`)
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date
 }
 
 function dateRefused(code: string, message: string): { ok: false; error: ErrorEnvelope } {

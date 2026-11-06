@@ -1457,10 +1457,12 @@ describe("invoicing manifest", () => {
     // 0.20.37: a credit note's stated date decides its number year, and is never after today; paid
     // dates and the editor's default date read the issuer's date; a draft order's quote refused for
     // its zone waits with its arguments.
+    // 0.20.38: documents_update keeps an issued document's date in its number's year, and an issued
+    // invoice or credit note's date between its neighbouring numbers and on or before today.
     // 0.20.33: issue dates and number years in the issuer's time zone, through ctx.time.civil.
     // 0.20.31: the drafts tools that park an approval declare its summary.
     // 0.20.30: the document and editor actions sit at the top of the panel, clear of the chat dock.
-    expect(m.version).toBe("0.20.37")
+    expect(m.version).toBe("0.20.38")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

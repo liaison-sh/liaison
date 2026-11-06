@@ -67,6 +67,17 @@ export function registerKernelBulkApp(orgId: string): void {
     deferLoading: true,
     description:
       "Deactivate a user account (admin only). Gated: lands as an approval a person decides.",
+    searchKeywords: [
+      "désactiver",
+      "retirer",
+      "départ",
+      "disable",
+      "utilisateur",
+      "collaborateur",
+      "remove",
+      "deactivate",
+      "user",
+    ],
     requiredScopes: ["kernel:users:admin"],
     // Who may sign in is a person's decision, as role edits are (kernel:create_role): an agent's
     // call parks for one, whatever the turn read. A person's own click runs at once.

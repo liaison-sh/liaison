@@ -82,7 +82,7 @@
       }
     ]
   },
-  "version": "1.10.0",
+  "version": "1.10.1",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -405,6 +405,7 @@
   "tools": {
     "search": {
       "description": "Search projects and tasks by text. Returns matching projects (with their ids) and tasks. A sales/dealer PIPELINE, a DEALS board, a roadmap, or any named tracking BOARD is modeled here as a project (e.g. a 'dealer-deals pipeline' is a projects board with one task per deal/stage) — so when asked for the state of a pipeline / deal board / named deals, search HERE for that project by name and read its tasks via tasks_byProject; this is the dealer-deals pipeline, NOT Shopify draft orders. Task hits carry `labels`: the task's effective value per label group (own, or inherited from the nearest parent, with `inherited` and `inheritedFromKey`).",
+      "searchKeywords": ["tâche", "tâches", "task", "tasks", "chercher", "rechercher", "trouver", "retrouver", "find"],
       "readOnly": true,
       "requiredScopes": ["projects:projects:read"],
       "trustBoundary": "user",
@@ -437,6 +438,7 @@
     "get": {
       "readOnly": true,
       "description": "Get a project or task by id (id comes from a search result). Pass `id` (auto-resolved as project-or-task), or the explicit `taskId` / `projectId` when you know which kind it is. The task record carries a `threadId` for its discussion, but that id is participant-gated and is NOT usable on its own — read the conversation with `comments` and write to it with `comment`. A task also carries `checklist`: its checklist status (per-level counts and the blocking items); read the items with `checklist_get`. A task record carries `labels`: its effective value per label group (own, or inherited from the nearest parent, with `inherited` and `inheritedFromKey`).",
+      "searchKeywords": ["tâche", "task", "voir", "lire", "ouvrir", "read"],
       "requiredScopes": ["projects:projects:read"],
       "trustBoundary": "user",
       "handler": "get",
@@ -461,6 +463,7 @@
     },
     "createProject": {
       "description": "Create a PROJECT (the container/board) TOGETHER WITH ITS TASKS: pass the tasks you plan (up to 20, each with a title, and optionally a description and an assignee) in `tasks`, in this ONE call. Never create the project first and its tasks afterwards when you already know them: if this call waits for approval, the tasks are approved and created with it, and a task created before the project exists has nowhere to go. More than 20 tasks: pass the first 20 here, then add the rest with `create` and the returned project id. Tasks for an EXISTING project are added with the `create` tool and its project id. Create the board ONCE per goal: if you already created (or found) a project for this request, REUSE its id for all the tasks — do NOT call createProject again for the same goal across turns (that scatters the tasks across stray duplicate boards). SCAFFOLDING A BOARD/CHECKLIST OVER A KNOWN ENUMERATED SET (N units, N orders, N shipments, N rows, N people — anything you've already listed or counted): the default shape is ONE TASK PER ITEM, each titled by that item and carrying its identifying details in the title/body (e.g. the recipient/owner, the id or tracking number, the due/return date) — NOT a handful of generic action-category buckets ('clear the exceptions', 'coordinate returns') that collapse the N items into 4-5 verbs. Per-item is what makes the board actually trackable: each row is one thing the human checks off. Cover EVERY enumerated item with its own task; if all N tasks won't fit one turn's step budget, create as many per-item tasks as fit, ADD the rest to the SAME project next turn, and tell the user it's a partial pass (X of N done so far) — never start a fresh project, never collapse to generic buckets to save steps, and never claim all N are done when you only created a few. IMPROVISING WHEN THERE IS NO NATIVE OBJECT for the thing being tracked (e.g. no 'loaner', 'asset', or 'fleet' entity exists, so you model it as a projects board + tasks): say so plainly in your reply — name that there is no native X concept and that you've improvised a project board to track it — rather than silently presenting the board as if a purpose-built tracker existed.",
+      "searchKeywords": ["project", "projet", "nouveau", "créer", "new"],
       "requiredScopes": ["projects:projects:write"],
       "trustBoundary": "user",
       "handler": "createProject",
@@ -600,6 +603,7 @@
     },
     "create": {
       "description": "Create a TASK inside an existing project (NOT a project — use `createProject` for that). Requires the target projectId and a title. If this task captures a fact you found via web research (a competitor spec/price, a prospect detail, any external figure), pass that page's URL in `sourceUrl` so the task body always carries its citation — do this on EVERY web-derived task you create, not just the first one. OUTREACH / SHORTLIST TASKS (one task per researched entity — a creator, influencer, prospect, dealer, lead, or school): the `description` must carry, for THAT entity, ALL of: its identifying link (channel/profile/website URL), any contact (email/phone) you found, AND a one-line WHY-RELEVANT rationale grounded in what you researched (why this entity fits the goal — e.g. the gear/genre a creator covers, the segment a prospect serves). The rationale is a REQUIRED fact, not optional flavor — the research snippet you read already hands it to you, so carry it through verbatim/condensed. A task that only lists 'Channel: <url>\\nContact: <email>' with no 'why relevant' line is INCOMPLETE — write all three on EVERY such task (not just the first). Not gated: the task is created at once and the result is the task, so report it as created only when the call returned it.",
+      "searchKeywords": ["tâche", "task", "todo", "nouvelle", "ajouter", "add", "créer", "new"],
       "requiredScopes": ["projects:tasks:write"],
       "trustBoundary": "user",
       "handler": "createTask",
@@ -709,6 +713,7 @@
     },
     "update": {
       "description": "Update a task. Not gated: the edit applies at once and the result is the updated task, so report it as applied only when the call returned it. Setting a terminal status (Done) is allowed even when the task's checklist is incomplete; when it is, the result carries `checklistWarning` listing the items not proven: read it and tell the user. `move` returns the same warning when you change only the status.",
+      "searchKeywords": ["tâche", "task", "modifier", "edit", "échéance", "deadline", "due", "assigner", "responsable"],
       "requiredScopes": ["projects:tasks:write"],
       "trustBoundary": "user",
       "handler": "updateTask",
@@ -793,6 +798,7 @@
     },
     "move": {
       "description": "Move a task: reposition / re-parent / restatus WITHIN its project, OR relocate it to ANOTHER project by passing the destination `projectId`. Passing a different `projectId` moves the task (and its whole subtree) into that project and remaps each task's status to one in the destination; each moved task also gets a new number there, so its key changes (e.g. ERB-35 becomes BUG-7, returned as `number`) — so to put a task in the right project you MOVE it; do NOT recreate it there and delete the original (that strands duplicates). Only a top-level task can change projects (its children move with it). Moving a task into a terminal status (Done) is allowed even when its checklist is incomplete; the result then carries `checklistWarning` listing the items not proven: read it and tell the user.",
+      "searchKeywords": ["déplacer", "tâche", "task", "colonne", "column"],
       "requiredScopes": ["projects:tasks:write"],
       "trustBoundary": "user",
       "handler": "moveTask",
@@ -840,6 +846,7 @@
     },
     "tasks_byAssignee": {
       "description": "List one person's tasks across ALL projects (not scoped to a single project), each carrying its project name AND its status label + whether that status is terminal/done (`statusTerminal`). This is THE tool to answer 'what is X working on', build a per-person workload view, or REASSIGN a departing teammate's work — resolve the person's user id first (via users_search), then pass it here. By default it returns ALL of the person's tasks (open AND done); to act on only their OPEN/unfinished tasks (e.g. 'reassign all her non-done tasks'), pass `terminal:false` (or read `statusTerminal` per item and SKIP the terminal/done ones) — never reassign or mutate a task whose `statusTerminal` is true when the ask is scoped to open work. Optionally also filter to overdue / due-this-week. Each row carries a `threadId` for the task's discussion; it is participant-gated, so do not hand it to kernel threads_read directly — use `comments` (and `comment` to post). Each task row carries `labels`: its effective value per label group (own, or inherited from the nearest parent, with `inherited` and `inheritedFromKey`).",
+      "searchKeywords": ["attribuées", "assignées", "assignee", "responsable", "charge", "workload"],
       "readOnly": true,
       "requiredScopes": ["projects:tasks:read"],
       "trustBoundary": "user",
@@ -883,6 +890,7 @@
     },
     "attentionItems": {
       "description": "YOUR own work that needs attention right now — the calling user's OVERDUE, DUE-THIS-WEEK, and BLOCKED non-terminal tasks across ALL projects, each carrying its project name + due date. Self-scoped: it returns the CALLER's tasks, so it needs NO id and NO assignee param. This is THE tool for 'what's overdue or due this week assigned to me', a morning standup, or 'what needs my attention' — do NOT use `search` for that (search returns PROJECTS and matches task TITLES by text, it is not a per-person task list).",
+      "searchKeywords": ["attention", "retard", "overdue", "bloquée", "urgent", "échéance"],
       "readOnly": true,
       "requiredScopes": ["projects:tasks:read"],
       "trustBoundary": "user",
@@ -895,6 +903,7 @@
     },
     "tasks_byProject": {
       "description": "List the tasks IN a single project (by project id), each with its status label + whether that status is terminal/done (`statusTerminal`) + the assignee's display name (`assigneeName`, null when unassigned). Use this to enumerate or summarize a project's tasks — a backlog/roadmap/weekly digest, a per-status rollup (group by the terminal/done flag for a DONE-vs-REMAINING count), a per-PERSON workload tally (group by `assigneeName` to find the most-loaded person), 'what's in project X', or reading a source project's task list to copy it. This single call answers a 'sprint board / burndown / who's overloaded' proxy (done-vs-remaining task counts + per-assignee counts) WITHOUT a per-id user lookup — though burndown/velocity/story-points themselves are not modeled (see agentInstructions). NOTE: `search` is title-text only and `tasks_byAssignee` is per-person across projects — neither lists a project's tasks; this is the tool for that. DERIVING BOARD-HEALTH FIGURES (a roadmap/board digest's per-status + overdue + blocked + unassigned counts): each row carries `statusLabel`, `statusTerminal`, `dueDate`, `assigneeName`, AND a server-computed `overdue` boolean. OVERDUE is the one you should TRUST DIRECTLY: each row's `overdue` field is TRUE iff that task has a due date in the PAST and is NON-terminal (the server already excludes done/cancelled tasks), so the overdue set = the rows where `overdue === true` — do NOT re-derive it by comparing `dueDate` ISO strings to today yourself; just filter/flag on `overdue`. There is still NO separate boolean `blocked` / `isBlocked` flag, so compute BLOCKED from the status label, not a blocked field: BLOCKED = tasks whose `statusLabel` is the board's blocked column (a status named 'Blocked' / 'On Hold' / 'Stuck') — count by that status label; UNASSIGNED = tasks whose `assigneeName` is null; per-status counts = group by `statusLabel`; OPEN = the non-terminal tasks (statusTerminal false). Keep the blocked count CONSISTENT with the per-status breakdown — if the status rollup shows N tasks in the 'Blocked' status, the blocked figure is N (a digest that says 'Blocked status: 2' in one section and 'Blocked: 0' in another, because it looked for a nonexistent blocked flag, is wrong). Returns up to 100 tasks by default (max 200), ordered by status then board position. Each row carries a `threadId` for the task's discussion; it is participant-gated, so do not hand it to kernel threads_read directly — use `comments` (and `comment` to post). Each task row carries `labels`: its effective value per label group (own, or inherited from the nearest parent, with `inherited` and `inheritedFromKey`).",
+      "searchKeywords": ["project", "projet", "avancement", "statut", "status", "kanban", "tableau", "board"],
       "readOnly": true,
       "requiredScopes": ["projects:tasks:read"],
       "trustBoundary": "user",
@@ -961,6 +970,7 @@
     },
     "portfolio_rollup": {
       "description": "Cross-project PORTFOLIO ROLLUP for a board/leadership one-screen view: in ONE call it returns, per ACTIVE project, the authoritative {totalTasks, doneTasks, remainingTasks, overdueTasks, percentDone (0-100), and the single biggestAtRisk task}. This is THE tool for 'a portfolio view across every active project', 'every project's % done + overdue + biggest at-risk item', a board update, or a multi-project burndown digest — it replaces calling tasks_byProject once per project and tallying in-context. `biggestAtRisk` is the project's most-overdue (then highest-priority) non-terminal task, carrying its title, priority, dueDate, daysOverdue, assigneeName (or null), and statusLabel. Covers the most-recently-updated active projects up to `limit` (default 25, max 50); if more exist, `truncated` is true and `totalProjects` gives the full count — STATE the covered subset rather than implying full coverage. Counts are TASK counts (story-points/sprints/velocity are not modeled — see agentInstructions); never present percentDone as story-point completion. Does NOT need any project id — it self-discovers the active projects. RLS-scoped: it rolls up only projects/tasks you can read.",
+      "searchKeywords": ["portefeuille", "vue", "synthèse", "overview", "summary", "avancement"],
       "readOnly": true,
       "requiredScopes": ["projects:tasks:read"],
       "trustBoundary": "user",
@@ -982,6 +992,7 @@
     },
     "delete": {
       "description": "Delete a task and all of its subtasks. This is a soft delete (the task is archived, not erased) and it is destructive, so it requires human approval before it runs.",
+      "searchKeywords": ["tâche", "task", "supprimer", "remove", "corbeille"],
       "requiredScopes": ["projects:tasks:write"],
       "trustBoundary": "user",
       "handler": "deleteTask",
@@ -1006,6 +1017,7 @@
     },
     "merge": {
       "description": "Merge one task into another: the source task's subtasks and dependencies move to the target, then the source is archived. Destructive (archives the source), so it requires human approval.",
+      "searchKeywords": ["fusionner", "doublon", "duplicate", "tâche", "task"],
       "requiredScopes": ["projects:tasks:write"],
       "trustBoundary": "user",
       "handler": "mergeTasks",
@@ -1036,6 +1048,7 @@
     },
     "instantiate_template": {
       "description": "Create a new project from a stored project template, materializing the template's full task tree. Provide the template id and a name for the new project.",
+      "searchKeywords": ["modèle", "gabarit", "template"],
       "requiredScopes": ["projects:projects:write"],
       "trustBoundary": "user",
       "handler": "instantiateTemplate",
@@ -1061,6 +1074,7 @@
     },
     "add_dependency": {
       "description": "Add a dependency between two tasks. With type 'blocks', the task is marked blocked until the task it depends on is completed. Cycles are rejected.",
+      "searchKeywords": ["bloquée", "bloquant", "dépendance", "blocked", "blocker"],
       "requiredScopes": ["projects:tasks:write"],
       "trustBoundary": "user",
       "handler": "addDependency",
@@ -1105,6 +1119,7 @@
     },
     "update_project": {
       "description": "Edit an existing PROJECT (the board itself, not a task): its name, description, icon, colour, group or key. Identify it by projectId or projectName. Fields you leave out are untouched; description, icon, color and group accept null to clear. The KEY (the prefix of every task key, e.g. ERB in ERB-12) changes only while the project has no task at all: once it holds a task, a key change is refused with project_key_locked, so say so instead of retrying. An archived project is refused with project_archived. Not gated: the edit applies at once and the result is the updated project, so report it as applied only when the call returned it.",
+      "searchKeywords": ["projet", "archiver", "renommer", "rename", "archive", "modifier", "edit"],
       "requiredScopes": [
         "projects:projects:write"
       ],
@@ -1171,6 +1186,7 @@
     },
     "status_add": {
       "description": "Add a new STATUS COLUMN to a project's board (e.g. 'To discuss', 'Blocked', 'QA'). Statuses are PER-PROJECT: read a project's existing columns from get(projectId) (its `statuses` array) before adding, and add a column only when no existing one fits. Use this BEFORE create/update when the user asks to file a task under a column the project does not have yet. Not gated: the column is added at once and the result is the new status.",
+      "searchKeywords": ["statut", "colonne", "column", "ajouter"],
       "requiredScopes": ["projects:projects:write"],
       "trustBoundary": "user",
       "handler": "addStatus",
@@ -1225,6 +1241,7 @@
     },
     "status_update": {
       "description": "Rename or reconfigure an existing STATUS COLUMN on a project's board: change its label, color, or whether it is terminal (counts as done). Identify the column by statusId or by its current statusLabel. Not gated: the change applies at once and the result is the updated status.",
+      "searchKeywords": ["statut", "colonne", "column", "renommer"],
       "requiredScopes": ["projects:projects:write"],
       "trustBoundary": "user",
       "handler": "updateStatus",
@@ -1286,6 +1303,7 @@
     },
     "status_delete": {
       "description": "Delete an EMPTY status column from a project's board. Refuses (status_in_use) while tasks are still in the column — move them out first (update/move with a different status) — and refuses to delete the project's last column. GATED: lands as an approval, so report the deletion as pending approval.",
+      "searchKeywords": ["statut", "colonne", "column", "supprimer"],
       "requiredScopes": ["projects:projects:write"],
       "trustBoundary": "user",
       "handler": "deleteStatus",
@@ -1330,6 +1348,7 @@
     },
     "comment": {
       "description": "Write a comment on a task — the task's own discussion thread, the same one the task detail pane shows. Use it to record a finding, ask the assignee something, or hand work over WITHOUT changing the task's fields: a comment is the durable place for the reasoning, `update` is for the state. Identify the task by id or by display key (e.g. RAI-12). The comment is posted under the calling identity and is visible to everyone who can read the task. Returns the task's `threadId`, which you can then read back with `comments` (or kernel threads_read — reading the task enrols you as a participant of its thread, which is what makes that work).",
+      "searchKeywords": ["commenter", "commentaire", "tâche", "task", "discussion", "écrire", "write", "add"],
       "requiredScopes": ["projects:tasks:write"],
       "trustBoundary": "user",
       "handler": "addComment",
@@ -1356,6 +1375,7 @@
     "comments": {
       "readOnly": true,
       "description": "Read a task's discussion — the comments on its own thread, newest last. This is the ONLY way to reach a task's conversation without already being a participant: task threads are participant-gated, so a `threadId` taken from tasks_byProject and handed straight to kernel threads_read answers 'not a participant'. Reading the task through this tool enrols you, after which threads_read works too. Identify the task by id or display key (e.g. RAI-12).",
+      "searchKeywords": ["commentaire", "commentaires", "tâche", "task", "discussion", "lire", "read"],
       "requiredScopes": ["projects:tasks:read"],
       "trustBoundary": "user",
       "handler": "listComments",
@@ -1379,6 +1399,7 @@
     "checklist_get": {
       "readOnly": true,
       "description": "Read a task's checklist: the project's validation `levels` in order (id, name), the `items` (id, title, details, per-level `validations` keyed by level id, `checked` for a project without levels) and the `status` (per-level counts and the blocking items, the ones not yet complete).",
+      "searchKeywords": ["étape", "étapes", "subtask"],
       "requiredScopes": ["projects:tasks:read"],
       "trustBoundary": "user",
       "handler": "checklistGet",
@@ -1397,6 +1418,7 @@
     },
     "checklist_add_items": {
       "description": "Append items to a task's checklist, in the order given (batch, up to 50 per call, 200 per task). Add items only after the human validated the list you proposed. Refused (checklist_task_terminal) when the task is already in a terminal status.",
+      "searchKeywords": ["étape", "élément", "subtask", "ajouter", "add"],
       "requiredScopes": ["projects:tasks:write"],
       "trustBoundary": "user",
       "writesToTable": "app_projects.task_checklist_items",
@@ -1438,6 +1460,7 @@
     },
     "checklist_update_item": {
       "description": "Edit one checklist item: its title, its details, or its position (place it before or after a sibling item of the same task). Validation states are set with checklist_set_validation, not here.",
+      "searchKeywords": ["étape", "élément", "cocher", "modifier"],
       "requiredScopes": ["projects:tasks:write"],
       "trustBoundary": "user",
       "writesToTable": "app_projects.task_checklist_items",
@@ -1542,6 +1565,7 @@
     },
     "checklist_remove_item": {
       "description": "Remove one checklist item and its validation states. Waits for a human approval.",
+      "searchKeywords": ["étape", "élément", "supprimer"],
       "requiredScopes": ["projects:tasks:write"],
       "trustBoundary": "user",
       "handler": "checklistRemoveItem",
@@ -1568,6 +1592,7 @@
     },
     "labels.list": {
       "description": "List the org's task label groups, each with its values, in order. Live only by default; `includeArchived: true` also returns archived groups and values (a value is archived when it or its group is). Use the names (or ids) in `create` / `update` `labels` and in the `tasks_byProject` `labels` filter.",
+      "searchKeywords": ["étiquette", "étiquettes", "tag", "tags"],
       "readOnly": true,
       "requiredScopes": [
         "projects:projects:read"
@@ -1588,6 +1613,7 @@
     },
     "labels.create": {
       "description": "Create a label group (omit parentId) or a value inside a live group. Names are 1 to 60 characters and unique within their group (case-insensitive); `__none__` is reserved. A duplicate is refused with name_exists.",
+      "searchKeywords": ["étiquette", "créer", "tag"],
       "requiredScopes": [
         "projects:labels:admin"
       ],
@@ -1620,6 +1646,7 @@
     },
     "labels.update": {
       "description": "Rename or reorder a label group or value. A value can never move to another group (parentId is immutable): create a new value instead.",
+      "searchKeywords": ["étiquette", "modifier", "tag"],
       "requiredScopes": [
         "projects:labels:admin"
       ],
@@ -1657,6 +1684,7 @@
     },
     "labels.archive": {
       "description": "Archive a label group or value (`archived: true`, the default), or restore it (`archived: false`). Archived values stay on the tasks that have them and remain usable as filters, but cannot be newly assigned. Archiving a group archives its values with it; restoring the group brings them back.",
+      "searchKeywords": ["étiquette", "archiver", "tag"],
       "requiredScopes": [
         "projects:labels:admin"
       ],

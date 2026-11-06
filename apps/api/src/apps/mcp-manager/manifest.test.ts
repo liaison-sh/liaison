@@ -32,7 +32,7 @@ describe("mcp-manager manifest", () => {
   })
 
   it("is version 1.2.3 (1.2.1: the kernel member preset gets the member tier on first install; 1.2.2: remote servers only, no local-command transport; 1.2.3: every member holds the personal-connection scopes, whatever their roles)", () => {
-    expect(manifest.version).toBe("1.2.6")
+    expect(manifest.version).toBe("1.2.7")
     expect((manifest as any).tools.add_connection.preflight).toBe("addConnectionPreflight")
     expect((manifest as any).memberPresetScopes).toEqual([
       "mcp_manager:connection:read",

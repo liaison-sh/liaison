@@ -17,7 +17,7 @@ describe("app schema table ownership", () => {
              pg_get_userbyid(n.nspowner) AS "schemaOwner"
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname LIKE 'app\_%'
+      WHERE n.nspname LIKE 'app\\_%'
         AND c.relkind IN ('r', 'p')
         AND c.relowner <> n.nspowner
       ORDER BY 1`

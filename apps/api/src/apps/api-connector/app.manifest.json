@@ -1,6 +1,6 @@
 {
   "name": "api-connector",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "kind": "connector",
   "description": "Generic connector for an ERP, CRM or any HTTP API described by an adapter document: named operations, projected fields, customer card and agent tools.",
   "listing": {
@@ -114,6 +114,7 @@
       "readOnly": true,
       "taintSource": true,
       "description": "Run one READ operation of an API connection to the org's CRM, ERP or other business system: look up a customer, list a customer's orders, invoices or deals, check stock. For a customer the org's CRM or ERP knows, this is the system of record for their orders, invoices and deals, ahead of a shop or an invoicing app. Returns the operation's allow-listed fields only, as external content. Operation names and params come from connector_list_operations (or the customer context).",
+      "searchKeywords": ["connecteur", "api", "lire"],
       "requiredScopes": [
         "api-connector:read"
       ],
@@ -148,6 +149,7 @@
       "summarizer": "summarizeConnectorWrite",
       "externalEffect": true,
       "description": "Run one WRITE operation of an API connection: writes to the EXTERNAL system, a record in the org's CRM, ERP or other business system (add a note to a company, contact or deal there, create or update a record). This is how \"add a note in the CRM\", \"add a note to <company>\" or \"add this person to the CRM\" is done; a Liaison ticket note (tickets addNote) or an edit or note on Liaison's own contacts is not a CRM write. Before creating a contact or a company, look it up with connector_read (the person by email, then their company by domain and by name), so you add to the existing record instead of making a duplicate. Always asks a person for approval first and does nothing until approved. Get the operation names and params from connector_list_operations and pass params by exactly the names it lists (they can differ from the field names a read returns, e.g. firstName, not first_name). The result's record_id is the id of the record the write created or updated (null, with record_id_note saying why, when the operation returns no id). To use that id in a later step of the same request before anyone approves (e.g. invoicing quote_create_and_issue customer_reference), pass the token from this call's gated result outputs, \"@ref:<approvalRequestId>:record_id\", exactly as given.",
+      "searchKeywords": ["connecteur", "api", "écrire"],
       "referenceableOutputs": ["record_id"],
       "requiredScopes": [
         "api-connector:write"

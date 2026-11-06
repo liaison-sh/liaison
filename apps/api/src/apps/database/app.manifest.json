@@ -1,6 +1,6 @@
 {
   "name": "database",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "kind": "connector",
   "description": "Read-only connector for a deployment's own database, for troubleshooting and support: licenses/subscriptions, moderation surfaces (tickets/knowledge/mail), instance health.",
   "listing": {
@@ -131,6 +131,7 @@
     "db_read": {
       "readOnly": true,
       "description": "Run a named, parameterized curated read from the catalog (see db_list_reads). Column output is restricted to the read's declared allow-list.",
+      "searchKeywords": ["base", "données", "data", "lire"],
       "requiredScopes": ["database:reads:read"],
       "trustBoundary": "user",
       "handler": "dbRead",
@@ -153,6 +154,7 @@
     "db_describe": {
       "readOnly": true,
       "description": "List the tables the connected role can SELECT (name and column count), or describe one table's columns and types (secret columns filtered out). connection \"warehouse\" requires database:query:read.",
+      "searchKeywords": ["schéma", "table", "tables"],
       "requiredScopes": ["database:reads:read"],
       "trustBoundary": "user",
       "handler": "dbDescribe",
@@ -201,6 +203,7 @@
     "db_query": {
       "readOnly": true,
       "description": "Run a raw, single-statement, SELECT-only SQL query against the connected database. Enabled by default; a deployment can disable it with LIAISON_DATABASE_ALLOW_RAW_QUERY=false. Same read-only role/grant restrictions as curated reads: nothing outside the allow-list is visible.",
+      "searchKeywords": ["sql", "requête", "base", "données", "data"],
       "requiredScopes": ["database:query:read"],
       "trustBoundary": "user",
       "handler": "dbQuery",

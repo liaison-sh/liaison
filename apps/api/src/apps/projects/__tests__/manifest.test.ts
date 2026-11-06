@@ -59,7 +59,7 @@ describe("projects.manifest", () => {
     // 1.7.6: the CI section moved to the declarative settings page.
     // 1.7.7: createProject takes the project's tasks (one approval for the whole plan).
     // 1.7.9: task labels
-    expect(projectsManifest.version).toBe("1.10.0")
+    expect(projectsManifest.version).toBe("1.10.1")
   })
 
   it("projects.manifest.task-labels", () => {

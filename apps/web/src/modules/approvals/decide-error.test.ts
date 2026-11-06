@@ -147,6 +147,11 @@ describe("decideErrorToast: already_decided names the real status", () => {
     expect(handled.toast.message).toBe("kernel.approvalsUi.err.mailboxSealed")
     expect(handled.refreshFeed).toBe(false)
   })
+  it("a mail send whose draft was purged says so, and keeps the row", () => {
+    const handled = decideErrorToast(new ApiError("gone", 422, "mail_draft_removed"), (k) => k)
+    expect(handled.toast.message).toBe("kernel.approvalsUi.err.mailDraftRemoved")
+    expect(handled.refreshFeed).toBe(false)
+  })
   it("only approved or denied rows read as decided by someone else", () => {
     expect(msg("approved")).toBe("kernel.approvalsUi.err.decidedElsewhere")
     expect(msg("denied")).toBe("kernel.approvalsUi.err.decidedElsewhere")

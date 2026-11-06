@@ -2386,6 +2386,7 @@
       "payloadChanged": "Cette demande a été modifiée après son ouverture. Relisez la version actuelle, puis décidez à nouveau.",
       "alreadySignedOff": "Vous avez déjà approuvé cette demande. Elle doit être approuvée par une autre personne.",
       "mailboxSealed": "Ce mail est chiffré pour le propriétaire de la boîte. Déverrouillez la boîte, puis approuvez depuis sa carte.",
+      "mailDraftRemoved": "Le brouillon de ce mail a été supprimé lors du chiffrement de sa boîte : il ne peut pas être envoyé. Refusez cette demande et rédigez à nouveau le mail.",
       "tooLarge": "Cette demande est trop volumineuse pour être envoyée : ses pièces jointes dépassent 25 Mo au total. Retirez une pièce jointe, puis approuvez à nouveau.",
       "toolFailed": "L'exécution de l'outil a échoué : {{cause}}.",
       "handlerError": "erreur du gestionnaire",

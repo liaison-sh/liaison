@@ -1,7 +1,7 @@
 {
   "name": "ads",
   "displayName": "Ads",
-  "version": "0.1.52",
+  "version": "0.1.53",
   "iconName": "bar-chart",
   "packageFormat": 1,
   "license": "FSL-1.1-ALv2",
@@ -417,6 +417,7 @@
     "insights_query": {
       "readOnly": true,
       "description": "Query Meta Ads insights (spend, impressions, clicks, ROAS breakdowns). Automatically splits incompatible breakdown combinations (e.g. age+gender+region) into separate calls — never surfaces the 400 as 'no data'. Uses async report-run for large/daily pulls. Money fields are decimal strings in the account currency (read account_info for currency first — never assume USD). Insights are not real-time: offer date_preset='today' for provisional spend, flagged as still-settling.",
+      "searchKeywords": ["performance", "performances", "stats", "statistiques", "roas", "ctr", "résultats", "roi", "pub", "facebook", "meta"],
       "requiredScopes": ["ads:insights:read"],
       "handler": "insights_query",
       "params": {
@@ -476,6 +477,7 @@
     },
     "campaigns_list": {
       "description": "List campaigns in the ad account. Returns both status AND effective_status — always use effective_status to determine delivery state (status:ACTIVE + effective_status:CAMPAIGN_PAUSED = NOT delivering). IMPORTANT: daily_budget/lifetime_budget (and bid_amount) are INTEGER MINOR UNITS (e.g. \"3500\" = 35.00 EUR, mirrored by the result's budget_units:\"minor\" marker) — convert with the account currency from account_info before quoting any budget figure or judging the budget regime.",
+      "searchKeywords": ["campagne", "campagnes", "pub", "publicité", "publicités", "facebook", "meta"],
       "readOnly": true,
       "requiredScopes": ["ads:campaigns:read"],
       "handler": "campaigns_list",
@@ -573,6 +575,7 @@
     },
     "targeting_search": {
       "description": "Search Meta targeting options: locations (adgeolocation — countries, regions, cities, custom radius points), interests (adinterest), and demographic categories (adTargetingCategory). Returns Meta targeting IDs for use in create_adset. Cannot geocode a company name to building coordinates — provide explicit address/coordinates for radius targeting.",
+      "searchKeywords": ["ciblage", "intérêts"],
       "readOnly": true,
       "requiredScopes": ["ads:campaigns:read"],
       "handler": "targeting_search",
@@ -631,6 +634,7 @@
     },
     "audiences_list": {
       "description": "List custom audiences: id, name, subtype (CUSTOMER_LIST, WEBSITE, ENGAGEMENT, LOOKALIKE), approximate_count (back-compat), approximate_count_lower_bound/upper_bound (bound-range — use these for display; -1 or <1000 means withheld by Meta), delivery_status{code,description}, operation_status{code,description}, retention_days, data_source, time_created/updated. Note: a freshly-created audience must populate/match before ads can deliver — not immediately usable.",
+      "searchKeywords": ["ciblage"],
       "readOnly": true,
       "requiredScopes": ["ads:audiences:read"],
       "handler": "audiences_list",
@@ -762,6 +766,7 @@
     },
     "create_campaign": {
       "description": "Create a new campaign in the ad account. Objective must be an OUTCOME_* value (e.g. OUTCOME_SALES, OUTCOME_LEADS, OUTCOME_AWARENESS) — legacy objectives rejected. Campaign is created PAUSED by default. special_ad_categories must be explicitly declared (pass [] if none). Gated — raises approval before spend is possible.",
+      "searchKeywords": ["campagne", "lancer", "pub", "publicité"],
       "requiredScopes": ["ads:campaigns:write"],
       "handler": "create_campaign",
       "summarizer": "summarizeCampaign",
@@ -850,6 +855,7 @@
     },
     "create_adset": {
       "description": "Create a new ad set within a campaign. Targeting schema must use Meta targeting IDs (search via targeting_search). Budget is in major units (e.g. \"50.00\" for €50/day) — the handler converts to minor units via the account-currency exponent (read account_info for currency first; same contract as update_budget). Set status to PAUSED by default. Gated — raises approval.",
+      "searchKeywords": ["ensemble", "ciblage"],
       "requiredScopes": ["ads:adsets:write"],
       "handler": "create_adset",
       "preflight": "create_adset_preflight",
@@ -1086,6 +1092,7 @@
     },
     "create_ad": {
       "description": "Create an ad linking an ad set to an existing creative. Ad is created PAUSED by default. Gated — raises approval.",
+      "searchKeywords": ["publicité", "annonce", "pub"],
       "requiredScopes": ["ads:ads:write"],
       "handler": "create_ad",
       "summarizer": "summarizeAd",
@@ -1128,6 +1135,7 @@
     },
     "create_creative": {
       "description": "Create an ad creative: single image/video, carousel (child_attachments ≥ 2 required), or dynamic (asset_feed_spec). image_hash from upload_image or media_list. Carousel requires ≥2 child_attachments — handler pre-validates and rejects if fewer. Gated — raises approval.",
+      "searchKeywords": ["visuel", "image", "vidéo", "pub"],
       "requiredScopes": ["ads:ads:write"],
       "handler": "create_creative",
       "summarizer": "summarizeCreative",
@@ -1347,6 +1355,7 @@
     },
     "upload_image": {
       "description": "Upload an image to the ad account image library. Returns image_hash for use in create_creative. Source image must be under ~740 KB (base64 payload < ~985 000 chars) — handler rejects before calling Meta if oversized. Use media_list to discover already-uploaded images first. Gated — raises approval.",
+      "searchKeywords": ["visuel"],
       "requiredScopes": ["ads:ads:write"],
       "handler": "upload_image",
       "summarizer": "summarizeUploadImage",
@@ -1376,6 +1385,7 @@
     },
     "update_budget": {
       "description": "Update the daily or lifetime budget on a campaign or ad set. Budgets are provided in major units (e.g. \"50.00\" for €50) — handler converts to minor units. The `currency` param is REQUIRED (read account_info first) — the handler errors loudly if it is absent rather than silently assuming EUR. Surface BudgetCapError (613+1487632) as 'Meta limits budget changes to ~4/hour' without retrying. Gated — raises approval.",
+      "searchKeywords": ["budget", "augmenter", "baisser", "pub"],
       "requiredScopes": ["ads:campaigns:write"],
       "handler": "update_budget",
       "preflight": "update_budget_preflight",
@@ -1470,6 +1480,7 @@
     },
     "set_status": {
       "description": "Set the status of a campaign, ad set, or ad to ACTIVE (resume — gated). For PAUSING, prefer the dedicated `pause` tool — it is also gated, but on approval it re-reads effective_status and writes a pause_ledger row. Both set_status(PAUSED) and pause are gated (the platform gates per-tool), so route PAUSED through `pause` for the ledger + confirm, not for gating reasons. set_status always re-reads effective_status after execution — status:ACTIVE may still show effective_status:CAMPAIGN_PAUSED if a parent is paused.",
+      "searchKeywords": ["activer", "relancer", "lancer", "reprendre", "publicité", "pub", "start"],
       "requiredScopes": ["ads:campaigns:write"],
       "handler": "set_status",
       "summarizer": "summarizeSetStatus",
@@ -1538,6 +1549,7 @@
     },
     "create_custom_audience": {
       "description": "Create a custom audience. Three subtypes: CUSTOMER_LIST (hashes Shopify customer emails/phones via SHA-256 before upload — raw PII never sent to Meta), WEBSITE (pixel-based retargeting), ENGAGEMENT (page/video engagement). Freshly-created audiences must populate/match before delivery — not immediately usable. CUSTOMER_LIST REQUIRES audience_purpose ('buyer' or 'newsletter') — the handler consent-joins the pulled Shopify customers against the hub-DB consent source (purchase-time ad_consent for buyer, subscribers.marketing_consent for newsletter) and DROPS any email lacking a purpose-appropriate consent record (default-deny, enforced in code, SC 8). Consent domains never cross. Gated — raises approval.",
+      "searchKeywords": ["liste", "ciblage"],
       "requiredScopes": ["ads:audiences:write"],
       "handler": "create_custom_audience",
       "preflight": "create_custom_audience_preflight",
@@ -1636,6 +1648,7 @@
     },
     "create_lookalike_audience": {
       "description": "Create a lookalike audience from an existing source audience. ratio is 1–10 (percent of country population). value_based lookalikes fall back to similarity type if source lacks value data — handler surfaces an honest-decline message in the result rather than failing. Freshly-created lookalikes require source to be populated (latency up to 24 h). Gated — raises approval.",
+      "searchKeywords": ["similaire", "ciblage"],
       "requiredScopes": ["ads:audiences:write"],
       "handler": "create_lookalike_audience",
       "summarizer": "summarizeLookalike",
@@ -1725,6 +1738,7 @@
     },
     "pause": {
       "description": "Pause one or more Meta objects (campaign, adset, ad). GATED — this raises an approval card the human must approve; it does NOT execute immediately, so never claim an object is paused until the approval executes. AFTER approval it re-reads effective_status to confirm (does not trust the write-echo) and RETURNS the verified effective_status + name per object — cite those directly, you do NOT need a separate campaigns_list re-read. ALWAYS report the executed result to the user by ENUMERATING each paused object BY NAME with its confirmed effective_status (a vague 'all paused' is not acceptable), and name separately any object skipped because it was already paused. Writes a pause_ledger row recording which ads WE paused (not ones a human paused).",
+      "searchKeywords": ["arrêter", "stop", "stopper", "couper", "suspendre", "publicité", "pub", "ad"],
       "requiredScopes": ["ads:campaigns:write", "ads:internal"],
       "handler": "pause",
       "preflight": "pause_preflight",
@@ -1758,6 +1772,7 @@
     },
     "google_campaigns_list": {
       "description": "List Google Ads campaigns (id, name, status, advertising_channel_type, budget). Surfaces status honestly (ENABLED/PAUSED/REMOVED) via GAQL over the campaign resource. Budget amount is converted from micros to major units at the tool boundary — read google_account_info first for the account currency, never assume USD.",
+      "searchKeywords": ["campagne", "campagnes", "pub", "adwords"],
       "readOnly": true,
       "requiredScopes": ["ads:google:read"],
       "handler": "google_campaigns_list",
@@ -1814,6 +1829,7 @@
     },
     "google_insights_query": {
       "description": "Run a caller-supplied GAQL query for Google Ads insights (spend/impressions/clicks/conversions/value by campaign/ad_group/day via metrics.* + segments.date). Unlike Meta's insights_query, this tool does NOT split anything on your behalf — GAQL is explicit, write the full query yourself. Read-only: the query must be a SELECT over an allowlisted resource (campaign, ad_group, ad_group_ad, search_term_view, recommendation, customer, conversion_action) — mutation-shaped input is rejected. Money fields (metrics.cost_micros etc.) are converted from micros to major units at the tool boundary; pass the account currency (from google_account_info) so the result is labeled correctly.",
+      "searchKeywords": ["performance", "performances", "stats", "statistiques", "résultats", "pub"],
       "readOnly": true,
       "requiredScopes": ["ads:google:read"],
       "handler": "google_insights_query",
@@ -1846,6 +1862,7 @@
     },
     "google_search_terms": {
       "description": "Read the Google Ads search-terms report (search_term_view: the actual queries that triggered ads, plus clicks/cost/conversions) — the continuous hygiene loop doctrine (playbook 07): promote converting queries to keywords, negative out waste.",
+      "searchKeywords": ["requêtes", "mots"],
       "readOnly": true,
       "requiredScopes": ["ads:google:read"],
       "handler": "google_search_terms",
@@ -1866,6 +1883,7 @@
     },
     "google_pause": {
       "description": "Pause a Google Ads campaign, ad group, or ad. GATED — this raises an approval card the human must approve; it does NOT execute immediately, so never claim an object is paused until the approval executes and the re-read status confirms PAUSED. Mirrors Meta's pause tool. Contract (after approval): GAQL pre-read status -> campaigns:mutate (or ad_group/ad_group_ad mutate) status=PAUSED -> GAQL re-read to confirm -> writes a pause_ledger row (paused_by_us=true, prior_status from the pre-read). Pause direction ONLY — there is no resume/enable tool for Google Ads in this build; never claim you can resume a Google campaign. More than 3 campaign-level google_pause executions within a rolling hour emits ads:bulk_pause_threshold (a notification, never a block on the pause itself) — mention to the user that bulk pausing is monitored, and note each pause is individually approved.",
+      "searchKeywords": ["arrêter", "stop", "stopper", "pub", "suspendre"],
       "requiredScopes": ["ads:google:pause", "ads:internal"],
       "handler": "google_pause",
       "preflight": "google_pause_preflight",
@@ -1913,6 +1931,7 @@
     },
     "google_create_campaign": {
       "description": "Create a new Google Ads campaign (Search or Performance Max) with a linked budget. Always created PAUSED — never ENABLED by an agent (SC 2 safety). Money is major units at the call boundary; converted to micros internally. Currency must be read from google_account_info first, never assumed. Gated — raises approval before spend is possible.",
+      "searchKeywords": ["campagne", "lancer", "pub"],
       "requiredScopes": ["ads:google:write"],
       "handler": "google_create_campaign",
       "preflight": "google_create_campaign_preflight",
@@ -2132,6 +2151,7 @@
     },
     "google_update_budget": {
       "description": "Update an existing Google Ads campaign budget's amount. Major units at the call boundary — converted to micros internally, echoed on the approval card for auditability. Currency required, never assumed. Gated — raises approval.",
+      "searchKeywords": ["augmenter", "baisser", "pub"],
       "requiredScopes": ["ads:google:write"],
       "handler": "google_update_budget",
       "summarizer": "summarizeGoogleUpdateBudget",
@@ -2196,6 +2216,7 @@
     },
     "google_set_status": {
       "description": "Set a Google Ads campaign/ad group/ad status to ENABLED (resume). Enable-direction ONLY — a PAUSED target is rejected with a hint to use the google_pause tool instead (which writes the pause ledger and re-reads status). google_pause is gated like this tool. Gated — raises approval before spend resumes.",
+      "searchKeywords": ["activer", "relancer", "reprendre", "pub"],
       "requiredScopes": ["ads:google:write"],
       "handler": "google_set_status",
       "preflight": "google_set_status_preflight",
@@ -2276,6 +2297,7 @@
     },
     "google_add_negative_keywords": {
       "description": "Add negative keyword criteria at the ad group or campaign level. GATED because bulk negatives can silently suppress delivery — the approval card enumerates every negative being added. Provide ad_group_id for ad-group-level or campaign_id for campaign-level negatives (not both).",
+      "searchKeywords": ["négatif", "exclure", "mots"],
       "requiredScopes": ["ads:google:write"],
       "handler": "google_add_negative_keywords",
       "preflight": "google_add_negative_keywords_preflight",
@@ -2364,6 +2386,7 @@
     },
     "merchant_feed_status": {
       "description": "Read Merchant Center product feed health: total/approved/disapproved product counts by destination (Shopping ads, free listings, etc.) via the Merchant API v1 product-status aggregates. Merchant account id is read from the google-config connection. Use this BEFORE diagnosing individual product issues — a feed-wide problem (e.g. most products disapproved) usually points to one systemic cause rather than N unrelated ones.",
+      "searchKeywords": ["flux", "feed", "produits"],
       "readOnly": true,
       "requiredScopes": ["ads:merchant:read"],
       "handler": "merchant_feed_status",
@@ -2389,6 +2412,7 @@
     },
     "experiment_open": {
       "description": "Open a new experiment ledger row — a private bookkeeping insert, moves no money, ALWAYS ungated. Record the hypothesis, metric tier, minimum sample, and decision date BEFORE launching a test (doctrine block G). To have the design ride a spend tool's approval card, pass this call's returned experiment_id (plus the same title/hypothesis/metric_tier/minimum_sample/decision_date) as the `experiment` param on the gated spend tool (create_campaign/create_adset/update_budget/set_status-ACTIVE, google_create_campaign/google_create_adgroup/google_update_budget/google_set_status-ENABLED) — the spend handler does not itself insert.",
+      "searchKeywords": ["test", "expérience"],
       "requiredScopes": ["ads:internal"],
       "handler": "experiment_open",
       "writesToTable": "app_ads.experiments",
@@ -2567,6 +2591,7 @@
     },
     "manual_spend_add": {
       "description": "Record a manual (non-platform) spend entry — e.g. specialized-site placements, dealer co-op spend — for a channel/period. Feeds blended MER's total-spend denominator. Gated — raises approval before the ledger is written (a spend record affects blended metrics used to justify further spend decisions).",
+      "searchKeywords": ["dépense", "manuelle"],
       "requiredScopes": ["ads:internal"],
       "handler": "manual_spend_add",
       "summarizer": "summarizeManualSpendAdd",
@@ -2638,6 +2663,7 @@
     },
     "dealer_profile_upsert": {
       "description": "Create or update a dealer profile (wholesale/dealer relationship metadata) used to inform dealer-sell-in sensing and SKU-class attribution (doctrine block E: B2B revenue must be split out before drawing DTC conclusions). Gated — raises approval before write.",
+      "searchKeywords": ["revendeur", "distributeur"],
       "requiredScopes": ["ads:internal"],
       "handler": "dealer_profile_upsert",
       "preflight": "dealer_profile_upsert_preflight",
@@ -2692,6 +2718,7 @@
     },
     "dealer_profiles_list": {
       "description": "List dealer profiles, optionally filtered by dealer_name. Ungated read.",
+      "searchKeywords": ["revendeur", "revendeurs", "distributeur"],
       "readOnly": true,
       "requiredScopes": ["ads:internal"],
       "handler": "dealer_profiles_list",

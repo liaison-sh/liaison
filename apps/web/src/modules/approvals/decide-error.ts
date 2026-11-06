@@ -231,6 +231,15 @@ export function decideErrorToast(err: ApiError, t: Translate = tNow): DecideErro
       refreshFeed: false,
     }
   }
+  if (status === 422 && code === "mail_draft_removed") {
+    return {
+      toast: { message: t("kernel.approvalsUi.err.mailDraftRemoved"), type: "error" },
+      inline: true,
+      keepExecuting: false,
+      keepReasonOpen: false,
+      refreshFeed: false,
+    }
+  }
   if (status === 422 && code === "requester_lost_scope") {
     return {
       toast: {

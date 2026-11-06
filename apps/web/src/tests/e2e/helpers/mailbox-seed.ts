@@ -946,8 +946,16 @@ export async function seedControlPlaneResidue(
     `INSERT INTO ${K}.approval_requests
        (id, org_id, handle, thread_id, originating_thread_id, tool_name, tool_params,
         current_payload, expires_at, requested_by, summary)
-     VALUES ($1, $2, $3, $4, $4, 'mail__reply', $5::jsonb, $5::jsonb, now() + interval '1 day', $6, $7::jsonb)`,
-    [randomUUID(), orgId, `AP-${tag}`, threadId, { body: phrase }, userId, { text: phrase }],
+     VALUES ($1, $2, $3, $4, $4, 'mail:reply', $5::jsonb, $5::jsonb, now() + interval '1 day', $6, $7::jsonb)`,
+    [
+      randomUUID(),
+      orgId,
+      `AP-${tag}`,
+      threadId,
+      { conversationId: conversation.id, textBody: phrase },
+      userId,
+      { text: phrase },
+    ],
   )
 
   const recount = async (): Promise<Record<string, number>> => {

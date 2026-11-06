@@ -43,6 +43,10 @@ import {
   type RepoRetentionPolicy,
 } from "~/modules/mailbox-crypto/backup-clearance"
 import { MAIL_HEADER_ALLOWLIST } from "~/modules/mailbox-crypto/header-allowlist"
+import {
+  mailApprovalScope,
+  SEALED_MAIL_APPROVAL,
+} from "~/modules/mailbox-crypto/mail-approval-scope"
 import { documentId } from "~/modules/search/document-id"
 import { deleteSearchDocumentsNow } from "~/modules/search/index-writer"
 
@@ -758,19 +762,23 @@ async function purgeControlPlaneResidue(
         RETURNING ${K}.threads.id::text AS id`),
     ).length
 
+    // Cleartext drafts on this mailbox, whoever asked for the send. A sealed
+    // draft is not residue: it holds only ciphertext and its owner can still
+    // decide it, so emptying it would lose the mail.
     touched += extractRows<{ id: string }>(
       await tx.execute(drizzleSql`
-        UPDATE ${K}.approval_requests
+        UPDATE ${K}.approval_requests ar
            SET tool_params = '{}'::jsonb, current_payload = '{}'::jsonb, summary = NULL
-         WHERE org_id = ${orgId}::uuid AND tool_name LIKE 'mail\_\_%'
-           AND requested_by = ${userId}::uuid
-           AND (tool_params <> '{}'::jsonb OR current_payload <> '{}'::jsonb
-                OR summary IS NOT NULL)
-        RETURNING id::text AS id`),
+         WHERE ${mailApprovalScope(orgId, accountIds)}
+           AND NOT ${SEALED_MAIL_APPROVAL}
+           AND (ar.tool_params <> '{}'::jsonb OR ar.current_payload <> '{}'::jsonb
+                OR ar.summary IS NOT NULL)
+        RETURNING ar.id::text AS id`),
     ).length
 
     // `kernel.messages.metadata.toolCalls[].result` is where a mail read the
-    // agent performed before the cutover is still sitting in cleartext.
+    // agent performed before the cutover is still sitting in cleartext. Here the
+    // name is the SDK's `mail__tool`, with its underscores escaped for LIKE.
     touched += extractRows<{ id: string }>(
       await tx.execute(drizzleSql`
         UPDATE ${K}.messages SET metadata = metadata #- '{toolCalls}'
@@ -781,7 +789,7 @@ async function purgeControlPlaneResidue(
            AND jsonb_typeof(metadata -> 'toolCalls') = 'array'
            AND EXISTS (
              SELECT 1 FROM jsonb_array_elements(metadata -> 'toolCalls') tc
-              WHERE tc ->> 'toolName' LIKE 'mail\_\_%' AND tc -> 'result' IS NOT NULL)
+              WHERE tc ->> 'toolName' LIKE 'mail\\_\\_%' AND tc -> 'result' IS NOT NULL)
         RETURNING id::text AS id`),
     ).length
 

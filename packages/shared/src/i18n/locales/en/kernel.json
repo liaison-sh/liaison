@@ -2389,6 +2389,7 @@
       "payloadChanged": "This request was edited after you opened it. Review the current version, then decide again.",
       "alreadySignedOff": "You have already signed off on this request. It needs a second, different approver.",
       "mailboxSealed": "This email is encrypted to its mailbox owner. Unlock the mailbox, then approve it from its card.",
+      "mailDraftRemoved": "This email's draft was removed when its mailbox was encrypted, so it cannot be sent. Reject this request and draft the email again.",
       "tooLarge": "This approval is too large to send: its attachments add up to more than 25 MB. Remove an attachment, then approve again.",
       "toolFailed": "Tool execution failed: {{cause}}.",
       "handlerError": "handler error",

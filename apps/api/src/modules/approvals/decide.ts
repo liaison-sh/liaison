@@ -95,6 +95,8 @@ export class ApprovalDecisionError extends Error {
        * conflict with the approver's state, not a malformed request.
        */
       | "mailbox_fulfilment_required"
+      /** The draft of this mail send is gone (a mailbox purge emptied it), so it cannot run. */
+      | "mail_draft_removed"
       /**
        * The payload was edited after the decider's card was rendered: what they saw is not what
        * would run. They reload the card and decide again (approvals/payload-hash.ts).
@@ -336,6 +338,9 @@ export async function decideApproval(args: DecideArgs): Promise<DecideResult> {
           fulfilment: args.mailboxFulfilment,
         })
       } catch (err) {
+        if (err instanceof MailboxFulfilmentError && err.code === "draft_removed") {
+          throw new ApprovalDecisionError(422, "mail_draft_removed", err.message)
+        }
         if (err instanceof MailboxFulfilmentError) {
           throw new ApprovalDecisionError(
             err.code === "fulfilment_required" ? 409 : 400,

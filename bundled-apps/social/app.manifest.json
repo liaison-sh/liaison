@@ -1,6 +1,6 @@
 {
   "name": "social",
-  "version": "0.6.54",
+  "version": "0.6.55",
   "iconName": "message-square",
   "description": "Social 'Ground Control': monitors Facebook, Instagram and YouTube for brand-relevant activity, drafts human-approved replies, and manages DMs.",
   "listing": {
@@ -533,6 +533,7 @@
     },
     "findings_list": {
       "description": "List social findings, optionally filtered by status/platform.",
+      "searchKeywords": ["mention", "mentions", "commentaire", "commentaires", "avis", "réseaux", "facebook", "instagram"],
       "readOnly": true,
       "requiredScopes": ["social:findings:read"],
       "handler": "findingsList",
@@ -550,6 +551,7 @@
     "reply_to_finding": {
       "outboundTextParams": ["reply_text"],
       "description": "Draft and post a reply to a social finding's comment/post. Always gated — a human approves before anything is posted.",
+      "searchKeywords": ["répondre", "commentaire", "mention"],
       "requiredScopes": ["social:findings:write"],
       "handler": "replyToFindingHandler",
       "summarizer": "summarizeReplyToFinding",
@@ -574,6 +576,7 @@
     "send_dm": {
       "outboundTextParams": ["body"],
       "description": "Send a direct message in a conversation. Always gated (a human approves) — STAGE it and report it as PENDING APPROVAL, never as already sent. The platform reply window is recomputed from the LAST INBOUND message: within 24h it sends as a standard reply; from 24h up to 7 days it still sends but as a HUMAN-AGENT message (surface that — never send it silently as a normal reply); past 7 days the window is CLOSED and no API send is possible. A CLOSED window returns a `dm_window_closed` error AT THE CALL SITE (before any approval), so do NOT stage a send there — honestly tell the user the messaging window has closed and the message must go via the native app or another channel. The conversation's current window state is on its `reply_window` field from dm_get/dm_list; read it and surface the window state when proposing the send.",
+      "searchKeywords": ["message", "envoyer", "privé", "instagram"],
       "requiredScopes": ["social:dm:write"],
       "handler": "sendDmHandler",
       "summarizer": "summarizeSendDm",
@@ -597,6 +600,7 @@
     },
     "like_item": {
       "description": "Like the item behind a finding. Always gated (a human approves) — STAGE it and report it as PENDING APPROVAL, never as already liked. Liking is PLATFORM-BOUNDED: the platform API exposes a like action ONLY for own-Page Facebook comments and own-media Instagram comments. YouTube channel-likes are NOT supported — calling this on a YouTube finding returns a `like_unsupported_for_target` error AT THE CALL SITE (before any approval), so do NOT stage a like there; instead honestly tell the user liking is unsupported on YouTube and offer a gated reply (reply_to_finding) as an alternative. Propose gated likes only for the supported (Facebook own-Page / Instagram own-media) comments.",
+      "searchKeywords": ["aimer", "liker"],
       "requiredScopes": ["social:findings:write"],
       "handler": "likeItemHandler",
       "summarizer": "summarizeLikeItem",
@@ -626,6 +630,7 @@
     },
     "dm_list": {
       "description": "List direct-message conversations, most recently active first. A conversation's `status` is `open` while the other person spoke last (waiting on us) and `handled` once our side sent the latest message; their next message reopens it (an `archived` one too), so `status: open` lists the threads that need an answer. Each conversation carries a `reply_window` { tag, canSend, daysSinceLastInbound, explanation } describing the current send-time messaging window (standard ≤24h · human-agent ≤7d · closed >7d) — read it to know whether and how a send_dm can be delivered.",
+      "searchKeywords": ["message", "messages", "privés", "instagram", "facebook"],
       "readOnly": true,
       "requiredScopes": ["social:dm:read"],
       "handler": "dmList",
@@ -663,6 +668,7 @@
     },
     "monitor_terms_list": {
       "description": "List brand monitor terms.",
+      "searchKeywords": ["veille", "surveiller", "mots"],
       "readOnly": true,
       "requiredScopes": ["social:terms:read"],
       "handler": "monitorTermsList",
@@ -670,6 +676,7 @@
     },
     "monitor_terms_add": {
       "description": "Add (or re-enable) a brand monitor term. Upserts on the [platform, kind, value] key — re-adding a previously-disabled term re-enables it rather than erroring. YouTube discovery searches for every enabled keyword/handle term (platform null or 'youtube'); Facebook/Instagram do not currently use terms for discovery.",
+      "searchKeywords": ["veille", "surveiller", "mot"],
       "requiredScopes": ["social:terms:write"],
       "handler": "monitorTermsAddHandler",
       "params": {
@@ -685,6 +692,7 @@
     },
     "monitor_terms_remove": {
       "description": "Remove a brand monitor term, either by id or by its [platform, kind, value] key.",
+      "searchKeywords": ["veille", "retirer", "mot"],
       "requiredScopes": ["social:terms:write"],
       "handler": "monitorTermsRemoveHandler",
       "writesToTable": "app_social.monitor_term",
@@ -741,6 +749,7 @@
     },
     "dismiss_finding": {
       "description": "Dismiss a finding (no reply needed). Autonomous, no approval.",
+      "searchKeywords": ["ignorer", "écarter"],
       "requiredScopes": ["social:internal"],
       "handler": "dismissFindingHandler",
       "writesToTable": "app_social.finding",
@@ -748,6 +757,7 @@
     },
     "watch_object": {
       "description": "Promote a SPECIFIC post/video/thread to a watched object so its FUTURE comments keep getting caught, and backfill-link its existing findings. THIS is the action to take whenever the user asks you to 'keep a close eye on / monitor / watch' a specific post — identify the post from a finding's parent_external_id (or permalink) and call this to actually start watching it. Listing watched objects (watched_list) does NOT watch anything; only THIS call does. Ungated internal metadata, no external effect.",
+      "searchKeywords": ["surveiller", "suivre", "post", "publication"],
       "requiredScopes": ["social:watched:write"],
       "atomic": true,
       "handler": "watchObjectHandler",

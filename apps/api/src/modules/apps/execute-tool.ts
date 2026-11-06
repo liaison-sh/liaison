@@ -6078,7 +6078,8 @@ export async function executeApprovedToolHandlerInternal(args: {
   await primeOrgApps(args.orgId)
   if (isFeatureOffForTool(args.orgId, args.tool)) {
     const { code, message, feature, next } = featureOffAnswer(args.orgId, args.tool)
-    return { error: { code, message, feature, next, final: true } }
+    // The closing notice carries the message alone, so the next step travels in it.
+    return { error: { code, message: `${message} ${next}`, feature, next, final: true } }
   }
   const validated = validateParamsForTool(
     args.tool,

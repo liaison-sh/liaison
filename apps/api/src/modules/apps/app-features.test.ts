@@ -17,6 +17,7 @@ import * as eventBus from "~/infra/events/event-bus"
 import { flushEventHandlers } from "~/infra/events/event-bus"
 import { registerEventSubscribers } from "~/infra/events/event-subscribers"
 import { processOutboxBatch } from "~/infra/events/outbox-worker"
+import * as jobs from "~/infra/jobs/jobs"
 import { appsLogger } from "~/lib/logger"
 import * as scriptedProvider from "~/modules/agent/providers/scripted-model-provider"
 import { AgentServiceTestAccess, runAgentChat } from "~/modules/agent/runtime/agent-service"
@@ -84,6 +85,8 @@ const GATED_TOOL = "test__riskyAction"
 const FEATURE_TOOLS = [HOT_TOOL, DEFERRED_TOOL, GATED_TOOL]
 /** The same app's tool with no feature key. */
 const PLAIN_TOOL = "test__externalSearch"
+/** Three times the notifier's 250 ms debounce. */
+const LIST_CHANGED_SETTLE_MS = 750
 
 function featuredManifest() {
   const base = manifestWithBundle()
@@ -624,8 +627,11 @@ describe("a flip", () => {
   })
 
   it("a flip emits entity app and a live MCP session gets it", async () => {
+    // Nothing else drains the outbox in this file, so the org's setup and every earlier
+    // flip are still undelivered. A session opened on that backlog hears one notice per
+    // debounce window the delivery spans, none of them about this flip.
     while ((await processOutboxBatch()) > 0) {
-      // Earlier flips in this file are delivered before this session opens.
+      // Delivered before the session opens.
     }
     await flushEventHandlers()
     let listChanged = 0
@@ -649,7 +655,9 @@ describe("a flip", () => {
       await flushEventHandlers()
       const deadline = Date.now() + 10_000
       while (listChanged === 0 && Date.now() < deadline) await Bun.sleep(50)
-      expect(listChanged).toBeGreaterThan(0)
+      // Past another debounce window, so a second notice would have landed by now.
+      await Bun.sleep(LIST_CHANGED_SETTLE_MS)
+      expect(listChanged).toBe(1)
     } finally {
       unregisterActiveServer("feature-flip")
       __resetCatalogNotifier()
@@ -703,6 +711,150 @@ describe("a flip", () => {
       ORDER BY created_at DESC LIMIT 1`
     expect(notices[0]?.content).toContain("did not run")
     expect(notices[0]?.content).toContain("closed")
+  }, 60_000)
+})
+
+describe("an approved call whose feature has since gone off", () => {
+  const runs = { write: 0, read: 0, step: 0, dependent: 0 }
+  const NAMES = ["laterWrite", "laterRead", "plainStep", "laterDependent"]
+
+  const register = (
+    name: string,
+    extra: Record<string, unknown>,
+    handler: (params: Record<string, unknown>) => unknown,
+  ) =>
+    toolRegistry.set([orgId, "test", name], {
+      appName: "test",
+      name,
+      description: name,
+      requiredScopes: ["test:items:write"],
+      gated: true,
+      handler: async (params: Record<string, unknown>) => handler(params),
+      ...extra,
+    } as never)
+
+  beforeAll(() => {
+    register("laterWrite", { feature: FEATURE }, () => {
+      runs.write += 1
+      return { written: true }
+    })
+    register("laterRead", { feature: FEATURE, readOnly: true }, () => {
+      runs.read += 1
+      return { found: true }
+    })
+    register("plainStep", { referenceableOutputs: ["value"] }, () => {
+      runs.step += 1
+      return { value: "from-the-first-step" }
+    })
+    register("laterDependent", { feature: FEATURE }, () => {
+      runs.dependent += 1
+      return { done: true }
+    })
+  })
+
+  afterAll(() => {
+    for (const name of NAMES) toolRegistry.delete([orgId, "test", name])
+  })
+
+  const park = async (tool: string, threadId: string, params: Record<string, unknown> = {}) => {
+    const parked = await executeTool({
+      toolName: `test:${tool}`,
+      orgId,
+      actor: actor(["*"]),
+      params,
+      threadId,
+    } as never)
+    const requestId = parked.blocked?.approvalRequestId
+    expect(requestId).toBeTruthy()
+    return requestId as string
+  }
+  const approve = (requestId: string) =>
+    decideApproval({ orgId, requestId, actor: actor(["*"]), decision: "approve" } as never)
+  const statusOf = async (requestId: string) => {
+    const [row] = await sql<{ status: string }[]>`
+      SELECT status FROM kernel.approval_requests WHERE id = ${requestId}`
+    return row?.status
+  }
+  const executionOf = async (requestId: string) => {
+    const [row] = await sql<{ status: string; error: { code?: string } | null }[]>`
+      SELECT status, error FROM kernel.approved_handler_executions
+      WHERE approval_request_id = ${requestId}`
+    return row
+  }
+  const noticeIn = async (threadId: string) => {
+    const [row] = await sql<{ content: string }[]>`
+      SELECT content FROM kernel.messages
+      WHERE thread_id = ${threadId} AND metadata->>'type' = 'approval-error'
+      ORDER BY created_at DESC LIMIT 1`
+    return row?.content ?? ""
+  }
+
+  it("a write runs while the feature is on and not after: closed, final, in plain words", async () => {
+    await flip(true)
+    const threadId = await freshThread()
+    const before = runs.write
+    const ran = await park("laterWrite", threadId)
+    await approve(ran)
+    expect(runs.write).toBe(before + 1)
+    expect(await statusOf(ran)).toBe("approved")
+
+    const parked = await park("laterWrite", threadId)
+    await flip(false)
+    await expect(approve(parked)).rejects.toMatchObject({ status: 422 })
+
+    expect(runs.write).toBe(before + 1)
+    expect(await statusOf(parked)).toBe("cancelled")
+    const execution = await executionOf(parked)
+    expect(execution?.status).toBe("failed_no_effect")
+    expect(execution?.error?.code).toBe("feature_off")
+    const notice = await noticeIn(threadId)
+    expect(notice).toContain("test__laterWrite did not run and nothing changed")
+    expect(notice).toContain("Someone holding test:items:write can turn it on")
+    expect(notice).toContain("The request is closed")
+    // It stays closed: approving again runs nothing.
+    await expect(approve(parked)).rejects.toThrow()
+    expect(runs.write).toBe(before + 1)
+  }, 60_000)
+
+  it("a read closes the same way, never reading as a tool that ran and failed", async () => {
+    await flip(true)
+    const threadId = await freshThread()
+    const before = runs.read
+    const parked = await park("laterRead", threadId)
+    await flip(false)
+    await expect(approve(parked)).rejects.toMatchObject({ status: 422 })
+
+    expect(runs.read).toBe(before)
+    expect(await statusOf(parked)).toBe("cancelled")
+    expect((await executionOf(parked))?.status).toBe("failed_no_effect")
+    expect(await noticeIn(threadId)).toContain("test__laterRead did not run")
+    const said = await sql<{ content: string }[]>`
+      SELECT content FROM kernel.messages WHERE thread_id = ${threadId}`
+    expect(said.map((m) => m.content).join("\n")).not.toContain("The tool ran")
+  }, 60_000)
+
+  it("a later step of a sequence does not run, the sequence ends and says why", async () => {
+    const reinvokes = spyOn(jobs, "enqueueAppJob").mockImplementation((async () => "stub") as never)
+    try {
+      await flip(true)
+      const threadId = await freshThread()
+      const before = { step: runs.step, dependent: runs.dependent }
+      const head = await park("plainStep", threadId)
+      const dependent = await park("laterDependent", threadId, { note: `@ref:${head}:value` })
+      await flip(false)
+      await approve(head)
+
+      expect(runs.step).toBe(before.step + 1)
+      expect(await statusOf(head)).toBe("approved")
+      expect(runs.dependent).toBe(before.dependent)
+      expect(await statusOf(dependent)).toBe("cancelled")
+      const [row] = await sql<{ failure: { reason: string } }[]>`
+        SELECT metadata->'executionFailure' AS failure FROM kernel.approval_requests
+        WHERE id = ${dependent}`
+      expect(row?.failure.reason).toContain("test__laterDependent did not run")
+    } finally {
+      reinvokes.mockRestore()
+    }
   }, 60_000)
 })
 

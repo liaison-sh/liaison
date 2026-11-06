@@ -223,7 +223,20 @@ describe("AppSettingsPage: the scope badge of a section holding connections", ()
       "Organization",
     )
     expect(screen.getByTestId("settings-section-scope-plain").textContent).toBe("Organization")
-    expect(screen.getByTestId("settings-section-scope-mine").textContent).toBe("Just you")
+  })
+
+  it("in a section open to everyone: 'Just you' for a member", async () => {
+    register()
+    state.scopes = []
+    renderPage()
+    expect((await screen.findByTestId("settings-section-scope-mine")).textContent).toBe("Just you")
+  })
+
+  it("in a section open to everyone: no badge for an admin, who can pick Organization", async () => {
+    register()
+    renderPage()
+    await screen.findByTestId("settings-section-scope-named")
+    expect(screen.queryByTestId("settings-section-scope-mine")).toBeNull()
   })
 })
 

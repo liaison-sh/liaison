@@ -101,6 +101,15 @@ describe("connection routes", () => {
     expect(account.status).toBe("active")
   })
 
+  it("refuses an org Drive connection to a non-admin, whatever the settings page shows", async () => {
+    const res = await makeApp().request("/api/connections/google-drive/drive/authorize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "org" }),
+    })
+    expect(res.status).toBe(403)
+  })
+
   it("rejects org credential mode without mail account admin scope", async () => {
     const res = await makeApp().request("/api/connections/mail/imap/credentials?mode=org", {
       method: "POST",

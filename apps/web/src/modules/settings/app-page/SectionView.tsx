@@ -19,7 +19,7 @@ import { useI18n } from "~/modules/i18n/i18n-context"
 import { appsStore } from "~/modules/settings/apps-store"
 import { addToast } from "~/modules/shell/toast-store"
 import { Button } from "~/ui/Button"
-import { ConnectionsBlock } from "./ConnectionsBlock"
+import { ConnectionsBlock, canAdministerConnection } from "./ConnectionsBlock"
 import { CustomBlock } from "./CustomBlock"
 import { FieldBlock } from "./fields"
 import { ListBlock } from "./ListBlock"
@@ -59,17 +59,21 @@ export const SectionView: Component<SectionViewProps> = (props) => {
       : undefined
   const headingId = () => `settings-section-h-${props.app}-${props.section.id}`
   const fieldsOnly = () => props.section.blocks.every((b) => b.block === "field")
-  // A connect form offers Personal and Organization for every connection but a
-  // named-instance one, always the org's: "Organization" on such a section would
-  // say a person cannot connect their own account there. Until the connections
-  // are listed it is not known, so the badge waits.
+  // A connect form offers Personal and Organization to whoever administers the
+  // connection, and only Personal to anyone else; a named-instance connection is
+  // always the org's. So an org section with a connection a person can hold says
+  // nothing, nor does an open section to an admin (Organization is on offer
+  // there); "Just you" stays true for a member. Unknown until they are listed.
   const showScopeBadge = () => {
-    if (props.section.scope === "user") return true
     const blocks = props.section.blocks.flatMap((b) => (b.block === "connections" ? [b] : []))
     if (blocks.length === 0) return true
-    const declared = appsStore.connectionsFor(props.app)
-    const shown = declared.filter((c) => blocks.some((b) => !b.names || b.names.includes(c.name)))
-    return shown.length > 0 && shown.every((c) => c.multiInstance)
+    const shown = appsStore
+      .connectionsFor(props.app)
+      .filter((c) => blocks.some((b) => !b.names || b.names.includes(c.name)))
+    if (shown.length === 0) return false
+    return props.section.scope === "user"
+      ? !shown.some((c) => canAdministerConnection(props.app, c))
+      : shown.every((c) => c.multiInstance)
   }
 
   // A section whose fields share one tool setter saves as one unit (M1): edits
@@ -168,6 +172,7 @@ export const SectionView: Component<SectionViewProps> = (props) => {
               block={c()}
               blockId={blockId}
               openConnection={props.openConnection}
+              personalSection={props.section.scope === "user"}
             />
           )}
         </Match>

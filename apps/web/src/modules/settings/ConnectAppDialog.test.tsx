@@ -2,6 +2,7 @@
 import { fireEvent, render, screen } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ApiClient } from "~/lib/api-client"
+import { ApiError } from "~/lib/api-error"
 import { clearAuth, setTokens } from "~/modules/auth/auth-store"
 import type { AppConnectionConfig } from "./apps-store"
 import { BillingStateTestAccess } from "./BillingState"
@@ -55,6 +56,31 @@ function mockApi(
     put: extra?.put ?? vi.fn().mockResolvedValue({ configured: true, created: true }),
   } as unknown as ApiClient
 }
+
+describe("ConnectAppDialog for a member connecting their own account", () => {
+  it("asks for no OAuth client and offers no Organization, and connects as personal", async () => {
+    setTokens(makeAccessToken([]))
+    const get = vi.fn().mockRejectedValue(new ApiError("forbidden", 403))
+    const post = vi.fn().mockResolvedValue({ redirectUrl: "https://accounts.example/o" })
+    const api = mockApi(post, { get })
+    render(() => (
+      <ConnectAppDialog
+        api={api}
+        appName="google-drive"
+        connectionName="drive"
+        connConfig={oauthConfig}
+        onClose={() => {}}
+      />
+    ))
+    expect(await screen.findByTestId("oauth-connect-account")).toBeInTheDocument()
+    expect(screen.queryByTestId("oauth-client-id")).toBeNull()
+    expect(screen.queryByTestId("connect-mode-toggle")).toBeNull()
+    expect(screen.queryByTestId("connect-mode-org")).toBeNull()
+    expect(screen.queryByTestId("oauth-client-replace-toggle")).toBeNull()
+    fireEvent.click(screen.getByTestId("connect-oauth"))
+    await vi.waitFor(() => expect(post.mock.calls[0]?.[1]).toMatchObject({ mode: "personal" }))
+  })
+})
 
 describe("ConnectAppDialog", () => {
   let hrefSet: string | undefined

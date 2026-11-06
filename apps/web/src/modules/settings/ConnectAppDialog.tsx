@@ -10,6 +10,7 @@
 
 import { type Component, createSignal, For, onMount, Show } from "solid-js"
 import type { ApiClient } from "~/lib/api-client"
+import { ApiError } from "~/lib/api-error"
 import { appLabel } from "~/lib/app-label"
 import { appDisplayNames } from "~/lib/capability-copy"
 import { cn } from "~/lib/cn"
@@ -94,6 +95,7 @@ export const ConnectAppDialog: Component<ConnectAppDialogProps> = (props) => {
   // client from here (an org-level client stays replaceable).
   const clientLocked = () => billingMode() === "managed" && clientStatus()?.source === "deployment"
   const [ownClientOpen, setOwnClientOpen] = createSignal(false)
+  const [clientHidden, setClientHidden] = createSignal(false)
   // The client fields: up front when no client exists (once the status has
   // loaded), behind the disclosure when one does, never for an app-managed or
   // a locked client.
@@ -109,7 +111,14 @@ export const ConnectAppDialog: Component<ConnectAppDialogProps> = (props) => {
     void appsStore
       .oauthClientStatus(props.api, props.appName, props.connectionName)
       .then(setClientStatus)
-      .catch(() => setClientStatus({ configured: false }))
+      .catch((err) => {
+        // The client is an admin's to see or set. A member connects their own
+        // account on whatever client exists; if none does, the sign-in says so.
+        if (err instanceof ApiError && err.status === 403) {
+          setClientHidden(true)
+          setClientStatus({ configured: true })
+        } else setClientStatus({ configured: false })
+      })
   })
 
   const requiredFields = () =>
@@ -357,7 +366,13 @@ export const ConnectAppDialog: Component<ConnectAppDialogProps> = (props) => {
                 : i18n.t("kernel.settingsUi.connectViaOauth")}
             </Button>
             <Show
-              when={clientReady() && !appManagedClient() && !clientLocked() && !ownClientOpen()}
+              when={
+                clientReady() &&
+                !appManagedClient() &&
+                !clientLocked() &&
+                !clientHidden() &&
+                !ownClientOpen()
+              }
             >
               <button
                 type="button"

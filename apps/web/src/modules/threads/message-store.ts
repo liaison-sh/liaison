@@ -6,6 +6,7 @@ import { createStore, produce, reconcile } from "solid-js/store"
 import { getAppTabAction } from "~/framework/app-registry"
 import { subscribeResync } from "~/framework/resync"
 import { onSessionTeardown } from "~/lib/session-lifecycle"
+import { userFromToken } from "~/modules/auth/auth-store"
 import { runMessageAsLocalTurn } from "~/modules/desktop/desktop-store"
 import { tNow } from "~/modules/i18n/i18n-context"
 import { openTab } from "~/modules/shell/tab-store"
@@ -2434,6 +2435,10 @@ async function closeGap(key: string): Promise<void> {
 }
 
 export function handleWsAgentStreamEvent(action: string, data: any): void {
+  if (action === "open_tab") {
+    applyOpenTabFrame(data)
+    return
+  }
   const threadId = data.threadId
   if (!threadId) return
   notifyHeldTurnScopes(threadId, action)
@@ -2691,23 +2696,56 @@ function applyAgentStreamFrame(action: string, data: any): void {
     }),
   )
 
-  // `open_app` is a client-effect tool: it rides the agent_stream `tool_call`
-  // channel rather than its own WS message. When the agent calls it (e.g. to
-  // show the user where an app lives), navigate the UI to the requested
-  // app. Done outside the store `produce` above so the tab-store mutation isn't
-  // nested inside the message-store update. An unknown app id resolves to null
-  // and is a harmless no-op.
-  if (action === "tool_call" && data?.toolName === "open_app") {
-    const app = typeof data.args?.app === "string" ? data.args.app : ""
-    const tabAction = app ? getAppTabAction(app) : null
-    if (tabAction) {
-      openTab({
-        type: tabAction.type,
-        entityId: tabAction.entityId,
-        label: tabAction.label,
-      })
-    }
+  applyOpenAppEffect(action, data)
+}
+
+/** The agent's `open_app`, by the name it has on the wire or its bare one. */
+function isOpenAppTool(name: unknown): boolean {
+  return name === "kernel__open_app" || name === "open_app"
+}
+
+/** It moves one screen: that of the person who asked, and only while they are looking at it. */
+function mayMoveMyScreen(data: any): boolean {
+  if ((data?.requesterId ?? null) !== (userFromToken()?.userId ?? null)) return false
+  return typeof document === "undefined" || !document.hidden
+}
+
+/**
+ * `open_app` with only an app: it rides the agent_stream `tool_call` frame, which every reader of
+ * the thread receives, and opens that app by the name the web app resolves (an unknown one is a
+ * harmless no-op). The server names the requester on the frame, and nobody for a routine's run.
+ * Done outside the store `produce` so the tab-store mutation isn't nested inside the update.
+ */
+function applyOpenAppEffect(action: string, data: any): void {
+  if (action !== "tool_call" || !isOpenAppTool(data?.toolName)) return
+  if (!mayMoveMyScreen(data)) return
+  const args = data.args
+  if (args?.view || args?.id) return
+  const tabAction = typeof args?.app === "string" ? getAppTabAction(args.app) : null
+  if (tabAction) {
+    openTab({
+      type: tabAction.type,
+      entityId: tabAction.entityId,
+      label: tabAction.label,
+    })
   }
+}
+
+/**
+ * `open_app` with a view or an id: the server read the record, and sends this frame to the
+ * requester's connections alone once it may open. A refused call sends none. The title is the
+ * record's own name, which is why it comes here and not in the tool's result.
+ */
+function applyOpenTabFrame(data: any): void {
+  if (!mayMoveMyScreen(data)) return
+  const tab = data?.tab
+  if (typeof tab?.type !== "string" || typeof tab.entityId !== "string") return
+  openTab({
+    type: tab.type,
+    entityId: tab.entityId,
+    label: typeof data.label === "string" ? data.label : tab.entityId,
+    ...(typeof tab.routePath === "string" ? { routePath: tab.routePath } : {}),
+  })
 }
 
 export function handleWsReactionEvent(action: string, data: any, currentUserId?: string): void {

@@ -399,6 +399,44 @@ describe("chat tools", () => {
     })
   })
 
+  describe("handleThreadsReply — where a post went", () => {
+    it("a post on a contact says which discussion it is in and that no other system has it", async () => {
+      const { handleThreadsReply } = await import("./chat-tools")
+      const contactId = "00000000-0000-0000-0000-000000d80050"
+      await sql`INSERT INTO kernel.contacts (id, org_id, handle, name, email, created_by)
+        VALUES (${contactId}, ${ORG_ID}, 'posted-to', 'Posted To', 'posted-to@test.com', ${USER_A})`
+      try {
+        const result = await withRlsContext(actorA, (tx) =>
+          handleThreadsReply({ contactId, content: "Pays late, chase early." }, {
+            userId: USER_A,
+            orgId: ORG_ID,
+            db: tx,
+            scopes: actorA.scopes,
+          } as any),
+        )
+        expect((result as any).message).toBeDefined()
+        expect((result as any).postedTo).toContain(contactId)
+        expect((result as any).postedTo).toContain("not in any connected system")
+      } finally {
+        await sql`DELETE FROM kernel.threads WHERE org_id = ${ORG_ID} AND created_from->>'entityId' = ${contactId}`
+        await sql`DELETE FROM kernel.contacts WHERE id = ${contactId}`
+      }
+    })
+
+    it("a post in a thread adds nothing", async () => {
+      const { handleThreadsReply } = await import("./chat-tools")
+      const result = await withRlsContext(actorA, (tx) =>
+        handleThreadsReply({ threadId: THREAD_ID, content: "Plain post" }, {
+          userId: USER_A,
+          orgId: ORG_ID,
+          db: tx,
+          scopes: actorA.scopes,
+        } as any),
+      )
+      expect((result as any).postedTo).toBeUndefined()
+    })
+  })
+
   describe("handleThreadsReply — agent attribution", () => {
     it("posts as an attributed agent identity, never as the user", async () => {
       const { handleThreadsReply } = await import("./chat-tools")

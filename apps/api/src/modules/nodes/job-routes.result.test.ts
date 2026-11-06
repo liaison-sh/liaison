@@ -215,6 +215,46 @@ describe("node job results per source, and one job by id (P1-T18)", () => {
     expect((await sessionOf(r.job.id)).status).toBe("done")
   })
 
+  it("Invariant K: a mail tool's drafted text and result stay out of the stored turn", async () => {
+    const n = await enable()
+    const [routine] = await sql<{ id: string }[]>`INSERT INTO kernel.routines
+      (org_id, owner_user_id, owner_agent_id, name, description, kind, cron, timezone,
+       prompt, scopes, created_by_actor_type)
+      VALUES (${owner.orgId}, ${owner.userId}, ${agentId}, ${`r-${crypto.randomUUID()}`}, 'd',
+              'recurring', '0 9 * * *', 'UTC', 'p', '{}', 'user') RETURNING id`
+    const r = await run("routine", n, routine.id)
+    const res = await result(r.job.id, r.gen, n.credential, "Replied.", {
+      turn: {
+        toolCalls: [
+          {
+            toolCallId: "toolu_mail",
+            toolName: "mcp__liaison__mail__reply",
+            args: { textBody: "OBSIDIANNODEDRAFT" },
+            result: '{"textBody":"OBSIDIANNODERESULT"}',
+            status: "completed",
+          },
+          {
+            toolCallId: "toolu_other",
+            toolName: "Bash",
+            args: { command: "ls" },
+            result: "a.txt",
+            status: "completed",
+          },
+        ],
+      },
+    })
+    expect(res.status).toBe(201)
+    const { messageId } = (await json(res)).data
+    const [row] = await sql<Array<{ metadata: { toolCalls: Array<Record<string, unknown>> } }>>`
+      SELECT metadata FROM kernel.messages WHERE id = ${messageId}`
+    const calls = row?.metadata.toolCalls ?? []
+    expect(calls.map((c) => c.toolName)).toEqual(["mail__reply", "Bash"])
+    expect(calls[0]?.args).toMatchObject({ redacted: true, redactedFields: ["textBody"] })
+    expect(calls[0]?.result).toMatchObject({ redacted: true })
+    expect(calls[1]).toMatchObject({ args: { command: "ls" }, result: "a.txt" })
+    expect(JSON.stringify(calls)).not.toContain("OBSIDIANNODE")
+  })
+
   it("S1: a dispatch result without completion ends needs_you with reason turn_ended", async () => {
     const n = await enable()
     const d = await run("dispatch", n)

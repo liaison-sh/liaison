@@ -590,6 +590,8 @@ describe("observeShopifyOrderUpdated (E4)", () => {
     expect(executeToolCalls[0]!.args).toMatchObject({
       original_document_id: "doc-1",
       shopify_order_id: "ord-amt",
+      // The store's "150.00" is 150 EUR. It was read as 150 cents: only a fraction counted as major.
+      items: [expect.objectContaining({ unit_price_minor: 15000 })],
     })
     // Staging the gated call must not itself create any document — issuance
     // only happens once a human approves (out of this handler's control).

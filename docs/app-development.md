@@ -248,6 +248,13 @@ only for refusals: a crash or an unexpected failure is thrown, and an
 unclassified one stays a 500 logged as an error. To pass a message safely
 when you throw, use `ToolError`.
 
+**Amounts in minor units.** A field named `*_minor` holds a whole number: 41940
+for 419.40. Read one with `readMinorAmount` from `@liaison/app-sdk`, which
+returns null for anything else, and answer null with `minorAmountRefusal(field,
+value)`, which names the amount it read and what to send. Never guess a unit
+from a decimal point. The server refuses a decimal in a declared `*_minor`
+parameter the same way.
+
 **Scopes.** Every tool declares `requiredScopes`, a non-empty list
 (`["my-app:resource:action"]`). A tool only runs if the caller holds every scope
 in it; a manifest tool carrying the old single `scope` key is refused. Scopes are hierarchical: granting
@@ -353,6 +360,15 @@ frame. Write it so that it works there too:
   marks its active row this way. A framed app is told the path only while the
   page is on one of its own routes (`/<app>/...`, its own tab patterns,
   `/detail/<app>/...`, `/settings/apps/<app>`); elsewhere `currentPath()` is `""`.
+- A page that opens a record inside its tab (a list beside a detail, an expanded
+  row, a drawer) says which one, so a person who asks the agent about "this" gets
+  that record: `app.trackOpenRecord("shipment", () => selectedId())` from
+  `@liaison/host`, in the component body, with an entity of your manifest. Return
+  null while no record is on screen, a phone layout that hides the pane included.
+  An entity in another system (`"external": true`, no local table) works the same:
+  the agent is told its id. A tab whose own id is the record needs none of this:
+  when the tab is not named for its entity, it declares it instead
+  (`"entity": "document"`, or `"entity": "kernel:contact"`, in `views.tabTypes.<tab>`).
 - Keep every tab `urlPattern` under a first segment your app owns
   (`/<app>/...`): a pattern under another app, a Liaison page or a leading
   parameter is refused at install (see "Tab routes" in `app-package-format.md`).

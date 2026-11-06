@@ -50,6 +50,30 @@ const batch = (records: Array<Record<string, unknown>>, label = "erp") => ({
 })
 
 describe("invoicing.document", () => {
+  it("imports a legal original as issued, even a credit note dated before its invoice", async () => {
+    const { db, ctx } = await setup()
+    const out = await importDocuments(
+      batch([
+        doc({ issueDate: "2025-06-10" }),
+        doc({
+          externalRef: "CN-8",
+          type: "credit_note",
+          number: "CN-8",
+          numberInt: 8,
+          issueDate: "2025-03-04",
+          grandTotalMinor: -100000,
+          amountPaidMinor: undefined,
+          lines: [{ description: "Refund", quantity: "1", unitPriceMinor: -100000, taxRateBp: 0, totalMinor: -100000 }],
+          originalExternalRef: "INV-1001",
+        }),
+      ]),
+      ctx,
+    )
+    expect(out.map((r) => r.status)).toEqual(["created", "created"])
+    const credit = db.__all("documents").find((d) => d.external_ref === "erp:CN-8")!
+    expect(String(credit.issued_at).slice(0, 10)).toBe("2025-03-04")
+  })
+
   it("imports a paid invoice, an unpaid one and a credit note linked to its original", async () => {
     const { db, ctx, issuerIds } = await setup()
     const out = await importDocuments(

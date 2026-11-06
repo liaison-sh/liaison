@@ -141,4 +141,5 @@ Admin only: AI models API behind kernel:org:admin -> apps/api/src/modules/settin
 Blocked hosts saved through PATCH /settings/ai/models -> apps/api/src/modules/settings/ai-models-routes.ts:354
 Managed: Cost vs Auto multiplier, 3:1 blend, one decimal below 2x -> apps/api/src/modules/agent/credits/credit-cost.ts:45 ; apps/web/src/modules/settings/AiModelsSettings.tsx:218 ; apps/web/src/modules/agent/ModelSelector.tsx:349
 Managed: credits = provider cost x the instance credit rate, per call -> apps/api/src/modules/agent/credits/credit-cost.ts:25 ; apps/api/src/modules/agent/credits/credit-cost.ts:32
-Managed: adding an OpenRouter model runs its test call on the service key, metered in credits -> apps/api/src/modules/settings/ai-models-routes.ts:605 ; apps/api/src/modules/settings/ai-models-routes.ts:614
+Managed: adding an OpenRouter model runs its test call on the service key, metered in credits -> apps/api/src/modules/settings/ai-models-admin.ts:463 ; apps/api/src/modules/settings/ai-models-admin.ts:508
+AI model settings tools for agents and MCP clients -> apps/api/src/modules/agent/tools/kernel-tools.ts:2876

@@ -67,7 +67,7 @@
       }
     ]
   },
-  "version": "1.8.4",
+  "version": "1.8.5",
   "description": "Email integration: Gmail and IMAP/SMTP",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -624,7 +624,7 @@
   },
   "tools": {
     "listAccounts": {
-      "description": "List the mailboxes connected to this org, each with its sync status, last sync error and next retry. Disconnected ones are hidden unless includeDisconnected=true. A mailbox is connected by calling kernel__config_mail, then kernel__request_secret; to the person, say you will connect the mailbox, never a tool name.",
+      "description": "List the mailboxes this person can use, each with its sync status, last sync error and next retry. Disconnected ones are hidden unless includeDisconnected=true. A mailbox is connected by calling kernel__config_mail, then kernel__request_secret; to the person, say you will connect the mailbox, never a tool name.",
       "searchKeywords": ["compte", "comptes", "boîte", "boîtes", "account", "accounts", "gmail", "imap", "synchronisation", "sync"],
       "readOnly": true,
       "requiredScopes": ["mail:accounts:read"],
@@ -1345,7 +1345,7 @@
     "compose": {
       "outboundTextParams": ["subject", "textBody", "htmlBody"],
       "description": "Compose a new mail message. This sends a REAL EMAIL: to message a teammate in this organization, post in a Liaison conversation instead (kernel__threads_create with their user id, or kernel__threads_reply), unless the user explicitly asks for an email. GATED: calling this does NOT send — it creates a pending approval holding your drafted message that the human reviews, edits, and approves before it goes out. Calling this tool IS how a human 'looks it over before it goes out', so when asked to draft/propose/prepare a message you must CALL this tool with the body; never paste the draft into chat and ask whether to send. NOT A BROADCAST / MASS-SEND / SEGMENT primitive: this composes ONE single message with ONE shared body to the literal envelope you pass — every address in `to`/`cc`/`bcc` receives that one identical message and (for `to`/`cc`) sees the other recipients. There is NO per-recipient personalization, mail-merge, or segment/campaign send anywhere in this product: a template variable like {{firstName}} or {{orderName}} is sent VERBATIM (it is never interpolated per recipient), and putting many customers in one `to`/`cc` array leaks their addresses to each other. So 'email all the affected customers' / 'send the recall notice to everyone' is NOT one call: to reach N customers with a personalized, privacy-safe notice you must send N separate per-recipient messages (one compose or mail__reply per customer, EACH gated and individually approved) — OR, when that exceeds your step budget, stage a bounded few and tell the user plainly that there is no mass-send/segment tool so the rest must be approved one per recipient (or are out of reach for a single blast). Do NOT collapse a multi-customer outreach into a single multi-recipient compose.",
-      "searchKeywords": ["email", "envoyer", "send", "courriel", "écrire", "nouveau", "message", "write", "mail"],
+      "searchKeywords": ["email", "envoyer", "send", "courriel", "écrire", "nouveau", "message", "write", "mail", "brouillon", "draft", "rédiger"],
       "requiredScopes": ["mail:conversations:write"],
       "handler": "agentMailCompose",
       "timeoutMs": 60000,

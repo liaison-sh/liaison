@@ -21,7 +21,7 @@ Reading profiles needs `invoicing:settings:read` and editing their ordinary fiel
 
 A document's issue date and its number year are the date in the issuer's time zone when its number is taken. Set the zone in **Time zone** on the profile, for example `Europe/Paris`; an unknown name is refused. A profile with no zone chosen follows the organization's time zone, or UTC when the organization has none, and the profile list shows **Not chosen** until someone picks one. To keep UTC on purpose, type `UTC`. An agent reads the same reminder from `einvoicing_readiness` and sets the zone with `settings_issuer_profile_update`.
 
-A credit note can state an earlier date. The date decides the number's year: a date in a past year takes that year's series, never this year's number. A date before the last number of that series is refused, and so is a date after today. A payment date nobody states, from **Mark paid** or from a Shopify order, is read in the same time zone.
+A credit note can state an earlier date. The date decides the number's year: a date in a past year takes that year's series, never this year's number. A date before the last number of that series is refused, and so is a date after today. A payment date nobody states, from **Mark paid** or from a Shopify order, is read in the same time zone. A credit note that names its invoice cannot be dated before it, and moving either date later cannot put the credit note first. An imported document keeps the date it came with.
 
 If the issuer's zone is not one the host knows, nothing is numbered. A paid order or a Shopify draft order waits in `deferred_list` with what it needs, and its invoice or quote is made once the zone is fixed. A draft order deleted or completed meanwhile closes its wait.
 
@@ -47,7 +47,7 @@ When an order cannot be invoiced automatically, it appears under **Deferred** in
 Only quotes, proformas and purchase orders are started by hand. Invoices come from paid orders or from converting a quote or proforma.
 
 1. Open **Invoicing** and click **+ New quote** in the sidebar. Use the arrow next to it to pick **New proforma** or **New purchase order** instead. The button is shown to people who hold `invoicing:documents:write`.
-2. Pick the **Issuer**, then the **Issue date** and **Due date**. A date you pick decides the year of the document's number: a date in a past year takes that year's series. A date after today is refused. A quote from an issuer mapped to a Shopify shop takes the day its draft order is created, so another date is refused there.
+2. Pick the **Issuer**, then the **Issue date** and **Due date**. A date you pick decides the year of the document's number: a date in a past year takes that year's series. A date after today is refused. A quote from an issuer mapped to a Shopify shop takes the day its draft order is created, so another date is refused there. A date that would be refused says why under the field, before you click.
 3. Optionally, search a contact in **Contact** and pick it: the document is linked to that contact, which shows by its name, and an empty customer name and email are filled from it. **Unlink** removes the link.
 4. Fill in **Customer name**, **Customer email**, **Customer VAT ID**, **Customer country** and **Customer address**. Add a **Shipping address (if different)** when the parcel goes elsewhere.
 5. Click **+ Add line** for each line.
@@ -75,6 +75,12 @@ For an issuer in the EU, a customer in another EU country is either a business o
 
 The approval card of a new document states its tax treatment and rate, whether the prices were typed with VAT included (**Prices include tax** on the issuer profile) or net, and the net, VAT and total that will be issued.
 
+A credit note's card states its total, its lines, its issue date and the invoice it reverses, with that invoice's date. With no stated date it says the note takes the day it is approved. Whatever parks the request, the card says the same.
+
+A credit note's total must be negative: a positive one, or one of nothing, is refused before anything parks and takes no number. A positive line against a larger negative one is fine (a restocking fee against a return). A zero credit note is accepted only against an invoice whose own total is zero.
+
+An amount in minor units is a whole number: 41940 for 419.40. Anything else, such as `899.00` or `-1260.50`, is refused before anything parks, and the refusal says what to send. It is never read as a guess. A card that still meets such an amount says the request will be refused and prints no total.
+
 ## Turn a quote or proforma into an invoice
 
 1. Open the quote (once it is sent or accepted) or the proforma (once it is sent).
@@ -92,7 +98,9 @@ Open a document from **Documents** in the sidebar (**All**, **Invoices**, **Quot
 | **Mark paid** | Record full payment. Not shown on credit notes. |
 | **Send to customer** | Email the PDF to the customer. |
 | **Convert to invoice** | Quotes and proformas only, see above. |
-| **Preview PDF** / **Download PDF** | Open or download the rendered PDF. |
+| **Preview PDF** / **Download PDF** | Open or download the rendered PDF. When it is not ready, they say so. |
+
+The **PDF** tab shows the document in the page, in browsers with a PDF viewer. A browser with none, such as most phones, says so and leaves **Preview** and **Download**.
 
 Issued documents are never deleted. A correction is a credit note, with its own `CN-` number series. The date of an issued document stays in its number's year: a date in another year is refused, and the correction is a credit note and a new invoice (for a quote, proforma or purchase order, a new one). The date of an issued invoice or credit note also stays between the numbers just before and just after it, and is never after today. A refund or cancellation taken in Shopify issues the matching credit note automatically.
 
@@ -113,7 +121,7 @@ Issued documents are never deleted. A correction is a credit note, with its own 
 Invoices, credit notes and proformas issued in another tool can be imported with their original numbers, dates, totals and PDFs: with `liaison invoicing import` (see [Config as code](../provisioning-cli.md)) or as **Invoicing documents** (`invoicing.document`) records. The import needs `invoicing:documents:write`.
 
 - Each document keeps its number. Numbering then continues after the highest imported number for that issuer, type and year, so a new document never reuses one.
-- A credit note is linked to its original invoice when that invoice was imported too.
+- A credit note is linked to its original invoice when that invoice was imported too. It keeps the sign its source states.
 - With several issuer profiles, each record names its issuer profile. With none, or several and none named, the record fails with `issuer_ambiguous`. A preview of the import runs the same checks, so it already counts these refusals before anyone approves the run.
 - A document imported before is skipped. A document whose number the issuer already used, or that an earlier document of the same import uses (in any batch of it, in a preview too), fails with `numberTaken`, and so does one whose number and number_int disagree or whose status contradicts its payment.
 - An imported document keeps its PDF as its original: marking it paid or editing it never renders a new one.

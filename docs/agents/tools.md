@@ -20,7 +20,7 @@ Every tool has a scope. The agent sees a tool only when the scope is inside its 
 
 Most kernel tools and all app tools are loaded on demand. The agent calls `tool_search` with keywords, or with `select:name` when it knows the exact name, and the matching tools become callable on its next step. `tool_search` needs `kernel:threads:read`. A role agent without that scope has no app tools at all.
 
-A conversation keeps the same tool list from its first turn to its last, so the model provider can reuse its cached copy of the conversation. A tool loaded later is not added to that list: its description and parameters arrive in the conversation, and the agent calls it through `call_tool` with the tool's name and arguments. When the arguments do not fit, `call_tool` answers with the tool's name and the parameters it expects.
+A conversation keeps the same tool list from its first turn to its last, so the model provider can reuse its cached copy of the conversation. A tool loaded later is not added to that list: its description and parameters arrive in the conversation, and the agent calls it through `call_tool` with the tool's name and arguments. When the arguments do not fit, `call_tool` answers with the tool's name and the parameters it expects. When the name is no tool the agent can call, for instance one that was replaced by another, `call_tool` says so and points at a `tool_search` by the job in words, since `select:name` only works for a name that a search has returned.
 
 At the start of a turn the agent also loads, on its own guess, the other tools of the apps the last turns worked with and of the page you are on. Those are listed by name and purpose only. A tool's description and parameters arrive once the agent asks for it: a `tool_search` naming it, or a first call. A first call with fitting arguments runs; one whose arguments do not fit does not run, and its answer shows the parameters.
 
@@ -71,7 +71,7 @@ Scopes are shown in full. `kernel:agent:memory` is the gate for the memory and n
 | `agents_invite` | Add another agent to the conversation, after you approve it there. | `kernel:threads:write` | Yes |
 | `users_search` | Find colleagues by name or email. | `kernel:users:read` | No |
 | `create_pinned_thread` | Create an organization-wide pinned conversation. | `kernel:threads:admin` | No |
-| `open_app` | Open an app or view in your screen to show where something lives. | `kernel:threads:read` | No |
+| `open_app` | Open an app, a view or one record (an invoice, a ticket, a channel) on your screen. Only your own request moves your own tabs. | `kernel:threads:read` | No |
 
 ### Files and media
 
@@ -245,6 +245,8 @@ Rules that say which document templates a record needs (a customs declaration, a
 | `enable_app` | Turn on an app for the workspace, installing it from the catalog first when the instance does not have it. | `kernel:apps:admin` | Yes |
 | `apps_set_enabled` | Turn an app on or off for everyone. | `kernel:apps:admin` | Yes |
 | `apps_set_access` | Choose who may use an app. | `kernel:apps:admin` | Yes |
+| `ai_models_get` | Read the organization's AI model settings. | `kernel:org:admin` | No |
+| `ai_models_set` | Change what Auto runs and the default reasoning level, switch models on or off, add a model from OpenRouter. | `kernel:org:admin` | Yes |
 | `audit_search` | Search the audit log. | `kernel:audit:read` | No |
 | `export` | Export the data you can see for chosen apps as a zip. | `kernel:users:admin` | No |
 | `data_subject_export` | Compile everything held on one contact into a GDPR export. | `kernel:data_subject:export` | Yes |

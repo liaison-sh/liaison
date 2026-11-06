@@ -32,7 +32,8 @@ describe("social manifest (B1)", () => {
     // 0.6.56: the app's own install resolves the control-plane contract through an override
     // (the shared package depends on it by workspace protocol); no change to what it does.
     // 0.6.57: the same number (0.6.56) carried different content on two lines of work; this one has both.
-    expect(manifest.version).toBe("0.6.57")
+    // 0.6.58: above both lines of work, which each changed it under the number before; no change of its own.
+    expect(manifest.version).toBe("0.6.58")
     expect(manifest.packageFormat).toBe(1)
   })
 

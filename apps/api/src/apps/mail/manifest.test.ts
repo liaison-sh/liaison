@@ -57,7 +57,7 @@ describe("mail app manifest validation", () => {
       "smtpPort",
       "username",
     ])
-    expect(mailManifest.version).toBe("1.8.4")
+    expect(mailManifest.version).toBe("1.8.5")
   })
 
   it("passes manifest validation", () => {
@@ -76,6 +76,13 @@ describe("mail app manifest validation", () => {
     expect(ai).toMatch(/complaint/i)
     expect(ai).toMatch(/contactId/)
     expect(ai).toMatch(/EMPTY result from a free-text NAME query does NOT prove/i)
+  })
+
+  it("listAccounts says it lists what this person can use, not what the org has", () => {
+    // "No mailbox is connected to the organisation", to a person whose org has five.
+    const desc = (mailManifest.tools as any).listAccounts.description as string
+    expect(desc).toContain("this person can use")
+    expect(desc).not.toContain("connected to this org")
   })
 
   it("requires compose accountId (no shared-box default) and steers a user writing as themselves to their own mailbox", () => {

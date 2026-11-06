@@ -26,6 +26,8 @@ To see them all, open **Agents**. Your own agent is marked **Your agent** in the
 
 Some tool calls draw a card under the agent's message that you act on, such as a Connect card or, for a Drive that sees only picked files, **Choose files for Liaison**, or, on a server that sends bug reports only to the Liaison team, the bug report the agent prepared with **Send to the Liaison team** (only you see it, and nothing is sent until you click).
 
+The agent knows the page you send from. When a record is open there, whether the page is its own or a pane, a drawer or an expanded row of a list, "this" means that record, even if the conversation was about another one before.
+
 A file you attach reaches the agent with your message, whether you type text with it or not, so you can attach an export and write "please import this".
 
 The agent answers in the language you write in. When one message does not tell (an address, a company name, a one-word reply), it keeps the language of your earlier messages, then the language set in your settings (or the workspace's). What you paste and what its tools read never change it.
@@ -119,6 +121,10 @@ If an agent ends its reply with "I'll do it now" but called no tool, Liaison giv
 When an agent reads your private mail, any of your Liaison apps where your mailbox is unlocked decrypts it for that turn: any of your unlocked apps answers for your own agent's requests, not only the one you asked in. The agent waits up to 45 seconds for a read of a few messages, 3 seconds more for each message past five, and an app where the mailbox is locked never answers in place of an unlocked one. If none of your apps is unlocked, the agent says your mailbox is locked on all your open Liaison apps and asks you to unlock it on any of them. Other people, admins included, are never asked. See [Mail](../apps/mail.md).
 
 An answer that points you at a card (a secret card, or an approval card "above") gets the same one more try when no such card is open in the conversation, and the new answer replaces all of the first one's text. Each turn also reads how the imports started in the conversation stand at that moment, so an agent never answers from an older "still running".
+
+### When a call has the wrong arguments
+
+A tool called with arguments it does not take answers with what is wrong and what it takes, and nothing runs. The agent corrects the call and tries again. It is not counted as a fault.
 
 ## What an agent remembers and does on its own
 

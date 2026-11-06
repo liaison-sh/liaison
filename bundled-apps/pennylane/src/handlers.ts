@@ -19,7 +19,7 @@ import {
   transactionsList,
   trialBalanceGet,
 } from "./reads"
-import { supplierInvoiceUpload, type UploadInput } from "./upload"
+import { minorAmountsRefusal, supplierInvoiceUpload, type UploadInput } from "./upload"
 import { refreshSnapshotsJob } from "./snapshot"
 import { probeWebhookUpstream } from "./einvoicing/probe-webhook-upstream"
 import type { PennylaneToolCtx } from "./ctx"
@@ -52,6 +52,11 @@ export const homeLoadHandler = (_params: Record<string, never>, ctx: Ctx) => hom
 // — gated write (handler name = tool name) —
 export const supplier_invoice_upload = (params: UploadInput, ctx: Ctx) =>
   supplierInvoiceUpload(ctx, params)
+/** An amount that cannot be read is refused before a bill's approval parks. */
+export const supplier_invoice_upload_preflight = (params: UploadInput) => {
+  const refused = minorAmountsRefusal(params)
+  return refused ? { error: { code: "invalid_amount", message: refused } } : { ok: true }
+}
 
 // — connection events —
 export { onConnectionDisconnected, onConnectionEstablished } from "./connection"

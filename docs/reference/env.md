@@ -213,7 +213,7 @@ Read ONLY when LIAISON_DEMO_MODE is on; plain env so the box can be retuned with
 
 | Name | Type | Default | Required | Description |
 | --- | --- | --- | --- | --- |
-| `LIAISON_DEMO_VISITOR_MODEL` | `string` | `"openrouter/deepseek/deepseek-v4.1-flash"` | no | The ONE model a verified visitor's agents run on when they use this box's key (a model key: `openrouter/<OpenRouter id>`). Never read from org settings. A visitor's own key runs its own models instead. |
+| `LIAISON_DEMO_VISITOR_MODEL` | `string` | `"openrouter/deepseek/deepseek-v4.1-flash-1017"` | no | The ONE model a verified visitor's agents run on when they use this box's key (a model key: `openrouter/<OpenRouter id>`). Never read from org settings. A visitor's own key runs its own models instead. |
 | `LIAISON_DEMO_BUDGET_PER_EMAIL_EUR` | `number` | `0.2` | no | Spend budgets: per verified email (lifetime), per client network (per UTC day), box-wide per UTC day and per rolling hour. |
 | `LIAISON_DEMO_BUDGET_PER_NETWORK_EUR` | `number` | `0.6` | no |  |
 | `LIAISON_DEMO_BOX_DAILY_EUR` | `number` | `20` | no |  |

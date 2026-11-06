@@ -52,3 +52,9 @@ Predicate operators for when -> apps/api/src/modules/attention/predicates.ts:2
 resolveWhen ends an item -> apps/api/src/modules/apps/manifest-schema.ts:1238
 searchKeywords on a tool, single words -> apps/api/src/modules/apps/manifest-schema.ts:517
 Keywords are read only by the search, folded for accents -> apps/api/src/modules/agent/tools/tool-rank.ts:72
+A page tells the host which record is open with app.trackOpenRecord -> packages/host-sdk/src/index.ts:438
+A turn sent from the tab names that record -> apps/web/src/modules/threads/thread-send.ts:42
+An external entity is named by the id the page reported -> apps/api/src/modules/threads/reference-display.ts:141
+A tab type declares the entity its id belongs to -> apps/api/src/modules/apps/manifest-schema.ts:1564
+A field named *_minor holds a whole number; readMinorAmount and minorAmountRefusal -> packages/app-sdk/src/minor-amount.ts:15
+The server refuses a decimal in a declared *_minor parameter -> apps/api/src/modules/apps/execute-tool-params.ts:298

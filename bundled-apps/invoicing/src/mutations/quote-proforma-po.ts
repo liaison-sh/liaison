@@ -3,6 +3,7 @@
 // Invoicing mutations: quote, proforma and purchase order issuance (issue from a draft with
 // threshold gating, and the generic create and issue path).
 
+import { documentsGet, type ReadsCtx } from "../reads"
 import {
   type Counterparty,
   type DraftLine,
@@ -158,7 +159,7 @@ async function issueFromDraftWithGating(
   const { issuer, counterparty, buyer } = pre
   const gatingClassifyInput: ClassifyInput = {
     issuer_country: issuer.country,
-    counterparty_country: counterparty.country,
+    counterparty_country: taxCountryOf(counterparty),
     has_vat_id: !!counterparty.vat_id,
   }
   const { grand: total } = computeLineFinancials(draft.lines, gatingClassifyInput)
@@ -366,7 +367,8 @@ async function preflightCreateAndIssueParams(
   // or consumes a document number: trimmed, blank becomes null, over the cap is a typed error.
   const notes = normaliseNotes(rawInput.notes)
   if (!notes.ok) return { ok: false, error: notes.error }
-  // A price that is not a plain number ("$1") is refused here, before gating, never read as 0.
+  // A price that is not a whole number of minor units ("$1", "899.00") is refused here, before
+  // gating, never guessed.
   const amountsErr = lineAmountsError(rawInput.items)
   if (amountsErr) return { ok: false, error: amountsErr }
   // A discount below 0 or above its own line is refused here too, naming the line and the range.
@@ -976,6 +978,39 @@ export async function proformaCreateAndIssuePreflight(
   input: ProformaCreateAndIssueInput,
 ): Promise<PreflightResult> {
   return toPreflightResult(await preflightCreateAndIssueParams(ctx, "proforma", input))
+}
+
+/**
+ * What a card reads for a saved draft: the document as it stands, and the total issuing it would
+ * write, by the code that writes it. A draft stores no tax, so its own totals cannot say.
+ */
+export async function draftIssuePreview(
+  ctx: MutationsCtx & ReadsCtx,
+  input: { draft_id: string },
+): Promise<Record<string, unknown> | null> {
+  const doc = (await documentsGet(ctx, { id: input.draft_id })) as unknown as Record<string, unknown> | null
+  const draft = doc ? await getDraft(ctx.db, String(doc.id)) : null
+  const issuer = draft ? await findIssuerProfile(ctx.db, draft.issuer_profile_id) : null
+  if (!doc || !draft || !issuer || !draft.lines?.length) return doc
+  let counterparty = counterpartyFromRow(draft, issuer)
+  if (draft.type !== "purchase_order" && draft.type !== "credit_note") {
+    const buyer = await checkDraftBuyer(ctx, draft, issuer, counterparty)
+    if (buyer.ok) counterparty = buyer.counterparty
+  }
+  const { grand } = computeLineFinancials(draft.lines, {
+    issuer_country: issuer.country,
+    counterparty_country: taxCountryOf(counterparty),
+    has_vat_id: !!counterparty.vat_id,
+  })
+  return { ...doc, issue_total_minor: grand.toString() }
+}
+
+/** STAGE-TIME preflight for `po_create_and_issue`: the same checks, before any approval exists. */
+export async function poCreateAndIssuePreflight(
+  ctx: MutationsCtx,
+  input: QuoteCreateAndIssueInput,
+): Promise<PreflightResult> {
+  return toPreflightResult(await preflightCreateAndIssueParams(ctx, "purchase_order", input))
 }
 
 export async function proformaCreateAndIssue(

@@ -218,12 +218,12 @@ export interface ShipmentView {
 }
 
 /**
- * Boxtal's tracking endpoint knows nothing until the carrier's first scan, but the label bought
- * at create_shipment already carries the carrier's tracking number. A null here must never read
- * as "this parcel has no tracking".
+ * Boxtal's tracking endpoint knows nothing until the carrier's first scan, and a label bought at
+ * create_shipment normally shows the carrier's tracking number. A null here must never read as
+ * "this parcel has no tracking". Nothing here reads the label, so the note states no fact about it.
  */
 export const TRACKING_NOT_SCANNED_NOTE =
-  "No tracking number from Boxtal yet: the carrier has not scanned the parcel. The label already carries the carrier tracking number (get_documents, LABEL). Do not conclude the parcel has no tracking."
+  "No tracking number from Boxtal yet: the carrier has not scanned the parcel. Do not conclude the parcel has no tracking. The label may show one (get_documents, LABEL)."
 
 /** On-demand refresh: live order + tracking, update the snapshot, merged view. */
 export async function getShipment(ctx: ReadsCtx, input: { id: string }): Promise<ShipmentView> {

@@ -114,7 +114,7 @@ Plan card: plan, status, period end, no payment link -> apps/web/src/modules/set
 Managed: own provider keys and model servers refused -> apps/api/src/modules/settings/byok.ts:28 ; apps/api/src/app.ts:1395
 Managed Usage: credits left, included/purchased, % of the period used -> apps/web/src/modules/settings/UsageSettings.tsx:384 ; apps/web/src/modules/settings/UsageSettings.tsx:399 ; apps/api/src/modules/agent/credits/managed-money.ts:60 ; packages/shared/src/i18n/locales/en/kernel.json:2187
 Managed AI models: Cost vs Auto multiplier, keys and own server hidden -> apps/web/src/modules/settings/AiModelsSettings.tsx:218 ; apps/web/src/modules/settings/AiModelsSettings.tsx:721 ; packages/shared/src/i18n/locales/en/kernel.json:5600
-Managed dictation: credits per minute -> apps/api/src/modules/settings/ai-models-routes.ts:213 ; packages/shared/src/i18n/locales/en/kernel.json:5603
+Managed dictation: credits per minute -> apps/api/src/modules/settings/ai-models-routes.ts:89 ; packages/shared/src/i18n/locales/en/kernel.json:5603
 Billing page: plan, next invoice, change plan, card, invoices, top-up, auto top-up, cancel; managed + admins only -> apps/web/src/framework/bootstrap.ts:659 ; apps/api/src/app.ts:1319
 Plan switch refused with the exceeded limits -> apps/web/src/modules/settings/BillingSettings.tsx:148 ; apps/api/src/modules/billing-managed/usage.ts:23
 Card details and confirmations only in the payment frame -> apps/web/src/modules/settings/PayFrame.tsx:1

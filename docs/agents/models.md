@@ -38,6 +38,8 @@ If the organization switched a model off, anything set to it moves to Auto on it
 
 You need `kernel:org:admin`.
 
+An agent or an MCP client makes the same changes with the `ai_models_get` and `ai_models_set` tools. A change through `ai_models_set` waits for approval.
+
 1. Open **Settings › Models**. The page is titled **AI models**.
 2. Under **Auto**, choose what **Auto runs**. The default option is the cheapest model with a key.
 3. Under **Default reasoning level**, choose the **Reasoning level** for turns that set none: **Off**, **Low**, **Medium** or **High**. It applies to conversations, routines, agents and sub-agents without their own level, and to **Auto**. A level set on a conversation or routine still wins. A model that cannot run the chosen level runs at its own default (a model that cannot switch reasoning off never runs **Off**). **Built-in default** clears the setting.

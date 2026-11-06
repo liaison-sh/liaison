@@ -13,6 +13,8 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | --- | --- | --- | --- |
 | `agents_ask` | Ask another agent in your organization a question, or hand it one piece of work: the way to involve another agent. |  | `kernel:threads:write` |
 | `agents_invite` | Add another agent of your organization to this conversation as a lasting member. | yes | `kernel:threads:write` |
+| `ai_models_get` | Read the organization's AI model settings (admin), the same as Settings &gt; Models: what Auto runs, the default reasoning level, each model with its key, whether it is on and available, its price and reasoning levels. |  | `kernel:org:admin` |
+| `ai_models_set` | Change the organization's default AI model and reasoning level (admin), the same as Settings &gt; Models, for EVERYONE: choose what Auto runs, set the default reasoning level, switch models on or off, add a model from OpenRouter after a test call. | yes | `kernel:org:admin` |
 | `analyze_media` | Analyze an image, video or PDF attachment and return a summary for support: a visual diagnostic for media, and for a document a faithful extraction of sender, line items with prices and totals, dates, reference numbers, addresses and payment terms. |  | `kernel:files:analyze` |
 | `approval_policy_get` | List the org's APPROVAL-TIGHTENING policies: which tools require approval or a second approver, and under what conditions. |  | `kernel:policies:read` |
 | `approval_policy_set` | Configure an org APPROVAL-TIGHTENING policy: escalate a non-gated action to gated, and/or require N distinct approvers (minApprovers:2 = a second person must approve). | yes | `kernel:policies:admin` |
@@ -138,7 +140,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `notifications_get` | Read the user's own notification settings: which channels (in-app, desktop, phone push, email digest) each notification group uses, quiet hours, digest cadence, per-app rules, muted threads count, with a plain `summary` to quote. |  | `kernel:agent:memory` |
 | `notifications_set` | Change the user's own notification settings: switch a group's desktop, phone (push) or email cell on/off (e.g. |  | `kernel:agent:memory` |
 | `notify_user` | Post a notification to the user's attention feed, to remind them of something or surface a result. |  | `kernel:agent:memory` |
-| `open_app` | Open an app or view in the user's UI, to show them where something lives. |  | `kernel:threads:read` |
+| `open_app` | Open an app, a view or one record in the user's UI. |  | `kernel:threads:read` |
 | `outside_text_clear` | Ask the person to lift this conversation's outside-text mark, after you told them what marked it (kernel__outside_text_sources) and they said they want it lifted. | yes | `kernel:threads:read` |
 | `outside_text_sources` | Say why actions in this conversation wait for a person because of OUTSIDE TEXT: lists what marked it (the tool that read text written outside the organisation, its identifying arguments, when, and a short fenced excerpt to recognise it). |  | `kernel:threads:read` |
 | `policy_get` | List the org's auto-approve policies (tool + conditions + thresholds + limits). |  | `kernel:policies:read` |
@@ -272,7 +274,7 @@ Boxtal: ship orders with Boxtal carriers, with quotes, shipments, tracking and c
 | `claim_open` | Open a carrier claim against a shipment that is in an exception state (incident / lost / returned), e.g. | yes | `boxtal:shipments:write` |
 | `create_shipment` | Create a Boxtal shipment from a resolved draft + selected carrier offer. | yes | `boxtal:shipments:write`, `boxtal:quotes:read` |
 | `exceptions_list` | List shipments stuck in a carrier exception state (INCIDENT, RETURNED, or LOST) so the operator can chase them. |  | `boxtal:shipments:read` |
-| `get_documents` | Fetch a Boxtal shipment's shipping/customs documents (fresh signed URLs). |  | `boxtal:documents:read` |
+| `get_documents` | Fetch a Boxtal shipment's shipping/customs documents. |  | `boxtal:documents:read` |
 | `get_shipment` | The shipment record, refreshed: a Boxtal shipment's live order + tracking status. |  | `boxtal:shipments:read` |
 | `import_label_document` | Backfill-import a created shipment's LABEL PDF into Liaison's file store and return its `label_file_id` (a kernel file id attachable to a tickets__reply / mail message). |  | `boxtal:shipments:write` |
 | `import_shipments` | Import existing Boxtal orders into the local shipment list by their Boxtal order id (fetches live order + tracking + document descriptors per id; local-only writes, creates nothing at Boxtal). |  | `boxtal:shipments:write` |
@@ -435,6 +437,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `documents_send_to_customer` | Email a document PDF to the counterparty. | yes | `invoicing:documents:write` |
 | `documents_update` | Edit a document. | yes | `invoicing:documents:write` |
 | `documents_update_preview` | The document plus the VAT status a documents_update would give its buyer (evidence when the agent declares a private consumer). |  | `invoicing:documents:read` |
+| `draft_issue_preview` | What an approval card reads for a saved draft: the document and the total issuing it would write. |  | `invoicing:documents:read` |
 | `drafts_create` | LEGACY, internal: create an unnumbered draft row. |  | `invoicing:documents:write` |
 | `drafts_discard` | LEGACY, internal: discard an unnumbered draft row (never consumes a number). |  | `invoicing:documents:write` |
 | `drafts_update` | LEGACY, internal: update an unnumbered draft row before it is issued. |  | `invoicing:documents:write` |
@@ -526,7 +529,7 @@ Read, write and reply to email from Gmail or any IMAP/SMTP mailbox.
 | `forward` | Forward an existing inbound mail message to new recipients — re-sending the ORIGINAL message's body AND its attachments faithfully, the way a human hits 'Forward'. | yes | `mail:conversations:write` |
 | `getAccount` | Get a connected email account by ID |  | `mail:accounts:read` |
 | `getSyncStatus` | Get sync status for a connected email account |  | `mail:accounts:read` |
-| `listAccounts` | List the mailboxes connected to this org, each with its sync status, last sync error and next retry. |  | `mail:accounts:read` |
+| `listAccounts` | List the mailboxes this person can use, each with its sync status, last sync error and next retry. |  | `mail:accounts:read` |
 | `providers.get` | The mailbox connection types this workspace offers, for the Mail settings page: { gmail: boolean }. |  | `mail:accounts:read` |
 | `providers.set` | Turn a mailbox connection type on or off from the Mail settings page: { gmail: boolean }. |  | `mail:accounts:admin` |
 | `read` | Read a mail conversation. |  | `mail:conversations:read` |

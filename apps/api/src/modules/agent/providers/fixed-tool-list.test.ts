@@ -148,6 +148,59 @@ describe("a loaded tool's schema and an argument error", () => {
     expect(error).toContain("ticketId")
     expect(error).toContain('"required":["ticketId"]')
     expect(error).toContain('kernel__call_tool with {"name": "tickets__get"')
+    // The usual wrong call: a name close to the real one. The answer says which is which.
+    expect(error).toContain("It does not take id; it takes ticketId.")
+  })
+
+  // The walk read "Tool kernel:call_tool failed (HTTP 500 tool_error)" over the model's wrong
+  // arguments, logged at level 50, and told it the call was terminal.
+  it("is a refusal the model can correct, not a server fault", async () => {
+    const frame = {
+      fixedToolList: {
+        listed: new Set<string>(),
+        isLoaded: () => true,
+        describe: (name: string) => describeLoadedTool(name, tool),
+        validate: (_name: string, args: unknown) => validateLoadedToolInput(tool, args),
+      },
+      turnToolNames: new Set(["tickets__get"]),
+    } as unknown as RunContext
+    const refused = (await runContextStore
+      .run(frame, () => handleCallTool({ name: "tickets__get", arguments: {} }, { orgId: "o" }))
+      .then(
+        () => null,
+        (e: unknown) => e,
+      )) as { safe?: boolean; code?: string; retryable?: boolean } | null
+    expect(refused).toMatchObject({ safe: true, code: "invalid_params", retryable: true })
+
+    const unknownName = (await runContextStore
+      .run(frame, () => handleCallTool({ name: "nothing__like_it", arguments: {} }, { orgId: "o" }))
+      .then(
+        () => null,
+        (e: unknown) => e,
+      )) as { code?: string } | null
+    expect(unknownName).toMatchObject({ code: "invalid_params" })
+  })
+})
+
+describe("a name that is no tool the turn holds", () => {
+  it("points at a search by job, not at selecting the name, and keeps the log marker", async () => {
+    const frame = {
+      turnToolNames: new Set(["kernel__call_tool", "knowledge__get"]),
+      fixedToolList: { listed: new Set(["kernel__call_tool"]), isLoaded: () => true },
+    } as unknown as RunContext
+    const error = await runContextStore
+      .run(frame, () =>
+        handleCallTool({ name: "mail__getSyncStatus", arguments: {} }, { orgId: "o" }),
+      )
+      .then(
+        () => null,
+        (e: Error) => e.message,
+      )
+    expect(error).toContain('No tool named "mail__getSyncStatus" is available to you')
+    expect(error).toContain("renamed or replaced")
+    expect(error).toContain("describe the job in words with kernel__tool_search")
+    expect(error).toContain('"select:<exact name>" only works for a name that search has returned')
+    expect(error).not.toContain("Did you mean")
   })
 })
 

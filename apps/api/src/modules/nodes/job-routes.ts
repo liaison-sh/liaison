@@ -63,6 +63,7 @@ import { withRequestRls } from "~/lib/request-rls"
 import { success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
 import { isMentionableAgent } from "~/modules/agent/directory/listing"
+import { redactStoredToolCalls } from "~/modules/agent/mailbox-plaintext/mail-plaintext-redaction"
 import { persistAgentTurn } from "~/modules/agent/runtime/persist-agent-turn"
 import { taintApprovalAudienceGapDetail } from "~/modules/agent/scopes/taint-approval-audience"
 import {
@@ -521,6 +522,7 @@ nodeJobRoutes.post(
       // Never the client's: the job's taint union its source scopes (A18).
       const requiredScopes = await nodeJobReplyScope(job, agent.scopeCeiling ?? [])
       const record = body.turn ? sanitizeLocalTurnRecord(body.turn) : null
+      const toolCalls = record ? await redactStoredToolCalls(job.orgId, record.toolCalls) : []
       const refusals = body.refusals.map(redactRefusal)
       const metadata: Record<string, unknown> = {
         runLocation: RUN_LOCATION_NODE,
@@ -532,7 +534,7 @@ nodeJobRoutes.post(
         ...(record
           ? {
               modelId: record.modelId ?? body.modelId ?? undefined,
-              toolCalls: record.toolCalls.length > 0 ? record.toolCalls : undefined,
+              toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
               stepCount: record.stepCount,
               usage: body.usage ?? record.usage,
               reasoning: record.reasoning || undefined,

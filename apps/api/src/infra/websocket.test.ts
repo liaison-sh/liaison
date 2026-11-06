@@ -903,6 +903,19 @@ describe("WebSocketManager", () => {
       expect(lacker.send).not.toHaveBeenCalled()
     })
 
+    it("an opened tab's frame reaches the requester alone, whatever scopes the others hold", async () => {
+      const { holder, lacker, requester } = connect()
+
+      await manager.broadcast({
+        ...chunk("a record's name", { accumulatedScopes: [] }),
+        action: "open_tab",
+      })
+
+      expect(textsOf(requester)).toEqual(["a record's name"])
+      expect(holder.send).not.toHaveBeenCalled()
+      expect(lacker.send).not.toHaveBeenCalled()
+    })
+
     it("gating is re evaluated per chunk, not once at stream start", async () => {
       const { holder, lacker } = connect()
 

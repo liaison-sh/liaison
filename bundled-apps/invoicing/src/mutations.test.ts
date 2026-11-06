@@ -28,6 +28,7 @@ import {
   documentsMarkPaidPreflight,
   documentsRecordRefundPreflight,
   documentsUpdate,
+  draftIssuePreview,
   draftsCreate,
   draftsDiscard,
   draftsUpdate,
@@ -84,7 +85,14 @@ import { createMockDb, type MockDb } from "./test-db"
 import { documentsGet, type ReadsCtx } from "./reads"
 import { FICTIONAL_SIRENS, FR_SELLER_IDENTITY } from "./einvoicing/test-fixtures"
 import { creditNoteCreateAndIssuePreflight, creditNoteIssuePreflight } from "./mutations"
-import { invoiceCreateAndIssueHandler, quoteCreateAndIssueHandler } from "./handlers"
+import {
+  draftsCreatePreflightHandler,
+  draftsUpdatePreflightHandler,
+  invoiceCreateAndIssueHandler,
+  quoteCreateAndIssueHandler,
+} from "./handlers"
+import { formatMoneyMinor } from "./money"
+import * as summarizers from "./summarizers"
 
 interface MockExtras {
   threadPosts: Array<{
@@ -1272,40 +1280,31 @@ describe("draft round-trip — VAT not dropped when no per-line rate", () => {
     expect(updated.tax_treatment).toBe("eu_export_non_eu")
   })
 
-  test("drafts_create coerces a MAJOR-unit decimal price to minor units (bug #3 — no opaque crash on '419.40')", async () => {
-    // Bug #3: a weak agent passes unit_price_minor as a major-unit decimal (€419.40 instead of the
-    // minor-unit integer 41940). `toBigInt("419.40")` → `BigInt("419.40")` THREW "Cannot convert
-    // 419.40 to a BigInt", which the sandbox surfaced as the opaque "Tool execution failed: Tool
-    // execution failed" (intra-eu-reverse-charge / claire-export-aki). Minor units are integers by
-    // definition, so a fractional value is unambiguously major units → convert ×100. The handler must
-    // never crash on this; it must store 41940.
-    const { ctx, db } = makeCtx()
-    const { draft_id } = await draftsCreate(ctx, {
-      type: "invoice",
-      ...BUYER_DRAFT_EINVOICE,
-      counterparty_contact_id: "contact-1",
-      issuer_profile_id: "iss-1",
-      currency: "EUR",
-      items: [
-        {
-          position: 1,
-          description: "Kestrel 6 (RAL-44)",
-          quantity: "25",
-          unit_price_minor: "419.40", // weak-agent major-unit decimal string (wire delivers a string)
-          product_source: null,
-          external_id: null,
-        },
-      ],
-    })
-    const line = db.__all("document_lines").find((l) => l.document_id === draft_id)
-    // 419.40 EUR → 41940 minor (×100), NOT 419 (truncated) and NOT a crash.
-    expect(String(line?.unit_price_minor)).toBe("41940")
+  // red: a fractional value was read as major units (x100) and "899.00" as 899 cents, so one field
+  // meant two things and a credit note issued at 100 times its amount under a card that said 0.00.
+  test("drafts_create refuses a decimal price, naming what to send, and stores nothing", async () => {
+    for (const [bad, send] of [["419.40", "41940"], ["899.00", "89900"], ["-1260.50", "-126050"]] as const) {
+      const { ctx, db } = makeCtx()
+      await expect(
+        draftsCreate(ctx, {
+          type: "invoice",
+          ...BUYER_DRAFT_EINVOICE,
+          counterparty_contact_id: "contact-1",
+          issuer_profile_id: "iss-1",
+          currency: "EUR",
+          items: [
+            { position: 1, description: "Kestrel 6", quantity: "25", unit_price_minor: bad, product_source: null, external_id: null },
+          ],
+        } as unknown as Parameters<typeof draftsCreate>[1]),
+      ).rejects.toThrow(new RegExp(`invalid_amount: items\\[0\\]\\.unit_price_minor is "${bad.replace(".", "\\.")}".*send ${send}`))
+      expect(db.__all("document_lines")).toHaveLength(0)
+    }
   })
 
   // red: coerceMinorAmount maps a non-numeric string to 0n -> the proforma is staged (and once
   // approved, issued) at 0 instead of being refused.
-  test("proforma_create_and_issue refuses a price that is not a plain number, before any approval card", async () => {
-    for (const bad of ["$1", "1 EUR", "1,00", "abc"]) {
+  test("proforma_create_and_issue refuses a price that is not a whole number, before any approval card", async () => {
+    for (const bad of ["$1", "1 EUR", "1,00", "abc", "1.00", "899.00", "1e3"]) {
       const m = makeCtx()
       const res = await proformaCreateAndIssue(m.ctx, {
         counterparty: defaultCounterparty,
@@ -1321,7 +1320,7 @@ describe("draft round-trip — VAT not dropped when no per-line rate", () => {
       expect(res.error.code).toBe("invalid_amount")
       expect(res.error.message).toContain("items[0].unit_price_minor")
       expect(res.error.message).toContain(JSON.stringify(bad))
-      expect(res.error.message).toContain("use a plain number such as 1.00")
+      expect(res.error.message).toContain("whole number")
       expect(m.extras.approvalsRequested).toHaveLength(0)
       expect(m.db.__all("documents")).toHaveLength(0)
       // The stage-time preflight refuses it too.
@@ -1339,7 +1338,7 @@ describe("draft round-trip — VAT not dropped when no per-line rate", () => {
     }
   })
 
-  test("a present but unparsable discount is refused; an absent discount and plain-number prices still work", async () => {
+  test("a present but unreadable discount is refused; an absent discount and whole-number prices still work", async () => {
     const m = makeCtx()
     const res = await proformaCreateAndIssue(m.ctx, {
       counterparty: defaultCounterparty,
@@ -1360,14 +1359,14 @@ describe("draft round-trip — VAT not dropped when no per-line rate", () => {
       currency: "USD",
       reason: "sample",
       items: [
-        { position: 1, description: "Kestrel 6", quantity: "1", unit_price_minor: " 1.00 ", product_source: null, external_id: null },
+        { position: 1, description: "Kestrel 6", quantity: "1", unit_price_minor: " 100 ", product_source: null, external_id: null },
         { position: 2, description: "Cable", quantity: "1", unit_price_minor: 250, discount_minor: null, product_source: null, external_id: null },
       ],
     } as unknown as Parameters<typeof proformaCreateAndIssue>[1])
     expect(ok.status).toBe("pending_approval")
   })
 
-  test("drafts_create refuses a price that is not a plain number instead of storing 0", async () => {
+  test("drafts_create refuses a price that is not a whole number instead of storing 0", async () => {
     const { ctx, db } = makeCtx()
     await expect(
       draftsCreate(ctx, {
@@ -1380,7 +1379,7 @@ describe("draft round-trip — VAT not dropped when no per-line rate", () => {
           { position: 1, description: "Kestrel 6", quantity: "1", unit_price_minor: "$1", product_source: null, external_id: null },
         ],
       } as unknown as Parameters<typeof draftsCreate>[1]),
-    ).rejects.toThrow(/invalid_amount: unit_price_minor is "\$1".*use a plain number such as 1\.00/)
+    ).rejects.toThrow(/invalid_amount: items\[0\]\.unit_price_minor is "\$1".*whole number/)
     expect(db.__all("document_lines")).toHaveLength(0)
   })
 
@@ -3869,21 +3868,6 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
     expect(doc.due_at).toBeNull()
   })
 
-  test("positive-amount lines are also accepted (sign is not enforced)", async () => {
-    const { ctx, db } = makeCtx({ approval: PRE_APPROVED })
-    const r = await creditNoteCreateAndIssue(ctx, {
-      operation_category: "goods",
-      counterparty: defaultCounterparty,
-      issuer_profile_id: "iss-1",
-      currency: "EUR",
-      items: sampleDraftItems,
-    })
-    expect(r.status).toBe("completed")
-    if (r.status !== "completed") throw new Error("unreachable")
-    const doc = db.__all("documents").find((d) => d.id === r.document_id)!
-    expect(doc.grand_total_minor).toBe("12000") // 2*5000 + 20%
-  })
-
   test("credit note number series is independent of the invoice series", async () => {
     const { ctx } = makeCtx({ approval: PRE_APPROVED })
     const inv1 = await invoiceCreateAndIssue(ctx, {
@@ -4051,7 +4035,7 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
     expect(r.status).toBe("pending_approval")
     expect(extras.approvalsRequested[0]!.tool_name).toBe("invoicing:credit_note_create_and_issue")
     const detail = extras.approvalsRequested[0]!.summary_detail!
-    expect(detail.lines).toContain("Customer: Buyer SARL")
+    expect(extras.approvalsRequested[0]!.summary).toContain("Buyer SARL")
     expect(detail.lines).toContain("Line: x x 1 @ -50.00 EUR")
   })
 
@@ -4380,6 +4364,30 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
 // ── order_reissue_apply — operator-approved order-edit reissue ────────────
 
 describe("orderReissueApply", () => {
+  test("states no date, so an original dated after today still gets its credit note", async () => {
+    const { ctx, db } = makeCtx()
+    const original = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: defaultCounterparty,
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      shopify_order_id: "shop-order-10",
+      shopify_order_number: "#1010",
+      items: sampleDraftItems,
+    })
+    if (original.status !== "completed") throw new Error("unreachable")
+    db.__all("documents").find((d) => d.id === original.document_id)!.issued_at = "2099-01-01T00:00:00.000Z"
+    const result = await orderReissueApply(ctx, {
+      original_document_id: original.document_id,
+      shopify_order_id: "shop-order-10",
+      shopify_order_number: "#1010",
+      billing_signature: "sig-d",
+      dedupe_key: "shop-order-10:sig-d",
+      items: [{ description: "Widget", quantity: "1", unit_price_minor: 5_000, product_source: null, external_id: null }],
+    })
+    expect(result.status).toBe("completed")
+  })
+
   test("reissue after a refused original books an internal cancellation and issues the replacement under a new number", async () => {
     const { ctx, db } = makeCtx()
     const original = await invoiceCreateAndIssue(ctx, {
@@ -7970,7 +7978,7 @@ describe("e-invoicing gate at the manual issue sites", () => {
       counterparty: frPerson,
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      items: sampleDraftItems,
+      items: [{ ...sampleDraftItems[0]!, unit_price_minor: -5_000n }],
     })
     expect("error" in pre).toBe(true)
     if (!("error" in pre)) throw new Error("unreachable")
@@ -7987,7 +7995,7 @@ describe("e-invoicing gate at the manual issue sites", () => {
       counterparty_country: "FR",
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      items: sampleDraftItems,
+      items: [{ ...sampleDraftItems[0]!, unit_price_minor: -5_000n }],
     })
     const pre2 = await creditNoteIssuePreflight(ctx, { draft_id: draft.draft_id })
     expect("error" in pre2 && pre2.error.code).toBe("customer_kind_missing")
@@ -9519,5 +9527,255 @@ describe("intra-EU business buyer guard: evidence without a shared email or name
     expect(sameAddress(agent, "Corso Diverso 8, 10100 Torino")).toBe(false)
     expect(sameFullAddress(agent, "Via Esempio Nuova 8, 20100 Milano")).toBe(false)
     expect(sameAddress("8 rue de l'Exemple, 75002 Paris, France", "Atelier Nord, 8 Rue de l Exemple, 75002 PARIS")).toBe(true)
+  })
+})
+
+// A person approves what the card says. Three readings of one call, for many calls: the card the host
+// parks (summarizer), the card the handler parks, and the document issuing writes. The grid is fixed,
+// so a failure reproduces by re-running this file.
+describe("the approval card states the total that issues", () => {
+  const QUANTITIES = ["1", "2", "3", "7", "1.5", "1.125", "0.333", "2.675", "40"]
+  const PRICES = [1, 7, 99, 101, 333, 1261, 1999, 41940, 12345, 100005]
+  const COUNTRIES = ["FR", "DE", "US", "GB", "IT"]
+  const TOOLS = [
+    { run: invoiceCreateAndIssue, card: summarizers.summarizeInvoiceCreateAndIssue, extra: { operation_category: "goods" } },
+    { run: quoteCreateAndIssue, card: summarizers.summarizeQuoteCreateAndIssue, extra: {} },
+    { run: proformaCreateAndIssue, card: summarizers.summarizeProformaCreateAndIssue, extra: { reason: "sample" } },
+    { run: poCreateAndIssue, card: summarizers.summarizePoCreateAndIssue, extra: {} },
+    { run: creditNoteCreateAndIssue, card: summarizers.summarizeCreditNoteCreateAndIssue, extra: { operation_category: "goods" }, credit: true },
+  ] as const
+
+  function totalOnCard(lines: string[]): string {
+    const line = lines.find((l) => /^(Lines total|Total): /.test(l))
+    const m = line ? /^(?:Lines total|Total): (-?[\d.]+ [A-Z]{3})/.exec(line) : null
+    if (!m) throw new Error(`no total on card: ${JSON.stringify(lines)}`)
+    return String(m[1])
+  }
+
+  test("over 500 calls, across types, issuers, buyers, quantities, prices and discounts", async () => {
+    let seed = 20261106
+    const next = (n: number) => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+      return seed % n
+    }
+    const issuedSeen = new Set<string>()
+    for (let i = 0; i < 500; i++) {
+      const tool = TOOLS[i % TOOLS.length]!
+      const credit = "credit" in tool
+      const pricesIncludeTax = !credit && next(2) === 0
+      const country = COUNTRIES[next(COUNTRIES.length)]!
+      const counterparty = {
+        ...defaultCounterparty,
+        contact_id: null,
+        legal_name: "Erika Mustermann",
+        country,
+        customer_kind: "individual",
+        vat_id: null,
+      }
+      const items = Array.from({ length: 1 + next(3) }, (_, n) => {
+        const quantity = QUANTITIES[next(QUANTITIES.length)]!
+        // A credit note of a line that rounds to nothing is refused: keep every one above that.
+        const unit = Math.max(PRICES[next(PRICES.length)]!, credit ? 99 : 1)
+        const line: Record<string, unknown> = {
+          position: n + 1,
+          description: `Line ${n + 1}`,
+          quantity,
+          unit_price_minor: credit ? -unit : next(2) === 0 ? unit : String(unit),
+          line_kind: "software",
+          product_source: null,
+          external_id: null,
+        }
+        if (next(4) === 0) line.tax_rate_bp_override = [0, 550, 2000][next(3)]
+        // A discount stays inside its line: the one cent minimum of a small quantity would be refused.
+        if (!credit && next(3) === 0 && unit >= 1000) line.discount_minor = next(2) === 0 ? 3 : "7"
+        return line
+      })
+      const params = { counterparty, issuer_profile_id: "iss-1", currency: "EUR", items, ...tool.extra } as never
+      const label = `#${i} ${JSON.stringify({ country, pricesIncludeTax, items })}`
+
+      const issuerRow = (invoice: bigint, po: bigint) => [
+        { ...seedIssuer(defaultIssuer, { invoice, po }), prices_include_tax: pricesIncludeTax },
+      ]
+      const issuing = makeCtx({
+        approval: PRE_APPROVED,
+        seed: { issuer_profiles: issuerRow(NO_GATE_MINOR, NO_GATE_MINOR) },
+      })
+      const issued = (await tool.run(issuing.ctx, params)) as { status: string; document_id?: string; error?: unknown }
+      if (issued.status !== "completed") throw new Error(`#${i} ${tool.run.name} ${JSON.stringify(issued).slice(0, 400)}`)
+      const doc = issuing.db.__all("documents").find((d) => d.id === issued.document_id)!
+      const total = formatMoneyMinor(BigInt(String(doc.grand_total_minor)), "EUR")
+      issuedSeen.add(total)
+
+      const issuer = issuing.db.__all("issuer_profiles")[0]!
+      const hostCard = await tool.card(params, undefined, {
+        context: { items: [issuer], original: null },
+      } as never)
+      expect(`${label} host ${totalOnCard(hostCard.lines)}`).toBe(`${label} host ${total}`)
+
+      const parking = makeCtx({ seed: { issuer_profiles: issuerRow(0n, 0n) } })
+      const parked = (await tool.run(parking.ctx, params)) as { status: string }
+      if (parked.status === "pending_approval") {
+        const asked = parking.extras.approvalsRequested.at(-1) as unknown as { summary_detail: { lines: string[] } }
+        expect(`${label} handler ${totalOnCard(asked.summary_detail.lines)}`).toBe(`${label} handler ${total}`)
+      }
+    }
+    // The grid really varied.
+    expect(issuedSeen.size).toBeGreaterThan(100)
+  })
+})
+
+describe("a credit note's total is negative", () => {
+  const base = {
+    operation_category: "goods",
+    counterparty: defaultCounterparty,
+    issuer_profile_id: "iss-1",
+    currency: "EUR",
+  }
+  const line = (unit: unknown, description = "Thing") => ({
+    description,
+    quantity: "1",
+    unit_price_minor: unit,
+    product_source: null,
+    external_id: null,
+  })
+
+  test("a positive total is refused at stage and at execution, says what to send, takes no number", async () => {
+    const m = makeCtx({ approval: PRE_APPROVED })
+    const params = { ...base, items: [line(500)] } as never
+    const pre = await creditNoteCreateAndIssuePreflight(m.ctx, params)
+    if (!("error" in pre)) throw new Error("preflight let a positive credit note through")
+    expect(pre.error.code).toBe("credit_note_not_negative")
+    const res = await creditNoteCreateAndIssue(m.ctx, params)
+    if (res.status !== "error") throw new Error("a positive credit note issued")
+    expect(res.error.code).toBe("credit_note_not_negative")
+    expect(res.error.message).toContain("send -500")
+    expect(m.db.__all("documents")).toHaveLength(0)
+  })
+
+  test("a zero total is refused, unless it mirrors a zero-value invoice", async () => {
+    const m = makeCtx({ approval: PRE_APPROVED })
+    const res = await creditNoteCreateAndIssue(m.ctx, { ...base, items: [line(0)] } as never)
+    if (res.status !== "error") throw new Error("a credit note of nothing issued")
+    expect(res.error.code).toBe("credit_note_not_negative")
+
+    const zero = makeCtx({ approval: PRE_APPROVED })
+    const invoice = await invoiceCreateAndIssue(zero.ctx, { ...base, items: [line(0, "Warranty replacement")] } as never)
+    if (invoice.status !== "completed") throw new Error(`no zero-value invoice: ${JSON.stringify(invoice)}`)
+    const credit = await creditNoteCreateAndIssue(zero.ctx, {
+      ...base,
+      original_document_id: invoice.document_id,
+      items: [line(0, "Warranty replacement")],
+    } as never)
+    expect(credit.status).toBe("completed")
+  })
+
+  test("a positive line stays allowed while the total is negative", async () => {
+    const m = makeCtx({ approval: PRE_APPROVED })
+    const res = await creditNoteCreateAndIssue(m.ctx, {
+      ...base,
+      items: [line(-1000, "Returned"), line(100, "Restocking fee")],
+    } as never)
+    expect(res.status).toBe("completed")
+  })
+
+  test("a draft with a positive total is refused at issue and stays a draft", async () => {
+    const m = makeCtx({ approval: PRE_APPROVED })
+    const { draft_id } = await draftsCreate(m.ctx, {
+      type: "credit_note",
+      ...BUYER_DRAFT_EINVOICE,
+      counterparty_contact_id: "contact-1",
+      counterparty_name: "Buyer SARL",
+      counterparty_address: "1 rue Buyer, 75002 Paris",
+      counterparty_email: "ap@buyersarl.example",
+      counterparty_country: "FR",
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: [line(500)],
+    } as never)
+    const res = await creditNoteIssue(m.ctx, { draft_id })
+    if (res.status !== "error") throw new Error("a positive draft credit note issued")
+    expect(res.error.code).toBe("credit_note_not_negative")
+    expect(m.db.__all("documents").find((d) => d.id === draft_id)?.number ?? null).toBeNull()
+  })
+})
+
+describe("a saved draft", () => {
+  test("keeps a line's discount to issue, and its card states the total that issues", async () => {
+    const m = makeCtx({ approval: PRE_APPROVED })
+    const { draft_id } = await draftsCreate(m.ctx, {
+      type: "invoice",
+      ...BUYER_DRAFT_EINVOICE,
+      counterparty_contact_id: "contact-1",
+      counterparty_name: "Buyer SARL",
+      counterparty_address: "1 rue Buyer, 75002 Paris",
+      counterparty_email: "ap@buyersarl.example",
+      counterparty_country: "FR",
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: [
+        { position: 1, description: "Kestrel 6", quantity: "2", unit_price_minor: 10000, discount_minor: 500, product_source: null, external_id: null },
+      ],
+    } as never)
+    const stored = m.db.__all("document_lines").find((l) => l.document_id === draft_id)!
+    expect(String(stored.discount_minor)).toBe("500")
+    expect(String(stored.subtotal_minor)).toBe("19500")
+
+    const preview = await draftIssuePreview(m.ctx as never, { draft_id })
+    const card = await summarizers.summarizeInvoiceIssue({ draft_id }, undefined, { context: preview } as never)
+
+    const issued = await invoiceIssue(m.ctx, { draft_id })
+    if (issued.status !== "completed") throw new Error(`not issued: ${JSON.stringify(issued)}`)
+    const doc = m.db.__all("documents").find((d) => d.id === issued.document_id)!
+    // 195.00 net: the discount reached the document.
+    expect(String(doc.subtotal_minor)).toBe("19500")
+    const total = formatMoneyMinor(BigInt(String(doc.grand_total_minor)), "EUR")
+    expect(card.lines).toContain(`Total: ${total}`)
+    expect(BigInt(String(doc.grand_total_minor))).toBeGreaterThan(19500n)
+  })
+})
+
+describe("the other minor-unit fields read as issuing reads them", () => {
+  test("a refund amount with a decimal point is refused, not rounded", async () => {
+    for (const bad of [12.5, "12.50"]) {
+      const m = makeCtx({ approval: PRE_APPROVED })
+      const res = await documentsRecordRefund(m.ctx, {
+        document_id: "any",
+        refund_kind: "partial",
+        refund_amount_minor: bad as never,
+      })
+      if (res.status !== "error") throw new Error("a fractional refund passed")
+      expect(res.error.code).toBe("invalid_amount")
+      expect(res.error.message).toContain("refund_amount_minor")
+    }
+  })
+
+  test("an approval threshold with a decimal point is refused", async () => {
+    const m = makeCtx({ scopes: ["*"] })
+    const res = await settingsIssuerProfileWritePreflight(m.ctx, "update", {
+      id: "iss-1",
+      invoice_approval_threshold_minor: "1000.50",
+    })
+    if (!("error" in res)) throw new Error("a fractional threshold passed")
+    expect(res.error.code).toBe("invalid_amount")
+    expect(res.error.message).toContain("100050")
+  })
+
+  test("drafts refuse before parking, for create and update", async () => {
+    const { ctx } = makeCtx()
+    const input = {
+      type: "invoice" as const,
+      ...BUYER_DRAFT_EINVOICE,
+      counterparty_contact_id: "contact-1",
+      issuer_profile_id: "iss-1",
+      currency: "USD",
+    }
+    const bad = [{ description: "x", quantity: "1", unit_price_minor: "899.00" }] as never
+    expect(await draftsCreatePreflightHandler({ ...input, items: bad }, ctx)).toMatchObject({
+      error: { code: "invalid_amount" },
+    })
+    expect(await draftsUpdatePreflightHandler({ draft_id: "d", patch: { lines: bad } }, ctx)).toMatchObject({
+      error: { code: "invalid_amount", message: expect.stringContaining("patch.lines[0].unit_price_minor") },
+    })
+    expect(await draftsCreatePreflightHandler({ ...input, items: sampleDraftItems }, ctx)).toEqual({ ok: true })
   })
 })

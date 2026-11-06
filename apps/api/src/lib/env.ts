@@ -540,7 +540,7 @@ export const envSchema = z
     // org settings. A visitor's own key runs its own models instead.
     LIAISON_DEMO_VISITOR_MODEL: z.preprocess(
       unsetIfEmpty,
-      z.string().trim().min(1).default("openrouter/deepseek/deepseek-v4.1-flash"),
+      z.string().trim().min(1).default("openrouter/deepseek/deepseek-v4.1-flash-1017"),
     ),
     // Spend budgets: per verified email (lifetime), per client network (per
     // UTC day), box-wide per UTC day and per rolling hour.

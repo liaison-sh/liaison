@@ -33,10 +33,15 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   invalid_unit_value: 400,
   // Boxtal refused the route's own data (an invalid postal code for the country).
   cotation_invalid: 400,
+  // A batch proforma's source invoice is gone or unreadable: the batch waits on that document.
+  source_document_unreadable: 409,
   // Names nothing that exists.
   shipment_not_found: 404,
+  document_not_found: 404,
   order_not_found: 404,
   row_not_found: 404,
+  // A write naming two different rows: the caller says which one it means.
+  order_key_mismatch: 409,
   // A pick between the order's address and the verified one: needed, gone stale or not needed.
   address_differs: 409,
   address_choice_not_needed: 409,
@@ -106,6 +111,7 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   invalid_input: 400,
   invalid_type: 400,
   invalid_amount: 400,
+  credit_note_not_negative: 400,
   invalid_hs_code: 400,
   invalid_relationship: 400,
   invalid_original_document: 400,
@@ -125,6 +131,29 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   // An invoice's legal original (fixed at issue) carries these values; changing them needs a
   // credit note and a new invoice, never an in-place edit.
   legal_original_locked: 409,
+  // A date a person stated or typed: not a date, after today, or against the document's number. The
+  // message says what to pass; nothing was issued or changed.
+  issued_at_invalid: 400,
+  issue_date_in_future: 422,
+  issue_date_before_last_number: 409,
+  issue_date_before_original: 409,
+  issue_date_after_credit_note: 409,
+  issue_date_crosses_number_year: 409,
+  issue_date_breaks_number_order: 409,
+  issue_date_set_by_draft_order: 409,
+  // The issuer's stored time zone is not one: an administrator's setting, not a fault of ours.
+  issuer_timezone_invalid: 422,
+  invalid_timezone: 422,
+  // A parked order that cannot be issued as asked: the row says why, a person chooses again.
+  not_issued: 409,
+  still_blocked: 409,
+  // Changing a buyer's kind away from business needs a person; this caller cannot ask for one.
+  approval_required: 409,
+  // A received supplier invoice: this action is closed for its status, one already waits, or the
+  // reason is not one the platform lists.
+  received_action_not_allowed: 409,
+  received_action_pending: 409,
+  received_reason_invalid: 400,
   document_not_editable: 409,
   already_invoiced: 409,
   hs_code_in_use: 409,

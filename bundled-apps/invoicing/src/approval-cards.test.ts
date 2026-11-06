@@ -12,6 +12,7 @@
 
 import { describe, expect, it } from "bun:test"
 import manifest from "../app.manifest.json"
+import { CARD_MAX_LINES } from "./approval-cards"
 import * as summarizers from "./summarizers"
 
 type Card = { kind: string; title: string; subtitle?: string; lines: string[]; links?: Array<{ label: string; entityId?: string }> }
@@ -264,7 +265,7 @@ describe("invoicing approval cards: e-invoicing and customer settings", () => {
     const card = await cardFor(
       "received_einvoice_set_status",
       { received_id: DOC_ID, action: "refuse", reason: "DOUBLON" },
-      { status: "ok", invoice: { supplier: { name: "Fournitures Martin" }, invoice_number: "FM-881", issue_date: "2026-10-02", currency: "EUR", totals: { total: "12000" } } },
+      { status: "ok", invoice: { supplier: { name: "Fournitures Martin" }, invoice_number: "FM-881", issue_date: "2026-10-02", currency: "EUR", totals: { total: "120.00" } } },
     )
     expect(card.title).toBe("Refuse supplier invoice FM-881 from Fournitures Martin")
     expect(card.lines).toContain("Total: 120.00 EUR")
@@ -393,5 +394,138 @@ describe("invoicing approval cards: a draft parked for any reason but a consumer
       expect(typeof TOOLS[name]?.summarizer).toBe("string")
       expect(TOOLS[name]?.approvalCard).toBeUndefined()
     }
+  })
+})
+
+describe("credit note and purchase order cards", () => {
+  const { summarizeCreditNoteCreateAndIssue, summarizeCreditNoteIssue, summarizePoCreateAndIssue, summarizePoIssue } =
+    summarizers
+
+  it("every issuing tool an approval can park declares a summarizer, not the template fallback", () => {
+    const missing = Object.entries(TOOLS)
+      .filter(([name, t]) => /_issue$/.test(name) && !t.summarizer)
+      .map(([name]) => name)
+    expect(missing).toEqual([])
+  })
+
+  const items = [
+    { description: "Kestrel 6 Field Recorder", quantity: "1", unit_price_minor: -89900 },
+    { description: "USB C Cable", quantity: "1", unit_price_minor: -1900 },
+  ]
+  const counterparty = { legal_name: "Grace Whitfield", country: "US", email: "grace@example.com" }
+  const issuers = { items: [{ id: "issuer-1", country: "FR", legal_name: "Resonant SAS", default_currency: "EUR" }] }
+
+  it("a credit note states the amount, every line, the date and the invoice it reverses", async () => {
+    const card = await summarizeCreditNoteCreateAndIssue(
+      { counterparty, items, currency: "EUR", issued_at: "2026-11-03", original_document_id: "INV-2026-0017" },
+      undefined,
+      { context: { ...issuers, original: { number: "INV-2026-0017", issued_at: "2026-10-30T00:00:00.000Z" } } },
+    )
+    expect(card.title).toBe("Credit 918.00 EUR on INV-2026-0017 for Grace Whitfield")
+    expect(card.lines).toContain("Reverses invoice: INV-2026-0017 (2026-10-30)")
+    expect(card.lines).toContain("Issue date: 2026-11-03")
+    expect(card.lines.join("\n")).toContain("-918.00 EUR")
+    expect(card.lines.join("\n")).toContain("Kestrel 6 Field Recorder")
+    expect(card.lines.join("\n")).toContain("USB C Cable")
+    expect(card.lines.length).toBeLessThanOrEqual(CARD_MAX_LINES)
+  })
+
+  it("a credit note keeps its amount, date and invoice on the card with many lines and a long reason", async () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({ description: `Line ${i}`, quantity: "1", unit_price_minor: -100 }))
+    const card = await summarizeCreditNoteCreateAndIssue(
+      { counterparty, items: many, reason: "Returned", original_document_id: "INV-2026-0017" },
+      undefined,
+      { context: issuers },
+    )
+    const text = card.lines.join("\n")
+    expect(text).toContain("Total: -12.00 EUR")
+    expect(text).toContain("Reverses invoice: INV-2026-0017")
+    expect(text).toContain("Issue date: the day this is approved")
+    expect(text).toContain("more line")
+    // The disclosure line a tainted proposal adds takes the eighth line, never one of these.
+    expect(card.lines.slice(0, 7).join("\n")).toContain("Issue date")
+  })
+
+  it("an unhydrated credit note still states the lines total and never prints an id", async () => {
+    const card = await summarizeCreditNoteCreateAndIssue({
+      counterparty,
+      items,
+      original_document_id: "1949cceb-504c-41ef-8d77-6669593136fa",
+    })
+    const text = [card.title, ...card.lines].join("\n")
+    expect(text).toContain("Lines total: -918.00 EUR as typed")
+    expect(text).toContain("the invoice referenced")
+    expect(text).not.toContain("1949cceb")
+  })
+
+  // A step of a sequence skips the stage-time check (its params carry @ref tokens): the card is then
+  // all a person has. The walk's card said "Credit 0.00 EUR" over a credit note that issued -1,500.00.
+  it("a call whose amount cannot be read says it will be refused, and prints no amount", async () => {
+    for (const bad of ["-1260.50", "899.00", -550.5, "$1"]) {
+      const card = await summarizeCreditNoteCreateAndIssue(
+        { counterparty, items: [{ description: "Thing", quantity: "1", unit_price_minor: bad }] },
+        undefined,
+        { context: issuers },
+      )
+      const text = [card.title, ...card.lines].join("\n")
+      expect(card.title).toContain("will be refused")
+      expect(text).toContain("REFUSED")
+      expect(text).toContain(JSON.stringify(bad))
+      expect(text).not.toMatch(/\d\.\d\d EUR/)
+    }
+  })
+
+  it("a positive credit note says it will be refused", async () => {
+    const card = await summarizeCreditNoteCreateAndIssue(
+      { counterparty, items: [{ description: "Thing", quantity: "1", unit_price_minor: 500 }], original_document_id: "INV-1" },
+      undefined,
+      { context: { ...issuers, original: { number: "INV-1", grand_total_minor: "9000" } } },
+    )
+    expect(card.title).toContain("will be refused")
+    expect(card.lines[0]).toContain("must be negative")
+  })
+
+  it("a zero credit note on a zero-value invoice stays a plain card", async () => {
+    const card = await summarizeCreditNoteCreateAndIssue(
+      { counterparty, items: [{ description: "Warranty", quantity: "1", unit_price_minor: 0 }], original_document_id: "INV-1" },
+      undefined,
+      { context: { ...issuers, original: { number: "INV-1", grand_total_minor: "0" } } },
+    )
+    expect(card.title).not.toContain("will be refused")
+  })
+
+  it("a credit note from a draft names its invoice and its total", async () => {
+    const card = await summarizeCreditNoteIssue({ draft_id: "d1" }, undefined, {
+      context: {
+        id: "d1",
+        type: "credit_note",
+        currency: "EUR",
+        grand_total_minor: "-91800",
+        counterparty_name: "Grace Whitfield",
+        external_refs: { original_document_number: "INV-2026-0017" },
+        lines: items,
+      },
+    })
+    expect(card.title).toBe("Credit 918.00 EUR on INV-2026-0017 for Grace Whitfield")
+    expect(card.lines).toContain("Total: -918.00 EUR")
+    expect(card.lines).toContain("Issue date: the day this is approved")
+  })
+
+  it("a purchase order states its total and lines, on both issuing tools", async () => {
+    const lines = [{ description: "Enclosures", quantity: "2", unit_price_minor: 5000 }]
+    const created = await summarizePoCreateAndIssue(
+      { counterparty: { legal_name: "Acme Parts", country: "DE" }, items: lines, currency: "EUR", issued_at: "2026-11-02" },
+      undefined,
+      { context: issuers },
+    )
+    // 100.00 net at the German rate the document will charge.
+    expect(created.title).toContain("119.00 EUR")
+    expect(created.lines.join("\n")).toContain("Enclosures")
+    expect(created.lines).toContain("Issue date: 2026-11-02")
+    const fromDraft = await summarizePoIssue({ draft_id: "d2" }, undefined, {
+      context: { id: "d2", type: "purchase_order", currency: "EUR", grand_total_minor: "10000", counterparty_name: "Acme Parts", lines },
+    })
+    expect(fromDraft.title).toContain("100.00 EUR")
+    expect(fromDraft.lines.join("\n")).toContain("Enclosures")
   })
 })

@@ -2,6 +2,7 @@
 //
 // Invoicing mutations: documents.mark_paid and documents.record_refund.
 
+import { readMinorAmount } from "@liaison/app-sdk"
 import { transition } from "../state"
 import { civilDateOf } from "../issue-date"
 import { findDocumentSummary, findIssuerProfile, sumPriorRefundedMinor } from "./db-helpers"
@@ -13,7 +14,7 @@ import {
   type DocumentType,
   type PreflightResult,
   type MutationResult,
-  toBigInt,
+  invalidAmountError,
   toPreflightResult,
 } from "./shared"
 
@@ -160,8 +161,15 @@ async function preflightRecordRefundParams(
 > {
   // The amount arrives as JSON, so a NUMBER (an approval payload's 39900), not
   // the bigint the type promises: `0n + 39900` throws "cannot convert bigint to
-  // number" inside the sandbox. Coerced once here, for every comparison below.
-  input = { ...input, refund_amount_minor: toBigInt(input.refund_amount_minor) }
+  // number" inside the sandbox. Read once here, for every comparison below.
+  const refundAmount = readMinorAmount(input.refund_amount_minor)
+  if (refundAmount === null) {
+    return {
+      ok: false,
+      error: { status: "error", error: invalidAmountError("refund_amount_minor", input.refund_amount_minor) },
+    }
+  }
+  input = { ...input, refund_amount_minor: refundAmount }
   const doc = await findDocumentSummary(ctx.db, input.document_id)
   if (!doc) {
     return {
@@ -292,7 +300,6 @@ export async function documentsRecordRefund(
   // The status and cumulative-amount guards below ALSO run at stage time (the preflight export
   // above shares this exact code), but they stay here: another refund can land between staging
   // and approval, so the executed call re-checks rather than trusts.
-  input = { ...input, refund_amount_minor: toBigInt(input.refund_amount_minor) }
   const pre = await preflightRecordRefundParams(ctx, input)
   if (!pre.ok) return pre.error
   const { doc } = pre

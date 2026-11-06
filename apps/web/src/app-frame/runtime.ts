@@ -23,7 +23,7 @@
 // shell bridge: everything goes through the page's answer.
 
 import * as solid from "solid-js"
-import { createComponent, createResource, createSignal } from "solid-js"
+import { createComponent, createEffect, createResource, createSignal } from "solid-js"
 import * as solidStore from "solid-js/store"
 import { createStore, reconcile } from "solid-js/store"
 import * as solidWeb from "solid-js/web"
@@ -112,6 +112,13 @@ export function startFrameRuntime(win: Window & typeof globalThis = window): voi
     },
     currentPath: () => path(),
     locale: () => locale(),
+    // The page keeps the record for the tab this frame sits in, and drops it when
+    // the frame goes away with its tab.
+    trackOpenRecord: (_app: string, entityType: string, id: () => string | null | undefined) => {
+      createEffect(() => {
+        void call("setOpenRecord", [entityType, id() ?? null]).catch(() => {})
+      })
+    },
     createResource: <T>(fetcher: () => T | Promise<T>) => createResource(fetcher),
     mountSlot: () => ({ resolved: false, dispose: () => {} }),
     // A browser path, not the shell's: an isolated app opens no file natively.

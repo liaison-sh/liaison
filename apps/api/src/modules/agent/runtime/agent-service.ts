@@ -277,6 +277,7 @@ import {
 } from "~/modules/agent/skills/mid-turn-skills"
 import { clamp, intersectScopes, isScopeSubset } from "~/modules/agent/subruns/spawn-agent"
 import { resultHintsShownIn } from "~/modules/agent/tools/kernel-result-hints"
+import { uiEffectRequester } from "~/modules/agent/tools/open-targets"
 import {
   ALL_DEFERRED_TOOLS_UNLOCKED,
   admitLateTools,
@@ -5248,6 +5249,7 @@ async function runThreadTurn(
           toolCallId: chunk.toolCallId,
           toolName: chunk.toolName,
           args: persistableArgs,
+          ...uiEffectRequester(chunk.toolName, actor.userId),
         })
       } else if (chunk.type === "tool-result") {
         // Invariant K, Task 6.6. Redact ONCE, here, and let both consumers read

@@ -454,7 +454,7 @@ The annotated full example is
 | `admin` | The owner account, with a personal agent. `password` is optional (passwordless sign-in). An existing admin's password is never reset. Without this section, the run acts as the org's earliest active admin (for example, as the person who connected an API connector's credentials). With no active admin, any step that would store a connection (credentials in `apiConnectors`, an `apps` connection, an IMAP tickets inbox or shared mailbox) is refused before writing, with a message naming the step and saying to add an `admin` section. A catalog app install fails the same way (exit `2`). An org-owned connection that already exists unchanged needs no admin. |
 | `roles` | Custom roles: a name plus the exact scope set, reconciled on every apply. |
 | `users` | Members by email with a role name; `mode: invite` (default) or `mode: create` with `password`. A re-run that gives an existing `mode: create` user a role they do not hold yet grants it and reports the user under `changed` (the plan says `exists: grant role <name>`); an identical re-run reports them `unchanged`, and so does an invite to a user who already holds the role or already has an invite waiting. The password of an existing user is never changed. |
-| `byok` | Per-org AI provider keys (`openrouter`, `anthropic`, `openai`, `google`, `mistral`), validated live unless `validate: false` or `--no-validate-byok`. One `openrouter` key is the recommended single key: when the org has no other usable model key, the apply adds OpenRouter's default model (DeepSeek V4.1 Flash) and makes it Auto, so the org can chat without a dashboard step (reported as `byok.openRouterAuto`). |
+| `byok` | Per-org AI provider keys (`openrouter`, `anthropic`, `openai`, `google`, `mistral`), validated live unless `validate: false` or `--no-validate-byok`. One `openrouter` key is the recommended single key: when the org has no other usable model key, the apply adds OpenRouter's default model (DeepSeek V4.1 Flash 1017) and makes it Auto, so the org can chat without a dashboard step (reported as `byok.openRouterAuto`). |
 | `apiKeys` | Org API keys by `label`: supply `key` for an idempotent upsert, or omit it to generate one (printed once). |
 | `email` | The org's transactional `from` and `replyTo`. |
 | `mail.mailboxes` | Mail app mailboxes (below). |
@@ -771,7 +771,7 @@ catalog. Without it the agent uses auto mode: the cheapest auto-eligible model
 among the providers the org has a key for. Each provider has one (Anthropic:
 Claude Haiku; OpenAI: GPT nano; Google: Gemini Flash Lite; Mistral: Small), so
 a single key of any of them is enough. With an OpenRouter key and no other
-usable key, auto mode runs on OpenRouter's default model (DeepSeek V4.1 Flash),
+usable key, auto mode runs on OpenRouter's default model (DeepSeek V4.1 Flash 1017),
 which the `byok` section makes Auto. An operator can turn a model's
 `auto_eligible` flag off in the catalog; auto mode then skips it.
 

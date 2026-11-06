@@ -93,6 +93,12 @@ import {
   summarizeSetUserScope,
 } from "~/modules/agent/tools/admin-tools"
 import {
+  aiModelsSetParams,
+  aiModelsSetRefusal,
+  handleAiModelsGet,
+  handleAiModelsSet,
+} from "~/modules/agent/tools/ai-models-tools"
+import {
   handleApprovalUpdatePayload,
   handleApprovalWithdraw,
 } from "~/modules/agent/tools/approval-tools"
@@ -183,6 +189,7 @@ import {
 import { registerImportTools } from "~/modules/agent/tools/import-tools"
 import { KERNEL_RESULT_HINTS, withToolResultHint } from "~/modules/agent/tools/kernel-result-hints"
 import {
+  summarizeAiModelsSet,
   summarizeAppsSetAccess,
   summarizeAppsSetEnabled,
   summarizeCaptureBusinessKnowledge,
@@ -2847,6 +2854,44 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     writesToTable: "kernel.apps",
   })
   registerApprovalSummarizer(orgId, "kernel", "apps_set_access", summarizeAppsSetAccess)
+  toolRegistry.set([orgId, "kernel", "ai_models_get"], {
+    appName: "kernel",
+    name: "ai_models_get",
+    deferLoading: true,
+    description: `Read the organization's AI model settings (admin), the same as Settings > Models: what Auto runs, the default reasoning level, each model with its key, whether it is on and available, its price and reasoning levels. Pass openRouterSearch to also search OpenRouter's catalogue for a model to add with ai_models_set.`,
+    searchKeywords: ["modèle", "raisonnement", "default", "reasoning", "openrouter", "auto", "llm"],
+    requiredScopes: ["kernel:org:admin"],
+    trustBoundary: "user",
+    params: z.object({
+      openRouterSearch: z
+        .string()
+        .trim()
+        .min(1)
+        .max(200)
+        .optional()
+        .describe("Search OpenRouter's catalogue by model name or id, e.g. deepseek."),
+    }),
+    handler: handleAiModelsGet as (p: unknown, c: any) => Promise<unknown>,
+  })
+  toolRegistry.set([orgId, "kernel", "ai_models_set"], {
+    appName: "kernel",
+    name: "ai_models_set",
+    deferLoading: true,
+    description: `Change the organization's default AI model and reasoning level (admin), the same as Settings > Models, for EVERYONE: choose what Auto runs, set the default reasoning level, switch models on or off, add a model from OpenRouter after a test call. Read the keys with ai_models_get first. It changes what the organization pays for and what everything left on Auto runs on. To move Auto to a model not yet in the list, pass addFromOpenRouter and its key as autoModelKey together. A routine or agent pinned to another model stays on it.`,
+    searchKeywords: ["modèle", "raisonnement", "default", "reasoning", "openrouter", "auto", "llm"],
+    requiredScopes: ["kernel:org:admin"],
+    approveScope: "kernel:approve",
+    trustBoundary: "user",
+    gated: true,
+    approvalImpact: "internal",
+    params: aiModelsSetParams,
+    // A request with nothing to do, or on a demo org, answers at once with no card.
+    refuseBeforeGate: aiModelsSetRefusal,
+    handler: handleAiModelsSet as (p: unknown, c: any) => Promise<unknown>,
+    // Writes the ai.models part of kernel.organizations.settings.
+    writesToTable: "kernel.organizations",
+  })
+  registerApprovalSummarizer(orgId, "kernel", "ai_models_set", summarizeAiModelsSet)
   toolRegistry.set([orgId, "kernel", "create_role"], {
     appName: "kernel",
     name: "create_role",
@@ -3567,26 +3612,26 @@ When to use: When an admin asks to set up a reusable role they will spawn repeat
   })
   registerApprovalSummarizer(orgId, "kernel", "subagent_delete", summarizeSubagentDelete)
 
-  // --- UI navigation (lets the agent drive the user's UI, e.g. to show
-  //     where an app lives). Gated on `kernel:threads:read` — the
-  //     baseline "can see the workspace" scope every default role (viewer /
-  //     member / admin) holds — because opening a view is a read-only UI
-  //     affordance available to anyone who can view the workspace, and it needs
-  //     a scope that is universally granted so the call is never silently
-  //     dropped. The effect is client-side: the web app reacts to the streamed
-  //     `open_app` tool call and opens the app's tab (see message-store). ---
+  // --- UI navigation (lets the agent drive the requester's UI: an app, a view or
+  //     one record). Gated on `kernel:threads:read`, the baseline every default
+  //     role holds, so the call is never silently dropped; a record's own reading
+  //     scope and RLS are checked in the handler. The effect is on the requester's
+  //     screen (see message-store), so there is nothing to run over MCP. ---
   toolRegistry.set([orgId, "kernel", "open_app"], {
     appName: "kernel",
     name: "open_app",
     readOnly: true,
-    // Echoes its own arguments back; the effect is client-side navigation.
+    // Its result holds no record content: a kind and a generated reference. The record's
+    // name goes to the requester's tab alone, never into the result (navigation-tool.ts).
     taintFree: true,
+    gatewayHidden: true,
     description:
-      "Open an app or view in the user's UI, to show them where something lives. Pass app = the id of an app actually available to this user; view optionally names a sub-view within it.",
+      "Open an app, a view or one record in the user's UI. app alone opens the app; app, view and id open a record's tab, e.g. app projects, view task. app kernel has thread, routine, skill. A refusal lists the valid views.",
     requiredScopes: ["kernel:threads:read"],
     params: z.object({
       app: z.string().min(1).describe("App id to open (must be one available to this user)."),
-      view: z.string().optional().describe("Optional sub-view within the app."),
+      view: z.string().optional().describe("A view of that app."),
+      id: z.string().optional().describe("The record to open in that view."),
     }),
     handler: handleOpenApp as (params: unknown, ctx: any) => Promise<unknown>,
   })

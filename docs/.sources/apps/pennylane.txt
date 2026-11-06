@@ -47,3 +47,4 @@ spend_by_category -> bundled-apps/pennylane/app.manifest.json:804
 runway_estimate -> bundled-apps/pennylane/app.manifest.json:819
 home_load -> bundled-apps/pennylane/app.manifest.json:829
 supplier_invoice_upload gated -> bundled-apps/pennylane/app.manifest.json:844
+bill amounts are whole minor units, refused before approval -> bundled-apps/pennylane/src/upload.ts:64

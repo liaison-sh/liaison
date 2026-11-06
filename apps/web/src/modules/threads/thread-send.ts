@@ -16,6 +16,7 @@ import { PAYMENT_REQUIRED_CODE } from "@liaison/shared"
 import type { ApiClient } from "~/lib/api-client"
 import { ApiError } from "~/lib/api-error"
 import { beginMailboxAgentTurn, endMailboxAgentTurn } from "~/modules/mailbox/mailbox-agent-runtime"
+import { openRecordOf } from "~/modules/shell/open-record"
 import { tabStore } from "~/modules/shell/tab-store"
 import {
   LocalRuntimeUnavailableError,
@@ -34,11 +35,22 @@ export interface ThreadSendOptions {
 }
 
 /** The view the user is looking at: the main panel's active tab, never the
- *  sending surface's own (a dock tab has no tab-store entry). Nothing for a tab
- *  that names no entity. */
+ *  sending surface's own (a dock tab has no tab-store entry). The record open in
+ *  the tab when its page says which one (shell/open-record.ts), and the record
+ *  behind the kernel's generic `detail` tab (`<app>/<entity>/<id>`). Nothing for
+ *  a tab that names no entity. */
 export function currentViewForTurn(): { tabType: string; entityId: string } | undefined {
   const activeTab = tabStore.tabs.find((t) => t.id === tabStore.activeTabId)
-  return activeTab?.entityId ? { tabType: activeTab.type, entityId: activeTab.entityId } : undefined
+  if (!activeTab) return undefined
+  const open = openRecordOf(activeTab.id)
+  if (open) return { tabType: open.tabType, entityId: open.entityId }
+  if (activeTab.type === "detail") {
+    const [app, entity, ...id] = activeTab.entityId.split("/")
+    if (app && entity && id.length > 0) {
+      return { tabType: `${app}:${entity}`, entityId: id.join("/") }
+    }
+  }
+  return activeTab.entityId ? { tabType: activeTab.type, entityId: activeTab.entityId } : undefined
 }
 
 /**

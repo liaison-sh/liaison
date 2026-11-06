@@ -33,9 +33,16 @@ const CONVERSATIONS = [
   },
 ]
 
+let openRecord: { app: string; entityType: string; id: () => string | null | undefined } | null =
+  null
+
 function installHost(): void {
+  openRecord = null
   const host: Partial<HostServices> = {
     accessToken: () => "t",
+    trackOpenRecord: (app, entityType, id) => {
+      openRecord = { app, entityType, id }
+    },
     // The Messages surface only invokes dm_list (list) + dm_get (detail).
     invokeTool: (async (_app: string, tool: string) => {
       if (tool === "dm_list") return { conversations: CONVERSATIONS }
@@ -69,5 +76,24 @@ describe("social Messages surface (ticket-9967)", () => {
       { timeout: 5000 },
     )
     expect(container.querySelector('[data-testid="social-conversation-row-dm-2"]')).not.toBeNull()
+  })
+
+  it("tells the host which conversation the detail pane has open", async () => {
+    const { container } = render(() => <Messages />)
+    const second = await waitFor(
+      () => {
+        const row = container.querySelector<HTMLElement>(
+          '[data-testid="social-conversation-row-dm-2"]',
+        )
+        expect(row).not.toBeNull()
+        return row as HTMLElement
+      },
+      { timeout: 5000 },
+    )
+    expect(openRecord?.app).toBe("social")
+    expect(openRecord?.entityType).toBe("dm_conversation")
+    expect(openRecord?.id()).toBe("dm-1")
+    second.click()
+    expect(openRecord?.id()).toBe("dm-2")
   })
 })

@@ -65,6 +65,8 @@ import {
   proformaCreateAndIssue,
   poIssue,
   poCreateAndIssue,
+  poCreateAndIssuePreflight,
+  draftIssuePreview,
   creditNoteCreateAndIssue,
   creditNoteIssue,
   orderReissueApply,
@@ -95,6 +97,7 @@ import {
   creditNoteCreateAndIssuePreflight,
   creditNoteIssuePreflight,
 } from "./mutations"
+import { lineAmountsError } from "./mutations/shared"
 import { untrustedCounterparty } from "./einvoicing/issue-gate"
 import type { Counterparty } from "./issue"
 
@@ -268,14 +271,6 @@ export const draftsUpdateHandler = (
   params: Parameters<typeof draftsUpdateTool>[1],
   ctx: Parameters<typeof draftsUpdateTool>[0],
 ) => draftsUpdateTool(ctx, params)
-export const draftsCreatePreflightHandler = (
-  params: Parameters<typeof draftsCreatePreflight>[1],
-  ctx: Parameters<typeof draftsCreatePreflight>[0],
-) => draftsCreatePreflight(ctx, params)
-export const draftsUpdatePreflightHandler = (
-  params: Parameters<typeof draftsUpdatePreflight>[1],
-  ctx: Parameters<typeof draftsUpdatePreflight>[0],
-) => draftsUpdatePreflight(ctx, params)
 export const draftsDiscardHandler = (
   params: Parameters<typeof draftsDiscard>[1],
   ctx: Parameters<typeof draftsDiscard>[0],
@@ -448,6 +443,32 @@ export const proformaIssuePreflightHandler = (
   params: Parameters<typeof proformaIssuePreflight>[1],
   ctx: Parameters<typeof proformaIssuePreflight>[0],
 ) => proformaIssuePreflight(ctx, params)
+export const draftIssuePreviewHandler = (
+  params: Parameters<typeof draftIssuePreview>[1],
+  ctx: Parameters<typeof draftIssuePreview>[0],
+) => draftIssuePreview(ctx, params)
+export const poCreateAndIssuePreflightHandler = (
+  params: Parameters<typeof poCreateAndIssuePreflight>[1],
+  ctx: Parameters<typeof poCreateAndIssuePreflight>[0],
+) => poCreateAndIssuePreflight(ctx, fromWire(params))
+/**
+ * A draft's money is refused before anything parks, as it is on the create-and-issue tools; then
+ * the same draft run, stopped before the write, validates its lines and notes.
+ */
+export const draftsCreatePreflightHandler = async (
+  params: Parameters<typeof draftsCreatePreflight>[1],
+  ctx: Parameters<typeof draftsCreatePreflight>[0],
+) => {
+  const refused = lineAmountsError(params.items)
+  return refused ? { error: refused.error } : draftsCreatePreflight(ctx, params)
+}
+export const draftsUpdatePreflightHandler = async (
+  params: Parameters<typeof draftsUpdatePreflight>[1],
+  ctx: Parameters<typeof draftsUpdatePreflight>[0],
+) => {
+  const refused = lineAmountsError(params.patch?.lines, "patch.lines")
+  return refused ? { error: refused.error } : draftsUpdatePreflight(ctx, params)
+}
 export const proformaCreateAndIssuePreflightHandler = (
   params: Parameters<typeof proformaCreateAndIssuePreflight>[1],
   ctx: Parameters<typeof proformaCreateAndIssuePreflight>[0],

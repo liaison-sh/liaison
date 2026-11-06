@@ -177,11 +177,11 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `invoicing:approve` | approver scope | Decide (approve, edit, or deny) invoicing approvals raised by its gated tools |
 | `invoicing:contacts:read` | manifest scopes; tools contact_relationships_get, counterparty_identity_get, counterparty_identity_lookup, vat_lookup, vat_validate |  |
 | `invoicing:contacts:write` | manifest scopes; tools contact_relationships_set, counterparty_identity_set, counterparty_territory_set, einvoicing_backfill_identities |  |
-| `invoicing:documents:read` | manifest scopes; entity document; tools customer_history, deferred_list, documents_download_pdf, documents_for_orders, documents_get, documents_preview_pdf and 10 more |  |
+| `invoicing:documents:read` | manifest scopes; entity document; tools customer_history, deferred_list, documents_download_pdf, documents_for_orders, documents_get, documents_preview_pdf and 11 more |  |
 | `invoicing:documents:write` | manifest scopes; tools credit_note_create_and_issue, credit_note_issue, deferred_tax_override, documents_convert_to_invoice, documents_mark_paid, documents_record_refund and 21 more |  |
 | `invoicing:internal` | manifest scopes |  |
 | `invoicing:issuer:admin` | manifest scopes |  |
-| `invoicing:received:read` | manifest scopes; tools received_einvoices_get, received_einvoices_list |  |
+| `invoicing:received:read` | manifest scopes; entity received_einvoice; tools received_einvoices_get, received_einvoices_list |  |
 | `invoicing:received:write` | manifest scopes; tools received_einvoice_action_request, received_einvoice_set_status, received_einvoices_refresh |  |
 | `invoicing:settings:read` | manifest scopes; settings sections hs-codes, issuers, shop-mappings, tax-regimes; tools documents_issue_preview, einvoicing_provider_options, einvoicing_settings_get, einvoicing_settings_values, settings_hs_code_list, settings_issuer_profile_list and 2 more |  |
 | `invoicing:settings:write` | manifest scopes; settings section einvoicing; tools einvoicing_settings_set, hs_codes_library_delete, hs_codes_library_upsert, settings_issuer_profile_create, settings_issuer_profile_delete, settings_issuer_profile_update |  |

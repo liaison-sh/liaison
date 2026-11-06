@@ -240,6 +240,8 @@ export interface EditorIssuerProfile {
   prices_include_tax?: boolean | null
   /** Today in this issuer's time zone, as the host states it. Null when its zone is unknown. */
   today?: string | null
+  /** Set when a shop is linked: this issuer's quotes are made as draft orders in that shop. */
+  shopify_shop_id?: string | null
   /** Some issuer-profile schemas mark a single default/primary profile —
    *  accepted under either common flag name; when neither is present the
    *  first profile in list order (already sorted by legal_name asc) wins. */
@@ -810,6 +812,27 @@ export function statedIssuedAt(d: DraftDocument, shownDefault: string | null): s
   return d.issued_at
 }
 
+/**
+ * What the server will say about a chosen issue date, said beside the field rather than on the
+ * click (mutations/stated-issue-date.ts holds the rule). Null when there is nothing to say: only a
+ * date a person chose on a new document is ever judged, and an unknown today judges nothing.
+ */
+export function issueDateNotice(
+  d: DraftDocument,
+  shownDefault: string | null,
+  issuer: Pick<EditorIssuerProfile, "today" | "shopify_shop_id"> | undefined,
+): string | null {
+  const stated = shownDefault === null ? undefined : statedIssuedAt(d, shownDefault)
+  const today = issuer?.today
+  if (!stated || !today || stated === today) return null
+  if (d.type === "quote" && issuer?.shopify_shop_id) {
+    return tr(
+      "This issuer's quotes are made as Shopify draft orders and take the day the draft order is created. Clear this date, or pick an issuer with no shop.",
+    )
+  }
+  return stated > today ? tr("This date is after today, so it would be refused. Pick today or an earlier date.") : null
+}
+
 export function defaultDraft(type: DocType = "invoice"): DraftDocument {
   return {
     type,
@@ -929,6 +952,14 @@ export const Editor: Component<EditorProps> = (props) => {
   let defaultsApplied = false
   // The default a new document's date field holds; an opened document has none.
   let issuedAtDefault = props.initial.id ? null : props.initial.issued_at
+
+  const issueNotice = createMemo(() =>
+    issueDateNotice(
+      draft(),
+      issuedAtDefault,
+      issuerProfiles()?.find((p) => p.id === draft().issuer_profile_id),
+    ),
+  )
 
   const applyIssuer = (p: EditorIssuerProfile, opts: { applyDefaults: boolean }) => {
     const current = draft()
@@ -1471,6 +1502,13 @@ export const Editor: Component<EditorProps> = (props) => {
                 onInput={(e) => update({ issued_at: e.currentTarget.value || null })}
                 class={dateInputClass}
               />
+              <Show when={issueNotice()}>
+                {(notice) => (
+                  <p data-testid="editor-issue-date-notice" class="mt-1 text-[11.5px] text-text-secondary">
+                    {notice()}
+                  </p>
+                )}
+              </Show>
             </Field>
             {/* Credit notes are never payable — no due date, so the field is hidden for this type. */}
             <Show when={draft().type !== "credit_note"}>

@@ -31,7 +31,7 @@
 
 import { refuseTool, type ToolRefusal } from "@liaison/app-sdk"
 import type { CrossAppExecuteTool } from "./cross-app"
-import { type ReadsFetch, settingsIssuerProfileList, vatValidate } from "./reads"
+import { isUuid, type ReadsFetch, settingsIssuerProfileList, vatValidate } from "./reads"
 import { addressMatch, addressParts, normaliseAddress } from "./address-match"
 import { isEuCountry } from "./tax"
 
@@ -773,9 +773,40 @@ export function vatLookupCall(
  */
 export async function documentsIssuePreview(
   ctx: BuyerVatCtx & Parameters<typeof settingsIssuerProfileList>[0],
-  params: { issuer_profile_id?: string | null; counterparty?: unknown; buyer_is_consumer?: boolean | null },
-): Promise<{ items: Record<string, unknown>[]; buyer: BuyerVatFacts | null; refusal: string | null }> {
+  params: {
+    issuer_profile_id?: string | null
+    counterparty?: unknown
+    buyer_is_consumer?: boolean | null
+    original_document_id?: string | null
+  },
+): Promise<{
+  items: Record<string, unknown>[]
+  buyer: BuyerVatFacts | null
+  refusal: string | null
+  original?: { number: string | null; issued_at: string | null; grand_total_minor: string | null } | null
+}> {
   const { items } = await settingsIssuerProfileList(ctx)
+  // A credit note's card names the invoice it reverses by its number and date, never its id.
+  if (params.original_document_id) {
+    const ref = params.original_document_id
+    const [doc] = (await ctx.db.findMany("documents", {
+      where: isUuid(ref) ? { id: ref } : { number: ref },
+      limit: 1,
+    })) as Array<Record<string, unknown>>
+    return {
+      items,
+      buyer: null,
+      refusal: null,
+      original:
+        doc?.type === "invoice"
+          ? {
+              number: str(doc.number),
+              issued_at: doc.issued_at instanceof Date ? doc.issued_at.toISOString() : str(doc.issued_at),
+              grand_total_minor: doc.grand_total_minor == null ? null : String(doc.grand_total_minor),
+            }
+          : null,
+    }
+  }
   const live = items.filter((r) => !r.archived_at)
   const issuer = params.issuer_profile_id
     ? live.find((r) => String(r.id) === params.issuer_profile_id)

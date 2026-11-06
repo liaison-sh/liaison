@@ -194,3 +194,13 @@ A paid order or draft order on an unknown zone waits in deferred_list -> bundled
 A draft order deleted or completed meanwhile closes its wait -> bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:486; bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:561
 An issued document's date stays in its number's year; an invoice or credit note's date stays between its neighbouring numbers and on or before today -> bundled-apps/invoicing/src/mutations/documents-update.ts:330
 A date picked on a new quote, proforma or purchase order decides its number year; after today is refused; a shop-linked quote takes its draft order's day -> bundled-apps/invoicing/src/mutations/stated-issue-date.ts:13; bundled-apps/invoicing/src/ui/Editor.tsx:803
+The PDF tab frames the document where the browser has a PDF viewer -> bundled-apps/invoicing/src/ui/DocumentDetail.tsx:772
+credit note approval card states total, lines, date, original -> bundled-apps/invoicing/src/approval-cards.ts:334
+Preview and Download say why when a PDF cannot open; pending offers Retry render -> bundled-apps/invoicing/src/ui/DocumentDetail.tsx:338
+The editor says under Issue date when a chosen date would be refused -> bundled-apps/invoicing/src/ui/Editor.tsx:815
+A credit note cannot predate the invoice it corrects, stated or moved; an import keeps its date -> bundled-apps/invoicing/src/mutations/stated-issue-date.ts:45; bundled-apps/invoicing/src/mutations/documents-update.ts:322; bundled-apps/invoicing/src/import-kind.ts:336
+credit note total must be negative, zero only against a zero invoice, refused before parking -> bundled-apps/invoicing/src/mutations/credit-notes.ts:110
+positive line allowed against a larger negative one -> bundled-apps/invoicing/src/mutations/credit-notes.ts:110
+minor-unit amount is a whole number, refusal says what to send -> packages/app-sdk/src/minor-amount.ts:15
+card that meets an unreadable amount says refused, prints no total -> bundled-apps/invoicing/src/approval-cards.ts:159
+imported credit note keeps its source's sign -> bundled-apps/invoicing/src/import-kind.ts:238

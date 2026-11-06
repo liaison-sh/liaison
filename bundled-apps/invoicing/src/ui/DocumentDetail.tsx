@@ -335,6 +335,13 @@ export interface PdfAffordance {
   statusLabel: string
 }
 
+/** What the header's Preview and Download say when there is no PDF to open. */
+export function pdfNotReadyNote(s: PdfStatus | undefined | null): string {
+  return s === "failed"
+    ? tr("This PDF could not be rendered. Use Retry render on the PDF tab.")
+    : tr("This PDF is not ready yet. If it stays that way, use Retry render on the PDF tab.")
+}
+
 export function pdfStatusAffordance(s: PdfStatus | undefined | null): PdfAffordance {
   switch (s) {
     case "ready":
@@ -352,8 +359,9 @@ export function pdfStatusAffordance(s: PdfStatus | undefined | null): PdfAfforda
         statusLabel: "Render failed",
       }
     case "pending":
+      // Normally a moment. A render that never ran stays pending until someone asks for it again.
       return {
-        showRetry: false,
+        showRetry: true,
         downloadEnabled: false,
         showA3SkippedNote: false,
         statusLabel: "Rendering…",
@@ -769,6 +777,11 @@ async function fetchPdfBlobUrl(documentId: string): Promise<string | null> {
   }
 }
 
+/** False in a browser that downloads a PDF instead of showing it, such as most phones. */
+function hasPdfViewer(): boolean {
+  return typeof navigator === "undefined" || navigator.pdfViewerEnabled !== false
+}
+
 function PdfBody(p: {
   doc: DocumentSummary
   affordance: PdfAffordance
@@ -836,17 +849,24 @@ function PdfBody(p: {
       </Show>
       <Show when={embed()}>
         {(url) => (
-          <object
-            data-testid="document-detail-pdf-embed"
-            data={url()}
-            type="application/pdf"
-            class="w-full flex-1 rounded-md border border-border-subtle"
-            style={{ "min-height": "70vh", width: "100%" }}
+          <Show
+            when={hasPdfViewer()}
+            fallback={
+              <div data-testid="document-detail-pdf-unavailable" class="p-3 text-text-tertiary">
+                {tr("Inline preview unavailable: use Preview or Download above.")}
+              </div>
+            }
           >
-            <div class="p-3 text-text-tertiary">
-              {tr("Inline preview unavailable: use Preview or Download above.")}
-            </div>
-          </object>
+            {/* A frame, not a plugin element: the app's CSP allows no plugin content (object-src 'none'),
+                and allows a frame from a blob: URL, which only this page can make. */}
+            <iframe
+              data-testid="document-detail-pdf-embed"
+              src={url()}
+              title={tr("PDF preview")}
+              class="w-full flex-1 rounded-md border border-border-subtle"
+              style={{ "min-height": "70vh", width: "100%" }}
+            />
+          </Show>
         )}
       </Show>
     </div>
@@ -974,13 +994,16 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
   // navigation carries no credentials and the file route answers
   // {"error":"Unauthorized"}. A page-relative fetch is wrong too: under the
   // desktop or mobile shell it lands on the shell's own index.html.
-  // No-op if the PDF has not rendered yet (the tool returns url: null).
+  // Says so if the PDF has not rendered yet (the tool returns url: null).
   const openPdf = async (tool: string, mode: "preview" | "download") => {
     try {
       const res = await app.invokeTool<{ file_id: string | null; url: string | null }>(tool, {
         id: props.documentId,
       })
-      if (!res?.url) return
+      if (!res?.url) {
+        showActionNote({ text: pdfNotReadyNote(data()?.document?.pdf_status), isError: false })
+        return
+      }
       const blob = await fetchBlob(res.url)
       // Force the PDF mime so the browser renders a preview tab instead of
       // downloading (the inline route serves non-image mimes as attachment).

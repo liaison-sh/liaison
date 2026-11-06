@@ -148,7 +148,7 @@ import { isAppUnavailableFor, primeOrgApps } from "~/modules/apps/org-apps"
 import { isVisitorDemoOrgId } from "~/modules/demo/demo-org"
 import { listMcpTools } from "~/modules/mcp/tool-projection"
 import { liveDesktopConnections } from "~/modules/nodes/presence"
-import { resolveReferenceDisplay } from "~/modules/threads/reference-display"
+import { externalEntitySnippet, resolveReferenceDisplay } from "~/modules/threads/reference-display"
 import { filterByVisibility } from "~/services/security/visibility"
 import { localDateSentence } from "./local-date"
 
@@ -1986,7 +1986,7 @@ Write numbers, amounts and dates the way that language writes them, never as a r
     visibleEntityIds.push(...refEntityIds)
     if (entityDescriptions.length > 0) {
       tailLines.push(
-        `Referenced entities (attached to this chat — when the user says "this ticket" / "this email" / "this thread", resolve it to the matching entity HERE by id; do NOT search for it):\n${entityDescriptions.join("\n")}`,
+        `Referenced entities (opened or attached earlier in this chat: "this ticket" / "this email" with no record named as open below is one of these, by id; do NOT search for it):\n${entityDescriptions.join("\n")}`,
       )
     }
   }
@@ -1998,7 +1998,7 @@ Write numbers, amounts and dates the way that language writes them, never as a r
       visibleEntityIds.push(currentView.entityId)
       tailLines.push(
         `The user is currently viewing: ${viewDesc}\n` +
-          'When the user says "this ticket", "this conversation", "this email", "this page", or a similar deictic phrase, they mean THIS entity (or a referenced entity above) — act on its id directly. Do NOT run a search to find what "this" refers to.',
+          '"This", "it" or a similar word means THIS record, over anything earlier in this conversation, unless their message names another: act on its id directly. Do NOT run a search to find it.',
       )
     }
   }
@@ -3446,7 +3446,10 @@ async function loadNavigationContext(
     const display = await withRlsContext(actor, (tx) =>
       resolveReferenceDisplay(tx, { orgId, app, entityType, entityId: currentView.entityId }),
     )
-    return display.snippet ?? null
+    return (
+      display.snippet ??
+      externalEntitySnippet({ orgId, app, entityType, entityId: currentView.entityId })
+    )
   } catch (err) {
     log.warn({ err, currentView }, "Failed to load navigation context — skipping")
     return null

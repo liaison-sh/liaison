@@ -49,6 +49,8 @@ Attendees are not emailed: changes in Liaison do not send Google invitations. On
 
 Ask, for example, "What is on my calendar tomorrow?" or "Book a 30 minute call with orders@resonantaudiolabs.example on Thursday at 10 with a Meet link". The agent can create a real Google Meet link. It cannot create Teams or Zoom links. The calendar tools are not approval-gated, unless your organization adds an approval policy (see [Approve what agents do](../agents/approvals.md)).
 
+Ask "Open the quarter review" and the agent opens the calendar on that event's day, with the event open.
+
 ## Roles and scopes
 
 | Role | Scopes |

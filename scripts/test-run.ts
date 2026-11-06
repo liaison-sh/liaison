@@ -437,6 +437,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/tickets-create-idempotency.integration.test.ts",
             // Mention turns read with the asker's roles (#208); it landed listed by no suite.
             "src/tests/integration/mention-turn-roles.test.ts",
+            // The agent opens a tab: every record kind, under the real row policies.
+            "src/tests/integration/open-any-tab.test.ts",
             // 2a/2b's chat-turn integration tests landed listed by no suite, so
             // the scope-taint and effective-scope oracles ran nowhere.
             // scripts/test-run.suites.test.ts was red on all three.
@@ -562,6 +564,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/invoicing-facturx-issue.test.ts",
             // The issue date and number year at instants set on the host clock, through the sandbox.
             "src/tests/integration/invoicing-issue-date.test.ts",
+            // Minor-unit money through the real sandbox: refused before parking, card equals issue.
+            "src/tests/integration/invoicing-minor-amounts.test.ts",
             // E-invoice send through the einvoicing-pa@1 provider contract (Pennylane fake behind
             // the egress override): approvals, two-phase transmission, webhooks, fault windows.
             "src/tests/integration/einvoicing-send.test.ts",

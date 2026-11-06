@@ -225,4 +225,57 @@ describe("sub-run transcript and card carry the child's scopes", () => {
     },
     TEST_TIMEOUT_MS,
   )
+
+  it(
+    "Invariant K: a mail tool's drafted text stays out of the hidden transcript",
+    async () => {
+      AgentServiceTestAccess.setStreamText(((params: {
+        onStepFinish?: (step: unknown) => Promise<void> | void
+      }) => ({
+        fullStream: (async function* () {
+          await params.onStepFinish?.({
+            text: "Replied.",
+            toolCalls: [
+              {
+                toolCallId: "srt-mail",
+                toolName: "mail__reply",
+                input: { textBody: "OBSIDIANSUBRUNDRAFT" },
+              },
+            ],
+            toolResults: [{ toolCallId: "srt-mail", result: { textBody: "OBSIDIANSUBRUNRESULT" } }],
+            usage: { inputTokens: 1, outputTokens: 1 },
+          })
+          yield { type: "text-delta", text: "Replied." }
+          yield {
+            type: "finish-step",
+            usage: { inputTokens: 1, outputTokens: 1 },
+            finishReason: "stop",
+          }
+          yield { type: "finish", finishReason: "stop" }
+        })(),
+      })) as never)
+      const handle = await spawnAgent({
+        parentRun: { id: null, threadId: parentThreadId, actor: actor(), nestingDepth: 0 },
+        subagentType: agentType,
+        description: "mail redaction",
+        prompt: "reply to it",
+      })
+      await handle.awaitResult()
+      const [run] = await sql<{ thread_id: string }[]>`
+        SELECT thread_id FROM kernel.agent_runs WHERE id = ${handle.runId}`
+      const rows = await waitForRows(
+        () => sql<{ metadata: { toolCalls?: Array<Record<string, unknown>> } | null }[]>`
+          SELECT metadata FROM kernel.messages
+          WHERE thread_id = ${run?.thread_id ?? ""} AND author_type = 'agent'
+          ORDER BY created_at`,
+        1,
+      )
+      const calls = rows[0]?.metadata?.toolCalls ?? []
+      expect(calls.map((c) => c.toolName)).toEqual(["mail__reply"])
+      expect(calls[0]?.args).toMatchObject({ redacted: true, redactedFields: ["textBody"] })
+      expect(calls[0]?.result).toMatchObject({ redacted: true })
+      expect(JSON.stringify(calls)).not.toContain("OBSIDIANSUBRUN")
+    },
+    TEST_TIMEOUT_MS,
+  )
 })

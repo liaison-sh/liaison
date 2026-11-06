@@ -80,11 +80,15 @@ export function contentSecurityPolicy(options: ContentSecurityPolicyOptions = {}
     `img-src 'self' data:${shell ? " blob:" : ""} https:${storageSource}`,
     `connect-src 'self' wss:${storageSource}`,
     `font-src 'self'${shell ? " data:" : ""}`,
-    // The demo door's invisible Turnstile challenge runs in a frame from its
-    // own origin. Only a demo deployment with a site key names it.
+    // Web shell only: a document PDF shows in a frame from a blob: URL this page
+    // made from bytes it fetched (object-src stays 'none'). Such a frame inherits
+    // this policy, so no script of its own runs, and markup cannot make a blob.
+    // 'self' is here because frame-src replaces default-src for frames, as it
+    // did before. The demo door's invisible Turnstile challenge also runs in a
+    // frame from its own origin: only a demo deployment with a site key names it.
     // The managed edition's Billing page embeds its payment frame
     // (LIAISON_PAY_FRAME_ORIGIN); no other edition names it.
-    ...(frameSources ? [`frame-src 'self'${frameSources}`] : []),
+    ...(shell ? [`frame-src 'self' blob:${frameSources}`] : []),
     "frame-ancestors 'none'",
     "object-src 'none'",
     "base-uri 'self'",

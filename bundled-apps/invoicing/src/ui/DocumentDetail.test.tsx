@@ -19,6 +19,7 @@ import {
   BUILT_IN_TABS,
   mergeTabs,
   FOOTER_ACTIONS,
+  pdfNotReadyNote,
   pdfStatusAffordance,
   isEditableDocumentStatus,
   shopifyOrderUrl,
@@ -31,6 +32,7 @@ import {
   toLoadedDocument,
 } from "./DocumentDetail"
 import manifest from "../../app.manifest.json"
+import { FR as fr } from "./i18n-fr"
 
 const source = readFileSync(join(import.meta.dir, "DocumentDetail.tsx"), "utf-8")
 
@@ -160,15 +162,29 @@ describe("DocumentDetail (Phase 17 F3)", () => {
     })
   })
 
+  it("pdfNotReadyNote() says what is happening when a PDF cannot open yet", () => {
+    expect(pdfNotReadyNote("pending")).toBe(
+      "This PDF is not ready yet. If it stays that way, use Retry render on the PDF tab.",
+    )
+    expect(pdfNotReadyNote("failed")).toBe("This PDF could not be rendered. Use Retry render on the PDF tab.")
+    expect(pdfNotReadyNote(undefined)).toBe(pdfNotReadyNote("pending"))
+    // A calm note, in the app's other language too.
+    for (const s of ["pending", "failed"] as const) expect(fr[pdfNotReadyNote(s)]).toBeTruthy()
+  })
+
+  it("a PDF that cannot open says so, instead of doing nothing", () => {
+    expect(source).toMatch(/if \(!res\?\.url\) \{\s*showActionNote\(\{ text: pdfNotReadyNote\(/)
+  })
+
   it("pdfStatusAffordance() respects the four declared states", () => {
     // Failed → retry button present, download disabled
     const failed = pdfStatusAffordance("failed")
     expect(failed.showRetry).toBe(true)
     expect(failed.downloadEnabled).toBe(false)
 
-    // Pending → no retry, download disabled (still rendering)
+    // Pending → retry offered (a render that never ran stays pending until someone asks), download disabled
     const pending = pdfStatusAffordance("pending")
-    expect(pending.showRetry).toBe(false)
+    expect(pending.showRetry).toBe(true)
     expect(pending.downloadEnabled).toBe(false)
 
     // Ready → no retry, download enabled
@@ -299,8 +315,11 @@ describe("DocumentDetail (Phase 17 F3)", () => {
 
   // ── Inline PDF preview (PDF tab) ─────────────────────────────────────────
   describe("Inline PDF preview", () => {
-    it("source fetches the PDF inline bytes through the host fetchBlob and creates a blob URL for the <object> embed", () => {
+    it("source fetches the PDF inline bytes through the host fetchBlob and creates a blob URL for the embed", () => {
       expect(source).toContain("document-detail-pdf-embed")
+      // The CSP has object-src 'none': a plugin element can never show it.
+      expect(source).not.toMatch(/<object\b/)
+      expect(source).toMatch(/<iframe\s+data-testid="document-detail-pdf-embed"/)
       expect(source).toContain("fetchPdfBlobUrl")
       expect(source).toContain("documents_preview_pdf")
       expect(source).toContain("fetchBlob(res.url)")

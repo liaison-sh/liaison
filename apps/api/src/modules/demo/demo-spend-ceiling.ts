@@ -107,18 +107,16 @@ export const RESERVED_STEPS_IN_FLIGHT = 2
 // derives every price the budget reserves and settles with, from dated
 // sources, so a number can be checked rather than trusted.
 //
-// ── THE MODEL (checked 2026-10-23) ─────────────────────────────────────────
-// `deepseek/deepseek-v4.1-flash`, the DeepSeek chat model OpenRouter lists
-// with tools, `reasoning` and `max_tokens` among its supported parameters. Raw
-// row from https://openrouter.ai/api/v1/models (public, no key), 2026-10-23:
-//   {"id":"deepseek/deepseek-v4.1-flash","context_length":1048576,
-//    "pricing":{"prompt":"0.0000003","completion":"0.0000012",
-//               "input_cache_read":"0.000000006"}}
-// i.e. per 1M tokens: input 0.30 USD, cached input 0.006 USD, output 1.20 USD.
-// No time-of-day `overrides` on this id (the dated `-1017` snapshot has them,
-// and its peak price equals this one). These ARE the worst prices: every box
-// key chat request carries them as OpenRouter's `provider.max_price`
-// (openrouter.ts), so no upstream provider dearer than this row may serve it.
+// ── THE MODEL (checked 2026-11-06) ─────────────────────────────────────────
+// `deepseek/deepseek-v4.1-flash-1017`, the dated DeepSeek chat snapshot
+// OpenRouter lists with tools, `reasoning` and `max_tokens` among its supported
+// parameters. From https://openrouter.ai/api/v1/models (public, no key),
+// 2026-11-06: per 1M tokens, input 0.15 USD, cached input 0.003 USD, output
+// 0.60 USD, with `overrides` doubling all three on weekdays 01:00-04:00 and
+// 06:00-10:00 UTC: input 0.30 USD, cached input 0.006 USD, output 1.20 USD.
+// The peak row IS the worst price: every box key chat request carries it as
+// OpenRouter's `provider.max_price` (openrouter.ts), so no upstream provider
+// dearer than this row may serve it.
 //
 // ── THE RATE (checked 2026-10-23) ──────────────────────────────────────────
 // ECB euro foreign exchange reference rate, USD, 2026-10-22 (the latest
@@ -174,7 +172,7 @@ export const RESERVED_STEPS_IN_FLIGHT = 2
 // held 17,136 + 6,694 µEUR while it ran.
 
 /** Pinned visitor model (OpenRouter id), as the env default names it. */
-export const VISITOR_MODEL_UPSTREAM_DEFAULT = "deepseek/deepseek-v4.1-flash"
+export const VISITOR_MODEL_UPSTREAM_DEFAULT = "deepseek/deepseek-v4.1-flash-1017"
 
 /** The pinned model's catalogue prices, USD per 1M tokens (see THE MODEL). */
 export const VISITOR_INPUT_USD_PER_M = 0.3

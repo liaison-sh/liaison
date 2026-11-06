@@ -386,11 +386,15 @@ async function createDraft(
  * nor read back the persisted lines (the export multi-step scenarios stalled here).
  */
 function serializeDraftRow(d: DraftRow): Omit<DraftRow, "lines"> & {
-  lines: Array<Omit<DraftLine, "unit_price_minor"> & { unit_price_minor: string }>
+  lines: Array<Omit<DraftLine, "unit_price_minor" | "discount_minor"> & { unit_price_minor: string; discount_minor?: string }>
 } {
   return {
     ...d,
-    lines: d.lines.map((l) => ({ ...l, unit_price_minor: l.unit_price_minor.toString() })),
+    lines: d.lines.map(({ unit_price_minor, discount_minor, ...line }) => ({
+      ...line,
+      unit_price_minor: unit_price_minor.toString(),
+      ...(discount_minor == null ? {} : { discount_minor: discount_minor.toString() }),
+    })),
   }
 }
 
@@ -518,7 +522,7 @@ async function updateDraft(
     }
   }
   if (lines) {
-    const normalised = normaliseDraftLines(lines)
+    const normalised = normaliseDraftLines(lines, "patch.lines")
     // A drafts_update line replacement is typed input exactly like drafts_create's `items` (the
     // manifest documents ONE rule for typed prices on quote/proforma/PO lines, with no carve-out
     // for update): under an issuer with `prices_include_tax`, the price the caller put in the

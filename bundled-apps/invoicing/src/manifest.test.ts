@@ -1469,7 +1469,19 @@ describe("invoicing manifest", () => {
     // any approval is parked. The app's own install resolves the control-plane contract through an
     // override (the shared package depends on it by workspace protocol).
     // 0.20.40: above 0.20.39, so an instance on either line of work upgrades; no change of its own.
-    expect(m.version).toBe("0.20.40")
+    // 0.20.40: credit note and purchase order cards state the amount, lines and date when the host
+    //   parks the call (an org policy, what the turn read), not only when the handler does.
+    // 0.20.41: search words for credit note, refund and quote tools.
+    // 0.20.42: record pages name the entity their id belongs to.
+    // 0.20.43: the PDF tab shows the document in a frame, which the CSP allows, not an <object>.
+    // 0.20.44: a credit note is never dated before the invoice it corrects, stated or moved.
+    // 0.20.45: Preview and Download say why when a PDF cannot open, a pending PDF offers Retry render,
+    // and the editor says beside the field when a chosen issue date would be refused.
+    // 0.20.46: those notes reach a French reader in French.
+    // 0.20.47: a minor-unit amount is a whole number, a credit note's total is negative, and the card
+    //   states the total that issues.
+    // 0.20.48: above both lines of work, which each changed it under the number before; no change of its own.
+    expect(m.version).toBe("0.20.48")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

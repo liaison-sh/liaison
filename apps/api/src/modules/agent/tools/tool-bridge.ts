@@ -27,7 +27,11 @@ import {
 } from "~/modules/agent/runtime/run-context"
 import { turnToolScopes } from "~/modules/agent/scopes/effective-scope"
 import { checkToolScopes } from "~/modules/agent/scopes/required-scopes"
-import { checkToolScopeTaint, isPlatformTaintRefusal } from "~/modules/agent/scopes/scope-taint"
+import {
+  checkToolScopeTaint,
+  isPlatformTaintRefusal,
+  wasRefusedBeforeRun,
+} from "~/modules/agent/scopes/scope-taint"
 import { watchTaintMarks } from "~/modules/agent/scopes/taint"
 import { isHostOnlyParam, stripHostOnlyParams } from "~/modules/agent/tools/host-only-params"
 import { toJsonValue, toolFailureModelOutput } from "~/modules/agent/tools/tool-failure-output"
@@ -514,6 +518,8 @@ async function executeWrapper(
   signal?: AbortSignal,
   /** The agent step this call belongs to (`toolStepKey`). */
   stepKey: string = toolStepKey(undefined),
+  /** The platform turned this call down before its handler ran: it read nothing. */
+  onRefusedBeforeRun?: () => void,
 ): Promise<unknown> {
   // Circuit breaker: once a tool has failed non-retryably TERMINAL_FAILURE_LIMIT
   // times this run, refuse further calls to it without executing. The refusal is
@@ -616,6 +622,7 @@ async function executeWrapper(
       visitor: currentRunContext()?.visitorTurn === true,
     })
   } catch (err) {
+    if (wasRefusedBeforeRun(err, toolName)) onRefusedBeforeRun?.()
     // Tool scope denials surface as a thrown plain Error with status:403 +
     // code:"forbidden" + message:"missing scope: <scope>" (executeTool wraps the
     // `{ error: { code:"forbidden", message:"missing scope: ..." } }` core result).
@@ -1022,6 +1029,7 @@ export function buildToolSet(
         // (the MCP gateway) evaluates no taint.
         const accumulator = runFrame?.turnScopeAccumulator
         const touchedBefore = accumulator?.snapshot()
+        let refusedBeforeRun = false
         const invokeWith = async (callArgs: unknown) => {
           const run = () =>
             executeWrapper(
@@ -1033,6 +1041,9 @@ export function buildToolSet(
               sid,
               runFrame?.turnRecord?.toolSignal ?? opts?.abortSignal,
               stepKey,
+              () => {
+                refusedBeforeRun = true
+              },
             )
           const framed = () => (runFrame ? runContextStore.run(runFrame, run) : run())
           // Whether this call marked the turn as having read outside text, for its stored record.
@@ -1170,7 +1181,7 @@ export function buildToolSet(
         // decision), so the staging call records no taint. The write itself is
         // still judged: the approval row carries `proposing_turn_scopes` and the
         // approved re-entry writes with them.
-        if (!isParkedForApproval(result)) recordTurnScopes()
+        if (!isParkedForApproval(result) && !refusedBeforeRun) recordTurnScopes()
         // The two-phase mailbox read protocol (blueprint Task 9.2). This is the
         // ONLY place in the chain that can suspend a turn: the sandbox cannot
         // (5 s budget, a timeout kills the worker) and the stream loop cannot

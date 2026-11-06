@@ -18,7 +18,11 @@ import {
   runWithToolCallScopesBefore,
 } from "~/modules/agent/runtime/run-context"
 import { checkToolScopes, resolveRequiredScopes } from "~/modules/agent/scopes/required-scopes"
-import { checkToolScopeTaint, isPlatformTaintRefusal } from "~/modules/agent/scopes/scope-taint"
+import {
+  checkToolScopeTaint,
+  isPlatformTaintRefusal,
+  wasRefusedBeforeRun,
+} from "~/modules/agent/scopes/scope-taint"
 import { watchTaintMarks } from "~/modules/agent/scopes/taint"
 import { hostMayTaint } from "~/modules/agent/scopes/taint-exemptions"
 import { projectTaintScopesForOrg } from "~/modules/agent/scopes/taint-read-scopes"
@@ -629,10 +633,11 @@ export async function handleToolCall(
   // Recorded for a call that throws too: it may have read something before it
   // failed, so it still counts toward the turn's scope set. A taint-free kernel
   // tool (catalog, capability listing, navigation) reads no org data and records
-  // nothing. Two calls record NOTHING because they never ran at all
+  // nothing. Three calls record NOTHING because they never ran at all
   // (`persistWindowOnly` / `persistRefusedByPlatform` below): a gated call parked
-  // for approval, and a call the PLATFORM refused by scope taint, before the
-  // dispatch or at it (a handler returning the same code is not a refusal). Recording a refused
+  // for approval, a call the PLATFORM refused by scope taint, before the
+  // dispatch or at it (a handler returning the same code is not a refusal), and a
+  // call it refused for a missing scope or bad parameters. Recording a refused
   // write's own scope renewed the per-agent window on every retry, so the block
   // renewed itself; the in-app bridge still counts it, but its turn ends with the
   // reply. Every path still writes the set back, which refreshes the sliding
@@ -901,8 +906,10 @@ export async function handleToolCall(
       } else {
         // Only the dispatch's own refusal skips the record: a handler that returns the
         // same code has run, and records like any other call.
-        if (isPlatformTaintRefusal(err)) await persistRefusedByPlatform()
-        else await recordTurnScopes()
+        // Nor does a call the platform refused before its handler ran: it read nothing.
+        if (isPlatformTaintRefusal(err) || wasRefusedBeforeRun(err, canonical)) {
+          await persistRefusedByPlatform()
+        } else await recordTurnScopes()
         throw err
       }
     }

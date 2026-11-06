@@ -250,10 +250,10 @@ describe("web shell security headers and path containment", () => {
     expect(r?.headers.get("strict-transport-security")).toContain("max-age=")
   })
 
-  it("sends a CSP that forbids framing and pins the shell's inline script by hash only", async () => {
+  it("sends a CSP that forbids framing by another origin and pins the shell's inline script by hash only", async () => {
     const r = await serveSpaFallback(publicDir)
     const csp = r?.headers.get("content-security-policy") ?? ""
-    expect(csp).toContain("frame-ancestors 'none'")
+    expect(csp).toContain("frame-ancestors 'self'")
     expect(csp).toContain("object-src 'none'")
     const hash = createHash("sha256").update(themeScript).digest("base64")
     const scriptSrc = csp.split("; ").find((d) => d.startsWith("script-src")) ?? ""
@@ -271,7 +271,7 @@ describe("web shell security headers and path containment", () => {
     expect(notModified?.status).toBe(304)
     expect(notModified?.headers.get("x-frame-options")).toBe("DENY")
     const byName = await serveStaticAsset(publicDir, "/index.html")
-    expect(byName?.headers.get("content-security-policy")).toContain("frame-ancestors 'none'")
+    expect(byName?.headers.get("content-security-policy")).toContain("frame-ancestors 'self'")
   })
 
   it("gives static assets nosniff and DENY, without a document CSP", async () => {

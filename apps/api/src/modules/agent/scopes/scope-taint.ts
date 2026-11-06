@@ -696,6 +696,33 @@ export function isPlatformTaintRefusal(value: unknown): boolean {
 }
 
 /**
+ * A CALL THE PLATFORM TURNED DOWN BEFORE ITS HANDLER RAN read nothing, so it adds nothing to a
+ * turn's taint. A person without the scope, or arguments that fail the schema: recording the
+ * tool's scopes for those tainted the session with what the person may not read, and every later
+ * write was refused for scopes nobody had touched.
+ *
+ * Marked as the taint refusal above is, so a handler cannot claim it. The mark names the tool
+ * refused: a handler that ran and lets a nested call's refusal reach its caller carries the
+ * nested tool's name, and its own read still counts.
+ */
+const REFUSED_BEFORE_RUN: unique symbol = Symbol("liaison.refusedBeforeRun")
+
+/** Mark an error object (or a thrown Error) as `toolName`'s refusal before its handler ran. */
+export function markRefusedBeforeRun<T extends object>(value: T, toolName: string): T {
+  Object.defineProperty(value, REFUSED_BEFORE_RUN, { value: toolName, enumerable: false })
+  return value
+}
+
+/** True only when `toolName` itself was marked by `markRefusedBeforeRun`. */
+export function wasRefusedBeforeRun(value: unknown, toolName: string): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { [REFUSED_BEFORE_RUN]?: unknown })[REFUSED_BEFORE_RUN] === toolName
+  )
+}
+
+/**
  * Where a turn's scoped reads came from: for each table, the row ids the turn read out of it.
  * The same-resource allowance (A46) is decided against this map and nothing else.
  */

@@ -74,7 +74,11 @@ export function contentSecurityPolicy(options: ContentSecurityPolicyOptions = {}
     // did before. The demo door's invisible Turnstile challenge also runs in a
     // frame from its own origin: only a demo deployment with a site key names it.
     ...(shell ? [`frame-src 'self' blob:${turnstileSource}`] : []),
-    "frame-ancestors 'none'",
+    // The blob frame above inherits this directive too, and WebKit applies it to the blob
+    // itself: under 'none' the frame stayed empty there. So the web shell says 'self': another
+    // origin still cannot frame it, an app's frame is a sandbox with an opaque origin, and the
+    // file routes never serve HTML inline. Everything else keeps 'none'.
+    `frame-ancestors ${shell ? "'self'" : "'none'"}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

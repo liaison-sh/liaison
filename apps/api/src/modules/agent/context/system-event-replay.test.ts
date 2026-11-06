@@ -46,6 +46,25 @@ describe("the decision lifecycle reaches the agent's transcript", () => {
     )
   })
 
+  it("a failed approval says it was approved, attempted and failed, and why (walk N3)", () => {
+    const line = systemEventLine({
+      content: "Handler failed: issued_at is before the last number. Request reverted to pending.",
+      metadata: {
+        type: "approval-error",
+        requestHandle: "request-24",
+        toolName: "invoicing__credit_note_create_and_issue",
+        error: { code: "issue_date_before_last_number", message: "issued_at is before" },
+      },
+    })
+    expect(line).toContain(
+      "approval request request-24 (invoicing__credit_note_create_and_issue) was approved and its call was attempted, but the call failed",
+    )
+    expect(line).toContain("issued_at is before the last number")
+    expect(line).toContain("Request reverted to pending.")
+    // A handler's message may quote outside text: fenced, like an approved call's output.
+    expect(line).toContain('<external-content source="untrusted">')
+  })
+
   it("an older decision row without handle or tool still reads as a decision", () => {
     expect(
       systemEventLine({

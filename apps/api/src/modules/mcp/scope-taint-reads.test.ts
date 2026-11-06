@@ -26,6 +26,7 @@ import { z } from "zod"
 import { sql } from "~/db"
 import { redis } from "~/lib/redis"
 import { toolRegistry } from "~/modules/apps/app-registries"
+import { executeTool } from "~/modules/apps/execute-tool"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import {
   MCP_ACCESS_TOKEN_TTL_SECONDS,
@@ -134,6 +135,42 @@ function registerKpi(orgId: string) {
   }
 }
 
+/** A read the seeded person lacks, one that fails once it ran, one whose nested call is refused. */
+function registerLocked(orgId: string) {
+  const read = (name: string, requiredScopes: string[], handler: () => Promise<unknown>) =>
+    toolRegistry.set([orgId, "test", name], {
+      appName: "test",
+      name,
+      description: name,
+      requiredScopes,
+      readOnly: true,
+      params: z.object({}).passthrough(),
+      handler,
+    } as never)
+  read("locked_read", ["test:locked:read"], async () => {
+    ran.push("locked_read")
+    return { secret: true }
+  })
+  read("throwing_read", ["test:items:read"], async () => {
+    throw new Error("boom after reading")
+  })
+  read("nesting_read", ["test:items:read"], async () => {
+    ran.push("nesting_read")
+    await executeTool({
+      toolName: "test:locked_read",
+      orgId,
+      actor: userContextFor(orgId, crypto.randomUUID(), []),
+      params: {},
+      origin: "mcp",
+    })
+    return { ok: true }
+  })
+}
+
+async function taintWindow(orgId: string, agentId: string): Promise<string[]> {
+  return JSON.parse((await redis.get(mcpTurnTaintKey(orgId, agentId))) ?? "[]")
+}
+
 /** A fresh ctx per call: the streamable-HTTP transport rebuilds it on every POST. */
 function postCtx(
   seed: { orgId: string; ownerId: string; scopes: string[] },
@@ -218,6 +255,66 @@ describe("mcp scope taint: reads, gated writes and the per-scope window", () => 
     const out = gated.structuredContent as { gated?: boolean; executed?: boolean }
     expect(out.gated).toBe(true)
     expect(out.executed).toBe(false)
+  }, 30_000)
+
+  // Walk N5: a read refused for a missing scope, then a write. Nothing had been read, yet the
+  // session was tainted with scopes the person lacks, and the write was refused for good.
+  it("a read refused for a missing scope adds no taint, and later writes run", async () => {
+    const { seed, agentId, post } = await seedAgentBound()
+    orgs.push(seed.orgId)
+    ran.length = 0
+    registerLocked(seed.orgId)
+
+    const refused = await handleToolCall(post(), "test__locked_read", {})
+    expect(codeOf(refused)).toBe("forbidden")
+    expect(ran).toEqual([])
+    expect(await taintWindow(seed.orgId, agentId)).toEqual([])
+
+    const write = await handleToolCall(post(), "test__createItem", mutatingTicketTool.validParams)
+    expect(codeOf(write)).not.toBe("E_SCOPE_TAINT_BLOCKED")
+    expect(write.isError).toBeFalsy()
+    expect(await taintWindow(seed.orgId, agentId)).not.toContain("test:locked:read")
+  }, 30_000)
+
+  it("a call refused for bad parameters adds no taint", async () => {
+    const { seed, agentId, post } = await seedAgentBound()
+    orgs.push(seed.orgId)
+    const refused = await handleToolCall(post(), "test__createItem", { nope: true })
+    expect(codeOf(refused)).toBe("invalid_params")
+    expect(await taintWindow(seed.orgId, agentId)).toEqual([])
+  }, 30_000)
+
+  it("a refused read keeps the taint already there: nothing is dropped, nothing is added", async () => {
+    const { seed, agentId, post } = await seedAgentBound()
+    orgs.push(seed.orgId)
+    registerLocked(seed.orgId)
+    await handleToolCall(post(), "test__listItems", {})
+    const before = await taintWindow(seed.orgId, agentId)
+    expect(before).toContain("test:items:read")
+    await handleToolCall(post(), "test__locked_read", {})
+    expect(await taintWindow(seed.orgId, agentId)).toEqual(before)
+    // And the earlier read still parks the write.
+    const write = await handleToolCall(post(), "test__createItem", mutatingTicketTool.validParams)
+    expect((write.structuredContent as { gated?: boolean }).gated).toBe(true)
+  }, 30_000)
+
+  it("a read whose handler ran and threw still taints: it may have read before it failed", async () => {
+    const { seed, agentId, post } = await seedAgentBound()
+    orgs.push(seed.orgId)
+    registerLocked(seed.orgId)
+    const failed = await handleToolCall(post(), "test__throwing_read", {})
+    expect(failed.isError).toBe(true)
+    expect(await taintWindow(seed.orgId, agentId)).toContain("test:items:read")
+  }, 30_000)
+
+  it("a handler that ran does not escape taint by passing on a nested call's refusal", async () => {
+    const { seed, agentId, post } = await seedAgentBound()
+    orgs.push(seed.orgId)
+    registerLocked(seed.orgId)
+    const failed = await handleToolCall(post(), "test__nesting_read", {})
+    expect(failed.isError).toBe(true)
+    expect(ran).toContain("nesting_read")
+    expect(await taintWindow(seed.orgId, agentId)).toContain("test:items:read")
   }, 30_000)
 
   it("a scope ages out a window after its last read; until then an ungated write parks for approval", async () => {

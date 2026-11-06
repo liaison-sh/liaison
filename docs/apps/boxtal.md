@@ -175,7 +175,7 @@ Tools marked "Always" file an approval and nothing happens until a person approv
 | `track`, `get_shipment`, `get_documents` | Tracking, live status, labels and customs documents | No |
 | `search`, `queue_counts`, `to_prepare_list`, `ready_list`, `returns_list`, `exceptions_list`, `stuck_list` | Find shipments and read the queues | No |
 | `prep_list`, `prep_sync`, `prep_unlinked_list`, `prep_order_prefill`, `prep_document_pdf` | Read and refresh the To prepare queue | No |
-| `prep_set_status`, `prep_set_category`, `prep_select_offer`, `prep_set_note`, `prep_exclude`, `prep_restore`, `prep_add_shipment` | Work queue rows | No |
+| `prep_set_status`, `prep_set_category`, `prep_select_offer`, `prep_set_note`, `prep_exclude`, `prep_restore`, `prep_add_shipment` | Work queue rows. A row given by `document_ref` must name an existing invoicing document (id or number), else the call is refused as `document_not_found` | No |
 | `prep_set_address_choice` | Pick the order's address or the verified one when they differ | Always for an agent |
 | `ready_set_packed` | Tick a parcel packed, which fulfils the Shopify order | No |
 | `print_pack`, `print_pack_batch` | Prepare print documents | No |

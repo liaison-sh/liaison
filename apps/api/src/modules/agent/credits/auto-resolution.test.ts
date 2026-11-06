@@ -151,12 +151,12 @@ describe("Auto's resolution matrix", () => {
     })
 
     it("a turn on Auto runs on OpenRouter's default model, on the org's own key", async () => {
-      expect(OPENROUTER_AUTO_DEFAULT_KEY).toBe("openrouter/deepseek/deepseek-v4.1-flash")
+      expect(OPENROUTER_AUTO_DEFAULT_KEY).toBe("openrouter/deepseek/deepseek-v4.1-flash-1017")
       const res = await preCheck(OR_ONLY, null, { turn: true })
       if (!res.allowed) throw new Error(res.reason)
       expect(res.model.provider).toBe("openrouter")
       expect(res.model.modelId).toBe(OPENROUTER_AUTO_DEFAULT_KEY)
-      expect(res.model.upstreamId).toBe("deepseek/deepseek-v4.1-flash")
+      expect(res.model.upstreamId).toBe("deepseek/deepseek-v4.1-flash-1017")
       expect(res.keySource).toBe("byok")
       expect(res.providerKey).toBe(`key-openrouter-${OR_ONLY.slice(-4)}`)
       // The default is now an added model the admin sees, and it is Auto.

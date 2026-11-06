@@ -153,10 +153,9 @@ export function appOfSdkToolName(name: string): string {
 }
 
 /**
- * The property names of a tool's input schema, in the forms the tool bridge
- * hands out (`providerInputSchemaOf`): a Zod object, or the SDK's `Schema` when
- * the JSON projection had to be rewritten for providers. A bare JSON Schema
- * object counts too.
+ * The property names of a tool's input schema, in the forms a tool can hold:
+ * the SDK's `Schema` the bridge hands a model (`providerInputSchemaOf`), a Zod
+ * object, or a bare JSON Schema object.
  */
 function inputPropertyNames(inputSchema: unknown): string[] {
   const schema = inputSchema as

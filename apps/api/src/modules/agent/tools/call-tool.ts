@@ -53,12 +53,19 @@ export async function handleCallTool(
   const held = [...(frame?.turnToolNames ?? [])]
   const resolution = resolveHeldToolName(params.name, held)
   if (resolution.kind !== "exact" && resolution.kind !== "resolved") {
-    const candidates =
-      resolution.kind === "ambiguous" ? resolution.candidates : resolution.suggestions
+    if (resolution.kind === "ambiguous") {
+      throw new Error(
+        `No tool is named "${params.name}", and several tools you hold match it: ${resolution.candidates.join(", ")}. Call the one you mean by its exact name through ${CALL_TOOL_SDK_NAME}.`,
+      )
+    }
+    const close =
+      resolution.suggestions.length > 0
+        ? ` Closest names you hold, which may not do the same job: ${resolution.suggestions.join(", ")}.`
+        : ""
     throw new Error(
-      `No tool is named "${params.name}".` +
-        (candidates.length > 0 ? ` Did you mean: ${candidates.join(", ")}?` : "") +
-        ` Load a tool with kernel__tool_search first ("select:<exact name>"), then call it through ${CALL_TOOL_SDK_NAME}.`,
+      `No tool named "${params.name}" is available to you; it may have been renamed or replaced by another tool.${close} ` +
+        `To find the tool for the job, describe the job in words with kernel__tool_search (for example "mail sync status"), then call what it returns through ${CALL_TOOL_SDK_NAME}. ` +
+        `"select:<exact name>" only works for a name that search has returned.`,
     )
   }
   const name = resolution.name

@@ -29,8 +29,6 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   quoted_price_required: 400,
   content_code_required: 400,
   no_items: 400,
-  // pick_shipment_address: a choice other than "order" or "verified".
-  invalid_choice: 400,
   // set_customs: a unit value that is not a positive number.
   invalid_unit_value: 400,
   // Boxtal refused the route's own data (an invalid postal code for the country).
@@ -71,12 +69,6 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   approval_not_withdrawn: 409,
   confirm_required: 409,
   pending_approval: 409,
-  // The order's ship-to and the customer's verified address differ: the label is held until
-  // someone picks one (address_differs); a pick on a row with nothing to pick, or against a
-  // verified address that moved since the row was read (re-read and pick again).
-  address_differs: 409,
-  address_choice_not_needed: 409,
-  address_choice_stale: 409,
   // Social: the platform's API exposes no like for this item (like_item's
   // stage-time preflight). An expected refusal the agent acts on, not a fault:
   // it answered 500 and read as a server error.
@@ -102,8 +94,6 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   shopify_error: 502,
   // Shopify could not be read, or its fulfil/cancel call threw (fulfillment.ts).
   shopify_unreachable: 502,
-  // The order's address could not be read from Shopify just now, so nothing was bought.
-  order_unreadable: 502,
   unexpected: 502,
   proforma_failed: 502,
   proforma_not_issued: 502,

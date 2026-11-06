@@ -93,6 +93,12 @@ import {
   summarizeSetUserScope,
 } from "~/modules/agent/tools/admin-tools"
 import {
+  aiModelsSetParams,
+  aiModelsSetRefusal,
+  handleAiModelsGet,
+  handleAiModelsSet,
+} from "~/modules/agent/tools/ai-models-tools"
+import {
   handleApprovalUpdatePayload,
   handleApprovalWithdraw,
 } from "~/modules/agent/tools/approval-tools"
@@ -183,6 +189,7 @@ import {
 import { registerImportTools } from "~/modules/agent/tools/import-tools"
 import { KERNEL_RESULT_HINTS, withToolResultHint } from "~/modules/agent/tools/kernel-result-hints"
 import {
+  summarizeAiModelsSet,
   summarizeAppsSetAccess,
   summarizeAppsSetEnabled,
   summarizeCaptureBusinessKnowledge,
@@ -2847,6 +2854,44 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     writesToTable: "kernel.apps",
   })
   registerApprovalSummarizer(orgId, "kernel", "apps_set_access", summarizeAppsSetAccess)
+  toolRegistry.set([orgId, "kernel", "ai_models_get"], {
+    appName: "kernel",
+    name: "ai_models_get",
+    deferLoading: true,
+    description: `Read the organization's AI model settings (admin), the same as Settings > Models: what Auto runs, the default reasoning level, each model with its key, whether it is on and available, its price and reasoning levels. Pass openRouterSearch to also search OpenRouter's catalogue for a model to add with ai_models_set.`,
+    searchKeywords: ["modèle", "raisonnement", "default", "reasoning", "openrouter", "auto", "llm"],
+    requiredScopes: ["kernel:org:admin"],
+    trustBoundary: "user",
+    params: z.object({
+      openRouterSearch: z
+        .string()
+        .trim()
+        .min(1)
+        .max(200)
+        .optional()
+        .describe("Search OpenRouter's catalogue by model name or id, e.g. deepseek."),
+    }),
+    handler: handleAiModelsGet as (p: unknown, c: any) => Promise<unknown>,
+  })
+  toolRegistry.set([orgId, "kernel", "ai_models_set"], {
+    appName: "kernel",
+    name: "ai_models_set",
+    deferLoading: true,
+    description: `Change the organization's default AI model and reasoning level (admin), the same as Settings > Models, for EVERYONE: choose what Auto runs, set the default reasoning level, switch models on or off, add a model from OpenRouter after a test call. Read the keys with ai_models_get first. It changes what the organization pays for and what everything left on Auto runs on. To move Auto to a model not yet in the list, pass addOpenRouterModel and its key as autoModelKey together. A routine or agent pinned to another model stays on it.`,
+    searchKeywords: ["modèle", "raisonnement", "default", "reasoning", "openrouter", "auto", "llm"],
+    requiredScopes: ["kernel:org:admin"],
+    approveScope: "kernel:approve",
+    trustBoundary: "user",
+    gated: true,
+    approvalImpact: "internal",
+    params: aiModelsSetParams,
+    // A request with nothing to do, or on a demo org, answers at once with no card.
+    refuseBeforeGate: aiModelsSetRefusal,
+    handler: handleAiModelsSet as (p: unknown, c: any) => Promise<unknown>,
+    // Writes the ai.models part of kernel.organizations.settings.
+    writesToTable: "kernel.organizations",
+  })
+  registerApprovalSummarizer(orgId, "kernel", "ai_models_set", summarizeAiModelsSet)
   toolRegistry.set([orgId, "kernel", "create_role"], {
     appName: "kernel",
     name: "create_role",

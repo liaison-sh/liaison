@@ -237,7 +237,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | Name | Read in |
 | --- | --- |
 | `ALLOW_PRIVATE_MAIL_HOSTS` | `apps/api/src/modules/apps/sandbox/host-validation.ts:20`, `apps/api/src/modules/apps/sandbox/smtp-bridge.ts:139` |
-| `APP_REGISTRATION_CONCURRENCY` | `apps/api/src/modules/apps/init.ts:775` |
+| `APP_REGISTRATION_CONCURRENCY` | `apps/api/src/modules/apps/init.ts:767` |
 | `APP_WORKER_MAX_EXECS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:68` |
 | `APP_WORKER_MAX_RSS_MB` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:67` |
 | `APP_WORKER_POOL_MAX` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:27` |
@@ -296,7 +296,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `ORG_MAINTENANCE_FLAG_PATH` | `apps/api/src/middleware/org-maintenance.ts:25` |
 | `QA_DRIVE_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/knowledge.ts:79` |
 | `QA_GMAIL_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/rows.ts:462` |
-| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:505`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
+| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:499`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
 | `RECHECK_SYNC_BACKEND` | `apps/api/src/lib/manifest-regex.ts:33` |
 | `ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:61` |
 | `ROUTINE_EVENT_RECONCILE_MAX_RETRIES` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:64` |

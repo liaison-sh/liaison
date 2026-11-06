@@ -2877,7 +2877,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     appName: "kernel",
     name: "ai_models_set",
     deferLoading: true,
-    description: `Change the organization's default AI model and reasoning level (admin), the same as Settings > Models, for EVERYONE: choose what Auto runs, set the default reasoning level, switch models on or off, add a model from OpenRouter after a test call. Read the keys with ai_models_get first. It changes what the organization pays for and what everything left on Auto runs on. To move Auto to a model not yet in the list, pass addOpenRouterModel and its key as autoModelKey together. A routine or agent pinned to another model stays on it.`,
+    description: `Change the organization's default AI model and reasoning level (admin), the same as Settings > Models, for EVERYONE: choose what Auto runs, set the default reasoning level, switch models on or off, add a model from OpenRouter after a test call. Read the keys with ai_models_get first. It changes what the organization pays for and what everything left on Auto runs on. To move Auto to a model not yet in the list, pass addFromOpenRouter and its key as autoModelKey together. A routine or agent pinned to another model stays on it.`,
     searchKeywords: ["modèle", "raisonnement", "default", "reasoning", "openrouter", "auto", "llm"],
     requiredScopes: ["kernel:org:admin"],
     approveScope: "kernel:approve",

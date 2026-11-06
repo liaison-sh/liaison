@@ -36,7 +36,7 @@ export const aiModelsSetParams = z.strictObject({
     .describe("The level of a turn that asks for none; null restores the built-in default."),
   enable: z.array(modelKey).max(50).optional().describe("Model keys to switch on."),
   disable: z.array(modelKey).max(50).optional().describe("Model keys to switch off."),
-  addOpenRouterModel: z
+  addFromOpenRouter: z
     .string()
     .min(1)
     .max(180)
@@ -124,7 +124,7 @@ export async function aiModelsSetRefusal(params: unknown, ctx: AiModelsToolCtx) 
   if (locked) return toolRefusal(locked)
   const parsed = aiModelsSetParams.safeParse(params)
   if (!parsed.success) return null
-  if (parsed.data.addOpenRouterModel || Object.keys(patchOf(parsed.data)).length > 0) return null
+  if (parsed.data.addFromOpenRouter || Object.keys(patchOf(parsed.data)).length > 0) return null
   return { error: "Nothing to change: name at least one setting.", code: "nothing_to_change" }
 }
 
@@ -133,11 +133,11 @@ export async function handleAiModelsSet(params: AiModelsSetParams, ctx: AiModels
   if (locked) return toolRefusal(locked)
 
   let added: string | undefined
-  if (params.addOpenRouterModel) {
-    const key = openRouterModelKey(params.addOpenRouterModel)
+  if (params.addFromOpenRouter) {
+    const key = openRouterModelKey(params.addFromOpenRouter)
     const { models } = await getAiModelsState(ctx.orgId)
     if (!models.some((m) => m.key === key)) {
-      const outcome = await addOpenRouterModel(ctx.orgId, params.addOpenRouterModel)
+      const outcome = await addOpenRouterModel(ctx.orgId, params.addFromOpenRouter)
       if (!outcome.ok) return toolRefusal(outcome)
       added = key
     }

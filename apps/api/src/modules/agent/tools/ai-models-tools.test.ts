@@ -110,7 +110,7 @@ describe("ai_models_get and ai_models_set", () => {
 
   it("adds a model after its test call, makes it Auto and sets the level in one call", async () => {
     const res: any = await handleAiModelsSet(
-      { addOpenRouterModel: UPSTREAM, autoModelKey: KEY, defaultReasoningLevel: "high" },
+      { addFromOpenRouter: UPSTREAM, autoModelKey: KEY, defaultReasoningLevel: "high" },
       admin,
     )
     expect(res).toMatchObject({ added: KEY, autoModelKey: KEY, defaultReasoningLevel: "high" })
@@ -121,7 +121,7 @@ describe("ai_models_get and ai_models_set", () => {
   })
 
   it("adding a model already in the list is not an error", async () => {
-    const res: any = await handleAiModelsSet({ addOpenRouterModel: UPSTREAM }, admin)
+    const res: any = await handleAiModelsSet({ addFromOpenRouter: UPSTREAM }, admin)
     expect(res).toEqual({ added: null })
   })
 

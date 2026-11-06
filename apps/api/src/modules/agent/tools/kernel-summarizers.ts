@@ -71,7 +71,7 @@ export const summarizeAiModelsSet: ApprovalSummarizer = async (raw) => {
   const p = asParams(raw)
   const list = (v: unknown) => (Array.isArray(v) ? v.filter((k) => typeof k === "string") : [])
   const lines: string[] = []
-  const add = text(p.addOpenRouterModel)
+  const add = text(p.addFromOpenRouter)
   if (add) lines.push(`Add ${add} from OpenRouter, after a test call.`)
   if (p.autoModelKey === null) lines.push("Auto goes back to the cheapest model with a key.")
   else if (text(p.autoModelKey)) lines.push(`Auto runs ${text(p.autoModelKey)}.`)

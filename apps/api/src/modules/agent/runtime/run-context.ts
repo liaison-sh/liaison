@@ -169,8 +169,8 @@ export interface RunContext {
   coordinatedBy?: "agent" | "external-app"
   /**
    * True ONLY on the frame of a foreground chat turn a person typed in the app. Absent on a routine
-   * tick, a background / job-driven re-invocation, a sub-run, an agent-to-agent ask and the MCP
-   * gateway's frame. Tools that run code on the person's machine park for approval unless it is set
+   * tick, a background / job-driven re-invocation, a sub-run, an agent-to-agent ask, a restricted
+   * session's message and the MCP gateway's frame. Tools that run code on the person's machine park for approval unless it is set
    * (`isHumanTypedTurn`, scopes/taint.ts). Set at the one place a person's message starts a turn.
    */
   humanTurn?: boolean

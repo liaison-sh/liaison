@@ -40,7 +40,7 @@ The **Approval** column in the tables below uses these values.
 | --- | --- |
 | Yes | The call always becomes an approval request. Nothing runs until a person approves. |
 | When it overwrites | Registering a new sub-agent role runs directly. Replacing an existing one waits for a person. |
-| Owner decides if outside text was read | Only the person's own typed turn may call it. If the turn read text from outside the organization, it becomes an approval that only the owner of the computer can decide. A routine, another agent or an MCP client is refused. |
+| Owner decides if outside text was read | Only the person's own typed turn may call it; a message from a device sign-in does not count as one. If the turn read text from outside the organization, it becomes an approval that only the owner of the computer can decide. A routine, another agent or an MCP client is refused. |
 | Only a change to autonomy | Model, level and effort changes go through the session's own owner confirmation. Switching a session to run on its own takes the same path as starting work on your computer. |
 | No | It runs directly, within the agent's access. |
 

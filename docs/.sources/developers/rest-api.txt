@@ -41,3 +41,4 @@ API key provisioning in the CLI -> docs/provisioning-cli.md:269
 access token refused once its session ends -> apps/api/src/middleware/auth.ts:49
 sign-out revokes the session's access tokens -> apps/api/src/modules/auth/auth.ts:839
 a device sign-in's tool call is judged as a program's -> apps/api/src/modules/apps/rest-tool-call.ts:32-42
+A device sign-in's posted message is not a person typing -> apps/api/src/modules/agent/runtime/agent-service.ts:1931-1938

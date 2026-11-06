@@ -1928,12 +1928,14 @@ async function runAgentChatTurn(
     throw new TurnResumeRefused("model_unavailable")
   }
 
-  // 2a. A person typed this turn: not a routine tick, not background work, not an agent's ask.
+  // 2a. A person typed this turn: not a routine tick, not background work, not an agent's ask,
+  // not a message from a restricted session (a program holding a capped token, session-ceiling.ts).
   const humanTypedTurn =
     !(params.background ?? false) &&
     !params.routineId &&
     !params.coordination &&
-    !params.agentDispatched
+    !params.agentDispatched &&
+    !params.sessionRestricted
 
   // 2b. Acting agent (D2) and this turn's effective scope, for every room kind
   // (channel mention, DM, routine tick). A turn with no resolvable agent leaves
@@ -2285,7 +2287,7 @@ async function runAgentChatTurn(
             : ("external-app" as const),
         }
       : {}),
-    // A person typed this turn: not a routine tick, not background work, not an agent's ask.
+    // See humanTypedTurn above.
     // Code on the person's own machine (run_on_my_computer) runs without an approval only here.
     humanTurn: humanTypedTurn,
     ...(visitorTurn ? { visitorTurn: true } : {}),

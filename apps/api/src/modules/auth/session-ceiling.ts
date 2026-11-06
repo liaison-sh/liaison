@@ -37,6 +37,8 @@
 //
 // A tool run over REST is allowed, and is never read as a person's click: gates,
 // outside-text taint and host rules apply as for an MCP client (apps/rest-tool-call.ts).
+// A message it posts is not a turn a person typed either (agent-service.ts, humanTypedTurn):
+// tools that need one park, and the message does not clear the thread's outside-text mark.
 import type { Context } from "hono"
 import { HTTPException } from "hono/http-exception"
 import type { AppEnv } from "~/app"

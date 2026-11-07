@@ -18,7 +18,7 @@ Every tool has a scope. The agent sees a tool only when the scope is inside its 
 
 ## How an agent finds a tool
 
-Most kernel tools and all app tools are loaded on demand. The agent calls `tool_search` with keywords, or with `select:name` when it knows the exact name, and the matching tools become callable on its next step. `tool_search` needs `kernel:threads:read`. A role agent without that scope has no app tools at all.
+Most kernel tools and all app tools are loaded on demand. The agent calls `tool_search` with keywords, or with `select:name` when it knows the exact name, and the matching tools become callable on its next step. When nothing matches, the search loads nothing and names the apps it can search, with how many tools each has. A `select:` with a bare name that two apps share, such as `refunds_create`, loads neither and lists both, so the agent names the one it means. `tool_search` needs `kernel:threads:read`. A role agent without that scope has no app tools at all.
 
 A conversation keeps the same tool list from its first turn to its last, so the model provider can reuse its cached copy of the conversation. A tool loaded later is not added to that list: its description and parameters arrive in the conversation, and the agent calls it through `call_tool` with the tool's name and arguments. When the arguments do not fit, `call_tool` answers with the tool's name and the parameters it expects. When the name is no tool the agent can call, for instance one that was replaced by another, `call_tool` says so and points at a `tool_search` by the job in words, since `select:name` only works for a name that a search has returned.
 

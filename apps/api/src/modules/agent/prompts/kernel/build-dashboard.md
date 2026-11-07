@@ -1,7 +1,7 @@
 ---
 name: build-dashboard
 type: skill
-description: Build a dashboard, chart, graph, KPI, report or tableau de bord from the org's data (sales by day, orders count, top products, tickets by status).
+description: Build a dashboard, chart, KPI or report from the org's data (sales by day, orders, top products).
 ---
 
 ### Building a dashboard

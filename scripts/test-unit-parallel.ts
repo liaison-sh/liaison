@@ -127,7 +127,21 @@ for (const target of targets.length > 0 ? targets : DEFAULT_TARGETS) {
     files.push(path.relative(API, path.join(abs, f)))
   }
 }
-const unique = [...new Set(files)].sort()
+// TEST_UNIT_PART=k/n keeps every n-th file from the k-th (1-based) of the sorted list, so n
+// CI jobs split the suite between them with no file run twice or left out.
+const PART = process.env.TEST_UNIT_PART
+const partMatch = PART ? /^(\d+)\/(\d+)$/.exec(PART) : null
+if (
+  PART &&
+  (!partMatch || Number(partMatch[1]) < 1 || Number(partMatch[1]) > Number(partMatch[2]))
+) {
+  console.error(`TEST_UNIT_PART must be k/n with 1 <= k <= n, got "${PART}".`)
+  process.exit(1)
+}
+const unique = [...new Set(files)]
+  .sort()
+  .filter((_, i) => !partMatch || i % Number(partMatch[2]) === Number(partMatch[1]) - 1)
+if (partMatch) console.log(`Part ${PART} of the suite: ${unique.length} file(s).`)
 if (unique.length === 0) {
   console.error("No test files matched.")
   process.exit(1)

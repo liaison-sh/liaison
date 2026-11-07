@@ -2858,6 +2858,9 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     appName: "kernel",
     name: "ai_models_get",
     deferLoading: true,
+    // The OpenRouter search fetches the whole public model list from the fixed OpenRouter host
+    // (no query string) and filters it here, so nothing from the turn leaves Liaison.
+    readOnly: true,
     description: `Read the organization's AI model settings (admin), the same as Settings > Models: what Auto runs, the default reasoning level, each model with its key, whether it is on and available, its price and reasoning levels. Pass openRouterSearch to also search OpenRouter's catalogue for a model to add with ai_models_set.`,
     searchKeywords: ["modèle", "raisonnement", "default", "reasoning", "openrouter", "auto", "llm"],
     requiredScopes: ["kernel:org:admin"],

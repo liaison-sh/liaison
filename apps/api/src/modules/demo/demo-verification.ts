@@ -66,7 +66,7 @@ export function demoBudgetEmailKey(emailNormalized: string): string {
 
 /** The identity a verified visitor org spends against. */
 export interface DemoVerifiedIdentity {
-  /** The confirmed address, normalized (one mailbox, one budget). */
+  /** The confirmed address, normalized, as its keyed hash (demoBudgetEmailKey): one mailbox, one budget. */
   emailNormalized: string
   /** The client network recorded when the org was created. */
   network: string

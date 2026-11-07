@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: FSL-1.1-ALv2
 #
-# Fast per-PR checks: lint, typecheck, the cheap `check:*` guards and the tour
-# suites, none of which needs a database or other service. They run as ONE job:
-# one checkout and one `bun install` instead of four. Heavier suites
-# (unit/integration/e2e/playwright, which need Postgres/Redis/MeiliSearch)
-# are intentionally out of scope here — see scripts/test-run.ts for those.
+# Per-PR checks. `checks`: lint, typecheck, the cheap `check:*` guards and the
+# tour suites, none of which needs a database or other service, as ONE job (one
+# checkout and one `bun install` instead of four). Beside it, in parallel: the
+# api `unit` suite split over three jobs (each with its own Postgres, Redis,
+# MeiliSearch and SeaweedFS from docker-compose.yml) and the whole web unit
+# suite. Before they ran here, only a release ran them, and failures sat on
+# main unseen. Integration, e2e and Playwright stay out (see scripts/test-run.ts).
 name: ci
 
 on:
@@ -170,3 +172,77 @@ jobs:
       - name: Web tour engine and card
         working-directory: apps/web
         run: bunx vitest run src/modules/tours
+
+  # The api unit suite, split three ways by file (TEST_UNIT_PART in
+  # scripts/test-unit-parallel.ts): one runner took 20 to 27 minutes for it.
+  # `test:unit` would also rerun guards and root, which `checks` already runs.
+  unit:
+    name: unit ${{ matrix.part }}/3
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Install postgres/redis CLIs
+        # The client's major matches docker-compose's postgres: pg_dump refuses a
+        # newer server, and the runner's own packages stop at an older major.
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y --no-install-recommends postgresql-client-17 redis-tools libxml2-utils
+          # pg_wrapper in /usr/bin picks the runner's own older cluster, not the newest client.
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+      - name: Write .env.test
+        # The documented test env with throwaway secrets that never leave this runner.
+        run: |
+          set -euo pipefail
+          cp .env.test.example .env.test
+          sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|; s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=$(openssl rand -hex 32)|" .env.test
+      - name: Bring up test infra (Postgres, Redis, MeiliSearch, SeaweedFS)
+        run: bun run infra:up
+      - name: Unit tests (part ${{ matrix.part }} of 3)
+        # The default memory reserve doesn't fit a hosted runner, and the runner
+        # runs nothing else, so the whole budget is this job's.
+        env:
+          TEST_MEM_RESERVE_MB: "2048"
+          LIAISON_TEST_SLOTS: "1"
+          TEST_UNIT_PART: ${{ matrix.part }}/3
+        run: bun run scripts/test-run.ts unit
+      - name: Keep the run's logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unit-logs-${{ matrix.part }}
+          path: logs/
+      - name: Tear down test infra
+        if: always()
+        run: docker compose down -v
+
+  # The whole web unit suite (vitest, jsdom): no database or service.
+  web-unit:
+    name: web unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Web unit tests
+        working-directory: apps/web
+        run: bunx --bun vitest run

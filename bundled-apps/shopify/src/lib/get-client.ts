@@ -50,9 +50,18 @@ interface CachedWatermark {
 // Module-level throttle-watermark cache, keyed by (orgId, shopDomain). A FRESH
 // `ShopifyClient` is built on every call so each invocation binds the current
 // `ctx.fetch` and offline token; only the bucket-aware throttle watermark is
-// persisted here so back-pressure survives across nearby tool calls. Entries
-// expire after the TTL.
+// persisted here so back-pressure survives across nearby tool calls. Module state
+// can outlive one run and be shared by every run the runtime keeps loaded, so an
+// entry is only ever read under its own org, a run without an org id neither
+// reads nor writes one, and expired entries are pruned on write. The value is a
+// timestamp: nothing about the shop or its data is kept.
 const throttleWatermarks = new Map<string, CachedWatermark>()
+
+function pruneExpiredWatermarks(now: number): void {
+  for (const [key, entry] of throttleWatermarks) {
+    if (entry.expiresAt <= now) throttleWatermarks.delete(key)
+  }
+}
 
 interface ConnAccount {
   /** `kernel.connected_accounts.id` — used as `install_metadata.connectionId`. */
@@ -287,8 +296,9 @@ export async function getShopifyClient(
   // Restore the persisted throttle watermark (if still fresh) and keep it
   // updated as this client makes calls, so back-pressure carries across
   // invocations without caching the client's per-call fetch closure / token.
-  const cacheKey = `${ctx.orgId}:${domain}`
-  const cached = throttleWatermarks.get(cacheKey)
+  const orgId = typeof ctx.orgId === "string" && ctx.orgId.length > 0 ? ctx.orgId : null
+  const cacheKey = orgId ? `${orgId}:${domain.toLowerCase()}` : null
+  const cached = cacheKey ? throttleWatermarks.get(cacheKey) : undefined
   const initialThrottleAt = cached && cached.expiresAt > Date.now() ? cached.at : 0
   return new ShopifyClient({
     shop: domain.replace(/\.myshopify\.com$/i, ""),
@@ -298,7 +308,10 @@ export async function getShopifyClient(
     initialThrottleAt,
     failFast: !!opts.timeoutMs,
     onThrottleChange: (at) => {
-      throttleWatermarks.set(cacheKey, { at, expiresAt: Date.now() + THROTTLE_TTL_MS })
+      if (!cacheKey) return
+      const now = Date.now()
+      pruneExpiredWatermarks(now)
+      throttleWatermarks.set(cacheKey, { at, expiresAt: now + THROTTLE_TTL_MS })
     },
   })
 }

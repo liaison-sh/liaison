@@ -17,6 +17,8 @@
 // The client is constructor-injected with `fetch` to keep it host-free —
 // tests stub the network; production wires `globalThis.fetch`.
 
+import { sleep } from "./timers"
+
 export interface ShopifyFetchResponse {
   status: number
   headers: Record<string, string>
@@ -250,10 +252,6 @@ function safeJsonParse(s: string): {
   } catch {
     return null
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 const defaultFetch: ShopifyFetch = async (req) => {

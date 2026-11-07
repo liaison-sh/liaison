@@ -368,7 +368,7 @@ function secondsSince(iso: string): number {
  * anything else is shown as written.
  */
 export function kernelAttentionTitle(
-  item: { app: string; kind: string; summary: string },
+  item: { app: string; kind: string; summary: string; metadata?: Record<string, unknown> | null },
   t: Translate,
 ): string {
   const s = item.summary
@@ -395,6 +395,10 @@ export function kernelAttentionTitle(
     case "thread_reply":
     case "thread_followup":
       return localizeAgentNotice(s, t)
+    case "agent_notification":
+      // Someone marked this person away (modules/users/away.ts): the row carries `awayNamed`.
+      m = item.metadata?.awayNamed ? /^(.+) marked you away (.+)$/.exec(s) : null
+      return m ? t("kernel.attentionTitle.awayNamed", { name: m[1] ?? "", dates: m[2] ?? "" }) : s
     default:
       return s
   }

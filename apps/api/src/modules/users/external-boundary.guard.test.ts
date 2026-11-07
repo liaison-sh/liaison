@@ -187,6 +187,10 @@ const TREATED: Record<string, [Treatment, string]> = {
     "writes the external row, refuses a member's address",
   ],
   "modules/users/merge-placeholder.ts": ["one-row", "the placeholder being merged"],
+  "modules/users/away.ts": [
+    "member-filter",
+    "people named by id, refused when external; the deciders list skips external users",
+  ],
   "modules/users/service.ts": ["one-row", "reads run on RLS; the merge target by id"],
   "modules/webhooks/routes.ts": ["one-row", "the org of a verified webhook"],
   "seed/factories/people/people.ts": ["creates-member", "seed data"],

@@ -382,6 +382,7 @@ describe("writesToTable annotations on kernel tools", () => {
       // S17: the user's own notification settings. Self rows, none an enforcing
       // sink, so a tainted turn is refused these like any other kernel write.
       notifications_set: "kernel.user_preferences",
+      set_away: "kernel.away_ranges",
       notification_rules_set: "kernel.attention_subscriptions",
       thread_mute_set: "kernel.user_thread_state",
       watch_state: "kernel.routine_state",

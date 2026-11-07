@@ -187,6 +187,7 @@ describe("set_away", () => {
 
   const decide = (requestId: string, s: minimal.Session, scopes: string[]) =>
     decideApproval({
+      orgId,
       requestId,
       actor: actor(s, scopes),
       decision: "deny",

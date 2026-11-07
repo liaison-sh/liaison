@@ -70,6 +70,15 @@ describe("kernel attention rows", () => {
     expect(kernelAttentionTitle(row("approval_decision", "Approval request-7 rejected"), fr)).toBe(
       "Demande request-7 refusée",
     )
+    // Someone marked the person away: translated only on the row that says so.
+    const awayLine = "Nadia Lead marked you away on Mon 7 Dec 2026"
+    expect(
+      kernelAttentionTitle(
+        { ...row("agent_notification", awayLine), metadata: { awayNamed: { rangeId: "r" } } },
+        fr,
+      ),
+    ).toBe("Nadia Lead vous a indiqué absent on Mon 7 Dec 2026")
+    expect(kernelAttentionTitle(row("agent_notification", awayLine), fr)).toBe(awayLine)
     // An app's own row is its app's business.
     expect(kernelAttentionTitle({ app: "tickets", kind: "mention", summary: "x" }, fr)).toBe("x")
   })

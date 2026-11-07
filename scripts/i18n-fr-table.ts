@@ -7650,4 +7650,28 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.approvalsUi.sendGuard.unavailable":
     "Le contrôle avant envoi n'a pas pu s'exécuter. Réessayez dans un instant.",
   "kernel.approvalsUi.sendGuard.sendNow": "Envoyer maintenant",
+  // The profile's Away section and the line a colleague's away mark leaves on Home.
+  "kernel.settings.profile.away.title": "Absence",
+  "kernel.settings.profile.away.hint":
+    "Indiquez quand vous êtes absent et qui prend le relais. Seules les dates sont gardées, jamais le motif.",
+  "kernel.settings.profile.away.from": "Premier jour",
+  "kernel.settings.profile.away.to": "Dernier jour",
+  "kernel.settings.profile.away.nextInLine": "Relais",
+  "kernel.settings.profile.away.nobody": "Personne",
+  "kernel.settings.profile.away.standing": "Relais par défaut",
+  "kernel.settings.profile.away.standingHint": "Utilisé quand une absence ne nomme personne.",
+  "kernel.settings.profile.away.save": "M'indiquer absent",
+  "kernel.settings.profile.away.endEarly": "Terminer maintenant",
+  "kernel.settings.profile.away.undo": "Annuler",
+  "kernel.settings.profile.away.range": "Du {{from}} au {{to}}",
+  "kernel.settings.profile.away.weekly": "Chaque {{days}} à partir du {{from}}",
+  "kernel.settings.profile.away.setBy": "Indiqué par {{name}}",
+  "kernel.settings.profile.away.nextInLineIs": "Relais : {{name}}",
+  "kernel.settings.profile.away.awayToo": "{{name}} est aussi absent, jusqu'au {{until}}.",
+  "kernel.settings.profile.away.hasLeft": "{{name}} a quitté l'organisation, choisissez quelqu'un.",
+  "kernel.settings.profile.away.awayUntilOption": "{{name}} (absent jusqu'au {{until}})",
+  "kernel.settings.profile.away.none": "Aucune absence enregistrée.",
+  "kernel.settings.profile.away.failed": "Impossible d'enregistrer votre absence.",
+  "kernel.settings.profile.away.endFailed": "Impossible d'y mettre fin.",
+  "kernel.attentionTitle.awayNamed": "{{name}} vous a indiqué absent {{dates}}",
 }

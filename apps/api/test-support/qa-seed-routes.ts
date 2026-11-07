@@ -31,6 +31,7 @@ export async function mountQaSeedRoutes(app: Hono<any>): Promise<void> {
     { fanoutTestRoutes },
     { fairnessTestRoutes },
     { seedTestRoutes },
+    { appJobRunTestRoutes },
   ] = await Promise.all([
     import("./harness/shopify-install-routes"),
     import("./harness/invoicing-install-routes"),
@@ -53,6 +54,7 @@ export async function mountQaSeedRoutes(app: Hono<any>): Promise<void> {
     import("./harness/fanout-routes"),
     import("./harness/fairness-routes"),
     import("./seed/route"),
+    import("./harness/app-job-run-routes"),
   ])
   app.route("/api/_test/shopify", shopifyTestInstallRoutes)
   app.route("/api/_test/invoicing", invoicingTestInstallRoutes)
@@ -70,6 +72,8 @@ export async function mountQaSeedRoutes(app: Hono<any>): Promise<void> {
   // Phase 16.5 — generic install + reload for the Playwright worker (not
   // Shopify-specific). Future plugin-app e2e tests use these endpoints.
   app.route("/api/_test/apps", appsTestRoutes)
+  // One app job for one org, run now and awaited (`/:app/jobs/:job/run`).
+  app.route("/api/_test/apps", appJobRunTestRoutes)
   // Synchronous full-reindex so the harness can make search deterministic after
   // seeding (the async indexer pipeline lags under the seed's event backlog).
   app.route("/api/_test/search", searchReindexTestRoutes)

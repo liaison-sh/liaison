@@ -316,6 +316,9 @@ webhookRoutes.post("/:orgId/:appName/:endpointName", async (c) => {
       const source = await loadBundle(handlerRef.bundlePath)
       verificationResult = await executeManifestWebhook({
         appName,
+        orgId: appOrgId,
+        // The verify bridge is inline (config_get only): no transaction.
+        holdsTx: false,
         handlerRef,
         bundleSource: source,
         params: requestData,
@@ -696,6 +699,9 @@ async function dispatchVerifiedWebhook(
             // Pass the hoisted header dict as the 3rd handler arg.
             return executeManifestWebhook({
               appName,
+              orgId: appOrgId,
+              // Inside the delivery's withRlsContext transaction.
+              holdsTx: true,
               handlerRef,
               bundleSource: source,
               params: payload,

@@ -58,6 +58,8 @@ export interface OpenView {
   /** The record `id` names. Null when the view takes no id, or its id is a name, not a row. */
   record: OpenRecord | null
   target: OpenTarget
+  /** The page a mention of the record opens (`referenceable`), when several views show it. */
+  primary?: boolean
 }
 
 /** Tabs with a `:param` that is not a record, and why. */
@@ -130,7 +132,7 @@ const KERNEL_READ_SCOPES: Readonly<Record<string, string>> = {
 }
 
 interface ManifestViews {
-  tabTypes?: Record<string, { label?: string; urlPattern?: string }>
+  tabTypes?: Record<string, { label?: string; urlPattern?: string; referenceable?: boolean }>
   detail?: Record<string, { component?: string; externalLink?: { urlTemplate?: string } }>
 }
 
@@ -146,7 +148,7 @@ function tabView(
   orgId: string,
   app: string,
   view: string,
-  tab: { label?: string; urlPattern?: string },
+  tab: { label?: string; urlPattern?: string; referenceable?: boolean },
 ): OpenView {
   const needsId = tab.urlPattern?.includes(":") === true
   const named = tabEntity(orgId, app, view)
@@ -158,6 +160,7 @@ function tabView(
     needsId,
     record: needsId && !notARecord ? (named ?? own) : null,
     target: { kind: "tab", type: `${app}:${view}` },
+    ...(tab.referenceable === true ? { primary: true } : {}),
   }
 }
 

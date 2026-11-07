@@ -1490,7 +1490,8 @@ describe("invoicing manifest", () => {
     // 0.20.47: a minor-unit amount is a whole number, a credit note's total is negative, and the card
     //   states the total that issues.
     // 0.20.49: above both lines of work, which each changed it under the number before; no change of its own.
-    expect(m.version).toBe("0.20.49")
+    // 0.20.50: a search for a number no document carries says so and names the numbers ending in the same digits.
+    expect(m.version).toBe("0.20.50")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

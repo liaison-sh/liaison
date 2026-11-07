@@ -120,7 +120,12 @@ export async function deleteContactDiscussions(
   db?: PrivilegedDb,
 ): Promise<void> {
   await deleteEntityDiscussions(
-    { orgId: params.orgId, ...CONTACT, entityIds: params.contactIds },
+    {
+      orgId: params.orgId,
+      app: CONTACT.app,
+      entityType: CONTACT.entityType,
+      entityIds: params.contactIds,
+    },
     db,
   )
 }

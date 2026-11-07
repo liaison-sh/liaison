@@ -8,7 +8,7 @@
 // feed: compact greeting, plain-sentence status, a single scrollable chip row,
 // and one compact row per item with one action row.
 import type { AttentionItem } from "@liaison/shared"
-import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
+import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("~/modules/auth/auth-store", () => ({
@@ -268,5 +268,32 @@ describe("phone attention feed", () => {
     // The greeting and the status line are both inside it.
     expect(header.contains(screen.getByTestId("home-greeting"))).toBe(true)
     expect(header.contains(screen.getByTestId("home-status"))).toBe(true)
+  })
+
+  // The pixels (390 px wide, 44 px targets) are read on a real phone screen; here, the classes.
+  it("home-phone: every row action is a 44px touch target", () => {
+    setShellTier("phone")
+    const notice: AttentionItem = {
+      id: "ev-1",
+      app: "kernel",
+      entity: "notification",
+      entityId: "n-1",
+      kind: "system_alert",
+      summary: "A deal went quiet",
+      urgency: 90,
+      occurredAt: "2026-05-06T12:00:00.000Z",
+      action: { type: "open_entity", tabType: "kernel:notification", entityId: "n-1" },
+      persisted: true,
+    }
+    attentionStore._setForTest({ items: [distinctTitleApproval("k-1"), notice], errors: [] })
+    render(() => <Home entityId="home" />)
+    const ids = [
+      `${rowId("k-1")}-approve`,
+      `${rowId("k-1")}-reject`,
+      "attention-row-kernel-notification-n-1-ask-draft",
+      "attention-row-kernel-notification-n-1-not-now",
+    ]
+    for (const id of ids) expect(screen.getByTestId(id).className).toContain("min-h-11")
+    expect(screen.getByTestId(`${rowId("k-1")}-details`).className).toContain("h-11")
   })
 })

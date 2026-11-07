@@ -4,29 +4,38 @@ import { beforeAll, describe, expect, it } from "bun:test"
 import { randomUUID } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
 import { app } from "~/app"
-import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { env } from "~/lib/env"
 import { getEventAttentionItems } from "~/modules/attention/event-provider"
 import { signAccessToken } from "~/modules/auth/jwt"
+import { seedContext } from "~/seed/context"
+import { seedAttentionEvents } from "~/seed/factories/attention/events"
+import { seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
+import { insertSql } from "~/seed/factories/org/test-rows"
 
 let orgId: string
 let me: { id: string; token: string }
 let other: { id: string; token: string }
 
 async function makeUser(suffix: string, name: string, timezone: string | null) {
-  const [user] = extractRows<{ id: string }>(
-    await db.execute(drizzleSql`
-      INSERT INTO kernel.users (id, org_id, email, name, status, password_hash, auth_version, permission_version, timezone)
-      VALUES (gen_random_uuid(), ${orgId}, ${`${name}-${suffix}@test.com`}, ${name}, 'active', 'hash', 1, 1, ${timezone})
-      RETURNING id
-    `),
+  const id = await seedUserRow({
+    orgId,
+    email: `${name}-${suffix}@test.com`,
+    name,
+    status: "active",
+    passwordHash: "hash",
+    authVersion: 1,
+    permissionVersion: 1,
+    timezone,
+  })
+  await db.execute(
+    drizzleSql.raw(
+      insertSql("kernel.user_scope_grants", { user_id: id, org_id: orgId, scope: "*" }),
+    ),
   )
-  await db.execute(drizzleSql`
-    INSERT INTO kernel.user_scope_grants (user_id, org_id, scope) VALUES (${user!.id}::uuid, ${orgId}::uuid, '*')`)
   const token = await signAccessToken(
     {
-      userId: user!.id,
+      userId: id,
       orgId,
       name,
       roles: ["admin"],
@@ -37,36 +46,35 @@ async function makeUser(suffix: string, name: string, timezone: string | null) {
     },
     env.JWT_SECRET,
   )
-  return { id: user!.id, token }
+  return { id, token }
 }
 
 beforeAll(async () => {
   const suffix = randomUUID()
-  const [org] = extractRows<{ id: string }>(
-    await db.execute(drizzleSql`
-      INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (gen_random_uuid(), 'Home Org', ${`home-${suffix}`}) RETURNING id
-    `),
-  )
-  orgId = org!.id
+  orgId = await seedOrgRow({ id: randomUUID(), name: "Home Org", slug: `home-${suffix}` })
   me = await makeUser(suffix, "elise", "Europe/Paris")
   other = await makeUser(suffix, "tom", "Europe/Paris")
 })
 
 async function seedEvent(userId: string): Promise<string> {
-  const [row] = extractRows<{ id: string }>(
-    await db.execute(drizzleSql`
-      INSERT INTO kernel.attention_events (
-        id, org_id, user_id, app, entity_type, entity_id, kind, urgency,
-        summary, actor_type, occurred_at, digest_eligible_at
-      ) VALUES (
-        gen_random_uuid(), ${orgId}::uuid, ${userId}::uuid, 'kernel', 'notification',
-        ${randomUUID()}, 'agent_notification', 50, 'A deal went quiet', 'system', now(), now()
-      )
-      RETURNING id
-    `),
-  )
-  return row!.id
+  const now = new Date()
+  const [id] = await seedAttentionEvents(seedContext({ orgId, now }), [
+    {
+      key: randomUUID(),
+      userId,
+      app: "kernel",
+      entityType: "notification",
+      entityId: randomUUID(),
+      kind: "agent_notification",
+      urgency: 50,
+      summary: "A deal went quiet",
+      actorId: null,
+      actorType: "system",
+      occurredAt: now,
+      readAt: null,
+    },
+  ])
+  return id as string
 }
 
 async function feedIds(userId: string): Promise<string[]> {
@@ -132,25 +140,59 @@ describe("POST /api/attention-items/set-aside", () => {
 async function seedBrief(ownerId: string, text: string): Promise<void> {
   const threadId = randomUUID()
   const agentId = randomUUID()
-  await db.execute(drizzleSql`
-    INSERT INTO kernel.agents (id, org_id, kind, owner_user_id, handle, display_name, scope_ceiling)
-    VALUES (${agentId}::uuid, ${orgId}::uuid, 'personal', ${ownerId}::uuid,
-            ${`@brief-${agentId.slice(0, 8)}`}, 'Personal agent', '["*"]'::jsonb)`)
-  await db.execute(drizzleSql`
-    INSERT INTO kernel.threads (id, org_id, handle, type, created_by)
-    VALUES (${threadId}::uuid, ${orgId}::uuid, ${`brief-${threadId.slice(0, 8)}`}, 'agent_chat', ${ownerId}::uuid)`)
-  await db.execute(drizzleSql`
-    INSERT INTO kernel.thread_participants (thread_id, user_id, org_id, role)
-    VALUES (${threadId}::uuid, ${ownerId}::uuid, ${orgId}::uuid, 'admin')`)
-  await db.execute(drizzleSql`
-    INSERT INTO kernel.routines
-      (id, org_id, owner_user_id, owner_agent_id, name, description, kind, cron, timezone, prompt, scopes,
-       created_by_actor_type, template_key, output_thread_id, last_run_at)
-    VALUES (gen_random_uuid(), ${orgId}::uuid, ${ownerId}::uuid, ${agentId}::uuid, 'Morning brief', 'brief', 'recurring',
-            '30 7 * * 1-5', 'Europe/Paris', 'brief', '{}', 'user', 'morning-brief', ${threadId}::uuid, now())`)
-  await db.execute(drizzleSql`
-    INSERT INTO kernel.messages (org_id, thread_id, author_id, author_agent_id, author_type, content, required_scopes)
-    VALUES (${orgId}::uuid, ${threadId}::uuid, ${ownerId}::uuid, ${agentId}::uuid, 'agent', ${text}, '{}')`)
+  const now = { raw: "now()" }
+  for (const statement of [
+    insertSql("kernel.agents", {
+      id: agentId,
+      org_id: orgId,
+      kind: "personal",
+      owner_user_id: ownerId,
+      handle: `@brief-${agentId.slice(0, 8)}`,
+      display_name: "Personal agent",
+      scope_ceiling: { raw: `'["*"]'::jsonb` },
+    }),
+    insertSql("kernel.threads", {
+      id: threadId,
+      org_id: orgId,
+      handle: `brief-${threadId.slice(0, 8)}`,
+      type: "agent_chat",
+      created_by: ownerId,
+    }),
+    insertSql("kernel.thread_participants", {
+      thread_id: threadId,
+      user_id: ownerId,
+      org_id: orgId,
+      role: "admin",
+    }),
+    insertSql("kernel.routines", {
+      id: randomUUID(),
+      org_id: orgId,
+      owner_user_id: ownerId,
+      owner_agent_id: agentId,
+      name: "Morning brief",
+      description: "brief",
+      kind: "recurring",
+      cron: "30 7 * * 1-5",
+      timezone: "Europe/Paris",
+      prompt: "brief",
+      scopes: { raw: "'{}'" },
+      created_by_actor_type: "user",
+      template_key: "morning-brief",
+      output_thread_id: threadId,
+      last_run_at: now,
+    }),
+    insertSql("kernel.messages", {
+      org_id: orgId,
+      thread_id: threadId,
+      author_id: ownerId,
+      author_agent_id: agentId,
+      author_type: "agent",
+      content: text,
+      required_scopes: { raw: "'{}'" },
+    }),
+  ]) {
+    await db.execute(drizzleSql.raw(statement))
+  }
 }
 
 describe("GET /api/home/brief", () => {

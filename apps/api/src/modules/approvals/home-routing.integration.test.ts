@@ -22,7 +22,9 @@ import {
   computeApprovalBadgeItems,
 } from "~/modules/approvals/attention"
 import { ApprovalDecisionError, decideApproval } from "~/modules/approvals/decide"
-import { updateItemRoutePerson } from "~/modules/approvals/route-world"
+import { resolveProposeRoute, updateItemRoutePerson } from "~/modules/approvals/route-world"
+import { attentionItemsRegistry } from "~/modules/apps/app-registries"
+import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
@@ -64,6 +66,8 @@ interface RowSpec {
   title: string
   routePersonId?: string | null
   links?: unknown[]
+  /** The stored payload; by default `{ title }`. */
+  payload?: Record<string, unknown>
 }
 
 export async function insertRow(spec: RowSpec): Promise<string> {
@@ -77,7 +81,7 @@ export async function insertRow(spec: RowSpec): Promise<string> {
     ) VALUES (
       ${id}::uuid, ${ORG}::uuid, ${`APR-${id.slice(0, 8)}`}, ${THREAD}::uuid, ${THREAD}::uuid,
       ${spec.tool ?? "projects:createTask"}, '{}'::jsonb,
-      ${JSON.stringify({ title: spec.title })}::jsonb, now() + INTERVAL '3 days',
+      ${JSON.stringify(spec.payload ?? { title: spec.title })}::jsonb, now() + INTERVAL '3 days',
       ${spec.notify}::uuid[], ${spec.requestedBy}::uuid, ${spec.status ?? "pending"},
       ${JSON.stringify({ title: spec.title, ...(spec.links ? { links: spec.links } : {}) })}::jsonb,
       ${JSON.stringify(spec.metadata ?? {})}::jsonb,
@@ -246,7 +250,7 @@ describe("home routing: who a pending approval is for", () => {
     return countBadge({
       threads: [],
       items,
-      viewer: { userId: people[viewer] as string, canGrantAccess: false },
+      viewer: { canGrantAccess: false },
     })
   }
 
@@ -440,6 +444,34 @@ describe("home routing: who a pending approval is for", () => {
     }
   })
 
+  it("granted the scope after a shared ticket reply was proposed: not in their feed, yet their decide is taken", async () => {
+    const id = await insertRow({
+      tool: "tickets:reply",
+      requestedBy: people.ines as string,
+      notify: deciders(),
+      metadata: { originRoutineId: randomUUID() },
+      routePersonId: people.sara as string,
+      title: "Shared reply granted later",
+    })
+    // Granted after the proposal: reading tickets and deciding on them.
+    await minimal.grantScope(people.lea as string, "tickets:tickets:read")
+    await minimal.grantScope(people.lea as string, "tickets:approve")
+    const range = await away(people.sara as string, people.lea as string)
+    try {
+      expect(await placed("lea", id)).toBeNull()
+      // A ticket reply is a shared work item: anyone holding the deciding scope may decide it.
+      const decided = await decideApproval({
+        orgId: ORG,
+        requestId: id,
+        actor: await ctxOf(people.lea as string),
+        decision: "deny",
+      })
+      expect(decided.status).toBe("denied")
+    } finally {
+      await sql`DELETE FROM kernel.away_ranges WHERE id = ${range}`
+    }
+  })
+
   it("an owner-routed row with its owner away reaches nobody else: not the next in line, not in their badge", async () => {
     const range = await away(people.owner as string, people.tom as string)
     try {
@@ -532,7 +564,7 @@ describe("home routing: who a pending approval is for", () => {
         actor: admin,
         params: { ticketId, assignedTo: people.tom },
       })
-      expect(res.error).toBeUndefined()
+      expect(res.blocked).toBeUndefined()
       expect((await placed("tom", id))?.route).toMatchObject({ userId: people.tom, why: "on_item" })
       expect((await placed("sara", id))?.placement).toBe("others")
     })
@@ -546,7 +578,7 @@ describe("home routing: who a pending approval is for", () => {
         actor: admin,
         params: { ticketId, assignedTo: people.tom, onlyIfUnassigned: true },
       })
-      expect(res.error).toBeUndefined()
+      expect(res.blocked).toBeUndefined()
       expect((await placed("tom", id))?.placement).toBe("mine")
     })
 
@@ -570,8 +602,202 @@ describe("home routing: who a pending approval is for", () => {
         actor: admin,
         params: { taskId, assigneeId: people.tom },
       })
-      expect(res.error).toBeUndefined()
+      expect(res.blocked).toBeUndefined()
       expect((await placed("tom", id))?.placement).toBe("mine")
+    })
+
+    it("a proposal about a task is for its assignee from the moment it is proposed", async () => {
+      const project = await executeTool({
+        toolName: "projects:createProject",
+        orgId: ORG,
+        actor: admin,
+        params: { name: "Routing at propose", tasks: [{ title: "Task to delete" }] },
+      })
+      const taskId = (project.data as { tasks?: Array<{ id: string }> } | undefined)?.tasks?.[0]?.id
+      if (!taskId) throw new Error(`task not created: ${JSON.stringify(project)}`)
+      const assigned = await executeTool({
+        toolName: "projects:update",
+        orgId: ORG,
+        actor: admin,
+        params: { taskId, assigneeId: people.tom },
+      })
+      expect(assigned.blocked).toBeUndefined()
+      await executeTool({
+        toolName: "projects:delete",
+        orgId: ORG,
+        actor: admin,
+        threadId: THREAD,
+        params: { taskId },
+        origin: "in-app-agent",
+      })
+      const [row] = (await sql`
+        SELECT id, route_person_id FROM kernel.approval_requests
+        WHERE org_id = ${ORG} AND tool_name = 'projects:delete' AND status = 'pending'
+          AND tool_params->>'taskId' = ${taskId}`) as Array<{
+        id: string
+        route_person_id: string | null
+      }>
+      expect(row?.route_person_id).toBe(people.tom as string)
+    })
+
+    it("a ticket's app says who a request about it is for: its assignee", async () => {
+      const ticketId = await newTicket()
+      const summary = { links: ticketLink(ticketId) }
+      expect(
+        await resolveProposeRoute({
+          orgId: ORG,
+          toolName: "tickets:reply",
+          summary,
+          requestedBy: admin.userId as string,
+        }),
+      ).toEqual({})
+      await executeTool({
+        toolName: "tickets:assign",
+        orgId: ORG,
+        actor: admin,
+        params: { ticketId, assignedTo: people.sara },
+      })
+      expect(
+        await resolveProposeRoute({
+          orgId: ORG,
+          toolName: "tickets:reply",
+          summary,
+          requestedBy: admin.userId as string,
+        }),
+      ).toEqual({
+        routePersonId: people.sara,
+      })
+    })
+
+    it("an app that does not answer in time, or a record no app routes, leaves the request to the usual deciders", async () => {
+      const ticketId = await newTicket()
+      await executeTool({
+        toolName: "tickets:assign",
+        orgId: ORG,
+        actor: admin,
+        params: { ticketId, assignedTo: people.sara },
+      })
+      expect(
+        await resolveProposeRoute({
+          orgId: ORG,
+          toolName: "tickets:reply",
+          summary: { links: ticketLink(ticketId) },
+          requestedBy: admin.userId as string,
+          budgetMs: 0,
+        }),
+      ).toEqual({})
+      expect(
+        await resolveProposeRoute({
+          orgId: ORG,
+          toolName: "tickets:reply",
+          summary: {
+            links: [{ label: "Open", app: "mail", entityType: "conversation", entityId: ticketId }],
+          },
+          requestedBy: admin.userId as string,
+        }),
+      ).toEqual({})
+    })
+
+    it("approving for the person away records it with the claim that won", async () => {
+      const id = await insertRow({
+        tool: "projects:createProject",
+        requestedBy: admin.userId as string,
+        notify: deciders(),
+        routePersonId: people.sara as string,
+        payload: { name: "Approved by the next in line" },
+        title: "Approved by the next in line",
+      })
+      const range = await away(people.sara as string, people.tom as string)
+      try {
+        const decided = await decideApproval({
+          orgId: ORG,
+          requestId: id,
+          actor: await ctxOf(people.tom as string),
+          decision: "approve",
+        })
+        expect(decided.status).toBe("approved")
+      } finally {
+        await sql`DELETE FROM kernel.away_ranges WHERE id = ${range}`
+      }
+      const [stored] = (await sql`
+        SELECT decided_by, metadata FROM kernel.approval_requests WHERE id = ${id}`) as Array<{
+        decided_by: string
+        metadata: Record<string, unknown>
+      }>
+      expect(stored?.decided_by).toBe(people.tom as string)
+      expect(stored?.metadata.decidedFor).toMatchObject({ userId: people.sara, as: "next_in_line" })
+    })
+
+    it("Home passes the items of a person away to their next in line only through providers that declare it", async () => {
+      const declared: [string, string] = ["*", "routePassOnDeclared"]
+      const undeclared: [string, string] = ["*", "routePassOnUndeclared"]
+      const fixture = new URL("../../tests/fixtures/aggregator-providers.ts", import.meta.url)
+        .pathname
+      attentionItemsRegistry.set(declared, {
+        handler: "passOnEchoA",
+        bundlePath: fixture,
+        trusted: true,
+        passesOn: true,
+      })
+      attentionItemsRegistry.set(undeclared, {
+        handler: "passOnEchoB",
+        bundlePath: fixture,
+        trusted: true,
+      })
+      const range = await away(people.sara as string, people.tom as string)
+      try {
+        const feed = await aggregateAttentionItems({
+          orgId: ORG,
+          actor: await ctxOf(people.tom as string),
+        })
+        const heard = (app: string) =>
+          (feed.items.find((i) => i.app === app)?.metadata as { forUserIds?: unknown })?.forUserIds
+        expect(heard("routePassOnDeclared")).toEqual([people.sara])
+        // Undeclared defaults to no pass-on: the provider never hears of anyone but the viewer.
+        expect(heard("routePassOnUndeclared")).toEqual([])
+      } finally {
+        await sql`DELETE FROM kernel.away_ranges WHERE id = ${range}`
+        attentionItemsRegistry.delete(declared)
+        attentionItemsRegistry.delete(undeclared)
+      }
+    })
+
+    it("a task of a person away reaches their next in line's Home, tagged for them, and only while away", async () => {
+      const project = await executeTool({
+        toolName: "projects:createProject",
+        orgId: ORG,
+        actor: admin,
+        params: {
+          name: "Passed on",
+          tasks: [{ title: "Overdue while away" }],
+        },
+      })
+      const taskId = (project.data as { tasks?: Array<{ id: string }> } | undefined)?.tasks?.[0]?.id
+      if (!taskId) throw new Error(`task not created: ${JSON.stringify(project)}`)
+      await executeTool({
+        toolName: "projects:update",
+        orgId: ORG,
+        actor: admin,
+        params: { taskId, assigneeId: people.sara },
+      })
+      await sql`UPDATE app_projects.tasks SET due_date = '2020-01-06' WHERE id = ${taskId}`
+      // Both read projects and tasks, so Tom can read the task he is handed.
+      for (const p of ["tom", "sara"]) {
+        await minimal.grantScope(people[p] as string, "projects:projects:read")
+        await minimal.grantScope(people[p] as string, "projects:tasks:read")
+      }
+      const tomsTask = async () =>
+        (
+          await aggregateAttentionItems({ orgId: ORG, actor: await ctxOf(people.tom as string) })
+        ).items.find((i) => i.app === "projects" && i.entityId === taskId)
+      expect(await tomsTask()).toBeUndefined()
+      const range = await away(people.sara as string, people.tom as string)
+      try {
+        expect((await tomsTask())?.metadata).toMatchObject({ forUserId: people.sara })
+      } finally {
+        await sql`DELETE FROM kernel.away_ranges WHERE id = ${range}`
+      }
+      expect(await tomsTask()).toBeUndefined()
     })
 
     it("a failing route update is logged and changes nothing else", async () => {

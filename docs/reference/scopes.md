@@ -276,7 +276,7 @@ Projects and tasks with owners, statuses, due dates and discussions.
 | `projects:projects:read` | entities project, task; role member; tools get, labels.list, labels.tree, search |  |
 | `projects:projects:write` | role lead; tools createProject, instantiate_template, status_add, status_delete, status_update, update_project |  |
 | `projects:settings:admin` | role admin; settings section ci; tool webhook_info |  |
-| `projects:tasks:read` | role member; tools attentionItems, checklist_get, comments, portfolio_rollup, tasks_byAssignee, tasks_byProject |  |
+| `projects:tasks:read` | role member; tools approval_route_read, attentionItems, checklist_get, comments, portfolio_rollup, tasks_byAssignee and 1 more |  |
 | `projects:tasks:write` | role member; tools add_dependency, checklist_add_items, checklist_remove_item, checklist_set_validation, checklist_update_item, comment and 5 more |  |
 
 ## shopify
@@ -344,6 +344,6 @@ Track customer requests, returns and warranty cases to resolution.
 | `tickets:inboxes:read` | role support; tool inboxes.list |  |
 | `tickets:settings:admin` | role admin; settings sections api-keys, id-segments, response-times; tools apiKeys.create, apiKeys.list, apiKeys.revoke, approveFromHome.get, approveFromHome.set, idSegment.get and 1 more |  |
 | `tickets:tickets:close` | role support_lead; tool close |  |
-| `tickets:tickets:read` | entities message, ticket; role support; tools backlogHealth, categories.list, categories.tree, csat.list, csat.summary, ensureSummary and 9 more |  |
+| `tickets:tickets:read` | entities message, ticket; role support; tools approval_route_read, backlogHealth, categories.list, categories.tree, csat.list, csat.summary and 10 more |  |
 | `tickets:tickets:reply` | role support; tools nudge, reply |  |
 | `tickets:tickets:write` | role support; tools addNote, assign, clearFollowup, convertToMail, create, createFromMail and 20 more |  |

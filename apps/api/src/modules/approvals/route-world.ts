@@ -25,10 +25,12 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { appsLogger as log } from "~/lib/logger"
 import { authorityFacts, decidingScope } from "~/modules/approvals/authority"
+import { appBridgeManifest, toolRegistry } from "~/modules/apps/app-registries"
 import {
   everyMemberScopeFragment,
   scopeMatchesFragment,
 } from "~/modules/permissions/eligible-approvers"
+import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 
 const K = drizzleSql.raw(schemaRef("kernel"))
 
@@ -100,9 +102,11 @@ interface AwayWorld {
   away(userId: string): { until: string | null; nextInLineId: string | null } | null
   /** Everyone named in a range today, as the person or their next in line. */
   people: Set<string>
+  /** The people away today whose next in line is `userId`. */
+  standingFor(userId: string): string[]
 }
 
-const NOBODY_AWAY: AwayWorld = { away: () => null, people: new Set() }
+const NOBODY_AWAY: AwayWorld = { away: () => null, people: new Set(), standingFor: () => [] }
 
 interface RangeRow {
   user_id: string
@@ -211,7 +215,12 @@ async function readAwayWorld(tx: RlsClient, orgId: string, now: Date): Promise<A
       people.add(userId)
       if (nextInLineId) people.add(nextInLineId)
     }
-    return { away: (userId) => resolved.get(userId) ?? null, people }
+    return {
+      away: (userId) => resolved.get(userId) ?? null,
+      people,
+      standingFor: (userId) =>
+        [...resolved].filter(([, r]) => r.nextInLineId === userId).map(([id]) => id),
+    }
   } catch (err) {
     log.warn({ err, orgId }, "could not read who is away; routing as if nobody were")
     return NOBODY_AWAY
@@ -394,5 +403,116 @@ export async function updateItemRoutePerson(args: {
       "could not move pending approvals to the item's new person; the assignment stands",
     )
     return 0
+  }
+}
+
+/**
+ * The people away today who name `viewerId` as their next in line, for the Home providers that
+ * declare `passesOn`. Read as the viewer; unreadable means nobody (logged by the away read).
+ */
+export async function readStandingInFor(
+  tx: RlsClient,
+  orgId: string,
+  viewerId: string,
+  now: Date = new Date(),
+): Promise<string[]> {
+  return (await readAwayWorld(tx, orgId, now)).standingFor(viewerId)
+}
+
+/** How long a proposal waits for its app to say who it is for before it goes to the usual deciders. */
+export const PROPOSE_ROUTE_BUDGET_MS = 300
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+interface SummaryLink {
+  app?: unknown
+  entityType?: unknown
+  entityId?: unknown
+}
+
+/**
+ * The route columns of a request being proposed, from the records its summary links to: the
+ * first link whose app declares `approvalRoute` for its entity type asks that read-only tool
+ * who the record is with. A missing, slow or failing answer leaves the columns unset (logged):
+ * the request then reaches the usual deciders, and the proposal itself never waits longer.
+ */
+export async function resolveProposeRoute(args: {
+  orgId: string
+  toolName: string
+  summary: unknown
+  /** Asked as the requester: a record they cannot read says nobody. */
+  requestedBy: string
+  budgetMs?: number
+}): Promise<{ routePersonId?: string }> {
+  const links = (args.summary as { links?: unknown } | null)?.links
+  if (!Array.isArray(links)) return {}
+  for (const raw of links.slice(0, 10) as SummaryLink[]) {
+    if (typeof raw?.app !== "string" || typeof raw.entityType !== "string") continue
+    if (typeof raw.entityId !== "string" || raw.entityId.length === 0) continue
+    const tool = appBridgeManifest(args.orgId, raw.app)?.approvalRoute?.[raw.entityType]
+    if (!tool) continue
+    const personId = await askRouteTool(args, raw.app, tool, raw.entityType, raw.entityId)
+    return personId ? { routePersonId: personId } : {}
+  }
+  return {}
+}
+
+async function askRouteTool(
+  args: { orgId: string; toolName: string; requestedBy: string; budgetMs?: number },
+  app: string,
+  tool: string,
+  entityType: string,
+  entityId: string,
+): Promise<string | null> {
+  const toolName = `${app}:${tool}`
+  const fields = { orgId: args.orgId, request: args.toolName, routeTool: toolName, entityId }
+  if (toolRegistry.get([args.orgId, app, tool])?.readOnly !== true) {
+    log.warn(fields, "approval route tool is missing or not read-only; usual deciders")
+    return null
+  }
+  const controller = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timedOut = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort()
+      resolve("timeout")
+    }, args.budgetMs ?? PROPOSE_ROUTE_BUDGET_MS)
+  })
+  try {
+    const { executeToolCore } = await import("~/modules/apps/execute-tool")
+    const asked = withPrivilegedDb(args.orgId, "approval-route-requester-perms", (ptx) =>
+      loadEffectivePermissions(ptx, args.requestedBy, args.orgId),
+    ).then((perms) =>
+      executeToolCore({
+        toolName,
+        orgId: args.orgId,
+        actor: {
+          actorType: "user",
+          userId: args.requestedBy,
+          orgId: args.orgId,
+          scopes: perms.scopes,
+          dimensionGrants: perms.dimensionGrants,
+        },
+        params: { entityType, entityId },
+        origin: "system",
+        signal: controller.signal,
+      }),
+    )
+    const answer = await Promise.race([asked, timedOut])
+    if (answer === "timeout") {
+      log.warn(fields, "approval route tool did not answer in time; usual deciders")
+      return null
+    }
+    if (!("data" in answer)) {
+      log.warn({ ...fields, answer }, "approval route tool refused; usual deciders")
+      return null
+    }
+    const personId = (answer.data as { personId?: unknown } | null)?.personId
+    return typeof personId === "string" && UUID_RE.test(personId) ? personId : null
+  } catch (err) {
+    log.warn({ ...fields, err }, "approval route tool failed; usual deciders")
+    return null
+  } finally {
+    clearTimeout(timer)
   }
 }

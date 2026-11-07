@@ -624,25 +624,6 @@ async function readDecidedFor(args: DecideArgs, row: ApprovalRow): Promise<Decid
   }
 }
 
-/** Stored on the row this decider claimed, and only while the claim is still theirs. */
-async function recordDecidedFor(
-  args: DecideArgs,
-  requestId: string,
-  decidedFor: DecidedFor,
-): Promise<void> {
-  try {
-    await withPrivilegedDb(args.orgId, "approval-decided-for", (tx) =>
-      tx.execute(drizzleSql`
-        UPDATE ${K}.approval_requests
-        SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{decidedFor}',
-                                 ${JSON.stringify(decidedFor)}::jsonb, true)
-        WHERE id = ${requestId} AND decided_by = ${args.actor.userId}::uuid`),
-    )
-  } catch (err) {
-    log.warn({ err, requestId }, "could not record whose the decision was taken for")
-  }
-}
-
 async function approveFlow(args: DecideArgs, row: ApprovalRow): Promise<DecideResult> {
   // ── N-eyes (BL-268) ──────────────────────────────────────────────────────
   // When an org approval-tightening policy demanded ≥2 DISTINCT approvers, the
@@ -760,6 +741,7 @@ async function approveFlow(args: DecideArgs, row: ApprovalRow): Promise<DecideRe
     // tool call the approver never decrypted anything for.
     ...(args.mailboxFulfilment ? { mailboxFulfilment: args.mailboxFulfilment } : {}),
     ...(args.payloadHash !== undefined ? { expectedPayloadHash: args.payloadHash } : {}),
+    decidedFor,
   })
 
   if (outcome.kind === "payload_changed") {
@@ -780,10 +762,6 @@ async function approveFlow(args: DecideArgs, row: ApprovalRow): Promise<DecideRe
       details:
         "The server is restarting. This approval was not executed and is still pending -- retry shortly.",
     })
-  }
-
-  if (outcome.kind !== "already_claimed" && decidedFor) {
-    await recordDecidedFor(args, row.id, decidedFor)
   }
 
   if (outcome.kind === "already_claimed") {
@@ -983,7 +961,9 @@ async function revertToPending(
       from: "approving",
       set: final
         ? drizzleSql`status = 'cancelled', approving_started_at = NULL`
-        : drizzleSql`status = 'pending', decided_by = NULL, decided_at = NULL, approving_started_at = NULL`,
+        : // Back to pending, undecided: no decision was taken for anyone.
+          drizzleSql`status = 'pending', decided_by = NULL, decided_at = NULL, approving_started_at = NULL,
+                     metadata = COALESCE(metadata, '{}'::jsonb) - 'decidedFor'`,
       returning: drizzleSql`id, bundle_id`,
     })
     if (!reverted) return null

@@ -456,6 +456,7 @@ function buildManifestForBridge(desc: AppDescriptor, declaredCapabilities: strin
     ...((desc as any).sendGuardProviders
       ? { sendGuardProviders: (desc as any).sendGuardProviders }
       : {}),
+    ...((desc as any).approvalRoute ? { approvalRoute: (desc as any).approvalRoute } : {}),
     name: desc.name,
     schema: (desc as any).schema ?? {},
     events: (desc as any).events ?? {},
@@ -3573,6 +3574,8 @@ async function registerSingleApp(
       if (attDecl && isManifestFormat) {
         const handler = typeof attDecl === "string" ? attDecl : attDecl.handler
         const explicitScope = typeof attDecl === "object" ? attDecl.scope : undefined
+        // Undeclared: the provider never receives anyone else's items to pass on.
+        const passesOn = typeof attDecl === "object" && attDecl.passesOn === true
         const firstEntity = Object.keys((desc as any).schema ?? {})[0]
         const scope =
           explicitScope ?? (firstEntity ? `${desc.name}:${firstEntity}:read` : `${desc.name}:read`)
@@ -3581,6 +3584,7 @@ async function registerSingleApp(
           scope,
           bundlePath,
           trusted: desc.trusted !== false,
+          ...(passesOn ? { passesOn: true } : {}),
         })
       }
 

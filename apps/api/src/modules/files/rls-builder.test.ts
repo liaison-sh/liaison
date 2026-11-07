@@ -129,8 +129,8 @@ describe("buildFilesSelectPolicy", () => {
     ])
     expect(sql).toContain(
       `( "kernel".files.app = 'kernel' AND "kernel".files.entity_type = 'data_subject_export' ` +
-        `AND "kernel".files.org_id = NULLIF(rls_ctx.org_id(), '')::uuid ` +
-        `AND "kernel".files.uploaded_by = NULLIF(rls_ctx.user_id(), '')::uuid )`,
+        `AND "kernel".files.org_id = NULLIF((SELECT rls_ctx.org_id()), '')::uuid ` +
+        `AND "kernel".files.uploaded_by = NULLIF((SELECT rls_ctx.user_id()), '')::uuid )`,
     )
   })
 

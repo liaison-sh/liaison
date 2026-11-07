@@ -18,6 +18,7 @@ import {
 } from "./approval-world"
 import { CalendarCase } from "./calendar-world"
 import type { EventFacts, Reading } from "./classes"
+import { MadeCase, type MadeLink, SHARE_SCOPE } from "./dashboard-world"
 import type { EventCode } from "./matrix"
 import { RoutineCase } from "./routine-world"
 import { ThreadCase, type ThreadOrg } from "./thread-world"
@@ -113,6 +114,81 @@ async function moveTask(w: ApprovalCase): Promise<void> {
 
 async function moved(w: ApprovalCase): Promise<void> {
   expect(await w.taskProject()).not.toBe(w.projectId)
+}
+
+const MADE_LINKS: Record<string, MadeLink> = {
+  "dashboard-owner": "dashboardOwner",
+  "dashboard-author": "dashboardAuthor",
+  "store-document-author": "documentAuthor",
+}
+const MADE_SEE = ["owner", "admin", "colleague"]
+
+function made(link: MadeLink) {
+  return async (worlds: Worlds) => new MadeCase(worlds.approvals, link).build()
+}
+
+/** Deactivation, the export, and for the owner a lost permission and the way back. */
+function madeCells(): CellImpl[] {
+  const out: CellImpl[] = []
+  for (const [name, link] of Object.entries(MADE_LINKS)) {
+    out.push(
+      cell<MadeCase>({
+        link: name,
+        event: "Dx",
+        says: "the person who made it deactivated",
+        build: made(link),
+        mustSee: MADE_SEE,
+        act: (w) => w.deactivateOwner(),
+        took: async (w) => expect(await w.ownerStatus()).toBe("deactivated"),
+        facts: () => ({}),
+      }),
+      cell<MadeCase>({
+        link: name,
+        event: "Ex",
+        says: "the person who made it exporting their own data",
+        build: made(link),
+        mustSee: MADE_SEE,
+        act: (w) => w.exportOwner(),
+        took: async (w) => expect(w.exportFileId).not.toBeNull(),
+        facts: (w) => ({ exported: w.exported, linkRowId: w.rowId }),
+      }),
+    )
+  }
+  out.push(
+    cell<MadeCase>({
+      link: "dashboard-owner",
+      event: "Pm",
+      says: "its owner losing the scope to share dashboards",
+      build: made("dashboardOwner"),
+      mustSee: MADE_SEE,
+      // Members hold it through their role and the owner also holds it directly: both go.
+      act: async (w) => {
+        await minimal.revokeScope(w.people.owner, SHARE_SCOPE)
+        await minimal.revokeRole(w.people.owner, "member")
+      },
+      took: async (w) => expect(await w.ownerHolds(SHARE_SCOPE)).toBe(false),
+      facts: () => ({}),
+    }),
+    cell<MadeCase>({
+      link: "dashboard-owner",
+      event: "Rv",
+      says: "its owner deactivated and reactivated",
+      build: made("dashboardOwner"),
+      mustSee: MADE_SEE,
+      mark: (w) => w.ownerAuthVersion(),
+      act: async (w) => {
+        await w.deactivateOwner()
+        await w.reactivateOwner()
+      },
+      took: async (w, mark) => {
+        expect(await w.ownerStatus()).toBe("active")
+        // Leaving and coming back each bumped the owner's credentials.
+        expect(await w.ownerAuthVersion()).toBe((mark as number) + 2)
+      },
+      facts: () => ({}),
+    }),
+  )
+  return out
 }
 
 export const CELLS: CellImpl[] = [
@@ -658,4 +734,7 @@ export const CELLS: CellImpl[] = [
     took: async (w) => expect(await w.mergedInto(w.ticketId)).toBe(w.survivorId),
     facts: (w) => ({ survivor: w.roleOf(w.survivorId) ?? "", goneId: w.roleOf(w.ticketId) ?? "" }),
   }),
+
+  // ── what a person makes: dashboard-owner, dashboard-author, store-document-author ──
+  ...madeCells(),
 ]

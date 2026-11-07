@@ -2,15 +2,16 @@
 //
 // The target serves the org only when the control plane says the move
 // committed: the source agent's `activate` alone does not unfreeze it.
-import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { randomUUID } from "node:crypto"
 import { sql } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
+import * as searchClientModule from "~/infra/search/client"
 import { effectiveIndexName, getMeili } from "~/infra/search/client"
 import { _setEdition } from "~/lib/edition"
 import { BillingUnavailableError } from "~/modules/billing-managed/control-client"
 import { resultRows } from "~/modules/org/purge/rows"
-import { writeIndexAndWait } from "~/modules/search/index-writer"
+import { IndexWriterTestAccess, writeIndexAndWait } from "~/modules/search/index-writer"
 import { waitForMeiliTask } from "~/modules/search/meili-task"
 import * as minimal from "~/seed/tiers/minimal"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -114,11 +115,14 @@ describe("target activation", () => {
 
   it("an abort right after the import purges the incoming copy, even when this process's view predates it", async () => {
     const { orgId } = await minimal.secondOrg({ name: "Aborted Incoming Org" })
-    // The purge removes the org's search documents by org_id.
+    // The purge removes the org's search documents by org_id: an index of this
+    // test's own, so the shared one's settings stay as they are.
     const meili = getMeili()
-    const index = effectiveIndexName()
+    const index = `test_target_abort_${randomUUID().slice(0, 8)}`
+    const indexSpy = spyOn(searchClientModule, "effectiveIndexName").mockReturnValue(index)
+    IndexWriterTestAccess.resetRebuildCache()
     const created = await meili.createIndex(index, { primaryKey: "id" })
-    await waitForMeiliTask(meili, created.taskUid).catch(() => {})
+    await waitForMeiliTask(meili, created.taskUid)
     const settings = await meili.index(index).updateSettings({ filterableAttributes: ["org_id"] })
     await waitForMeiliTask(meili, settings.taskUid)
     const transferId = randomUUID()
@@ -145,6 +149,9 @@ describe("target activation", () => {
       expect(resultRows(left)).toHaveLength(0)
     } finally {
       await setOrgTransferState(orgId, null, transferId).catch(() => {})
+      indexSpy.mockRestore()
+      IndexWriterTestAccess.resetRebuildCache()
+      await meili.deleteIndex(index).catch(() => {})
     }
   }, 60_000)
 

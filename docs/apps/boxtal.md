@@ -166,7 +166,8 @@ Tools marked "Always" file an approval and nothing happens until a person approv
 | Tool | What it does | Approval |
 | --- | --- | --- |
 | `quote`, `quote_batch` | Carrier quotes for one draft or route, or a whole batch of orders | No |
-| `shipment_draft_create`, `shipment_draft_get` | Open or read a shipment draft from an invoicing document | No |
+| `shipment_draft_create` | Start a shipment draft from an invoicing document | No |
+| `shipment_draft_get` | Read a shipment draft | No |
 | `shipment_draft_set_package`, `shipment_draft_set_customs` | Change a draft's cartons or a customs line | No |
 | `create_shipment` | Buy the label for a draft (`is_return: true` for a prepaid return) | Always |
 | `cancel_shipment` | Cancel a shipment not yet dispatched | Always |

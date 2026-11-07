@@ -160,7 +160,6 @@ const READ_ONLY: Record<string, string[]> = {
     // Cross-call only readOnly reads (shopify orders_search/orders_get, invoicing
     // documents_get/documents_search/documents_for_orders, kernel contacts_read).
     "quote",
-    "shipment_draft_create",
     "shipment_draft_get",
     "prep_unlinked_list",
     "prep_order_prefill",
@@ -198,6 +197,8 @@ const READ_ONLY: Record<string, string[]> = {
     // status (a VIES lookup), written nowhere.
     "documents_issue_preview",
     "documents_update_preview",
+    // A saved draft's card read: the document and the total issuing it would write, written nowhere.
+    "draft_issue_preview",
     "counterparty_identity_get",
     "counterparty_identity_lookup",
     "einvoicing_classify",

@@ -51,6 +51,8 @@ type Opened = {
   id?: string
   /** What opened: its kind and a generated reference. Never a record's own words. */
   opened?: string
+  /** The record's tag for a reply, `@[<reference>](<app>:<entity>:<id>)`, so its app is never guessed. */
+  mention?: string
   note?: string
 }
 
@@ -410,7 +412,15 @@ export async function handleOpenApp(
   if (!tab) return notFound()
 
   const reference = naming?.handle && REFERENCE.test(naming.handle) ? naming.handle : rowId
-  const opened = `${chosen.label.toLowerCase()} ${reference}`
+  const record = chosen.record
+  // The record's own app and entity, not the view's label: "document" alone reads as any app's
+  // document (an invoice was once tagged as a knowledge document from it).
+  const appRecord = record.app !== "kernel"
+  const opened = `${chosen.label.toLowerCase()} ${reference}${appRecord ? ` in ${record.app}` : ""}`
+  const mention =
+    appRecord && UUID.test(rowId)
+      ? `@[${reference}](${record.app}:${record.entityType}:${rowId})`
+      : undefined
   if (!(await showTab(ctx, tab, naming?.label ?? opened))) return NO_SCREEN()
 
   return {
@@ -419,6 +429,7 @@ export async function handleOpenApp(
     view: chosen.view,
     id: rowId,
     opened,
+    ...(mention ? { mention } : {}),
     ...(readable
       ? {}
       : {

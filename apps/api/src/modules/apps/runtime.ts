@@ -3464,6 +3464,7 @@ async function registerSingleApp(
             promptTemplate: t.promptTemplate,
             scopes: t.scopes,
             enabledByDefault: t.enabledByDefault,
+            ...(t.followUp ? { followUp: true } : {}),
           })
         }
       }

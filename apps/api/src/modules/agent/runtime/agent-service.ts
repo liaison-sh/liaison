@@ -2284,6 +2284,15 @@ async function runAgentChatTurn(
     currentRunContext()?.routineMailboxReaderUserId
       ? { routineMailboxReaderUserId: currentRunContext()?.routineMailboxReaderUserId }
       : {}),
+    // A follow-up routine's tick (routines.follow_up): its turn stages drafts
+    // and runs on instead of pausing, and its mail checks as a follow-up.
+    // Only into the turn of THAT routine's tick, as the reader above.
+    ...(params.routineId &&
+    !params.coordination &&
+    currentRunContext()?.routineId === params.routineId &&
+    currentRunContext()?.routineFollowUp === true
+      ? { routineFollowUp: true }
+      : {}),
     // The same tick's park signal (routine-mailbox-wait.ts), and the browser
     // nonce of a run its owner started with Run now: only into the turn of
     // THAT routine's tick, under the same rule as the reader above.
@@ -3445,7 +3454,7 @@ async function runAgentChatTurn(
       // A routine run chaining on a parked call proposes steps only: same
       // tools, but a call that would run at once is refused (StepContext).
       stepCtx.chainOnly =
-        params.routineId && routineParkedEarlier && !routinePauseDue
+        params.routineId && !runFrame.routineFollowUp && routineParkedEarlier && !routinePauseDue
           ? ROUTINE_CHAIN_ONLY_RESULT
           : null
       const base = { activeTools: computeActiveTools() }
@@ -3652,7 +3661,9 @@ async function runAgentChatTurn(
           return
         }
       }
-      if (params.routineId && !routinePauseDue) {
+      // A follow-up routine never pauses: what it staged waits for a person
+      // while the run goes on and ends (routine-run-resume.ts).
+      if (params.routineId && !runFrame.routineFollowUp && !routinePauseDue) {
         if (routinePauseFallsDue(step, routineParkedEarlier, routineChainRetries)) {
           routinePauseDue = true
         } else if (routineParkedEarlier && !stepParkedACall(step)) {

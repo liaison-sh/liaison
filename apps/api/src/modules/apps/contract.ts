@@ -250,6 +250,7 @@ const routineTemplateSchema = z.object({
   promptTemplate: z.string().min(1),
   scopes: z.array(z.string()),
   enabledByDefault: z.boolean(),
+  followUp: z.boolean().optional(),
 })
 
 const appPromptSchema = z.object({ content: z.string().min(1) })

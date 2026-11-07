@@ -598,6 +598,8 @@ export const routineTemplateRegistry = createTypedRegistry<
     promptTemplate: string
     scopes: string[]
     enabledByDefault: boolean
+    /** Copied to the routine when the template is enabled: its runs stage drafts and end. */
+    followUp?: boolean
     /** Pinned output visibility; absent = personal. */
     visibility?: "personal" | "shared"
     /**

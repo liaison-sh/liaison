@@ -48,6 +48,7 @@ import {
 } from "./list-helpers"
 import { adminOrderUrl, adminResourceId } from "./panels/url-template"
 import { Chip, Empty, For, Show, StatusPill, useShopDomain } from "./primitives"
+import { onOutsideLinkClick, openOutside } from "./external-link"
 
 // ─────────────────────────────────────────────────────────────────────────
 // Shared types — the bundle's read tools return a uniform NormalizedHit.
@@ -140,6 +141,7 @@ function ListShell(props: {
               href={href()}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={(e) => onOutsideLinkClick(e, href())}
               data-testid={`${props.testid}-open-in-shopify`}
               class="rounded-md border border-border bg-surface px-2.5 py-1 text-[11px] text-text-secondary transition-colors hover:border-accent-border hover:bg-accent-subtle hover:text-accent"
             >
@@ -580,7 +582,8 @@ export const ShopifyOrdersList: Component = () => {
                 data-testid={`shopify-order-invoice-link-${link.invoice_id}`}
                 onClick={(e) => {
                   e.stopPropagation()
-                  navigate(`/invoicing/document/${link.invoice_id}`)
+                  // Another app's record: the host opens invoicing's own tab for it.
+                  app.openRecord("invoicing", "document", link.invoice_id)
                 }}
                 class="min-h-11 rounded-full border border-border bg-surface px-2 py-0.5 text-[11px] text-text-secondary transition-colors hover:border-accent-border hover:bg-accent-subtle hover:text-accent sm:min-h-0"
               >
@@ -668,7 +671,7 @@ export const ShopifyOrdersList: Component = () => {
             o.kind === "draft"
               ? adminDraftOrderUrl(shopDomain(), o.id)
               : adminOrderUrl(shopDomain(), o.id)
-          if (href) window.open(href, "_blank", "noopener,noreferrer")
+          openOutside(href)
         }}
       />
     </ListShell>

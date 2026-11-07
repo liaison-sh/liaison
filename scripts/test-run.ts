@@ -1222,6 +1222,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/ui/home.test.ts",
             "src/ui/settings.test.ts",
             "src/ui/panels/url-template.test.ts",
+            // Outside links and cross-app records go through the host (framed screens).
+            "src/ui/external-link.test.ts",
             // Pure query-shape oracle: Home's unfulfilled-past-SLA query must keep
             // status:open (refunded/archived orders stay UNFULFILLED forever).
             "src/handlers/home.query.test.ts",

@@ -24,6 +24,7 @@ import { adminResourceId } from "./panels/url-template"
 import { formatHoursHuman, formatShopifyMoney, statusLabel } from "./list-helpers"
 import { CardTable } from "@liaison/app-ui/card-table"
 import { Chip, Empty, For, Section, Show, StatusPill } from "./primitives"
+import { onOutsideLinkClick, openOutside } from "./external-link"
 
 interface ConnectionSnapshot {
   shopDomain: string | null
@@ -212,6 +213,7 @@ function RecentOrdersTable(props: { orders: RecentOrderRow[]; shopDomain: string
               href={href()}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={(e) => onOutsideLinkClick(e, href())}
               data-testid="home-open-shopify-orders"
               class="rounded-sm px-1.5 py-0.5 text-[11px] text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text"
             >
@@ -288,7 +290,7 @@ function RecentOrdersTable(props: { orders: RecentOrderRow[]; shopDomain: string
           ]}
           onRowClick={(o) => {
             const href = openOrderUrl(o.id)
-            if (href) window.open(href, "_blank", "noopener,noreferrer")
+            openOutside(href)
           }}
         />
       </Show>
@@ -343,6 +345,7 @@ export const ShopifyHome: Component = () => {
               href={href()}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={(e) => onOutsideLinkClick(e, href())}
               data-testid="home-open-shopify-admin"
               class="rounded-md border border-border bg-surface px-2.5 py-1 text-[11px] text-text-secondary transition-colors hover:border-accent-border hover:bg-accent-subtle hover:text-accent"
             >

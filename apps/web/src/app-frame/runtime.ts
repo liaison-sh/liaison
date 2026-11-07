@@ -143,6 +143,7 @@ export function startFrameRuntime(win: Window & typeof globalThis = window): voi
     // A browser path, not the shell's: an isolated app opens no file natively.
     openFile: async () => false,
     // Host API 1.3: answered by the page for this app only (host-app-calls.ts).
+    framed: true,
     context: () => context,
     openFileById: async (_app: string, fileId: string, filename: string) => {
       await call("openFile", [fileId, filename])

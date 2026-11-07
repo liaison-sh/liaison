@@ -33,7 +33,7 @@ import type {
   HostPrintRequest,
   HostPrintResult,
 } from "@liaison/host"
-import { getTabType } from "~/framework/app-registry"
+import { getTabType, urlToTabInfo } from "~/framework/app-registry"
 import { userFromToken } from "~/modules/auth/auth-store"
 import { canOpenDownloadedFile, openDownloadedFile } from "~/modules/desktop/desktop-store"
 import { currentLocale } from "~/modules/i18n/i18n-context"
@@ -267,9 +267,18 @@ export function buildAppHostCalls(deps: AppHostCallDeps) {
       if (!APP_NAME.test(app) || !ENTITY_NAME.test(entity) || !KERNEL_ID.test(id)) {
         throw new Error("openRecord: an app, an entity and a record id are required")
       }
+      // The record's own tab: `<app>:<entity>`, else the tab the app routes
+      // `/<app>/<entity>/<id>` to (invoicing's `/invoicing/document/:documentId`),
+      // else the generic detail page. The person's session decides what it shows.
       const type = `${app}:${entity}`
       if (getTabType(type)) {
         openTab({ type, entityId: id, label: id })
+        return
+      }
+      const path = `/${encodeURIComponent(app)}/${encodeURIComponent(entity)}/${encodeURIComponent(id)}`
+      const routed = urlToTabInfo(path)
+      if (routed && getTabType(routed.type)?.appId === app) {
+        deps.navigate(path)
         return
       }
       deps.navigate(

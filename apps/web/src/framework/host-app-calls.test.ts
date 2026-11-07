@@ -27,10 +27,18 @@ import {
 } from "./host-app-calls"
 
 function deps(answers: Record<string, unknown> = {}) {
+  // What the host fetched (a spy beside the generic fetch, which a mock would not keep generic).
+  const calls = vi.fn((_path: string, _init?: RequestInit) => {})
+  const fetch = <T>(path: string, init?: RequestInit): Promise<T> => {
+    if (init === undefined) calls(path)
+    else calls(path, init)
+    return Promise.resolve((answers[path.split("?")[0] as string] ?? answers[path]) as T)
+  }
   return {
-    fetch: vi.fn(async (path: string) => answers[path.split("?")[0] as string] ?? answers[path]),
-    fetchBlob: vi.fn(async () => new Blob(["%PDF"], { type: "application/pdf" })),
-    navigate: vi.fn(),
+    fetch,
+    calls,
+    fetchBlob: vi.fn(async (_path: string) => new Blob(["%PDF"], { type: "application/pdf" })),
+    navigate: vi.fn((_path: string) => {}),
   }
 }
 
@@ -85,7 +93,7 @@ describe("decideApproval", () => {
       buildAppHostCalls(d).decideApproval("boxtal", "a1", "approve", "h"),
     ).rejects.toThrow(/not an approval of this app/)
     expect(confirm.asked).toHaveLength(0)
-    expect(d.fetch).toHaveBeenCalledTimes(1)
+    expect(d.calls).toHaveBeenCalledTimes(1)
   })
 
   it("asks the person in the host's dialog, and sends nothing when they cancel", async () => {
@@ -104,7 +112,7 @@ describe("decideApproval", () => {
     expect(confirm.asked).toEqual([
       { app: "boxtal", decision: "approve", title: "Buy a label", lines: ["Colissimo, 12.40 EUR"] },
     ])
-    expect(d.fetch).toHaveBeenCalledTimes(1)
+    expect(d.calls).toHaveBeenCalledTimes(1)
   })
 
   it("decides after the confirm, bound to the payload fingerprint the app showed", async () => {
@@ -112,7 +120,7 @@ describe("decideApproval", () => {
       "/api/approvals/a1": { id: "a1", status: "pending", toolName: "boxtal:create_shipment" },
     })
     await buildAppHostCalls(d).decideApproval("boxtal", "a1", "approve", "hash-1")
-    expect(d.fetch).toHaveBeenLastCalledWith("/api/approvals/a1/decide", {
+    expect(d.calls).toHaveBeenLastCalledWith("/api/approvals/a1/decide", {
       method: "POST",
       body: JSON.stringify({ decision: "approve", payloadHash: "hash-1" }),
     })
@@ -130,7 +138,7 @@ describe("listMyApprovals, print, records", () => {
     expect(await buildAppHostCalls(d).listMyApprovals("boxtal")).toEqual([
       { id: "a", toolName: "boxtal:create_shipment" },
     ])
-    expect(d.fetch).toHaveBeenCalledWith(
+    expect(d.calls).toHaveBeenCalledWith(
       "/api/approvals?status=pending&decidableByMe=true&app=boxtal",
     )
   })
@@ -142,7 +150,7 @@ describe("listMyApprovals, print, records", () => {
       id: "s1",
       templateIds: ["t1", "../x"],
     })
-    expect(d.fetch).toHaveBeenCalledWith("/api/documents/print", {
+    expect(d.calls).toHaveBeenCalledWith("/api/documents/print", {
       method: "POST",
       body: JSON.stringify({
         app: "boxtal",

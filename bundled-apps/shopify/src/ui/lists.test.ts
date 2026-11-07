@@ -211,9 +211,9 @@ describe("ShopifyOrdersList — merged fetch (orders_search + draft_orders_list)
     expect(source).toMatch(/catch\s*\{\s*return new Map<string, InvoiceLink\[\]>\(\)/)
   })
 
-  it("invoice link click navigates in-app and stops propagation so it doesn't also open the row's admin link", () => {
+  it("invoice link click opens invoicing's record through the host and stops propagation so it doesn't also open the row's admin link", () => {
     expect(source).toContain("e.stopPropagation()")
-    expect(source).toContain('navigate(`/invoicing/document/${link.invoice_id}`)')
+    expect(source).toContain('app.openRecord("invoicing", "document", link.invoice_id)')
   })
 })
 

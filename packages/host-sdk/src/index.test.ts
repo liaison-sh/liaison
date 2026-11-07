@@ -5,6 +5,7 @@ import {
   app,
   currentPath,
   fetch,
+  getContext,
   HOST_API_VERSION,
   type HostServices,
   navigate,
@@ -126,8 +127,8 @@ describe("@liaison/host runtime", () => {
     }
   })
 
-  it("the host API is 1.1: currentPath and the frame's path message are additions", () => {
-    expect(HOST_API_VERSION).toBe("1.2.0")
+  it("the host API is 1.3: the typed host calls are additions", () => {
+    expect(HOST_API_VERSION).toBe("1.3.0")
   })
 
   it("navigate falls back to globalThis.location.assign when host.navigate is absent", () => {
@@ -161,5 +162,63 @@ describe("@liaison/host runtime", () => {
     expect(() => off()).not.toThrow()
     delete (globalThis as unknown as { __liaisonHost?: HostServices }).__liaisonHost
     expect(() => onEntityChange("test-app:thing", () => {})()).not.toThrow()
+  })
+})
+
+// Host API 1.3: the typed calls. In a frame (`framed`) the host answers them; in
+// the page, file opening, approval decisions and outside links keep their path.
+describe("typed host calls (1.3)", () => {
+  it("getContext: null when neither the host nor a token names an org", () => {
+    expect(getContext()).toBeNull()
+  })
+
+  it("getContext reads the token's org on an older host", () => {
+    const payload = btoa(JSON.stringify({ orgId: "org-1" }))
+    mockHost.accessToken = () => `h.${payload}.s`
+    expect(getContext()?.orgId).toBe("org-1")
+    mockHost.context = () => ({
+      orgId: "org-2",
+      orgName: "Acme",
+      locale: "fr",
+      user: { id: "u", name: "Ann", locale: "fr" },
+    })
+    expect(getContext()?.orgName).toBe("Acme")
+  })
+
+  it("openFile and decideApproval use the host's calls only in a frame", async () => {
+    const openFileById = mock(async () => {})
+    const decideApproval = mock(async () => ({ status: "approved" }))
+    mockHost.openFileById = openFileById
+    mockHost.decideApproval = decideApproval
+    expect(await app.openFile("f1", "a.pdf")).toBe(false)
+    await app.decideApproval("a1", "approve", "h")
+    expect(decideApproval).not.toHaveBeenCalled()
+    expect(mockHost.fetch).toHaveBeenCalledWith("/api/approvals/a1/decide", {
+      method: "POST",
+      body: JSON.stringify({ decision: "approve", payloadHash: "h" }),
+    })
+    mockHost.framed = true
+    expect(await app.openFile("f1", "a.pdf")).toBe(true)
+    expect(openFileById).toHaveBeenCalledWith("test-app", "f1", "a.pdf")
+    await app.decideApproval("a1", "deny")
+    expect(decideApproval).toHaveBeenCalledWith("test-app", "a1", "deny", undefined)
+  })
+
+  it("print, templates, approvals list and records fall back to the kernel routes on an older host", async () => {
+    await app.listDocumentTemplates("shipment")
+    expect(mockHost.fetch).toHaveBeenCalledWith(
+      "/api/documents/templates?app=test-app&entity=shipment",
+    )
+    ;(mockHost.fetch as ReturnType<typeof mock>).mockImplementation(async () => [
+      { toolName: "test-app:ship" },
+      { toolName: "other:ship" },
+    ])
+    expect(await app.listMyApprovals()).toEqual([{ toolName: "test-app:ship" }])
+    const nav = mock((_p: string) => {})
+    mockHost.navigate = nav
+    app.openRecord("invoicing", "document", "d1")
+    expect(nav).toHaveBeenCalledWith("/detail/invoicing/document/d1")
+    app.openApprovals()
+    expect(nav).toHaveBeenLastCalledWith("/approvals")
   })
 })

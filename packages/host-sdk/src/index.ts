@@ -292,6 +292,12 @@ export interface HostServices {
   // Host API 1.3: typed calls instead of kernel routes, so a screen framed on an
   // origin of its own (no network, no session) still works. Each is bound to the
   // calling app and limited by the host; optional so older shims stay valid.
+  /**
+   * True inside a frame (the app's screen runs outside the page, which answers
+   * every call): file opening, approval decisions and outside links then go
+   * through the host's typed calls; in the page they keep the direct path.
+   */
+  framed?: boolean
   /** Org and person (ids, names, locale), never a token. */
   context?: () => HostContext | null
   /** The host fetches a file (an id from this app's own results or records) and opens it. */
@@ -542,25 +548,30 @@ export const app = {
    */
   openFile: async (fileId: string, filename: string): Promise<boolean> => {
     const host = optionalHost()
-    if (!host?.openFileById) return false
+    if (!host?.framed || !host.openFileById) return false
     await host.openFileById(getAppName(), fileId, filename)
     return true
   },
-  /** Whether the host opens files by id itself (`app.openFile`). */
-  opensFiles: (): boolean => Boolean(optionalHost()?.openFileById),
+  /** Whether the host opens files by id itself (`app.openFile`): inside a frame. */
+  opensFiles: (): boolean => {
+    const host = optionalHost()
+    return Boolean(host?.framed && host.openFileById)
+  },
   /** The org's document templates for one of this app's record types. */
-  listDocumentTemplates: (entity: string): Promise<HostDocumentTemplate[]> => {
+  listDocumentTemplates: <T = HostDocumentTemplate>(entity: string): Promise<T[]> => {
     const host = getHost()
-    if (host.listDocumentTemplates) return host.listDocumentTemplates(getAppName(), entity)
-    return host.fetch<HostDocumentTemplate[]>(
+    if (host.listDocumentTemplates) {
+      return host.listDocumentTemplates(getAppName(), entity) as Promise<T[]>
+    }
+    return host.fetch<T[]>(
       `/api/documents/templates?app=${encodeURIComponent(getAppName())}&entity=${encodeURIComponent(entity)}`,
     )
   },
   /** Print one of this app's records with these templates. */
-  printDocuments: (request: HostPrintRequest): Promise<HostPrintResult> => {
+  printDocuments: <T = HostPrintResult>(request: HostPrintRequest): Promise<T> => {
     const host = getHost()
-    if (host.printDocuments) return host.printDocuments(getAppName(), request)
-    return host.fetch<HostPrintResult>("/api/documents/print", {
+    if (host.printDocuments) return host.printDocuments(getAppName(), request) as Promise<T>
+    return host.fetch<T>("/api/documents/print", {
       method: "POST",
       body: JSON.stringify({
         app: getAppName(),
@@ -586,9 +597,9 @@ export const app = {
     )
   },
   /**
-   * Decide one of this app's pending approvals. A host that has the call asks
-   * the person in its own dialog first (and rejects when they cancel); an older
-   * host decides at once, as before.
+   * Decide one of this app's pending approvals. In a frame the host asks the
+   * person in its own dialog first (and rejects when they cancel); in the page,
+   * or on an older host, it decides at once, as before.
    */
   decideApproval: (
     approvalId: string,
@@ -596,7 +607,7 @@ export const app = {
     payloadHash?: string,
   ): Promise<unknown> => {
     const host = getHost()
-    if (host.decideApproval) {
+    if (host.framed && host.decideApproval) {
       return host.decideApproval(getAppName(), approvalId, decision, payloadHash)
     }
     return host.fetch(`/api/approvals/${encodeURIComponent(approvalId)}/decide`, {
@@ -607,14 +618,17 @@ export const app = {
     })
   },
   /** Whether the host confirms approval decisions itself (the app need not ask again). */
-  confirmsApprovals: (): boolean => Boolean(optionalHost()?.decideApproval),
+  confirmsApprovals: (): boolean => {
+    const host = optionalHost()
+    return Boolean(host?.framed && host.decideApproval)
+  },
   /**
    * Open an https page on a host this app's manifest declares, in a new tab with
    * no opener and no referrer. Rejects when the host refuses it.
    */
   openExternal: async (url: string): Promise<void> => {
     const host = optionalHost()
-    if (host?.openExternal) return host.openExternal(getAppName(), url)
+    if (host?.framed && host.openExternal) return host.openExternal(getAppName(), url)
     const open = (globalThis as { open?: (u: string, t: string, f: string) => unknown }).open
     open?.(url, "_blank", "noopener,noreferrer")
   },

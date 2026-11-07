@@ -27,15 +27,13 @@ import {
   onCleanup,
   Show,
 } from "solid-js"
-import { accessToken, app, fetch as hostFetch, navigate } from "@liaison/host"
+import { accessToken, app, getContext } from "@liaison/host"
 import { AddShipmentPanel } from "./AddShipmentPanel"
 import { AddressDiffersChip, AddressDiffersFold } from "./AddressDiffers"
 import {
   type ApprovalRow,
-  SHIP_APPROVALS_PATH,
   approvalCardText,
   decideBody,
-  decidePath,
   decisionNote,
   pendingShipApprovalsByDraft,
   shipApprovalForRow,
@@ -1106,7 +1104,7 @@ const InvoiceCell: Component<{
           class="!px-1 py-0.5 text-[11px]"
           title="Open the Approvals tab"
           testid={`boxtal-prep-invoice-approvals-${props.row.order_key}`}
-          onClick={() => navigate("/approvals")}
+          onClick={() => app.openApprovals()}
         >
           Approvals
         </Button>
@@ -1322,7 +1320,8 @@ export const PrepGrid: Component = () => {
     if (!force && now - shipApprovalsLoadedAt < 5000) return
     shipApprovalsLoadedAt = now
     try {
-      const rows = await hostFetch<ApprovalRow[]>(SHIP_APPROVALS_PATH)
+      // This app's own pending approvals the person may decide (the host scopes them).
+      const rows = (await app.listMyApprovals()) as ApprovalRow[]
       setShipApprovals(pendingShipApprovalsByDraft(Array.isArray(rows) ? rows : []))
     } catch {
       // The grid works without it: the purchase is still in the approvals queue.
@@ -1336,7 +1335,11 @@ export const PrepGrid: Component = () => {
   // this is a local performance cache, not an authorization decision -- see prep-cache.ts), and
   // `storage` falls back to an inert no-op when localStorage is unreachable (private mode, a
   // locked-down embed), so every call site below can persist without its own null-check.
-  const cacheCtx: PrepCacheCtx = { orgId: decodeOrgIdFromToken(accessToken()), storage: resolveLocalStorage() }
+  // The org id: the host's context (a framed screen holds no token), else the token's claim.
+  const cacheCtx: PrepCacheCtx = {
+    orgId: getContext()?.orgId || decodeOrgIdFromToken(accessToken()),
+    storage: resolveLocalStorage(),
+  }
 
   // Stale-while-revalidate: cache-first paint, live read ALWAYS follows (planPrepListOpen.refreshNow
   // is a constant `true` -- see prep-view-state.ts -- specifically because the previous cache here
@@ -1821,10 +1824,9 @@ export const PrepGrid: Component = () => {
     runMutation("ship", row.order_key, async () => {
       setShipNote(row.order_key, null)
       try {
-        const result = await hostFetch<unknown>(decidePath(approval.id), {
-          method: "POST",
-          body: JSON.stringify(decideBody(approval, decision)),
-        })
+        // Bound to the purchase version the row showed; in a frame the host asks the person first.
+        const body = decideBody(approval, decision)
+        const result = await app.decideApproval(approval.id, decision, body.payloadHash)
         setShipNote(row.order_key, decisionNote(decision, result))
         setPendingShips((prev) => {
           const next = new Set(prev)

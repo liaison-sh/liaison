@@ -1,6 +1,6 @@
 {
   "name": "social",
-  "version": "0.6.59",
+  "version": "0.6.60",
   "iconName": "message-square",
   "description": "Social 'Ground Control': monitors Facebook, Instagram and YouTube for brand-relevant activity, drafts human-approved replies, and manages DMs.",
   "listing": {

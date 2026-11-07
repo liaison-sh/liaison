@@ -838,7 +838,7 @@ describe("the typed host calls a frame may make (host API 1.3)", () => {
 
   it("openFile: a file this frame's own results showed, or one attached to its records, never another", async () => {
     const host = typedHost()
-    host.invokeTool.mockResolvedValueOnce({ rows: [{ label_file_id: "seen-file-0001" }] })
+    host.invokeTool = vi.fn(async () => ({ rows: [{ label_file_id: "seen-file-0001" }] }))
     const state = frameCallState(["shipment"])
     state.fileApp = vi.fn(async (id: string) => (id === "own-record-file1" ? "acme" : "other"))
     await answerFrameCall("acme", "invokeTool", ["list", {}], host, undefined, state)

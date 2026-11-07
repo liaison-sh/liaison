@@ -56,3 +56,4 @@ Write result record_id from the first item's id, plain-id pattern, else null + r
 connector_write declares referenceableOutputs record_id -> apps/api/src/apps/api-connector/app.manifest.json:135
 connector_write approval title: operation in words, connection, subject -> apps/api/src/apps/api-connector/handlers.ts:156
 config apply without an admin section acts as the earliest active admin; no admin: credentials refused -> apps/api/src/cli/provisioners/admin.ts:62-92, apps/api/src/cli/provisioners/api-connectors.ts:217
+woocommerce example adapter section (orders, one order, products, best sellers) -> apps/api/src/apps/api-connector/reference/authoring.md:475

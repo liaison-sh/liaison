@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { spawnSync } from "node:child_process"
 import {
@@ -12,6 +13,7 @@ import {
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { HOST_API_VERSION } from "@liaison/host"
 import { eq } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
@@ -261,7 +263,7 @@ describe("installAppFromTarball", () => {
         requireSignature: false,
       }),
     ).rejects.toThrow(
-      "test-installer 1.0.0 needs host API ^9; this server provides host API 1.1.0. Update Liaison first.",
+      `test-installer 1.0.0 needs host API ^9; this server provides host API ${HOST_API_VERSION}. Update Liaison first.`,
     )
     expect(existsSync(join(installRoot, "test-installer", "1.0.0"))).toBe(false)
   })
@@ -501,7 +503,7 @@ describe("upgrade flow (preview + apply)", () => {
         requireSignature: false,
       }),
     ).rejects.toThrow(
-      "test-installer 1.1.0 needs host API ^9; this server provides host API 1.1.0. Update Liaison first.",
+      `test-installer 1.1.0 needs host API ^9; this server provides host API ${HOST_API_VERSION}. Update Liaison first.`,
     )
     expect(existsSync(join(installRoot, "test-installer", "1.0.0"))).toBe(true)
     expect(existsSync(join(installRoot, "test-installer", "1.1.0"))).toBe(false)

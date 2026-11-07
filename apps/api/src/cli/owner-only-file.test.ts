@@ -5,11 +5,13 @@
 // never what comes back.
 
 import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test"
-import * as realFs from "node:fs"
+import * as liveFs from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-// Taken before the mock below: the namespace is live, so it would see the wrappers.
+// An eager snapshot taken before the mock below: the namespace is live, so it would see the
+// wrappers (and spreading it would leak a partial stub into later files).
+const realFs = { ...liveFs }
 const { chmodSync, fstatSync, mkdtempSync, renameSync, rmSync, statSync, writeFileSync } = realFs
 
 /** Runs once, right after the next mode check, whichever way it is made. */

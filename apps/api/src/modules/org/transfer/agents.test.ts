@@ -321,9 +321,31 @@ beforeAll(async () => {
   await admin.end()
   A = postgres(superA, { max: 4, onnotice: () => {} })
   B = postgres(withDb(superA, dbB), { max: 2, onnotice: () => {} })
+  await copyExtraAppSchemas()
   // The instance's first org (registration); every moved org is a second org.
   await createTestOrg({ email: `xa-${randomUUID().slice(0, 8)}@agents.test` })
 }, 300_000)
+
+/**
+ * B is cloned from the template, but A is this run's database, which earlier files of the
+ * same process or shard may have given app schemas (an app creates its tables when it is
+ * first registered). The move refuses two instances whose tables differ, so B gets the
+ * table definitions of every app schema A holds and the template lacks.
+ */
+async function copyExtraAppSchemas(): Promise<void> {
+  const schemas = (q: postgres.Sql) =>
+    q<{ s: string }[]>`SELECT nspname AS s FROM pg_namespace WHERE nspname LIKE 'app\_%'`
+  const onB = new Set((await schemas(B)).map((r) => r.s))
+  const extra = (await schemas(A)).map((r) => r.s).filter((n) => !onB.has(n))
+  if (extra.length === 0) return
+  const exec = (cmd: string[], input?: Uint8Array) => {
+    const p = Bun.spawnSync(cmd, { stdin: input, stdout: "pipe", stderr: "pipe" })
+    if (p.exitCode !== 0) throw new Error(`${cmd[0]} -> ${p.exitCode}: ${p.stderr.toString()}`)
+    return p.stdout
+  }
+  const dump = exec(["pg_dump", "-s", "--no-owner", ...extra.flatMap((n) => ["-n", n]), superA])
+  exec(["psql", "-q", "-v", "ON_ERROR_STOP=1", withDb(superA, dbB)], dump)
+}
 
 afterAll(async () => {
   for (const c of children) c.kill()

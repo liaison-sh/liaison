@@ -66,8 +66,9 @@ describe("projects.manifest", () => {
     // 1.7.6: the CI section moved to the declarative settings page.
     // 1.7.7: createProject takes the project's tasks (one approval for the whole plan).
     // 1.7.9: task labels
-    // 1.10.4: its attention heading is declared in the manifest.
+    // 1.10.2: more French and English tool search words
     // 1.10.3: approval_route_read says who an approval about a task is for; Home passes on.
+    // 1.10.4: its attention heading is declared in the manifest.
     expect(projectsManifest.version).toBe("1.10.4")
   })
 

@@ -115,7 +115,10 @@ export async function sendIndexWrite(
   }
   const docs = finalizeDocuments(write.docs ?? [])
   for (const chunk of chunkBySize(docs)) {
-    const uid = taskUidOf(await index.addDocuments(chunk))
+    // Every search document is keyed by `id` (drift.ts and reindex.ts create the index so).
+    // Naming it here keeps a write that reaches a missing index from creating one Meili
+    // cannot key: its documents also carry `org_id`, so inference refuses them.
+    const uid = taskUidOf(await index.addDocuments(chunk, { primaryKey: "id" }))
     if (uid !== null) uids.push(uid)
   }
   return uids

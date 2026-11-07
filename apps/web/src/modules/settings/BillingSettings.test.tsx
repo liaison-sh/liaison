@@ -23,6 +23,7 @@ import { ApiProvider } from "~/modules/shell/ApiContext"
 
 /** Amounts no product constant could produce by accident. */
 const SUMMARY: BillingSummary = {
+  pricingUrl: "https://plans.example.test/compare",
   plan: "base",
   status: "active",
   periodEnd: "2026-12-01T00:00:00.000Z",
@@ -156,9 +157,9 @@ describe("BillingSettings", () => {
     )
     expect(topUpPrice(13, SUMMARY.topUp)).toContain("15.21")
     expect(await screen.findByTestId("billing-invoice-in_1")).toHaveTextContent("LS-0001")
-    // The one link on the page is the plan comparison on the public site, never a payment page.
+    // The one link on the page is the plan comparison the control plane names, never a payment page.
     const links = [...screen.getByTestId("billing-settings").querySelectorAll("a")]
-    expect(links.map((a) => a.getAttribute("href"))).toEqual(["https://liaison.sh/pricing"])
+    expect(links.map((a) => a.getAttribute("href"))).toEqual(["https://plans.example.test/compare"])
   })
 
   it("shows the credit balance like the rest of the UI, without trailing zeros", async () => {
@@ -330,9 +331,23 @@ describe("BillingSettings", () => {
     expect(cells("billing-compare-jobsPerHour")).toEqual(["Unlimited", "601"])
     expect(compare.textContent?.toLowerCase()).not.toContain("mailbox")
     const site = screen.getByTestId("billing-compare-site") as HTMLAnchorElement
-    expect(site.href).toBe("https://liaison.sh/pricing")
+    expect(site.href).toBe("https://plans.example.test/compare")
     expect(site.rel).toContain("noopener")
   })
+
+  it.each([[undefined], ["http://plans.example.test/compare"], ["not a url"]])(
+    "the comparison links out only to an https page the control plane names (%s)",
+    async (pricingUrl) => {
+      stubApi((url) =>
+        url.includes("/billing/managed/summary")
+          ? { body: { data: { ok: true, ...SUMMARY, pricingUrl } } }
+          : baseRoutes(url),
+      )
+      renderPage()
+      await screen.findByTestId("billing-plan-compare")
+      expect(screen.queryByTestId("billing-compare-site")).toBeNull()
+    },
+  )
 
   it("the top-up's field, price and button share one centred row, the label above it", async () => {
     stubApi(baseRoutes)

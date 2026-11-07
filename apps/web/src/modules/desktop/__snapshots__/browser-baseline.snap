@@ -30,7 +30,7 @@
             <path>
   <div class="flex items-center gap-2">
     <div class="relative flex">
-      <button class="outline-none flex h-7 w-7 items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-secondary" type="button" aria-label="Thread actions">
+      <button class="outline-none flex h-7 w-7 items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-secondary" type="button" data-testid="thread-header.actions" aria-label="Thread actions">
         <svg class="lucide lucide-ellipsis lucide-more-horizontal lucide-icon" aria-hidden="true">
           <circle>
           <circle>

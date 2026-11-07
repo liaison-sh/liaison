@@ -176,11 +176,15 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON kernel.app_build_artifacts TO liaison_rl
 GRANT SELECT, INSERT ON kernel.app_logs TO liaison_rls, liaison_app;
 --> statement-breakpoint
 
--- app_drafts: read by the org, written by holders of kernel:apps:build.
+-- app_drafts: read and written by holders of kernel:apps:build only (the readers the
+-- builder's tools declare, so a draft's title or files reach nobody else).
 DROP POLICY IF EXISTS app_drafts_select ON kernel.app_drafts;
 --> statement-breakpoint
 CREATE POLICY app_drafts_select ON kernel.app_drafts FOR SELECT TO liaison_rls
-  USING (org_id = (SELECT rls_ctx.org_id())::uuid);
+  USING (
+    org_id = (SELECT rls_ctx.org_id())::uuid
+    AND (SELECT kernel.has_scope('kernel:apps:build'))
+  );
 --> statement-breakpoint
 DROP POLICY IF EXISTS app_drafts_insert ON kernel.app_drafts;
 --> statement-breakpoint
@@ -215,7 +219,10 @@ CREATE POLICY app_drafts_delete ON kernel.app_drafts FOR DELETE TO liaison_rls
 DROP POLICY IF EXISTS app_draft_versions_select ON kernel.app_draft_versions;
 --> statement-breakpoint
 CREATE POLICY app_draft_versions_select ON kernel.app_draft_versions FOR SELECT TO liaison_rls
-  USING (org_id = (SELECT rls_ctx.org_id())::uuid);
+  USING (
+    org_id = (SELECT rls_ctx.org_id())::uuid
+    AND (SELECT kernel.has_scope('kernel:apps:build'))
+  );
 --> statement-breakpoint
 DROP POLICY IF EXISTS app_draft_versions_insert ON kernel.app_draft_versions;
 --> statement-breakpoint
@@ -250,7 +257,10 @@ CREATE POLICY app_draft_versions_delete ON kernel.app_draft_versions FOR DELETE 
 DROP POLICY IF EXISTS app_build_artifacts_select ON kernel.app_build_artifacts;
 --> statement-breakpoint
 CREATE POLICY app_build_artifacts_select ON kernel.app_build_artifacts FOR SELECT TO liaison_rls
-  USING (org_id = (SELECT rls_ctx.org_id())::uuid);
+  USING (
+    org_id = (SELECT rls_ctx.org_id())::uuid
+    AND (SELECT kernel.has_scope('kernel:apps:build'))
+  );
 --> statement-breakpoint
 DROP POLICY IF EXISTS app_build_artifacts_insert ON kernel.app_build_artifacts;
 --> statement-breakpoint

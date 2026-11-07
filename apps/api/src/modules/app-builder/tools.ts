@@ -48,7 +48,8 @@ import { hasScope } from "~/modules/permissions/permissions"
 const BUILD = "kernel:apps:build"
 const ADMIN = "kernel:apps:admin"
 const LOGS = "kernel:apps:logs"
-// Drafts are read back only through BUILD (these tools and the builder routes), so
+// Drafts are read only by holders of BUILD: the RLS of app_drafts, app_draft_versions
+// and app_build_artifacts lets nobody else SELECT them (0277_app_builder.sql), so
 // every ungated write declares BUILD as its readers (`sinkReadScope`): on a tainted
 // turn it runs when every holder of BUILD holds what the turn read, and parks for a
 // disclosure decision otherwise (scope-taint.ts, rules 6a and 8b). Undeclared, every

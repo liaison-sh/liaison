@@ -20,8 +20,9 @@ import * as dnsPromises from "node:dns/promises"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { sql as drizzleSql } from "drizzle-orm"
 import { app } from "~/app"
-import { sql } from "~/db"
+import { extractRows, sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { createRlsSession, type UserContext, withRlsContext } from "~/db/rls"
 import { env } from "~/lib/env"
@@ -53,6 +54,7 @@ import { draftStoreApp, getDocument, setDocument } from "~/modules/data-store/se
 import { setOrgCaps } from "~/modules/org/caps"
 import { purgeOrgCustomApps } from "~/modules/org/purge/purge-org"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
+import { resolveReferenceDisplay } from "~/modules/threads/reference-display"
 import { seedCustomAppInstall } from "~/seed/factories/org/platform-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
@@ -179,6 +181,34 @@ afterAll(async () => {
   env.LIAISON_CUSTOM_APPS = savedCustomApps
   await releaseTestLock()
 }, 120_000)
+
+describe("who reads a draft", () => {
+  it("only holders of kernel:apps:build see a draft, its versions and artifacts; a reference shows others no title", async () => {
+    const { draftId } = await newDraft("readers")
+    const as = <T>(scopes: string[], fn: (tx: any) => Promise<T>) =>
+      withRlsContext({ ...admin, scopes, dimensionGrants: { "*": ["*"] } }, fn)
+    const counts = (tx: any) =>
+      tx.execute(drizzleSql`SELECT
+        (SELECT count(*)::int FROM kernel.app_drafts WHERE id = ${draftId}) AS drafts,
+        (SELECT count(*)::int FROM kernel.app_draft_versions WHERE draft_id = ${draftId}) AS versions`)
+    const ref = { orgId, app: "kernel", entityType: "app-builder", entityId: draftId }
+
+    const builder = await as(["kernel:apps:build"], async (tx) => ({
+      rows: extractRows(await counts(tx)),
+      display: await resolveReferenceDisplay(tx, ref),
+    }))
+    expect(builder.rows).toEqual([{ drafts: 1, versions: 1 }])
+    expect(builder.display.label).toBe("Draft readers")
+
+    const member = await as(["kernel:threads:read", "kernel:apps:logs"], async (tx) => ({
+      rows: extractRows(await counts(tx)),
+      display: await resolveReferenceDisplay(tx, ref),
+    }))
+    expect(member.rows).toEqual([{ drafts: 0, versions: 0 }])
+    expect(member.display.label).not.toContain("Draft readers")
+    expect(member.display.snippet).toBeUndefined()
+  }, 60_000)
+})
 
 describe("templates", () => {
   it("store-crud passes check and preview as it is; its write lands in the draft's namespace only", async () => {

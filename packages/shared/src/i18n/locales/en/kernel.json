@@ -711,6 +711,7 @@
       "kernel:products:read": "Read product attributes (short codes)",
       "kernel:products:write": "Write product attributes (short codes)",
       "kernel:data_subject:export": "Compile a single data subject's records across apps into one GDPR data-subject-request (DSR) export bundle (privacy/DSR handler authority, NOT org admin)",
+      "kernel:data_subject:export:self": "Export everything the organization holds about yourself as a member (every active member holds it)",
       "kernel:files:read": "Read files attached to entities",
       "kernel:files:analyze": "Analyze image/video files with the media-analysis tool",
       "kernel:audit:read": "Read audit log",

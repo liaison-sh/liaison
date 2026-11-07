@@ -711,6 +711,7 @@
       "kernel:products:read": "Lire les attributs produit (codes courts)",
       "kernel:products:write": "Modifier les attributs produit (codes courts)",
       "kernel:data_subject:export": "Rassembler les données d'une personne dans toutes les applications en un export RGPD (traitement des demandes d'accès, sans droits d'administration)",
+      "kernel:data_subject:export:self": "Exporter tout ce que l'organisation détient sur vous en tant que membre (tout membre actif le détient)",
       "kernel:files:read": "Lire les fichiers joints",
       "kernel:files:analyze": "Analyser des images et des vidéos avec l'outil d'analyse des médias",
       "kernel:audit:read": "Lire le journal d'audit",

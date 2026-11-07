@@ -64,11 +64,24 @@ async function insertRow(spec: {
 interface Reminder {
   targets: string[]
   summary: string
+  link: { tabType: string; entityId: string } | undefined
+  marker: { approvalId: string; hours: number } | undefined
 }
 
 /** The reminders queued for one request, as the attention pipeline will deliver them. */
 async function remindersFor(rowId: string): Promise<Reminder[]> {
-  const rows = await sql<{ payload: { data: { targetUserIds: string[]; summary: string } } }[]>`
+  const rows = await sql<
+    {
+      payload: {
+        data: {
+          targetUserIds: string[]
+          summary: string
+          link?: { tabType: string; entityId: string }
+          routedReminder?: { approvalId: string; hours: number }
+        }
+      }
+    }[]
+  >`
     SELECT payload FROM kernel.pending_events
      WHERE org_id = ${ORG}::uuid
        AND payload->>'entity' = 'agent_notification'
@@ -76,6 +89,8 @@ async function remindersFor(rowId: string): Promise<Reminder[]> {
   return rows.map((r) => ({
     targets: [...r.payload.data.targetUserIds].sort(),
     summary: r.payload.data.summary,
+    link: r.payload.data.link,
+    marker: r.payload.data.routedReminder,
   }))
 }
 
@@ -186,6 +201,12 @@ describe("routed reminders: a routed row is not lost", () => {
     const [reminder] = await remindersFor(rows.onItemLate as string)
     expect(reminder?.summary).toContain("On the item, a day and a minute")
     expect(reminder?.summary).toContain("24 hours")
+  })
+
+  it("a reminder opens the request's own conversation and carries the marker the row is translated from", async () => {
+    const [reminder] = await remindersFor(rows.onItemLate as string)
+    expect(reminder?.link).toEqual({ tabType: "thread", entityId: THREAD })
+    expect(reminder?.marker).toEqual({ approvalId: rows.onItemLate as string, hours: 24 })
   })
 
   it("the row's placement does not change", async () => {

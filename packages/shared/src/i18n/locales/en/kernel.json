@@ -3757,6 +3757,7 @@
       "rejected": "Approval {{handle}} rejected"
     },
     "awayNamed": "{{name}} marked you away {{dates}}",
+    "routedReminder": "Waiting more than {{hours}} hours for a decision: {{title}}",
     "awayCalendar": {
       "set": "Your calendar marks you away {{dates}}. {{next}}",
       "moved": "Your away moved: {{dates}}. {{next}}",

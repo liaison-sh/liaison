@@ -52,6 +52,7 @@ import {
   awayRunEnd,
   groupForChatMessage,
   groupForKind,
+  type HomePlacement,
   isUrgentFor,
   type NotificationGrid,
   type NotificationGroupId,
@@ -142,7 +143,7 @@ export interface RouterItem {
    * is a request for someone else that the recipient may also decide: it stays in their feed and
    * asks nothing of them. Absent reads as theirs.
    */
-  placement?: "mine" | "standing_in" | "others"
+  placement?: Exclude<HomePlacement, "hidden">
   /** The recipient is @mentioned by this item. */
   isMention?: boolean
   /** Set for a chat message event: its group comes from the room, not the kind. */

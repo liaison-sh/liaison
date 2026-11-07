@@ -51,6 +51,7 @@ interface WaitingRow extends RoutableApprovalRow {
   approve_scope: string | null
   summary: { title?: unknown } | null
   current_payload: unknown
+  thread_id: string | null
 }
 
 // Every column is read: the route's inputs travel with the row to the routing module, which alone reads them.
@@ -170,7 +171,9 @@ async function remindOrg(orgId: string, rows: readonly WaitingRow[]): Promise<nu
           summary: `Waiting more than ${ROUTED_REMINDER_HOURS} hours for a decision: ${titleOf(r)}`,
           urgency: 50,
           targetUserIds: [...targets],
-          routedReminder: { approvalId: r.id },
+          // The row's own conversation, where the request is read and decided.
+          ...(r.thread_id ? { link: { tabType: "thread", entityId: r.thread_id } } : {}),
+          routedReminder: { approvalId: r.id, hours: ROUTED_REMINDER_HOURS },
         },
       })
       reminded++

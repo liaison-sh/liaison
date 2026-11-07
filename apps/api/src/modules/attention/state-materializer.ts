@@ -396,7 +396,7 @@ function isHandedOverItem(item: AttentionItem, now: Date): boolean {
 }
 
 /** The router's `placement` of an approval row, when the server marked one. */
-function approvalPlacement(item: AttentionItem): { placement?: "mine" | "standing_in" | "others" } {
+function approvalPlacement(item: AttentionItem): Pick<RouterItem, "placement"> {
   if (item.kind !== "approval_pending") return {}
   const placement = item.metadata?.placement
   return placement === "mine" || placement === "standing_in" || placement === "others"

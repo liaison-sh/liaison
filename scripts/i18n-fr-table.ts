@@ -7698,6 +7698,8 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.settings.profile.away.failed": "Impossible d'enregistrer votre absence.",
   "kernel.settings.profile.away.endFailed": "Impossible d'y mettre fin.",
   "kernel.attentionTitle.awayNamed": "{{name}} vous a indiqué absent {{dates}}",
+  "kernel.attentionTitle.routedReminder":
+    "En attente d'une décision depuis plus de {{hours}} heures : {{title}}",
   "kernel.attentionTitle.awayCalendar.set": "Votre agenda vous indique absent {{dates}}. {{next}}",
   "kernel.attentionTitle.awayCalendar.moved": "Votre absence a changé : {{dates}}. {{next}}",
   "kernel.attentionTitle.awayCalendar.asked":

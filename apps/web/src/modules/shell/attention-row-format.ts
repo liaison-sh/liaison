@@ -413,6 +413,12 @@ export function kernelAttentionTitle(
             : t("kernel.attentionTitle.awayCalendar.askedNoTitle", { dates: cal.said })
         return t(`kernel.attentionTitle.awayCalendar.${cal.kind}`, { dates: cal.said, next })
       }
+      // A request waiting a day (approvals/routed-reminders.ts): the row carries `routedReminder`.
+      m = item.metadata?.routedReminder
+        ? /^Waiting more than (\d+) hours for a decision: (.+)$/s.exec(s)
+        : null
+      if (m)
+        return t("kernel.attentionTitle.routedReminder", { hours: m[1] ?? "", title: m[2] ?? "" })
       // Someone marked this person away (modules/users/away.ts): the row carries `awayNamed`.
       m = item.metadata?.awayNamed ? /^(.+) marked you away (.+)$/.exec(s) : null
       return m ? t("kernel.attentionTitle.awayNamed", { name: m[1] ?? "", dates: m[2] ?? "" }) : s

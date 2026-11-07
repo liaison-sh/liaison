@@ -3754,6 +3754,7 @@
       "rejected": "Demande {{handle}} refusée"
     },
     "awayNamed": "{{name}} vous a indiqué absent {{dates}}",
+    "routedReminder": "En attente d'une décision depuis plus de {{hours}} heures : {{title}}",
     "awayCalendar": {
       "set": "Votre agenda vous indique absent {{dates}}. {{next}}",
       "moved": "Votre absence a changé : {{dates}}. {{next}}",

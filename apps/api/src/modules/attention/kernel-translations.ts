@@ -250,6 +250,9 @@ export const kernelTranslations: Translation[] = [
       "routineAlert",
       "awayNamed",
       "awayCalendar",
+      // `routedReminder`: a request waiting a day tells its deciders once
+      // (approvals/routed-reminders.ts); `link` opens the request's conversation.
+      "routedReminder",
     ],
   },
   {

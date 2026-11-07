@@ -28,6 +28,7 @@ import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -73,23 +74,29 @@ interface RowSpec {
 export async function insertRow(spec: RowSpec): Promise<string> {
   const id = randomUUID()
   const wedged = spec.status === "approving"
-  await sql`
-    INSERT INTO kernel.approval_requests (
-      id, org_id, handle, thread_id, originating_thread_id, tool_name, tool_params,
-      current_payload, expires_at, notify_user_ids, requested_by, status, summary, metadata,
-      resource_owner_id, bundle_id, bundle_position, approving_started_at, route_person_id
-    ) VALUES (
-      ${id}::uuid, ${ORG}::uuid, ${`APR-${id.slice(0, 8)}`}, ${THREAD}::uuid, ${THREAD}::uuid,
-      ${spec.tool ?? "projects:createTask"}, '{}'::jsonb,
-      ${JSON.stringify(spec.payload ?? { title: spec.title })}::jsonb, now() + INTERVAL '3 days',
-      ${spec.notify}::uuid[], ${spec.requestedBy}::uuid, ${spec.status ?? "pending"},
-      ${JSON.stringify({ title: spec.title, ...(spec.links ? { links: spec.links } : {}) })}::jsonb,
-      ${JSON.stringify(spec.metadata ?? {})}::jsonb,
-      ${spec.resourceOwner ?? null}, ${spec.bundleId === "self" ? id : (spec.bundleId ?? null)},
-      ${spec.bundlePosition ?? null},
-      ${wedged ? sql`now() - INTERVAL '2 hours'` : null},
-      ${spec.routePersonId ?? null}
-    )`
+  await sql.unsafe(
+    insertSql("kernel.approval_requests", {
+      id,
+      org_id: ORG,
+      handle: `APR-${id.slice(0, 8)}`,
+      thread_id: THREAD,
+      originating_thread_id: THREAD,
+      tool_name: spec.tool ?? "projects:createTask",
+      tool_params: "{}",
+      current_payload: JSON.stringify(spec.payload ?? { title: spec.title }),
+      expires_at: { raw: "now() + INTERVAL '3 days'" },
+      notify_user_ids: `{${spec.notify.join(",")}}`,
+      requested_by: spec.requestedBy,
+      status: spec.status ?? "pending",
+      summary: JSON.stringify({ title: spec.title, ...(spec.links ? { links: spec.links } : {}) }),
+      metadata: JSON.stringify(spec.metadata ?? {}),
+      resource_owner_id: spec.resourceOwner ?? null,
+      bundle_id: spec.bundleId === "self" ? id : (spec.bundleId ?? null),
+      bundle_position: spec.bundlePosition ?? null,
+      approving_started_at: wedged ? { raw: "now() - INTERVAL '2 hours'" } : null,
+      route_person_id: spec.routePersonId ?? null,
+    }),
+  )
   return id
 }
 
@@ -255,11 +262,20 @@ describe("home routing: who a pending approval is for", () => {
   }
 
   async function away(userId: string, nextInLineId: string | null): Promise<string> {
-    const [r] = (await sql`
-      INSERT INTO kernel.away_ranges (org_id, user_id, starts_on, ends_on, next_in_line_id, source)
-      VALUES (${ORG}::uuid, ${userId}::uuid, current_date - 1, current_date + 2,
-              ${nextInLineId}, 'said')
-      RETURNING id`) as Array<{ id: string }>
+    const [r] = (await sql.unsafe(
+      insertSql(
+        "kernel.away_ranges",
+        {
+          org_id: ORG,
+          user_id: userId,
+          starts_on: { raw: "current_date - 1" },
+          ends_on: { raw: "current_date + 2" },
+          next_in_line_id: nextInLineId,
+          source: "said",
+        },
+        { returning: "id" },
+      ),
+    )) as Array<{ id: string }>
     return (r as { id: string }).id
   }
 
@@ -371,9 +387,12 @@ describe("home routing: who a pending approval is for", () => {
       routePersonId: people.sara as string,
       title: "Standing next in line",
     })
-    await sql`
-      INSERT INTO kernel.user_preferences (user_id, next_in_line_id) VALUES (${people.sara}, ${people.tom})
-      ON CONFLICT (user_id) DO UPDATE SET next_in_line_id = EXCLUDED.next_in_line_id`
+    await sql.unsafe(
+      `${insertSql("kernel.user_preferences", {
+        user_id: people.sara as string,
+        next_in_line_id: people.tom as string,
+      })} ON CONFLICT (user_id) DO UPDATE SET next_in_line_id = EXCLUDED.next_in_line_id`,
+    )
     const range = await away(people.sara as string, null)
     try {
       expect((await placed("tom", id))?.placement).toBe("standing_in")

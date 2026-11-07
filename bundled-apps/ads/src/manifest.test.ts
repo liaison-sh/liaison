@@ -86,7 +86,9 @@ describe("ads app.manifest.json", () => {
     // 0.1.55: above 0.1.54, so an instance on either line of work upgrades; no change of its own.
     // 0.1.56: above both lines of work, which each changed it under the number before; no change of its own.
     // 0.1.58: the package carries the app SDK's manifest `secrets` field; no change of its own.
-    expect(m.version).toBe("0.1.58")
+    // 0.1.59: graph_get and google_search_terms read text people outside the org wrote (page
+    // comments, the queries searchers typed), so a turn that read them is marked.
+    expect(m.version).toBe("0.1.59")
     for (const name of ["insights_query", "metrics_list", "metrics_run"]) {
       expect(m.tools[name]?.readOnly).toBe(true)
       expect(m.tools[name]?.writesToTable).toBeUndefined()

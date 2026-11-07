@@ -603,6 +603,21 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
     ],
     cwd: path.join(ROOT, "apps/api"),
   },
+  // The relation cells (apps/api/src/tests/relations/links.yaml): each link between objects
+  // against every event that can break it, generated per kept cell, plus the class functions
+  // and the schema guard. A gate runs it when a change touches a link's paths (test-map.ts).
+  relations: {
+    cmd: [
+      "bun",
+      "test",
+      ...bailBun,
+      ...bunTestFlags,
+      ...(fileFilter ? fileArg : ["src/tests/relations"]),
+    ],
+    cwd: path.join(ROOT, "apps/api"),
+    // Nested privileged acquisitions throw here too (see the unit suite).
+    env: { NESTED_PRIVILEGED_STRICT: "1" },
+  },
   // P8-FX10: the tests that talk to a REAL third party over the network with a
   // REAL credential. `real-gitlab.live.test.ts` sat in src/apps, which the
   // `unit` suite selects whole, so the day its read-only token expired the unit
@@ -2087,6 +2102,7 @@ if (suite === "full") {
     "integration",
     "integration-extra",
     "integration-mocked",
+    "relations",
     "e2e-parallel",
     "cell",
     "web-unit",

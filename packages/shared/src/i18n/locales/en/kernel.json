@@ -6401,7 +6401,8 @@
         "contact": "Open contact"
       }
     },
-    "hiddenTitle": "New message in a thread"
+    "hiddenTitle": "New message in a thread",
+    "gone": "Its app is switched off, so it cannot be opened"
   },
   "dashboards": {
     "sectionTitle": "Dashboards",

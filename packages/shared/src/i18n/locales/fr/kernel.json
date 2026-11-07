@@ -6398,7 +6398,8 @@
         "contact": "Ouvrir le contact"
       }
     },
-    "hiddenTitle": "Nouveau message dans une discussion"
+    "hiddenTitle": "Nouveau message dans une discussion",
+    "gone": "Son application est désactivée, impossible de l’ouvrir"
   },
   "dashboards": {
     "sectionTitle": "Tableaux de bord",

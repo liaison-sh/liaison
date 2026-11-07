@@ -239,7 +239,7 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
   ],
   [
     "apps/api/src/modules/agent/context/context-providers.ts",
-    "scopes.add(decl.scope)",
+    "...new Set([decl.scope, ...resolveRequiredScopes(tool)]),",
     REASONS.PROVIDER,
   ],
   ["apps/api/src/modules/apps/contract.ts", "if (!required.includes(p.scope)) {", REASONS.PROVIDER],

@@ -303,7 +303,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `MEDIA_TRANSFER_HOST_WHITELIST` | `apps/api/src/modules/agent/media/media-analysis-constants.ts:121` |
 | `MIGRATION_DATABASE_URL` | `apps/api/src/cli/export-full.ts:74`, `apps/api/src/cli/org-transfer.ts:243`, `apps/api/src/db/migrate.ts:405` and 3 more |
 | `MIGRATION_DATABASE_URL_TEST` | `apps/api/src/cli/export-full.ts:74` |
-| `NESTED_PRIVILEGED_STRICT` | `apps/api/src/db/privileged.ts:203` |
+| `NESTED_PRIVILEGED_STRICT` | `apps/api/src/db/privileged.ts:204` |
 | `OPENROUTER_API_KEY` | `apps/api/src/modules/agent/credits/credit-meter.ts:374`, `apps/api/src/modules/agent/providers/openrouter.ts:168` |
 | `OPENROUTER_BASE_URL` | `apps/api/src/modules/agent/providers/openrouter.ts:30` |
 | `OPENROUTER_HOST_MAX_TTFT_MS` | `apps/api/src/modules/agent/providers/openrouter-host-speed.ts:66` |

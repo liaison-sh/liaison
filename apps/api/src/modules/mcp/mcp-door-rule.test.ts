@@ -262,4 +262,25 @@ describe("a taintSourceWhen row condition", () => {
     expect(rowsMatchTaintCondition({ items: [{ text: "hello" }] }, cond)).toBe(true)
     expect(rowsMatchTaintCondition(null, cond)).toBe(true)
   })
+
+  it("a judged row beside a list whose entries do not carry the field taints", () => {
+    expect(
+      rowsMatchTaintCondition(
+        { items: [{ origin: "member", title: "Ours" }], related: [{ body: "outside text" }] },
+        cond,
+      ),
+    ).toBe(true)
+    expect(
+      rowsMatchTaintCondition({ items: [{ origin: "member" }], notes: ["outside text"] }, cond),
+    ).toBe(true)
+  })
+
+  it("what sits inside a clean row, and counts beside the rows, leave it clean", () => {
+    expect(
+      rowsMatchTaintCondition(
+        { items: [{ origin: "member", lines: [{ sku: "A-1" }] }], total: 1, next: null },
+        cond,
+      ),
+    ).toBe(false)
+  })
 })

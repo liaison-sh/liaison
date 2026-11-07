@@ -470,24 +470,29 @@ const ROW_WALK_DEPTH = 6
 
 /**
  * Does a result hold a row the condition calls outside text? A row is any object in the result
- * that carries the condition's field. One matching row taints the turn; rows that all carry
- * another value leave it clean. A result with no row carrying the field cannot be judged, so it
- * taints (fail closed): a projection that drops the field must not make outside text read clean.
+ * that carries the condition's field; what sits inside a row belongs to it. One matching row
+ * taints the turn; rows that all carry another value leave it clean. Anything the condition
+ * cannot judge taints (fail closed): a result with no row carrying the field (a projection that
+ * dropped it), an entry of a list outside every row that does not carry it (a `related` list
+ * beside the judged `items`), or a part nested deeper than the walk reads.
  */
 export function rowsMatchTaintCondition(result: unknown, cond: TaintSourceRowCondition): boolean {
-  let sawRow = false
-  const walk = (value: unknown, depth: number): boolean => {
-    if (value === null || typeof value !== "object" || depth > ROW_WALK_DEPTH) return false
-    if (Array.isArray(value)) return value.some((item) => walk(item, depth + 1))
+  type Verdict = "match" | "unjudged" | "clean" | "none"
+  const RANK: Record<Verdict, number> = { none: 0, clean: 1, unjudged: 2, match: 3 }
+  const worst = (verdicts: Verdict[]): Verdict =>
+    verdicts.reduce<Verdict>((a, b) => (RANK[b] > RANK[a] ? b : a), "none")
+  const judge = (value: unknown, depth: number, inList: boolean): Verdict => {
+    if (value === null || value === undefined) return "none"
+    if (depth > ROW_WALK_DEPTH) return "unjudged"
+    if (typeof value !== "object") return inList ? "unjudged" : "none"
+    if (Array.isArray(value)) return worst(value.map((item) => judge(item, depth + 1, true)))
     const row = value as Record<string, unknown>
-    if (Object.hasOwn(row, cond.field)) {
-      sawRow = true
-      if (row[cond.field] === cond.equals) return true
-    }
-    return Object.values(row).some((child) => walk(child, depth + 1))
+    if (Object.hasOwn(row, cond.field)) return row[cond.field] === cond.equals ? "match" : "clean"
+    const inside = worst(Object.values(row).map((child) => judge(child, depth + 1, false)))
+    // An entry of a list with no row of its own is a row that does not say where it came from.
+    return inList && inside === "none" ? "unjudged" : inside
   }
-  if (walk(result, 0)) return true
-  return !sawRow
+  return judge(result, 0, false) !== "clean"
 }
 
 /**

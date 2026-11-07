@@ -6460,5 +6460,13 @@
     "unreachable": "Nothing ran: this card cannot reach the server here.",
     "waitingApproval": "Waiting for approval. Nothing ran yet.",
     "working": "Working…"
+  },
+  "entityDiscussion": {
+    "empty": "No messages yet.",
+    "placeholder": "Write about this, or @ an agent",
+    "send": "Send",
+    "unavailable": "The discussion could not be opened.",
+    "retry": "Retry",
+    "loading": "Opening the discussion…"
   }
 }

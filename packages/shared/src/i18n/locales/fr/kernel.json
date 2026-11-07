@@ -6457,5 +6457,13 @@
     "unreachable": "Rien n'a été exécuté : cette carte ne peut pas joindre le serveur ici.",
     "waitingApproval": "En attente d'approbation. Rien n'a encore été exécuté.",
     "working": "En cours…"
+  },
+  "entityDiscussion": {
+    "empty": "Aucun message pour l'instant.",
+    "placeholder": "Écrivez à ce sujet, ou @ un agent",
+    "send": "Envoyer",
+    "unavailable": "La discussion n'a pas pu être ouverte.",
+    "retry": "Réessayer",
+    "loading": "Ouverture de la discussion…"
   }
 }

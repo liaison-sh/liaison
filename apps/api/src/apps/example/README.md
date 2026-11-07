@@ -17,6 +17,7 @@ It is a real in-tree app — auto-discovered at startup, packageable with
 | `external_fetch` | `ctx.connections` + `ctx.fetch` | Calling an external API with a connection token |
 | `resolve_contact` | `ctx.resolveContact` | The contacts integration surface |
 | `nightly_summary` | manifest `jobs` + `ctx.emit` | A scheduled (cron) background job |
+| (no handler) | `entities.items.discussion` + `views.tabTypes.items` | One discussion per item, readable by whoever can read the item: `POST /api/threads/entity-discussion`, or `host.mountEntityDiscussion` in a UI bundle. Delete it with the item through `threads_deleteEntityDiscussion` |
 
 ## Layout
 

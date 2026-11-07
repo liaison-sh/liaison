@@ -1586,7 +1586,7 @@
     },
     "kernel__threads_create": {
       "desc": 768,
-      "schema": 191
+      "schema": 244
     },
     "kernel__threads_list": {
       "desc": 277,

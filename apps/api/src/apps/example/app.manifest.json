@@ -1,6 +1,6 @@
 {
   "name": "example",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Reference app demonstrating every Liaison SDK surface",
   "listing": {
     "publisher": "Liaison",
@@ -39,7 +39,13 @@
       "labelField": "text",
       "searchable": true,
       "tableName": "items",
-      "readScope": "example:items:read"
+      "readScope": "example:items:read",
+      "discussion": true
+    }
+  },
+  "views": {
+    "tabTypes": {
+      "items": { "label": "Example item", "icon": "Square", "urlPattern": "/example/items/:entityId" }
     }
   },
   "tools": {

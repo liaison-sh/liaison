@@ -607,11 +607,13 @@ describe("db import enforcement", () => {
     // upserts the caller as a participant under a privileged, org-scoped tx so a
     // non-creator caller is visible under threads_select before posting.
     "modules/threads/contact-primary.ts",
-    // A contact's discussion drops its enrolled people when the contact's
-    // sharing changes (they re-enrol by opening it, which proves visibility),
-    // and is deleted with the contact: removing other people's participant rows
-    // and messages needs the privileged, org-scoped tx.
-    "modules/contacts/discussion.ts",
+    // An entity's discussion (a contact's, or any app entity declaring one) is
+    // found or created and the caller seated only after their own RLS proved
+    // they see the entity; it drops its enrolled people when the entity's
+    // sharing changes (they re-enrol by opening it), and is deleted with the
+    // entity: removing other people's participant rows and messages needs the
+    // privileged, org-scoped tx.
+    "modules/threads/entity-discussion.ts",
     // Knowledge content-cache downgrade invalidates cache entries under a
     // privileged, org-scoped tx (the curator role lacks knowledge:cache:manage).
     "apps/knowledge/sources.ts",

@@ -12,8 +12,11 @@
 // declared `labelField`, and the fact that tells two of the same name apart
 // from its declared `labelSecondaryFrom` (a task's project).
 import type { ThreadAnchor } from "@liaison/shared"
+import { sql as drizzleSql } from "drizzle-orm"
+import type { PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
 import { isAppActiveForOrgAsync } from "~/modules/apps/org-apps"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
@@ -51,6 +54,29 @@ export function threadAnchorRef(createdFrom: unknown, orgId = ""): ThreadAnchorR
   const ids = threadAnchorIds(createdFrom)
   if (!ids || !resolveReferenceMetadataFromManifests(ids.app, ids.entityType, orgId)) return null
   return ids
+}
+
+/**
+ * Move every conversation made from one entity to another of the same kind: a record merged into
+ * another (a ticket into the ticket that survives), so the conversation names and opens the record
+ * its content now lives on. Runs on the caller's privileged transaction when it holds one.
+ */
+export async function repointThreadAnchors(
+  orgId: string,
+  move: { app: string; entityType: string; fromId: string; toId: string },
+  privilegedTx?: PrivilegedDb,
+): Promise<void> {
+  const run = (tx: PrivilegedDb) =>
+    tx.execute(drizzleSql`
+      UPDATE ${drizzleSql.raw(schemaRef("kernel"))}.threads
+         SET created_from = jsonb_set(created_from, '{entityId}', to_jsonb(${move.toId}::text))
+       WHERE org_id = ${orgId}
+         AND created_from->>'app' = ${move.app}
+         AND created_from->>'entityType' = ${move.entityType}
+         AND created_from->>'entityId' = ${move.fromId}
+    `)
+  if (privilegedTx) await run(privilegedTx)
+  else await withPrivilegedDb(orgId, "thread-anchor-repoint", run)
 }
 
 /** A thread asked to belong to an entity its creator may not see (403). */

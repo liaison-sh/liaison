@@ -622,6 +622,7 @@
       }
     }
   },
+  "outsideTextFields": ["from", "subject", "snippet", "body", "attachments"],
   "tools": {
     "listAccounts": {
       "description": "List the mailboxes this person can use, each with its sync status, last sync error and next retry. Disconnected ones are hidden unless includeDisconnected=true. A mailbox is connected by calling kernel__config_mail, then kernel__request_secret; to the person, say you will connect the mailbox, never a tool name.",

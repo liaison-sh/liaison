@@ -730,6 +730,7 @@
     }
   },
   "approvalRoute": { "ticket": "approval_route_read" },
+  "outsideTextFields": ["subject", "messages", "customer_name", "customer_email"],
   "tools": {
     "approval_route_read": {
       "description": "Who a pending approval about a ticket is for: its assignee, as personId (null when nobody holds it). Read by the kernel when an approval is proposed.",

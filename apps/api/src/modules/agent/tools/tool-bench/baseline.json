@@ -1986,7 +1986,7 @@
     },
     "projects__search": {
       "desc": 643,
-      "schema": 290
+      "schema": 294
     },
     "projects__status_add": {
       "desc": 432,

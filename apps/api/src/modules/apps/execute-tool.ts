@@ -5541,6 +5541,8 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
           opts.orgId,
           [opts.threadId, opts.alsoJudgeTaintOnThreadId],
           opts.toolName,
+          // The rows the caller is handed: a `taintSourceWhen` row condition reads them.
+          { result: envelope.data },
         )
       } catch (err) {
         // Fail closed: untrusted text that reaches the model without the turn being marked would

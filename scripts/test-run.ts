@@ -2014,6 +2014,10 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // can run them in a second.
             "src/modules/apps/tool-required-scopes-guard.test.ts",
             "src/modules/apps/tool-scope-read-oracle.test.ts",
+            // Outside text is declared by data (outsideTextFields and taint sources on every
+            // manifest), and the static half of the rule for tools called over MCP.
+            "src/modules/apps/outside-fields.guard.test.ts",
+            "src/modules/mcp/mcp-tool-rule.guard.test.ts",
             // the monitoring notification group lists the incident kinds
             // by name; this reads the monitoring manifest (pure fs, no database)
             // so a manifest-only edit, which the test map sends to this suite,

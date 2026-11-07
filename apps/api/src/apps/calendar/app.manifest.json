@@ -294,6 +294,7 @@
       "readScope": "calendar:events:read"
     }
   },
+  "outsideTextFields": ["title", "description", "location", "attendees"],
   "tools": {
     "list_calendars": {
       "description": "List the connected Google calendars visible to the caller (personal calendars they own, plus org-wide calendars), each with `selected`: only selected calendars are synced and have events.",

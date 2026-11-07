@@ -73,6 +73,7 @@
       }
     }
   },
+  "outsideTextFields": ["title", "description", "message", "content", "author_name"],
   "tools": {
     "gitlab_list_projects": {
       "taintSource": true,

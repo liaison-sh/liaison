@@ -41,8 +41,19 @@ The first publish is version 0.1.0 and counts against the organisation's custom 
 
 An app's page always runs in a sealed frame, never with your session.
 
+## Open a draft in the app builder
+
+Settings › App store lists your drafts under **Apps in the making** (you need the right to build apps). Open one to see its versions and whether each one builds, its files, and its interface in a sealed frame. The toolbar at the top has:
+
+- **Check**: builds the version and lists any errors with their file and line.
+- **Preview**: pick a tool, job or webhook, type its params as JSON, and **Run** it. The run is read-only; its result and log lines show below.
+- **Publish**: an apps admin publishes after a confirm. Anyone else is told to ask the agent, which requests an admin's approval.
+- **Discard**: drops the draft.
+
+Each older version has **Restore**, which makes it the next version.
+
 ## After publishing
 
-The app is On. Members get its member scopes automatically. Ask the agent to use it: it finds the app's tools with its tool search. The app's log lines are kept 7 days.
+The app is On. Members get its member scopes automatically. Ask the agent to use it: it finds the app's tools with its tool search. The app's log lines are kept 7 days. An admin reads them in the app's settings page, under **Logs**, filtered by level or by one run.
 
 To go back to an earlier version, ask the agent to restore it and publish again. Tables the restored version no longer declares are kept with their data.

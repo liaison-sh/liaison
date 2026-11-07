@@ -125,6 +125,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   // The app data store (ctx.store for apps, the agent's data tools) and dashboards (agent tools, the dashboard tab).
   // The in-product app builder: drafts, the sandboxed build, custom app logs.
   { glob: "apps/api/src/modules/app-builder/**", pages: ["app-development", "agents/build-an-app"] },
+  { glob: "apps/web/src/modules/app-builder/**", pages: ["agents/build-an-app"] },
   { glob: "apps/api/src/modules/agent/prompts/kernel/build-app.md", pages: ["agents/build-an-app"] },
   { glob: "apps/api/src/modules/data-store/**", pages: ["agents/tools", "app-sandbox"] },
   { glob: "apps/api/src/modules/dashboards/**", pages: ["agents/tools", "agents/dashboards"] },

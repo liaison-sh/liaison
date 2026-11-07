@@ -28,6 +28,7 @@ import {
 } from "solid-js"
 import { onEntityChange } from "~/framework/entity-changes"
 import { registerUnsavedWork } from "~/lib/unsaved-work"
+import { AppLogsPanel, showsAppLogs } from "~/modules/app-builder/AppLogsPanel"
 import { canAccessScope } from "~/modules/auth/auth-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
@@ -359,6 +360,9 @@ export const AppSettingsPage: Component<{ appId: string; active?: Accessor<boole
                 openConnection={openConnection()}
                 revealSection={revealSection()}
               />
+            </Show>
+            <Show when={showsAppLogs(props.appId)}>
+              <AppLogsPanel app={props.appId} />
             </Show>
           </>
         )}

@@ -1914,7 +1914,8 @@
     "groupConnectors": "Connecteurs",
     "oauthError": "La connexion au fournisseur a échoué ({{error}}). Réessayez de vous connecter.",
     "oauthErrorWithDescription": "La connexion au fournisseur a échoué : {{description}}",
-    "dashboard": "Tableau de bord"
+    "dashboard": "Tableau de bord",
+    "appBuilder": "Créateur d'apps"
   },
   "newConversation": {
     "newChannel": "Nouveau canal",
@@ -6422,5 +6423,74 @@
     "blockNotFound": "Ce bloc n'est plus sur le tableau de bord.",
     "blockNetwork": "Impossible de joindre le serveur pour le moment. Réessayez dans un instant.",
     "blockTruncated": "Certaines lignes sont omises : le bloc montre les premières."
+  },
+  "appBuilder": {
+    "check": "Vérifier",
+    "checking": "Vérification…",
+    "preview": "Aperçu",
+    "publish": "Publier",
+    "discard": "Abandonner",
+    "cancel": "Annuler",
+    "restore": "Restaurer",
+    "publishNeedsAdmin": "La publication demande un administrateur des apps. Demandez à votre agent de la publier : il demandera son approbation.",
+    "published": "{{app}} {{version}} publiée.",
+    "confirmPublish": "Publier la version {{n}} comme {{app}} ? Elle s'installe pour tout l'espace de travail.",
+    "confirmDiscard": "Abandonner ce brouillon ? Ses versions ne seront plus conservées.",
+    "discarded": "Brouillon abandonné.",
+    "notFound": "Ce brouillon n'existe plus, ou vous ne pouvez pas créer d'apps.",
+    "loadFailed": "Le chargement a échoué. Réessayez dans un instant.",
+    "versions": "Versions",
+    "files": "Fichiers",
+    "checkTitle": "Dernière vérification",
+    "noBuild": "Pas encore construite. Vérifier la construit et liste les erreurs.",
+    "buildOk": "Se construit sans erreur.",
+    "previewTitle": "Tester une exécution",
+    "noEntries": "Le manifeste ne déclare aucun outil, tâche ou webhook à exécuter.",
+    "entry": "Point d'entrée",
+    "params": "Paramètres (JSON)",
+    "paramsInvalid": "Les paramètres doivent être un objet JSON.",
+    "run": "Exécuter",
+    "running": "Exécution…",
+    "resultTitle": "Dernier aperçu",
+    "resultOk": "réussi",
+    "resultFailed": "échoué",
+    "neverPublished": "jamais publiée : lecture seule, sans base de données",
+    "logs": "Journaux",
+    "noLogs": "Rien n'a été journalisé.",
+    "code": "Code",
+    "interface": "Interface",
+    "draftsTitle": "Apps en cours de création",
+    "draftsIntro": "Les brouillons que votre agent construit pour cet espace de travail. Ouvrez-en un pour le vérifier, le tester et le publier.",
+    "draftsEmpty": "Aucun brouillon pour l'instant. Demandez à votre agent de construire une app.",
+    "status": {
+      "draft": "Brouillon",
+      "published": "Publiée",
+      "discarded": "Abandonnée"
+    },
+    "build": {
+      "none": "Non construite",
+      "ok": "Construite",
+      "failed": "Échec de construction"
+    },
+    "kind": {
+      "tool": "Outil",
+      "job": "Tâche",
+      "webhook": "Webhook"
+    }
+  },
+  "appLogs": {
+    "title": "Journaux",
+    "level": "Niveau",
+    "allLevels": "Tous les niveaux",
+    "atLeast": {
+      "debug": "Débogage et plus",
+      "info": "Info et plus",
+      "warn": "Avertissements et erreurs",
+      "error": "Erreurs uniquement"
+    },
+    "runId": "Identifiant d'exécution",
+    "refresh": "Actualiser",
+    "failed": "Les journaux n'ont pas pu être lus. Réessayez dans un instant.",
+    "empty": "Rien n'a été journalisé ces 7 derniers jours."
   }
 }

@@ -101,6 +101,7 @@ export const KERNEL_OPEN_VIEWS: readonly OpenView[] = [
   kernelRecord("skill", "Skill", { kind: "agent-item", pane: "skills" }),
   kernelRecord("session", "Session", { kind: "tab", type: "kernel:session" }),
   kernelRecord("dashboard", "Dashboard", { kind: "tab", type: "kernel:dashboard" }),
+  kernelRecord("app-builder", "App builder", { kind: "tab", type: "kernel:app-builder" }),
   kernelTab("home", "Home"),
   kernelTab("work", "Work"),
   kernelTab("chats", "Chats"),

@@ -14,3 +14,8 @@ First publish 0.1.0, counts against the custom apps limit; next patch after -> a
 An app installed another way or by another draft is refused -> apps/api/src/modules/app-builder/publish.ts:118
 Page runs framed, never with the session -> apps/api/src/modules/apps/install-service.ts:973 ; apps/api/src/modules/app-builder/routes.ts:242
 Logs kept 7 days -> apps/api/src/modules/app-builder/logs.ts (APP_LOG_RETENTION_DAYS)
+Drafts listed on the App store page as "Apps in the making", for kernel:apps:build -> apps/web/src/modules/app-builder/DraftsSection.tsx ; apps/web/src/modules/settings/app-store/AppStorePage.tsx ; packages/shared/src/i18n/locales/en/kernel.json (appBuilder.draftsTitle)
+Builder tab: versions with build status, files, framed interface; toolbar Check, Preview, Publish, Discard; Restore per older version -> apps/web/src/modules/app-builder/BuilderView.tsx
+Preview runs read-only with params as JSON -> apps/web/src/modules/app-builder/BuilderView.tsx (runPreview) ; apps/api/src/modules/app-builder/routes.ts:138
+Publish: admin confirms, others are told to ask the agent -> apps/web/src/modules/app-builder/BuilderView.tsx (publishClicked) ; apps/api/src/modules/app-builder/routes.ts:194
+Logs panel on a custom app's settings page, level and run filters, kernel:apps:logs -> apps/web/src/modules/app-builder/AppLogsPanel.tsx ; apps/api/src/modules/app-builder/logs-routes.ts

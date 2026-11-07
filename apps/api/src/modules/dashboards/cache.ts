@@ -63,9 +63,11 @@ export const redisBlockCacheStore: BlockCacheStore = {
 
 let store: BlockCacheStore = redisBlockCacheStore
 
-/** Tests: swap the store (a fake, or one that throws as a Redis outage does). */
-export function setBlockCacheStoreForTests(next: BlockCacheStore | null): void {
-  store = next ?? redisBlockCacheStore
+/** Test seams for this module: swap the store (a fake, or one that throws as a Redis outage does). */
+export const BlockCacheTestAccess = {
+  setStore(next: BlockCacheStore | null): void {
+    store = next ?? redisBlockCacheStore
+  },
 }
 
 export interface CacheViewer {

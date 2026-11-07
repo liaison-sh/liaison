@@ -16,9 +16,9 @@ import { executeToolCore } from "~/modules/apps/execute-tool"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import {
   type BlockCacheStore,
+  BlockCacheTestAccess,
   MAX_IN_FLIGHT,
   Semaphore,
-  setBlockCacheStoreForTests,
 } from "~/modules/dashboards/cache"
 import {
   createDashboard,
@@ -165,7 +165,7 @@ beforeAll(async () => {
   registerTestTools()
 })
 
-afterEach(() => setBlockCacheStoreForTests(null))
+afterEach(() => BlockCacheTestAccess.setStore(null))
 
 afterAll(async () => {
   await releaseTestLock()
@@ -277,7 +277,7 @@ describe("a block runs as its viewer", () => {
   })
 
   it("a viewer without the tool's scope gets no_access for that block, the other renders", async () => {
-    setBlockCacheStoreForTests(fakeStore().store)
+    BlockCacheTestAccess.setStore(fakeStore().store)
     const viewer = as(other, [ALPHA])
     const alpha = await getBlockData(viewer, dashboardId, "alpha")
     expect(alpha).toMatchObject({
@@ -292,14 +292,14 @@ describe("a block runs as its viewer", () => {
   })
 
   it("a manifest that marks a writing tool readOnly is refused its write at the bridge", async () => {
-    setBlockCacheStoreForTests(fakeStore().store)
+    BlockCacheTestAccess.setStore(fakeStore().store)
     lieAttempts.length = 0
     await getBlockData(as(other, [ALPHA]), dashboardId, "sneaky")
     expect(lieAttempts).toEqual([READ_ONLY_RUN_BLOCKED_CODE])
   })
 
   it("a tool that became gated after the save renders not_allowed, and the core never parks it", async () => {
-    setBlockCacheStoreForTests(fakeStore().store)
+    BlockCacheTestAccess.setStore(fakeStore().store)
     const def = toolRegistry.get([orgId, APP, "beta_read"])!
     toolRegistry.set([orgId, APP, "beta_read"], { ...def, gated: true })
     try {
@@ -335,7 +335,7 @@ describe("a block runs as its viewer", () => {
 
 describe("a store-backed block", () => {
   it("reads a declared collection under its read scope, as the viewer", async () => {
-    setBlockCacheStoreForTests(fakeStore().store)
+    BlockCacheTestAccess.setStore(fakeStore().store)
     await withRlsContext(as(owner, ["kernel:data:write"]), async (tx) => {
       const caller = { orgId, app: "agent", userId: owner }
       await setDocument(tx, caller, "deals", "d1", { title: "Acme", stage: "won", amount: 1200 })
@@ -392,7 +392,7 @@ describe("the block cache", () => {
 
   it("hits, refreshes once per 30 s, keys on the viewer's permissions", async () => {
     const fake = fakeStore()
-    setBlockCacheStoreForTests(fake.store)
+    BlockCacheTestAccess.setStore(fake.store)
     const viewer = as(owner, [WRITE, ALPHA])
     alphaCalls = 0
     expect(await getBlockData(viewer, dashboardId, "alpha")).toMatchObject({
@@ -423,7 +423,7 @@ describe("the block cache", () => {
   it("Redis down: computed uncached, never failed", async () => {
     const fake = fakeStore()
     fake.state.down = true
-    setBlockCacheStoreForTests(fake.store)
+    BlockCacheTestAccess.setStore(fake.store)
     alphaCalls = 0
     const viewer = as(owner, [WRITE, ALPHA])
     expect(await getBlockData(viewer, dashboardId, "alpha")).toMatchObject({

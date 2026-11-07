@@ -7631,4 +7631,23 @@ export const FR_BY_KEY: Record<string, string> = {
     "Laissez vide pour envoyer le texte par défaut, dans la langue du client.",
   "tickets.closeSilent.defaultNudge":
     "Bonjour,\n\nSans nouvelles de votre part, nous revenons vers vous : notre dernier message a-t-il répondu à votre question, ou pouvons-nous encore vous aider ?\n\nSans réponse de votre part d'ici {{days}} jours, nous clôturerons ce ticket. Vous pourrez toujours répondre à cet e-mail pour le rouvrir.\n\nMerci",
+  "kernel.approvalsUi.err.sendGuardNotHeld":
+    "Ce brouillon n'est plus retenu : une réponse est arrivée, ou la retenue a pris fin. Rien n'a été envoyé. La carte affiche maintenant le résultat du contrôle.",
+  "kernel.approvalsUi.sendGuard.theOtherSide": "L'autre partie",
+  "kernel.approvalsUi.sendGuard.held":
+    "Retenu : {{who}} a envoyé une réponse automatique. Le message attend jusqu'au {{until}}, puis revient tout seul sur l'accueil.",
+  "kernel.approvalsUi.sendGuard.replied":
+    "Non envoyé : {{who}} a répondu après la rédaction de ce brouillon.",
+  "kernel.approvalsUi.sendGuard.repliedElsewhere":
+    "Non envoyé : une réponse est arrivée dans une autre boîte mail.",
+  "kernel.approvalsUi.sendGuard.bounced":
+    "Non envoyé : un échec de livraison est revenu pour cette adresse.",
+  "kernel.approvalsUi.sendGuard.optedOut":
+    "Envoi impossible : {{who}} a refusé les e-mails commerciaux. Retirez cette personne des destinataires, ou laissez le message non envoyé.",
+  "kernel.approvalsUi.sendGuard.refStop":
+    "Non envoyé : la fiche concernée par ce message indique de ne pas l'envoyer.",
+  "kernel.approvalsUi.sendGuard.refStopLabel": "Non envoyé : {{label}}",
+  "kernel.approvalsUi.sendGuard.unavailable":
+    "Le contrôle avant envoi n'a pas pu s'exécuter. Réessayez dans un instant.",
+  "kernel.approvalsUi.sendGuard.sendNow": "Envoyer maintenant",
 }

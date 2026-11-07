@@ -207,7 +207,10 @@ function refusalReason(policy: SandboxPolicy, specifier: string): string {
  * independent on purpose; a false positive (prose such as `"x" with care` inside a
  * string) is refused with a message that says how to reword it.
  */
-const ATTRIBUTE_LIKE = /["'`](?:\s|\/\*[\s\S]*?\*\/|\/\/[^\n]*(?:\n|$))*(?:with\b|assert\b|\\u)/
+// A block comment's body never holds `*/`, so each stretch of text matches one way only
+// (no backtracking blow-up on many `*//*` in a row).
+const ATTRIBUTE_LIKE =
+  /["'`](?:\s|\/\*(?:[^*]|\*+[^*/])*\*+\/|\/\/[^\n]*(?:\n|$))*(?:with\b|assert\b|\\u)/
 
 function lineOf(source: string, index: number): number {
   let line = 1

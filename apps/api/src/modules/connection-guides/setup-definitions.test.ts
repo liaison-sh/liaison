@@ -317,6 +317,8 @@ const NOT_SETUP_FACTS: Record<string, string> = {
     "the same secrets-file key for a private GitLab repository (the gitlab connection's field is `token`, interpolated from it in the example config)",
   SUPPORT_IMAP_PASSWORD:
     "a secrets-file key the config file interpolates into the tickets/imap `password` field: the field is the manifest's, the key only its name in the file",
+  LIAISON_CUSTOM_APPS:
+    "a server env var (docs/reference/env.md) that turns the app builder on: no connection, so no setup definition holds it",
   "github.com/mathieufro/liaison/tree/main/docs":
     "the product's own documentation, linked so the owner can read more: not a setup page",
   "github.com/mathieufro/liaison/blob/main/docs/":

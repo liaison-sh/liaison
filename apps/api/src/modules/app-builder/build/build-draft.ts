@@ -17,13 +17,24 @@
 //   - a wall-clock timeout (30 s at most) after which its whole process group is
 //     killed;
 //   - a 4 MiB cap on stdout + stderr together and on every output file;
-//   - a memory limit: on Linux `prlimit --as` (1 GiB of address space; Bun and
-//     esbuild run under it), elsewhere (a developer's macOS) an RSS watchdog that
-//     samples the process every 250 ms and kills the group over 1 GiB.
+//   - a memory limit of 1 GiB resident, enforced by an RSS watchdog that samples
+//     the process every 250 ms and kills the group over it; on Linux `prlimit --as`
+//     adds a hard address-space ceiling behind it. That ceiling is not the memory
+//     limit: Bun reserves address space per bundler thread, so 1 GiB of it aborts
+//     a small build on a 4-core host. It grows with the host's cores.
 // The caller holds a build slot first (./governance.ts).
 import { createHash } from "node:crypto"
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs"
-import { tmpdir } from "node:os"
+import {
+  closeSync,
+  existsSync,
+  fstatSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+} from "node:fs"
+import { availableParallelism, tmpdir } from "node:os"
 import { join } from "node:path"
 import ts from "typescript"
 import { forbiddenCustomAppDeclaration } from "~/modules/apps/app-org-scope"
@@ -44,6 +55,9 @@ export const DRAFT_MAX_TOTAL_BYTES = 512 * 1024
 export const BUILD_TIMEOUT_MS = 30_000
 export const BUILD_OUTPUT_CAP_BYTES = 4 * 1024 * 1024
 export const BUILD_MEMORY_LIMIT_BYTES = 1024 * 1024 * 1024
+/** The hard address-space ceiling behind the RSS limit (Linux): 1 GiB per core, 4 GiB at least. */
+export const BUILD_ADDRESS_SPACE_BYTES =
+  BUILD_MEMORY_LIMIT_BYTES * Math.max(4, availableParallelism())
 
 const WORKER_SCRIPT = join(import.meta.dir, "build-worker.ts")
 const BASE_RE = /^[a-z][a-z0-9-]{1,40}$/
@@ -257,11 +271,6 @@ function prlimit(): string | null {
   return prlimitPath
 }
 
-/** The memory-limit mechanism this server applies to builds. */
-export function buildMemoryLimitMechanism(): "prlimit-as" | "rss-watchdog" {
-  return prlimit() ? "prlimit-as" : "rss-watchdog"
-}
-
 function killGroup(pid: number): void {
   try {
     process.kill(-pid, "SIGKILL")
@@ -275,6 +284,16 @@ function killGroup(pid: number): void {
 }
 
 async function rssBytes(pid: number): Promise<number> {
+  if (process.platform === "linux") {
+    // /proc needs no `ps` binary, which a slim image may not carry.
+    try {
+      const status = readFileSync(`/proc/${pid}/status`, "utf8")
+      const kb = /^VmRSS:\s+(\d+)\s+kB/m.exec(status)?.[1]
+      return (kb ? Number.parseInt(kb, 10) : 0) * 1024
+    } catch {
+      return 0
+    }
+  }
   const ps = Bun.spawn(["ps", "-o", "rss=", "-p", String(pid)], {
     stdout: "pipe",
     stderr: "ignore",
@@ -296,7 +315,7 @@ async function runWorker(
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "liaison-draft-")))
   const limiter = prlimit()
   const argv = [
-    ...(limiter ? [limiter, `--as=${limits.memoryLimitBytes}`, "--"] : []),
+    ...(limiter ? [limiter, `--as=${BUILD_ADDRESS_SPACE_BYTES}`, "--"] : []),
     process.execPath,
     script,
   ]
@@ -326,23 +345,20 @@ async function runWorker(
     })
     killGroup(proc.pid)
   }, limits.timeoutMs)
-  let watchdog: ReturnType<typeof setInterval> | undefined
-  if (!limiter) {
-    watchdog = setInterval(() => {
-      rssBytes(proc.pid)
-        .then((rss) => {
-          if (rss > limits.memoryLimitBytes) {
-            fail({
-              file: "<build>",
-              message: "the build used more memory than allowed",
-              code: "memory_limit",
-            })
-            killGroup(proc.pid)
-          }
-        })
-        .catch(() => {})
-    }, 250)
-  }
+  const watchdog = setInterval(() => {
+    rssBytes(proc.pid)
+      .then((rss) => {
+        if (rss > limits.memoryLimitBytes) {
+          fail({
+            file: "<build>",
+            message: "the build used more memory than allowed",
+            code: "memory_limit",
+          })
+          killGroup(proc.pid)
+        }
+      })
+      .catch(() => {})
+  }, 250)
   let outputBytes = 0
   const collect = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
     const chunks: Uint8Array[] = []
@@ -373,7 +389,7 @@ async function runWorker(
     proc.exited,
   ])
   clearTimeout(timer)
-  if (watchdog) clearInterval(watchdog)
+  clearInterval(watchdog)
   // Whatever the worker left running in its group goes with it.
   killGroup(proc.pid)
   const done = (issue: BuildIssue): RunOutcome => {
@@ -399,10 +415,18 @@ async function runWorker(
 }
 
 function readOutput(dir: string, name: string, cap: number): BuiltFile {
-  const path = join(dir, "out", name)
-  const size = statSync(path).size
-  if (size > cap) throw new Error(`${name} is ${size} bytes, over the ${cap}-byte limit`)
-  const bytes = new Uint8Array(readFileSync(path))
+  // One descriptor for the size check and the read, so the file checked is the file read.
+  const fd = openSync(join(dir, "out", name), "r")
+  let bytes: Uint8Array
+  try {
+    const size = fstatSync(fd).size
+    if (size > cap) throw new Error(`${name} is ${size} bytes, over the ${cap}-byte limit`)
+    bytes = new Uint8Array(readFileSync(fd))
+  } finally {
+    closeSync(fd)
+  }
+  if (bytes.byteLength > cap)
+    throw new Error(`${name} is ${bytes.byteLength} bytes, over the ${cap}-byte limit`)
   return { bytes, sha256: sha256(bytes), sizeBytes: bytes.byteLength }
 }
 

@@ -8,6 +8,7 @@ import { join } from "node:path"
 import { build as esbuild } from "esbuild"
 import { solidPlugin } from "esbuild-plugin-solid"
 import {
+  attributeLikeText,
   bunSandboxPlugin,
   decideDraftImport,
   esbuildSandboxPlugin,
@@ -148,6 +149,20 @@ describe("esbuild plugin alone (UI)", () => {
 })
 
 describe("decisions and the pre-scan", () => {
+  test("the attribute pre-scan sees through comments and stays linear on comment runs", () => {
+    expect(attributeLikeText('import x from "./a" /* c */ with { type: "json" }')).toEqual({
+      line: 1,
+    })
+    expect(attributeLikeText('import x from "./a" /* a ** b */\n// d\n assert {}')).toEqual({
+      line: 1,
+    })
+    expect(attributeLikeText('const s = "a" /* with */ + "b"')).toBeNull()
+    // Many `*//*` after a quote used to backtrack exponentially.
+    const started = performance.now()
+    expect(attributeLikeText(`"/*${"*//*".repeat(5000)}`)).toBeNull()
+    expect(performance.now() - started).toBeLessThan(1000)
+  })
+
   test("a draft may import only the fixed entry points and its own files", () => {
     const policy = sandboxPolicy({ mode: "handlers", draftDir: appDir, entryPoints: [] })
     writeFileSync(join(appDir, "ui.tsx"), "export default 1\n")

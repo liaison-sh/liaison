@@ -56,7 +56,7 @@ describe("runHandler", () => {
       async (m) => {
         await new Promise((r) => setTimeout(r, 20))
         landed.push(m)
-          return null
+        return null
       },
     )
     // Both calls reached the bridge before the run answered.

@@ -165,6 +165,10 @@ export function startFakeLoader(opts: FakeLoaderOptions): FakeLoader {
     key: string,
     sha: string,
   ): Promise<FakeLoaderBundle | Response> {
+    // The sha names files below: only a hex digest, never a path.
+    if (!/^[0-9a-f]{64}$/.test(sha)) {
+      return fail(400, "load", "bundle sha is not a sha256 hex digest", { code: "bad_sha" })
+    }
     const path = `/api/app-bridge/bundles/${sha}`
     const url = `${cell.bridgeOrigin}${path}`
     const headers = signCellRequestV2({

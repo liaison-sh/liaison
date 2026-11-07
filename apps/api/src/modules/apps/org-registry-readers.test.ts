@@ -90,6 +90,8 @@ const READERS: Record<string, string> = {
     "request or agent turn; a lookup miss awaits ensureAppsForOrg itself",
   // Register the kernel dashboard and data tools for an org while it is set up.
   "modules/dashboards/tools.ts": SETUP,
+  // Register (or, with custom apps off, remove) the kernel app builder tools while an org is set up.
+  "modules/app-builder/tools.ts": SETUP,
   "modules/data-store/tools.ts": SETUP,
   "modules/documents/print.ts": ENSURES,
   "modules/files/service.ts": REQUEST,

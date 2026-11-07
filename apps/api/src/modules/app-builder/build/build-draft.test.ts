@@ -8,7 +8,13 @@ import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { gunzipSync } from "node:zlib"
-import { BuildDraftTestAccess, buildDraft, type DraftFiles } from "./build-draft"
+import {
+  BUILD_ADDRESS_SPACE_BYTES,
+  BUILD_MEMORY_LIMIT_BYTES,
+  BuildDraftTestAccess,
+  buildDraft,
+  type DraftFiles,
+} from "./build-draft"
 
 const APP = "returns-o1a2b3c4d"
 const SECRET = "SENTINEL_SECRET_9f8e7d"
@@ -324,6 +330,12 @@ describe("the build subprocess limits", () => {
     outputCapBytes: 64 * 1024,
     memoryLimitBytes: 1024 * 1024 * 1024,
   }
+
+  test("the address-space ceiling leaves Bun's per-thread reservations room", () => {
+    // 1 GiB of address space aborted a small Bun.build on a 4-core Linux host
+    // (exit 134), so the ceiling is never the 1 GiB memory limit itself.
+    expect(BUILD_ADDRESS_SPACE_BYTES).toBeGreaterThanOrEqual(4 * BUILD_MEMORY_LIMIT_BYTES)
+  })
 
   test("a hung build and the children it started are killed at the timeout", async () => {
     const marker = join(scripts, "grandchild-alive")

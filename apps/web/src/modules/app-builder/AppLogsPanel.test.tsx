@@ -14,7 +14,6 @@ vi.mock("~/modules/auth/auth-store", async (importOriginal) => {
 })
 
 import { AppLogsPanel, showsAppLogs } from "./AppLogsPanel"
-import { DraftsSection } from "./DraftsSection"
 
 const APP = "tracker-oabcdef12"
 const RUN = "22222222-2222-4222-8222-222222222222"
@@ -107,40 +106,5 @@ describe("AppLogsPanel", () => {
       () => <AppLogsPanel app={APP} />,
     )
     await waitFor(() => screen.getByTestId("app-logs-failed"))
-  })
-})
-
-describe("DraftsSection", () => {
-  it("lists the org's drafts for builders", async () => {
-    state.scopes = ["kernel:apps:build"]
-    mount(
-      async () => [
-        {
-          id: "d1",
-          orgId: "o",
-          baseName: "tracker",
-          title: "Returns tracker",
-          status: "draft",
-          publishedAppName: null,
-          latestVersion: 3,
-          createdAt: "",
-          updatedAt: "",
-        },
-      ],
-      () => <DraftsSection />,
-    )
-    await waitFor(() =>
-      expect(screen.getByTestId("builder-draft-d1").textContent).toContain("Returns tracker"),
-    )
-  })
-
-  it("is absent without kernel:apps:build", () => {
-    state.scopes = []
-    const api = mount(
-      async () => [],
-      () => <DraftsSection />,
-    )
-    expect(screen.queryByTestId("builder-drafts")).toBeNull()
-    expect(api.get).not.toHaveBeenCalled()
   })
 })

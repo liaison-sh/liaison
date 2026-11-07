@@ -227,45 +227,85 @@ interface InboundQuery {
   since: string
 }
 
+/** Rows read per page. Pages go on until a reply turns up or the rows run out. */
+const INBOUND_PAGE = 50
+/** Past this many rows without a reply, the check cannot rule one out and refuses to send. */
+const INBOUND_MAX_ROWS = 2000
+
+/** Where the next page starts: the order key (full precision, as text) and the row id. */
+type InboundCursor = { ord: string; id: string } | null
+
+/**
+ * Read inbound rows newest first, page by page, until one classifies as a reply (a reply
+ * outranks everything else, so nothing older can change the answer) or the rows run out. The
+ * classifier is code, not SQL, so a fixed window could hide a real reply behind newer
+ * automated mail. Too many rows to read throws, and the check answers unavailable.
+ */
+async function pageInbound<R extends { ord: string; id: string }>(
+  readPage: (cursor: InboundCursor) => Promise<R[]>,
+  toInbound: (row: R) => GuardInbound,
+): Promise<GuardInbound[]> {
+  const out: GuardInbound[] = []
+  let cursor: InboundCursor = null
+  while (out.length < INBOUND_MAX_ROWS) {
+    const rows = await readPage(cursor)
+    const items = rows.map(toInbound)
+    out.push(...items)
+    if (items.some((item) => item.kind === "reply") || rows.length < INBOUND_PAGE) return out
+    const last = rows[rows.length - 1] as R
+    cursor = { ord: last.ord, id: last.id }
+  }
+  throw new Error(`over ${INBOUND_MAX_ROWS} inbound rows to read without a reply`)
+}
+
 async function readMailInbound(q: InboundQuery): Promise<GuardInbound[]> {
-  const rows = await withPrivilegedDb(q.orgId, "send-guard-mail-inbound", async (tx) =>
-    extractRows<{
-      id: string
-      conversation_id: string
-      sender: string | null
-      at: string | Date
-      raw_headers: unknown
-      text_body: string | null
-      subject: string | null
-    }>(
-      await tx.execute(drizzleSql`
-        SELECT m.id, m.conversation_id, m.from_address->>'email' AS sender,
-               COALESCE(m.sent_at, m.synced_at) AS at,
-               m.raw_headers, m.text_body, m.subject
-          FROM ${table("app_mail", "messages")} m
-          JOIN ${table("app_mail", "conversations")} c ON c.id = m.conversation_id
-          JOIN ${table("app_mail", "accounts")} a ON a.id = m.account_id
-         WHERE m.org_id = ${q.orgId}::uuid AND m.direction = 'inbound'
-           AND (c.contact_id = ANY(${uuidSet(q.contactIds)})
-                OR c.id = ${q.conversationId ?? null}::uuid
-                OR lower(m.from_address->>'email') = ANY(${textSet(q.addresses)}))
-           AND lower(m.from_address->>'email') <> ALL(${textSet(q.own)})
-           AND (COALESCE(m.sent_at, m.synced_at) > ${q.since}::timestamptz
-                OR (m.synced_at > ${q.since}::timestamptz
-                    AND (m.sent_at > a.created_at
-                         OR m.sent_at > ${q.since}::timestamptz - interval '72 hours')))
-         ORDER BY GREATEST(m.sent_at, m.synced_at) DESC
-         LIMIT 50`),
+  type Row = {
+    id: string
+    ord: string
+    conversation_id: string
+    sender: string | null
+    at: string | Date
+    raw_headers: unknown
+    text_body: string | null
+    subject: string | null
+  }
+  return withPrivilegedDb(q.orgId, "send-guard-mail-inbound", (tx) =>
+    pageInbound(
+      async (cursor) =>
+        extractRows<Row>(
+          await tx.execute(drizzleSql`
+            SELECT m.id, GREATEST(m.sent_at, m.synced_at)::text AS ord,
+                   m.conversation_id, m.from_address->>'email' AS sender,
+                   COALESCE(m.sent_at, m.synced_at) AS at,
+                   m.raw_headers, m.text_body, m.subject
+              FROM ${table("app_mail", "messages")} m
+              JOIN ${table("app_mail", "conversations")} c ON c.id = m.conversation_id
+              JOIN ${table("app_mail", "accounts")} a ON a.id = m.account_id
+             WHERE m.org_id = ${q.orgId}::uuid AND m.direction = 'inbound'
+               AND (c.contact_id = ANY(${uuidSet(q.contactIds)})
+                    OR c.id = ${q.conversationId ?? null}::uuid
+                    OR lower(m.from_address->>'email') = ANY(${textSet(q.addresses)}))
+               AND lower(m.from_address->>'email') <> ALL(${textSet(q.own)})
+               AND (COALESCE(m.sent_at, m.synced_at) > ${q.since}::timestamptz
+                    OR (m.synced_at > ${q.since}::timestamptz
+                        AND (m.sent_at > a.created_at
+                             OR m.sent_at > ${q.since}::timestamptz - interval '72 hours')))
+               AND (${cursor === null}::boolean
+                    OR (GREATEST(m.sent_at, m.synced_at), m.id)
+                       < (${cursor?.ord ?? null}::timestamptz, ${cursor?.id ?? null}::uuid))
+             ORDER BY GREATEST(m.sent_at, m.synced_at) DESC, m.id DESC
+             LIMIT ${INBOUND_PAGE}`),
+        ),
+      (row) => ({
+        id: row.id,
+        kind: classifyInbound(row.raw_headers, row.subject, row.text_body, row.sender),
+        sender: row.sender,
+        at: new Date(row.at),
+        textBody: row.text_body,
+        record: { kind: "conversation", id: row.conversation_id },
+      }),
     ),
   )
-  return rows.map((row) => ({
-    id: row.id,
-    kind: classifyInbound(row.raw_headers, row.subject, row.text_body, row.sender),
-    sender: row.sender,
-    at: new Date(row.at),
-    textBody: row.text_body,
-    record: { kind: "conversation", id: row.conversation_id },
-  }))
 }
 
 /**
@@ -275,49 +315,58 @@ async function readMailInbound(q: InboundQuery): Promise<GuardInbound[]> {
  * auto-responders, so only the subject and the text are left to classify.
  */
 async function readTicketInbound(q: InboundQuery): Promise<GuardInbound[]> {
-  const rows = await withPrivilegedDb(q.orgId, "send-guard-ticket-inbound", async (tx) => {
+  type Row = {
+    id: string
+    ord: string
+    ticket_id: string
+    sender: string | null
+    at: string | Date
+    text_body: string | null
+    subject: string | null
+  }
+  return withPrivilegedDb(q.orgId, "send-guard-ticket-inbound", async (tx) => {
     const present = extractRows<{ name: string | null }>(
       await tx.execute(
         drizzleSql`SELECT to_regclass(${`${quoteIdent(schemaRef("app_tickets"))}.messages`})::text AS name`,
       ),
     )
     if (!present[0]?.name) return []
-    return extractRows<{
-      id: string
-      ticket_id: string
-      sender: string | null
-      at: string | Date
-      text_body: string | null
-      subject: string | null
-    }>(
-      await tx.execute(drizzleSql`
-        SELECT m.id, m.ticket_id, m.from_email AS sender,
-               COALESCE(m.sent_at, m.received_at) AS at, m.text_body, m.subject
-          FROM ${table("app_tickets", "messages")} m
-          JOIN ${table("app_tickets", "tickets")} t ON t.id = m.ticket_id
-          LEFT JOIN ${table("app_tickets", "inboxes")} i ON i.id = t.source_inbox_id
-         WHERE m.org_id = ${q.orgId}::uuid AND m.kind = 'inbound'
-           AND (lower(m.from_email) = ANY(${textSet(q.addresses)})
-                OR t.contact_id = ANY(${uuidSet(q.contactIds)}))
-           AND lower(m.from_email) <> ALL(${textSet(q.own)})
-           AND (COALESCE(m.sent_at, m.received_at) > ${q.since}::timestamptz
-                OR (m.received_at > ${q.since}::timestamptz
-                    AND (m.sent_at > i.created_at
-                         OR m.sent_at > ${q.since}::timestamptz - interval '72 hours')))
-           AND NOT EXISTS (SELECT 1 FROM ${table("kernel", "import_ledger")} l
-                            WHERE l.table_name = 'app_tickets.messages' AND l.row_id = m.id)
-         ORDER BY COALESCE(m.sent_at, m.received_at) DESC
-         LIMIT 50`),
+    return pageInbound(
+      async (cursor) =>
+        extractRows<Row>(
+          await tx.execute(drizzleSql`
+            SELECT m.id, COALESCE(m.sent_at, m.received_at)::text AS ord,
+                   m.ticket_id, m.from_email AS sender,
+                   COALESCE(m.sent_at, m.received_at) AS at, m.text_body, m.subject
+              FROM ${table("app_tickets", "messages")} m
+              JOIN ${table("app_tickets", "tickets")} t ON t.id = m.ticket_id
+              LEFT JOIN ${table("app_tickets", "inboxes")} i ON i.id = t.source_inbox_id
+             WHERE m.org_id = ${q.orgId}::uuid AND m.kind = 'inbound'
+               AND (lower(m.from_email) = ANY(${textSet(q.addresses)})
+                    OR t.contact_id = ANY(${uuidSet(q.contactIds)}))
+               AND lower(m.from_email) <> ALL(${textSet(q.own)})
+               AND (COALESCE(m.sent_at, m.received_at) > ${q.since}::timestamptz
+                    OR (m.received_at > ${q.since}::timestamptz
+                        AND (m.sent_at > i.created_at
+                             OR m.sent_at > ${q.since}::timestamptz - interval '72 hours')))
+               AND NOT EXISTS (SELECT 1 FROM ${table("kernel", "import_ledger")} l
+                                WHERE l.table_name = 'app_tickets.messages' AND l.row_id = m.id)
+               AND (${cursor === null}::boolean
+                    OR (COALESCE(m.sent_at, m.received_at), m.id)
+                       < (${cursor?.ord ?? null}::timestamptz, ${cursor?.id ?? null}::uuid))
+             ORDER BY COALESCE(m.sent_at, m.received_at) DESC, m.id DESC
+             LIMIT ${INBOUND_PAGE}`),
+        ),
+      (row) => ({
+        id: row.id,
+        kind: classifyInbound({}, row.subject, row.text_body, row.sender),
+        sender: row.sender,
+        at: new Date(row.at),
+        textBody: row.text_body,
+        record: { kind: "ticket", id: row.ticket_id },
+      }),
     )
   })
-  return rows.map((row) => ({
-    id: row.id,
-    kind: classifyInbound({}, row.subject, row.text_body, row.sender),
-    sender: row.sender,
-    at: new Date(row.at),
-    textBody: row.text_body,
-    record: { kind: "ticket", id: row.ticket_id },
-  }))
 }
 
 // ── Providers: another app's say over a mail about one of its records ───────

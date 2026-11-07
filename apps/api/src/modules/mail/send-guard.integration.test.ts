@@ -1326,6 +1326,20 @@ describe("what a mailbox's headers say", () => {
     expect((await check(to, since)).state).toBe("clear")
   }, 60_000)
 
+  it("a reply behind more than a page of newer newsletters still stops", async () => {
+    const to = unique("buried-reply")
+    const since = new Date(Date.now() - HOUR).toISOString()
+    const { conversationId } = await seedInbound(to, { sentAt: ago(HOUR / 2) })
+    for (let i = 0; i < 60; i++) {
+      await seedInbound(to, {
+        conversationId,
+        sentAt: ago(60_000 + i * 1000),
+        rawHeaders: { "list-id": "<news.client.test>" },
+      })
+    }
+    expect((await check(to, since)).state).toBe("replied")
+  }, 120_000)
+
   it("a stored From of mailer-daemon reads bounced through the sender column", async () => {
     const to = `mailer-daemon-${++counter}@client.test`
     const daemon = "mailer-daemon@client.test"

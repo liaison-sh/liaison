@@ -385,6 +385,10 @@ const REVIEWED: Record<string, Record<string, string>> = {
     limit:
       "org id and query escaped by sqlLiteral/sqlLikeLiteral, identifiers by a strict quoteIdent (service.ts:1165-1178), limit a number",
   },
+  "apps/api/src/modules/agent/tools/navigation-tool.ts#lookupHandle": {
+    "where.table": `app name and table name from handleColumn: ${MANIFEST_IDENT}, each checked against SAFE_IDENT and double-quoted`,
+    "where.column": `the entity's declared handle column from handleColumn: ${MANIFEST_IDENT}, checked against SAFE_IDENT and double-quoted`,
+  },
   "apps/api/src/modules/threads/reference-display.ts#loadAppEntityLabelAndSnippet": {
     labelField: "identifiers checked against SAFE_IDENT (reference-display.ts:116-119)",
     tableName: "identifiers checked against SAFE_IDENT (reference-display.ts:116-119)",

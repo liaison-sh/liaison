@@ -813,6 +813,18 @@ export function findToolCallMessage(
   return null
 }
 
+/** Nothing came after this message in its conversation (or its reply thread): it is the newest. */
+export function isNewestMessage(threadId: string, messageId: string): boolean {
+  const ids = messageStore.threads[threadId]?.ids
+  if (ids?.includes(messageId)) return ids[ids.length - 1] === messageId
+  for (const cache of Object.values(messageStore.replies)) {
+    if (!cache || cache.threadId !== threadId) continue
+    if (cache.root?.id === messageId) return cache.ids.length === 0
+    if (cache.ids.includes(messageId)) return cache.ids[cache.ids.length - 1] === messageId
+  }
+  return false
+}
+
 /** Draw the card a card action's answer carries on every copy of its message. */
 export function replaceStoredToolCard(
   threadId: string,

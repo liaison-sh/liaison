@@ -200,6 +200,10 @@ import {
 } from "~/modules/agent/tools/kernel-summarizers"
 import { handleOpenApp } from "~/modules/agent/tools/navigation-tool"
 import {
+  handleSuggestNextSteps,
+  suggestNextStepsParams,
+} from "~/modules/agent/tools/suggest-steps-tool"
+import {
   captureBusinessKnowledgePreflight,
   createRolePreflight,
   enableAppNoChange,
@@ -3634,6 +3638,31 @@ When to use: When an admin asks to set up a reusable role they will spawn repeat
       id: z.string().optional().describe("The record to open in that view."),
     }),
     handler: handleOpenApp as (params: unknown, ctx: any) => Promise<unknown>,
+  })
+
+  // One-click next steps under the agent's reply, drawn by the chat from this tool's result
+  // (suggest-steps-tool.ts). Like open_app its effect is on the requester's screen alone.
+  toolRegistry.set([orgId, "kernel", "suggest_next_steps"], {
+    appName: "kernel",
+    name: "suggest_next_steps",
+    readOnly: true,
+    taintFree: true,
+    gatewayHidden: true,
+    deferLoading: false,
+    description:
+      "Offer up to 4 one-click next steps under your reply: a chip sends its label as the person's message, or opens a tab (app, view, id).",
+    searchKeywords: [
+      "suggestions",
+      "suggérer",
+      "prochaines étapes",
+      "étapes suivantes",
+      "boutons",
+      "next steps",
+      "chips",
+    ],
+    requiredScopes: ["kernel:threads:read"],
+    params: suggestNextStepsParams,
+    handler: handleSuggestNextSteps as (params: unknown, ctx: any) => Promise<unknown>,
   })
 
   // Liaison bug reports, the web form's twin for agents and MCP clients.

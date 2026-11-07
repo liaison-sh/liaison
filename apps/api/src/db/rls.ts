@@ -2,6 +2,7 @@
 import { createHmac } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
 import type { RlsClient } from "~/db"
+import { runUntilAborted } from "~/db/abortable-tx"
 import { withAcquireTimeout } from "~/db/acquire-timeout"
 import {
   poolSlot,
@@ -101,6 +102,14 @@ export type WithRlsOptions = {
   db?: DbPool["db"]
   /** Pool-slot acquire timeout for this transaction, in ms. Default: DB_ACQUIRE_TIMEOUT_MS. */
   acquireTimeoutMs?: number
+  /**
+   * Abort the transaction: on abort it rolls back and returns its connection
+   * at once, and the handle `fn` holds refuses every later statement, even
+   * while `fn` itself keeps running (db/abortable-tx.ts).
+   */
+  signal?: AbortSignal
+  /** This transaction's `statement_timeout`, in ms. Default: DB_STATEMENT_TIMEOUT_MS. */
+  statementTimeoutMs?: number
 }
 
 /**
@@ -322,8 +331,10 @@ export async function withRlsContext<T>(
     // missing or not granted, reverted at commit or rollback), in the same
     // round trip. It comes after enter(), so enter() still runs before the
     // transaction becomes liaison_rls, as it did with a separate statement.
+    if (opts?.signal?.aborted) throw opts.signal.reason ?? new Error("transaction aborted")
     const setJit = !env.DB_RLS_JIT_ENABLED
-    const setTimeout = env.DB_STATEMENT_TIMEOUT_MS > 0
+    const statementTimeoutMs = opts?.statementTimeoutMs ?? env.DB_STATEMENT_TIMEOUT_MS
+    const setTimeout = statementTimeoutMs > 0
     await tx.execute(drizzleSql`SELECT
       set_config('app.current_user_id', ${safeUserId}, true),
       set_config('app.current_user_tag', ${userTag}, true),
@@ -336,7 +347,7 @@ export async function withRlsContext<T>(
       set_config('app.current_roles', ${rolesValue}, true),
       set_config('app.current_roles_tag', ${rolesTag}, true)
       ${setJit ? drizzleSql`, set_config('jit', 'off', true)` : drizzleSql``}
-      ${setTimeout ? drizzleSql`, set_config('statement_timeout', ${String(env.DB_STATEMENT_TIMEOUT_MS)}, true)` : drizzleSql``},
+      ${setTimeout ? drizzleSql`, set_config('statement_timeout', ${String(statementTimeoutMs)}, true)` : drizzleSql``},
       rls_ctx.enter(),
       set_config('role', 'liaison_rls', true)`)
 
@@ -345,7 +356,7 @@ export async function withRlsContext<T>(
     Object.defineProperty(branded, "__rlsBrand", { value: true, enumerable: false })
     attachQueueEvent(branded, ctx.orgId, queued)
 
-    return fn(branded)
+    return opts?.signal ? runUntilAborted(branded, fn, opts.signal) : fn(branded)
   }
 
   try {

@@ -345,6 +345,10 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
           ]),
     ],
     cwd: path.join(ROOT, "apps/api"),
+    // A privileged-pool acquisition made while the same caller already holds a
+    // privileged slot deadlocks a full pool in production (db/privileged.ts):
+    // here it throws, so a code path that nests fails its tests.
+    env: { NESTED_PRIVILEGED_STRICT: "1" },
   },
   "web-unit": {
     cmd: ["bunx", "--bun", "vitest", "run", ...bailBun, ...vitestTestFlags, ...fileArg],
@@ -482,6 +486,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
           ]),
     ],
     cwd: path.join(ROOT, "apps/api"),
+    // Nested privileged acquisitions throw here too (see the unit suite).
+    env: { NESTED_PRIVILEGED_STRICT: "1" },
   },
   // P8-FX7 (D7): the files under src/tests and src/tests/integration that no
   // suite listed. Their old exemption said they needed "a live substrate";

@@ -117,35 +117,42 @@ async function __test_processMessages(params, ctx) { await processMessages(param
   }
 
   async function ingest(account: any, message: Record<string, unknown>): Promise<void> {
-    await withPrivilegedDb(orgId, "t-int-5-run", async (tx) => {
-      const real = createRpcBridge(
-        "mail",
-        userId,
-        orgId,
-        tx as unknown as RlsClient,
-        mailAppManifest as never,
-      )
-      const bridge: Record<string, any> = {
-        ...real,
-        emit: async () => {},
-        enqueueJob: async () => {},
-        resolveContact: async () => JSON.stringify({ id: crypto.randomUUID() }),
-        log_info: () => {},
-        log_warn: () => {},
-        log_error: () => {},
-        log_debug: () => {},
-      }
-      const { executeInSandbox } = await import("~/modules/apps/sandbox/executor")
-      const { getSandboxPool } = await import("~/modules/apps/sandbox/pool")
-      await executeInSandbox({
-        pool: getSandboxPool(),
-        bundleSource: bundle,
-        exportName: "__test_processMessages",
-        params: { messages: [message], account },
-        bridge,
-        timeoutMs: 60_000,
-      } as any)
-    })
+    // The jobs pool, as the mail job that runs this in production: the host's
+    // short privileged reads under the bridge (sender contacts) must not nest.
+    await withPrivilegedDb(
+      orgId,
+      "t-int-5-run",
+      async (tx) => {
+        const real = createRpcBridge(
+          "mail",
+          userId,
+          orgId,
+          tx as unknown as RlsClient,
+          mailAppManifest as never,
+        )
+        const bridge: Record<string, any> = {
+          ...real,
+          emit: async () => {},
+          enqueueJob: async () => {},
+          resolveContact: async () => JSON.stringify({ id: crypto.randomUUID() }),
+          log_info: () => {},
+          log_warn: () => {},
+          log_error: () => {},
+          log_debug: () => {},
+        }
+        const { executeInSandbox } = await import("~/modules/apps/sandbox/executor")
+        const { getSandboxPool } = await import("~/modules/apps/sandbox/pool")
+        await executeInSandbox({
+          pool: getSandboxPool(),
+          bundleSource: bundle,
+          exportName: "__test_processMessages",
+          params: { messages: [message], account },
+          bridge,
+          timeoutMs: 60_000,
+        } as any)
+      },
+      { pool: "jobs" },
+    )
   }
 
   function fixture(overrides: Record<string, unknown> = {}) {

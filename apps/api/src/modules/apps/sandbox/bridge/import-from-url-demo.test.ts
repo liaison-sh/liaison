@@ -44,19 +44,25 @@ function files(orgId: string, txDb: unknown) {
   } as unknown as BridgeContext) as Record<string, (json: string) => Promise<string>>
 }
 
+// A first-party app's privileged bridge (its system events and jobs) runs on the
+// background jobs pool, never on an interactive privileged slot: so does this one.
 const importLabel = (orgId: string) =>
-  withPrivilegedDb(orgId, "test:import-demo-label", (tx) =>
-    files(orgId, tx).files_importFromUrl!(
-      JSON.stringify({
-        targetApp: "boxtal",
-        targetEntityType: "shipment",
-        targetEntityId: orgId,
-        url: LABEL,
-        filename: "label-DEMO-AB12CD34.pdf",
-        mimeType: "application/pdf",
-        pdfStripRotation: true,
-      }),
-    ),
+  withPrivilegedDb(
+    orgId,
+    "test:import-demo-label",
+    (tx) =>
+      files(orgId, tx).files_importFromUrl!(
+        JSON.stringify({
+          targetApp: "boxtal",
+          targetEntityType: "shipment",
+          targetEntityId: orgId,
+          url: LABEL,
+          filename: "label-DEMO-AB12CD34.pdf",
+          mimeType: "application/pdf",
+          pdfStripRotation: true,
+        }),
+      ),
+    { pool: "jobs" },
   )
 
 /** Every download that reaches the network, answered 404 as the real host would. */

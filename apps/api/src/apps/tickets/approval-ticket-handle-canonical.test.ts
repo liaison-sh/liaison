@@ -19,6 +19,7 @@ import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { asOrgMember } from "~/tests/helpers/org-caller"
 
 const { executeTool } = await import("~/modules/apps/execute-tool")
 
@@ -233,7 +234,7 @@ describe("ticket summarizers given a handle (a path that skips the preflight)", 
     )
     const ticket = await createTicket()
     const messageId = await addNote(ticket.id, "Serial 4411 confirmed")
-    const [reply, note] = await withPrivilegedDb(orgId, "approval-handle-summarize", async (tx) => {
+    const [reply, note] = await asOrgMember(orgId, userId, async (tx) => {
       const ctx = { tx: tx as never, orgId, userId }
       return [
         await summarizeTicketReply({ ticketId: ticket.handle, textBody: "Hi" }, ctx),

@@ -22,7 +22,7 @@ import {
 import { requireUuid, resolveTicketRef } from "~/apps/tickets/resolve-ticket-ref"
 import { kernelRel, ticketsRel } from "~/apps/tickets/schema-refs"
 import { extractRows, type PrivilegedDb, type RlsClient, type RlsTx } from "~/db"
-import { withPrivilegedDb } from "~/db/privileged"
+import { withPrivilegedDb, withPrivilegedReusing } from "~/db/privileged"
 import { getEmailProvider } from "~/infra/email"
 import { renderBrandedEmail } from "~/infra/email-layout"
 import { rootLogger } from "~/lib/logger"
@@ -1413,29 +1413,67 @@ async function csatList(
 }
 
 async function inboxesList(tx: SqlClient, orgId: string): Promise<AdminResult> {
-  // Join the backing connected account so the Settings UI can show per-inbox
-  // connection health ("needs reconnection") instead of only the generic
-  // attention-feed item. Reconnect rebinds the inbox to the fresh account row
-  // (ticketsOnAccountConnected), so the direct join reflects current state.
-  const result = await tx.execute(drizzleSql`
+  // Each inbox carries the health of its backing connected account so the
+  // Settings UI can show per-inbox connection health ("needs reconnection")
+  // instead of only the generic attention-feed item. Reconnect rebinds the
+  // inbox to the fresh account row (ticketsOnAccountConnected), so the binding
+  // reflects current state. The inboxes are read under the caller's client;
+  // the accounts are read privileged: an org mailbox belongs to whoever
+  // connected it, and connected_accounts RLS shows a member only their own, so
+  // under the caller's client every other mailbox would read as unbound. Only
+  // health facts leave this function, never a credential.
+  const inboxRows = extractRows<Record<string, unknown>>(
+    await tx.execute(drizzleSql`
     SELECT i.id, i.kind, i.connected_account_id, i.name, i.email_address, i.default_team, i.default_audience,
            i.default_sensitivity, i.from_display_name, i.reply_via_inbox_id, i.reply_from_email,
            i.reply_to_email, i.signature_html, i.signature_text, i.ack_enabled, i.ack_body_text,
            i.sla_promise_phrase, i.suppress_attention, i.notify_new_ticket, i.sla_exempt, i.attention_cutoff_at,
            i.close_silent_enabled, i.close_silent_nudge_days, i.close_silent_close_days,
            i.close_silent_nudge_text, i.close_silent_enabled_at,
-           i.is_default_for_create, i.archived_at,
-           a.app_name AS account_app_name, a.connection_name AS account_connection_name,
-           a.status AS account_status, a.status_message AS account_status_message,
-           a.provider_type AS account_provider_type, a.token_expires_at AS account_token_expires_at,
-           a.refresh_token_encrypted AS account_refresh_token_encrypted,
-           a.metadata AS account_metadata
+           i.is_default_for_create, i.archived_at
     FROM ${ticketsRel("inboxes")} i
-    LEFT JOIN ${kernelRel("connected_accounts")} a ON a.id = i.connected_account_id
     WHERE i.org_id = ${orgId}
     ORDER BY i.created_at DESC
-  `)
-  const rows = extractRows<Record<string, unknown>>(result)
+  `),
+  )
+  const accountIds = [
+    ...new Set(
+      inboxRows
+        .map((r) => r.connected_account_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  ]
+  const accounts = new Map<string, Record<string, unknown>>()
+  if (accountIds.length > 0) {
+    const accountRows = await withPrivilegedReusing(
+      tx,
+      orgId,
+      "tickets-inbox-account-health",
+      async (ptx) =>
+        extractRows<Record<string, unknown>>(
+          await ptx.execute(drizzleSql`
+          SELECT a.id::text AS id,
+                 a.app_name AS account_app_name, a.connection_name AS account_connection_name,
+                 a.status AS account_status, a.status_message AS account_status_message,
+                 a.provider_type AS account_provider_type, a.token_expires_at AS account_token_expires_at,
+                 a.refresh_token_encrypted AS account_refresh_token_encrypted,
+                 a.metadata AS account_metadata
+          FROM ${kernelRel("connected_accounts")} a
+          WHERE a.org_id = ${orgId} AND a.id::text IN (${drizzleSql.join(
+            accountIds.map((id) => drizzleSql`${id}`),
+            drizzleSql`, `,
+          )})
+        `),
+        ),
+    )
+    for (const a of accountRows) accounts.set(String(a.id), a)
+  }
+  const rows = inboxRows.map((inbox) => {
+    const account = accounts.get(String(inbox.connected_account_id ?? ""))
+    if (!account) return inbox
+    const { id: _accountId, ...health } = account
+    return { ...inbox, ...health }
+  })
   const { classifyConnectionHealth } = await import("~/modules/apps/connections/attention")
   return rows.map((row) => {
     const {

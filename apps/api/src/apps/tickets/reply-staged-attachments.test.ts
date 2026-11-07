@@ -19,6 +19,7 @@ import { files } from "~/db/schema/kernel/files"
 import { putObject } from "~/infra/storage/object-storage"
 import type { StructuredEmail } from "~/lib/email/types"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { asOrgMember } from "~/tests/helpers/org-caller"
 
 const realSendModule = { ...realSend }
 
@@ -153,7 +154,7 @@ async function stagePdf(
 }
 
 async function reply(params: Record<string, unknown>) {
-  return withPrivilegedDb(orgId, "reply-staged-call", async (tx) => {
+  return asOrgMember(orgId, userId, async (tx) => {
     const ctx = {
       tx: tx as never,
       orgId,
@@ -275,7 +276,7 @@ describe("ticketsReply: composer staged files ride the customer email", () => {
       })
     })
     const { summarizeTicketReply } = await import("./summarizers")
-    const summary = await withPrivilegedDb(orgId, "reply-staged-summary", (tx) =>
+    const summary = await asOrgMember(orgId, userId, (tx) =>
       summarizeTicketReply(
         { ticketId, textBody: "hi", attachmentSessionId: sessionId },
         { tx: tx as never, orgId, userId },
@@ -294,7 +295,7 @@ describe("ticketsReply: composer staged files ride the customer email", () => {
     const otherTicketId = await createTicketWithInbound()
     const { sessionId } = await stagePdf("other.pdf", otherTicketId)
     const { summarizeTicketReply } = await import("./summarizers")
-    const summary = await withPrivilegedDb(orgId, "reply-staged-summary-2", (tx) =>
+    const summary = await asOrgMember(orgId, userId, (tx) =>
       summarizeTicketReply(
         { ticketId, textBody: "hi", attachmentSessionId: sessionId },
         { tx: tx as never, orgId, userId },
@@ -308,7 +309,7 @@ describe("ticketsReply: composer staged files ride the customer email", () => {
     const ticketId = await createTicketWithInbound()
     const { sessionId, fileId } = await stagePdf("note.pdf", ticketId)
     const { runAdminOp } = await import("./admin")
-    const res = (await withPrivilegedDb(orgId, "reply-staged-note", (tx) =>
+    const res = (await asOrgMember(orgId, userId, (tx) =>
       runAdminOp(
         tx as never,
         orgId,

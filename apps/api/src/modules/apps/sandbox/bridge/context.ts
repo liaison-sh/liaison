@@ -729,7 +729,7 @@ export function createBridgeContext(
     const { effectiveMailboxEncryptionModeFor } = await import(
       "~/modules/mailbox-crypto/encryption-mode"
     )
-    const mode = await effectiveMailboxEncryptionModeFor(orgId, ownerId)
+    const mode = await effectiveMailboxEncryptionModeFor(orgId, ownerId, txDb)
     if (mode === "managed") {
       data.encryptionState = "managed"
       return

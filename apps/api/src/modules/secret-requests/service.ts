@@ -245,7 +245,7 @@ export async function completeSecretRequest(
     const status = effectiveStatus(row)
     if (status !== "pending") throw new SecretRequestStateError(status)
 
-    const state = await readStoredSecretState(args.orgId, target, row.requestedBy)
+    const state = await readStoredSecretState(args.orgId, target, row.requestedBy, tx)
     const fresh = args.fingerprint
       ? state.fingerprints.includes(args.fingerprint) && !row.baseline.includes(args.fingerprint)
         ? { fingerprint: args.fingerprint, hint: state.hints.get(args.fingerprint) ?? null }

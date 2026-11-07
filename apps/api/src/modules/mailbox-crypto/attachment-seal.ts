@@ -21,7 +21,10 @@ import { encryptAttachmentStream, STREAM_CHUNK_SIZE } from "@liaison/mailbox-cry
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { quoteIdent } from "~/lib/sql-utils"
-import { resolveActiveIdentity } from "~/modules/mailbox-crypto/identity-resolver"
+import {
+  type MailboxCallerTx,
+  resolveActiveIdentity,
+} from "~/modules/mailbox-crypto/identity-resolver"
 import {
   assertMailboxWritable,
   type MailAccountCrypto,
@@ -70,8 +73,10 @@ export async function sealAttachmentBytes(input: {
   bytes: Uint8Array
   /** Test seam. Production uses the section 3.5 chunk size. */
   chunkSize?: number
+  /** The caller's transaction, for the identity resolve (`resolveActiveIdentity`). */
+  on?: MailboxCallerTx | null
 }): Promise<SealedAttachment> {
-  const identity = await resolveActiveIdentity(input.userId, input.orgId)
+  const identity = await resolveActiveIdentity(input.userId, input.orgId, input.on)
   const contentKey = generateContentKey()
   try {
     const { wrapped, epkSpki } = await sealContentKey({
@@ -157,7 +162,9 @@ export async function resolveAttachmentMailAccount(
 }
 
 export interface MaybeSealAttachmentInput {
-  tx: MailboxSqlExecutor
+  /** The caller's transaction. The key lookups run on it when it already is a
+   *  privileged transaction of this org. */
+  tx: MailboxCallerTx
   schemaName: string
   /** The importing app. Only `mail` seals. */
   app: string
@@ -208,7 +215,7 @@ export async function maybeSealAttachmentForMail(
   // refused, and a shared mailbox has no recipient for anyone.
   const recipient = resolveSealRecipient(account, input.userId)
   if (account.encryptionState === "managed") {
-    const dek = await loadOrCreateMailboxServerKeyPrivileged(input.orgId, account.id)
+    const dek = await loadOrCreateMailboxServerKeyPrivileged(input.orgId, account.id, input.tx)
     try {
       const sealed = sealManagedAttachment({
         accountId: account.id,
@@ -231,5 +238,6 @@ export async function maybeSealAttachmentForMail(
     fileId: input.fileId,
     bytes: input.bytes,
     chunkSize: input.chunkSize,
+    on: input.tx,
   })
 }

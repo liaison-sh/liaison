@@ -9,6 +9,7 @@ import { sql } from "drizzle-orm"
 import type { RlsClient } from "~/db"
 import { sql as rawSql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
+import { type ActorContext, withRlsContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
 import { createRpcBridge } from "./rpc-bridge"
 
@@ -39,6 +40,18 @@ async function seedFile(opts: {
                   'attachment', 0, ${opts.status}, ${opts.summary})`,
     )
   })
+}
+
+// The bridge runs on the caller's RLS transaction in production (an app
+// handler's request or webhook context), never on a privileged one, so the
+// tickets reads run there too: a privileged transaction held around the bridge
+// would make its own short privileged reads (the ID segment) nest on the pool.
+const ticketsReader: ActorContext = {
+  actorType: "user",
+  userId,
+  orgId,
+  scopes: ["tickets:tickets:read"],
+  dimensionGrants: { "*": ["*"] },
 }
 
 describe("rpc-bridge analysis-field surfacing", () => {
@@ -99,14 +112,11 @@ describe("rpc-bridge analysis-field surfacing", () => {
   })
 
   it("tickets_get surfaces analysisStatus/analysisSummary on attachments (+ null case)", async () => {
-    const raw = await withPrivilegedDb(orgId, "tg", async (tx) => {
-      const bridge = createRpcBridge(
-        "tickets",
-        userId,
-        orgId,
-        tx as unknown as RlsClient,
-        { name: "tickets", capabilities: [] } as never,
-      )
+    const raw = await withRlsContext(ticketsReader, async (tx) => {
+      const bridge = createRpcBridge("tickets", userId, orgId, tx, {
+        name: "tickets",
+        capabilities: [],
+      } as never)
       return bridge.tickets_get(JSON.stringify({ ticketId }))
     })
     const parsed = JSON.parse(raw) as {
@@ -138,12 +148,12 @@ describe("rpc-bridge analysis-field surfacing", () => {
       ),
     )
     const read = (actorType: "user" | "mcp") =>
-      withPrivilegedDb(orgId, "tg-fence", async (tx) => {
+      withRlsContext(ticketsReader, async (tx) => {
         const bridge = createRpcBridge(
           "tickets",
           userId,
           orgId,
-          tx as unknown as RlsClient,
+          tx,
           { name: "tickets", capabilities: [] } as never,
           undefined,
           actorType,

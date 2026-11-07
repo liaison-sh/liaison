@@ -225,7 +225,10 @@ export function readStoredSecretState(
   orgId: string,
   target: SecretTarget,
   requester: string,
+  /** A privileged transaction of this org the caller holds: read on it, no second slot. */
+  on?: PrivilegedDb,
 ): Promise<StoredSecretState> {
+  if (on) return readState(on, orgId, target, requester)
   return withPrivilegedDb(orgId, "secret-request-stored-state", (tx) =>
     readState(tx, orgId, target, requester),
   )

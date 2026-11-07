@@ -180,10 +180,17 @@ beforeEach(async () => {
   await forgetLookups()
 })
 
+// The suite may run strict already: put back whatever was there before each case.
+let strictBefore: string | undefined
+beforeEach(() => {
+  strictBefore = process.env.NESTED_PRIVILEGED_STRICT
+})
+
 afterEach(() => {
   OutboundFetchTestAccess.setFetch(null)
   lookupSpy.mockRestore()
-  delete process.env.NESTED_PRIVILEGED_STRICT
+  if (strictBefore === undefined) delete process.env.NESTED_PRIVILEGED_STRICT
+  else process.env.NESTED_PRIVILEGED_STRICT = strictBefore
 })
 
 describe("one conversation view with its customer card", () => {

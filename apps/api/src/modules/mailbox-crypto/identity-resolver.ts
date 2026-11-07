@@ -15,7 +15,8 @@
 // choose.
 
 import { and, eq } from "drizzle-orm"
-import { withPrivilegedDb } from "~/db/privileged"
+import type { RlsClient } from "~/db"
+import { withPrivilegedReusing } from "~/db/privileged"
 import { userMailboxIdentities } from "~/db/schema/kernel"
 
 export type MailboxSealErrorCode =
@@ -47,15 +48,23 @@ export interface ActiveIdentity {
   ecdhPublicKey: Uint8Array
 }
 
+/** A caller's transaction a privileged read may run on (see `withPrivilegedReusing`). */
+export type MailboxCallerTx = Pick<RlsClient, "execute">
+
 /**
  * The user's single active identity, or a refusal. Never returns a row when
  * more than one is active.
+ *
+ * `on` is the caller's transaction: when it already is a privileged one of this
+ * org the read runs on it rather than taking a second privileged connection;
+ * any other transaction (or none) gets the read its own privileged transaction.
  */
 export async function resolveActiveIdentity(
   userId: string,
   orgId: string,
+  on?: MailboxCallerTx | null,
 ): Promise<ActiveIdentity> {
-  const rows = await withPrivilegedDb(orgId, "mailbox-resolve-identity", (tx) =>
+  const rows = await withPrivilegedReusing(on, orgId, "mailbox-resolve-identity", (tx) =>
     tx
       .select({
         id: userMailboxIdentities.id,

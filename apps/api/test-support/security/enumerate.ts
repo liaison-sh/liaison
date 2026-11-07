@@ -290,7 +290,14 @@ export type OrgIdSource =
   | "no-org"
   | "unknown"
 
-const PRIVILEGED_FNS = new Set(["withPrivilegedDb", "withSystemDb", "withSchemaAdmin"])
+const PRIVILEGED_FNS = new Set([
+  "withPrivilegedDb",
+  "withSystemDb",
+  "withSchemaAdmin",
+  "withPrivilegedReusing",
+])
+/** Where a privileged helper takes its org id: withPrivilegedReusing(tx, orgId, reason, fn). */
+const ORG_ARG_INDEX: Record<string, number> = { withPrivilegedReusing: 1 }
 const ROLE_SWITCH = /SET\s+(LOCAL\s+|SESSION\s+)?ROLE\s+"?liaison_(admin|schema_admin)\b/i
 
 const JOB_NAMES =
@@ -471,7 +478,8 @@ export function enumeratePrivilegedSites(
   const rows: SurfaceRow[] = []
   for (const file of files) {
     const text = texts?.get(file) ?? readFileSync(file, "utf8")
-    if (!/withPrivilegedDb|withSystemDb|withSchemaAdmin|ROLE/.test(text)) continue
+    if (!/withPrivilegedDb|withSystemDb|withSchemaAdmin|withPrivilegedReusing|ROLE/.test(text))
+      continue
     const sf = parseFile(file, texts ? text : undefined)
     const ids = new OrdinalIds()
     const relFile = rel(file, root)
@@ -487,12 +495,13 @@ export function enumeratePrivilegedSites(
           cls = { source: "no-org", detail: "system: no org pinned (BYPASSRLS across orgs)" }
           reason = stringValue(n.arguments[0])
         } else {
-          cls = classifyOrgIdExpression(n.arguments[0])
-          reason = stringValue(n.arguments[1])
+          const at = ORG_ARG_INDEX[name] ?? 0
+          cls = classifyOrgIdExpression(n.arguments[at])
+          reason = stringValue(n.arguments[at + 1])
         }
         // An org id taken from a parameter: what the function's callers pass.
         // A parameter, or an expression the classifier could not place.
-        const orgArg = name === "withSystemDb" ? undefined : n.arguments[0]
+        const orgArg = name === "withSystemDb" ? undefined : n.arguments[ORG_ARG_INDEX[name] ?? 0]
         const traceable =
           orgArg !== undefined &&
           ((cls.source === "caller-input" && !/^request|\(request/.test(cls.detail)) ||
@@ -3568,11 +3577,11 @@ export function staticInventory(root = LIAISON_ROOT): RuntimeResult {
   const privCalls = priv.filter((r) => r.attrs.fn !== "SET ROLE").length
   crossCounts.push({
     kind: "priv",
-    label: "withPrivilegedDb/withSystemDb/withSchemaAdmin call sites",
+    label: "withPrivilegedDb/withSystemDb/withSchemaAdmin/withPrivilegedReusing call sites",
     enumerated: privCalls,
     independent: grepCount(
       [...server, ...bundled],
-      /\b(withPrivilegedDb|withSystemDb|withSchemaAdmin)\s*(<[^>]*>)?\(/,
+      /\b(withPrivilegedDb|withSystemDb|withSchemaAdmin|withPrivilegedReusing)\s*(<[^>]*>)?\(/,
       /^\s*(export\s+)?(async\s+)?function\s|^\s*import\s/,
     ),
     method: "grep (non-comment lines, excluding declarations and imports)",

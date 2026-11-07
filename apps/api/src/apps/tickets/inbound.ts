@@ -51,6 +51,10 @@ export type InboxRow = {
 export type TicketsServiceCtx = {
   db: RlsClient
   orgId: string
+  /** Set when `db` is a privileged transaction (a mailbox sync's ingest): every privileged
+   *  read of the ingest (settings, trusted senders, mail domains, the ID segment) then runs on
+   *  it, never on a second privileged connection (privileged-read.ts). */
+  privilegedTx?: PrivilegedDb
   /** Never acknowledge a ticket this ingest opens: set by a first (backfill)
    *  mailbox sync and by every import or seed path, whose mail did not just
    *  arrive. */
@@ -171,10 +175,13 @@ export function resolveSyncedDirection(
 
 const ORG_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-/** The org's configured mail domains (none for a unit test's synthetic org id). */
-async function loadOrgMailDomains(orgId: string): Promise<string[]> {
+/**
+ * The org's configured mail domains (none for a unit test's synthetic org id), read on the
+ * ingest's privileged transaction when it has one: it takes no second privileged slot.
+ */
+async function loadOrgMailDomains(orgId: string, on?: PrivilegedDb): Promise<string[]> {
   if (!ORG_UUID_RE.test(orgId)) return []
-  return loadAllowedMailDomains(orgId)
+  return loadAllowedMailDomains(orgId, on)
 }
 
 // Community/forum notification emails ("[New Reply] in <topic>", "[New Topic] in
@@ -750,7 +757,7 @@ async function appendInboundToTicket(
       ctx.orgId,
       ticket.id,
       raw.from?.email,
-      await senderAuthForRules(ctx.orgId, senderAuthOf(raw), raw.from?.email),
+      await senderAuthForRules(ctx.orgId, senderAuthOf(raw), raw.from?.email, ctx.privilegedTx),
       [...(raw.to ?? []), ...(raw.cc ?? [])].map((a) => a.email),
     )
   }
@@ -804,6 +811,7 @@ async function appendInboundToTicket(
       ticketId: ticket.id,
       sentAt,
       actor,
+      privilegedTx: ctx.privilegedTx,
     })
   } else {
     const transitionResult = await validateAndApply(
@@ -811,6 +819,7 @@ async function appendInboundToTicket(
       ticket.id,
       { kind: "reply" } as never,
       actor,
+      { privilegedTx: ctx.privilegedTx },
     )
     // best-effort; matcher must succeed even if state machine declines
     void transitionResult
@@ -862,7 +871,7 @@ async function createNewTicket(
   // provider gave no verdict; the message still records the provider's own verdict.
   const mayLinkContact =
     direction === "outbound" ||
-    (await senderAuthForRules(ctx.orgId, senderAuth, raw.from?.email)) === "pass"
+    (await senderAuthForRules(ctx.orgId, senderAuth, raw.from?.email, ctx.privilegedTx)) === "pass"
   const contact =
     counterparty?.email && mayLinkContact
       ? await resolveContact(
@@ -922,7 +931,10 @@ async function createNewTicket(
       },
     },
     { actorType: "system", userId: "00000000-0000-0000-0000-000000000000" } as never,
-    { notNews: !isNewTicketNews(raw, direction, ctx.noAcknowledgement === true) },
+    {
+      notNews: !isNewTicketNews(raw, direction, ctx.noAcknowledgement === true),
+      privilegedTx: ctx.privilegedTx,
+    },
   )
   if ("error" in result) {
     // A concurrent delivery of the same provider message id can lose the race
@@ -1022,12 +1034,21 @@ export async function processInboundMessage(
   // The provider's verdict, except that a trusted sender (staff marked the address or domain)
   // with no verdict counts as verified for desk routing and the acknowledgement. A failed verdict
   // stays failed.
-  const senderAuth = await senderAuthForRules(ctx.orgId, senderAuthOf(raw), raw.from?.email)
+  const senderAuth = await senderAuthForRules(
+    ctx.orgId,
+    senderAuthOf(raw),
+    raw.from?.email,
+    ctx.privilegedTx,
+  )
 
   // Direction is fixed by (From vs the synced mailbox and the org's own
   // domains, plus the provider's evidence) and is invariant across every match
   // branch below — compute it once.
-  const direction = resolveSyncedDirection(raw, inbox, await loadOrgMailDomains(ctx.orgId))
+  const direction = resolveSyncedDirection(
+    raw,
+    inbox,
+    await loadOrgMailDomains(ctx.orgId, ctx.privilegedTx),
+  )
 
   // Recipient dispatch. Several published addresses (Groups / aliases) may
   // deliver into this ONE synced mailbox; each maps to its own api inbox

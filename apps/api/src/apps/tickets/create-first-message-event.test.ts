@@ -84,6 +84,7 @@ async function create(kind: "inbound" | "outbound" | "note") {
         },
       },
       { actorType: "system", userId: "00000000-0000-0000-0000-000000000000" },
+      { privilegedTx: tx },
     ),
   )) as { ticketId: string; initialMessageId: string | null; error?: unknown }
   expect(out.error).toBeUndefined()

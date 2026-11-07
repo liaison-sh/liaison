@@ -18,6 +18,8 @@ export interface RecordInboundOnTicketParams {
     userId: string
     orgId: string
   }
+  /** The caller's privileged transaction, when `tx` is one (privileged-read.ts). */
+  privilegedTx?: PrivilegedDb
 }
 
 export interface RecordInboundOnTicketResult {
@@ -35,7 +37,7 @@ export async function recordInboundOnTicket(
   tx: SqlClient,
   params: RecordInboundOnTicketParams,
 ): Promise<RecordInboundOnTicketResult> {
-  const { orgId, ticketId, sentAt, actor } = params
+  const { orgId, ticketId, sentAt, actor, privilegedTx } = params
 
   await tx.execute(drizzleSql`
     UPDATE ${ticketsRel("tickets")}
@@ -63,7 +65,7 @@ export async function recordInboundOnTicket(
 
   let result: ValidationResult
   try {
-    result = await validateAndApply(tx, ticketId, { kind: "inbound" }, actor)
+    result = await validateAndApply(tx, ticketId, { kind: "inbound" }, actor, { privilegedTx })
   } catch (err) {
     rootLogger.warn(
       { module: "tickets-inbound", ticketId, err },

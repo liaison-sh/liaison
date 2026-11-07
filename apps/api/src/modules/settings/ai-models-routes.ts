@@ -175,7 +175,7 @@ export const aiModelsRoutes = new Hono<AppEnv>()
           await getOrgKernelSettings(tx, orgId, orgKernelSettingsSchema),
           current,
         )
-        if ((await resolvedAutoKey(orgId, settings)) === key) {
+        if ((await resolvedAutoKey(orgId, settings, tx)) === key) {
           return {
             result: {
               status: 409,
@@ -327,6 +327,7 @@ export const aiModelsRoutes = new Hono<AppEnv>()
         const auto = await resolvedAutoKey(
           orgId,
           withModels(await getOrgKernelSettings(tx, orgId, orgKernelSettingsSchema), cur),
+          tx,
         )
         if (auto && gone.has(auto)) {
           return {

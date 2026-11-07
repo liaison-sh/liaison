@@ -38,6 +38,7 @@ import {
 } from "@liaison/shared"
 import type { Context } from "hono"
 import { HTTPException } from "hono/http-exception"
+import type { PrivilegedDb } from "~/db"
 import { rootLogger } from "~/lib/logger"
 import { requestHostBinding } from "~/lib/org-host"
 import { hasScope } from "~/modules/permissions/permissions"
@@ -157,9 +158,15 @@ export async function assertOrgServable(c: Context, cred: GateCredential): Promi
 /**
  * The gate of `createSession` (every sign-in and refresh): an admin may sign in
  * while the org is suspended within its window; nobody once it is refused.
+ * `privilegedTx`: the sign-in's own privileged transaction, which the status is
+ * read on (no second privileged connection while it is held).
  */
-export async function assertOrgSessionAllowed(orgId: string, isAdmin: boolean): Promise<void> {
-  const status = await orgBillingStatus(orgId)
+export async function assertOrgSessionAllowed(
+  orgId: string,
+  isAdmin: boolean,
+  privilegedTx?: PrivilegedDb,
+): Promise<void> {
+  const status = await orgBillingStatus(orgId, privilegedTx)
   const access = orgAccessOf(status)
   if (access === "served" || (access === "admins" && isAdmin)) return
   log.info({ orgId, status: status?.status }, "sign-in refused: the org is suspended")

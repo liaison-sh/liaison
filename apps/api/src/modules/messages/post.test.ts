@@ -6,6 +6,7 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
+import { asOrgMember } from "~/tests/helpers/org-caller"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { postAppMessage } from "./post"
 
@@ -71,8 +72,8 @@ describe("messages.post (K1)", () => {
     const admin = await minimal.person(org.id, { role: "admin" })
     const contactId = await minimal.contact(org.id, `c-${crypto.randomUUID()}@t.co`)
 
-    const { thread_id } = await withPrivilegedDb(org.id, "b1-post-contact-1", (tx) =>
-      postAppMessage(tx as unknown as RlsClient, {
+    const { thread_id } = await asOrgMember(org.id, admin.id, (tx) =>
+      postAppMessage(tx, {
         orgId: org.id,
         callingAppId: "invoicing",
         requiredScopes: [],
@@ -83,8 +84,8 @@ describe("messages.post (K1)", () => {
     )
     expect(thread_id).toMatch(/^[0-9a-f-]{36}$/)
 
-    const { thread_id: again } = await withPrivilegedDb(org.id, "b1-post-contact-2", (tx) =>
-      postAppMessage(tx as unknown as RlsClient, {
+    const { thread_id: again } = await asOrgMember(org.id, admin.id, (tx) =>
+      postAppMessage(tx, {
         orgId: org.id,
         callingAppId: "invoicing",
         requiredScopes: [],

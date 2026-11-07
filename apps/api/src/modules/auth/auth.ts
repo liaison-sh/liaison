@@ -524,6 +524,7 @@ async function createSessionUnder(
         orgId,
         hasScope(SUSPENDED_ADMIN_SCOPE, perms.scopes) &&
           (scopeCeiling === undefined || hasScope(SUSPENDED_ADMIN_SCOPE, scopeCeiling)),
+        tx,
       )
       const pending = await adminSecondFactorPending(tx, userId, orgId, perms.scopes)
 
@@ -721,6 +722,18 @@ async function refreshSessionUnder(
   // Sessions this decision ends (a revoked family, an inactive user's row).
   const endedIds: string[] = []
 
+  // The gate reads the org's transfer state on privileged connections of its
+  // own, so it runs before the rotation's transaction, on the token's org (a
+  // session never changes org), never under it.
+  const [gated] = await withSystemDb("refresh-session-org", (tx) =>
+    tx
+      .select({ orgId: sessions.orgId })
+      .from(sessions)
+      .where(eq(sessions.refreshTokenHash, tokenHash))
+      .limit(1),
+  )
+  if (gated) await gate(gated.orgId)
+
   const decision = await withSystemDb("refresh-session", async (tx): Promise<RefreshDecision> => {
     const now = new Date()
     const [session] = await tx
@@ -728,8 +741,10 @@ async function refreshSessionUnder(
       .from(sessions)
       .where(eq(sessions.refreshTokenHash, tokenHash))
       .for("update")
-    if (!session) return { kind: "invalid", reason: "unknown token" }
-    await gate(session.orgId)
+    // Not there, or not the row the gate was asked about: never rotated ungated.
+    if (!session || session.orgId !== gated?.orgId) {
+      return { kind: "invalid", reason: "unknown token" }
+    }
     // Presented on another org's host: refused, and nothing about the session
     // changes (its own host may still rotate it).
     if (client.expectedOrgId !== undefined && session.orgId !== client.expectedOrgId) {
@@ -921,22 +936,22 @@ async function logoutUnder(
 ): Promise<{ userId: string; orgId: string } | null> {
   const tokenHash = hashToken(refreshToken)
 
-  const ended = await withSystemDb("logout", async (db) => {
-    const [session] = await db
+  const [ended] = await withSystemDb("logout-session-read", (db) =>
+    db
       .select({ id: sessions.id, userId: sessions.userId, orgId: sessions.orgId })
       .from(sessions)
       .where(eq(sessions.refreshTokenHash, tokenHash))
-      .limit(1)
-
-    if (!session) return null
-    await gate(session.orgId)
-
-    // Delete only this session. Grace-period sessions (from consumed refresh tokens)
-    // expire naturally in 30 seconds — no need to sweep them here.
-    await db.delete(sessions).where(eq(sessions.id, session.id))
-    return { id: session.id, userId: session.userId, orgId: session.orgId }
-  })
+      .limit(1),
+  )
   if (!ended) return null
+  // The gate reads the org's transfer state on privileged connections of its
+  // own, so it runs between the two transactions, never under one. The org's
+  // activity it counts (logout) spans both.
+  await gate(ended.orgId)
+
+  // Delete only this session. Grace-period sessions (from consumed refresh tokens)
+  // expire naturally in 30 seconds — no need to sweep them here.
+  await withSystemDb("logout", (db) => db.delete(sessions).where(eq(sessions.id, ended.id)))
   // Its access tokens stop authenticating now, not when they expire.
   revokeSessions([ended.id], "logout")
   return { userId: ended.userId, orgId: ended.orgId }

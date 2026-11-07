@@ -15,7 +15,11 @@
 import { type MailboxAadContext, mailboxAad } from "@liaison/mailbox-crypto/src/aad"
 import { sealField } from "@liaison/mailbox-crypto/src/field-seal"
 import { generateContentKey, sealContentKey } from "@liaison/mailbox-crypto/src/seal"
-import { MailboxSealError, resolveActiveIdentity } from "~/modules/mailbox-crypto/identity-resolver"
+import {
+  type MailboxCallerTx,
+  MailboxSealError,
+  resolveActiveIdentity,
+} from "~/modules/mailbox-crypto/identity-resolver"
 
 export { MailboxSealError, resolveActiveIdentity }
 
@@ -138,13 +142,16 @@ export async function assertIdentitySealable(input: {
  *
  * `orgId` is the RLS anchor for the resolve, not a second recipient: the
  * identity row must belong to `userId` AND `orgId` or nothing is sealed.
+ * `on` is the caller's transaction, used for the resolve as `resolveActiveIdentity`
+ * describes.
  */
 export async function sealForUser(
   userId: string,
   orgId: string,
   items: SealItem[],
+  on?: MailboxCallerTx | null,
 ): Promise<SealedBatch> {
-  const identity = await resolveActiveIdentity(userId, orgId)
+  const identity = await resolveActiveIdentity(userId, orgId, on)
   // Cap every item BEFORE minting a key, so an oversize item cannot leave a
   // half-sealed batch behind.
   const plaintexts = items.map((item) => toBytes(item.plaintext))

@@ -8,6 +8,7 @@ import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { withSystemDb } from "~/db/privileged"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { asOrgMember } from "~/tests/helpers/org-caller"
 
 let orgId: string
 let userId: string
@@ -123,7 +124,7 @@ describe("tickets.events.emits", () => {
 // inbox" when no such mailbox is connected (mail has no agent connect tool).
 describe("tickets.inboxesCreate.account-email-binding-guard", () => {
   async function createInbox(params: Record<string, unknown>) {
-    return withSystemDb("inboxesCreate-guard", async (tx) =>
+    return asOrgMember(orgId, userId, async (tx) =>
       runAdminOp(tx as never, orgId, "inboxesCreate", params, { actorType: "user", userId }),
     )
   }

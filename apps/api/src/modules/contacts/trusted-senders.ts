@@ -17,6 +17,7 @@ import {
   type TrustedSenderCreate,
 } from "@liaison/shared"
 import { and, asc, eq } from "drizzle-orm"
+import type { PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { trustedSenders } from "~/db/schema/kernel"
 import type { SenderAuth } from "~/lib/email/sender-auth"
@@ -114,16 +115,26 @@ export async function removeTrustedSender(
   })
 }
 
-/** Which of these addresses are trusted, by exact address or by their (non-public) domain. */
-export async function trustedAmong(orgId: string, addresses: string[]): Promise<Set<string>> {
+/**
+ * Which of these addresses are trusted, by exact address or by their (non-public) domain.
+ * A caller holding a privileged transaction passes it as `privilegedTx`: the list is then read
+ * on it, never on a second privileged connection.
+ */
+export async function trustedAmong(
+  orgId: string,
+  addresses: string[],
+  privilegedTx?: PrivilegedDb,
+): Promise<Set<string>> {
   const wanted = [...new Set(addresses.map((a) => a.trim().toLowerCase()).filter(Boolean))]
   if (wanted.length === 0) return new Set()
-  const rows = await withPrivilegedDb(orgId, "trusted-senders-match", (tx) =>
+  const read = (tx: PrivilegedDb) =>
     tx
       .select({ kind: trustedSenders.kind, value: trustedSenders.value })
       .from(trustedSenders)
-      .where(eq(trustedSenders.orgId, orgId)),
-  )
+      .where(eq(trustedSenders.orgId, orgId))
+  const rows = privilegedTx
+    ? await read(privilegedTx)
+    : await withPrivilegedDb(orgId, "trusted-senders-match", read)
   const exact = new Set(rows.filter((r) => r.kind === "address").map((r) => r.value))
   const domains = new Set(
     rows.filter((r) => r.kind === "domain" && !isPublicEmailProvider(r.value)).map((r) => r.value),
@@ -140,9 +151,10 @@ export async function trustedAmong(orgId: string, addresses: string[]): Promise<
 export async function isTrustedSender(
   orgId: string,
   address: string | null | undefined,
+  privilegedTx?: PrivilegedDb,
 ): Promise<boolean> {
   if (!address) return false
-  return (await trustedAmong(orgId, [address])).size > 0
+  return (await trustedAmong(orgId, [address], privilegedTx)).size > 0
 }
 
 /**
@@ -154,7 +166,8 @@ export async function senderAuthForRules(
   orgId: string,
   verdict: SenderAuth,
   from: string | null | undefined,
+  privilegedTx?: PrivilegedDb,
 ): Promise<SenderAuth> {
   if (verdict !== "none") return verdict
-  return (await isTrustedSender(orgId, from)) ? "pass" : verdict
+  return (await isTrustedSender(orgId, from, privilegedTx)) ? "pass" : verdict
 }

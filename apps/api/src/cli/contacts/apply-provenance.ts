@@ -276,11 +276,15 @@ export async function applyProvenance(
           data: { id: link.id, accountId: link.account_id, contactId: null },
         })
       }
-      await deleteContact(tx as never, {
-        orgId: d.orgId,
-        userId: d.actorId as string,
-        contactId: id,
-      })
+      await deleteContact(
+        tx as never,
+        {
+          orgId: d.orgId,
+          userId: d.actorId as string,
+          contactId: id,
+        },
+        tx,
+      )
     }
     for (const r of backup.reassigned) {
       await assignContactSharingAsKernel(tx as never, {

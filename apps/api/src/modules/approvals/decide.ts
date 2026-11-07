@@ -2,7 +2,7 @@
 
 import { isApprovingWedged } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
-import { extractRows } from "~/db"
+import { extractRows, type PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
@@ -10,7 +10,11 @@ import { schemaRef } from "~/db/schema-ref"
 import { appsLogger as log } from "~/lib/logger"
 import { enqueueRoutineDecisionTurn } from "~/modules/approvals/approval-result-turn"
 import { authorityFacts, decidingScope } from "~/modules/approvals/authority"
-import { cascadeDeferredDependents, executeApprovedStep } from "~/modules/approvals/cascade"
+import {
+  cascadeDeferredDependents,
+  executeApprovedStep,
+  type SendGuardOverride,
+} from "~/modules/approvals/cascade"
 import { failBundle, stampExecutionFailure } from "~/modules/approvals/cascade-fail"
 import {
   cancelDeferredBundleSiblings,
@@ -104,7 +108,9 @@ export class ApprovalDecisionError extends Error {
        */
       | "payload_changed"
       /** N-eyes: this person's sign-off is already counted; another approver must decide. */
-      | "already_signed_off",
+      | "already_signed_off"
+      /** "Send now" on a mail that is not held (any more): a reply came in, or the hold ended. */
+      | "send_guard_not_held",
     message: string,
     public details?: unknown,
   ) {
@@ -144,6 +150,12 @@ export interface DecideArgs {
    * was added, after the card loaded refuses the approve (409). Required when `payloadHash` is.
    */
   stepPayloadHashes?: Record<string, string>
+  /**
+   * "Send now" on a held mail draft: send although the other side's automatic reply says they
+   * are away. Judged under the claim's row lock; refused with 422 `send_guard_not_held` when the
+   * draft is not held at that moment.
+   */
+  sendGuardOverride?: SendGuardOverride
 }
 
 export interface DecideResult {
@@ -741,6 +753,7 @@ async function approveFlow(args: DecideArgs, row: ApprovalRow): Promise<DecideRe
     // tool call the approver never decrypted anything for.
     ...(args.mailboxFulfilment ? { mailboxFulfilment: args.mailboxFulfilment } : {}),
     ...(args.payloadHash !== undefined ? { expectedPayloadHash: args.payloadHash } : {}),
+    ...(args.sendGuardOverride !== undefined ? { sendGuardOverride: args.sendGuardOverride } : {}),
     decidedFor,
   })
 
@@ -749,6 +762,17 @@ async function approveFlow(args: DecideArgs, row: ApprovalRow): Promise<DecideRe
       409,
       "payload_changed",
       "this request was edited after you opened it: review the current version and decide again",
+    )
+  }
+
+  if (outcome.kind === "send_guard_not_held") {
+    throw new ApprovalDecisionError(
+      422,
+      "send_guard_not_held",
+      outcome.state === "not_guarded"
+        ? "Send now applies only to a mail draft held by an automatic reply. Nothing was sent; the request is still pending."
+        : `Nothing was sent: this draft is no longer held (it now reads ${outcome.state.replace(/_/g, " ")}). The request is still pending: reload it and decide on what it shows now.`,
+      { state: outcome.state },
     )
   }
 
@@ -944,6 +968,69 @@ async function bindDeferredSteps(args: DecideArgs, row: ApprovalRow): Promise<vo
   })
 }
 
+/** What a stopped mail's Home line says, in short facts. Never a word of the message. */
+function sendGuardStopLine(guard: Record<string, unknown>, to: string): string {
+  const who = typeof guard.who === "string" && guard.who !== "" ? guard.who : "The other side"
+  switch (guard.state) {
+    case "replied":
+      return `Not sent to ${to}: ${who} replied after it was drafted.`
+    case "bounced":
+      return `Not sent to ${to}: a delivery failure came back for this address.`
+    case "opted_out":
+      return `Not sent to ${to}: they opted out of commercial mail.`
+    case "ref_stop":
+      return `Not sent to ${to}: ${typeof guard.label === "string" ? guard.label : "the record it was about says not to send it."}`
+    default:
+      return `Not sent to ${to}: the check before sending stopped it.`
+  }
+}
+
+/**
+ * A mail a person approved and the send check then stopped for good: one Home line for the
+ * person who decided and for the owner of the routine that drafted it (one row each, since the
+ * translation names them as participants). Dismiss marks it read; nothing resolves it.
+ */
+async function queueSendGuardStopped(
+  tx: PrivilegedDb,
+  args: DecideArgs,
+  row: ApprovalRow,
+  details: Record<string, unknown> | null,
+): Promise<void> {
+  if (row.tool_name !== "mail:compose" && row.tool_name !== "mail:reply") return
+  const guard = details && isRec(details.guard) ? details.guard : null
+  if (!guard) return
+  const routineId = (row.metadata as { originRoutineId?: unknown } | null)?.originRoutineId
+  const owners =
+    typeof routineId === "string"
+      ? extractRows<{ owner_user_id: string | null }>(
+          await tx.execute(drizzleSql`
+            SELECT owner_user_id FROM ${K}.routines WHERE id = ${routineId}::uuid AND org_id = ${args.orgId}::uuid`),
+        ).flatMap((r) => (r.owner_user_id ? [r.owner_user_id] : []))
+      : [row.requested_by]
+  const targetUserIds = [...new Set([args.actor.userId, ...owners])]
+  const payload = isRec(row.current_payload) ? row.current_payload : {}
+  const to = Array.isArray(payload.to)
+    ? payload.to.filter((v): v is string => typeof v === "string").join(", ")
+    : ""
+  await tx.queueEvent({
+    app: "mail",
+    entity: "send_guard",
+    action: "stopped",
+    entityId: row.id,
+    data: {
+      requestId: row.id,
+      state: guard.state ?? null,
+      summary: sendGuardStopLine(guard, to || "the recipient"),
+      targetUserIds,
+      link: { tabType: "thread", entityId: row.thread_id },
+    },
+    actorId: args.actor.userId,
+    actorType: "user",
+    orgId: args.orgId,
+    timestamp: new Date().toISOString(),
+  })
+}
+
 async function revertToPending(
   args: DecideArgs,
   row: ApprovalRow,
@@ -1035,6 +1122,7 @@ async function revertToPending(
         at: new Date().toISOString(),
       },
     })
+    if (final) await queueSendGuardStopped(tx, args, row, details)
     if (!final) return null
     if (!reverted.bundle_id) {
       await stampExecutionFailure(tx, args.orgId, {

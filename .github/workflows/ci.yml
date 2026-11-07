@@ -5,7 +5,7 @@
 # checkout and one `bun install` instead of four). Beside it, in parallel: the
 # api `unit` suite split over three jobs (each with its own Postgres, Redis,
 # MeiliSearch and SeaweedFS from docker-compose.yml) and the whole web unit
-# suite. Before they ran here, only a release ran them, and failures sat on
+# suite split over two jobs. Before they ran here, only a release ran them, and failures sat on
 # main unseen. Integration, e2e and Playwright stay out (see scripts/test-run.ts).
 name: ci
 
@@ -229,11 +229,16 @@ jobs:
         if: always()
         run: docker compose down -v
 
-  # The whole web unit suite (vitest, jsdom): no database or service.
+  # The whole web unit suite (vitest, jsdom), split two ways (one runner took
+  # 12 minutes for it): no database or service.
   web-unit:
-    name: web unit
+    name: web unit ${{ matrix.part }}/2
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -243,6 +248,6 @@ jobs:
           bun-version: "1.4.x"
       - name: Install dependencies
         run: bun install --frozen-lockfile
-      - name: Web unit tests
+      - name: Web unit tests (part ${{ matrix.part }} of 2)
         working-directory: apps/web
-        run: bunx --bun vitest run
+        run: bunx --bun vitest run --shard=${{ matrix.part }}/2

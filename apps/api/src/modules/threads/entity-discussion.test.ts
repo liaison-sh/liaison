@@ -183,7 +183,9 @@ describe("entity discussions", () => {
 
   test("a client's portal account is never seated", async () => {
     const itemId = await item(orgId, "seat check")
-    const { threadId } = await open(as(aliceId, SEES_ITEMS), "items", itemId)
+    const opened = await open(as(aliceId, SEES_ITEMS), "items", itemId)
+    if (!opened) throw new Error("the item discussion did not open")
+    const { threadId } = opened
     const email = `client-${crypto.randomUUID().slice(0, 8)}@client.example`
     const ks = drizzleSql.raw(`"${schemaRef("kernel")}"`)
     const clientId = await withPrivilegedDb(orgId, "test-portal-account", async (tx) => {

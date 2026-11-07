@@ -26,6 +26,7 @@ import {
   runApprovedToolHandler,
 } from "~/modules/apps/run-approved-handler"
 import { orgSetupStamp } from "~/modules/apps/setup-stamp"
+import { seedOrgRow } from "~/seed/factories/org/rows"
 
 const ORG = "00000000-0000-0000-0000-000000db0036"
 const ROOT = join(import.meta.dir, "../../../../..")
@@ -77,7 +78,10 @@ const manifestTools = (dir: string): Record<string, ManifestTool> =>
 describe("tools hidden from the agent", () => {
   beforeAll(async () => {
     orgSetupStamp.enabled = false
-    await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${ORG}, 'HiddenToolsOrg', 'hidden-tools-org') ON CONFLICT (id) DO NOTHING`
+    await seedOrgRow(
+      { id: ORG, name: "HiddenToolsOrg", slug: "hidden-tools-org" },
+      { onConflict: "skip" },
+    )
     await ensureAppsForOrg(ORG)
     const { registerKernelAgentTools } = await import("~/modules/agent/tools/kernel-tools")
     await registerKernelAgentTools(ORG)

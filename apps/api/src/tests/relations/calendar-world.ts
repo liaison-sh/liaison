@@ -19,8 +19,11 @@ const noopEnqueue = async () => {
   // No Google credential in a test: the rows are what the cell reads, the sync jobs would fail.
 }
 
-function day(offset: number): string {
-  return new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10)
+/** UTC midnight `offset` days from today, as Google writes a point in time. */
+function midnight(offset: number): string {
+  const d = new Date(Date.now() + offset * 86_400_000)
+  d.setUTCHours(0, 0, 0, 0)
+  return d.toISOString()
 }
 
 export class CalendarCase extends ApprovalCase {
@@ -105,8 +108,8 @@ export class CalendarCase extends ApprovalCase {
       eventType: "outOfOffice",
       summary: this.title,
       organizer: { self: true },
-      start: { dateTime: `${day(this.from)}T00:00:00Z` },
-      end: { dateTime: `${day(this.from + this.days)}T00:00:00Z` },
+      start: { dateTime: midnight(this.from) },
+      end: { dateTime: midnight(this.from + this.days) },
     }
   }
 

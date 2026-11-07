@@ -68,3 +68,5 @@ configSecrets placed only where the manifest's secrets declares (host, every red
 secrets declaration: key a declared connection secret, hosts of that connection -> packages/app-sdk/src/secret-placement.ts:67 ; packages/app-sdk/src/secret-placement.ts:145
 Every custom-app run is secret-free on any executor, its webhook verifier too -> apps/api/src/modules/apps/sandbox/rpc-bridge.ts:148 ; apps/api/src/modules/apps/sandbox/run-app.ts:241 ; apps/api/src/modules/webhooks/verify-bridge.ts:176
 A custom app's connection must name its allowedDomains; credentials only to the connection's hosts -> apps/api/src/modules/apps/app-org-scope.ts:273 ; apps/api/src/modules/apps/sandbox/bridge/fetch-auth.ts:189
+Workers selection: listed apps with a bundle entry, custom apps with LIAISON_WORKERS_CUSTOM_APPS=1 -> apps/api/src/modules/apps/workers/config.ts:170 ; apps/api/src/modules/apps/sandbox/run-app.ts:156
+The bundle route signs per direction and path and serves only an installed, enabled custom app's module -> apps/api/src/modules/apps/workers/bundle-route.ts:1-24 ; apps/api/src/modules/apps/workers/sign.ts:1-30 ; apps/api/src/modules/apps/sandbox/run-app.ts:462

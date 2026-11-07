@@ -67,6 +67,24 @@ export function parseManagedDefaultModels(value: string): string[] | null {
   return [...new Set(ids)]
 }
 
+/**
+ * The shape of LIAISON_APP_FRAME_ORIGIN_TEMPLATE: an http(s) origin (no path, no
+ * trailing slash) whose host has exactly one label `{app}--{org}` and no other
+ * placeholder.
+ */
+export function appFrameTemplateShapeOk(v: string): boolean {
+  if (v.split("{app}--{org}").length !== 2) return false
+  if (v.replace("{app}--{org}", "").includes("{")) return false
+  try {
+    const sample = v.replace("{app}--{org}", "app--org")
+    const url = new URL(sample)
+    if (!/^https?:$/.test(url.protocol) || `${url.protocol}//${url.host}` !== sample) return false
+    return url.hostname.split(".").includes("app--org")
+  } catch {
+    return false
+  }
+}
+
 /** True for `https://host[:port]` exactly: no path, query, fragment or trailing slash. */
 export function isBareHttpsOrigin(v: string): boolean {
   try {
@@ -147,6 +165,27 @@ export const envSchema = z
         }, "an http(s) origin with {slug} once in its host, no path or trailing slash")
         .optional(),
     ),
+    // Each app's screens on an origin of their own: an http(s) URL whose host holds the one
+    // label `{app}--{org}` (`https://{app}--{org}.example-usercontent.com`), no path, no
+    // trailing slash. Set, a browser tab frames an outside app's interface (and each app named
+    // in LIAISON_FRAMED_APPS) from `<app>--<org slug>` on that domain, with storage of its own;
+    // that host serves the frame document and nothing else (lib/app-frame-host.ts). Use a
+    // registrable domain of its own (the managed edition refuses BASE_URL's or the org
+    // template's). Unset, outside apps run in the opaque frame as before.
+    LIAISON_APP_FRAME_ORIGIN_TEMPLATE: z.preprocess(
+      unsetIfEmpty,
+      z
+        .string()
+        .refine(
+          (v) => appFrameTemplateShapeOk(v),
+          "an http(s) origin whose host holds the label {app}--{org} once, no path or trailing slash",
+        )
+        .optional(),
+    ),
+    // First-party apps whose interface a browser tab frames on its own origin (comma-separated
+    // app names, e.g. `shopify,boxtal`) when LIAISON_APP_FRAME_ORIGIN_TEMPLATE is set. Unset or
+    // without the template, first-party apps run in the page as before.
+    LIAISON_FRAMED_APPS: z.preprocess(unsetIfEmpty, z.string().optional()),
     // The managed edition's payment frame: the https origin (no path, no
     // trailing slash) of the page that takes card details for the Billing page,
     // embedded in an iframe. It feeds the frame-src of the CSP and the origin a

@@ -510,7 +510,15 @@ async function createApiServer(app: FetchApp, options: ApiServerOptions) {
   async function handle(req: Request, server: Server<WsData>): Promise<Response | undefined> {
     const url = new URL(req.url)
 
+    // An app frame host (lib/app-frame-host.ts) opens no socket and serves no web
+    // app: its one document comes from the app's frame-host gate (app.ts).
+    const frameHost =
+      rawRequestHostBinding(req, server.requestIP(req)?.address ?? null).kind === "app-frame"
+
     // WebSocket upgrade
+    if (url.pathname === "/ws" && frameHost) {
+      return new Response("Not found", { status: 404 })
+    }
     if (url.pathname === "/ws") {
       // Rate limit WS upgrades: max 30 per minute per IP.
       // Test runs intentionally create many short-lived browser sessions and reconnects.
@@ -595,6 +603,7 @@ async function createApiServer(app: FetchApp, options: ApiServerOptions) {
       publicDirAvailable &&
       (req.method === "GET" || req.method === "HEAD") &&
       !isBackendPath(url.pathname) &&
+      !frameHost &&
       rawRequestHostBinding(req, server.requestIP(req)?.address ?? null).kind !== "non-org"
     ) {
       const asset = await serveStaticAsset(publicDir, url.pathname, req.headers)

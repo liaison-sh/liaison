@@ -1,0 +1,10 @@
+{
+  "approvalConfirm": {
+    "approveTitle": "Approuver cette demande ?",
+    "denyTitle": "Refuser cette demande ?",
+    "askedBy": "Demandé depuis l'app {{app}}. Votre décision est enregistrée à votre nom.",
+    "approve": "Approuver",
+    "deny": "Refuser",
+    "cancel": "Annuler"
+  }
+}

@@ -66,6 +66,7 @@ import { builderRoutes } from "~/modules/app-builder/routes"
 import { APPROVAL_DECIDE_BODY_MAX_BYTES } from "~/modules/approvals/mailbox-fulfilment"
 import { approvals } from "~/modules/approvals/routes"
 import { initAppActivationSync } from "~/modules/apps/activation"
+import { serveAppFrameHost } from "~/modules/apps/app-frame-host-route"
 import { attentionRoutes } from "~/modules/apps/attention-routes"
 import { bulkRoutes } from "~/modules/apps/bulk-routes"
 import { connectionRoutes } from "~/modules/apps/connections/routes"
@@ -383,8 +384,12 @@ const appShellOrigins = parseOriginAllowlist(env.LIAISON_APP_ORIGINS)
 // Host binding: a host that names no org (the cell's own names, a tunnel host,
 // loopback, an IP) serves only the control API, health, diagnostics and inbound
 // webhooks. A no-op without org hosts.
+// An app frame host (lib/app-frame-host.ts) serves its frame document and
+// nothing else: no API, no sign-in, no webhook, no bridge, no cookie.
 app.use("*", async (c, next) => {
-  if (requestHostBinding(c).kind === "non-org" && !isNonOrgHostPath(c.req.path)) {
+  const binding = requestHostBinding(c)
+  if (binding.kind === "app-frame") return serveAppFrameHost(c, binding)
+  if (binding.kind === "non-org" && !isNonOrgHostPath(c.req.path)) {
     return c.json({ error: { message: "Not found", code: "HOST_NOT_ORG" } }, 404)
   }
   await next()

@@ -129,6 +129,25 @@ rootLogger.info({ role, instanceId: INSTANCE_ID }, "Process role")
 const legacyControlPlane = legacyControlPlaneBootProblem()
 if (legacyControlPlane) rootLogger.warn(legacyControlPlane)
 
+// App screens on origins of their own (lib/app-frame-host.ts): a frame template on
+// the app's own site, or one that can name an org host, is refused on a managed
+// cell; a self-hosted server boots and says why it should not share the site.
+{
+  const { appFrameTemplateProblems } = await import("~/lib/app-frame-host")
+  const { registrableDomain } = await import("~/modules/demo/demo-email")
+  const frame = appFrameTemplateProblems(process.env, registrableDomain)
+  for (const warning of frame.warn) rootLogger.warn(warning)
+  if (frame.refuse.length > 0) {
+    rootLogger.fatal(
+      { problems: frame.refuse },
+      `LIAISON_APP_FRAME_ORIGIN_TEMPLATE cannot be used:\n- ${frame.refuse.join("\n- ")}`,
+    )
+    rootLogger.flush()
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    process.exit(1)
+  }
+}
+
 // The managed edition refuses to boot without its operator org, org host
 // template, control plane endpoint and installed identity (lib/managed-boot.ts).
 if (managedBootRequired()) {

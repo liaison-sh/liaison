@@ -209,6 +209,42 @@ export type HostEntityChangeSubscriber = (
   opts?: HostEntityChangeOptions,
 ) => () => void
 
+/** Who and where the app's screen is (host API 1.3). Never a token. */
+export interface HostContext {
+  orgId: string
+  orgName: string
+  locale: string
+  user: { id: string; name: string; locale: string }
+}
+
+/** One of the org's document templates for a record type (`listDocumentTemplates`). */
+export interface HostDocumentTemplate {
+  id: string
+  name: string
+  [key: string]: unknown
+}
+
+/** What to print (`printDocuments`): one of the app's own records, with these templates. */
+export interface HostPrintRequest {
+  entity: string
+  id: string
+  templateIds: string[]
+  merge?: boolean
+}
+
+/** A printed file, as the kernel answers `POST /api/documents/print`. */
+export interface HostPrintedFile {
+  fileId: string
+  filename: string
+  [key: string]: unknown
+}
+
+export interface HostPrintResult {
+  files: HostPrintedFile[]
+  merged?: HostPrintedFile | null
+  [key: string]: unknown
+}
+
 export interface HostServices {
   fetch: HostFetch
   invokeTool: ToolInvoker
@@ -253,6 +289,30 @@ export interface HostServices {
     entityType: string,
     id: () => string | null | undefined,
   ) => void
+  // Host API 1.3: typed calls instead of kernel routes, so a screen framed on an
+  // origin of its own (no network, no session) still works. Each is bound to the
+  // calling app and limited by the host; optional so older shims stay valid.
+  /** Org and person (ids, names, locale), never a token. */
+  context?: () => HostContext | null
+  /** The host fetches a file (an id from this app's own results or records) and opens it. */
+  openFileById?: (appName: string, fileId: string, filename: string) => Promise<void>
+  listDocumentTemplates?: (appName: string, entity: string) => Promise<HostDocumentTemplate[]>
+  printDocuments?: (appName: string, request: HostPrintRequest) => Promise<HostPrintResult>
+  /** Pending approvals of this app's own tools that the person may decide. */
+  listMyApprovals?: (appName: string) => Promise<unknown[]>
+  /** The host asks the person in its own dialog, then decides; rejects when cancelled. */
+  decideApproval?: (
+    appName: string,
+    approvalId: string,
+    decision: "approve" | "deny",
+    payloadHash?: string,
+  ) => Promise<unknown>
+  /** Open an https page of a host the app's manifest declares, in a new tab. */
+  openExternal?: (appName: string, url: string) => Promise<void>
+  /** Open another app's record in its own tab. */
+  openRecord?: (appName: string, app: string, entity: string, id: string) => void
+  /** Open the approvals queue. */
+  openApprovals?: () => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -384,6 +444,45 @@ export function onEntityChange(
   return host.onEntityChange(getAppName(), keys, cb, opts)
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Host API 1.3: typed host calls. Each one uses the host's call when it has it
+// (always in a frame, where `fetch` reaches only the app's own routes) and the
+// older path otherwise, so the same app code works on every host.
+// ─────────────────────────────────────────────────────────────────────────
+
+function optionalHost(): HostServices | undefined {
+  // biome-ignore lint/suspicious/noExplicitAny: window-global lookup
+  return (globalThis as any).__liaisonHost as HostServices | undefined
+}
+
+/** The org id an access token names, read without verifying it (the server does). */
+function orgIdOfToken(token: string | null): string | null {
+  if (!token) return null
+  try {
+    const part = token.split(".")[1] ?? ""
+    const json = atob(part.replace(/-/g, "+").replace(/_/g, "/"))
+    const orgId = (JSON.parse(json) as { orgId?: unknown }).orgId
+    return typeof orgId === "string" && orgId !== "" ? orgId : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Who and where this screen is: the org (id, name, locale) and the person. Null
+ * with no host or no session. On an older host only `orgId` is known (read from
+ * the session token); the names are empty then.
+ */
+export function getContext(): HostContext | null {
+  const host = optionalHost()
+  if (!host) return null
+  if (host.context) return host.context()
+  const orgId = orgIdOfToken(host.accessToken?.() ?? null)
+  if (!orgId) return null
+  const locale = hostLocale()
+  return { orgId, orgName: "", locale, user: { id: "", name: "", locale } }
+}
+
 export const app = {
   invokeTool: async <T = unknown>(toolName: string, args: Record<string, unknown>): Promise<T> =>
     getHost().invokeTool<T>(getAppName(), toolName, args),
@@ -435,6 +534,107 @@ export const app = {
    * is on screen (mind a phone layout that hides the pane). Call it synchronously
    * in the component body: it stops with the component. A no-op on an older host.
    */
+  /**
+   * Open a kernel file (an id from this app's own tool results or prints, or a
+   * file attached to one of its records): the host fetches it and shows it (the
+   * desktop viewer, a browser tab or a download). Resolves true when the host
+   * did; false on an older host, where the caller uses its own browser path.
+   */
+  openFile: async (fileId: string, filename: string): Promise<boolean> => {
+    const host = optionalHost()
+    if (!host?.openFileById) return false
+    await host.openFileById(getAppName(), fileId, filename)
+    return true
+  },
+  /** Whether the host opens files by id itself (`app.openFile`). */
+  opensFiles: (): boolean => Boolean(optionalHost()?.openFileById),
+  /** The org's document templates for one of this app's record types. */
+  listDocumentTemplates: (entity: string): Promise<HostDocumentTemplate[]> => {
+    const host = getHost()
+    if (host.listDocumentTemplates) return host.listDocumentTemplates(getAppName(), entity)
+    return host.fetch<HostDocumentTemplate[]>(
+      `/api/documents/templates?app=${encodeURIComponent(getAppName())}&entity=${encodeURIComponent(entity)}`,
+    )
+  },
+  /** Print one of this app's records with these templates. */
+  printDocuments: (request: HostPrintRequest): Promise<HostPrintResult> => {
+    const host = getHost()
+    if (host.printDocuments) return host.printDocuments(getAppName(), request)
+    return host.fetch<HostPrintResult>("/api/documents/print", {
+      method: "POST",
+      body: JSON.stringify({
+        app: getAppName(),
+        entity: request.entity,
+        recordId: request.id,
+        templateIds: request.templateIds,
+        ...(request.merge ? { merge: true } : {}),
+      }),
+    })
+  },
+  /** Pending approvals of this app's own tools that the person may decide. */
+  listMyApprovals: async (): Promise<unknown[]> => {
+    const host = getHost()
+    const name = getAppName()
+    if (host.listMyApprovals) return host.listMyApprovals(name)
+    const rows = await host.fetch<unknown>(
+      `/api/approvals?status=pending&decidableByMe=true&app=${encodeURIComponent(name)}`,
+    )
+    return (Array.isArray(rows) ? rows : []).filter(
+      (r) =>
+        typeof (r as { toolName?: unknown })?.toolName === "string" &&
+        ((r as { toolName: string }).toolName as string).startsWith(`${name}:`),
+    )
+  },
+  /**
+   * Decide one of this app's pending approvals. A host that has the call asks
+   * the person in its own dialog first (and rejects when they cancel); an older
+   * host decides at once, as before.
+   */
+  decideApproval: (
+    approvalId: string,
+    decision: "approve" | "deny",
+    payloadHash?: string,
+  ): Promise<unknown> => {
+    const host = getHost()
+    if (host.decideApproval) {
+      return host.decideApproval(getAppName(), approvalId, decision, payloadHash)
+    }
+    return host.fetch(`/api/approvals/${encodeURIComponent(approvalId)}/decide`, {
+      method: "POST",
+      body: JSON.stringify(
+        decision === "approve" && payloadHash ? { decision, payloadHash } : { decision },
+      ),
+    })
+  },
+  /** Whether the host confirms approval decisions itself (the app need not ask again). */
+  confirmsApprovals: (): boolean => Boolean(optionalHost()?.decideApproval),
+  /**
+   * Open an https page on a host this app's manifest declares, in a new tab with
+   * no opener and no referrer. Rejects when the host refuses it.
+   */
+  openExternal: async (url: string): Promise<void> => {
+    const host = optionalHost()
+    if (host?.openExternal) return host.openExternal(getAppName(), url)
+    const open = (globalThis as { open?: (u: string, t: string, f: string) => unknown }).open
+    open?.(url, "_blank", "noopener,noreferrer")
+  },
+  /** Open another app's record (`invoicing`, `document`, id) in its own tab. */
+  openRecord: (targetApp: string, entity: string, id: string): void => {
+    const host = getHost()
+    if (host.openRecord) {
+      host.openRecord(getAppName(), targetApp, entity, id)
+      return
+    }
+    navigate(
+      `/detail/${encodeURIComponent(targetApp)}/${encodeURIComponent(entity)}/${encodeURIComponent(id)}`,
+    )
+  },
+  /** Open the approvals queue. */
+  openApprovals: (): void => {
+    const host = getHost()
+    if (host.openApprovals) host.openApprovals()
+    else navigate("/approvals")
+  },
   trackOpenRecord: (entityType: string, id: () => string | null | undefined): void => {
     getHost().trackOpenRecord?.(getAppName(), entityType, id)
   },

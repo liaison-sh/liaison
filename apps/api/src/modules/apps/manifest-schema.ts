@@ -3,6 +3,13 @@
 // Validated server-side by Ajv in validateAppManifest()
 
 const NAME_PATTERN = "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+// An app's name never holds `--`: an app frame host is the one label
+// `<app>--<org slug>`, split on its last `--` (lib/app-frame-host.ts).
+const APP_NAME_PATTERN = "^(?!.*--)[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+// An image host a framed app's screens may show pictures from (`cdn.example.com`,
+// `*.example.com`), https only.
+const IMAGE_HOST_PATTERN =
+  "^(\\*\\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
 const SEMVER_PATTERN = "^\\d+\\.\\d+\\.\\d+(-[\\w.]+)?(\\+[\\w.]+)?$"
 const EVENT_PATTERN = "^[a-z_]+:[a-z_]+$"
 const SLOT_KEY_PATTERN = "^[a-z0-9-]+:[a-z0-9-]+(:[a-z0-9-]+)*$"
@@ -678,7 +685,7 @@ const toolSchema = {
 export const appManifestJsonSchema = {
   type: "object",
   properties: {
-    name: { type: "string", pattern: NAME_PATTERN },
+    name: { type: "string", pattern: APP_NAME_PATTERN },
     version: { type: "string", pattern: SEMVER_PATTERN },
     trusted: { type: "boolean" },
     rlsManagedBy: { type: "string", enum: ["migration"] },
@@ -1596,6 +1603,21 @@ export const appManifestJsonSchema = {
         // and the DNS-pin layer both ignore this flag outside test). Used by
         // chaos-debug to POST to a host-side recorder on 127.0.0.1.
         allowPrivateHostsInTest: { type: "boolean", default: false },
+        // Hosts the app's screens show images from when framed on an origin of their own
+        // (the frame policy's img-src, https only). Fetches never use it.
+        imageHosts: {
+          type: "array",
+          maxItems: 20,
+          items: { type: "string", pattern: IMAGE_HOST_PATTERN },
+        },
+        // Outside pages the app's screens link to (`admin.example.com`), opened by the host
+        // in a new tab (`openExternal`); never fetched. Fetch domains, connection domains and
+        // image hosts are linkable already.
+        linkHosts: {
+          type: "array",
+          maxItems: 20,
+          items: { type: "string", pattern: IMAGE_HOST_PATTERN },
+        },
       },
     },
     views: {

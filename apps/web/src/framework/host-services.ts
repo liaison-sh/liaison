@@ -11,6 +11,7 @@ import { createComponent, getOwner, runWithOwner } from "solid-js"
 import { render } from "solid-js/web"
 import { getContributions } from "~/framework/app-registry"
 import { onEntityChange } from "~/framework/entity-changes"
+import { buildAppHostCalls } from "~/framework/host-app-calls"
 import {
   assertNotPersonOnly,
   PersonOnlyActionError,
@@ -118,7 +119,7 @@ export function buildHostServices(opts: BuildHostServicesOptions): HostServices 
   // at a route that never existed — every plugin-initiated connect 404'd).
   const resolveAuthorizeRoute = opts.resolveAuthorizeRoute
 
-  return {
+  const services: HostServices = {
     accessToken: () => opts.getAccessToken(),
 
     // The reader's language, reactive, so app UIs translate their own copy.
@@ -320,6 +321,13 @@ export function buildHostServices(opts: BuildHostServicesOptions): HostServices 
       return { resolved: true, dispose }
     },
   }
+  // Host API 1.3: the typed calls a framed screen needs (framework/host-app-calls.ts).
+  const typed = buildAppHostCalls({
+    fetch: services.fetch,
+    fetchBlob: services.fetchBlob as (path: string) => Promise<Blob>,
+    navigate: services.navigate as (path: string) => void,
+  })
+  return Object.assign(services, typed)
 }
 
 /** Keys an app may watch: `<callerApp>:…` or `kernel:…`; the rest is dropped

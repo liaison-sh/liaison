@@ -2,6 +2,11 @@
 //
 // THE MESSAGES BETWEEN AN ISOLATED APP'S FRAME AND THE PAGE.
 //
+// A frame served on an app's own origin (LIAISON_APP_FRAME_ORIGIN_TEMPLATE) and its
+// page talk with exact target origins both ways: the page posts to the frame's
+// origin and hears only it; the frame posts to the parent origin its server
+// baked into the document and drops any other.
+//
 // Inside the desktop shell the page holds the shell's bridge (local sessions,
 // files, the node). An installed app's UI bundle that did not ship with the
 // client build therefore never runs in the page: it runs in a sandboxed iframe (`sandbox="allow-scripts allow-forms"`, an opaque origin,
@@ -26,6 +31,16 @@ export const FRAME_METHODS = [
   "openTab",
   "toast",
   "setOpenRecord",
+  // Host API 1.3: typed calls answered by the page for this app only
+  // (framework/host-app-calls.ts), so the frame never needs a kernel route.
+  "openFile",
+  "listDocumentTemplates",
+  "printDocuments",
+  "listMyApprovals",
+  "decideApproval",
+  "openExternal",
+  "openRecord",
+  "openApprovals",
 ] as const
 export type FrameMethod = (typeof FRAME_METHODS)[number]
 
@@ -71,6 +86,8 @@ export type HostToFrame =
       /** The page's path and query (`/<app>/orders?status=open`), for an app that
        *  marks where the reader is (host API 1.1). Absent from an older page. */
       path?: string
+      /** Org and person, never a token (host API 1.3, `getContext()`). */
+      context?: FrameContext | null
     }
   | { kind: "props"; props: Record<string, FrameProp> }
   /** The page moved to another route (host API 1.1). */
@@ -91,6 +108,14 @@ export type FrameToHost =
   | { kind: "height"; height: number }
   /** The bundle has no such export: the page shows its own notice instead of the frame. */
   | { kind: "missingExport" }
+
+/** Who and where the frame's app is (host API 1.3): ids, names, locale; never a token. */
+export interface FrameContext {
+  orgId: string
+  orgName: string
+  locale: string
+  user: { id: string; name: string; locale: string }
+}
 
 /** A prop that crosses the frame: plain data only, never a function. */
 export type FrameProp = string | number | boolean | null

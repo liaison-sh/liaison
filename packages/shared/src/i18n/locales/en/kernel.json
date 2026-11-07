@@ -2080,7 +2080,31 @@
       "localeEs": "Spanish",
       "localePtBr": "Portuguese (Brazil)",
       "localeJa": "Japanese",
-      "localeZhCn": "Chinese (Simplified)"
+      "localeZhCn": "Chinese (Simplified)",
+      "away": {
+        "title": "Away",
+        "hint": "Say when you are away and who stands in. Only the dates are kept, never why.",
+        "from": "First day",
+        "to": "Last day",
+        "nextInLine": "Next in line",
+        "nobody": "Nobody",
+        "standing": "Standing next in line",
+        "standingHint": "Used whenever an away range names nobody.",
+        "save": "Mark me away",
+        "endEarly": "End early",
+        "undo": "Undo",
+        "range": "{{from}} to {{to}}",
+        "weekly": "Every {{days}} from {{from}}",
+        "oneDay": "{{day}}",
+        "setBy": "Set by {{name}}",
+        "nextInLineIs": "Next in line: {{name}}",
+        "awayToo": "{{name}} is away too, until {{until}}.",
+        "hasLeft": "{{name}} has left, choose someone.",
+        "awayUntilOption": "{{name}} (away until {{until}})",
+        "none": "You have no away dates.",
+        "failed": "Could not save your away dates.",
+        "endFailed": "Could not end it."
+      }
     },
     "languageOrgDefault": "Organization default ({{language}})",
     "sections": {
@@ -3718,7 +3742,8 @@
     "approvalDecided": {
       "approved": "Approval {{handle}} approved",
       "rejected": "Approval {{handle}} rejected"
-    }
+    },
+    "awayNamed": "{{name}} marked you away {{dates}}"
   },
   "approvalDecisionLine": {
     "withdrawn": "Withdrawn by the requester.",

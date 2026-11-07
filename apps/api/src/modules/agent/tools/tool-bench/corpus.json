@@ -2266,5 +2266,13 @@
     "say": "suggest next steps",
     "typed": ["suggest next steps"],
     "any": ["kernel__suggest_next_steps"]
+  },
+  {
+    "id": "H178",
+    "set": "heldout",
+    "lang": "fr",
+    "say": "je suis en congés la semaine prochaine, Tom me remplace",
+    "typed": ["congés semaine prochaine", "absent remplaçant"],
+    "any": ["kernel__set_away"]
   }
 ]

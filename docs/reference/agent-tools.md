@@ -156,6 +156,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `routine_tool_scopes` | Look up which scopes a routine needs for the tools it will call. |  | `kernel:routines:write` |
 | `run_on_my_computer` | Hand this request to the person's own computer (one of their computers running Liaison), where it runs as a session with their own Claude sign-in, local files and tools, and no cloud token budget. |  | `kernel:threads:write` |
 | `run_routine_now` | Trigger one ad-hoc execution of a routine right now, outside its cron schedule. | yes | `kernel:routines:write` |
+| `set_away` | Record that a person is away (dates only, never a reason), end it, or name their standing next in line. |  | `kernel:threads:read` |
 | `setup_state` | What is set up in this workspace and what is left of the features the person chose (setup.features), with the other features as a menu with times; read from the workspace itself. |  | `kernel:threads:read` |
 | `share_folder_on_my_computer` | Share a folder of the person's own computer with Liaison, so kernel__run_on_my_computer can work in it. | yes | `kernel:threads:write` |
 | `shopify_app_toml` | Post this server's shopify.app.toml with the Shopify CLI steps. |  | `kernel:threads:write` |

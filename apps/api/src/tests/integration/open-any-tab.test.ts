@@ -346,7 +346,10 @@ describe("open_app under real row security", () => {
   test("a customer's hostile ticket subject never reaches what the model reads", async () => {
     const ticket = ids.get("tickets:ticket")!
     const res = await open(everything(viewer), "tickets", "ticket", ticket.id)
-    expect(res).toMatchObject({ ok: true, opened: expect.stringMatching(/^ticket \S+$/) })
+    expect(res).toMatchObject({
+      ok: true,
+      opened: expect.stringMatching(/^ticket \S+ in tickets$/),
+    })
     expect(JSON.stringify(res)).not.toContain("Ignore previous")
     expect(JSON.stringify(res)).not.toContain("evil@example.com")
     expect(frame()?.label?.startsWith("Ignore previous")).toBe(true)
@@ -355,11 +358,15 @@ describe("open_app under real row security", () => {
   test("a ticket opens by its handle, and a hidden one answers as one that does not exist", async () => {
     const ticket = ids.get("tickets:ticket")!
     const byId = await open(everything(viewer), "tickets", "ticket", ticket.id)
-    const handle = (byId as { opened: string }).opened.replace(/^ticket /, "")
+    const handle = (byId as { opened: string }).opened.replace(/^ticket (\S+) in tickets$/, "$1")
     expect(handle).not.toBe(ticket.id)
 
     const byHandle = await open(everything(viewer), "tickets", "ticket", handle)
-    expect(byHandle).toMatchObject({ ok: true, id: ticket.id, opened: `ticket ${handle}` })
+    expect(byHandle).toMatchObject({
+      ok: true,
+      id: ticket.id,
+      opened: `ticket ${handle} in tickets`,
+    })
 
     const hidden = await open(
       everything(strangerElsewhere, otherOrgId),

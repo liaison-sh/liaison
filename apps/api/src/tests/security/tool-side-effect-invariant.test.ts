@@ -357,6 +357,7 @@ const REVIEWED_UNGATED_OUTWARD: Record<string, string> = {
   "boxtal:import_shipments":
     "local import of shipments already booked at the provider; no booking or purchase",
   "boxtal:prep_add_shipment": "local prep row; buying a label is the gated ship tools",
+  "boxtal:shipment_draft_create": "local draft; buying a label is the gated ship tools",
   "boxtal:shipment_draft_set_customs": "local draft field",
   "boxtal:shipment_draft_set_package": "local draft field",
   "boxtal:webhooks_repair":

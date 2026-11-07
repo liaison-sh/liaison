@@ -22,8 +22,8 @@ interface FakeRows {
   identity?: Record<string, unknown>[]
 }
 
-// A minimal RLS-client-shaped fake. The handler issues exactly three reads in a FIXED order —
-// (1) contact, (2) tickets (inside listForContact), (3) invoices — so we route by call index. This is
+// A minimal RLS-client-shaped fake. The handler issues its reads in a FIXED order —
+// (1) contact, (2) tickets (inside listForContact), (3) the invoicing tables probe, (4) invoices — so we route by call index. This is
 // robust to how drizzle's SQL object stringifies (no brittle SQL-text matching). When the contact read
 // returns [], the handler short-circuits NOT_FOUND before the ticket/invoice reads, which is correct.
 function fakeDb(rows: FakeRows) {
@@ -33,9 +33,15 @@ function fakeDb(rows: FakeRows) {
       const idx = call++
       if (idx === 0) return rows.contact ?? []
       if (idx === 1) return rows.tickets ?? []
-      if (idx === 2) return rows.invoices ?? []
-      // idx 3: the identity table's existence probe, idx 4: its row.
-      if (idx === 3) return [{ t: rows.identity ? "app_invoicing.counterparty_identities" : null }]
+      // idx 2: the invoicing tables' existence probe, idx 3: the documents, idx 4: the identity row.
+      if (idx === 2)
+        return [
+          {
+            documents: "app_invoicing.documents",
+            identities: rows.identity ? "app_invoicing.counterparty_identities" : null,
+          },
+        ]
+      if (idx === 3) return rows.invoices ?? []
       return rows.identity ?? []
     },
   } as never
@@ -248,9 +254,27 @@ describe("handleDataSubjectExport — param guard [BL-261]", () => {
     const db = fakeDb({})
     const r = await handleDataSubjectExport(
       { contactId: "not-a-uuid" },
-      { orgId: ORG, userId: "u1", db },
+      { orgId: ORG, userId: "22222222-2222-2222-2222-222222222222", db },
     )
     if (!("error" in r)) throw new Error("expected INVALID_PARAMS for a non-UUID contactId")
     expect(r.error.code).toBe("INVALID_PARAMS")
+  })
+
+  it("refuses a call with no member behind it before reading or storing anything", async () => {
+    let reads = 0
+    const db = {
+      execute: async () => {
+        reads++
+        return []
+      },
+    } as never
+    const r = await handleDataSubjectExport(
+      { contactId: CONTACT },
+      { orgId: ORG, userId: "system", db, scopes: ["kernel:data_subject:export"] },
+    )
+    if (!("error" in r)) throw new Error("expected REQUESTER_REQUIRED")
+    expect(r.error.code).toBe("REQUESTER_REQUIRED")
+    expect(r.error.message).toContain("nothing was exported or saved")
+    expect(reads).toBe(0)
   })
 })

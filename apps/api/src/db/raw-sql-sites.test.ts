@@ -321,6 +321,7 @@ const REVIEWED: Record<string, Record<string, string>> = {
     alias: IDENT_FROM_CODE,
   },
   "apps/api/src/modules/export/data-subject-export-tool.ts#buildDataSubjectBundle": {
+    documentsTable: IDENT_FROM_CODE,
     identityTable: IDENT_FROM_CODE,
   },
   "apps/api/src/modules/files/message-attachments.ts#messageIdOf": {

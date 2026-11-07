@@ -220,6 +220,46 @@ export const MEMBER_SECTIONS: MemberSection[] = [
       ),
   },
   {
+    key: "dashboards",
+    note: "Dashboards the member owns, made or last changed: title, whether it is personal or shared with the organization, and when. Their blocks are not included, as they show the organization's data.",
+    via: "subject",
+    read: (db, ctx, limit) =>
+      rows(
+        db,
+        drizzleSql`
+        SELECT id::text AS id, title, visibility,
+               COALESCE(owner_user_id = ${ctx.subjectUserId}, false) AS owned,
+               COALESCE(created_by = ${ctx.subjectUserId}, false) AS made,
+               COALESCE(updated_by = ${ctx.subjectUserId}, false) AS last_changed,
+               created_at, updated_at
+        FROM ${K()}.dashboards
+        WHERE org_id = ${ctx.orgId}
+          AND (owner_user_id = ${ctx.subjectUserId} OR created_by = ${ctx.subjectUserId}
+               OR updated_by = ${ctx.subjectUserId})
+        ORDER BY created_at
+        LIMIT ${limit}`,
+      ),
+  },
+  {
+    key: "storeDocuments",
+    note: "Documents the member wrote or last changed in an app's data store or the agent's: which app, collection and key, their size and when. Their contents are not included, as they are usually about the organization or other people.",
+    via: "subject",
+    read: (db, ctx, limit) =>
+      rows(
+        db,
+        drizzleSql`
+        SELECT app, collection, doc_id, size_bytes,
+               COALESCE(created_by = ${ctx.subjectUserId}, false) AS made,
+               COALESCE(updated_by = ${ctx.subjectUserId}, false) AS last_changed,
+               created_at, updated_at
+        FROM ${K()}.app_documents
+        WHERE org_id = ${ctx.orgId}
+          AND (created_by = ${ctx.subjectUserId} OR updated_by = ${ctx.subjectUserId})
+        ORDER BY created_at
+        LIMIT ${limit}`,
+      ),
+  },
+  {
     key: "auditEntries",
     note: "Audit log entries about the member or recording what they did. The recorded changes are included only for entries about the member themself.",
     via: "subject",

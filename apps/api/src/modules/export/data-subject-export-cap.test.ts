@@ -14,8 +14,8 @@ const CONTACT = crypto.randomUUID()
 let orgId = ""
 let userId = ""
 
-// The bundle's RLS reads, in the handler's fixed order: contact, tickets, invoices,
-// then the identity table probe.
+// The bundle's RLS reads, in the handler's fixed order: contact, tickets, then the
+// invoicing tables probe (neither table here, so no invoice or identity read).
 function fakeDb() {
   let call = 0
   return {
@@ -23,7 +23,7 @@ function fakeDb() {
       const idx = call++
       if (idx === 0)
         return [{ id: CONTACT, handle: "subject", name: "Subject", email: "s@example.com" }]
-      if (idx === 3) return [{ t: null }]
+      if (idx === 2) return [{ documents: null, identities: null }]
       return []
     },
   } as never
@@ -60,7 +60,7 @@ describe("handleDataSubjectExport at the storage cap", () => {
     if (!("error" in r)) throw new Error("expected the export to be refused at the cap")
     expect(r.error.code).toBe("STORAGE_QUOTA_EXCEEDED")
     const written = await sql`
-      SELECT id FROM kernel.files WHERE org_id = ${orgId} AND entity_type = 'contact'`
+      SELECT id FROM kernel.files WHERE org_id = ${orgId} AND entity_type = 'data_subject_export'`
     expect(written.length).toBe(0)
   })
 })

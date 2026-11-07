@@ -17,6 +17,7 @@ import { sql } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { sessions } from "~/db/schema/kernel"
 import { hashPassword } from "~/lib/crypto"
+import { _setEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
 import { markBootComplete, ReadinessTestAccess } from "~/lib/readiness"
 import { restToolCall } from "~/modules/apps/rest-tool-call"
@@ -232,10 +233,28 @@ const NO_SESSION_ROUTES = new Set([
   // Mounted, answering 404 unless a flag or a managed edition is on.
   "GET /api/qa/notifications/log",
   "POST /api/qa/notifications/inject",
-  "POST /api/admin/billing/credits",
-  "POST /api/admin/billing/credits/reset",
-  "PATCH /api/admin/billing/org/:orgId/tier",
+  // The managed edition's signed Control-to-cell API and cell webhooks: their only
+  // credential is a signature (modules/cloud/verify.ts, route-auth-invariant.test.ts),
+  // never a session, and they answer 404 on a self-hosted server.
+  "POST /api/cloud/orgs",
+  "POST /api/cloud/orgs/:id/handoff",
+  "POST /api/cloud/orgs/:id/billing",
+  "POST /api/cloud/orgs/:id/credits",
+  "PUT /api/cloud/settings/credit-rate",
+  "POST /api/cloud/lookup",
+  "DELETE /api/cloud/orgs/:id",
+  "PUT /api/cloud/orgs/:id/mail-sender",
+  "PUT /api/cloud/orgs/:id/custom-apps/:name/state",
+  "POST /webhooks/_cell/gmail-push",
+  "POST /webhooks/_cell/meta",
+  "GET /webhooks/_cell/meta",
 ])
+
+/** Session routes mounted only in the managed edition: walked with it on, so they reach the session check. */
+const MANAGED_ONLY = ["/api/billing/managed/", "/api/mail-sender/"]
+
+/** Paths answering 404 in every edition before the session chain: a retired API (app.ts). */
+const RETIRED_PATHS = new Set(["/api/admin/billing"])
 
 /** The portal's own routes, and the harness routes that exist only in a test process. */
 const OUT_OF_THE_WALK = ["/api/portal/", "/api/_test/"]
@@ -276,8 +295,14 @@ describe("a portal token on the member product", () => {
       const [method, path] = key.split(" ") as [string, string]
       if (OUT_OF_THE_WALK.some((p) => path.startsWith(p))) continue
       if (NO_SESSION_ROUTES.has(key)) continue
-      const res = await request(method, path, portalToken)
-      answers.push({ key, status: res.status })
+      const managed = MANAGED_ONLY.some((p) => path.startsWith(p))
+      if (managed) _setEdition("managed")
+      try {
+        const res = await request(method, path, portalToken)
+        answers.push({ key, status: res.status })
+      } finally {
+        if (managed) _setEdition(null)
+      }
     }
   }, 300_000)
 
@@ -295,7 +320,13 @@ describe("a portal token on the member product", () => {
     const specific = new Set(app.routes.filter((r) => r.method !== "ALL").map((r) => r.path))
     const paths = new Set(
       app.routes
-        .filter((r) => r.method === "ALL" && !r.path.includes("*") && !specific.has(r.path))
+        .filter(
+          (r) =>
+            r.method === "ALL" &&
+            !r.path.includes("*") &&
+            !specific.has(r.path) &&
+            !RETIRED_PATHS.has(r.path),
+        )
         .map((r) => r.path),
     )
     expect(paths.size).toBeGreaterThan(0)
@@ -305,6 +336,10 @@ describe("a portal token on the member product", () => {
       if (status !== 401) open.push(`${status} ${path}`)
     }
     expect(open).toEqual([])
+    // A retired path is shut for everyone, a portal token included.
+    for (const path of RETIRED_PATHS) {
+      expect((await request("GET", path, portalToken)).status).toBe(404)
+    }
   })
 
   it("the list of public routes names only routes the app registers", () => {

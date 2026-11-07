@@ -21,6 +21,11 @@ describe("mail app manifest validation", () => {
     })
   })
 
+  it("keeps the stopped-send attention item beside the heading in its one attention block", () => {
+    const kinds = mailManifest.attention.translations.map((t) => t.kind)
+    expect(kinds).toContain("mail:send_guard.stopped")
+  })
+
   it("gives the sending tools a send sized budget, not the 5 s production default", () => {
     // A send with attachments (copy each file onto the message, MIME build,
     // provider round trip) passes 5 s; under the default an approved compose

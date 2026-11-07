@@ -1699,6 +1699,7 @@
     }
   },
   "attention": {
+    "groupLabel": { "label": "Mail", "labelKey": "kernel.homeGroupMail" },
     "translations": [
       {
         "event": "send_guard:stopped",
@@ -1883,9 +1884,5 @@
       "kind": "guide",
       "enabledByDefault": true
     }
-  },
-  "attention": {
-    "groupLabel": { "label": "Mail", "labelKey": "kernel.homeGroupMail" },
-    "translations": []
   }
 }

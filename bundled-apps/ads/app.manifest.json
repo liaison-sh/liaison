@@ -1,11 +1,12 @@
 {
   "name": "ads",
   "displayName": "Ads",
-  "version": "0.1.58",
+  "version": "0.1.59",
   "iconName": "bar-chart",
   "packageFormat": 1,
   "license": "FSL-1.1-ALv2",
   "host": "^1",
+  "outsideTextFields": ["search_term", "data"],
   "description": "Meta Ads + Google Ads + Merchant Center: manage Facebook/Instagram ad campaigns, audiences, creatives, and budgets, read Google Ads performance and pause campaigns, and monitor Merchant Center feed health, through a Liaison agent. Reads are ungated; all spend-affecting writes, including pause and google_pause, are gated behind human approval.",
   "listing": {
     "publisher": "Liaison",
@@ -672,6 +673,7 @@
       "readOnly": true,
       "requiredScopes": ["ads:insights:read"],
       "handler": "graph_get",
+      "taintSource": true,
       "params": {
         "type": "object",
         "required": [
@@ -1869,6 +1871,7 @@
       "readOnly": true,
       "requiredScopes": ["ads:google:read"],
       "handler": "google_search_terms",
+      "taintSource": true,
       "params": {
         "type": "object",
         "properties": {}

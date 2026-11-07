@@ -7,7 +7,9 @@
 // keyword in a name or a description decides: the guard reads the declarations alone.
 //
 // A read tool that declares no `returns` cannot show it returns none of those fields. Each one is
-// listed below with the reason it carries no outside text, never silently allowed. Declaring
+// listed below with the reason it carries no outside text, never silently allowed. An app with
+// read tools that declares no outside fields at all is listed the same way, with its reason: an
+// app cannot pass by saying nothing. Declaring
 // `taintSource` on a read tool used today makes later outbound calls in the same turn park, so a
 // routine that reads it starts parking with no change on the customer's side: a read that does
 // carry outside text declares it, and `outside-text-reads.test.ts` shows its result marks the turn.
@@ -56,15 +58,18 @@ const isModelRead = (tool: ManifestTool): boolean =>
 
 /**
  * What the guard finds wrong in one manifest, each naming the tool. `listed` holds the read tools
- * without `returns` that carry a reason (`app:tool` keys).
+ * without `returns` that carry a reason (`app:tool` keys); `listedApps` the apps with read tools
+ * that declare no outside fields, each with its reason.
  */
 export function outsideFieldProblems(
   manifest: Manifest,
   listed: ReadonlyMap<string, string>,
+  listedApps: ReadonlyMap<string, string> = new Map(),
 ): string[] {
   const problems: string[] = []
   const fields = new Set(manifest.outsideTextFields ?? [])
   const tools = Object.entries(manifest.tools ?? {})
+  const appReason = listedApps.get(manifest.name)
   if (fields.size === 0) {
     // An app that already reads outside text says which of its fields carry it.
     const sources = tools.filter(([, t]) => isModelRead(t) && declaresTaint(t)).map(([n]) => n)
@@ -72,8 +77,24 @@ export function outsideFieldProblems(
       problems.push(
         `${manifest.name}: ${sources.join(", ")} read outside text but the app declares no outsideTextFields`,
       )
+      return problems
+    }
+    if (!tools.some(([, t]) => isModelRead(t))) {
+      if (appReason !== undefined)
+        problems.push(`${manifest.name} has no read tool and is still listed`)
+      return problems
+    }
+    if (appReason === undefined) {
+      problems.push(
+        `${manifest.name} has read tools, declares no outsideTextFields, and is not listed with a reason`,
+      )
+    } else if (appReason.trim().length === 0) {
+      problems.push(`${manifest.name} is listed without a reason`)
     }
     return problems
+  }
+  if (appReason !== undefined) {
+    problems.push(`${manifest.name} declares outsideTextFields and is still listed`)
   }
   for (const [name, tool] of tools) {
     if (!isModelRead(tool)) continue
@@ -186,14 +207,91 @@ const LISTED = new Map<string, string>([
   ["pennylane:spend_by_category", `amounts per class: ${NONE}`],
   ["pennylane:runway_estimate", `a number of months: ${NONE}`],
   ["pennylane:home_load", `cached amounts: ${NONE}`],
+  ["ads:insights_query", `spend and delivery metrics: ${NONE}`],
+  ["ads:campaigns_list", `the org's own campaigns: ${NONE}`],
+  ["ads:adsets_list", `the org's own ad sets and targeting: ${NONE}`],
+  ["ads:ads_list", `the org's own ads: ${NONE}`],
+  ["ads:targeting_search", `the ad platform's targeting catalog: ${NONE}`],
+  ["ads:media_list", `images and videos the org uploaded: ${NONE}`],
+  ["ads:audiences_list", `the org's own audiences and their sizes: ${NONE}`],
+  ["ads:pages_list", `the Pages the org manages: ${NONE}`],
+  ["ads:account_info", `the ad account's settings: ${NONE}`],
+  ["ads:creative_get", `the org's own creatives: ${NONE}`],
+  ["ads:ad_preview", `a preview of the org's own ad: ${NONE}`],
+  ["ads:google_campaigns_list", `the org's own campaigns: ${NONE}`],
+  ["ads:google_adgroups_list", `the org's own ad groups: ${NONE}`],
+  ["ads:google_ads_list", `the org's own ads: ${NONE}`],
+  ["ads:google_insights_query", `spend and delivery metrics: ${NONE}`],
+  ["ads:google_account_info", `the account's settings and conversion actions: ${NONE}`],
+  ["ads:google_recommendations_list", `the platform's recommendation types: ${NONE}`],
+  ["ads:merchant_feed_status", `product counts per destination: ${NONE}`],
+  [
+    "ads:merchant_product_issues",
+    `the platform's issue codes on the store's own products: ${NONE}`,
+  ],
+  ["ads:experiment_list", `experiments the org opened: ${NONE}`],
+  ["ads:manual_spend_list", `spend entries the org recorded: ${NONE}`],
+  ["ads:dealer_profiles_list", `dealer profiles the org keeps: ${NONE}`],
+  ["ads:metrics_list", `the metric registry: ${NONE}`],
+  ["ads:metrics_run", `a computed metric value: ${NONE}`],
+  ["database:db_list_reads", `the read catalog the org configured: ${NONE}`],
+  ["database:db_describe", `table and column names of the connected database's schema: ${NONE}`],
+  ["database:db_probe", `grants and catalog drift of the connected role: ${NONE}`],
+])
+
+/**
+ * The apps with read tools that declare no outside fields, each with why. A new app with a read
+ * tool fails until it declares its outside fields or is listed here.
+ */
+const LISTED_APPS = new Map<string, string>([
+  [
+    "knowledge",
+    "the host marks a turn per document read: a document synced from outside, or a remote source item, taints (taint-exemptions.ts)",
+  ],
+  ["projects", `projects, tasks, comments and labels the org's own members write: ${NONE}`],
+  ["mcp-manager", `the MCP connections the org added: ${NONE}`],
+  ["example", `the sample app's own items, counts and an HTTP status: ${NONE}`],
 ])
 
 describe("outside text is declared by data", () => {
   const manifests = loadManifests()
 
   it("every manifest read naming an outside field declares a taint source, and every other read is listed with a reason", () => {
-    const problems = manifests.flatMap((m) => outsideFieldProblems(m, LISTED))
+    const problems = manifests.flatMap((m) => outsideFieldProblems(m, LISTED, LISTED_APPS))
     expect(problems).toEqual([])
+  })
+
+  it("every listed app still exists", () => {
+    const names = new Set(manifests.map((m) => m.name))
+    expect([...LISTED_APPS.keys()].filter((name) => !names.has(name))).toEqual([])
+  })
+
+  it("an app with read tools that declares no outside fields fails unless listed with a reason", () => {
+    const manifest: Manifest = {
+      name: "acme",
+      tools: { rows_read: { readOnly: true }, write: { readOnly: false } },
+    }
+    expect(outsideFieldProblems(manifest, new Map())).toEqual([
+      "acme has read tools, declares no outsideTextFields, and is not listed with a reason",
+    ])
+    expect(outsideFieldProblems(manifest, new Map(), new Map([["acme", " "]]))).toEqual([
+      "acme is listed without a reason",
+    ])
+    expect(
+      outsideFieldProblems(manifest, new Map(), new Map([["acme", "its own counts"]])),
+    ).toEqual([])
+    manifest.outsideTextFields = ["rows"]
+    manifest.tools!.rows_read!.taintSource = true
+    expect(
+      outsideFieldProblems(manifest, new Map(), new Map([["acme", "its own counts"]])),
+    ).toEqual(["acme declares outsideTextFields and is still listed"])
+    expect(
+      outsideFieldProblems(
+        { name: "acme", tools: { write: {} } },
+        new Map(),
+        new Map([["acme", "x"]]),
+      ),
+    ).toEqual(["acme has no read tool and is still listed"])
   })
 
   it("every listed tool still exists in an app that declares outside fields", () => {

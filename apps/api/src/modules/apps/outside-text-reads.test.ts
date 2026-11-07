@@ -97,6 +97,36 @@ const CASES: Case[] = [
     tool: "csat.list",
     row: [{ id: "s1", ticket_id: "t1", status: "responded", score: 2, subject: INJECTED }],
   },
+  // A database read hands back rows of a database whose text the org does not author: a curated
+  // read lists ticket subjects, a raw query any allow-listed column of a customer's database.
+  {
+    app: "database",
+    dir: API_APPS,
+    tool: "db_read",
+    row: {
+      rows: [{ id: "t1", handle: "T-1", subject: INJECTED, status: "open" }],
+      truncated: false,
+    },
+  },
+  {
+    app: "database",
+    dir: API_APPS,
+    tool: "db_query",
+    row: { rows: [{ id: 1, note: INJECTED }], truncated: false },
+  },
+  // Search terms are what people typed into a search engine; a Graph read reaches page comments.
+  {
+    app: "ads",
+    dir: BUNDLED,
+    tool: "google_search_terms",
+    row: { search_terms: [{ search_term: INJECTED, clicks: 3 }], count: 1 },
+  },
+  {
+    app: "ads",
+    dir: BUNDLED,
+    tool: "graph_get",
+    row: { data: [{ id: "c1", message: INJECTED }] },
+  },
   // A Shared Drive's name is set in a Workspace that may sit outside the org.
   {
     app: "google-drive",

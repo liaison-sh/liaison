@@ -375,6 +375,8 @@ export function kernelAttentionTitle(
   if (item.app !== "kernel") return s
   let m: RegExpExecArray | null
   switch (item.kind) {
+    case "kernel:away.recap":
+      return t("kernel.homeRouting.recapTitle")
     case "scope_request_decided":
       m = /^Scope request (approved|denied)$/.exec(s)
       return m ? t(`kernel.attentionTitle.scopeRequestDecided.${m[1]}`) : s

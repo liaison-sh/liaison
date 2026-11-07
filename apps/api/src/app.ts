@@ -232,6 +232,12 @@ registerKernelAttentionProvider({
   scope: "kernel:approvals:read",
   bundlePath: new URL("./modules/approvals/attention.ts", import.meta.url).pathname,
 })
+// "While you were away": decisions taken for the person while they were away, once back.
+registerKernelAttentionProvider({
+  appName: "kernel.away_recap",
+  handler: "getAwayRecapAttentionItems",
+  bundlePath: new URL("./modules/approvals/away-recap.ts", import.meta.url).pathname,
+})
 registerKernelAttentionProvider({
   appName: "kernel.attention_events",
   handler: "getEventAttentionItems",

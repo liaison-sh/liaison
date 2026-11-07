@@ -807,6 +807,180 @@ describe("home decisions", () => {
     expect(screen.getByTestId(`${row(persisted)}-not-now`)).toBeTruthy()
   })
 
+  describe("who a row is for", () => {
+    const person = (why: "asked" | "on_item" | "manager", extra: Record<string, unknown> = {}) => ({
+      to: "person",
+      userId: "u-elodie",
+      why,
+      awayUntil: null,
+      standIn: null,
+      blockedStandIn: null,
+      ...extra,
+    })
+    const routed = (id: string, placement: string, route: unknown, names = {}) =>
+      approval(id, {
+        placement,
+        route,
+        routeLine: { forName: "Élodie Renard", ...names },
+        ...(placement === "others" ? { peerSelfApprovable: true } : {}),
+      })
+
+    it("no pill row above the list", () => {
+      attentionStore._setForTest({
+        items: [
+          approval("a-1"),
+          approval("a-2", { toolName: "tickets:reply", actionLabel: "Tickets: reply" }),
+          approval("a-3", { toolName: "mail:send", actionLabel: "Mail: send" }),
+        ],
+        errors: [],
+      })
+      render(() => <Home entityId="home" />)
+      expect(screen.queryByTestId("approval-facet-bar")).toBeNull()
+      expect(screen.queryByTestId("home-approval-peer-toggle")).toBeNull()
+      expect(screen.getByTestId("home-card-approvals").querySelectorAll("[role=tab]").length).toBe(
+        0,
+      )
+    })
+
+    it("one why line on every routed row, each table line", () => {
+      const rows = [
+        routed("w-on", "mine", { ...person("on_item"), userId: "u-1" }),
+        routed("w-ask", "mine", { ...person("asked"), userId: "u-1" }),
+        routed(
+          "w-stand",
+          "standing_in",
+          person("on_item", { awayUntil: "2026-12-20", standIn: "u-1" }),
+        ),
+        routed(
+          "w-block",
+          "mine",
+          {
+            to: "person",
+            ...person("on_item", { blockedStandIn: "u-tom", awayUntil: "2026-12-20" }),
+          },
+          { blockedName: "Tom Reyes" },
+        ),
+        routed("w-oth", "others", person("on_item")),
+        routed("w-usual", "mine", { to: "usual" }),
+        routed("w-owner", "mine", { to: "owner", userId: "u-1" }),
+      ]
+      attentionStore._setForTest({ items: rows, errors: [] })
+      render(() => <Home entityId="home" />)
+      const why = (item: AttentionItem) => screen.queryByTestId(`${row(item)}-why`)?.textContent
+      // Six of the viewer's own rows fold to three: unfold to read them all.
+      fireEvent.click(screen.getByTestId("home-approvals-fold"))
+      expect(why(rows[0]!)).toBe("For you: assigned to you")
+      expect(why(rows[1]!)).toBe("You asked for this")
+      expect(why(rows[2]!)).toMatch(
+        /^For Élodie Renard, away until (20 Dec|Dec 20)\. You are next in line\.$/,
+      )
+      expect(why(rows[3]!)).toBe(
+        "For you: Tom Reyes cannot approve this while Élodie Renard is away",
+      )
+      // A row for others sits in the closed group; open it to read its line.
+      fireEvent.click(screen.getByTestId("home-approvals-others-summary"))
+      expect(why(rows[4]!)).toBe("For Élodie Renard, assigned to them. You can also approve")
+      // The usual deciders and an owner-routed row: no route line.
+      expect(why(rows[5]!)).toBeUndefined()
+      expect(why(rows[6]!)).toBeUndefined()
+    })
+
+    it("the group closed with its count", () => {
+      const others = [
+        routed("o-1", "others", person("on_item")),
+        routed("o-2", "others", person("asked")),
+      ]
+      attentionStore._setForTest({ items: [approval("m-1"), ...others], errors: [] })
+      render(() => <Home entityId="home" />)
+      const group = screen.getByTestId("home-approvals-others") as HTMLDetailsElement
+      expect(group.open).toBe(false)
+      expect(screen.getByTestId("home-approvals-others-summary").textContent).toContain(
+        "For others, you can also approve",
+      )
+      expect(screen.getByTestId("home-approvals-others-count").textContent).toBe("2")
+      // The card counts the viewer's own row only.
+      expect(screen.getByTestId("home-card-approvals").textContent).toContain("1")
+    })
+
+    it("the peer toggle gone with its rows in the group as asked", () => {
+      const peer = routed("p-1", "others", person("asked", { userId: "u-tom" }), {
+        forName: "Tom Reyes",
+      })
+      attentionStore._setForTest({ items: [peer], errors: [] })
+      render(() => <Home entityId="home" />)
+      expect(screen.queryByTestId("home-approval-peer-toggle")).toBeNull()
+      fireEvent.click(screen.getByTestId("home-approvals-others-summary"))
+      expect(screen.getByTestId(`${row(peer)}-why`).textContent).toBe(
+        "For Tom Reyes, who asked for this. You can also approve",
+      )
+    })
+
+    it("a passed-on row has no Not now", () => {
+      const passed = attention("pass-1", {
+        kind: "task_overdue",
+        summary: "Élodie's task is overdue",
+        metadata: { forUserId: "u-elodie" },
+      })
+      const own = attention("own-1", { kind: "sla_risk", summary: "Your ticket is at risk" })
+      attentionStore._setForTest({ items: [passed, own], errors: [] })
+      render(() => <Home entityId="home" />)
+      expect(screen.queryByTestId(`${row(passed)}-not-now`)).toBeNull()
+      expect(screen.getByTestId(`${row(own)}-not-now`)).toBeTruthy()
+    })
+
+    it("a fixture provider returning a computed row with Not now fails", () => {
+      // A provider that marks a stand-in's computed row as persisted still gets no Not now.
+      const wrong = attention("comp-1", {
+        persisted: true,
+        kind: "task_overdue",
+        metadata: { forUserId: "u-elodie" },
+      })
+      attentionStore._setForTest({ items: [wrong], errors: [] })
+      render(() => <Home entityId="home" />)
+      expect(screen.getByTestId(row(wrong))).toBeTruthy()
+      expect(screen.queryByTestId(`${row(wrong)}-not-now`)).toBeNull()
+    })
+
+    it("While you were away lists at most 3 lines, and N more, with Dismiss", async () => {
+      const recap = attention("kernel:away_recap:r-1", {
+        entity: "away_range",
+        entityId: "r-1",
+        kind: "kernel:away.recap" as AttentionItem["kind"],
+        summary: "While you were away",
+        urgency: 30,
+        persisted: undefined,
+        action: { type: "open_entity", tabType: "kernel:approvals", entityId: "approvals" },
+        metadata: {
+          awayRecap: {
+            lines: [1, 2, 3].map((n) => ({
+              approvalId: `ap-${n}`,
+              title: `Refund ${n}`,
+              outcome: "approved",
+              decidedByName: "Tom Reyes",
+            })),
+            more: 2,
+          },
+        },
+      })
+      attentionStore._setForTest({ items: [recap], errors: [] })
+      render(() => <Home entityId="home" />)
+      const id = row(recap)
+      expect(screen.getAllByTestId(`${id}-recap-line`)).toHaveLength(3)
+      expect(screen.getAllByTestId(`${id}-recap-line`)[0]?.textContent).toBe(
+        "Refund 1: approved by Tom Reyes",
+      )
+      expect(screen.getByTestId(`${id}-recap-more`).textContent).toBe("and 2 more")
+      expect(screen.getByTestId(id).textContent).toContain("While you were away")
+      expect(screen.queryByTestId(`${id}-ask-draft`)).toBeNull()
+      expect(screen.queryByTestId(`${id}-not-now`)).toBeNull()
+      fireEvent.click(screen.getByTestId(`${id}-dismiss`))
+      expect(apiPost).toHaveBeenCalledWith("/attention-items/away-recap/dismiss", {
+        rangeId: "r-1",
+      })
+      await vi.waitFor(() => expect(screen.queryByTestId(id)).toBeNull())
+    })
+  })
+
   it("Not now sets the event aside and the row leaves", async () => {
     const persisted = attention("p-1")
     attentionStore._setForTest({ items: [persisted], errors: [] })

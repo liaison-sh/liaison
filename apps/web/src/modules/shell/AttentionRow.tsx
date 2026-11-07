@@ -83,6 +83,7 @@ import {
 } from "~/modules/shell/attention-row-format"
 import { attentionStore } from "~/modules/shell/attention-store"
 import { markAttentionRead, openAttentionLink, openEntity } from "~/modules/shell/entity-opener"
+import { AwayRecapLines, RouteWhyLine } from "~/modules/shell/route-line"
 import { shellTier } from "~/modules/shell/shell-tier"
 import { addToast } from "~/modules/shell/toast-store"
 import { openReplyPanel } from "~/modules/threads/reply-panel-store"
@@ -739,6 +740,8 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
           </span>
           <LastFailureBanner />
           <GuardLine item={props.item} testId={testId()} />
+          <RouteWhyLine item={props.item} testId={testId()} />
+          <AwayRecapLines item={props.item} testId={testId()} />
           <Show
             when={
               hasInlineActions() ||
@@ -962,6 +965,8 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
             </Show>
             <LastFailureBanner />
             <GuardLine item={props.item} testId={testId()} />
+            <RouteWhyLine item={props.item} testId={testId()} />
+            <AwayRecapLines item={props.item} testId={testId()} />
             <span class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] leading-snug text-text-tertiary">
               <Show
                 when={isApproval()}

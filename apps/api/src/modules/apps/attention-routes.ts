@@ -8,6 +8,7 @@ import { extractRows } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
 import { extractRlsContext, withRequestRls } from "~/lib/request-rls"
 import { success } from "~/lib/response"
+import { dismissAwayRecap } from "~/modules/approvals/away-recap"
 import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
 import { nextMondayStart } from "~/modules/attention/set-aside"
 import { broadcastReadState } from "~/modules/threads/read-state-broadcast"
@@ -223,3 +224,30 @@ attentionRoutes.post("/set-aside", zValidator("json", setAsideSchema), async (c)
     timeZone: result.timeZone,
   })
 })
+
+// "While you were away" (a computed row): Dismiss stores one read event, so it stays gone.
+const awayRecapDismissSchema = z.object({ rangeId: z.string().uuid() }).strict()
+
+attentionRoutes.post(
+  "/away-recap/dismiss",
+  zValidator("json", awayRecapDismissSchema),
+  async (c) => {
+    const { rangeId } = c.req.valid("json")
+    const done = await withRequestRls(c, (tx) =>
+      dismissAwayRecap(tx, c.get("orgId"), c.get("userId"), rangeId),
+    )
+    if (!done) {
+      return c.json(
+        {
+          error: {
+            message: `No away range ${rangeId} of yours: nothing was dismissed.`,
+            code: "not_found",
+          },
+        },
+        404,
+      )
+    }
+    await broadcastReadState(c.get("orgId"), c.get("userId"), { kind: "attention", bulk: true })
+    return success(c, { dismissed: rangeId })
+  },
+)

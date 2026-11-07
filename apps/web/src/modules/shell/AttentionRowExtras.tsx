@@ -40,14 +40,25 @@ export function isStoppedSendNotice(item: AttentionItem): boolean {
  * aside, and a stopped send is dismissed rather than put off.
  */
 export function offersNotNow(item: AttentionItem): boolean {
+  // A row passed on from someone away is theirs to set aside, never the stand-in's.
+  const passedOn = typeof item.metadata?.forUserId === "string" && item.metadata.forUserId !== ""
   return (
-    item.persisted === true && item.action?.type !== "decide_approval" && !isStoppedSendNotice(item)
+    item.persisted === true &&
+    !passedOn &&
+    item.action?.type !== "decide_approval" &&
+    !isStoppedSendNotice(item)
   )
 }
 
 /** Ask for a draft fits an item that waits on a reply or a next step, not a decision or a stop. */
 export function offersAskDraft(item: AttentionItem): boolean {
-  return item.action?.type === "open_entity" && !isStoppedSendNotice(item)
+  // "While you were away" reports what was decided; there is nothing to draft.
+  const kind: string = item.kind
+  return (
+    item.action?.type === "open_entity" &&
+    !isStoppedSendNotice(item) &&
+    kind !== "kernel:away.recap"
+  )
 }
 
 /** The send check's line on a mail draft row, the same words the card uses. */

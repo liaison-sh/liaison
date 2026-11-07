@@ -48,7 +48,7 @@ import AttentionRow from "~/modules/shell/AttentionRow"
 import {
   approvalActionKey,
   isApprovalItem,
-  partitionPeerRequests,
+  partitionOthersRows,
 } from "~/modules/shell/approval-facets"
 import { focusedApproval } from "~/modules/shell/approval-focus"
 import {
@@ -69,9 +69,6 @@ import {
   homeApprovalItems,
   isApprovalDecisionInFlight,
   isUncountedItem,
-  reloadShowPeerRequests,
-  setShowPeerRequests,
-  showPeerRequests,
 } from "~/modules/shell/home-action-count"
 import { homeAgents, type TodayEvent, waitingOnOthers } from "~/modules/shell/home-agents-store"
 import {
@@ -204,21 +201,13 @@ const AttentionFeedView: Component<AttentionFeedViewProps> = (props) => {
       (i) => !isUncountedItem(i) && !isApprovalDecisionInFlight(i),
     ),
   )
-  // PEER NOISE, FOLDED BY DEFAULT. Two holders of the same `<app>:approve` bury
-  // each other: every request one raises lands in the other's feed even though
-  // the requester approves their own as a matter of course. Hide those by
-  // default and say how many — never silently, or a filter is indistinguishable
-  // from a broken feed. Own requests, routine-raised ones, and anything from
-  // someone who cannot self-approve are NOT peer noise and always show.
-  // The preference is shared with the Home badge (home-action-count.ts), so
-  // the badge folds peers exactly when this card does.
-  reloadShowPeerRequests()
-  const approvalSplit = createMemo(() => partitionPeerRequests(allApprovalItems()))
-  const peerCount = createMemo(() => approvalSplit().peers.length)
-  const approvalItems = createMemo(() =>
-    showPeerRequests() ? allApprovalItems() : approvalSplit().mine,
-  )
-  const togglePeerRequests = (): void => setShowPeerRequests(!showPeerRequests())
+  // WHOSE THE ROW IS. A row for someone else the viewer can also approve (the server's
+  // `placement: others`: the person it is for decides it, or it is a colleague's own request
+  // they could approve themselves) is not the viewer's ask: it waits in one closed group at
+  // the card's end, with its count, and is in no badge. A feed with no placement reads mine.
+  const approvalSplit = createMemo(() => partitionOthersRows(allApprovalItems()))
+  const othersRows = createMemo(() => approvalSplit().others)
+  const approvalItems = createMemo(() => approvalSplit().mine)
   // One list, no per-action filter (the pill on each row names the action). Over five rows the
   // first three show and the rest fold behind "Show N more", order kept.
   const approvalRows = approvalItems
@@ -230,8 +219,7 @@ const AttentionFeedView: Component<AttentionFeedViewProps> = (props) => {
   )
   const foldedApprovals = createMemo(() => approvalRows().length - visibleApprovalRows().length)
   // LIF-18: a notification opened Home for one approval. A fold that hides it opens, so its row
-  // can bring itself into view (AttentionRow). The peer preference is the user's own and is
-  // left alone.
+  // can bring itself into view (AttentionRow).
   createEffect(() => {
     const focus = focusedApproval()
     if (focus === null) return
@@ -261,7 +249,7 @@ const AttentionFeedView: Component<AttentionFeedViewProps> = (props) => {
   function cardHasContent(id: CardId): boolean {
     switch (id) {
       case "approvals":
-        return approvalItems().length > 0
+        return approvalItems().length > 0 || othersRows().length > 0
       case "messages":
         return messagesCount() > 0 || uncountedRows().length > 0
       // New mail is Mail's (D21): Home no longer repeats it.
@@ -427,29 +415,6 @@ const AttentionFeedView: Component<AttentionFeedViewProps> = (props) => {
                         title={cardTitles().approvals}
                         count={approvalItems().length}
                       >
-                        {/* Peer rows are folded by default. Render the toggle
-                            whenever there are any to fold OR the fold is
-                            currently off, so the state is always reversible and
-                            never invisible. Rendered outside the facet bar on
-                            purpose: peers can be hidden even when there is only
-                            one action facet, which suppresses that bar. */}
-                        <Show when={peerCount() > 0 || showPeerRequests()}>
-                          <div class="px-4 pt-3">
-                            <button
-                              type="button"
-                              data-testid="home-approval-peer-toggle"
-                              aria-pressed={showPeerRequests()}
-                              class="text-[11.5px] text-text-tertiary underline-offset-2 transition-colors hover:text-text-secondary hover:underline"
-                              onClick={togglePeerRequests}
-                            >
-                              {showPeerRequests()
-                                ? i18n.t("kernel.homeApprovalsHidePeers")
-                                : i18n.t("kernel.homeApprovalsShowPeers", {
-                                    count: String(peerCount()),
-                                  })}
-                            </button>
-                          </div>
-                        </Show>
                         <ul class="divide-y divide-border-subtle">
                           <For each={visibleApprovalRows()}>
                             {(item, idx) => (
@@ -478,6 +443,9 @@ const AttentionFeedView: Component<AttentionFeedViewProps> = (props) => {
                               {i18n.t("kernel.homeShowMoreAfter")}
                             </Show>
                           </button>
+                        </Show>
+                        <Show when={othersRows().length > 0}>
+                          <OthersGroup rows={othersRows()} />
                         </Show>
                       </HomeCard>
                     </Match>
@@ -952,6 +920,34 @@ const HomeReadAllButton: Component<{ phone: boolean }> = (props) => {
 }
 
 /**
+ * "For others, you can also approve": rows for someone else, closed by default with their
+ * count. Opening it shows each row with its "why" line saying who it is for; the rows stay
+ * decidable, they are just not the viewer's ask.
+ */
+const OthersGroup: Component<{ rows: AttentionItem[] }> = (props) => {
+  const i18n = useI18n()
+  return (
+    <details data-testid="home-approvals-others" class="group/others border-t border-border-subtle">
+      <summary
+        data-testid="home-approvals-others-summary"
+        class="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-[12px] text-text-tertiary hover:text-text-secondary"
+      >
+        <span class="font-mono text-[10px] transition-transform duration-150 group-open/others:rotate-90">
+          ›
+        </span>
+        <span>{i18n.t("kernel.homeRouting.othersGroup")}</span>
+        <span data-testid="home-approvals-others-count" class="font-mono tabular-nums">
+          {props.rows.length}
+        </span>
+      </summary>
+      <ul class="divide-y divide-border-subtle">
+        <For each={props.rows}>{(item) => <AttentionRow item={item} />}</For>
+      </ul>
+    </details>
+  )
+}
+
+/**
  * The main panel filtered to one sidebar entry (D21). It reuses Home's own
  * rows (AttentionRow, AlertClusterRow, the inline approval card), so Approve
  * and Reject stay where they are.
@@ -984,6 +980,7 @@ const HomeSlice: Component<{ filter: HomeFilter; sections: HomeSections; phone: 
     if (f === "needs") return t("kernel.homeSidebar.needsYou")
     if (f === "needs:time") return t("kernel.homeSidebar.expiringSoon")
     if (f.startsWith("needs:approvals")) return t("kernel.homeCardApprovals")
+    if (f === "needs:others") return t("kernel.homeRouting.othersGroup")
     if (f.startsWith("needs:alerts")) return t("kernel.homeSectionAlerts")
     if (f === "queues") return t("kernel.homeSidebar.yourQueues")
     if (f.startsWith("queue:")) {
@@ -1008,6 +1005,7 @@ const HomeSlice: Component<{ filter: HomeFilter; sections: HomeSections; phone: 
     if (f === "needs") return s().needs.total
     if (f === "needs:time") return s().needs.timeLimited.length
     if (f.startsWith("needs:approvals")) return approvals().length
+    if (f === "needs:others") return s().needs.others.length
     if (f.startsWith("needs:alerts")) return alertItemsFor(s(), cluster()).length
     if (f === "queues") return s().queueTotal
     if (f.startsWith("queue:")) return queueItems().length
@@ -1089,6 +1087,7 @@ const HomeSlice: Component<{ filter: HomeFilter; sections: HomeSections; phone: 
             </Match>
             <Match when={props.filter === "needs:time"}>{rows(s().needs.timeLimited)}</Match>
             <Match when={props.filter.startsWith("needs:approvals")}>{rows(approvals())}</Match>
+            <Match when={props.filter === "needs:others"}>{rows(s().needs.others)}</Match>
             <Match when={props.filter.startsWith("needs:alerts")}>{alerts()}</Match>
             <Match when={props.filter === "queues"}>
               <For each={s().queues}>{(group) => <AttentionGroupSection group={group} />}</For>

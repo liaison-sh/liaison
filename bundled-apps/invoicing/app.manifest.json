@@ -224,7 +224,7 @@
       }
     ]
   },
-  "version": "0.20.54",
+  "version": "0.20.55",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1538,7 +1538,7 @@
 "received_einvoices_list": {
       "taintSource": true,
       "description": "List the supplier e-invoices delivered by the e-invoicing platform (the invoicing app's Received tab): supplier, number, issue and due dates, total with currency, status (received, approved, in_dispute, refused, rejected, partially_collected, collected), received date, newest first. Read only.",
-      "searchKeywords": ["fournisseur", "fournisseurs", "supplier", "reçue", "reçues", "facture", "factures", "achat", "électronique"],
+      "searchKeywords": ["fournisseur", "fournisseurs", "supplier", "reçue", "reçues", "achat", "électronique"],
       "requiredScopes": [
         "invoicing:received:read"
       ],
@@ -1615,7 +1615,7 @@
     },
     "received_einvoice_action_request": {
       "description": "Ask for the approval to refuse, dispute, or withdraw the dispute on ONE received supplier e-invoice. action is refuse (final: the invoice is closed), dispute (the supplier is told it is contested; can be withdrawn) or undispute. refuse and dispute need a reason, one of those received_einvoices_get lists for that action (the platform's reasons, each with its official code); comment is kept in Liaison. It only creates the approval request: nothing reaches the supplier's platform before a person approves. Refused with received_action_not_allowed when the platform no longer allows it (a payment is linked, already refused).",
-      "searchKeywords": ["contester", "accepter", "refuser", "litige", "dispute", "approve"],
+      "searchKeywords": ["contester", "accepter", "refuser", "litige", "dispute", "approve", "facture"],
       "requiredScopes": [
         "invoicing:received:write"
       ],
@@ -1872,7 +1872,7 @@
     "documents_search": {
       "taintSource": true,
       "description": "Search invoices, quotes, credit notes, proformas and purchase orders issued here, by query, type, status, contact, date range, or tax treatment. The free-text `query` matches, word by word and in any case, the document NUMBER, the COUNTERPARTY NAME, ADDRESS and EMAIL (billing and shipping), the SHOPIFY ORDER (e.g. query='#1149'), the PO NUMBER, the notes and the line descriptions; best matches come first. To find a customer's invoices, search their name directly (e.g. query='Claudine Moreau'): a person named only in a company invoice's address is found too. `contact_id` also returns the documents made out to the contact's email or address. For a customer's earlier prices ('same price as last time') use customer_history.",
-      "searchKeywords": ["facture", "factures", "invoice", "invoices", "devis", "quote", "quotes", "avoir", "proforma", "chercher", "rechercher", "trouver", "retrouver", "find", "numéro", "number", "impayé", "impayée", "impayées", "unpaid", "overdue", "retard", "list", "liste", "issued"],
+      "searchKeywords": ["facture", "factures", "invoice", "invoices", "devis", "quote", "quotes", "avoir", "proforma", "chercher", "rechercher", "trouver", "retrouver", "find", "numéro", "number", "impayé", "impayée", "impayées", "unpaid", "overdue", "retard", "list", "liste", "issued", "relance", "paiement", "payment", "past", "due", "failed"],
       "requiredScopes": ["invoicing:documents:read"],
       "handler": "documentsSearchHandler",
       "params": {
@@ -1985,7 +1985,7 @@
     "documents_get": {
       "taintSource": true,
       "description": "Get one invoicing document by id, including lines.",
-      "searchKeywords": ["facture", "invoice", "devis", "détail", "ouvrir", "voir", "lire", "open"],
+      "searchKeywords": ["invoice", "devis", "détail", "ouvrir", "voir", "lire", "open"],
       "requiredScopes": ["invoicing:documents:read"],
       "handler": "documentsGetHandler",
       "params": {
@@ -3187,7 +3187,7 @@
     },
     "quote_issue": {
       "description": "Issue a quote from a legacy unnumbered draft row (gated). New quotes do not go through a draft: use quote_create_and_issue, which creates the Shopify draft order when the shop is mapped. There is no user facing draft document category.",
-      "searchKeywords": ["devis", "émettre", "valider"],
+      "searchKeywords": ["devis", "émettre"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "quoteIssueHandler",
       "preflight": "quoteIssuePreflightHandler",
@@ -3427,7 +3427,7 @@
     },
     "proforma_issue": {
       "description": "Issue a proforma from a draft (always gated).",
-      "searchKeywords": ["émettre", "valider"],
+      "searchKeywords": ["émettre"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "proformaIssueHandler",
       "timeoutMs": 60000,
@@ -3980,7 +3980,7 @@
     },
     "documents_record_refund": {
       "description": "Record a refund against a document (full or partial): records only, moves no money. PAYMENT STATUS ONLY: it does not issue a credit note, and a partial marks the document 'partial' while a full one marks it 'refunded'. A refund or cancellation taken in Shopify already auto issues the matching credit note, so check documents_for_orders before adding one by hand. On a split order (goods plus software) record the refund against the document that actually carries the refunded line.",
-      "searchKeywords": ["remboursement", "rembourser", "refund", "enregistrer", "noter", "facture", "factures", "paiement"],
+      "searchKeywords": ["remboursement", "rembourser", "refund", "enregistrer", "noter", "paiement"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "documentsRecordRefundHandler",
       "preflight": "documentsRecordRefundPreflightHandler",
@@ -4018,7 +4018,7 @@
     },
     "documents_convert_to_invoice": {
       "description": "Convert a quote or proforma into an invoice. For a quote linked to a Shopify draft order (shopify_draft_order_id set) this COMPLETES the draft order in Shopify with payment pending (the B2B customer pays by wire against the invoice, no Shopify email goes out), Shopify creates the real order, the quote becomes 'invoiced' with the order id and number, and the invoice is issued automatically by the order-created auto-flow moments later (threshold gated like any store invoice). Returns mode 'shopify_order_created' in that case: do NOT call invoice_create_and_issue afterwards, the invoice arrives on its own; find it with documents_for_orders or documents_search on the order number. A quote or proforma without a draft order is converted locally (mode 'local') and the new invoice is returned. Gated for agents (approval card); a human clicking Convert in the UI confirms a dialog and needs no approval. The quote's po_number is carried onto the invoice.",
-      "searchKeywords": ["convertir", "transformer", "devis", "quote", "facturer"],
+      "searchKeywords": ["convertir", "transformer", "devis", "quote", "facturer", "facture"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "documentsConvertToInvoiceHandler",
       "preflight": "documentsConvertToInvoicePreflightHandler",
@@ -4322,7 +4322,7 @@
     },
     "credit_note_issue": {
       "description": "Issue a credit note from a draft (drafts_create with type='credit_note'). Handler-conditional gating against issuer.invoice_approval_threshold_minor (unset means always approve, threshold 0; a credit note with no original_document_id is ALWAYS approved), compared against the ABSOLUTE VALUE of the credit note's grand total. When the draft's external_refs.original_document_id references an invoice, that invoice's lifecycle_log gets a `credit_note_issued` entry on success.",
-      "searchKeywords": ["avoir", "émettre", "valider"],
+      "searchKeywords": ["avoir", "émettre"],
       "requiredScopes": ["invoicing:documents:write"],
       "atomic": true,
       "handler": "creditNoteIssueHandler",
@@ -4350,6 +4350,7 @@
     },
     "order_reissue_apply": {
       "description": "Reissue an invoice after a Shopify order edit changed the LINE SET or the AMOUNTS (an order edit that only touches address, notes, tags, or fulfilment does NOT call this). ALWAYS GATED, one human approval covers BOTH documents together: a credit note that fully reverses the original invoice, and a replacement invoice carrying the order's current items and amounts, issued only once the human signs off. Do NOT call credit_note_create_and_issue and invoice_create_and_issue separately for an order-edit reissue: this tool exists precisely so the operator sees and approves both documents as ONE decision. PAYMENT: any payment already recorded stays on the ORIGINAL invoice; the credit note reverses that invoice as a legal document, and the REPLACEMENT invoice is issued UNPAID (nothing is auto-transferred or auto-marked paid, so re-applying the payment or refunding the difference is a separate, deliberate step). This is invoked by the invoicing app's own onShopifyOrderUpdated handler when the order's billing signature diverges from what was last invoiced; it is not meant to be called ad hoc with an unrelated items list. Do NOT documents_mark_paid the replacement to simulate transferring the payment: re-applying it or refunding the difference is a deliberate, separate decision. The original's po_number is carried onto BOTH the credit note and the replacement.",
+      "searchKeywords": ["réémettre", "commande", "commandes"],
       "requiredScopes": ["invoicing:documents:write"],
       "atomic": true,
       "handler": "orderReissueApplyHandler",

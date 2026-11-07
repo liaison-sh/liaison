@@ -18,6 +18,7 @@ import {
   type Baseline,
   bar,
   type CorpusLine,
+  catalogBars,
   corpusShapeErrors,
   lint,
   loadGuides,
@@ -101,6 +102,15 @@ export function runBench(files: BenchFiles, catalog: BenchTool[]): BenchReport {
     }),
   )
   failures.push(...mustNotBroken(catalog, files.mustNot).map((e) => `known bad answer: ${e}`))
+  const bars = catalogBars(runs)
+  if (!bars.overall.ok)
+    failures.push(
+      `bar missed: ${bars.overall.passed}/${bars.overall.total} forms reached, 85% overall`,
+    )
+  if (!bars.french.ok)
+    failures.push(
+      `bar missed: ${bars.french.passed}/${bars.french.total} French forms reached, 80%`,
+    )
 
   const count = (pick: (r: (typeof runs)[number]) => boolean, of = runs) =>
     `${of.filter(pick).length}/${of.length}`

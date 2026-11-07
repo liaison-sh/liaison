@@ -154,12 +154,19 @@ export interface FormRun {
 export function runForms(catalog: readonly BenchTool[], corpus: readonly CorpusLine[]): FormRun[] {
   const searchable = searchableTools(catalog)
   const appNames = appNamesOf(catalog)
+  // A tool the model already holds on every turn needs no search: a form for it
+  // is reached. It is ranked for real the day it is deferred.
+  const held = new Set(
+    catalog.filter((t) => t.agentVisible && !t.deferred && !t.routineOnly).map((t) => t.sdkName),
+  )
   return corpus.flatMap((line) =>
     line.typed.map((form) => ({
       key: formKey(line, form),
       line,
       form,
-      result: rankForm(searchable, appNames, form, line.any),
+      result: line.any.some((n) => held.has(n))
+        ? { top1: true, top5: true, top5Ties: true, loaded: true, zeroHit: false, above: [] }
+        : rankForm(searchable, appNames, form, line.any),
     })),
   )
 }
@@ -256,6 +263,26 @@ export function bar(passed: number, total: number, percent: number): BarResult {
   if (total >= 10) return { passed, total, kind: "percent", ok: passed * 100 >= percent * total }
   if (total >= 5) return { passed, total, kind: "count", ok: total - passed <= 1 }
   return { passed, total, kind: "none", ok: true }
+}
+
+/** Top 5 with ties counted against, over every typed form: the bar of any catalog. */
+export const BAR_OVERALL_PERCENT = 85
+/** The same, over French lines. */
+export const BAR_FRENCH_PERCENT = 80
+
+export interface CatalogBars {
+  overall: BarResult
+  french: BarResult
+}
+
+/** The catalog's two bars (85% overall, 80% French) over a run of the corpus. */
+export function catalogBars(runs: readonly FormRun[]): CatalogBars {
+  const french = runs.filter((r) => r.line.lang === "fr")
+  const reached = (of: readonly FormRun[]) => of.filter((r) => r.result.top5Ties).length
+  return {
+    overall: bar(reached(runs), runs.length, BAR_OVERALL_PERCENT),
+    french: bar(reached(french), french.length, BAR_FRENCH_PERCENT),
+  }
 }
 
 // ── Lint ─────────────────────────────────────────────────────────────────

@@ -731,6 +731,15 @@ async function buildKernelAgentTools(orgId: string): Promise<void> {
     name: "memory_insert",
     description:
       "Insert a line into a memory file at a one based line number, pushing the rest down: add a bullet, or a line of MEMORY.md, without rewriting the file. To replace text use kernel__memory_str_replace, to start a file kernel__memory_create.",
+    searchKeywords: [
+      "souviens",
+      "souvenir",
+      "mémoriser",
+      "mémoire",
+      "retenir",
+      "remember",
+      "memory",
+    ],
     requiredScopes: ["kernel:agent:memory"],
     approvalImpact: "internal",
     trustBoundary: "user",
@@ -3190,7 +3199,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     name: "data_subject_export",
     deferLoading: true,
     description: `Compile EVERYTHING the org holds on ONE data subject (a contact) across apps into a single downloadable GDPR data-subject-request (DSR) export bundle, and return its fileId. Use this for a GDPR/data-access request — "export everything we have on <person> so I can send it to them". This is the PER-SUBJECT export: pass the subject's contactId (resolve it FIRST with kernel__contacts_search by name/email) and it assembles their contact record + support tickets (tickets__listForContact) + invoices (invoicing documents by contact) into ONE bundle written as a real downloadable file (returns { fileId, filename, counts, shopifyIncluded }). It contains ONLY the subject's REAL records you can see (runs under your RLS — never an org-wide dump, never invented data). It is DISTINCT from the admin \`export\` tool, which is org-admin-scoped and dumps WHOLE APPS with no per-subject filter. SHOPIFY orders are a LIVE connector (fetched live, NOT stored locally), so they are NOT auto-included — BUT if the request needs them in the SAME single bundle (e.g. "I need one complete file including her orders"), FIRST retrieve them with the shopify orders read (customers_search → orders_search/orders_get for that subject) and pass the returned order records as the \`shopifyOrders\` array — this tool then FOLDS them into the one bundle file and returns its single real fileId. If you do NOT include them, say honestly that Shopify orders are a live connector not in this file (point to the shopify orders read / Shopify admin export). CRITICAL ANTI-FABRICATION: the deliverable is the SINGLE fileId THIS tool returns — NEVER claim you "generated" a separate or supplemental file, and NEVER emit a \`file:<id>\` reference for any id this tool did not return; to put orders in the package, pass them via \`shopifyOrders\` and hand back this tool's one real fileId (do not invent a second file). Scoped to the dedicated DSR authority (a privacy/finance handler can run it WITHOUT org-admin powers); a caller lacking that scope is denied (and should ask whoever holds the DSR/privacy authority). UNGATED read-to-file: it sends nothing and changes no business data — it only materializes a file from records you can already read.`,
-    searchKeywords: ["rgpd", "gdpr", "données", "personnelles"],
+    searchKeywords: ["rgpd", "gdpr", "données", "personnelles", "exporter", "export", "personne"],
     requiredScopes: ["kernel:data_subject:export"],
     params: z.object({
       contactId: z.string().uuid(),
@@ -3325,6 +3334,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "Grant a team member one or more VALUES for an EXISTING data-partitioning DIMENSION (e.g. territory=US, team=support-eu) — this slices what data they can see (row-level filtering: rows outside their granted values become silently invisible to them). You can only grant values you hold (over-reach returns DIMENSION_ESCALATION). FIRST call kernel__list_dimensions to confirm the dimension exists; this tool grants a value for a dimension ALREADY in the catalog and does NOT create new dimensions. NEVER call this with a dimension that is not in kernel__list_dimensions — it returns INVALID_DIMENSION and the (gated) attempt fails. For a NEW attribute that isn't a dimension yet (e.g. 'territory' when it's not in the catalog), the dimension must first be defined by an admin in Settings → Dimensions; say so and defer, do not fabricate one or attempt to grant it.",
+    searchKeywords: ["accorder", "accès", "restreint", "restreindre", "dimension"],
     requiredScopes: ["kernel:users:admin"],
     approveScope: "kernel:approve",
     trustBoundary: "user",
@@ -3349,7 +3359,16 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     deferLoading: true,
     description:
       "Edit ONE team member's scopes directly, at fine granularity — the granular complement to kernel__assign_role (which grants a whole preset bundle). Pass `grant` and/or `revoke` arrays of exact scope ids to add/remove DIRECT user-level grants. Use this to fine-tune a single person without minting a role — e.g. 'give July refunds on top of her CS role' (grant) or 'take away her export ability' (revoke a direct grant). You can only grant/revoke scopes you hold yourself (over-reach returns SCOPE_ESCALATION and needs a higher approver). FIRST call kernel__list_scopes to get real scope ids — never invent one. IMPORTANT: a `revoke` only removes a DIRECT user grant; it does NOT strip a scope the member inherits from a ROLE (to remove that, change their role with kernel__assign_role). Granting a scope already held, or revoking one not directly granted, is an idempotent no-op. Prefer kernel__assign_role / kernel__create_role when the same permission set will apply to MANY people (roles stay auditable); use this for genuine per-person exceptions.",
-    searchKeywords: ["droit", "droits", "accès", "permission", "autoriser", "access"],
+    searchKeywords: [
+      "droit",
+      "droits",
+      "accès",
+      "permission",
+      "autoriser",
+      "access",
+      "accorder",
+      "utilisateur",
+    ],
     requiredScopes: ["kernel:users:admin"],
     approveScope: "kernel:approve",
     trustBoundary: "user",
@@ -3494,7 +3513,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
 Design the \`scopeCeiling\` as the LEAST PRIVILEGE the role needs — e.g. a web-research role wants \`kernel:agent:web\` plus a light read like \`kernel:contacts:read\`, and NO write scopes. Use \`kernel__subagent_list\` to see existing roles.
 
 When to use: When an admin asks to set up a reusable role they will spawn repeatedly. When NOT to use: For a one-off task — \`kernel__spawn_agent\` accepts an ad-hoc prompt and is the right primitive when no durable role abstraction adds value.`,
-    searchKeywords: ["créer"],
+    searchKeywords: ["créer", "sous", "agent"],
     requiredScopes: ["kernel:agents:admin"],
     params: z.object({
       appName: z.string().min(1).optional(),
@@ -3672,6 +3691,11 @@ When to use: When an admin asks to set up a reusable role they will spawn repeat
       "away",
       "holiday",
       "leave",
+      "office",
+      "next",
+      "line",
+      "semaine",
+      "week",
     ],
     requiredScopes: ["kernel:threads:read"],
     params: z.object({
@@ -3728,6 +3752,10 @@ When to use: When an admin asks to set up a reusable role they will spawn repeat
       "boutons",
       "next steps",
       "chips",
+      "étapes",
+      "suivantes",
+      "prochaines",
+      "steps",
     ],
     requiredScopes: ["kernel:threads:read"],
     params: suggestNextStepsParams,

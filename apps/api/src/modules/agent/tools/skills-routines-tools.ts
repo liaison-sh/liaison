@@ -5307,7 +5307,7 @@ function registerAuthoringTools(orgId: string): void {
     deferLoading: true,
     description:
       "Create a personal or org shared SKILL: a reusable named playbook (reply macro, decision rule, tone guide) the agent later loads by name with kernel__skill_read and follows. Gated: it lands as a pending approval, never as an active skill. Read the catalog with kernel__list_skills first, since a skill that already covers the task is refused and must be updated instead.",
-    searchKeywords: ["compétence", "procédure", "playbook"],
+    searchKeywords: ["compétence", "procédure", "playbook", "créer"],
     requiredScopes: ["kernel:skills:write"],
     trustBoundary: "user",
     gated: true,
@@ -5438,6 +5438,7 @@ function registerAuthoringTools(orgId: string): void {
     deferLoading: true,
     description:
       "Hide or unhide an app-shipped skill for the user (scope=user) or the whole org (scope=org).",
+    searchKeywords: ["compétence", "activer", "désactiver", "application"],
     requiredScopes: ["kernel:skills:write"],
     approveScope: "kernel:approve",
     trustBoundary: "user",
@@ -5496,6 +5497,7 @@ function registerAuthoringTools(orgId: string): void {
       "recurring",
       "automatiser",
       "automate",
+      "créer",
     ],
     requiredScopes: ["kernel:routines:write"],
     approveScope: "kernel:approve",
@@ -5635,7 +5637,16 @@ function registerAuthoringTools(orgId: string): void {
     deferLoading: true,
     description:
       "Create or update an AUTO-APPROVE policy for a gated tool: it LOOSENS a gate, letting the tool skip the human approver while your conditions and spend limits hold. It does NOT add, tighten, or impose an approval requirement, so it is the inverse of a 'refunds over 200 need a second approver' ask: use kernel__approval_policy_set for that, or kernel__capture_business_knowledge to record an operating rule. Admin authority, gated.",
-    searchKeywords: ["automatique", "autoriser", "approve", "loosen", "auto"],
+    searchKeywords: [
+      "automatique",
+      "autoriser",
+      "approve",
+      "loosen",
+      "auto",
+      "règle",
+      "approbation",
+      "définir",
+    ],
     // Loosening a gate is an admin authority, like tightening one (owner ruling
     // 2026-09-28): kernel:policies:write alone no longer reaches this tool.
     requiredScopes: ["kernel:policies:admin"],
@@ -5738,6 +5749,7 @@ function registerAuthoringTools(orgId: string): void {
     name: "reset_routine_to_template",
     deferLoading: true,
     description: "Re-apply an app template's prompt and schedule to a routine, discarding edits.",
+    searchKeywords: ["réinitialiser", "routine", "modèle"],
     requiredScopes: ["kernel:routines:write"],
     approveScope: "kernel:approve",
     trustBoundary: "user",

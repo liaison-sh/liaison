@@ -1498,7 +1498,7 @@ describe("invoicing manifest", () => {
     // 0.20.50: a search for a number no document carries says so and names the numbers ending in the same digits.
     // 0.20.51: the shared settings types it builds against changed; no change of its own.
     // 0.20.52: its attention heading is declared here, not in the web shell.
-    expect(m.version).toBe("0.20.54")
+    expect(m.version).toBe("0.20.55")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

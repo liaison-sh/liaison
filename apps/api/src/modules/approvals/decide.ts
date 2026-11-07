@@ -36,6 +36,7 @@ import {
 import { approvalPayloadHash } from "~/modules/approvals/payload-hash"
 import { enqueuePoll } from "~/modules/approvals/poll-output"
 import { approvalFailureRequiredScopes } from "~/modules/approvals/result-notice"
+import { readApprovalRoutes } from "~/modules/approvals/route-world"
 import { rowTaintMustHold } from "~/modules/approvals/taint-narrow"
 import type { ToolOrigin } from "~/modules/apps/execute-tool"
 import {
@@ -518,6 +519,11 @@ async function denyFlow(args: DecideArgs, row: ApprovalRow): Promise<DecideResul
     throw new ApprovalDecisionError(400, "invalid_reason", "invalid_reason")
   }
   const fromWedged = wedgedPastGrace(row)
+  const decidedFor = await readDecidedFor(args, row)
+  // Written by the same locked update as the decision.
+  const forSql = decidedFor
+    ? drizzleSql`, metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{decidedFor}', ${JSON.stringify(decidedFor)}::jsonb, true)`
+    : drizzleSql``
   const result = await withPrivilegedDb(args.orgId, "approval-deny", async (tx) => {
     const updated = await lockedUpdateApproval<{
       id: string
@@ -538,7 +544,7 @@ async function denyFlow(args: DecideArgs, row: ApprovalRow): Promise<DecideResul
         ? drizzleSql`status = 'denied', decided_by = ${args.actor.userId}, decided_at = now(), reason = ${reason},
                      approving_started_at = NULL,
                      metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{deniedWhileWedged}', to_jsonb(now()))`
-        : drizzleSql`status = 'denied', decided_by = ${args.actor.userId}, decided_at = now(), reason = ${reason}`,
+        : drizzleSql`status = 'denied', decided_by = ${args.actor.userId}, decided_at = now(), reason = ${reason}${forSql}`,
       returning: drizzleSql`id, status, decided_by, decided_at, reason, originating_thread_id, tool_name`,
     })
     if (!updated) {
@@ -587,6 +593,63 @@ async function denyFlow(args: DecideArgs, row: ApprovalRow): Promise<DecideResul
     decidedBy: result.decided_by,
     decidedAt: new Date(result.decided_at).toISOString(),
     reason: result.reason,
+  }
+}
+
+/** Who a decision was taken for, when the decider is not the person the row is for. */
+type DecidedFor =
+  | { userId: string; as: "next_in_line"; awayUntil: string | null }
+  | { userId: string; as: "also_could" }
+
+/**
+ * The audit of a decision taken for someone else: the stand-in of a person away decides as
+ * their next in line, any other decider as someone who could also approve it. The person the
+ * row is for, an owner-routed row and a row for the usual deciders record nothing. A route
+ * that cannot be read records nothing: the decision itself never waits on it.
+ */
+async function readDecidedFor(args: DecideArgs, row: ApprovalRow): Promise<DecidedFor | null> {
+  try {
+    const route = await withRlsContext(args.actor, async (tx) => {
+      const [current] = extractRows<{ route_person_id: string | null }>(
+        await tx.execute(
+          drizzleSql`SELECT route_person_id FROM ${K}.approval_requests WHERE id = ${row.id}`,
+        ),
+      )
+      const routes = await readApprovalRoutes(tx, args.orgId, [
+        { ...row, route_person_id: current?.route_person_id ?? null },
+      ])
+      return routes.route(row.id)
+    })
+    if (route.to !== "person" || route.userId === args.actor.userId) return null
+    if (route.standIn === args.actor.userId) {
+      return { userId: route.userId, as: "next_in_line", awayUntil: route.awayUntil }
+    }
+    return { userId: route.userId, as: "also_could" }
+  } catch (err) {
+    log.warn(
+      { err, requestId: row.id },
+      "could not read whose the request was; no decided-for audit",
+    )
+    return null
+  }
+}
+
+/** Stored on the row this decider claimed, and only while the claim is still theirs. */
+async function recordDecidedFor(
+  args: DecideArgs,
+  requestId: string,
+  decidedFor: DecidedFor,
+): Promise<void> {
+  try {
+    await withPrivilegedDb(args.orgId, "approval-decided-for", (tx) =>
+      tx.execute(drizzleSql`
+        UPDATE ${K}.approval_requests
+        SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{decidedFor}',
+                                 ${JSON.stringify(decidedFor)}::jsonb, true)
+        WHERE id = ${requestId} AND decided_by = ${args.actor.userId}::uuid`),
+    )
+  } catch (err) {
+    log.warn({ err, requestId }, "could not record whose the decision was taken for")
   }
 }
 
@@ -682,6 +745,9 @@ async function approveFlow(args: DecideArgs, row: ApprovalRow): Promise<DecideRe
     }
   }
 
+  // Whose this row was when the decider chose, read before the claim moves it on.
+  const decidedFor = await readDecidedFor(args, row)
+
   // A bundle's later steps run on this same decision: bind each to the version the decider saw.
   await bindDeferredSteps(args, row)
 
@@ -724,6 +790,10 @@ async function approveFlow(args: DecideArgs, row: ApprovalRow): Promise<DecideRe
       details:
         "The server is restarting. This approval was not executed and is still pending -- retry shortly.",
     })
+  }
+
+  if (outcome.kind !== "already_claimed" && decidedFor) {
+    await recordDecidedFor(args, row.id, decidedFor)
   }
 
   if (outcome.kind === "already_claimed") {

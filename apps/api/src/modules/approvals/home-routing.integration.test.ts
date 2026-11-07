@@ -21,6 +21,8 @@ import {
   computeApprovalAttentionItems,
   computeApprovalBadgeItems,
 } from "~/modules/approvals/attention"
+import { ApprovalDecisionError, decideApproval } from "~/modules/approvals/decide"
+import { updateItemRoutePerson } from "~/modules/approvals/route-world"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
@@ -59,6 +61,7 @@ interface RowSpec {
   bundlePosition?: number | null
   title: string
   routePersonId?: string | null
+  links?: unknown[]
 }
 
 export async function insertRow(spec: RowSpec): Promise<string> {
@@ -74,7 +77,8 @@ export async function insertRow(spec: RowSpec): Promise<string> {
       ${spec.tool ?? "projects:createTask"}, '{}'::jsonb,
       ${JSON.stringify({ title: spec.title })}::jsonb, now() + INTERVAL '3 days',
       ${spec.notify}::uuid[], ${spec.requestedBy}::uuid, ${spec.status ?? "pending"},
-      ${JSON.stringify({ title: spec.title })}::jsonb, ${JSON.stringify(spec.metadata ?? {})}::jsonb,
+      ${JSON.stringify({ title: spec.title, ...(spec.links ? { links: spec.links } : {}) })}::jsonb,
+      ${JSON.stringify(spec.metadata ?? {})}::jsonb,
       ${spec.resourceOwner ?? null}, ${spec.bundleId === "self" ? id : (spec.bundleId ?? null)},
       ${spec.bundlePosition ?? null},
       ${wedged ? sql`now() - INTERVAL '2 hours'` : null},
@@ -153,7 +157,7 @@ describe("home routing: who a pending approval is for", () => {
   beforeAll(async () => {
     await acquireTestLock()
     ORG = (await createTestOrg()).id
-    for (const name of ["ines", "tom", "sara", "owner"]) {
+    for (const name of ["ines", "tom", "sara", "owner", "lea"]) {
       people[name] = (await minimal.person(ORG, { name: `Fixture ${name}` })).id
     }
     for (const name of ["ines", "tom", "sara", "owner"]) {
@@ -219,5 +223,271 @@ describe("home routing: who a pending approval is for", () => {
     }
     expect(existsSync(SNAPSHOT_PATH)).toBe(true)
     expect(world).toEqual(JSON.parse(readFileSync(SNAPSHOT_PATH, "utf8")))
+  })
+
+  /** The row as this viewer's feed has it, or null when it is not in their feed. */
+  async function placed(viewer: string, rowId: string) {
+    const item = (await feedOf(people[viewer] as string)).find((i) => i.entityId === rowId)
+    if (!item) return null
+    const meta = item.metadata as Record<string, unknown>
+    return {
+      placement: meta.placement,
+      route: meta.route as Record<string, unknown>,
+      peerSelfApprovable: meta.peerSelfApprovable,
+      item,
+    }
+  }
+
+  /** What this row adds to the viewer's badge, through the badge's own read. */
+  async function badgeFrom(viewer: string, rowId: string): Promise<number> {
+    const items = (await badgeOf(people[viewer] as string)).filter((i) => i.entityId === rowId)
+    return countBadge({
+      threads: [],
+      items,
+      viewer: { userId: people[viewer] as string, canGrantAccess: false },
+    })
+  }
+
+  async function away(userId: string, nextInLineId: string | null): Promise<string> {
+    const [r] = (await sql`
+      INSERT INTO kernel.away_ranges (org_id, user_id, starts_on, ends_on, next_in_line_id, source)
+      VALUES (${ORG}::uuid, ${userId}::uuid, current_date - 1, current_date + 2,
+              ${nextInLineId}, 'said')
+      RETURNING id`) as Array<{ id: string }>
+    return (r as { id: string }).id
+  }
+
+  async function requestColumns(): Promise<unknown[]> {
+    return [
+      ...(await sql`SELECT * FROM kernel.approval_requests WHERE org_id = ${ORG} ORDER BY id`),
+    ]
+  }
+
+  const deciders = () => [people.ines, people.tom, people.sara] as string[]
+  const ticketLink = (id: string) => [
+    { label: "Ticket", app: "tickets", entityType: "ticket", entityId: id },
+  ]
+
+  it("a row with a person on the item is theirs; the other deciders have it as for someone else", async () => {
+    const id = await insertRow({
+      requestedBy: people.ines as string,
+      notify: deciders(),
+      metadata: { originRoutineId: randomUUID() },
+      routePersonId: people.sara as string,
+      title: "On the item",
+    })
+    const sara = await placed("sara", id)
+    expect(sara?.placement).toBe("mine")
+    expect(sara?.route).toMatchObject({ to: "person", userId: people.sara, why: "on_item" })
+    for (const other of ["ines", "tom"]) {
+      const p = await placed(other, id)
+      expect(p?.placement).toBe("others")
+      // A client that reads the peer flag alone folds it too.
+      expect(p?.peerSelfApprovable).toBe(true)
+    }
+    expect(await badgeFrom("sara", id)).toBe(1)
+    expect(await badgeFrom("ines", id)).toBe(0)
+  })
+
+  it("a request its requester could approve is theirs, asked, and for someone else in the others' feeds", async () => {
+    const tom = await placed("tom", rows.peer as string)
+    expect(tom?.route).toMatchObject({ to: "person", userId: people.tom, why: "asked" })
+    expect(tom?.placement).toBe("mine")
+    expect((await placed("ines", rows.peer as string))?.placement).toBe("others")
+  })
+
+  it("reassigning the item moves the row on the next read, and leaves other items' rows alone", async () => {
+    const ticket = randomUUID()
+    const id = await insertRow({
+      requestedBy: people.ines as string,
+      notify: deciders(),
+      metadata: { originRoutineId: randomUUID() },
+      routePersonId: people.sara as string,
+      links: ticketLink(ticket),
+      title: "Reassigned",
+    })
+    const untouched = await insertRow({
+      requestedBy: people.ines as string,
+      notify: deciders(),
+      metadata: { originRoutineId: randomUUID() },
+      routePersonId: people.sara as string,
+      links: ticketLink(randomUUID()),
+      title: "Other ticket",
+    })
+    expect(
+      await updateItemRoutePerson({
+        orgId: ORG,
+        app: "tickets",
+        entityType: "ticket",
+        entityId: ticket,
+        personId: people.tom as string,
+      }),
+    ).toBe(1)
+    expect((await placed("tom", id))?.placement).toBe("mine")
+    expect((await placed("sara", id))?.placement).toBe("others")
+    expect((await placed("sara", untouched))?.placement).toBe("mine")
+  })
+
+  it("going away rewrites no row; the next in line stands in, counted in their badge; ending it restores every placement", async () => {
+    const id = await insertRow({
+      requestedBy: people.ines as string,
+      notify: deciders(),
+      metadata: { originRoutineId: randomUUID() },
+      routePersonId: people.sara as string,
+      title: "Away on the item",
+    })
+    const before = await requestColumns()
+    const range = await away(people.sara as string, people.tom as string)
+    try {
+      expect(await requestColumns()).toEqual(before)
+      const tom = await placed("tom", id)
+      expect(tom?.placement).toBe("standing_in")
+      expect(tom?.route).toMatchObject({ userId: people.sara, standIn: people.tom })
+      expect(typeof tom?.route.awayUntil).toBe("string")
+      expect(await badgeFrom("tom", id)).toBe(1)
+      expect((await placed("ines", id))?.placement).toBe("others")
+      // The person it is for can still act while away.
+      expect((await placed("sara", id))?.placement).toBe("mine")
+    } finally {
+      await sql`UPDATE kernel.away_ranges SET ended_early_on = current_date - 1 WHERE id = ${range}`
+    }
+    expect((await placed("tom", id))?.placement).toBe("others")
+    expect((await placed("sara", id))?.placement).toBe("mine")
+    expect(await requestColumns()).toEqual(before)
+    await sql`DELETE FROM kernel.away_ranges WHERE id = ${range}`
+  })
+
+  it("a range with no next in line uses the person's standing one, read for a colleague under row security", async () => {
+    const id = await insertRow({
+      requestedBy: people.ines as string,
+      notify: deciders(),
+      metadata: { originRoutineId: randomUUID() },
+      routePersonId: people.sara as string,
+      title: "Standing next in line",
+    })
+    await sql`
+      INSERT INTO kernel.user_preferences (user_id, next_in_line_id) VALUES (${people.sara}, ${people.tom})
+      ON CONFLICT (user_id) DO UPDATE SET next_in_line_id = EXCLUDED.next_in_line_id`
+    const range = await away(people.sara as string, null)
+    try {
+      expect((await placed("tom", id))?.placement).toBe("standing_in")
+    } finally {
+      await sql`DELETE FROM kernel.away_ranges WHERE id = ${range}`
+      await sql`UPDATE kernel.user_preferences SET next_in_line_id = NULL WHERE user_id = ${people.sara}`
+    }
+  })
+
+  it("a next in line without the deciding scope gets nothing: no row, decide not found, and the others hold it naming them blocked", async () => {
+    const id = await insertRow({
+      requestedBy: people.ines as string,
+      notify: deciders(),
+      metadata: { originRoutineId: randomUUID() },
+      routePersonId: people.sara as string,
+      title: "Blocked stand-in",
+    })
+    const range = await away(people.sara as string, people.lea as string)
+    try {
+      expect(await placed("lea", id)).toBeNull()
+      const refused = await decideApproval({
+        orgId: ORG,
+        requestId: id,
+        actor: await ctxOf(people.lea as string),
+        decision: "deny",
+      }).then(
+        () => null,
+        (err: unknown) => err,
+      )
+      expect(refused).toBeInstanceOf(ApprovalDecisionError)
+      // Refused as any row they cannot read is: not found, which says nothing of the row.
+      expect((refused as ApprovalDecisionError).status).toBe(404)
+      for (const other of ["ines", "tom"]) {
+        const p = await placed(other, id)
+        expect(p?.placement).toBe("mine")
+        expect(p?.route).toMatchObject({ standIn: null, blockedStandIn: people.lea })
+      }
+    } finally {
+      await sql`DELETE FROM kernel.away_ranges WHERE id = ${range}`
+    }
+  })
+
+  it("granted the scope after the row was proposed, a next in line is still not notified: no row, decide not found", async () => {
+    const id = await insertRow({
+      requestedBy: people.ines as string,
+      notify: deciders(),
+      metadata: { originRoutineId: randomUUID() },
+      routePersonId: people.sara as string,
+      title: "Granted later",
+    })
+    await minimal.grantScope(people.lea as string, "projects:approve")
+    const range = await away(people.sara as string, people.lea as string)
+    try {
+      expect(await placed("lea", id)).toBeNull()
+      const refused = await decideApproval({
+        orgId: ORG,
+        requestId: id,
+        actor: await ctxOf(people.lea as string),
+        decision: "deny",
+      }).then(
+        () => null,
+        (err: unknown) => err,
+      )
+      // Refused as any row they cannot read is: not found, which says nothing of the row.
+      expect((refused as ApprovalDecisionError).status).toBe(404)
+    } finally {
+      await sql`DELETE FROM kernel.away_ranges WHERE id = ${range}`
+    }
+  })
+
+  it("an owner-routed row with its owner away reaches nobody else: not the next in line, not in their badge", async () => {
+    const range = await away(people.owner as string, people.tom as string)
+    try {
+      expect(await placed("tom", rows.owner as string)).toBeNull()
+      expect(await badgeFrom("tom", rows.owner as string)).toBe(0)
+      const owner = await placed("owner", rows.owner as string)
+      expect(owner?.route).toEqual({ to: "owner", userId: people.owner })
+      expect(owner?.placement).toBe("mine")
+    } finally {
+      await sql`DELETE FROM kernel.away_ranges WHERE id = ${range}`
+    }
+  })
+
+  it("a decision records whose it was taken for: next in line, also could, and nothing by the person it is for", async () => {
+    const make = (title: string) =>
+      insertRow({
+        requestedBy: people.ines as string,
+        notify: deciders(),
+        metadata: { originRoutineId: randomUUID() },
+        routePersonId: people.sara as string,
+        title,
+      })
+    const byStandIn = await make("Decided by the stand-in")
+    const byOther = await make("Decided by another")
+    const byOwn = await make("Decided by its person")
+    const decide = async (viewer: string, id: string) =>
+      decideApproval({
+        orgId: ORG,
+        requestId: id,
+        actor: await ctxOf(people[viewer] as string),
+        decision: "deny",
+      })
+    const decidedFor = async (id: string) =>
+      (
+        (await sql`SELECT metadata FROM kernel.approval_requests WHERE id = ${id}`)[0] as {
+          metadata: Record<string, unknown>
+        }
+      ).metadata.decidedFor
+    const range = await away(people.sara as string, people.tom as string)
+    try {
+      await decide("tom", byStandIn)
+      const audit = (await decidedFor(byStandIn)) as Record<string, unknown>
+      expect(audit).toMatchObject({ userId: people.sara, as: "next_in_line" })
+      expect(typeof audit.awayUntil).toBe("string")
+    } finally {
+      await sql`DELETE FROM kernel.away_ranges WHERE id = ${range}`
+    }
+    await decide("ines", byOther)
+    expect(await decidedFor(byOther)).toEqual({ userId: people.sara, as: "also_could" })
+    await decide("sara", byOwn)
+    expect(await decidedFor(byOwn)).toBeUndefined()
   })
 })

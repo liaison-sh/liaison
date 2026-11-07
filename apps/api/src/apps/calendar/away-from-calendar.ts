@@ -20,8 +20,8 @@ import {
 import { sql } from "drizzle-orm"
 import type { GoogleEventItem } from "~/apps/calendar/sync"
 import type { RlsClient } from "~/db"
-import { extractRows } from "~/db"
-import { withSystemDb } from "~/db/privileged"
+import { extractRows, type PrivilegedDb } from "~/db"
+import { privilegedFrom, withSystemDb } from "~/db/privileged"
 import { type ActorContext, withRlsContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
 import { appsLogger as log } from "~/lib/logger"
@@ -45,7 +45,11 @@ const LEAVE_WORDS =
 /** Google event types that never say someone is away. */
 const NEVER_AWAY = new Set(["focusTime", "workingLocation", "birthday", "fromGmail"])
 
-type DbHandle = Pick<RlsClient, "execute">
+type Reader = Pick<RlsClient, "execute">
+type DbHandle = Reader & {
+  /** A savepoint on the caller's transaction (RlsClient and PrivilegedDb alike). */
+  transaction: <T>(fn: (tx: Reader) => Promise<T>) => Promise<T>
+}
 
 function fold(text: string): string {
   return text
@@ -159,7 +163,7 @@ function isMaster(item: GoogleEventItem): boolean {
  * their own personal connection (its id is the account's address). Otherwise nobody.
  */
 async function ownerOfPrimary(
-  db: DbHandle,
+  db: Reader,
   orgId: string,
   calendarId: string,
 ): Promise<string | null> {
@@ -182,7 +186,7 @@ async function ownerOfPrimary(
 
 /** The stored exceptions of a series: their own rows decide those occurrences. */
 async function exceptionIds(
-  db: DbHandle,
+  db: Reader,
   orgId: string,
   calendarId: string,
   masterId: string,
@@ -200,6 +204,10 @@ async function exceptionIds(
  * Reads what `items` (one sync's events of one calendar) say about the person's away days and
  * records it. Runs after the events are stored; never fails the sync: a failure is logged and
  * the next sync or the daily refresh reads the events again.
+ *
+ * The away rows are written on the sync's own transaction, in a savepoint (privilegedFrom:
+ * as it is when privileged, elevated in place when its login may, its own transaction
+ * otherwise), so a sync holding a privileged slot never asks for a second one.
  */
 export async function applyAwayFromCalendar(
   db: DbHandle,
@@ -220,62 +228,79 @@ export async function applyAwayFromCalendar(
   try {
     const personId = await ownerOfPrimary(db, orgId, calendarId)
     if (!personId) return null
-    const person = await readCalendarAwayPerson(orgId, personId)
-    if (!person) return null
-    const effects: CalendarAwayEffect[] = []
-    const seriesRefs: Array<{ prefix: string; keep: Set<string>; cancelled?: boolean }> = []
-    const windowStart = new Date(now.getTime() - 86_400_000)
-    const windowEnd = new Date(now.getTime() + CALENDAR_AWAY_HORIZON_DAYS * 86_400_000)
-    // Series first, then single events and exceptions, so an exception has the last word.
-    const ordered = [...items.filter(isMaster), ...items.filter((i) => !isMaster(i))]
-    const inBatch = new Set(items.map((i) => i.id))
-    for (const item of ordered) {
-      if (!isMaster(item)) {
-        effects.push(classifyCalendarItem(item, calendarId, person))
-        continue
-      }
-      const prefix = `${calendarId}:${item.id}_`
-      if (item.status === "cancelled") {
-        seriesRefs.push({ prefix, keep: new Set(), cancelled: true })
-        continue
-      }
-      const allDay = Boolean(item.start?.date && !item.start?.dateTime)
-      const { occurrences } = expandRecurrence(
-        { start: item.start, end: item.end, recurrence: item.recurrence },
-        windowStart,
-        windowEnd,
-      )
-      const exceptions = await exceptionIds(db, orgId, calendarId, item.id)
-      const keep = new Set<string>()
-      for (const occ of occurrences) {
-        const id = instanceId(item.id, occ.start, allDay)
-        keep.add(`${calendarId}:${id}`)
-        if (exceptions.has(id) || inBatch.has(id)) continue
-        const point = (at: Date): CalendarPointLike =>
-          allDay ? { date: utcDateString(at) } : { dateTime: at.toISOString() }
-        const { recurrence: _r, ...single } = item
-        effects.push(
-          classifyCalendarItem(
-            {
-              ...single,
-              id,
-              start: point(occ.start),
-              end: point(occ.end),
-              recurringEventId: item.id,
-            } as GoogleEventItem,
-            calendarId,
-            person,
-          ),
-        )
-      }
-      for (const id of exceptions) keep.add(`${calendarId}:${id}`)
-      seriesRefs.push({ prefix, keep })
-    }
-    return await applyCalendarAwayEffects(orgId, personId, effects, { seriesRefs, now })
+    return await db.transaction((savepoint) =>
+      privilegedFrom(savepoint, orgId, "away-calendar-apply", (ptx) =>
+        applyForPerson(savepoint, ptx, orgId, calendarId, personId, items, now),
+      ),
+    )
   } catch (err) {
     log.warn({ err, orgId, calendarId }, "could not read away days from the calendar")
     return null
   }
+}
+
+/** The effects of `items` on `personId`'s calendar rows, read and written on `ptx`. */
+async function applyForPerson(
+  db: Reader,
+  ptx: PrivilegedDb,
+  orgId: string,
+  calendarId: string,
+  personId: string,
+  items: readonly GoogleEventItem[],
+  now: Date,
+): Promise<CalendarAwayOutcome | null> {
+  const person = await readCalendarAwayPerson(ptx, orgId, personId)
+  if (!person) return null
+  const effects: CalendarAwayEffect[] = []
+  const seriesRefs: Array<{ prefix: string; keep: Set<string>; cancelled?: boolean }> = []
+  const windowStart = new Date(now.getTime() - 86_400_000)
+  const windowEnd = new Date(now.getTime() + CALENDAR_AWAY_HORIZON_DAYS * 86_400_000)
+  // Series first, then single events and exceptions, so an exception has the last word.
+  const ordered = [...items.filter(isMaster), ...items.filter((i) => !isMaster(i))]
+  const inBatch = new Set(items.map((i) => i.id))
+  for (const item of ordered) {
+    if (!isMaster(item)) {
+      effects.push(classifyCalendarItem(item, calendarId, person))
+      continue
+    }
+    const prefix = `${calendarId}:${item.id}_`
+    if (item.status === "cancelled") {
+      seriesRefs.push({ prefix, keep: new Set(), cancelled: true })
+      continue
+    }
+    const allDay = Boolean(item.start?.date && !item.start?.dateTime)
+    const { occurrences } = expandRecurrence(
+      { start: item.start, end: item.end, recurrence: item.recurrence },
+      windowStart,
+      windowEnd,
+    )
+    const exceptions = await exceptionIds(db, orgId, calendarId, item.id)
+    const keep = new Set<string>()
+    for (const occ of occurrences) {
+      const id = instanceId(item.id, occ.start, allDay)
+      keep.add(`${calendarId}:${id}`)
+      if (exceptions.has(id) || inBatch.has(id)) continue
+      const point = (at: Date): CalendarPointLike =>
+        allDay ? { date: utcDateString(at) } : { dateTime: at.toISOString() }
+      const { recurrence: _r, ...single } = item
+      effects.push(
+        classifyCalendarItem(
+          {
+            ...single,
+            id,
+            start: point(occ.start),
+            end: point(occ.end),
+            recurringEventId: item.id,
+          } as GoogleEventItem,
+          calendarId,
+          person,
+        ),
+      )
+    }
+    for (const id of exceptions) keep.add(`${calendarId}:${id}`)
+    seriesRefs.push({ prefix, keep })
+  }
+  return await applyCalendarAwayEffects(ptx, orgId, personId, effects, { seriesRefs, now })
 }
 
 interface StoredEventRow {

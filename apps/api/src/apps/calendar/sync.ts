@@ -309,9 +309,9 @@ async function purgeCalendarAccount(
       SET sync_status = 'disconnected', disconnected_at = COALESCE(disconnected_at, now())
       WHERE org_id = ${orgId}::uuid AND id = ${accountId}::uuid
     `)
+    // The away days its calendars made go with it, on this transaction; what the person said stays.
+    await deleteCalendarAwayRanges(tx, orgId, ids)
   })
-  // The away days its calendars made go with it; what the person said stays.
-  await deleteCalendarAwayRanges(orgId, ids)
 }
 
 /**

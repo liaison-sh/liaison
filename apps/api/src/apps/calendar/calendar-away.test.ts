@@ -14,7 +14,7 @@ import {
   runCalendarImport,
 } from "~/apps/calendar/sync"
 import { sql } from "~/db"
-import { withSystemDb } from "~/db/privileged"
+import { PrivilegedDbTestAccess, withSystemDb } from "~/db/privileged"
 import { wholeWorkingDays } from "~/modules/attention/work-hours"
 import { answerCalendarAway, dayLabel, endAwayRange, readAwayToday } from "~/modules/users/away"
 import { acquireAppSchemaJsLock, releaseAppSchemaJsLock } from "~/tests/helpers/app-schema-lock"
@@ -568,6 +568,61 @@ describe("calendar reading: follows its event", () => {
       }),
     )
     expect((await ranges(p.userId)).map((r) => r.source)).toEqual(["said"])
+  })
+})
+
+describe("calendar reading: one privileged slot", () => {
+  const mon = futureMonday()
+  const fri = addDays(mon, 4)
+
+  /** The privileged acquisitions made while another was held, during `run`. */
+  async function nestedDuring(run: () => Promise<unknown>): Promise<string[]> {
+    PrivilegedDbTestAccess.record()
+    try {
+      await run()
+    } catch (err) {
+      PrivilegedDbTestAccess.recorded()
+      throw err
+    }
+    return PrivilegedDbTestAccess.recorded()
+      .filter((a) => a.nested)
+      .map((a) => a.reason)
+  }
+
+  it("a sync on a privileged transaction records its away rows and Home lines without a second slot", async () => {
+    const p = await person()
+    expect(
+      await nestedDuring(() =>
+        syncInitial(p, [
+          ooo("s1", `${mon} 09:00`, `${fri} 18:00`),
+          allDay("s2", addDays(mon, 7), addDays(mon, 8), "PTO"),
+        ]),
+      ),
+    ).toEqual([])
+    expect((await ranges(p.userId)).map((r) => r.status)).toEqual(["active", "asked"])
+    expect((await lines(p.userId)).length).toBe(2)
+    expect(
+      await nestedDuring(() =>
+        syncChange(p, [{ id: "s1", status: "cancelled" } as GoogleEventItem]),
+      ),
+    ).toEqual([])
+    expect((await ranges(p.userId)).map((r) => r.status)).toEqual(["asked"])
+  })
+
+  it("disconnecting on a privileged transaction deletes the calendar rows without a second slot", async () => {
+    const p = await person()
+    await syncInitial(p, [ooo("d1", `${mon} 09:00`, `${fri} 18:00`)])
+    expect(
+      await nestedDuring(() =>
+        withSystemDb("calendar-away-disconnect", (tx) =>
+          onAccountDisconnected(tx as any, orgId, {
+            orgId,
+            data: { id: p.connectionId, appName: "calendar" },
+          }),
+        ),
+      ),
+    ).toEqual([])
+    expect(await ranges(p.userId)).toEqual([])
   })
 })
 

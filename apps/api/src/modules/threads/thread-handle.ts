@@ -7,7 +7,7 @@
 // no name of their own: untitled rooms, which the UI names by their seats.
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type PrivilegedDb, type RlsTx } from "~/db"
-import { withPrivilegedDb } from "~/db/privileged"
+import { privilegedFrom, withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { nextHandle } from "~/lib/handle"
 
@@ -57,15 +57,24 @@ function escapeRe(value: string): string {
  * only the rooms they sit in, so an RLS read would happily hand out a handle
  * another team already uses and the unique index would then reject the insert.
  * Handles only; no title, no membership, nothing else leaves the query.
+ * Read on the caller's own transaction when it is privileged or may elevate
+ * (privilegedFrom), so a caller holding a privileged slot never takes a second;
+ * without one (null), in its own privileged transaction.
  */
-async function takenHandles(orgId: string, base: string): Promise<Set<string>> {
+async function takenHandles(
+  tx: RlsTx | PrivilegedDb | null,
+  orgId: string,
+  base: string,
+): Promise<Set<string>> {
   const k = drizzleSql.raw(schemaRef("kernel"))
-  const rows = (await withPrivilegedDb(orgId, "thread-handle-collisions", (tx) =>
-    tx.execute(drizzleSql`
+  const read = (ptx: PrivilegedDb) =>
+    ptx.execute(drizzleSql`
       SELECT handle FROM ${k}.threads
       WHERE org_id = ${orgId}::uuid AND (handle = ${base} OR handle LIKE ${`${base}-%`})
-    `),
-  )) as unknown
+    `)
+  const rows = (await (tx
+    ? privilegedFrom(tx, orgId, "thread-handle-collisions", read)
+    : withPrivilegedDb(orgId, "thread-handle-collisions", read))) as unknown
   return new Set(extractRows<{ handle: string }>(rows).map((r) => r.handle))
 }
 
@@ -91,12 +100,12 @@ export async function allocateThreadHandle(
 ): Promise<string> {
   const base = params.title ? slugifyTitle(params.title) : ""
   if (base && !isAutoThreadHandle(base)) {
-    return firstFree(base, await takenHandles(params.orgId, base))
+    return firstFree(base, await takenHandles(tx, params.orgId, base))
   }
   const seq = `${schemaRef("kernel")}.thread_handle_seq`
   for (let attempt = 0; attempt < 100; attempt++) {
     const candidate = await nextHandle(tx, seq, "thread")
-    const taken = await takenHandles(params.orgId, candidate)
+    const taken = await takenHandles(tx, params.orgId, candidate)
     if (!taken.has(candidate)) return candidate
   }
   throw new Error("No free sequence handle")
@@ -117,7 +126,7 @@ export async function handleForRetitle(params: {
   const base = params.nextTitle ? slugifyTitle(params.nextTitle) : ""
   if (!base || isAutoThreadHandle(base)) return null
   if (params.currentHandle === base) return null
-  const taken = await takenHandles(params.orgId, base)
+  const taken = await takenHandles(null, params.orgId, base)
   taken.delete(params.currentHandle)
   return firstFree(base, taken)
 }

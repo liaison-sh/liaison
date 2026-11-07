@@ -15,8 +15,8 @@ import {
   personLocalDate,
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
-import { extractRows, type PrivilegedDb } from "~/db"
-import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
+import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
+import { privilegedFrom, withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { appsLogger as log } from "~/lib/logger"
 import { readPeopleDecide } from "~/modules/approvals/route-world"
@@ -1172,30 +1172,32 @@ export interface CalendarAwayPerson {
   workDays: number[]
 }
 
-/** The person whose own calendar is read, with what "a whole working day" means for them. */
+/**
+ * The person whose own calendar is read, with what "a whole working day" means for them. Runs
+ * on the caller's privileged transaction (the calendar sync's), never a slot of its own.
+ */
 export async function readCalendarAwayPerson(
+  tx: PrivilegedDb,
   orgId: string,
   personId: string,
 ): Promise<CalendarAwayPerson | null> {
-  return withPrivilegedDb(orgId, "away-calendar-person", async (tx) => {
-    const person = (await readPeople(tx, orgId, [personId])).get(personId)
-    if (!person || person.status !== "active" || person.user_type === "external") return null
-    const prefs = extractRows<{ s: string; e: string; days: number[]; tz: string }>(
-      await tx.execute(drizzleSql`
-        SELECT to_char(work_hours_start, 'HH24:MI') AS s, to_char(work_hours_end, 'HH24:MI') AS e,
-          work_days AS days, timezone AS tz
-        FROM ${K}.user_preferences WHERE user_id = ${personId}::uuid`),
-    )[0]
-    const tz = person.timezone ?? (await orgTimezone(tx, orgId)) ?? prefs?.tz ?? "UTC"
-    return {
-      id: person.id,
-      name: person.name,
-      timezone: tz,
-      workHoursStart: prefs?.s ?? "09:00",
-      workHoursEnd: prefs?.e ?? "17:00",
-      workDays: prefs?.days ?? [1, 2, 3, 4, 5],
-    }
-  })
+  const person = (await readPeople(tx, orgId, [personId])).get(personId)
+  if (!person || person.status !== "active" || person.user_type === "external") return null
+  const prefs = extractRows<{ s: string; e: string; days: number[]; tz: string }>(
+    await tx.execute(drizzleSql`
+      SELECT to_char(work_hours_start, 'HH24:MI') AS s, to_char(work_hours_end, 'HH24:MI') AS e,
+        work_days AS days, timezone AS tz
+      FROM ${K}.user_preferences WHERE user_id = ${personId}::uuid`),
+  )[0]
+  const tz = person.timezone ?? (await orgTimezone(tx, orgId)) ?? prefs?.tz ?? "UTC"
+  return {
+    id: person.id,
+    name: person.name,
+    timezone: tz,
+    workHoursStart: prefs?.s ?? "09:00",
+    workHoursEnd: prefs?.e ?? "17:00",
+    workDays: prefs?.days ?? [1, 2, 3, 4, 5],
+  }
 }
 
 export interface CalendarAwayOutcome {
@@ -1227,8 +1229,13 @@ function spanDays(startsOn: string, endsOn: string): number {
  *
  * `seriesRefs`: for a recurring series read whole, the refs of its occurrences in the window;
  * the series' other rows that have not started are removed (all of them when it is cancelled).
+ *
+ * Runs on the caller's privileged transaction, Home lines included (each in a savepoint, so a
+ * line that cannot be queued leaves the rows standing): one slot for the whole sync, never a
+ * second taken while the first is held.
  */
 export async function applyCalendarAwayEffects(
+  tx: PrivilegedDb,
   orgId: string,
   personId: string,
   effects: readonly CalendarAwayEffect[],
@@ -1249,7 +1256,7 @@ export async function applyCalendarAwayEffects(
   }> = []
   let personName = ""
   let nextName: string | null = null
-  await withPrivilegedDb(orgId, "away-calendar-apply", async (tx) => {
+  await (async () => {
     const person = (await readPeople(tx, orgId, [personId])).get(personId)
     if (!person || person.status !== "active" || person.user_type === "external") return
     personName = person.name
@@ -1404,8 +1411,9 @@ export async function applyCalendarAwayEffects(
         : undefined
       nextName = next && next.status === "active" ? next.name : null
     }
-  })
-  for (const line of lines) await announceCalendarLine(orgId, personId, personName, nextName, line)
+  })()
+  for (const line of lines)
+    await announceCalendarLine(tx, orgId, personId, personName, nextName, line)
   return out
 }
 
@@ -1415,6 +1423,7 @@ export async function applyCalendarAwayEffects(
  * own calendar when it shows the row, so the title is stored nowhere here.
  */
 async function announceCalendarLine(
+  db: PrivilegedDb,
   orgId: string,
   personId: string,
   _personName: string,
@@ -1438,7 +1447,7 @@ async function announceCalendarLine(
         : `Is this calendar event time off, ${line.said}? It counts for nothing until you say Yes.`
   const calendarId = line.eventRef.slice(0, line.eventRef.indexOf(":"))
   try {
-    await withPrivilegedDb(orgId, "away-calendar-line", async (tx) => {
+    await db.transaction(async (tx) => {
       await tx.queueEvent({
         app: "kernel",
         entity: "agent_notification",
@@ -1516,13 +1525,18 @@ export async function answerCalendarAway(
   })
 }
 
-/** Disconnecting a calendar account deletes the rows its calendars made; said rows stay. */
+/**
+ * Disconnecting a calendar account deletes the rows its calendars made; said rows stay. Runs on
+ * the purge's own transaction when it is privileged or may elevate (privilegedFrom), so the
+ * rows go with the account, in one commit, without a second privileged slot.
+ */
 export async function deleteCalendarAwayRanges(
+  db: Pick<RlsClient, "execute">,
   orgId: string,
   calendarIds: readonly string[],
 ): Promise<number> {
   if (calendarIds.length === 0) return 0
-  return withPrivilegedDb(orgId, "away-calendar-disconnect", async (tx) => {
+  return privilegedFrom(db, orgId, "away-calendar-disconnect", async (tx) => {
     const rows = extractRows<{ id: string }>(
       await tx.execute(drizzleSql`
         DELETE FROM ${K}.away_ranges

@@ -6,12 +6,14 @@ import {
   roleDimensionGrants,
   roleScopeGrants,
   roles,
+  routines,
   sessions,
   userDimensionGrants,
   userRoles,
   userScopeGrants,
   users,
 } from "~/db/schema/kernel"
+import { routineOwnerInactiveReason } from "~/modules/agent/routines/routine-alert"
 import { invalidateAuthCache } from "~/modules/auth/auth-state"
 import { revokeSessions } from "~/modules/auth/session-revocation"
 import { assertSeatRoom } from "~/modules/org/caps"
@@ -387,6 +389,23 @@ export async function deactivateUser(
   await removeAllPushDeliveryForUser(db, targetId)
   // Their away ranges go at once; a standing next in line naming them reads as absent.
   await deleteAwayRangesOf(db, orgId, targetId)
+  // Their routines act for nobody now: they read paused, with why, at once rather than at their
+  // next tick (which would pause them too, routine-worker.ts). Reactivating the owner lets the
+  // next tick run them again; a routine its owner switched off or paused stays as it was.
+  await db
+    .update(routines)
+    .set({
+      status: "paused_scope_mismatch",
+      lastRunError: routineOwnerInactiveReason("deactivated"),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(routines.orgId, orgId),
+        eq(routines.ownerUserId, targetId),
+        eq(routines.status, "active"),
+      ),
+    )
 
   // Credential revocation: the auth_version bump above is the durable backstop,
   // but every process caches auth state for 15s. Broadcast the invalidation so

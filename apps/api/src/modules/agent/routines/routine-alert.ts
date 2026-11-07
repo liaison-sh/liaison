@@ -42,6 +42,17 @@ interface QueueingTx {
   }) => Promise<unknown>
 }
 
+/**
+ * Why a routine whose owner's account is no longer active is paused: the reason the routine, its
+ * list row and its runs show. Shared by the deactivation itself and the routine's ticks.
+ */
+export function routineOwnerInactiveReason(ownerStatus: string): string {
+  return (
+    `Paused: its owner's account is ${ownerStatus}, so this routine would act for someone who no longer works here. ` +
+    "Reactivating the owner runs it again at its next tick; to keep it running without them, make someone else its owner."
+  )
+}
+
 /** The owner-facing sentence. The run row and the routine page carry the detail. */
 export function routineAlertSummary(name: string, status: RoutineAlertStatus): string {
   if (status === "failed") return `Routine "${name}" run failed`

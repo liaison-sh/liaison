@@ -410,20 +410,19 @@ describe("routine-worker — runRoutineTick lifecycle", () => {
     expect(after?.status).toBe("active")
   })
 
-  it("a tick on a routine paused for scopes records the skip with the pause's reason", async () => {
-    const r = await makeRoutine({ orgId, userId, status: "paused_scope_mismatch" })
-    await withPrivilegedDb(orgId, "rw-scope-paused-reason", (tx) =>
-      tx
-        .update(routinesTbl)
-        .set({ lastRunError: "Paused: the owner no longer holds tickets:tickets:read." })
-        .where(eq(routinesTbl.id, r.id)),
-    )
+  it("a tick on a routine paused for scopes its owner still lacks records the skip and stays paused", async () => {
+    const r = await makeRoutine({
+      orgId,
+      userId,
+      status: "paused_scope_mismatch",
+      scopes: ["tickets:tickets:read"],
+    })
     let invoked = 0
     const result = await runRoutineTick({
       orgId,
       routineId: r.id,
       scheduledAt: new Date().toISOString(),
-      loadOwnerScopes: async () => ["*"],
+      loadOwnerScopes: async () => [],
       agentInvoker: async () => {
         invoked++
         return { turnsAdded: 1 }
@@ -434,9 +433,148 @@ describe("routine-worker — runRoutineTick lifecycle", () => {
     const runs = await withPrivilegedDb(orgId, "rw-check-scope-paused-runs", (tx) =>
       tx.select().from(routineRuns).where(eq(routineRuns.routineId, r.id)),
     )
-    expect(runs.map((x) => [x.status, x.error])).toEqual([
-      ["skipped_scope_mismatch", "Paused: the owner no longer holds tickets:tickets:read."],
-    ])
+    expect(runs.map((x) => x.status)).toEqual(["skipped_scope_mismatch"])
+    expect(runs[0]?.error).toStartWith("Paused: the owner no longer holds tickets:tickets:read")
+    const [after] = await withPrivilegedDb(orgId, "rw-check-scope-still-paused", (tx) =>
+      tx.select().from(routinesTbl).where(eq(routinesTbl.id, r.id)),
+    )
+    expect(after?.status).toBe("paused_scope_mismatch")
+    expect(after?.lastRunError).toStartWith(
+      "Paused: the owner no longer holds tickets:tickets:read",
+    )
+  })
+
+  it("a routine paused for a scope resumes and runs at its next tick once its owner holds the scope again", async () => {
+    const r = await makeRoutine({
+      orgId,
+      userId,
+      scopes: ["tickets:tickets:read"],
+    })
+    let held: string[] = []
+    let invoked = 0
+    const tick = () =>
+      runRoutineTick({
+        orgId,
+        routineId: r.id,
+        scheduledAt: new Date().toISOString(),
+        loadOwnerScopes: async () => held,
+        checkCredits: async () => null,
+        agentInvoker: async () => {
+          invoked++
+          return { turnsAdded: 1 }
+        },
+      })
+    expect((await tick()).status).toBe("skipped_scope_mismatch")
+    held = ["tickets:tickets:read"]
+    expect((await tick()).status).toBe("succeeded")
+    expect(invoked).toBe(1)
+    const [after] = await withPrivilegedDb(orgId, "rw-check-scope-resumed", (tx) =>
+      tx.select().from(routinesTbl).where(eq(routinesTbl.id, r.id)),
+    )
+    expect(after?.status).toBe("active")
+  })
+
+  it("a routine the owner paused stays paused when the scope check passes", async () => {
+    const r = await makeRoutine({ orgId, userId, status: "paused_user" })
+    const result = await runRoutineTick({
+      orgId,
+      routineId: r.id,
+      scheduledAt: new Date().toISOString(),
+      loadOwnerScopes: async () => ["*"],
+      checkCredits: async () => null,
+    })
+    expect(result.status).toBe("no_run")
+    const [after] = await withPrivilegedDb(orgId, "rw-check-user-paused", (tx) =>
+      tx.select().from(routinesTbl).where(eq(routinesTbl.id, r.id)),
+    )
+    expect(after?.status).toBe("paused_user")
+  })
+
+  it("a routine whose owner was deactivated reads paused with why, does not run, and runs again once the owner is reactivated", async () => {
+    const { deactivateUser, reactivateUser } = await import("~/modules/users/service")
+    const owner = await withSystemDb("rw-owner-seed", async (db) => {
+      const [u] = await db
+        .insert(users)
+        .values({
+          orgId,
+          email: `rw-owner-${crypto.randomUUID()}@t.co`,
+          passwordHash: "x",
+          name: "Routine Owner",
+          status: "active",
+        })
+        .returning({ id: users.id })
+      return u.id
+    })
+    const r = await makeRoutine({ orgId, userId: owner, scopes: ["tickets:tickets:read"] })
+    const admin = { targetId: owner, actorId: userId, orgId, actorScopes: ["*"] }
+    await withPrivilegedDb(orgId, "rw-deactivate-owner", (tx) => deactivateUser(tx, admin))
+    const read = async () => {
+      const [row] = await withPrivilegedDb(orgId, "rw-check-owner-gone", (tx) =>
+        tx.select().from(routinesTbl).where(eq(routinesTbl.id, r.id)),
+      )
+      return row
+    }
+    expect((await read())?.status).toBe("paused_scope_mismatch")
+    expect((await read())?.lastRunError).toContain("owner's account is deactivated")
+
+    let invoked = 0
+    // The deactivated owner's roles still list the scope: the pause holds on the account alone.
+    const tick = () =>
+      runRoutineTick({
+        orgId,
+        routineId: r.id,
+        scheduledAt: new Date().toISOString(),
+        loadOwnerScopes: async () => ["tickets:tickets:read"],
+        checkCredits: async () => null,
+        agentInvoker: async () => {
+          invoked++
+          return { turnsAdded: 1 }
+        },
+      })
+    expect((await tick()).status).toBe("skipped_scope_mismatch")
+    expect(invoked).toBe(0)
+    expect((await read())?.status).toBe("paused_scope_mismatch")
+
+    await withPrivilegedDb(orgId, "rw-reactivate-owner", (tx) => reactivateUser(tx, admin))
+    expect((await tick()).status).toBe("succeeded")
+    expect(invoked).toBe(1)
+    expect((await read())?.status).toBe("active")
+  })
+
+  it("an active routine whose owner's account is no longer active pauses at its tick", async () => {
+    const owner = await withSystemDb("rw-owner-seed-2", async (db) => {
+      const [u] = await db
+        .insert(users)
+        .values({
+          orgId,
+          email: `rw-owner-${crypto.randomUUID()}@t.co`,
+          passwordHash: "x",
+          name: "Routine Owner",
+          status: "suspended",
+        })
+        .returning({ id: users.id })
+      return u.id
+    })
+    const r = await makeRoutine({ orgId, userId: owner })
+    let invoked = 0
+    const result = await runRoutineTick({
+      orgId,
+      routineId: r.id,
+      scheduledAt: new Date().toISOString(),
+      loadOwnerScopes: async () => ["*"],
+      checkCredits: async () => null,
+      agentInvoker: async () => {
+        invoked++
+        return { turnsAdded: 1 }
+      },
+    })
+    expect(result.status).toBe("skipped_scope_mismatch")
+    expect(invoked).toBe(0)
+    const [after] = await withPrivilegedDb(orgId, "rw-check-suspended-owner", (tx) =>
+      tx.select().from(routinesTbl).where(eq(routinesTbl.id, r.id)),
+    )
+    expect(after?.status).toBe("paused_scope_mismatch")
+    expect(after?.lastRunError).toContain("owner's account is suspended")
   })
 
   it("happy path queues a DURABLE routine:run_completed event on the outbox (B4, F2)", async () => {

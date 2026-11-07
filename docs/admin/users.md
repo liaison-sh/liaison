@@ -30,7 +30,7 @@ The roles themselves are defined in **Settings › Roles & access**. See [Set up
 1. In the users list, click **Deactivate** in the person's row.
 2. Confirm in the **Deactivate user** dialog.
 
-A deactivated user cannot sign in, and their open sessions end at once: the access tokens they hold are refused within seconds and their open real-time connections close. Their phones and browsers stop receiving push notifications. Nothing they own is deleted, except the days they had said they would be away (or that their own calendar showed), and you can reactivate them later.
+A deactivated user cannot sign in, and their open sessions end at once: the access tokens they hold are refused within seconds and their open real-time connections close. Their phones and browsers stop receiving push notifications. Their routines pause with the reason (**Paused: missing access**) and do not run while the account is deactivated; when you reactivate them, each routine runs again at its next scheduled run or event (see [Routines](../agents/routines.md#fix-a-paused-routine)). Nothing they own is deleted, except the days they had said they would be away (or that their own calendar showed), and you can reactivate them later.
 
 You cannot deactivate:
 

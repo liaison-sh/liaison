@@ -15,12 +15,14 @@
  *   - Heartbeat the lock every 5 min so long agent runs don't release early.
  *   - Load the routine; orphan → remove the scheduler + return.
  *   - Skip on `enabled=false` or a status other than `active`, and say so: a
- *     log line, and for an automatic scope pause a `skipped_scope_mismatch` run
- *     row (never a silent skip). A routine paused for credits is the exception:
- *     its tick re-runs the credit check, and resumes it when the cause cleared
- *     (credits topped up, a model key added, a demo visitor's email confirmed).
- *   - Check scope drift (owner permissions ⊇ routine.scopes); if not, mark
- *     `paused_scope_mismatch` and write a `skipped_scope_mismatch` run row.
+ *     log line (never a silent skip). A routine the system paused is the
+ *     exception: a credit pause re-runs the credit check, a scope pause the
+ *     scope check, and the tick resumes it when the cause cleared (credits
+ *     topped up, a model key added, a demo visitor's email confirmed, the
+ *     scope given back, the owner reactivated).
+ *   - Check the owner is active and scope drift (owner permissions ⊇
+ *     routine.scopes); if not, mark `paused_scope_mismatch` and write a
+ *     `skipped_scope_mismatch` run row.
  *   - Check the OWNER AGENT's ceiling is not empty; if it is, same treatment:
  *     the tick would run with an empty tool catalog (see `ownerAgentCeiling`).
  *   - Plan where the run happens (runs_on, A57): a node run skips the next
@@ -63,7 +65,11 @@ import { rootLogger } from "~/lib/logger"
 import { redis } from "~/lib/redis"
 import { routineMailboxReader } from "~/modules/agent/mailbox-plaintext/routine-mailbox-trust"
 import { isAppRunRoutine } from "~/modules/agent/routines/kernel-routine-templates"
-import { queueRoutineAlert, type RoutineAlertRoutine } from "~/modules/agent/routines/routine-alert"
+import {
+  queueRoutineAlert,
+  type RoutineAlertRoutine,
+  routineOwnerInactiveReason,
+} from "~/modules/agent/routines/routine-alert"
 import {
   deliverRoutineReport,
   postRunStarted,
@@ -278,7 +284,7 @@ async function defaultLoadOwnerScopes(orgId: string, userId: string): Promise<st
  * row and the run. Either the owner gets the scope back, or the routine stops needing it.
  */
 const ROUTINE_SCOPE_FIX_HOW =
-  "To fix it, give that scope back to the owner, or remove it from the routine (Edit > Scopes in the routine, or ask your agent to update the routine's scopes); saving the routine gives it another try."
+  "To fix it, give that scope back to the owner (the routine's next tick then runs again), or remove it from the routine (Edit > Scopes in the routine, or ask your agent to update the routine's scopes); saving the routine gives it another try."
 
 function effectiveScopesMissing(routineScopes: string[], ownerScopes: string[]): string[] {
   return routineScopes.filter((req) => !isScopeCovered([req], ownerScopes))
@@ -713,6 +719,14 @@ export async function routineScopeGap(
   routine: typeof routines.$inferSelect,
   ownerScopes: string[],
 ): Promise<string | null> {
+  // AN OWNER WHO LEFT. A routine acts for its owner; once that person's account is deactivated
+  // (or suspended) it acts for nobody, whatever scopes their roles still list. It pauses like a
+  // scope pause, so it reads paused with the reason, and its first tick after the owner is
+  // reactivated runs it again (the way back is the owner's account, as with a scope given back).
+  const ownerStatus = await routineOwnerStatus(orgId, routine.ownerUserId)
+  if (ownerStatus !== null && ownerStatus !== "active") {
+    return routineOwnerInactiveReason(ownerStatus)
+  }
   const missing = effectiveScopesMissing(routine.scopes ?? [], ownerScopes)
   if (missing.length > 0) {
     return (
@@ -766,6 +780,18 @@ export async function pauseRoutineForScopeGap(
     error,
     routine,
   )
+}
+
+/** The routine owner's account status, or null when the owner row is gone (nothing to judge). */
+async function routineOwnerStatus(orgId: string, ownerUserId: string): Promise<string | null> {
+  const [owner] = await withPrivilegedDb(orgId, "routine-owner-status", (tx) =>
+    tx
+      .select({ status: users.status })
+      .from(users)
+      .where(and(eq(users.id, ownerUserId), eq(users.orgId, orgId)))
+      .limit(1),
+  )
+  return owner?.status ?? null
 }
 
 /**
@@ -862,20 +888,24 @@ async function recordSkippedLastRun(
   }
 }
 
-/** A routine paused for credits whose credit check now passes goes back to active. */
-async function resumeCreditPausedRoutine(
+/**
+ * A routine the system paused (for credits, or for its owner's scopes or account) whose check now
+ * passes goes back to active.
+ */
+async function resumeSystemPausedRoutine(
   opts: RoutineTickOpts,
   routine: typeof routines.$inferSelect,
+  from: "paused_no_credits" | "paused_scope_mismatch",
 ): Promise<void> {
-  await withPrivilegedDb(opts.orgId, "routine-credit-resume", (tx) =>
+  await withPrivilegedDb(opts.orgId, `routine-resume:${from}`, (tx) =>
     tx
       .update(routines)
       .set({ status: "active", lastRunError: null, updatedAt: new Date() })
-      .where(and(eq(routines.id, routine.id), eq(routines.status, "paused_no_credits"))),
+      .where(and(eq(routines.id, routine.id), eq(routines.status, from))),
   )
   log.info(
-    { routineId: routine.id, orgId: opts.orgId },
-    "routine resumed: its credit pause no longer holds",
+    { routineId: routine.id, orgId: opts.orgId, from },
+    "routine resumed: its pause no longer holds",
   )
   await emitRoutineEvent(
     opts.orgId,
@@ -1107,11 +1137,14 @@ export async function runRoutineTick(opts: RoutineTickOpts): Promise<RoutineTick
     // cleared since (credits topped up, a model key added, a demo visitor's email
     // confirmed), and nothing else would ever set it back to active.
     const creditPaused = routine.enabled && routine.status === "paused_no_credits"
+    // A routine paused for its owner's scopes (or account) re-runs the scope check the same way:
+    // the scope given back, or the owner reactivated, sets it back to active and it runs.
+    const scopePaused = routine.enabled && routine.status === "paused_scope_mismatch"
     // An app-run routine has no tick of its own (kernel-routine-templates.ts).
     if (
       !routine.enabled ||
       isAppRunRoutine(routine.templateKey) ||
-      (routine.status !== "active" && !creditPaused)
+      (routine.status !== "active" && !creditPaused && !scopePaused)
     ) {
       return recordInactiveSkip(opts, routine)
     }
@@ -1177,10 +1210,25 @@ export async function runRoutineTick(opts: RoutineTickOpts): Promise<RoutineTick
         error: scopeGap,
         tick: opts,
       })
-      await pauseRoutineForScopeGap(opts.orgId, routine, scopeGap)
+      if (!scopePaused) {
+        await pauseRoutineForScopeGap(opts.orgId, routine, scopeGap)
+      } else if (routine.lastRunError !== scopeGap) {
+        // Still paused, for a reason that changed: the routine says the current one. Its owner
+        // was told when it paused, so no second alert.
+        await markPaused(
+          opts.orgId,
+          routine.ownerUserId,
+          routine.ownerAgentId,
+          routine.id,
+          "paused_scope_mismatch",
+          scopeGap,
+        )
+      }
       await emitRunSkipped(opts, routine, runId, "skipped_scope_mismatch", scopeGap)
       return { status: "skipped_scope_mismatch", runId }
     }
+    // The scope pause no longer holds: the routine is active again, and runs on.
+    if (scopePaused) await resumeSystemPausedRoutine(opts, routine, "paused_scope_mismatch")
 
     // WHERE THE RUN HAPPENS (S21, D9, A50/F8, A57). Decided after the scope
     // pre-checks and before the credit one: a node runs on its owner's own
@@ -1226,7 +1274,7 @@ export async function runRoutineTick(opts: RoutineTickOpts): Promise<RoutineTick
       }
     }
     // The credit pause no longer holds: the routine is active again, and runs.
-    if (creditPaused) await resumeCreditPausedRoutine(opts, routine)
+    if (creditPaused) await resumeSystemPausedRoutine(opts, routine, "paused_no_credits")
 
     // Output thread
     const { threadId: outputThreadId, recreated } = await ensureOutputThread(opts.orgId, routine)

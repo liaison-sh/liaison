@@ -157,7 +157,7 @@ A routine that fails or pauses tells its owner on **Home**, under **Routines fai
 
 ## Fix a paused routine
 
-**Paused: missing access** means the owner no longer holds a scope the routine lists. A banner shows the fix: change the routine's scopes under **Edit** then **Scopes**, or ask your agent to update them. **Paused: no credits** means a cloud run had no credits left (only on a workspace that uses credits). The routine keeps checking at each scheduled run or event, and goes back to **Active** on its own once credits or a model key are added. A routine paused by missing access records **Skipped: missing access** for each run it skips. A plain **Paused** routine was paused by a person. Resume it to run it again.
+**Paused: missing access** means the owner no longer holds a scope the routine lists, or the owner's account was deactivated (a deactivated owner's routines pause at once and never run for them). A banner shows the fix: give the scope back to the owner, change the routine's scopes under **Edit** then **Scopes**, or ask your agent to update them. Once the owner holds the scope again, or is reactivated, the routine goes back to **Active** at its next scheduled run or event, as it does after a credit pause. **Paused: no credits** means a cloud run had no credits left (only on a workspace that uses credits). The routine keeps checking at each scheduled run or event, and goes back to **Active** on its own once credits or a model key are added. A routine paused by missing access records **Skipped: missing access** for each run it skips. A plain **Paused** routine was paused by a person. Resume it to run it again.
 
 ## Edit, switch off or delete a routine
 

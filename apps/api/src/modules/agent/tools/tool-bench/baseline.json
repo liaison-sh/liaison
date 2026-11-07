@@ -269,7 +269,7 @@
       "schema": 126
     },
     "boxtal__create_shipment": {
-      "desc": 4799,
+      "desc": 494,
       "schema": 1148
     },
     "boxtal__exceptions_list": {
@@ -325,7 +325,7 @@
       "schema": 91
     },
     "boxtal__prep_list": {
-      "desc": 2547,
+      "desc": 596,
       "schema": 323
     },
     "boxtal__prep_order_prefill": {
@@ -405,11 +405,11 @@
       "schema": 9
     },
     "boxtal__quote": {
-      "desc": 4708,
+      "desc": 501,
       "schema": 1070
     },
     "boxtal__quote_batch": {
-      "desc": 2136,
+      "desc": 257,
       "schema": 224
     },
     "boxtal__ready_list": {
@@ -425,7 +425,7 @@
       "schema": 9
     },
     "boxtal__search": {
-      "desc": 4091,
+      "desc": 494,
       "schema": 28
     },
     "boxtal__settings_carrier_allowlist_get": {
@@ -501,11 +501,11 @@
       "schema": 655
     },
     "boxtal__stuck_list": {
-      "desc": 2735,
+      "desc": 210,
       "schema": 9
     },
     "boxtal__to_prepare_list": {
-      "desc": 2174,
+      "desc": 566,
       "schema": 9
     },
     "boxtal__track": {
@@ -689,8 +689,8 @@
       "schema": 50
     },
     "invoicing__credit_note_create_and_issue": {
-      "desc": 1916,
-      "schema": 1667
+      "desc": 375,
+      "schema": 1449
     },
     "invoicing__credit_note_issue": {
       "desc": 474,
@@ -710,7 +710,7 @@
     },
     "invoicing__documents_convert_to_invoice": {
       "desc": 957,
-      "schema": 223
+      "schema": 179
     },
     "invoicing__documents_download_pdf": {
       "desc": 61,
@@ -753,8 +753,8 @@
       "schema": 64
     },
     "invoicing__documents_update": {
-      "desc": 3008,
-      "schema": 1465
+      "desc": 578,
+      "schema": 1163
     },
     "invoicing__documents_update_preview": {
       "desc": 169,
@@ -766,7 +766,7 @@
     },
     "invoicing__drafts_create": {
       "desc": 429,
-      "schema": 2310
+      "schema": 1520
     },
     "invoicing__drafts_discard": {
       "desc": 247,
@@ -774,7 +774,7 @@
     },
     "invoicing__drafts_update": {
       "desc": 169,
-      "schema": 2030
+      "schema": 1375
     },
     "invoicing__einvoice_book_batch": {
       "desc": 269,
@@ -850,7 +850,7 @@
     },
     "invoicing__invoice_create_and_issue": {
       "desc": 477,
-      "schema": 1823
+      "schema": 1076
     },
     "invoicing__invoice_issue": {
       "desc": 777,
@@ -862,7 +862,7 @@
     },
     "invoicing__order_reissue_apply": {
       "desc": 1371,
-      "schema": 528
+      "schema": 484
     },
     "invoicing__pending_approvals_list": {
       "desc": 760,
@@ -870,7 +870,7 @@
     },
     "invoicing__po_create_and_issue": {
       "desc": 316,
-      "schema": 1370
+      "schema": 831
     },
     "invoicing__po_issue": {
       "desc": 162,
@@ -878,7 +878,7 @@
     },
     "invoicing__proforma_create_and_issue": {
       "desc": 818,
-      "schema": 1893
+      "schema": 1161
     },
     "invoicing__proforma_issue": {
       "desc": 45,
@@ -886,7 +886,7 @@
     },
     "invoicing__quote_create_and_issue": {
       "desc": 1588,
-      "schema": 1742
+      "schema": 1096
     },
     "invoicing__quote_issue": {
       "desc": 235,
@@ -989,7 +989,7 @@
       "schema": 86
     },
     "kernel__approvals_list": {
-      "desc": 1054,
+      "desc": 203,
       "schema": 27
     },
     "kernel__apps_set_access": {
@@ -1017,7 +1017,7 @@
       "schema": 65
     },
     "kernel__capture_business_knowledge": {
-      "desc": 478,
+      "desc": 474,
       "schema": 112
     },
     "kernel__clone_repo_on_my_computer": {
@@ -1585,7 +1585,7 @@
       "schema": 5
     },
     "kernel__threads_create": {
-      "desc": 768,
+      "desc": 217,
       "schema": 244
     },
     "kernel__threads_list": {
@@ -1614,7 +1614,7 @@
     },
     "kernel__update_routine": {
       "desc": 524,
-      "schema": 18
+      "schema": 6
     },
     "kernel__update_skill": {
       "desc": 246,
@@ -1637,7 +1637,7 @@
       "schema": 29
     },
     "kernel__users_search": {
-      "desc": 301,
+      "desc": 181,
       "schema": 26
     },
     "kernel__watch_state": {
@@ -1681,7 +1681,7 @@
       "schema": 47
     },
     "knowledge__create": {
-      "desc": 2203,
+      "desc": 501,
       "schema": 765
     },
     "knowledge__find_by_title": {
@@ -1930,11 +1930,11 @@
     },
     "projects__create": {
       "desc": 1277,
-      "schema": 1243
+      "schema": 639
     },
     "projects__createProject": {
-      "desc": 2195,
-      "schema": 1272
+      "desc": 523,
+      "schema": 796
     },
     "projects__delete": {
       "desc": 164,
@@ -2001,16 +2001,16 @@
       "schema": 192
     },
     "projects__tasks_byAssignee": {
-      "desc": 1110,
-      "schema": 324
+      "desc": 782,
+      "schema": 262
     },
     "projects__tasks_byProject": {
-      "desc": 2653,
-      "schema": 655
+      "desc": 540,
+      "schema": 593
     },
     "projects__update": {
       "desc": 404,
-      "schema": 574
+      "schema": 300
     },
     "projects__update_project": {
       "desc": 638,
@@ -2049,11 +2049,11 @@
       "schema": 23
     },
     "shopify__customers_search": {
-      "desc": 3827,
+      "desc": 504,
       "schema": 86
     },
     "shopify__customers_segment_search": {
-      "desc": 2105,
+      "desc": 362,
       "schema": 79
     },
     "shopify__customers_sms_marketing_consent_update": {
@@ -2429,7 +2429,7 @@
       "schema": 62
     },
     "tickets__assign": {
-      "desc": 2462,
+      "desc": 561,
       "schema": 309
     },
     "tickets__backlogHealth": {
@@ -2593,7 +2593,7 @@
       "schema": 316
     },
     "tickets__search": {
-      "desc": 7233,
+      "desc": 475,
       "schema": 1736
     },
     "tickets__setAudience": {

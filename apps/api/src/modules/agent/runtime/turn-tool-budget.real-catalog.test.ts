@@ -85,6 +85,19 @@ const HEAVY_LOAD_TOKENS = 5000
  * pressure out of these tests.
  */
 const heavyKernelLoad: string[] = []
+/** Every deferred kernel tool, heaviest first. */
+const deferredByWeight: string[] = []
+/** The heaviest deferred kernel tools, until together they cost more than `tokens`. */
+function kernelLoadOver(tokens: number): string[] {
+  const out: string[] = []
+  let load = 0
+  for (const name of deferredByWeight) {
+    if (load > tokens) break
+    out.push(name)
+    load += wireTokens(name, kernelTools[name])
+  }
+  return out
+}
 
 beforeAll(async () => {
   const { registerKernelAgentTools } = await import("~/modules/agent/tools/kernel-tools")
@@ -98,14 +111,13 @@ beforeAll(async () => {
     }
     if (!isDeferredTool(key[1], def as { deferLoading?: boolean })) coreTools.push(name)
   }
-  let load = 0
-  for (const [name, def] of Object.entries(kernelTools)
-    .filter(([name]) => !coreTools.includes(name))
-    .sort(([a, x], [b, y]) => wireTokens(b, y) - wireTokens(a, x))) {
-    if (load > HEAVY_LOAD_TOKENS) break
-    heavyKernelLoad.push(name)
-    load += wireTokens(name, def)
-  }
+  deferredByWeight.push(
+    ...Object.entries(kernelTools)
+      .filter(([name]) => !coreTools.includes(name))
+      .sort(([a, x], [b, y]) => wireTokens(b, y) - wireTokens(a, x))
+      .map(([name]) => name),
+  )
+  heavyKernelLoad.push(...kernelLoadOver(HEAVY_LOAD_TOKENS))
 })
 
 afterAll(async () => {
@@ -314,7 +326,17 @@ describe("the tool order on a real entity page", () => {
     const appTools = projectTools()
     const names = Object.keys(appTools)
     const tools = { ...kernelTools, ...appTools }
-    const heavy = heavyKernelLoad
+    const tokensOf = (ns: readonly string[]) =>
+      ns.reduce((n, name) => n + wireTokens(name, tools[name]), 0)
+    // The thread loaded enough to put the turn over the cap, however small the
+    // app's own tools are.
+    const heavy = kernelLoadOver(
+      Math.max(
+        HEAVY_LOAD_TOKENS,
+        TURN_TOOL_SCHEMA_TOKEN_CAP - tokensOf(coreTools) - tokensOf(names),
+      ),
+    )
+    expect(tokensOf([...coreTools, ...heavy, ...names])).toBeGreaterThan(TURN_TOOL_SCHEMA_TOKEN_CAP)
     const plan = planTurnToolBudget({
       visible: [...coreTools, ...heavy, ...names],
       tools,

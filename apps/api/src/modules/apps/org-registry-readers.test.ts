@@ -37,6 +37,8 @@ const READERS: Record<string, string> = {
   "infra/jobs/webhook-worker.ts": JOB,
   "modules/agent/context/connected-systems.ts": AGENT,
   "modules/agent/context/context.ts": AGENT,
+  // Registers the host's tools under its own measuring org, reads that org, removes it.
+  "modules/agent/context/ladder-budget.ts": SETUP,
   "modules/agent/routines/routine-incident.ts": JOB,
   "modules/agent/routines/routine-tick-outcome.ts": JOB,
   "modules/agent/runtime/turn-focus.ts": AGENT,

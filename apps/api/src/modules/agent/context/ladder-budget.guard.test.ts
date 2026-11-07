@@ -44,7 +44,6 @@ const EVERY_APP: LadderTargets = {
     invoicing: 29_500,
     mail: 7_800,
     agreements: 2_500,
-    stripe: 2_000,
     github: 800,
   },
 }

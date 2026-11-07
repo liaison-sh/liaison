@@ -35,12 +35,18 @@ import {
   draftAppName,
   getBuildArtifact,
   getDraft,
+  restoreDraftVersion,
   updateDraftFiles,
 } from "~/modules/app-builder/drafts"
 import { pruneDraftStoreNamespaces } from "~/modules/app-builder/installed"
 import { createRunLogSink } from "~/modules/app-builder/logs"
 import { PreviewTestAccess, previewDraft, previewManifest } from "~/modules/app-builder/preview"
-import { builderSourceUrl, executePublish, preparePublish } from "~/modules/app-builder/publish"
+import {
+  builderSourceUrl,
+  executePublish,
+  preparePublish,
+  summarizePin,
+} from "~/modules/app-builder/publish"
 import { templateFiles } from "~/modules/app-builder/templates"
 import { decideApproval } from "~/modules/approvals/decide"
 import { UpdatePayloadError, updatePayload } from "~/modules/approvals/edit"
@@ -691,6 +697,7 @@ describe("publish", () => {
     // The pinned build was type-checked, and the card says so.
     expect(pin.typecheck).toMatchObject({ ok: true, errors: 0 })
     expect(card).toContain("Type check: ok.")
+    expect(card).toContain("No restricted data")
     expect(req!.summary.lines.length).toBeLessThanOrEqual(8)
     expect(card).toContain(`Scopes asked: ${appName}:items:read, ${appName}:items:write`)
 
@@ -731,6 +738,39 @@ describe("publish", () => {
       SELECT published_app_name, status FROM kernel.app_drafts WHERE id = ${draftId}`
     expect(draft).toMatchObject({ published_app_name: appName, status: "published" })
   }, 240_000)
+
+  it("a version carries what its writers had read, and the publish card says so", async () => {
+    const appName = draftAppName(orgId, "tainted")
+    const tainted = { ...caller(), taintScopes: ["invoicing:documents:read"] }
+    const { draft } = await asAdmin((tx) =>
+      createDraft(tx, tainted, {
+        baseName: "tainted",
+        title: "Draft tainted",
+        files: templateFiles("store-crud", appName, "Draft tainted"),
+      }),
+    )
+    // A person's own edit after it still carries version 1's taint, and so does a restore.
+    const files = templateFiles("store-crud", appName, "Draft tainted, edited")
+    const v2 = await asAdmin((tx) => updateDraftFiles(tx, caller(), { draftId: draft.id, files }))
+    expect(v2.taintScopes).toEqual(["invoicing:documents:read"])
+    const v3 = await asAdmin((tx) =>
+      restoreDraftVersion(
+        tx,
+        { ...caller(), taintScopes: ["kernel:threads:read"] },
+        {
+          draftId: draft.id,
+          n: 1,
+        },
+      ),
+    )
+    expect(v3.taintScopes).toEqual(["invoicing:documents:read", "kernel:threads:read"])
+    const prepared = await preparePublish(adminDb(), caller(), { draftId: draft.id })
+    const card = await asAdmin((tx) => summarizePin(tx, orgId, prepared.pin))
+    expect(card.lines).toContain(
+      "Contains data read under: invoicing:documents:read, kernel:threads:read",
+    )
+    expect(card.lines.length).toBeLessThanOrEqual(8)
+  }, 120_000)
 
   it("refuses an altered sha, a moved app and a pin for another draft's app", async () => {
     const { draftId, appName } = await newDraft("sha-check")

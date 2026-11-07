@@ -92,6 +92,9 @@ CREATE TABLE IF NOT EXISTS kernel.app_draft_versions (
     CHECK (jsonb_typeof(files) = 'object' AND octet_length(files::text) <= 1048576),
   message text CHECK (message IS NULL OR length(message) <= 500),
   build jsonb CHECK (build IS NULL OR jsonb_typeof(build) = 'object'),
+  -- The scopes of the data the agent's turns had read when they wrote this version or
+  -- any version before it (the draft's code can carry that data): shown on the publish card.
+  taint_scopes text[] NOT NULL DEFAULT '{}'::text[],
   created_by uuid REFERENCES kernel.users(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (draft_id, n)

@@ -102,6 +102,8 @@ export function inTx(tx: RlsClient): TxRunner {
 export interface DraftCaller {
   orgId: string
   userId: string | null
+  /** The calling agent turn's taint (what it had read); none for a person's own edit. */
+  taintScopes?: readonly string[]
 }
 
 export interface DraftVersion {
@@ -110,6 +112,8 @@ export interface DraftVersion {
   files: DraftFiles
   message: string | null
   build: AppDraftBuild | null
+  /** The data scopes this version's writers had read, carried forward from earlier versions. */
+  taintScopes: string[]
   createdBy: string | null
   createdAt: Date
 }
@@ -216,9 +220,15 @@ function toVersion(row: typeof appDraftVersions.$inferSelect): DraftVersion {
     files: row.files as DraftFiles,
     message: row.message,
     build: row.build ?? null,
+    taintScopes: row.taintScopes ?? [],
     createdBy: row.createdBy,
     createdAt: row.createdAt,
   }
+}
+
+/** One sorted set of taint scopes. */
+function taintUnion(...sets: ReadonlyArray<readonly string[] | undefined>): string[] {
+  return [...new Set(sets.flatMap((s) => s ?? []))].sort()
 }
 
 async function lockDraft(tx: RlsClient, draftId: string): Promise<AppDraftRow> {
@@ -267,10 +277,19 @@ async function insertVersion(
   n: number,
   files: DraftFiles,
   message: string | null,
+  taintScopes: string[],
 ): Promise<DraftVersion> {
   const [row] = await tx
     .insert(appDraftVersions)
-    .values({ orgId: caller.orgId, draftId, n, files, message, createdBy: caller.userId })
+    .values({
+      orgId: caller.orgId,
+      draftId,
+      n,
+      files,
+      message,
+      taintScopes,
+      createdBy: caller.userId,
+    })
     .returning()
   return toVersion(row!)
 }
@@ -317,7 +336,15 @@ export async function createDraft(
     }
     throw err
   }
-  const version = await insertVersion(tx, caller, draft.id, 1, files, checkMessage(input.message))
+  const version = await insertVersion(
+    tx,
+    caller,
+    draft.id,
+    1,
+    files,
+    checkMessage(input.message),
+    taintUnion(caller.taintScopes),
+  )
   return { draft, version }
 }
 
@@ -377,12 +404,20 @@ async function nextVersion(
   files: DraftFiles,
   message: string | null,
   title?: string,
+  carriedTaint: readonly string[] = [],
 ): Promise<DraftVersion> {
   if (draft.status === "discarded") {
     throw new DraftError("draft_discarded", "this draft was discarded")
   }
   const n = draft.latestVersion + 1
-  const version = await insertVersion(tx, caller, draft.id, n, files, message)
+  // A version is written from what came before it, so it carries the latest version's
+  // taint (pruning old versions never drops what they held) plus this turn's.
+  const [latest] = await tx
+    .select({ taintScopes: appDraftVersions.taintScopes })
+    .from(appDraftVersions)
+    .where(and(eq(appDraftVersions.draftId, draft.id), eq(appDraftVersions.n, draft.latestVersion)))
+  const taint = taintUnion(latest?.taintScopes, carriedTaint, caller.taintScopes)
+  const version = await insertVersion(tx, caller, draft.id, n, files, message, taint)
   await tx
     .update(appDrafts)
     .set({
@@ -424,7 +459,15 @@ export async function restoreDraftVersion(
       n: input.n,
     })
   }
-  return nextVersion(tx, caller, draft, source.files as DraftFiles, `Restored version ${input.n}`)
+  return nextVersion(
+    tx,
+    caller,
+    draft,
+    source.files as DraftFiles,
+    `Restored version ${input.n}`,
+    undefined,
+    source.taintScopes,
+  )
 }
 
 /** The draft is discarded: its base is free again unless it published an app; its built bytes go. */

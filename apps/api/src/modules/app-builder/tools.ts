@@ -20,6 +20,7 @@
 
 import { z } from "zod"
 import { customAppsEnabled } from "~/lib/edition"
+import { handlerTurnTaint } from "~/modules/agent/tools/chat-tools"
 import { BuildBusyError } from "~/modules/app-builder/build/governance"
 import { checkDraft } from "~/modules/app-builder/check"
 import {
@@ -110,7 +111,12 @@ async function guarded<T>(fn: () => Promise<T>) {
   }
 }
 
-const callerOf = (ctx: AppContext): DraftCaller => ({ orgId: ctx.orgId, userId: ctx.userId })
+// The turn's taint rides along, so a draft version records what its writer had read.
+const callerOf = (ctx: AppContext): DraftCaller => ({
+  orgId: ctx.orgId,
+  userId: ctx.userId,
+  taintScopes: handlerTurnTaint(ctx),
+})
 
 /**
  * The transactions of a tool that builds or installs (`ownsTransactions`): the

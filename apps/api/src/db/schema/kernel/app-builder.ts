@@ -99,6 +99,8 @@ export const appDraftVersions = kernel.table(
     files: jsonb("files").$type<Record<string, string>>().notNull(),
     message: text("message"),
     build: jsonb("build").$type<AppDraftBuild>(),
+    /** What the agent's turns had read when they wrote this version or an earlier one. */
+    taintScopes: text("taint_scopes").array().notNull().default(sql`'{}'::text[]`),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

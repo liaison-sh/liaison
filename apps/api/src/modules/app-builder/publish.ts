@@ -31,6 +31,7 @@
 import type { RlsClient } from "~/db"
 import type { AppDraftRow } from "~/db/schema/kernel"
 import { customAppsEnabled } from "~/lib/edition"
+import { UNKNOWN_TURN_TAINT } from "~/modules/agent/scopes/scope-taint"
 import { buildDraftVersion, packagedManifest } from "~/modules/app-builder/check"
 import {
   type DraftCaller,
@@ -504,7 +505,18 @@ export function typecheckLine(t: PinTypecheck | undefined): string {
   return `Type check: ${t.errors} ${t.errors === 1 ? "error" : "errors"}${t.first ? ` (first: ${t.first})` : ""}.`
 }
 
-/** The approval card's lines for a pin: name, version, sha, type check, delta. */
+/**
+ * What the agent had read while it wrote the draft (this version and the ones before it):
+ * its code and texts can carry that data to everyone who uses the published app.
+ */
+function taintLine(taintScopes: readonly string[]): string {
+  const named = taintScopes.map((s) =>
+    UNKNOWN_TURN_TAINT.includes(s) ? "a scope that was not recorded" : s,
+  )
+  return named.length > 0 ? `Contains data read under: ${named.join(", ")}` : "No restricted data"
+}
+
+/** The approval card's lines for a pin: name, version, sha, type check, taint, delta. */
 export async function summarizePin(
   tx: RlsClient,
   orgId: string,
@@ -516,16 +528,17 @@ export async function summarizePin(
   const next = packagedManifest(version.files, pin) ?? {}
   const active = await activeCustomApp(orgId, pin.appName)
   const delta = manifestDelta(active?.manifest ?? null, next, active?.version ?? null)
-  // A card has 8 lines: the version, the sha, the type check, at most 4 of the
-  // delta, the frame note.
+  // A card has 8 lines: the version, the sha, the type check, what data its writers
+  // had read, at most 3 of the delta, the frame note.
   const shown =
-    delta.length > 4 ? [...delta.slice(0, 3), `And ${delta.length - 3} more changes.`] : delta
+    delta.length > 3 ? [...delta.slice(0, 2), `And ${delta.length - 2} more changes.`] : delta
   const lines = [
     pin.baseVersion
       ? `Updates ${pin.appName} from ${pin.baseVersion} to ${pin.appVersion} (draft version ${pin.n}).`
       : `Installs ${pin.appName} ${pin.appVersion} as this organisation's app (draft version ${pin.n}). It counts against the organisation's custom apps.`,
     `Package sha256: ${pin.packageSha256}`,
     typecheckLine(pin.typecheck),
+    taintLine(version.taintScopes),
     ...shown,
     "Its interface, if any, runs framed: never with your session.",
   ]

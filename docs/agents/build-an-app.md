@@ -36,7 +36,7 @@ A try (a preview) runs as you and changes nothing real:
 
 ## Publish it
 
-Publishing waits for a person holding `kernel:apps:admin`. The approval card shows the app's name and version, the fingerprint (sha256) of the exact package, the result of its type check (ok, or how many errors and the first one), and what changes against the version running now: scopes, websites, tables and columns, connections, where a secret may be sent, calls to other apps, and the tables kept although the new version no longer declares them. No automatic approval applies.
+Publishing waits for a person holding `kernel:apps:admin`. The approval card shows the app's name and version, the fingerprint (sha256) of the exact package, the result of its type check (ok, or how many errors and the first one), what data the agent had read while it wrote the draft ("Contains data read under:" and the scopes, since the app's code and texts can carry that data to everyone who uses it, or "No restricted data"), and what changes against the version running now: scopes, websites, tables and columns, connections, where a secret may be sent, calls to other apps, and the tables kept although the new version no longer declares them. No automatic approval applies.
 
 What gets installed is exactly the package on the card: a change made to the draft after the request is not in it. The request cannot be edited; to change it, withdraw it and ask again. If the app moved to another version in between, the publish is refused and asked again.
 

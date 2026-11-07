@@ -387,6 +387,22 @@ function findProvider(orgId: string, kind: string): FoundProvider | null {
   return null
 }
 
+/**
+ * The pill a provider declares for a mail about one of its records ("Stripe: payment reminder"):
+ * the first ref's provider entry names the row, over the tool's own pill, since one tool
+ * (`mail:compose`) carries several kinds of send.
+ */
+export function sendGuardProviderPill(
+  orgId: string,
+  kind: string,
+): { label: string; labelKey?: string } | undefined {
+  for (const [, manifest] of appBridgeManifestRegistry.entriesOf(orgId)) {
+    const pill = manifest.sendGuardProviders?.[kind]?.pill
+    if (pill && typeof pill.label === "string" && pill.label.length > 0) return pill
+  }
+  return undefined
+}
+
 type ProviderAnswer =
   | { stop: false }
   | { stop: true; code: string; label: string }

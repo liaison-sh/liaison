@@ -2,6 +2,7 @@
 import {
   APPROVING_WEDGE_GRACE_MS,
   type ApprovalRoute,
+  type ApprovalSendGuard,
   type AttentionItem,
   appApprovesFromHome,
   type HomePlacement,
@@ -16,12 +17,14 @@ import { appsLogger as log } from "~/lib/logger"
 import { apiViewer, authorityFacts, canSeeInFeed } from "~/modules/approvals/authority"
 import { humanizeToolName, splitToolName } from "~/modules/approvals/event-data"
 import { readApprovalLastFailures } from "~/modules/approvals/last-failure"
+import { isFinalSendGuardState, readFeedSendGuards } from "~/modules/approvals/list"
 import { approvalPayloadHash } from "~/modules/approvals/payload-hash"
 import { approvalActionPhrase, deriveApprovalDetail } from "~/modules/approvals/payload-title"
 import { readApprovalRequesters } from "~/modules/approvals/requester"
 import { type RoutedRows, readApprovalRoutes } from "~/modules/approvals/route-world"
 import { withServedSummaries } from "~/modules/approvals/served-summary"
 import { toolRegistry } from "~/modules/apps/app-registries"
+import { sendGuardProviderPill } from "~/modules/mail/send-guard"
 import { isSeededWrite } from "~/modules/notifications/seeded"
 
 const K = drizzleSql.raw(schemaRef("kernel"))
@@ -101,6 +104,61 @@ interface BundleOutcome extends BundleStepRow {
   /** Later steps run off earlier ones. A parallel bundle (independent
    *  requests, each decided on its own) has no single outcome to name. */
   sequenced: boolean
+}
+
+/**
+ * The row's pill: a send-guard provider's for the first ref's kind ("Stripe: payment reminder"),
+ * else the tool's manifest `approvalCard.pill`, else none (the client names the action as before).
+ */
+function approvalRowPill(
+  orgId: string,
+  toolName: string,
+  payload: Record<string, unknown> | null,
+): { label: string; labelKey?: string } | undefined {
+  const guard = payload?.sendGuard as { refs?: unknown } | undefined
+  const first = Array.isArray(guard?.refs) ? (guard.refs[0] as { kind?: unknown }) : undefined
+  if (first && typeof first.kind === "string") {
+    const pill = sendGuardProviderPill(orgId, first.kind)
+    if (pill) return pill
+  }
+  const { appName, toolShortName } = splitToolName(toolName)
+  const pill = toolRegistry.get([orgId, appName, toolShortName])?.approvalCard?.pill
+  return pill && typeof pill.label === "string" && pill.label.length > 0 ? pill : undefined
+}
+
+/**
+ * The send check on each agent mail draft of the feed or badge. A failed read is a row without
+ * its guard line, never a failed feed.
+ */
+async function readGuardsQuietly(
+  tx: RlsClient,
+  orgId: string,
+  rows: Array<{
+    id: string
+    status: string
+    tool_name: string
+    current_payload: Record<string, unknown> | null
+    requested_by: string
+  }>,
+): Promise<Map<string, ApprovalSendGuard>> {
+  const guarded = rows.filter((r) => r.status === "pending" && r.current_payload?.sendGuard)
+  if (guarded.length === 0) return new Map()
+  try {
+    return await readFeedSendGuards(
+      tx,
+      orgId,
+      guarded.map((r) => ({
+        id: r.id,
+        status: "pending" as const,
+        tool_name: r.tool_name,
+        current_payload: r.current_payload ?? {},
+        requested_by: r.requested_by,
+      })),
+    )
+  } catch (err) {
+    log.warn({ err, orgId }, "could not read the send check for the attention feed")
+    return new Map()
+  }
 }
 
 /**
@@ -324,10 +382,11 @@ export async function computeApprovalBadgeItems(
   }>
 > {
   const callerScopes = await readCurrentScopes(tx)
-  const rows = extractRows<DecidableApprovalRow>(
+  const rows = extractRows<DecidableApprovalRow & Pick<PendingApprovalRow, "current_payload">>(
     await tx.execute(drizzleSql`
       SELECT ar.id, ar.tool_name, ar.status, ar.metadata, ar.notify_user_ids,
-             ar.requested_by, ar.approve_scope, ar.resource_owner_id, ar.route_person_id
+             ar.requested_by, ar.approve_scope, ar.resource_owner_id, ar.route_person_id,
+             CASE WHEN ar.current_payload ? 'sendGuard' THEN ar.current_payload END AS current_payload
       FROM ${K}.approval_requests ar
       WHERE ar.org_id = ${orgId}
         AND ${FEED_STATUS_SQL}
@@ -340,8 +399,14 @@ export async function computeApprovalBadgeItems(
       LIMIT ${limit}
     `),
   ).filter((r) => isCallersDecision(r, callerUserId, callerScopes))
-  const routes = await readApprovalRoutes(tx, orgId, rows)
-  return rows.map((r) => {
+  // As on Home: a held draft, or one that can no longer go out as written, is not counted.
+  const guards = await readGuardsQuietly(tx, orgId, rows)
+  const counted = rows.filter((r) => {
+    const state = guards.get(r.id)?.state
+    return state === undefined || (state !== "held" && !isFinalSendGuardState(state))
+  })
+  const routes = await readApprovalRoutes(tx, orgId, counted)
+  return counted.map((r) => {
     const placement = rowPlacement(r, routes.route(r.id), callerUserId, callerScopes)
     return {
       kind: "approval_pending" as const,
@@ -555,12 +620,19 @@ export async function computeApprovalAttentionItems(
     }
   }
 
+  // A held draft (an out-of-office until a date) is not on Home until its hold ends; that is
+  // read fresh each time, so the row comes back with no write. A draft whose check says it can
+  // no longer go out as written shows why, and is not counted.
+  const guards = await readGuardsQuietly(tx, orgId, rows)
+
   const items: AttentionItem[] = []
   for (const r of rows) {
     const { appName, toolShortName } = splitToolName(r.tool_name)
     // In the feed as THEIR decision (a two-approver request they already
     // signed off waits for someone else and leaves it; a stalled one stays).
     if (!isCallersDecision(r, callerUserId, callerScopes)) continue
+    const guard = guards.get(r.id)
+    if (guard?.state === "held") continue
 
     // A wedged row is NOT a fresh decision: it was already approved and its
     // execution died. It outranks any pending item (the work is half-done and
@@ -631,6 +703,12 @@ export async function computeApprovalAttentionItems(
         // What ACTION is gated ("Tickets: reply") + how risky it is, so the
         // feed row is decidable at a glance without expanding the card.
         actionLabel: humanizeToolName(shown.tool_name),
+        ...(() => {
+          const pill = approvalRowPill(orgId, shown.tool_name, shown.current_payload)
+          return pill ? { pill } : {}
+        })(),
+        ...(guard ? { sendGuard: guard } : {}),
+        ...(guard && isFinalSendGuardState(guard.state) ? { uncounted: true as const } : {}),
         // WHO/WHAT this acts on ("Reply to Alex Martin on ticket-10013",
         // "Ship draft ... to a dealer"). The summarizers have always
         // written it; the feed just never carried it, so a row led with the

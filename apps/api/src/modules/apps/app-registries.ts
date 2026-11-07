@@ -77,7 +77,10 @@ export interface BridgeManifest {
    *  receives the legacy `{ data }` envelope and misreads every cross-app result. */
   cross_app_calls?: Array<{ target: string; reason: string }>
   /** Per kind of record, the read-only tool that can stop a mail about it before it leaves. */
-  sendGuardProviders?: Record<string, { tool: string; serviceMessage?: boolean }>
+  sendGuardProviders?: Record<
+    string,
+    { tool: string; serviceMessage?: boolean; pill?: { label: string; labelKey?: string } }
+  >
   /** Per entity type, the read-only tool that says who an approval about such a record is for. */
   approvalRoute?: Record<string, string>
   /** Read-only tools that add a few lines about the entity a turn is about (context-providers.ts). */

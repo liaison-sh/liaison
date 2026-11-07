@@ -9,6 +9,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { extractRlsContext, withRequestRls } from "~/lib/request-rls"
 import { success } from "~/lib/response"
 import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
+import { nextMondayStart } from "~/modules/attention/set-aside"
 import { broadcastReadState } from "~/modules/threads/read-state-broadcast"
 
 const K = sql.raw(schemaRef("kernel"))
@@ -180,4 +181,45 @@ attentionRoutes.post("/mark-unread", zValidator("json", markUnreadSchema), async
     await broadcastReadState(c.get("orgId"), c.get("userId"), { kind: "attention", bulk: true })
   }
   return success(c, { restored: rows.length })
+})
+
+// "Not now": one persisted event of the caller's leaves the feed until next Monday 00:00 in
+// their own time zone. A computed row has no event to set aside, so it has no Not now.
+const setAsideSchema = z.object({ eventId: z.string().uuid() }).strict()
+
+attentionRoutes.post("/set-aside", zValidator("json", setAsideSchema), async (c) => {
+  const { eventId } = c.req.valid("json")
+  const result = await withRequestRls(c, async (tx) => {
+    const [me] = extractRows<{ timezone: string | null }>(
+      await tx.execute(sql`
+        SELECT timezone FROM ${K}.users WHERE id = rls_ctx.user_id()::uuid`),
+    )
+    const until = nextMondayStart(new Date(), me?.timezone ?? null)
+    const rows = extractRows<{ id: string; summary: string }>(
+      await tx.execute(sql`
+        UPDATE ${K}.attention_events
+        SET set_aside_until = ${until.toISOString()}::timestamptz
+        WHERE id = ${eventId}::uuid
+          AND user_id = rls_ctx.user_id()::uuid
+          AND read_at IS NULL
+        RETURNING id, summary`),
+    )
+    return { row: rows[0] ?? null, until, timeZone: me?.timezone ?? "UTC" }
+  })
+  if (!result.row) {
+    return c.json(
+      {
+        error: {
+          message: `No unread item ${eventId} of yours to set aside: it was read, resolved, or is not yours.`,
+          code: "not_found",
+        },
+      },
+      404,
+    )
+  }
+  return success(c, {
+    eventId: result.row.id,
+    setAsideUntil: result.until.toISOString(),
+    timeZone: result.timeZone,
+  })
 })

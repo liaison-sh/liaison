@@ -250,7 +250,7 @@ async function readActive(tx: RlsClient, orgId: string, ids: Set<string>): Promi
   const rows = extractRows<{ id: string }>(
     await tx.execute(drizzleSql`
       SELECT id FROM ${K}.users
-      WHERE org_id = ${orgId}::uuid AND status = 'active' AND id IN (${drizzleSql.join(
+      WHERE org_id = ${orgId}::uuid AND status = 'active' AND user_type = 'member' AND id IN (${drizzleSql.join(
         [...ids].map((id) => drizzleSql`${id}::uuid`),
         drizzleSql`, `,
       )})`),

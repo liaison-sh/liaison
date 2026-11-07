@@ -356,7 +356,7 @@ Keys on a tool:
 | `approvalCard.pill` | `{label, labelKey?}` | A short tag on the approval card |
 | `feature` | string | A feature the app declares under `features` |
 | `focusCore` | `true` or an entity type | The tool is loaded when the app has the focus, or when that entity is in focus |
-| `taintSourceWhen` | `{field, equals}` | Narrows `taintSource` to the rows whose field has that value |
+| `taintSourceWhen` | `{field, equals}` | Narrows `taintSource` to the rows whose field has that value: a result with one such row marks the turn, rows that all carry another value leave it clean, and a result with no row carrying the field marks it |
 | `useInstead` | string | On a hidden tool (`agentVisible: false`): the visible tool of the same app to use |
 | `sinkReadersSelf` | boolean | First-party apps only: what the tool writes (its `writesToTable`) is read only by the person writing it, so a turn that read other data may still write there when that person holds it. Any other app declaring it is not loaded |
 | `contentParams` | string list | First-party apps only: the only parameters through which a call carries what the turn read; a call with all of them blank is not held back by what the turn read. Each must be in `params.properties`. Any other app declaring it is not loaded |
@@ -368,7 +368,7 @@ Keys on the app:
 | `contextProviders` | list of `{on, tool, scope, loadTools?}` | A tool that adds a few lines about a record to the agent's context, while that record is open or is what the conversation is about. `on` lists `<app>:<entityType>` kinds. The tool must be `readOnly`, and `scope` one of its `requiredScopes`. It gets `{subject: {app, entityType, entityId}}` and returns `{lines, source: {label, syncedAt?}}` or null. It runs as the person, only when the turn holds `scope` and the person can read the record, and it may not write. Every provider of a turn shares 1.5 seconds and 2 KB, and keeps at most 10 lines: read your own rows, never a remote API. `loadTools` are loaded for the turn. `CONTEXT_PROVIDERS_DISABLED=1` turns them all off |
 | `sendGuardProviders` | `{<kind>: {tool, serviceMessage?, pill?}}` | A read-only tool that can stop an outbound message of that kind |
 | `features` | `{<name>: {adminScope, labelKey, offMessageKey?, offNextKey?}}` | Features an org can switch off. A tool, tab type, slot panel or settings section names one with `feature`; while it is off they are absent, and a call that still names the tool reads `feature_off` with `message` and `next` |
-| `outsideTextFields` | string list | Fields a person outside the org can set |
+| `outsideTextFields` | string list | Fields a person outside the org can set. A read-only tool whose `returns` names one must declare `taintSource` or `taintSourceWhen` |
 | `approvalRoute` | `{<entityType>: <tool>}` | The read-only tool that says who an approval for that entity is for |
 | `entities.<type>.discussion` | boolean | One conversation per row, read and written by whoever can read the row; needs a `labelField` and a page (a `views.tabTypes` entry for the type). Open it with `POST /api/threads/entity-discussion`, draw it in a UI bundle with `host.mountEntityDiscussion(node, { entityType, entityId })`, and delete it with the row through the bridge's `threads_deleteEntityDiscussion` |
 | `attention.groupLabel` | `{label, labelKey?}` | The heading over the app's attention items |

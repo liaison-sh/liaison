@@ -67,7 +67,7 @@
       }
     ]
   },
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "Email integration: Gmail and IMAP/SMTP",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -1689,13 +1689,29 @@
       "conversation:update",
       "conversation:delete",
       "conversation:converted",
-      "message:create"
+      "message:create",
+      "send_guard:stopped"
     ],
     "subscribes": {
       "kernel/connected_account:create": "onAccountConnected",
       "kernel/connected_account:disconnect": "onAccountDisconnected",
       "kernel/contact:merge": "onContactMerge"
     }
+  },
+  "attention": {
+    "translations": [
+      {
+        "event": "send_guard:stopped",
+        "kind": "mail:send_guard.stopped",
+        "urgency": 50,
+        "isUrgent": false,
+        "summary": "{{data.summary}}",
+        "recipients": {
+          "kind": "participants",
+          "path": "data.targetUserIds"
+        }
+      }
+    ]
   },
   "webhooks": {
     "gmail-push": {

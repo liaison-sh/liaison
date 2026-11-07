@@ -12,7 +12,7 @@ import { z } from "zod"
 import { sql } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import * as privileged from "~/db/privileged"
-import type { UserContext } from "~/db/rls"
+import { type UserContext, withRlsContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
 import { DurableConsumersTestAccess } from "~/infra/events/durable-consumers"
 import * as eventBusModule from "~/infra/events/event-bus"
@@ -23,8 +23,9 @@ import * as jobsModule from "~/infra/jobs/jobs"
 import { env } from "~/lib/env"
 import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
-import { decideApproval } from "~/modules/approvals/decide"
+import { ApprovalDecisionError, decideApproval } from "~/modules/approvals/decide"
 import { updatePayload } from "~/modules/approvals/edit"
+import { getApproval } from "~/modules/approvals/list"
 import { approvalPayloadHash } from "~/modules/approvals/payload-hash"
 import { appBridgeManifestRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
@@ -32,6 +33,10 @@ import { executeToolCore } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
+import {
+  AttentionTranslatorTestAccess,
+  registerTranslatorConsumer,
+} from "~/modules/attention/translator"
 import * as footerModule from "~/modules/mail/commercial-footer"
 import { writeMailPage } from "~/modules/mail/page-write"
 import {
@@ -346,6 +351,9 @@ beforeAll(async () => {
     bufferAndBroadcast: async () => {},
     broadcast: async () => {},
   } as never)
+  // And the attention translator, for the Home line a stop leaves.
+  AttentionTranslatorTestAccess.resetRegistration()
+  registerTranslatorConsumer()
   const a = await bootstrapAdminCtx()
   orgId = a.orgId
   userId = a.userId
@@ -1402,4 +1410,238 @@ describe("what the source says", () => {
   it("no pixel in the footer builder", () => {
     expect(footer).not.toMatch(/<img|tracking|pixel|open-track/i)
   })
+})
+
+describe("the card says what the check says, and Send now", () => {
+  const DAY = 24 * HOUR
+  const MONTHS = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ]
+  const away = { "auto-submitted": "auto-replied" }
+
+  /** The card as the viewer reads it, through their own access. */
+  const card = (requestId: string, viewer: UserContext = admin) =>
+    withRlsContext(viewer, (tx) =>
+      getApproval(tx as never, { orgId, userId: viewer.userId, requestId, sendGuards: true }),
+    )
+
+  async function sendNow(requestId: string, payloadHash?: string) {
+    const row = await requestRow(requestId)
+    return decideApproval({
+      orgId,
+      requestId,
+      actor: admin,
+      decision: "approve",
+      payloadHash: payloadHash ?? approvalPayloadHash("mail:compose", row.current_payload),
+      sendGuardOverride: "auto_reply",
+    })
+  }
+
+  async function refusal(run: () => Promise<unknown>): Promise<ApprovalDecisionError> {
+    try {
+      await run()
+    } catch (err) {
+      if (err instanceof ApprovalDecisionError) return err
+      throw err
+    }
+    throw new Error("the decision went through")
+  }
+
+  async function heldDraft() {
+    const to = unique("away")
+    const id = await stageCompose(to)
+    const back = new Date(Date.now() + 10 * DAY)
+    await seedInbound(to, {
+      rawHeaders: away,
+      subject: "Automatic reply",
+      body: `I am out of the office until ${back.getUTCDate()} ${MONTHS[back.getUTCMonth()]}.`,
+    })
+    return { to, id, back }
+  }
+
+  it("auto-reply after since: Held with the parsed date", async () => {
+    const { id, back } = await heldDraft()
+    const guard = (await card(id))?.sendGuard
+    expect(guard?.state).toBe("held")
+    // The day after the stated date, at midnight in the requester's zone.
+    const until = new Date(guard?.holdUntil ?? 0).getTime()
+    const day = Date.UTC(back.getUTCFullYear(), back.getUTCMonth(), back.getUTCDate())
+    expect(until).toBeGreaterThanOrEqual(day)
+    expect(until).toBeLessThanOrEqual(day + 2 * DAY)
+    expect(guard?.quote).toContain("out of the office")
+  }, 60_000)
+
+  it("Send now sends and audits the override", async () => {
+    const { id } = await heldDraft()
+    const before = sent.length
+    await sendNow(id)
+    expect(sent.length).toBe(before + 1)
+    const request = await requestRow(id)
+    expect(request.status).toBe("approved")
+    expect((request.current_payload.sendGuard as PinnedSendGuard).ignoreAutoReply?.by).toBe(userId)
+    const audited = await sql<
+      Array<{ actor_id: string | null; metadata: Record<string, unknown> }>
+    >`
+      SELECT actor_id, metadata FROM kernel.audit_log
+       WHERE org_id = ${orgId} AND entity_id = ${id} AND action = 'send_guard.override'`
+    expect(audited).toHaveLength(1)
+    expect(audited[0]?.actor_id).toBe(userId)
+    expect(audited[0]?.metadata.override).toBe("auto_reply")
+  }, 60_000)
+
+  it("sealed: held 7 days, no quote", async () => {
+    const to = unique("sealed-away")
+    const id = await stageCompose(to)
+    await privileged.withPrivilegedDb(orgId, "send-guard-test-page", async (tx) => {
+      const ref = `<${++counter}@client.test>`
+      await writeMailPage(
+        {
+          tx: tx as never,
+          schemaName: schemaRef("app_mail"),
+          orgId,
+          actorId: userId,
+          queueEvents: async () => {},
+        } as never,
+        {
+          accountId: sealedAccount,
+          origin: "incremental",
+          messages: [
+            {
+              from: { email: to },
+              to: [{ email: "owner@org.test" }],
+              externalMessageId: ref,
+              externalThreadId: ref,
+              externalProviderId: ref,
+              subject: "Sealed subject",
+              textBody: "Back on the 2nd",
+              htmlBody: "",
+              snippet: "Back on the 2nd",
+              cc: [],
+              bcc: [],
+              isRead: false,
+              isStarred: false,
+              labels: [],
+              references: [],
+              inReplyTo: null,
+              direction: "inbound",
+              sentAt: new Date().toISOString(),
+              headers: away,
+            },
+          ],
+        },
+      )
+    })
+    const guard = (await card(id))?.sendGuard
+    expect(guard?.state).toBe("held")
+    const span = new Date(guard?.holdUntil ?? 0).getTime() - new Date(guard?.at ?? 0).getTime()
+    expect(span).toBe(7 * DAY)
+    expect(guard?.quote).toBeUndefined()
+  }, 60_000)
+
+  it("expired hold reads clear", async () => {
+    const to = unique("was-away")
+    const id = await stageCompose(to)
+    // Sent eight days ago and first synced now: the default seven days are over.
+    await seedInbound(to, { rawHeaders: away, sentAt: ago(8 * DAY), syncedAt: ago(1000) })
+    expect((await card(id))?.sendGuard?.state).toBe("clear")
+  }, 60_000)
+
+  it("override on anything but held 422", async () => {
+    const to = unique("not-away")
+    const id = await stageCompose(to)
+    const before = sent.length
+    const err = await refusal(() => sendNow(id))
+    expect(err.status).toBe(422)
+    expect(err.code).toBe("send_guard_not_held")
+    expect(sent.length).toBe(before)
+    expect((await requestRow(id)).status).toBe("pending")
+  }, 60_000)
+
+  it("Send now with the card's own payloadHash sends once", async () => {
+    const { id } = await heldDraft()
+    const shown = await card(id)
+    expect(shown?.payloadHash).toBeString()
+    const before = sent.length
+    await sendNow(id, shown?.payloadHash)
+    expect(sent.length).toBe(before + 1)
+    expect((await requestRow(id)).status).toBe("approved")
+  }, 60_000)
+
+  it("a stored Send now replayed after a real reply arrived does not send", async () => {
+    const { to, id } = await heldDraft()
+    const shown = await card(id)
+    expect(shown?.sendGuard?.state).toBe("held")
+    await seedInbound(to, { body: "Actually, I am back: no need." })
+    const before = sent.length
+    const err = await refusal(() => sendNow(id, shown?.payloadHash))
+    expect(err.code).toBe("send_guard_not_held")
+    expect(sent.length).toBe(before)
+    expect((await requestRow(id)).status).toBe("pending")
+  }, 60_000)
+
+  it("a viewer who loses mailbox access sees no quote on reload", async () => {
+    const to = unique("private")
+    const id = await stageCompose(to)
+    const { conversationId } = await seedInbound(to, { body: "Yes, please go ahead." })
+    const first = (await card(id))?.sendGuard
+    expect(first?.state).toBe("replied")
+    expect(first?.quote).toContain("go ahead")
+    expect(first?.record).toEqual({ kind: "conversation", id: conversationId })
+
+    // The conversation moves to a colleague's own mailbox: the viewer can no longer read it.
+    const colleague = await minimal.person(orgId)
+    const ctx = seedContext({ orgId, now: new Date() })
+    const theirs = (
+      await ensureMailAccount(ctx, {
+        ownerType: "user",
+        userId: colleague.id,
+        email: `colleague-${counter}@org.test`,
+        provider: "imap",
+      })
+    ).accountId
+    await privileged.withSystemDb("send-guard-test-move", async (tx) => {
+      await tx.execute(
+        drizzleSql`UPDATE ${MAIL}.conversations SET account_id = ${theirs}::uuid, owner_type = 'user', owner_id = ${colleague.id}::uuid WHERE id = ${conversationId}::uuid`,
+      )
+      await tx.execute(
+        drizzleSql`UPDATE ${MAIL}.messages SET account_id = ${theirs}::uuid, owner_type = 'user', owner_id = ${colleague.id}::uuid WHERE conversation_id = ${conversationId}::uuid`,
+      )
+    })
+    const reloaded = (await card(id))?.sendGuard
+    // The reply still stops the send: the check reads every mailbox.
+    expect(reloaded?.state).toBe("replied")
+    expect(reloaded?.quote).toBeUndefined()
+    expect(reloaded?.record).toBeUndefined()
+    // And nothing of it was kept on the request.
+    expect(JSON.stringify(await requestRow(id))).not.toContain("go ahead")
+  }, 60_000)
+
+  it("a stop after approval leaves one Home line for the person who decided", async () => {
+    const to = unique("home-line")
+    const id = await stageCompose(to)
+    await seedInbound(to)
+    await approveSettled(id)
+    expect((await requestRow(id)).status).toBe("cancelled")
+    for (let i = 0; i < 5; i++) {
+      await processOutboxBatch()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+    const lines = await sql<Array<{ user_id: string; summary: string }>>`
+      SELECT user_id, summary FROM kernel.attention_events
+       WHERE org_id = ${orgId} AND entity_id = ${id} AND kind = 'mail:send_guard.stopped'`
+    expect(lines).toHaveLength(1)
+    expect(lines[0]?.user_id).toBe(userId)
+    expect(lines[0]?.summary).toBe(`Not sent to ${to}: ${to} replied after it was drafted.`)
+  }, 60_000)
 })

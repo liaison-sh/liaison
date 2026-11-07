@@ -5441,6 +5441,7 @@ interface ConversationRow {
   status?: string | null
   last_message_at?: string | null
   message_count?: number
+  last_inbound_at?: string | null
 }
 
 interface MailSearchItem {
@@ -5455,6 +5456,8 @@ interface MailSearchItem {
   assignedTo?: string | null
   status?: string | null
   lastMessageAt?: string | null
+  /** The newest inbound message's date: our own outbound never moves it. */
+  lastInboundAt?: string | null
   messageCount?: number
 }
 
@@ -5906,6 +5909,7 @@ async function agentMailSearch(
       assignedTo: row.assigned_to,
       status: row.status,
       lastMessageAt: row.last_message_at,
+      lastInboundAt: row.last_inbound_at ?? null,
       messageCount: row.message_count,
     }),
   )

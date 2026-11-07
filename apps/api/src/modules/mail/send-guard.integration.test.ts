@@ -1575,56 +1575,61 @@ describe("the card says what the check says, and Send now", () => {
       }
     })
     await seedApprovalRequests(seedContext({ orgId, now: new Date() }), waiting, { seeded: false })
-
-    // Every statement the badge sends, through the viewer's own transaction or a privileged one.
-    let statements = 0
-    const counted = <T extends object>(tx: T): T =>
-      new Proxy(tx, {
-        get(target, prop) {
-          const value = Reflect.get(target, prop, target)
-          if (typeof value !== "function") return value
-          if (prop === "execute") {
-            return (...args: unknown[]) => {
-              statements++
-              return value.apply(target, args)
-            }
-          }
-          if (prop === "transaction") {
-            return (fn: (sp: object) => unknown, ...rest: unknown[]) =>
-              value.call(target, (sp: object) => fn(counted(sp)), ...rest)
-          }
-          return value.bind(target)
-        },
-      })
-    const real = privileged.withPrivilegedDb
-    const spy = spyOn(privileged, "withPrivilegedDb").mockImplementation(((
-      org: string,
-      label: string,
-      fn: (tx: object) => unknown,
-    ) => {
-      statements++
-      return real(org, label, ((tx: object) => fn(counted(tx))) as never)
-    }) as typeof privileged.withPrivilegedDb)
-    let badge: Awaited<ReturnType<typeof computeApprovalBadgeItems>>
+    // The 200 rows are this test's alone: every later read of this org's Home would otherwise
+    // serve them too, filling each one's summary on every attention pass.
     try {
-      badge = await withRlsContext(admin, (tx) =>
-        computeApprovalBadgeItems(counted(tx) as never, orgId, admin.userId, 500),
-      )
-    } finally {
-      spy.mockRestore()
-    }
-    expect(statements).toBeLessThanOrEqual(25)
+      // Every statement the badge sends, through the viewer's own transaction or a privileged one.
+      let statements = 0
+      const counted = <T extends object>(tx: T): T =>
+        new Proxy(tx, {
+          get(target, prop) {
+            const value = Reflect.get(target, prop, target)
+            if (typeof value !== "function") return value
+            if (prop === "execute") {
+              return (...args: unknown[]) => {
+                statements++
+                return value.apply(target, args)
+              }
+            }
+            if (prop === "transaction") {
+              return (fn: (sp: object) => unknown, ...rest: unknown[]) =>
+                value.call(target, (sp: object) => fn(counted(sp)), ...rest)
+            }
+            return value.bind(target)
+          },
+        })
+      const real = privileged.withPrivilegedDb
+      const spy = spyOn(privileged, "withPrivilegedDb").mockImplementation(((
+        org: string,
+        label: string,
+        fn: (tx: object) => unknown,
+      ) => {
+        statements++
+        return real(org, label, ((tx: object) => fn(counted(tx))) as never)
+      }) as typeof privileged.withPrivilegedDb)
+      let badge: Awaited<ReturnType<typeof computeApprovalBadgeItems>>
+      try {
+        badge = await withRlsContext(admin, (tx) =>
+          computeApprovalBadgeItems(counted(tx) as never, orgId, admin.userId, 500),
+        )
+      } finally {
+        spy.mockRestore()
+      }
+      expect(statements).toBeLessThanOrEqual(25)
 
-    const ids = new Set(badge.map((i) => i.entityId))
-    for (const w of waiting) expect(ids.has(w.id)).toBe(true)
-    expect(ids.has(template)).toBe(true)
-    expect(ids.has(held.id)).toBe(false)
-    expect(ids.has(answered)).toBe(false)
-    const { feed } = await home()
-    expect(feed.some((i) => i.entityId === held.id)).toBe(false)
-    const stopped = feed.find((i) => i.entityId === answered)
-    expect(stopped?.metadata?.sendGuard).toMatchObject({ state: "replied" })
-    expect(stopped?.metadata?.uncounted).toBe(true)
+      const ids = new Set(badge.map((i) => i.entityId))
+      for (const w of waiting) expect(ids.has(w.id)).toBe(true)
+      expect(ids.has(template)).toBe(true)
+      expect(ids.has(held.id)).toBe(false)
+      expect(ids.has(answered)).toBe(false)
+      const { feed } = await home()
+      expect(feed.some((i) => i.entityId === held.id)).toBe(false)
+      const stopped = feed.find((i) => i.entityId === answered)
+      expect(stopped?.metadata?.sendGuard).toMatchObject({ state: "replied" })
+      expect(stopped?.metadata?.uncounted).toBe(true)
+    } finally {
+      await sql`DELETE FROM kernel.approval_requests WHERE id = ANY(${waiting.map((w) => w.id)}::uuid[])`
+    }
   }, 120_000)
 
   it("fixture pill Billing: payment reminder names the row over the tool's", async () => {

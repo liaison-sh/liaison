@@ -3,10 +3,16 @@
 // page with the person's session and limited to the calling app.
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-const confirm = vi.hoisted(() => ({ answer: true, asked: [] as unknown[] }))
+const confirm = vi.hoisted(() => ({
+  answer: true,
+  asked: [] as unknown[],
+  /** Runs while the dialog is open (an edit made meanwhile). */
+  during: null as null | (() => void),
+}))
 vi.mock("~/modules/shell/app-approval-confirm", () => ({
   confirmAppApproval: vi.fn(async (request: unknown) => {
     confirm.asked.push(request)
+    confirm.during?.()
     return confirm.answer
   }),
 }))
@@ -45,6 +51,7 @@ function deps(answers: Record<string, unknown> = {}) {
 afterEach(() => {
   confirm.answer = true
   confirm.asked = []
+  confirm.during = null
   desktop.native = false
   desktop.opened = []
   vi.restoreAllMocks()
@@ -102,6 +109,7 @@ describe("decideApproval", () => {
         id: "a1",
         status: "pending",
         toolName: "boxtal:create_shipment",
+        payloadHash: "h",
         summary: { title: "Buy a label", lines: ["Colissimo, 12.40 EUR"] },
       },
     })
@@ -115,14 +123,73 @@ describe("decideApproval", () => {
     expect(d.calls).toHaveBeenCalledTimes(1)
   })
 
-  it("decides after the confirm, bound to the payload fingerprint the app showed", async () => {
+  it("decides after the confirm, bound to the payload fingerprint the host read", async () => {
     const d = deps({
-      "/api/approvals/a1": { id: "a1", status: "pending", toolName: "boxtal:create_shipment" },
+      "/api/approvals/a1": {
+        id: "a1",
+        status: "pending",
+        toolName: "boxtal:create_shipment",
+        payloadHash: "hash-1",
+      },
     })
-    await buildAppHostCalls(d).decideApproval("boxtal", "a1", "approve", "hash-1")
+    // The app may pass nothing: the host's own reading is what is approved.
+    await buildAppHostCalls(d).decideApproval("boxtal", "a1", "approve")
     expect(d.calls).toHaveBeenLastCalledWith("/api/approvals/a1/decide", {
       method: "POST",
       body: JSON.stringify({ decision: "approve", payloadHash: "hash-1" }),
+    })
+  })
+
+  it("refuses an app fingerprint that is not the one the host read, before any dialog", async () => {
+    const d = deps({
+      "/api/approvals/a1": {
+        id: "a1",
+        status: "pending",
+        toolName: "boxtal:create_shipment",
+        payloadHash: "hash-shown",
+      },
+    })
+    await expect(
+      buildAppHostCalls(d).decideApproval("boxtal", "a1", "approve", "hash-newer"),
+    ).rejects.toThrow(/changed since the app showed it/)
+    expect(confirm.asked).toHaveLength(0)
+    expect(d.calls).toHaveBeenCalledTimes(1)
+  })
+
+  it("refuses the approve when the payload is edited while the dialog is open", async () => {
+    const answers: Record<string, unknown> = {
+      "/api/approvals/a1": {
+        id: "a1",
+        status: "pending",
+        toolName: "boxtal:create_shipment",
+        payloadHash: "hash-shown",
+      },
+    }
+    const d = deps(answers)
+    confirm.during = () => {
+      answers["/api/approvals/a1"] = {
+        id: "a1",
+        status: "pending",
+        toolName: "boxtal:create_shipment",
+        payloadHash: "hash-edited",
+      }
+    }
+    await expect(
+      buildAppHostCalls(d).decideApproval("boxtal", "a1", "approve", "hash-shown"),
+    ).rejects.toThrow(/changed while you were deciding/)
+    // Read, re-read, and no decide.
+    expect(d.calls).toHaveBeenCalledTimes(2)
+    expect(d.calls).not.toHaveBeenCalledWith("/api/approvals/a1/decide", expect.anything())
+  })
+
+  it("denies without a fingerprint", async () => {
+    const d = deps({
+      "/api/approvals/a1": { id: "a1", status: "pending", toolName: "boxtal:create_shipment" },
+    })
+    await buildAppHostCalls(d).decideApproval("boxtal", "a1", "deny")
+    expect(d.calls).toHaveBeenLastCalledWith("/api/approvals/a1/decide", {
+      method: "POST",
+      body: JSON.stringify({ decision: "deny" }),
     })
   })
 })

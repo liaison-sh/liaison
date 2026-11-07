@@ -18,7 +18,8 @@
 //   person may decide;
 // - `decideApproval(id, decision, payloadHash)`: the HOST asks the person in its
 //   own dialog (an app's button is never the decision), checks the approval is
-//   one of this app's tools, and keeps the payload fingerprint the app showed;
+//   one of this app's tools, and approves the payload fingerprint the HOST read and
+//   showed (an app's differing one, or an edit during the dialog, is refused);
 // - `openExternal(url)`: https only, a host the app's manifest declares, never
 //   this page's origin; opened with noopener and noreferrer;
 // - `openRecord(app, entity, id)`: another app's record in its own tab (the
@@ -224,18 +225,28 @@ export function buildAppHostCalls(deps: AppHostCallDeps) {
       if (decision !== "approve" && decision !== "deny") {
         throw new Error("decideApproval: decision must be approve or deny")
       }
-      const approval = await deps.fetch<ApprovalRow>(
-        `/api/approvals/${encodeURIComponent(approvalId)}`,
-      )
-      if (
-        !approval ||
-        typeof approval.toolName !== "string" ||
-        !approval.toolName.startsWith(`${app}:`)
-      ) {
-        throw new Error("decideApproval: not an approval of this app")
+      const read = async (): Promise<ApprovalRow> => {
+        const row = await deps.fetch<ApprovalRow>(
+          `/api/approvals/${encodeURIComponent(approvalId)}`,
+        )
+        if (!row || typeof row.toolName !== "string" || !row.toolName.startsWith(`${app}:`)) {
+          throw new Error("decideApproval: not an approval of this app")
+        }
+        if (row.status !== undefined && row.status !== "pending") {
+          throw new Error("decideApproval: this approval is no longer pending")
+        }
+        return row
       }
-      if (approval.status !== undefined && approval.status !== "pending") {
-        throw new Error("decideApproval: this approval is no longer pending")
+      const approval = await read()
+      // The approve is bound to the payload the HOST read and shows, never to a
+      // fingerprint the app hands over: an app that saw another version is refused.
+      const shown = typeof approval.payloadHash === "string" ? approval.payloadHash : undefined
+      const asked = typeof payloadHash === "string" && payloadHash ? payloadHash : undefined
+      if (decision === "approve") {
+        if (!shown) throw new Error("decideApproval: this approval carries no payload fingerprint")
+        if (asked !== undefined && asked !== shown) {
+          throw new Error("decideApproval: the approval changed since the app showed it")
+        }
       }
       // The person decides in the host's own dialog: an app's button only asks.
       const confirmed = await confirmAppApproval({
@@ -245,11 +256,17 @@ export function buildAppHostCalls(deps: AppHostCallDeps) {
         lines: (approval.summary?.lines ?? []).filter((l): l is string => typeof l === "string"),
       })
       if (!confirmed) throw new Error("decideApproval: cancelled")
-      const hash = typeof payloadHash === "string" && payloadHash ? payloadHash : undefined
+      if (decision === "approve") {
+        // An edit made while the dialog was open: what the person read is not what would run.
+        const now = await read()
+        if (now.payloadHash !== shown) {
+          throw new Error("decideApproval: the approval changed while you were deciding")
+        }
+      }
       return deps.fetch(`/api/approvals/${encodeURIComponent(approvalId)}/decide`, {
         method: "POST",
         body: JSON.stringify(
-          decision === "approve" && hash ? { decision, payloadHash: hash } : { decision },
+          decision === "approve" ? { decision, payloadHash: shown } : { decision },
         ),
       })
     },

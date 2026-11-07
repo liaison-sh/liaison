@@ -928,6 +928,38 @@ export function appIconErrors(manifest: { iconSvg?: unknown; iconName?: unknown 
   return errors
 }
 
+/**
+ * A context provider names a tool of its own app that writes nothing, and a
+ * scope that tool requires: the scope is what a turn must hold for the tool to
+ * run, so it cannot be one the tool does not check. `loadTools` are the app's
+ * own tools.
+ */
+function contextProviderErrors(manifest: any): string[] {
+  const providers = manifest?.contextProviders
+  if (!Array.isArray(providers)) return []
+  const tools = (manifest.tools ?? {}) as Record<string, any>
+  const errors: string[] = []
+  providers.forEach((p: { tool: string; scope: string; loadTools?: string[] }, i: number) => {
+    const at = `contextProviders[${i}]`
+    const tool = tools[p.tool]
+    if (!tool) {
+      errors.push(`${at}.tool: '${p.tool}' is not a tool of this app`)
+      return
+    }
+    if (tool.readOnly !== true || typeof tool.writesToTable === "string" || tool.gated === true) {
+      errors.push(`${at}.tool: '${p.tool}' must be declared readOnly, ungated and write no table`)
+    }
+    const required: unknown[] = Array.isArray(tool.requiredScopes) ? tool.requiredScopes : []
+    if (!required.includes(p.scope)) {
+      errors.push(`${at}.scope: '${p.scope}' is not in the requiredScopes of '${p.tool}'`)
+    }
+    for (const name of p.loadTools ?? []) {
+      if (!tools[name]) errors.push(`${at}.loadTools: '${name}' is not a tool of this app`)
+    }
+  })
+  return errors
+}
+
 export function validateAppManifest(manifest: any): ValidationResult {
   const retired = retiredToolScopeErrors(manifest?.tools)
   if (retired.length > 0) return { success: false, error: retired.join("; ") }
@@ -958,6 +990,7 @@ export function validateAppManifest(manifest: any): ValidationResult {
   errors.push(...listingDeclarationErrors(manifest))
   errors.push(...appIconErrors(manifest))
   errors.push(...resultCardErrors(manifest))
+  errors.push(...contextProviderErrors(manifest))
   errors.push(
     ...importDeclarationErrors(
       manifest.import,

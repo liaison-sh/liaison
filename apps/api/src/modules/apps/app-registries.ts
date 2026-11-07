@@ -80,6 +80,8 @@ export interface BridgeManifest {
   sendGuardProviders?: Record<string, { tool: string; serviceMessage?: boolean }>
   /** Per entity type, the read-only tool that says who an approval about such a record is for. */
   approvalRoute?: Record<string, string>
+  /** Read-only tools that add a few lines about the entity a turn is about (context-providers.ts). */
+  contextProviders?: Array<{ on: string[]; tool: string; scope: string; loadTools?: string[] }>
 }
 
 // Track registered orgId:appName to prevent duplicate registration

@@ -247,11 +247,11 @@ describe("manifest key shapes", () => {
   it("accepts the app-level keys with their declared shapes", () => {
     expect(
       errorOf({
-        ...base,
+        ...tool({ readOnly: true }),
         contextProviders: [
           {
             on: ["tickets:ticket"],
-            tool: "customer_context",
+            tool: "get",
             scope: "shape-keys-app:items:read",
             loadTools: ["get"],
           },

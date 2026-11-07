@@ -12,6 +12,7 @@ It is a real in-tree app — auto-discovered at startup, packageable with
 | Handler | SDK surface | What to copy from it |
 |---|---|---|
 | `item_notes_count` | manifest `feature` | A tool that exists only where its feature is on: top-level `features` declares it, `kernel.org_app_features` switches it per org |
+| `item_context` | manifest `contextProviders` | A read-only tool that gives the agent a few lines about the item in view: it returns `{lines, source}` or null, and the host fences the lines, keeps them under 2 KB and records the scope |
 | `items_list` | `ctx.db.findMany` | Reading your app's entity rows, scoped to the org |
 | `items_create` | `ctx.db.insert` + `ctx.emit` | Persisting a row and emitting a domain event |
 | `external_fetch` | `ctx.connections` + `ctx.fetch` | Calling an external API with a connection token |

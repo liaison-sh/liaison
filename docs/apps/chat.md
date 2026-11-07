@@ -101,6 +101,8 @@ Use **Search threads...** at the top of the list to find a conversation by name.
 
 A task's discussion is a conversation too. Opened as a conversation (from an old link, for example), it shows the task it belongs to above the messages, with **Open task**.
 
+Any app can give its records a discussion the same way: one conversation per record, which everyone who can see the record may read and write. Opening the record's page seats you in it. Someone who cannot see the record never sees its discussion, and when a record's sharing narrows, people who lost access are taken out of it. If the discussion cannot be opened, the page says **The discussion could not be opened.** with **Retry**, and the rest of the page still works.
+
 ## Scopes
 
 Chat is part of the core workspace, so its scopes are kernel scopes.

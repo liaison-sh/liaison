@@ -103,6 +103,7 @@ The bridge surface is large and grows as apps need new host capabilities. Core c
 | Approvals | `approval_recordStarted`, `approval_recordEffectLanded`, `approval_recordSucceeded`, `approval_recordFailedNoEffect`, `approval_recordAmbiguous` |
 | Agents | `agent_run`, `agent_spawn`, `agent_awaitRun` |
 | Cross-app tools | `executeTool` — one app calling another app's declared tool |
+| Discussions | `threads_deleteEntityDiscussion({entityType, entityId})` — after deleting one of the app's own records that declares a discussion, removes that discussion (an empty shell stays where an approval was asked in it). Refused with `discussion_not_declared` for a type without one, and with `entity_still_exists` while the record still reads in the handler's transaction |
 
 A tool reached through `executeTool` runs with the target app's own access plus the calling app's. So it can read a file the calling app stored on one of its own records (with `files_importAttachment`) and handed over by id, for example as `attachments` to `tickets:addNote`, and nothing the calling app cannot read. The target app copies such a file onto its own record under its own write access, not the caller's. A file copied by a webhook or job, which has no user, records no uploader.
 

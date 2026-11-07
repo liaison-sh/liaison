@@ -3571,6 +3571,51 @@ describe("skills-routines-tools — authoring handlers (gated)", () => {
     }
   })
 
+  it("followUp is saved by create_routine and turned off and on by update_routine", async () => {
+    const { eq } = await import("drizzle-orm")
+    const ctx = { ...baseCtx(), scopes: ["*"], approverUserId: userId }
+    const followUpOf = async (id: string) => {
+      const [row] = await withPrivilegedDb(orgId, "r", (tx) =>
+        tx.select({ followUp: routines.followUp }).from(routines).where(eq(routines.id, id)),
+      )
+      return row?.followUp
+    }
+    const created = (await handleCreateRoutine(
+      {
+        name: "follow-up-flag",
+        description: "d",
+        cron: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "p",
+        scopes: [],
+        enabled: true,
+        followUp: true,
+      },
+      ctx,
+    )) as { routine?: { id: string } }
+    const id = created.routine!.id
+    expect(await followUpOf(id)).toBe(true)
+    await handleUpdateRoutine({ id, followUp: false }, ctx)
+    expect(await followUpOf(id)).toBe(false)
+    await handleUpdateRoutine({ id, description: "d2" }, ctx)
+    expect(await followUpOf(id)).toBe(false)
+    await handleUpdateRoutine({ id, followUp: true }, ctx)
+    expect(await followUpOf(id)).toBe(true)
+    const plain = (await handleCreateRoutine(
+      {
+        name: "no-follow-up-flag",
+        description: "d",
+        cron: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "p",
+        scopes: [],
+        enabled: true,
+      },
+      ctx,
+    )) as { routine?: { id: string } }
+    expect(await followUpOf(plain.routine!.id)).toBe(false)
+  })
+
   it("B14: handleUpdateRoutine REJECTS a flip to kind:'event' with NO event trigger", async () => {
     const ctx = { ...baseCtx(), scopes: ["*"], approverUserId: userId }
     const created = (await handleCreateRoutine(
@@ -4350,6 +4395,36 @@ describe("handleEnableRoutineTemplate / reset (A6)", () => {
     expect(rows.length).toBe(1)
     expect(rows[0].kind).toBe("recurring")
     expect(rows[0].cron).toBe("0 9 * * *")
+    expect(rows[0].followUp).toBe(false)
+  })
+
+  it("enable_routine_template copies a template's followUp to the routine", async () => {
+    const { and, eq } = await import("drizzle-orm")
+    const { routineTemplateRegistry } = await import("~/modules/apps/app-registries")
+    const { handleEnableRoutineTemplate } = await import(
+      "~/modules/agent/tools/skills-routines-tools"
+    )
+    routineTemplateRegistry.set([orgId, "social", "quote-follow-up"], {
+      description: "follow up on quotes with no answer",
+      kind: "recurring",
+      cron: "0 9 * * 1",
+      timezone: "UTC",
+      promptTemplate: "Draft a follow-up to each client with an unanswered quote",
+      scopes: ["social:findings:read"],
+      enabledByDefault: false,
+      followUp: true,
+    })
+    await handleEnableRoutineTemplate(
+      { appName: "social", templateKey: "quote-follow-up", timezone: "UTC" },
+      tplCtx(userId, ["social:findings:read", "kernel:routines:write"]),
+    )
+    const [row] = await withPrivilegedDb(orgId, "r", (tx) =>
+      tx
+        .select()
+        .from(routines)
+        .where(and(eq(routines.orgId, orgId), eq(routines.templateKey, "quote-follow-up"))),
+    )
+    expect(row.followUp).toBe(true)
   })
 
   it("enable_routine_template for kind:'event' sets event and null timing cols", async () => {

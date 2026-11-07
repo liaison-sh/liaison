@@ -1518,6 +1518,8 @@ export interface RoutineListItem {
   eventFilter: { fromContactIds?: string[]; fromGroupIds?: string[] } | null
   /** Who decides the routine's gated drafts (S29): the default audience or its owner. */
   approver: "default" | "owner"
+  /** A follow-up: its runs stage drafts and end without waiting for them. */
+  followUp: boolean
 }
 
 /**
@@ -1608,6 +1610,7 @@ export async function handleListRoutines(
       runsOn: r.runsOn ?? "cloud",
       eventFilter: r.eventFilter ?? null,
       approver: r.approver ?? "default",
+      followUp: r.followUp ?? false,
     })),
     notes: listRoutinesNotes(),
   }
@@ -3188,6 +3191,7 @@ export async function handleCreateRoutine(
           runsOn: params.runsOn ?? "cloud",
           eventFilter: filterCheck.filter,
           approver: params.approver ?? "default",
+          followUp: params.followUp ?? false,
           enabled: params.enabled ?? true,
           status: "active",
           // ownerUserId is the RUN-AS identity (may be a delegatee); createdByUserId is the person who
@@ -3721,6 +3725,7 @@ export async function handleUpdateRoutine(
     if (approverError) return approverError
   }
   if (params.approver !== undefined) updates.approver = params.approver
+  if (params.followUp !== undefined) updates.followUp = params.followUp
   if (params.enabled !== undefined) updates.enabled = params.enabled
   if (params.kind !== undefined) updates.kind = params.kind
   // Schedule columns — keep them consistent with the (possibly new) kind.
@@ -4398,6 +4403,7 @@ export async function handleEnableRoutineTemplate(
         prompt: tpl.promptTemplate,
         scopes: templateScopes,
         visibility: tpl.visibility ?? "personal",
+        followUp: tpl.followUp === true,
         enabled: true,
         status: "active",
         // A kernel template's routine has no app (S28, F5).
@@ -5117,6 +5123,7 @@ export async function summarizeCreateRoutine(
   const periodSnapshotSteer = routinePeriodSnapshotSteer(p.prompt)
   if (periodSnapshotSteer) lines.push(`• ${periodSnapshotSteer}`)
   if (p.approver === "owner") lines.push("Drafts it raises are approved by its owner alone")
+  if (p.followUp === true) lines.push("A follow-up: each run stages its drafts and ends")
   return {
     kind: "create_routine",
     title: `Create routine ${p.name ?? ""}`,
@@ -5145,6 +5152,13 @@ export async function summarizeUpdateRoutine(
       p.approver === "owner"
         ? "approver → the routine owner alone"
         : "approver → whoever may approve each draft",
+    )
+  }
+  if (p.followUp !== undefined) {
+    lines.push(
+      p.followUp
+        ? "follow-up → each run stages its drafts and ends"
+        : "follow-up → off: each run waits for its approvals",
     )
   }
   if (p.visibility !== undefined) lines.push(`visibility → ${p.visibility}`)

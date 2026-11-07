@@ -622,7 +622,7 @@ describe("calendar reading: one privileged slot", () => {
         ),
       ),
     ).toEqual([])
-    expect(await ranges(p.userId)).toEqual([])
+    expect((await ranges(p.userId)).length).toBe(0)
   })
 })
 

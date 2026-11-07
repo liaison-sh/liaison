@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// What the tool ladder costs, measured from source with no server, database or
-// env: for a world (the apps that are on, the scopes held, the client surface)
+// What the tool ladder costs, measured with no server, database or env: for a world (the apps that are on, the scopes held, the client surface)
 // the deferred-tool announcement the real builder writes, the tools listed, the
 // summary lines, and each app's schema total through the product's own meter.
+// App tools are read from their manifests; kernel tools are the registry
+// entries the kernel's own registration builds, so both are measured from what
+// the provider is sent.
 // The numbers are TARGETS. A number over its target needs a line in
 // `ladder-budget.reasons.json` naming the capability that needs it; nothing here
 // forbids a tool, and nothing here edits a description.
@@ -12,8 +14,8 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { checkToolScopes } from "~/modules/agent/scopes/required-scopes"
-import { providerInputSchemaOf } from "~/modules/agent/tools/tool-bridge"
-import { collectKernelTools, loadManifests } from "../../../../../../scripts/docs/gen-reference"
+import { isDeferredTool, providerInputSchemaOf } from "~/modules/agent/tools/tool-bridge"
+import { loadManifests } from "../../../../../../scripts/docs/gen-reference"
 import { estimateTokens } from "./compaction"
 import {
   appInstructionSummary,
@@ -39,8 +41,6 @@ export interface LadderTool {
   routineOnly: boolean
   /** Name, description and schema as the provider receives them, by `ceil(chars / 4)`. */
   wireTokens: number
-  /** A kernel tool's schema is code, so its schema is estimated from the source text. */
-  estimated: boolean
   /** The app's one-line agent guide, for the summary line. */
   guide?: string
 }
@@ -57,8 +57,59 @@ interface ManifestTool {
 
 const sdkNameOf = (app: string, tool: string) => `${app}__${tool.replace(/[^a-zA-Z0-9_-]/g, "_")}`
 
-/** Every tool of every shipped app and of the kernel, read from source. */
-export function loadLadderTools(root: string = LADDER_REPO_ROOT): LadderTool[] {
+/** The org segment the kernel's registration is built under to be measured: not a uuid. */
+const MEASURE_ORG = "ladder-budget-measure"
+
+interface KernelRegistryTool {
+  description?: string
+  params?: unknown
+  requiredScopes?: string[]
+  deferLoading?: boolean
+  agentVisible?: boolean
+  routineOnly?: boolean
+}
+
+/**
+ * The kernel's tools as the registry holds them: the kernel's own registration
+ * runs under a measuring org, its entries are read, then removed again.
+ */
+async function loadKernelRegistryTools(): Promise<LadderTool[]> {
+  // Imported here: the kernel's tools read the product's config when loaded, which
+  // a caller may only settle (placeholder secrets) after this module is imported.
+  const { KernelToolsTestAccess } = await import("~/modules/agent/tools/kernel-tools")
+  const { toolRegistry } = await import("~/modules/apps/app-registries")
+  const { deleteRegistryEntriesOfOrgs } = await import("~/modules/apps/registries")
+  const out: LadderTool[] = []
+  try {
+    await KernelToolsTestAccess.buildWithoutTemplate(MEASURE_ORG)
+    for (const [key, value] of toolRegistry.entriesOf(MEASURE_ORG)) {
+      if (key[1] !== "kernel") continue
+      const def = value as KernelRegistryTool
+      const name = String(key[2])
+      const sdkName = sdkNameOf("kernel", name)
+      out.push({
+        app: "kernel",
+        name,
+        sdkName,
+        description: def.description ?? "",
+        requiredScopes: def.requiredScopes ?? [],
+        deferred: isDeferredTool("kernel", def),
+        agentVisible: def.agentVisible !== false,
+        routineOnly: def.routineOnly === true,
+        wireTokens: estimateToolSchemaTokens(sdkName, {
+          description: def.description,
+          inputSchema: providerInputSchemaOf(def.params),
+        }),
+      })
+    }
+  } finally {
+    deleteRegistryEntriesOfOrgs(new Set([MEASURE_ORG]))
+  }
+  return out
+}
+
+/** Every tool of every shipped app (from its manifest) and of the kernel (from its registration). */
+export async function loadLadderTools(root: string = LADDER_REPO_ROOT): Promise<LadderTool[]> {
   const out: LadderTool[] = []
   for (const m of loadManifests(root)) {
     if (LEFT_OUT_APPS.has(m.name)) continue
@@ -74,34 +125,18 @@ export function loadLadderTools(root: string = LADDER_REPO_ROOT): LadderTool[] {
         sdkName,
         description: def.description ?? "",
         requiredScopes: def.requiredScopes ?? [],
-        deferred: def.deferLoading ?? true,
+        deferred: isDeferredTool(m.name, def),
         agentVisible: def.agentVisible !== false,
         routineOnly: def.routineOnly === true,
         wireTokens: estimateToolSchemaTokens(sdkName, {
           description: def.description,
           inputSchema: providerInputSchemaOf(def.params),
         }),
-        estimated: false,
         ...(guide ? { guide } : {}),
       })
     }
   }
-  for (const t of collectKernelTools(root).tools) {
-    const sdkName = sdkNameOf("kernel", t.name)
-    out.push({
-      app: "kernel",
-      name: t.name,
-      sdkName,
-      description: t.fullDescription,
-      requiredScopes: t.requiredScopes,
-      deferred: t.deferLoading ?? false,
-      agentVisible: t.agentVisible,
-      routineOnly: t.routineOnly,
-      wireTokens:
-        Math.ceil(`${sdkName}\n${t.fullDescription}\n`.length / 4) + Math.ceil(t.paramsChars / 4),
-      estimated: true,
-    })
-  }
+  out.push(...(await loadKernelRegistryTools()))
   return out.sort((a, b) => a.sdkName.localeCompare(b.sdkName))
 }
 
@@ -156,7 +191,6 @@ export function measureLadder(tools: readonly LadderTool[], world: LadderWorld):
     return `- **${app}**: ${guide ? appInstructionSummary(guide) : ""}`
   })
   const appSchemaTokens: Record<string, number> = {}
-  const estimatedApps = [...new Set(usable.filter((t) => t.estimated).map((t) => t.app))]
   for (const t of usable) appSchemaTokens[t.app] = (appSchemaTokens[t.app] ?? 0) + t.wireTokens
   return {
     world: world.name,
@@ -166,7 +200,6 @@ export function measureLadder(tools: readonly LadderTool[], world: LadderWorld):
     summaryLines: summaries.length,
     summaryTokens: estimateTokens(summaries.join("\n")),
     appSchemaTokens,
-    estimatedApps,
     surfaceLineTokens: estimateTokens(renderClientSurfaceLine(world.surface)),
   }
 }
@@ -226,14 +259,15 @@ function promptBody(file: string): string {
 }
 
 /**
- * The fixed parts of the system prompt with every app on, from source: the base
+ * The fixed parts of the system prompt with every app on: the base
  * text, the charter and roster templates, the kernel guide, the summary lines
  * and the announcement. The integration case in `context.token-cap.test.ts`
  * composes the real prompt and holds this within 1,000 tokens of it.
  */
-export function staticFixedPromptTokens(
-  tools: readonly LadderTool[] = loadLadderTools(),
-): StaticFixedPrompt {
+export async function staticFixedPromptTokens(
+  tools?: readonly LadderTool[],
+): Promise<StaticFixedPrompt> {
+  tools ??= await loadLadderTools()
   const everyApp = measureLadder(tools, { name: "every app", scopes: ["*"] })
   const parts: Record<string, number> = {
     base: estimateTokens(composeTurnSystemText(promptBody("system.md"), "Organisation")),
@@ -275,7 +309,7 @@ export function ladderReport(
     )) {
       const target = targets[m.world]?.appSchemaTokens[app]
       lines.push(
-        `  ${app}: ${tokens} schema tokens${m.estimatedApps.includes(app) ? " (estimated from source)" : ""}${target === undefined ? "" : ` (target ${target})`}`,
+        `  ${app}: ${tokens} schema tokens${target === undefined ? "" : ` (target ${target})`}`,
       )
     }
     const target = targets[m.world]

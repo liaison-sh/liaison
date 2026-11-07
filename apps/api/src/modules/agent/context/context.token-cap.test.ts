@@ -144,7 +144,7 @@ describe("assembleContext - the fixed prompt parts with every app on", () => {
   it("fixed parts at most 13,000 with every app on; composed prompt within 1,000 of the static figure", async () => {
     const result = await assembleContext({ threadId: FP_THREAD, orgId: FP_ORG, actor: fpActor })
     const composed = estimateTokens(systemPartsToText(result.system))
-    const fixed = staticFixedPromptTokens()
+    const fixed = await staticFixedPromptTokens()
     console.log(`fixed prompt parts: composed ${composed}, static ${fixed.total}`, fixed.parts)
     expect(composed).toBeLessThanOrEqual(FIXED_PARTS_TOKEN_MAX)
     expect(composed).toBeLessThanOrEqual(TURN_SYSTEM_PROMPT_TOKEN_CAP - 3_000)

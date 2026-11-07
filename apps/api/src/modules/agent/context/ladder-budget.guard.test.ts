@@ -1,33 +1,28 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The tool ladder's budget, measured from source with no server and no
-// database: the announcement the real builder writes, the tools listed, the
-// summary lines and each app's schema total through the product's own meter,
-// for a neutral set of worlds. The numbers are targets. A number over its target
+// The tool ladder's budget, measured with no server and no database: the
+// announcement the real builder writes, the tools listed, the
+// summary lines and each app's schema total through the product's own meter
+// (the kernel's from the registry entries its registration builds), for a
+// neutral set of worlds. The numbers are targets. A number over its target
 // fails only until `ladder-budget.reasons.json` holds a line naming the
 // capability that needs it; every number and every reason is printed. Nothing
 // here forbids a tool, and no outcome edits a description.
 //
-// Needs only the placeholder environment the product's modules read at import.
+// Needs only the placeholder environment the product's modules read at import,
+// so the product's modules are imported after it is set: a static import would
+// be evaluated first and find no environment.
 process.env.JWT_SECRET ||= "ladder-guard-placeholder-".padEnd(48, "0")
 process.env.ENCRYPTION_KEY ||= "0123456789abcdef".repeat(4)
 
-import { describe, expect, it } from "bun:test"
+import { beforeAll, describe, expect, it } from "bun:test"
 import { join } from "node:path"
-import { estimateTokens } from "./compaction"
-import { renderClientSurfaceLine } from "./context"
-import {
-  type LadderMeasure,
-  type LadderReason,
-  type LadderTargets,
-  type LadderWorld,
-  ladderReport,
-  loadLadderTools,
-  measureLadder,
-  overTarget,
-  readLadderReasons,
-  unexplained,
-} from "./ladder-budget"
+import type { LadderMeasure, LadderReason, LadderTargets, LadderWorld } from "./ladder-budget"
+
+const { estimateTokens } = await import("./compaction")
+const { renderClientSurfaceLine } = await import("./context")
+const { ladderReport, loadLadderTools, measureLadder, overTarget, readLadderReasons, unexplained } =
+  await import("./ladder-budget")
 
 const REASONS_FILE = join(import.meta.dir, "ladder-budget.reasons.json")
 
@@ -69,7 +64,6 @@ const OVER: LadderMeasure = {
   summaryLines: 0,
   summaryTokens: 0,
   appSchemaTokens: { app: 5_000 },
-  estimatedApps: [],
   surfaceLineTokens: 0,
 }
 const OVER_TARGETS: Record<string, LadderTargets> = {
@@ -103,8 +97,8 @@ describe("the ladder budget report", () => {
     expect(failures.join("\n")).toContain("w:app")
   })
 
-  it("no number forbids a tool: a reason always clears it", () => {
-    const tools = loadLadderTools()
+  it("no number forbids a tool: a reason always clears it", async () => {
+    const tools = await loadLadderTools()
     const before = measureLadder(tools, { name: "all", scopes: ["*"] })
     // A target of zero everywhere is the worst case: every number is over.
     const zero: LadderTargets = {
@@ -125,8 +119,11 @@ describe("the ladder budget report", () => {
 })
 
 describe("the neutral worlds", () => {
-  const tools = loadLadderTools()
-  const measures = WORLDS.map((w) => measureLadder(tools, w))
+  let measures: LadderMeasure[] = []
+  beforeAll(async () => {
+    const tools = await loadLadderTools()
+    measures = WORLDS.map((w) => measureLadder(tools, w))
+  })
 
   it("every number is under its target or has a reason, and every number is printed", () => {
     const reasons = readLadderReasons(REASONS_FILE)

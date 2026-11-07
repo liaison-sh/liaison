@@ -155,7 +155,7 @@ describe("manifest keys carried onto the registry", () => {
     const judged = validateAppManifest(JSON.parse(JSON.stringify(declared)))
     expect(judged.success ? "" : judged.error).toBe("")
 
-    await registerApps([manifest as never], TEST_ORG)
+    await registerApps([manifest], TEST_ORG)
 
     const missing: string[] = []
     for (const c of CASES) {
@@ -174,7 +174,7 @@ describe("manifest keys carried onto the registry", () => {
       { put: { sinkReadersSelf: true, contentParams: ["note"] } },
       { trusted: false },
     )
-    await registerApps([manifest as never], TEST_ORG)
+    await registerApps([manifest], TEST_ORG)
     const entry = toolRegistry.get([TEST_ORG, APP, "put"]) as Record<string, unknown> | undefined
     expect(entry).toBeDefined()
     expect(entry?.sinkReadersSelf).toBeUndefined()

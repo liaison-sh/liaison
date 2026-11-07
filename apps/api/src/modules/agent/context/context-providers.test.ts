@@ -114,7 +114,7 @@ function fixtureTool(name: string, delayMs = 0) {
       if (delayMs > 0) await sleep(delayMs)
       return answers[name] ?? { lines: [`${name} line`], source: { label: `${name} source` } }
     },
-  } as never)
+  })
 }
 
 function declareFixtures(tools: string[]) {
@@ -237,7 +237,7 @@ describe("context providers", () => {
         },
         required: ["subject"],
       },
-    } as never)
+    })
     const example = appBridgeManifestRegistry.get([orgB, "example"])!
     appBridgeManifestRegistry.set([orgB, "example"], {
       ...example,

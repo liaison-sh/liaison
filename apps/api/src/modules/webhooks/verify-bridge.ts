@@ -20,6 +20,7 @@ import {
   type ConnectionSecretKeySource,
   decryptConnectionConfigValue,
 } from "~/modules/apps/connections/service"
+import { isCustomAppName } from "~/modules/apps/custom-app-name"
 import { instanceConfigDefault } from "~/modules/apps/instance-config-defaults"
 import {
   createConfigSecretMethods,
@@ -109,6 +110,8 @@ export function buildVerifyBridge(opts: {
   readConfig: (key: string) => Promise<unknown>
   secretConfigKeys: Iterable<string>
   workersRun?: boolean
+  /** The verifier is a custom app's: no secret is handed back, on any executor. */
+  customApp?: boolean
 }): Record<string, (...args: any[]) => Promise<unknown>> {
   const secretConfigKeys = new Set(opts.secretConfigKeys)
   const bridge: Record<string, (...args: any[]) => Promise<unknown>> = {
@@ -154,7 +157,13 @@ export function buildVerifyBridge(opts: {
       return JSON.stringify(result)
     },
   }
-  return opts.workersRun ? forWorkersRun(bridge, { secretConfigKeys }) : bridge
+  if (opts.workersRun || opts.customApp) {
+    return forWorkersRun(bridge, {
+      secretConfigKeys,
+      reason: opts.workersRun ? "workers" : "custom_app",
+    })
+  }
+  return bridge
 }
 
 export function createWebhookVerifyBridge(
@@ -164,5 +173,6 @@ export function createWebhookVerifyBridge(
     readConfig: webhookConfigReader(input),
     secretConfigKeys: manifestSecretConfigKeys(input.manifestConnections),
     ...(input.workersRun ? { workersRun: true } : {}),
+    ...(isCustomAppName(input.appName) ? { customApp: true } : {}),
   })
 }

@@ -1119,6 +1119,22 @@ export const appManifestJsonSchema = {
     // job returning `{ upstreamActivityAt: ISO | null }` (or `{ probed: false,
     // reason }` when it could not ask), or `{ probe: null, reason }` saying why no
     // upstream can be queried; such an app is then judged by rejections only.
+    // Where each declared secret config key may be written by `ctx.fetch`'s
+    // `configSecrets` (@liaison/app-sdk secret-placement.ts): its hosts and the one
+    // header, query parameter or JSON body path. The key and host rules are
+    // cross-field (contract.ts, secretsDeclarationErrors).
+    secrets: {
+      type: "object",
+      additionalProperties: {
+        type: "object",
+        properties: {
+          hosts: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 16 },
+          in: { type: "string", pattern: "^(header|query|body):.+$" },
+        },
+        required: ["hosts", "in"],
+        additionalProperties: false,
+      },
+    },
     // The app data store's declared collections (@liaison/app-sdk app-store.ts):
     // what the agent's data tools, dashboard blocks and search may read, under
     // which scope. The readScope rule is cross-field (contract.ts storeErrors).

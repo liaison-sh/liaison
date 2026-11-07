@@ -51,7 +51,7 @@ Nobody else sees a personal dashboard, administrators included. Your own changes
 
 Each block reads one source:
 
-- a **read tool** of an app or a connector, such as a connector's read of a shop's orders. A tool that changes data, sends something, needs an approval or acts outside Liaison is refused. From the kernel only a short list of reads qualifies: `users_list`, `contacts_search`, `threads_list`, `list_routines`, `approvals_list` and `audit_search`. Custom apps cannot feed a dashboard yet.
+- a **read tool** of an app or a connector, such as a connector's read of a shop's orders. A tool that changes data, sends something, needs an approval or acts outside Liaison is refused. From the kernel only a short list of reads qualifies: `users_list`, `contacts_search`, `threads_list`, `list_routines`, `approvals_list` and `audit_search`. An organization's own custom app feeds a dashboard under the same rules; another organization's never does.
 - a **data store collection** that its app declares readable outside the app, read with the collection's read scope (the agent's own collections need `kernel:data:read`).
 
 The source is checked when the dashboard is saved, as its author, and again every time a block is shown, as the viewer. A tool that later starts asking for approval shows "This block's source can no longer be shown on a dashboard". A block's run may only read: any write it attempts is refused, even when the tool claims to be a read. A tool can still call an outside service while it reads; a dashboard does not stop that.

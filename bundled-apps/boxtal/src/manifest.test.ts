@@ -63,6 +63,16 @@ function findOpaqueParams(m: unknown): string[] {
 }
 
 describe("Boxtal app.manifest.json", () => {
+  it("pins the webhook secret to the subscription body on Boxtal's API hosts (secrets)", () => {
+    const m = load()
+    expect(m.secrets).toEqual({
+      boxtalWebhookSecret: { hosts: ["api.boxtal.build", "api.boxtal.com"], in: "body:webhookSecret" },
+    })
+    // The client writes it at exactly that path (lib/boxtal-v3-client.ts).
+    const src = readFileSync(join(import.meta.dir, "lib", "boxtal-v3-client.ts"), "utf8")
+    expect(src.match(/webhookSecret: placeholder/g)?.length).toBe(2)
+  })
+
   it("validates against packageManifestSchema (freeze-time zod)", () => {
     const r = packageManifestSchema.safeParse(load())
     if (!r.success) console.error(JSON.stringify(r.error.issues, null, 2))
@@ -603,7 +613,10 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.21: its core tools load on a hard focus of its entity, the others by name.
     // 0.23.22: the invoice's Shipment tab is shown only to people who can read shipments.
     // 0.23.23: reads that hand back recipients, addresses or carrier messages mark the turn.
-    expect(m.version).toBe("0.23.23")
+    // 0.23.16 (main): API keys and the webhook secret stay host-side (ctx.fetch auth, configSecrets, by-key HMAC).
+    // 0.23.18 (main): the webhook secret may go only into the subscription body's webhookSecret, on Boxtal's API hosts (secrets).
+    // 0.23.24: both of the above, merged.
+    expect(m.version).toBe("0.23.24")
     expect(m.packageFormat).toBe(1)
   })
 

@@ -89,6 +89,17 @@ export {
   rgb,
   type StandardFontName,
 } from "./pdf-builder"
+export {
+  appSecretsDeclarationSchema,
+  hostPatternCovered,
+  parseSecretJsonPath,
+  parseSecretPlacementTarget,
+  SECRET_FORBIDDEN_HEADERS,
+  type SecretPlacement,
+  type SecretPlacementTarget,
+  secretPlacementSchema,
+  secretsDeclarationErrors,
+} from "./secret-placement"
 export type {
   AppContext,
   ConnectionClient,

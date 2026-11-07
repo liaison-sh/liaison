@@ -138,97 +138,99 @@ describe("LIAISON_APP_PRIVATE_HOSTS", () => {
   })
 })
 
-// An org's custom app (managed edition) is a tenant's code: the operator's
+// An org's custom app (every edition) is a tenant's code: the operator's
 // private hosts are not for it, and neither is this server itself, by its
 // public address (LIAISON_CELL_PUBLIC_ADDRESSES) or its own host names.
-describe("org-private custom apps", () => {
-  const CUSTOM = "crm-o12345678"
-  const mutableEnv = env as {
-    LIAISON_ORG_HOST_TEMPLATE?: string
-    LIAISON_CELL_PUBLIC_ADDRESSES?: string
-  }
-  let priorCell: string | undefined
-  let priorTemplate: string | undefined
-  beforeEach(() => {
-    _setEdition("managed")
-    priorCell = mutableEnv.LIAISON_CELL_PUBLIC_ADDRESSES
-    priorTemplate = mutableEnv.LIAISON_ORG_HOST_TEMPLATE
-    mutableEnv.LIAISON_CELL_PUBLIC_ADDRESSES = "93.184.216.34, 2001:db8::7"
-    mutableEnv.LIAISON_ORG_HOST_TEMPLATE = "https://{slug}.cells.example"
-  })
-  afterEach(() => {
-    _setEdition(null)
-    mutableEnv.LIAISON_CELL_PUBLIC_ADDRESSES = priorCell
-    mutableEnv.LIAISON_ORG_HOST_TEMPLATE = priorTemplate
-  })
+for (const ed of ["managed", "self_hosted"] as const) {
+  describe(`org-private custom apps (${ed})`, () => {
+    const CUSTOM = "crm-o12345678"
+    const mutableEnv = env as {
+      LIAISON_ORG_HOST_TEMPLATE?: string
+      LIAISON_CELL_PUBLIC_ADDRESSES?: string
+    }
+    let priorCell: string | undefined
+    let priorTemplate: string | undefined
+    beforeEach(() => {
+      _setEdition(ed)
+      priorCell = mutableEnv.LIAISON_CELL_PUBLIC_ADDRESSES
+      priorTemplate = mutableEnv.LIAISON_ORG_HOST_TEMPLATE
+      mutableEnv.LIAISON_CELL_PUBLIC_ADDRESSES = "93.184.216.34, 2001:db8::7"
+      mutableEnv.LIAISON_ORG_HOST_TEMPLATE = "https://{slug}.cells.example"
+    })
+    afterEach(() => {
+      _setEdition(null)
+      mutableEnv.LIAISON_CELL_PUBLIC_ADDRESSES = priorCell
+      mutableEnv.LIAISON_ORG_HOST_TEMPLATE = priorTemplate
+    })
 
-  it("never gets the operator's private hosts", async () => {
-    process.env[ENV] = "analytics-service:8787"
-    expect(() =>
-      validateSandboxFetchUrl(
-        "http://analytics-service:8787/kpi",
-        ["analytics-service"],
-        false,
-        CUSTOM,
-      ),
-    ).toThrow("HTTPS")
-    lookupSpy.mockImplementation((async () => [{ address: "172.18.0.4", family: 4 }]) as never)
-    await expect(
-      fetchWithPinnedHost(
-        "https://analytics-service:8787/kpi",
-        {},
-        { ...sandboxEgressPolicy(CUSTOM), fetchImpl: okFetch([]) },
-      ),
-    ).rejects.toThrow("private network")
-    // An instance app still does.
-    expect(
-      validateSandboxFetchUrl(
-        "http://analytics-service:8787/kpi",
-        ["analytics-service"],
-        false,
-        "kpi",
-      ).hostname,
-    ).toBe("analytics-service")
-  })
-
-  it("never reaches this server's own public address, as a literal or through DNS", async () => {
-    for (const url of ["https://93.184.216.34:6379/", "https://[2001:db8::7]:6432/"]) {
+    it("never gets the operator's private hosts", async () => {
+      process.env[ENV] = "analytics-service:8787"
       expect(() =>
         validateSandboxFetchUrl(
-          url,
-          ["93.184.216.34", "[2001:db8::7]", "2001:db8::7"],
+          "http://analytics-service:8787/kpi",
+          ["analytics-service"],
           false,
           CUSTOM,
         ),
-      ).toThrow("this server's own address")
-    }
-    lookupSpy.mockImplementation((async () => [{ address: "93.184.216.34", family: 4 }]) as never)
-    await expect(
-      fetchWithPinnedHost(
+      ).toThrow("HTTPS")
+      lookupSpy.mockImplementation((async () => [{ address: "172.18.0.4", family: 4 }]) as never)
+      await expect(
+        fetchWithPinnedHost(
+          "https://analytics-service:8787/kpi",
+          {},
+          { ...sandboxEgressPolicy(CUSTOM), fetchImpl: okFetch([]) },
+        ),
+      ).rejects.toThrow("private network")
+      // An instance app still does.
+      expect(
+        validateSandboxFetchUrl(
+          "http://analytics-service:8787/kpi",
+          ["analytics-service"],
+          false,
+          "kpi",
+        ).hostname,
+      ).toBe("analytics-service")
+    })
+
+    it("never reaches this server's own public address, as a literal or through DNS", async () => {
+      for (const url of ["https://93.184.216.34:6379/", "https://[2001:db8::7]:6432/"]) {
+        expect(() =>
+          validateSandboxFetchUrl(
+            url,
+            ["93.184.216.34", "[2001:db8::7]", "2001:db8::7"],
+            false,
+            CUSTOM,
+          ),
+        ).toThrow("this server's own address")
+      }
+      lookupSpy.mockImplementation((async () => [{ address: "93.184.216.34", family: 4 }]) as never)
+      await expect(
+        fetchWithPinnedHost(
+          "https://rebind.attacker.example/",
+          {},
+          { ...sandboxEgressPolicy(CUSTOM), fetchImpl: okFetch([]) },
+        ),
+      ).rejects.toThrow("this server's own address")
+      // An instance app is not refused by this rule.
+      const seen: string[] = []
+      await fetchWithPinnedHost(
         "https://rebind.attacker.example/",
         {},
-        { ...sandboxEgressPolicy(CUSTOM), fetchImpl: okFetch([]) },
-      ),
-    ).rejects.toThrow("this server's own address")
-    // An instance app is not refused by this rule.
-    const seen: string[] = []
-    await fetchWithPinnedHost(
-      "https://rebind.attacker.example/",
-      {},
-      { ...sandboxEgressPolicy("kpi"), fetchImpl: okFetch(seen) },
-    )
-    expect(seen).toHaveLength(1)
-  })
+        { ...sandboxEgressPolicy("kpi"), fetchImpl: okFetch(seen) },
+      )
+      expect(seen).toHaveLength(1)
+    })
 
-  it("never reaches the org hosts or the edge origin of this server by name", () => {
-    for (const host of ["acme.cells.example", "cells.example"]) {
-      expect(() =>
-        validateSandboxFetchUrl(`https://${host}/api/org`, [host], false, CUSTOM),
-      ).toThrow("this server's own address")
-    }
-    expect(
-      validateSandboxFetchUrl("https://api.example.com/x", ["api.example.com"], false, CUSTOM)
-        .hostname,
-    ).toBe("api.example.com")
+    it("never reaches the org hosts or the edge origin of this server by name", () => {
+      for (const host of ["acme.cells.example", "cells.example"]) {
+        expect(() =>
+          validateSandboxFetchUrl(`https://${host}/api/org`, [host], false, CUSTOM),
+        ).toThrow("this server's own address")
+      }
+      expect(
+        validateSandboxFetchUrl("https://api.example.com/x", ["api.example.com"], false, CUSTOM)
+          .hostname,
+      ).toBe("api.example.com")
+    })
   })
-})
+}

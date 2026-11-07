@@ -230,14 +230,30 @@ export async function runHandler(
     sleepMs: meter?.sleepMs ?? 0,
     sleepExact: meter?.exact ?? true,
   })
-  const counted: CtxDispatch = async (method, args) => {
+  // Every bridge call the run started, awaited or not. A handler may fire a
+  // call and return (`ctx.logger.info(...)` without await is the documented
+  // pattern): the isolate drops I/O still pending once `run` returns, so the
+  // run waits for them first, as the QuickJS executors' calls land before the
+  // run ends. Their outcome is the handler's own business: a rejection the
+  // handler never looked at does not change the result.
+  const inflight = new Set<Promise<unknown>>()
+  const counted: CtxDispatch = (method, args) => {
     bridgeCalls++
     const t0 = Date.now()
-    try {
-      return await dispatch(method, args)
-    } finally {
-      bridgeMsTotal += Date.now() - t0
-    }
+    const call = (async () => {
+      try {
+        return await dispatch(method, args)
+      } finally {
+        bridgeMsTotal += Date.now() - t0
+      }
+    })()
+    inflight.add(call)
+    const forget = () => inflight.delete(call)
+    call.then(forget, forget)
+    return call
+  }
+  const settleInflight = async (): Promise<void> => {
+    while (inflight.size > 0) await Promise.allSettled([...inflight])
   }
 
   const exportName = req.exportName
@@ -260,11 +276,16 @@ export async function runHandler(
   meter = startSleepMeter()
   try {
     const ctx = createCtx(req.bridgeMethods ?? [], req.approval ?? null, counted)
-    const value = await (fn as (...a: unknown[]) => unknown)(
-      jsonSafe(req.params),
-      ctx,
-      ...(req.extraArgs ?? []),
-    )
+    let value: unknown
+    try {
+      value = await (fn as (...a: unknown[]) => unknown)(
+        jsonSafe(req.params),
+        ctx,
+        ...(req.extraArgs ?? []),
+      )
+    } finally {
+      await settleInflight()
+    }
     let result: unknown
     try {
       result = jsonSafe(value)

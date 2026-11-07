@@ -12,7 +12,7 @@ import { HTTPException } from "hono/http-exception"
 import type { AppEnv } from "~/app"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
-import { isManagedEdition } from "~/lib/edition"
+import { customAppsEnabled } from "~/lib/edition"
 import { env } from "~/lib/env"
 import { appsLogger as log } from "~/lib/logger"
 import { fetchWithPinnedHost, UnsafeOutboundUrlError } from "~/lib/outbound-fetch"
@@ -133,12 +133,6 @@ const requireAppManager = createMiddleware<AppEnv>(async (c, next) => {
   } else {
     await assertCanManageInstanceApps(c.get("orgId"))
   }
-  await next()
-})
-
-/** The custom app routes exist in the managed edition only (self-hosted: unchanged). */
-const managedOnly = createMiddleware<AppEnv>(async (_c, next) => {
-  if (!isManagedEdition()) throw new HTTPException(404, { message: "Not found" })
   await next()
 })
 
@@ -263,11 +257,21 @@ installRoutes.post(
   },
 )
 
+/**
+ * Organisations' own custom apps are off on this server (LIAISON_CUSTOM_APPS,
+ * lib/edition.ts customAppsEnabled): `/custom/*` answers 404, as if absent.
+ * Custom apps already installed keep running; only new installs stop.
+ */
+const requireCustomApps = createMiddleware<AppEnv>(async (_c, next) => {
+  if (!customAppsEnabled()) throw new HTTPException(404, { message: "Not found" })
+  await next()
+})
+
 // GET /custom/namespace — the name this org's custom apps carry: `<name>-o<orgKey>`.
 installRoutes.get(
   "/custom/namespace",
+  requireCustomApps,
   requireScope("kernel:apps:admin"),
-  managedOnly,
   async (c) => {
     const orgId = c.get("orgId")
     const orgKey = customAppOrgKey(orgId)
@@ -280,53 +284,58 @@ installRoutes.get(
 )
 
 // POST /custom/install — an org admin installs (or re-installs, or moves to a
-// newer version of) a custom app for their own org only (managed edition).
+// newer version of) a custom app for their own org only (every edition).
 // No instance-operator gate: the app is org-private, held to the org-level
 // declarations, the name rule and the org's `customApps` cap
 // (installAppFromTarball `ownerOrgId`), and invisible to every other org.
-installRoutes.post("/custom/install", requireScope("kernel:apps:admin"), managedOnly, async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as {
-    url?: string
-    grantedScopes?: string[]
-    grantedConnections?: string[]
-    grantedCapabilities?: string[]
-    grantedCrossAppCalls?: string[]
-    approveUiFullAccess?: boolean
-  }
-  if (!body.url) throw new HTTPException(400, { message: "url is required" })
-  const orgId = c.get("orgId")
-  const userId = c.get("userId")
-  const { path, dir } = await downloadTarball(body.url)
-  try {
-    const result = await installAppFromTarball({
-      tarballPath: path,
-      installedBy: userId,
-      grantedScopes: body.grantedScopes ?? [],
-      grantedConnections: body.grantedConnections ?? [],
-      grantedCapabilities: body.grantedCapabilities ?? [],
-      grantedCrossAppCalls: body.grantedCrossAppCalls ?? [],
-      // The interface runs only on this org's own host, approved by this org's admin.
-      approveUiFullAccess: body.approveUiFullAccess === true,
-      requireSignature: false,
-      sourceUrl: body.url,
-      ownerOrgId: orgId,
-    })
-    await withPrivilegedDb(orgId, "custom-app-install-audit", (db) =>
-      writeAuditLog(db, {
-        orgId,
-        actorId: userId,
-        actorType: "user",
-        app: result.name,
-        entityType: "app_install",
-        action: "app.custom.installed",
-        metadata: { version: result.version },
-      }),
-    )
-    return success(c, result)
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
-  }
-})
+installRoutes.post(
+  "/custom/install",
+  requireCustomApps,
+  requireScope("kernel:apps:admin"),
+  async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      url?: string
+      grantedScopes?: string[]
+      grantedConnections?: string[]
+      grantedCapabilities?: string[]
+      grantedCrossAppCalls?: string[]
+      approveUiFullAccess?: boolean
+    }
+    if (!body.url) throw new HTTPException(400, { message: "url is required" })
+    const orgId = c.get("orgId")
+    const userId = c.get("userId")
+    const { path, dir } = await downloadTarball(body.url)
+    try {
+      const result = await installAppFromTarball({
+        tarballPath: path,
+        installedBy: userId,
+        grantedScopes: body.grantedScopes ?? [],
+        grantedConnections: body.grantedConnections ?? [],
+        grantedCapabilities: body.grantedCapabilities ?? [],
+        grantedCrossAppCalls: body.grantedCrossAppCalls ?? [],
+        // The interface runs only on this org's own host, approved by this org's admin.
+        approveUiFullAccess: body.approveUiFullAccess === true,
+        requireSignature: false,
+        sourceUrl: body.url,
+        ownerOrgId: orgId,
+      })
+      await withPrivilegedDb(orgId, "custom-app-install-audit", (db) =>
+        writeAuditLog(db, {
+          orgId,
+          actorId: userId,
+          actorType: "user",
+          app: result.name,
+          entityType: "app_install",
+          action: "app.custom.installed",
+          metadata: { version: result.version },
+        }),
+      )
+      return success(c, result)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  },
+)
 
 // GET /catalog — the App store listings: the first-party apps baked into this image,
 // then a configured registry's (LIAISON_APP_REGISTRY_URL), each with its `source` and

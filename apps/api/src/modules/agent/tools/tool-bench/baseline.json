@@ -992,6 +992,50 @@
       "desc": 203,
       "schema": 27
     },
+    "kernel__apps_build_check": {
+      "desc": 165,
+      "schema": 12
+    },
+    "kernel__apps_build_create": {
+      "desc": 370,
+      "schema": 79
+    },
+    "kernel__apps_build_discard": {
+      "desc": 126,
+      "schema": 6
+    },
+    "kernel__apps_build_get": {
+      "desc": 93,
+      "schema": 12
+    },
+    "kernel__apps_build_list": {
+      "desc": 56,
+      "schema": 14
+    },
+    "kernel__apps_build_logs": {
+      "desc": 135,
+      "schema": 102
+    },
+    "kernel__apps_build_preview": {
+      "desc": 495,
+      "schema": 75
+    },
+    "kernel__apps_build_publish": {
+      "desc": 384,
+      "schema": 48
+    },
+    "kernel__apps_build_restore": {
+      "desc": 148,
+      "schema": 9
+    },
+    "kernel__apps_build_update": {
+      "desc": 189,
+      "schema": 61
+    },
+    "kernel__apps_build_versions": {
+      "desc": 80,
+      "schema": 6
+    },
     "kernel__apps_set_access": {
       "desc": 365,
       "schema": 101
@@ -2743,7 +2787,7 @@
     "A031|add a note on the order": "5t",
     "A032|require approval": "15tl",
     "A033|auto approve": "5tl",
-    "A034|active l'application": "5t",
+    "A034|active l'application": "",
     "A035|imprime étiquettes": "15tl",
     "C01|annuler abonnement mois": "",
     "C01|end schedule": "",

@@ -153,6 +153,8 @@ describe("isDetailRoute - only an entity tail is a detail route", () => {
       "/agents": false,
       "/chats": false,
       "/agents/:entityId": true,
+      // One app draft in the builder.
+      "/apps/builder/:entityId": true,
       // A singleton list screen, no entity tail: pushing into it is a tab
       // switch, not a detail push.
       "/approvals": false,

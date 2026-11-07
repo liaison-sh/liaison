@@ -47,6 +47,7 @@ const KERNEL_TOOLS = join(SRC, "modules", "agent", "tools", "kernel-tools.ts")
 const SECRET_TOOLS = join(SRC, "modules", "agent", "tools", "secret-request-tools.ts")
 const MCP_PROJECTOR = join(SRC, "modules", "mcp-client", "projector.ts")
 const REPORT_BUG_TOOL = join(SRC, "modules", "bug-reports", "tool.ts")
+const APP_BUILDER_TOOLS = join(SRC, "modules", "app-builder", "tools.ts")
 
 /**
  * Registry fields set ONLY by host-registered tools — see header — each with the
@@ -86,6 +87,10 @@ const HOST_ONLY_FIELDS: Record<string, string> = {
   ownerUserId: MCP_PROJECTOR,
   // An inbound MCP tool's own tools/list annotations, set when the tool is projected.
   mcpAnnotations: MCP_PROJECTOR,
+  // The app builder's publish: its pending approval takes no edit, a change is a new request.
+  payloadImmutable: APP_BUILDER_TOOLS,
+  // The app builder's build and publish run short transactions per step, never one whole-call tx.
+  ownsTransactions: APP_BUILDER_TOOLS,
 }
 
 /** Recursively list every non-test .ts source file under a directory. */

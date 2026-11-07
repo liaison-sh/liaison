@@ -11,6 +11,7 @@ import { z } from "zod"
 import type { RlsClient } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { READ_ONLY_RUN_BLOCKED_CODE } from "~/modules/agent/runtime/read-only-run"
+import { customAppOrgKey } from "~/modules/apps/app-org-scope"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { executeToolCore } from "~/modules/apps/execute-tool"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
@@ -248,6 +249,31 @@ describe("what a saved block may read", () => {
     expect((await problems([toolBlock("k", "kernel:create_skill")]))[0]).toContain("not_allowed")
     expect((await problems([toolBlock("b", `${APP}:beta_read`)]))[0]).toContain("no_access")
     expect(await problems([toolBlock("ok", `${APP}:alpha_read`)])).toEqual([])
+  })
+
+  it("an org's own custom app feeds a dashboard under the same rules; another org's never does", async () => {
+    const own = `dshcustom-o${customAppOrgKey(orgId)}`
+    const foreign = "dshcustom-o00000000"
+    for (const app of [own, foreign]) {
+      toolRegistry.set([orgId, app, "orders_read"], {
+        appName: app,
+        name: "orders_read",
+        description: "Read the custom app's orders",
+        requiredScopes: [ALPHA],
+        readOnly: true,
+        params: z.object({}),
+        handler: async () => ORDERS,
+      })
+    }
+    try {
+      await expect(save([toolBlock("c", `${own}:orders_read`)])).resolves.toBeDefined()
+      await expect(save([toolBlock("f", `${foreign}:orders_read`)])).rejects.toMatchObject({
+        problems: [expect.stringContaining("unknown_tool")],
+      })
+    } finally {
+      toolRegistry.delete([orgId, own, "orders_read"])
+      toolRegistry.delete([orgId, foreign, "orders_read"])
+    }
   })
 
   it("refuses an invalid spec, naming the field", async () => {

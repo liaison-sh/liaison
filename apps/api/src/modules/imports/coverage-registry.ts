@@ -214,6 +214,10 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     exempt: "config",
     reason: "provisioned by config apply (agent configuration, not business records)",
   },
+  "kernel.app_build_artifacts": {
+    exempt: "derived",
+    reason: "bytes the app builder built from a draft version, rebuilt from its files",
+  },
   "kernel.app_document_usage": {
     exempt: "derived",
     reason: "per-collection counters the data-store service keeps in step with app_documents",
@@ -222,6 +226,18 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     exempt: "system",
     reason:
       "app and agent data store documents, written by apps through ctx.store and the agent's data tools, never imported",
+  },
+  "kernel.app_draft_versions": {
+    exempt: "config",
+    reason: "versions of an app builder draft, written in the workspace or by an agent",
+  },
+  "kernel.app_drafts": {
+    exempt: "config",
+    reason: "app builder drafts, made in the workspace or by an agent",
+  },
+  "kernel.app_logs": {
+    exempt: "system",
+    reason: "lines custom apps and draft previews logged, kept 7 days",
   },
   "kernel.app_scope_grant_audit": { exempt: "derived", reason: "grant audit trail" },
   "kernel.app_seeded_assets": { exempt: "config", reason: "org and app configuration" },

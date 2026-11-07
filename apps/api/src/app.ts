@@ -61,6 +61,8 @@ import {
   skillsRoutes,
 } from "~/modules/agent/skills/skills-routes"
 import { apiConnectorRoutes } from "~/modules/api-connector/routes"
+import { appLogsRoutes } from "~/modules/app-builder/logs-routes"
+import { builderRoutes } from "~/modules/app-builder/routes"
 import { APPROVAL_DECIDE_BODY_MAX_BYTES } from "~/modules/approvals/mailbox-fulfilment"
 import { approvals } from "~/modules/approvals/routes"
 import { initAppActivationSync } from "~/modules/apps/activation"
@@ -79,6 +81,7 @@ import {
   APP_BRIDGE_PATH_PREFIX,
   appBridgeRoutes,
 } from "~/modules/apps/workers/bridge-route"
+import { appBridgeBundleRoutes } from "~/modules/apps/workers/bundle-route"
 import { assistRoutes } from "~/modules/assist/routes"
 import { TRANSCRIBE_REQUEST_TIMEOUT_MS } from "~/modules/assist/transcribe-service"
 import { attentionSubscriptionsRoutes } from "~/modules/attention/subscriptions-routes"
@@ -688,6 +691,9 @@ app.route("/api/cloud", cloudRoutes)
 // A remote isolate's bridge calls for one app run (Workers executor; 404 on
 // every path unless configured). Before the user JWT chain: its only
 // credential is the run's bearer token (modules/apps/workers/bridge-route.ts).
+// The loader's signed fetch of a custom app's Worker module (404 unless
+// LIAISON_WORKERS_CUSTOM_APPS is on): modules/apps/workers/bundle-route.ts.
+app.route("/api/app-bridge", appBridgeBundleRoutes)
 app.route("/api/app-bridge", appBridgeRoutes)
 
 // The former bearer credit-mint API: retired (credits reach an org only
@@ -1029,7 +1035,9 @@ const isMcpManagerOAuthLanding = (path: string): boolean =>
 const isPluginUiBundle = (path: string): boolean =>
   /^\/api\/apps\/[a-z][a-z0-9-]*\/\d+\.\d+\.\d+(-[\w.]+)?\/(ui\.js|statement\.json|statement\.sig|manifest\.json|frame)$/.test(
     path,
-  )
+  ) ||
+  // A draft version's preview frame (app-builder/routes.ts): served against its own token.
+  /^\/api\/apps\/builder\/drafts\/[0-9a-f-]{36}\/\d+\/frame$/.test(path)
 app.use("/api/apps", async (c, next) => {
   if (isMcpManagerOAuthLanding(c.req.path) || isPluginUiBundle(c.req.path)) return next()
   return authMw(c, next)
@@ -1054,6 +1062,10 @@ app.use("/api/apps/*", async (c, next) => {
   return appRouteStateGate(c, next)
 })
 app.route("/api/apps", bulkRoutes)
+// GET /api/apps/:name/logs (kernel:apps:logs): what a custom app logged.
+app.route("/api/apps", appLogsRoutes)
+// /api/apps/builder/drafts: the app builder tab (drafts, check, preview, publish).
+app.route("/api/apps/builder", builderRoutes)
 app.route("/api/apps", installRoutes)
 // Phase 16.5 — UI bundle serving for installed plugin apps. Mount BEFORE
 // appRoutes so the more-specific `:name/:version/ui.js` pattern wins. Auth +

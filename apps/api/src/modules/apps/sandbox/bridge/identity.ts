@@ -13,6 +13,7 @@ import { hasScope } from "~/modules/permissions/permissions"
 /** Caller identity, settings, scopes, app config, grants and logging. */
 export function createIdentityMethods(ctx: BridgeContext): Record<string, any> {
   const {
+    appLogSink,
     appName,
     appTable,
     approvalContext,
@@ -109,15 +110,19 @@ export function createIdentityMethods(ctx: BridgeContext): Record<string, any> {
 
     // --- Logger ---
     log_info: (msg: string, dataJson?: string) => {
+      appLogSink?.append("info", msg, dataJson)
       logger.info(dataJson ? JSON.parse(dataJson) : {}, msg)
     },
     log_warn: (msg: string, dataJson?: string) => {
+      appLogSink?.append("warn", msg, dataJson)
       logger.warn(dataJson ? JSON.parse(dataJson) : {}, msg)
     },
     log_error: (msg: string, dataJson?: string) => {
+      appLogSink?.append("error", msg, dataJson)
       logger.error(dataJson ? JSON.parse(dataJson) : {}, msg)
     },
     log_debug: (msg: string, dataJson?: string) => {
+      appLogSink?.append("debug", msg, dataJson)
       logger.debug(dataJson ? JSON.parse(dataJson) : {}, msg)
     },
 

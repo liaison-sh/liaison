@@ -243,6 +243,7 @@ import {
   handleWebSearchForTurn,
   webFetchPolicyRefusal,
 } from "~/modules/agent/tools/web-tools"
+import { registerAppBuilderTools } from "~/modules/app-builder/tools"
 import {
   agentInstructionsRegistry,
   approvalEditableFieldsRegistry,
@@ -3813,6 +3814,7 @@ When to use: When an admin asks to set up a reusable role they will spawn repeat
   // The data store and dashboard tools (their own modules).
   registerDataStoreTools(orgId)
   registerDashboardTools(orgId)
+  registerAppBuilderTools(orgId)
 
   // Skills + routines tools (read-only set; gated authoring lands in Tasks 3.2 + 3.3).
   await registerSkillRoutineTools(orgId)

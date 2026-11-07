@@ -11,7 +11,9 @@
 // activation.ts (which switches back to the previous version when it fails). The
 // server keeps two versions of each app, the active one and the one before it;
 // older ones are pruned here.
-import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs"
+import { createHash } from "node:crypto"
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { join, resolve, sep } from "node:path"
 import { isReservedSettingsNamespace } from "@liaison/app-sdk"
 import { isReservedWebRouteSegment, labelSkeleton } from "@liaison/shared"
@@ -23,7 +25,7 @@ import {
   appsInstalled,
   type InstalledPdfTemplate,
 } from "~/db/schema/kernel/apps-installed"
-import { isManagedEdition } from "~/lib/edition"
+import { customAppsEnabled } from "~/lib/edition"
 import { appsLogger as log } from "~/lib/logger"
 import { ownOption } from "~/lib/safe-path"
 import {
@@ -114,6 +116,13 @@ export interface InstallOptions {
    * `customApps`, and only this org sees and runs it. Unset: an instance app.
    */
   ownerOrgId?: string
+  /**
+   * The Workers module the app builder built with this package (the sha256 its
+   * publish pinned, and the bytes): recorded on the install row so the Workers
+   * executor can run the version and the cell can serve the module to the app
+   * loader (0278). Only with `ownerOrgId`; the bytes must hash to the sha.
+   */
+  workerModule?: { sha256: string; bytes: Uint8Array }
 }
 
 export interface InstallResult {
@@ -176,9 +185,9 @@ async function currentOwnerOf(name: string): Promise<string | null> {
 /**
  * Who may install `name`. An org-private install: the custom app name
  * rule, the declarations an org-level app may carry, and no other owner of the
- * name. An instance install: never over an org's app, and in the managed
- * edition never a custom-app-shaped name (the boundary's DB-free rule keeps
- * such a name to one org).
+ * name. An instance install: never over an org's app, and never a
+ * custom-app-shaped name (the boundary's DB-free rule keeps such a name to one
+ * org). Every edition.
  */
 async function assertOrgOwnership(
   name: string,
@@ -201,14 +210,13 @@ async function assertOrgOwnership(
   }
   const others = rows.filter((r) => r.orgId !== ownerOrgId)
   if (ownerOrgId === null) {
-    if (others.length > 0 || (isManagedEdition() && customAppNameKey(name) !== null)) {
+    if (others.length > 0 || customAppNameKey(name) !== null) {
       throw new HTTPException(409, {
         message: `Cannot install '${name}': that name belongs to an organization's custom app.`,
       })
     }
     return
   }
-  if (!isManagedEdition()) throw new HTTPException(404, { message: "Not found" })
   const instanceNames = await withSystemDb("install-instance-names", (db) =>
     db
       .selectDistinct({ name: appsInstalled.name })
@@ -520,7 +528,7 @@ function assertIconClean(manifest: VerifyResult["manifest"]): void {
  * its legacy `dependencies.tools` list (which also authorizes dispatch to an
  * internal tool), as one set the admin approves.
  */
-function declaredCrossAppCalls(manifest: VerifyResult["manifest"]): string[] {
+export function declaredCrossAppCalls(manifest: VerifyResult["manifest"]): string[] {
   const m = manifest as {
     cross_app_calls?: Array<{ target?: string }>
     dependencies?: { tools?: unknown[] }
@@ -547,7 +555,7 @@ function resolveGrantedCrossAppCalls(
   return declared.filter((t) => granted.includes(t))
 }
 
-function declaredCapabilities(manifest: VerifyResult["manifest"]): string[] {
+export function declaredCapabilities(manifest: VerifyResult["manifest"]): string[] {
   return ((manifest as { capabilities?: string[] }).capabilities ?? []).slice()
 }
 
@@ -780,6 +788,7 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
     assertIconClean(manifest)
     await assertNotBundled(manifest.name)
     const ownerOrgId = ownOption(opts, "ownerOrgId") ?? null
+    const workerModule = installWorkerModule(ownOption(opts, "workerModule"), ownerOrgId)
     await assertOrgOwnership(manifest.name, ownerOrgId, manifestFile(verified.stagingDir))
     await assertNameNotReserved(manifest, verified.sha256, verified.stagingDir)
     await assertTabRoutesOwned(manifest.name, manifestFile(verified.stagingDir))
@@ -906,6 +915,7 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
             pdfTemplates,
             manifestSchema,
             orgId: ownerOrgId,
+            ...workerModule,
           })
           .onConflictDoUpdate({
             target: [appsInstalled.name, appsInstalled.version],
@@ -922,6 +932,7 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
               installedBy: opts.installedBy,
               pdfTemplates,
               manifestSchema,
+              ...workerModule,
             },
           })
       })
@@ -939,6 +950,69 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
     return { name: manifest.name, version: manifest.version }
   } finally {
     rmSync(verified.stagingDir, { recursive: true, force: true })
+  }
+}
+
+/** The install row's Workers module columns: both set (checked), or both NULL. */
+function installWorkerModule(
+  given: InstallOptions["workerModule"],
+  ownerOrgId: string | null,
+): { workerSha256: string | null; workerModule: Uint8Array | null } {
+  if (!given) return { workerSha256: null, workerModule: null }
+  if (ownerOrgId === null) {
+    throw new Error("A Workers module is recorded for an organisation's custom app only")
+  }
+  if (!/^[0-9a-f]{64}$/.test(given.sha256)) throw new Error("Workers module sha256 is malformed")
+  const actual = createHash("sha256").update(given.bytes).digest("hex")
+  if (actual !== given.sha256) {
+    throw new Error("Workers module bytes do not match their sha256")
+  }
+  return { workerSha256: given.sha256, workerModule: given.bytes }
+}
+
+/**
+ * Install an org's custom app from package bytes held by the server (the app
+ * builder's publish, modules/app-builder/publish.ts): the bytes go to a temp
+ * file and through exactly the path `POST /custom/install` takes
+ * (`installAppFromTarball` with the org as owner, unsigned, the 30 s health
+ * gate and switch-back of the activation), with the grants given and never a
+ * session-trusted interface: its ui.js only ever runs framed.
+ */
+export async function installAppFromBytes(opts: {
+  bytes: Uint8Array
+  ownerOrgId: string
+  installedBy: string
+  grantedScopes: string[]
+  grantedConnections: string[]
+  grantedCapabilities: string[]
+  grantedCrossAppCalls: string[]
+  sourceUrl: string
+  /** The Workers module the same build produced (see InstallOptions.workerModule). */
+  workerModule?: { sha256: string; bytes: Uint8Array }
+}): Promise<InstallResult> {
+  // A new org app is refused while organisations' own apps are off
+  // (LIAISON_CUSTOM_APPS); an org moving cells re-installs through
+  // installAppFromTarball, never here.
+  if (!customAppsEnabled()) throw new HTTPException(404, { message: "Not found" })
+  const dir = mkdtempSync(join(tmpdir(), "liaison-app-bytes-"))
+  try {
+    const tarballPath = join(dir, "package.liaisonapp")
+    writeFileSync(tarballPath, opts.bytes)
+    return await installAppFromTarball({
+      tarballPath,
+      installedBy: opts.installedBy,
+      grantedScopes: opts.grantedScopes,
+      grantedConnections: opts.grantedConnections,
+      grantedCapabilities: opts.grantedCapabilities,
+      grantedCrossAppCalls: opts.grantedCrossAppCalls,
+      approveUiFullAccess: false,
+      requireSignature: false,
+      sourceUrl: opts.sourceUrl,
+      ownerOrgId: opts.ownerOrgId,
+      ...(opts.workerModule ? { workerModule: opts.workerModule } : {}),
+    })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
 }
 

@@ -267,6 +267,8 @@ export const REVIEWED_CALLERS: Record<string, readonly string[]> = {
 export const REVIEWED_ORIGINS: Record<string, string> = {
   "apps/api/src/modules/apps/org-features.ts#setOrgAppFeature":
     "no product caller yet (the settings door that switches a feature will call it with the org of the admin's session, tests only today); what it hands on is the org id it was given, for that one org's cache and broadcast",
+  "apps/api/src/modules/app-builder/preview.ts#previewBridge":
+    "an app builder preview: the org is the previewing person's own (the agent tool's ctx.orgId or the route's session org, passed through previewDraft's actor); the bridge, its RLS session and every nested call are built for that org and that person only",
   "apps/api/src/modules/apps/connections/revoke.ts#isAccountUsedElsewhere":
     "the org of an active connection on the same provider account, read by this function: its apps are loaded only to learn which provider endpoints that connection declares; nothing of that org is written or returned, the answer is one boolean",
   "apps/api/src/modules/org/transfer/import.ts#importOrg":

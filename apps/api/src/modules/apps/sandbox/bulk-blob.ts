@@ -26,7 +26,7 @@ import { sandboxTenantKey } from "~/modules/apps/custom-app-name"
 const DEFAULT_QUOTA_BYTES = 1_073_741_824 // 1 GiB
 const DEFAULT_BATCH_SIZE = 50
 
-// An org's custom app (managed edition) is a tenant's code on a shared disk:
+// An org's custom app (every edition) is a tenant's code on a shared disk:
 // its blobs live in their own scope (`custom--<org>--<app>`), with a smaller
 // quota of their own, a cap over every custom app's blobs on the server
 // together, and an idle lifetime past which they are deleted even if the app

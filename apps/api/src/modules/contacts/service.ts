@@ -90,7 +90,11 @@ export async function resolveContact(
   userId: string,
   params: ResolveContactParams,
   target: ContactAudience,
+  opts: { lookupOnly?: boolean } = {},
 ): Promise<{ contact: typeof contacts.$inferSelect | null; isNew: boolean }> {
+  // `lookupOnly` (a read-only run): find the contact the audience may use and
+  // return it as it is, or null: no merge, no create, no event.
+  const lookupOnly = opts.lookupOnly === true
   if (target.audience === "owner" && !UUID_RE.test(target.ownerUserId)) {
     throw new HTTPException(422, { message: "A contact's owner must be a person" })
   }
@@ -140,7 +144,8 @@ export async function resolveContact(
             existing.ownerUserId === target.ownerUserId &&
             existing.audienceKey === null
           : target.audience !== "owner"
-      const merged = sameAudience ? await mergeAndReturn(db, existing, params) : existing
+      const merged =
+        sameAudience && !lookupOnly ? await mergeAndReturn(db, existing, params) : existing
       return { contact: merged, wasUpdated: merged !== existing }
     }
     return null
@@ -166,7 +171,7 @@ export async function resolveContact(
     }
     return { contact: existingResult.contact, isNew: false }
   }
-  if (target.audience === "none") return { contact: null, isNew: false }
+  if (target.audience === "none" || lookupOnly) return { contact: null, isNew: false }
 
   // No match — create it for the requested audience.
   let created: typeof contacts.$inferSelect

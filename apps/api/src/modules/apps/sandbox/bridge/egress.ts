@@ -13,12 +13,14 @@ import {
   matchesConnectionHost,
   parseConfigSecrets,
   parseFetchAuth,
+  placeConfigSecrets,
   redactSecrets,
-  substituteConfigSecrets,
+  SECRET_PLACEMENT_REFUSED,
 } from "~/modules/apps/sandbox/bridge/fetch-auth"
 import { readAppConfigValue } from "~/modules/apps/sandbox/bridge/identity"
 import { buildMultipartBody, type MultipartUpload } from "~/modules/apps/sandbox/bridge/multipart"
 import {
+  matchesDomain,
   SANDBOX_FETCH_MAX_REDIRECTS,
   sandboxEgressOverrides,
   sandboxEgressPolicy,
@@ -317,10 +319,22 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
           })
         }
       }
+      // A config secret goes exactly where the manifest's `secrets` declares it
+      // (header, query parameter or JSON body path, on its hosts), or nowhere.
+      // `wireUrl` is what goes out (a query placement carries the secret);
+      // `url` stays the app's own, for every message that reaches it.
+      let wireUrl = url
+      let secretHosts: string[][] = []
       if (configSecrets) {
-        const substituted = await substituteConfigSecrets(url, body, configSecrets, authDeps)
-        body = substituted.body
-        injected.secrets.push(...substituted.secrets)
+        const placed = await placeConfigSecrets(
+          { url, headers: headersWithActor, body },
+          configSecrets,
+          authDeps,
+        )
+        wireUrl = placed.url
+        body = placed.body
+        secretHosts = placed.hosts
+        injected.secrets.push(...placed.secrets)
       }
       const injectedFor = auth?.connection ?? null
       const injectedHost = injected.boundHost ?? null
@@ -332,7 +346,7 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
       // put on the wire; every other org and every other host falls straight
       // through. See modules/demo/shopify/provider.ts.
       const demoShopify = await maybeDemoShopifyResponse({
-        url,
+        url: wireUrl,
         method,
         body: typeof body === "string" ? body : undefined,
         orgId,
@@ -345,7 +359,7 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
       const demoBoxtal = demoShopify
         ? null
         : await maybeDemoBoxtalResponse({
-            url,
+            url: wireUrl,
             method,
             body: typeof body === "string" ? body : undefined,
             orgId,
@@ -354,7 +368,7 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
 
       // TEST STACKS ONLY (LIAISON_TEST_VIES_STUB=1 under NODE_ENV test): the EU VIES VAT check
       // is answered by a stand-in, so a test never depends on the live service (test-vies.ts).
-      const testVies = demoShopify || demoBoxtal ? null : maybeTestViesResponse(url)
+      const testVies = demoShopify || demoBoxtal ? null : maybeTestViesResponse(wireUrl)
 
       let response: Response
       if (demoShopify) {
@@ -371,7 +385,7 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
         // coming back as a confusing 401. Shopify never reaches this line: it
         // was answered above, so the fixture path is untouched and nothing is
         // checked twice. One module-local boolean on a normal deployment.
-        await assertDemoAppFetchAllowed(orgId, url)
+        await assertDemoAppFetchAllowed(orgId, wireUrl)
         // An idempotent read whose connection the upstream dropped mid-flight
         // ("The socket connection was closed unexpectedly") is retried once: a
         // pooled keep-alive socket the far end had already closed fails the
@@ -391,7 +405,7 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
               // hosts (e.g. Boxtal's `api.boxtal.build`) and would never reach the mock.
               // Hosts the mock does NOT claim (e.g. Shopify's live `*.myshopify.com`)
               // fall through to the real pinned-host path below, byte-identical to prod.
-              response = await sandboxEgressOverrides.fetch(url, {
+              response = await sandboxEgressOverrides.fetch(wireUrl, {
                 method,
                 headers: headersWithActor,
                 body,
@@ -399,7 +413,7 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
               } as RequestInit)
             } else {
               response = await fetchWithPinnedHost(
-                url,
+                wireUrl,
                 {
                   method,
                   headers: headersWithActor,
@@ -424,6 +438,17 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
                         `Redirect to ${new URL(next).hostname} refused: not a host of connection "${injectedFor}"`,
                       )
                     }
+                    // A placed config secret follows a redirect only to its declared hosts.
+                    for (const hosts of secretHosts) {
+                      if (!matchesDomain(next, hosts)) {
+                        const err = new Error(
+                          `Redirect to ${new URL(next).hostname} refused: not a host the placed config secret may go to`,
+                        ) as Error & { status: number; code: string }
+                        err.status = 403
+                        err.code = SECRET_PLACEMENT_REFUSED
+                        throw err
+                      }
+                    }
                     // A credential bound to its account's own host follows no redirect elsewhere.
                     if (injectedHost && new URL(next).hostname.toLowerCase() !== injectedHost) {
                       throw new Error(
@@ -435,6 +460,18 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
               )
             }
           } catch (err) {
+            // Nothing the host placed comes back in an error either (a query secret is in the URL).
+            if (err instanceof Error && injected.secrets.length > 0) {
+              const redacted = redactSecrets(err.message, injected.secrets)
+              if (redacted !== err.message) {
+                const copy = new Error(redacted) as Error & { status?: unknown; code?: unknown }
+                copy.name = err.name
+                const typed = err as Error & { status?: unknown; code?: unknown }
+                if (typed.status !== undefined) copy.status = typed.status
+                if (typed.code !== undefined) copy.code = typed.code
+                throw copy
+              }
+            }
             if (
               err instanceof Error &&
               (err.name === "TimeoutError" || err.name === "AbortError")

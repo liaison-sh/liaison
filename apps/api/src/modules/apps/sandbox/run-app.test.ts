@@ -178,11 +178,14 @@ describe("resolveInstalledIdentity", () => {
     expect(await resolveInstalledIdentity(APP, base.orgId, at("1.0.0"))).toEqual({
       version: "1.0.0",
       sha256: "a".repeat(64),
+      // No Workers module recorded for this version.
+      workerSha256: null,
     })
     // Without a bundle path: the active version.
     expect(await resolveInstalledIdentity(APP, base.orgId)).toEqual({
       version: "1.1.0",
       sha256: "b".repeat(64),
+      workerSha256: null,
     })
     // A version directory never changes: the second answer comes from the cache.
     await withSystemDb("run-app-test-drop", (db) =>

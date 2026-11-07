@@ -759,9 +759,11 @@ export function validateAppDescriptor(descriptor: any): ValidationResult {
 }
 
 import {
+  appSecretsDeclarationSchema,
   appSettingsSchema,
   configKeysDeclarationErrors,
   listingDeclarationErrors,
+  secretsDeclarationErrors,
   settingsDeclarationErrors,
   storeDeclarationErrors,
 } from "@liaison/app-sdk"
@@ -811,6 +813,24 @@ export function storeErrors(manifest: Record<string, any>): string[] {
   if (manifest?.store === undefined) return []
   const own = manifestOwnScopes(manifest)
   return storeDeclarationErrors(manifest, { knownScopes: (s) => own.has(s) })
+}
+
+/**
+ * The manifest's `secrets` placements (app-sdk secret-placement.ts): each `in`
+ * a placement, each key a declared connection secret, each host one of that
+ * connection's (or, when it names none, of network.allowedDomains).
+ */
+export function secretsErrors(manifest: Record<string, any>): string[] {
+  if (manifest?.secrets === undefined) return []
+  const errors: string[] = []
+  const parsed = appSecretsDeclarationSchema.safeParse(manifest.secrets)
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) {
+      errors.push(`secrets.${issue.path.join(".")}: ${issue.message}`)
+    }
+    return errors
+  }
+  return secretsDeclarationErrors(manifest)
 }
 
 /**
@@ -1027,6 +1047,7 @@ export function validateAppManifest(manifest: any): ValidationResult {
   errors.push(...configKeysDeclarationErrors(manifest.configKeys, manifest.connections))
   errors.push(...settingsErrors(manifest))
   errors.push(...storeErrors(manifest))
+  errors.push(...secretsErrors(manifest))
   errors.push(...connectionAdminScopeErrors(manifest))
   errors.push(...dimensionReferenceErrors(manifest))
   errors.push(...oauthManifestKnobErrors(manifest))

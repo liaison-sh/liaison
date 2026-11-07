@@ -205,6 +205,21 @@ export const KERNEL_SCOPES: ScopeCatalogEntry[] = [
     description: "Install, upgrade, and uninstall apps (instance operator)",
   },
   {
+    // The in-product app builder (0276): drafts of the org's own custom apps.
+    // Admin only by default (`*`); an admin may grant it to a builder.
+    scope: "kernel:apps:build",
+    app: "kernel",
+    description: "Create and edit drafts of the organization's own apps in the app builder",
+  },
+  {
+    // What custom apps and draft previews wrote with ctx.logger (0276). Admin
+    // only by default; a line is shown only to a reader whose scopes cover
+    // what its run read.
+    scope: "kernel:apps:logs",
+    app: "kernel",
+    description: "Read the logs of the organization's own apps",
+  },
+  {
     scope: "kernel:agents:spawn",
     app: "kernel",
     description: "Dispatch fresh-context sub-agent runs via the spawn_agent kernel tool",

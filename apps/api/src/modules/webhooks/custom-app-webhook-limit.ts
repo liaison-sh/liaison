@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// The inbound webhook budget of an org's custom app (managed edition). A
+// The inbound webhook budget of an org's custom app (every edition). A
 // custom app's webhook URL is public and its `verify` runs in the shared
 // sandbox before any authentication result, so anyone on the internet could
 // drive the tenant's code as fast as they like. Each (org, custom app) pair

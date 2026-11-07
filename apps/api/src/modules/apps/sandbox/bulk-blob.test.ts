@@ -202,7 +202,7 @@ describe("deleteBlob", () => {
   })
 })
 
-// An org's custom app (managed edition): its own scope, its own quota, a cap
+// An org's custom app (every edition): its own scope, its own quota, a cap
 // over all custom apps on the server, and an idle lifetime.
 describe("custom apps", () => {
   const ORG = randomUUID()
@@ -226,11 +226,12 @@ describe("custom apps", () => {
     _setEdition(null)
   })
 
-  it("keeps a custom app's blobs in their own scope; catalog apps keep the org's", () => {
-    expect(bulkBlobScope(ORG, APP)).toBe(`custom--${ORG}--${APP}`)
-    expect(bulkBlobScope(ORG, "shopify")).toBe(ORG)
-    _setEdition("self_hosted")
-    expect(bulkBlobScope(ORG, APP)).toBe(ORG)
+  it("keeps a custom app's blobs in their own scope on every edition; catalog apps keep the org's", () => {
+    for (const ed of ["managed", "self_hosted"] as const) {
+      _setEdition(ed)
+      expect(bulkBlobScope(ORG, APP)).toBe(`custom--${ORG}--${APP}`)
+      expect(bulkBlobScope(ORG, "shopify")).toBe(ORG)
+    }
   })
 
   it("refuses past the app's quota and past the server's custom-app cap", async () => {

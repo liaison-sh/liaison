@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { sql } from "drizzle-orm"
 import { index, jsonb, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core"
+import { bytea } from "./mailbox-keys"
 import { kernel } from "./organizations"
 
 /**
@@ -78,6 +79,15 @@ export const appsInstalled = kernel.table(
     // nothing runs it until the operator enables it again. NULL = not disabled.
     disabledAt: timestamp("disabled_at", { withTimezone: true }),
     disabledReason: text("disabled_reason"),
+    /**
+     * An org's custom app version built by the app builder: the sha256 and the
+     * bytes of its Workers module, from the build the publish pinned (0278).
+     * The Workers executor names this sha in /run (sandbox/run-app.ts) and the
+     * cell serves the bytes to the loader (workers/bundle-route.ts). NULL on
+     * every other row.
+     */
+    workerSha256: text("worker_sha256"),
+    workerModule: bytea("worker_module"),
   },
   (table) => [
     primaryKey({ columns: [table.name, table.version] }),

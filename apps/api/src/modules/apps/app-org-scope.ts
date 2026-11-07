@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Which organizations may see and run an app: the tenant boundary of org-private
-// custom apps (managed edition).
+// custom apps (every edition).
 //
 // Apps are instance-wide: every org on a server runs the same installed code.
-// The managed edition also lets an org admin install a custom app for their own
-// org only. Its package name carries the org's key (`<base>-o<orgKey>`, orgKey
+// An org admin may also install a custom app for their own org only (managed
+// and self-hosted alike: a multi-org self-hosted server has the same boundary). Its package name carries the org's key (`<base>-o<orgKey>`, orgKey
 // = the first 8 hex of sha256(org id)), so every registry, schema, scope, route
 // and webhook that keys on the app name stays unique without re-keying the
 // kernel, and its `kernel.apps_installed` rows carry the org (`org_id`, 0267).
@@ -27,7 +27,7 @@
 //     app listings and the org-level enable (install-routes.ts,
 //     enabled-apps.ts, org-app-routes.ts).
 // On top of the owner rows, a name shaped like a custom app (`-o<8 hex>`)
-// whose key is not the org's own is never visible in the managed edition, even
+// whose key is not the org's own is never visible, on any edition, even
 // before the owner rows are read: a stale cache in another process cannot open
 // it to a second tenant.
 //
@@ -39,7 +39,6 @@ import { isNotNull } from "drizzle-orm"
 import { HTTPException } from "hono/http-exception"
 import { withSystemDb } from "~/db/privileged"
 import { appsInstalled } from "~/db/schema/kernel/apps-installed"
-import { isManagedEdition } from "~/lib/edition"
 import { appsLogger as log } from "~/lib/logger"
 import { onCatalogGenerationBump } from "~/modules/apps/catalog-generation"
 import { customAppBase, customAppNameKey } from "~/modules/apps/custom-app-name"
@@ -131,27 +130,23 @@ async function orgScope(): Promise<OrgScope> {
 
 /** The org an org-private app belongs to; null for an instance app (or none installed). */
 export async function appOwnerOrg(name: string): Promise<string | null> {
-  // Off the managed edition no app has an owner (the custom routes are managed-only).
-  if (!isManagedEdition()) return null
   return (await orgScope()).map.get(name) ?? null
 }
 
 /** Whether the operator disabled this org-private app (0268). */
 export async function isCustomAppDisabled(name: string): Promise<boolean> {
-  if (!isManagedEdition()) return false
   return (await orgScope()).disabled.has(name)
 }
 
 /**
  * THE predicate: may `orgId` see and run app `name`? An instance app: yes. An
  * org-private app: only its owner. A custom-app-shaped name of another org's
- * key: never, in the managed edition. A custom app the operator disabled:
- * never, its owner included. Fail-closed (throws) when the owner rows were
- * never readable. Off the managed edition no org-private app can exist (its
- * routes are managed-only): every app is visible, with no database read.
+ * key: never. A custom app the operator disabled: never, its owner included.
+ * Fail-closed (throws) when the owner rows were never readable. The same on
+ * every edition: ownership is the owner row, never the edition.
  */
 export async function appVisibleToOrg(name: string, orgId: string): Promise<boolean> {
-  if (name === "kernel" || !isManagedEdition()) return true
+  if (name === "kernel") return true
   const key = customAppNameKey(name)
   if (key !== null && key !== customAppOrgKey(orgId)) return false
   const scope = await orgScope()
@@ -178,9 +173,8 @@ export async function assertAppVisibleToOrg(name: string, orgId: string): Promis
   }
 }
 
-/** Whether `name` is an org-private app (or carries a custom app's name shape on a managed cell). */
+/** Whether `name` is an org-private app (or carries a custom app's name shape). */
 export async function isOrgPrivateApp(name: string): Promise<boolean> {
-  if (!isManagedEdition()) return false
   if (customAppNameKey(name) !== null) return true
   return (await appOwnerOrg(name)) !== null
 }
@@ -269,6 +263,16 @@ export function forbiddenCustomAppDeclaration(manifest: Rec): string | null {
   if (Array.isArray(manifest.routes) && manifest.routes.length > 0) return "routes"
   const network = isRec(manifest.network) ? manifest.network : {}
   if (network.allowPrivateHostsInTest === true) return "network.allowPrivateHostsInTest"
+  // a custom app's credentials go only to hosts its connection names, so a
+  // connection that names none (any reachable host) is refused.
+  for (const [name, conn] of Object.entries(
+    isRec(manifest.connections) ? manifest.connections : {},
+  )) {
+    const domains = isRec(conn) ? conn.allowedDomains : undefined
+    if (!Array.isArray(domains) || domains.length === 0) {
+      return `connections.${name}.allowedDomains (empty)`
+    }
+  }
   for (const [name, tool] of Object.entries(isRec(manifest.tools) ? manifest.tools : {})) {
     if (isRec(tool) && overLimit(tool.timeoutMs, CUSTOM_APP_LIMITS.toolTimeoutMs)) {
       return `tools.${name}.timeoutMs`

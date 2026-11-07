@@ -376,6 +376,11 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/host-binding-matrix.test.ts",
             // Org-private custom apps (managed edition): the hostile-tenant boundary.
             "src/tests/integration/custom-apps-tenant-boundary.test.ts",
+            // The custom-apps switch, and the app builder end to end (sandbox pool,
+            // real install path, the Workers executor against the loader stand-in).
+            "src/tests/integration/custom-apps-switch.test.ts",
+            "src/tests/integration/app-builder.test.ts",
+            "src/tests/integration/app-builder-workers.test.ts",
             "src/tests/oauth-redirect-base.test.ts",
             // Repo-wide grep: no agent-specific node templates or features.
             "src/tests/no-agent-specific-node.test.ts",

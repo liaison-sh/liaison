@@ -14,16 +14,18 @@
 //    person's computer, or a name that says it sends, posts, submits, uploads,
 //    pays...) is in one reviewed list with the control that holds it instead.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { z } from "zod"
-import { sql } from "~/db"
-import { threads } from "~/db/schema/kernel"
+import { type RlsClient, sql } from "~/db"
+import { withRlsContext } from "~/db/rls"
+import { contacts, threads } from "~/db/schema/kernel"
 import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { resolveContact as resolveContactService } from "~/modules/contacts/service"
 import { ToolProjector } from "~/modules/mcp-client/projector"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
@@ -42,6 +44,9 @@ const SELF_GUARDING = new Set([
   "executeTool",
   // Forwards the run's mark into the contract op's executeTool (bridge/contracts.ts:298).
   "contracts_call",
+  // Looks a contact up and returns it unchanged on a read-only run: no link, no enrichment,
+  // no create, and `clear` refuses (bridge/db.ts resolveContact, contacts/service.ts lookupOnly).
+  "resolveContact",
 ])
 
 /**
@@ -126,7 +131,6 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   projects_tasksByAssignee: "read",
   projects_tasksByProject: "read",
   pubsub_verifyGoogleOidcJwt: "read",
-  resolveContact: "read",
   store_count: "read",
   store_get: "read",
   store_query: "read",
@@ -221,6 +225,108 @@ describe("S3f-1: a read-only run refuses every bridge write", () => {
     const ro = bridgeFor(true)
     const notRefused = READ_ONLY_GAPS.filter((n) => !isRefusalWrapper(ro[n]))
     expect(notRefused).toEqual([])
+  })
+})
+
+// ─── 1b. read-only run: resolveContact only looks up ───────────────────────
+
+describe("S3f-1b: resolveContact on a read-only run is a lookup", () => {
+  const as = <T>(fn: (tx: RlsClient) => Promise<T>): Promise<T> =>
+    withRlsContext(
+      {
+        actorType: "user",
+        userId: owner.userId,
+        orgId: owner.orgId,
+        scopes: ["kernel:contacts:read", "kernel:contacts:write"],
+        dimensionGrants: { "*": ["*"] },
+      },
+      fn,
+    )
+  /** A bridge of an app that may add contacts to the organisation, on a real transaction. */
+  const bridgeOn = (tx: unknown, readOnlyRun: boolean) =>
+    createRpcBridge(
+      "inv_app",
+      owner.userId,
+      owner.orgId,
+      tx as any,
+      {
+        name: "inv_app",
+        schema: {},
+        events: { emits: [] },
+        capabilities: ["contacts.addToOrganisation"],
+      },
+      ["inv_app:read", "kernel:contacts:read", "kernel:contacts:write"],
+      "user",
+      undefined,
+      { readOnlyRunOverride: readOnlyRun, callChain: [] } as any,
+    )
+  const email = `ro-${crypto.randomUUID().slice(0, 8)}@example.com`
+
+  it("returns an org contact unchanged, creates nothing on a miss, and refuses clear", async () => {
+    const seeded = await as(async (tx) => {
+      return (
+        await resolveContactService(
+          tx,
+          owner.orgId,
+          owner.userId,
+          { email },
+          {
+            audience: "org",
+          },
+        )
+      ).contact!
+    })
+    const read = (where: ReturnType<typeof eq>) =>
+      as((tx) =>
+        tx
+          .select()
+          .from(contacts)
+          .where(and(eq(contacts.orgId, owner.orgId), where)),
+      )
+
+    const found = await as(async (tx) =>
+      JSON.parse(
+        await bridgeOn(tx, true).resolveContact(
+          JSON.stringify({
+            email,
+            name: "Leaked",
+            company: "Leaked Co",
+            externalId: "secret-text",
+          }),
+        ),
+      ),
+    )
+    expect((await read(eq(contacts.id, seeded.id))).length).toBe(1)
+    expect(found?.id).toBe(seeded.id)
+    const [after] = await read(eq(contacts.id, seeded.id))
+    expect(after!.name).toBeNull()
+    expect(after!.company).toBeNull()
+    expect(after!.externalIds).toEqual({})
+
+    // A miss: the same shape as a link-only app's miss (null), and no row.
+    const missEmail = `miss-${email}`
+    const miss = await as(async (tx) =>
+      JSON.parse(await bridgeOn(tx, true).resolveContact(JSON.stringify({ email: missEmail }))),
+    )
+    expect(miss).toBeNull()
+    expect(await read(eq(contacts.email, missEmail))).toEqual([])
+
+    let msg = ""
+    try {
+      await as((tx) =>
+        bridgeOn(tx, true).resolveContact(JSON.stringify({ clear: true, externalId: "x" })),
+      )
+    } catch (err) {
+      msg = String((err as Error).message)
+    }
+    expect(msg.toLowerCase()).toContain("read_only_run")
+
+    // An ordinary run of the same app still links and enriches.
+    await as(async (tx) => {
+      return bridgeOn(tx, false).resolveContact(JSON.stringify({ email, name: "Linked" }))
+    })
+    const [linked] = await read(eq(contacts.id, seeded.id))
+    expect(linked!.name).toBe("Linked")
   })
 })
 

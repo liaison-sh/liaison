@@ -38,6 +38,20 @@ export {
 export type { Agent, AgentKind, NewAgent } from "./agents"
 export { agentKindEnum, agents } from "./agents"
 export {
+  type AppBuildArtifactKind,
+  type AppBuildArtifactRow,
+  type AppDraftBuild,
+  type AppDraftRow,
+  type AppDraftStatus,
+  type AppDraftVersionRow,
+  type AppLogLevel,
+  type AppLogRow,
+  appBuildArtifacts,
+  appDrafts,
+  appDraftVersions,
+  appLogs,
+} from "./app-builder"
+export {
   type AppDocumentRow,
   type AppDocumentUsageRow,
   appDocuments,

@@ -14,11 +14,14 @@ import { quoteIdent } from "~/lib/sql-utils"
 import { getRequestSignal } from "~/middleware/request-timeout"
 import { requireScope } from "~/middleware/require-scope"
 import {
+  claimToolCard,
   currentToolCard,
   type OpenedToolCardRef,
   openToolCardRef,
   parseToolCardRef,
+  releaseToolCard,
   replaceToolCard,
+  type ToolCardRef,
 } from "~/modules/agent/runtime/tool-card-store"
 import {
   checkAppConfigWriteForOrg,
@@ -108,6 +111,11 @@ function cardRefRefused(c: Context<AppEnv>, opened: OpenedToolCardRef & { ok: fa
     const message = "This card came from another app's tool. Nothing ran."
     return c.json({ error: { message, code: "card_other_app" } }, 422)
   }
+  if (opened.refusal === "not_an_action") {
+    const message =
+      "This card does not offer that call with these values. Nothing ran and the card is unchanged. Use one of the card's own actions."
+    return c.json({ error: { message, code: "card_action_unknown" } }, 422)
+  }
   const message = opened.card
     ? "This card changed since it was drawn. Nothing was saved. The latest card is attached."
     : "This card is no longer there. Nothing was saved."
@@ -162,11 +170,55 @@ appRoutes.post("/:appName/tools/:toolName", async (c) => {
   }
   const orgId = c.get("orgId")
   const actor = extractRlsContext(c)
-  const opened = cardRef ? await openToolCardRef(actor, orgId, appName, cardRef) : null
-  if (opened && !opened.ok) return cardRefRefused(c, opened)
+  const params = toolBody.params ?? toolBody
+  // What the card is asked to do: the flat form carries the thread beside the params.
+  const { threadId: _thread, ...flatParams } = toolBody
+  const request = { toolName, params: toolBody.params ?? flatParams }
+  if (!cardRef) return runAppTool(c, { appName, toolName, params, threadId: toolBody.threadId })
 
+  const first = await openToolCardRef(actor, orgId, appName, cardRef, request)
+  if (!first.ok) return cardRefRefused(c, first)
+  // One action at a time per card: the revision is checked again once the claim is held, so of
+  // two clicks on the same revision one runs and the other is told the card changed.
+  const claim = await claimToolCard(cardRef)
+  if (!claim) {
+    const current = await currentToolCard(actor, orgId, appName, cardRef)
+    return cardRefRefused(
+      c,
+      current.ok ? { ok: false, refusal: "changed", card: null, cardRevision: null } : current,
+    )
+  }
+  try {
+    const opened = await openToolCardRef(actor, orgId, appName, cardRef, request)
+    if (!opened.ok) return cardRefRefused(c, opened)
+    return await runAppTool(c, {
+      appName,
+      toolName,
+      params,
+      threadId: toolBody.threadId ?? opened.threadId,
+      cardRef,
+    })
+  } finally {
+    await releaseToolCard(cardRef, claim)
+  }
+})
+
+/** Run an app tool from the REST form, and replace the card it was clicked from, if any. */
+async function runAppTool(
+  c: Context<AppEnv>,
+  args: {
+    appName: string
+    toolName: string
+    params: unknown
+    threadId: unknown
+    cardRef?: ToolCardRef
+  },
+) {
+  const { appName, toolName, cardRef } = args
+  const orgId = c.get("orgId")
+  const actor = extractRlsContext(c)
   // Plugin-friendly REST form: same direct browser UI call as /tools/:toolName.
-  const call = await restToolCall(c, toolBody.threadId ?? opened?.threadId)
+  const call = await restToolCall(c, args.threadId)
   let result: Awaited<ReturnType<typeof executeTool>>
   try {
     result = await executeTool({
@@ -174,7 +226,7 @@ appRoutes.post("/:appName/tools/:toolName", async (c) => {
       orgId,
       actor,
       threadId: call.threadId,
-      params: toolBody.params ?? toolBody,
+      params: args.params,
       origin: call.origin,
       signal: getRequestSignal(c),
     })
@@ -203,7 +255,7 @@ appRoutes.post("/:appName/tools/:toolName", async (c) => {
     cardStored: stored,
     ...(why ? { why } : {}),
   })
-})
+}
 
 appRoutes.post("/run-tool", async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>

@@ -8,7 +8,7 @@
 // never rebuilds it, because a stored result may be clipped. Nothing here feeds the model: the
 // history and the checkpoint name each field of a stored call they replay, and these are not
 // among them.
-import type { CardLabel, CardTemplate, ResolvedCard } from "@liaison/shared"
+import type { CardLabel, CardTemplate, ResolvedCard, ResolvedCardAction } from "@liaison/shared"
 import { and, asc, desc, eq, isNull, lte, sql } from "drizzle-orm"
 import type { PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -16,6 +16,7 @@ import { type ActorContext, withRlsContext } from "~/db/rls"
 import { messages } from "~/db/schema/kernel"
 import { isTestEnv } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
+import { redis } from "~/lib/redis"
 import { UUID_RE } from "~/lib/uuid"
 import { redactMailToolResult } from "~/modules/agent/mailbox-plaintext/mail-plaintext-redaction"
 import { uncappedToolResult } from "~/modules/agent/runtime/result-truncation"
@@ -415,7 +416,106 @@ export type OpenedToolCardRef =
   | { ok: true; ref: ToolCardRef; threadId: string; requiredScopes: readonly string[] }
   | { ok: false; refusal: "not_readable" }
   | { ok: false; refusal: "other_app" }
+  | { ok: false; refusal: "not_an_action" }
   | { ok: false; refusal: "changed"; card: ResolvedCard | null; cardRevision: number | null }
+
+/** The call a request makes from a card: the tool of the card's app and the params it sends. */
+export interface ToolCardRequest {
+  toolName: string
+  params: unknown
+}
+
+function sameValue(a: unknown, b: string | number): boolean {
+  return a === b
+}
+
+/** The request sends exactly the params the action was drawn with, nothing more. */
+function matchesAction(
+  action: ResolvedCardAction,
+  request: ToolCardRequest,
+  params: Record<string, unknown>,
+): boolean {
+  if (action.kind !== "tool" || action.tool !== request.toolName) return false
+  const keys = Object.keys(params)
+  const declared = Object.keys(action.params)
+  if (keys.length !== declared.length) return false
+  return declared.every((k) => Object.hasOwn(params, k) && sameValue(params[k], action.params[k]))
+}
+
+/**
+ * An edit sends the ids the card was drawn with, the row it edits (one the card offers an edit
+ * on), and exactly one of its fields.
+ */
+function matchesEdit(
+  card: ResolvedCard,
+  request: ToolCardRequest,
+  params: Record<string, unknown>,
+): boolean {
+  const edit = card.edit
+  if (!edit || edit.tool !== request.toolName) return false
+  for (const [k, v] of Object.entries(edit.params)) {
+    if (!Object.hasOwn(params, k) || !sameValue(params[k], v)) return false
+  }
+  const row = params[edit.rowParam]
+  if (typeof row !== "string" && typeof row !== "number") return false
+  const editable = (card.groups ?? []).some((g) =>
+    g.rows.some((r) => r.edit !== undefined && r.id === String(row)),
+  )
+  if (!editable) return false
+  const fields = new Set(edit.fields.map((f) => f.param))
+  const rest = Object.keys(params).filter(
+    (k) => !Object.hasOwn(edit.params, k) && k !== edit.rowParam,
+  )
+  return rest.length === 1 && fields.has(rest[0] as string)
+}
+
+/**
+ * Is this request one of the things the stored card offers: one of its tool actions (top, summary
+ * or a row's) with the params it was drawn with, or its edit? A reader of the row may click what
+ * the card shows; anything else would rewrite someone's card with a call it never offered.
+ */
+export function cardOffersRequest(card: ResolvedCard, request: ToolCardRequest): boolean {
+  if (!isRecord(request.params)) return false
+  const params = request.params
+  const offered: ResolvedCardAction[] = [
+    ...(card.actions ?? []),
+    ...(card.summary?.actions ?? []),
+    ...(card.groups ?? []).flatMap((g) => g.rows.flatMap((r) => (r.act ? [r.act] : []))),
+  ]
+  return (
+    offered.some((a) => matchesAction(a, request, params)) || matchesEdit(card, request, params)
+  )
+}
+
+/** How long a card action holds its card: past it, a stuck holder no longer blocks the card. */
+const CARD_CLAIM_TTL_SECONDS = 120
+const cardClaimKey = (ref: ToolCardRef) => `tool-card-claim:${ref.messageId}:${ref.toolCallId}`
+
+/**
+ * Hold the card for one action, from its revision check to its store, so two clicks on the same
+ * revision cannot both run: the token when taken, null while another action holds it.
+ */
+export async function claimToolCard(ref: ToolCardRef): Promise<string | null> {
+  const token = crypto.randomUUID()
+  const got = await redis.set(cardClaimKey(ref), token, "EX", CARD_CLAIM_TTL_SECONDS, "NX")
+  return got === "OK" ? token : null
+}
+
+/** Give the card back, only while this token still holds it. */
+export async function releaseToolCard(ref: ToolCardRef, token: string): Promise<void> {
+  const releaseLua = `
+    if redis.call("get", KEYS[1]) == ARGV[1] then
+      return redis.call("del", KEYS[1])
+    else
+      return 0
+    end
+  `
+  try {
+    await redis.eval(releaseLua, 1, cardClaimKey(ref), token)
+  } catch (err) {
+    log.warn({ err, messageId: ref.messageId }, "card claim not released; it expires")
+  }
+}
 
 /**
  * The newest live card of a key in a thread, as this reader may read it. Read under the caller's
@@ -459,13 +559,25 @@ async function latestLiveCard(
 
 /**
  * Check a `cardRef` before its tool runs, under the caller's own context: a thread they cannot
- * read is not there for them. Nothing has run and nothing has changed on any refusal.
+ * read is not there for them, and a call the stored card does not offer is refused. Nothing has
+ * run and nothing has changed on any refusal.
  */
 export async function openToolCardRef(
   actor: ActorContext,
   orgId: string,
   appName: string,
   ref: ToolCardRef,
+  request: ToolCardRequest,
+): Promise<OpenedToolCardRef> {
+  return openStoredCard(actor, orgId, appName, ref, request)
+}
+
+async function openStoredCard(
+  actor: ActorContext,
+  orgId: string,
+  appName: string,
+  ref: ToolCardRef,
+  request: ToolCardRequest | null,
 ): Promise<OpenedToolCardRef> {
   const [row] = await withRlsContext(actor, (tx) =>
     tx
@@ -506,6 +618,9 @@ export async function openToolCardRef(
       cardRevision: storedCardRevision(stored),
     }
   }
+  if (request && !(stored.card && cardOffersRequest(stored.card, request))) {
+    return { ok: false, refusal: "not_an_action" }
+  }
   return {
     ok: true,
     ref,
@@ -521,7 +636,7 @@ export async function currentToolCard(
   appName: string,
   ref: ToolCardRef,
 ): Promise<OpenedToolCardRef> {
-  return openToolCardRef(actor, orgId, appName, { ...ref, revision: 0 })
+  return openStoredCard(actor, orgId, appName, { ...ref, revision: 0 }, null)
 }
 
 export interface ReplacedToolCard {
@@ -550,9 +665,10 @@ function messageStampCovers(
  * Overwrite a stored card from the result of the tool a card action just ran, and only the card:
  * the stored result stays as the model saw it, so the history replays byte for byte.
  *
- * The caller checked the revision before the tool ran. It is not checked again here: by now the
- * effect has happened, so refusing would report a write as not saved. A tool whose writes race
- * carries its own revision and refuses inside its own transaction.
+ * The caller checked the revision before the tool ran, while holding the card's claim
+ * (`claimToolCard`), so no other card action stored in between. It is not checked again here: by
+ * now the effect has happened, so refusing would report a write as not saved. A message deleted
+ * since is not written.
  */
 export async function replaceToolCard(
   ref: ToolCardRef,
@@ -582,7 +698,9 @@ export async function replaceToolCard(
     const [row] = await tx
       .select(ROW_FACTS)
       .from(messages)
-      .where(and(eq(messages.id, ref.messageId), eq(messages.orgId, orgId)))
+      .where(
+        and(eq(messages.id, ref.messageId), eq(messages.orgId, orgId), isNull(messages.deletedAt)),
+      )
       .limit(1)
       .for("update")
     const calls = storedCalls(row?.metadata)

@@ -25,6 +25,7 @@ import { foldTurn } from "~/modules/agent/runtime/stream-fold"
 import { AgentStreamRegistryTestAccess } from "~/modules/agent/runtime/stream-registry"
 import {
   clearToolCardsByKey,
+  replaceToolCard,
   type StoredToolCall,
   ToolCardStoreTestAccess,
   withToolCardFieldsOnSteps,
@@ -52,7 +53,10 @@ let threadId: string
 let agentId: string
 let updateRuns = 0
 let strictReceived: unknown
-let updateResult: () => unknown = () => ({ id: "item-1", title: "After the click" })
+let updateResult: () => unknown | Promise<unknown> = () => ({
+  id: "item-1",
+  title: "After the click",
+})
 
 const entityCard = {
   kind: "entity",
@@ -109,10 +113,16 @@ function registerFixtures(): void {
     }),
   })
   tool("cardy", "update", {
-    resultCard: entityCard,
+    // The card it draws offers the same call again, so a second click acts from the new card.
+    resultCard: {
+      ...entityCard,
+      actions: [
+        { kind: "tool", label: { label: "Again" }, tool: "update", params: { id: "result.id" } },
+      ],
+    },
     handler: async () => {
       updateRuns++
-      const out = updateResult()
+      const out = await updateResult()
       if (out instanceof Error) throw out
       return out
     },
@@ -248,6 +258,42 @@ const liveCall = (frames: Frame[], id: string) => {
   return { call: data("tool_call"), result: data("tool_result") }
 }
 
+/** The card a seeded row holds: the actions and the edit the tests below click. */
+const toolAction = (tool: string, params: Record<string, string | number> = {}) => ({
+  kind: "tool",
+  label: { label: tool },
+  tool,
+  params,
+})
+const SEEDED_CARD = {
+  kind: "entity",
+  pill: { label: "P" },
+  title: "Before",
+  actions: [
+    toolAction("update", { id: "item-1" }),
+    toolAction("update"),
+    toolAction("strict", { id: "a" }),
+    toolAction("plain"),
+    toolAction("wider"),
+  ],
+  groups: [
+    {
+      label: "Lines",
+      rows: [{ id: "line-1", name: "A line", cells: {}, links: [], edit: { qty: { value: 1 } } }],
+    },
+  ],
+  edit: {
+    openLabel: { label: "Edit" },
+    doneLabel: { label: "Done" },
+    tool: "update",
+    params: { id: "item-1" },
+    rowParam: "line",
+    fields: [{ param: "qty", label: { label: "Qty" }, kind: "quantity" }],
+  },
+}
+/** An edit of the seeded card's one line. */
+const editQty = (qty: number) => ({ id: "item-1", line: "line-1", qty })
+
 /** A stored agent row holding one card, stamped as a turn that read `READ_SCOPE` stamps it. */
 async function seedCard(opts: {
   toolName?: string
@@ -266,9 +312,7 @@ async function seedCard(opts: {
         args: {},
         result: { id: "item-1", title: "Before" },
         status: "completed",
-        ...(opts.card === null
-          ? {}
-          : { card: opts.card ?? { kind: "entity", pill: { label: "P" }, title: "Before" } }),
+        ...(opts.card === null ? {} : { card: opts.card ?? SEEDED_CARD }),
         ...opts.extra,
       },
     ],
@@ -675,7 +719,7 @@ describe("replacing a stored card", () => {
   it("one field, stale revision answers card_changed", async () => {
     const seeded = await seedCard({ extra: { cardRevision: 3 } })
     const cardRef = { ...seeded, revision: 2 }
-    const res = await post("cardy/tools/update", { qty: 4, cardRef })
+    const res = await post("cardy/tools/update", { ...editQty(4), cardRef })
     expect(res.status).toBe(409)
     expect(updateRuns).toBe(0)
     const body = (await res.json()) as { error: Record<string, any> }
@@ -687,11 +731,20 @@ describe("replacing a stored card", () => {
 
   it("the current revision passes, and the next stale one refuses", async () => {
     const seeded = await seedCard({})
-    const first = await post("cardy/tools/update", { qty: 1, cardRef: { ...seeded, revision: 1 } })
+    const first = await post("cardy/tools/update", {
+      ...editQty(1),
+      cardRef: { ...seeded, revision: 1 },
+    })
     expect(first.status).toBe(200)
-    const again = await post("cardy/tools/update", { qty: 2, cardRef: { ...seeded, revision: 1 } })
+    const again = await post("cardy/tools/update", {
+      ...editQty(2),
+      cardRef: { ...seeded, revision: 1 },
+    })
     expect(again.status).toBe(409)
-    const next = await post("cardy/tools/update", { qty: 3, cardRef: { ...seeded, revision: 2 } })
+    const next = await post("cardy/tools/update", {
+      id: "item-1",
+      cardRef: { ...seeded, revision: 2 },
+    })
     expect(next.status).toBe(200)
     expect(updateRuns).toBe(2)
     expect((await storedCall(seeded.messageId, seeded.toolCallId))?.cardRevision).toBe(3)
@@ -701,7 +754,7 @@ describe("replacing a stored card", () => {
     updateResult = () =>
       Object.assign(new Error("the reconciliation moved on"), { status: 409, code: "card_changed" })
     const seeded = await seedCard({})
-    const res = await post("cardy/tools/update", { qty: 1, cardRef: seeded })
+    const res = await post("cardy/tools/update", { ...editQty(1), cardRef: seeded })
     expect(res.status).toBe(409)
     const body = (await res.json()) as { error: Record<string, any> }
     expect(body.error.code).toBe("card_changed")
@@ -715,7 +768,7 @@ describe("replacing a stored card", () => {
     updateResult = () =>
       Object.assign(new Error("Quantity must be positive"), { status: 422, code: "bad_quantity" })
     const seeded = await seedCard({})
-    const res = await post("cardy/tools/update", { qty: -1, cardRef: seeded })
+    const res = await post("cardy/tools/update", { ...editQty(-1), cardRef: seeded })
     expect(res.status).toBe(422)
     expect(((await res.json()) as { error: { message: string } }).error.message).toContain(
       "Quantity must be positive",
@@ -754,6 +807,77 @@ describe("replacing a stored card", () => {
     expect(body.meta.cardStored).toBe(false)
     expect(body.meta.why).toBe("wider_than_message")
     expect((await storedCall(seeded.messageId, seeded.toolCallId))?.card?.title).toBe("Before")
+  })
+
+  it("a cardRef naming a tool that is not one of the card's actions is 422 and the card is unchanged", async () => {
+    const card = { ...SEEDED_CARD, actions: [toolAction("update", { id: "item-1" })] }
+    const seeded = await seedCard({ card })
+    const res = await post("cardy/tools/plain", { cardRef: seeded })
+    expect(res.status).toBe(422)
+    const body = (await res.json()) as { error: { code: string; message: string } }
+    expect(body.error.code).toBe("card_action_unknown")
+    expect(body.error.message).toContain("Nothing ran")
+    expect(updateRuns).toBe(0)
+    expect((await storedCall(seeded.messageId, seeded.toolCallId))?.card).toEqual(card as never)
+  })
+
+  it("a cardRef action with an id other than the card's is 422", async () => {
+    const seeded = await seedCard({})
+    const res = await post("cardy/tools/update", { id: "item-2", cardRef: seeded })
+    expect(res.status).toBe(422)
+    expect(updateRuns).toBe(0)
+    expect((await storedCall(seeded.messageId, seeded.toolCallId))?.card?.title).toBe("Before")
+  })
+
+  it("an edit may change one offered field of one offered row, and nothing else", async () => {
+    const seeded = await seedCard({})
+    const refused = [
+      { ...editQty(2), title: "Rewritten" },
+      { ...editQty(2), line: "line-9" },
+      { ...editQty(2), id: "item-2" },
+      { id: "item-1", line: "line-1" },
+    ]
+    for (const params of refused) {
+      const res = await post("cardy/tools/update", { ...params, cardRef: seeded })
+      expect(res.status).toBe(422)
+    }
+    expect(updateRuns).toBe(0)
+    const res = await post("cardy/tools/update", { ...editQty(2), cardRef: seeded })
+    expect(res.status).toBe(200)
+    expect(updateRuns).toBe(1)
+  })
+
+  it("a card on a deleted message is not rewritten", async () => {
+    const seeded = await seedCard({})
+    await sql`UPDATE kernel.messages SET deleted_at = now() WHERE id = ${seeded.messageId}`
+    const replaced = await replaceToolCard(seeded, {
+      orgId,
+      actorId: userId,
+      appName: "cardy",
+      toolName: "update",
+      result: { id: "item-1", title: "After the click" },
+    })
+    expect(replaced.stored).toBe(false)
+    expect(replaced.why).toBe("gone")
+    expect((await storedCall(seeded.messageId, seeded.toolCallId))?.card?.title).toBe("Before")
+  })
+
+  it("two edits on the same revision at once: one runs, the other answers card_changed", async () => {
+    updateResult = async () => {
+      await Bun.sleep(300)
+      return { id: "item-1", title: "After the click" }
+    }
+    const seeded = await seedCard({})
+    const cardRef = { ...seeded, revision: 1 }
+    const answers = await Promise.all([
+      post("cardy/tools/update", { ...editQty(2), cardRef }),
+      post("cardy/tools/update", { ...editQty(3), cardRef }),
+    ])
+    expect(answers.map((r) => r.status).sort()).toEqual([200, 409])
+    const lost = answers.find((r) => r.status === 409) as Response
+    expect(((await lost.json()) as { error: { code: string } }).error.code).toBe("card_changed")
+    expect(updateRuns).toBe(1)
+    expect((await storedCall(seeded.messageId, seeded.toolCallId))?.cardRevision).toBe(2)
   })
 
   it("a call with no cardRef answers as it always did and touches no card", async () => {

@@ -15,6 +15,7 @@ import type { ThreadAnchor } from "@liaison/shared"
 import { withPrivilegedDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
 import { rootLogger } from "~/lib/logger"
+import { isAppActiveForOrgAsync } from "~/modules/apps/org-apps"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { attachMentionSecondaryLabels } from "~/modules/search/mention-secondary"
 import type { MentionHit } from "~/modules/search/service"
@@ -90,7 +91,8 @@ export async function canReadThreadAnchorEntity(
 /**
  * The anchor with its words, read with `tx`'s visibility: a reader who may not
  * see the entity gets its kind and no name, and the fact that tells it apart
- * (a task's project) only when that reader may see it too. Never throws.
+ * (a task's project) only when that reader may see it too, and `state: "gone"` once the
+ * entity's app is switched off. Never throws.
  */
 export async function resolveThreadAnchor(
   tx: LabelTx,
@@ -126,7 +128,16 @@ export async function resolveThreadAnchor(
       log.warn({ err, app: ref.app, entityType: ref.entityType }, "thread anchor detail failed")
     }
   }
-  return { ...ref, kindLabel, label, secondaryLabel }
+  // An entity whose app is switched off cannot be opened: the conversation says so instead of
+  // offering a page that is no longer there (its name stays, for whoever could read it).
+  let gone = false
+  try {
+    gone = !(await isAppActiveForOrgAsync(orgId, ref.app))
+  } catch (err) {
+    log.warn({ err, app: ref.app }, "thread anchor app state failed")
+    gone = true
+  }
+  return { ...ref, kindLabel, label, secondaryLabel, ...(gone ? { state: "gone" as const } : {}) }
 }
 
 /** How many readers' RLS reads run at once for one event. */

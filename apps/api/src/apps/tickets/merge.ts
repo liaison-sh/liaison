@@ -7,6 +7,8 @@ import { ticketsRel } from "~/apps/tickets/schema-refs"
 import type { ClosedReason, CurrentTicketState, TicketStatus } from "~/apps/tickets/state-machine"
 import { applyEffects, validateTransition } from "~/apps/tickets/state-machine"
 import { extractRows, type PrivilegedDb, type RlsClient, type RlsTx } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
+import { schemaRef } from "~/db/schema-ref"
 import { cancelApprovalsForSourceTicket } from "~/modules/approvals/cancel"
 
 type SqlClient = RlsClient | RlsTx | PrivilegedDb
@@ -233,6 +235,7 @@ export async function mergeTickets(
       undefined,
       opts.privilegedTx,
     )
+    await repointConversationsToTarget(orgId, sourceId, params.targetTicketId, opts.privilegedTx)
   }
 
   // Apply target-side merge effects (timeline label "merged_in")
@@ -332,4 +335,28 @@ export async function mergeTickets(
     mergedSourceCount: params.sourceTicketIds.length,
     copiedMessageCount: totalMessageCount,
   }
+}
+
+/**
+ * A conversation made from a merged-away ticket belongs to the ticket that survives: its anchor
+ * (`threads.created_from`) moves there, so it names and opens the ticket its messages now live
+ * on. Runs on the caller's privileged transaction when it holds one, as the approval cancel does.
+ */
+async function repointConversationsToTarget(
+  orgId: string,
+  sourceId: string,
+  targetId: string,
+  privilegedTx?: PrivilegedDb,
+): Promise<void> {
+  const run = (tx: PrivilegedDb) =>
+    tx.execute(drizzleSql`
+      UPDATE ${drizzleSql.raw(schemaRef("kernel"))}.threads
+         SET created_from = jsonb_set(created_from, '{entityId}', to_jsonb(${targetId}::text))
+       WHERE org_id = ${orgId}
+         AND created_from->>'app' = 'tickets'
+         AND created_from->>'entityType' = 'ticket'
+         AND created_from->>'entityId' = ${sourceId}
+    `)
+  if (privilegedTx) await run(privilegedTx)
+  else await withPrivilegedDb(orgId, "tickets-merge-repoint-conversations", run)
 }

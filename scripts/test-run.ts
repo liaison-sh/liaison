@@ -868,6 +868,10 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "scripts/ci-scope.test.ts",
             // The raw test INSERT ratchet's counter and comparison. Pure file reads.
             "scripts/check-raw-insert.test.ts",
+            // Tool finding: the phrase corpus through the real ranker over the
+            // catalog read from source, its baseline, the catalog lint and the
+            // known bad answers. Pure file reads, about 2 s.
+            "apps/api/src/modules/agent/tools/tool-bench/bench.test.ts",
           ]),
     ],
     cwd: ROOT,

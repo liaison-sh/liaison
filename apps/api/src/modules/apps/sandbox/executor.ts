@@ -6,6 +6,7 @@ import {
   newBridgeRejection,
   typedBridgeFailure,
 } from "~/modules/apps/sandbox/bridge-rejection"
+import { SHIM_RULES } from "~/modules/apps/sandbox/ctx-shim"
 import type { SandboxPool } from "~/modules/apps/sandbox/pool"
 
 export interface ExecuteOptions {
@@ -536,10 +537,13 @@ function buildCtxSpec(bridge: Record<string, (...args: any[]) => unknown>): CtxS
   // assigned after the data field, shadows it with a truthy method container —
   // breaking `if (!ctx.approval)`. The flat `approval_record*` methods stay
   // callable as `ctx.approval_record*`.
-  const RESERVED_GROUPS = new Set(["approval"])
-  // Structured-return groups: `ctx.kernel.*` / `ctx.db.*` go through
-  // `__wrapStructured` (always parse a string return), see CTX_SHIM_SOURCE.
-  const STRUCTURED_RETURN_GROUPS = new Set(["kernel", "db"])
+  // Both sets come from the one rule table the worker pool and Workers read
+  // (ctx-shim.ts SHIM_RULES), so the three executors parse alike.
+  const RESERVED_GROUPS = new Set(SHIM_RULES.reservedGroups)
+  // Structured-return groups (`ctx.kernel.*`, `ctx.db.*`, `ctx.bulk.*`,
+  // `ctx.store.*`) go through `__wrapStructured` (always parse a string
+  // return), see CTX_SHIM_SOURCE.
+  const STRUCTURED_RETURN_GROUPS = new Set(SHIM_RULES.structuredReturnGroups)
   const nested = new Map<string, Array<[string, "a" | "st", string]>>()
   for (const m of names) {
     const splitAt = m.indexOf("_")

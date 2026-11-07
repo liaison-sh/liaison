@@ -1010,6 +1010,43 @@ export const appManifestJsonSchema = {
     // job returning `{ upstreamActivityAt: ISO | null }` (or `{ probed: false,
     // reason }` when it could not ask), or `{ probe: null, reason }` saying why no
     // upstream can be queried; such an app is then judged by rejections only.
+    // The app data store's declared collections (@liaison/app-sdk app-store.ts):
+    // what the agent's data tools, dashboard blocks and search may read, under
+    // which scope. The readScope rule is cross-field (contract.ts storeErrors).
+    store: {
+      type: "object",
+      properties: {
+        collections: {
+          type: "object",
+          propertyNames: { pattern: "^[a-z][a-z0-9_]{0,62}$" },
+          additionalProperties: {
+            type: "object",
+            properties: {
+              readScope: { type: "string", minLength: 1 },
+              searchable: {
+                type: "object",
+                properties: {
+                  labelField: { type: "string", pattern: "^[a-zA-Z_][a-zA-Z0-9_]{0,62}$" },
+                  fields: {
+                    type: "array",
+                    minItems: 1,
+                    maxItems: 10,
+                    items: { type: "string", pattern: "^[a-zA-Z_][a-zA-Z0-9_]{0,62}$" },
+                  },
+                },
+                required: ["labelField", "fields"],
+                additionalProperties: false,
+              },
+              agentReadable: { type: "boolean" },
+            },
+            required: ["readScope"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["collections"],
+      additionalProperties: false,
+    },
     webhookHealth: {
       type: "object",
       properties: {

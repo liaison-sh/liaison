@@ -167,6 +167,10 @@ A routine that fails or pauses tells its owner on **Home**, under **Routines fai
 
 The Routines list groups routines as **Running** and **Switched off** and filters with **Mine** and **Shared**. A switched-off schedule routine shows **Switched off: no next run scheduled**.
 
+## Follow-up routines
+
+A follow-up routine is one an app ships for chasing things: it reads what is open, stages its drafts and ends. Unlike an ordinary routine, it does not wait for each approval before its run finishes. The run reads **Succeeded**, its line says how many drafts now wait for a person, and each draft is decided on its own in **Home**. The next scheduled run starts on time instead of being skipped behind a run still waiting. When a later run drafts for the same record while the first draft still waits, it meets that draft instead of adding a second.
+
 ## Start from a template
 
 Apps and the platform ship routine templates. In the **Routines** list, **App templates** shows them, with **Built in** and **Enable**. The platform template `morning-brief` posts a short brief every weekday at 08:00 in your own timezone: overnight mail, drafts waiting for your approval and tasks due. It also sends you a one-line notification with the counts. Its newest brief shows on **Home** under **Today's brief**, with the time it was written; your own brief only, never a colleague's. With none, **Home** says **No brief set up** and offers **Set up a morning brief**, which opens your routines. An agent enables one with `enable_routine_template`, and puts a routine back to its template with `reset_routine_to_template`.

@@ -194,6 +194,8 @@ Each app the workspace has on shows how it runs in **Settings › App store**: *
 
 Each app's page in **Settings › App store** names its **Publisher**, including an app installed from a URL without a listing (it reads **Unlisted**, with the publisher its package declares). The publisher of an app from outside Liaison is what its package says, so it reads **(self-declared)**. An app from outside Liaison cannot install under the name or label of a built-in app or of a Liaison page such as **Settings** or **Security**, even spelled with look-alike letters, nor name Liaison as its publisher: the install is refused and says which name is taken.
 
+An app can offer features that the organization switches off. While a feature is off, its tools are not given to agents, and its tabs, panels and settings sections are not shown. If an agent still calls a tool of a feature that is off, the answer says that the feature is off and what to do next, and a request already approved for such a tool closes with the same words. Switching a feature needs the administration scope the app names for it.
+
 An app's page with changes you have not saved asks before you leave it, and before the desktop app reloads or other tabs close.
 
 In a desktop or phone app older than the server, a setting the app cannot show yet says **This setting needs a newer version of Liaison. Update Liaison to change it.** Update the app, or change it from the browser.

@@ -56,6 +56,7 @@ const SCOPE_GRAMMAR = /^(?:\*|[a-z0-9_-]+(?::[a-z0-9_-]+)*(?::\*)?)$/
  *  - kernel:roles:admin          role CRUD (create_role/edit_role/delete_role)
  *  - kernel:scope_requests:admin deciding scope-access requests
  *  - kernel:policies:admin       approval-tightening policy config
+ *  - kernel:portal:admin         clients' portal accounts (see, invite, lock)
  *  - kernel:users:admin          users/invites/role-assignment/per-user scope
  *                                grants (invite_user, assign_role,
  *                                remove_user_from_role, grant_user_scope,
@@ -70,6 +71,7 @@ const ADMIN_SCOPES = [
   "kernel:scope_requests:admin",
   "kernel:policies:admin",
   "kernel:users:admin",
+  "kernel:portal:admin",
 ] as const
 
 /**

@@ -138,6 +138,22 @@ There is one pending reply draft per conversation. A new agent draft replaces yo
 
 If the agent's turn is refused because the server restarts, the mail app sends it again once, after the wait the server asks for (a second, at most five).
 
+### The check before an agent's mail goes out
+
+When you approve an agent's draft, Liaison looks at the conversation once more before it sends:
+
+- **A reply came in** after the draft was written: the draft is not sent, and the row says who replied.
+- **A delivery failure came back** for the address: not sent.
+- **An automatic reply came in** (an out-of-office, for example): the draft is held until the return date the message states, or for a default wait when it states none, then it comes back to **Home** by itself. The card offers **Send now** in place of **Approve**. **Send now** sends anyway; Liaison checks again first, and a reply or a failure that arrived since still stops it.
+- **A recipient opted out of commercial mail**: not sent, and the card asks you to remove them from the recipients or leave the draft unsent.
+- **The record the mail is about says not to send it**: not sent. An app that holds such records says why in its own words.
+
+A stop caused by a reply or a failure is final: approving the same draft again cannot pass, so the card offers **Dismiss** only. If the check itself could not run, the card says so and you can try again shortly.
+
+The check can only see mail Liaison has already imported. A reply that reached the mailbox but has not synced yet (a few minutes at most, see [What an IMAP mailbox keeps in step](#what-an-imap-mailbox-keeps-in-step)) is not seen, so a draft approved in that window can still go out. The check narrows the risk; it does not remove it.
+
+The check applies to drafts written by agents only. A message you write yourself in the composer is sent as you send it, and is never held or stopped by it.
+
 ## Scopes
 
 | Scope | What it allows |

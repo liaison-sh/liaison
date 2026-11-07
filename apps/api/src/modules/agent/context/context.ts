@@ -1571,9 +1571,11 @@ Write numbers, amounts and dates the way that language writes them, never as a r
   // SECTION rides in the system prompt only while one of its tools is in this
   // set, for an app's guide, the kernel's and a guide that names its tools
   // alike (app-guide.ts); the core rides with the app, or with a named tool.
-  // The sections of a tool loaded later arrive as a message.
+  // The sections of a tool loaded later arrive as a message. A tool the turn's scopes do not
+  // reach is in no tool set, so it selects no guide part: the agent loop drops it the same way.
   const loadedTools = new Set<string>()
   for (const [tkey, tdef] of toolRegistry.entriesOf(orgId)) {
+    if (!checkToolScopes(tdef, turnScopes).authorized) continue
     if (tkey[1] === "kernel") {
       if (!isDeferredTool(tkey[1], tdef)) loadedTools.add(`kernel__${tkey[2]}`)
       continue

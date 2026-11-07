@@ -173,6 +173,68 @@ describe("kernel guide sections follow the loaded kernel tools", () => {
     }
   })
 
+  test("main run: a hot tool the caller lacks the scope for selects no section, for a kernel guide and an app's alike", async () => {
+    const { orgId, actor, threadId } = await bootstrapAdminThread()
+    const hot = (name: string, scope: string) => ({
+      appName: "kernel" as string,
+      name,
+      description: `Probe ${name}`,
+      requiredScopes: [scope],
+      deferLoading: false,
+      handler: async () => ({ ok: true }),
+    })
+    toolRegistry.set([orgId, "kernel", "probe_held"], hot("probe_held", "probe:held:read"))
+    toolRegistry.set([orgId, "kernel", "probe_unheld"], hot("probe_unheld", "probe:unheld:read"))
+    toolRegistry.set([orgId, "probeapp", "held"], {
+      ...hot("held", "probe:held:read"),
+      appName: "probeapp",
+    })
+    toolRegistry.set([orgId, "probeapp", "unheld"], {
+      ...hot("unheld", "probe:unheld:read"),
+      appName: "probeapp",
+    })
+    agentInstructionsRegistry.set([orgId, "kernel-scope-probe"], {
+      core: "PROBE KERNEL CORE",
+      sections: [
+        { tools: ["kernel__probe_held"], text: "PROBE KERNEL HELD SECTION" },
+        { tools: ["kernel__probe_unheld"], text: "PROBE KERNEL UNHELD SECTION" },
+      ],
+      coveredTools: ["kernel__probe_held", "kernel__probe_unheld"],
+    })
+    agentInstructionsRegistry.set([orgId, "probeapp"], {
+      core: "PROBE APP CORE",
+      sections: [
+        { tools: ["probeapp__held"], text: "PROBE APP HELD SECTION" },
+        { tools: ["probeapp__unheld"], text: "PROBE APP UNHELD SECTION" },
+      ],
+    })
+    try {
+      const assembled = await assembleContext({
+        threadId,
+        orgId,
+        actor: { ...actor, scopes: ["probe:held:read"] },
+        discoveredTools: new Set(),
+      })
+      const system = systemPartsToText(assembled.system)
+      expect(system).toContain("PROBE KERNEL HELD SECTION")
+      expect(system).toContain("PROBE APP HELD SECTION")
+      expect(system).not.toContain("PROBE KERNEL UNHELD SECTION")
+      expect(system).not.toContain("PROBE APP UNHELD SECTION")
+    } finally {
+      for (const key of [
+        ["kernel", "probe_held"],
+        ["kernel", "probe_unheld"],
+        ["probeapp", "held"],
+        ["probeapp", "unheld"],
+      ] as const) {
+        toolRegistry.delete([orgId, key[0], key[1]])
+      }
+      agentInstructionsRegistry.delete([orgId, "kernel-scope-probe"])
+      agentInstructionsRegistry.delete([orgId, "probeapp"])
+      resetSystemPromptCache()
+    }
+  })
+
   test("MCP: a kernel tool's first result carries its section once, never another tool's", async () => {
     const { orgId } = await bootstrapAdminThread()
     const surfaced = new Set<string>()

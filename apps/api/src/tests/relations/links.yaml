@@ -1,0 +1,187 @@
+# Links between objects that this tree builds, against every event that can break them.
+#
+# Events: Rn rename, Mg merge (a person too), Dl delete or archive, Dx a person deactivated,
+# Pm a permission lost, Ap an app switched off, Mv a move, Rs a restricted document, Dr a demo
+# reset, Ex export and data subject request, Mi an old row from before the link existed, Rv the
+# way back (reactivated, permission regained, away ended), Aw a person away.
+#
+# Classes (upper case): K keep, P repoint, S snapshot, C close, H hide, R refuse, E export,
+# M migrate, Z reset, V return, W pass on (classes.ts says what each must see).
+# Pruned (lower case): a the event cannot happen to this link, c the same code path as a named
+# cell, e demo reset is one check after the demo reset test, b frozen by design.
+#
+# `columns`: the schema columns that hold the link, which the schema guard reads.
+#
+# A kept cell has a generated test (cells.integration.test.ts), or an `open` reason: what it waits
+# for. `broken`: the cell's test shows the product does not do what the class says yet; the test
+# runs as an expected failure and turns red once fixed, when the entry goes.
+
+links:
+  - name: approval-target
+    what: a pending approval to the record it would change
+    storedIn: kernel.approval_requests payload and targetRowParam
+    columns: []
+    paths:
+      - apps/api/src/modules/approvals/
+      - apps/api/src/apps/projects/service/tasks.ts
+      - apps/api/src/apps/tickets/merge.ts
+    visibleState: [cancelled, expired, failed]
+    whoIsTold: [requester]
+    copiedNameAt: []
+    cells: { Rn: S, Mg: P, Dl: C, Dx: a, Pm: C, Ap: C, Mv: C, Rs: H, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Mg: a merged ticket's pending replies are cancelled, not moved to the ticket that survives (apps/tickets/merge.ts calls cancelApprovalsForSourceTicket); which of the two is right needs a ruling before the cell is written
+      Pm: no reader of the target is defined that loses a permission while a decider keeps theirs
+      Mv: the visible state of a pending row whose task moved project is not defined yet
+      Rs: no approval targets a restricted document in this tree
+      Ex: no data subject export exists for a person; the export takes a contact
+    broken:
+      Ap: a request whose app was switched off stays pending in Home as before, with no state saying its app is off; nothing closes it or tells the person who asked (apps/api/src/modules/apps/org-app-admin.ts disableOrgApp)
+      Dl: a task deleted from its page while a request to delete it is pending leaves the request pending with no state, and nothing tells the person who asked (apps/api/src/apps/projects/service/tasks.ts deleteTask)
+
+  - name: approval-requester
+    what: a pending approval to the person who asked for it
+    storedIn: kernel.approval_requests.requested_by
+    columns: [kernel.approval_requests.requested_by]
+    paths:
+      - apps/api/src/modules/approvals/
+      - apps/api/src/modules/users/service.ts
+      - apps/api/src/modules/users/merge-placeholder.ts
+    visibleState: [cancelled, usual]
+    whoIsTold: [usual]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: C, Pm: C, Ap: c, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: V, Aw: W }
+    open:
+      Mg: only an import placeholder merges, and a placeholder cannot ask for anything
+      Dx: what a request shows once the person who asked has left is not defined; today it stays pending as it was
+      Pm: what a request shows once the person who asked lost the permission it needs is not defined
+      Ex: no data subject export exists for a person; the export takes a contact
+      Aw: what the person who asked hands on while away is not defined; the request is the deciders'
+
+  - name: approval-route
+    what: a pending approval to the person it is for
+    storedIn: kernel.approval_requests.route_person_id, route_company_id
+    columns: [kernel.approval_requests.route_person_id, kernel.approval_requests.route_company_id]
+    paths:
+      - apps/api/src/modules/approvals/route-world.ts
+      - apps/api/src/modules/approvals/attention.ts
+      - apps/api/src/modules/users/service.ts
+      - apps/api/src/modules/users/away.ts
+      - packages/shared/src/approvals/authority.ts
+    visibleState: [usual]
+    whoIsTold: [usual]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: C, Pm: C, Ap: c, Mv: K, Rs: H, Dr: e, Ex: a, Mi: M, Rv: V, Aw: W }
+    open:
+      Mg: a request is routed to an import placeholder only through an import, which this file does not drive
+      Rs: no route resolver reads a restricted document in this tree
+
+  - name: routine-owner
+    what: a routine to the person it acts for
+    storedIn: kernel.routines.owner_user_id
+    columns: [kernel.routines.owner_user_id]
+    paths:
+      - apps/api/src/modules/agent/routines/
+      - apps/api/src/modules/users/service.ts
+    visibleState: [paused_user, paused_scope_mismatch, paused_app_disabled]
+    whoIsTold: [owner]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: C, Pm: C, Ap: C, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: V, Aw: W }
+    open:
+      Mg: a person merge refuses while the placeholder owns a routine (merge-references.ts), so the expected class is refuse, not repoint
+      Dl: what a routine shows once it is deleted is its absence; no reader is defined who must be told
+      Ap: no code sets a routine to paused_app_disabled; what it shows once its app is switched off is not defined
+      Ex: no data subject export exists for a person; the export takes a contact
+      Aw: what a routine does while its owner is away is not defined
+    broken:
+      Dx: a routine whose owner was deactivated still runs at its next tick (the tick answers succeeded) and reads active; nothing pauses it or tells an admin (apps/api/src/modules/agent/routines/routine-worker.ts runRoutineTick, whose scope drift check reads the deactivated owner's scopes)
+      Rv: a routine paused because its owner lost a scope stays paused after the scope is given back; its tick only skips (apps/api/src/modules/agent/routines/routine-worker.ts recordInactiveSkip), while a credit pause resumes on its own
+
+  - name: calendar-event-away-range
+    what: a calendar event to the away range read from it
+    storedIn: kernel.away_ranges.source_event_ref
+    columns: [kernel.away_ranges.source_event_ref]
+    paths:
+      - apps/api/src/apps/calendar/away-from-calendar.ts
+      - apps/api/src/modules/users/away.ts
+    visibleState: [here, usual]
+    whoIsTold: [usual]
+    copiedNameAt: []
+    cells: { Rn: K, Mg: a, Dl: C, Dx: C, Pm: a, Ap: C, Mv: C, Rs: a, Dr: e, Ex: E, Mi: M, Rv: V, Aw: a }
+    open:
+      Ex: no data subject export exists for a person; the export takes a contact
+      Mi: no calendar range is older than away ranges themselves; nothing to migrate yet
+
+  - name: away-range-person
+    what: an away range to the person away
+    storedIn: kernel.away_ranges.user_id
+    columns: [kernel.away_ranges.user_id]
+    paths:
+      - apps/api/src/modules/users/away.ts
+      - apps/api/src/modules/users/service.ts
+      - apps/api/src/modules/approvals/route-world.ts
+    visibleState: [usual, here]
+    whoIsTold: [usual]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: P, Dl: C, Dx: C, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Mg: a person merge drops the placeholder's own away record (merge-references.ts), and a placeholder is never away
+      Ex: no data subject export exists for a person; the export takes a contact
+      Rv: a range is deleted when its person is deactivated, so after reactivation it cannot read as before; the way back is not defined
+
+  - name: away-range-next-in-line
+    what: an away range to the colleague who stands in
+    storedIn: kernel.away_ranges.next_in_line_id, kernel.user_preferences.next_in_line_id
+    columns: [kernel.away_ranges.next_in_line_id, kernel.user_preferences.next_in_line_id]
+    paths:
+      - apps/api/src/modules/users/away.ts
+      - apps/api/src/modules/approvals/route-world.ts
+      - apps/api/src/modules/approvals/attention.ts
+    visibleState: [left, blocked]
+    whoIsTold: [usual, person]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: c, Dx: C, Pm: C, Ap: a, Mv: K, Rs: H, Dr: e, Ex: E, Mi: a, Rv: V, Aw: W }
+    open:
+      Mg: only an import placeholder merges, and a placeholder is never named next in line
+      Mv: what moves for a next in line is not defined
+      Rs: no stand-in row comes from a restricted document in this tree
+      Ex: no data subject export exists for a person; the export takes a contact
+
+  - name: stand-in-row-item
+    what: the Home row of a stand-in to the item it stands in for
+    storedIn: placement at read, from the approval and the away range
+    columns: []
+    paths:
+      - apps/api/src/modules/approvals/attention.ts
+      - apps/api/src/modules/approvals/route-world.ts
+      - apps/api/src/modules/approvals/decide.ts
+      - apps/api/src/modules/users/away.ts
+    visibleState: [denied, approved, left, blocked]
+    whoIsTold: [usual, person]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: P, Dl: C, Dx: C, Pm: C, Ap: C, Mv: K, Rs: H, Dr: e, Ex: a, Mi: a, Rv: V, Aw: W }
+    open:
+      Mg: only an import placeholder merges, and a placeholder never stands in
+      Rs: no stand-in row comes from a restricted document in this tree
+    broken:
+      Ap: a stand-in row whose app was switched off stays in the stand-in's Home as before, with no state; the same as a request whose app was switched off (apps/api/src/modules/apps/org-app-admin.ts disableOrgApp)
+
+  - name: thread-created-from
+    what: a conversation to the record it was made from
+    storedIn: kernel.threads.created_from
+    columns: [kernel.threads.created_from]
+    paths:
+      - apps/api/src/modules/threads/
+      - apps/api/src/apps/tickets/merge.ts
+      - apps/api/src/apps/projects/service/tasks.ts
+    visibleState: [gone]
+    whoIsTold: [owner]
+    copiedNameAt: [owner, member]
+    cells: { Rn: K, Mg: P, Dl: C, Dx: a, Pm: H, Ap: C, Mv: K, Rs: H, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Dl: what a conversation shows once its record is deleted is not defined
+      Rs: needs a knowledge document as the record
+      Ex: no data subject export exists for a person; the export takes a contact
+    broken:
+      Ap: a conversation made from a task still names the task and opens on it after the projects app is switched off; nothing marks the record as off (apps/api/src/modules/threads/thread-anchor.ts resolveThreadAnchor)
+      Mg: a conversation made from a ticket keeps pointing at the merged-away ticket; nothing moves created_from to the ticket that survives (apps/api/src/apps/tickets/merge.ts)

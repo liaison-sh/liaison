@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+import { readFileSync } from "node:fs"
+
 /**
  * Path → suite mapping for `run-tests --files`.
  *
@@ -70,6 +72,8 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   // The multi-process scenarios (about 3 servers per file) run only in `cell`.
   { glob: "apps/api/src/tests/e2e/cell/**", suites: ["cell"] },
   { glob: "apps/api/src/tests/e2e/**", suites: ["e2e-parallel"] },
+  // The relation cells, their classes and the schema guard: their own suite.
+  { glob: "apps/api/src/tests/relations/**", suites: ["relations"] },
   // src/tests also holds the files of the two side suites (integration-extra,
   // integration-mocked) that cannot share the integration process.
   { glob: "apps/api/src/tests/**", suites: ["integration", "integration-extra", "integration-mocked"] },
@@ -250,3 +254,21 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   { glob: "docs/api-connector.md", suites: ["root"] },
   { glob: ".claude/skills/api-connector-authoring/**", suites: ["root"] },
 ]
+
+/**
+ * The paths each built link of the relation matrix names (apps/api/src/tests/relations/links.yaml):
+ * a change under one also runs the `relations` suite, on top of what TEST_MAP gives it.
+ */
+export const RELATION_PATHS: string[] = (() => {
+  const file = `${import.meta.dir}/../apps/api/src/tests/relations/links.yaml`
+  const parsed = Bun.YAML.parse(readFileSync(file, "utf8")) as {
+    links?: Array<{ paths?: string[] }>
+  }
+  return [...new Set((parsed.links ?? []).flatMap((l) => l.paths ?? []))]
+})()
+
+export function relationSuitesFor(file: string, suites: string[]): string[] {
+  if (suites.includes("relations")) return suites
+  const touched = RELATION_PATHS.some((p) => (p.endsWith("/") ? file.startsWith(p) : file === p))
+  return touched ? [...suites, "relations"] : suites
+}

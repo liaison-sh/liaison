@@ -36,6 +36,8 @@ export const RESERVED_WEB_ROUTE_SEGMENTS = [
   "agent",
   "dashboard",
   "dashboards",
+  // The kernel's app builder tab (`/apps/builder/:draftId`).
+  "apps",
   // The server's API prefix: a tab URL under it would reload into the API.
   "api",
 ] as const

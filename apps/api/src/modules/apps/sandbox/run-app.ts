@@ -28,6 +28,7 @@ import { withSystemDb } from "~/db/privileged"
 import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
 import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
+import { flushRunLogs } from "~/modules/app-builder/logs"
 import { isCustomAppName } from "~/modules/apps/custom-app-name"
 import {
   forWorkersRun,
@@ -204,6 +205,9 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
     return result
   } finally {
     if (opts.executionToken) runningExecutions.delete(opts.executionToken)
+    // A custom app's (or draft preview's) log lines: written in the background,
+    // never the run's failure (modules/app-builder/logs.ts).
+    void flushRunLogs(opts.bridge)
     if (timed) {
       const parentApp =
         opts.nested && opts.nestedParentKey

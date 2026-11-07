@@ -24,6 +24,8 @@ Scopes are hierarchical capability strings, `app:resource:action`. Granting `app
 | `kernel:approvals:write` | Decide on approval requests |
 | `kernel:approve` | Decide kernel-level approvals (skills, routines, roles, policies) |
 | `kernel:apps:admin` | Install, upgrade, and uninstall apps (instance operator) |
+| `kernel:apps:build` | Create and edit drafts of the organization's own apps in the app builder |
+| `kernel:apps:logs` | Read the logs of the organization's own apps |
 | `kernel:audit:read` | Read audit log |
 | `kernel:audit:write` | Write to audit log |
 | `kernel:billing:read` | Read AI credit usage: the Usage settings page, usage chart and credit transactions (own transactions only unless also an org admin) |

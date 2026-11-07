@@ -280,7 +280,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_ALLOW_PRIVATE_API_CONNECTOR_HOSTS` | `apps/api/src/apps/api-connector/adapter-policy.ts:25` |
 | `LIAISON_ALLOW_PRIVATE_MODEL_SERVERS` | `apps/api/src/modules/agent/providers/model-server.ts:33` |
 | `LIAISON_APP_CATALOG_DIR` | `apps/api/src/modules/apps/catalog.ts:75`, `apps/api/src/modules/permissions/scope-registry.ts:81` |
-| `LIAISON_APP_PRIVATE_HOSTS` | `apps/api/src/modules/apps/sandbox/bridge/shared.ts:197` |
+| `LIAISON_APP_PRIVATE_HOSTS` | `apps/api/src/modules/apps/sandbox/bridge/shared.ts:203` |
 | `LIAISON_BUNDLED_APPS_FROM_SOURCE` | `apps/api/src/modules/apps/sandbox/bundle-loader.ts:51` |
 | `LIAISON_CLI_OPERATOR` | `apps/api/src/cli/agent/ask.ts:168` |
 | `LIAISON_DATABASE_ADAPTER` | `apps/api/src/apps/database/bridge.ts:1198` |
@@ -293,8 +293,8 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1611` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:504`, `apps/api/src/modules/apps/app-frame.ts:35` |
-| `LIAISON_SANDBOX_FETCH_TIMEOUT_MS` | `apps/api/src/modules/apps/sandbox/bridge/egress.ts:61` |
-| `LIAISON_TRUSTED_SUMMARIZER_APPS` | `apps/api/src/modules/apps/runtime.ts:1282` |
+| `LIAISON_SANDBOX_FETCH_TIMEOUT_MS` | `apps/api/src/modules/apps/sandbox/bridge/egress.ts:63` |
+| `LIAISON_TRUSTED_SUMMARIZER_APPS` | `apps/api/src/modules/apps/runtime.ts:1285` |
 | `LIAISON_WEB_TOOLS_ALLOW_PRIVATE` | `apps/api/src/modules/agent/tools/web-tools.ts:160`, `apps/api/src/modules/agent/tools/web-tools.ts:253` |
 | `MAIL_INGEST_STALE_SEC` | `apps/api/src/modules/monitor/index.ts:306` |
 | `MAILBOX_DECRYPT_WAIT_BUDGET_MS` | `apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:101` |
@@ -317,7 +317,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `ORG_MAINTENANCE_FLAG_PATH` | `apps/api/src/middleware/org-maintenance.ts:25` |
 | `QA_DRIVE_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/knowledge.ts:79` |
 | `QA_GMAIL_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/rows.ts:462` |
-| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:556`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
+| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:557`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
 | `RECHECK_SYNC_BACKEND` | `apps/api/src/lib/manifest-regex.ts:33` |
 | `ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:62` |
 | `ROUTINE_EVENT_RECONCILE_MAX_RETRIES` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:65` |
@@ -327,8 +327,8 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `SANDBOX_POOL_REPORT_INTERVAL_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:92` |
 | `SANDBOX_QUEUE_WAIT_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:89` |
 | `SANDBOX_WORKER_HOLD_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:90` |
-| `TICKETS_GMAIL_PUSH_ISSUER` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1296`, `apps/api/src/modules/webhooks/routes.ts:180`, `apps/api/src/modules/webhooks/verify-bridge.ts:147` |
-| `TICKETS_GMAIL_PUSH_JWKS_URL` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1297`, `apps/api/src/modules/webhooks/routes.ts:181`, `apps/api/src/modules/webhooks/verify-bridge.ts:146` |
+| `TICKETS_GMAIL_PUSH_ISSUER` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1296`, `apps/api/src/modules/webhooks/routes.ts:180`, `apps/api/src/modules/webhooks/verify-bridge.ts:150` |
+| `TICKETS_GMAIL_PUSH_JWKS_URL` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1297`, `apps/api/src/modules/webhooks/routes.ts:181`, `apps/api/src/modules/webhooks/verify-bridge.ts:149` |
 | `TICKETS_GMAIL_SYNC_SINCE` | `apps/api/src/apps/tickets/sync.ts:310` |
 | `VITE_API_BASE` | `apps/web/src/lib/env.ts:10` |
 | `VITE_API_TARGET` | `apps/web/src/lib/env.ts:68` |

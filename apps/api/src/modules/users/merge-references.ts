@@ -66,6 +66,11 @@ export const USER_FK_DISPOSITION: Record<string, ReferenceDisposition> = {
   "kernel.dashboards.owner_user_id": repoint,
   "kernel.dashboards.created_by": repoint,
   "kernel.dashboards.updated_by": repoint,
+  // App builder (0276): authors of drafts and versions, and whose run logged a line.
+  "kernel.app_drafts.created_by": repoint,
+  "kernel.app_drafts.updated_by": repoint,
+  "kernel.app_draft_versions.created_by": repoint,
+  "kernel.app_logs.actor_user_id": repoint,
   // Who last set a product attribute: history.
   "kernel.product_attributes.updated_by": repoint,
   // Who marked a sender address or domain as trusted: history.

@@ -10,6 +10,7 @@ import {
   currentRunContext,
 } from "~/modules/agent/runtime/run-context"
 import { UNDECLARED_WRITE_TARGET } from "~/modules/agent/scopes/scope-taint"
+import { attachRunLogSink } from "~/modules/app-builder/logs"
 import { isCustomAppName } from "~/modules/apps/custom-app-name"
 import { createAgentMethods } from "~/modules/apps/sandbox/bridge/agent"
 import { createApprovalsMethods } from "~/modules/apps/sandbox/bridge/approvals"
@@ -85,6 +86,8 @@ export function createRpcBridge(
     rpcBridge,
   )
   const { bridgeReadOnlyRun } = ctx
+  // The run's end (runApp) flushes its log lines (modules/app-builder/logs.ts).
+  if (ctx.appLogSink) attachRunLogSink(rpcBridge, ctx.appLogSink)
   Object.assign(
     rpcBridge,
     createIdentityMethods(ctx),

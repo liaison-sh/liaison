@@ -368,6 +368,11 @@ export const KERNEL_RESET_RULES: Record<string, KernelResetRule> = {
   app_documents: "clear",
   app_document_usage: "clear",
   dashboards: "clear",
+  // A visitor's app builder drafts, their versions and builds, and app logs (0276).
+  app_drafts: "clear",
+  app_draft_versions: "clear",
+  app_build_artifacts: "clear",
+  app_logs: "clear",
   contact_segments: "clear",
   contacts: "clear",
   // Staff-marked trusted sender addresses and domains: a visitor's marks go.

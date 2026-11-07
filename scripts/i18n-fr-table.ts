@@ -1490,6 +1490,10 @@ export const FR: Record<string, string> = {
     "Créer et modifier des tableaux de bord partagés avec l'organisation",
   "Manage every dashboard shared with the org":
     "Gérer tous les tableaux de bord partagés avec l'organisation",
+  "Create and edit drafts of the organization's own apps in the app builder":
+    "Créer et modifier les brouillons des apps propres à l'organisation dans le créateur d'apps",
+  "Read the logs of the organization's own apps":
+    "Lire les journaux des apps propres à l'organisation",
   "Install, upgrade, and uninstall apps (instance operator)":
     "Installer, mettre à jour et désinstaller des applications (opérateur de l'instance)",
   "Dispatch fresh-context sub-agent runs via the spawn_agent kernel tool":

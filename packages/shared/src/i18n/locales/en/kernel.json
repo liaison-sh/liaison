@@ -739,6 +739,8 @@
       "kernel:dashboards:write": "Create and edit your own personal dashboards",
       "kernel:dashboards:share": "Create and edit dashboards shared with the org",
       "kernel:dashboards:admin": "Manage every dashboard shared with the org",
+      "kernel:apps:build": "Create and edit drafts of the organization's own apps in the app builder",
+      "kernel:apps:logs": "Read the logs of the organization's own apps",
       "kernel:apps:admin": "Install, upgrade, and uninstall apps (instance operator)",
       "kernel:agents:spawn": "Dispatch fresh-context sub-agent runs via the spawn_agent kernel tool",
       "kernel:agents:admin": "Author and remove sub-agent role definitions (subagent_create / _delete)",

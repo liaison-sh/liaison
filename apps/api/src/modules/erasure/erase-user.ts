@@ -500,6 +500,23 @@ export const KERNEL_USER_COLUMN_DISPOSITION: Record<string, KernelColumnDisposit
     kind: "handled",
     reason: "anonymize → NULL (last-writer attribution; the document is org data)",
   },
+  "app_drafts.created_by": {
+    kind: "handled",
+    reason: "anonymize → NULL (creator attribution; the draft is org content)",
+  },
+  "app_drafts.updated_by": {
+    kind: "handled",
+    reason: "anonymize → NULL (last-editor attribution; the draft is org content)",
+  },
+  "app_draft_versions.created_by": {
+    kind: "handled",
+    reason: "anonymize → NULL (author of a version; the files are org content)",
+  },
+  "app_logs.actor_user_id": {
+    kind: "handled",
+    reason:
+      "delete the person's draft preview lines (readable by their run's person alone) / anonymize → NULL on app lines (org operations data)",
+  },
   // ── RETAIN: rows that must legally/operationally survive WITH the user id ───
   "audit_log.actor_id": {
     kind: "retain",
@@ -1286,6 +1303,25 @@ export async function eraseUser(
       `)
       await tx.execute(drizzleSql`
         UPDATE ${K}.app_documents SET updated_by = NULL WHERE updated_by = ${userId}
+      `)
+      // App builder (0276): drafts and versions are org content, so only the
+      // author link goes. A draft preview's log lines are their run's person's
+      // alone (and may hold what they read): deleted; an app's lines are kept
+      // without the person.
+      await tx.execute(drizzleSql`
+        UPDATE ${K}.app_drafts SET created_by = NULL WHERE created_by = ${userId}
+      `)
+      await tx.execute(drizzleSql`
+        UPDATE ${K}.app_drafts SET updated_by = NULL WHERE updated_by = ${userId}
+      `)
+      await tx.execute(drizzleSql`
+        UPDATE ${K}.app_draft_versions SET created_by = NULL WHERE created_by = ${userId}
+      `)
+      await tx.execute(drizzleSql`
+        DELETE FROM ${K}.app_logs WHERE actor_user_id = ${userId} AND draft_id IS NOT NULL
+      `)
+      await tx.execute(drizzleSql`
+        UPDATE ${K}.app_logs SET actor_user_id = NULL WHERE actor_user_id = ${userId}
       `)
       await tx.execute(drizzleSql`
         UPDATE ${K}.auto_approve_policies SET created_by = NULL WHERE created_by = ${userId}

@@ -612,9 +612,16 @@ before; its name cannot carry an organization key. The rules:
 - Its scheduled jobs and event subscriptions run for your organization only.
   While the organization is suspended, the app is refused like the rest.
   Deleting the organization removes the app with its data.
-
-On a self-hosted server none of this applies: there is no custom install route,
-and installs follow the rule above.
+- What its handlers write with `ctx.logger` is kept for your organization:
+  `GET /api/apps/<name>/logs` returns the newest lines first, for holders of
+  `kernel:apps:logs` (admins by default). Query: `since` (an ISO time),
+  `level` (the lowest level returned: `debug`, `info`, `warn` or `error`),
+  `runId` and `limit` (1 to 200, default 100). One run keeps at most 200 lines
+  and 256 KiB, the last line saying when more were dropped; a message is cut
+  at 4 KiB and its fields at 8 KiB. Lines are kept 7 days, and at most 10,000
+  per app. A line is shown only to a reader whose permissions cover what its
+  run had read, and the lines of an app builder preview only to the person who
+  ran it. The route still answers an admin while the app is off.
 
 **Admin UI** (the primary path): Settings -> Apps -> "Install app...". Enter the
 URL, click Preflight, review the requested scopes (each is a checkbox you can

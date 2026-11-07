@@ -61,6 +61,7 @@ import {
   skillsRoutes,
 } from "~/modules/agent/skills/skills-routes"
 import { apiConnectorRoutes } from "~/modules/api-connector/routes"
+import { appLogsRoutes } from "~/modules/app-builder/logs-routes"
 import { APPROVAL_DECIDE_BODY_MAX_BYTES } from "~/modules/approvals/mailbox-fulfilment"
 import { approvals } from "~/modules/approvals/routes"
 import { initAppActivationSync } from "~/modules/apps/activation"
@@ -1047,6 +1048,8 @@ app.use("/api/apps/*", async (c, next) => {
   return appRouteStateGate(c, next)
 })
 app.route("/api/apps", bulkRoutes)
+// GET /api/apps/:name/logs (kernel:apps:logs): what a custom app logged.
+app.route("/api/apps", appLogsRoutes)
 app.route("/api/apps", installRoutes)
 // Phase 16.5 — UI bundle serving for installed plugin apps. Mount BEFORE
 // appRoutes so the more-specific `:name/:version/ui.js` pattern wins. Auth +

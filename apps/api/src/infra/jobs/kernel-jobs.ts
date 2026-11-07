@@ -898,6 +898,13 @@ export async function registerKernelJobs(): Promise<void> {
     await runAttentionEventsRetention()
   })
 
+  // App logs retention, daily at 4:45 AM: 7 days and the newest 10,000 rows per
+  // (org, app) (modules/app-builder/logs.ts).
+  await registerScheduledJob("kernel", "app-logs-retention", "45 4 * * *", async () => {
+    const { pruneAppLogs } = await import("~/modules/app-builder/logs")
+    await pruneAppLogs()
+  })
+
   // Notification delivery log + receipts (S1): 30 days, payloads included.
   await registerScheduledJob(
     "kernel",

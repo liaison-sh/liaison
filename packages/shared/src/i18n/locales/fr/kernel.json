@@ -739,6 +739,8 @@
       "kernel:dashboards:write": "Créer et modifier vos propres tableaux de bord personnels",
       "kernel:dashboards:share": "Créer et modifier des tableaux de bord partagés avec l'organisation",
       "kernel:dashboards:admin": "Gérer tous les tableaux de bord partagés avec l'organisation",
+      "kernel:apps:build": "Créer et modifier les brouillons des apps propres à l'organisation dans le créateur d'apps",
+      "kernel:apps:logs": "Lire les journaux des apps propres à l'organisation",
       "kernel:apps:admin": "Installer, mettre à jour et désinstaller des applications (opérateur de l'instance)",
       "kernel:agents:spawn": "Lancer des sous-agents dans un contexte neuf",
       "kernel:agents:admin": "Créer et supprimer des définitions de sous-agents",

@@ -369,6 +369,17 @@ describe("Boxtal app.manifest.json", () => {
     expect(t.readOnly).not.toBe(true)
   })
 
+  // A draft is stored state, like invoicing's drafts_create: a write, ungated, on the same
+  // read grant as the other draft edits (set_package, set_customs), so no role loses it.
+  it("shipment_draft_create is an ungated write with the draft edits' grant", () => {
+    const t = (load() as { tools: Record<string, Record<string, unknown>> }).tools
+    const draft = t.shipment_draft_create
+    expect(draft?.readOnly).toBeUndefined()
+    expect(draft?.gated).toBeUndefined()
+    expect(draft?.writesToTable).toBe(t.shipment_draft_set_package?.writesToTable)
+    expect(draft?.requiredScopes).toEqual(t.shipment_draft_set_package?.requiredScopes)
+  })
+
   // ticket 10341 hardening: pack_upsert is full-replace, so an agent that edits an existing
   // pack (rename, new components, corrected dims) while omitting carton_tare silently clears
   // it, and the double-tare bug this field exists to prevent comes back with no warning. The
@@ -570,8 +581,9 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.12: above both lines of work, which each changed it under the number before; no change of its own.
     // 0.23.13: above the 0.23.12 that main took meanwhile; no change of its own.
     // 0.23.14: shipment_draft_create's description starts a new draft rather than opening one.
-    // 0.23.15: the shared settings types it builds against changed; no change of its own.
-    expect(m.version).toBe("0.23.15")
+    // 0.23.15: shipment_draft_create is declared a write (it stores the draft), still ungated.
+    // 0.23.16: the shared settings types it builds against changed; no change of its own.
+    expect(m.version).toBe("0.23.16")
     expect(m.packageFormat).toBe(1)
   })
 

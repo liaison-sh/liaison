@@ -194,7 +194,7 @@
       }
     ]
   },
-  "version": "0.23.15",
+  "version": "0.23.16",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {
@@ -1870,7 +1870,7 @@
           "document_ref"
         ]
       },
-      "readOnly": true
+      "writesToTable": "app_boxtal.app_config"
     },
     "shipment_draft_set_package": {
       "description": "Replace the draft's auto-resolved parcel set with an explicit carton set: ONE carton, OR an ARRAY of cartons for a MIXED multi-carton shipment (e.g. 6 master cartons + 1 + 2). Each carton is supplied one of two ways, PREFER the first: (1) a NAMED PACK from the catalog — `{ pack: \"STUDIO-BOX\" }` (the pack's name or id; dimensions + gross weight resolved server-side from the catalog; run packages_list first; do NOT copy or invent its dims); (2) an AD-HOC carton not in the catalog — raw `{ length, width, height, weight }` (cm / kg). Any carton may carry `quantity` (N identical cartons), so a whole 9-carton load is ONE call: `override: [{ length:62, width:39, height:36, weight:20, quantity:6 }, { length:62, width:39, height:22, weight:7 }, { length:62, width:39, height:42, weight:14, quantity:2 }]`. The set is multi-parcel end-to-end — every colis is sent to the carrier (packages[]) — so you never collapse a real multi-box shipment into one carton. After this the draft needs a re-quote (quote draft_id=<id>) so pricing reflects the cartons. NEVER overwrite an existing operator carton: when shipment_draft_get shows parcel_override:true, the parcels were deliberately set by a human — keep them and do NOT call this tool again for that draft unless the human asks for a change.",

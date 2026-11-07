@@ -26,6 +26,7 @@ import {
   type OrgKernelSettings,
   orgKernelSettingsSchema,
 } from "@liaison/shared"
+import type { PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { isManagedEdition } from "~/lib/edition"
 import { rootLogger } from "~/lib/logger"
@@ -70,14 +71,16 @@ async function skipReason(
   orgId: string,
   settings: OrgKernelSettings,
   reason: string,
+  /** Under the row lock: the mutation's privileged transaction, read on directly. */
+  db?: PrivilegedDb,
 ): Promise<OpenRouterAutoOutcome | null> {
   const models: AiModelsSettings = settings.ai?.models ?? {}
   if (models.openRouterDefaultProvisionedAt) return { status: "already_provisioned" }
   // Only for an org with no native key: where a native model is usable, an
   // added model is Auto only when an admin chose it.
-  if (await hasUsableNativeKey(orgId, settings)) return { status: "not_needed" }
-  if (await selectAutoModelForOrg(orgId, reason, settings)) return { status: "not_needed" }
-  if (!(await isProviderUsable(orgId, "openrouter", settings))) return { status: "no_key" }
+  if (await hasUsableNativeKey(orgId, settings, db)) return { status: "not_needed" }
+  if (await selectAutoModelForOrg(orgId, reason, settings, db)) return { status: "not_needed" }
+  if (!(await isProviderUsable(orgId, "openrouter", settings, db))) return { status: "no_key" }
   const existing = findAddedModel(models, OPENROUTER_AUTO_DEFAULT_KEY)
   if (existing && !existing.enabled) {
     return { status: "unavailable", reason: `${existing.displayName} is switched off.` }
@@ -145,7 +148,7 @@ export async function ensureOpenRouterAutoModel(orgId: string): Promise<OpenRout
       // model, added a native key or removed the OpenRouter key meanwhile.
       const now = await getOrgKernelSettings(tx, orgId, orgKernelSettingsSchema)
       const locked = { ...now, ai: { ...(now.ai ?? {}), models: cur } }
-      const changed = await skipReason(orgId, locked, "openrouter-auto:recheck")
+      const changed = await skipReason(orgId, locked, "openrouter-auto:recheck", tx)
       if (changed) return { result: changed }
       const present = findAddedModel(cur, key)
       return {

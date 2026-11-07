@@ -35,6 +35,7 @@
 // request's.
 import crypto from "node:crypto"
 import { and, eq, gte, isNotNull, isNull, like, type SQL, sql } from "drizzle-orm"
+import type { PrivilegedDb } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import { demoLeads, users } from "~/db/schema/kernel"
 import { getDemoSystemMailProvider } from "~/infra/email"
@@ -464,15 +465,19 @@ function rememberVerified(orgId: string, identity: DemoVerifiedIdentity): void {
  * the lead row only: nothing the visitor can write (org settings, the marker)
  * takes part.
  */
-export async function demoVerifiedIdentity(orgId: string): Promise<DemoVerifiedIdentity | null> {
+export async function demoVerifiedIdentity(
+  orgId: string,
+  /** A privileged transaction of this org the caller holds, read on directly. */
+  on?: PrivilegedDb,
+): Promise<DemoVerifiedIdentity | null> {
   const cached = verifiedCache.get(orgId)
   if (cached) {
     rememberVerified(orgId, cached)
     return cached
   }
-  const marker = await loadDemoMarker(orgId)
+  const marker = await loadDemoMarker(orgId, on)
   if (marker?.variant !== "visitor") return null
-  const lead = await leadForDemoOrg(orgId)
+  const lead = await leadForDemoOrg(orgId, on)
   if (!lead?.verifiedAt || !lead.emailNormalized) return null
   const identity = {
     emailNormalized: demoBudgetEmailKey(lead.emailNormalized),

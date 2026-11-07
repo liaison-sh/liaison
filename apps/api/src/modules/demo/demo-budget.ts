@@ -47,6 +47,7 @@
 // routine runs included), turns per email per minute, and the web_search
 // counters (per turn, per email per UTC day).
 import crypto from "node:crypto"
+import type { PrivilegedDb } from "~/db"
 import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
 import { REDIS_PREFIX, redis } from "~/lib/redis"
@@ -130,9 +131,13 @@ export const DemoBudgetTestAccess = {
 }
 
 /** The verified identity of a visitor org (demo-verification.ts), or null. */
-export async function currentVerifiedIdentity(orgId: string): Promise<DemoSpendIdentity | null> {
+export async function currentVerifiedIdentity(
+  orgId: string,
+  /** A privileged transaction of this org the caller holds, read on directly. */
+  on?: PrivilegedDb,
+): Promise<DemoSpendIdentity | null> {
   if (identityOverride) return identityOverride(orgId)
-  return demoVerifiedIdentity(orgId)
+  return demoVerifiedIdentity(orgId, on)
 }
 
 function utcDay(ms: number): string {

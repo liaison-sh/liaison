@@ -21,7 +21,7 @@ import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { quoteIdent } from "~/lib/sql-utils"
 import { splitMailHeaders } from "~/modules/mailbox-crypto/header-allowlist"
-import { MailboxSealError } from "~/modules/mailbox-crypto/identity-resolver"
+import { type MailboxCallerTx, MailboxSealError } from "~/modules/mailbox-crypto/identity-resolver"
 import { loadOrCreateMailboxServerKeyPrivileged } from "~/modules/mailbox-crypto/managed-keys"
 import {
   MAILBOX_MANAGED_ENC_VERSION,
@@ -100,6 +100,12 @@ export interface SealMailFieldsInput {
    * one person can own a private and a managed mailbox.
    */
   account?: Pick<MailAccountCrypto, "id" | "encryptionState">
+  /**
+   * The caller's transaction. When it already is a privileged transaction of
+   * this org, the key lookups run on it instead of taking a second privileged
+   * connection; any other transaction leaves them on their own.
+   */
+  on?: MailboxCallerTx | null
 }
 
 export interface SealMailFieldsResult {
@@ -208,6 +214,7 @@ export async function sealMailFields(input: SealMailFieldsInput): Promise<SealMa
     input.userId,
     input.orgId,
     items.map((item) => ({ context: item.context, plaintext: item.plaintext })),
+    input.on,
   )
 
   const columns: Record<string, Buffer | number> = {
@@ -243,7 +250,7 @@ async function sealManagedMailFields(
       )
     }
   }
-  const dek = await loadOrCreateMailboxServerKeyPrivileged(input.orgId, accountId)
+  const dek = await loadOrCreateMailboxServerKeyPrivileged(input.orgId, accountId, input.on)
   try {
     const sealed = sealManaged({
       accountId,
@@ -497,7 +504,7 @@ export interface ApplyMailSealInput {
  * Throws rather than writing anything if the seal fails.
  */
 export async function applyMailSealToRow(
-  tx: MailboxSqlExecutor,
+  tx: MailboxCallerTx,
   input: ApplyMailSealInput,
 ): Promise<SealMailFieldsResult> {
   const sealed = await sealMailFields({
@@ -508,6 +515,7 @@ export async function applyMailSealToRow(
     values: input.values,
     headers: input.headers ?? null,
     account: input.account,
+    on: tx,
   })
   const assignments = Object.entries(sealed.columns).map(
     ([name, value]) => drizzleSql`${drizzleSql.raw(quoteIdent(snakeCaseColumn(name)))} = ${value}`,

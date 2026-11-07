@@ -9,6 +9,7 @@ import { randomUUID } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
+import { withRlsContext } from "~/db/rls"
 import {
   appContractCallsRegistry,
   appContractImplementationsRegistry,
@@ -24,6 +25,10 @@ import {
 import { mintContractGrant } from "~/modules/apps/provider-contracts/grant"
 import { resolveContractProvider } from "~/modules/apps/provider-contracts/resolve"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import {
+  installPermissiveFilesSelectPolicy,
+  restoreFilesSelectPolicy,
+} from "~/tests/helpers/files-select-policy"
 
 const OPS = {
   registration_status: "pa_registration",
@@ -250,8 +255,9 @@ describe("resolution and dispatch", () => {
   }
   const bridgeOf = (app: string, tx: unknown) =>
     createRpcBridge(app, "system", ORG, tx as never, { name: app } as never, [`${app}:*`], "system")
+  // A production bridge runs on the run's RLS session, never on a privileged slot.
   const call = (app: string, op: string, params: Record<string, unknown> = {}) =>
-    withPrivilegedDb(ORG, "test", async (tx) =>
+    withRlsContext({ ...system, scopes: [`${app}:*`] }, async (tx) =>
       JSON.parse(await bridgeOf(app, tx).contracts_call(KEY, op, JSON.stringify(params))),
     )
 
@@ -370,6 +376,9 @@ describe("authorization: the binding only an administrator sets, and the dispatc
   const APPROVER = randomUUID()
   const ADMIN_SCOPES = ["kernel:org:admin", `${CALLER}:*`]
   beforeAll(async () => {
+    // The caller's legal original below has no registered fileParent; the stand-in
+    // org-scoped policy is what a real readable parent grants the caller's RLS check.
+    await installPermissiveFilesSelectPolicy()
     await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${ORG2}, 'Contract Org 2', ${`ct2-${ORG2.slice(0, 8)}`})`
     for (const app of [CALLER, SECOND]) {
       await sql.unsafe(`CREATE SCHEMA IF NOT EXISTS app_${app}`)
@@ -420,6 +429,7 @@ describe("authorization: the binding only an administrator sets, and the dispatc
     } as never)
   })
   afterAll(async () => {
+    await restoreFilesSelectPolicy()
     for (const t of Object.values(OPS2)) toolRegistry.delete([ORG2, PROVIDER, t])
     toolRegistry.delete([ORG2, CALLER, "send"])
     toolRegistry.delete([ORG2, CALLER, "loose"])
@@ -460,7 +470,14 @@ describe("authorization: the binding only an administrator sets, and the dispatc
       approval as never,
       opts as never,
     )
-  const run = <T>(fn: (tx: unknown) => Promise<T>) => withPrivilegedDb(ORG2, "test", (tx) => fn(tx))
+  // A production bridge runs on the run's RLS session, never on a privileged slot.
+  // Its job context carries the bridged app's scopes, so the caller's file check
+  // runs under that app's own RLS reach.
+  const run = <T>(fn: (tx: unknown) => Promise<T>, app: string = CALLER) =>
+    withRlsContext(
+      { actorType: "system", orgId: ORG2, purpose: "job", scopes: [`${app}:*`] },
+      (tx) => fn(tx),
+    )
   const SUBJECT = {
     document_ref: "doc-1",
     invoice_number: "FA-1",
@@ -481,8 +498,10 @@ describe("authorization: the binding only an administrator sets, and the dispatc
   it("an app that writes its own mirror column is not bound: only the kernel binding counts", async () => {
     await mirror(SECOND, PROVIDER) // the cross-app vector: the app's own code writes its own table
     calls.length = 0
-    const out = await run(async (tx) =>
-      JSON.parse(await sys(SECOND, tx).contracts_call(KEY, "registration_status", "{}")),
+    const out = await run(
+      async (tx) =>
+        JSON.parse(await sys(SECOND, tx).contracts_call(KEY, "registration_status", "{}")),
+      SECOND,
     )
     expect(out).toMatchObject({
       status: "error",
@@ -678,15 +697,17 @@ describe("authorization: the binding only an administrator sets, and the dispatc
     expect(book).toMatchObject({ status: "error", error: { code: "contract_grant_mismatch" } })
     await kernelBind(SECOND, PROVIDER)
     await mirror(SECOND, PROVIDER)
-    const stolen = await run(async (tx) =>
-      JSON.parse(
-        await sys(SECOND, tx).contracts_call(
-          KEY,
-          "submit_einvoice",
-          JSON.stringify(submitParams()),
-          JSON.stringify({ grant }),
+    const stolen = await run(
+      async (tx) =>
+        JSON.parse(
+          await sys(SECOND, tx).contracts_call(
+            KEY,
+            "submit_einvoice",
+            JSON.stringify(submitParams()),
+            JSON.stringify({ grant }),
+          ),
         ),
-      ),
+      SECOND,
     )
     expect(stolen).toMatchObject({ status: "error", error: { code: "contract_grant_mismatch" } })
     expect(calls).toHaveLength(1)
@@ -810,15 +831,17 @@ describe("authorization: the binding only an administrator sets, and the dispatc
         expect(out).toMatchObject({ status: "error", error: { code: "contract_provider_changed" } })
       }
       // A provider this app was never bound to cannot be read through by pinning it.
-      const never = await run(async (tx) =>
-        JSON.parse(
-          await sys(SECOND, tx).contracts_call(
-            KEY,
-            "get_einvoice_status",
-            status,
-            JSON.stringify({ provider: PROV2 }),
+      const never = await run(
+        async (tx) =>
+          JSON.parse(
+            await sys(SECOND, tx).contracts_call(
+              KEY,
+              "get_einvoice_status",
+              status,
+              JSON.stringify({ provider: PROV2 }),
+            ),
           ),
-        ),
+        SECOND,
       )
       expect(never).toMatchObject({ status: "error" })
       expect(calls.map((c) => (c as { tool: string }).tool)).toEqual(["pa_status", "p2:pa_status"])

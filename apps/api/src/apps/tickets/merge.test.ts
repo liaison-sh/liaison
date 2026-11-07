@@ -76,6 +76,7 @@ describe("mergeTickets — external_message_id on the copy (BL-218)", () => {
           actorType: "user",
           userId: USER_ID,
         },
+        { privilegedTx: tx },
       ),
     )
 
@@ -163,6 +164,7 @@ describe("mergeTickets -- reopens a closed target whose customer wrote last", ()
         ORG_ID,
         { targetTicketId: target, sourceTicketIds: [source] },
         { actorType: "user", userId: USER_ID },
+        { privilegedTx: tx },
       ),
     )
     expect("error" in result).toBe(false)
@@ -237,6 +239,7 @@ describe("mergeTickets -- never moves the target last_inbound_at backwards", () 
         ORG_ID,
         { targetTicketId: target, sourceTicketIds: [source] },
         { actorType: "user", userId: USER_ID },
+        { privilegedTx: tx },
       ),
     )
     expect("error" in result).toBe(false)

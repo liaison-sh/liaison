@@ -9,6 +9,7 @@ import { computeAttentionItems } from "~/apps/tickets/attention"
 import { extractRows, type PrivilegedDb } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { asOrgMember } from "~/tests/helpers/org-caller"
 
 const sys = <T>(fn: (tx: PrivilegedDb) => Promise<T>) =>
   withSystemDb("tickets-attention-assignee", fn)
@@ -65,7 +66,7 @@ describe("tickets attention: awaiting a reply carries the assignee (D21)", () =>
   it("names the assignee on an assigned ticket and null on an unassigned one", async () => {
     const mine = await seedAwaiting(`AA${Date.now()}`, userId)
     const nobody = await seedAwaiting(`AB${Date.now()}`, null)
-    const items = await sys((tx) => computeAttentionItems(tx, orgId))
+    const items = await asOrgMember(orgId, userId, (tx) => computeAttentionItems(tx, orgId))
     const awaiting = (id: string) =>
       items.find((i) => i.kind === "awaiting_agent" && i.entityId === id)
     expect(awaiting(mine)?.metadata?.assignedTo).toBe(userId)

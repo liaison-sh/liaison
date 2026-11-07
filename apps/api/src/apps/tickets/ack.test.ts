@@ -13,6 +13,7 @@ import { sql as drizzleSql } from "drizzle-orm"
 import * as realSend from "~/apps/tickets/send"
 import { extractRows } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
+import { type ActorContext, withRlsContext } from "~/db/rls"
 import { DurableConsumersTestAccess, durableConsumerCount } from "~/infra/events/durable-consumers"
 import { _getGlobalHandlerCount, EventBusTestAccess } from "~/infra/events/event-bus"
 import { registerEventSubscribers } from "~/infra/events/event-subscribers"
@@ -330,8 +331,17 @@ describe("sendTicketAcknowledgement", () => {
     expect(ack).toMatchObject({ ok: true, sent: true })
 
     const before = sendCalls.length
-    const result = await withPrivilegedDb(orgId, "ack-test-reply", async (tx) => {
-      const ctx = { tx: tx as never, orgId, actor: { actorType: "user" as const, userId } }
+    // A tool call runs on the caller's RLS transaction (its writes take their own
+    // privileged one), so the reply is driven from one, as in production.
+    const caller: ActorContext = {
+      actorType: "user",
+      userId,
+      orgId,
+      scopes: ["tickets:tickets:read", "tickets:tickets:write", "tickets:tickets:reply"],
+      dimensionGrants: { "*": ["*"] },
+    }
+    const result = await withRlsContext(caller, async (tx) => {
+      const ctx = { tx, orgId, actor: { actorType: "user" as const, userId } }
       return ticketsReply({ ticketId, textBody: "Following up on your request." }, ctx)
     })
     expect("ok" in result && result.ok).toBe(true)
@@ -418,7 +428,9 @@ describe("inbound ticket acknowledgement after commit", () => {
   ): Promise<string> {
     const result = await withPrivilegedDb(orgId, "ack-after-commit-test", (db) =>
       processInboundMessage(raw, inbox(opts.inboxId, opts.inboxAddress) as never, {
+        // As the mailbox sync ingests: on its privileged transaction, handed down.
         db: db as never,
+        privilegedTx: db,
         orgId,
         ...(opts.noAcknowledgement ? { noAcknowledgement: true } : {}),
       }),
@@ -575,7 +587,11 @@ describe("inbound ticket acknowledgement after commit", () => {
   it("never acknowledges a ticket whose transaction rolled back", async () => {
     const raw = mail("rollback@shopper.test", gmailPass("shopper.test"))
     const err = await withPrivilegedDb(orgId, "ack-after-commit-rollback", async (db) => {
-      await processInboundMessage(raw, inbox() as never, { db: db as never, orgId })
+      await processInboundMessage(raw, inbox() as never, {
+        db: db as never,
+        privilegedTx: db,
+        orgId,
+      })
       throw new Error("outer transaction fails after the ingest")
     }).catch((e: unknown) => e)
     expect((err as Error).message).toBe("outer transaction fails after the ingest")

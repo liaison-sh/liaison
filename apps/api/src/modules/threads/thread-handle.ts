@@ -7,7 +7,7 @@
 // no name of their own: untitled rooms, which the UI names by their seats.
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type PrivilegedDb, type RlsTx } from "~/db"
-import { withPrivilegedDb } from "~/db/privileged"
+import { withPrivilegedReusing } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { nextHandle } from "~/lib/handle"
 
@@ -58,9 +58,15 @@ function escapeRe(value: string): string {
  * another team already uses and the unique index would then reject the insert.
  * Handles only; no title, no membership, nothing else leaves the query.
  */
-async function takenHandles(orgId: string, base: string): Promise<Set<string>> {
+async function takenHandles(
+  orgId: string,
+  base: string,
+  on?: RlsTx | PrivilegedDb,
+): Promise<Set<string>> {
   const k = drizzleSql.raw(schemaRef("kernel"))
-  const rows = (await withPrivilegedDb(orgId, "thread-handle-collisions", (tx) =>
+  // A caller already in a privileged transaction (an approval or connection
+  // anchor) reads on it instead of taking a second privileged slot.
+  const rows = (await withPrivilegedReusing(on, orgId, "thread-handle-collisions", (tx) =>
     tx.execute(drizzleSql`
       SELECT handle FROM ${k}.threads
       WHERE org_id = ${orgId}::uuid AND (handle = ${base} OR handle LIKE ${`${base}-%`})
@@ -91,12 +97,12 @@ export async function allocateThreadHandle(
 ): Promise<string> {
   const base = params.title ? slugifyTitle(params.title) : ""
   if (base && !isAutoThreadHandle(base)) {
-    return firstFree(base, await takenHandles(params.orgId, base))
+    return firstFree(base, await takenHandles(params.orgId, base, tx))
   }
   const seq = `${schemaRef("kernel")}.thread_handle_seq`
   for (let attempt = 0; attempt < 100; attempt++) {
     const candidate = await nextHandle(tx, seq, "thread")
-    const taken = await takenHandles(params.orgId, candidate)
+    const taken = await takenHandles(params.orgId, candidate, tx)
     if (!taken.has(candidate)) return candidate
   }
   throw new Error("No free sequence handle")

@@ -17,6 +17,7 @@ import * as realSend from "~/apps/tickets/send"
 import { extractRows } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { asOrgMember } from "~/tests/helpers/org-caller"
 
 // Eager snapshot: `realSend` is a LIVE namespace view, so mock.module patches
 // it in place — spreading it inside the restore factory would re-install the
@@ -131,7 +132,7 @@ describe("ticketsReply — live-update events (queueEvent)", () => {
     // SELECT visibility — run the whole call under withPrivilegedDb (bypasses RLS,
     // same as every other real-DB tools test in this suite) so `ctx.tx` is a live
     // client for the full call, including the nested withCtxPrivileged send/insert.
-    const result = await withPrivilegedDb(orgId, "reply-events-call", async (tx) => {
+    const result = await asOrgMember(orgId, userId, async (tx) => {
       const ctx = { tx: tx as never, orgId, actor: { actorType: "user" as const, userId } }
       return ticketsReply({ ticketId, textBody: "We are looking into it." }, ctx)
     })
@@ -156,7 +157,7 @@ describe("ticketsReply — live-update events (queueEvent)", () => {
 
   it("queues a tickets/ticket:update event carrying the new status", async () => {
     const ticketId = await createTicketWithInbound()
-    await withPrivilegedDb(orgId, "reply-events-call", async (tx) => {
+    await asOrgMember(orgId, userId, async (tx) => {
       const ctx = { tx: tx as never, orgId, actor: { actorType: "user" as const, userId } }
       return ticketsReply({ ticketId, textBody: "Following up." }, ctx)
     })
@@ -179,7 +180,7 @@ describe("ticketsReply — live-update events (queueEvent)", () => {
 describe("ticketsReply — what the customer receives", () => {
   async function reply(textBody: string) {
     const ticketId = await createTicketWithInbound()
-    await withPrivilegedDb(orgId, "reply-body-call", async (tx) => {
+    await asOrgMember(orgId, userId, async (tx) => {
       const ctx = { tx: tx as never, orgId, actor: { actorType: "user" as const, userId } }
       return ticketsReply({ ticketId, textBody }, ctx)
     })

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test"
+import { AsyncLocalStorage } from "node:async_hooks"
 import crypto from "node:crypto"
 import { sql as drizzleSql, type SQL } from "drizzle-orm"
 import { extractRows } from "~/db"
@@ -1412,13 +1413,17 @@ describe("erasure and the search index rebuild", () => {
       // queued, the flusher applies it and neighbouring messages (and the
       // erased one itself) are re-indexed from another connection, which does
       // not see the uncommitted tombstone yet and re-quotes the text.
+      // The flusher and the indexer are workers of their own, so the hook runs
+      // them outside the erasure's async context, as production does.
+      const elsewhere = AsyncLocalStorage.snapshot()
       const res = await eraseUser(userId, {
-        inTransaction: async () => {
-          while ((await flushLiveIndexOnce()) > 0) {}
-          for (const id of [ids[11] as string, ids[12] as string, ids[13] as string]) {
-            await processMessageIndexerJob({ action: "upsert", orgId, messageId: id })
-          }
-        },
+        inTransaction: () =>
+          elsewhere(async () => {
+            while ((await flushLiveIndexOnce()) > 0) {}
+            for (const id of [ids[11] as string, ids[12] as string, ids[13] as string]) {
+              await processMessageIndexerJob({ action: "upsert", orgId, messageId: id })
+            }
+          }),
       })
       expect(res.exitCode).toBe(0)
       expect(await okapi()).toBeGreaterThan(0)

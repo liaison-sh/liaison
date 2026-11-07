@@ -21,6 +21,7 @@ import { runContextStore } from "~/modules/agent/runtime/run-context"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { asOrgMember } from "~/tests/helpers/org-caller"
 
 let orgId: string
 let userId: string
@@ -77,7 +78,7 @@ async function ticketEvents() {
 
 describe("FX2: every audit-bearing bridge seam follows the acting agent", () => {
   it("a ticket created and re-prioritised by a sandboxed app inside an agent turn audits as the agent", async () => {
-    const ticketId = await withSystemDb("fx2-bridge-audit-run", async (tx) => {
+    const ticketId = await asOrgMember(orgId, userId, async (tx) => {
       const bridge = runContextStore.run(agentFrame(), () =>
         createRpcBridge("tickets", userId, orgId, tx as never, ticketsManifest as never, SCOPES),
       )

@@ -18,11 +18,12 @@
 import { createHash } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
-import { withPrivilegedDb } from "~/db/privileged"
+import { withPrivilegedReusing } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import { writeAuditLog } from "~/modules/audit/service"
+import type { MailboxCallerTx } from "~/modules/mailbox-crypto/identity-resolver"
 import {
   isSystemMailActor,
   MAILBOX_SEALED_FIELDS,
@@ -233,11 +234,14 @@ export async function openManagedMailRows(input: {
   rows: StoredMailRow[]
   actor: ManagedOpenActor
   purpose: ManagedOpenPurpose
+  /** The caller's transaction: the open (and its audit row) runs on it when it
+   *  already is a privileged transaction of this org. */
+  on?: MailboxCallerTx | null
 }): Promise<Map<string, OpenedMailFields>> {
   const out = new Map<string, OpenedMailFields>()
   const rows = input.rows.filter((r) => isManagedEncVersion(column(r, "encVersion")))
   if (rows.length === 0) return out
-  await withPrivilegedDb(input.orgId, "mailbox-managed:open", async (tx) => {
+  await withPrivilegedReusing(input.on, input.orgId, "mailbox-managed:open", async (tx) => {
     const account = await readAccount(tx, input.orgId, input.accountId)
     assertMayOpen(account, input.accountId, input.actor, input.purpose)
     const ownerId = account?.ownerId as string
@@ -366,27 +370,34 @@ export async function openManagedAttachmentForOwner(input: {
   body: Uint8Array
   actor: ManagedOpenActor
   purpose: ManagedOpenPurpose
+  /** The caller's transaction, reused as in `openManagedMailRows`. */
+  on?: MailboxCallerTx | null
 }): Promise<Buffer> {
-  return withPrivilegedDb(input.orgId, "mailbox-managed:open-attachment", async (tx) => {
-    const account = await readAccount(tx, input.orgId, input.accountId)
-    assertMayOpen(account, input.accountId, input.actor, input.purpose)
-    const dek = await loadMailboxServerKey(tx, input.orgId, input.accountId, input.keyVersion)
-    try {
-      const bytes = openManagedAttachment({
-        accountId: input.accountId,
-        dek: dek.key,
-        fileId: input.fileId,
-        contentKeyWrapped: input.contentKeyWrapped,
-        body: input.body,
-      })
-      await audit(tx, input.orgId, input.accountId, input.actor, input.purpose, "files", [
-        input.fileId,
-      ])
-      return bytes
-    } finally {
-      dek.key.fill(0)
-    }
-  })
+  return withPrivilegedReusing(
+    input.on,
+    input.orgId,
+    "mailbox-managed:open-attachment",
+    async (tx) => {
+      const account = await readAccount(tx, input.orgId, input.accountId)
+      assertMayOpen(account, input.accountId, input.actor, input.purpose)
+      const dek = await loadMailboxServerKey(tx, input.orgId, input.accountId, input.keyVersion)
+      try {
+        const bytes = openManagedAttachment({
+          accountId: input.accountId,
+          dek: dek.key,
+          fileId: input.fileId,
+          contentKeyWrapped: input.contentKeyWrapped,
+          body: input.body,
+        })
+        await audit(tx, input.orgId, input.accountId, input.actor, input.purpose, "files", [
+          input.fileId,
+        ])
+        return bytes
+      } finally {
+        dek.key.fill(0)
+      }
+    },
+  )
 }
 
 /**
@@ -396,7 +407,7 @@ export async function openManagedAttachmentForOwner(input: {
  * applies the owner wall and writes the audit row.
  */
 export async function openManagedFile(
-  tx: { execute(q: unknown): Promise<unknown> },
+  tx: MailboxCallerTx,
   input: {
     orgId: string
     userId: string
@@ -441,7 +452,8 @@ export async function openManagedFile(
   const wrapped = toBytes(row.content_key_wrapped)
   if (!wrapped) throw new Error(`managed file ${input.fileId} has no content key`)
   // The owner wall BEFORE any byte is fetched from storage.
-  await withPrivilegedDb(input.orgId, "mailbox-managed:file-owner", async (ptx) =>
+  // On the caller's transaction when it already is a privileged one of this org.
+  await withPrivilegedReusing(tx, input.orgId, "mailbox-managed:file-owner", async (ptx) =>
     assertMayOpen(
       await readAccount(ptx, input.orgId, account.id),
       account.id,
@@ -462,6 +474,7 @@ export async function openManagedFile(
     body: stored.bytes,
     actor: { userId: input.userId },
     purpose: input.purpose,
+    on: tx,
   })
   return { bytes, filename: row.filename, mimeType: row.mime_type }
 }

@@ -8,7 +8,7 @@
 // only asserted `isDemoOrg(org) === true` would pass with the lockdown deleted.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
-import { withSystemDb } from "~/db/privileged"
+import { withPrivilegedDb } from "~/db/privileged"
 import { connectionConfigRegistry } from "~/modules/apps/app-registries"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
@@ -132,10 +132,12 @@ describe("demo egress lockdown", () => {
     expect(onTheWire).toHaveLength(1)
   })
 
+  // Org-owned connections are created on a privileged transaction of the org,
+  // as the connections route and the provisioning CLI create them.
   it("refuses to store a real connector credential for a demo org", async () => {
     DemoModeTestAccess.set(true)
     await expect(
-      withSystemDb("test-demo-credentials", (tx) =>
+      withPrivilegedDb(demoOrgId, "test-demo-credentials", (tx) =>
         createCredentialConnection(tx, demoOrgId, demoUserId, "mail", "smtp", {
           identifier: "someone@example.com",
           credentials: CREDS,
@@ -162,7 +164,7 @@ describe("demo egress lockdown", () => {
       credentialFields: [{ name: "label", label: "Label", type: "text", required: true }],
     })
     try {
-      const account = await withSystemDb("test-demo-inbound", (tx) =>
+      const account = await withPrivilegedDb(demoOrgId, "test-demo-inbound", (tx) =>
         createCredentialConnection(tx, demoOrgId, demoUserId, "inbound-demo-app", "alert-source", {
           identifier: "grafana-demo",
           credentials: { label: "grafana-demo" },
@@ -199,7 +201,7 @@ describe("demo egress lockdown", () => {
       })
       try {
         await expect(
-          withSystemDb("test-demo-inbound-refused", (tx) =>
+          withPrivilegedDb(demoOrgId, "test-demo-inbound-refused", (tx) =>
             createCredentialConnection(
               tx,
               demoOrgId,
@@ -221,7 +223,7 @@ describe("demo egress lockdown", () => {
 
   it("still stores a normal org's connector credentials", async () => {
     DemoModeTestAccess.set(true)
-    await withSystemDb("test-normal-credentials", (tx) =>
+    await withPrivilegedDb(normalOrgId, "test-normal-credentials", (tx) =>
       createCredentialConnection(tx, normalOrgId, normalUserId, "mail", "smtp", {
         identifier: "someone@example.com",
         credentials: CREDS,

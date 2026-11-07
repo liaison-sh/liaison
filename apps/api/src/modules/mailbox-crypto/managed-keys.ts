@@ -18,8 +18,10 @@
 
 import { randomBytes } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
+import type { RlsClient } from "~/db"
 import { extractRows } from "~/db"
-import { withPrivilegedDb } from "~/db/privileged"
+import { withPrivilegedReusing } from "~/db/privileged"
+import { withReleasedSavepoint } from "~/db/savepoint"
 import { schemaRef } from "~/db/schema-ref"
 import { decryptSecret, encryptSecret, mailboxServerKeyContext } from "~/lib/crypto"
 import { env } from "~/lib/env"
@@ -167,13 +169,18 @@ export async function loadMailboxServerKey(
   return { keyVersion: Number(row.key_version), key: unwrap(row, orgId, accountId, kek) }
 }
 
-/** `loadMailboxServerKey` on its own short privileged transaction. */
+/**
+ * `loadMailboxServerKey` on its own short privileged transaction, or on `on`
+ * when that already is a privileged transaction of this org (so a caller that
+ * holds one does not take a second privileged connection).
+ */
 export async function loadMailboxServerKeyPrivileged(
   orgId: string,
   accountId: string,
   keyVersion?: number,
+  on?: Pick<RlsClient, "execute"> | null,
 ): Promise<MailboxServerKey> {
-  return withPrivilegedDb(orgId, "mailbox-server-key:load", (tx) =>
+  return withPrivilegedReusing(on, orgId, "mailbox-server-key:load", (tx) =>
     loadMailboxServerKey(tx, orgId, accountId, keyVersion),
   )
 }
@@ -206,21 +213,28 @@ export async function destroyMailboxServerKeys(
 export async function loadOrCreateMailboxServerKeyPrivileged(
   orgId: string,
   accountId: string,
+  on?: Pick<RlsClient, "execute"> | null,
 ): Promise<MailboxServerKey> {
   try {
-    return await loadMailboxServerKeyPrivileged(orgId, accountId)
+    return await loadMailboxServerKeyPrivileged(orgId, accountId, undefined, on)
   } catch (err) {
     if (!(err instanceof MailboxServerKeyError) || err.code !== "MAILBOX_SERVER_KEY_MISSING") {
       throw err
     }
   }
   try {
-    await withPrivilegedDb(orgId, "mailbox-server-key:mint", (tx) =>
-      ensureMailboxServerKey(tx, orgId, accountId),
+    // On the caller's privileged transaction the mint runs in a driver
+    // savepoint, so losing the race to a concurrent first seal rolls back the
+    // mint alone, never the caller's work (a raw SAVEPOINT is not enough, see
+    // `withReleasedSavepoint`).
+    await withPrivilegedReusing(on, orgId, "mailbox-server-key:mint", (tx) =>
+      Object.is(tx, on)
+        ? withReleasedSavepoint(tx, (sp) => ensureMailboxServerKey(sp, orgId, accountId))
+        : ensureMailboxServerKey(tx, orgId, accountId),
     )
   } catch (err) {
     if (err instanceof MailboxServerKeyError) throw err
     // A concurrent first seal won the unique active key: use it.
   }
-  return loadMailboxServerKeyPrivileged(orgId, accountId)
+  return loadMailboxServerKeyPrivileged(orgId, accountId, undefined, on)
 }

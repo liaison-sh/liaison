@@ -17,7 +17,7 @@ import { ticketsAppManifest } from "~/apps/tickets/manifest-descriptor"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { withSystemDb } from "~/db/privileged"
-import type { ActorContext } from "~/db/rls"
+import { type ActorContext, withRlsContext } from "~/db/rls"
 import { JobsTestAccess } from "~/infra/jobs/jobs"
 import { executeTool, executeToolCore } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
@@ -1292,12 +1292,13 @@ describe("inbound reroute dispatch", () => {
         WHERE conversation_id = ${mailConvId} AND org_id = ${orgId}
       `),
     )
-    const result = await withSystemDb("p7-3-reroute-bridge", async (tx) => {
+    // The bridge runs on the caller's RLS transaction, as an app handler's does.
+    const result = await withRlsContext(actor, async (tx) => {
       const bridge = createRpcBridge(
         "tickets",
         userId,
         orgId,
-        tx as any,
+        tx,
         ticketsAppManifest as any,
         actor.scopes,
         "user",
@@ -1705,7 +1706,8 @@ describe("inbound matcher reroute end-to-end", () => {
           headers: {},
         } as any,
         inboxRow,
-        { orgId, db: tx as any } as any,
+        // As the mailbox sync ingests: on its privileged transaction, handed down.
+        { orgId, db: tx as any, privilegedTx: tx } as any,
       )
     })
     expect((result as any).outcome).toBe("rerouted")

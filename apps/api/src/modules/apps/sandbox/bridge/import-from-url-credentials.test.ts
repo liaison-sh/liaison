@@ -9,7 +9,8 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { createHash, randomUUID } from "node:crypto"
 import { sql } from "~/db"
-import { withPrivilegedDb } from "~/db/privileged"
+import { withRlsContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
 import { manifestFileParentRegistry } from "~/modules/apps/app-registries"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
@@ -24,13 +25,18 @@ const BYTES = new Uint8Array(Array.from({ length: 3000 }, (_, i) => (i * 13) % 2
 const SHA = createHash("sha256").update(BYTES).digest("hex")
 const SIGNED = `https://${SECOND}/bucket/object.xml?X-Signature=abcdef0123456789`
 
+// The parents live in a fixture schema with real RLS: the provider's own record is visible to
+// its job context, the caller's records are not (only the bound one, through the kernel's
+// privileged check).
+const FIXTURE_SCHEMA = `iu_${ORG.slice(0, 8)}`
 const PARENT = {
-  tableName: "organizations",
-  schemaRef: "kernel",
+  tableName: "provider_docs",
+  schemaRef: FIXTURE_SCHEMA,
   joinOn: "id",
   readScope: "provider:docs:read",
   writeScope: "provider:docs:write",
 }
+const CALLER_PARENT = { ...PARENT, tableName: "caller_docs" }
 
 type Bound = { app: string; entityType: string; entityId: string }
 
@@ -97,7 +103,12 @@ async function run(
   fn: (m: Record<string, (json: string) => Promise<string>>) => Promise<string>,
   opts?: Parameters<typeof files>[0],
 ) {
-  return withPrivilegedDb(ORG, "test:import-from-url", (tx) => fn(files(opts, tx)))
+  // A production bridge runs on the run's RLS session (the provider's own scopes), never on a
+  // privileged slot: the bound caller target's privileged read is then the only one.
+  return withRlsContext(
+    { actorType: "system", orgId: ORG, purpose: "job", scopes: ["provider:*"] },
+    (tx) => fn(files(opts, tx)),
+  )
 }
 
 function captureLogs(): { lines: string[]; restore: () => void } {
@@ -117,15 +128,27 @@ function captureLogs(): { lines: string[]; restore: () => void } {
 
 beforeAll(async () => {
   await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${ORG}, 'Import Url Org', ${`iu-${ORG.slice(0, 8)}`})`
+  const fs = `"${schemaRef(FIXTURE_SCHEMA)}"`
+  await sql.unsafe(`CREATE SCHEMA IF NOT EXISTS ${fs}`)
+  await sql.unsafe(`GRANT USAGE ON SCHEMA ${fs} TO liaison_rls, liaison_admin`)
+  for (const t of ["provider_docs", "caller_docs"]) {
+    await sql.unsafe(`CREATE TABLE ${fs}.${t} (id uuid PRIMARY KEY, org_id uuid NOT NULL)`)
+    await sql.unsafe(`ALTER TABLE ${fs}.${t} ENABLE ROW LEVEL SECURITY`)
+    await sql.unsafe(`GRANT SELECT ON ${fs}.${t} TO liaison_rls, liaison_admin`)
+    await sql.unsafe(`INSERT INTO ${fs}.${t} (id, org_id) VALUES ('${ORG}', '${ORG}')`)
+  }
+  await sql.unsafe(
+    `CREATE POLICY provider_docs_org ON ${fs}.provider_docs FOR SELECT TO liaison_rls USING (org_id = NULLIF(rls_ctx.org_id(), '')::uuid)`,
+  )
   manifestFileParentRegistry.set([ORG, "provider", "doc"], PARENT)
   manifestFileParentRegistry.set([ORG, "caller", "received"], {
-    ...PARENT,
+    ...CALLER_PARENT,
     readScope: "caller:docs:read",
     writeScope: "caller:docs:write",
   })
   // Another parent type of the caller (a legal original): never reachable from a contract op.
   manifestFileParentRegistry.set([ORG, "caller", "legal_original"], {
-    ...PARENT,
+    ...CALLER_PARENT,
     readScope: "caller:docs:read",
     writeScope: "caller:docs:write",
   })
@@ -136,6 +159,7 @@ afterEach(() => SandboxBridgeTestAccess.setFetch(null))
 afterAll(async () => {
   await sql`DELETE FROM kernel.files WHERE org_id = ${ORG}`
   await sql`DELETE FROM kernel.organizations WHERE id = ${ORG}`
+  await sql.unsafe(`DROP SCHEMA IF EXISTS "${schemaRef(FIXTURE_SCHEMA)}" CASCADE`)
 })
 
 describe("files_importFromUrl credentials: first-hop-only", () => {

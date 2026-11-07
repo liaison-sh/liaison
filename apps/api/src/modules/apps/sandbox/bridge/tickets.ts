@@ -878,6 +878,8 @@ export function createTicketsMethods(ctx: BridgeContext): Record<string, any> {
               {
                 db: db as never,
                 orgId,
+                // Every privileged read of the ingest runs on this transaction.
+                privilegedTx: db,
                 // A first (backfill) sync reads the mailbox's history: nothing
                 // it opens is acknowledged as if it had just arrived.
                 noAcknowledgement: opts?.backfill === true,

@@ -148,6 +148,7 @@ import { mailboxAad } from "@liaison/mailbox-crypto/src/aad"
 import { openField, unsealContentKey } from "@liaison/mailbox-crypto/src/client"
 import type { RlsClient } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
+import { withRlsContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
 import * as writerMailService from "~/modules/mail/service"
 import { applyMailSealToRow, MailboxWriteError } from "~/modules/mailbox-crypto/mail-writer"
@@ -231,15 +232,13 @@ describeW("mail writers under encryption", () => {
 
       // The browser does this. Here the seal runs server side against the same
       // AAD the browser would build, which is what the client half will open.
-      const sealed = await withPrivilegedDb(wOrgId, "writers-seal-draft", async () => {
-        const { sealMailFields } = await import("~/modules/mailbox-crypto/mail-writer")
-        return sealMailFields({
-          userId: wUserId,
-          orgId: wOrgId,
-          entity: "drafts",
-          entityId: draftId,
-          values: { body, subject: "draft subject" },
-        })
+      const { sealMailFields } = await import("~/modules/mailbox-crypto/mail-writer")
+      const sealed = await sealMailFields({
+        userId: wUserId,
+        orgId: wOrgId,
+        entity: "drafts",
+        entityId: draftId,
+        values: { body, subject: "draft subject" },
       })
 
       const updated = await withPrivilegedDb(wOrgId, "writers-update-draft", (tx) =>
@@ -565,12 +564,21 @@ describeW("mail writers under encryption", () => {
         await pointConversationAtMessage(tx, W_SCHEMA, wOrgId, conversationId, messageId)
       })
 
-      const payload = (await withPrivilegedDb(wOrgId, "writers-read-projection", (tx) =>
-        writerMailService.getConversation(tx as unknown as RlsClient, {
-          orgId: wOrgId,
+      // The read runs as the owner's request does, on an RLS transaction.
+      const payload = (await withRlsContext(
+        {
+          actorType: "user",
           userId: wUserId,
-          conversationId,
-        }),
+          orgId: wOrgId,
+          scopes: ["mail:*"],
+          dimensionGrants: { "*": ["*"] },
+        },
+        (tx) =>
+          writerMailService.getConversation(tx, {
+            orgId: wOrgId,
+            userId: wUserId,
+            conversationId,
+          }),
       )) as {
         messages: Array<Record<string, any>>
         conversation: Record<string, any>

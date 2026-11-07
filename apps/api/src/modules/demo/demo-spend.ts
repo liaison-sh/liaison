@@ -42,6 +42,7 @@
 // normal deployment does not reach a query, a branch or an allocation here.
 import type { ShippedLocale } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
+import type { PrivilegedDb } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { env } from "~/lib/env"
@@ -179,9 +180,9 @@ export async function assertDemoPlatformKeyAllowed(orgId: string): Promise<void>
  * Returns true on its first line on every normal deployment and for every
  * unmarked org.
  */
-export async function demoPlatformKeyAllowed(orgId: string): Promise<boolean> {
+export async function demoPlatformKeyAllowed(orgId: string, on?: PrivilegedDb): Promise<boolean> {
   if (!isDemoModeEnabled()) return true
-  const { marker } = await loadDemoOrg(orgId)
+  const { marker } = await loadDemoOrg(orgId, on)
   if (!marker) return true
   return marker.variant === "reserved"
 }
@@ -216,9 +217,12 @@ export async function isReservedDemoOrg(orgId: string): Promise<boolean> {
  * ceiling was priced for (demo-spend-ceiling.ts). Null without a query on every
  * normal deployment.
  */
-export async function reservedDemoModelId(orgId: string): Promise<string | null> {
+export async function reservedDemoModelId(
+  orgId: string,
+  on?: PrivilegedDb,
+): Promise<string | null> {
   if (!isDemoModeEnabled()) return null
-  const { marker } = await loadDemoOrg(orgId)
+  const { marker } = await loadDemoOrg(orgId, on)
   if (marker?.variant !== "reserved") return null
   return env.LIAISON_DEMO_RESERVED_MODEL
 }
@@ -431,16 +435,19 @@ export class DemoReservationRequiredError extends DemoSpendRefusedError {
 }
 
 /** What kind of demo org `orgId` is. "none" without a query on a normal deployment. */
-export async function demoOrgKind(orgId: string): Promise<"none" | "visitor" | "reserved"> {
+export async function demoOrgKind(
+  orgId: string,
+  on?: PrivilegedDb,
+): Promise<"none" | "visitor" | "reserved"> {
   if (!isDemoModeEnabled()) return "none"
-  const { marker } = await loadDemoOrg(orgId)
+  const { marker } = await loadDemoOrg(orgId, on)
   if (!marker) return "none"
   return marker.variant === "reserved" ? "reserved" : "visitor"
 }
 
 /** Is `orgId` a visitor demo org on a demo box? False without a query elsewhere. */
-export async function isVisitorDemoOrg(orgId: string): Promise<boolean> {
-  return (await demoOrgKind(orgId)) === "visitor"
+export async function isVisitorDemoOrg(orgId: string, on?: PrivilegedDb): Promise<boolean> {
+  return (await demoOrgKind(orgId, on)) === "visitor"
 }
 
 /** The visitor pin's model key (`openrouter/<id>`), from env, never from settings. */

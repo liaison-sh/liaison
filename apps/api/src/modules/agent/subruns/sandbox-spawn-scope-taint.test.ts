@@ -106,7 +106,8 @@ function buildBridge(): Record<string, any> {
 function buildSessionBridge(): Record<string, any> {
   const session = {
     ctx: actor(),
-    run: (fn: (tx: unknown) => Promise<unknown>) => withPrivilegedDb(orgId, "x4s-session", fn),
+    // A session bridge's calls run on RLS transactions of the actor, as in production.
+    run: (fn: (tx: unknown) => Promise<unknown>) => withRlsContext(actor(), fn),
   }
   return createSessionRpcBridge(
     appName,

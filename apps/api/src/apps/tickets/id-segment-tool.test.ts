@@ -9,8 +9,8 @@ import { runAdminOp } from "~/apps/tickets/admin"
 import { summarizeTicketIdSegmentSet } from "~/apps/tickets/summarizers"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
-import { withSystemDb } from "~/db/privileged"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { asOrgMember } from "~/tests/helpers/org-caller"
 import manifest from "./app.manifest.json"
 
 async function freshOrg(): Promise<string> {
@@ -34,7 +34,7 @@ const admin = (scopes: string[]) => ({
 })
 
 const op = (orgId: string, name: string, params: Record<string, unknown>, scopes: string[]) =>
-  withSystemDb("idseg-tool-test", (tx) =>
+  asOrgMember(orgId, "00000000-0000-0000-0000-000000000001", (tx) =>
     runAdminOp(tx as never, orgId, name, params, admin(scopes)),
   ) as Promise<any>
 
@@ -56,7 +56,7 @@ describe("tickets idSegment tools", () => {
     expect(tools["idSegment.set"].approvalImpact).toBe("external")
     expect(tools["idSegment.get"].readOnly).toBe(true)
     const orgId = await freshOrg()
-    const summary = await withSystemDb("idseg-summary", (tx) =>
+    const summary = await asOrgMember(orgId, "u", (tx) =>
       summarizeTicketIdSegmentSet(
         { by: "audience", codes: { b2b: "b2b", b2c: "B2C" } },
         { tx: tx as never, orgId, userId: "u" },
@@ -80,7 +80,7 @@ describe("tickets idSegment tools", () => {
       `),
     )
     const gone = "00000000-0000-0000-0000-00000000dead"
-    const summary = await withSystemDb("idseg-summary-inbox", (tx) =>
+    const summary = await asOrgMember(orgId, "u", (tx) =>
       summarizeTicketIdSegmentSet(
         { by: "inbox", codes: { [inbox.id]: "sup", [gone]: "OLD" } },
         { tx: tx as never, orgId, userId: "u" },

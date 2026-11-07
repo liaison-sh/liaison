@@ -30,6 +30,7 @@
 // never reachable from a visitor org. Its own key, Exa or OpenRouter, is its
 // own business.
 import type { ShippedLocale } from "@liaison/shared"
+import type { PrivilegedDb, RlsClient } from "~/db"
 import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 import { loadDemoOrg } from "~/modules/demo/demo-org"
 import { type ServerTParams, serverT } from "~/modules/i18n/server-i18n"
@@ -90,9 +91,11 @@ export function demoRestrictionMessage(
 export async function assertDemoEgressAllowed(
   orgId: string,
   action: DemoRestrictedAction,
+  /** The caller's transaction, read on when it is a privileged one of this org. */
+  on?: RlsClient | PrivilegedDb,
 ): Promise<void> {
   if (!isDemoModeEnabled()) return
-  const { marker, locale } = await loadDemoOrg(orgId)
+  const { marker, locale } = await loadDemoOrg(orgId, on)
   if (!marker) return
   throw new DemoRestrictionError(demoRestrictionMessage(action, locale), action)
 }

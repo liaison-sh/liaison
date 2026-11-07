@@ -597,7 +597,7 @@ export async function activateAppVersion(
  * app while it is held.
  */
 export async function withAppActivationLock<T>(name: string, fn: () => Promise<T>): Promise<T> {
-  return withSystemDb("app-activation-lock", async (tx) => {
+  return withActivationLockTx("app-activation-lock", async (tx) => {
     assertTransactionScoped(tx, "app activation")
     await tx.execute(advisoryXactLock(`app-activate:${name}`))
     inFlight.add(name)
@@ -608,6 +608,19 @@ export async function withAppActivationLock<T>(name: string, fn: () => Promise<T
     }
   })
 }
+
+/**
+ * The transaction that holds an app's activation advisory lock. It stays open
+ * for the whole activation, follow or uninstall, and everything it guards takes
+ * its own privileged transactions, so it runs on the privileged-jobs pool: a
+ * privileged-pool slot held across that work would make each of those a nested
+ * acquisition, the shape that deadlocks a full pool.
+ */
+function withActivationLockTx<T>(reason: string, fn: (tx: PrivilegedDb) => Promise<T>): Promise<T> {
+  return withPrivilegedDb(NIL_ORG_ID, reason, fn, { pool: "jobs" })
+}
+
+const NIL_ORG_ID = "00000000-0000-0000-0000-000000000000"
 
 /** Apps whose activation runs in this process. */
 const inFlight = new Set<string>()
@@ -1022,7 +1035,7 @@ async function runSync(opts: { reconcile?: boolean }): Promise<void> {
     if (stale) {
       // An activation in flight anywhere holds the lock: it announces its result
       // once released, and a short retry covers a lock still held now.
-      const followedNow = await withSystemDb("app-activation-follow", async (tx) => {
+      const followedNow = await withActivationLockTx("app-activation-follow", async (tx) => {
         const [held] = extractRows<{ ok: boolean }>(
           await tx.execute(
             drizzleSql`SELECT pg_try_advisory_xact_lock(${advisoryLockKey(`app-activate:${p.name}`)}) AS ok`,
@@ -1073,7 +1086,7 @@ async function registeredInstalledApps(): Promise<Set<string>> {
 
 /** Another process uninstalled `name`: drop it here, then its local files. */
 async function followUninstall(name: string): Promise<boolean> {
-  return withSystemDb("app-uninstall-follow", async (tx) => {
+  return withActivationLockTx("app-uninstall-follow", async (tx) => {
     // A reinstall in flight holds the lock: it announces, and this process follows then.
     const [held] = extractRows<{ ok: boolean }>(
       await tx.execute(

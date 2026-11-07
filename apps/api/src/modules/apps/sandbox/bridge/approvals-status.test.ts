@@ -6,7 +6,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { randomUUID } from "node:crypto"
 import { sql } from "~/db"
-import { withPrivilegedDb } from "~/db/privileged"
+import { withRlsContext } from "~/db/rls"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 
 const ORG = randomUUID()
@@ -49,19 +49,22 @@ describe("approvals.statusOf", () => {
     await sql`DELETE FROM kernel.organizations WHERE id IN (${ORG}, ${OTHER_ORG})`
   })
 
+  // A production bridge runs on the job's RLS session, never on a privileged slot.
   const statusOf = (app: string, id: string) =>
-    withPrivilegedDb(ORG, "test", async (tx) =>
-      JSON.parse(
-        await createRpcBridge(
-          app,
-          "system",
-          ORG,
-          tx as never,
-          { name: app } as never,
-          [`${app}:*`],
-          "system",
-        ).approvals_statusOf(id),
-      ),
+    withRlsContext(
+      { actorType: "system", orgId: ORG, purpose: "job", scopes: [`${app}:*`] },
+      async (tx) =>
+        JSON.parse(
+          await createRpcBridge(
+            app,
+            "system",
+            ORG,
+            tx as never,
+            { name: app } as never,
+            [`${app}:*`],
+            "system",
+          ).approvals_statusOf(id),
+        ),
     )
 
   it("reports its own approvals' status (pending past its expiry counts as expired), never the payload", async () => {

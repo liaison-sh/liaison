@@ -194,7 +194,7 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
         // and a legal record's file, are stored anyway (and still counted).
         const { loadOrgSettings, noteStoredOrgUsage, storageQuotaExemption, wouldExceedOrgQuota } =
           await import("~/modules/files/service")
-        const { withPrivilegedDb: withPrivilegedDbForQuota } = await import("~/db/privileged")
+        const { withPrivilegedReusing } = await import("~/db/privileged")
         const exemption = storageQuotaExemption({
           actorType: auditActorType,
           actingAgentId: bridgeActingAgentId,
@@ -202,7 +202,7 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
         })
         if (
           exemption === null &&
-          (await withPrivilegedDbForQuota(orgId, "files_importAttachment quota", async (qtx) =>
+          (await withPrivilegedReusing(txDb, orgId, "files_importAttachment quota", async (qtx) =>
             wouldExceedOrgQuota(qtx, orgId, await loadOrgSettings(qtx, orgId), received.byteLength),
           ))
         ) {
@@ -314,8 +314,8 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
         // kernel-privileged operation. So perform the INSERT under a privileged
         // DB context — mirroring files_attachToParent, which already routes its
         // kernel.files copy through withPrivilegedDb for the same reason.
-        const { withPrivilegedDb: withPrivilegedDbForImport } = await import("~/db/privileged")
-        await withPrivilegedDbForImport(
+        await withPrivilegedReusing(
+          txDb,
           orgId,
           "files_importAttachment kernel.files insert",
           async (pdb) => {
@@ -635,7 +635,8 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
       }
       await assertMailParentNotResetMidRun(p.targetEntityType, p.targetEntityId)
       const { attachFileToParent } = await import("~/modules/files/attach")
-      const { withPrivilegedDb } = await import("~/db/privileged")
+      const { withPrivilegedReusing } = await import("~/db/privileged")
+      const { withReleasedSavepoint } = await import("~/db/savepoint")
       // The destination is ALWAYS this bridge's OWN app (enforced just above), so
       // the destination write-scope check must run under this app's OPERATING
       // scopes, not the original caller's attribution scopes. They differ on the
@@ -665,7 +666,13 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
         },
         {
           rlsTx: txDb,
-          privileged: (reason, fn) => withPrivilegedDb(orgId, reason, fn),
+          // On the bridge's transaction when it already is a privileged one of
+          // this org (a headless sync), in a driver savepoint so a lost unique
+          // race on the copy rolls back alone; else on its own transaction.
+          privileged: (reason, fn) =>
+            withPrivilegedReusing(txDb, orgId, reason, (tx) =>
+              Object.is(tx, txDb) ? withReleasedSavepoint(tx, fn) : fn(tx),
+            ),
           orgId,
           userId,
           // Carry the real actor category so the audit `file:create` event is

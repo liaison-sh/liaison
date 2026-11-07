@@ -867,6 +867,19 @@ export async function eraseUser(
     // The sign-in sessions the erasure ends: their access tokens are revoked
     // after the commit.
     let endedSessionIds: string[] = []
+    // Populate the org's app registry before the cascade. A thin caller (the
+    // `liaison` CLI) does not boot app registration, so without this the live
+    // registry is empty: collectUserRefFields would skip every app schema's
+    // PII and assertOrgPiiSchemasAccounted would (correctly) refuse to erase.
+    // Idempotent — registerApps overwrites, so this is safe on a warm server.
+    // It runs before the erasure's transaction, never inside it: registration
+    // takes privileged connections of its own and must not wait on one held here.
+    const registryOrgId = extractRows<{ orgId: string }>(
+      await withSystemDb("erase-user-org", (tx) =>
+        tx.execute(drizzleSql`SELECT org_id AS "orgId" FROM ${K}.users WHERE id = ${userId}`),
+      ),
+    )[0]?.orgId
+    if (registryOrgId) await ensureAppsForOrg(registryOrgId)
     const result = await withSystemDb("erase-user", async (tx) => {
       // 1. Look up the user.
       const userRows = extractRows<{
@@ -890,13 +903,6 @@ export async function eraseUser(
       if (email === sentinel) {
         return { exitCode: 0, orgId }
       }
-
-      // Populate the org's app registry before the cascade. A thin caller (the
-      // `liaison` CLI) does not boot app registration, so without this the live
-      // registry is empty: collectUserRefFields would skip every app schema's
-      // PII and assertOrgPiiSchemasAccounted would (correctly) refuse to erase.
-      // Idempotent — registerApps overwrites, so this is safe on a warm server.
-      await ensureAppsForOrg(orgId)
 
       // The per-org sentinel must exist before the cascade: NOT NULL
       // `anonymize` columns are re-pointed to it (the FK target must be a
@@ -1344,7 +1350,7 @@ export async function eraseUser(
             "~/modules/search/message-indexer"
           )
           for (const row of authored) {
-            await deleteMessageAndWindowDocuments(orgId, row.thread_id, row.id)
+            await deleteMessageAndWindowDocuments(orgId, row.thread_id, row.id, tx)
           }
         }
       } catch (err) {

@@ -18,6 +18,7 @@ import { extractRows } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { runContextStore } from "~/modules/agent/runtime/run-context"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { asOrgMember } from "~/tests/helpers/org-caller"
 
 const realSendModule = { ...realSend }
 
@@ -141,7 +142,7 @@ async function replyAsApprovedReentry(ticketId: string, withAgent: boolean): Pro
       ...(withAgent ? { agentId } : {}),
     },
     () =>
-      withPrivilegedDb(orgId, "approved-agent-reply", async (tx) => {
+      asOrgMember(orgId, ownerUserId, async (tx) => {
         const bridge = createRpcBridge(
           "tickets",
           ownerUserId,
@@ -204,7 +205,7 @@ describe("approved agent-drafted reply attribution (real bridge seam)", () => {
     await runContextStore.run(
       { runId, parentRunId: null, rootRunId: runId, nestingDepth: 0, routineId, agentId },
       () =>
-        withPrivilegedDb(orgId, "approved-agent-note", async (tx) => {
+        asOrgMember(orgId, ownerUserId, async (tx) => {
           const bridge = createRpcBridge(
             "tickets",
             ownerUserId,

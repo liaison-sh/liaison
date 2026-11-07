@@ -13,6 +13,7 @@ import { __privileged_db__ as db } from "~/db/connection"
 import { withSystemDb } from "~/db/privileged"
 import { _publishEventInternal, flushEventHandlers, initEventBus } from "~/infra/events/event-bus"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { asOrgMember } from "~/tests/helpers/org-caller"
 import { drainOutbox } from "~/tests/helpers/outbox"
 
 // Record routine-tick enqueues instead of touching BullMQ (event-routine-subscriber.test.ts).
@@ -95,7 +96,7 @@ async function ticketEvents(entity: string, messageId: string): Promise<EventRow
 const noteEvents = (messageId: string) => ticketEvents("note", messageId)
 
 async function addNote(text: string): Promise<{ messageId: string }> {
-  return (await withSystemDb("note-create-event", (tx) =>
+  return (await asOrgMember(orgId, userId, (tx) =>
     runAdminOp(tx as never, orgId, "addNote", { ticketId, text }, { actorType: "user", userId }),
   )) as { messageId: string }
 }
@@ -118,7 +119,7 @@ describe("tickets admin addNote event", () => {
   })
 
   it("queues tickets/note:create (never message:create) kind note with the ticket's dimension keys", async () => {
-    const r = (await withSystemDb("note-create-event", (tx) =>
+    const r = (await asOrgMember(orgId, userId, (tx) =>
       runAdminOp(
         tx as never,
         orgId,
@@ -147,7 +148,7 @@ describe("tickets admin addNote event", () => {
   })
 
   it("an agent turn's note names the requesting user as actor and the agent type", async () => {
-    const r = (await withSystemDb("note-create-event", (tx) =>
+    const r = (await asOrgMember(orgId, userId, (tx) =>
       runAdminOp(
         tx as never,
         orgId,

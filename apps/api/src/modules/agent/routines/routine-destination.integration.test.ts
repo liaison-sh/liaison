@@ -470,11 +470,12 @@ describe("where a routine posts when nobody said", () => {
         .returning({ id: agents.id })
       return a!.id
     })
+    const seeded = await makeRoutine(null)
     const routine = await withPrivilegedDb(orgId, "dest-role-routine", async (tx) => {
       const [row] = await tx
         .update(routinesTbl)
         .set({ ownerAgentId: roleAgentId })
-        .where(eq(routinesTbl.id, (await makeRoutine(null)).id))
+        .where(eq(routinesTbl.id, seeded.id))
         .returning()
       return row!
     })

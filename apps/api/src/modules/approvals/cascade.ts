@@ -436,7 +436,7 @@ export async function cascadeDeferredDependents(args: {
       ]
       const results: Record<string, Record<string, unknown>> = {}
       for (const ancestorId of ancestorIds) {
-        const result = await readDecidedResult(args.orgId, ancestorId)
+        const result = await readDecidedResult(args.orgId, ancestorId, tx)
         if (result == null || typeof result !== "object") {
           return {
             kind: "failed" as const,

@@ -25,6 +25,13 @@ const connections = {
 }
 const manifest = { name: APP, schema: {}, events: {}, connections, network: {} }
 
+// A system bridge's privileged transaction lives on the jobs pool (event and
+// job handlers), so the secret store's own short privileged write is no nested
+// acquisition on the privileged pool.
+function onJobsPool<T>(fn: (tx: unknown) => Promise<T>): Promise<T> {
+  return withPrivilegedDb(ORG, "test", fn, { pool: "jobs" })
+}
+
 function bridge(tx: unknown) {
   return createRpcBridge(APP, "system", ORG, tx as never, manifest as never, [`${APP}:*`], "system")
 }
@@ -42,9 +49,9 @@ afterAll(async () => {
 
 describe("app-held secrets", () => {
   it("refuses a key the manifest does not declare", async () => {
-    const err = await withPrivilegedDb(ORG, "test", (tx) =>
-      bridge(tx).config_setSecret("otherKey", SECRET),
-    ).catch((e: Error & { code?: string }) => e)
+    const err = await onJobsPool((tx) => bridge(tx).config_setSecret("otherKey", SECRET)).catch(
+      (e: Error & { code?: string }) => e,
+    )
     expect((err as Error & { code?: string }).code).toBe("forbidden")
     const [row] = await sql<
       Array<{ config: Record<string, unknown> }>
@@ -60,7 +67,7 @@ describe("app-held secrets", () => {
     const origWrite = stream?.write?.bind(stream)
     if (stream && origWrite) stream.write = (s: string) => (lines.push(s), origWrite(s))
     try {
-      await withPrivilegedDb(ORG, "test", (tx) => bridge(tx).config_setSecret("hookSecret", SECRET))
+      await onJobsPool((tx) => bridge(tx).config_setSecret("hookSecret", SECRET))
       const [row] = await sql<
         Array<{ config: Record<string, unknown> }>
       >`SELECT config FROM kernel.apps WHERE org_id = ${ORG} AND name = ${APP}`
@@ -68,9 +75,7 @@ describe("app-held secrets", () => {
       expect(stored).not.toContain(SECRET)
       expect(row!.config.plain).toBe("kept")
       // Handler read path (ctx.config.get).
-      const viaHandler = await withPrivilegedDb(ORG, "test", (tx) =>
-        bridge(tx).config_get("hookSecret"),
-      )
+      const viaHandler = await onJobsPool((tx) => bridge(tx).config_get("hookSecret"))
       expect(viaHandler).toBe(SECRET)
       // Verifier read path (webhooks/routes.ts config_get decrypts with the registration's manifest).
       expect(
@@ -89,9 +94,9 @@ describe("app-held secrets", () => {
   })
 
   it("refuses an empty value", async () => {
-    const err = await withPrivilegedDb(ORG, "test", (tx) =>
-      bridge(tx).config_setSecret("hookSecret", ""),
-    ).catch((e: Error & { code?: string }) => e)
+    const err = await onJobsPool((tx) => bridge(tx).config_setSecret("hookSecret", "")).catch(
+      (e: Error & { code?: string }) => e,
+    )
     expect((err as Error & { code?: string }).code).toBe("invalid_input")
   })
 })

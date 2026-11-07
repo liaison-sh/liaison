@@ -47,7 +47,12 @@ function mail(overrides: Record<string, unknown>) {
 /** Ingest one message; the stored kind of that message (`outbound` = staff). */
 async function kindOf(raw: never): Promise<string | undefined> {
   const result = await withSystemDb("own-domain-run", async (tx) =>
-    processInboundMessage(raw, inboxRow as never, { orgId: ORG_ID, db: tx as never }),
+    processInboundMessage(raw, inboxRow as never, {
+      orgId: ORG_ID,
+      // As the mailbox sync ingests: on its privileged transaction, handed down.
+      db: tx as never,
+      privilegedTx: tx,
+    }),
   )
   expect("error" in result).toBe(false)
   const messageId = (raw as { messageId: string }).messageId

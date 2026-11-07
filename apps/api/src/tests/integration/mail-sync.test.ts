@@ -439,60 +439,67 @@ async function __test_processMessages(params, ctx) { await processMessages(param
     actor: string = encUserId,
   ): Promise<{ error: unknown; logs: string[] }> {
     const logs: string[] = []
-    return withPrivilegedDb(encOrgId, "t-int-1-ingest", async (tx) => {
-      const real = createRpcBridge(
-        "mail",
-        actor,
-        encOrgId,
-        tx as unknown as RlsClient,
-        mailAppManifest as never,
-      )
-      const bridge: Record<string, any> = {
-        ...real,
-        emit: async () => {},
-        enqueueJob: async () => {},
-        connections_getToken: async () => "token",
-        connections_getAccounts: async () => "[]",
-        fetch: async () => JSON.stringify({ status: 200, headers: {}, body: "{}" }),
-        imap_fetch: async () => JSON.stringify({ messages: [], done: true, uidValidity: 1 }),
-        smtp_send: async () => JSON.stringify({ messageId: "<x>" }),
-        resolveContact: async () => JSON.stringify({ id: crypto.randomUUID() }),
-        log_info: (m: string) => logs.push(String(m)),
-        log_warn: (m: string) => logs.push(String(m)),
-        log_error: (m: string) => logs.push(String(m)),
-        log_debug: (m: string) => logs.push(String(m)),
-      }
-      const { executeInSandbox } = await import("~/modules/apps/sandbox/executor")
-      const { getSandboxPool } = await import("~/modules/apps/sandbox/pool")
-      let error: unknown = null
-      try {
-        await executeInSandbox({
-          pool: getSandboxPool(),
-          bundleSource: bundle,
-          exportName: "__test_processMessages",
-          params: {
-            messages,
-            account: {
-              id: accountId,
-              owner_type: "user",
-              owner_id: encUserId,
-              encryption_state: (
-                extractRows<{ encryption_state: string }>(
-                  await tx.execute(
-                    drizzleSql`SELECT encryption_state FROM ${drizzleSql.raw(`"${MAIL_SCHEMA}"`)}.accounts WHERE id = ${accountId}::uuid`,
-                  ),
-                )[0] as { encryption_state: string }
-              ).encryption_state,
+    // The jobs pool, as the mail job that runs this in production: the host's
+    // short privileged reads under the bridge (sender contacts) must not nest.
+    return withPrivilegedDb(
+      encOrgId,
+      "t-int-1-ingest",
+      async (tx) => {
+        const real = createRpcBridge(
+          "mail",
+          actor,
+          encOrgId,
+          tx as unknown as RlsClient,
+          mailAppManifest as never,
+        )
+        const bridge: Record<string, any> = {
+          ...real,
+          emit: async () => {},
+          enqueueJob: async () => {},
+          connections_getToken: async () => "token",
+          connections_getAccounts: async () => "[]",
+          fetch: async () => JSON.stringify({ status: 200, headers: {}, body: "{}" }),
+          imap_fetch: async () => JSON.stringify({ messages: [], done: true, uidValidity: 1 }),
+          smtp_send: async () => JSON.stringify({ messageId: "<x>" }),
+          resolveContact: async () => JSON.stringify({ id: crypto.randomUUID() }),
+          log_info: (m: string) => logs.push(String(m)),
+          log_warn: (m: string) => logs.push(String(m)),
+          log_error: (m: string) => logs.push(String(m)),
+          log_debug: (m: string) => logs.push(String(m)),
+        }
+        const { executeInSandbox } = await import("~/modules/apps/sandbox/executor")
+        const { getSandboxPool } = await import("~/modules/apps/sandbox/pool")
+        let error: unknown = null
+        try {
+          await executeInSandbox({
+            pool: getSandboxPool(),
+            bundleSource: bundle,
+            exportName: "__test_processMessages",
+            params: {
+              messages,
+              account: {
+                id: accountId,
+                owner_type: "user",
+                owner_id: encUserId,
+                encryption_state: (
+                  extractRows<{ encryption_state: string }>(
+                    await tx.execute(
+                      drizzleSql`SELECT encryption_state FROM ${drizzleSql.raw(`"${MAIL_SCHEMA}"`)}.accounts WHERE id = ${accountId}::uuid`,
+                    ),
+                  )[0] as { encryption_state: string }
+                ).encryption_state,
+              },
             },
-          },
-          bridge,
-          timeoutMs: 60_000,
-        } as any)
-      } catch (e) {
-        error = e
-      }
-      return { error, logs }
-    })
+            bridge,
+            timeoutMs: 60_000,
+          } as any)
+        } catch (e) {
+          error = e
+        }
+        return { error, logs }
+      },
+      { pool: "jobs" },
+    )
   }
 
   async function readMessages(accountId: string) {
@@ -662,48 +669,55 @@ async function __test_processMessages(params, ctx) { await processMessages(param
         VALUES (${id}::uuid, ${encOrgId}::uuid, ${crypto.randomUUID()}::uuid, 'user',
                 ${other.id}::uuid, 'gmail', ${`${id}@enc.test`}, 'active', 'ready')`),
       )
-      const { error } = await withPrivilegedDb(encOrgId, "t-int-1-unenrolled", async (tx) => {
-        const real = createRpcBridge(
-          "mail",
-          other.id,
-          encOrgId,
-          tx as unknown as RlsClient,
-          mailAppManifest as never,
-        )
-        const bridge: Record<string, any> = {
-          ...real,
-          emit: async () => {},
-          enqueueJob: async () => {},
-          log_info: () => {},
-          log_warn: () => {},
-          log_error: () => {},
-          log_debug: () => {},
-        }
-        const { executeInSandbox } = await import("~/modules/apps/sandbox/executor")
-        const { getSandboxPool } = await import("~/modules/apps/sandbox/pool")
-        let error: unknown = null
-        try {
-          await executeInSandbox({
-            pool: getSandboxPool(),
-            bundleSource: bundle,
-            exportName: "__test_processMessages",
-            params: {
-              messages: fixtureMessages(1),
-              account: {
-                id,
-                owner_type: "user",
-                owner_id: other.id,
-                encryption_state: "ready",
+      // The jobs pool, as the mail job that runs this in production: the host's
+      // short privileged reads under the bridge (sender contacts) must not nest.
+      const { error } = await withPrivilegedDb(
+        encOrgId,
+        "t-int-1-unenrolled",
+        async (tx) => {
+          const real = createRpcBridge(
+            "mail",
+            other.id,
+            encOrgId,
+            tx as unknown as RlsClient,
+            mailAppManifest as never,
+          )
+          const bridge: Record<string, any> = {
+            ...real,
+            emit: async () => {},
+            enqueueJob: async () => {},
+            log_info: () => {},
+            log_warn: () => {},
+            log_error: () => {},
+            log_debug: () => {},
+          }
+          const { executeInSandbox } = await import("~/modules/apps/sandbox/executor")
+          const { getSandboxPool } = await import("~/modules/apps/sandbox/pool")
+          let error: unknown = null
+          try {
+            await executeInSandbox({
+              pool: getSandboxPool(),
+              bundleSource: bundle,
+              exportName: "__test_processMessages",
+              params: {
+                messages: fixtureMessages(1),
+                account: {
+                  id,
+                  owner_type: "user",
+                  owner_id: other.id,
+                  encryption_state: "ready",
+                },
               },
-            },
-            bridge,
-            timeoutMs: 60_000,
-          } as any)
-        } catch (e) {
-          error = e
-        }
-        return { error }
-      })
+              bridge,
+              timeoutMs: 60_000,
+            } as any)
+          } catch (e) {
+            error = e
+          }
+          return { error }
+        },
+        { pool: "jobs" },
+      )
       expectEnc(error).not.toBeNull()
       expectEnc(String((error as Error).message)).toContain("USER_NOT_ENROLLED")
       expectEnc((await readMessages(id)).length, "no row may be written when sealing fails").toBe(0)

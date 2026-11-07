@@ -16,6 +16,7 @@ import { withSystemDb } from "~/db/privileged"
 import type { ActorContext } from "~/db/rls"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { asOrgMember } from "~/tests/helpers/org-caller"
 
 let orgId: string
 let userId: string
@@ -177,7 +178,7 @@ describe("tickets:search sort='oldest' + assigneeName enrichment", () => {
   })
 
   it("backlogHealth.oldest carries assigneeName (the owner) alongside ageDays + status", async () => {
-    await withSystemDb("sort-oldest-backlog", async (tx) => {
+    await asOrgMember(orgId, userId, async (tx) => {
       const res = await backlogHealth(tx as never, orgId, {})
       if ("error" in res) throw new Error(`unexpected error: ${res.error.message}`)
       const top = res.oldest[0]!

@@ -124,7 +124,12 @@ async function seedTicket(params: {
 
 async function runMatcher(raw: never) {
   return withSystemDb("b3-fallback-run", async (tx) =>
-    processInboundMessage(raw, inboxRow as never, { orgId: ORG_ID, db: tx as never }),
+    processInboundMessage(raw, inboxRow as never, {
+      orgId: ORG_ID,
+      // As the mailbox sync ingests: on its privileged transaction, handed down.
+      db: tx as never,
+      privilegedTx: tx,
+    }),
   )
 }
 

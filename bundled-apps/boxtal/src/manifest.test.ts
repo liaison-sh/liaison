@@ -569,7 +569,8 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.10: the tracking note states nothing about a label it never read; import_label_document only attaches.
     // 0.23.12: above both lines of work, which each changed it under the number before; no change of its own.
     // 0.23.13: above the 0.23.12 that main took meanwhile; no change of its own.
-    expect(m.version).toBe("0.23.13")
+    // 0.23.14: shipment_draft_create's description starts a new draft rather than opening one.
+    expect(m.version).toBe("0.23.14")
     expect(m.packageFormat).toBe(1)
   })
 

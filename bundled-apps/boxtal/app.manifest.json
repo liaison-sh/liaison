@@ -194,7 +194,7 @@
       }
     ]
   },
-  "version": "0.23.13",
+  "version": "0.23.14",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {
@@ -1834,7 +1834,7 @@
       "timeoutMs": 45000
     },
     "shipment_draft_create": {
-      "description": "Open a shipment draft from an invoicing document — pre-fills parcels + customs from the document snapshot (zero re-entry). document_ref accepts a document UUID, an invoice number, or a Shopify order reference. Works for OUTBOUND shipments (issued sale invoice) AND for RETURN labels: a warranty/RMA return opens its draft from the doc describing the item coming BACK — the ORIGINAL sale invoice for an intra-EU return, or the nominal-value RETURN-FOR-REPAIR proforma for a non-EU return (see the warranty-return-label skill) — then quote and create_shipment both take is_return:true. If some lines resolve to no shipping profile (unresolved), set the parcel explicitly with shipment_draft_set_package before quoting.",
+      "description": "Start a new shipment draft from an invoicing document — pre-fills parcels + customs from the document snapshot (zero re-entry). document_ref accepts a document UUID, an invoice number, or a Shopify order reference. Works for OUTBOUND shipments (issued sale invoice) AND for RETURN labels: a warranty/RMA return opens its draft from the doc describing the item coming BACK — the ORIGINAL sale invoice for an intra-EU return, or the nominal-value RETURN-FOR-REPAIR proforma for a non-EU return (see the warranty-return-label skill) — then quote and create_shipment both take is_return:true. If some lines resolve to no shipping profile (unresolved), set the parcel explicitly with shipment_draft_set_package before quoting.",
       "searchKeywords": ["expédition", "brouillon", "colis", "préparer", "ship"],
       "requiredScopes": ["boxtal:shipments:read"],
       "handler": "shipmentDraftCreateHandler",

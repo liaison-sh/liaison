@@ -30,6 +30,8 @@ const PANEL_ID = /^[\w:/.@%=+-]{1,200}$/
 const LABEL_MAX = 120
 /** A reference fit for the model to read: one generated token, never a sentence. */
 const REFERENCE = /^[\w.-]{1,64}$/
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const SAFE_IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 export interface OpenAppContext {
   userId: string
@@ -105,7 +107,7 @@ async function readNaming(
   ctx: OpenAppContext,
   record: OpenRecord,
   id: string,
-): Promise<{ label: string; handle: string | null } | null> {
+): Promise<Naming | null> {
   try {
     return await ctx.db.transaction((tx: any) =>
       resolveEntityNaming(tx, {
@@ -119,6 +121,130 @@ async function readNaming(
     log.warn({ err, app: record.app, entityType: record.entityType }, "open_app label read failed")
     return null
   }
+}
+
+type Naming = { label: string; handle: string | null }
+
+/** The column holding a kind's generated handle (a ticket's `ticket-106`, an invoice's number). */
+function handleColumn(orgId: string, record: OpenRecord): { table: string; column: string } | null {
+  if (record.app === "kernel") return null
+  const decl = lookupEntityDecl(orgId, record.app, record.entityType)
+  const column = decl?.indexFields?.handle
+  if (!decl?.tableName || decl.external || !column) return null
+  if (![record.app, decl.tableName, column].every((part) => SAFE_IDENT.test(part))) return null
+  return { table: `"app_${record.app}"."${decl.tableName}"`, column }
+}
+
+/**
+ * The row whose handle is exactly `handle`, under the actor's RLS, and when none is, the visible
+ * handles that end in the same digits. A row the person cannot see is never among either.
+ */
+async function lookupHandle(
+  ctx: OpenAppContext,
+  where: { table: string; column: string },
+  handle: string,
+): Promise<{ id: string | null; close: string[] }> {
+  const table = sql.raw(where.table)
+  const column = sql.raw(`"${where.column}"`)
+  try {
+    return await ctx.db.transaction(async (tx: any) => {
+      const hit = extractRows<{ id: string }>(
+        await tx.execute(sql`
+          SELECT id::text AS id FROM ${table}
+          WHERE lower(${column}::text) = lower(${handle}) AND org_id = ${ctx.orgId} LIMIT 2`),
+      )
+      if (hit.length === 1 && hit[0]) return { id: hit[0].id, close: [] }
+      const digits = handle.match(/(\d+)\D*$/)?.[1]
+      if (!digits) return { id: null, close: [] }
+      const near = extractRows<{ handle: string }>(
+        await tx.execute(sql`
+          SELECT ${column}::text AS handle FROM ${table}
+          WHERE ${column}::text LIKE ${`%${digits}`} AND org_id = ${ctx.orgId}
+          ORDER BY 1 LIMIT 5`),
+      )
+      return {
+        id: null,
+        close: near.map((r) => r.handle).filter((h) => typeof h === "string" && REFERENCE.test(h)),
+      }
+    })
+  } catch (err) {
+    log.warn({ err, table: where.table }, "open_app handle lookup failed")
+    return { id: null, close: [] }
+  }
+}
+
+type Found =
+  | { found: true; id: string; naming: Naming | null; readable: boolean }
+  | { found: false; refusal: Refused }
+
+/**
+ * The record `id` names in this view: by its id, or by its handle when the kind has one. What a
+ * miss says depends only on what was asked, never on rows the person cannot see.
+ */
+async function findRecord(ctx: OpenAppContext, view: OpenView, id: string): Promise<Found> {
+  const record = view.record as OpenRecord
+  const readable = await hasLocalRow(ctx, record)
+  if (!readable) return { found: true, id, naming: null, readable: false }
+  const byHandle = UUID.test(id) ? null : handleColumn(ctx.orgId, record)
+  const hit = byHandle ? await lookupHandle(ctx, byHandle, id) : null
+  const rowId = hit?.id ?? id
+  // A handle that matched no row leaves nothing to read: the id it would be read by is the handle.
+  const naming = hit && !hit.id ? null : await readNaming(ctx, record, rowId)
+  if (naming) return { found: true, id: rowId, naming, readable: true }
+
+  const label = view.label
+  if (byHandle) {
+    const none = `No ${label} visible to this person has the ${byHandle.column} "${id}".`
+    const close = hit?.close ?? []
+    return {
+      found: false,
+      refusal: refuse(
+        "NOT_FOUND",
+        close.length > 0
+          ? `${none} Visible ones close to it: ${close.join(", ")}. None of them is "${id}": ask the person which one they mean.`
+          : none,
+      ),
+    }
+  }
+  const external =
+    record.app !== "kernel" && lookupEntityDecl(ctx.orgId, record.app, record.entityType)?.external
+  if (!UUID.test(id) && !external) {
+    return {
+      found: false,
+      refusal: refuse(
+        "NOT_FOUND",
+        `"${id}" is not a ${label} id: an id is the uuid a search or list result gives.`,
+      ),
+    }
+  }
+  return {
+    found: false,
+    refusal: refuse("NOT_FOUND", `No ${label} with id ${id} is visible to this person.`),
+  }
+}
+
+/**
+ * The view to use when the one asked for does not exist, or none was given for an id: the one
+ * record view of this app whose row the id names, read under the actor's RLS. When several views
+ * show that row, the one a mention of it opens. Null when that is not exactly one view.
+ */
+async function viewHoldingId(
+  ctx: OpenAppContext,
+  app: string,
+  views: OpenView[],
+  id: string,
+): Promise<OpenView | null> {
+  const holding: OpenView[] = []
+  for (const v of views) {
+    if (!v.needsId || !v.record || v.record.app !== app || v.target.kind === "outside") continue
+    if (!(v.target.kind === "detail" ? PANEL_ID : TAB_ID).test(id)) continue
+    if (!holdsReadScope(ctx.orgId, v.record, ctx.scopes)) continue
+    const found = await findRecord(ctx, v, id)
+    if (found.found && found.readable) holding.push(v)
+  }
+  if (holding.length === 1) return holding[0] ?? null
+  const primary = holding.filter((v) => v.primary)
+  return primary.length === 1 ? (primary[0] ?? null) : null
 }
 
 /** The tab of a record that opens inside another page. Null when the row cannot be read. */
@@ -228,11 +354,9 @@ export async function handleOpenApp(
   }
 
   const records = views.filter((v) => v.needsId)
-  const chosen = view
-    ? views.find((v) => v.view === view)
-    : records.length === 1
-      ? records[0]
-      : undefined
+  const chosen =
+    (view ? views.find((v) => v.view === view) : records.length === 1 ? records[0] : undefined) ??
+    (id ? await viewHoldingId(ctx, app, views, id) : null)
   if (!chosen) return unknownView(app, view, views)
 
   if (!id) {
@@ -265,12 +389,13 @@ export async function handleOpenApp(
 
   if (!holdsReadScope(ctx.orgId, chosen.record, ctx.scopes)) return notFound()
 
-  const readable = await hasLocalRow(ctx, chosen.record)
-  const naming = readable ? await readNaming(ctx, chosen.record, id) : null
-  if (readable && naming === null) return notFound()
+  const found = await findRecord(ctx, chosen, id)
+  if (!found.found) return found.refusal
+  const { naming, readable } = found
+  const rowId = found.id
 
   if (chosen.target.kind === "outside") {
-    const link = await outsideLink(ctx, app, chosen.target.entity, id)
+    const link = await outsideLink(ctx, app, chosen.target.entity, rowId)
     return refuse(
       "OPENS_OUTSIDE",
       link
@@ -281,10 +406,10 @@ export async function handleOpenApp(
     )
   }
 
-  const tab = tabForId(chosen.target, id) ?? (await tabOfInnerRecord(ctx, chosen.target, id))
+  const tab = tabForId(chosen.target, rowId) ?? (await tabOfInnerRecord(ctx, chosen.target, rowId))
   if (!tab) return notFound()
 
-  const reference = naming?.handle && REFERENCE.test(naming.handle) ? naming.handle : id
+  const reference = naming?.handle && REFERENCE.test(naming.handle) ? naming.handle : rowId
   const opened = `${chosen.label.toLowerCase()} ${reference}`
   if (!(await showTab(ctx, tab, naming?.label ?? opened))) return NO_SCREEN()
 
@@ -292,7 +417,7 @@ export async function handleOpenApp(
     ok: true,
     app,
     view: chosen.view,
-    id,
+    id: rowId,
     opened,
     ...(readable
       ? {}

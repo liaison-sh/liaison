@@ -742,7 +742,9 @@ describe("home decisions", () => {
     const plain = approval("ap-2", { toolName: "mail:compose", actionLabel: "Mail: compose" })
     attentionStore._setForTest({ items: [a, plain], errors: [] })
     render(() => <Home entityId="home" />)
-    expect(screen.getByTestId(`${row(a)}-action-chip`).textContent).toBe("Billing: payment reminder")
+    expect(screen.getByTestId(`${row(a)}-action-chip`).textContent).toBe(
+      "Billing: payment reminder",
+    )
     expect(screen.getByTestId(`${row(plain)}-action-chip`).textContent).toBe("Mail: compose")
   })
 

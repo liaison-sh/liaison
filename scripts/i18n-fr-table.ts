@@ -7613,4 +7613,31 @@ export const FR_BY_KEY: Record<string, string> = {
     "Laissez vide pour envoyer le texte par défaut, dans la langue du client.",
   "tickets.closeSilent.defaultNudge":
     "Bonjour,\n\nSans nouvelles de votre part, nous revenons vers vous : notre dernier message a-t-il répondu à votre question, ou pouvons-nous encore vous aider ?\n\nSans réponse de votre part d'ici {{days}} jours, nous clôturerons ce ticket. Vous pourrez toujours répondre à cet e-mail pour le rouvrir.\n\nMerci",
+  // Dashboards (P3): the dashboard tab and its blocks.
+  "kernel.nav.dashboard": "Tableau de bord",
+  "kernel.dashboards.sectionTitle": "Tableaux de bord",
+  "kernel.dashboards.visibilityPersonal": "Personnel",
+  "kernel.dashboards.visibilityOrg": "Organisation",
+  "kernel.dashboards.refreshAll": "Tout actualiser",
+  "kernel.dashboards.refreshBlock": "Actualiser ce bloc",
+  "kernel.dashboards.emptyTitle": "Ce tableau de bord n'a pas encore de bloc",
+  "kernel.dashboards.emptyHint":
+    "Demandez à votre agent d'y ajouter un graphique, un tableau ou un chiffre.",
+  "kernel.dashboards.notFound":
+    "Ce tableau de bord n'existe plus, ou il n'est pas partagé avec vous.",
+  "kernel.dashboards.loadFailed":
+    "Ce tableau de bord n'a pas pu être chargé. Réessayez dans un instant.",
+  "kernel.dashboards.noData": "Pas encore de données pour ce bloc",
+  "kernel.dashboards.noValue": "Pas encore de valeur",
+  "kernel.dashboards.blockNoAccess": "Vous n'avez pas accès aux données de ce bloc.",
+  "kernel.dashboards.blockNotAllowed":
+    "La source de ce bloc ne peut plus être affichée sur un tableau de bord.",
+  "kernel.dashboards.blockRateLimited": "Actualisé à l'instant. Réessayez dans quelques secondes.",
+  "kernel.dashboards.blockSourceError":
+    "Les données de ce bloc n'ont pas pu être lues. Réessayez plus tard.",
+  "kernel.dashboards.blockTruncated":
+    "Certaines lignes sont omises : le bloc montre les premières.",
+  "kernel.dashboards.blockNotFound": "Ce bloc n'est plus sur le tableau de bord.",
+  "kernel.dashboards.blockNetwork":
+    "Impossible de joindre le serveur pour le moment. Réessayez dans un instant.",
 }

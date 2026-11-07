@@ -50,6 +50,7 @@ import { authManager } from "~/modules/auth/createAuthManager"
 import { registerEntityPreviews as registerUserPreviews } from "~/modules/auth/entity-preview-renderers"
 import { subscribeContactDetailResync } from "~/modules/contacts/contact-detail-store"
 import { subscribeContactsResync } from "~/modules/contacts/contact-list-store"
+import { dashboardTitle } from "~/modules/dashboards/dashboards-store"
 import { handleFileEvent } from "~/modules/files/file-events"
 import { tNow } from "~/modules/i18n/i18n-context"
 import { importRunStore } from "~/modules/imports/import-run-store"
@@ -505,6 +506,18 @@ export function bootstrapKernelApps(): void {
         urlPattern: "/detail/:entityId+",
         defaultLabel: "Detail",
         defaultLabelKey: "kernel.nav.detail",
+        referenceable: false,
+      },
+      // P3: one dashboard (`/dashboard/:id`), named by its title. Its sidebar is
+      // Home's, where the Dashboards section lists the viewer's dashboards.
+      dashboard: {
+        component: lazy(() => import("~/modules/dashboards/DashboardView")),
+        sidebar: HomeAttentionSidebar,
+        icon: LayoutGrid,
+        urlPattern: "/dashboard/:entityId",
+        defaultLabel: "Dashboard",
+        defaultLabelKey: "kernel.nav.dashboard",
+        resolveLabel: (entityId) => dashboardTitle(entityId),
         referenceable: false,
       },
     },
@@ -1248,6 +1261,11 @@ export function bootstrapKernelApps(): void {
     const row = await ensureApprovalLoaded(api, id)
     return { tabType: "thread", entityId: row.threadId, label: row.handle }
   })
+  registerEntityOpener("kernel", "dashboard", (_api, id) => ({
+    tabType: "kernel:dashboard",
+    entityId: id,
+    label: dashboardTitle(id),
+  }))
   registerEntityOpener("kernel", "contact", (_api, id) => ({
     tabType: "contacts:contact-detail",
     entityId: id,

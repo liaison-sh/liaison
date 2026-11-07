@@ -1914,7 +1914,8 @@
     "kpi": "KPI",
     "groupConnectors": "Connectors",
     "oauthError": "Signing in with the provider failed ({{error}}). Try connecting again.",
-    "oauthErrorWithDescription": "Signing in with the provider failed: {{description}}"
+    "oauthErrorWithDescription": "Signing in with the provider failed: {{description}}",
+    "dashboard": "Dashboard"
   },
   "newConversation": {
     "newChannel": "New channel",
@@ -6401,5 +6402,25 @@
       }
     },
     "hiddenTitle": "New message in a thread"
+  },
+  "dashboards": {
+    "sectionTitle": "Dashboards",
+    "visibilityPersonal": "Personal",
+    "visibilityOrg": "Org",
+    "refreshAll": "Refresh all",
+    "refreshBlock": "Refresh this block",
+    "emptyTitle": "This dashboard has no blocks yet",
+    "emptyHint": "Ask your agent to add a chart, a table or a figure to it.",
+    "notFound": "This dashboard no longer exists, or it is not shared with you.",
+    "loadFailed": "This dashboard could not be loaded. Try again in a moment.",
+    "noData": "No data for this block yet",
+    "noValue": "No value yet",
+    "blockNoAccess": "You don't have access to the data behind this block.",
+    "blockNotAllowed": "This block's source can no longer be shown on a dashboard.",
+    "blockRateLimited": "Just refreshed. Try again in a few seconds.",
+    "blockSourceError": "This block's data could not be read. Try again later.",
+    "blockNotFound": "This block is no longer on the dashboard.",
+    "blockNetwork": "Can't reach the server right now. Try again in a moment.",
+    "blockTruncated": "Some rows are left out: the block shows the first ones."
   }
 }

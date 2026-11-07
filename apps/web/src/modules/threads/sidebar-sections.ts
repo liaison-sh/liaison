@@ -41,6 +41,8 @@ export type SidebarSectionId =
   | "homeQueues"
   | "homeAgents"
   | "homeToday"
+  /** Home's Dashboards section: the viewer's personal and org dashboards. */
+  | "homeDashboards"
 
 const SECTION_IDS: SidebarSectionId[] = [
   "unread",
@@ -55,6 +57,7 @@ const SECTION_IDS: SidebarSectionId[] = [
   "homeQueues",
   "homeAgents",
   "homeToday",
+  "homeDashboards",
 ]
 
 /** Sections that start FOLDED. The channels a member has not joined are a

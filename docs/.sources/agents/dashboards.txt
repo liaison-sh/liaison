@@ -1,0 +1,14 @@
+Dashboards section on Home, only once one exists -> apps/web/src/modules/shell/HomeAttentionSidebar.tsx:559
+Section label Dashboards -> packages/shared/src/i18n/locales/en/kernel.json:6407
+Own dashboards first, then the org's -> apps/web/src/modules/dashboards/dashboards-store.ts:17
+Org marker label -> packages/shared/src/i18n/locales/en/kernel.json:6409
+Dashboard tab address /dashboard/<id>, named by its title -> apps/web/src/framework/bootstrap.ts:517
+Agent opens a dashboard (entity opener) -> apps/web/src/framework/bootstrap.ts:1264
+Blocks read as the viewer -> apps/web/src/modules/dashboards/dashboards-client.ts:289
+Toolbar: title, visibility badge, Refresh all -> apps/web/src/modules/dashboards/DashboardView.tsx:52
+Refresh all re-reads past the cache -> apps/web/src/modules/dashboards/blocks/BlockCard.tsx:79
+Per-block refresh button -> apps/web/src/modules/dashboards/blocks/BlockCard.tsx:112
+Rate limited keeps the figures -> apps/web/src/modules/dashboards/blocks/BlockCard.tsx:86
+Grid by width, up to three columns, one on a phone -> apps/web/src/modules/dashboards/DashboardView.tsx:20
+Block messages -> packages/shared/src/i18n/locales/en/kernel.json:6418
+Truncated note -> packages/shared/src/i18n/locales/en/kernel.json:6424

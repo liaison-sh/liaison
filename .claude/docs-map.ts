@@ -125,6 +125,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   // The app data store (ctx.store for apps, the agent's data tools) and dashboards (agent tools, the dashboard tab).
   { glob: "apps/api/src/modules/data-store/**", pages: ["agents/tools", "app-sandbox"] },
   { glob: "apps/api/src/modules/dashboards/**", pages: ["agents/tools"] },
+  { glob: "apps/web/src/modules/dashboards/**", pages: ["agents/dashboards"] },
   // Document templates (org admin settings); the settings page that edits them documents them.
   { glob: "apps/api/src/modules/documents/**", pages: ["admin/settings"] },
   { glob: "apps/api/src/modules/org/**", pages: ["admin/settings"] },

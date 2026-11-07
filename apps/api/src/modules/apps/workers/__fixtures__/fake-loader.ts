@@ -95,6 +95,8 @@ type CoreModule = {
 }
 
 const SAFE = /^[A-Za-z0-9._-]{1,128}$/
+/** A run id is `<instanceId>:<uuid>` (run-registry.ts): SAFE plus the colon. */
+const RUN_ID = /^[A-Za-z0-9._:-]{1,128}$/
 const SHA = /^[0-9a-f]{64}$/
 const MAX_DEADLINE_MS = 15 * 60_000
 
@@ -103,7 +105,8 @@ function fail(status: number, kind: ErrorKind, message: string, extra: { code?: 
 }
 
 function validateBody(r: Record<string, unknown>): string | null {
-  for (const k of ["runId", "orgId", "app", "version", "exportName"] as const) {
+  if (typeof r.runId !== "string" || !RUN_ID.test(r.runId)) return "invalid runId"
+  for (const k of ["orgId", "app", "version", "exportName"] as const) {
     if (typeof r[k] !== "string" || !SAFE.test(r[k] as string)) return `invalid ${k}`
   }
   if (typeof r.sha256 !== "string" || !SHA.test(r.sha256)) return "invalid sha256"

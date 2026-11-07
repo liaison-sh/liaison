@@ -64,6 +64,7 @@ import { startInternalListener } from "~/modules/agent/mailbox-plaintext/mailbox
 import { registerConnectionTeardownSweep } from "~/modules/apps/connections/revoke"
 import { awaitOrgApps, getDefaultApps } from "~/modules/apps/init"
 import { startVersionsInUseHeartbeat } from "~/modules/apps/versions-in-use"
+import { internalAppBridgeRoute } from "~/modules/apps/workers/bridge-forward"
 import { consumeWsTicket } from "~/modules/auth/ws-ticket"
 import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 import { healthzRoutes } from "~/modules/healthz"
@@ -159,9 +160,10 @@ initEventBus()
 // Instance liveness (infra/instance-registry.ts): every role writes its heartbeat
 // record; entries this process owns in Redis are ignored once it lapses.
 // The internal listener (every role: api and worker turns both mint mailbox
-// requests) is where another process forwards a mailbox answer this one minted.
+// requests and dispatch app runs) is where another process forwards a mailbox
+// answer this one minted, or a bridge call of an app run this one dispatched.
 // Its address rides the heartbeat record; it is never the public PORT.
-const internalListener = await startInternalListener()
+const internalListener = await startInternalListener({ extraRoutes: [internalAppBridgeRoute()] })
 await startInstanceHeartbeat({ role, pid: process.pid, internalUrl: internalListener.url })
 // The app versions this process loads, so a prune never deletes one under it
 // while two releases overlap (modules/apps/versions-in-use.ts).

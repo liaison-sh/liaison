@@ -302,7 +302,9 @@ When the live turn registry does not answer, a page that opens mid-turn shows no
 
 An agent that reads a personal mailbox asks the browser to decrypt the mail. The answer can reach any process, but only the process that asked can use it. The process that receives it forwards it to that process over a direct HTTP call. Decrypted mail never goes through Redis.
 
-The call goes to an internal listener that every process starts, separate from `PORT`. It serves this one route, signed with a key derived from `JWT_SECRET`, so every process needs the same `JWT_SECRET`.
+The same holds for an app run on the Workers executor: its `ctx.*` calls come back to the public address and can reach any API process, but only the process that started the run (an `api` or a `worker`) holds it. A process that receives such a call forwards it to that process.
+
+The call goes to an internal listener that every process starts, separate from `PORT`. It serves these two routes, signed with a key derived from `JWT_SECRET`, so every process needs the same `JWT_SECRET`.
 
 | Variable | Default | What it sets |
 |---|---|---|
@@ -310,7 +312,7 @@ The call goes to an internal listener that every process starts, separate from `
 | `LIAISON_INTERNAL_HOST` | the hostname | The name other processes reach this one by. Unset, it is the container's hostname. If that name does not resolve, `127.0.0.1` is used. |
 | `LIAISON_INTERNAL_BIND` | the address of `LIAISON_INTERNAL_HOST` | The address the listener binds. Unset, it is the address the advertised name resolves to on this machine, never every interface. |
 
-The listener reads at most 2 MiB per call and checks the signature before it reads the content.
+The listener reads at most 2 MiB per mailbox answer and 8 MiB plus 64 KiB per app call, and checks the signature before it reads the content. An app call is forwarded only with a valid run token, and each process forwards at most 2,000 app calls per client address every 10 seconds.
 
 Every app container must reach every other app container on its internal port:
 

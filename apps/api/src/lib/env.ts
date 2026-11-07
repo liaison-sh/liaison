@@ -1127,10 +1127,10 @@ export const envSchema = z
     // Running listed apps on a remote V8 isolate loader instead of the local
     // QuickJS sandbox (modules/apps/workers/config.ts). Used only when
     // LIAISON_APP_LOADER_URL, LIAISON_APP_LOADER_CELL_ID and LIAISON_APP_LOADER_KEY
-    // are set, LIAISON_ROLE is `all`, and either LIAISON_WORKERS_APPS with
-    // LIAISON_WORKERS_BUNDLES or LIAISON_WORKERS_CUSTOM_APPS=1 is set; otherwise
-    // every app runs on QuickJS and /api/app-bridge answers 404. Unset by
-    // default. The app names to run there, comma separated.
+    // are set, and either LIAISON_WORKERS_APPS with LIAISON_WORKERS_BUNDLES or
+    // LIAISON_WORKERS_CUSTOM_APPS=1 is set (any LIAISON_ROLE: a bridge call on another
+    // process is forwarded to the run's own); otherwise every app runs on QuickJS
+    // and /api/app-bridge answers 404. Unset by default. The app names, comma separated.
     LIAISON_WORKERS_APPS: z.preprocess(unsetIfEmpty, z.string().optional()),
     // `1`: every organisation's custom app built with the app builder runs on
     // the loader too (with the loader variables below). Its Worker module is

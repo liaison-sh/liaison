@@ -653,13 +653,13 @@ describe("Workers-only properties", () => {
     expect(res.status).toBe(410)
   })
 
-  it('role "worker" runs every app on QuickJS', async () => {
+  it('role "worker" runs apps on Workers too, its isolate calling back on the bridge URL', async () => {
     workersOn()
     ;(env as unknown as Mutable).LIAISON_ROLE = "worker"
     try {
       const r = await callTool("list")
       expect(r.status).toBe(200)
-      expect(lastRun("tool:list")?.executor).toBe("quickjs")
+      expect(lastRun("tool:list")?.executor).toBe("workers")
     } finally {
       ;(env as unknown as Mutable).LIAISON_ROLE = "all"
     }

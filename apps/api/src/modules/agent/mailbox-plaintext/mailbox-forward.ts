@@ -231,16 +231,27 @@ const forwardBodySchema = z.object({
   turnOwner: z.boolean().optional(),
 })
 
+/**
+ * Another signed route on the internal listener (the app bridge forward,
+ * modules/apps/workers/bridge-forward.ts). It checks its own signature and
+ * reads its body with its own cap; `maxBodyBytes` raises the listener's.
+ */
+export interface InternalRoute {
+  maxBodyBytes: number
+  mount(app: Hono, ctx: { instanceId: string; now: () => number }): void
+}
+
 export interface InternalAppOptions {
   /** Who this listener answers for. Default: this process. */
   instanceId?: string
   resolve?: typeof resolveMailboxRequest
   now?: () => number
+  extraRoutes?: readonly InternalRoute[]
 }
 
 /**
- * The internal listener's whole surface: one signed route, everything else 404.
- * Never mounted on the public app.
+ * The internal listener's whole surface: the signed mailbox route, any
+ * `extraRoutes`, everything else 404. Never mounted on the public app.
  */
 export function createInternalApp(opts: InternalAppOptions = {}): Hono {
   const instanceId = opts.instanceId ?? INSTANCE_ID
@@ -305,6 +316,7 @@ export function createInternalApp(opts: InternalAppOptions = {}): Hono {
     })
     return c.json({ outcome })
   })
+  for (const route of opts.extraRoutes ?? []) route.mount(app, { instanceId, now })
   app.all("*", (c) => c.text("Not Found", 404))
   return app
 }
@@ -313,7 +325,7 @@ export function createInternalApp(opts: InternalAppOptions = {}): Hono {
  * The body's bytes, or null past `max`. A declared length over the cap is
  * refused before reading; a stream without one is cut off at the cap.
  */
-async function readCapped(req: Request, max: number): Promise<Uint8Array | null> {
+export async function readCapped(req: Request, max: number): Promise<Uint8Array | null> {
   const declared = Number(req.headers.get("content-length"))
   if (Number.isFinite(declared) && declared > max) return null
   if (!req.body) return new Uint8Array(0)
@@ -398,7 +410,7 @@ export async function internalAddresses(
 /**
  * Start the internal listener on `LIAISON_INTERNAL_PORT` (0: any free port).
  * Every role starts one: an `api` and a `worker` both run turns that mint
- * mailbox requests.
+ * mailbox requests, and app runs whose bridge calls may land elsewhere.
  */
 export async function startInternalListener(
   opts: InternalAppOptions & { port?: number; host?: string; bind?: string } = {},
@@ -410,7 +422,13 @@ export async function startInternalListener(
     server = Bun.serve({
       hostname: bind,
       port: opts.port ?? env.LIAISON_INTERNAL_PORT,
-      maxRequestBodySize: INTERNAL_MAX_BODY_BYTES,
+      maxRequestBodySize: Math.max(
+        INTERNAL_MAX_BODY_BYTES,
+        ...(opts.extraRoutes ?? []).map((r) => r.maxBodyBytes),
+      ),
+      // A forwarded app bridge call may run for minutes (to its run's deadline);
+      // Bun's default idle timeout is 10 s. 255 s is the most Bun accepts.
+      idleTimeout: 255,
       fetch: (req) => app.fetch(req),
     })
   } catch (err) {

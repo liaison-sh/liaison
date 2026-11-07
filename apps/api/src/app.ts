@@ -76,11 +76,8 @@ import { appRoutes, hostApiRoutes } from "~/modules/apps/routes"
 import { registerKernelAttentionProvider } from "~/modules/apps/runtime"
 import { appSettingsRoutes } from "~/modules/apps/settings-routes"
 import { uiBundleRoutes } from "~/modules/apps/ui-bundle-routes"
-import {
-  APP_BRIDGE_BODY_MAX_BYTES,
-  APP_BRIDGE_PATH_PREFIX,
-  appBridgeRoutes,
-} from "~/modules/apps/workers/bridge-route"
+import { APP_BRIDGE_BODY_MAX_BYTES } from "~/modules/apps/workers/bridge-call"
+import { APP_BRIDGE_PATH_PREFIX, appBridgeRoutes } from "~/modules/apps/workers/bridge-route"
 import { appBridgeBundleRoutes } from "~/modules/apps/workers/bundle-route"
 import { assistRoutes } from "~/modules/assist/routes"
 import { TRANSCRIBE_REQUEST_TIMEOUT_MS } from "~/modules/assist/transcribe-service"

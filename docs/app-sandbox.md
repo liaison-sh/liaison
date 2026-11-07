@@ -95,6 +95,7 @@ The bridge surface is large and grows as apps need new host capabilities. Core c
 | Jobs | `enqueueJob(name, payload)` |
 | Contacts | `resolveContact(params)` (not the mail app: its host page write `mail_writePage` resolves senders under the mailbox's ownership, see `modules/mail/page-write.ts` and `sender-contacts.ts`) |
 | Network | `fetch(url, opts)` — domain allowlist enforced. `opts.auth` (`{connection, identifier?, scheme: "header:<Name>" \| "bearer" \| "basic", fields?, exchange?}`) has the host add the connection's credential, only to that connection's own hosts, and redact it from the answer; `opts.configSecrets` (`{placeholder: configKey}`) has the host write a declared config secret into the body |
+| Data store | `store_get`, `store_set`, `store_update`, `store_delete`, `store_query`, `store_count` (`ctx.store.*`, the calling app's collections; the writes are refused on a read-only run) |
 | Connections | `connections_getToken(connName, identifier?)`, `connections_getAccounts(connName)`, `connections_describe(connName)` (owner, connected by, health, token expiry, whether a refresh token is stored; no secrets), `connections_getCredentials`, `connections_getSettings(connName, identifier?)` (the fields marked `readable`, and which fields are empty; no secrets), `connections_disconnect` |
 | Logging | `log_info`, `log_warn`, `log_error`, `log_debug` |
 | Config | `config_get(key)`, `config_has(key)`, `crypto_hmacSha256Base64ForConfig(key, data)`, `crypto_verifyHmacForConfig(key, data, signature, "base64" \| "hex")` (sign or verify with a declared config secret, which stays on the host) |
@@ -368,7 +369,48 @@ export const { listItems, createItem } = defineHandlers({
 | `fetch(url, opts?)` | `Promise<Response>` | Domain-restricted HTTP |
 | `logger` | `Logger` | Structured logging (`info`, `warn`, `error`, `debug`) |
 
+| `store` | `StoreClient` | The app's own JSON documents: `get`, `set`, `update`, `delete`, `query`, `count` (below) |
+
 **`s` (Schema builder):** Utility for declaring entity field types in manifests.
+
+### Keep data in the app store (`ctx.store`)
+
+`ctx.store` keeps JSON documents for the organization, in named collections, keyed by an id. It needs no table in the manifest and works the same on every executor (in-process, the worker pool and Workers).
+
+```typescript
+const doc = await ctx.store.set("orders", "1001", { total: 42, status: "paid" })
+await ctx.store.update("orders", "1001", { status: "shipped" }, { ifVersion: doc.version })
+const page = await ctx.store.query("orders", {
+  where: { status: "shipped", total: { gte: 10 } },
+  orderBy: { field: "total", dir: "desc" },
+  limit: 50,
+})
+const shipped = await ctx.store.count("orders", { status: "shipped" })
+await ctx.store.delete("orders", "1001")
+```
+
+- A collection name matches `^[a-z][a-z0-9_]{0,62}$`, an id is at most 200 characters, a document is a JSON object of at most 256 KiB, and a collection holds at most 100,000 documents.
+- `get` answers `null` for a missing document. `update` merges the patch into the top level of the document.
+- `query` filters on top-level fields (a value, `{ in: [...] }`, or `gt`/`gte`/`lt`/`lte`), sorts on a top-level field, `doc_id` or `updated_at`, returns at most 200 documents a page (default 50) as `{ items: [{ id, data, version, updatedAt }], nextCursor }`, and takes `nextCursor` back as `cursor` for the next page.
+- `set`, `update` and `delete` take `{ ifVersion }`: the version you last read, or `0` for "must not exist yet". Another version rejects with `code: "version_conflict"` (status 409). Other refusals: `not_found` (404), `doc_too_large` (413), `collection_full` (409), `invalid_*` (400).
+- The collections are the calling app's own. An app cannot name another app, so it never reaches another app's documents, even in a collection of the same name.
+- On a read-only run (a rerun that may only read), `set`, `update` and `delete` are refused; `get`, `query` and `count` still answer.
+
+To let anything else read a collection (the agent's data tools, dashboard blocks, search), declare it in the manifest:
+
+```json
+"store": {
+  "collections": {
+    "orders": {
+      "readScope": "myapp:orders:read",
+      "searchable": { "labelField": "title", "fields": ["title", "customer"] },
+      "agentReadable": true
+    }
+  }
+}
+```
+
+`readScope` must be one of the app's own scopes (in `scopes` or a tool's `requiredScopes`); a reader needs it. `agentReadable` defaults to `false`. A collection that is not declared stays reachable by its own app only.
 
 ---
 

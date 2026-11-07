@@ -458,9 +458,9 @@ async function readStoppedGuards(
   const out = new Map<string, SendGuardVerdict>()
   if (requestIds.length === 0) return out
   const rows = await withPrivilegedDb(orgId, "approvals-list-send-guard", async (tx) =>
-    extractRows<{ approval_request_id: string; guard: unknown }>(
+    extractRows<{ approval_request_id: string; verdict: unknown }>(
       await tx.execute(drizzleSql`
-        SELECT DISTINCT ON (approval_request_id) approval_request_id, error->'guard' AS guard
+        SELECT DISTINCT ON (approval_request_id) approval_request_id, error->'guard' AS verdict
           FROM ${K}.approved_handler_executions
          WHERE org_id = ${orgId}::uuid
            AND approval_request_id IN (${drizzleSql.join(
@@ -472,10 +472,10 @@ async function readStoppedGuards(
     ),
   )
   for (const row of rows) {
-    const g = row.guard
-    if (!isObj(g) || typeof g.state !== "string") continue
-    if (!GUARD_STATES.has(g.state as ApprovalSendGuard["state"])) continue
-    out.set(row.approval_request_id, g as unknown as SendGuardVerdict)
+    const recorded = row.verdict
+    if (!isObj(recorded) || typeof recorded.state !== "string") continue
+    if (!GUARD_STATES.has(recorded.state as ApprovalSendGuard["state"])) continue
+    out.set(row.approval_request_id, recorded as unknown as SendGuardVerdict)
   }
   return out
 }

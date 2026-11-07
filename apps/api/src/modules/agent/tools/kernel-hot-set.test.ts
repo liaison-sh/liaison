@@ -16,7 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { z } from "zod"
 import { sql } from "~/db"
 import { estimateTokens } from "~/modules/agent/context/compaction"
-import { isDeferredTool } from "~/modules/agent/tools/tool-bridge"
+import { isDeferredTool, listGatewayTools } from "~/modules/agent/tools/tool-bridge"
 import {
   agentInstructionsRegistry,
   skillRegistry,
@@ -53,6 +53,7 @@ const EXPECTED_HOT = [
   "kernel__request_scope",
   "kernel__skill_read",
   "kernel__skill_search",
+  "kernel__suggest_next_steps",
   "kernel__threads_read",
   "kernel__threads_reply",
   "kernel__threads_search",
@@ -134,6 +135,21 @@ describe("kernel hot tool set budget", () => {
       total,
       `hot kernel tool schemas measured ${total} tokens across ${hot.length} tools (budget ${HOT_TOKEN_BUDGET}); worst offenders: ${worst}`,
     ).toBeLessThanOrEqual(HOT_TOKEN_BUDGET)
+  })
+
+  it("suggest_next_steps over MCP is absent from tools/list", () => {
+    const actor = {
+      actorType: "user" as const,
+      userId: "00000000-0000-0000-0000-000000db0002",
+      orgId: ORG_ID,
+      scopes: ["*"],
+      dimensionGrants: {},
+    }
+    const names = listGatewayTools(ORG_ID, actor).map((t) => `${t.appName}:${t.toolName}`)
+    expect(names.length).toBeGreaterThan(0)
+    expect(names).toContain("kernel:threads_read")
+    expect(names).not.toContain("kernel:suggest_next_steps")
+    expect(toolRegistry.get([ORG_ID, "kernel", "suggest_next_steps"])).toBeDefined()
   })
 
   it("every hot description names the capability instead of carrying the rulebook", () => {

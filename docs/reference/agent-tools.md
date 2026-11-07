@@ -167,6 +167,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `subagent_delete` | Delete a sub-agent role definition. |  | `kernel:agents:admin` |
 | `subagent_get` | Read the full definition for one sub-agent role — system prompt, scope ceiling, allow/deny lists, skills, MCP servers, defaults. |  | `kernel:agents:admin` |
 | `subagent_list` | List sub-agent role definitions registered in this org. |  | `kernel:agents:spawn` |
+| `suggest_next_steps` | Offer up to 4 one-click next steps under your reply: a chip sends its label as the person's message, or opens a tab (app, view, id). |  | `kernel:threads:read` |
 | `thread_mute_set` | Mute or unmute one conversation thread for the user: replies there stop notifying (an @mention still does). |  | `kernel:agent:memory` |
 | `threads_create` | Create a new thread with the given participants. |  | `kernel:threads:write` |
 | `threads_list` | List recent threads the user participates in, with ids, handles, titles, participants, last message metadata, unreadCount and paging. |  | `kernel:threads:read` |

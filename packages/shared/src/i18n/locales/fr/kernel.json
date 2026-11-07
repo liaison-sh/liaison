@@ -6413,6 +6413,8 @@
     "reading": "Lecture de {{app}}",
     "retry": "Réessayer",
     "source": "Source : {{source}}",
+    "suggestionNotSent": "Rien n'est parti : le serveur est injoignable.",
+    "suggestions": "Étapes suggérées",
     "superseded": "Remplacée par une carte plus récente",
     "unreachable": "Rien n'a été exécuté : cette carte ne peut pas joindre le serveur ici.",
     "waitingApproval": "En attente d'approbation. Rien n'a encore été exécuté.",

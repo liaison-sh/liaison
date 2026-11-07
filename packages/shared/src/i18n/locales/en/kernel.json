@@ -6416,6 +6416,8 @@
     "reading": "Reading {{app}}",
     "retry": "Retry",
     "source": "Source: {{source}}",
+    "suggestionNotSent": "Not sent: the server could not be reached.",
+    "suggestions": "Suggested next steps",
     "superseded": "Replaced by a newer card",
     "unreachable": "Nothing ran: this card cannot reach the server here.",
     "waitingApproval": "Waiting for approval. Nothing ran yet.",

@@ -231,6 +231,10 @@ const NO_SESSION_ROUTES = new Set([
   "OPTIONS /webhooks/:orgId/tickets/csat/:token",
   // Its own device receipt credential, in the body.
   "POST /api/notifications/receipts",
+  // A remote app isolate's calls for one run: its only credential is that run's
+  // token (modules/apps/workers/bridge-route.ts), never a session, and it
+  // answers 404 while no Workers executor is configured.
+  "POST /api/app-bridge/:runId",
   // Mounted, answering 404 unless a flag or a managed edition is on.
   "GET /api/qa/notifications/log",
   "POST /api/qa/notifications/inject",

@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto"
 import { sql } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import * as searchClientModule from "~/infra/search/client"
-import { effectiveIndexName, getMeili } from "~/infra/search/client"
+import { getMeili } from "~/infra/search/client"
 import { _setEdition } from "~/lib/edition"
 import { BillingUnavailableError } from "~/modules/billing-managed/control-client"
 import { resultRows } from "~/modules/org/purge/rows"
@@ -25,6 +25,28 @@ beforeAll(async () => {
 afterAll(async () => {
   await releaseTestLock()
 })
+
+/**
+ * Run `fn` against a search index of its own (org_id filterable, as the purge
+ * needs), deleted afterwards: the run's shared index keeps the settings it has.
+ */
+async function withOwnIndex<T>(fn: () => Promise<T>): Promise<T> {
+  const meili = getMeili()
+  const index = `test_target_${randomUUID().slice(0, 8)}`
+  const spy = spyOn(searchClientModule, "effectiveIndexName").mockReturnValue(index)
+  IndexWriterTestAccess.resetRebuildCache()
+  try {
+    const created = await meili.createIndex(index, { primaryKey: "id" })
+    await waitForMeiliTask(meili, created.taskUid)
+    const settings = await meili.index(index).updateSettings({ filterableAttributes: ["org_id"] })
+    await waitForMeiliTask(meili, settings.taskUid)
+    return await fn()
+  } finally {
+    spy.mockRestore()
+    IndexWriterTestAccess.resetRebuildCache()
+    await meili.deleteIndex(index).catch(() => {})
+  }
+}
 
 describe("target activation", () => {
   it("refuses while the control plane has the move frozen, serves once it is committed", async () => {
@@ -115,16 +137,6 @@ describe("target activation", () => {
 
   it("an abort right after the import purges the incoming copy, even when this process's view predates it", async () => {
     const { orgId } = await minimal.secondOrg({ name: "Aborted Incoming Org" })
-    // The purge removes the org's search documents by org_id: an index of this
-    // test's own, so the shared one's settings stay as they are.
-    const meili = getMeili()
-    const index = `test_target_abort_${randomUUID().slice(0, 8)}`
-    const indexSpy = spyOn(searchClientModule, "effectiveIndexName").mockReturnValue(index)
-    IndexWriterTestAccess.resetRebuildCache()
-    const created = await meili.createIndex(index, { primaryKey: "id" })
-    await waitForMeiliTask(meili, created.taskUid)
-    const settings = await meili.index(index).updateSettings({ filterableAttributes: ["org_id"] })
-    await waitForMeiliTask(meili, settings.taskUid)
     const transferId = randomUUID()
     const agent = new TargetAgent({ sql: {} as never, ownKeys: {} as never, ackInstances: [] })
     await agent.handle("hello", {
@@ -142,16 +154,13 @@ describe("target activation", () => {
         WHERE id = ${orgId}::uuid`),
     )
     try {
-      expect(await agent.handle("abort", {})).toEqual({ purged: true })
+      expect(await withOwnIndex(() => agent.handle("abort", {}))).toEqual({ purged: true })
       const left = await withSystemDb("test-import-incoming", (db) =>
         db.execute(sql`SELECT 1 FROM kernel.organizations WHERE id = ${orgId}::uuid`),
       )
       expect(resultRows(left)).toHaveLength(0)
     } finally {
       await setOrgTransferState(orgId, null, transferId).catch(() => {})
-      indexSpy.mockRestore()
-      IndexWriterTestAccess.resetRebuildCache()
-      await meili.deleteIndex(index).catch(() => {})
     }
   }, 60_000)
 
@@ -168,21 +177,11 @@ describe("target activation", () => {
     const other = randomUUID()
     const mine = randomUUID()
     const id = `foreign-${randomUUID()}`
-    // A fresh Meilisearch has no index, or one a failed first write created
-    // without a primary key: make sure it exists with `id`.
-    const meili = getMeili()
-    const name = effectiveIndexName()
-    const created = await meili.createIndex(name, { primaryKey: "id" })
-    await waitForMeiliTask(meili, created.taskUid).catch(() => {})
-    const updated = await meili.index(name).update({ primaryKey: "id" })
-    await waitForMeiliTask(meili, updated.taskUid).catch(() => {})
-    await writeIndexAndWait({ docs: [{ id, org_id: other, title: "theirs" }] })
-    try {
+    await withOwnIndex(async () => {
+      await writeIndexAndWait({ docs: [{ id, org_id: other, title: "theirs" }] })
       await expect(
         importSearchDocuments(mine, [JSON.stringify({ id, org_id: mine, title: "mine" })]),
       ).rejects.toThrow(/belongs to another org/)
-    } finally {
-      await writeIndexAndWait({ deleteIds: [id] })
-    }
+    })
   }, 60_000)
 })

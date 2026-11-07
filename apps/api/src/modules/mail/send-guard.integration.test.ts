@@ -1276,11 +1276,23 @@ describe("a colleague is not a client", () => {
   }, 60_000)
 })
 
+/**
+ * A sync page written as the mail app's bridge writes it: on a transaction of its own, never
+ * inside a privileged slot, since the page's sender-contacts read takes one of its own.
+ */
+function onPageTx<T>(fn: (tx: unknown) => Promise<T>): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(drizzleSql`SET LOCAL ROLE liaison_admin`)
+    await privileged.setPrivilegedContext(tx, orgId)
+    return fn(tx)
+  })
+}
+
 describe("what a mailbox's headers say", () => {
   const replyFrom = (to: string) => ({ from: { email: to }, to: [{ email: "owner@org.test" }] })
 
   async function ingestSealed(to: string, headers: Record<string, string>) {
-    await privileged.withPrivilegedDb(orgId, "send-guard-test-page", async (tx) => {
+    await onPageTx(async (tx) => {
       const id = `<${++counter}@client.test>`
       await writeMailPage(
         {
@@ -1656,7 +1668,7 @@ describe("the card says what the check says, and Send now", () => {
   it("sealed: held 7 days, no quote", async () => {
     const to = unique("sealed-away")
     const id = await stageCompose(to)
-    await privileged.withPrivilegedDb(orgId, "send-guard-test-page", async (tx) => {
+    await onPageTx(async (tx) => {
       const ref = `<${++counter}@client.test>`
       await writeMailPage(
         {

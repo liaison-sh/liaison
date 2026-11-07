@@ -92,9 +92,12 @@ async function lockedSendGuardOverride(
   if (!GUARDED_SENDS.has(args.toolName) || !isPinnedSendGuard(guard)) {
     return { held: false, state: "not_guarded" }
   }
+  // Every read runs on the claim's own transaction: a second privileged slot taken while this
+  // one holds the row lock is the shape that deadlocks a full pool.
   const verdict = await evaluateSendGuard({
-    ...(await personZone(args.orgId, args.requestedBy)),
+    ...(await personZone(args.orgId, args.requestedBy, tx)),
     orgId: args.orgId,
+    db: tx,
     guard,
     recipients: recipientsOf(payload.to, payload.cc, payload.bcc),
     at: "card",
@@ -544,7 +547,7 @@ export async function cascadeDeferredDependents(args: {
       ]
       const results: Record<string, Record<string, unknown>> = {}
       for (const ancestorId of ancestorIds) {
-        const result = await readDecidedResult(args.orgId, ancestorId)
+        const result = await readDecidedResult(args.orgId, ancestorId, tx)
         if (result == null || typeof result !== "object") {
           return {
             kind: "failed" as const,

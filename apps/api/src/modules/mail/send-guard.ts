@@ -7,7 +7,7 @@
  */
 import { createHash } from "node:crypto"
 import { sql as drizzleSql, type SQL } from "drizzle-orm"
-import { extractRows } from "~/db"
+import { extractRows, type PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { env } from "~/lib/env"
@@ -189,14 +189,27 @@ function table(schema: string, name: string) {
   return drizzleSql.raw(`${quoteIdent(schemaRef(schema))}.${quoteIdent(name)}`)
 }
 
+/**
+ * A privileged read on the caller's own privileged transaction when it holds one (a claim under
+ * its row lock), else in a transaction of its own. Never a second slot while one is held.
+ */
+function onPrivileged<T>(
+  db: PrivilegedDb | undefined,
+  orgId: string,
+  reason: string,
+  fn: (tx: PrivilegedDb) => Promise<T>,
+): Promise<T> {
+  return db ? fn(db) : withPrivilegedDb(orgId, reason, fn)
+}
+
 const textSet = (values: readonly string[]): SQL =>
   drizzleSql`ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(values)}::jsonb))`
 const uuidSet = (values: readonly string[]): SQL =>
   drizzleSql`ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(values)}::jsonb)::uuid)`
 
 /** The org's mailboxes and its members. An external user's address is deliberately not in it. */
-async function ownAddresses(orgId: string): Promise<string[]> {
-  const rows = await withPrivilegedDb(orgId, "send-guard-own-addresses", async (tx) =>
+async function ownAddresses(orgId: string, db?: PrivilegedDb): Promise<string[]> {
+  const rows = await onPrivileged(db, orgId, "send-guard-own-addresses", async (tx) =>
     extractRows<{ email: string | null }>(
       await tx.execute(drizzleSql`
         SELECT lower(email_address) AS email FROM ${table("app_mail", "accounts")}
@@ -309,6 +322,7 @@ async function readMailInbound(
   orgId: string,
   own: readonly string[],
   queries: ReadonlyMap<string, InboundQuery>,
+  db?: PrivilegedDb,
 ): Promise<InboundRead> {
   type Row = {
     k: string
@@ -321,7 +335,7 @@ async function readMailInbound(
     text_body: string | null
     subject: string | null
   }
-  return withPrivilegedDb(orgId, "send-guard-mail-inbound", (tx) =>
+  return onPrivileged(db, orgId, "send-guard-mail-inbound", (tx) =>
     pageInbound(
       [...queries.keys()],
       async (open) =>
@@ -377,6 +391,7 @@ async function readTicketInbound(
   orgId: string,
   own: readonly string[],
   queries: ReadonlyMap<string, InboundQuery>,
+  db?: PrivilegedDb,
 ): Promise<InboundRead> {
   type Row = {
     k: string
@@ -388,7 +403,7 @@ async function readTicketInbound(
     text_body: string | null
     subject: string | null
   }
-  return withPrivilegedDb(orgId, "send-guard-ticket-inbound", async (tx) => {
+  return onPrivileged(db, orgId, "send-guard-ticket-inbound", async (tx) => {
     const present = extractRows<{ name: string | null }>(
       await tx.execute(
         drizzleSql`SELECT to_regclass(${`${quoteIdent(schemaRef("app_tickets"))}.messages`})::text AS name`,
@@ -535,6 +550,8 @@ export interface EvaluateSendGuardInput {
   now?: Date
   locale?: string | null
   timeZone?: string | null
+  /** The caller's privileged transaction (a claim holding the row lock): every read runs on it. */
+  db?: PrivilegedDb
 }
 
 const CLEAR: SendGuardVerdict = { state: "clear", final: false }
@@ -599,7 +616,7 @@ export async function evaluateSendGuard(input: EvaluateSendGuardInput): Promise<
     }
 
     // 4 to 6.
-    const [verdict] = await inboundVerdicts(orgId, [input])
+    const [verdict] = await inboundVerdicts(orgId, [input], input.db)
     return verdict ?? unavailable("the mail and tickets could not be read")
   } catch (err) {
     rootLogger.error({ err, orgId }, "send guard: a read failed, not sending")
@@ -652,6 +669,7 @@ function inboundVerdict(inbound: readonly GuardInbound[], check: InboundCheck): 
 async function inboundVerdicts(
   orgId: string,
   checks: readonly InboundCheck[],
+  db?: PrivilegedDb,
 ): Promise<SendGuardVerdict[]> {
   if (checks.length === 0) return []
   const queries = new Map<string, InboundQuery>()
@@ -664,9 +682,9 @@ async function inboundVerdicts(
       ...(guard.conversationId ? { conversationId: guard.conversationId } : {}),
     })
   }
-  const own = await ownAddresses(orgId)
-  const mail = await readMailInbound(orgId, own, queries)
-  const tickets = await readTicketInbound(orgId, own, queries)
+  const own = await ownAddresses(orgId, db)
+  const mail = await readMailInbound(orgId, own, queries, db)
+  const tickets = await readTicketInbound(orgId, own, queries, db)
   return checks.map((check, i) => {
     const fromMail = mail.get(String(i))
     const fromTickets = tickets.get(String(i))
@@ -960,10 +978,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 export async function personZone(
   orgId: string,
   userId: string | null,
+  db?: PrivilegedDb,
 ): Promise<{ locale: string | null; timeZone: string | null }> {
   // A system actor has no person behind it, and no zone.
   if (!userId || !UUID.test(userId)) return { locale: null, timeZone: null }
-  const rows = await withPrivilegedDb(orgId, "send-guard-person-zone", async (tx) =>
+  const rows = await onPrivileged(db, orgId, "send-guard-person-zone", async (tx) =>
     extractRows<{ locale: string | null; timezone: string | null }>(
       await tx.execute(drizzleSql`
         SELECT locale, timezone FROM ${table("kernel", "users")}

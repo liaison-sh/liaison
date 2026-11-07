@@ -12,11 +12,12 @@ import { sql } from "~/db"
 import type { UserContext } from "~/db/rls"
 import { getWsManager, setWsManager, WebSocketManager } from "~/infra/websocket"
 import { redis } from "~/lib/redis"
+import { normalizeAppGuide } from "~/modules/agent/context/app-guide"
 import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { registerKernelAgentTools } from "~/modules/agent/tools/kernel-tools"
 import { resolveApprovalResourceOwner } from "~/modules/approvals/resource-owner"
-import { toolRegistry } from "~/modules/apps/app-registries"
+import { agentInstructionsRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
 import {
   loadConnectionTurnTaint,
@@ -838,7 +839,14 @@ describe("the agent steers the person's own sessions", () => {
       expect(said).toContain("only when the person")
       expect(said).toContain("never chosen by you")
     }
-    expect(run.description).toContain(
+    // The sentence left the tool for the kernel guide's section about it (T35b).
+    const guide = normalizeAppGuide(agentInstructionsRegistry.get([owner.orgId, "kernel"]) ?? "")
+    expect(
+      guide.sections
+        .filter((x) => x.tools.includes("kernel__run_on_my_computer"))
+        .map((x) => x.text)
+        .join("\n"),
+    ).toContain(
       '`finishWith` ("pr", "commit" or "none") only when the person said how the work should end; never chosen by you',
     )
     expect(settings.description).toContain("never chosen by you")

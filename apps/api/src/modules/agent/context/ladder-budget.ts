@@ -16,6 +16,12 @@ import { dirname, join } from "node:path"
 import { checkToolScopes } from "~/modules/agent/scopes/required-scopes"
 import { isDeferredTool, providerInputSchemaOf } from "~/modules/agent/tools/tool-bridge"
 import { loadManifests } from "../../../../../../scripts/docs/gen-reference"
+import {
+  normalizeAppGuide,
+  parseGuideMarkdown,
+  renderAppGuideBlock,
+  selectAppGuideParts,
+} from "./app-guide"
 import { estimateTokens } from "./compaction"
 import {
   appInstructionSummary,
@@ -282,6 +288,16 @@ function promptBody(file: string): string {
 }
 
 /**
+ * The kernel guide as the prompt carries it: its core, and the sections about the kernel tools
+ * that are loaded every turn (the hot ones); a section about a deferred tool arrives with it.
+ */
+function kernelGuideText(tools: readonly LadderTool[]): string {
+  const hot = new Set(tools.filter((t) => t.app === "kernel" && !t.deferred).map((t) => t.sdkName))
+  const guide = normalizeAppGuide(parseGuideMarkdown(promptBody("kernel/overview.md")))
+  return renderAppGuideBlock("kernel", selectAppGuideParts("kernel", guide, hot))
+}
+
+/**
  * The fixed parts of the system prompt with every app on: the base
  * text, the charter and roster templates, the kernel guide, the summary lines
  * and the announcement. The integration case in `context.token-cap.test.ts`
@@ -296,7 +312,7 @@ export async function staticFixedPromptTokens(
     base: estimateTokens(composeTurnSystemText(promptBody("system.md"), "Organisation")),
     charter: estimateTokens(promptBody("agent-charter.md")),
     roster: estimateTokens(promptBody("agent-roster.md")),
-    kernelGuide: estimateTokens(promptBody("kernel/overview.md")),
+    kernelGuide: estimateTokens(kernelGuideText(tools)),
     summaries: everyApp.summaryTokens,
     announcement: everyApp.announcementTokens,
   }

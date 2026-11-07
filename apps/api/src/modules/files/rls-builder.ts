@@ -104,8 +104,8 @@ export function buildFilesSelectPolicy(
     (kind) =>
       `( ${k}.files.app = ${lit(kind.app)} ` +
       `AND ${k}.files.entity_type = ${lit(kind.entityType)} ` +
-      `AND ${k}.files.org_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid ` +
-      `AND ${k}.files.uploaded_by = NULLIF(current_setting('app.current_user_id', true), '')::uuid )`,
+      `AND ${k}.files.org_id = NULLIF(rls_ctx.org_id(), '')::uuid ` +
+      `AND ${k}.files.uploaded_by = NULLIF(rls_ctx.user_id(), '')::uuid )`,
   )
   return `${head} USING (${[...branches, ...uploaderOnly].join(" OR ")});`
 }

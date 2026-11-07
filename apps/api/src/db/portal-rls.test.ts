@@ -84,6 +84,18 @@ describe("withPortalContext", () => {
     expect(out.scopes?.scopes).toBe("__none__")
   })
 
+  test("a statement inside the portal context can return to the login's roles, so portal code runs only static SQL", async () => {
+    const role = await withPortalContext({ orgId: ORG_ID, userId: EXTERNAL_ID }, async (tx) => {
+      await tx.execute(drizzleSql`SET LOCAL ROLE liaison_rls`)
+      const [who] = extractRows<{ role: string }>(
+        await tx.execute(drizzleSql`SELECT current_user::text AS role`),
+      )
+      return who?.role
+    })
+    // No guard refuses the step back today: the role switch is not a sandbox for caller text.
+    expect(role).toBe("liaison_rls")
+  })
+
   test("refuses a member and runs nothing", async () => {
     let ran = false
     await expect(

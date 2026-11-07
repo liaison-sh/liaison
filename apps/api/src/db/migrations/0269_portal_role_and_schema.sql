@@ -13,7 +13,10 @@
 -- path, never a grant.
 --
 -- liaison_request becomes a member of it, because withPortalContext runs on the
--- request pool and steps down into it. No statement can step up from it.
+-- request pool and steps down into it. The login is also a member of liaison_rls,
+-- so a statement run inside that transaction (RESET ROLE, SET ROLE liaison_rls)
+-- can return to the login's roles: the boundary holds because portal code runs
+-- only static SQL, never text a caller supplies (db/portal-rls.test.ts records it).
 
 -- reviewed-dynamic: the role is cluster wide, so it is created once and given to the logins that step into it, each only when missing
 DO $$

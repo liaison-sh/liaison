@@ -166,6 +166,9 @@ describe("db import enforcement", () => {
     // lockedUpdateApproval, etc.) — extracted from the per-flow files (decide,
     // cascade, expiry) which were already on this allowlist.
     "modules/approvals/event-data.ts",
+    // Approval routing: reads away ranges and preferences of the people in one org, and moves
+    // the pending requests linked to an item that changed hands, all pinned to that org.
+    "modules/approvals/route-world.ts",
     "modules/approvals/expiry.ts",
     "modules/approvals/approving-reaper.ts",
     "modules/approvals/cancel.ts",

@@ -135,6 +135,8 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
     "MCP token refresh: the org of the connection row it refreshes (head.orgId, read by connection id)",
   "apps/api/src/modules/agent/providers/openrouter-blocked-hosts.ts#readFromDb":
     "reads one string list (settings.ai.models.blockedHosts) of the org it is asked about; callers pass the org of the OpenRouter call they are about to send (preCheck's own orgId carried on its credit, the idle-compaction job's org, the web search's ctx.orgId, the admin route's signed-in org), and a wrong org could only change which OpenRouter hosts that request avoids, never return another org's data; the trace stops at a `get` name collision",
+  "apps/api/src/modules/approvals/route-world.ts#updateItemRoutePerson":
+    "an item changed hands: every caller (the ticket and task assign, claim and update paths) passes the org of the item it just wrote, and the UPDATE is further pinned to that org_id",
   "apps/api/src/modules/approvals/resource-owner.ts#loadRoutineApproverSetting":
     "name collision in the trace (CredentialStore.get is not a settings getter): callers pass the approval's own org",
   "apps/api/src/apps/mail/search-enrichment.ts#streamFragmentsForRebuild":

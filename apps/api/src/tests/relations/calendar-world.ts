@@ -8,12 +8,21 @@
 
 import { randomUUID } from "node:crypto"
 import { applyAwayFromCalendar } from "~/apps/calendar/away-from-calendar"
-import { onAccountConnected, onAccountDisconnected, runCalendarImport } from "~/apps/calendar/sync"
+import {
+  type GoogleEventItem,
+  onAccountConnected,
+  onAccountDisconnected,
+  runCalendarImport,
+} from "~/apps/calendar/sync"
 import { sql } from "~/db/connection"
 import { withPrivilegedDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
 import { getOrCreatePreferences, updatePreferences } from "~/modules/users/preferences-service"
 import { ApprovalCase, ctxOf } from "./approval-world"
+
+/** The kernel schema as the run names it (a test namespace prefixes it). */
+const K = () => sql(schemaRef("kernel"))
 
 const noopEnqueue = async () => {
   // No Google credential in a test: the rows are what the cell reads, the sync jobs would fail.
@@ -55,7 +64,7 @@ export class CalendarCase extends ApprovalCase {
       )
     })
     const [u] =
-      (await sql`SELECT email FROM kernel.users WHERE id = ${this.people.person}`) as Array<{
+      (await sql`SELECT email FROM ${K()}.users WHERE id = ${this.people.person}`) as Array<{
         email: string
       }>
     const email = u?.email as string
@@ -63,7 +72,7 @@ export class CalendarCase extends ApprovalCase {
     this.eventId = `ooo-${randomUUID().slice(0, 8)}`
     await withPrivilegedDb(this.orgId, "relations-calendar-connect", async (tx) => {
       const { accountId } = await onAccountConnected(
-        tx as never,
+        tx,
         this.orgId,
         {
           orgId: this.orgId,
@@ -79,6 +88,7 @@ export class CalendarCase extends ApprovalCase {
         },
         noopEnqueue,
       )
+      // The import job's own transaction, which the sandbox bridge hands over as an RLS client.
       const imported = await runCalendarImport(
         tx as never,
         this.orgId,
@@ -87,10 +97,9 @@ export class CalendarCase extends ApprovalCase {
           {
             id: email,
             summary: email,
-            primary: true,
             accessRole: "owner",
             timeZone: "UTC",
-          } as never,
+          },
         ],
         noopEnqueue,
       )
@@ -101,7 +110,7 @@ export class CalendarCase extends ApprovalCase {
   }
 
   /** The person's out-of-office event as Google returns it now. */
-  item(): Record<string, unknown> {
+  item(): GoogleEventItem {
     return {
       id: this.eventId,
       status: this.cancelled ? "cancelled" : "confirmed",
@@ -116,7 +125,7 @@ export class CalendarCase extends ApprovalCase {
   /** One sync of the person's calendar carrying the event. */
   async sync(): Promise<void> {
     await withPrivilegedDb(this.orgId, "relations-calendar-sync", (tx) =>
-      applyAwayFromCalendar(tx as never, this.orgId, this.calendarId, [this.item() as never]),
+      applyAwayFromCalendar(tx, this.orgId, this.calendarId, [this.item()]),
     )
   }
 
@@ -133,7 +142,7 @@ export class CalendarCase extends ApprovalCase {
     Array<{ starts_on: string; ends_on: string | null; status: string }>
   > {
     return (await sql`
-      SELECT starts_on::text, ends_on::text, status FROM kernel.away_ranges
+      SELECT starts_on::text, ends_on::text, status FROM ${K()}.away_ranges
       WHERE org_id = ${this.orgId} AND user_id = ${this.people.person} AND source = 'calendar'`) as Array<{
       starts_on: string
       ends_on: string | null

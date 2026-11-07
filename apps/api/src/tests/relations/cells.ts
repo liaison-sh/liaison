@@ -7,6 +7,7 @@
 
 import { expect } from "bun:test"
 import { sql } from "~/db/connection"
+import { schemaRef } from "~/db/schema-ref"
 import * as minimal from "~/seed/tiers/minimal"
 import {
   ApprovalCase,
@@ -20,6 +21,9 @@ import type { EventFacts, Reading } from "./classes"
 import type { EventCode } from "./matrix"
 import { RoutineCase } from "./routine-world"
 import { ThreadCase, type ThreadOrg } from "./thread-world"
+
+/** The kernel schema as the run names it (a test namespace prefixes it). */
+const K = () => sql(schemaRef("kernel"))
 
 export interface Worlds {
   approvals: ApprovalOrg
@@ -53,7 +57,7 @@ export interface CellImpl<W extends CellWorld = CellWorld> {
 }
 
 function cell<W extends CellWorld>(c: CellImpl<W>): CellImpl {
-  return c as unknown as CellImpl
+  return c
 }
 
 const build =
@@ -254,7 +258,7 @@ export const CELLS: CellImpl[] = [
     says: "a request from before routing, with no person on it",
     build: build(),
     act: async (w) => {
-      await sql`UPDATE kernel.approval_requests SET route_person_id = NULL WHERE id = ${w.requestId}`
+      await sql`UPDATE ${K()}.approval_requests SET route_person_id = NULL WHERE id = ${w.requestId}`
     },
     took: async (w) => expect((await w.requestRow()).route_person_id).toBeNull(),
     facts: () => ({}),
@@ -442,7 +446,7 @@ export const CELLS: CellImpl[] = [
     took: async (w) => {
       await deactivated(w, "person")
       const [row] =
-        (await sql`SELECT count(*)::int AS n FROM kernel.away_ranges WHERE user_id = ${w.people.person}`) as Array<{
+        (await sql`SELECT count(*)::int AS n FROM ${K()}.away_ranges WHERE user_id = ${w.people.person}`) as Array<{
           n: number
         }>
       expect(row?.n).toBe(0)

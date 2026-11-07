@@ -98,9 +98,12 @@ function same(a: Sight, b: Sight): boolean {
 
 function normal(s: Sight): Sight {
   const out: Sight = { visible: s.visible }
-  for (const k of ["points", "label", "state", "placement", "forPerson", "count"] as const) {
-    if (s[k] !== undefined && s[k] !== null) (out as Record<string, unknown>)[k] = s[k]
-  }
+  if (s.points != null) out.points = s.points
+  if (s.label != null) out.label = s.label
+  if (s.state != null) out.state = s.state
+  if (s.placement != null) out.placement = s.placement
+  if (s.forPerson != null) out.forPerson = s.forPerson
+  if (s.count != null) out.count = s.count
   return out
 }
 

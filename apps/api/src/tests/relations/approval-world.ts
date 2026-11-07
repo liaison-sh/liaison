@@ -18,6 +18,7 @@ import { sql } from "~/db/connection"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
 import { computeApprovalAttentionItems } from "~/modules/approvals/attention"
 import { decideApproval } from "~/modules/approvals/decide"
 import { getApproval } from "~/modules/approvals/list"
@@ -31,6 +32,9 @@ import { endAwayRange, listAwayRanges, setAway } from "~/modules/users/away"
 import { deactivateUser, reactivateUser } from "~/modules/users/service"
 import * as minimal from "~/seed/tiers/minimal"
 import type { Reading, Sight } from "./classes"
+
+/** The kernel schema as the run names it (a test namespace prefixes it). */
+const K = () => sql(schemaRef("kernel"))
 
 export const DECIDE_SCOPE = "projects:approve"
 export const ROLES = ["requester", "person", "usual", "chain", "nextInLine", "outsider"] as const
@@ -197,7 +201,7 @@ export class ApprovalCase {
       origin: "in-app-agent",
     })
     const [row] = (await sql`
-      SELECT id FROM kernel.approval_requests
+      SELECT id FROM ${K()}.approval_requests
       WHERE org_id = ${this.orgId} AND tool_name = 'projects:delete' AND status = 'pending'
         AND tool_params->>'taskId' = ${this.taskId}
       ORDER BY created_at DESC LIMIT 1`) as Array<{ id: string }>
@@ -235,7 +239,7 @@ export class ApprovalCase {
       origin: "in-app-agent",
     })
     const [row] = (await sql`
-      SELECT id FROM kernel.approval_requests
+      SELECT id FROM ${K()}.approval_requests
       WHERE org_id = ${this.orgId} AND tool_name = 'tickets:close' AND status = 'pending'
         AND tool_params->>'ticketId' = ${ticketId}
       ORDER BY created_at DESC LIMIT 1`) as Array<{ id: string }>
@@ -318,7 +322,7 @@ export class ApprovalCase {
 
   async userStatus(who: Role): Promise<string | null> {
     const [row] =
-      (await sql`SELECT status FROM kernel.users WHERE id = ${this.people[who]}`) as Array<{
+      (await sql`SELECT status FROM ${K()}.users WHERE id = ${this.people[who]}`) as Array<{
         status: string
       }>
     return row?.status ?? null
@@ -336,7 +340,7 @@ export class ApprovalCase {
   async requestRow(): Promise<{ status: string; route_person_id: string | null; title: string }> {
     const [row] = (await sql`
       SELECT status, route_person_id, summary->>'title' AS title
-      FROM kernel.approval_requests WHERE id = ${this.requestId}`) as Array<{
+      FROM ${K()}.approval_requests WHERE id = ${this.requestId}`) as Array<{
       status: string
       route_person_id: string | null
       title: string
@@ -347,7 +351,7 @@ export class ApprovalCase {
 
   async versions(who: Role): Promise<{ auth: number; permission: number }> {
     const [row] = (await sql`
-      SELECT auth_version, permission_version FROM kernel.users WHERE id = ${this.people[who]}`) as Array<{
+      SELECT auth_version, permission_version FROM ${K()}.users WHERE id = ${this.people[who]}`) as Array<{
       auth_version: number
       permission_version: number
     }>
@@ -356,7 +360,7 @@ export class ApprovalCase {
 
   async requestRows(): Promise<number> {
     const [row] = (await sql`
-      SELECT count(*)::int AS n FROM kernel.approval_requests
+      SELECT count(*)::int AS n FROM ${K()}.approval_requests
       WHERE org_id = ${this.orgId} AND tool_params->>'taskId' = ${this.taskId}`) as Array<{
       n: number
     }>

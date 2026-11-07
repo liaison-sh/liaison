@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
 # Links between objects that this tree builds, against every event that can break them.
 #
 # Events: Rn rename, Mg merge (a person too), Dl delete or archive, Dx a person deactivated,

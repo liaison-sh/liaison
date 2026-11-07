@@ -12,6 +12,7 @@ import { sql } from "~/db/connection"
 import { withPrivilegedDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
 import { routines } from "~/db/schema/kernel/routines"
+import { schemaRef } from "~/db/schema-ref"
 import { runRoutineTick } from "~/modules/agent/routines/routine-worker"
 import { deactivateUser } from "~/modules/users/service"
 import { seedContext } from "~/seed/context"
@@ -20,6 +21,9 @@ import { seedRoutine } from "~/seed/factories/agent/routines"
 import * as minimal from "~/seed/tiers/minimal"
 import { type ApprovalOrg, ctxOf } from "./approval-world"
 import type { Reading, Sight } from "./classes"
+
+/** The kernel schema as the run names it (a test namespace prefixes it). */
+const K = () => sql(schemaRef("kernel"))
 
 export const ROUTINE_SCOPE = "tickets:tickets:read"
 const READERS = ["owner", "admin", "colleague", "outsider"] as const
@@ -109,7 +113,7 @@ export class RoutineCase {
 
   async ownerStatus(): Promise<string | null> {
     const [row] =
-      (await sql`SELECT status FROM kernel.users WHERE id = ${this.people.owner}`) as Array<{
+      (await sql`SELECT status FROM ${K()}.users WHERE id = ${this.people.owner}`) as Array<{
         status: string
       }>
     return row?.status ?? null

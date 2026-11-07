@@ -33,6 +33,13 @@ describe("db import enforcement", () => {
     // Throughput bench harness, run by hand and never by a production build or
     // a test suite: it drives the raw pool to measure mail sync writes.
     "tests/bench/mail-sync-throughput.ts",
+    // The relation suite's worlds: they read rows as the database holds them to check that an
+    // event took, outside any request context. Loaded by that suite only.
+    "tests/relations/approval-world.ts",
+    "tests/relations/calendar-world.ts",
+    "tests/relations/cells.ts",
+    "tests/relations/routine-world.ts",
+    "tests/relations/thread-world.ts",
   ])
 
   // Allowlist: only these files may import from ~/db/privileged
@@ -578,6 +585,10 @@ describe("db import enforcement", () => {
     "tests/helpers/org.ts",
     "tests/helpers/agent-ctx.ts",
     "tests/helpers/import-files.ts",
+    // The relation suite's worlds: an admin's deactivation, a permission read, as the product does.
+    "tests/relations/approval-world.ts",
+    "tests/relations/calendar-world.ts",
+    "tests/relations/routine-world.ts",
     // The security suite's seeds: the few rows no product path writes (a file on
     // a thread, an undeclared dimension grant, a participant removed). Not
     // loaded by a production build.

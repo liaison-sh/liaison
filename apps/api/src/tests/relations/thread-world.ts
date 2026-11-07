@@ -12,6 +12,7 @@ import { deleteTask, restoreTask } from "~/apps/projects/service/tasks"
 import { extractRows } from "~/db"
 import { sql } from "~/db/connection"
 import { withRlsContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { disableOrgApp } from "~/modules/apps/org-app-admin"
 import { listOrgAppStates } from "~/modules/apps/org-apps"
@@ -24,6 +25,9 @@ import {
 import * as minimal from "~/seed/tiers/minimal"
 import { type ApprovalOrg, ctxOf, projectName } from "./approval-world"
 import type { Reading, Sight } from "./classes"
+
+/** The kernel schema as the run names it (a test namespace prefixes it). */
+const KD = () => drizzleSql.raw(schemaRef("kernel"))
 
 export type ThreadOrg = ApprovalOrg
 
@@ -77,19 +81,16 @@ export class ThreadCase {
     const ref = threadAnchorRef(createdFrom, this.orgId)
     if (!ref) throw new Error(`${app}:${entityType} has no page to anchor to`)
     const created = await withRlsContext(owner, async (tx) => {
-      if (!(await canReadThreadAnchorEntity(tx as never, this.orgId, ref)))
+      if (!(await canReadThreadAnchorEntity(tx, this.orgId, ref)))
         throw new Error("the owner cannot see the record")
-      return createThread(
-        tx as never,
-        {
-          orgId: this.orgId,
-          userId: this.people.owner,
-          participantIds: [this.people.member, this.people.outsider],
-          title: `About ${entityType} ${randomUUID().slice(0, 6)}`,
-          createdFrom,
-          forceCreate: true,
-        } as never,
-      )
+      return createThread(tx, {
+        orgId: this.orgId,
+        userId: this.people.owner,
+        participantIds: [this.people.member, this.people.outsider],
+        title: `About ${entityType} ${randomUUID().slice(0, 6)}`,
+        createdFrom,
+        forceCreate: true,
+      })
     })
     this.threadId = (created as { id: string }).id
   }
@@ -210,11 +211,11 @@ export class ThreadCase {
     const anchor = await withRlsContext(ctx, async (tx) => {
       const [row] = extractRows<{ created_from: unknown }>(
         await tx.execute(
-          drizzleSql`SELECT created_from FROM kernel.threads WHERE id = ${this.threadId}::uuid`,
+          drizzleSql`SELECT created_from FROM ${KD()}.threads WHERE id = ${this.threadId}::uuid`,
         ),
       )
       const ref = threadAnchorRef(row?.created_from, this.orgId)
-      return ref ? resolveThreadAnchor(tx as never, this.orgId, ref) : null
+      return ref ? resolveThreadAnchor(tx, this.orgId, ref) : null
     })
     if (!anchor?.label) return { visible: false }
     return {

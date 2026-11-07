@@ -28,6 +28,7 @@ import { withRlsContext } from "~/db/rls"
 import { wrapExternalContent } from "~/lib/external-content"
 import { rootLogger } from "~/lib/logger"
 import { runContextStore } from "~/modules/agent/runtime/run-context"
+import { resolveRequiredScopes } from "~/modules/agent/scopes/required-scopes"
 import type { TurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { appBridgeManifestRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { isAppUnavailableFor } from "~/modules/apps/org-apps"
@@ -89,6 +90,8 @@ interface Answer {
   lines: string[]
   sourceLabel: string
   syncedAt?: string
+  /** Every scope the provider's tool requires, with the declared one: what the lines were read under. */
+  scopes: string[]
 }
 
 function subjectOf(tabType: string, entityId: string): ContextSubject | null {
@@ -140,7 +143,7 @@ function candidatesFor(input: ContextProviderInput, subjects: ContextSubject[]):
 }
 
 /** The provider result contract: `{lines: string[], source: {label, syncedAt?}} | null`. */
-function readAnswer(candidate: Candidate, data: unknown): Answer | null {
+function readAnswer(candidate: Candidate, data: unknown, scopes: string[]): Answer | null {
   if (!data || typeof data !== "object") return null
   const { lines, source } = data as { lines?: unknown; source?: unknown }
   if (!Array.isArray(lines)) return null
@@ -156,6 +159,7 @@ function readAnswer(candidate: Candidate, data: unknown): Answer | null {
     lines: kept,
     sourceLabel,
     ...(typeof src.syncedAt === "string" ? { syncedAt: src.syncedAt } : {}),
+    scopes,
   }
 }
 
@@ -219,7 +223,10 @@ async function ask(
     log.info({ app, tool: decl.tool, code }, "context provider left out")
     return null
   }
-  return readAnswer(candidate, envelope.data)
+  // The lines are stamped with all the tool may read, not only the scope the declaration names.
+  return readAnswer(candidate, envelope.data, [
+    ...new Set([decl.scope, ...resolveRequiredScopes(tool)]),
+  ])
 }
 
 function render(
@@ -248,7 +255,7 @@ function render(
         ...(named.length > 0 ? [`Loaded for this: ${named.join(", ")}`] : []),
       ].join("\n"),
     )
-    scopes.add(decl.scope)
+    for (const scope of answer.scopes) scopes.add(scope)
   }
   if (parts.length === 0) return null
   return { block: parts.join("\n\n"), scopes: [...scopes], loadTools }

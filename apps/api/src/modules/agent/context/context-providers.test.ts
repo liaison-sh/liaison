@@ -218,6 +218,20 @@ describe("context providers", () => {
     expect(n).toBe(0)
   })
 
+  test("a provider whose tool requires two scopes stamps the turn with both", async () => {
+    const second = `${FIX}:notes:read`
+    fixtureTool("two_scopes")
+    const tool = toolRegistry.get([orgB, FIX, "two_scopes"])
+    if (!tool) throw new Error("fixture tool missing")
+    toolRegistry.set([orgB, FIX, "two_scopes"], { ...tool, requiredScopes: [FIX_SCOPE, second] })
+    declareFixtures(["two_scopes"])
+    const itemId = await item(orgB, "Two scope item")
+    const grants = [...SEES_ITEMS, FIX_SCOPE, second]
+    const out = await inB(itemId, { actor: actorIn(orgB, bob, grants), grants })
+    expect(fenced(out?.block)).toEqual(["two_scopes line"])
+    expect([...(out?.scopes ?? [])].sort()).toEqual([second, FIX_SCOPE].sort())
+  })
+
   test("a write through its bridge refused, line left out, turn continues", async () => {
     // A tool that claims to be read-only and writes anyway, through the sandbox bridge.
     const create = toolRegistry.get([orgB, "example", "items_create"])

@@ -96,7 +96,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `data_get` | Read one document of a data collection by id. |  | `kernel:data:read` |
 | `data_query` | Read documents of one data collection, filtered, sorted and paged. |  | `kernel:data:read` |
 | `data_set` | Save a document in one of your own data collections (created on first write), replacing it if the id exists. |  | `kernel:data:write` |
-| `data_subject_export` | Compile EVERYTHING the org holds on ONE data subject (a contact) across apps into a single downloadable GDPR data-subject-request (DSR) export bundle, and return its fileId. | yes | `kernel:data_subject:export` |
+| `data_subject_export` | Compile EVERYTHING the org holds on ONE data subject (a contact, or a member of the organization) across apps into a single downloadable GDPR data-subject-request (DSR) export bundle, and return its fileId. | yes | `kernel:data_subject:export:self` |
 | `data_update` | Change some fields of an existing document in one of your own data collections; the other fields stay. |  | `kernel:data:write` |
 | `deactivateUser` | Deactivate a user account (admin only). | yes | `kernel:users:admin` |
 | `delete_role` | PERMANENTLY delete an org role definition by `roleId` — the destructive complement to kernel__create_role. | yes | `kernel:roles:admin` |

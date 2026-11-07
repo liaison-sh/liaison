@@ -155,6 +155,12 @@ jobs:
       - name: Thread census, raw fetch, Stripe imports, retired vocabulary, tool scopes, monitoring kinds
         working-directory: apps/api
         run: bun test src/modules/threads/thread-creation-census.test.ts src/tests/raw-fetch-discipline.test.ts src/tests/no-stripe-imports.test.ts src/tests/retired-vocabulary.test.ts src/modules/apps/tool-required-scopes-guard.test.ts src/modules/notifications/monitoring-group.test.ts
+      # Four more api-guards entries that are pure (no database, no Redis) and that
+      # no PR check named: the raw BASE_URL read scan went red on main unseen
+      # because of it. Add a pure guard of that suite here when it is written.
+      - name: Raw base URL reads, entrypoint, prompt-size probe, imports
+        working-directory: apps/api
+        run: bun test src/tests/no-raw-base-url.test.ts scripts/entrypoint.test.ts scripts/measure-prompt-size.test.ts src/tests/imports.test.ts
       # Erasing a user refuses to run while a kernel user column has no rule, and
       # the live check needs a database. This reads the migrations instead.
       - name: Erasure rules

@@ -7,10 +7,14 @@
 // families, a webhook replay mark and a consumer mark.
 //
 // Pinned:
-//   - full round trip: every closure table holds exactly the same rows on B as
-//     on A (secrets compared as plaintext: each opens on B with B's key and not
-//     with A's), the org lands `incoming`, a neighbour org on either side is
-//     untouched and never copied;
+//   - full round trip: every table the move carries holds exactly the same rows
+//     on B as on A (secrets compared as plaintext: each opens on B with B's key
+//     and not with A's), the org lands `incoming`, a neighbour org on either
+//     side is untouched and never copied. The two instances need not hold the
+//     same empty tables (A carries a schema no app owns any more, as an
+//     uninstalled app or an earlier file in this database leaves; B registers
+//     apps A's truncated rows no longer name), so the comparison is over the
+//     tables that hold rows of the org, and both sides hold the same set;
 //   - B's sequences continue above A's (no handle collision for a new contact);
 //   - the webhook replay mark and the org's consumer marks arrive;
 //   - pass 2: a delta (update, insert, delete on A since pass 1) brings B to
@@ -83,6 +87,8 @@ let installRoot = ""
 let prevAppsDir: string | undefined
 const BUNDLED_APPS_DIR = join(import.meta.dir, "..", "..", "..", "..", "..", "..", "bundled-apps")
 
+const LEFTOVER_SCHEMA = "app_xfer_leftover"
+
 const INDEX = `test_org_transfer_${randomUUID().slice(0, 8)}`
 const meili = new MeiliSearch({
   host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
@@ -151,7 +157,11 @@ function openSecrets(table: string, row: Record<string, unknown>, keys: typeof K
   }
 }
 
-/** The org's closure, every row as comparable JSON text, per table. */
+/**
+ * The org's rows in its closure, every row as comparable JSON text, per table
+ * that holds at least one (which empty tables exist differs between instances:
+ * an orphan app schema, an app one side registered and the other no longer names).
+ */
 async function snapshot(
   sql: postgres.Sql,
   keys: typeof KEYS_A,
@@ -163,6 +173,7 @@ async function snapshot(
     const rows = await sql.unsafe<{ j: Record<string, unknown> }[]>(
       `SELECT to_jsonb(t) AS j FROM ${rel(t.name)} t WHERE ${orgPredicate(closure, t, "t", org)}`,
     )
+    if (rows.length === 0) continue
     out[t.name] = rows
       .map((r) => {
         const row = r.j
@@ -267,6 +278,13 @@ beforeAll(async () => {
   await admin.end()
   A = postgres(superA, { max: 2, onnotice: () => {} })
   B = postgres(withDb(superA, dbB), { max: 2, onnotice: () => {} })
+  // A schema no app owns any more, on A only: what an uninstalled app leaves, and what an
+  // earlier file in this database leaves when it removes its fixture app's rows but not its
+  // schema. Created here so every run meets it, whatever ran before in the database.
+  await A.unsafe(`CREATE SCHEMA IF NOT EXISTS ${LEFTOVER_SCHEMA}`)
+  await A.unsafe(
+    `CREATE TABLE IF NOT EXISTS ${LEFTOVER_SCHEMA}.items (id uuid PRIMARY KEY, org_id uuid NOT NULL)`,
+  )
   poolB = createPool(4, withDb(env.DATABASE_URL, dbB))
 
   ;({ id: orgId } = await createTestOrg({ email: ADMIN }))
@@ -336,6 +354,7 @@ afterAll(async () => {
   await meili.deleteIndex(INDEX).catch(() => {})
   for (const s of spies) s.mockRestore()
   await redisBullMQ.del(`webhook:replay:${orgId}:shopify:orders:abc`)
+  await A?.unsafe(`DROP SCHEMA IF EXISTS ${LEFTOVER_SCHEMA} CASCADE`)
   await poolB?.client.end({ timeout: 5 })
   await B?.end({ timeout: 5 })
   await A?.end({ timeout: 5 })
@@ -558,6 +577,7 @@ describe("org transfer between two instances", () => {
 
     const a = await snapshot(A, KEYS_A)
     const b = await snapshot(B, KEYS_B)
+    expect(Object.keys(b).sort()).toEqual(Object.keys(a).sort())
     for (const table of Object.keys(a))
       expect({ table, rows: b[table] }).toEqual({ table, rows: a[table] })
     expect(a["kernel.role_scope_grants"]?.length ?? 0).toBeGreaterThan(0)

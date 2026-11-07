@@ -10,6 +10,7 @@ import {
   type ContactAddressSource,
   contactSegments,
   contacts as contactsTable,
+  users as usersTable,
 } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import { quoteIdent } from "~/lib/sql-utils"
@@ -609,7 +610,26 @@ export async function summarizeDataSubjectExport(
   params: unknown,
   ctx: { tx: RlsClient; orgId: string; userId: string },
 ): Promise<ApprovalSummary> {
-  const p = (params ?? {}) as { contactId?: string; shopifyOrders?: unknown[] }
+  const p = (params ?? {}) as { contactId?: string; userId?: string; shopifyOrders?: unknown[] }
+  if (typeof p.userId === "string" && p.userId) {
+    const memberId = p.userId === "me" ? ctx.userId : p.userId
+    let member = "(unknown member)"
+    if (UUID_RE.test(memberId)) {
+      const [u] = await ctx.tx
+        .select({ name: usersTable.name, email: usersTable.email })
+        .from(usersTable)
+        .where(and(eq(usersTable.id, memberId), eq(usersTable.orgId, ctx.orgId)))
+        .limit(1)
+      if (u) member = `${u.name} <${u.email}>`
+    }
+    return {
+      kind: "data_subject_export",
+      title: `Export all personal data of ${memberId === ctx.userId ? "yourself" : member}`,
+      lines: [
+        "One downloadable file with their profile, messages, files, approvals, routines, audit entries, connected accounts and agent memory. No tokens or passwords.",
+      ],
+    }
+  }
   let label = "(unknown contact)"
   if (typeof p.contactId === "string" && p.contactId) {
     const [c] = await ctx.tx

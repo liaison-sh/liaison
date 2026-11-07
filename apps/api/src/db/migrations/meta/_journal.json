@@ -1945,28 +1945,35 @@
       "idx": 277,
       "version": "7",
       "when": 1900003360000,
-      "tag": "0276_app_builder",
+      "tag": "0276_every_member_self_export_scope",
       "breakpoints": true
     },
     {
       "idx": 278,
       "version": "7",
-      "when": 1900003370000,
-      "tag": "0277_draft_store_namespace",
+      "when": 1900003361000,
+      "tag": "0277_app_builder",
       "breakpoints": true
     },
     {
       "idx": 279,
       "version": "7",
-      "when": 1900003380000,
-      "tag": "0278_apps_installed_worker_module",
+      "when": 1900003362000,
+      "tag": "0278_draft_store_namespace",
       "breakpoints": true
     },
     {
       "idx": 280,
       "version": "7",
-      "when": 1900003390000,
-      "tag": "0279_app_drafts_preview_store",
+      "when": 1900003363000,
+      "tag": "0279_apps_installed_worker_module",
+      "breakpoints": true
+    },
+    {
+      "idx": 281,
+      "version": "7",
+      "when": 1900003364000,
+      "tag": "0280_app_drafts_preview_store",
       "breakpoints": true
     }
   ]

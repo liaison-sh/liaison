@@ -34,6 +34,8 @@ describe("registerApps — manifest format", () => {
   afterAll(async () => {
     await sql.unsafe(`DROP SCHEMA IF EXISTS "app_manifest_app" CASCADE`)
     await sql.unsafe(`DROP SCHEMA IF EXISTS "app_manifest_app_untrusted" CASCADE`)
+    await sql.unsafe(`DROP SCHEMA IF EXISTS "app_ui_app" CASCADE`)
+    await sql.unsafe(`DROP SCHEMA IF EXISTS "app_ui_app_noui" CASCADE`)
     await sql`DELETE FROM kernel.apps WHERE name = 'manifest-app'`
     await sql`DELETE FROM kernel.apps WHERE name = 'manifest-app-untrusted'`
     await sql`DELETE FROM kernel.apps WHERE name = 'manifest-app-probe'`

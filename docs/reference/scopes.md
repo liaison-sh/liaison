@@ -38,6 +38,7 @@ Scopes are hierarchical capability strings, `app:resource:action`. Granting `app
 | `kernel:dashboards:share` | Create and edit dashboards shared with the org |
 | `kernel:dashboards:write` | Create and edit your own personal dashboards |
 | `kernel:data_subject:export` | Compile a single data subject's records across apps into one GDPR data-subject-request (DSR) export bundle (privacy/DSR handler authority, NOT org admin) |
+| `kernel:data_subject:export:self` | Export everything the organization holds about yourself as a member (every active member holds it) |
 | `kernel:data:read` | Read app data store documents through the agent's data tools |
 | `kernel:data:write` | Write documents in the agent's own data store namespace |
 | `kernel:files:analyze` | Analyze image/video files with the media-analysis tool |

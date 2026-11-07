@@ -488,6 +488,9 @@ describe("writesToTable annotations on kernel tools", () => {
     // tool counts as a write.
     expect(marked.sort()).toEqual(
       [
+        // Its OpenRouter search fetches the public model list (fixed host, no query) and
+        // filters it locally: nothing from the turn leaves.
+        "ai_models_get",
         // Its only write is the result cache on the file row, and that holds an unbriefed
         // analysis only (drawn from the file alone, none of the turn's data).
         "analyze_media",

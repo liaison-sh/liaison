@@ -66,6 +66,8 @@ export interface BillingSummary {
   paymentAction?: { invoiceId: string; amountDisplay: string }
   /** The unpaid renewal while past due or suspended; `dueAt` is the next step's date. */
   openInvoice?: { invoiceId: string; amountDisplay: string; dueAt: string }
+  /** The control plane's page comparing every plan in full (https); no link without it. */
+  pricingUrl?: string
 }
 
 interface Invoice {
@@ -132,7 +134,7 @@ export function topUpPrice(
 const CURRENCY_OF_SYMBOL: Record<string, string> = { "€": "EUR", $: "USD", "£": "GBP" }
 
 /**
- * Control words its amounts one way ("€99.00", "€29 / month"), whoever reads them. This writes them
+ * Control words its amounts one way ("€<euros>.<cents>", "€<euros> / month"), whoever reads them. This writes them
  * in the reader's language; anything it cannot read stays as it came.
  */
 export function localMoney(display: string, locale: string, perMonth?: string): string {
@@ -185,7 +187,21 @@ const COMPARED_CAPS = ["seats", "storageGb", "customApps", "auditDays", "jobsPer
  * can drift from what the plan really gives. A cap a plan does not set is
  * unlimited, as it is on the cell.
  */
-const PlanComparison: Component<{ plans: BillingSummary["plans"]; current: PlanId }> = (props) => {
+/** An https URL from the control plane, or nothing: the page names no deployment itself. */
+function httpsUrl(raw: string | undefined): string | null {
+  if (!raw) return null
+  try {
+    return new URL(raw).protocol === "https:" ? raw : null
+  } catch {
+    return null
+  }
+}
+
+const PlanComparison: Component<{
+  plans: BillingSummary["plans"]
+  current: PlanId
+  pricingUrl?: string
+}> = (props) => {
   const { t, locale } = useI18n()
   const capValue = (kind: (typeof COMPARED_CAPS)[number], value: number | null | undefined) => {
     if (typeof value !== "number") return t("cloud-billing.compare.unlimited")
@@ -253,15 +269,19 @@ const PlanComparison: Component<{ plans: BillingSummary["plans"]; current: PlanI
           </tbody>
         </table>
       </div>
-      <a
-        class="mt-2 inline-block text-text-secondary underline hover:text-text"
-        data-testid="billing-compare-site"
-        href={t("cloud-billing.compare.siteUrl")}
-        target="_blank"
-        rel="noopener"
-      >
-        {t("cloud-billing.compare.site")}
-      </a>
+      <Show when={httpsUrl(props.pricingUrl)}>
+        {(href) => (
+          <a
+            class="mt-2 inline-block text-text-secondary underline hover:text-text"
+            data-testid="billing-compare-site"
+            href={href()}
+            target="_blank"
+            rel="noopener"
+          >
+            {t("cloud-billing.compare.site")}
+          </a>
+        )}
+      </Show>
     </details>
   )
 }
@@ -738,7 +758,11 @@ const BillingSettings: Component = () => {
                       )}
                     </For>
                   </div>
-                  <PlanComparison plans={offeredPlans(s())} current={s().plan} />
+                  <PlanComparison
+                    plans={offeredPlans(s())}
+                    current={s().plan}
+                    pricingUrl={s().pricingUrl}
+                  />
                 </SettingsPageSection>
 
                 <SettingsPageSection

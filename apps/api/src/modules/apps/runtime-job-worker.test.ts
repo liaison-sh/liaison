@@ -16,7 +16,7 @@ import testManifest from "../../../test-support/apps/test/app.manifest.json"
 
 const ORG = "00000000-0000-0000-0000-000000160002"
 // Must match SPIN_MS in __fixtures__/event-spin/handler-bundle.ts.
-const SPIN_MS = 1500
+const SPIN_MS = 3000
 
 async function pollUntil(cond: () => Promise<boolean>, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs

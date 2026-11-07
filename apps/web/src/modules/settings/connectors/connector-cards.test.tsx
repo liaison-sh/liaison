@@ -298,12 +298,15 @@ describe("Google Drive connector card", () => {
     )
   })
 
-  it("is a card for google-drive:accounts:admin only", async () => {
+  it("is a card for every member: each connects their own Drive (a user section)", async () => {
     state.scopes = ["google-drive:accounts:read"]
     api.tool("google-drive:search", () => ({ results: [] }))
     renderPage("google-drive")
     await screen.findByTestId("connectors-page")
-    expect(screen.queryByTestId("connector-card-google-drive")).toBeNull()
+    expect(await screen.findByTestId("connector-card-google-drive")).toBeTruthy()
+    expect(
+      driveManifest.settings.sections.map((section: { scope: string }) => section.scope),
+    ).toEqual(["user"])
   })
 })
 

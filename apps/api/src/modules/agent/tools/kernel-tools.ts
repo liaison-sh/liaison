@@ -2861,7 +2861,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     // The OpenRouter search fetches the whole public model list from the fixed OpenRouter host
     // (no query string) and filters it here, so nothing from the turn leaves Liaison.
     readOnly: true,
-    description: `Read the organization's AI model settings (admin), the same as Settings > Models: what Auto runs, the default reasoning level, each model with its key, whether it is on and available, its price and reasoning levels. Pass openRouterSearch to also search OpenRouter's catalogue for a model to add with ai_models_set.`,
+    description: `Read the organization's AI model settings (admin), the same as Settings > Models: what Auto runs, the default reasoning level, each model with its key, whether it is on and available, its price and reasoning levels. Pass openRouterSearch to also search OpenRouter's catalogue for a model to add with kernel__ai_models_set.`,
     searchKeywords: ["modèle", "raisonnement", "default", "reasoning", "openrouter", "auto", "llm"],
     requiredScopes: ["kernel:org:admin"],
     trustBoundary: "user",
@@ -2880,7 +2880,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     appName: "kernel",
     name: "ai_models_set",
     deferLoading: true,
-    description: `Change the organization's default AI model and reasoning level (admin), the same as Settings > Models, for EVERYONE: choose what Auto runs, set the default reasoning level, switch models on or off, add a model from OpenRouter after a test call. Read the keys with ai_models_get first. It changes what the organization pays for and what everything left on Auto runs on. To move Auto to a model not yet in the list, pass addFromOpenRouter and its key as autoModelKey together. A routine or agent pinned to another model stays on it.`,
+    description: `Change the organization's default AI model and reasoning level (admin), the same as Settings > Models, for EVERYONE: choose what Auto runs, set the default reasoning level, switch models on or off, add a model from OpenRouter after a test call. Read the keys with kernel__ai_models_get first. It changes what the organization pays for and what everything left on Auto runs on. To move Auto to a model not yet in the list, pass addFromOpenRouter and its key as autoModelKey together. A routine or agent pinned to another model stays on it.`,
     searchKeywords: ["modèle", "raisonnement", "default", "reasoning", "openrouter", "auto", "llm"],
     requiredScopes: ["kernel:org:admin"],
     approveScope: "kernel:approve",

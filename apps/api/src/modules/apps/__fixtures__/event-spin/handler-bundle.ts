@@ -12,7 +12,10 @@ type SpinCtx = {
   db_insert?: (table: string, data: string) => Promise<unknown>
 }
 
-const SPIN_MS = 1500
+// Long enough that a host-loop stall (in-process execution) stands far above the
+// scheduling noise of a loaded shared CI runner, where worker spawn alone
+// delayed a tick by up to ~1 s.
+const SPIN_MS = 3000
 
 async function onItemCreatedSpin(event: { entityId?: string; data?: unknown }, ctx: SpinCtx) {
   const end = Date.now() + SPIN_MS

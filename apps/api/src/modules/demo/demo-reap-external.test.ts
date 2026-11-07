@@ -357,6 +357,13 @@ describe("collecting expired demo workspaces", () => {
     env.LIAISON_DEMO_SYNTHETIC_MAX_ORGS = 5
     let inFlight = 0
     let maxInFlight = 0
+    // Each delete holds until DEMO_REAP_CONCURRENCY deletes are in flight (or 5 s pass), so the
+    // count does not depend on how fast each workspace's database work runs: on a slow machine
+    // the first delete used to end before the third began.
+    let release: () => void = () => {}
+    const full = new Promise<void>((r) => {
+      release = r
+    })
     try {
       const { out, lines } = await reapInfoLines(() =>
         reapExpiredDemoOrgs(new Date(), {
@@ -365,7 +372,8 @@ describe("collecting expired demo workspaces", () => {
             deleteObjects: async () => {
               inFlight++
               maxInFlight = Math.max(maxInFlight, inFlight)
-              await new Promise((r) => setTimeout(r, 30))
+              if (inFlight >= DEMO_REAP_CONCURRENCY) release()
+              await Promise.race([full, new Promise((r) => setTimeout(r, 5_000))])
               inFlight--
               return 0
             },

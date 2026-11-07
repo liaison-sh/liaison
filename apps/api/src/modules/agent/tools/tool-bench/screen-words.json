@@ -1,0 +1,4 @@
+[
+  { "word": "fermer", "tool": "tickets__close" },
+  { "word": "rôle", "tool": "kernel__assign_role" }
+]

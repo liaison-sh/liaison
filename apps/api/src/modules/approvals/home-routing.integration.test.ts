@@ -21,7 +21,11 @@ import {
   computeApprovalAttentionItems,
   computeApprovalBadgeItems,
 } from "~/modules/approvals/attention"
-import { ApprovalDecisionError, decideApproval } from "~/modules/approvals/decide"
+import {
+  ApprovalDecisionError,
+  DecidedForTestAccess,
+  decideApproval,
+} from "~/modules/approvals/decide"
 import { resolveProposeRoute, updateItemRoutePerson } from "~/modules/approvals/route-world"
 import { attentionItemsRegistry } from "~/modules/apps/app-registries"
 import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
@@ -544,6 +548,37 @@ describe("home routing: who a pending approval is for", () => {
     expect(await decidedFor(byOwn)).toBeUndefined()
   })
 
+  it("a deny records whose the row was as the decision locked it, not as it was read before", async () => {
+    const decidedFor = async (id: string) =>
+      (
+        (await sql`SELECT metadata FROM kernel.approval_requests WHERE id = ${id}`)[0] as {
+          metadata: Record<string, unknown>
+        }
+      ).metadata.decidedFor
+    const id = await insertRow({
+      requestedBy: people.ines as string,
+      notify: deciders(),
+      metadata: { originRoutineId: randomUUID() },
+      routePersonId: people.ines as string,
+      title: "Reassigned before the deny",
+    })
+    // The item changes hands between the decider's reads and the claim.
+    DecidedForTestAccess.beforeClaim = async () => {
+      await sql`UPDATE kernel.approval_requests SET route_person_id = ${people.sara as string}::uuid WHERE id = ${id}`
+    }
+    try {
+      await decideApproval({
+        orgId: ORG,
+        requestId: id,
+        actor: await ctxOf(people.ines as string),
+        decision: "deny",
+      })
+    } finally {
+      DecidedForTestAccess.beforeClaim = null
+    }
+    expect(await decidedFor(id)).toEqual({ userId: people.sara, as: "also_could" })
+  })
+
   describe("an item changing hands moves its pending rows", () => {
     let admin: UserContext
     beforeAll(async () => {
@@ -745,6 +780,37 @@ describe("home routing: who a pending approval is for", () => {
       }>
       expect(stored?.decided_by).toBe(people.tom as string)
       expect(stored?.metadata.decidedFor).toMatchObject({ userId: people.sara, as: "next_in_line" })
+    })
+
+    it("an approve records whose the row was as the claim locked it, not as it was read before", async () => {
+      const id = await insertRow({
+        tool: "projects:createProject",
+        requestedBy: admin.userId as string,
+        notify: deciders(),
+        routePersonId: people.sara as string,
+        payload: { name: "Reassigned before the approve" },
+        title: "Reassigned before the approve",
+      })
+      // The item moves to the decider between their reads and the claim: their own row now.
+      DecidedForTestAccess.beforeClaim = async () => {
+        await sql`UPDATE kernel.approval_requests SET route_person_id = ${people.tom as string}::uuid WHERE id = ${id}`
+      }
+      try {
+        const decided = await decideApproval({
+          orgId: ORG,
+          requestId: id,
+          actor: await ctxOf(people.tom as string),
+          decision: "approve",
+        })
+        expect(decided.status).toBe("approved")
+      } finally {
+        DecidedForTestAccess.beforeClaim = null
+      }
+      const [stored] = (await sql`
+        SELECT metadata FROM kernel.approval_requests WHERE id = ${id}`) as Array<{
+        metadata: Record<string, unknown>
+      }>
+      expect(stored?.metadata.decidedFor).toBeUndefined()
     })
 
     it("Home passes the items of a person away to their next in line only through providers that declare it", async () => {

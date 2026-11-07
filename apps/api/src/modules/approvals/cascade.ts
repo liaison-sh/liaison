@@ -160,9 +160,10 @@ export async function executeApprovedStep(args: {
    *  succeeds only if the stored payload still hashes to it, judged under the row lock the claim
    *  itself takes, so an edit cannot slip in between the check and the claim. */
   expectedPayloadHash?: string
-  /** Whose decision this was when the decider is not the person the row is for, stored by the
-   *  claim itself under its row lock, so it names exactly the claim that won. */
-  decidedFor?: Record<string, unknown> | null
+  /** Whose decision this was when the decider is not the person the row is for: read by the
+   *  claim itself on the row it has locked and stored by the same update, so it names whose the
+   *  row was when this claim won. */
+  decidedFor?: ((tx: PrivilegedDb) => Promise<Record<string, unknown> | null>) | undefined
   /** "Send now" on a held mail: judged and written under the claim's row lock, after the hash. */
   sendGuardOverride?: SendGuardOverride
 }): Promise<StepOutcome> {
@@ -183,7 +184,12 @@ export async function executeApprovedStep(args: {
   let payloadChanged = false
   let notHeld: string | null = null
   const claimed = await withPrivilegedDb(args.orgId, "cascade-claim", async (tx) => {
-    if (args.expectedPayloadHash !== undefined || args.sendGuardOverride !== undefined) {
+    let decidedFor: Record<string, unknown> | null = null
+    if (
+      args.expectedPayloadHash !== undefined ||
+      args.sendGuardOverride !== undefined ||
+      args.decidedFor !== undefined
+    ) {
       const [locked] = extractRows<{
         tool_name: string
         current_payload: unknown
@@ -219,6 +225,7 @@ export async function executeApprovedStep(args: {
             return undefined
           }
         }
+        if (args.decidedFor) decidedFor = await args.decidedFor(tx)
       }
     }
     return lockedUpdateApproval<{
@@ -240,8 +247,8 @@ export async function executeApprovedStep(args: {
       from: args.sourceStatus,
       // Any earlier claim's decided-for goes with it: only this decider's is kept.
       set: drizzleSql`status = 'approving', decided_by = ${args.deciderId}, decided_at = now(), approving_started_at = now(), metadata = (COALESCE(metadata, '{}'::jsonb) - 'reaperFlaggedAt' - 'decidedFor')${
-        args.decidedFor
-          ? drizzleSql` || jsonb_build_object('decidedFor', ${JSON.stringify(args.decidedFor)}::jsonb)`
+        decidedFor
+          ? drizzleSql` || jsonb_build_object('decidedFor', ${JSON.stringify(decidedFor)}::jsonb)`
           : drizzleSql``
       }`,
       returning: drizzleSql`id, current_payload, originating_thread_id, thread_id, tool_name, requested_by, metadata, proposing_turn_scopes, agent_id`,

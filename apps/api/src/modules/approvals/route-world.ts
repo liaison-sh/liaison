@@ -62,7 +62,7 @@ function pairKey(userId: string, scope: string, app: string): string {
  * `person\u0000scope\u0000app`.
  */
 export async function readPeopleDecide(
-  tx: RlsClient,
+  tx: Reader,
   orgId: string,
   pairs: ReadonlyMap<string, { userId: string; scope: string; app: string }>,
 ): Promise<Set<string>> {
@@ -97,8 +97,11 @@ export async function readPeopleDecide(
   return out
 }
 
+/** A transaction the route reads run on: the viewer's, or a claim's privileged one. */
+type Reader = Pick<RlsClient, "execute">
+
 /** Who is away when, read once per feed. */
-interface AwayWorld {
+export interface AwayWorld {
   away(userId: string): { until: string | null; nextInLineId: string | null } | null
   /** Everyone named in a range today, as the person or their next in line. */
   people: Set<string>
@@ -133,7 +136,11 @@ const UNTIL_HORIZON_DAYS = 400
  * default lives in `user_preferences`, which only its owner reads, so that one column is read
  * privileged, for the people away today and nobody else.
  */
-async function readAwayWorld(tx: RlsClient, orgId: string, now: Date): Promise<AwayWorld> {
+export async function readAwayWorld(
+  tx: RlsClient,
+  orgId: string,
+  now: Date = new Date(),
+): Promise<AwayWorld> {
   try {
     const ranges = extractRows<RangeRow>(
       await tx.execute(drizzleSql`
@@ -245,7 +252,7 @@ function currentRange(ranges: RangeRow[], today: string): RangeRow | undefined {
 }
 
 /** Who among `ids` is still an active member. */
-async function readActive(tx: RlsClient, orgId: string, ids: Set<string>): Promise<Set<string>> {
+async function readActive(tx: Reader, orgId: string, ids: Set<string>): Promise<Set<string>> {
   if (ids.size === 0) return new Set()
   const rows = extractRows<{ id: string }>(
     await tx.execute(drizzleSql`
@@ -275,8 +282,16 @@ export async function readApprovalRoutes(
   rows: readonly RoutableApprovalRow[],
   now: Date = new Date(),
 ): Promise<RoutedRows> {
-  const awayWorld = await readAwayWorld(tx, orgId, now)
+  return routesIn(tx, orgId, rows, await readAwayWorld(tx, orgId, now))
+}
 
+/** The routes of `rows` in a given away world, every other fact read on `tx`. */
+async function routesIn(
+  tx: Reader,
+  orgId: string,
+  rows: readonly RoutableApprovalRow[],
+  awayWorld: AwayWorld,
+): Promise<RoutedRows> {
   // Everyone a route may name, per row: requester, person on the item, and the away chain.
   const pairs = new Map<string, { userId: string; scope: string; app: string }>()
   const chainPeople = new Set<string>(awayWorld.people)
@@ -342,20 +357,28 @@ export async function readApprovalRoutes(
   }
 }
 
-/** One row's route, its person on the item read fresh (the decide path's row has none). */
-export async function readApprovalRouteOf(
-  tx: RlsClient,
+/**
+ * One row's route as a decision's claim sees it: the person on the item read on `tx`, the
+ * claim's transaction holding the row's lock, so a reassignment cannot land between this read
+ * and the decision. The away world is the one the decider read just before.
+ */
+export async function readLockedApprovalRoute(
+  tx: Reader,
   orgId: string,
   row: Omit<RoutableApprovalRow, "route_person_id">,
+  awayWorld: AwayWorld,
 ): Promise<ApprovalRoute> {
   const [current] = extractRows<{ route_person_id: string | null }>(
     await tx.execute(
       drizzleSql`SELECT route_person_id FROM ${K}.approval_requests WHERE id = ${row.id}::uuid`,
     ),
   )
-  const routes = await readApprovalRoutes(tx, orgId, [
-    { ...row, route_person_id: current?.route_person_id ?? null },
-  ])
+  const routes = await routesIn(
+    tx,
+    orgId,
+    [{ ...row, route_person_id: current?.route_person_id ?? null }],
+    awayWorld,
+  )
   return routes.route(row.id)
 }
 

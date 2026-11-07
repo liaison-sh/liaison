@@ -40,7 +40,11 @@ import {
 import { approvalPayloadHash } from "~/modules/approvals/payload-hash"
 import { enqueuePoll } from "~/modules/approvals/poll-output"
 import { approvalFailureRequiredScopes } from "~/modules/approvals/result-notice"
-import { readApprovalRouteOf } from "~/modules/approvals/route-world"
+import {
+  type AwayWorld,
+  readAwayWorld,
+  readLockedApprovalRoute,
+} from "~/modules/approvals/route-world"
 import { rowTaintMustHold } from "~/modules/approvals/taint-narrow"
 import type { ToolOrigin } from "~/modules/apps/execute-tool"
 import {
@@ -531,12 +535,19 @@ async function denyFlow(args: DecideArgs, row: ApprovalRow): Promise<DecideResul
     throw new ApprovalDecisionError(400, "invalid_reason", "invalid_reason")
   }
   const fromWedged = wedgedPastGrace(row)
-  const decidedFor = await readDecidedFor(args, row)
-  // Written by the same locked update as the decision.
-  const forSql = decidedFor
-    ? drizzleSql`, metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{decidedFor}', ${JSON.stringify(decidedFor)}::jsonb, true)`
-    : drizzleSql``
+  const readFor = fromWedged ? undefined : await decidedForReader(args, row)
   const result = await withPrivilegedDb(args.orgId, "approval-deny", async (tx) => {
+    // Whose the row is, read on the row as this decision locks it, and written by the same update.
+    let forSql = drizzleSql``
+    if (readFor) {
+      await tx.execute(
+        drizzleSql`SELECT 1 FROM ${K}.approval_requests WHERE id = ${row.id} FOR UPDATE`,
+      )
+      const decidedFor = await readFor(tx)
+      if (decidedFor) {
+        forSql = drizzleSql`, metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{decidedFor}', ${JSON.stringify(decidedFor)}::jsonb, true)`
+      }
+    }
     const updated = await lockedUpdateApproval<{
       id: string
       status: string
@@ -613,26 +624,52 @@ type DecidedFor =
   | { userId: string; as: "next_in_line"; awayUntil: string | null }
   | { userId: string; as: "also_could" }
 
+/** Runs on a decision's own transaction once it holds the row's lock. */
+type DecidedForReader = (tx: PrivilegedDb) => Promise<DecidedFor | null>
+
+/** A test's hook between the decider's away read and the claim: nothing else sets it. */
+export const DecidedForTestAccess: { beforeClaim: (() => Promise<void>) | null } = {
+  beforeClaim: null,
+}
+
 /**
  * The audit of a decision taken for someone else: the stand-in of a person away decides as
  * their next in line, any other decider as someone who could also approve it. The person the
- * row is for, an owner-routed row and a row for the usual deciders record nothing. A route
- * that cannot be read records nothing: the decision itself never waits on it.
+ * row is for, an owner-routed row and a row for the usual deciders record nothing. Who is away
+ * is read here as the decider; the person on the item is read by the claim on its locked row,
+ * so the record names whose the row was when this decision won. A route that cannot be read
+ * records nothing: the decision itself never waits on it.
  */
-async function readDecidedFor(args: DecideArgs, row: ApprovalRow): Promise<DecidedFor | null> {
+async function decidedForReader(
+  args: DecideArgs,
+  row: ApprovalRow,
+): Promise<DecidedForReader | undefined> {
+  let world: AwayWorld
   try {
-    const route = await withRlsContext(args.actor, (tx) => readApprovalRouteOf(tx, args.orgId, row))
-    if (route.to !== "person" || route.userId === args.actor.userId) return null
-    if (route.standIn === args.actor.userId) {
-      return { userId: route.userId, as: "next_in_line", awayUntil: route.awayUntil }
-    }
-    return { userId: route.userId, as: "also_could" }
+    world = await withRlsContext(args.actor, (tx) => readAwayWorld(tx, args.orgId))
   } catch (err) {
-    log.warn(
-      { err, requestId: row.id },
-      "could not read whose the request was; no decided-for audit",
-    )
-    return null
+    log.warn({ err, requestId: row.id }, "could not read who is away; no decided-for audit")
+    return undefined
+  }
+  if (DecidedForTestAccess.beforeClaim) await DecidedForTestAccess.beforeClaim()
+  return async (tx) => {
+    try {
+      // A savepoint: a read that fails here must not abort the decision's own transaction.
+      const route = await tx.transaction((sp) =>
+        readLockedApprovalRoute(sp, args.orgId, row, world),
+      )
+      if (route.to !== "person" || route.userId === args.actor.userId) return null
+      if (route.standIn === args.actor.userId) {
+        return { userId: route.userId, as: "next_in_line", awayUntil: route.awayUntil }
+      }
+      return { userId: route.userId, as: "also_could" }
+    } catch (err) {
+      log.warn(
+        { err, requestId: row.id },
+        "could not read whose the request was; no decided-for audit",
+      )
+      return null
+    }
   }
 }
 
@@ -728,8 +765,8 @@ async function approveFlow(args: DecideArgs, row: ApprovalRow): Promise<DecideRe
     }
   }
 
-  // Whose this row was when the decider chose, read before the claim moves it on.
-  const decidedFor = await readDecidedFor(args, row)
+  // Whose this row was when the decider chose: read by the claim, under its row lock.
+  const decidedFor = await decidedForReader(args, row)
 
   // A bundle's later steps run on this same decision: bind each to the version the decider saw.
   await bindDeferredSteps(args, row)

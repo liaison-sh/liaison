@@ -252,6 +252,7 @@ import {
   FEATURE_OFF_CODE,
   isAppActiveForOrgAsync,
   isFeatureOffForTool,
+  orgFeaturesUnreadable,
   primeOrgApps,
 } from "~/modules/apps/org-apps"
 import { featureOffAnswer } from "~/modules/apps/org-features"
@@ -6099,6 +6100,17 @@ export async function executeApprovedToolHandlerInternal(args: {
   // (`revertToPending`, approvals/decide.ts), rather than re-pending it forever.
   await primeOrgApps(args.orgId)
   if (isFeatureOffForTool(args.orgId, args.tool)) {
+    // The feature rows could not be read: the call does not run now, but nothing
+    // says the feature is off, so the request stays pending and can be approved again.
+    if (orgFeaturesUnreadable(args.orgId)) {
+      return {
+        error: {
+          code: APP_STATE_UNAVAILABLE_CODE,
+          message: `${args.tool.appName}__${args.tool.name} did not run and nothing changed: the workspace's feature settings could not be read. The request is still pending; approve it again in a moment.`,
+          retryable: true,
+        },
+      }
+    }
     const { code, message, feature, next } = featureOffAnswer(args.orgId, args.tool)
     // The closing notice carries the message alone, so the next step travels in it.
     return { error: { code, message: `${message} ${next}`, feature, next, final: true } }

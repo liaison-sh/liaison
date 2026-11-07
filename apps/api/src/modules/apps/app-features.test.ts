@@ -855,6 +855,65 @@ describe("an approved call whose feature has since gone off", () => {
     expect(runs.write).toBe(before + 1)
   }, 60_000)
 
+  const failFeatureReads = () => {
+    const real = privileged.withPrivilegedDb
+    const reads = { count: 0 }
+    const spy = spyOn(privileged, "withPrivilegedDb").mockImplementation(((
+      org: string,
+      reason: string,
+      fn: never,
+      opts: never,
+    ) => {
+      if (reason === "org-features-read") {
+        reads.count += 1
+        throw new Error("feature row unreadable")
+      }
+      return real(org, reason, fn, opts)
+    }) as never)
+    return { reads, spy }
+  }
+
+  it("a features read that throws during an approval leaves the request pending and retryable", async () => {
+    await flip(true)
+    const threadId = await freshThread()
+    const before = runs.write
+    const parked = await park("laterWrite", threadId)
+    const { spy } = failFeatureReads()
+    const logged = spyOn(appsLogger, "error").mockImplementation((() => {}) as never)
+    try {
+      await reloadOrgApps(orgId, { fresh: true })
+      await expect(approve(parked)).rejects.toThrow()
+    } finally {
+      spy.mockRestore()
+      logged.mockRestore()
+    }
+    expect(runs.write).toBe(before)
+    expect(await statusOf(parked)).toBe("pending")
+    expect((await executionOf(parked))?.error?.code).not.toBe("feature_off")
+
+    // The read recovers: the same request is approved again and runs.
+    await approve(parked)
+    expect(runs.write).toBe(before + 1)
+    expect(await statusOf(parked)).toBe("approved")
+  }, 60_000)
+
+  it("the next prime after a failed read reads the table again", async () => {
+    await flip(true)
+    const { reads, spy } = failFeatureReads()
+    const logged = spyOn(appsLogger, "error").mockImplementation((() => {}) as never)
+    try {
+      await reloadOrgApps(orgId, { fresh: true })
+      expect(reads.count).toBeGreaterThan(0)
+      expect(isFeatureOffForTool(orgId, { appName: "test", feature: FEATURE })).toBe(true)
+    } finally {
+      spy.mockRestore()
+      logged.mockRestore()
+    }
+    // A plain prime, well inside the TTL: the failed answer was not kept, so it reads again.
+    await primeOrgApps(orgId)
+    expect(isFeatureOffForTool(orgId, { appName: "test", feature: FEATURE })).toBe(false)
+  })
+
   it("a read closes the same way, never reading as a tool that ran and failed", async () => {
     await flip(true)
     const threadId = await freshThread()

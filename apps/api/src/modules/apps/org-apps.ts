@@ -112,6 +112,12 @@ interface Entry {
   apps: ReadonlyMap<string, OrgAppState>
   /** App name to the features switched on for the org. A feature absent here is off. */
   enabledFeatures: ReadonlyMap<string, ReadonlySet<string>>
+  /**
+   * The feature rows could not be read: every feature reads off for listing and
+   * new calls, but an approved call answers a retryable unavailable instead of a
+   * final off, and the entry is stamped stale so the next prime reads again.
+   */
+  featuresUnreadable?: boolean
   /** The id is a UUID that no organization row carries: the org was deleted. */
   orgMissing: boolean
   /** The org row has `deleting_at` set: its deletion has started (modules/org/purge/). */
@@ -220,11 +226,14 @@ async function readOrgApps(
 
 /**
  * The org's switched-on features, in their own read: a failure here answers that
- * every feature is off (logged), while the app state above keeps its own rules.
+ * every feature is off (logged) and says the read failed (`ok: false`), while the
+ * app state above keeps its own rules.
  */
-async function readOrgFeatures(orgId: string): Promise<Map<string, Set<string>>> {
+async function readOrgFeatures(
+  orgId: string,
+): Promise<{ ok: boolean; features: Map<string, Set<string>> }> {
   const out = new Map<string, Set<string>>()
-  if (!UUID_RE.test(orgId)) return out
+  if (!UUID_RE.test(orgId)) return { ok: true, features: out }
   try {
     const rows = await withPrivilegedDb(orgId, "org-features-read", (db) =>
       db
@@ -239,9 +248,9 @@ async function readOrgFeatures(orgId: string): Promise<Map<string, Set<string>>>
     }
   } catch (err) {
     appsLogger.error({ err, orgId }, "org feature rows unreadable; every feature reads off")
-    out.clear()
+    return { ok: false, features: new Map() }
   }
-  return out
+  return { ok: true, features: out }
 }
 
 /** Reload the org's entry now (an invalidation, a write, a stale entry). Throws on a load failure. */
@@ -254,11 +263,16 @@ export async function reloadOrgApps(orgId: string, opts: { fresh?: boolean } = {
   const gen = ++generationSeq
   generation.set(orgId, gen)
   const load: Promise<void> = readOrgApps(orgId)
-    .then(async (read) => ({ ...read, enabledFeatures: await readOrgFeatures(orgId) }))
+    .then(async (read) => {
+      const features = await readOrgFeatures(orgId)
+      return { ...read, enabledFeatures: features.features, featuresUnreadable: !features.ok }
+    })
     .then(async (read) => {
       if (generation.get(orgId) === gen) {
         const prev = cache.get(orgId)
-        cache.set(orgId, { ...read, loadedAt: Date.now() })
+        // A failed feature read is not an answer to keep: stamped stale, the next
+        // prime reads the table again instead of serving "all off" for the TTL.
+        cache.set(orgId, { ...read, loadedAt: read.featuresUnreadable ? 0 : Date.now() })
         const ended = read.orgDeleting || read.orgMissing
         if (ended && !(prev?.orgDeleting || prev?.orgMissing)) notifyOrgEnded(orgId)
         return
@@ -426,6 +440,14 @@ export function isFeatureOffForTool(
 ): boolean {
   if (!tool.feature) return false
   return !cache.get(orgId)?.enabledFeatures.get(tool.appName)?.has(tool.feature)
+}
+
+/**
+ * Sync, after a prime: did the last read of the org's feature rows fail? Then an
+ * off answer from `isFeatureOffForTool` is "unknown", not a row that says off.
+ */
+export function orgFeaturesUnreadable(orgId: string): boolean {
+  return cache.get(orgId)?.featuresUnreadable === true
 }
 
 /** Sync, after a prime: every feature switched on for the org. */

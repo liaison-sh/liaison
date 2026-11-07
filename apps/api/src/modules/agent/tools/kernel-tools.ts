@@ -586,6 +586,9 @@ async function buildKernelAgentTools(orgId: string): Promise<void> {
     appName: "kernel",
     name: "user_memory_get",
     deferLoading: true,
+    // The agent uses the memory file verbs; a screen or a parked approval still reaches this one.
+    agentVisible: false,
+    useInstead: "memory_view",
     readOnly: true,
     description:
       "Retrieve a stored memory about this user by type (user, feedback, project or reference) and name, or enumerate every memory of one type by passing type alone. The index of all memories is always in your system prompt: read that first and call this only when you need an entry's full body. Prefer kernel__memory_view, which reads the same files by the paths MEMORY.md gives you.",
@@ -604,6 +607,9 @@ async function buildKernelAgentTools(orgId: string): Promise<void> {
     appName: "kernel",
     name: "user_memory_set",
     deferLoading: true,
+    // The agent uses the memory file verbs; a screen or a parked approval still reaches this one.
+    agentVisible: false,
+    useInstead: "memory_create",
     description:
       "Save or update a private memory entry about this user, keyed by (type, name): user (who they are), feedback (rules from corrections), project (current work context) or reference (pointers to external systems). Reuse the same (type, name) to overwrite rather than accumulating duplicates. Prefer kernel__memory_create and kernel__memory_str_replace, which write the same files by path, where an incremental edit survives an interruption.",
     requiredScopes: ["kernel:agent:memory"],
@@ -649,6 +655,9 @@ async function buildKernelAgentTools(orgId: string): Promise<void> {
     appName: "kernel",
     name: "user_memory_delete",
     deferLoading: true,
+    // The agent uses the memory file verbs; a screen or a parked approval still reaches this one.
+    agentVisible: false,
+    useInstead: "memory_delete",
     description:
       "Remove a memory entry and its index line, by type and name. Prefer updating over deleting: delete only when a memory is genuinely wrong with no replacement, or the user asks to forget something specific. Prefer kernel__memory_delete, which removes the same file by path.",
     requiredScopes: ["kernel:agent:memory"],
@@ -673,12 +682,15 @@ async function buildKernelAgentTools(orgId: string): Promise<void> {
     writesToTable: SINK_KERNEL_AGENT_MEMORY,
   })
 
-  // --- The memory tree's file verbs (core, always loaded) ------------------
+  // --- The memory tree's file verbs ----------------------------------------
   //
-  // NONE of these is deferred. The memory verbs are part of the stable tool
-  // set from the FIRST turn of a session: a tools-array change invalidates the
-  // cached prefix, so a verb that appeared mid session would cost a full cache
-  // miss on the turn it appeared.
+  // view, create, str_replace, insert and search are in the stable tool set from
+  // the FIRST turn of a session (a tools-array change invalidates the cached
+  // prefix, so a verb that appeared mid session would cost a full cache miss).
+  // delete, rename and open are rarer verbs: deferred, found by tool_search and
+  // named in the deferred catalog, loaded when the model reaches for them.
+  // insert stays hot: deferred, the lines that say "remember that ..." stopped
+  // reaching it by search (held-out lines, 12 of 12 down to 2 of 12).
 
   toolRegistry.set([orgId, "kernel", "memory_view"], {
     appName: "kernel",
@@ -751,6 +763,7 @@ async function buildKernelAgentTools(orgId: string): Promise<void> {
   toolRegistry.set([orgId, "kernel", "memory_delete"], {
     appName: "kernel",
     name: "memory_delete",
+    deferLoading: true,
     description:
       "Remove a memory file and its line in MEMORY.md. Prefer correcting over deleting: delete only when a memory is wrong with no replacement, or the user asks to forget it. Never on MEMORY.md, episodes/ or checkpoints/.",
     requiredScopes: ["kernel:agent:memory"],
@@ -764,6 +777,7 @@ async function buildKernelAgentTools(orgId: string): Promise<void> {
   toolRegistry.set([orgId, "kernel", "memory_rename"], {
     appName: "kernel",
     name: "memory_rename",
+    deferLoading: true,
     description:
       "Move a memory file to another path and rewrite its line in MEMORY.md, for when a file's subject narrowed or widened. Both paths must be <type>/<slug>.md; a rename into, out of, or onto an existing path is refused.",
     requiredScopes: ["kernel:agent:memory"],
@@ -805,6 +819,7 @@ async function buildKernelAgentTools(orgId: string): Promise<void> {
   toolRegistry.set([orgId, "kernel", "memory_open"], {
     appName: "kernel",
     name: "memory_open",
+    deferLoading: true,
     readOnly: true,
     description:
       "Read the verbatim messages around one transcript hit from kernel__memory_search, so you see what was actually said rather than a summary. Pass its messageId plus how many messages you want before and after.",
@@ -1138,9 +1153,8 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
   toolRegistry.set([orgId, "kernel", "threads_create"], {
     appName: "kernel",
     name: "threads_create",
-    deferLoading: true,
     description:
-      "Create a new thread with the given participants. People who ALREADY have a thread together do not get a second one: an untitled create returns the existing thread, and a titled create fails with duplicate_thread naming that thread's id. This is how to message a teammate (someone in this organization) directly: participantIds [their user id, from kernel__users_search], no title, the text as initialMessage. It posts into your existing direct conversation with them, or opens one. Never email a teammate with mail__compose unless the user asks for an email. To post into a group thread or a titled thread you already share, find it (kernel__threads_search) and use kernel__threads_reply. Use a title or forceCreate only when the user asks for a separate conversation.",
+      "Start a thread with participants, or message a teammate directly: participantIds [their user id from kernel__users_search], no title, the text as initialMessage. Never email a teammate with mail__compose unless asked.",
     searchKeywords: [
       "message",
       "discussion",
@@ -1778,10 +1792,9 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
   toolRegistry.set([orgId, "kernel", "users_search"], {
     appName: "kernel",
     name: "users_search",
-    deferLoading: true,
     readOnly: true,
     description:
-      "Search your organisation's TEAM members (colleagues) by name or email: up to 20 active users with id, name and email. Use it to resolve a teammate's user id before routing work to them, since assignee fields take a user UUID. For external people (customers, leads) use kernel__contacts_search instead.",
+      "Find colleagues (team members) by name or email: up to 20 active users with id, name and email, to resolve a teammate's user id. For customers and leads use kernel__contacts_search.",
     searchKeywords: [
       "collègue",
       "utilisateur",
@@ -3084,10 +3097,9 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
   toolRegistry.set([orgId, "kernel", "approvals_list"], {
     appName: "kernel",
     name: "approvals_list",
-    deferLoading: true,
     readOnly: true,
     description:
-      "List the approvals waiting on this user to decide, oldest first, each tagged with its origin app, requester, summary and ageDays. Returns { total, approvals[], recentlyDecided[] }, where total is the authoritative, never truncated count of the pending queue. recentlyDecided is a separate list, never part of total or approvals: the requests this user may see that were decided in the last 24 hours, newest first, each with its status (approved, approving = approved and executing, denied, withdrawn, expired, cancelled), decidedAt, decidedBy and reason. A request leaves approvals the moment it is decided, so to answer whether a requested action happened, look it up by handle in BOTH lists: found in recentlyDecided with status denied, withdrawn, expired or cancelled means it did not happen; found in neither means you cannot tell from here. Use it for approval inbox triage, before staging a gated action to see whether the same intent is already queued, and whenever the user reports that something never happened, never arrived, or is not working.",
+      "List the approvals waiting on this user to decide, oldest first, with origin app, requester, summary and age, plus recentlyDecided (last 24 hours) to check whether a requested action happened. Read-only.",
     searchKeywords: [
       "attente",
       "approbation",
@@ -3124,7 +3136,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     name: "capture_business_knowledge",
     deferLoading: true,
     description:
-      "Capture a piece of company knowledge (a policy, a process, a shared fact) as an ORGANIZATION scoped Knowledge document every member can find, auto-enabling the Knowledge app if needed. Use this, not kernel__user_memory_set, whenever the user asks to write down, record or document a shared business fact such as a support inbox address, a company policy or operating rule, or company contact info: kernel__user_memory_set is private to the one operator and invisible to the org.",
+      "Capture a piece of company knowledge (a policy, a process, a shared fact) as an ORGANIZATION scoped Knowledge document every member can find, auto-enabling the Knowledge app if needed. Use this, not kernel__memory_create, whenever the user asks to write down, record or document a shared business fact such as a support inbox address, a company policy or operating rule, or company contact info: kernel__memory_create is private to the one operator and invisible to the org.",
     searchKeywords: [
       "retenir",
       "noter",

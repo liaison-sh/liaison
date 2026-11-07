@@ -4236,7 +4236,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     return {
       error: {
         code: "forbidden",
-        message: `tool ${opts.toolName} not callable by agent`,
+        message: hiddenToolRefusal(opts.toolName, appName, tool.useInstead),
         retryable: false,
       },
     }
@@ -6329,4 +6329,19 @@ export async function widenSequencedStepHeads(args: {
     }
     return { ok: true }
   })
+}
+
+/**
+ * The refusal an agent gets for a tool hidden from it. A stored routine or approval policy can
+ * still name the tool, so the message says which visible tool does the job now: `useInstead` is
+ * a tool of the same app, or `app__tool` for another app's.
+ */
+export function hiddenToolRefusal(
+  toolName: string,
+  appName: string,
+  useInstead: string | undefined,
+): string {
+  if (!useInstead) return `tool ${toolName} not callable by agent`
+  const visible = useInstead.includes("__") ? useInstead : `${appName}__${useInstead}`
+  return `tool ${toolName} is not callable by an agent. Use ${visible} instead.`
 }

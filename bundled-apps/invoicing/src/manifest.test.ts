@@ -1499,7 +1499,8 @@ describe("invoicing manifest", () => {
     // 0.20.51: the shared settings types it builds against changed; no change of its own.
     // 0.20.52: its attention heading is declared here, not in the web shell.
     // 0.20.56: document search declares one search keyword fewer.
-    expect(m.version).toBe("0.20.56")
+    // 0.20.57: hidden tools name the visible one to use instead.
+    expect(m.version).toBe("0.20.57")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

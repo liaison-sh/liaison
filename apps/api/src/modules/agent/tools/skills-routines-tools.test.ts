@@ -4549,6 +4549,40 @@ describe("handleEnableRoutineTemplate / reset (A6)", () => {
     expect(row.prompt).toBe("TEMPLATE PROMPT")
   })
 
+  it("reset_routine_to_template puts a follow-up routine's followUp back to the template's value", async () => {
+    const { and, eq } = await import("drizzle-orm")
+    const { routineTemplateRegistry } = await import("~/modules/apps/app-registries")
+    const { handleEnableRoutineTemplate, handleResetRoutineToTemplate } = await import(
+      "~/modules/agent/tools/skills-routines-tools"
+    )
+    routineTemplateRegistry.set([orgId, "social", "quote-follow-up-reset"], {
+      description: "follow up on quotes with no answer",
+      kind: "recurring",
+      cron: "0 9 * * 1",
+      timezone: "UTC",
+      promptTemplate: "Draft a follow-up to each client with an unanswered quote",
+      scopes: ["social:findings:read"],
+      enabledByDefault: false,
+      followUp: true,
+    })
+    const scopes = ["social:findings:read", "kernel:routines:write"]
+    const enabled = (await handleEnableRoutineTemplate(
+      { appName: "social", templateKey: "quote-follow-up-reset", timezone: "UTC" },
+      tplCtx(userId, scopes),
+    )) as { routine: { id: string } }
+    await withPrivilegedDb(orgId, "mutate", (tx) =>
+      tx.update(routines).set({ followUp: false }).where(eq(routines.id, enabled.routine.id)),
+    )
+    await handleResetRoutineToTemplate({ id: enabled.routine.id }, tplCtx(userId, scopes))
+    const [row] = await withPrivilegedDb(orgId, "r", (tx) =>
+      tx
+        .select()
+        .from(routines)
+        .where(and(eq(routines.id, enabled.routine.id))),
+    )
+    expect(row.followUp).toBe(true)
+  })
+
   it("B12c: enable_routine_template returns scheduler_register_failed when scheduling throws (not silent success)", async () => {
     const { spyOn } = await import("bun:test")
     const { Queue } = await import("bullmq")

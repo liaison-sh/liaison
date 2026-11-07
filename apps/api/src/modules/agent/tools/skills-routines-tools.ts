@@ -4547,6 +4547,7 @@ export async function handleResetRoutineToTemplate(
         description: tpl.description,
         kind: tpl.kind,
         prompt: tpl.promptTemplate,
+        followUp: tpl.followUp === true,
         cron: resetCron,
         timezone: tpl.kind === "recurring" ? tz : null,
         runAt: tpl.kind === "scheduled" && tpl.runAt ? new Date(tpl.runAt) : null,

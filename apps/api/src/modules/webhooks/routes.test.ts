@@ -30,10 +30,10 @@ import {
   webhookHandlers,
 } from "~/modules/apps/app-registries"
 import * as appsInitModule from "~/modules/apps/init"
-import * as appDayCapModule from "~/modules/apps/usage/app-day-cap"
 import type { AppDescriptor } from "~/modules/apps/runtime"
 import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
+import * as appDayCapModule from "~/modules/apps/usage/app-day-cap"
 import * as googleOidcModule from "~/modules/webhooks/google-oidc"
 
 const REPLAY_PREFIX = "webhook:replay:"

@@ -115,11 +115,11 @@ export function crossed(before: number, after: number, limit: number): boolean {
 
 /** Write the batch: one upsert adding to each row. Never throws. */
 export function flushAppUsage(): Promise<void> {
-  flushing = flushing.then(writeBatch)
+  flushing = flushing.then(writeUsageBatch)
   return flushing
 }
 
-async function writeBatch(): Promise<void> {
+async function writeUsageBatch(): Promise<void> {
   if (pending.size === 0) return
   const rows = [...pending.values()]
   pending.clear()

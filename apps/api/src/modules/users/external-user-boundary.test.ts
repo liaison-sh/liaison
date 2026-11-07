@@ -206,10 +206,11 @@ describe("the member side of the boundary", () => {
         )
         return rows.map((r) => r["QUERY PLAN"]).join("\n")
       })
-      // The planner may answer a one-row primary-key lookup with a plain or a bitmap index scan;
-      // either reads through users_pkey, and a sequential scan is the failure.
-      expect(plan).toMatch(/(Index Scan using|Bitmap Index Scan on) users_pkey/)
-      expect(plan).toContain("Index Cond: (id = ")
+      // The planner may answer a one-row lookup by id through the primary key (plain or bitmap) or,
+      // when earlier tests left many orgs in the table, through the org's own index with the id as a
+      // filter. What the policy must never cause is a sequential scan.
+      expect(plan).toMatch(/Index Scan using \w+ on users|Bitmap Index Scan on \w+/)
+      expect(plan).toContain(`id = '${target?.id}'`)
       expect(plan).not.toContain("Seq Scan")
     } finally {
       await sql`DELETE FROM kernel.users WHERE org_id = ${bigOrg}`

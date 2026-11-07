@@ -3,8 +3,9 @@
 // The in-product app builder end to end, on a real database, the real
 // sandbox pool and the real install path (modules/app-builder):
 //   - the templates pass check and preview as they are;
-//   - preview isolation: store writes in `draft:<id>` only (wiped at the next
-//     preview and after a day), ctx.db -> preview_no_schema before the first
+//   - preview isolation: store writes in `draft:<id>` only (kept across
+//     previews of one version, wiped on another version, freshStore, discard
+//     and after a day; one preview at a time), ctx.db -> preview_no_schema before the first
 //     publish, ctx.fetch only to hosts the ACTIVE version was granted, no
 //     secret / config / auth / cross-app call, logs returned;
 //   - publish pinning: the approval pins name, version, sha and grants; a
@@ -23,30 +24,35 @@ import { app } from "~/app"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { createRlsSession, type UserContext, withRlsContext } from "~/db/rls"
+import { env } from "~/lib/env"
 import { checkDraft } from "~/modules/app-builder/check"
 import {
   createDraft,
   type DraftCaller,
   DraftError,
+  discardDraft,
   draftAppName,
+  getBuildArtifact,
   getDraft,
   updateDraftFiles,
 } from "~/modules/app-builder/drafts"
 import { pruneDraftStoreNamespaces } from "~/modules/app-builder/installed"
 import { createRunLogSink } from "~/modules/app-builder/logs"
 import { PreviewTestAccess, previewDraft, previewManifest } from "~/modules/app-builder/preview"
-import { executePublish, preparePublish } from "~/modules/app-builder/publish"
+import { builderSourceUrl, executePublish, preparePublish } from "~/modules/app-builder/publish"
 import { templateFiles } from "~/modules/app-builder/templates"
 import { decideApproval } from "~/modules/approvals/decide"
 import { UpdatePayloadError, updatePayload } from "~/modules/approvals/edit"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { installAppFromBytes } from "~/modules/apps/install-service"
 import { getInstallTrust, resetInstallTrustCache } from "~/modules/apps/install-trust"
 import { shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { draftStoreApp, getDocument, setDocument } from "~/modules/data-store/service"
 import { setOrgCaps } from "~/modules/org/caps"
 import { purgeOrgCustomApps } from "~/modules/org/purge/purge-org"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
+import { seedCustomAppInstall } from "~/seed/factories/org/platform-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -62,6 +68,8 @@ const caller = (): DraftCaller => ({ orgId, userId: adminId })
 const asAdmin = <T>(fn: (tx: Parameters<Parameters<typeof withRlsContext>[1]>[0]) => Promise<T>) =>
   withRlsContext(admin, fn)
 const actor = () => ({ orgId, userId: adminId, scopes: admin.scopes })
+/** The admin's short transactions, as the builder takes them (TxRunner). */
+const adminDb = () => createRlsSession(admin)
 
 /** A draft's files: a manifest for `appName` plus the given handlers and tools. */
 function probeFiles(
@@ -134,8 +142,12 @@ async function restPublish(draftId: string, body: Record<string, unknown> = {}) 
   })
 }
 
+const savedCustomApps = env.LIAISON_CUSTOM_APPS
+
 beforeAll(async () => {
   await acquireTestLock()
+  // Organisations' own apps on: this server is self-hosted, where they default off.
+  env.LIAISON_CUSTOM_APPS = "on"
   installRoot = mkdtempSync(join(tmpdir(), "app-builder-root-"))
   process.env.LIAISON_APPS_DIR = installRoot
   orgId = (await createTestOrg()).id
@@ -163,13 +175,14 @@ afterAll(async () => {
   if (savedAppsDir === undefined) delete process.env.LIAISON_APPS_DIR
   else process.env.LIAISON_APPS_DIR = savedAppsDir
   rmSync(installRoot, { recursive: true, force: true })
+  env.LIAISON_CUSTOM_APPS = savedCustomApps
   await releaseTestLock()
 }, 120_000)
 
 describe("templates", () => {
   it("store-crud passes check and preview as it is; its write lands in the draft's namespace only", async () => {
     const { draftId, appName } = await newDraft("tpl-crud")
-    const checked = await asAdmin((tx) => checkDraft(tx, caller(), { draftId }))
+    const checked = await checkDraft(adminDb(), caller(), { draftId })
     expect(checked.errors).toEqual([])
     expect(checked.ok).toBe(true)
     expect(checked.appName).toBe(appName)
@@ -187,20 +200,80 @@ describe("templates", () => {
     expect(await storeRows(`draft:${draftId}`)).toBe(1)
     expect(await storeRows(appName)).toBe(0)
 
-    // The next preview of the draft starts from an empty namespace.
+    expect(added.storeWiped).toBe(true)
+
+    // The next preview of the same version reads what the last one wrote.
     const listed = await previewDraft(actor(), {
       draftId,
       entry: { kind: "tool", name: "items_list" },
     })
     expect(listed.ok).toBe(true)
-    expect((listed.result as { items: unknown[] }).items).toEqual([])
+    expect(listed.storeWiped).toBe(false)
+    expect((listed.result as { items: unknown[] }).items).toHaveLength(1)
+    expect(await storeRows(`draft:${draftId}`)).toBe(1)
+
+    // freshStore empties it, even for the same version.
+    const fresh = await previewDraft(actor(), {
+      draftId,
+      entry: { kind: "tool", name: "items_list" },
+      freshStore: true,
+    })
+    expect(fresh.storeWiped).toBe(true)
+    expect((fresh.result as { items: unknown[] }).items).toEqual([])
+
+    // A preview of another version starts from an empty namespace.
+    await previewDraft(actor(), {
+      draftId,
+      entry: { kind: "tool", name: "items_add" },
+      params: { title: "Again" },
+    })
+    const { version: v1 } = await asAdmin((tx) => getDraft(tx, draftId))
+    await asAdmin((tx) =>
+      updateDraftFiles(tx, caller(), {
+        draftId,
+        files: { ...v1.files, "README.md": "v2\n" },
+        message: "v2",
+      }),
+    )
+    const v2 = await previewDraft(actor(), {
+      draftId,
+      entry: { kind: "tool", name: "items_list" },
+    })
+    expect(v2.n).toBe(2)
+    expect(v2.storeWiped).toBe(true)
+    expect((v2.result as { items: unknown[] }).items).toEqual([])
+  }, 180_000)
+
+  it("one preview of a draft at a time (preview_busy); discarding empties its namespace", async () => {
+    const { draftId } = await newDraft("tpl-busy")
+    // Another process holds the draft's preview lease.
+    await sql`UPDATE kernel.app_drafts SET preview_lease_until = now() + interval '30 seconds'
+      WHERE id = ${draftId}`
+    expect(
+      await code(previewDraft(actor(), { draftId, entry: { kind: "tool", name: "items_list" } })),
+    ).toBe("preview_busy")
+    // A lease that ran out (a crashed preview) is taken over.
+    await sql`UPDATE kernel.app_drafts SET preview_lease_until = now() - interval '1 second'
+      WHERE id = ${draftId}`
+    const added = await previewDraft(actor(), {
+      draftId,
+      entry: { kind: "tool", name: "items_add" },
+      params: { title: "First" },
+    })
+    expect(added.ok).toBe(true)
+    // The run gave its lease back.
+    const [row] = await sql<{ lease: Date | null }[]>`
+      SELECT preview_lease_until AS lease FROM kernel.app_drafts WHERE id = ${draftId}`
+    expect(row?.lease).toBeNull()
+    expect(await storeRows(`draft:${draftId}`)).toBe(1)
+    await asAdmin((tx) => discardDraft(tx, caller(), draftId))
     expect(await storeRows(`draft:${draftId}`)).toBe(0)
   }, 120_000)
 
   it("read-only passes check and preview as it is", async () => {
     const appName = draftAppName(orgId, "tpl-read")
     const { draftId } = await newDraft("tpl-read", templateFiles("read-only", appName, "Read"))
-    expect((await asAdmin((tx) => checkDraft(tx, caller(), { draftId }))).ok).toBe(true)
+    expect((await checkDraft(adminDb(), caller(), { draftId })).ok).toBe(true)
     const r = await previewDraft(actor(), { draftId, entry: { kind: "tool", name: "summary" } })
     expect(r.ok).toBe(true)
     expect(r.result).toEqual({ count: 0 })
@@ -276,7 +349,7 @@ export default defineHandlers({ probe_db, probe_fetch, probe_config, probe_store
     expect(config.code).toBe("secret_not_available_on_workers")
   }, 60_000)
 
-  it("store writes land in draft:<id> only, never the app's or another draft's; wiped next preview and after a day", async () => {
+  it("store writes land in draft:<id> only, never the app's or another draft's; kept for the same version, wiped after a day", async () => {
     const other = await newDraft("other-ns")
     await asAdmin(async (tx) => {
       await setDocument(tx, { orgId, app: appName, userId: adminId }, "items", "x", { v: "real" })
@@ -558,6 +631,10 @@ describe("publish", () => {
     const card = req!.summary.lines.join("\n")
     expect(card).toContain(`Installs ${appName} 0.1.0`)
     expect(card).toContain(`Package sha256: ${pin.packageSha256}`)
+    // The pinned build was type-checked, and the card says so.
+    expect(pin.typecheck).toMatchObject({ ok: true, errors: 0 })
+    expect(card).toContain("Type check: ok.")
+    expect(req!.summary.lines.length).toBeLessThanOrEqual(8)
     expect(card).toContain(`Scopes asked: ${appName}:items:read, ${appName}:items:write`)
 
     // No edit of the request, whatever the field.
@@ -600,23 +677,23 @@ describe("publish", () => {
 
   it("refuses an altered sha, a moved app and a pin for another draft's app", async () => {
     const { draftId, appName } = await newDraft("sha-check")
-    const prepared = await asAdmin((tx) => preparePublish(tx, caller(), { draftId }))
+    const prepared = await preparePublish(adminDb(), caller(), { draftId })
     const install = { ...caller(), installedBy: adminId }
     const altered = {
       ...prepared.pin,
       packageSha256: createHash("sha256").update("x").digest("hex"),
     }
-    expect(await code(asAdmin((tx) => executePublish(tx, install, altered)))).toBe("pin_mismatch")
+    expect(await code(executePublish(adminDb(), install, altered))).toBe("pin_mismatch")
     const moved = { ...prepared.pin, baseVersion: "0.0.9" }
-    expect(await code(asAdmin((tx) => executePublish(tx, install, moved)))).toBe("publish_stale")
+    expect(await code(executePublish(adminDb(), install, moved))).toBe("publish_stale")
     const other = await newDraft("sha-other")
     const foreign = { ...prepared.pin, draftId: other.draftId }
-    expect(await code(asAdmin((tx) => executePublish(tx, install, foreign)))).toBe("pin_mismatch")
+    expect(await code(executePublish(adminDb(), install, foreign))).toBe("pin_mismatch")
     // The genuine pin installs.
-    const ok = await asAdmin((tx) => executePublish(tx, install, prepared.pin))
+    const ok = await executePublish(adminDb(), install, prepared.pin)
     expect(ok).toMatchObject({ appName, appVersion: "0.1.0" })
     // A second publish is the next patch, over the active version.
-    const next = await asAdmin((tx) => preparePublish(tx, caller(), { draftId }))
+    const next = await preparePublish(adminDb(), caller(), { draftId })
     expect(next.pin).toMatchObject({ appVersion: "0.1.1", baseVersion: "0.1.0" })
   }, 240_000)
 
@@ -643,14 +720,75 @@ describe("publish", () => {
   it("refuses to publish into an app the builder did not build", async () => {
     const { draftId, appName } = await newDraft("by-url")
     // The org already has an app of that name from elsewhere.
-    await sql`INSERT INTO kernel.apps_installed (name, version, source_url, sha256, granted_scopes, installed_by, org_id)
-      VALUES (${appName}, '1.0.0', 'https://example.com/x.liaisonapp', ${"a".repeat(64)}, '{}', ${adminId}, ${orgId})`
+    await seedCustomAppInstall({
+      name: appName,
+      version: "1.0.0",
+      sourceUrl: "https://example.com/x.liaisonapp",
+      sha256: "a".repeat(64),
+      grantedScopes: [],
+      installedBy: adminId,
+      orgId,
+    })
     try {
-      expect(await code(asAdmin((tx) => preparePublish(tx, caller(), { draftId })))).toBe(
+      expect(await code(preparePublish(adminDb(), caller(), { draftId }))).toBe(
         "app_not_built_by_builder",
       )
     } finally {
       await sql`DELETE FROM kernel.apps_installed WHERE name = ${appName}`
     }
   }, 60_000)
+
+  it("an install whose draft marking never landed is recovered by publishing again", async () => {
+    const install = { ...caller(), installedBy: adminId }
+    /** The install of a publish, as it commits before the draft is marked (then the request fails). */
+    async function installOnly(draftId: string) {
+      const prepared = await preparePublish(adminDb(), caller(), { draftId })
+      const bytes = await asAdmin(async (tx) => {
+        const a = await getBuildArtifact(tx, { draftId, sha256: prepared.pin.packageSha256 })
+        return a!.bytes
+      })
+      await installAppFromBytes({
+        bytes,
+        ownerOrgId: orgId,
+        installedBy: adminId,
+        grantedScopes: prepared.pin.grants.scopes,
+        grantedConnections: prepared.pin.grants.connections,
+        grantedCapabilities: prepared.pin.grants.capabilities,
+        grantedCrossAppCalls: prepared.pin.grants.crossAppCalls,
+        sourceUrl: builderSourceUrl(draftId, prepared.pin.n),
+      })
+      return prepared
+    }
+    const marking = async (draftId: string) =>
+      (
+        await sql<{ published_app_name: string | null; status: string }[]>`
+          SELECT published_app_name, status FROM kernel.app_drafts WHERE id = ${draftId}`
+      )[0]
+
+    // The same approved pin, run again, completes the marking and the audit.
+    const a = await newDraft("unmarked-a")
+    const pinned = await installOnly(a.draftId)
+    expect(await marking(a.draftId)).toMatchObject({ published_app_name: null, status: "draft" })
+    const again = await executePublish(adminDb(), install, pinned.pin)
+    expect(again).toMatchObject({ appName: a.appName, appVersion: "0.1.0", firstPublish: true })
+    expect(await marking(a.draftId)).toMatchObject({
+      published_app_name: a.appName,
+      status: "published",
+    })
+    const [audit] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM kernel.audit_log WHERE org_id = ${orgId} AND app = ${a.appName}
+      AND action = 'app.custom.published'`
+    expect(audit?.n).toBe(1)
+
+    // A new publish of an unmarked draft recognises the app as its own.
+    const b = await newDraft("unmarked-b")
+    await installOnly(b.draftId)
+    const next = await preparePublish(adminDb(), caller(), { draftId: b.draftId })
+    expect(next.pin).toMatchObject({
+      appName: b.appName,
+      appVersion: "0.1.1",
+      baseVersion: "0.1.0",
+    })
+    expect((await marking(b.draftId))?.published_app_name).toBe(b.appName)
+  }, 240_000)
 })

@@ -23,7 +23,7 @@ import { eq } from "drizzle-orm"
 import { app } from "~/app"
 import { sql } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
-import { type UserContext, withRlsContext } from "~/db/rls"
+import { createRlsSession, type UserContext, withRlsContext } from "~/db/rls"
 import { appsInstalled } from "~/db/schema/kernel/apps-installed"
 import { env } from "~/lib/env"
 import { checkDraft } from "~/modules/app-builder/check"
@@ -176,7 +176,11 @@ function signedGet(sha: string, over: { ts?: number; path?: string } = {}) {
 let crud: { appName: string; draftId: string }
 let crudSha = ""
 
+const savedCustomApps = env.LIAISON_CUSTOM_APPS
+
 beforeAll(async () => {
+  // Organisations' own apps on, on either edition (they default off when self-hosted).
+  env.LIAISON_CUSTOM_APPS = "on"
   await acquireTestLock()
   installRoot = mkdtempSync(join(tmpdir(), "builder-workers-root-"))
   process.env.LIAISON_APPS_DIR = installRoot
@@ -195,6 +199,7 @@ beforeAll(async () => {
 }, 300_000)
 
 afterAll(async () => {
+  env.LIAISON_CUSTOM_APPS = savedCustomApps
   const e = env as unknown as Mutable
   for (const k of ENV_KEYS) e[k] = savedEnv[k]
   e.LIAISON_ROLE = savedRole
@@ -380,8 +385,10 @@ describe("GET /api/app-bridge/bundles/:sha256", () => {
         },
       ),
     )
-    const checked = await withRlsContext(a.admin, (tx) =>
-      checkDraft(tx, { orgId: a.orgId, userId: a.adminId }, { draftId: crud.draftId }),
+    const checked = await checkDraft(
+      createRlsSession(a.admin),
+      { orgId: a.orgId, userId: a.adminId },
+      { draftId: crud.draftId },
     )
     expect(checked.ok).toBe(true)
     const [v2] = await sql<{ sha: string }[]>`

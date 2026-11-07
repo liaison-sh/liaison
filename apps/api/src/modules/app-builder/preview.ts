@@ -11,8 +11,11 @@
 //    rpc-bridge.ts), on the org's data and through a nested tool call alike;
 //  - ctx.store reads and writes go to the draft's own namespace in the data
 //    store, `draft:<draftId>` (data-store/service.ts), never to an app's
-//    collections: wiped at the draft's next preview and a day after its last
-//    write (installed.ts pruneDraftStoreNamespaces);
+//    collections. It is kept across previews of the same version (a write in
+//    one is read in the next) and emptied when a preview runs another version,
+//    when one asks for `freshStore`, when the draft is discarded, and a day
+//    after its last write (installed.ts pruneDraftStoreNamespaces). One preview
+//    of a draft runs at a time (`preview_busy`, drafts.ts claimDraftPreview);
 //  - ctx.db answers `preview_no_schema` while the draft was never published
 //    (no app_<name> schema exists); once published, reads run on the app's
 //    schema (writes stay refused);
@@ -35,12 +38,18 @@
 // having read outside text (the preview tool is a taint source).
 
 import { randomUUID } from "node:crypto"
-import { type ActorContext, createRlsSession, type UserContext, withRlsContext } from "~/db/rls"
+import { type ActorContext, createRlsSession, type UserContext } from "~/db/rls"
 import { captureSpawnParentFrame } from "~/modules/agent/runtime/run-context"
 import { projectTaintScopes } from "~/modules/agent/scopes/taint-read-scopes"
 import { capturedFrameWriteScopes } from "~/modules/agent/scopes/write-required-scopes"
 import { buildDraftVersion } from "~/modules/app-builder/check"
-import { type DraftCaller, DraftError, getBuildArtifact } from "~/modules/app-builder/drafts"
+import {
+  claimDraftPreview,
+  type DraftCaller,
+  DraftError,
+  getBuildArtifact,
+  releaseDraftPreview,
+} from "~/modules/app-builder/drafts"
 import type { ActiveCustomApp } from "~/modules/app-builder/installed"
 import {
   attachRunLogSink,
@@ -56,7 +65,7 @@ import {
   createSessionRpcBridge,
 } from "~/modules/apps/sandbox/rpc-bridge"
 import { runApp } from "~/modules/apps/sandbox/run-app"
-import { draftStoreApp, wipeDraftStore } from "~/modules/data-store/service"
+import { draftStoreApp } from "~/modules/data-store/service"
 import { hasScope } from "~/modules/permissions/permissions"
 
 /** A preview run lasts this long at most. */
@@ -70,6 +79,8 @@ export interface PreviewInput {
   n?: number
   entry: { kind: PreviewEntryKind; name: string }
   params?: unknown
+  /** Empty the draft's store namespace first, even for the same version. */
+  freshStore?: boolean
 }
 
 export interface PreviewResult {
@@ -83,8 +94,10 @@ export interface PreviewResult {
   logsDropped: number
   runId: string
   durationMs: number
-  /** Where this preview's ctx.store writes went (wiped at the next preview). */
+  /** Where this preview's ctx.store writes went (kept for the next preview of the same version). */
   storeNamespace: string
+  /** The namespace was emptied before this run (another version, or freshStore). */
+  storeWiped: boolean
   /** The draft was never published: ctx.db has no schema, ctx.fetch no domain. */
   neverPublished: boolean
 }
@@ -342,21 +355,21 @@ export async function previewDraft(
     scopes: [...actor.scopes],
     dimensionGrants: actor.dimensionGrants ?? {},
   }
-  const prepared = await withRlsContext(userCtx, async (tx) => {
-    const built = await buildDraftVersion(tx, caller, {
-      draftId: input.draftId,
-      ...(input.n !== undefined ? { n: input.n } : {}),
-    })
-    if (!built.build.ok || !built.build.bundleSha256 || !built.manifest) {
-      return { built, bundle: null }
-    }
-    const artifact = await getBuildArtifact(tx, {
-      draftId: built.draft.id,
-      sha256: built.build.bundleSha256,
-    })
-    return { built, bundle: artifact ? new TextDecoder().decode(artifact.bytes) : null }
+  // Short transactions only: the version is read, built (in none) and its
+  // bundle read; the run itself holds no connection (the bridge takes one per
+  // call).
+  const db = createRlsSession(userCtx)
+  const built = await buildDraftVersion(db, caller, {
+    draftId: input.draftId,
+    ...(input.n !== undefined ? { n: input.n } : {}),
   })
-  const { built } = prepared
+  const bundleSha = built.build.ok && built.manifest ? built.build.bundleSha256 : undefined
+  const bundle = bundleSha
+    ? await db.run(async (tx) => {
+        const artifact = await getBuildArtifact(tx, { draftId: built.draft.id, sha256: bundleSha })
+        return artifact ? new TextDecoder().decode(artifact.bytes) : null
+      })
+    : null
   const n = built.version.n
   const storeNamespace = draftStoreApp(built.draft.id)
   const neverPublished = built.target.active === null
@@ -367,9 +380,10 @@ export async function previewDraft(
     storeNamespace,
     neverPublished,
   }
-  if (!prepared.bundle || !built.manifest) {
+  if (!bundle || !built.manifest) {
     return {
       ...base,
+      storeWiped: false,
       ok: false,
       error: {
         code: "build_failed",
@@ -389,10 +403,51 @@ export async function previewDraft(
   const callerScopes = declaredScopes(built.manifest).filter((s) => hasScope(s, [...actor.scopes]))
   const sessionCtx: ActorContext = { ...userCtx, scopes: callerScopes }
   const session = createRlsSession(sessionCtx)
-  // The previous preview's documents go first (its own committed transaction:
-  // the run's writes take the same usage rows).
-  await session.run((tx) => wipeDraftStore(tx, actor.orgId, built.draft.id))
+  // The draft's preview lease (one at a time), and its namespace emptied when
+  // this version is not the one that last wrote it (its own committed
+  // transaction: the run's writes take the same usage rows).
+  const { wiped } = await db.run((tx) =>
+    claimDraftPreview(tx, caller, {
+      draftId: built.draft.id,
+      n,
+      freshStore: input.freshStore === true,
+    }),
+  )
+  try {
+    return await runPreview({
+      actor,
+      input,
+      built,
+      bundle,
+      exportName,
+      manifest,
+      callerScopes,
+      session,
+      neverPublished,
+      base: { ...base, storeWiped: wiped },
+    })
+  } finally {
+    await db.run((tx) => releaseDraftPreview(tx, built.draft.id)).catch(() => undefined)
+  }
+}
 
+async function runPreview(args: {
+  actor: PreviewActor
+  input: PreviewInput
+  built: Awaited<ReturnType<typeof buildDraftVersion>>
+  bundle: string
+  exportName: string
+  manifest: ReturnType<typeof previewManifest>
+  callerScopes: string[]
+  session: ReturnType<typeof createRlsSession>
+  neverPublished: boolean
+  base: Pick<
+    PreviewResult,
+    "draftId" | "n" | "entry" | "storeNamespace" | "neverPublished" | "storeWiped"
+  >
+}): Promise<PreviewResult> {
+  const { actor, input, built, exportName, manifest, callerScopes, session, neverPublished, base } =
+    args
   const runId = randomUUID()
   const frame = captureSpawnParentFrame({ includeCallingTool: true })
   const sink = createRunLogSink({
@@ -425,7 +480,7 @@ export async function previewDraft(
       orgId: actor.orgId,
       // Not installed: never the Workers executor, never an installed bundle.
       installed: null,
-      bundleSource: esmExportsToGlobalThis(prepared.bundle),
+      bundleSource: esmExportsToGlobalThis(args.bundle),
       exportName,
       params: input.params ?? {},
       ...(input.entry.kind === "webhook" ? { extraArgs: [{}] } : {}),

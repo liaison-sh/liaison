@@ -9,14 +9,16 @@
 //    its grants and its manifest on disk), or null when it was never published.
 //  - `customAppInstalled`: whether the org has any install of a name (an app
 //    installed by URL under a base a draft wants).
-//  - `writePublishedAudit`: the audit row of a publish.
+//  - `customAppBuiltByDraft`: whether an install of a name came from one draft
+//    (its `source_url` is `builder:draft/<draftId>/<n>`).
+//  - `writePublishedAudit` / `hasPublishedAudit`: the audit row of a publish.
 //  - `pruneDraftStoreNamespaces`: the preview namespaces (`draft:<id>`) of the
 //    data store whose last write is a day old (hourly kernel job).
 
-import { and, eq, sql } from "drizzle-orm"
+import { and, eq, like, sql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
-import { appDocuments, appDocumentUsage } from "~/db/schema/kernel"
+import { appDocuments, appDocumentUsage, auditLog } from "~/db/schema/kernel"
 import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
 import { rootLogger } from "~/lib/logger"
 import { readInstalledManifest } from "~/modules/apps/activation"
@@ -89,6 +91,55 @@ export async function customAppInstalled(orgId: string, name: string): Promise<b
       .select({ name: appsInstalled.name })
       .from(appsInstalled)
       .where(and(eq(appsInstalled.name, name), eq(appsInstalled.orgId, orgId)))
+      .limit(1),
+  )
+  return row !== undefined
+}
+
+/**
+ * Whether the org's installs of `name` include one a publish of `draftId`
+ * made: how a publish whose install landed but whose draft marking did not is
+ * recognised as the draft's own (publish.ts assertPublishIdentity).
+ */
+export async function customAppBuiltByDraft(
+  orgId: string,
+  name: string,
+  draftId: string,
+): Promise<boolean> {
+  const [row] = await withSystemDb("app-builder:built-by-draft", (db) =>
+    db
+      .select({ name: appsInstalled.name })
+      .from(appsInstalled)
+      .where(
+        and(
+          eq(appsInstalled.name, name),
+          eq(appsInstalled.orgId, orgId),
+          like(appsInstalled.sourceUrl, `builder:draft/${draftId}/%`),
+        ),
+      )
+      .limit(1),
+  )
+  return row !== undefined
+}
+
+/** Whether the publish audit row of these exact bytes of `appName` was written. */
+export async function hasPublishedAudit(input: {
+  orgId: string
+  appName: string
+  sha256: string
+}): Promise<boolean> {
+  const [row] = await withPrivilegedDb(input.orgId, "app-builder:publish-audit-read", (db) =>
+    db
+      .select({ id: auditLog.id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.orgId, input.orgId),
+          eq(auditLog.app, input.appName),
+          eq(auditLog.action, "app.custom.published"),
+          sql`${auditLog.metadata}->>'sha256' = ${input.sha256}`,
+        ),
+      )
       .limit(1),
   )
   return row !== undefined

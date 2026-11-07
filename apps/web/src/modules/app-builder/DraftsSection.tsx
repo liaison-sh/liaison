@@ -2,11 +2,14 @@
 //
 // "Apps in the making" on the App store page, for holders of kernel:apps:build:
 // the org's live drafts, each opening its builder tab. Drafts are made by the
-// agent (apps_build_create), so the empty state says how to start one.
-import { type Component, createResource, For, Show } from "solid-js"
+// agent (apps_build_create), so the empty state says how to start one. Absent
+// on a server where organisations may not have their own apps (the branding
+// `customApps` flag, LIAISON_CUSTOM_APPS).
+import { type Component, createResource, For, onMount, Show } from "solid-js"
 import { hasScope } from "~/modules/auth/auth-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
+import { customAppsEnabled, ensureBrandingLoaded } from "~/modules/shell/branding-store"
 import { type BuilderApi, listDrafts } from "./builder-client"
 import { openDraft } from "./builder-store"
 
@@ -15,7 +18,8 @@ const K = "kernel.appBuilder"
 export const DraftsSection: Component = () => {
   const i18n = useI18n()
   const api = useApi() as unknown as BuilderApi
-  const allowed = () => hasScope("kernel:apps:build")
+  onMount(() => void ensureBrandingLoaded())
+  const allowed = () => customAppsEnabled() && hasScope("kernel:apps:build")
   const [drafts] = createResource(allowed, () => listDrafts(api).catch(() => null))
 
   return (

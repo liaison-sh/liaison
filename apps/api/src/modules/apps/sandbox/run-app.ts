@@ -272,7 +272,7 @@ async function runOnExecutor(
   workersTarget: WorkersTarget | null,
   onInfo: (info: WorkersRunInfo) => void,
 ): Promise<unknown> {
-  // A custom app's code never holds a secret, on any executor (A5). Its bridge
+  // A custom app's code never holds a secret, on any executor. Its bridge
   // is built secret-free (rpc-bridge.ts); one built elsewhere is marked here,
   // before any call.
   if (isCustomAppName(opts.appName) && !isWorkersRunBridge(opts.bridge)) {

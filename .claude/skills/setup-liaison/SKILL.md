@@ -112,7 +112,9 @@ times are exactly as written here (they come from
 > 2. **Which features do you want?** Email and Google sign-in, a support
 >    inbox (tickets), importing your projects (Jira) or your helpdesk history
 >    (Freshdesk or another desk), Calendar, Drive, Shopify, Facebook and
->    Instagram, Google Ads. "The basics" is a fine answer.
+>    Instagram, Google Ads, or apps your agent builds for you (the app
+>    builder: set `LIAISON_CUSTOM_APPS=on` on a self-hosted server, where it
+>    is off by default). "The basics" is a fine answer.
 >
 > Want to look first? demo.liaison.sh is a sandbox company (Resonant Audio
 > Labs) you can try for free, nothing to install.

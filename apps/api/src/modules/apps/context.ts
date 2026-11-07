@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type pino from "pino"
 import type { RlsClient } from "~/db"
-import type { ActorContext } from "~/db/rls"
+import type { ActorContext, RlsSession } from "~/db/rls"
 import type { AppEvent } from "~/infra/events/event-bus"
 import { enqueueAppJob } from "~/infra/jobs/jobs"
 import { rootLogger } from "~/lib/logger"
@@ -60,6 +60,12 @@ export interface AppContext {
   turnTaintScopes?: readonly string[]
   /** The caller's stop (a chat turn the person stopped), for a handler that waits on long work. */
   abortSignal?: AbortSignal
+  /**
+   * The call's session, for a tool declaring `ownsTransactions` (app-registries.ts): each
+   * `run` is one short transaction. Set only when the dispatch passed a session; `ctx.db`
+   * then refuses every use.
+   */
+  rlsSession?: RlsSession
   /** The actor's effective scopes — injected for handlers that do scope-subset checks. */
   scopes?: string[]
   /**

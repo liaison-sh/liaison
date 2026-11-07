@@ -4,7 +4,8 @@
 // app_build_artifacts; migration 0276): an org's app in the making, its
 // versions of files and the bytes each build produced.
 //
-//  - Every function runs in the CALLER's RLS transaction (`tx`): the database
+//  - Every function runs in the CALLER's RLS transaction (`tx`, short: see
+//    TxRunner): the database
 //    keeps orgs apart and lets only holders of kernel:apps:build write (FORCE
 //    RLS). The caller's org and user are taken from `caller`, never from a
 //    parameter.
@@ -42,6 +43,7 @@ import {
 import { expectedCustomAppName } from "~/modules/apps/app-org-scope"
 import { listCatalog } from "~/modules/apps/catalog"
 import { discoverInTreeApps } from "~/modules/apps/discover-apps"
+import { wipeDraftStore } from "~/modules/data-store/service"
 
 /** Versions kept per draft. */
 export const DRAFT_VERSIONS_KEPT = 20
@@ -66,6 +68,8 @@ export type DraftErrorCode =
   | "app_not_built_by_builder"
   | "publish_stale"
   | "pin_mismatch"
+  | "preview_busy"
+  | "custom_apps_off"
 
 /** A refused draft call; `code` is stable for callers (tools, routes). */
 export class DraftError extends Error {
@@ -77,6 +81,21 @@ export class DraftError extends Error {
     this.code = code
     this.details = details
   }
+}
+
+/**
+ * Runs `fn` in a transaction: an RlsSession (`createRlsSession`, a short
+ * transaction per call) or a live transaction (`inTx`). The builds and the
+ * install run between such calls, never inside one (no connection is held
+ * idle in a transaction across a 30 s build or the install's health gate).
+ */
+export interface TxRunner {
+  run<T>(fn: (tx: RlsClient) => Promise<T>): Promise<T>
+}
+
+/** A live transaction as a TxRunner (every call joins it). */
+export function inTx(tx: RlsClient): TxRunner {
+  return { run: (fn) => fn(tx) }
 }
 
 /** Who acts: the authenticated org and person, never a parameter. */
@@ -422,7 +441,58 @@ export async function discardDraft(
     .where(eq(appDrafts.id, draftId))
     .returning()
   await tx.delete(appBuildArtifacts).where(eq(appBuildArtifacts.draftId, draftId))
+  // Its preview namespace goes with it.
+  await wipeDraftStore(tx, caller.orgId, draftId)
   return row!
+}
+
+/** A preview holds its draft this long at most (the run's 30 s and some margin). */
+export const PREVIEW_LEASE_MS = 60_000
+
+/**
+ * Takes the draft's preview lease (one preview of a draft at a time, on every
+ * process: else `preview_busy`) and readies its store namespace: emptied when
+ * version `n` is not the one that last wrote it, or on `freshStore`; kept
+ * otherwise, so a write in one preview is read in the next one of the same
+ * version. Returns whether it was emptied.
+ */
+export async function claimDraftPreview(
+  tx: RlsClient,
+  caller: DraftCaller,
+  input: { draftId: string; n: number; freshStore: boolean; now?: Date },
+): Promise<{ wiped: boolean }> {
+  const now = input.now ?? new Date()
+  const [claimed] = await tx
+    .update(appDrafts)
+    .set({ previewLeaseUntil: new Date(now.getTime() + PREVIEW_LEASE_MS) })
+    .where(
+      and(
+        eq(appDrafts.id, input.draftId),
+        sql`(${appDrafts.previewLeaseUntil} IS NULL OR ${appDrafts.previewLeaseUntil} < ${now.toISOString()}::timestamptz)`,
+      ),
+    )
+    .returning({ previewStoreN: appDrafts.previewStoreN })
+  if (!claimed) {
+    await readDraft(tx, input.draftId)
+    throw new DraftError(
+      "preview_busy",
+      "another preview of this draft is running: wait for it to end, then try again",
+    )
+  }
+  const wiped = input.freshStore || claimed.previewStoreN !== input.n
+  if (wiped) {
+    await wipeDraftStore(tx, caller.orgId, input.draftId)
+    await tx
+      .update(appDrafts)
+      .set({ previewStoreN: input.n })
+      .where(eq(appDrafts.id, input.draftId))
+  }
+  return { wiped }
+}
+
+/** Gives the draft's preview lease back. */
+export async function releaseDraftPreview(tx: RlsClient, draftId: string): Promise<void> {
+  await tx.update(appDrafts).set({ previewLeaseUntil: null }).where(eq(appDrafts.id, draftId))
 }
 
 export interface BuildArtifactInput {

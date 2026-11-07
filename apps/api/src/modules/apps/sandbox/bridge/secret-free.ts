@@ -19,7 +19,7 @@
 // additionally built with `forWorkersRun`, which turns every method that would
 // hand a secret back into a typed refusal, so a regression fails loudly rather
 // than shipping a token into the isolate. So is EVERY run of a custom app (an
-// org-private `<base>-o<orgKey>` app), on any executor, QuickJS included (A5):
+// org-private `<base>-o<orgKey>` app), on any executor, QuickJS included:
 // its code is the org's, not the platform's, so it never holds a secret
 // either. The QuickJS executors keep the old methods for the first-party apps
 // that still read their credentials themselves.

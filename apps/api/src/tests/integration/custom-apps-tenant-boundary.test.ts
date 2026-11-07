@@ -2,7 +2,7 @@
 //
 // Org-private custom apps (S33) and the hostile-tenant boundary around them
 // (modules/apps/app-org-scope.ts), on a managed cell AND a multi-org
-// self-hosted server (D9: ownership comes from the owner row on every edition).
+// self-hosted server (ownership comes from the owner row on every edition).
 // Two tenants on one server, real database, real install route, real sandbox:
 //   - each installs base `crm` 1.0.0 with different code and gets its own answer;
 //   - nothing of A's app is reachable from B: tool call, webhook, MCP tool
@@ -186,8 +186,12 @@ async function callTool(t: Tenant, host: string, appName: string, tool: string, 
   return on(host, `/api/apps/${appName}/tools/${tool}`, asJson(t, { params }))
 }
 
+const savedCustomApps = env.LIAISON_CUSTOM_APPS
+
 beforeAll(async () => {
   await acquireTestLock()
+  // Organisations' own apps on, on either edition (they default off when self-hosted).
+  env.LIAISON_CUSTOM_APPS = "on"
   env.LIAISON_ORG_HOST_TEMPLATE = TEMPLATE
   forgetOrgHostCache()
   installRoot = mkdtempSync(join(tmpdir(), "custom-apps-root-"))
@@ -214,6 +218,7 @@ beforeAll(async () => {
 }, 120_000)
 
 afterAll(async () => {
+  env.LIAISON_CUSTOM_APPS = savedCustomApps
   server?.stop(true)
   await shutdownWorkerPool()
   await withSystemDb("test-custom-apps-identity", (db) => deleteIdentity(db))
@@ -702,7 +707,7 @@ function boundarySuite(ed: Edition): void {
   })
 }
 
-// The same boundary on both editions (D9). On self-hosted: two orgs on one
+// The same boundary on both editions. On self-hosted: two orgs on one
 // server, org A installs a custom app, org B cannot see, list or run it; A can.
 for (const ed of ["managed", "self_hosted"] as const) {
   describe(`edition ${ed}`, () => {

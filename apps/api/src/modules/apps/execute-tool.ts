@@ -2875,6 +2875,22 @@ export async function createHandlerApprovalRequest(args: {
   return { approval_id: approvalRequestId }
 }
 
+/**
+ * `ctx.db` of a handler that owns its transactions: every use refuses, so a
+ * statement can never run outside the session's short transactions.
+ */
+const OWNS_TRANSACTIONS_DB = new Proxy(
+  {},
+  {
+    get(_target, prop) {
+      if (prop === "then") return undefined
+      throw new Error(
+        `ctx.db is not available to a tool that owns its transactions (ctx.db.${String(prop)}): use ctx.rlsSession.run`,
+      )
+    },
+  },
+)
+
 export async function executeToolHandler(
   tool: NonNullable<ReturnType<typeof toolRegistry.get>>,
   handler: NonNullable<ReturnType<typeof toolRegistry.get>>["handler"],
@@ -3211,7 +3227,7 @@ export async function executeToolHandler(
   // (a gated send approved later, when the run frame no longer exists); fall
   // back to the live frame for a direct, ungated routine call.
   const originRoutineId = approvalContext?.originRoutineId ?? currentRunContext()?.routineId
-  const runHostHandler = (liveTx: any): Promise<unknown> => {
+  const runHostHandler = (liveTx: any, rlsSession?: RlsSession): Promise<unknown> => {
     const ctx = createAppContext(
       tool.appName,
       userId,
@@ -3244,12 +3260,19 @@ export async function executeToolHandler(
     // The caller's stop (a turn stopped by the person): a handler that waits on long work it
     // started (spawn_agent awaiting its sub-run) ends that work with it.
     ctx.abortSignal = bridgeOptions?.signal
+    if (rlsSession) ctx.rlsSession = rlsSession
     return (handler as (params: unknown, ctx: any) => Promise<unknown>)(validatedParams, ctx)
+  }
+  // A host handler that owns its transactions (`ownsTransactions`) gets the
+  // session itself and no ambient transaction: it waits on long work (a build,
+  // an install's health gate) that must not pin a connection idle in one.
+  if (session && (tool as { ownsTransactions?: boolean }).ownsTransactions === true) {
+    return runHostHandler(OWNS_TRANSACTIONS_DB, session)
   }
   // Host-side (non-sandboxed) handlers keep the whole-run ambient transaction:
   // they execute in-process against the live tx, so per-call sessions buy
   // nothing and would change their rollback semantics.
-  if (session) return session.run(runHostHandler)
+  if (session) return session.run((liveTx) => runHostHandler(liveTx))
   return runHostHandler(tx)
 }
 
@@ -4573,7 +4596,12 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // Set when the preflight says THIS call must be decided by a person (preflightRequiresPerson).
   let preflightForcesPerson = false
   if ((tool.gated || tool.conditionalGate) && tool.preflight && !paramsCarryRefTokens) {
-    const preflightResult = await withRlsContext(actorForRls, (tx) =>
+    // A tool that owns its transactions gets a session for its preflight too.
+    const inPreflightTx = <T>(fn: (tx: any) => Promise<T>): Promise<T> =>
+      tool.ownsTransactions === true
+        ? fn(createRlsSession(actorForRls))
+        : withRlsContext(actorForRls, fn)
+    const preflightResult = await inPreflightTx((tx) =>
       executeToolHandler(
         tool,
         tool.preflight!,

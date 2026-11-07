@@ -13,7 +13,7 @@
 //     },
 //   }
 //   configSecrets: { "<placeholder>": "<config key>" }   // placed where the manifest's
-//                                                       // `secrets.<key>` says (A5)
+//                                                       // `secrets.<key>` says
 //
 // An oauth2 connection's value is its access token (the same lookup as
 // connections_getToken); a credentials connection's values are its stored
@@ -184,7 +184,7 @@ function connectionDeclaration(manifest: AppManifestForBridge, name: string) {
 /**
  * Whether `url` is a host of `connection`. A connection that declares no
  * domains takes any host the app may reach, except for a custom app, whose
- * credentials go only to hosts its connection names (A5).
+ * credentials go only to hosts its connection names.
  */
 export function matchesConnectionHost(
   manifest: AppManifestForBridge,
@@ -572,7 +572,7 @@ interface PlannedPlacement {
 
 /**
  * Write each config secret `map` names ({placeholder: configKey}) into the
- * request, exactly where the manifest's `secrets` declaration says (A5):
+ * request, exactly where the manifest's `secrets` declaration says:
  *
  *   - the key is a secret a connection declares, and `secrets.<key>` exists;
  *   - the URL's host is one of the declaration's `hosts` (and of the owning

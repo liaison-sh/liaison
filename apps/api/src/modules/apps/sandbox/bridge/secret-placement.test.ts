@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// A5: a config secret goes only where the manifest's `secrets` declaration
+// a config secret goes only where the manifest's `secrets` declaration
 // says (host and exact header / query parameter / JSON body path), else a
 // typed `secret_placement_refused` before any byte leaves; connection
 // credentials only to their connection's own hosts (a custom app's connection

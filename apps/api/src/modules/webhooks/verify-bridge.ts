@@ -110,7 +110,7 @@ export function buildVerifyBridge(opts: {
   readConfig: (key: string) => Promise<unknown>
   secretConfigKeys: Iterable<string>
   workersRun?: boolean
-  /** The verifier is a custom app's (A5): no secret is handed back, on any executor. */
+  /** The verifier is a custom app's: no secret is handed back, on any executor. */
   customApp?: boolean
 }): Record<string, (...args: any[]) => Promise<unknown>> {
   const secretConfigKeys = new Set(opts.secretConfigKeys)

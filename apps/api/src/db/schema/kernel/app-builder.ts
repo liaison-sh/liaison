@@ -58,6 +58,10 @@ export const appDrafts = kernel.table(
     status: text("status").$type<AppDraftStatus>().notNull().default("draft"),
     publishedAppName: text("published_app_name"),
     latestVersion: integer("latest_version").notNull().default(1),
+    /** The version whose preview last wrote the draft's store namespace (0279). */
+    previewStoreN: integer("preview_store_n"),
+    /** A preview of this draft runs until then (0279): one at a time. */
+    previewLeaseUntil: timestamp("preview_lease_until", { withTimezone: true }),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

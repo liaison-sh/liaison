@@ -64,7 +64,7 @@ const MANIFEST: AppManifestForBridge = {
       ],
     },
   },
-  // A5: where configSecrets may write the webhook secret (secret-placement.test.ts has the rules).
+  // where configSecrets may write the webhook secret (secret-placement.test.ts has the rules).
   secrets: {
     carrierWebhookSecret: { hosts: ["api.carrier.test"], in: "body:webhookSecret" },
   },

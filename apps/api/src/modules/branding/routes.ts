@@ -47,7 +47,7 @@ import { Hono } from "hono"
 import type { AppEnv } from "~/app"
 import { withSystemDb } from "~/db/privileged"
 import { organizations } from "~/db/schema/kernel"
-import { isManagedEdition } from "~/lib/edition"
+import { customAppsEnabled, isManagedEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
 import { success } from "~/lib/response"
 import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
@@ -82,6 +82,10 @@ export interface PublicBranding {
    * `noAccountEntry`, present and true on every host of a managed server: its
    * /register takes invitations only, and an invite link goes straight to it, so
    * the login page offers no "Create an account". Absent on a self-hosted one.
+   *
+   * `customApps`, present and true when organisations may have their own apps
+   * (LIAISON_CUSTOM_APPS, lib/edition.ts customAppsEnabled): the web shows the
+   * app builder only then. Absent when they are off.
    */
   flags: Record<string, boolean>
   /**
@@ -166,6 +170,7 @@ brandingRoutes.get("/branding", async (c) => {
     flags: {
       ...(isDemoModeEnabled() ? { demo: true } : {}),
       ...(isManagedEdition() ? { noAccountEntry: true } : {}),
+      ...(customAppsEnabled() ? { customApps: true } : {}),
     },
     byokModelIds: [],
     ...(env.LIAISON_PRIVACY_URL ? { privacyUrl: env.LIAISON_PRIVACY_URL } : {}),

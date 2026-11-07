@@ -170,7 +170,7 @@ describe("what a custom app may declare", () => {
   })
 })
 
-describe("every edition (D9): ownership comes from the owner row, never the edition", () => {
+describe("every edition: ownership comes from the owner row, never the edition", () => {
   for (const ed of ["self_hosted", "managed"] as const) {
     it(`${ed}: another org's key is refused before any database read; the owner rows decide the rest`, async () => {
       _setEdition(ed)

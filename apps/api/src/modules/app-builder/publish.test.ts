@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // The approval card's delta of a publish against the active version (pure).
 import { describe, expect, test } from "bun:test"
-import { grantsOf, manifestDelta, readPin } from "./publish"
+import { grantsOf, manifestDelta, pinTypecheck, readPin, typecheckLine } from "./publish"
 
 const v1 = {
   scopes: ["a-o1234abcd:x:read"],
@@ -59,5 +59,34 @@ describe("manifestDelta", () => {
         grants: { scopes: ["s"] },
       }),
     ).toMatchObject({ packageSha256: "a".repeat(64), grants: { scopes: ["s"], connections: [] } })
+  })
+})
+
+describe("the type check on the card", () => {
+  test("a pin carries the build's type check, read back tolerantly, as one line", () => {
+    const t = pinTypecheck({
+      ok: false,
+      errors: [
+        { file: "handlers.ts", line: 4, message: "Property 'x' does not exist" },
+        { file: "ui.tsx", line: 1, message: "y" },
+      ],
+    })
+    expect(t).toEqual({ ok: false, errors: 2, first: "handlers.ts:4 Property 'x' does not exist" })
+    expect(typecheckLine(t)).toBe(
+      "Type check: 2 errors (first: handlers.ts:4 Property 'x' does not exist).",
+    )
+    expect(typecheckLine(pinTypecheck({ ok: true, errors: [] }))).toBe("Type check: ok.")
+    expect(typecheckLine(undefined)).toBe("Type check: not run.")
+    const pin = {
+      draftId: "d",
+      n: 1,
+      appName: "a",
+      appVersion: "0.1.0",
+      baseVersion: null,
+      packageSha256: "a".repeat(64),
+      grants: {},
+    }
+    expect(readPin({ ...pin, typecheck: t })?.typecheck).toEqual(t)
+    expect(readPin({ ...pin, typecheck: "bogus" })?.typecheck).toBeUndefined()
   })
 })

@@ -30,6 +30,7 @@
 
 import type { RlsClient } from "~/db"
 import type { AppDraftRow } from "~/db/schema/kernel"
+import { customAppsEnabled } from "~/lib/edition"
 import { buildDraftVersion, packagedManifest } from "~/modules/app-builder/check"
 import {
   type DraftCaller,
@@ -39,10 +40,13 @@ import {
   getBuildArtifact,
   getDraft,
   markDraftPublished,
+  type TxRunner,
 } from "~/modules/app-builder/drafts"
 import {
   activeCustomApp,
+  customAppBuiltByDraft,
   customAppInstalled,
+  hasPublishedAudit,
   writePublishedAudit,
 } from "~/modules/app-builder/installed"
 import {
@@ -69,6 +73,15 @@ export interface PublishPin {
   packageSha256: string
   workerSha256?: string
   grants: PublishGrants
+  /** The pinned build's type check, shown on the approval card (informational). */
+  typecheck?: PinTypecheck
+}
+
+/** A type check as the approval card shows it: passed, or its error count and first error. */
+export interface PinTypecheck {
+  ok: boolean
+  errors: number
+  first?: string
 }
 
 /** `sourceUrl` of a builder install: how the builder knows an app is its own. */
@@ -96,7 +109,13 @@ export function grantsOf(manifest: Record<string, unknown>): PublishGrants {
   }
 }
 
-/** A draft publishes only into its own app: refuses another draft's, or one not built here. */
+/**
+ * A draft publishes only into its own app: refuses another draft's, or one not
+ * built here. An install this draft's own publish made (its `source_url` names
+ * the draft) whose marking never landed (the request failed after the install
+ * committed) is this draft's: the marking is completed here, so a publish of
+ * the draft never stays refused.
+ */
 async function assertPublishIdentity(
   tx: RlsClient,
   caller: DraftCaller,
@@ -115,12 +134,41 @@ async function assertPublishIdentity(
     )
   }
   if (!owner && (await customAppInstalled(caller.orgId, appName))) {
-    throw new DraftError(
-      "app_not_built_by_builder",
-      `the organisation already has an app ${appName} that the app builder did not build: pick another base name`,
-    )
+    if (!(await customAppBuiltByDraft(caller.orgId, appName, draft.id))) {
+      throw new DraftError(
+        "app_not_built_by_builder",
+        `the organisation already has an app ${appName} that the app builder did not build: pick another base name`,
+      )
+    }
+    await markDraftPublished(tx, caller, draft.id)
   }
   return appName
+}
+
+function assertCustomAppsOn(): void {
+  if (!customAppsEnabled()) {
+    throw new DraftError(
+      "custom_apps_off",
+      "this server does not let organisations build or install their own apps",
+    )
+  }
+}
+
+/** The card's form of a build's type check (null: none ran). */
+export function pinTypecheck(
+  typecheck:
+    | { ok: boolean; errors: Array<{ file?: string; line?: number; message: string }> }
+    | undefined,
+): PinTypecheck | undefined {
+  if (!typecheck) return undefined
+  const e = typecheck.errors[0]
+  return {
+    ok: typecheck.ok,
+    errors: typecheck.errors.length,
+    ...(e
+      ? { first: `${e.file ?? ""}${e.line ? `:${e.line}` : ""} ${e.message}`.trim().slice(0, 120) }
+      : {}),
+  }
 }
 
 export interface PreparedPublish {
@@ -132,15 +180,22 @@ export interface PreparedPublish {
   typecheck: { ok: boolean; errors: number } | null
 }
 
-/** Builds (or reuses the build of) version `n` for its next publish and pins it. */
+/**
+ * Builds (or reuses the build of) version `n` for its next publish, with its
+ * type check, and pins it. The identity check runs in a short transaction, the
+ * build in none (check.ts buildDraftVersion).
+ */
 export async function preparePublish(
-  tx: RlsClient,
+  db: TxRunner,
   caller: DraftCaller,
   input: { draftId: string; n?: number },
 ): Promise<PreparedPublish> {
-  const { draft } = await getDraft(tx, input.draftId)
-  await assertPublishIdentity(tx, caller, draft)
-  const built = await buildDraftVersion(tx, caller, input)
+  assertCustomAppsOn()
+  await db.run(async (tx) => {
+    const { draft } = await getDraft(tx, input.draftId)
+    await assertPublishIdentity(tx, caller, draft)
+  })
+  const built = await buildDraftVersion(db, caller, { ...input, typecheck: true })
   if (!built.build.ok || !built.build.packageSha256 || !built.manifest) {
     throw new DraftError(
       "build_failed",
@@ -148,6 +203,7 @@ export async function preparePublish(
       { errors: (built.build.errors ?? []).slice(0, 10) },
     )
   }
+  const typecheck = pinTypecheck(built.build.typecheck)
   const pin: PublishPin = {
     draftId: built.draft.id,
     n: built.version.n,
@@ -157,6 +213,7 @@ export async function preparePublish(
     packageSha256: built.build.packageSha256,
     ...(built.build.workerSha256 ? { workerSha256: built.build.workerSha256 } : {}),
     grants: grantsOf(built.manifest),
+    ...(typecheck ? { typecheck } : {}),
   }
   const activeManifest = built.target.active?.manifest ?? null
   return {
@@ -165,9 +222,17 @@ export async function preparePublish(
     manifest: built.manifest,
     activeManifest,
     delta: manifestDelta(activeManifest, built.manifest, built.target.active?.version ?? null),
-    typecheck: built.build.typecheck
-      ? { ok: built.build.typecheck.ok, errors: built.build.typecheck.errors.length }
-      : null,
+    typecheck: typecheck ? { ok: typecheck.ok, errors: typecheck.errors } : null,
+  }
+}
+
+function readTypecheck(value: unknown): PinTypecheck | undefined {
+  const t = record(value)
+  if (typeof t.ok !== "boolean" || typeof t.errors !== "number") return undefined
+  return {
+    ok: t.ok,
+    errors: t.errors,
+    ...(typeof t.first === "string" ? { first: t.first.slice(0, 120) } : {}),
   }
 }
 
@@ -198,6 +263,7 @@ export function readPin(value: unknown): PublishPin | null {
     baseVersion: p.baseVersion as string | null,
     packageSha256: p.packageSha256,
     ...(typeof p.workerSha256 === "string" ? { workerSha256: p.workerSha256 } : {}),
+    ...(readTypecheck(p.typecheck) ? { typecheck: readTypecheck(p.typecheck) } : {}),
     grants: {
       scopes: strings(g.scopes),
       connections: strings(g.connections),
@@ -216,77 +282,117 @@ export interface PublishResult {
   firstPublish: boolean
 }
 
-/** Installs exactly the pinned bytes with exactly the pinned grants (see the file header). */
+/**
+ * Installs exactly the pinned bytes with exactly the pinned grants (see the
+ * file header). The pin is verified in one short transaction, the install
+ * (with its 30 s health gate) runs in none, and the draft is marked in another.
+ * A retry of a publish whose install landed but whose marking did not (the app
+ * already runs these exact bytes, installed from this draft version) completes
+ * the marking and the audit instead of refusing.
+ */
 export async function executePublish(
-  tx: RlsClient,
+  db: TxRunner,
   caller: DraftCaller & { installedBy: string },
   pinned: unknown,
   opts: { approvalRequestId?: string | null } = {},
 ): Promise<PublishResult> {
   const pin = readPin(pinned)
   if (!pin) throw new DraftError("pin_mismatch", "the publish carries no valid pin")
-  const { draft } = await getDraft(tx, pin.draftId)
-  const appName = await assertPublishIdentity(tx, caller, draft)
-  if (appName !== pin.appName) {
-    throw new DraftError("pin_mismatch", "the pinned app name is not this draft's app")
-  }
-  const active = await activeCustomApp(caller.orgId, appName)
-  if ((active?.version ?? null) !== pin.baseVersion) {
-    throw new DraftError(
-      "publish_stale",
-      `the app moved to ${active?.version ?? "nothing"} since this publish was prepared (from ${pin.baseVersion ?? "nothing"}): request the publish again`,
-    )
-  }
-  const artifact = await getBuildArtifact(tx, { draftId: pin.draftId, sha256: pin.packageSha256 })
-  if (artifact?.kind !== "package") {
-    throw new DraftError(
-      "pin_mismatch",
-      "the approved package bytes are no longer stored or changed: request the publish again",
-    )
-  }
-  // The Workers module of the same build, pinned beside the package: recorded
-  // on the install row (0278) so a cell with LIAISON_WORKERS_CUSTOM_APPS runs
-  // exactly these bytes on the loader (workers/bundle-route.ts serves them).
-  let workerModule: { sha256: string; bytes: Uint8Array } | undefined
-  if (pin.workerSha256) {
-    const worker = await getBuildArtifact(tx, { draftId: pin.draftId, sha256: pin.workerSha256 })
-    if (worker?.kind !== "worker") {
+  assertCustomAppsOn()
+  const verified = await db.run(async (tx) => {
+    const { draft } = await getDraft(tx, pin.draftId)
+    const appName = await assertPublishIdentity(tx, caller, draft)
+    if (appName !== pin.appName) {
+      throw new DraftError("pin_mismatch", "the pinned app name is not this draft's app")
+    }
+    const active = await activeCustomApp(caller.orgId, appName)
+    if (
+      active &&
+      active.version === pin.appVersion &&
+      active.sha256 === pin.packageSha256 &&
+      active.sourceUrl === builderSourceUrl(pin.draftId, pin.n)
+    ) {
+      return { done: true as const, active }
+    }
+    if ((active?.version ?? null) !== pin.baseVersion) {
       throw new DraftError(
-        "pin_mismatch",
-        "the approved Workers module is no longer stored or changed: request the publish again",
+        "publish_stale",
+        `the app moved to ${active?.version ?? "nothing"} since this publish was prepared (from ${pin.baseVersion ?? "nothing"}): request the publish again`,
       )
     }
-    workerModule = { sha256: pin.workerSha256, bytes: worker.bytes }
+    const artifact = await getBuildArtifact(tx, {
+      draftId: pin.draftId,
+      sha256: pin.packageSha256,
+    })
+    if (artifact?.kind !== "package") {
+      throw new DraftError(
+        "pin_mismatch",
+        "the approved package bytes are no longer stored or changed: request the publish again",
+      )
+    }
+    // The Workers module of the same build, pinned beside the package: recorded
+    // on the install row (0278) so a cell with LIAISON_WORKERS_CUSTOM_APPS runs
+    // exactly these bytes on the loader (workers/bundle-route.ts serves them).
+    let workerModule: { sha256: string; bytes: Uint8Array } | undefined
+    if (pin.workerSha256) {
+      const worker = await getBuildArtifact(tx, {
+        draftId: pin.draftId,
+        sha256: pin.workerSha256,
+      })
+      if (worker?.kind !== "worker") {
+        throw new DraftError(
+          "pin_mismatch",
+          "the approved Workers module is no longer stored or changed: request the publish again",
+        )
+      }
+      workerModule = { sha256: pin.workerSha256, bytes: worker.bytes }
+    }
+    return { done: false as const, active, bytes: artifact.bytes, workerModule }
+  })
+
+  let installed: { name: string; version: string }
+  if (verified.done) {
+    installed = { name: verified.active.name, version: verified.active.version }
+  } else {
+    installed = await installAppFromBytes({
+      bytes: verified.bytes,
+      ownerOrgId: caller.orgId,
+      installedBy: caller.installedBy,
+      grantedScopes: pin.grants.scopes,
+      grantedConnections: pin.grants.connections,
+      grantedCapabilities: pin.grants.capabilities,
+      grantedCrossAppCalls: pin.grants.crossAppCalls,
+      sourceUrl: builderSourceUrl(pin.draftId, pin.n),
+      ...(verified.workerModule ? { workerModule: verified.workerModule } : {}),
+    })
   }
-  const installed = await installAppFromBytes({
-    bytes: artifact.bytes,
-    ownerOrgId: caller.orgId,
-    installedBy: caller.installedBy,
-    grantedScopes: pin.grants.scopes,
-    grantedConnections: pin.grants.connections,
-    grantedCapabilities: pin.grants.capabilities,
-    grantedCrossAppCalls: pin.grants.crossAppCalls,
-    sourceUrl: builderSourceUrl(pin.draftId, pin.n),
-    ...(workerModule ? { workerModule } : {}),
-  })
-  await markDraftPublished(tx, caller, pin.draftId)
-  await writePublishedAudit({
-    orgId: caller.orgId,
-    actorId: caller.installedBy,
-    appName: installed.name,
-    appVersion: installed.version,
-    draftId: pin.draftId,
-    n: pin.n,
-    sha256: pin.packageSha256,
-    approvalRequestId: opts.approvalRequestId ?? null,
-  })
+  await db.run((tx) => markDraftPublished(tx, caller, pin.draftId))
+  if (
+    !verified.done ||
+    !(await hasPublishedAudit({
+      orgId: caller.orgId,
+      appName: installed.name,
+      sha256: pin.packageSha256,
+    }))
+  ) {
+    await writePublishedAudit({
+      orgId: caller.orgId,
+      actorId: caller.installedBy,
+      appName: installed.name,
+      appVersion: installed.version,
+      draftId: pin.draftId,
+      n: pin.n,
+      sha256: pin.packageSha256,
+      approvalRequestId: opts.approvalRequestId ?? null,
+    })
+  }
   return {
     appName: installed.name,
     appVersion: installed.version,
     sha256: pin.packageSha256,
     draftId: pin.draftId,
     n: pin.n,
-    firstPublish: active === null,
+    firstPublish: pin.baseVersion === null,
   }
 }
 
@@ -391,7 +497,14 @@ export function manifestDelta(
   return lines
 }
 
-/** The approval card's lines for a pin: name, version, sha, delta. */
+/** The card's type check line. */
+export function typecheckLine(t: PinTypecheck | undefined): string {
+  if (!t) return "Type check: not run."
+  if (t.ok) return "Type check: ok."
+  return `Type check: ${t.errors} ${t.errors === 1 ? "error" : "errors"}${t.first ? ` (first: ${t.first})` : ""}.`
+}
+
+/** The approval card's lines for a pin: name, version, sha, type check, delta. */
 export async function summarizePin(
   tx: RlsClient,
   orgId: string,
@@ -403,14 +516,16 @@ export async function summarizePin(
   const next = packagedManifest(version.files, pin) ?? {}
   const active = await activeCustomApp(orgId, pin.appName)
   const delta = manifestDelta(active?.manifest ?? null, next, active?.version ?? null)
-  // A card has 8 lines: the version, the sha, at most 5 of the delta, the frame note.
+  // A card has 8 lines: the version, the sha, the type check, at most 4 of the
+  // delta, the frame note.
   const shown =
-    delta.length > 5 ? [...delta.slice(0, 4), `And ${delta.length - 4} more changes.`] : delta
+    delta.length > 4 ? [...delta.slice(0, 3), `And ${delta.length - 3} more changes.`] : delta
   const lines = [
     pin.baseVersion
       ? `Updates ${pin.appName} from ${pin.baseVersion} to ${pin.appVersion} (draft version ${pin.n}).`
       : `Installs ${pin.appName} ${pin.appVersion} as this organisation's app (draft version ${pin.n}). It counts against the organisation's custom apps.`,
     `Package sha256: ${pin.packageSha256}`,
+    typecheckLine(pin.typecheck),
     ...shown,
     "Its interface, if any, runs framed: never with your session.",
   ]

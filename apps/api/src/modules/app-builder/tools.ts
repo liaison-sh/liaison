@@ -19,6 +19,7 @@
 //    request takes no edit (`payloadImmutable`): a change is a new request.
 
 import { z } from "zod"
+import { customAppsEnabled } from "~/lib/edition"
 import { BuildBusyError } from "~/modules/app-builder/build/governance"
 import { checkDraft } from "~/modules/app-builder/check"
 import {
@@ -28,9 +29,11 @@ import {
   discardDraft,
   draftAppName,
   getDraft,
+  inTx,
   listDrafts,
   listDraftVersions,
   restoreDraftVersion,
+  type TxRunner,
   updateDraftFiles,
 } from "~/modules/app-builder/drafts"
 import { AppLogsQueryError, READ_APP_LOGS_MAX_LIMIT, readAppLogs } from "~/modules/app-builder/logs"
@@ -58,6 +61,8 @@ const STATUS: Record<string, number> = {
   app_not_built_by_builder: 409,
   publish_stale: 409,
   pin_mismatch: 409,
+  preview_busy: 409,
+  custom_apps_off: 404,
   files_too_large: 413,
 }
 
@@ -100,6 +105,14 @@ async function guarded<T>(fn: () => Promise<T>) {
 }
 
 const callerOf = (ctx: AppContext): DraftCaller => ({ orgId: ctx.orgId, userId: ctx.userId })
+
+/**
+ * The transactions of a tool that builds or installs (`ownsTransactions`): the
+ * call's session, a short transaction per step, so no connection sits idle in
+ * a transaction across a build or the install's health gate. Where the caller
+ * holds a live transaction instead (a test, a nested call), its steps join it.
+ */
+const dbOf = (ctx: AppContext): TxRunner => ctx.rlsSession ?? inTx(ctx.db)
 
 const draftId = z
   .string()
@@ -160,8 +173,31 @@ const summarizePublish: ApprovalSummarizer = async (raw, ctx) => {
   return { kind: "app_publish", impact: "internal", ...s }
 }
 
-/** Registers the kernel's app builder tools for `orgId`. */
+/** The app builder's tools, every one of them (absent while custom apps are off). */
+export const APP_BUILDER_TOOL_NAMES = [
+  "apps_build_create",
+  "apps_build_update",
+  "apps_build_get",
+  "apps_build_list",
+  "apps_build_versions",
+  "apps_build_restore",
+  "apps_build_check",
+  "apps_build_preview",
+  "apps_build_logs",
+  "apps_build_publish",
+  "apps_build_discard",
+] as const
+
+/**
+ * Registers the kernel's app builder tools for `orgId`, only while this server
+ * lets organisations have their own apps (LIAISON_CUSTOM_APPS,
+ * customAppsEnabled): off, none is in the catalog.
+ */
 export function registerAppBuilderTools(orgId: string): void {
+  if (!customAppsEnabled()) {
+    for (const name of APP_BUILDER_TOOL_NAMES) toolRegistry.delete([orgId, "kernel", name])
+    return
+  }
   toolRegistry.set([orgId, "kernel", "apps_build_create"], {
     appName: "kernel",
     name: "apps_build_create",
@@ -341,10 +377,11 @@ export function registerAppBuilderTools(orgId: string): void {
     searchKeywords: KEYWORDS,
     requiredScopes: [BUILD],
     writesToTable: SINK,
+    ownsTransactions: true,
     params: z.object({ draftId, n: versionN.optional() }),
     handler: (async (params: unknown, ctx: AppContext) => {
       const p = params as { draftId: string; n?: number }
-      return guarded(() => checkDraft(ctx.db, callerOf(ctx), p))
+      return guarded(() => checkDraft(dbOf(ctx), callerOf(ctx), p))
     }) as (params: unknown, ctx: any) => Promise<unknown>,
   })
 
@@ -356,14 +393,19 @@ export function registerAppBuilderTools(orgId: string): void {
     taintSource: true,
     deferLoading: true,
     description:
-      "Run one tool, job or webhook handler of a draft version as you, without installing it. Read-only; ctx.store reads and writes go to a scratch space of this draft, emptied at its next preview. Returns the result and the log lines. Before the first publish ctx.db and ctx.fetch are not available.",
+      "Run one tool, job or webhook handler of a draft version as you, without installing it. Read-only; ctx.store reads and writes go to a scratch space of this draft, kept for the next preview of the same version (so you can add in one preview and list in the next) and emptied when you preview another version or pass freshStore: true. One preview of a draft at a time (else preview_busy: retry). Returns the result and the log lines. Before the first publish ctx.db and ctx.fetch are not available.",
     searchKeywords: KEYWORDS,
     requiredScopes: [BUILD],
+    ownsTransactions: true,
     params: z.object({
       draftId,
       n: versionN.optional(),
       entry: entryParam,
       params: z.record(z.string(), z.unknown()).optional(),
+      freshStore: z
+        .boolean()
+        .optional()
+        .describe("true: empty the draft's scratch store first, even for the same version."),
     }),
     handler: (async (params: unknown, ctx: AppContext) => {
       const p = params as {
@@ -371,6 +413,7 @@ export function registerAppBuilderTools(orgId: string): void {
         n?: number
         entry: { kind: "tool" | "job" | "webhook"; name: string }
         params?: Record<string, unknown>
+        freshStore?: boolean
       }
       return guarded(() =>
         previewDraft(
@@ -457,6 +500,7 @@ export function registerAppBuilderTools(orgId: string): void {
     // The preflight pins what the person approves; the caller's own value is dropped.
     pinnedParams: ["pin"],
     payloadImmutable: true,
+    ownsTransactions: true,
     params: z.object({
       draftId,
       n: versionN.optional(),
@@ -468,7 +512,7 @@ export function registerAppBuilderTools(orgId: string): void {
     preflight: (async (params: unknown, ctx: AppContext) => {
       const p = params as { draftId: string; n?: number }
       try {
-        const prepared = await preparePublish(ctx.db, callerOf(ctx), p)
+        const prepared = await preparePublish(dbOf(ctx), callerOf(ctx), p)
         return { ok: true, noAutoApprove: true, pinnedParams: { pin: prepared.pin } }
       } catch (err) {
         return builderToolError(err)
@@ -478,7 +522,7 @@ export function registerAppBuilderTools(orgId: string): void {
       const p = params as { pin?: unknown }
       return guarded(async () => {
         const published = await executePublish(
-          ctx.db,
+          dbOf(ctx),
           { ...callerOf(ctx), installedBy: ctx.approverUserId ?? ctx.userId },
           p.pin,
           { approvalRequestId: ctx.approvalRequestId ?? null },

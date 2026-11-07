@@ -7,7 +7,7 @@
 //   GET    /:id[?n=]               one draft and a version, with its preview frame URL
 //   GET    /:id/versions           kept versions
 //   POST   /:id/check   {n?}       build + type check (check.ts)
-//   POST   /:id/preview {n?, entry, params?}   read-only preview run (preview.ts)
+//   POST   /:id/preview {n?, entry, params?, freshStore?}   read-only preview run (preview.ts)
 //   POST   /:id/restore {n}        version n's files as the next version
 //   POST   /:id/discard
 //   POST   /:id/publish {n?}       kernel:apps:admin AND kernel:apps:build: prepare
@@ -25,6 +25,7 @@
 import { type Context, Hono } from "hono"
 import { z } from "zod"
 import type { AppEnv } from "~/app"
+import { customAppsEnabled } from "~/lib/edition"
 import { extractRlsContext, withRequestRls } from "~/lib/request-rls"
 import { success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
@@ -38,6 +39,7 @@ import {
   listDrafts,
   listDraftVersions,
   restoreDraftVersion,
+  type TxRunner,
 } from "~/modules/app-builder/drafts"
 import { previewDraft } from "~/modules/app-builder/preview"
 import { executePublish, preparePublish } from "~/modules/app-builder/publish"
@@ -57,7 +59,11 @@ const previewBody = z.object({
   n: z.number().int().min(1).optional(),
   entry: z.object({ kind: z.enum(["tool", "job", "webhook"]), name: z.string().min(1).max(100) }),
   params: z.record(z.string(), z.unknown()).optional(),
+  freshStore: z.boolean().optional(),
 })
+
+/** The request's RLS transactions, one short one per step (builds and installs run between). */
+const requestDb = (c: Context<AppEnv>): TxRunner => ({ run: (fn) => withRequestRls(c, fn) })
 
 /** The frame token's subject: a draft version, never an installed app's name. */
 const frameSubject = (draftId: string) => `builder-draft:${draftId}`
@@ -78,6 +84,11 @@ function refuse(c: Context<AppEnv>, err: unknown) {
 }
 
 export const builderRoutes = new Hono<AppEnv>()
+  // Off on this server (LIAISON_CUSTOM_APPS): every route answers 404, as if absent.
+  .use("*", async (c, next) => {
+    if (!customAppsEnabled()) return c.json({ error: { message: "Not found" } }, 404)
+    await next()
+  })
   .get("/drafts", requireScope(BUILD), async (c) => {
     const drafts = await withRequestRls(c, (tx) => listDrafts(tx))
     return success(c, drafts)
@@ -127,9 +138,10 @@ export const builderRoutes = new Hono<AppEnv>()
       const caller = { orgId: c.get("orgId"), userId: c.get("userId") }
       const { n } = c.req.valid("json")
       try {
-        const result = await withRequestRls(c, (tx) =>
-          checkDraft(tx, caller, { draftId: c.req.valid("param").id, ...(n ? { n } : {}) }),
-        )
+        const result = await checkDraft(requestDb(c), caller, {
+          draftId: c.req.valid("param").id,
+          ...(n ? { n } : {}),
+        })
         return success(c, result)
       } catch (err) {
         return refuse(c, err)
@@ -157,6 +169,7 @@ export const builderRoutes = new Hono<AppEnv>()
             entry: body.entry,
             ...(body.n ? { n: body.n } : {}),
             ...(body.params ? { params: body.params } : {}),
+            ...(body.freshStore ? { freshStore: true } : {}),
           },
         )
         return success(c, result)
@@ -207,13 +220,12 @@ export const builderRoutes = new Hono<AppEnv>()
       const caller = { orgId: c.get("orgId"), userId }
       const { n } = c.req.valid("json")
       try {
-        const result = await withRequestRls(c, async (tx) => {
-          const prepared = await preparePublish(tx, caller, {
-            draftId: c.req.valid("param").id,
-            ...(n ? { n } : {}),
-          })
-          return executePublish(tx, { ...caller, installedBy: userId }, prepared.pin)
+        const db = requestDb(c)
+        const prepared = await preparePublish(db, caller, {
+          draftId: c.req.valid("param").id,
+          ...(n ? { n } : {}),
         })
+        const result = await executePublish(db, { ...caller, installedBy: userId }, prepared.pin)
         return success(c, result)
       } catch (err) {
         return refuse(c, err)

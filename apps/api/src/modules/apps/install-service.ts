@@ -25,6 +25,7 @@ import {
   appsInstalled,
   type InstalledPdfTemplate,
 } from "~/db/schema/kernel/apps-installed"
+import { customAppsEnabled } from "~/lib/edition"
 import { appsLogger as log } from "~/lib/logger"
 import { ownOption } from "~/lib/safe-path"
 import {
@@ -989,6 +990,10 @@ export async function installAppFromBytes(opts: {
   /** The Workers module the same build produced (see InstallOptions.workerModule). */
   workerModule?: { sha256: string; bytes: Uint8Array }
 }): Promise<InstallResult> {
+  // A new org app is refused while organisations' own apps are off
+  // (LIAISON_CUSTOM_APPS); an org moving cells re-installs through
+  // installAppFromTarball, never here.
+  if (!customAppsEnabled()) throw new HTTPException(404, { message: "Not found" })
   const dir = mkdtempSync(join(tmpdir(), "liaison-app-bytes-"))
   try {
     const tarballPath = join(dir, "package.liaisonapp")

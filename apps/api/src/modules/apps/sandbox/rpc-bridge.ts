@@ -145,7 +145,7 @@ export function createRpcBridge(
   // exactly those, wherever it is marked (here, or later in runApp).
   markSecretConfigKeys(rpcBridge, secretConfigKeyResolver(orgId, appName, manifest))
 
-  // A Workers run, and every run of a custom app on any executor (A5): no
+  // A Workers run, and every run of a custom app on any executor: no
   // method hands a secret back (applied last, so an app's extension cannot
   // reintroduce one).
   if (bridgeOptions?.workersRun || isCustomAppName(appName)) {

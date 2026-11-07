@@ -1961,6 +1961,13 @@
       "when": 1900003380000,
       "tag": "0278_apps_installed_worker_module",
       "breakpoints": true
+    },
+    {
+      "idx": 280,
+      "version": "7",
+      "when": 1900003390000,
+      "tag": "0279_app_drafts_preview_store",
+      "breakpoints": true
     }
   ]
 }

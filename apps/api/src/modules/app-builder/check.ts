@@ -14,7 +14,6 @@
 //  - A version whose recorded build already carries the target name and
 //    version, and whose package bytes are stored, is reused, never rebuilt.
 
-import type { RlsClient } from "~/db"
 import type { AppDraftBuild, AppDraftRow } from "~/db/schema/kernel"
 import { type BuildDraftResult, buildDraft } from "~/modules/app-builder/build/build-draft"
 import { buildGovernor } from "~/modules/app-builder/build/governance"
@@ -26,6 +25,7 @@ import {
   getBuildArtifact,
   getDraft,
   recordVersionBuild,
+  type TxRunner,
 } from "~/modules/app-builder/drafts"
 import { type ActiveCustomApp, activeCustomApp } from "~/modules/app-builder/installed"
 
@@ -105,33 +105,40 @@ export function packagedManifest(
  * Version `n` (default: the latest) built for its next publish: the recorded
  * build when it matches the target and its bytes are stored, else a new build
  * (recorded). `typecheck` forces a new build when the recorded one has no type
- * check.
+ * check. The version is read in one short transaction and the build recorded
+ * in another; the build itself (up to 30 s, and 30 s more for the type check)
+ * runs in none.
  */
 export async function buildDraftVersion(
-  tx: RlsClient,
+  db: TxRunner,
   caller: DraftCaller,
   input: { draftId: string; n?: number; typecheck?: boolean },
 ): Promise<VersionBuild> {
-  const { draft, version } = await getDraft(
-    tx,
-    input.draftId,
-    input.n !== undefined ? { version: input.n } : {},
-  )
-  if (draft.status === "discarded") {
-    throw new DraftError("draft_discarded", "this draft was discarded")
-  }
-  const target = await publishTarget(caller, draft)
+  const read = await db.run(async (tx) => {
+    const { draft, version } = await getDraft(
+      tx,
+      input.draftId,
+      input.n !== undefined ? { version: input.n } : {},
+    )
+    if (draft.status === "discarded") {
+      throw new DraftError("draft_discarded", "this draft was discarded")
+    }
+    const target = await publishTarget(caller, draft)
+    const recorded = version.build
+    const reusable = Boolean(
+      recorded?.ok &&
+        recorded.appName === target.appName &&
+        recorded.appVersion === target.appVersion &&
+        recorded.packageSha256 &&
+        (!input.typecheck || recorded.typecheck) &&
+        (await getBuildArtifact(tx, { draftId: draft.id, sha256: recorded.packageSha256 })),
+    )
+    return { draft, version, target, reusable }
+  })
+  const { draft, version, target } = read
   const manifest = packagedManifest(version.files, target)
-  const recorded = version.build
-  if (
-    recorded?.ok &&
-    recorded.appName === target.appName &&
-    recorded.appVersion === target.appVersion &&
-    recorded.packageSha256 &&
-    (!input.typecheck || recorded.typecheck) &&
-    (await getBuildArtifact(tx, { draftId: draft.id, sha256: recorded.packageSha256 }))
-  ) {
-    return { draft, version, target, build: recorded, manifest, reused: true }
+  if (read.reusable && version.build) {
+    return { draft, version, target, build: version.build, manifest, reused: true }
   }
   const result = await buildGovernor.run(caller.orgId, () =>
     buildDraft(version.files, {
@@ -146,12 +153,14 @@ export async function buildDraftVersion(
     result.ui ? { kind: "ui" as const, bytes: result.ui.bytes } : null,
     result.worker ? { kind: "worker" as const, bytes: result.worker.bytes } : null,
   ].filter((a): a is NonNullable<typeof a> => a !== null)
-  const build = await recordVersionBuild(tx, caller, {
-    draftId: draft.id,
-    n: version.n,
-    build: recordOf(result, target),
-    artifacts: result.ok ? artifacts : [],
-  })
+  const build = await db.run((tx) =>
+    recordVersionBuild(tx, caller, {
+      draftId: draft.id,
+      n: version.n,
+      build: recordOf(result, target),
+      artifacts: result.ok ? artifacts : [],
+    }),
+  )
   return {
     draft,
     version: { ...version, build },
@@ -180,11 +189,11 @@ export interface CheckResult {
  * check, records the build and its artifacts, and returns the errors.
  */
 export async function checkDraft(
-  tx: RlsClient,
+  db: TxRunner,
   caller: DraftCaller,
   input: { draftId: string; n?: number },
 ): Promise<CheckResult> {
-  const built = await buildDraftVersion(tx, caller, { ...input, typecheck: true })
+  const built = await buildDraftVersion(db, caller, { ...input, typecheck: true })
   return {
     draftId: built.draft.id,
     n: built.version.n,

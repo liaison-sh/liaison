@@ -10,7 +10,7 @@
 // outward effect, not a contract-only op, not hidden from the agent, no human
 // turn, no trust boundary, not a web read. Kernel tools are not judged by their
 // marker alone: only the ones listed here qualify. An org's own custom app is
-// a source under the same rules (its secrets are placed per request since A5);
+// a source under the same rules (its secrets are placed per request);
 // another org's never is.
 //
 // The `readOnly` marker is still the app's own claim. What makes a view safe

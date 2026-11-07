@@ -42,6 +42,21 @@ export function isManagedEdition(): boolean {
   return edition() === "managed"
 }
 
+/**
+ * Whether organisations may have their own custom apps: install one by URL
+ * for themselves, or build one with the app builder. `LIAISON_CUSTOM_APPS`
+ * (`on` | `off`) decides; unset, it follows the edition (on when managed, off
+ * when self-hosted), so a self-hosted server with public sign-up never runs
+ * apps its operator did not choose. Instance installs by the operator, and
+ * custom apps already installed, are never affected.
+ */
+export function customAppsEnabled(): boolean {
+  const v = env.LIAISON_CUSTOM_APPS
+  if (v === "on") return true
+  if (v === "off") return false
+  return isManagedEdition()
+}
+
 /** Test helper — force the edition. Pass `null` to restore env detection. */
 export function _setEdition(mode: Edition | null): void {
   override = mode

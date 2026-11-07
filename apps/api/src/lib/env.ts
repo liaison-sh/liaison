@@ -1051,6 +1051,14 @@ export const envSchema = z
     // (lib/managed-boot.ts). Unset = self-hosted (a server that sets the legacy
     // control-plane pair below without it refuses to start).
     LIAISON_EDITION: z.preprocess(unsetIfEmpty, z.enum(["self_hosted", "managed"]).optional()),
+    // Organisations' own custom apps: `on` lets an org admin install an app for
+    // their organisation alone (`POST /api/apps/custom/install`) and lets the
+    // agent build and publish one with the app builder; `off` refuses both (the
+    // builder's routes answer 404 and its tools are not offered). Unset: `on`
+    // in the managed edition, `off` on a self-hosted server. Apps installed for
+    // the whole server by its operator are not affected, and custom apps
+    // already installed keep running: only new installs and builds stop.
+    LIAISON_CUSTOM_APPS: z.preprocess(unsetIfEmpty, z.enum(["on", "off"]).optional()),
     // Control-plane integration. Both must be set or unset.
     // The pair no longer switches the managed edition on: set alone, without
     // LIAISON_EDITION, the server refuses to start (lib/managed-boot.ts).

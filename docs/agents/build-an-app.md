@@ -7,6 +7,10 @@ Your agent can build a small app for your organisation: a returns tracker, a vis
 
 Building needs the `kernel:apps:build` scope; publishing is decided by a person holding `kernel:apps:admin`. Both are admin scopes by default.
 
+## Turn it on (self-hosted)
+
+The app builder, and installing an organisation's own app by URL, are off on a self-hosted server and on in the managed edition. To turn them on, set `LIAISON_CUSTOM_APPS=on` in the server's environment and restart it; `LIAISON_CUSTOM_APPS=off` turns them off on any server. While they are off, the agent has no app builder tools, **Apps in the making** is not shown, and the builder's requests answer 404. Apps already installed keep running; only new builds and installs stop. Apps the operator installs for the whole server are not affected.
+
 ## Ask for an app
 
 Tell your agent what the app should do, for example "a returns tracker: log a return with its order number, reason and status, and list the open ones". The agent:
@@ -24,14 +28,15 @@ Each change is a new version of the draft. The last 20 versions are kept. A draf
 A try (a preview) runs as you and changes nothing real:
 
 - it can only read; any write to your organisation's data is refused;
-- what the app stores goes to a scratch space of the draft, emptied at its next try and a day after its last write;
+- what the app stores goes to a scratch space of the draft: the next try of the same version still sees it, so you can add an item in one try and list it in the next. It is emptied when a try runs another version, when the agent asks for a fresh store, when the draft is discarded, and a day after its last write;
+- one try of a draft runs at a time;
 - before the first publish the app has no tables and reaches no website; after it, only the websites the published version was approved for;
 - it never gets a password, a token or a connected account;
 - a try lasts 30 seconds at most, and its log lines come back with the result.
 
 ## Publish it
 
-Publishing waits for a person holding `kernel:apps:admin`. The approval card shows the app's name and version, the fingerprint (sha256) of the exact package, and what changes against the version running now: scopes, websites, tables and columns, connections, where a secret may be sent, calls to other apps, and the tables kept although the new version no longer declares them. No automatic approval applies.
+Publishing waits for a person holding `kernel:apps:admin`. The approval card shows the app's name and version, the fingerprint (sha256) of the exact package, the result of its type check (ok, or how many errors and the first one), and what changes against the version running now: scopes, websites, tables and columns, connections, where a secret may be sent, calls to other apps, and the tables kept although the new version no longer declares them. No automatic approval applies.
 
 What gets installed is exactly the package on the card: a change made to the draft after the request is not in it. The request cannot be edited; to change it, withdraw it and ask again. If the app moved to another version in between, the publish is refused and asked again.
 

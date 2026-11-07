@@ -139,7 +139,7 @@ export interface AppManifestForBridge {
   >
   network?: { allowedDomains?: string[]; allowPrivateHostsInTest?: boolean }
   /**
-   * A5 — where `ctx.fetch` configSecrets may write each declared secret config
+   * where `ctx.fetch` configSecrets may write each declared secret config
    * key: its hosts and the one header / query parameter / JSON body path
    * (@liaison/app-sdk secret-placement.ts). A key with no entry is placed nowhere.
    */

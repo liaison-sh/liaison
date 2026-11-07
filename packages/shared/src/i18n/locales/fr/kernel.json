@@ -2399,7 +2399,8 @@
       "handlerError": "erreur du gestionnaire",
       "toolRunFailed": "L'exécution de l'outil a échoué : {{cause}}. La demande doit être revue par un opérateur.",
       "outcomeUnclear": "Le résultat de l'outil est incertain, actualisez avant de réessayer.",
-      "nobodyMayRun": "Ni le demandeur ni vous n'avez le droit d'exécuter cet outil."
+      "nobodyMayRun": "Ni le demandeur ni vous n'avez le droit d'exécuter cet outil.",
+      "sendGuardNotHeld": "Ce brouillon n'est plus en attente : une réponse est arrivée, ou l'attente a pris fin. Rien n'a été envoyé. La carte montre maintenant ce que dit la vérification."
     },
     "copyIdHint": "Cliquez pour copier l'identifiant",
     "copiedId": "{{id}} copié",
@@ -2493,7 +2494,19 @@
     },
     "stepSequence": "Ce qui se passe, dans l'ordre",
     "agentInviteAdd": "Ajouter",
-    "agentInviteDecline": "Ne pas ajouter"
+    "agentInviteDecline": "Ne pas ajouter",
+    "sendGuard": {
+      "theOtherSide": "Votre correspondant",
+      "held": "En attente : {{who}} a envoyé une réponse automatique. Le brouillon attend jusqu'au {{until}}, puis revient tout seul sur l'accueil.",
+      "replied": "Non envoyé : {{who}} a répondu après la rédaction de ce brouillon.",
+      "repliedElsewhere": "Non envoyé : une réponse est arrivée dans une autre boîte.",
+      "bounced": "Non envoyé : un échec de remise est revenu pour cette adresse.",
+      "optedOut": "Envoi impossible : {{who}} a refusé les messages commerciaux. Retirez ce destinataire, ou n'envoyez pas.",
+      "refStop": "Non envoyé : la fiche concernée indique de ne pas l'envoyer.",
+      "refStopLabel": "Non envoyé : {{label}}",
+      "unavailable": "La vérification avant envoi n'a pas pu se faire. Réessayez dans un instant.",
+      "sendNow": "Envoyer maintenant"
+    }
   },
   "agentUi": {
     "knowledge": "Connaissances",

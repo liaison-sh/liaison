@@ -2402,7 +2402,8 @@
       "handlerError": "handler error",
       "toolRunFailed": "Tool run failed: {{cause}}. The request needs operator review.",
       "outcomeUnclear": "Tool outcome is unclear; refresh before retrying.",
-      "nobodyMayRun": "Neither the requester nor you have permission to run this tool."
+      "nobodyMayRun": "Neither the requester nor you have permission to run this tool.",
+      "sendGuardNotHeld": "This draft is no longer held: a reply came in, or the hold ended. Nothing was sent. The card now shows what the check says."
     },
     "copyIdHint": "Click to copy id",
     "copiedId": "Copied {{id}}",
@@ -2496,7 +2497,19 @@
     },
     "stepSequence": "What happens, in order",
     "agentInviteAdd": "Add",
-    "agentInviteDecline": "Don't add"
+    "agentInviteDecline": "Don't add",
+    "sendGuard": {
+      "theOtherSide": "The other side",
+      "held": "Held: {{who}} sent an automatic reply. It waits until {{until}}, then comes back to Home by itself.",
+      "replied": "Not sent: {{who}} replied after this was drafted.",
+      "repliedElsewhere": "Not sent: a reply came in to another mailbox.",
+      "bounced": "Not sent: a delivery failure came back for this address.",
+      "optedOut": "Cannot send: {{who}} opted out of commercial mail. Remove them from the recipients, or leave it unsent.",
+      "refStop": "Not sent: the record this mail is about says not to send it.",
+      "refStopLabel": "Not sent: {{label}}",
+      "unavailable": "The check before sending could not run. Try again shortly.",
+      "sendNow": "Send now"
+    }
   },
   "agentUi": {
     "knowledge": "Knowledge",

@@ -72,9 +72,6 @@ const REVIEWED: Record<string, Disposition> = {
   "modules/assist/transcribe-service.ts": "meters", // dictation finalizeUsage
   "modules/search/message-indexer.ts": "meters", // managed embed batch finalizeUsage (self-hosted Google: no credits, S19)
   "modules/settings/ai-models-admin.ts": "meters", // add-model test call: finalizeUsage on the cell's key
-  "modules/settings/ai-models-routes.ts": {
-    none: "the custom model server test: the org's own server and key (SITE_EXEMPT below)",
-  },
   "modules/agent/credits/unreported-generations.ts": "meters", // GET /generation recovers a stopped step's cost into finalizeUsage
   "modules/agent/credits/model-test-call.ts": { via: ["modules/settings/ai-models-admin.ts"] },
   "modules/agent/media/media-analysis-client.ts": {

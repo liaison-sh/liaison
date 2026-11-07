@@ -654,6 +654,10 @@ export async function cascadeDeferredDependents(args: {
       // Unreachable: a dependent is claimed without an expected hash. Fail closed if it ever is.
       await failBundle(args.orgId, dep.id, "step payload changed — sequence cannot continue")
       return
+    } else if (outcome.kind === "send_guard_not_held") {
+      // Unreachable: a dependent is claimed without the send-now override. Fail closed if it ever is.
+      await failBundle(args.orgId, dep.id, "send check no longer holds — sequence cannot continue")
+      return
     } else {
       log.error({ depId: dep.id, err: outcome.error }, "Bundle step failed — cancelling remainder")
       await failBundle(args.orgId, dep.id, stepFailureText(outcome.error))

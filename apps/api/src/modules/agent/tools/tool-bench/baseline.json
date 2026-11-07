@@ -1193,7 +1193,7 @@
       "schema": 17
     },
     "kernel__create_role": {
-      "desc": 2173,
+      "desc": 469,
       "schema": 35
     },
     "kernel__create_routine": {
@@ -1204,9 +1204,61 @@
       "desc": 369,
       "schema": 763
     },
+    "kernel__dashboards_create": {
+      "desc": 279,
+      "schema": 36
+    },
+    "kernel__dashboards_delete": {
+      "desc": 99,
+      "schema": 9
+    },
+    "kernel__dashboards_get": {
+      "desc": 139,
+      "schema": 9
+    },
+    "kernel__dashboards_list": {
+      "desc": 93,
+      "schema": 3
+    },
+    "kernel__dashboards_preview_block": {
+      "desc": 272,
+      "schema": 39
+    },
+    "kernel__dashboards_sources": {
+      "desc": 257,
+      "schema": 13
+    },
+    "kernel__dashboards_update": {
+      "desc": 261,
+      "schema": 60
+    },
+    "kernel__data_collections_list": {
+      "desc": 185,
+      "schema": 8
+    },
+    "kernel__data_delete": {
+      "desc": 75,
+      "schema": 6
+    },
+    "kernel__data_get": {
+      "desc": 117,
+      "schema": 5
+    },
+    "kernel__data_query": {
+      "desc": 181,
+      "schema": 5
+    },
+    "kernel__data_set": {
+      "desc": 232,
+      "schema": 5
+    },
     "kernel__data_subject_export": {
-      "desc": 2210,
+      "desc": 281,
       "schema": 127
+    },
+    "kernel__data_update": {
+      "desc": 102,
+      "schema": 6
     },
     "kernel__deactivateUser": {
       "desc": 85,
@@ -1225,7 +1277,7 @@
       "schema": 9
     },
     "kernel__describe_user_access": {
-      "desc": 2304,
+      "desc": 262,
       "schema": 21
     },
     "kernel__document_record_types_list": {
@@ -1529,7 +1581,7 @@
       "schema": 18
     },
     "kernel__run_on_my_computer": {
-      "desc": 3422,
+      "desc": 585,
       "schema": 482
     },
     "kernel__run_routine_now": {
@@ -2713,7 +2765,7 @@
     "C15|shopify refund": "15tl",
     "C16|failed payment": "15tl",
     "C16|overdue invoices": "15tl",
-    "C16|past due": "15tl",
+    "C16|past due": "15t",
     "C16|unpaid invoice": "15tl",
     "C17|factures impayées": "15tl",
     "C17|impayé": "15tl",
@@ -2766,10 +2818,10 @@
     "C54|expédier colis": "15tl",
     "C54|label": "",
     "C54|ship parcel": "15tl",
-    "C55|a valider": "5tl",
-    "C55|approvals": "5tl",
+    "C55|a valider": "15tl",
+    "C55|approvals": "15tl",
     "C55|en attente validation": "15tl",
-    "C55|pending approvals": "5t",
+    "C55|pending approvals": "15tl",
     "C56|create routine": "15tl",
     "C56|routine weekly": "15tl",
     "C56|schedule recurring task": "15tl",
@@ -2823,7 +2875,7 @@
     "H046|restaurer un document": "15tl",
     "H047|vérifier un document": "5t",
     "H048|créer une collection": "15tl",
-    "H049|modifier une collection": "5t",
+    "H049|modifier une collection": "5",
     "H050|supprimer une collection": "15tl",
     "H051|créer une tâche": "15tl",
     "H052|modifier une tâche": "15tl",

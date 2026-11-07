@@ -82,7 +82,8 @@ describe("pennylane app.manifest.json", () => {
     // 0.1.43: above 0.1.42, so an instance on either line of work upgrades; no change of its own.
     // 0.1.44: above both lines of work, which each changed it under the number before; no change of its own.
     // 0.1.45: the shared settings types it builds against changed; no change of its own.
-    expect(m.version).toBe("0.1.45")
+    // 0.1.46: above the 0.1.45 each line of work took meanwhile; no change of its own.
+    expect(m.version).toBe("0.1.46")
     expect(m.packageFormat).toBe(1)
   })
 

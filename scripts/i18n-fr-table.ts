@@ -1480,6 +1480,16 @@ export const FR: Record<string, string> = {
     "Créer, modifier ou supprimer la mémoire d'agent de l'utilisateur",
   "Share saved views with the org": "Partager des vues enregistrées avec l'organisation",
   "Manage shared and default saved views": "Gérer les vues partagées et par défaut",
+  "Read app data store documents through the agent's data tools":
+    "Lire les documents du stockage de données des apps avec les outils de données de l'agent",
+  "Write documents in the agent's own data store namespace":
+    "Écrire des documents dans l'espace de stockage de données propre à l'agent",
+  "Create and edit your own personal dashboards":
+    "Créer et modifier vos propres tableaux de bord personnels",
+  "Create and edit dashboards shared with the org":
+    "Créer et modifier des tableaux de bord partagés avec l'organisation",
+  "Manage every dashboard shared with the org":
+    "Gérer tous les tableaux de bord partagés avec l'organisation",
   "Install, upgrade, and uninstall apps (instance operator)":
     "Installer, mettre à jour et désinstaller des applications (opérateur de l'instance)",
   "Dispatch fresh-context sub-agent runs via the spawn_agent kernel tool":

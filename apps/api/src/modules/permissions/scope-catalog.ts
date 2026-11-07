@@ -161,6 +161,31 @@ export const KERNEL_SCOPES: ScopeCatalogEntry[] = [
     description: "Manage shared and default saved views",
   },
   {
+    scope: "kernel:data:read",
+    app: "kernel",
+    description: "Read app data store documents through the agent's data tools",
+  },
+  {
+    scope: "kernel:data:write",
+    app: "kernel",
+    description: "Write documents in the agent's own data store namespace",
+  },
+  {
+    scope: "kernel:dashboards:write",
+    app: "kernel",
+    description: "Create and edit your own personal dashboards",
+  },
+  {
+    scope: "kernel:dashboards:share",
+    app: "kernel",
+    description: "Create and edit dashboards shared with the org",
+  },
+  {
+    scope: "kernel:dashboards:admin",
+    app: "kernel",
+    description: "Manage every dashboard shared with the org",
+  },
+  {
     // Operator-level: runtime app install/upgrade/uninstall is instance-wide.
     // On a multi-tenant instance (demo mode, managed edition) the routes are also
     // confined to the operator's org (LIAISON_OPERATOR_ORG_ID, else the first org).

@@ -37,6 +37,12 @@ export {
 } from "./agent-turns"
 export type { Agent, AgentKind, NewAgent } from "./agents"
 export { agentKindEnum, agents } from "./agents"
+export {
+  type AppDocumentRow,
+  type AppDocumentUsageRow,
+  appDocuments,
+  appDocumentUsage,
+} from "./app-documents"
 export type { AppSeededAssets, NewAppSeededAssets } from "./app-seeded-assets"
 export { appSeededAssets } from "./app-seeded-assets"
 export { appSequences } from "./app-sequences"
@@ -72,6 +78,7 @@ export {
 export type { ControlPlaneOutboxRow } from "./control-plane-outbox"
 export { controlPlaneOutbox } from "./control-plane-outbox"
 export { creditBalances, creditTransactions, modelPricing } from "./credits"
+export { type DashboardRow, type DashboardVisibility, dashboards } from "./dashboards"
 export { demoLeads } from "./demo-leads"
 export { demoSpend } from "./demo-spend"
 export { type DemoWorldMarkRow, demoWorldMarks } from "./demo-world-marks"

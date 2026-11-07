@@ -19,6 +19,8 @@ export interface StorageEstimate {
     tickets: number
     conversations: number
     knowledge: number
+    /** App data store documents (kernel.app_documents, 0275); absent on a measure taken before. */
+    appData?: number
     search: number | null
   }
   measuredAt: string

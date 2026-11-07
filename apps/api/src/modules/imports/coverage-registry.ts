@@ -214,6 +214,15 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     exempt: "config",
     reason: "provisioned by config apply (agent configuration, not business records)",
   },
+  "kernel.app_document_usage": {
+    exempt: "derived",
+    reason: "per-collection counters the data-store service keeps in step with app_documents",
+  },
+  "kernel.app_documents": {
+    exempt: "system",
+    reason:
+      "app and agent data store documents, written by apps through ctx.store and the agent's data tools, never imported",
+  },
   "kernel.app_scope_grant_audit": { exempt: "derived", reason: "grant audit trail" },
   "kernel.app_seeded_assets": { exempt: "config", reason: "org and app configuration" },
   "kernel.app_sequences": { exempt: "config", reason: "org and app configuration" },
@@ -264,6 +273,10 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
   "kernel.credit_balances": {
     exempt: "system",
     reason: "audit, credits, demo and search bookkeeping",
+  },
+  "kernel.dashboards": {
+    exempt: "config",
+    reason: "dashboards made in the workspace or by an agent",
   },
   "kernel.credit_transactions": {
     exempt: "system",

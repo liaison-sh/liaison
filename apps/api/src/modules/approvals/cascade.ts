@@ -84,6 +84,9 @@ export async function executeApprovedStep(args: {
    *  succeeds only if the stored payload still hashes to it, judged under the row lock the claim
    *  itself takes, so an edit cannot slip in between the check and the claim. */
   expectedPayloadHash?: string
+  /** Whose decision this was when the decider is not the person the row is for, stored by the
+   *  claim itself under its row lock, so it names exactly the claim that won. */
+  decidedFor?: Record<string, unknown> | null
 }): Promise<StepOutcome> {
   // Step 0: REFUSE BEFORE CLAIMING while the process is shutting down.
   //
@@ -133,7 +136,12 @@ export async function executeApprovedStep(args: {
     }>(tx, {
       requestId: args.approvalId,
       from: args.sourceStatus,
-      set: drizzleSql`status = 'approving', decided_by = ${args.deciderId}, decided_at = now(), approving_started_at = now(), metadata = COALESCE(metadata, '{}'::jsonb) - 'reaperFlaggedAt'`,
+      // Any earlier claim's decided-for goes with it: only this decider's is kept.
+      set: drizzleSql`status = 'approving', decided_by = ${args.deciderId}, decided_at = now(), approving_started_at = now(), metadata = (COALESCE(metadata, '{}'::jsonb) - 'reaperFlaggedAt' - 'decidedFor')${
+        args.decidedFor
+          ? drizzleSql` || jsonb_build_object('decidedFor', ${JSON.stringify(args.decidedFor)}::jsonb)`
+          : drizzleSql``
+      }`,
       returning: drizzleSql`id, current_payload, originating_thread_id, thread_id, tool_name, requested_by, metadata, proposing_turn_scopes, agent_id`,
     })
   })

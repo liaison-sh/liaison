@@ -78,6 +78,8 @@ export interface BridgeManifest {
   cross_app_calls?: Array<{ target: string; reason: string }>
   /** Per kind of record, the read-only tool that can stop a mail about it before it leaves. */
   sendGuardProviders?: Record<string, { tool: string; serviceMessage?: boolean }>
+  /** Per entity type, the read-only tool that says who an approval about such a record is for. */
+  approvalRoute?: Record<string, string>
 }
 
 // Track registered orgId:appName to prevent duplicate registration
@@ -857,6 +859,8 @@ export const attentionItemsRegistry = createTypedRegistry<
     scope?: string
     bundlePath: string
     trusted: boolean
+    /** Declared `passesOn`: also given the people away today who name the viewer next in line. */
+    passesOn?: boolean
   }
 >()
 

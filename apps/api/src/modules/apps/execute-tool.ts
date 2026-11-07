@@ -236,6 +236,7 @@ import {
   resolveApprovalResourceOwner,
   resolveRoutineOwnerApprover,
 } from "~/modules/approvals/resource-owner"
+import { resolveProposeRoute } from "~/modules/approvals/route-world"
 import {
   narrowPendingApprovalForTaint,
   rowTaintMustHold,
@@ -1555,6 +1556,11 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
     dimensionConstraint,
     mustHold: audienceMustHold,
   })
+  // Who the request is for, from the record it is about, asked of that record's app outside the
+  // transaction and within a short budget. An owner's own request is theirs alone and asks nothing.
+  const routeColumns = resourceOwnerId
+    ? {}
+    : await resolveProposeRoute({ orgId, toolName, summary, requestedBy })
 
   // When `bundleId` is set, we wrap the tx in a retry loop: concurrent inserts
   // into the same bundle (READ COMMITTED) can both read MAX(bundle_position) =
@@ -1716,6 +1722,7 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
           approveScope,
           dimensionConstraint,
           proposingTurnScopes,
+          ...routeColumns,
           // A11: the agent whose turn PROPOSED this gated call, persisted at
           // request time. The approved re-entry happens in another request with
           // that turn's frame long gone, so the identity has to travel on the

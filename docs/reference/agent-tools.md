@@ -598,6 +598,7 @@ Projects and tasks with owners, statuses, due dates and discussions.
 | Tool | Description | Approval-gated | Required scopes |
 | --- | --- | --- | --- |
 | `add_dependency` | Add a dependency between two tasks. |  | `projects:tasks:write` |
+| `approval_route_read` | Who a pending approval about a task is for: its assignee, as personId (null when nobody holds it). |  | `projects:tasks:read` |
 | `attentionItems` | YOUR own work that needs attention right now — the calling user's OVERDUE, DUE-THIS-WEEK, and BLOCKED non-terminal tasks across ALL projects, each carrying its project name + due date. |  | `projects:tasks:read` |
 | `checklist_add_items` | Append items to a task's checklist, in the order given (batch, up to 50 per call, 200 per task). |  | `projects:tasks:write` |
 | `checklist_get` | Read a task's checklist: the project's validation `levels` in order (id, name), the `items` (id, title, details, per-level `validations` keyed by level id, `checked` for a project without levels) and the `status` (per-level counts and the blocking items, the ones not yet complete). |  | `projects:tasks:read` |
@@ -750,6 +751,7 @@ Track customer requests, returns and warranty cases to resolution.
 | `apiKeys.create` | Create an API key | yes | `tickets:settings:admin` |
 | `apiKeys.list` | List the API keys that still work (a revoked key is left out) |  | `tickets:settings:admin` |
 | `apiKeys.revoke` | Revoke an API key |  | `tickets:settings:admin` |
+| `approval_route_read` | Who a pending approval about a ticket is for: its assignee, as personId (null when nobody holds it). |  | `tickets:tickets:read` |
 | `approveFromHome.get` | Read the org setting Approve ticket replies from Home (Settings &gt; Tickets &gt; Response times & email). |  | `tickets:settings:admin` |
 | `approveFromHome.set` | Turn the org setting Approve ticket replies from Home on or off. | yes | `tickets:settings:admin` |
 | `assign` | Assign a ticket to a user. |  | `tickets:tickets:write` |

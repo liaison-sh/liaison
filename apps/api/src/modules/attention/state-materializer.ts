@@ -378,7 +378,9 @@ export async function runStateMaterializeOnce(
 
 /** The same mine-vs-peer rule as Home's approvals partition: only rows the server marked. */
 function isPeerSelfApprovableItem(item: AttentionItem): boolean {
-  return item.kind === "approval_pending" && item.metadata?.peerSelfApprovable === true
+  if (item.kind !== "approval_pending") return false
+  // A row for someone else is quiet the same way: it is theirs, this person can also approve it.
+  return item.metadata?.peerSelfApprovable === true || item.metadata?.placement === "others"
 }
 
 /** One org's materializer run, fanned out by the minute tick (one job per org). */

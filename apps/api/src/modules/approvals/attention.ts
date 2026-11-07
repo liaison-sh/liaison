@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import {
   APPROVING_WEDGE_GRACE_MS,
+  type ApprovalRoute,
   type AttentionItem,
   appApprovesFromHome,
+  type HomePlacement,
+  homePlacement,
   isPeerSelfApprovable,
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
@@ -10,24 +13,16 @@ import { extractRows, type RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { appsLogger as log } from "~/lib/logger"
-import {
-  apiViewer,
-  authorityFacts,
-  canSeeInFeed,
-  decidingScope,
-} from "~/modules/approvals/authority"
+import { apiViewer, authorityFacts, canSeeInFeed } from "~/modules/approvals/authority"
 import { humanizeToolName, splitToolName } from "~/modules/approvals/event-data"
 import { readApprovalLastFailures } from "~/modules/approvals/last-failure"
 import { approvalPayloadHash } from "~/modules/approvals/payload-hash"
 import { approvalActionPhrase, deriveApprovalDetail } from "~/modules/approvals/payload-title"
 import { readApprovalRequesters } from "~/modules/approvals/requester"
+import { type RoutedRows, readApprovalRoutes } from "~/modules/approvals/route-world"
 import { withServedSummaries } from "~/modules/approvals/served-summary"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { isSeededWrite } from "~/modules/notifications/seeded"
-import {
-  everyMemberScopeFragment,
-  scopeMatchesFragment,
-} from "~/modules/permissions/eligible-approvers"
 
 const K = drizzleSql.raw(schemaRef("kernel"))
 
@@ -88,6 +83,8 @@ interface PendingApprovalRow {
   current_payload: Record<string, unknown> | null
   /** The conversation the request was raised in (where its card shows). */
   originating_thread_id: string | null
+  /** The person on the item, read only to route the row (route-world.ts). */
+  route_person_id: string | null
 }
 
 /** One step of a bundle, as the row names it. */
@@ -225,11 +222,6 @@ async function readAppsApprovingFromHome(
   }
 }
 
-/** The app a request's tool belongs to: it decides a restriction (S20), as the select policy does. */
-function approvalToolApp(r: { tool_name: string }): string {
-  return r.tool_name.split(":")[0] ?? ""
-}
-
 /** The facts the feed's "this person decides it" rule reads off a request row. */
 type DecidableApprovalRow = Pick<
   PendingApprovalRow,
@@ -241,65 +233,8 @@ type DecidableApprovalRow = Pick<
   | "requested_by"
   | "approve_scope"
   | "resource_owner_id"
+  | "route_person_id"
 >
-
-/**
- * PEER-NOISE CLASSIFICATION. When two people both hold `<app>:approve`,
- * every request each raises lands in the other's feed even though the
- * requester routinely approves their own. To tell those apart we need one
- * fact the row does not carry: can the REQUESTER decide their own request?
- * `requesterCanApprove` is computed at creation time (execute-tool) but never
- * persisted, so it is recomputed here, in ONE query over the distinct
- * (requester, deciding-scope) pairs actually present, using the same
- * `scopeMatchesFragment` predicate as `hasScope` and the RLS policy, so the
- * answer cannot drift from the real decide check. Keys are
- * `requester\u0000scope\u0000app`.
- */
-async function readRequesterDecides(
-  tx: RlsClient,
-  orgId: string,
-  rows: readonly DecidableApprovalRow[],
-): Promise<Set<string>> {
-  const pairs = new Map<string, { userId: string; scope: string; app: string }>()
-  for (const r of rows) {
-    const scope = decidingScope(authorityFacts(r))
-    const app = approvalToolApp(r)
-    pairs.set(`${r.requested_by}\u0000${scope}\u0000${app}`, {
-      userId: r.requested_by,
-      scope,
-      app,
-    })
-  }
-  const requesterDecides = new Set<string>()
-  if (pairs.size === 0) return requesterDecides
-  const values = drizzleSql.join(
-    [...pairs.values()].map(
-      (p) => drizzleSql`(${p.userId}::uuid, ${p.scope}::text, ${p.app}::text)`,
-    ),
-    drizzleSql`, `,
-  )
-  const decideRows = extractRows<{ user_id: string; scope: string; app: string }>(
-    await tx.execute(drizzleSql`
-      WITH wanted(user_id, scope, app) AS (VALUES ${values})
-      SELECT w.user_id, w.scope, w.app
-      FROM wanted w
-      WHERE NOT ${K}.app_access_denied(${orgId}::uuid, w.user_id, w.app)
-        AND (EXISTS (
-        SELECT 1 FROM ${K}.user_scope_grants g
-        WHERE g.user_id = w.user_id AND g.org_id = ${orgId}::uuid
-          AND ${scopeMatchesFragment(drizzleSql`g.scope`, drizzleSql`w.scope`)}
-      ) OR EXISTS (
-        SELECT 1
-        FROM ${K}.user_roles ur
-        JOIN ${K}.role_scope_grants rsg ON rsg.role_id = ur.role_id
-        WHERE ur.user_id = w.user_id AND ur.org_id = ${orgId}::uuid
-          AND ${scopeMatchesFragment(drizzleSql`rsg.scope`, drizzleSql`w.scope`)}
-      ) OR ${everyMemberScopeFragment(orgId, drizzleSql`w.user_id`, drizzleSql`w.scope`)})
-    `),
-  )
-  for (const d of decideRows) requesterDecides.add(`${d.user_id}\u0000${d.scope}\u0000${d.app}`)
-  return requesterDecides
-}
 
 /**
  * Whether a request is in the caller's feed as THEIR decision: the feed's
@@ -319,26 +254,37 @@ function isCallersDecision(
   return stalled || !(Array.isArray(signedOff) && signedOff.includes(callerUserId))
 }
 
-/** Home's peer-noise flag for one row (`metadata.peerSelfApprovable` on the feed item). */
+/**
+ * Home's peer-noise flag for one row (`metadata.peerSelfApprovable` on the feed item): another
+ * person raised it and can decide it themselves. When two people both hold the deciding scope,
+ * every request each raises lands in the other's feed though the requester routinely approves
+ * their own. Whether the requester decides it is not persisted, so `readApprovalRoutes` reads it
+ * in the same one query as the route, with the predicate `hasScope` and the select policy use.
+ * Under a two-approver policy the requester never finishes it alone, so it is never noise.
+ */
 function rowIsPeerSelfApprovable(
   r: DecidableApprovalRow,
   callerUserId: string,
-  requesterDecides: Set<string>,
+  routes: RoutedRows,
 ): boolean {
   return isPeerSelfApprovable(
     {
       requestedById: r.requested_by,
       originRoutineId: r.metadata?.originRoutineId ?? null,
-      // Under a two-approver policy the requester can never finish it
-      // alone: the others' sign-off is required, so it is never peer noise.
-      requesterCanDecide:
-        (r.metadata?.minApprovers ?? 1) < 2 &&
-        requesterDecides.has(
-          `${r.requested_by}\u0000${decidingScope(authorityFacts(r))}\u0000${approvalToolApp(r)}`,
-        ),
+      requesterCanDecide: routes.requesterDecides(r.id),
     },
     callerUserId,
   )
+}
+
+/** Where a row sits on this viewer's Home (shared `homePlacement`). */
+function rowPlacement(
+  r: DecidableApprovalRow,
+  route: ApprovalRoute,
+  callerUserId: string,
+  callerScopes: string[],
+): HomePlacement {
+  return homePlacement(authorityFacts(r), route, apiViewer(callerUserId, callerScopes))
 }
 
 /** The feed's predicate over `approval_requests ar`: pending, or approving and dead. */
@@ -374,14 +320,14 @@ export async function computeApprovalBadgeItems(
     kind: "approval_pending"
     entity: string
     entityId: string
-    metadata: { peerSelfApprovable: boolean }
+    metadata: { peerSelfApprovable: boolean; placement: HomePlacement }
   }>
 > {
   const callerScopes = await readCurrentScopes(tx)
   const rows = extractRows<DecidableApprovalRow>(
     await tx.execute(drizzleSql`
       SELECT ar.id, ar.tool_name, ar.status, ar.metadata, ar.notify_user_ids,
-             ar.requested_by, ar.approve_scope, ar.resource_owner_id
+             ar.requested_by, ar.approve_scope, ar.resource_owner_id, ar.route_person_id
       FROM ${K}.approval_requests ar
       WHERE ar.org_id = ${orgId}
         AND ${FEED_STATUS_SQL}
@@ -394,13 +340,22 @@ export async function computeApprovalBadgeItems(
       LIMIT ${limit}
     `),
   ).filter((r) => isCallersDecision(r, callerUserId, callerScopes))
-  const requesterDecides = await readRequesterDecides(tx, orgId, rows)
-  return rows.map((r) => ({
-    kind: "approval_pending" as const,
-    entity: "approval_request",
-    entityId: r.id,
-    metadata: { peerSelfApprovable: rowIsPeerSelfApprovable(r, callerUserId, requesterDecides) },
-  }))
+  const routes = await readApprovalRoutes(tx, orgId, rows)
+  return rows.map((r) => {
+    const placement = rowPlacement(r, routes.route(r.id), callerUserId, callerScopes)
+    return {
+      kind: "approval_pending" as const,
+      entity: "approval_request",
+      entityId: r.id,
+      metadata: {
+        // A row for someone else is never this person's ask, also for a client that
+        // predates `placement` and reads the peer flag alone.
+        peerSelfApprovable:
+          placement === "others" || rowIsPeerSelfApprovable(r, callerUserId, routes),
+        placement,
+      },
+    }
+  })
 }
 
 /**
@@ -462,7 +417,7 @@ export async function computeApprovalAttentionItems(
   const result = await tx.execute(drizzleSql`
     SELECT ar.id, ar.handle, ar.summary, ar.tool_name, ar.status, ar.metadata, ar.created_at, ar.expires_at,
            ar.notify_user_ids, ar.bundle_id, ar.approve_scope, ar.resource_owner_id, ar.requested_by,
-           ar.current_payload, ar.originating_thread_id
+           ar.current_payload, ar.originating_thread_id, ar.route_person_id
     FROM ${K}.approval_requests ar
     WHERE ar.org_id = ${orgId}
       AND (
@@ -491,7 +446,7 @@ export async function computeApprovalAttentionItems(
     rows.map((r) => r.id),
   )
 
-  const requesterDecides = await readRequesterDecides(tx, orgId, rows)
+  const routes = await readApprovalRoutes(tx, orgId, rows)
 
   // Per-bundle step count and OUTCOME step, built once (avoids N+1 when
   // several bundles pend). A bundle's head is its FIRST step (a CRM write), so
@@ -612,6 +567,8 @@ export async function computeApprovalAttentionItems(
     // has been silently stalled for as long as nobody looked) and its
     // expiry countdown is meaningless, so it never takes the expiry bump.
     const wedged = r.status === "approving"
+    const route = routes.route(r.id)
+    const placement = rowPlacement(r, route, callerUserId, callerScopes)
 
     // THE ROW'S NAME. The author's summary title wins; a missing one (no
     // registered summarizer, a summarizer that threw, a row written outside
@@ -712,7 +669,13 @@ export async function computeApprovalAttentionItems(
         // Peer noise: another person's request that they could have approved
         // themselves. The feed hides these BY DEFAULT (a display default, never
         // a permission — the row stays decidable and shows with the filter off).
-        peerSelfApprovable: rowIsPeerSelfApprovable(r, callerUserId, requesterDecides),
+        // A row for someone else ("For others, you can also approve") folds the same way, so a
+        // client that predates `placement` counts and pushes it as it always has.
+        peerSelfApprovable:
+          placement === "others" || rowIsPeerSelfApprovable(r, callerUserId, routes),
+        // Whose the row is, and where it sits on this viewer's Home.
+        route,
+        placement,
         // A bundle reads as external when any end of it is (the chip shows the outcome).
         approvalImpact:
           shown !== r &&

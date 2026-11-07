@@ -460,6 +460,27 @@ export function isAwayOn(range: AwayRangeDays, localDate: string): boolean {
   return range.weekdays === null || range.weekdays.includes(isoWeekday(localDate))
 }
 
+/** At most this many days ahead when finding the last day of a run of away days. */
+const AWAY_RUN_HORIZON_DAYS = 400
+
+/**
+ * The last day of the run of away days that includes `today`, or null when the person is not
+ * away that day. A recurring range ends its run on its last away day in a row, never later.
+ */
+export function awayRunEnd(ranges: readonly AwayRangeDays[], today: string): string | null {
+  const away = (date: string) => ranges.some((r) => isAwayOn(r, date))
+  if (!away(today)) return null
+  let last = today
+  for (let i = 1; i <= AWAY_RUN_HORIZON_DAYS; i++) {
+    const next = new Date(`${today}T00:00:00Z`)
+    next.setUTCDate(next.getUTCDate() + i)
+    const date = next.toISOString().slice(0, 10)
+    if (!away(date)) break
+    last = date
+  }
+  return last
+}
+
 function isoWeekday(localDate: string): number {
   // A date alone parses as midnight UTC, so this day is the date's own.
   const day = new Date(localDate).getUTCDay()

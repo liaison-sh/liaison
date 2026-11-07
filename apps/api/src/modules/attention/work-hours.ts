@@ -209,3 +209,15 @@ export function wholeWorkingDays(start: Date, end: Date, prefs: WorkHoursPrefs):
   }
   return out
 }
+
+/**
+ * The first work window that opens after the whole of local day `lastDay` (`YYYY-MM-DD`,
+ * in the prefs' zone): where an away person's held mail is let go. A date that cannot be read
+ * leaves the instant it was asked at to the caller.
+ */
+export function firstWorkWindowAfterDay(lastDay: string, prefs: WorkHoursPrefs): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(lastDay)
+  if (!m) return null
+  const midnight = utcFromLocal(Number(m[1]), Number(m[2]), Number(m[3]) + 1, 0, 0, prefs.timezone)
+  return nextWorkWindowStart(midnight, prefs)
+}

@@ -7,6 +7,7 @@ import {
   type ApprovalRoute,
   type AuthorityViewer,
   type AwayRangeDays,
+  awayRunEnd,
   canDecidePure,
   homePlacement,
   isAwayOn,
@@ -798,5 +799,30 @@ describe("placement over random org graphs", () => {
         "usual",
       ].sort(),
     )
+  })
+})
+
+describe("awayRunEnd", () => {
+  const range = (over: Partial<AwayRangeDays>): AwayRangeDays => ({
+    startsOn: "2026-10-01",
+    endsOn: "2026-10-02",
+    weekdays: null,
+    status: "active",
+    endedEarlyOn: null,
+    ...over,
+  })
+
+  it("is the last day of the run that includes today, and null when not away", () => {
+    expect(awayRunEnd([range({})], "2026-10-01")).toBe("2026-10-02")
+    expect(awayRunEnd([range({})], "2026-10-03")).toBeNull()
+    // Two ranges that touch are one run.
+    expect(
+      awayRunEnd(
+        [range({}), range({ startsOn: "2026-10-03", endsOn: "2026-10-05" })],
+        "2026-10-01",
+      ),
+    ).toBe("2026-10-05")
+    // A recurring Friday ends its run on that Friday.
+    expect(awayRunEnd([range({ endsOn: null, weekdays: [5] })], "2026-10-02")).toBe("2026-10-02")
   })
 })

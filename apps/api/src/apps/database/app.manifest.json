@@ -1,6 +1,6 @@
 {
   "name": "database",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "kind": "connector",
   "description": "Read-only connector for a deployment's own database, for troubleshooting and support: licenses/subscriptions, moderation surfaces (tickets/knowledge/mail), instance health.",
   "listing": {
@@ -135,6 +135,7 @@
       "requiredScopes": ["database:reads:read"],
       "trustBoundary": "user",
       "handler": "dbRead",
+      "taintSource": true,
       "timeoutMs": 60000,
       "params": {
         "type": "object",
@@ -207,6 +208,7 @@
       "requiredScopes": ["database:query:read"],
       "trustBoundary": "user",
       "handler": "dbQuery",
+      "taintSource": true,
       "timeoutMs": 60000,
       "params": {
         "type": "object",

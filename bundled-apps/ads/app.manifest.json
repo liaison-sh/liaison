@@ -1,7 +1,7 @@
 {
   "name": "ads",
   "displayName": "Ads",
-  "version": "0.1.59",
+  "version": "0.1.60",
   "iconName": "bar-chart",
   "packageFormat": 1,
   "license": "FSL-1.1-ALv2",
@@ -672,6 +672,7 @@
       "readOnly": true,
       "requiredScopes": ["ads:insights:read"],
       "handler": "graph_get",
+      "taintSource": true,
       "params": {
         "type": "object",
         "required": [
@@ -1866,6 +1867,7 @@
       "readOnly": true,
       "requiredScopes": ["ads:google:read"],
       "handler": "google_search_terms",
+      "taintSource": true,
       "params": {
         "type": "object",
         "properties": {}

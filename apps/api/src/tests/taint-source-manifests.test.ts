@@ -29,11 +29,13 @@ const TAINT_SOURCES: Array<[string, string[]]> = [
     ],
   ],
   [join(API_APPS, "google-drive", "app.manifest.json"), ["search", "read"]],
+  [join(API_APPS, "database", "app.manifest.json"), ["db_read", "db_query"]],
   [
     join(BUNDLED, "shopify", "app.manifest.json"),
     ["orders_search", "orders_get", "customers_search", "customers_get", "draft_orders_get"],
   ],
   [join(BUNDLED, "social", "app.manifest.json"), ["findings_list", "dm_list", "dm_get"]],
+  [join(BUNDLED, "ads", "app.manifest.json"), ["graph_get", "google_search_terms"]],
   [join(BUNDLED, "calls", "app.manifest.json"), ["calls_segments_since", "calls_list"]],
 ]
 

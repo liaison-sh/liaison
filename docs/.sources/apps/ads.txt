@@ -91,3 +91,5 @@ dealer_profiles_list -> bundled-apps/ads/app.manifest.json:2622
 metrics_list -> bundled-apps/ads/app.manifest.json:2641
 metrics_run -> bundled-apps/ads/app.manifest.json:2651
 audience_erasure_sweep -> bundled-apps/ads/app.manifest.json:2685
+graph_get taintSource outside text -> bundled-apps/ads/app.manifest.json:675
+google_search_terms taintSource outside text -> bundled-apps/ads/app.manifest.json:1870

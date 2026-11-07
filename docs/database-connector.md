@@ -84,6 +84,12 @@ agent ──tool call──▶ execute-tool.ts (trust boundary → scope → AJV
 `roles`: `member` gets `database:reads:read`; `admin` additionally gets
 `database:query:read` (the raw-query surface is the higher-trust capability).
 
+`db_read` and `db_query` count as reading outside text: their rows come from a
+database the organization does not author (a ticket subject a customer wrote, a
+note in a connected CRM). A turn that called either is marked, so a later call
+in the same turn whose effect leaves the organization waits for a person's
+approval, as it does after reading the ticket itself.
+
 ### A second connection: `warehouse`
 
 An org can connect a second database next to the default one, for raw

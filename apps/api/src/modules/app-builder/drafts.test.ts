@@ -90,8 +90,11 @@ describe("app drafts", () => {
     expect(await code(as(outsider, ["*"], (tx) => getDraft(tx, draft.id), otherOrgId))).toBe(
       "not_found",
     )
-    // The org reads it; without kernel:apps:build nobody writes.
-    expect((await as(builder, [], (tx) => getDraft(tx, draft.id))).draft.id).toBe(draft.id)
+    // Only holders of kernel:apps:build read it (the readers its writes declare), and
+    // without the scope nobody writes.
+    expect((await as(builder, BUILD, (tx) => getDraft(tx, draft.id))).draft.id).toBe(draft.id)
+    expect(await code(as(builder, [], (tx) => getDraft(tx, draft.id)))).toBe("not_found")
+    expect((await as(builder, [], (tx) => listDrafts(tx))).map((d) => d.id)).not.toContain(draft.id)
     expect(
       await code(
         as(builder, [], (tx) =>
@@ -193,7 +196,7 @@ describe("app drafts", () => {
       }),
     )
     expect(
-      (await as(builder, [], (tx) => getBuildArtifact(tx, { draftId: draft.id, sha256: sha })))
+      (await as(builder, BUILD, (tx) => getBuildArtifact(tx, { draftId: draft.id, sha256: sha })))
         ?.kind,
     ).toBe("package")
     for (let i = 2; i <= 25; i++) {
@@ -205,16 +208,16 @@ describe("app drafts", () => {
         }),
       )
     }
-    const versions = await as(builder, [], (tx) => listDraftVersions(tx, draft.id))
+    const versions = await as(builder, BUILD, (tx) => listDraftVersions(tx, draft.id))
     expect(versions).toHaveLength(DRAFT_VERSIONS_KEPT)
     expect(versions[0]!.n).toBe(25)
     expect(versions.at(-1)!.n).toBe(6)
-    expect((await as(builder, [], (tx) => getDraft(tx, draft.id))).draft.latestVersion).toBe(25)
-    expect(await code(as(builder, [], (tx) => getDraft(tx, draft.id, { version: 1 })))).toBe(
+    expect((await as(builder, BUILD, (tx) => getDraft(tx, draft.id))).draft.latestVersion).toBe(25)
+    expect(await code(as(builder, BUILD, (tx) => getDraft(tx, draft.id, { version: 1 })))).toBe(
       "version_not_found",
     )
     // Version 1's package went with it.
-    const left = await as(builder, [], (tx) =>
+    const left = await as(builder, BUILD, (tx) =>
       tx.select().from(appBuildArtifacts).where(eq(appBuildArtifacts.draftId, draft.id)),
     )
     expect(left).toHaveLength(0)
@@ -289,6 +292,8 @@ describe("app drafts", () => {
         ),
       ),
     ).toBe("draft_discarded")
-    expect((await as(builder, [], (tx) => listDrafts(tx))).map((d) => d.id)).not.toContain(draft.id)
+    expect((await as(builder, BUILD, (tx) => listDrafts(tx))).map((d) => d.id)).not.toContain(
+      draft.id,
+    )
   })
 })

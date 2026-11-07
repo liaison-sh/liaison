@@ -22,6 +22,7 @@ import { type ApiClient, assertKernelRelativePath, createApiClient } from "~/lib
 import type { EnsureFreshToken, PendingRefresh } from "~/lib/auth-refresh"
 import { env, serverAddressOverride } from "~/lib/env"
 import { socketReconnecting } from "~/lib/socket-state"
+import { queueDecision } from "~/modules/approvals/decision-queue"
 import { canOpenDownloadedFile, openDownloadedFile } from "~/modules/desktop/desktop-store"
 import { currentLocale } from "~/modules/i18n/i18n-context"
 import { openConnectDialog } from "~/modules/settings/connect-dialog-host"
@@ -326,6 +327,8 @@ export function buildHostServices(opts: BuildHostServicesOptions): HostServices 
     fetch: services.fetch,
     fetchBlob: services.fetchBlob as (path: string) => Promise<Blob>,
     navigate: services.navigate as (path: string) => void,
+    decide: (approvalId, body, label) =>
+      queueDecision(kernelClient, "approval", approvalId, body, { label }),
   })
   return Object.assign(services, typed)
 }

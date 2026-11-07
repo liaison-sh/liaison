@@ -45,6 +45,14 @@ function deps(answers: Record<string, unknown> = {}) {
     calls,
     fetchBlob: vi.fn(async (_path: string) => new Blob(["%PDF"], { type: "application/pdf" })),
     navigate: vi.fn((_path: string) => {}),
+    // The decision queue's seam: what the host hands it to send.
+    decide: vi.fn(
+      async (
+        _id: string,
+        _body: { decision: "approve" | "deny"; payloadHash?: string },
+        _label: { title: string } | null,
+      ) => ({ ok: true }),
+    ),
   }
 }
 
@@ -101,6 +109,7 @@ describe("decideApproval", () => {
     ).rejects.toThrow(/not an approval of this app/)
     expect(confirm.asked).toHaveLength(0)
     expect(d.calls).toHaveBeenCalledTimes(1)
+    expect(d.decide).not.toHaveBeenCalled()
   })
 
   it("asks the person in the host's dialog, and sends nothing when they cancel", async () => {
@@ -121,6 +130,7 @@ describe("decideApproval", () => {
       { app: "boxtal", decision: "approve", title: "Buy a label", lines: ["Colissimo, 12.40 EUR"] },
     ])
     expect(d.calls).toHaveBeenCalledTimes(1)
+    expect(d.decide).not.toHaveBeenCalled()
   })
 
   it("decides after the confirm, bound to the payload fingerprint the host read", async () => {
@@ -134,10 +144,12 @@ describe("decideApproval", () => {
     })
     // The app may pass nothing: the host's own reading is what is approved.
     await buildAppHostCalls(d).decideApproval("boxtal", "a1", "approve")
-    expect(d.calls).toHaveBeenLastCalledWith("/api/approvals/a1/decide", {
-      method: "POST",
-      body: JSON.stringify({ decision: "approve", payloadHash: "hash-1" }),
-    })
+    expect(d.decide).toHaveBeenCalledTimes(1)
+    expect(d.decide).toHaveBeenLastCalledWith(
+      "a1",
+      { decision: "approve", payloadHash: "hash-1" },
+      { title: "boxtal:create_shipment" },
+    )
   })
 
   it("refuses an app fingerprint that is not the one the host read, before any dialog", async () => {
@@ -154,6 +166,7 @@ describe("decideApproval", () => {
     ).rejects.toThrow(/changed since the app showed it/)
     expect(confirm.asked).toHaveLength(0)
     expect(d.calls).toHaveBeenCalledTimes(1)
+    expect(d.decide).not.toHaveBeenCalled()
   })
 
   it("refuses the approve when the payload is edited while the dialog is open", async () => {
@@ -179,7 +192,7 @@ describe("decideApproval", () => {
     ).rejects.toThrow(/changed while you were deciding/)
     // Read, re-read, and no decide.
     expect(d.calls).toHaveBeenCalledTimes(2)
-    expect(d.calls).not.toHaveBeenCalledWith("/api/approvals/a1/decide", expect.anything())
+    expect(d.decide).not.toHaveBeenCalled()
   })
 
   it("denies without a fingerprint", async () => {
@@ -187,10 +200,12 @@ describe("decideApproval", () => {
       "/api/approvals/a1": { id: "a1", status: "pending", toolName: "boxtal:create_shipment" },
     })
     await buildAppHostCalls(d).decideApproval("boxtal", "a1", "deny")
-    expect(d.calls).toHaveBeenLastCalledWith("/api/approvals/a1/decide", {
-      method: "POST",
-      body: JSON.stringify({ decision: "deny" }),
-    })
+    expect(d.decide).toHaveBeenCalledTimes(1)
+    expect(d.decide).toHaveBeenLastCalledWith(
+      "a1",
+      { decision: "deny" },
+      { title: "boxtal:create_shipment" },
+    )
   })
 })
 

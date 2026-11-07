@@ -66,6 +66,16 @@ export interface AppHostCallDeps {
   fetch: <T = unknown>(path: string, init?: RequestInit) => Promise<T>
   fetchBlob: (path: string) => Promise<Blob>
   navigate: (path: string) => void
+  /**
+   * Sends the person's decision. Wired to the decision queue (decision-queue.ts),
+   * the one place a decision is sent: it waits out the Undo window like every
+   * other approve and reject.
+   */
+  decide: (
+    approvalId: string,
+    body: { decision: "approve" | "deny"; payloadHash?: string },
+    label: { title: string } | null,
+  ) => Promise<unknown>
 }
 
 /** A kernel approval row, as far as the host reads it. */
@@ -263,12 +273,13 @@ export function buildAppHostCalls(deps: AppHostCallDeps) {
           throw new Error("decideApproval: the approval changed while you were deciding")
         }
       }
-      return deps.fetch(`/api/approvals/${encodeURIComponent(approvalId)}/decide`, {
-        method: "POST",
-        body: JSON.stringify(
-          decision === "approve" ? { decision, payloadHash: shown } : { decision },
-        ),
-      })
+      // Through the decision queue, like every other approve and reject: the
+      // Undo window applies, and the decision toast names what was decided.
+      return deps.decide(
+        approvalId,
+        decision === "approve" ? { decision, payloadHash: shown } : { decision },
+        { title: approval.summary?.title?.trim() || approval.toolName },
+      )
     },
 
     openExternal: async (app: string, url: string): Promise<void> => {

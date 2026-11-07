@@ -3775,7 +3775,7 @@ async function registerSingleApp(
                 entity,
                 action,
                 gateEventOnAppState(desc.name, orgId, handler),
-                // Once (A5): an app's subscription writes; it runs in the
+                // Once: an app's subscription writes; it runs in the
                 // publishing process only, not once per process.
                 { delivery: "once", name: `app-subscription:${desc.name}` },
               ),

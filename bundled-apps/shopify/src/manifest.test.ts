@@ -57,7 +57,7 @@ function findOpaqueParams(manifest: unknown): string[] {
 }
 
 describe("Shopify app.manifest.json", () => {
-  it("places no config secret in any request (secrets: {}, A5): its token goes by ctx.fetch auth", () => {
+  it("places no config secret in any request (secrets: {}): its token goes by ctx.fetch auth", () => {
     const m = loadManifest() as { secrets?: unknown }
     expect(m.secrets).toEqual({})
   })

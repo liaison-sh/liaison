@@ -52,7 +52,7 @@ function findOpaqueParams(m: unknown): string[] {
 }
 
 describe("Boxtal app.manifest.json", () => {
-  it("pins the webhook secret to the subscription body on Boxtal's API hosts (secrets, A5)", () => {
+  it("pins the webhook secret to the subscription body on Boxtal's API hosts (secrets)", () => {
     const m = load()
     expect(m.secrets).toEqual({
       boxtalWebhookSecret: { hosts: ["api.boxtal.build", "api.boxtal.com"], in: "body:webhookSecret" },

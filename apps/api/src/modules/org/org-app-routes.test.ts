@@ -3,8 +3,10 @@
 // S24 / A4 / A6 / A7 / A12 / A24-2 / A24-6: the workspace app management
 // routes (`/api/org/apps`), the instance uninstall guard and the gated kernel
 // tools `apps_set_enabled` / `apps_set_access`.
+
 import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { randomUUID } from "node:crypto"
+import { HOST_API_VERSION } from "@liaison/host"
 import { app } from "~/app"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -128,7 +130,7 @@ describe("GET /api/org/apps", () => {
       const row = rows.find((r) => r.name === name)
       expect(row?.status).toBe("error")
       expect(row?.problem?.message).toBe(
-        `${name} 2.0.0 needs host API ^9; this server provides host API 1.1.0. Update Liaison first.`,
+        `${name} 2.0.0 needs host API ^9; this server provides host API ${HOST_API_VERSION}. Update Liaison first.`,
       )
     } finally {
       await sql`DELETE FROM kernel.apps WHERE org_id = ${admin.orgId} AND name = ${name}`

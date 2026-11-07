@@ -46,7 +46,11 @@ import {
 } from "~/modules/demo/demo-org"
 import { DemoSeederTestAccess, setDemoSeeder } from "~/modules/demo/demo-seeder"
 import { TURNSTILE_TEST_SECRETS } from "~/modules/demo/demo-turnstile"
-import { DemoVerificationTestAccess, demoVerifiedIdentity } from "~/modules/demo/demo-verification"
+import {
+  DemoVerificationTestAccess,
+  demoBudgetEmailKey,
+  demoVerifiedIdentity,
+} from "~/modules/demo/demo-verification"
 import { mountDemoRoutes, useDemoRateLimit } from "~/modules/demo/routes"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import * as minimal from "~/seed/tiers/minimal"
@@ -390,7 +394,8 @@ describe("A5 code and link", () => {
     if (codeA !== codeB) expect((await verifyCode(sa.accessToken, codeB)).status).toBe(400)
     expect(await demoVerifiedIdentity(sa.orgId)).toBeNull()
     expect((await verifyCode(sa.accessToken, codeA)).status).toBe(200)
-    expect((await demoVerifiedIdentity(sa.orgId))?.emailNormalized).toBe(a)
+    // The budgets charge a keyed hash of the address, never the address itself.
+    expect((await demoVerifiedIdentity(sa.orgId))?.emailNormalized).toBe(demoBudgetEmailKey(a))
     expect(await demoVerifiedIdentity(sb.orgId)).toBeNull()
   })
 
@@ -408,7 +413,7 @@ describe("A5 code and link", () => {
     expect((await verifyCode(s.accessToken, code)).status).toBe(401)
     const fresh = await createSession(s.userId, s.orgId)
     expect((await verifyCode(fresh.accessToken, code)).status).toBe(200)
-    expect((await demoVerifiedIdentity(s.orgId))?.emailNormalized).toBe(email)
+    expect((await demoVerifiedIdentity(s.orgId))?.emailNormalized).toBe(demoBudgetEmailKey(email))
   })
 
   // The org's tools are registered when its workspace is built, BEFORE its

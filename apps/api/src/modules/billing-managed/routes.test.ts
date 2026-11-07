@@ -290,12 +290,13 @@ describe("invoice PDF", () => {
 describe("CSP frame-src", () => {
   test("names the payment frame origin on the web shell in the managed edition only", () => {
     const managed = contentSecurityPolicy({ storageOrigin: null, scriptHashes: [] })
-    expect(managed).toContain(`frame-src 'self' ${PAY_ORIGIN}`)
+    // blob: is the document PDF frame every web shell allows (security-headers.ts).
+    expect(managed).toContain(`frame-src 'self' blob: ${PAY_ORIGIN}`)
     // API responses never open it.
     expect(contentSecurityPolicy({ storageOrigin: null })).not.toContain(PAY_ORIGIN)
     _setEdition("self_hosted")
     const selfHosted = contentSecurityPolicy({ storageOrigin: null, scriptHashes: [] })
     expect(selfHosted).not.toContain(PAY_ORIGIN)
-    expect(selfHosted).not.toContain("frame-src")
+    expect(selfHosted).toMatch(/frame-src 'self' blob:(;|$)/)
   })
 })

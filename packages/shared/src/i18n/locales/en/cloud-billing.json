@@ -122,7 +122,6 @@
     "unlimited": "Unlimited",
     "gb": "{{n}} GB",
     "days": "{{n}} days",
-    "site": "See the full comparison on liaison.sh",
-    "siteUrl": "https://liaison.sh/pricing"
+    "site": "See the full comparison"
   }
 }

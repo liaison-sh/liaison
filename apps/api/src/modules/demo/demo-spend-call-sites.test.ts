@@ -55,6 +55,8 @@ const REVIEWED: Record<string, string> = {
   "modules/demo/demo-alerts.ts": "GET /models price drift check with no key: no spend",
   "modules/files/media-analysis-job.ts": "refused (demoMediaAnalysisRefusal) before preCheck",
   "modules/search/message-indexer.ts": "embedder: Google only, BYOK only for a visitor",
+  "modules/settings/ai-models-admin.ts":
+    "add-model test call: the page and ai_models_set refuse visitors (demo_models_locked) first",
   "modules/settings/ai-models-routes.ts":
     "writes and add-model refused for visitors (demo_models_locked)",
 }

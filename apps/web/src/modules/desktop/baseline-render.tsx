@@ -17,6 +17,7 @@ import { Route, Router } from "@solidjs/router"
 import { render } from "@solidjs/testing-library"
 import { ApiProvider } from "~/modules/shell/ApiContext"
 import { WsProvider } from "~/modules/shell/WsContext"
+import { resetMessageStore } from "~/modules/threads/message-store"
 import { addThread, resetThreadStore } from "~/modules/threads/thread-store"
 
 /**
@@ -225,6 +226,9 @@ export function conversationTabProps() {
  */
 function seedConversation(identity: boolean): void {
   resetThreadStore()
+  // A thread whose messages a previous render (or a retried attempt) loaded skips the
+  // "Loading messages..." first paint the baseline was taken with.
+  resetMessageStore()
   addThread({
     id: IDENTITY_THREAD_ID,
     handle: "baseline-thread",

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Rule 6, one badge, one meaning: the desktop dock, the browser tab title and
-// Home show the SAME number, the unread things that ask for the person, and it
-// is the number the server sends the phone (`GET /notifications/badge`, the
-// count every push carries). Channel traffic that names nobody is not in it.
+// Rule 6, one badge, one meaning: the desktop dock and the browser tab title
+// show the SAME number, the unread things that ask for the person, and it is
+// the number the server sends the phone (`GET /notifications/badge`, the count
+// every push carries). Channel traffic that names nobody is not in it. The Home
+// entry shows its own number instead, the rows of its Needs you section
+// (home-action-count.ts), as the phone's Home tab does.
 import type { AttentionItem } from "@liaison/shared"
 import { cleanup, render, screen } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -19,6 +21,7 @@ import {
 import { DesktopBadgeTestAccess, startDesktopBadge } from "~/modules/notifications/desktop-badge"
 import { startTabBadge, TabBadgeTestAccess } from "~/modules/notifications/tab-badge"
 import { attentionStore } from "~/modules/shell/attention-store"
+import { homeActionCount } from "~/modules/shell/home-action-count"
 import { addThread, markThreadRead, resetThreadStore } from "~/modules/threads/thread-store"
 
 vi.stubGlobal("localStorage", {
@@ -100,7 +103,7 @@ describe("one badge on every surface (rule 6)", () => {
     delete (globalThis as Record<string, unknown>)[DESKTOP_BRIDGE_KEY]
   })
 
-  it("the dock, the tab title and Home show the direct asks, and only them", () => {
+  it("the dock and the tab title show the direct asks, and only them; Home its Needs you rows", () => {
     addThread(thread("dm", 2, null))
     addThread(thread("channel", 9, "support"))
     attentionStore._setForTest({
@@ -116,22 +119,26 @@ describe("one badge on every surface (rule 6)", () => {
     })
     startAll()
     expect(localAppBadgeCount()).toBe(4)
-    expect(homeBadge()).toBe("4")
     expect(tabNumber()).toBe("4")
     expect(dockNumber()).toBe("4")
+    // The approval and the SLA risk: a mention and unread messages are Messages things.
+    expect(homeActionCount()).toBe(2)
+    expect(homeBadge()).toBe("2")
   })
 
-  it("all three take the server's number, the phone's, and follow a read together", async () => {
+  it("the dock and the tab take the server's number, the phone's, and follow a read together", async () => {
     addThread(thread("dm", 2, null))
     serverBadge = 12 // a direct conversation outside the list the client holds
     startAppBadgeSync(api)
     await refreshAppBadge()
     startAll()
     expect(appBadgeCount()).toBe(12)
-    expect([homeBadge(), tabNumber(), dockNumber()]).toEqual(["12", "12", "12"])
+    expect([tabNumber(), dockNumber()]).toEqual(["12", "12"])
+    // Unread conversations are not Home rows: its entry shows no number.
+    expect(homeBadge()).toBe("0")
 
     markThreadRead(api, "dm")
     expect(appBadgeCount()).toBe(10)
-    expect([homeBadge(), tabNumber(), dockNumber()]).toEqual(["10", "10", "10"])
+    expect([tabNumber(), dockNumber()]).toEqual(["10", "10"])
   })
 })

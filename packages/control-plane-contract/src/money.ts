@@ -714,6 +714,16 @@ export const billingSummaryReplySchema = z
       })
       .strict()
       .optional(),
+    /**
+     * The page comparing every plan in full, linked under the cell's comparison
+     * table; without it the cell shows no link. An https URL, checked without
+     * the `URL` global (see c2c.ts).
+     */
+    pricingUrl: z
+      .string()
+      .max(2048)
+      .regex(/^https:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?(?:[/?#][^\s]*)?$/)
+      .optional(),
   })
   .strict()
 

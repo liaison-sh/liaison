@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // Reads that hand back text a person outside the org wrote (a ticket subject, a buyer's address,
-// a supplier's invoice, a VIES register entry, a post title) declare it in their manifest. Each
+// a supplier's invoice, a VIES register entry, a post title) declare it in their manifest, or in
+// code for a kernel tool (a contact's name or address). Each
 // one is called here on the real door (handleToolCall → executeTool) with its manifest's
 // declaration and a row shaped as its handler returns it: a row carrying outside text marks the
 // turn and a later outbound call parks; a read that hands back no row (refused or not found)
@@ -43,6 +44,13 @@ function manifestTool(dir: string, app: string, tool: string): ManifestTool {
   const found = manifest.tools[tool]
   if (!found) throw new Error(`${app}:${tool} is not in its manifest`)
   return found
+}
+
+/** A kernel read as the org loaded it (kernel tools are declared in code, not in a manifest). */
+function kernelTool(orgId: string, tool: string): ManifestTool {
+  const found = toolRegistry.get([orgId, "kernel", tool])
+  if (!found) throw new Error(`kernel:${tool} is not registered for the org`)
+  return { readOnly: found.readOnly, taintSource: found.taintSource }
 }
 
 /** One read, the directory of its app, and a row shaped as its handler returns it. */
@@ -246,6 +254,156 @@ const CASES: Case[] = [
       results: [{ id: "m1", attributes: { namespace: "custom", key: "k", value: INJECTED } }],
     },
   },
+  // Boxtal: recipients and addresses come from the customer's order, checkpoint messages from
+  // the carrier.
+  {
+    app: "boxtal",
+    dir: BUNDLED,
+    tool: "shipment_draft_get",
+    row: { draft_id: "d1", recipient: { name: INJECTED, street: "1 rue X", city: "Lyon" } },
+  },
+  {
+    app: "boxtal",
+    dir: BUNDLED,
+    tool: "track",
+    row: { status: "IN_TRANSIT", message: INJECTED, tracking_number: "TN1" },
+  },
+  {
+    app: "boxtal",
+    dir: BUNDLED,
+    tool: "get_shipment",
+    row: { shipment: { id: "s1", recipient_summary: INJECTED, status: "SHIPPED" } },
+  },
+  {
+    app: "boxtal",
+    dir: BUNDLED,
+    tool: "search",
+    row: { items: [{ id: "s1", recipient_summary: INJECTED }] },
+  },
+  {
+    app: "boxtal",
+    dir: BUNDLED,
+    tool: "to_prepare_list",
+    row: { items: [{ invoice_id: "i1", recipient: { name: INJECTED } }] },
+  },
+  {
+    app: "boxtal",
+    dir: BUNDLED,
+    tool: "prep_list",
+    row: { rows: [{ invoice_id: "i1", ship_to: { name: INJECTED, street: "1 rue X" } }] },
+  },
+  {
+    app: "boxtal",
+    dir: BUNDLED,
+    tool: "ready_list",
+    row: { items: [{ id: "s1", recipient_summary: INJECTED }] },
+  },
+  {
+    app: "boxtal",
+    dir: BUNDLED,
+    tool: "print_record_get",
+    row: { record: { shipment: { recipient: { name: INJECTED } } } },
+  },
+  {
+    app: "boxtal",
+    dir: BUNDLED,
+    tool: "returns_list",
+    row: { items: [{ id: "s1", recipient_summary: INJECTED }] },
+  },
+  {
+    app: "boxtal",
+    dir: BUNDLED,
+    tool: "exceptions_list",
+    row: { items: [{ id: "s1", status: "INCIDENT", message: INJECTED }] },
+  },
+  {
+    app: "boxtal",
+    dir: BUNDLED,
+    tool: "stuck_list",
+    row: { items: [{ id: "s1", recipient_summary: INJECTED }] },
+  },
+  {
+    app: "boxtal",
+    dir: BUNDLED,
+    tool: "prep_unlinked_list",
+    row: { orders: [{ order_id: "o1", customer: INJECTED }] },
+  },
+  {
+    app: "boxtal",
+    dir: BUNDLED,
+    tool: "prep_order_prefill",
+    row: { ship_to: { name: INJECTED, street: "1 rue X", city: "Lyon" }, lines: [] },
+  },
+  // Monitoring: an outside monitor writes the incident's title and body.
+  {
+    app: "monitoring",
+    dir: BUNDLED,
+    tool: "incidents_list",
+    row: { items: [{ id: "n1", ref: "INC-1", title: INJECTED, status: "open" }] },
+  },
+  {
+    app: "monitoring",
+    dir: BUNDLED,
+    tool: "incidents_get",
+    row: { incident: { id: "n1", title: "Down", body: INJECTED, comments: [] } },
+  },
+  // Pennylane: suppliers and customers name themselves; ledger entry labels carry those names.
+  {
+    app: "pennylane",
+    dir: BUNDLED,
+    tool: "supplier_invoices_list",
+    row: { items: [{ id: "p1", supplier_name: INJECTED, status: "unpaid" }], has_more: false },
+  },
+  {
+    app: "pennylane",
+    dir: BUNDLED,
+    tool: "supplier_invoice_get",
+    row: { id: "p1", supplier_name: INJECTED, status: "unpaid" },
+  },
+  {
+    app: "pennylane",
+    dir: BUNDLED,
+    tool: "customer_invoices_list",
+    row: { items: [{ id: "p2", supplier_name: INJECTED, status: "paid" }], has_more: false },
+  },
+  {
+    app: "pennylane",
+    dir: BUNDLED,
+    tool: "trial_balance_get",
+    row: { lines: [{ account_code: "401", label: INJECTED, balance_minor: "100" }] },
+  },
+  // Contacts (kernel tools): names from a mail sender or a shop customer, addresses a customer
+  // typed, and mail backlinks carrying subjects and snippets.
+  {
+    app: "kernel",
+    dir: "",
+    tool: "contacts_search",
+    row: { items: [{ id: "c1", name: INJECTED, email: "x@example.com" }], totalCount: 1 },
+  },
+  {
+    app: "kernel",
+    dir: "",
+    tool: "contacts_read",
+    row: { contact: { id: "c1", name: "Ada" }, backlinks: [{ subject: INJECTED, snippet: "" }] },
+  },
+  {
+    app: "kernel",
+    dir: "",
+    tool: "contacts_find_duplicates",
+    row: { clusters: [{ confidence: "high", contacts: [{ id: "c1", name: INJECTED }] }] },
+  },
+  {
+    app: "kernel",
+    dir: "",
+    tool: "contacts_addresses_list",
+    row: { addresses: [{ id: "a1", line1: INJECTED, city: "Lyon", verified: false }] },
+  },
+  {
+    app: "kernel",
+    dir: "",
+    tool: "contacts_group_members",
+    row: { group: { id: "g1" }, members: [{ id: "c1", name: INJECTED }], totalCount: 1 },
+  },
 ]
 
 type Seed = Awaited<ReturnType<typeof seedOrgWithTicketsApp>>
@@ -279,7 +437,8 @@ const texts = (res: { content: Array<{ text?: string }> }) => res.content.map((b
 
 /** The read under test, as its manifest declares it, handing back `answer()`'s result. */
 function registerRead(orgId: string, c: Case, answer: () => unknown): string {
-  const declared = manifestTool(c.dir, c.app, c.tool)
+  const declared =
+    c.app === "kernel" ? kernelTool(orgId, c.tool) : manifestTool(c.dir, c.app, c.tool)
   const name = `${c.app}_${c.tool}`.replace(/[^a-zA-Z0-9_]/g, "_")
   toolRegistry.set([orgId, "test", name], {
     appName: "test",
@@ -351,6 +510,7 @@ describe("reads that hand back outside text mark the turn", () => {
     it(`${app}: a row carrying outside text taints the turn and parks a later outbound, a read with no row leaves it clean`, async () => {
       const seed = await seedOrgWithTicketsApp()
       orgs.push(seed.orgId)
+      if (app === "kernel") await ensureAppsForOrg(seed.orgId)
       const outbound = registerOutbound(seed.orgId)
       for (const c of cases) {
         const ctx = await freshConnection(seed)

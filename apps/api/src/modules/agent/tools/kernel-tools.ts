@@ -1751,6 +1751,9 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     appName: "kernel",
     name: "contacts_search",
     readOnly: true,
+    // Names, emails and companies of contacts often come from outside the org (a mail sender's
+    // display name, a shop customer): the turn that read them is marked.
+    taintSource: true,
     description:
       "Search the contact registry by name, email or company. Filter with tag, notContactedSince, createdWithinDays, hasNoCompany or hasNoPhone, and page with cursor; totalCount is the server count of the whole filtered set.",
     requiredScopes: ["kernel:contacts:read"],
@@ -1825,6 +1828,8 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     appName: "kernel",
     name: "contacts_read",
     readOnly: true,
+    // The contact's mail backlinks carry subjects and snippets someone outside the org wrote.
+    taintSource: true,
     description:
       "Read a contact with recent mail backlinks and timeline entries. Default: last 3 of each. Use includeBacklinks/includeTimeline=true for up to 20.",
     requiredScopes: ["kernel:contacts:read"],
@@ -1920,6 +1925,8 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     appName: "kernel",
     name: "contacts_find_duplicates",
     readOnly: true,
+    // Names and emails of contacts, which often come from outside the org.
+    taintSource: true,
     deferLoading: true,
     description:
       "Find likely DUPLICATE contacts across your WHOLE contact list — the grounded way to answer a 'find and merge every duplicate' ask. This is a SERVER-SIDE scan (NOT the capped/ILIKE kernel__contacts_search): it normalizes emails (case-fold, strip +tag/dots), accent/abbreviation/typo-folds names, and matches shared provider customer ids (externalIds), then returns candidate duplicate CLUSTERS — each a group of ≥2 contacts that look like the SAME person — with a `confidence` tier and the `signal` that connected them. " +
@@ -2063,6 +2070,8 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     appName: "kernel",
     name: "contacts_addresses_list",
     readOnly: true,
+    // Postal addresses a customer typed or a shop order carried.
+    taintSource: true,
     deferLoading: true,
     description:
       "List a contact's postal addresses (billing, delivery, other) with their verification: verified, verifiedAt, verifiedByName and verificationSource (purchase_order, email, phone_call, other). Verified addresses come first. An address that is not verified was copied or typed without a person checking it: say so when you use it, and never present it as confirmed. stale means someone marked it as possibly out of date.",
@@ -2193,6 +2202,8 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     appName: "kernel",
     name: "contacts_group_members",
     readOnly: true,
+    // Names and emails of contacts, which often come from outside the org.
+    taintSource: true,
     deferLoading: true,
     description:
       "List the members of a contact group that you can see, by name, with id, email, company, phone and tags. Page with cursor; totalCount is the whole member count you can see.",

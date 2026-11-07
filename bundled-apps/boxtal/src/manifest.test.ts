@@ -602,7 +602,8 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.20: the longest descriptions past 600 characters read from guide sections.
     // 0.23.21: its core tools load on a hard focus of its entity, the others by name.
     // 0.23.22: the invoice's Shipment tab is shown only to people who can read shipments.
-    expect(m.version).toBe("0.23.22")
+    // 0.23.23: reads that hand back recipients, addresses or carrier messages mark the turn.
+    expect(m.version).toBe("0.23.23")
     expect(m.packageFormat).toBe(1)
   })
 

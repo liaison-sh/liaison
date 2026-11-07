@@ -222,7 +222,7 @@
       }
     ]
   },
-  "version": "0.23.22",
+  "version": "0.23.23",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {
@@ -1399,6 +1399,7 @@
       }
     }
   },
+  "outsideTextFields": ["recipient", "recipient_summary", "ship_to", "street", "city", "message"],
   "tools": {
     "packages_list": {
       "description": "List Boxtal shipping profiles, packs, and local products.",
@@ -1988,6 +1989,7 @@
       }
     },
     "shipment_draft_get": {
+      "taintSource": true,
       "description": "Read the current draft for a draft/invoice id — returns its parcels and customsArticles (each line's index, tariffNumber/HS code, customs description, declared value, country of origin, and an `incomplete` flag). Use this to VERIFY a draft's customs lines from a real tool result before reporting them as prepped — never claim a line's HS code is set unless this read (or the set_customs result) shows that line's tariffNumber. (get_shipment is for a DISPATCHED shipment's live order/tracking and does NOT return customs articles — use this for draft state.)",
       "requiredScopes": ["boxtal:shipments:read"],
       "handler": "shipmentDraftGetHandler",
@@ -2209,6 +2211,7 @@
       ]
     },
     "track": {
+      "taintSource": true,
       "focusCore": true,
       "description": "Where a parcel is now, for the person: live tracking for a Boxtal shipment (latest carrier status + checkpoint message + the carrier tracking_number + a pickup_deadline). Report a parcel with its recipient AND its carrier tracking_number — that number is the operative reference a carrier/customer uses to chase a parcel, so cite IT, never the internal shipment id/uuid. When a parcel is STUCK, don't just report the status — also propose the concrete next action that clears THAT exception so the operator can chase it: a customs hold / EXCEPTION needs the import paperwork submitted or the customs broker contacted; a FAILED_ATTEMPT needs a redelivery rescheduled or the address confirmed; a parcel REACHED_DELIVERY_PICKUP_POINT must be collected before it expires (else it RETURNS to sender) — flag the expiry; a RETURNED/LOST parcel needs the customer contacted and a reship or claim opened. PICKUP-POINT COLLECTION DEADLINE — for a parcel awaiting collection at a pickup/relay point (Mondial Relay / point-retrait, status REACHED_DELIVERY_PICKUP_POINT) the result carries `pickup_deadline`: the AUTHORITATIVE carrier-reported ISO date the recipient must collect it by before the parcel is returned to sender. This is the ONLY trustworthy source for WHETHER a relay parcel is 'about to expire' — to decide which pickup-point parcels are near their deadline, compare each parcel's `pickup_deadline` against today; do NOT estimate or fabricate a deadline from the arrival date or guess one (a deadline you did not read from `pickup_deadline` is fabrication). `pickup_deadline` is null for any parcel not at a pickup point.",
       "searchKeywords": ["suivi", "suivre", "colis", "parcel", "where", "tracking", "livraison", "delivery", "transporteur", "carrier"],
@@ -2231,6 +2234,7 @@
       "timeoutMs": 15000
     },
     "get_shipment": {
+      "taintSource": true,
       "description": "The shipment record, refreshed: a Boxtal shipment's live order + tracking status.",
       "searchKeywords": ["expédition", "colis", "détail", "parcel"],
       "requiredScopes": ["boxtal:shipments:read"],
@@ -2283,6 +2287,7 @@
       "readOnly": true
     },
     "search": {
+      "taintSource": true,
       "focusCore": true,
       "description": "Find a shipment by name, order or number in the local Boxtal shipment index. A BLANK/empty query ENUMERATES every shipment (paged) — use it to sweep the whole active fleet. A non-blank query filters by recipient, order id, tracking number, external id, the lifecycle order_status (PENDING/CONFIRMED/CANCELLED) OR the live delivery tracking_status (e.g. IN_TRANSIT / OUT_FOR_DELIVERY / FAILED_ATTEMPT / REACHED_DELIVERY_PICKUP_POINT / EXCEPTION / RETURNED / DELIVERED) — they are different axes.",
       "searchKeywords": ["expédition", "expéditions", "colis", "chercher", "rechercher", "retrouver", "trouver", "find", "parcel", "shipment", "shipments"],
@@ -2317,6 +2322,7 @@
       "timeoutMs": 30000
     },
     "to_prepare_list": {
+      "taintSource": true,
       "description": "Exact counts of what is left to ship, ready against needs a fix: a WORKLIST of issued invoices with shippable goods that have NO live shipment yet, returned as a SERVER-SIDE AUTHORITATIVE PARTITION (not a bounded sample): `total` + `ready_count` + `needs_fix_count` are the exact denominators, and the rows come PRE-SPLIT into `ready_to_prepare` (render THESE as the trustworthy ready-to-pack list) and `needs_fix` (each carries its blocking `reason`). The buckets are DISJOINT — a row is NEVER in both — and cover `total`. `rows` is the combined list (back-compat).",
       "searchKeywords": ["préparer", "expédier", "reste", "restant", "commandes", "left", "ship"],
       "requiredScopes": ["boxtal:shipments:read"],
@@ -2329,6 +2335,7 @@
       "timeoutMs": 30000
     },
     "prep_list": {
+      "taintSource": true,
       "focusCore": true,
       "description": "The ORDER PREP DASHBOARD worklist people see, with offers and status: every to-prepare invoice (issued goods invoice, no live shipment yet) joined with its cached Shopify order name/tags, its auto-derived parcels + products summary, its cached shipping quote (cheapest offer + up to 2 alternates), and its editable category (sale/repair/gift/return) + exclusion state. SCAN: the unscoped list read scans the open Shopify orders live, bounded to the 250 most recent, and joins cached meta with cached quotes. It never calls the Boxtal API and never re-quotes, so it stays fast on a large worklist.",
       "searchKeywords": ["préparation", "préparer", "commandes", "worklist"],
@@ -2550,6 +2557,7 @@
       }
     },
     "ready_list": {
+      "taintSource": true,
       "description": "List live (PENDING or CONFIRMED) shipments whose label is ready, for the operator print station. A freshly bought label starts PENDING until Boxtal confirms the order; it still belongs here. Rows come back sorted by when the label was requested, oldest first. The list is complete: every live shipment the carrier has not collected yet, never a sample. Each row carries `packed` (and `packed_at`): the warehouse bench mark set by ready_set_packed, meaning the parcel is boxed and waiting for pickup. Packed is NOT shipped: the parcel is still in the warehouse until the carrier collects it.",
       "searchKeywords": ["prêt", "prêts", "emballer", "packing"],
       "requiredScopes": ["boxtal:shipments:read"],
@@ -2562,6 +2570,7 @@
       "readOnly": true
     },
     "print_record_get": {
+      "taintSource": true,
       "description": "Read ONE shipment as its print record: the data the organisation's document templates fill (a customs declaration, a certificate, a thank-you letter). invoice {number, date}, order {name, customer, company, email, phone, address}, shipment {carrier_name, carrier_family, tracking_number, tracking_label}, destination {iso2, name}, lines [{description, sku, hts, origin, quantity, value, unit_value, currency, attributes}]. The invoice, customer, address, carrier and lines are a snapshot taken when the label was bought; the tracking number is the row's current one and stays null until the carrier issues it. A value the sources do not hold is null, never guessed: a template prints it as a blank for a person to fill. To print, use the document templates, not this tool.",
       "requiredScopes": ["boxtal:shipments:read"],
       "handler": "printRecordGetHandler",
@@ -2730,6 +2739,7 @@
       }
     },
     "returns_list": {
+      "taintSource": true,
       "description": "List inbound return shipments (the parcels coming BACK to you — RMA / warranty / exchange returns, kind='return'). Each row carries the customer (recipient_summary), the return reason, the order/tracking status and whether a label is ready — but NO date, transit-duration, or 'days awaiting inspection' field. So you CANNOT age a return from returns_list alone: there is no created/received timestamp on the row. AGING AN INBOUND RETURN (how long it's been awaiting inspection / 'flag any RMA over N days old' / a weekly returns-aging report) — the age comes from the return's LINKED RMA TICKET, not the shipment: for each return, find its RMA/return support ticket (tickets__search q=<the customer name from recipient_summary>, or by the order/RMA reference) and read THAT ticket's created date (its open time) to compute how long the return has been outstanding; flag the ones whose ticket has been open longer than the threshold (e.g. >7 days), and leave the fresh ones unflagged. Because the age join lives on the tickets side, a routine/agent that ages returns MUST hold tickets:tickets:read (and request it in a routine's scope ceiling) IN ADDITION to boxtal:shipments:read — returns_list gives you the return set, the RMA ticket gives you the age. Do NOT invent a transit duration or a 'days old' number that no tool returned; if a return has no matching RMA ticket, say so for that one rather than fabricating its age. There is no separate boxtal:returns:read scope — returns_list is gated on boxtal:shipments:read.",
       "searchKeywords": ["retour", "retours"],
       "requiredScopes": ["boxtal:shipments:read"],
@@ -2741,6 +2751,7 @@
       "readOnly": true
     },
     "exceptions_list": {
+      "taintSource": true,
       "description": "List shipments stuck in a carrier exception state (INCIDENT, RETURNED, or LOST) so the operator can chase them. A healthy fleet returns an empty list — that is normal, not an error. NOTE: this only catches the hard EXCEPTION/RETURNED/LOST states — a FAILED_ATTEMPT or a parcel awaiting collection at a pickup point will NOT appear here. To sweep ALL stuck parcels in ONE call, prefer stuck_list (the single needs-attention queue that returns the UNION of every stuck family — exception + failed_delivery + pickup_expiring — each row pre-labelled with its family + reason, classified server-side). For every stuck parcel, propose the concrete next action that clears it (submit customs paperwork, reschedule a failed delivery, arrange pickup before expiry, open a claim) — don't just report the status. Each row carries external_id (the ORDER reference) alongside the recipient and carrier tracking_number — cite the order ref / tracking number (never the internal shipment uuid), and quote the EXACT tracking_status string returned (do not paraphrase it).",
       "searchKeywords": ["incident", "exception", "problème", "colis"],
       "requiredScopes": ["boxtal:shipments:read"],
@@ -2752,6 +2763,7 @@
       "readOnly": true
     },
     "stuck_list": {
+      "taintSource": true,
       "description": "The SINGLE needs-attention queue: every shipment in a STUCK state, across ALL families, in ONE call — so you do NOT have to enumerate the whole fleet with search and classify each tracking_status enum yourself.",
       "searchKeywords": ["bloqué", "bloqués", "retard", "colis", "problème", "parcel", "late"],
       "requiredScopes": ["boxtal:shipments:read"],
@@ -3291,6 +3303,7 @@
       }
     },
     "prep_unlinked_list": {
+      "taintSource": true,
       "description": "Shippable orders the To-prepare worklist CANNOT show. The worklist is derived from issued goods invoices carrying a shopify_order_id, so an unfulfilled order with no invoice produces no row at all -- not ready, not needs_fix, not even excluded, just absent with no reason given. That is how a 2 193 EUR B2B order on payment terms sat unshipped and unseen (auto-invoicing fires on PAYMENT, and a terms customer never reaches PAID). This is the counter-check: it lists those orders with WHY each is invisible and WHAT brings it in (issue the goods invoice, then Pull orders). It deliberately returns ORDERS, not worklist rows -- they have no document_ref yet, so none of the draft/quote/ship tools can act on them until an invoice exists. `total` is the number worth watching; `truncated` true means the Shopify scan hit its cap, so treat `total` as a floor.",
       "requiredScopes": ["boxtal:shipments:read"],
       "timeoutMs": 45000,
@@ -3486,6 +3499,7 @@
       }
     },
     "prep_order_prefill": {
+      "taintSource": true,
       "description": "Read what an existing Shopify order would contribute to an ORDER-LESS shipment: its ship-to address and its physical line items. Read only, it creates nothing. Used by the Add shipment panel so the operator sees and corrects the address before the row is created; prep_add_shipment does the same lookup itself when given from_order_number.",
       "requiredScopes": ["boxtal:shipments:read"],
       "handler": "prepOrderPrefillHandler",

@@ -132,6 +132,8 @@ const REASONS = {
   PROTECTED_OAUTH: "a connection's protected OAuth scope declaration (manifest protectedScopes)",
   CATALOG: "a scope catalog entry",
   BULK: "a manifest bulk action declaration",
+  PROVIDER:
+    "a context provider declaration, whose scope is checked against its tool's requiredScopes",
   RECIP: "an attention scope_holders recipient spec",
   EXPORT: "an export handler registration",
   ROUTE: "a route parameter naming the scope being granted",
@@ -229,6 +231,22 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
     "apps/api/src/modules/apps/contract.ts",
     "for (const bulk of Object.values((manifest.bulk ?? {}) as Record<string, any>)) add(bulk?.scope)",
     REASONS.BULK,
+  ],
+  [
+    "apps/api/src/modules/agent/context/context-providers.ts",
+    "if (!hasScope(decl.scope, [...input.grants])) return null",
+    REASONS.PROVIDER,
+  ],
+  [
+    "apps/api/src/modules/agent/context/context-providers.ts",
+    "scopes.add(decl.scope)",
+    REASONS.PROVIDER,
+  ],
+  ["apps/api/src/modules/apps/contract.ts", "if (!required.includes(p.scope)) {", REASONS.PROVIDER],
+  [
+    "apps/api/src/modules/apps/contract.ts",
+    "errors.push(`${at}.scope: '${p.scope}' is not in the requiredScopes of '${p.tool}'`)",
+    REASONS.PROVIDER,
   ],
   [
     "apps/api/src/modules/apps/app-visibility.ts",

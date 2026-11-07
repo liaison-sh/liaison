@@ -99,11 +99,24 @@ describe("each typed form against the baseline", () => {
     expect(failure).toContain('X1 "find invoice"')
   })
 
-  it("runs under 10 s", () => {
+  // The bench stays cheap enough to run on every change. Its cost is one ranking of the searchable
+  // catalog per typed form, so the bound is on that work: the number of tool scorings, and the CPU
+  // time the ranking itself takes. Wall clock is only printed: a loaded CI runner stretches it with
+  // no change here. Today: 326 forms over 603 tools, about 0.2 M scorings and 0.7 s of CPU.
+  it("ranks within its budget of tool scorings and CPU time", () => {
+    const scorings =
+      files.corpus.reduce((n, l) => n + l.typed.length, 0) * searchableTools(catalog).length
+    const cpuBefore = process.cpuUsage()
+    runForms(catalog, files.corpus)
+    const cpu = process.cpuUsage(cpuBefore)
+    const rankingCpuMs = (cpu.user + cpu.system) / 1000
     const report = runBench(files, catalog)
     const ms = performance.now() - started
-    console.log(`tool-bench: ${Math.round(ms)} ms\n${report.lines.join("\n")}`)
-    expect(ms).toBeLessThan(10_000)
+    console.log(
+      `tool-bench: ${Math.round(ms)} ms wall, ${Math.round(rankingCpuMs)} ms ranking CPU, ${scorings} scorings\n${report.lines.join("\n")}`,
+    )
+    expect(scorings).toBeLessThan(400_000)
+    expect(rankingCpuMs).toBeLessThan(5_000)
   })
 })
 

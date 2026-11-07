@@ -30,6 +30,7 @@ import {
   webhookHandlers,
 } from "~/modules/apps/app-registries"
 import * as appsInitModule from "~/modules/apps/init"
+import * as appDayCapModule from "~/modules/apps/usage/app-day-cap"
 import type { AppDescriptor } from "~/modules/apps/runtime"
 import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
@@ -753,6 +754,88 @@ describe("webhook routes", () => {
       return spy.mock.calls.filter((call) => call[0] === "kernel" && call[1] === "retry-webhook")
         .length
     }
+
+    // The org reached an app day cap: the app's verify runs, its handler waits for
+    // the next UTC day as the retry job (payload and headers kept), and the
+    // provider gets a 2xx so it neither retries nor drops the subscription.
+    describe("an org at an app day cap", () => {
+      const HOLD_MS = 3_600_000
+      const verify = mock(async () => ({ valid: true as const, replayKey: "capped-replay-key" }))
+      const registerCapped = () => {
+        verify.mockClear()
+        webhookHandlers.set([TEST_ORG, APP, ENDPOINT], {
+          appName: APP,
+          orgId: TEST_ORG,
+          verify,
+          // A sandboxed app's handler (not trusted): the cap applies. The bundle
+          // does not exist, so a run would fail loudly instead of passing.
+          handler: { bundlePath: "/nonexistent/capped/bundle.js", exportName: "onTopic" },
+          _manifest: { name: APP, schema: {}, events: {}, connections: {}, network: {} },
+        } as never)
+      }
+      const post = () =>
+        app.request(`/webhooks/${TEST_ORG}/${APP}/${ENDPOINT}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Topic-Id": "t-1" },
+          body: JSON.stringify({ order: 42 }),
+        })
+
+      it("holds the delivery as a delayed retry job and answers 2xx {held:true}", async () => {
+        await seedAppRow()
+        const key = replayKeyFor("capped-replay-key")
+        await redis.del(key)
+        redisKeysToClean.push(key)
+        registerCapped()
+        const hold = spyOn(appDayCapModule, "appRunHoldMs").mockResolvedValue(HOLD_MS)
+        const enqueue = spyRetryEnqueue()
+
+        const res = await post()
+
+        expect(res.status).toBe(200)
+        expect(((await res.json()) as { data: unknown }).data).toEqual({
+          received: true,
+          held: true,
+        })
+        expect(verify).toHaveBeenCalledTimes(1)
+        expect(hold).toHaveBeenCalledTimes(1)
+        const held = enqueue.mock.calls.filter((c) => c[1] === "retry-webhook")
+        // One job, the held one: nothing ran, so no failure retry was added.
+        expect(held).toHaveLength(1)
+        const [queue, , data, opts] = held[0] as unknown as [
+          string,
+          string,
+          Record<string, unknown>,
+          { delay: number },
+        ]
+        expect(queue).toBe("kernel")
+        expect(data).toMatchObject({
+          orgId: TEST_ORG,
+          appName: APP,
+          endpointName: ENDPOINT,
+          payload: { order: 42 },
+        })
+        expect((data.headers as Record<string, string>)["x-topic-id"]).toBe("t-1")
+        expect(opts).toEqual({ delay: HOLD_MS })
+        // Held durably: the replay claim stays, so a provider retry is a duplicate.
+        expect(await redis.exists(key)).toBe(1)
+      })
+
+      it("answers 503 and releases the replay claim when the hold cannot be enqueued", async () => {
+        await seedAppRow()
+        const key = replayKeyFor("capped-replay-key")
+        await redis.del(key)
+        redisKeysToClean.push(key)
+        registerCapped()
+        spyOn(appDayCapModule, "appRunHoldMs").mockResolvedValue(HOLD_MS)
+        spyOn(jobsModule, "enqueueAppJob").mockRejectedValue(new Error("redis down"))
+
+        const res = await post()
+
+        expect(res.status).toBe(503)
+        expect(verify).toHaveBeenCalledTimes(1)
+        expect(await redis.exists(key)).toBe(0)
+      })
+    })
 
     it("answers a handler 4xx as-is with its message and schedules NO retry", async () => {
       await seedAppRow()

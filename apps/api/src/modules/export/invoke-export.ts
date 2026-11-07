@@ -120,6 +120,7 @@ export async function invokeAppExport(
         bundlePath: entry.handler.bundlePath,
         bundleSource: source,
         exportName: entry.handler.exportName,
+        entry: `export:${entry.handler.exportName}`,
         // Date-range threads into the handler via params (the only sandbox
         // input channel); the handler applies it + paginates the full RLS set.
         params: { format, dateRange: filters?.dateRange },

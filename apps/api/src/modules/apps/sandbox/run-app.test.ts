@@ -42,6 +42,9 @@ describe("runApp", () => {
   it("selects in-process for trusted code and the worker pool otherwise", () => {
     expect(selectExecutor({ trusted: true })).toBe("inprocess")
     expect(selectExecutor({ trusted: false })).toBe("pool")
+    // Workers only for untrusted code with a Worker bundle resolved.
+    expect(selectExecutor({ trusted: false, workersBundleSha: "a".repeat(64) })).toBe("workers")
+    expect(selectExecutor({ trusted: true, workersBundleSha: "a".repeat(64) })).toBe("inprocess")
   })
 
   it("runs trusted code in-process with exactly the executor's options", async () => {

@@ -3084,6 +3084,7 @@ export async function executeToolHandler(
         exportName: handlerRef.exportName,
         params: handlerParams,
         bridge,
+        executionToken,
         timeoutMs: toolTimeoutMs,
         signal: bridgeOptions?.signal,
         holdsTx,

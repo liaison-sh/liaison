@@ -113,6 +113,7 @@ const defaultExecutor: HookExecutor = async ({
     orgId,
     bundlePath,
     exportName,
+    entry: `disconnect:${exportName}`,
     params,
     bridge,
     timeoutMs: HOOK_TIMEOUT_MS,

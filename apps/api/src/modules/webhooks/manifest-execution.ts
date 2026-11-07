@@ -48,6 +48,8 @@ interface ExecuteManifestWebhookOptions {
    * `x-shopify-webhook-id` for dedup.
    */
   extraArgs?: unknown[]
+  /** `webhook` (the delivery, default) or `webhook-verify`, for the run timing record. */
+  entryKind?: "webhook" | "webhook-verify"
 }
 
 export async function executeManifestWebhook({
@@ -60,6 +62,7 @@ export async function executeManifestWebhook({
   bridge,
   extraArgs,
   timeoutMs,
+  entryKind,
 }: ExecuteManifestWebhookOptions): Promise<unknown> {
   return runApp({
     trusted: handlerRef.trusted === true,
@@ -68,6 +71,7 @@ export async function executeManifestWebhook({
     bundlePath: handlerRef.bundlePath,
     bundleSource,
     exportName: handlerRef.exportName,
+    entry: `${entryKind ?? "webhook"}:${handlerRef.exportName}`,
     params,
     bridge,
     extraArgs,

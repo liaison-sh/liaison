@@ -164,6 +164,7 @@ async function invokeManifestProvider(
       bundlePath: reg.bundlePath,
       bundleSource,
       exportName: reg.handler,
+      entry: `attention:${reg.handler}`,
       params: { actor: aliasedActor },
       bridge,
       holdsTx: false,

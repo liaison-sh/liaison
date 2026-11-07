@@ -13,7 +13,7 @@
 //
 // Result (JSON-safe, the body of the loader's answer minus what only the
 // loader knows, `loadMs` and `cold`):
-//   {ok:true, result, timings:{runMs, bridgeCalls, bridgeMsTotal}}
+//   {ok:true, result, timings:{runMs, bridgeCalls, bridgeMsTotal, sleepMs, sleepExact}}
 //   {ok:false, error:{message, status?, code?, name?, safe?, retryable?, kind:"handler"},
 //    timings:{...}}
 // `result` is the handler's return through JSON (undefined -> null), as the
@@ -38,6 +38,78 @@
 
 import { type CtxDispatch, createCtx } from "../sandbox/ctx-shim"
 
+// -- Sleep accounting ----------------------------------------------------------
+//
+// `sleepMs`: how long the app's code waited in its own timers during the run
+// (an app paces itself with `setTimeout`, e.g. a provider's throttle wait), so
+// a measurement can tell waiting from work. While at least one run is in
+// flight in this isolate, `globalThis.setTimeout` is wrapped: a timer scheduled
+// then is charged, when it fires, the time it actually waited, to every run in
+// flight when it was scheduled. Runs of one cached module share the isolate's
+// globals, so a run that overlapped another reports `sleepExact: false` (its
+// sleepMs is then an upper bound). The original timer is put back when the
+// last run ends (unless someone else replaced it meanwhile). Nothing about the
+// timer's behaviour changes: same delay, same arguments, same return value.
+
+interface SleepMeter {
+  sleepMs: number
+  exact: boolean
+}
+
+type TimerFn = (fn: unknown, ms?: unknown, ...rest: unknown[]) => unknown
+
+const inFlight = new Set<SleepMeter>()
+let originalSetTimeout: TimerFn | undefined
+let wrappedSetTimeout: TimerFn | undefined
+
+function startSleepMeter(): SleepMeter {
+  const meter: SleepMeter = { sleepMs: 0, exact: true }
+  if (inFlight.size > 0) {
+    meter.exact = false
+    for (const m of inFlight) m.exact = false
+  }
+  inFlight.add(meter)
+  const g = globalThis as { setTimeout?: TimerFn }
+  if (inFlight.size === 1 && typeof g.setTimeout === "function" && !wrappedSetTimeout) {
+    const original = g.setTimeout
+    const wrapper: TimerFn = function (
+      this: unknown,
+      fn: unknown,
+      ms?: unknown,
+      ...rest: unknown[]
+    ) {
+      if (typeof fn !== "function" || inFlight.size === 0) {
+        return original.call(this, fn, ms, ...rest)
+      }
+      const charged = [...inFlight]
+      const scheduled = Date.now()
+      return original.call(
+        this,
+        (...a: unknown[]) => {
+          const waited = Math.max(0, Date.now() - scheduled)
+          for (const m of charged) m.sleepMs += waited
+          return (fn as (...x: unknown[]) => unknown)(...a)
+        },
+        ms,
+        ...rest,
+      )
+    }
+    originalSetTimeout = original
+    wrappedSetTimeout = wrapper
+    g.setTimeout = wrapper
+  }
+  return meter
+}
+
+function stopSleepMeter(meter: SleepMeter): void {
+  inFlight.delete(meter)
+  if (inFlight.size > 0 || !wrappedSetTimeout) return
+  const g = globalThis as { setTimeout?: TimerFn }
+  if (g.setTimeout === wrappedSetTimeout) g.setTimeout = originalSetTimeout
+  wrappedSetTimeout = undefined
+  originalSetTimeout = undefined
+}
+
 /** The `/run` body fields the isolate reads. */
 export interface WorkerRunRequest {
   exportName: string
@@ -52,6 +124,10 @@ export interface WorkerRunTimings {
   runMs: number
   bridgeCalls: number
   bridgeMsTotal: number
+  /** Time spent waiting in the app's own timers (see "Sleep accounting"). */
+  sleepMs: number
+  /** False when another run shared the isolate meanwhile. */
+  sleepExact: boolean
 }
 
 export interface WorkerRunError {
@@ -146,10 +222,13 @@ export async function runHandler(
   const started = Date.now()
   let bridgeCalls = 0
   let bridgeMsTotal = 0
+  let meter: SleepMeter | undefined
   const timings = (): WorkerRunTimings => ({
     runMs: Date.now() - started,
     bridgeCalls,
     bridgeMsTotal,
+    sleepMs: meter?.sleepMs ?? 0,
+    sleepExact: meter?.exact ?? true,
   })
   const counted: CtxDispatch = async (method, args) => {
     bridgeCalls++
@@ -178,6 +257,7 @@ export async function runHandler(
     }
   }
 
+  meter = startSleepMeter()
   try {
     const ctx = createCtx(req.bridgeMethods ?? [], req.approval ?? null, counted)
     const value = await (fn as (...a: unknown[]) => unknown)(
@@ -201,6 +281,8 @@ export async function runHandler(
     return { ok: true, result, timings: timings() }
   } catch (err) {
     return { ok: false, error: handlerError(err), timings: timings() }
+  } finally {
+    stopSleepMeter(meter)
   }
 }
 

@@ -107,6 +107,7 @@ export function createAppBridgeRoutes(deps: AppBridgeRouteDeps = {}) {
       const ms = now() - started
       entry.stats.bridgeMsTotal += ms
       recordBridgeTiming({
+        kind: "call",
         runId,
         app: entry.appName,
         executor: "workers",

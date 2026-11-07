@@ -205,3 +205,34 @@ describe("bridge replies", () => {
     expect(out).toMatchObject({ ok: true, result: "App bridge 410 settled: Run settled" })
   })
 })
+
+describe("sleep accounting", () => {
+  const sleeper = {
+    h: async (p: { ms: number[] }) => {
+      for (const ms of p.ms) await new Promise((r) => setTimeout(r, ms))
+      return "done"
+    },
+  }
+
+  it("charges a run the time it waited in its own timers, and restores setTimeout", async () => {
+    const before = globalThis.setTimeout
+    const out = await runHandler(sleeper, req("h", { params: { ms: [30, 30] } }), async () => null)
+    expect(out.ok).toBe(true)
+    expect(out.timings.sleepMs).toBeGreaterThanOrEqual(55)
+    expect(out.timings.sleepMs).toBeLessThanOrEqual(out.timings.runMs + 5)
+    expect(out.timings.sleepExact).toBe(true)
+    expect(globalThis.setTimeout).toBe(before)
+    const idle = await runHandler(sleeper, req("h", { params: { ms: [] } }), async () => null)
+    expect(idle.timings).toMatchObject({ sleepMs: 0, sleepExact: true })
+  })
+
+  it("marks overlapping runs as inexact (upper bound)", async () => {
+    const [a, b] = await Promise.all([
+      runHandler(sleeper, req("h", { params: { ms: [40] } }), async () => null),
+      runHandler(sleeper, req("h", { params: { ms: [10] } }), async () => null),
+    ])
+    expect(a.timings.sleepExact).toBe(false)
+    expect(b.timings.sleepExact).toBe(false)
+    expect(a.timings.sleepMs).toBeGreaterThanOrEqual(35)
+  })
+})

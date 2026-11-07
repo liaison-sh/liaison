@@ -33,6 +33,8 @@ export interface RegisterRunOptions {
   timeoutMs: number
   /** Aborting it settles the run. */
   signal?: AbortSignal
+  /** Overrides the registry's grace past `timeoutMs` for this run (test probes). */
+  graceMs?: number
 }
 
 export interface RunStats {
@@ -116,7 +118,8 @@ export class RunRegistry {
     const runId = randomUUID()
     const runToken = randomBytes(32).toString("base64url")
     const tokenHash = sha256(runToken)
-    const deadline = this.now() + Math.max(0, opts.timeoutMs) + this.graceMs
+    const deadline =
+      this.now() + Math.max(0, opts.timeoutMs) + Math.max(0, opts.graceMs ?? this.graceMs)
     // Only the methods the bridge itself owns (no prototype lookups), and that
     // the dispatching code listed.
     const methods = new Set(

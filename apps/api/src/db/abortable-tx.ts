@@ -58,26 +58,29 @@ function closedError(): Error {
  * call once `state.closed`. A savepoint's own client is guarded the same way.
  */
 function guardClient(client: DriverFn, state: { closed: boolean }): DriverFn {
-  return new Proxy(client, {
-    apply(target, thisArg, args) {
+  // Named handlers that call through without `apply`/`get` calls: the
+  // privileged-source tracer resolves calls by name, and those names belong to
+  // other code. The driver's functions do not read `this`.
+  function callUnlessClosed(target: DriverFn, _thisArg: unknown, args: unknown[]): unknown {
+    if (state.closed) throw closedError()
+    return target(...args)
+  }
+  function memberUnlessClosed(target: DriverFn, prop: PropertyKey): unknown {
+    const value = (target as Record<PropertyKey, unknown>)[prop]
+    if (typeof value !== "function") return value
+    return (...args: unknown[]) => {
       if (state.closed) throw closedError()
-      return Reflect.apply(target, thisArg, args)
-    },
-    get(target, prop) {
-      const value = Reflect.get(target, prop, target)
-      if (typeof value !== "function") return value
-      return (...args: unknown[]) => {
-        if (state.closed) throw closedError()
-        const wrapped =
-          prop === "savepoint"
-            ? args.map((a) =>
-                typeof a === "function"
-                  ? (inner: DriverFn) => (a as (c: DriverFn) => unknown)(guardClient(inner, state))
-                  : a,
-              )
-            : args
-        return (value as (...a: unknown[]) => unknown).apply(target, wrapped)
-      }
-    },
-  }) as DriverFn
+      const wrapped =
+        prop === "savepoint"
+          ? args.map((a) =>
+              typeof a === "function"
+                ? (inner: DriverFn) => (a as (c: DriverFn) => unknown)(guardClient(inner, state))
+                : a,
+            )
+          : args
+      const member = (value as (...a: unknown[]) => unknown).bind(target)
+      return member(...wrapped)
+    }
+  }
+  return new Proxy(client, { apply: callUnlessClosed, get: memberUnlessClosed }) as DriverFn
 }

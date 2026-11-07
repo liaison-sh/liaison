@@ -66,6 +66,11 @@ export interface StateMaterializerDeps {
     bundlePath: string
     /** The user's effective permissions, loaded once per run and shared by every provider. */
     permissions?: () => Promise<UserPermissions>
+    /**
+     * Aborted when the pass runs past PROVIDER_TIMEOUT_MS: the provider stops
+     * its database work and gives its connection back, then settles.
+     */
+    signal?: AbortSignal
   }) => Promise<AttentionItem[]>
   /** Returns true when the row is new (first sighting); void counts as new (test doubles). */
   // biome-ignore lint/suspicious/noConfusingVoidType: an injected double that returns nothing counts as a new row
@@ -125,6 +130,9 @@ async function defaultListKnownSourceKeys(
   })
 }
 
+/** How long one provider pass may run for one user. */
+export const PROVIDER_TIMEOUT_MS = 2_000
+
 type UserPermissions = Awaited<ReturnType<typeof loadEffectivePermissions>>
 
 function loadUserPermissions(orgId: string, userId: string): Promise<UserPermissions> {
@@ -140,6 +148,7 @@ async function defaultInvokeProvider(args: {
   handler: string
   bundlePath: string
   permissions?: () => Promise<UserPermissions>
+  signal?: AbortSignal
 }): Promise<AttentionItem[]> {
   const mod = await import(args.bundlePath)
   const fn = mod[args.handler] as
@@ -164,6 +173,10 @@ async function defaultInvokeProvider(args: {
       dimensionGrants,
     },
     (tx) => fn(tx, args.orgId, args.userId),
+    // A pass past its time is rolled back and its connection returned, even
+    // while the provider is still running; a statement it already sent is
+    // bounded by the same limit.
+    { signal: args.signal, statementTimeoutMs: PROVIDER_TIMEOUT_MS },
   )
 }
 
@@ -188,8 +201,6 @@ async function defaultUpsertEmailOnlyRow(row: EmailOnlyRowInsert): Promise<boole
     return out[0]?.inserted === true
   })
 }
-
-const PROVIDER_TIMEOUT_MS = 2_000
 
 function sourceKeyFor(item: AttentionItem): string {
   return `state:${item.app}:${item.kind}:${item.entity}:${item.entityId}`
@@ -270,20 +281,24 @@ export async function runStateMaterializeOnce(
     if (appName === "kernel.attention_events") continue
     for (const userId of users) {
       let items: AttentionItem[]
+      const abort = new AbortController()
+      const pass = deps.invokeProvider({
+        orgId: args.orgId,
+        userId,
+        appName,
+        handler: reg.handler,
+        bundlePath: reg.bundlePath,
+        permissions: permissionsOf(userId),
+        signal: abort.signal,
+      })
       try {
-        items = await boundedBy(
-          deps.invokeProvider({
-            orgId: args.orgId,
-            userId,
-            appName,
-            handler: reg.handler,
-            bundlePath: reg.bundlePath,
-            permissions: permissionsOf(userId),
-          }),
-          PROVIDER_TIMEOUT_MS,
-          () => new Error("provider timeout"),
-        )
+        items = await boundedBy(pass, PROVIDER_TIMEOUT_MS, () => new Error("provider timeout"))
       } catch (err) {
+        // A pass past its time is stopped, not just abandoned: it rolls back
+        // and gives its connection back before the next pass starts, so slow
+        // providers cannot pile up and drain the pool.
+        abort.abort(err)
+        await waitForRelease(pass, appName, userId)
         log.warn({ err, appName, userId }, "state-materializer provider failed — skipping user")
         continue
       }
@@ -402,6 +417,33 @@ function approvalPlacement(item: AttentionItem): Pick<RouterItem, "placement"> {
   return placement === "mine" || placement === "standing_in" || placement === "others"
     ? { placement }
     : {}
+}
+
+/**
+ * Wait for an aborted pass to settle (its transaction rolled back, its
+ * connection back in the pool). A provider that ignores the signal is waited
+ * for at most PROVIDER_TIMEOUT_MS more, and logged.
+ */
+async function waitForRelease(
+  pass: Promise<unknown>,
+  appName: string,
+  userId: string,
+): Promise<void> {
+  try {
+    await boundedBy(
+      pass.then(
+        () => undefined,
+        () => undefined,
+      ),
+      PROVIDER_TIMEOUT_MS,
+      () => new Error("aborted provider did not stop"),
+    )
+  } catch (err) {
+    log.error(
+      { err, appName, userId },
+      "state-materializer: an aborted provider pass is still running",
+    )
+  }
 }
 
 /** The same mine-vs-peer rule as Home's approvals partition: only rows the server marked. */

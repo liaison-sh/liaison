@@ -744,3 +744,70 @@ describe("defaultListActiveUsers (real DB, post-default-flip)", () => {
     expect(ids).toContain(offId)
   })
 })
+
+// A provider pass past PROVIDER_TIMEOUT_MS is stopped, not abandoned: its
+// transaction rolls back and its connection is back in the pool before the
+// run moves on, and the work it left running can no longer reach the database.
+describe("a provider pass past its time (real DB)", () => {
+  let orgId: string
+  let userId: string
+  const fixture = new URL("./fixtures/hanging-providers.ts", import.meta.url).pathname
+
+  beforeAll(async () => {
+    await acquireTestLock()
+    orgId = (await createTestOrg()).id
+    userId = await withSystemDb("state-materializer-timeout-user", async (tx) => {
+      const rows = (await tx.execute(
+        drizzleSql`SELECT id FROM kernel.users WHERE org_id = ${orgId} LIMIT 1`,
+      )) as unknown as Array<{ id: string }>
+      return rows[0]!.id
+    })
+  })
+
+  afterAll(releaseTestLock)
+
+  const register = (appName: string, handler: string) =>
+    attentionItemsRegistry.set(["*", appName], { handler, bundlePath: fixture, trusted: true })
+
+  const held = async () => (await import("~/db/pool-diag")).getPoolGauges().request.held
+
+  function runDeps(seenKeys: string[][]) {
+    return {
+      listActiveUsers: async () => [userId],
+      listKnownSourceKeys: async (_o: string, _u: string, keys: string[]) => {
+        seenKeys.push(keys)
+        return new Set<string>()
+      },
+      upsertEmailOnlyRow: async () => true,
+      route: async () => ({ channels: { in_app: { deliver: false } } }) as never,
+      dispatchLive: async () => {},
+    }
+  }
+
+  it("a provider blocked in a statement releases its connection and the next provider runs", async () => {
+    const before = await held()
+    register("timeout-sleeps", "sleepsInDatabase")
+    register("timeout-answers", "answers")
+    const seen: string[][] = []
+    const t0 = Date.now()
+    await mod.runStateMaterializeOnce({ orgId }, runDeps(seen))
+    const elapsed = Date.now() - t0
+    expect(await held()).toBe(before)
+    expect(elapsed).toBeLessThan(mod.PROVIDER_TIMEOUT_MS * 3)
+    // The next pass ran and its item reached the routing step.
+    expect(seen.flat()).toContain("state:kernel:sla_risk:sla:e-fast")
+  })
+
+  it("a provider hung outside any statement is rolled back and its later query is refused", async () => {
+    const { lateQuery } = await import("./fixtures/hanging-providers")
+    const before = await held()
+    register("timeout-hangs", "hangsThenQueries")
+    await mod.runStateMaterializeOnce({ orgId }, runDeps([]))
+    expect(await held()).toBe(before)
+    // The provider wakes after the pass was stopped and tries one more query.
+    await new Promise((r) => setTimeout(r, 1_500))
+    expect(lateQuery.attempted).toBe(true)
+    expect(lateQuery.ran).toBe(false)
+    expect(lateQuery.error).toContain("aborted")
+  })
+})

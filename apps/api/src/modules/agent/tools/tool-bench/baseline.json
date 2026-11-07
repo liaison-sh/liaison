@@ -961,11 +961,11 @@
       "schema": 28
     },
     "kernel__ai_models_get": {
-      "desc": 314,
+      "desc": 322,
       "schema": 55
     },
     "kernel__ai_models_set": {
-      "desc": 530,
+      "desc": 538,
       "schema": 5
     },
     "kernel__analyze_media": {

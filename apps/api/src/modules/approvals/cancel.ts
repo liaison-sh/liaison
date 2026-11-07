@@ -128,3 +128,141 @@ export async function cancelApprovalsForDeletedAccount(
   }
   return cancelled
 }
+
+/** What a request shows once the task it would change was deleted. */
+export const TARGET_TASK_DELETED_REASON = "Cancelled: the task it would change was deleted"
+
+/** Where a request cancelled for its deleted task keeps the reason it had, for the way back. */
+const REASON_BEFORE_KEY = "reasonBeforeTaskDeleted"
+
+/** And once the app its tool belongs to was switched off or removed. */
+export function appSwitchedOffReason(app: string): string {
+  return `Cancelled: the ${app} app was switched off, so this request can no longer run`
+}
+
+/** Who caused a cancel or a reopen: the person who deleted, restored or switched off. */
+export interface ApprovalChangeActor {
+  actorId: string | null
+  actorType: "user" | "agent" | "system"
+}
+
+/** Tell every open approval list about the rows a cancel or reopen changed. */
+async function queueApprovalUpdates(
+  tx: PrivilegedDb,
+  orgId: string,
+  ids: readonly string[],
+  actor: ApprovalChangeActor,
+): Promise<void> {
+  for (const id of ids) {
+    await tx.queueEvent({
+      app: "kernel",
+      entity: "approval_request",
+      action: "update",
+      entityId: id,
+      orgId,
+      actorId: actor.actorId,
+      actorType: actor.actorType,
+      data: await loadApprovalSummary(tx, orgId, id),
+    })
+  }
+}
+
+/**
+ * Cancel the PENDING requests of the projects app that would change one of these tasks, once they
+ * are deleted: nobody should approve a change to a task in the bin, and the person who asked reads
+ * why on the request. Rows already `approving` are left alone (their executor is running, often
+ * the delete itself). Taking the task back out of the bin reopens them
+ * (`reopenApprovalsForRestoredTasks`). Returns the cancelled ids.
+ */
+export async function cancelApprovalsForDeletedTasks(
+  orgId: string,
+  taskIds: readonly string[],
+  actor: ApprovalChangeActor,
+): Promise<string[]> {
+  if (taskIds.length === 0) return []
+  const ids = drizzleSql.join(
+    taskIds.map((id) => drizzleSql`${id}`),
+    drizzleSql`, `,
+  )
+  const cancelled = await withPrivilegedDb(orgId, "approvals-cancel-deleted-task", async (tx) => {
+    const kernelSchema = drizzleSql.raw(schemaRef("kernel"))
+    const rows = extractRows<{ id: string }>(
+      await tx.execute(drizzleSql`
+        UPDATE ${kernelSchema}.approval_requests
+           SET status = 'cancelled', decided_at = now(), reason = ${TARGET_TASK_DELETED_REASON},
+               metadata = metadata || jsonb_build_object(${REASON_BEFORE_KEY}::text, reason)
+         WHERE org_id = ${orgId} AND status = 'pending'
+           AND starts_with(tool_name, 'projects:')
+           AND (tool_params->>'taskId' IN (${ids}) OR current_payload->>'taskId' IN (${ids}))
+        RETURNING id::text AS id`),
+    ).map((r) => r.id)
+    await queueApprovalUpdates(tx, orgId, rows, actor)
+    return rows
+  })
+  for (const id of cancelled) await enqueueRoutineDecisionTurn(orgId, id)
+  return cancelled
+}
+
+/**
+ * The way back: a task taken out of the bin gets back the requests its deletion cancelled, pending
+ * as they were. A request a routine run was waiting on stays cancelled, since that run has already
+ * carried on with the cancellation. Returns the reopened ids.
+ */
+export async function reopenApprovalsForRestoredTasks(
+  orgId: string,
+  taskIds: readonly string[],
+  actor: ApprovalChangeActor,
+): Promise<string[]> {
+  if (taskIds.length === 0) return []
+  const ids = drizzleSql.join(
+    taskIds.map((id) => drizzleSql`${id}`),
+    drizzleSql`, `,
+  )
+  return withPrivilegedDb(orgId, "approvals-reopen-restored-task", async (tx) => {
+    const kernelSchema = drizzleSql.raw(schemaRef("kernel"))
+    const rows = extractRows<{ id: string }>(
+      await tx.execute(drizzleSql`
+        UPDATE ${kernelSchema}.approval_requests
+           SET status = 'pending', decided_at = NULL,
+               reason = metadata->>${REASON_BEFORE_KEY}::text,
+               metadata = metadata - ${REASON_BEFORE_KEY}::text
+         WHERE org_id = ${orgId} AND status = 'cancelled'
+           AND reason = ${TARGET_TASK_DELETED_REASON}
+           AND expires_at > now()
+           AND NOT (metadata ? 'originRoutineRunId')
+           AND starts_with(tool_name, 'projects:')
+           AND (tool_params->>'taskId' IN (${ids}) OR current_payload->>'taskId' IN (${ids}))
+        RETURNING id::text AS id`),
+    ).map((r) => r.id)
+    await queueApprovalUpdates(tx, orgId, rows, actor)
+    return rows
+  })
+}
+
+/**
+ * Cancel the PENDING requests whose tool belongs to an app that was switched off or removed: its
+ * tools are gone from the catalog, so the request could never run, and Home stops listing it. The
+ * rows stay (the audit of who asked for what), each reading cancelled with why. Switching the app
+ * back on does not reopen them: the person asks again if it still matters. Returns the ids.
+ */
+export async function cancelApprovalsForSwitchedOffApp(
+  orgId: string,
+  app: string,
+  actor: ApprovalChangeActor,
+): Promise<string[]> {
+  const cancelled = await withPrivilegedDb(orgId, "approvals-cancel-app-off", async (tx) => {
+    const kernelSchema = drizzleSql.raw(schemaRef("kernel"))
+    const rows = extractRows<{ id: string }>(
+      await tx.execute(drizzleSql`
+        UPDATE ${kernelSchema}.approval_requests
+           SET status = 'cancelled', decided_at = now(), reason = ${appSwitchedOffReason(app)}
+         WHERE org_id = ${orgId} AND status = 'pending'
+           AND starts_with(tool_name, ${`${app}:`})
+        RETURNING id::text AS id`),
+    ).map((r) => r.id)
+    await queueApprovalUpdates(tx, orgId, rows, actor)
+    return rows
+  })
+  for (const id of cancelled) await enqueueRoutineDecisionTurn(orgId, id)
+  return cancelled
+}

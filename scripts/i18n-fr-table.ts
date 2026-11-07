@@ -32,6 +32,8 @@ export const FR: Record<string, string> = {
   "Read {{count}} of {{total}} apps": "{{count}} apps lues sur {{total}}",
   "Reading {{app}}": "Lecture de {{app}}",
   "Source: {{source}}": "Source : {{source}}",
+  "Not sent: the server could not be reached.": "Rien n'est parti : le serveur est injoignable.",
+  "Suggested next steps": "Étapes suggérées",
   "Replaced by a newer card": "Remplacée par une carte plus récente",
   "Nothing ran: this card cannot reach the server here.":
     "Rien n'a été exécuté : cette carte ne peut pas joindre le serveur ici.",

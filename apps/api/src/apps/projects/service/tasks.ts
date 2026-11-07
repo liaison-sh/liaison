@@ -4,6 +4,10 @@ import { sql as drizzleSql } from "drizzle-orm"
 import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
 import type { UserContext } from "~/db/rls"
+import {
+  cancelApprovalsForDeletedTasks,
+  reopenApprovalsForRestoredTasks,
+} from "~/modules/approvals/cancel"
 import { appendChecklistOnMerge, readItems, readProjectLevels } from "./checklist"
 import { type ChecklistStatus, checklistStatus } from "./checklist-status"
 import { dueBucketSql } from "./due-status"
@@ -1289,6 +1293,13 @@ export async function deleteTask(args: DeleteTaskArgs): Promise<void> {
   // Idempotent: the root wasn't active (already archived / not found) → nothing
   // changed, emit nothing.
   if (!archived.some((r) => r.id === taskId)) return
+  // A pending request to change a task now in the bin (its delete among them) closes, with why,
+  // for the person who asked; restoring the task reopens it (restoreTask).
+  await cancelApprovalsForDeletedTasks(
+    orgId,
+    archived.map((r) => r.id),
+    { actorId: args.actor.userId, actorType: "user" },
+  )
   const event = {
     app: "projects" as const,
     entity: "task" as const,
@@ -1350,6 +1361,11 @@ export async function restoreTask(args: RestoreTaskArgs): Promise<void> {
     `),
   )
   if (!restored.some((r) => r.id === taskId)) return
+  await reopenApprovalsForRestoredTasks(
+    orgId,
+    restored.map((r) => r.id),
+    { actorId: args.actor.userId, actorType: "user" },
+  )
   const event = {
     app: "projects" as const,
     entity: "task" as const,

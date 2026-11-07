@@ -26,6 +26,7 @@ import { and, eq, inArray, ne } from "drizzle-orm"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { apps, connectedAccounts, roles, users } from "~/db/schema/kernel"
 import { rootLogger } from "~/lib/logger"
+import { cancelApprovalsForSwitchedOffApp } from "~/modules/approvals/cancel"
 import { listAppVersionStates, orgAppProblems } from "~/modules/apps/activation"
 import { filterAppsVisibleToOrg } from "~/modules/apps/app-org-scope"
 import { manifestRegistry, toolRegistry } from "~/modules/apps/app-registries"
@@ -281,6 +282,8 @@ export async function disableOrgApp(
   await assertMayStop(orgId, app, "turn off")
   const state = await setOrgAppStatus(orgId, app, "disabled")
   await pauseAppRoutinesForOrg(orgId, app)
+  // Its pending requests can no longer run: they leave Home, cancelled with why (rows kept).
+  await cancelApprovalsForSwitchedOffApp(orgId, app, actor)
   await audit(orgId, actor, app, "disable")
   return state
 }
@@ -296,6 +299,8 @@ export async function removeOrgApp(
   await assertMayStop(orgId, app, "remove")
   const state = await setOrgAppStatus(orgId, app, "removed")
   await pauseAppRoutinesForOrg(orgId, app)
+  // Its pending requests can no longer run: they leave Home, cancelled with why (rows kept).
+  await cancelApprovalsForSwitchedOffApp(orgId, app, actor)
   await audit(orgId, actor, app, "remove")
   return state
 }

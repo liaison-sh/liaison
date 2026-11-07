@@ -635,6 +635,8 @@ describe("kernel tool registration", () => {
       "report_bug",
       // Reads the tool registry and the scope catalog, never an org record.
       "routine_tool_scopes",
+      // Chips drawn on the requester's own screen; a chip only sends its label as their message.
+      "suggest_next_steps",
       "tool_search",
     ])
     // skill_read returns skill bodies (org content), so it taints like any read.

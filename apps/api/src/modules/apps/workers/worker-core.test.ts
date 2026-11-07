@@ -41,6 +41,29 @@ describe("runHandler", () => {
     expect(none).toMatchObject({ ok: true, result: null })
   })
 
+  it("waits for the bridge calls a handler fired without awaiting before it answers", async () => {
+    const landed: string[] = []
+    const mod = {
+      h: async (_p: unknown, ctx: any) => {
+        ctx.logger.info("listed items", { count: 2 })
+        ctx.log_warn("second")
+        return { ok: 1 }
+      },
+    }
+    const out = await runHandler(
+      mod,
+      req("h", { bridgeMethods: [...METHODS, "log_warn"] }),
+      async (m) => {
+        await new Promise((r) => setTimeout(r, 20))
+        landed.push(m)
+          return null
+      },
+    )
+    // Both calls reached the bridge before the run answered.
+    expect(landed).toEqual(["log_info", "log_warn"])
+    expect(out).toMatchObject({ ok: true, result: { ok: 1 }, timings: { bridgeCalls: 2 } })
+  })
+
   it("builds a fresh ctx for every run", async () => {
     const seen = new WeakSet<object>()
     let reused = false

@@ -3,7 +3,7 @@ title: Files
 description: "Attach files to email, tickets, chat and Knowledge documents, open and download them, and let agents find, merge and attach files."
 ---
 
-Files are the attachments that live on your email, tickets, chat messages and Knowledge documents. There is no separate file browser: a file belongs to the conversation, ticket or document it was attached to, and people see it when they can see that item.
+Files are the attachments that live on your email, tickets, chat messages and Knowledge documents. There is no separate file browser: a file belongs to the conversation, ticket or document it was attached to, and people see it when they can see that item. A data-subject export is the exception: it belongs to no item, and only the person who ran the export can open it.
 
 ## Attach a file
 

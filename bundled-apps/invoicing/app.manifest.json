@@ -224,7 +224,7 @@
       }
     ]
   },
-  "version": "0.20.55",
+  "version": "0.20.56",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -2045,6 +2045,8 @@
       "readOnly": true
     },
     "pending_approvals_list": {
+      "agentVisible": false,
+      "useInstead": "kernel__approvals_list",
       "taintSource": true,
       "description": "List the caller's pending approvals originating from invoicing-app tools (credit notes, refunds, dealer invoices), each with its summary, requester, and amount. READ-ONLY: you CANNOT approve, edit, or deny on the user's behalf — deciding is a human action the user takes in the approvals UI, and agent- or system-initiated requests can only be cleared by a human approver. When you present them: summarize each (amount, requester, reason), recommend routine vs. scrutinize (refunds over a policy threshold, credit notes / anything needing two-eyes), and tell the user they must approve/edit/deny each one themselves in the UI; never imply or claim you approved anything. For a full cross-app 'what's waiting on me' queue, use the kernel approvals_list instead.",
       "requiredScopes": ["invoicing:documents:read"],
@@ -4945,8 +4947,9 @@
       }
     },
     "documents_preview_pdf": {
-      "description": "Resolve a document's rendered-PDF file id + inline URL for preview.",
       "agentVisible": false,
+      "useInstead": "documents_download_pdf",
+      "description": "Resolve a document's rendered-PDF file id + inline URL for preview.",
       "requiredScopes": ["invoicing:documents:read"],
       "handler": "documentsPreviewPdfHandler",
       "params": {

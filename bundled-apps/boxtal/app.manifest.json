@@ -194,7 +194,7 @@
       }
     ]
   },
-  "version": "0.23.17",
+  "version": "0.23.18",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {
@@ -2936,8 +2936,9 @@
       }
     },
     "prep_set_validated": {
-      "description": "ALIAS for prep_set_status: mark an order-prep row VALIDATED (true) or return it to 'to prepare' (false). The row carries ONE status (to_prepare / validated / on_hold); prefer prep_set_status, which can also put a row on hold. Does not ship anything and does not change the queue's contents.",
       "agentVisible": false,
+      "useInstead": "prep_set_status",
+      "description": "ALIAS for prep_set_status: mark an order-prep row VALIDATED (true) or return it to 'to prepare' (false). The row carries ONE status (to_prepare / validated / on_hold); prefer prep_set_status, which can also put a row on hold. Does not ship anything and does not change the queue's contents.",
       "requiredScopes": ["boxtal:shipments:write"],
       "handler": "prepSetValidatedHandler",
       "writesToTable": "app_boxtal.prep_order_state",

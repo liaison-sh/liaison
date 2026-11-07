@@ -67,7 +67,7 @@
       }
     ]
   },
-  "version": "1.10.1",
+  "version": "1.10.2",
   "description": "Email integration: Gmail and IMAP/SMTP",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -676,8 +676,9 @@
       }
     },
     "getSyncStatus": {
-      "description": "Get sync status for a connected email account",
       "agentVisible": false,
+      "useInstead": "listAccounts",
+      "description": "Get sync status for a connected email account",
       "readOnly": true,
       "requiredScopes": ["mail:accounts:read"],
       "handler": "getSyncStatus",

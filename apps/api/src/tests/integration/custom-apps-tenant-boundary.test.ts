@@ -28,6 +28,7 @@ import { env } from "~/lib/env"
 import { forgetOrgHostCache } from "~/lib/org-host"
 import { appVisibleToOrg, customAppOrgKey } from "~/modules/apps/app-org-scope"
 import { toolRegistry, webhookHandlers } from "~/modules/apps/app-registries"
+import { declaredDomains } from "~/modules/apps/egress-grants"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { reloadInstalledApps } from "~/modules/apps/init"
 import { gateEventOnAppState } from "~/modules/apps/runtime"
@@ -144,8 +145,12 @@ function verifyPing() { return { valid: true } }
   writeFileSync(join(stage, "ui.js"), `export const Page = () => ${JSON.stringify(who)}\n`)
   const tar = join(pkgDir, `${name}-${randomBytes(3).toString("hex")}.liaisonapp`)
   spawnSync("tar", ["-czf", tar, "-C", stage, "app.manifest.json", "bundle.js", "ui.js"])
+  packageDomains.set(tar, declaredDomains(manifest))
   return tar
 }
+
+/** Each package's declared outbound domains: the install consents to them (egress-grants.ts). */
+const packageDomains = new Map<string, string[]>()
 
 function urlOf(tarPath: string): string {
   return `http://127.0.0.1:${server?.port}/${encodeURIComponent(tarPath.split("/").pop() ?? "")}`
@@ -157,6 +162,7 @@ function installBody(name: string, tarPath: string, extra: Record<string, unknow
     grantedScopes: [`${name}:items:read`],
     grantedCapabilities: [],
     grantedCrossAppCalls: [],
+    grantedDomains: packageDomains.get(tarPath) ?? [],
     approveUiFullAccess: true,
     ...extra,
   }

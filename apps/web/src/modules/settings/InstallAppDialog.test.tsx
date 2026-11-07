@@ -222,4 +222,53 @@ describe("InstallAppDialog", () => {
       }),
     )
   })
+
+  it("lists the outbound hosts an install consents to, and an upgrade's new ones only", async () => {
+    const fetchManifest = vi.fn().mockResolvedValue({
+      name: "acme",
+      version: "1.0.0",
+      scopes: [],
+      outboundDomains: ["api.acme.example", "*.cdn.example"],
+    })
+    const onInstall = vi.fn().mockResolvedValue({ ok: true })
+    render(() => (
+      <InstallAppDialog onClose={() => {}} fetchManifest={fetchManifest} onInstall={onInstall} />
+    ))
+    fireEvent.input(screen.getByTestId("install-app-url"), { target: { value: "x" } })
+    fireEvent.click(screen.getByTestId("install-app-preflight"))
+    await screen.findByTestId("install-app-outbound-domain-api.acme.example")
+    fireEvent.click(screen.getByTestId("install-app-confirm"))
+    expect(onInstall).toHaveBeenCalledWith(
+      expect.objectContaining({ grantedDomains: ["api.acme.example", "*.cdn.example"] }),
+    )
+  })
+
+  it("an upgrade consents to its new outbound hosts only", async () => {
+    const onInstall = vi.fn().mockResolvedValue({ ok: true })
+    render(() => (
+      <InstallAppDialog
+        mode="upgrade"
+        preview={{
+          manifest: {
+            name: "acme",
+            version: "1.1.0",
+            scopes: [],
+            outboundDomains: ["a.example", "b.example"],
+          },
+          newScopes: [],
+          removedScopes: [],
+          previouslyGranted: [],
+          newDomains: ["b.example"],
+        }}
+        onClose={() => {}}
+        onInstall={onInstall}
+      />
+    ))
+    expect(screen.getByTestId("install-app-outbound-domain-b.example")).toBeInTheDocument()
+    expect(screen.queryByTestId("install-app-outbound-domain-a.example")).toBeNull()
+    fireEvent.click(screen.getByTestId("install-app-confirm"))
+    expect(onInstall).toHaveBeenCalledWith(
+      expect.objectContaining({ grantedDomains: ["b.example"] }),
+    )
+  })
 })

@@ -2864,7 +2864,9 @@
     "mergeImportedDone": "{{placeholder}} est maintenant relié à {{name}}",
     "mergeImportedFailed": "Impossible de relier cet utilisateur importé",
     "connectionsIntro": "Les clients d'IA connectés à Liaison, et les serveurs MCP que vous connectez pour vous-même.",
-    "connectionsClients": "Clients connectés à Liaison"
+    "connectionsClients": "Clients connectés à Liaison",
+    "requestedOutboundDomains": "Hôtes que cette application peut joindre (accordés par l'installation)",
+    "newOutboundDomains": "Nouveaux hôtes que cette version peut joindre (accordés par la mise à jour)"
   },
   "settingsPage": {
     "unsupported": "Ce réglage nécessite une version plus récente de Liaison. Mettez Liaison à jour pour le modifier.",
@@ -6021,7 +6023,16 @@
     "failedManifestInvalid": "Son manifeste n'est pas valide.",
     "failedRegistration": "Le serveur n'a pas pu la charger.",
     "loadFailed": "Les applications de l'espace de travail n'ont pas pu être chargées.",
-    "retry": "Réessayer"
+    "retry": "Réessayer",
+    "outboundAccess": "Accès sortant",
+    "outboundAccessHint": "Les hôtes que le code de cette application peut joindre. Un hôte en attente d'approbation reste bloqué jusqu'à ce qu'un administrateur l'autorise.",
+    "outboundAllHosts": "Tous les hôtes qu'elle déclare (installée avant l'approbation hôte par hôte).",
+    "outboundNone": "Cette application ne joint aucun hôte extérieur.",
+    "outboundGranted": "Autorisés",
+    "outboundPending": "En attente d'approbation",
+    "outboundRevoke": "Retirer",
+    "outboundAllow": "Autoriser",
+    "outboundChangeFailed": "La modification n'a pas été enregistrée : {{message}}"
   },
   "appManagement": {
     "management": "Gestion de {{name}}",

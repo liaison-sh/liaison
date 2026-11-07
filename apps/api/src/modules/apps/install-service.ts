@@ -48,7 +48,14 @@ import { isCatalogArtifact, listCatalog } from "~/modules/apps/catalog"
 import { bumpCatalogGeneration } from "~/modules/apps/catalog-generation"
 import { appIconErrors } from "~/modules/apps/contract"
 import { discoverInTreeApps, getInstallRoot } from "~/modules/apps/discover-apps"
+import {
+  declaredDomains,
+  grantedSubset,
+  pendingDomains,
+  resolveGrantedDomains,
+} from "~/modules/apps/egress-grants"
 import { assertHostApiCompatible } from "~/modules/apps/host-api"
+import { resetInstallTrustCache } from "~/modules/apps/install-trust"
 import { KNOWN_CAPABILITIES } from "~/modules/apps/manifest-schema"
 import {
   deleteStoredPackage,
@@ -85,6 +92,25 @@ export interface InstallOptions {
    * undefined means "every declared target" for trusted programmatic callers.
    */
   grantedCrossAppCalls?: string[]
+  /**
+   * The outbound domains (network + connections) the admin consented to
+   * (egress-grants.ts). Every declared domain must be present, except for the
+   * platform's catalog artifact and a trusted publisher's signed package, which
+   * are granted all they declare; undefined is the trusted programmatic path
+   * (every declared domain).
+   */
+  grantedDomains?: string[]
+  /**
+   * `grantedDomains` must be exactly the declared set (the app builder's publish:
+   * its approval pinned them), else the install is refused (`DomainPinMismatchError`).
+   */
+  exactDomains?: boolean
+  /**
+   * A grant consented to elsewhere, recorded as is (narrowed to the declared
+   * domains, nothing asked): an org's move carries its source cell's grant,
+   * revocations included. Wins over `grantedDomains`.
+   */
+  recordedDomains?: string[]
   /**
    * The admin's explicit approval that this app's interface (ui.js) runs in the web
    * origin with full access to their session. Recorded on the install row. Not
@@ -143,6 +169,8 @@ export interface PreviewUpgradeResult {
   signatureVerified: boolean
   newCapabilities: string[]
   newCrossAppCalls: string[]
+  /** Declared outbound domains the running version's grant does not hold: they need consent. */
+  newDomains: string[]
   newScopes: string[]
   removedScopes: string[]
   /** Scopes the admin granted to the currently-installed version. */
@@ -158,6 +186,12 @@ export interface ApplyUpgradeOptions {
   grantedConnections?: string[]
   grantedCapabilities?: string[]
   grantedCrossAppCalls?: string[]
+  /**
+   * The outbound domains consented to in this upgrade (the preview's `newDomains`);
+   * the running version's granted domains carry over. Undefined: every declared
+   * domain (trusted programmatic callers).
+   */
+  grantedDomains?: string[]
   approveUiFullAccess?: boolean
   /** Install a version that is not newer than the active one (rollback). */
   allowDowngrade?: boolean
@@ -586,6 +620,33 @@ function resolveGrantedCapabilities(
 }
 
 /**
+ * Outbound domains need no admin consent for the platform's own catalog artifact
+ * or a package a trusted publisher signed (egress-grants.ts).
+ */
+function domainsVouched(
+  manifest: VerifyResult["manifest"],
+  verified: Pick<VerifyResult, "sha256" | "signatureBundle">,
+): boolean {
+  return (
+    isCatalogArtifact(manifest.name, manifest.version, verified.sha256) ||
+    !!verified.signatureBundle
+  )
+}
+
+/**
+ * The domains the running version holds: its grant, or, for a grandfathered
+ * row (NULL), every domain its own manifest declared (none when its files are
+ * gone from this process: they then all ask for consent again).
+ */
+function runningDomainGrant(
+  name: string,
+  row: { version: string; grantedDomains: string[] | null },
+): string[] {
+  if (row.grantedDomains) return row.grantedDomains
+  return declaredDomains(readInstalledManifest(name, row.version) ?? {})
+}
+
+/**
  * Every trigger a package's schema declares, as `{table, name, body}`. Read from
  * the manifest file itself: the validated package manifest keeps only the
  * distribution fields, while the runtime registers tables (and their triggers)
@@ -801,6 +862,16 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
       isCatalogArtifact(manifest.name, manifest.version, verified.sha256) ||
         !!verified.signatureBundle,
     )
+    const recordedDomains = ownOption(opts, "recordedDomains")
+    const grantedDomains = recordedDomains
+      ? grantedSubset(declaredDomains(manifestFile(verified.stagingDir)), recordedDomains)
+      : resolveGrantedDomains({
+          manifest: manifestFile(verified.stagingDir),
+          granted: ownOption(opts, "grantedDomains"),
+          vouched: domainsVouched(manifest, verified),
+          exact: ownOption(opts, "exactDomains") === true,
+          what: "Install",
+        })
     const uiApproval = opts.approveUiFullAccess
       ? { uiFullAccessApprovedBy: opts.installedBy, uiFullAccessApprovedAt: new Date() }
       : { uiFullAccessApprovedBy: null, uiFullAccessApprovedAt: null }
@@ -910,6 +981,7 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
             grantedConnections: opts.grantedConnections ?? [],
             grantedCapabilities,
             grantedCrossAppCalls,
+            grantedDomains,
             ...uiApproval,
             installedBy: opts.installedBy,
             pdfTemplates,
@@ -928,6 +1000,7 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
               grantedConnections: opts.grantedConnections ?? [],
               grantedCapabilities,
               grantedCrossAppCalls,
+              grantedDomains,
               ...uiApproval,
               installedBy: opts.installedBy,
               pdfTemplates,
@@ -937,6 +1010,7 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
           })
       })
       // The install row (grants, vouchers, owner) changed: getDefaultApps reads it again.
+      resetInstallTrustCache(manifest.name)
       invalidateAppOrgScope()
       bumpCatalogGeneration()
     }
@@ -986,6 +1060,8 @@ export async function installAppFromBytes(opts: {
   grantedConnections: string[]
   grantedCapabilities: string[]
   grantedCrossAppCalls: string[]
+  /** The outbound domains the publish's approval pinned: exactly the package's (`exactDomains`). */
+  grantedDomains: string[]
   sourceUrl: string
   /** The Workers module the same build produced (see InstallOptions.workerModule). */
   workerModule?: { sha256: string; bytes: Uint8Array }
@@ -1005,6 +1081,8 @@ export async function installAppFromBytes(opts: {
       grantedConnections: opts.grantedConnections,
       grantedCapabilities: opts.grantedCapabilities,
       grantedCrossAppCalls: opts.grantedCrossAppCalls,
+      grantedDomains: opts.grantedDomains,
+      exactDomains: true,
       approveUiFullAccess: false,
       requireSignature: false,
       sourceUrl: opts.sourceUrl,
@@ -1053,11 +1131,19 @@ export async function previewUpgrade(opts: PreviewUpgradeOptions): Promise<Previ
     const newCrossAppCalls = grantedCalls
       ? declaredCrossAppCalls(manifest).filter((t) => !grantedCalls.includes(t))
       : []
+    // A vouched package (catalog artifact, trusted publisher) is granted what it declares.
+    const newDomains = domainsVouched(manifest, verified)
+      ? []
+      : pendingDomains(
+          manifestFile(verified.stagingDir),
+          active ? runningDomainGrant(opts.name, active) : [],
+        )
     return {
       hasUiBundle: existsSync(join(verified.stagingDir, "ui.js")),
       signatureVerified: !!verified.signatureBundle,
       newCapabilities,
       newCrossAppCalls,
+      newDomains,
       newScopes,
       removedScopes,
       previouslyGranted: grantedScopes,
@@ -1134,6 +1220,24 @@ export async function applyUpgrade(opts: ApplyUpgradeOptions): Promise<InstallRe
       isCatalogArtifact(manifest.name, manifest.version, verified.sha256) ||
         !!verified.signatureBundle,
     )
+    // The running version's granted domains carry over; a declared domain beyond
+    // them needs the admin's consent in this upgrade (the preview's newDomains).
+    const [runningRow] = await withSystemDb("apply-upgrade-domains", (db) =>
+      db
+        .select({ grantedDomains: appsInstalled.grantedDomains })
+        .from(appsInstalled)
+        .where(and(eq(appsInstalled.name, opts.name), eq(appsInstalled.version, oldVersion)))
+        .limit(1),
+    )
+    const grantedDomains = resolveGrantedDomains({
+      manifest: manifestFile(verified.stagingDir),
+      granted: ownOption(opts, "grantedDomains"),
+      vouched: domainsVouched(manifest, verified),
+      alreadyGranted: runningRow
+        ? runningDomainGrant(opts.name, { version: oldVersion, ...runningRow })
+        : [],
+      what: "Upgrade",
+    })
     // An approval covers the exact bytes the admin looked at: a new version needs a
     // new one (a signed or first-party package needs none).
     const uiApproval = opts.approveUiFullAccess
@@ -1167,6 +1271,7 @@ export async function applyUpgrade(opts: ApplyUpgradeOptions): Promise<InstallRe
         grantedConnections: opts.grantedConnections ?? [],
         grantedCapabilities,
         grantedCrossAppCalls,
+        grantedDomains,
         ...uiApproval,
         installedBy: opts.installedBy,
         pdfTemplates,
@@ -1186,6 +1291,7 @@ export async function applyUpgrade(opts: ApplyUpgradeOptions): Promise<InstallRe
         if (placed === "placed") rmSync(newVersionDir, { recursive: true, force: true })
         throw e
       }
+      resetInstallTrustCache(manifest.name)
       bumpCatalogGeneration()
     }
 

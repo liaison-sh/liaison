@@ -45,7 +45,10 @@ function sandboxFetch(orgId: string, userId: string) {
     userId,
     appName: "shopify",
     actorType: "user",
-    allowedDomains: ["*.myshopify.com", "api.carrier.example"],
+    egress: async () => ({
+      allowedDomains: ["*.myshopify.com", "api.carrier.example"],
+      manifest: { name: "shopify" },
+    }),
     callerScopes: [],
     inheritedActor: { actorType: "user" as const },
     manifest: { name: "shopify" },

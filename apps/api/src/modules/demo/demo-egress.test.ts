@@ -37,7 +37,7 @@ function smtpBridge(orgId: string, userId: string): (msg: unknown) => Promise<st
     userId,
     appName: "mail",
     actorType: "user",
-    allowedDomains: [],
+    egress: async () => ({ allowedDomains: [], manifest: { name: "mail" } }),
     callerScopes: [],
     inheritedActor: { actorType: "user" as const },
     manifest: { name: "mail" },

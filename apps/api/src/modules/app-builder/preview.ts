@@ -179,7 +179,8 @@ export function previewManifest(
   draft: Record<string, unknown>,
   active: ActiveCustomApp | null,
 ): Record<string, unknown> & { allowedCrossAppCalls: string[] } {
-  const granted = domainsOf(active?.manifest ?? null)
+  // What the active version was granted (egress-grants.ts), not merely declared.
+  const granted = new Set((active?.grantedDomains ?? []).map((d) => d.toLowerCase()))
   const declared = [...domainsOf({ network: draft.network })]
   const allowedDomains = declared.filter((d) => granted.has(d))
   const grantedCaps = new Set(active?.grantedCapabilities ?? [])

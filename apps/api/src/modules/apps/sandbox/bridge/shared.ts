@@ -121,6 +121,12 @@ export interface AppManifestForBridge {
       /** "oauth2" (a token) or "credentials" (a field map); decides what `ctx.fetch` auth injects. */
       type?: string
       allowedDomains?: string[]
+      /**
+       * Set by the domain grant (egress-grants.ts `withDomainGrant`): the
+       * connection declared hosts and none is granted, so its credential goes
+       * nowhere (never read as "a connection that names no host").
+       */
+      noGrantedHost?: boolean
       credentialFields?: Array<{ name: string; type?: string; readable?: boolean }>
       /**
        * Config keys naming an ENCRYPTED connection secret in `apps.config` — the

@@ -172,3 +172,6 @@ Muted conversations, Unmute, Channels that notify you of every message, Mentions
 On call edited by admins, admins by default -> apps/web/src/modules/settings/notification-settings/OnCallSection.tsx:70 ; apps/api/src/modules/notifications/on-call.ts:25
 Channel on System -> apps/web/src/modules/settings/SystemSettings.tsx:78
 Managed Everything stored (estimate): nightly, warns once per crossing, never blocks, not on self-hosted -> apps/api/src/modules/cloud/storage-estimate.ts ; apps/web/src/modules/settings/OrgUsageSection.tsx
+Outbound access on an installed app's App store page: Allowed, Waiting for approval, Revoke, Allow, Every host it declares -> apps/web/src/modules/settings/app-store/OutboundAccessSection.tsx:68 ; packages/shared/src/i18n/locales/en/kernel.json
+Install from a URL lists the hosts; an upgrade its new ones -> apps/web/src/modules/settings/InstallAppDialog.tsx ; apps/api/src/modules/apps/install-routes.ts:418
+Operator for a server-wide app, the org admin for its own app; holds from the next run -> apps/api/src/modules/apps/install-routes.ts:653 ; apps/api/src/modules/apps/install-routes.ts:673

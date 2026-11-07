@@ -2867,7 +2867,9 @@
     "mergeImportedDone": "{{placeholder}} is now linked to {{name}}",
     "mergeImportedFailed": "Could not link this imported user",
     "connectionsIntro": "The AI clients connected to Liaison, and the MCP servers you connect for yourself.",
-    "connectionsClients": "Clients connected to Liaison"
+    "connectionsClients": "Clients connected to Liaison",
+    "requestedOutboundDomains": "Hosts this app can reach (granted by installing)",
+    "newOutboundDomains": "New hosts this version can reach (granted by upgrading)"
   },
   "settingsPage": {
     "unsupported": "This setting needs a newer version of Liaison. Update Liaison to change it.",
@@ -6024,7 +6026,16 @@
     "failedManifestInvalid": "Its manifest is invalid.",
     "failedRegistration": "The server could not load it.",
     "loadFailed": "The workspace's apps could not be loaded.",
-    "retry": "Try again"
+    "retry": "Try again",
+    "outboundAccess": "Outbound access",
+    "outboundAccessHint": "The hosts this app's code may reach. A host waiting for approval stays blocked until an admin allows it.",
+    "outboundAllHosts": "Every host it declares (installed before hosts were approved one by one).",
+    "outboundNone": "This app reaches no outside host.",
+    "outboundGranted": "Allowed",
+    "outboundPending": "Waiting for approval",
+    "outboundRevoke": "Revoke",
+    "outboundAllow": "Allow",
+    "outboundChangeFailed": "The change was not saved: {{message}}"
   },
   "appManagement": {
     "management": "{{name}} management",

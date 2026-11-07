@@ -194,6 +194,8 @@ Each app the workspace has on shows how it runs in **Settings › App store**: *
 
 Each app's page in **Settings › App store** names its **Publisher**, including an app installed from a URL without a listing (it reads **Unlisted**, with the publisher its package declares). The publisher of an app from outside Liaison is what its package says, so it reads **(self-declared)**. An app from outside Liaison cannot install under the name or label of a built-in app or of a Liaison page such as **Settings** or **Security**, even spelled with look-alike letters, nor name Liaison as its publisher: the install is refused and says which name is taken.
 
+An installed app's page in **Settings › App store** also shows its **Outbound access**: the hosts its code may reach under **Allowed**, and hosts a new version declares under **Waiting for approval**, which stay blocked until an admin allows them. Installing an app from a URL lists the hosts it asks for, and an upgrade lists its new ones; confirming grants them. The server operator (for an app installed for the whole server) or your organization's admin (for your organization's own app) can **Revoke** a host or **Allow** a waiting one; the change holds from the app's next run. An app installed before hosts were approved one by one reads **Every host it declares**.
+
 An app's page with changes you have not saved asks before you leave it, and before the desktop app reloads or other tabs close.
 
 In a desktop or phone app older than the server, a setting the app cannot show yet says **This setting needs a newer version of Liaison. Update Liaison to change it.** Update the app, or change it from the browser.

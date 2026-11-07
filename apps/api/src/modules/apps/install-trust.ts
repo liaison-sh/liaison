@@ -36,6 +36,8 @@ export interface InstallTrust {
   grantedScopes: string[]
   /** null = grandfathered install (pre-dates capability grants): all declared. */
   grantedCapabilities: string[] | null
+  /** The outbound domains granted (egress-grants.ts); null = grandfathered (all declared). */
+  grantedDomains: string[] | null
 }
 
 const TTL_MS = 5_000
@@ -60,6 +62,7 @@ const IN_TREE: InstallTrust = {
   uiTrust: "first-party",
   grantedScopes: [],
   grantedCapabilities: null,
+  grantedDomains: null,
 }
 
 export async function getInstallTrust(name: string): Promise<InstallTrust> {
@@ -98,6 +101,7 @@ async function loadInstallTrust(name: string): Promise<InstallTrust> {
       uiTrust: null,
       grantedScopes: [],
       grantedCapabilities: [],
+      grantedDomains: [],
     }
   }
   const row = found.row
@@ -127,5 +131,6 @@ async function loadInstallTrust(name: string): Promise<InstallTrust> {
     uiTrust,
     grantedScopes: row.grantedScopes,
     grantedCapabilities: row.grantedCapabilities ?? null,
+    grantedDomains: row.grantedDomains ?? null,
   }
 }

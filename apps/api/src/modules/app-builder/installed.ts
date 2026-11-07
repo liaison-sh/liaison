@@ -22,6 +22,7 @@ import { appDocuments, appDocumentUsage, auditLog } from "~/db/schema/kernel"
 import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
 import { rootLogger } from "~/lib/logger"
 import { readInstalledManifest } from "~/modules/apps/activation"
+import { declaredDomains } from "~/modules/apps/egress-grants"
 import { writeAuditLog } from "~/modules/audit/service"
 import { sweepSkippingMoving } from "~/modules/org/transfer-state/skip-moving"
 
@@ -39,6 +40,8 @@ export interface ActiveCustomApp {
   grantedConnections: string[]
   grantedCapabilities: string[]
   grantedCrossAppCalls: string[]
+  /** The outbound domains granted; a grandfathered row (NULL) reads as what its manifest declares. */
+  grantedDomains: string[]
   /** The active version's manifest as installed, or null when this process cannot read it. */
   manifest: Record<string, unknown> | null
 }
@@ -58,6 +61,7 @@ export async function activeCustomApp(
         grantedConnections: appsInstalled.grantedConnections,
         grantedCapabilities: appsInstalled.grantedCapabilities,
         grantedCrossAppCalls: appsInstalled.grantedCrossAppCalls,
+        grantedDomains: appsInstalled.grantedDomains,
       })
       .from(appsActiveVersion)
       .innerJoin(
@@ -71,6 +75,7 @@ export async function activeCustomApp(
       .limit(1),
   )
   if (!row) return null
+  const manifest = readInstalledManifest(name, row.version)
   return {
     name,
     version: row.version,
@@ -80,7 +85,8 @@ export async function activeCustomApp(
     grantedConnections: row.grantedConnections ?? [],
     grantedCapabilities: row.grantedCapabilities ?? [],
     grantedCrossAppCalls: row.grantedCrossAppCalls ?? [],
-    manifest: readInstalledManifest(name, row.version),
+    grantedDomains: row.grantedDomains ?? declaredDomains(manifest ?? {}),
+    manifest,
   }
 }
 

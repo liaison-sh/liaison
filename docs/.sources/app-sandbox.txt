@@ -75,3 +75,9 @@ Every role uses the Workers executor; isolates call back on LIAISON_APP_BRIDGE_B
 The run id names the process that started the run -> apps/api/src/modules/apps/workers/run-registry.ts:127 ; apps/api/src/infra/instance-id.ts:17-24
 A call for another process's run: token checked first, then forwarded over the internal listener, answered as on the owner -> apps/api/src/modules/apps/workers/bridge-route.ts:65 ; apps/api/src/modules/apps/workers/bridge-forward.ts:243 ; apps/api/src/modules/apps/workers/bridge-forward.ts:372 ; apps/api/src/modules/apps/workers/run-token.ts:50-62
 Owner gone: 410 run_owner_gone -> apps/api/src/modules/apps/workers/bridge-forward.ts:266
+Egress needs declared AND granted; one place for fetch, import from URL, bulk and credentials -> apps/api/src/modules/apps/sandbox/bridge/context.ts:85 ; apps/api/src/modules/apps/sandbox/bridge/context.ts:511 ; apps/api/src/modules/apps/egress-grants.ts:183
+Install consents to every declared domain; upgrade to newDomains, apply takes grantedDomains -> apps/api/src/modules/apps/egress-grants.ts:109 ; apps/api/src/modules/apps/install-routes.ts:479 ; apps/api/src/modules/apps/install-service.ts:1135
+Catalog artifacts and trusted-publisher packages granted every declared domain -> apps/api/src/modules/apps/install-service.ts:871 ; apps/api/src/modules/apps/install-service.ts:1235
+Installed before the column: every declared domain (NULL) -> apps/api/src/modules/apps/egress-grants.ts:58 ; apps/api/src/db/migrations/0281_apps_installed_granted_domains.sql:17
+A connection with every host revoked sends its credential nowhere -> apps/api/src/modules/apps/sandbox/bridge/fetch-auth.ts:197
+POST /api/apps/<app>/outbound grant/revoke, operator or owning org admin; next run, few seconds elsewhere -> apps/api/src/modules/apps/install-routes.ts:673 ; apps/api/src/modules/apps/install-routes.ts:717 ; apps/api/src/modules/apps/install-trust.ts:43

@@ -28,6 +28,11 @@ export interface CustomAppPackage extends CustomAppRef {
   grantedConnections: string[]
   grantedCapabilities: string[]
   grantedCrossAppCalls: string[]
+  /**
+   * The outbound domains granted; null = grandfathered (every declared one).
+   * Absent from a source on an older release: the same as null.
+   */
+  grantedDomains?: string[] | null
   approveUiFullAccess: boolean
 }
 
@@ -46,11 +51,13 @@ export async function readCustomAppPackages(
       granted_connections: string[]
       granted_capabilities: string[] | null
       granted_cross_app_calls: string[] | null
+      granted_domains: string[] | null
       ui: boolean
     }>(
       sql,
       `SELECT installed_by::text, granted_scopes, granted_connections, granted_capabilities,
-              granted_cross_app_calls, ui_full_access_approved_by IS NOT NULL AS ui
+              granted_cross_app_calls, granted_domains,
+              ui_full_access_approved_by IS NOT NULL AS ui
          FROM kernel.apps_installed WHERE name = $1 AND version = $2`,
       [app.name, app.version],
     )
@@ -71,6 +78,7 @@ export async function readCustomAppPackages(
       grantedConnections: row.granted_connections,
       grantedCapabilities: row.granted_capabilities ?? [],
       grantedCrossAppCalls: row.granted_cross_app_calls ?? [],
+      grantedDomains: row.granted_domains ?? null,
       approveUiFullAccess: row.ui,
     })
   }
@@ -102,6 +110,8 @@ export async function installCustomAppPackages(
         grantedConnections: p.grantedConnections,
         grantedCapabilities: p.grantedCapabilities,
         grantedCrossAppCalls: p.grantedCrossAppCalls,
+        // The source's grant as is; a grandfathered one stays every declared domain.
+        ...(Array.isArray(p.grantedDomains) ? { recordedDomains: p.grantedDomains } : {}),
         approveUiFullAccess: p.approveUiFullAccess,
         requireSignature: false,
         sourceUrl: `transfer:${transferId}`,

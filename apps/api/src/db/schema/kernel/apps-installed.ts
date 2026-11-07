@@ -55,6 +55,9 @@ export const appsInstalled = kernel.table(
     grantedCapabilities: text("granted_capabilities").array(),
     // The cross_app_calls targets (`app:tool`) the admin approved. NULL = grandfathered.
     grantedCrossAppCalls: text("granted_cross_app_calls").array(),
+    // The outbound domains (network + connections) consented to (0281,
+    // modules/apps/egress-grants.ts). NULL = grandfathered: every declared domain.
+    grantedDomains: text("granted_domains").array(),
     // The admin's recorded approval that this app's interface (ui.js) runs in the
     // web origin with the user's full session. Not needed for first-party or
     // trusted-publisher-signed installs.

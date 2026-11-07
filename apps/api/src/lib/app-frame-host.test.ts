@@ -168,3 +168,20 @@ describe("boot checks", () => {
     expect(notFirst.refuse.join(" ")).toContain("must start its host")
   })
 })
+
+describe("the frame policy's images", () => {
+  it("adds the manifest's https image hosts and nothing else", async () => {
+    const { appFramePolicy } = await import("@liaison/shared")
+    const policy = appFramePolicy("n", {
+      imgSources: [
+        "https://cdn.shopify.com",
+        "https://*.example.com",
+        "http://x.test",
+        "*",
+        "'unsafe-inline'",
+      ],
+    })
+    expect(policy).toContain("img-src data: blob: https://cdn.shopify.com https://*.example.com;")
+    expect(appFramePolicy("n")).toContain("img-src data: blob:;")
+  })
+})

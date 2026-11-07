@@ -8,6 +8,10 @@
  * by the generator and intentionally absent here.
  */
 export const FR: Record<string, string> = {
+  "Routine {{name}} finished: 1 draft waits for a person":
+    "La routine {{name}} est terminée : 1 brouillon attend une personne",
+  "Routine {{name}} finished: {{count}} drafts wait for a person":
+    "La routine {{name}} est terminée : {{count}} brouillons attendent une personne",
   "Send a new code in {{seconds}} s": "Envoyer un nouveau code dans {{seconds}} s",
   "We sent a new 6-digit code to {{email}}. It expires in 10 minutes.":
     "Nous avons envoy\u00e9 un nouveau code \u00e0 6 chiffres \u00e0 {{email}}. Il expire dans 10 minutes.",

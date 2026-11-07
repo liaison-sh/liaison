@@ -3120,6 +3120,8 @@
     "routineReportRunLink": "Voir l'exécution complète",
     "routineRunRunning": "La routine {{name}} est en cours",
     "routineRunSucceeded": "La routine {{name}} est terminée",
+    "routineRunSucceededDraftWaiting": "La routine {{name}} est terminée : 1 brouillon attend une personne",
+    "routineRunSucceededDraftsWaiting": "La routine {{name}} est terminée : {{count}} brouillons attendent une personne",
     "routineRunFailed": "La routine {{name}} n'a pas abouti",
     "routineRunWaitingApproval": "La routine {{name}} attend une approbation",
     "reactWith": "Réagir avec {{emoji}}",

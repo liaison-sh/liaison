@@ -3123,6 +3123,8 @@
     "routineReportRunLink": "See the full run",
     "routineRunRunning": "Routine {{name}} is running",
     "routineRunSucceeded": "Routine {{name}} finished",
+    "routineRunSucceededDraftWaiting": "Routine {{name}} finished: 1 draft waits for a person",
+    "routineRunSucceededDraftsWaiting": "Routine {{name}} finished: {{count}} drafts wait for a person",
     "routineRunFailed": "Routine {{name}} did not finish",
     "routineRunWaitingApproval": "Routine {{name}} is waiting for an approval",
     "reactWith": "React with {{emoji}}",

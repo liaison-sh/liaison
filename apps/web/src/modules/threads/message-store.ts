@@ -144,6 +144,8 @@ export interface MessageMetadata {
     runKey: string
     /** `waiting_approval`: the run paused on a gated call and resumes once it is decided. */
     status: "running" | "waiting_approval" | "succeeded" | "failed"
+    /** A follow-up run that ended with drafts still waiting for a person: how many. */
+    draftsWaiting?: number
   }
   /** §1.4.5 — discriminator for sub-agent dispatch cards. When `"sub_run"`,
    *  the renderer dispatches to `SubRunCard` and `subRun` carries the live state. */

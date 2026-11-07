@@ -443,6 +443,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/mention-turn-roles.test.ts",
             // The agent opens a tab: every record kind, under the real row policies.
             "src/tests/integration/open-any-tab.test.ts",
+            // A dashboard block's cache on the real Redis (hit, refresh limit, TTL cap).
+            "src/tests/integration/dashboards-block-cache.test.ts",
             // 2a/2b's chat-turn integration tests landed listed by no suite, so
             // the scope-taint and effective-scope oracles ran nowhere.
             // scripts/test-run.suites.test.ts was red on all three.

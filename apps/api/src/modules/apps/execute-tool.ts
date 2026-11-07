@@ -300,10 +300,17 @@ function validateSingleResult(item: unknown, schema: Record<string, string>): bo
 //                    because a user clicked anything). Distinct from
 //                    "in-app-agent" so a cron-driven mutation is not
 //                    misattributed to an agent that never ran.
+//   "dashboard"    - a dashboard block's source, run for the person VIEWING it
+//                    (modules/dashboards/execute.ts). Gated like "in-app-agent",
+//                    except that it never parks: a call that would need an
+//                    approval (or the outside-content hold) is refused with
+//                    `not_allowed`, so a page view never leaves a card behind and
+//                    a click on a dashboard is never anyone's approval. The run
+//                    is always read-only, whatever the tool declares.
 // Required (not optional) on every call into the core so a call site that
 // forgets to set it fails the TypeScript build instead of silently being
 // treated as a human click.
-export type ToolOrigin = "human-ui" | "in-app-agent" | "mcp" | "system"
+export type ToolOrigin = "human-ui" | "in-app-agent" | "mcp" | "system" | "dashboard"
 
 interface ExecuteToolParams {
   toolName: string // "appName:toolName" format
@@ -2958,6 +2965,8 @@ export async function executeToolHandler(
      * declared target.
      */
     humanAuthorized?: boolean
+    /** The run may only read (see RpcBridgeOptions.readOnlyRunOverride). */
+    readOnlyRunOverride?: boolean
     /** See ExecuteToolParams.signal. */
     signal?: AbortSignal
     /**
@@ -3193,7 +3202,7 @@ export async function executeToolHandler(
       ? "mcp"
       : bridgeOptions?.origin === "in-app-agent"
         ? "agent"
-        : bridgeOptions?.origin === "system"
+        : bridgeOptions?.origin === "system" || bridgeOptions?.origin === "dashboard"
           ? "user" // no human, no agent, no MCP client; DB constraint has no 'system' bucket here
           : "user" // "human-ui" or genuinely undefined: a direct call, the human IS the author
   const approverUserId = approvalContext ? approvalContext.approvalDeciderId : null
@@ -3485,6 +3494,39 @@ async function approvalOwnedBy(
   return extractRows(rows).length > 0
 }
 
+/**
+ * Why a tool may not feed a dashboard block, from its declaration, or null for a plain read.
+ * modules/dashboards/sources.ts asks the same question before a run; it is asked again here so
+ * the `dashboard` origin cannot be used to run anything that is not one.
+ */
+export function dashboardSourceRefusal(
+  tool: NonNullable<ReturnType<typeof toolRegistry.get>>,
+): string | null {
+  if (tool.readOnly !== true || typeof tool.writesToTable === "string") return "it is not a read"
+  if (tool.gated || tool.conditionalGate || tool.gatedWhen) return "it needs an approval"
+  if (tool.externalEffect) return "it acts outside Liaison"
+  if (tool.contractOnly) return "it is reached only through a provider contract"
+  if (tool.agentVisible === false) return "it is not offered to agents"
+  if (tool.requiresHumanTurn) return "it runs only on a person's own turn"
+  if (tool.trustBoundary) return "it crosses a trust boundary"
+  if (tool.routineOnly || tool.requiresAgentExecutionThread)
+    return "it runs only inside an agent run"
+  if (tool.searchResultUrlParam !== undefined || tool.outboundWebRead) return "it reads the web"
+  return null
+}
+
+/** The refusal a dashboard block gets in place of an approval or a non-read. */
+export const DASHBOARD_NOT_ALLOWED_CODE = "not_allowed"
+
+function dashboardNotAllowed(toolName: string, reason: string): ExecuteToolError {
+  return {
+    code: DASHBOARD_NOT_ALLOWED_CODE,
+    message: `${toolName} cannot run on a dashboard: ${reason}`,
+    retryable: false,
+    status: 403,
+  }
+}
+
 export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<ExecuteToolEnvelope> {
   const callChain = opts.callChain ?? []
   // A non-empty INCOMING chain means this dispatch was made from inside another
@@ -3616,7 +3658,13 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // a write. What the marker still decides is which TARGET is a read, exactly as
   // the rerun's catalog decides it, and an undeclared target counts as a write,
   // so this fails closed.
-  if (opts.readOnlyRun === true || captureReadOnlyRun()) {
+  // A dashboard block runs only a plain read: its declaration is checked here too, so a
+  // caller other than the dashboard module cannot use the origin to run anything else.
+  if (opts.origin === "dashboard") {
+    const refusal = dashboardSourceRefusal(tool)
+    if (refusal) return { error: dashboardNotAllowed(opts.toolName, refusal) }
+  }
+  if (opts.readOnlyRun === true || opts.origin === "dashboard" || captureReadOnlyRun()) {
     const blocked = checkReadOnlyRun(tool)
     if (blocked) {
       log.warn(
@@ -4837,6 +4885,11 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     const refusal = await noTaintDeciderRefusal(taintForcedApprovalScopes)
     if (refusal) return refusal
   }
+  // A dashboard block never parks: held for outside content, it is refused instead.
+  if (opts.origin === "dashboard" && taintEscalated) {
+    if (idemKey) await invalidateIdempotency(opts.orgId, opts.toolName, idemKey)
+    return { error: dashboardNotAllowed(opts.toolName, "the conversation holds outside content") }
+  }
   // Set only inside the threaded branch above; `opts.threadId` narrows for the row below.
   if (taintEscalated && opts.threadId) {
     // A write the taint let through, held for its outside content: decided by a holder of the
@@ -4979,6 +5032,12 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // branch below), never executed inline against an unresolved placeholder.
   // A tainted gated write that passed its audience check is ALWAYS parked: an auto-approve
   // policy or a capability grant must not turn it into an inline write from a tainted turn.
+  // A dashboard block never parks an approval, and no policy waves one through for it:
+  // whatever would gate the call refuses it (`not_allowed` for that block only).
+  if (opts.origin === "dashboard" && (effectiveGated || mustSequence)) {
+    if (idemKey) await invalidateIdempotency(opts.orgId, opts.toolName, idemKey)
+    return { error: dashboardNotAllowed(opts.toolName, "it needs an approval") }
+  }
   if ((effectiveGated || mustSequence) && (!skipGate || taintForcedApprovalScopes !== null)) {
     let effectiveThreadId = opts.threadId
     let autoCreatedApprovalId: string | undefined
@@ -5404,6 +5463,12 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
             actor: actorForRls,
             threadId: opts.threadId,
             origin: opts.origin, // propagate MCP/in-app-agent attribution (main handler site)
+            // A read-only run forwarded by a caller (a dashboard block, a hop that lost the
+            // frame) reaches the sandbox bridge as well: its writes are refused there, which
+            // is what holds against a manifest that marks a writing tool readOnly.
+            ...(opts.readOnlyRun === true || opts.origin === "dashboard"
+              ? { readOnlyRunOverride: true }
+              : {}),
             // The gate-relevant half of "a human authorized this": a direct
             // human-UI call whose user ALSO holds the approve scope (the same
             // pair computeSkipGate's human-UI bypass requires). Only that pair

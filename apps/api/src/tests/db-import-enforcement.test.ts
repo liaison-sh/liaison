@@ -628,6 +628,12 @@ describe("db import enforcement", () => {
     // A template preview is staged for the caller like a merged PDF (pdf/merge.ts): the quota
     // check and the file row run under a privileged tx pinned to the caller's org.
     "modules/documents/preview.ts",
+    // Dashboards: a block run's audit row is written in its own privileged tx pinned to the
+    // viewer's org (the block's reads ran under the viewer's RLS session, which may be
+    // read-only); the tool gate reads only a saved dashboard's visibility, pinned to the
+    // caller's org, before the handler's RLS session exists (personal vs org approval).
+    "modules/dashboards/execute.ts",
+    "modules/dashboards/tools.ts",
     "modules/pdf/registry-rehydrate.ts",
     // Message post exposes a `privileged` capability to handlers — system-level
     // writes scoped by org via withPrivilegedDb.

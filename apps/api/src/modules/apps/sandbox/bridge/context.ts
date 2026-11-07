@@ -126,7 +126,7 @@ export type RpcBridgeOptions = {
   taintState?: { taintedSources: string[] }
   actor?: ActorContext
   threadId?: string
-  origin?: "in-app-agent" | "mcp" | "human-ui" | "system"
+  origin?: "in-app-agent" | "mcp" | "human-ui" | "system" | "dashboard"
   /**
    * The DECLARED cross-app caller (execute-tool.ts internalCall.callerApp) when
    * this bridge serves an app-to-app ctx.executeTool dispatch — undefined for a

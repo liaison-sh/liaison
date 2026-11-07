@@ -503,6 +503,27 @@ export const KERNEL_USER_COLUMN_DISPOSITION: Record<string, KernelColumnDisposit
     reason:
       "delete personal views (CHECK chk_owner_or_default forbids a NULL owner on non-default views) / anonymize → NULL only on org-shared DEFAULT views the CHECK allows to be ownerless",
   },
+  "dashboards.owner_user_id": {
+    kind: "handled",
+    reason:
+      "delete personal dashboards (CHECK dashboards_owner_check forbids a NULL owner on a personal one) / anonymize → NULL on org dashboards (org content, kept ownerless)",
+  },
+  "dashboards.created_by": {
+    kind: "handled",
+    reason: "anonymize → NULL (creator attribution on a surviving org dashboard)",
+  },
+  "dashboards.updated_by": {
+    kind: "handled",
+    reason: "anonymize → NULL (last-editor attribution on a surviving org dashboard)",
+  },
+  "app_documents.created_by": {
+    kind: "handled",
+    reason: "anonymize → NULL (creator attribution; the document is org data)",
+  },
+  "app_documents.updated_by": {
+    kind: "handled",
+    reason: "anonymize → NULL (last-writer attribution; the document is org data)",
+  },
   // ── RETAIN: rows that must legally/operationally survive WITH the user id ───
   "audit_log.actor_id": {
     kind: "retain",
@@ -1282,6 +1303,29 @@ export async function eraseUser(
         UPDATE ${K}.saved_views SET owner_user_id = NULL
         WHERE owner_user_id = ${userId}
           AND is_default AND shared_with_org
+      `)
+      // dashboards carries CHECK dashboards_owner_check (owner or org-visible):
+      // the erased user's personal dashboards are theirs alone → DELETE; an
+      // org dashboard is org content → keep it, ownerless. Author columns of
+      // both dashboards and app store documents lose the link.
+      await tx.execute(drizzleSql`
+        DELETE FROM ${K}.dashboards
+        WHERE owner_user_id = ${userId} AND visibility = 'personal'
+      `)
+      await tx.execute(drizzleSql`
+        UPDATE ${K}.dashboards SET owner_user_id = NULL WHERE owner_user_id = ${userId}
+      `)
+      await tx.execute(drizzleSql`
+        UPDATE ${K}.dashboards SET created_by = NULL WHERE created_by = ${userId}
+      `)
+      await tx.execute(drizzleSql`
+        UPDATE ${K}.dashboards SET updated_by = NULL WHERE updated_by = ${userId}
+      `)
+      await tx.execute(drizzleSql`
+        UPDATE ${K}.app_documents SET created_by = NULL WHERE created_by = ${userId}
+      `)
+      await tx.execute(drizzleSql`
+        UPDATE ${K}.app_documents SET updated_by = NULL WHERE updated_by = ${userId}
       `)
       await tx.execute(drizzleSql`
         UPDATE ${K}.auto_approve_policies SET created_by = NULL WHERE created_by = ${userId}

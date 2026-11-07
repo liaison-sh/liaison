@@ -17,6 +17,7 @@ import { memorySearch, parseTimeWindow } from "~/modules/agent/memory/memory-sea
 import { ExternalSearchHandlersTestAccess } from "~/modules/search/external-handlers"
 import {
   type Embedder,
+  isWindowAnchor,
   MessageIndexerTestAccess,
   processMessageIndexerJob,
 } from "~/modules/search/message-indexer"
@@ -111,8 +112,22 @@ function search(
   )
 }
 
+/**
+ * A message id that never anchors a sliding window. An anchor's window quotes
+ * the messages before it, and a window hit is reported as its anchor, so a
+ * reworded message that happened to anchor one (one id in four) would carry
+ * its neighbours' words ("our", "is") into the keyword legs. The claim below
+ * is about the message's OWN words, so its id is drawn until it anchors none.
+ */
+function nonAnchorId(): string {
+  for (;;) {
+    const id = crypto.randomUUID()
+    if (!isWindowAnchor(id)) return id
+  }
+}
+
 /** The ids of the messages in the corpus, so assertions can name them. */
-const REWORDED_ID = crypto.randomUUID()
+const REWORDED_ID = nonAnchorId()
 const NOISE_ID = crypto.randomUUID()
 const STALE_ID = crypto.randomUUID()
 const IN_WEEK_ID = crypto.randomUUID()

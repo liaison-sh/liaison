@@ -1,0 +1,251 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// Running one dashboard block for the person VIEWING it: their scopes, their
+// dimension grants, their RLS. Never the author's: a viewer who may not call a
+// block's tool sees `no_access` for that block, and the other blocks render.
+//
+// A tool source runs through the tool core with origin "dashboard" on a
+// READ-ONLY run (execute-tool.ts): a call that would need an approval is
+// refused (`not_allowed`), never parked, and the sandbox bridge refuses every
+// write, so a manifest that marks a writing tool readOnly gets nothing out of a
+// view. Its eligibility (sources.ts) is checked again here, before every run.
+// ctx.fetch stays callable on a read-only run (the bridge's known bound): an
+// app's outbound POST is not stopped by this layer.
+//
+// A store source reads a declared, agent-readable collection under the
+// viewer's RLS, with the declared read scope.
+//
+// Every run writes one audit row (`dashboard.block_run`) naming the dashboard
+// and the block.
+
+import { APP_DISABLED_CODE } from "@liaison/shared"
+import { withPrivilegedDb } from "~/db/privileged"
+import { type UserContext, withRlsContext } from "~/db/rls"
+import { rootLogger } from "~/lib/logger"
+import { READ_ONLY_RUN_BLOCKED_CODE } from "~/modules/agent/runtime/read-only-run"
+import {
+  currentRunContext,
+  type RunContext,
+  runContextStore,
+} from "~/modules/agent/runtime/run-context"
+import { DASHBOARD_NOT_ALLOWED_CODE, executeToolCore } from "~/modules/apps/execute-tool"
+import { writeAuditLog } from "~/modules/audit/service"
+import {
+  checkStoreSource,
+  checkToolSource,
+  type SourceRefusalCode,
+} from "~/modules/dashboards/sources"
+import {
+  type DashboardBlock,
+  MAX_SOURCE_ROWS,
+  type StoreSource,
+  type ToolSource,
+} from "~/modules/dashboards/spec"
+import {
+  type BlockData,
+  extractRows,
+  TransformError,
+  transformBlock,
+  unfenceSourceResult,
+} from "~/modules/dashboards/transform"
+import { DataStoreError, queryDocuments } from "~/modules/data-store/service"
+
+const log = rootLogger.child({ module: "dashboards-execute" })
+
+/** Pages a tool source is read for, when it answers with a cursor. */
+export const MAX_SOURCE_PAGES = 10
+
+export type BlockErrorCode = SourceRefusalCode | "source_failed" | "invalid_map" | "rate_limited"
+
+export type BlockOutcome =
+  | { ok: true; data: BlockData }
+  | { ok: false; error: BlockErrorCode; message: string }
+
+export interface BlockRunContext {
+  viewer: UserContext
+  /** The saved dashboard, or null for a preview. */
+  dashboardId: string | null
+  /** The conversation a preview runs in: a source's outside text marks it, as a direct read would. */
+  threadId?: string
+  signal?: AbortSignal
+}
+
+const fail = (error: BlockErrorCode, message: string): BlockOutcome => ({
+  ok: false,
+  error,
+  message,
+})
+
+/** The run frame a block's source runs in: read-only, and the calling turn's own when there is one. */
+function readOnlyFrame(runId: string): RunContext {
+  const parent = currentRunContext()
+  if (parent) return { ...parent, readOnlyTools: true }
+  return { runId, parentRunId: null, rootRunId: runId, nestingDepth: 0, readOnlyTools: true }
+}
+
+function errorCodeFor(code: string): BlockErrorCode {
+  if (code === "forbidden") return "no_access"
+  if (code === "tool_not_found") return "unknown_tool"
+  if (
+    code === DASHBOARD_NOT_ALLOWED_CODE ||
+    code === READ_ONLY_RUN_BLOCKED_CODE ||
+    code === APP_DISABLED_CODE
+  ) {
+    return "not_allowed"
+  }
+  return "source_failed"
+}
+
+function nextCursorOf(result: unknown): string | null {
+  if (!result || typeof result !== "object" || Array.isArray(result)) return null
+  const r = result as Record<string, unknown>
+  const c = r.nextCursor ?? r.next_cursor
+  return typeof c === "string" && c !== "" ? c : null
+}
+
+async function readToolSource(source: ToolSource, ctx: BlockRunContext, runId: string) {
+  const viewer = ctx.viewer
+  const check = await checkToolSource(viewer.orgId, source.tool, viewer)
+  if (!check.ok) return { outcome: fail(check.code, check.message) }
+  const frame = readOnlyFrame(runId)
+  // The calling turn read what this source reads (a preview in a conversation).
+  currentRunContext()?.turnScopeAccumulator?.record(check.tool)
+
+  const rows: Record<string, unknown>[] = []
+  let cursor: string | null = null
+  const seen = new Set<string>()
+  for (let page = 0; page < MAX_SOURCE_PAGES; page++) {
+    const params = cursor ? { ...source.params, cursor } : source.params
+    const envelope = await runContextStore.run(frame, () =>
+      executeToolCore({
+        toolName: source.tool,
+        orgId: viewer.orgId,
+        actor: viewer,
+        params,
+        origin: "dashboard",
+        readOnlyRun: true,
+        ...(ctx.threadId ? { threadId: ctx.threadId } : {}),
+        ...(ctx.signal ? { signal: ctx.signal } : {}),
+      }),
+    )
+    if ("error" in envelope) {
+      const code = errorCodeFor(envelope.error.code)
+      if (code === "source_failed") {
+        log.warn(
+          {
+            tool: source.tool,
+            code: envelope.error.code,
+            message: envelope.error.message,
+            dashboardId: ctx.dashboardId,
+          },
+          "dashboard block source failed",
+        )
+      }
+      return { outcome: fail(code, envelope.error.message) }
+    }
+    if ("blocked" in envelope) {
+      return {
+        outcome: fail(
+          "not_allowed",
+          `${source.tool} needs an approval and cannot run on a dashboard`,
+        ),
+      }
+    }
+    const result = unfenceSourceResult(envelope.data)
+    const { rows: pageRows } = extractRows(result, source.rowsPath)
+    if (!pageRows) return { result }
+    rows.push(...pageRows)
+    cursor = nextCursorOf(result)
+    if (!cursor || seen.has(cursor) || rows.length >= MAX_SOURCE_ROWS) break
+    seen.add(cursor)
+  }
+  return { result: rows, paged: true }
+}
+
+async function readStoreSource(source: StoreSource, ctx: BlockRunContext) {
+  const viewer = ctx.viewer
+  const check = await checkStoreSource(viewer.orgId, source.app, source.collection, viewer)
+  if (!check.ok) return { outcome: fail(check.code, check.message) }
+  currentRunContext()?.turnScopeAccumulator?.recordInjected([check.declared.readScope])
+  const caller = { orgId: viewer.orgId, app: source.app, userId: viewer.userId }
+  const rows: Record<string, unknown>[] = []
+  try {
+    let cursor: string | undefined = (source.query as { cursor?: string }).cursor
+    for (let page = 0; page < MAX_SOURCE_PAGES; page++) {
+      const query = { ...source.query, ...(cursor ? { cursor } : {}) }
+      const res = await withRlsContext(viewer, (tx) =>
+        queryDocuments(tx, caller, source.collection, query),
+      )
+      for (const doc of res.items) rows.push({ ...doc.data, id: doc.id, updated_at: doc.updatedAt })
+      if (!res.nextCursor || rows.length >= MAX_SOURCE_ROWS) break
+      cursor = res.nextCursor
+    }
+  } catch (err) {
+    if (err instanceof DataStoreError)
+      return { outcome: fail("source_failed", `${err.code}: ${err.message}`) }
+    throw err
+  }
+  return { result: rows }
+}
+
+async function auditRun(ctx: BlockRunContext, block: DashboardBlock, outcome: BlockOutcome) {
+  const source =
+    block.source.kind === "tool"
+      ? block.source.tool
+      : `store:${block.source.app}/${block.source.collection}`
+  try {
+    await withPrivilegedDb(ctx.viewer.orgId, "dashboard-block-audit", (tx) =>
+      writeAuditLog(tx, {
+        orgId: ctx.viewer.orgId,
+        actorId: ctx.viewer.userId,
+        actorType: "user",
+        app: "kernel",
+        entityType: "dashboard",
+        ...(ctx.dashboardId ? { entityId: ctx.dashboardId } : {}),
+        action: ctx.dashboardId ? "dashboard.block_run" : "dashboard.block_preview",
+        metadata: {
+          dashboardId: ctx.dashboardId,
+          blockId: block.id,
+          source,
+          outcome: outcome.ok ? "ok" : outcome.error,
+        },
+      }),
+    )
+  } catch (err) {
+    log.error(
+      { err, dashboardId: ctx.dashboardId, blockId: block.id },
+      "dashboard block audit row failed",
+    )
+  }
+}
+
+/** Runs one block's source as the viewer and maps it into what the chart draws. */
+export async function computeBlock(
+  block: DashboardBlock,
+  ctx: BlockRunContext,
+): Promise<BlockOutcome> {
+  let outcome: BlockOutcome
+  try {
+    const runId = `dashboard:${ctx.dashboardId ?? "preview"}:${block.id}`
+    const read =
+      block.source.kind === "tool"
+        ? await readToolSource(block.source, ctx, runId)
+        : await readStoreSource(block.source, ctx)
+    if ("outcome" in read && read.outcome) {
+      outcome = read.outcome
+    } else {
+      const paged = "paged" in read && read.paged === true
+      const rowsPath = block.source.kind === "tool" && !paged ? block.source.rowsPath : undefined
+      outcome = { ok: true, data: transformBlock(block.type, block.map, read.result, { rowsPath }) }
+    }
+  } catch (err) {
+    if (err instanceof TransformError) {
+      outcome = fail("invalid_map", err.message)
+    } else {
+      log.error({ err, dashboardId: ctx.dashboardId, blockId: block.id }, "dashboard block failed")
+      outcome = fail("source_failed", err instanceof Error ? err.message : String(err))
+    }
+  }
+  await auditRun(ctx, block, outcome)
+  return outcome
+}

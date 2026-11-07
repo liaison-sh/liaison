@@ -1508,6 +1508,16 @@ export const FR: Record<string, string> = {
     "Créer, modifier ou supprimer la mémoire d'agent de l'utilisateur",
   "Share saved views with the org": "Partager des vues enregistrées avec l'organisation",
   "Manage shared and default saved views": "Gérer les vues partagées et par défaut",
+  "Read app data store documents through the agent's data tools":
+    "Lire les documents du stockage de données des apps avec les outils de données de l'agent",
+  "Write documents in the agent's own data store namespace":
+    "Écrire des documents dans l'espace de stockage de données propre à l'agent",
+  "Create and edit your own personal dashboards":
+    "Créer et modifier vos propres tableaux de bord personnels",
+  "Create and edit dashboards shared with the org":
+    "Créer et modifier des tableaux de bord partagés avec l'organisation",
+  "Manage every dashboard shared with the org":
+    "Gérer tous les tableaux de bord partagés avec l'organisation",
   "Install, upgrade, and uninstall apps (instance operator)":
     "Installer, mettre à jour et désinstaller des applications (opérateur de l'instance)",
   "Dispatch fresh-context sub-agent runs via the spawn_agent kernel tool":
@@ -7746,4 +7756,31 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.homeRouting.awayToday": "absent aujourd'hui",
   "kernel.homeRouting.awayTodayBack": "absent aujourd'hui, de retour {{day}}",
   "kernel.homeRouting.recapTitle": "Pendant votre absence",
+  // Dashboards (P3): the dashboard tab and its blocks.
+  "kernel.nav.dashboard": "Tableau de bord",
+  "kernel.dashboards.sectionTitle": "Tableaux de bord",
+  "kernel.dashboards.visibilityPersonal": "Personnel",
+  "kernel.dashboards.visibilityOrg": "Organisation",
+  "kernel.dashboards.refreshAll": "Tout actualiser",
+  "kernel.dashboards.refreshBlock": "Actualiser ce bloc",
+  "kernel.dashboards.emptyTitle": "Ce tableau de bord n'a pas encore de bloc",
+  "kernel.dashboards.emptyHint":
+    "Demandez à votre agent d'y ajouter un graphique, un tableau ou un chiffre.",
+  "kernel.dashboards.notFound":
+    "Ce tableau de bord n'existe plus, ou il n'est pas partagé avec vous.",
+  "kernel.dashboards.loadFailed":
+    "Ce tableau de bord n'a pas pu être chargé. Réessayez dans un instant.",
+  "kernel.dashboards.noData": "Pas encore de données pour ce bloc",
+  "kernel.dashboards.noValue": "Pas encore de valeur",
+  "kernel.dashboards.blockNoAccess": "Vous n'avez pas accès aux données de ce bloc.",
+  "kernel.dashboards.blockNotAllowed":
+    "La source de ce bloc ne peut plus être affichée sur un tableau de bord.",
+  "kernel.dashboards.blockRateLimited": "Actualisé à l'instant. Réessayez dans quelques secondes.",
+  "kernel.dashboards.blockSourceError":
+    "Les données de ce bloc n'ont pas pu être lues. Réessayez plus tard.",
+  "kernel.dashboards.blockTruncated":
+    "Certaines lignes sont omises : le bloc montre les premières.",
+  "kernel.dashboards.blockNotFound": "Ce bloc n'est plus sur le tableau de bord.",
+  "kernel.dashboards.blockNetwork":
+    "Impossible de joindre le serveur pour le moment. Réessayez dans un instant.",
 }

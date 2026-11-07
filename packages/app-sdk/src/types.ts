@@ -21,6 +21,71 @@ export interface DbClient {
   count(entity: string, opts?: { where?: Record<string, unknown> }): Promise<number>
 }
 
+export type StoreScalar = string | number | boolean | null
+/** A filter on top-level fields of a document (or `doc_id`, `updated_at`). */
+export type StoreWhere = Record<
+  string,
+  | StoreScalar
+  | { in: StoreScalar[] }
+  | { gt?: number | string; gte?: number | string; lt?: number | string; lte?: number | string }
+>
+
+export interface StoreQuery {
+  where?: StoreWhere
+  orderBy?: { field: string; dir?: "asc" | "desc" }
+  /** At most 200 (default 50). */
+  limit?: number
+  /** The `nextCursor` of the previous page. */
+  cursor?: string
+}
+
+export interface StoreDocument<T = Record<string, unknown>> {
+  id: string
+  data: T
+  version: number
+  updatedAt: string
+}
+
+export interface StoreQueryResult<T = Record<string, unknown>> {
+  items: StoreDocument<T>[]
+  nextCursor: string | null
+}
+
+/**
+ * `ctx.store`: the app's own JSON documents for the organization, in named
+ * collections (`^[a-z][a-z0-9_]{0,62}$`), keyed by id (at most 200 characters).
+ * A document is a JSON object of at most 256 KiB; a collection holds at most
+ * 100,000. `ifVersion` is the version last read (0: the document must not exist
+ * yet); a mismatch rejects with `code: "version_conflict"` (status 409). Writes
+ * reject on a read-only run. Another app's collections are out of reach.
+ */
+export interface StoreClient {
+  get<T = Record<string, unknown>>(collection: string, id: string): Promise<StoreDocument<T> | null>
+  set<T = Record<string, unknown>>(
+    collection: string,
+    id: string,
+    data: T,
+    opts?: { ifVersion?: number },
+  ): Promise<StoreDocument<T>>
+  /** Shallow merge into an existing document (`not_found`, 404, when there is none). */
+  update<T = Record<string, unknown>>(
+    collection: string,
+    id: string,
+    patch: Partial<T>,
+    opts?: { ifVersion?: number },
+  ): Promise<StoreDocument<T>>
+  delete(
+    collection: string,
+    id: string,
+    opts?: { ifVersion?: number },
+  ): Promise<{ deleted: boolean }>
+  query<T = Record<string, unknown>>(
+    collection: string,
+    query?: StoreQuery,
+  ): Promise<StoreQueryResult<T>>
+  count(collection: string, where?: StoreWhere): Promise<number>
+}
+
 export interface ConnectionClient {
   getToken(identifier?: string): Promise<string>
   getAccounts(): Promise<
@@ -113,6 +178,8 @@ export interface AppContext {
   userId: string
   orgId: string
   db: DbClient
+  /** The app's data store (see {@link StoreClient}). */
+  store: StoreClient
   emit(event: {
     entity: string
     action: string

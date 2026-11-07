@@ -735,6 +735,11 @@
       "kernel:agent:memory:write": "Créer, modifier ou supprimer la mémoire d'agent de l'utilisateur",
       "kernel:saved_views:share": "Partager des vues enregistrées avec l'organisation",
       "kernel:saved_views:admin": "Gérer les vues partagées et par défaut",
+      "kernel:data:read": "Lire les documents du stockage de données des apps avec les outils de données de l'agent",
+      "kernel:data:write": "Écrire des documents dans l'espace de stockage de données propre à l'agent",
+      "kernel:dashboards:write": "Créer et modifier vos propres tableaux de bord personnels",
+      "kernel:dashboards:share": "Créer et modifier des tableaux de bord partagés avec l'organisation",
+      "kernel:dashboards:admin": "Gérer tous les tableaux de bord partagés avec l'organisation",
       "kernel:apps:admin": "Installer, mettre à jour et désinstaller des applications (opérateur de l'instance)",
       "kernel:agents:spawn": "Lancer des sous-agents dans un contexte neuf",
       "kernel:agents:admin": "Créer et supprimer des définitions de sous-agents",
@@ -1903,7 +1908,8 @@
     "kpi": "KPI",
     "groupConnectors": "Connecteurs",
     "oauthError": "La connexion au fournisseur a échoué ({{error}}). Réessayez de vous connecter.",
-    "oauthErrorWithDescription": "La connexion au fournisseur a échoué : {{description}}"
+    "oauthErrorWithDescription": "La connexion au fournisseur a échoué : {{description}}",
+    "dashboard": "Tableau de bord"
   },
   "newConversation": {
     "newChannel": "Nouveau canal",
@@ -6519,5 +6525,25 @@
     "awayToday": "absent aujourd'hui",
     "awayTodayBack": "absent aujourd'hui, de retour {{day}}",
     "recapTitle": "Pendant votre absence"
+  },
+  "dashboards": {
+    "sectionTitle": "Tableaux de bord",
+    "visibilityPersonal": "Personnel",
+    "visibilityOrg": "Organisation",
+    "refreshAll": "Tout actualiser",
+    "refreshBlock": "Actualiser ce bloc",
+    "emptyTitle": "Ce tableau de bord n'a pas encore de bloc",
+    "emptyHint": "Demandez à votre agent d'y ajouter un graphique, un tableau ou un chiffre.",
+    "notFound": "Ce tableau de bord n'existe plus, ou il n'est pas partagé avec vous.",
+    "loadFailed": "Ce tableau de bord n'a pas pu être chargé. Réessayez dans un instant.",
+    "noData": "Pas encore de données pour ce bloc",
+    "noValue": "Pas encore de valeur",
+    "blockNoAccess": "Vous n'avez pas accès aux données de ce bloc.",
+    "blockNotAllowed": "La source de ce bloc ne peut plus être affichée sur un tableau de bord.",
+    "blockRateLimited": "Actualisé à l'instant. Réessayez dans quelques secondes.",
+    "blockSourceError": "Les données de ce bloc n'ont pas pu être lues. Réessayez plus tard.",
+    "blockNotFound": "Ce bloc n'est plus sur le tableau de bord.",
+    "blockNetwork": "Impossible de joindre le serveur pour le moment. Réessayez dans un instant.",
+    "blockTruncated": "Certaines lignes sont omises : le bloc montre les premières."
   }
 }

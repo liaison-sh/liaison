@@ -367,6 +367,10 @@ export const KERNEL_RESET_RULES: Record<string, KernelResetRule> = {
   document_templates: "clear",
   // A visitor's needed-template rules (0256) go with them.
   document_template_rules: "clear",
+  // A visitor's app store documents, their counters and dashboards (0275) go.
+  app_documents: "clear",
+  app_document_usage: "clear",
+  dashboards: "clear",
   contact_segments: "clear",
   contacts: "clear",
   // Staff-marked trusted sender addresses and domains: a visitor's marks go.

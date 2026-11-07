@@ -59,6 +59,13 @@ export const USER_FK_DISPOSITION: Record<string, ReferenceDisposition> = {
   "kernel.document_template_rules.updated_by": repoint,
   "kernel.document_templates.created_by": repoint,
   "kernel.document_templates.updated_by": repoint,
+  // Who wrote an app store document, and whose dashboard it is (0275): a
+  // personal dashboard moves to the person.
+  "kernel.app_documents.created_by": repoint,
+  "kernel.app_documents.updated_by": repoint,
+  "kernel.dashboards.owner_user_id": repoint,
+  "kernel.dashboards.created_by": repoint,
+  "kernel.dashboards.updated_by": repoint,
   // Who last set a product attribute: history.
   "kernel.product_attributes.updated_by": repoint,
   // Who marked a sender address or domain as trusted: history.

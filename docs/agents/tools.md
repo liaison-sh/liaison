@@ -117,6 +117,35 @@ A mail tool that reads a private mailbox (`mail__read`, `mail__search`) asks you
 | `memory_open` | Read the messages around a search hit. | `kernel:agent:memory` | No |
 | `memory_episode` | Read one closed episode of a conversation. | `kernel:agent:memory` | No |
 
+### Data store
+
+The data store keeps JSON documents in named collections. Apps write their own collections; the agent keeps its own under the app `agent`. An app's collection can be read by these tools only when its manifest declares it readable by agents, and only by someone who holds the collection's read scope. Declared searchable collections also show up in search, to people who hold that scope.
+
+| Tool | What it does | Scope | Approval |
+| --- | --- | --- | --- |
+| `data_collections_list` | List the collections you can read, with their document counts. | `kernel:data:read` | No |
+| `data_query` | Read documents of a collection, filtered, sorted and paged. | `kernel:data:read` plus the collection's read scope | No |
+| `data_get` | Read one document by id. | `kernel:data:read` plus the collection's read scope | No |
+| `data_set` | Save a document in one of the agent's own collections. | `kernel:data:write` | No |
+| `data_update` | Change some fields of one of the agent's own documents. | `kernel:data:write` | No |
+| `data_delete` | Delete one of the agent's own documents. | `kernel:data:write` | No |
+
+The write tools never write an app's collections.
+
+### Dashboards
+
+The agent builds dashboards from read tools and data store collections, and previews every block before it saves. The kernel skill `build-dashboard` teaches it the steps and one worked block per chart type ([See your dashboards](dashboards.md)).
+
+| Tool | What it does | Scope | Approval |
+| --- | --- | --- | --- |
+| `dashboards_sources` | List the read tools you may put on a dashboard, with their params and result fields. | `kernel:dashboards:write` | No |
+| `dashboards_preview_block` | Run one block as you and return what the chart would draw; saves nothing. | `kernel:dashboards:write` | No |
+| `dashboards_list` | List the dashboards you can see. | `kernel:dashboards:write` | No |
+| `dashboards_get` | Read one dashboard and its blocks. | `kernel:dashboards:write` | No |
+| `dashboards_create` | Save a new dashboard. | `kernel:dashboards:write` | For an org dashboard (decided by `kernel:dashboards:admin`) |
+| `dashboards_update` | Change a dashboard's title, blocks or visibility. | `kernel:dashboards:write` | For an org dashboard, or to make one org-visible |
+| `dashboards_delete` | Delete a dashboard. | `kernel:dashboards:write` | For an org dashboard |
+
 ### Contacts
 
 | Tool | What it does | Scope | Approval |

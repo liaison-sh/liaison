@@ -33,6 +33,18 @@
       }
     }
   },
+  "store": {
+    "collections": {
+      "notes": {
+        "readScope": "wparity:items:read",
+        "searchable": {
+          "labelField": "title",
+          "fields": ["title"]
+        },
+        "agentReadable": true
+      }
+    }
+  },
   "events": {
     "emits": ["items:stamped"]
   },

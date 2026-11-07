@@ -7,6 +7,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock, spyOn } from "bun:test"
 import { randomBytes, randomUUID } from "node:crypto"
 import { sql } from "~/db"
+import { withRlsContext } from "~/db/rls"
 import { KERNEL_DECLARED_EMITS } from "~/infra/events/event-bus"
 import * as searchClient from "~/infra/search/client"
 import { _setEdition } from "~/lib/edition"
@@ -20,6 +21,7 @@ import {
   THUMBNAIL_BYTES,
   tableBytes,
 } from "~/modules/cloud/storage-estimate"
+import { setDocument } from "~/modules/data-store/service"
 import { getOrgUsage } from "~/modules/org/caps"
 import { seedContext } from "~/seed/context"
 import { seedOrgBillingState } from "~/seed/factories/billing/billing"
@@ -192,6 +194,27 @@ describe("the nightly run", () => {
     expect(e?.partial).toBe(false)
     expect(e?.overCap).toBe(false)
     expect(e?.measuredAt).toBe(NIGHT.toISOString())
+  })
+
+  it("counts the org's app data store documents from the store's own counters", async () => {
+    const orgId = await billedOrg({ storageGb: 10 })
+    const admin = await minimal.orgAdmin(orgId)
+    const body = randomBytes(20_000).toString("hex")
+    await withRlsContext(
+      { actorType: "user", userId: admin.id, orgId, scopes: ["*"], dimensionGrants: {} },
+      async (tx) => {
+        const caller = { orgId, app: "estimate-app", userId: admin.id }
+        await setDocument(tx, caller, "notes", "a", { body })
+        await setDocument(tx, caller, "notes", "b", { body })
+      },
+    )
+    meiliWith(0)
+    await runStorageEstimates(NIGHT, FAST)
+    const e = await estimateRow(orgId)
+    // Two documents of about 40 KB each, plus row overhead and the index share.
+    expect(e?.parts.appData).toBeGreaterThanOrEqual(2 * 40_000)
+    expect(e?.bytes).toBeGreaterThanOrEqual(e?.parts.appData as number)
+    expect(e?.partial).toBe(false)
   })
 
   it("an org with more rows than the sample is measured from the sample, times its row count", async () => {

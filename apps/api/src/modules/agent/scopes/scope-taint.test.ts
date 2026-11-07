@@ -291,6 +291,14 @@ describe("writesToTable annotations on kernel tools", () => {
       agents_ask: "kernel.messages",
       agents_invite: "kernel.messages",
       user_memory_set: "kernel.agent_memory",
+      // Dashboards: the saved dashboard row (personal, or org-wide after an approval).
+      dashboards_create: "kernel.dashboards",
+      dashboards_update: "kernel.dashboards",
+      dashboards_delete: "kernel.dashboards",
+      // The app data store: a document of an app's declared collection.
+      data_set: "kernel.app_documents",
+      data_update: "kernel.app_documents",
+      data_delete: "kernel.app_documents",
       // P4m: a delete mutates the index that is re-injected every turn, so it
       // is as much a write as a set, and the six file verbs write the same
       // rows through the memory tree.
@@ -516,6 +524,15 @@ describe("writesToTable annotations on kernel tools", () => {
         "contacts_groups_list",
         "contacts_read",
         "contacts_search",
+        // Dashboards and the app data store: reads of saved dashboards, the eligible sources,
+        // one block's preview (its bridge refuses every write), and declared collections.
+        "dashboards_get",
+        "dashboards_list",
+        "dashboards_preview_block",
+        "dashboards_sources",
+        "data_collections_list",
+        "data_get",
+        "data_query",
         "describe_user_access",
         // The printable record types and the org's document templates; they write nothing.
         "document_record_types_list",

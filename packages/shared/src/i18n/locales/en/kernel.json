@@ -735,6 +735,11 @@
       "kernel:agent:memory:write": "Create, update, or delete the current user's agent memory",
       "kernel:saved_views:share": "Share saved views with the org",
       "kernel:saved_views:admin": "Manage shared and default saved views",
+      "kernel:data:read": "Read app data store documents through the agent's data tools",
+      "kernel:data:write": "Write documents in the agent's own data store namespace",
+      "kernel:dashboards:write": "Create and edit your own personal dashboards",
+      "kernel:dashboards:share": "Create and edit dashboards shared with the org",
+      "kernel:dashboards:admin": "Manage every dashboard shared with the org",
       "kernel:apps:admin": "Install, upgrade, and uninstall apps (instance operator)",
       "kernel:agents:spawn": "Dispatch fresh-context sub-agent runs via the spawn_agent kernel tool",
       "kernel:agents:admin": "Author and remove sub-agent role definitions (subagent_create / _delete)",
@@ -1906,7 +1911,8 @@
     "kpi": "KPI",
     "groupConnectors": "Connectors",
     "oauthError": "Signing in with the provider failed ({{error}}). Try connecting again.",
-    "oauthErrorWithDescription": "Signing in with the provider failed: {{description}}"
+    "oauthErrorWithDescription": "Signing in with the provider failed: {{description}}",
+    "dashboard": "Dashboard"
   },
   "newConversation": {
     "newChannel": "New channel",
@@ -6522,5 +6528,25 @@
     "awayToday": "away today",
     "awayTodayBack": "away today, back {{day}}",
     "recapTitle": "While you were away"
+  },
+  "dashboards": {
+    "sectionTitle": "Dashboards",
+    "visibilityPersonal": "Personal",
+    "visibilityOrg": "Org",
+    "refreshAll": "Refresh all",
+    "refreshBlock": "Refresh this block",
+    "emptyTitle": "This dashboard has no blocks yet",
+    "emptyHint": "Ask your agent to add a chart, a table or a figure to it.",
+    "notFound": "This dashboard no longer exists, or it is not shared with you.",
+    "loadFailed": "This dashboard could not be loaded. Try again in a moment.",
+    "noData": "No data for this block yet",
+    "noValue": "No value yet",
+    "blockNoAccess": "You don't have access to the data behind this block.",
+    "blockNotAllowed": "This block's source can no longer be shown on a dashboard.",
+    "blockRateLimited": "Just refreshed. Try again in a few seconds.",
+    "blockSourceError": "This block's data could not be read. Try again later.",
+    "blockNotFound": "This block is no longer on the dashboard.",
+    "blockNetwork": "Can't reach the server right now. Try again in a moment.",
+    "blockTruncated": "Some rows are left out: the block shows the first ones."
   }
 }

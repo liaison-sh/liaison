@@ -3,7 +3,7 @@
 // The nightly storage estimate of a managed org: what it really occupies, not
 // only its stored files (the bytes the plan's storage cap refuses uploads on):
 // mail bodies and headers, ticket bodies, conversations, knowledge documents,
-// thumbnails and its share of the search index. Shown on the Usage page and in
+// app data store documents, thumbnails and its share of the search index. Shown on the Usage page and in
 // the plan usage sent to Control. It warns (the org's admins through the
 // attention pipeline, Control on the crossing), and it never blocks anything.
 //
@@ -173,6 +173,30 @@ async function measureFiles(orgId: string): Promise<{ files: number; thumbnails:
   return { files: Number(row?.bytes ?? 0), thumbnails: Number(row?.thumbs ?? 0) * THUMBNAIL_BYTES }
 }
 
+/**
+ * The org's app data store documents (0275): the documents and bytes the
+ * data-store service counts per collection on every write
+ * (kernel.app_document_usage), so no document is read; plus the row overhead
+ * and the table's index share.
+ */
+async function measureAppData(orgId: string): Promise<number> {
+  const k = drizzleSql.raw(schemaRef("kernel"))
+  const rel = `${schemaRef("kernel")}.app_documents`
+  const [row] = await withSystemDb("storage-estimate-app-data", async (db) => {
+    await db.execute(drizzleSql.raw(`SET LOCAL statement_timeout = '${STATEMENT_TIMEOUT}'`))
+    return extractRows<{ docs: string; bytes: string; ratio: number | null }>(
+      await db.execute(drizzleSql`
+        SELECT COALESCE(SUM(docs), 0)::text AS docs, COALESCE(SUM(bytes), 0)::text AS bytes,
+               (SELECT pg_indexes_size(to_regclass(${rel}))::float8
+                       / NULLIF(pg_table_size(to_regclass(${rel})), 0)) AS ratio
+          FROM ${k}.app_document_usage WHERE org_id = ${orgId}::uuid`),
+    )
+  })
+  const docs = Number(row?.docs ?? 0)
+  if (docs === 0) return 0
+  return tableBytes(docs, Number(row?.bytes ?? 0) / docs, Number(row?.ratio ?? 0))
+}
+
 /** The search database's bytes per document, null when it cannot be read (the run goes on). */
 async function searchBytesPerDocument(): Promise<number | null> {
   try {
@@ -211,6 +235,7 @@ export async function estimateOrgStorage(
     tickets: 0,
     conversations: 0,
     knowledge: 0,
+    appData: 0,
     search: null,
   }
   let partial = false
@@ -230,6 +255,12 @@ export async function estimateOrgStorage(
         "storage estimate: a table could not be measured",
       )
     }
+  }
+  try {
+    parts.appData = await measureAppData(orgId)
+  } catch (err) {
+    partial = true
+    log.warn({ err, orgId }, "storage estimate: app data store documents could not be measured")
   }
   parts.search = await measureSearch(orgId, run.searchPerDocument)
   if (parts.search === null) partial = true

@@ -8,7 +8,14 @@
 // against the real runtime. Side-effects (emitted events, enqueued jobs, db
 // inserts) are tracked so tests can assert them.
 import { type Mock, mock } from "bun:test"
-import type { AppContext, ConnectionClient, DbClient, Logger } from "@liaison/app-sdk"
+import type {
+  AppContext,
+  ConnectionClient,
+  DbClient,
+  Logger,
+  StoreClient,
+  StoreDocument,
+} from "@liaison/app-sdk"
 
 export interface MockAppContext extends AppContext {
   emit: Mock<(event: Parameters<AppContext["emit"]>[0]) => Promise<void>>
@@ -91,6 +98,58 @@ export function mockAppContext(opts: MockAppContextOpts): MockAppContext {
     }
   }
 
+  // An in-memory `ctx.store` (equality filters only, no cursor): enough for a
+  // handler test; the real store's query semantics are tested in data-store/.
+  const docs = new Map<string, StoreDocument>()
+  const storeKey = (c: string, id: string) => `${c}\0${id}`
+  const conflict = (id: string) =>
+    Object.assign(new Error(`version conflict on '${id}'`), {
+      status: 409,
+      code: "version_conflict",
+    })
+  const checkVersion = (id: string, current: StoreDocument | undefined, ifVersion?: number) => {
+    if (ifVersion === undefined) return
+    if ((current?.version ?? 0) !== ifVersion) throw conflict(id)
+  }
+  const inCollection = (c: string, where?: Record<string, unknown>) =>
+    [...docs.entries()]
+      .filter(([k]) => k.startsWith(`${c}\0`))
+      .map(([, d]) => d)
+      .filter((d) =>
+        Object.entries(where ?? {}).every(([f, v]) => (d.data as Record<string, unknown>)[f] === v),
+      )
+  const store: StoreClient = {
+    get: async (c, id) => (docs.get(storeKey(c, id)) ?? null) as never,
+    set: async (c, id, data, o) => {
+      const current = docs.get(storeKey(c, id))
+      checkVersion(id, current, o?.ifVersion)
+      const doc = {
+        id,
+        data: data as Record<string, unknown>,
+        version: (current?.version ?? 0) + 1,
+        updatedAt: new Date().toISOString(),
+      }
+      docs.set(storeKey(c, id), doc)
+      return doc as never
+    },
+    update: async (c, id, patch, o) => {
+      const current = docs.get(storeKey(c, id))
+      checkVersion(id, current, o?.ifVersion)
+      if (!current)
+        throw Object.assign(new Error(`'${id}' not found`), { status: 404, code: "not_found" })
+      return store.set(c, id, { ...current.data, ...(patch as object) }) as never
+    },
+    delete: async (c, id, o) => {
+      checkVersion(id, docs.get(storeKey(c, id)), o?.ifVersion)
+      return { deleted: docs.delete(storeKey(c, id)) }
+    },
+    query: async (c, q) => ({
+      items: inCollection(c, q?.where as Record<string, unknown>).slice(0, q?.limit ?? 50) as never,
+      nextCursor: null,
+    }),
+    count: async (c, where) => inCollection(c, where as Record<string, unknown>).length,
+  }
+
   const logger: Logger = {
     info: () => {},
     warn: () => {},
@@ -102,6 +161,7 @@ export function mockAppContext(opts: MockAppContextOpts): MockAppContext {
     userId: opts.userId ?? "test-user",
     orgId: opts.orgId,
     db,
+    store,
     emit: mock(async (_event: Parameters<AppContext["emit"]>[0]) => undefined),
     enqueueJob: async (name: string, payload: unknown) => {
       jobs.push({ name, payload })

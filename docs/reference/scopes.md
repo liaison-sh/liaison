@@ -32,7 +32,12 @@ Scopes are hierarchical capability strings, `app:resource:action`. Granting `app
 | `kernel:contacts:export` | Export the contact registry |
 | `kernel:contacts:read` | Read contacts |
 | `kernel:contacts:write` | Write contacts |
+| `kernel:dashboards:admin` | Manage every dashboard shared with the org |
+| `kernel:dashboards:share` | Create and edit dashboards shared with the org |
+| `kernel:dashboards:write` | Create and edit your own personal dashboards |
 | `kernel:data_subject:export` | Compile a single data subject's records across apps into one GDPR data-subject-request (DSR) export bundle (privacy/DSR handler authority, NOT org admin) |
+| `kernel:data:read` | Read app data store documents through the agent's data tools |
+| `kernel:data:write` | Write documents in the agent's own data store namespace |
 | `kernel:files:analyze` | Analyze image/video files with the media-analysis tool |
 | `kernel:files:read` | Read files attached to entities |
 | `kernel:imports:read` | See import runs and their reports |

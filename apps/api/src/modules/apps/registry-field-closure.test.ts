@@ -68,6 +68,10 @@ const HOST_ONLY_FIELDS: Record<string, string> = {
   searchResultUrlParam: KERNEL_TOOLS,
   // A public web read never parks; the web-read guardrails bound it.
   outboundWebRead: KERNEL_TOOLS,
+  // Tools that run only inside a routine run, or only on the agent's own execution thread
+  // (the dashboard source check refuses both): kernel tools only.
+  routineOnly: KERNEL_TOOLS,
+  requiresAgentExecutionThread: KERNEL_TOOLS,
   // A function of the call's params (gated for some params only): cannot cross the package boundary.
   gatedWhen: KERNEL_TOOLS,
   // Who reads an agent post into a kernel thread (threads_reply, threads_create): a function of

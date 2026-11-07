@@ -31,6 +31,11 @@ export const RESERVED_WEB_ROUTE_SEGMENTS = [
   "search",
   "detail",
   "agents",
+  // The kernel's dashboard tab (`/dashboard/:id`) and its list, and the
+  // agent's own data store namespace (`agent`), which no app may own.
+  "agent",
+  "dashboard",
+  "dashboards",
   // The server's API prefix: a tab URL under it would reload into the API.
   "api",
 ] as const

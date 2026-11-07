@@ -19,6 +19,7 @@ import { handleOpenApp } from "~/modules/agent/tools/navigation-tool"
 import { openViewsOf } from "~/modules/agent/tools/open-targets"
 import { listGatewayTools } from "~/modules/agent/tools/tool-bridge"
 import { toolRegistry } from "~/modules/apps/app-registries"
+import { createDashboard } from "~/modules/dashboards/service"
 import { seedContext } from "~/seed/context"
 import { seedBaseAgent } from "~/seed/factories/agent/agents"
 import { seedRoutine } from "~/seed/factories/agent/routines"
@@ -100,6 +101,13 @@ async function seed(): Promise<void> {
       .returning({ id: nodeSessions.id })
     put("kernel:session", session!.id, "Fix the build")
   })
+
+  const dashboard = await createDashboard(everything(viewer), {
+    title: "Weekly sales",
+    visibility: "personal",
+    spec: { v: 1, blocks: [] },
+  })
+  put("kernel:dashboard", dashboard.id, "Weekly sales")
 
   const routineId = await seedRoutine(ctx, {
     createdByUserId: viewer,
@@ -265,6 +273,7 @@ describe("open_app under real row security", () => {
     "kernel:skill",
     "kernel:agent",
     "kernel:session",
+    "kernel:dashboard",
     "contacts:contact-detail",
     "tickets:ticket",
     "projects:project",

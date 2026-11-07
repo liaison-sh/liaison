@@ -39,6 +39,7 @@ import {
   WORKERS_RUN_BRIDGE,
 } from "~/modules/apps/sandbox/bridge/secret-free"
 import { type AppManifestForBridge, withPgCause } from "~/modules/apps/sandbox/bridge/shared"
+import { createStoreMethods } from "~/modules/apps/sandbox/bridge/store"
 import { createTicketsMethods } from "~/modules/apps/sandbox/bridge/tickets"
 import { buildBridgeExtensions } from "~/modules/apps/sandbox/bridge-extensions"
 
@@ -101,6 +102,7 @@ export function createRpcBridge(
     createFilesMethods(ctx),
     createContractsMethods(ctx),
     createEffectsMethods(ctx),
+    createStoreMethods(ctx),
   )
 
   // Merge this app's own bridge methods (registered at install time). App-specific
@@ -221,6 +223,10 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   "effects_release",
   "effects_settleUnknown",
   "effects_markUnknown",
+  // The app data store's writes (bridge/store.ts)
+  "store_set",
+  "store_update",
+  "store_delete",
   "mailbox_seal",
   "mailbox_sealAndInsert",
   "mailbox_enqueueClientJob",

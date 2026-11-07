@@ -19,14 +19,17 @@ import type { Server } from "bun"
 import { app } from "~/app"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
+import { createRlsSession } from "~/db/rls"
 import { env } from "~/lib/env"
-import { connectionConfigRegistry } from "~/modules/apps/app-registries"
+import { appBridgeManifestRegistry, connectionConfigRegistry } from "~/modules/apps/app-registries"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
 import { reloadInstalledApps } from "~/modules/apps/init"
 import { installAppFromTarball, uninstallApp } from "~/modules/apps/install-service"
 import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
+import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { clearInstalledIdentityCache, runApp } from "~/modules/apps/sandbox/run-app"
 import { shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { getDeclaredCollection } from "~/modules/data-store/declared"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -138,6 +141,66 @@ async function both<T>(entry: string, fn: (mode: "quickjs" | "workers") => Promi
   for (const text of loader.bridgeResponses.slice(before)) assertNoSecretsIn(text, SECRETS)
   assertNoSecretsIn(workers, SECRETS)
   return { quickjs, workers }
+}
+
+type StoreExecutor = "inprocess" | "pool" | "workers"
+const STORE_EXECUTORS: StoreExecutor[] = ["inprocess", "pool", "workers"]
+
+/**
+ * Run `exportName` of an installed fixture app through runApp with the app's
+ * real session bridge (one RLS transaction per bridge call, as a tool run),
+ * on the given executor: trusted in-process QuickJS, the worker pool, or
+ * Workers through the fake loader.
+ */
+async function runStore(
+  executor: StoreExecutor,
+  appName: "wparity" | "wparityb",
+  exportName: string,
+  params: unknown,
+  opts: { readOnly?: boolean } = {},
+) {
+  if (executor === "workers") workersOn()
+  else workersOff()
+  const manifest = appBridgeManifestRegistry.get([orgId, appName])
+  if (!manifest) throw new Error(`${appName} is not registered`)
+  const scopes = [`${appName}:*`]
+  const session = createRlsSession({
+    actorType: "user",
+    userId: userA.id,
+    orgId,
+    scopes,
+    dimensionGrants: {},
+  })
+  const bridge = createSessionRpcBridge(
+    appName,
+    userA.id,
+    orgId,
+    session,
+    manifest as Parameters<typeof createSessionRpcBridge>[4],
+    scopes,
+    "user",
+    undefined,
+    opts.readOnly ? { readOnlyRunOverride: true } : undefined,
+  )
+  const result = await runApp({
+    trusted: executor === "inprocess",
+    appName,
+    orgId,
+    bundlePath: join(process.env.LIAISON_APPS_DIR ?? "", appName, "1.0.0", "bundle.js"),
+    exportName,
+    entry: `handler:${exportName}`,
+    params,
+    bridge,
+    holdsTx: false,
+  })
+  if (executor !== "inprocess") {
+    expect(
+      recentRunTimings()
+        .filter((r) => r.app === appName)
+        .at(-1)?.executor,
+    ).toBe(executor === "workers" ? "workers" : "quickjs")
+  }
+  return result
 }
 
 beforeAll(async () => {
@@ -409,6 +472,90 @@ describe("Workers executor parity with the QuickJS pool", () => {
     expect(await countTitled("hook-workers")).toBe(1)
     expect(lastRun("webhook-verify:verifyPing")?.executor).toBe("workers")
   })
+})
+
+describe("ctx.store on every executor", () => {
+  it("the manifest's store declaration registers with the install", () => {
+    expect(getDeclaredCollection(orgId, "wparity", "notes")).toEqual({
+      app: "wparity",
+      collection: "notes",
+      readScope: "wparity:items:read",
+      searchable: { labelField: "title", fields: ["title"] },
+      agentReadable: true,
+    })
+    expect(getDeclaredCollection(orgId, "wparity", "undeclared")).toBeNull()
+  })
+
+  it("set, get, update, query, count, delete and a version conflict: equal answers", async () => {
+    const answers: Record<string, unknown> = {}
+    for (const ex of STORE_EXECUTORS) {
+      answers[ex] = await runStore(ex, "wparity", "storeFlow", { c: `flow_${ex}` })
+    }
+    expect(answers.inprocess).toEqual({
+      missing: null,
+      a1: { id: "a", data: { title: "A", n: 1 }, version: 1 },
+      got: { id: "a", data: { title: "A", n: 1 }, version: 1 },
+      up: { id: "a", data: { title: "A", n: 5 }, version: 2 },
+      conflict: { thrown: true, code: "version_conflict", status: 409 },
+      q: [
+        { id: "b", n: 2, version: 1 },
+        { id: "a", n: 5, version: 2 },
+      ],
+      nextCursor: null,
+      count: 1,
+      total: 2,
+      del: { deleted: true },
+      after: 1,
+      badName: { thrown: true, code: "invalid_name", status: 400 },
+    })
+    expect(answers.pool).toEqual(answers.inprocess)
+    expect(answers.workers).toEqual(answers.inprocess)
+    const rows = await sql<{ collection: string; n: number }[]>`
+      SELECT collection, count(*)::int AS n FROM kernel.app_documents
+      WHERE org_id = ${orgId} AND app = 'wparity' AND collection LIKE 'flow\_%'
+      GROUP BY collection ORDER BY collection`
+    expect(rows.map((r) => [r.collection, r.n])).toEqual([
+      ["flow_inprocess", 1],
+      ["flow_pool", 1],
+      ["flow_workers", 1],
+    ])
+  }, 60_000)
+
+  it("a read-only run refuses every store write and still reads, on all three", async () => {
+    const answers: Record<string, any> = {}
+    for (const ex of STORE_EXECUTORS) {
+      answers[ex] = await runStore(
+        ex,
+        "wparity",
+        "storeWrites",
+        { c: `ro_${ex}` },
+        { readOnly: true },
+      )
+    }
+    for (const op of ["set", "update", "delete"]) {
+      expect(answers.inprocess[op].thrown).toBe(true)
+      expect(String(answers.inprocess[op].message)).toContain(`ctx.store_${op}`)
+    }
+    expect(answers.inprocess.read).toBeNull()
+    expect(answers.pool).toEqual(answers.inprocess)
+    expect(answers.workers).toEqual(answers.inprocess)
+    const [row] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM kernel.app_documents
+      WHERE org_id = ${orgId} AND app = 'wparity' AND collection LIKE 'ro\_%'`
+    expect(row?.n).toBe(0)
+  }, 60_000)
+
+  it("app B cannot read app A's collection of the same name", async () => {
+    await runStore("pool", "wparity", "storePut", { c: "shared", id: "kept", data: { title: "a" } })
+    for (const ex of STORE_EXECUTORS) {
+      expect(await runStore(ex, "wparity", "storeGet", { c: "shared", id: "kept" })).toEqual({
+        id: "kept",
+        data: { title: "a" },
+        version: 1,
+      })
+      expect(await runStore(ex, "wparityb", "storeGet", { c: "shared", id: "kept" })).toBeNull()
+    }
+  }, 60_000)
 })
 
 describe("Workers-only properties", () => {

@@ -100,6 +100,7 @@ import { mailSenderRoutes, managedMailSenderOnly } from "~/modules/cloud/mail-se
 import { cloudRoutes } from "~/modules/cloud/routes"
 import { contacts } from "~/modules/contacts/routes"
 import { trustedSendersRoutes } from "~/modules/contacts/trusted-senders-routes"
+import { dashboardsRoutes } from "~/modules/dashboards/routes"
 import { databaseRoutes } from "~/modules/database/routes"
 import { documentRoutes, documentTemplateRoutes } from "~/modules/documents/routes"
 import { documentTemplateRuleRoutes } from "~/modules/documents/rules-routes"
@@ -851,6 +852,9 @@ app.route("/api/push", pushRoutes)
 app.use("/api/saved-views", authMw, orgLimiter)
 app.use("/api/saved-views/*", authMw, orgLimiter)
 app.route("/api/saved-views", savedViewsRoutes)
+app.use("/api/dashboards", authMw, orgLimiter)
+app.use("/api/dashboards/*", authMw, orgLimiter)
+app.route("/api/dashboards", dashboardsRoutes)
 
 app.use("/api/org", authMw, orgLimiter)
 app.use("/api/org/*", authMw, orgLimiter)

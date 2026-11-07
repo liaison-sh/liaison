@@ -1,0 +1,381 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// The server-side `map` step: a source's rows (at most MAX_SOURCE_ROWS) become
+// what one chart draws. Pure: no I/O, so every chart type's semantics are
+// unit-tested here (transform.test.ts).
+//
+// - metric: `agg` (default sum, or count without `value`) over the rows' `value`;
+//   when the source returned an object with no rows, `value` is a path into it.
+// - table:  the rows, sorted by `sort` and cut to `limit`, projected to `columns`.
+// - bar | line: the category is the `groupBy` key (a date bucket when `bucket`
+//   is set) or the `x` field; each category's value is `agg` (default sum, or
+//   count without `y`) of `y`; an optional `series` field splits it into series.
+// - pie: the slice is the `groupBy` key or the `label` field; its value is `agg`
+//   of `value`.
+// Sorting: `sort.field` names the category field (or "label"/"key") to order by
+// category, or the aggregated field (or "value") to order by value. Defaults:
+// line and bucketed bar by category ascending, bar and pie by value descending.
+
+import { unwrapExternalContent } from "~/lib/external-content"
+import {
+  type Aggregation,
+  type BlockMap,
+  type BlockType,
+  type DateBucket,
+  MAX_BLOCK_OUTPUT,
+  MAX_SOURCE_ROWS,
+} from "~/modules/dashboards/spec"
+
+type Row = Record<string, unknown>
+type Scalar = string | number | boolean | null
+
+export interface BlockMeta {
+  /** Rows the source returned (before the cut to MAX_SOURCE_ROWS). */
+  sourceRows: number
+  /** True when rows past MAX_SOURCE_ROWS, or categories past the limit, were dropped. */
+  truncated: boolean
+  /** Rows left out because a needed field was missing or not usable (a date, a number). */
+  skippedRows: number
+  format?: BlockMap["format"]
+  currency?: string
+}
+
+export type BlockData =
+  | { kind: "metric"; value: number | null; meta: BlockMeta }
+  | {
+      kind: "table"
+      columns: { field: string; label: string; format?: BlockMap["format"] }[]
+      rows: Record<string, Scalar>[]
+      meta: BlockMeta
+    }
+  | {
+      kind: "bar" | "line" | "pie"
+      labels: string[]
+      series: { name: string; values: number[] }[]
+      meta: BlockMeta
+    }
+
+export class TransformError extends Error {
+  code = "invalid_map" as const
+}
+
+export const NONE_LABEL = "(none)"
+const DEFAULT_SERIES = "value"
+
+/** The value at a dotted path (`billing.country`, `line_items.0.name`). */
+export function readPath(source: unknown, path: string): unknown {
+  let cur: unknown = source
+  for (const part of path.split(".")) {
+    if (cur === null || cur === undefined) return undefined
+    if (Array.isArray(cur)) {
+      if (!/^\d+$/.test(part)) return undefined
+      cur = cur[Number(part)]
+      continue
+    }
+    if (typeof cur !== "object") return undefined
+    cur = (cur as Row)[part]
+  }
+  return cur
+}
+
+/** A number, from a number or a numeric string ("12.50", as many shop APIs send money). */
+export function toNumber(v: unknown): number | null {
+  if (typeof v === "number") return Number.isFinite(v) ? v : null
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v.trim())
+    return Number.isFinite(n) ? n : null
+  }
+  return null
+}
+
+/** A date from an ISO string or an epoch number (seconds below 1e12, else milliseconds). */
+export function toDate(v: unknown): Date | null {
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v
+  if (typeof v === "number" && Number.isFinite(v)) return new Date(v < 1e12 ? v * 1000 : v)
+  if (typeof v === "string" && v.trim() !== "") {
+    const d = new Date(v)
+    return Number.isNaN(d.getTime()) ? null : d
+  }
+  return null
+}
+
+const pad = (n: number) => String(n).padStart(2, "0")
+
+/** The bucket a date falls in, in UTC: `2026-11-07` (day), the Monday of its week, `2026-11` (month). */
+export function bucketKey(d: Date, bucket: DateBucket): string {
+  const y = d.getUTCFullYear()
+  const m = d.getUTCMonth()
+  if (bucket === "month") return `${y}-${pad(m + 1)}`
+  if (bucket === "day") return `${y}-${pad(m + 1)}-${pad(d.getUTCDate())}`
+  const monday = new Date(Date.UTC(y, m, d.getUTCDate()))
+  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7))
+  return `${monday.getUTCFullYear()}-${pad(monday.getUTCMonth() + 1)}-${pad(monday.getUTCDate())}`
+}
+
+function keyOf(v: unknown): string {
+  if (v === null || v === undefined || v === "") return NONE_LABEL
+  if (typeof v === "string") return v
+  if (typeof v === "number" || typeof v === "boolean") return String(v)
+  return JSON.stringify(v)
+}
+
+/** Rounds away float noise (0.1 + 0.2), keeping 6 decimals. */
+function round(n: number): number {
+  return Math.round(n * 1e6) / 1e6
+}
+
+/** `agg` over the group's values; count counts rows, the others skip non-numbers. */
+function aggregate(agg: Aggregation, rows: Row[], field: string | undefined): number | null {
+  if (agg === "count") return rows.length
+  const nums: number[] = []
+  for (const r of rows) {
+    const n = field ? toNumber(readPath(r, field)) : null
+    if (n !== null) nums.push(n)
+  }
+  if (nums.length === 0) return agg === "sum" ? 0 : null
+  switch (agg) {
+    case "sum":
+      return round(nums.reduce((a, b) => a + b, 0))
+    case "avg":
+      return round(nums.reduce((a, b) => a + b, 0) / nums.length)
+    case "min":
+      return Math.min(...nums)
+    case "max":
+      return Math.max(...nums)
+  }
+}
+
+function toScalar(v: unknown): Scalar {
+  if (v === undefined) return null
+  if (v === null || typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+    return v
+  }
+  return JSON.stringify(v)
+}
+
+function compare(a: unknown, b: unknown): number {
+  const na = toNumber(a)
+  const nb = toNumber(b)
+  if (na !== null && nb !== null) return na - nb
+  if (a === null || a === undefined) return b === null || b === undefined ? 0 : 1
+  if (b === null || b === undefined) return -1
+  return String(a).localeCompare(String(b))
+}
+
+/**
+ * A source result whose fields arrive fenced as untrusted text (a connector read
+ * answers `items: "<external-content ...>[...]</external-content>"`, so an agent
+ * reads them as data): the fenced JSON parsed back, top-level fields only, so the
+ * map reads its rows. A fenced field that is not JSON stays as it is. The fence is
+ * for a model reader; a block's rows go to the chart, and a preview runs the tool
+ * in the agent's thread, so the tool's own taint rule still applies there.
+ */
+export function unfenceSourceResult(result: unknown): unknown {
+  if (!result || typeof result !== "object" || Array.isArray(result)) return result
+  let out: Record<string, unknown> | null = null
+  for (const [k, v] of Object.entries(result as Record<string, unknown>)) {
+    if (typeof v !== "string") continue
+    const inner = unwrapExternalContent(v)
+    if (inner === v) continue
+    try {
+      const parsed: unknown = JSON.parse(inner)
+      if (parsed && typeof parsed === "object") {
+        out ??= { ...(result as Record<string, unknown>) }
+        out[k] = parsed
+      }
+    } catch {
+      // not JSON: the field stays text
+    }
+  }
+  return out ?? result
+}
+
+/**
+ * The rows of a source result: the result itself when it is a list, `rowsPath`
+ * when given, else the result's only list-valued field (`items`, `orders`, ...),
+ * else none (the result is one object, which a metric reads with a path).
+ */
+export function extractRows(
+  result: unknown,
+  rowsPath?: string,
+): { rows: Row[] | null; object: unknown } {
+  const at = rowsPath ? readPath(result, rowsPath) : result
+  if (rowsPath && !Array.isArray(at)) {
+    throw new TransformError(`rowsPath '${rowsPath}' is not a list in the source's result`)
+  }
+  if (Array.isArray(at)) return { rows: at.map(asRow), object: result }
+  if (at && typeof at === "object") {
+    const lists = Object.entries(at as Row).filter(([, v]) => Array.isArray(v))
+    const preferred = lists.find(([k]) => k === "items" || k === "rows" || k === "data")
+    const only = preferred ?? (lists.length === 1 ? lists[0] : undefined)
+    if (only) return { rows: (only[1] as unknown[]).map(asRow), object: result }
+  }
+  return { rows: null, object: result }
+}
+
+function asRow(v: unknown): Row {
+  return v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Row) : { value: v }
+}
+
+interface Group {
+  key: string
+  rows: Row[]
+}
+
+/** Groups rows by category (and by series, inside), in first-seen order. */
+function groupRows(
+  rows: Row[],
+  keyField: string,
+  bucket: DateBucket | undefined,
+  meta: BlockMeta,
+): Group[] {
+  const groups = new Map<string, Row[]>()
+  for (const r of rows) {
+    const raw = readPath(r, keyField)
+    let key: string
+    if (bucket) {
+      const d = toDate(raw)
+      if (!d) {
+        meta.skippedRows++
+        continue
+      }
+      key = bucketKey(d, bucket)
+    } else {
+      key = keyOf(raw)
+    }
+    const list = groups.get(key)
+    if (list) list.push(r)
+    else groups.set(key, [r])
+  }
+  return [...groups].map(([key, rows]) => ({ key, rows }))
+}
+
+function sortDirection(
+  map: BlockMap,
+  keyField: string,
+  aggField: string | undefined,
+  defaults: { by: "key" | "value"; dir: "asc" | "desc" },
+): { by: "key" | "value"; dir: "asc" | "desc" } {
+  if (!map.sort) return defaults
+  const f = map.sort.field
+  if (f === keyField || f === "key" || f === "label") return { by: "key", dir: map.sort.dir }
+  if (f === aggField || f === "value") return { by: "value", dir: map.sort.dir }
+  throw new TransformError(
+    `sort.field '${f}' is neither the category field '${keyField}' nor the value${aggField ? ` field '${aggField}'` : ""}`,
+  )
+}
+
+/** Applies a block's map to its source's result. */
+export function transformBlock(
+  type: BlockType,
+  map: BlockMap,
+  result: unknown,
+  opts: { rowsPath?: string } = {},
+): BlockData {
+  const { rows: allRows, object } = extractRows(result, opts.rowsPath)
+  const sourceRows = allRows?.length ?? 0
+  const meta: BlockMeta = {
+    sourceRows,
+    truncated: sourceRows > MAX_SOURCE_ROWS,
+    skippedRows: 0,
+    ...(map.format ? { format: map.format } : {}),
+    ...(map.currency ? { currency: map.currency } : {}),
+  }
+  const rows = allRows ? allRows.slice(0, MAX_SOURCE_ROWS) : null
+
+  if (type === "metric") {
+    if (!rows) {
+      if (!map.value)
+        throw new TransformError("the source returned one object: map.value names its field")
+      return { kind: "metric", value: toNumber(readPath(object, map.value)), meta }
+    }
+    const agg = map.agg ?? (map.value ? "sum" : "count")
+    return { kind: "metric", value: aggregate(agg, rows, map.value), meta }
+  }
+
+  if (!rows) {
+    throw new TransformError(
+      "the source returned no list of rows: set source.rowsPath to the field that holds them",
+    )
+  }
+
+  if (type === "table") {
+    const columns = map.columns ?? []
+    let out = rows
+    if (map.sort) {
+      const { field, dir } = map.sort
+      out = [...rows].sort(
+        (a, b) => compare(readPath(a, field), readPath(b, field)) * (dir === "desc" ? -1 : 1),
+      )
+    }
+    const limit = map.limit ?? MAX_BLOCK_OUTPUT
+    if (out.length > limit) meta.truncated = true
+    return {
+      kind: "table",
+      columns: columns.map((c) => ({
+        field: c.field,
+        label: c.label,
+        ...(c.format ? { format: c.format } : {}),
+      })),
+      rows: out.slice(0, limit).map((r) => {
+        const o: Record<string, Scalar> = {}
+        for (const c of columns) o[c.field] = toScalar(readPath(r, c.field))
+        return o
+      }),
+      meta,
+    }
+  }
+
+  // bar | line | pie
+  const keyField = (map.groupBy?.field ?? (type === "pie" ? map.label : map.x)) as string
+  const bucket = map.groupBy?.bucket
+  const aggField = type === "pie" ? map.value : map.y
+  const agg = map.agg ?? (aggField ? "sum" : "count")
+  const groups = groupRows(rows, keyField, bucket, meta)
+
+  const byCategory = type === "line" || (type === "bar" && bucket !== undefined)
+  const { by, dir } = sortDirection(map, keyField, aggField, {
+    by: byCategory ? "key" : "value",
+    dir: byCategory ? "asc" : "desc",
+  })
+
+  const seriesField = type === "pie" ? undefined : map.series
+  const seriesNames: string[] = []
+  if (seriesField) {
+    const seen = new Set<string>()
+    for (const r of rows) {
+      const name = keyOf(readPath(r, seriesField))
+      if (!seen.has(name)) {
+        seen.add(name)
+        seriesNames.push(name)
+      }
+    }
+  }
+
+  const totals = new Map(groups.map((g) => [g.key, aggregate(agg, g.rows, aggField) ?? 0]))
+  const sorted = [...groups].sort((a, b) => {
+    const c =
+      by === "key" ? compare(a.key, b.key) : (totals.get(a.key) ?? 0) - (totals.get(b.key) ?? 0)
+    return dir === "desc" ? -c : c
+  })
+  const limit = map.limit ?? MAX_BLOCK_OUTPUT
+  if (sorted.length > limit) meta.truncated = true
+  const kept = sorted.slice(0, limit)
+  const labels = kept.map((g) => g.key)
+
+  const series = seriesField
+    ? seriesNames.map((name) => ({
+        name,
+        values: kept.map(
+          (g) =>
+            aggregate(
+              agg,
+              g.rows.filter((r) => keyOf(readPath(r, seriesField)) === name),
+              aggField,
+            ) ?? 0,
+        ),
+      }))
+    : [{ name: aggField ?? DEFAULT_SERIES, values: kept.map((g) => totals.get(g.key) ?? 0) }]
+
+  return { kind: type, labels, series, meta }
+}

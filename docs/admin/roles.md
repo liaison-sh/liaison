@@ -10,8 +10,8 @@ A role is a set of permissions (scopes) given to the people who hold it. You man
 | Role | Scopes | Who gets it |
 |---|---|---|
 | **admin** | `*` (every scope) | The first registered user |
-| **member** | `kernel:threads:read`, `kernel:threads:write`, `kernel:contacts:read`, `kernel:contacts:write`, `kernel:products:read`, `kernel:products:write`, `kernel:approvals:read`, `kernel:approvals:write`, `kernel:files:read`, `kernel:files:analyze`, `kernel:saved_views:share`, `kernel:agent:memory`, `kernel:agents:spawn` | A preset for teammates |
-| **viewer** | `kernel:threads:read`, `kernel:contacts:read`, `kernel:products:read`, `kernel:approvals:read`, `kernel:files:read`, `kernel:audit:read`, `kernel:agent:memory:read` | A read-only preset |
+| **member** | `kernel:threads:read`, `kernel:threads:write`, `kernel:contacts:read`, `kernel:contacts:write`, `kernel:products:read`, `kernel:products:write`, `kernel:approvals:read`, `kernel:approvals:write`, `kernel:files:read`, `kernel:files:analyze`, `kernel:saved_views:share`, `kernel:data:read`, `kernel:data:write`, `kernel:dashboards:write`, `kernel:dashboards:share`, `kernel:agent:memory`, `kernel:agents:spawn` | A preset for teammates |
+| **viewer** | `kernel:threads:read`, `kernel:contacts:read`, `kernel:products:read`, `kernel:approvals:read`, `kernel:files:read`, `kernel:audit:read`, `kernel:agent:memory:read`, `kernel:data:read` | A read-only preset |
 
 People who hold `kernel:org:admin` (the **admin** role, or the scope given directly) are on call for incidents until an admin picks the on-call people in **Settings › Notifications › On call** ([Notifications](../notifications.md#on-call)).
 

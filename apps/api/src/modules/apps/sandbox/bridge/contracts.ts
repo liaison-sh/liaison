@@ -307,11 +307,13 @@ export function createContractsMethods(ctx: BridgeContext): Record<string, any> 
         priority: bridgeOptions?.priority,
         // Same provenance rule as ctx.executeTool: a human click never crosses an app boundary.
         origin:
-          bridgeOptions?.origin === "mcp"
-            ? "mcp"
-            : bridgeOptions?.origin === "in-app-agent" || bridgeOptions?.origin === "human-ui"
-              ? "in-app-agent"
-              : "system",
+          bridgeOptions?.origin === "dashboard"
+            ? "dashboard"
+            : bridgeOptions?.origin === "mcp"
+              ? "mcp"
+              : bridgeOptions?.origin === "in-app-agent" || bridgeOptions?.origin === "human-ui"
+                ? "in-app-agent"
+                : "system",
         internalCall: {
           callerApp: appName,
           contractCall: {

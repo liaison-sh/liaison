@@ -7,7 +7,9 @@
 import { randomBytes } from "node:crypto"
 import type { z } from "zod"
 import { z as zod } from "zod"
+import { withRlsContext } from "~/db/rls"
 import { writeAppConfigKey } from "~/modules/apps/app-config"
+import { setDocument } from "~/modules/data-store/service"
 import {
   installProvisionedKey,
   mintProvisionedIdentity,
@@ -626,6 +628,34 @@ export const SEED_FACTORIES: Record<string, SeedRouteFactory> = {
       ])
       if (!entry) throw new Error(`contact ${a.email} was not resolved`)
       return { id: entry[1].id }
+    },
+  ),
+
+  /**
+   * One document of the app data store (`kernel.app_documents`), through the
+   * store service under the author's RLS context (the org admin by default), so
+   * the size, count and version rules apply as for any write.
+   */
+  appDocument: factory(
+    zod.object({
+      app: zod.string().min(1),
+      collection: zod.string().min(1),
+      id: zod.string().min(1),
+      data: zod.record(zod.string(), zod.unknown()),
+      createdBy: uuid.optional(),
+    }),
+    async (ctx, a) => {
+      const actor = await actorFor(ctx, a.createdBy ?? (await orgAdmin(ctx.orgId)).id)
+      const doc = await withRlsContext(actor, (tx) =>
+        setDocument(
+          tx,
+          { orgId: ctx.orgId, app: a.app, userId: actor.userId },
+          a.collection,
+          a.id,
+          a.data,
+        ),
+      )
+      return { id: doc.id, version: doc.version }
     },
   ),
 

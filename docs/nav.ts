@@ -42,6 +42,7 @@ export const NAV: NavSection[] = [
       { id: "agents/permissions", url: "agents/permissions" },
       { id: "agents/models", url: "agents/models" },
       { id: "agents/tools", url: "agents/tools" },
+      { id: "agents/dashboards", url: "agents/dashboards" },
       { id: "agents/mcp-servers", url: "agents/mcp-servers" },
     ],
   },

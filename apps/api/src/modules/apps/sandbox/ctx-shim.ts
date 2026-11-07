@@ -25,7 +25,8 @@
  *  - SDK shape (`@liaison/app-sdk` pattern): some arg is non-primitive. Each
  *    non-primitive arg is JSON-stringified, and a string return is
  *    best-effort JSON-parsed (falls back to the string, e.g. base64 digests).
- *  - Structured-return groups (`ctx.kernel.*`, `ctx.db.*`, `ctx.bulk.*`):
+ *  - Structured-return groups (`ctx.kernel.*`, `ctx.db.*`, `ctx.bulk.*`,
+ *    `ctx.store.*`; the in-process executor reads the same list):
  *    the nested members always marshal args and always best-effort parse a
  *    string return, whatever the arg shape (their SDK contract is parsed
  *    data). The flat `ctx.<group>_<member>` names keep the plain wrap.
@@ -60,7 +61,7 @@ export interface ShimRules {
 
 export const SHIM_RULES: ShimRules = {
   reservedGroups: ["approval"],
-  structuredReturnGroups: ["kernel", "db", "bulk"],
+  structuredReturnGroups: ["kernel", "db", "bulk", "store"],
   hiddenNames: ["_approvalContext_get"],
   groupAliases: [["log", "logger"]],
   iterators: [{ group: "bulk", member: "iterateJsonl", nextMethod: "bulk_iterateJsonl_next" }],

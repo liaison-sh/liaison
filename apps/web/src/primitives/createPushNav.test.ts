@@ -157,6 +157,8 @@ describe("isDetailRoute - only an entity tail is a detail route", () => {
       // switch, not a detail push.
       "/approvals": false,
       "/contacts": false,
+      // One saved dashboard (kernel:dashboard).
+      "/dashboard/:entityId": true,
       "/detail/:entityId+": true,
       // The Sessions app's import take-over: one screen, no entity tail.
       "/import-sessions": false,

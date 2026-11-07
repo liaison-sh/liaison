@@ -237,7 +237,18 @@ describe("reserved names", () => {
   // An app's tabs live at /<name>, so a package named after a Liaison page route would
   // own that page's paths (/login/magic signs in on load, /auth/device approves a device).
   it("refuses a package named after a Liaison page route", async () => {
-    for (const name of ["login", "auth", "register", "reset-password", "settings", "agents"]) {
+    for (const name of [
+      "login",
+      "auth",
+      "register",
+      "reset-password",
+      "settings",
+      "agents",
+      // The agent's data store namespace and the dashboard tab (0275).
+      "agent",
+      "dashboard",
+      "dashboards",
+    ]) {
       await expect(
         installAppFromTarball({
           ...base,

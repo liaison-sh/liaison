@@ -70,6 +70,7 @@ my-app-1.0.0.liaisonapp.cosign.bundle   (detached cosign signature — sibling f
 | `cross_app_calls` | no | array of `{ target, reason }` declaring cross-app tool invocations (`target` is `appname:tool.name`); must agree with `dependencies.tools` when both are present |
 | `slots` | no | UI slot contributions (e.g. `contact_detail.panels[]`, `<app>.document_detail.tabs[]`) mounted into other apps' pages |
 | `dependencies` | no | `{ tools: string[] }`, the canonical form of declared cross-app tool dependencies; synthesized from `cross_app_calls` when only that is declared |
+| `store` | no | `{ collections: { <name>: { readScope, searchable?: { labelField, fields }, agentReadable? } } }`: the data store collections others may read; `readScope` must be one of the app's own scopes. See `ctx.store` in [App sandbox](app-sandbox.md) |
 | `listing` | no (yes for a catalog or registry entry) | the App store listing, see "Store listing" below; when present, `license` must be an SPDX expression |
 
 ### Example

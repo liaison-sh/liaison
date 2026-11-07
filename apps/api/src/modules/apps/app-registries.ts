@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
-import type { AppConfigKeyDecl, AppKind, SettingsSection } from "@liaison/app-sdk"
+import type {
+  AppConfigKeyDecl,
+  AppKind,
+  SettingsSection,
+  StoreCollectionDeclaration,
+} from "@liaison/app-sdk"
 import type { ApprovalSummary } from "@liaison/shared"
 import type { z } from "zod"
 import type { McpToolAnnotations } from "~/apps/mcp-manager/types"
@@ -1060,6 +1065,16 @@ export const appCapabilitiesRegistry = createTypedRegistry<
 >()
 
 /**
+ * The data store collections each app declares (manifest `store.collections`),
+ * keyed by [orgId, appName]; set at registration for an app that declares any.
+ * Read through modules/data-store/declared.ts.
+ */
+export const appStoreDeclarationsRegistry = createTypedRegistry<
+  [orgId: string, appName: string],
+  Readonly<Record<string, StoreCollectionDeclaration>>
+>()
+
+/**
  * Kernel-universal capabilities — core kernel primitives that are present in
  * EVERY org with NO app install required. `orgHasCapability` short-circuits to
  * `true` for these before scanning the per-app registry, so the kernel tools
@@ -1473,6 +1488,7 @@ export function resetAppRegistries(): void {
   orgRuntimeInitPromises.clear()
   declaredEmits.clear()
   appCapabilitiesRegistry.clear()
+  appStoreDeclarationsRegistry.clear()
   eventSubscriptionDisposers.clear()
   // The apps an org registers are cached per catalog generation (init.ts
   // `getDefaultApps`). A test that resets the registries has usually also

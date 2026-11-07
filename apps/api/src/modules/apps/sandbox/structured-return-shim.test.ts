@@ -21,7 +21,7 @@
 // (out-of-process worker pool + in-process executor), not a mock ctx, so it
 // exercises the actual shim wiring that reads.test.ts's mock masks.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
-import { createCtx } from "~/modules/apps/sandbox/ctx-shim"
+import { createCtx, SHIM_RULES } from "~/modules/apps/sandbox/ctx-shim"
 import { executeInSandbox } from "~/modules/apps/sandbox/executor"
 import { createSandboxPool, type SandboxPool } from "~/modules/apps/sandbox/pool"
 import { SandboxWorkerPool } from "~/modules/apps/sandbox/worker-pool"
@@ -247,6 +247,35 @@ describe("sandbox structured-return shim (kernel/db reads)", () => {
 
       expect(result.isArray).toBe(true)
       expect(result.ids).toEqual(["ap1", "ap2"])
+    })
+
+    it("every structured-return group of SHIM_RULES (store and bulk included) parses as on the pool", async () => {
+      expect(SHIM_RULES.structuredReturnGroups).toEqual(
+        expect.arrayContaining(["kernel", "db", "bulk", "store"]),
+      )
+      for (const group of SHIM_RULES.structuredReturnGroups) {
+        const seen: unknown[] = []
+        const bridge: AnyBridge = {
+          [`${group}_probe`]: async (a: unknown, b: unknown) => {
+            seen.push(a, b)
+            return JSON.stringify(a === "missing" ? null : { group: a, n: 1 })
+          },
+        }
+        const result = (await executeInSandbox({
+          pool,
+          bundleSource: `async function probe(params, ctx) {
+            var hit = await ctx.${group}.probe("x", { k: 1 })
+            var miss = await ctx.${group}.probe("missing")
+            return { hit: hit, missIsNull: miss === null, typeofHit: typeof hit }
+          }`,
+          exportName: "probe",
+          params: {},
+          bridge,
+        })) as Record<string, unknown>
+        expect(result).toEqual({ hit: { group: "x", n: 1 }, missIsNull: true, typeofHit: "object" })
+        // The object argument reached the host as JSON text.
+        expect(seen[1]).toBe('{"k":1}')
+      }
     })
   })
 })

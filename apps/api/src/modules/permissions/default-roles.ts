@@ -48,6 +48,12 @@ export const DEFAULT_ROLES: DefaultRoleSpec[] = [
       // never trigger spend); `owner` is covered by "*".
       "kernel:files:analyze",
       "kernel:saved_views:share",
+      // The data store and dashboards (0275): the agent's data tools, personal
+      // dashboards, and dashboards shared with the org (like saved views).
+      "kernel:data:read",
+      "kernel:data:write",
+      "kernel:dashboards:write",
+      "kernel:dashboards:share",
       // Parent scope grants both REST `:read`/`:write` and the agent-tool
       // gate `kernel:agent:memory` (used by user_memory_get/set/delete).
       // `hasScope` is prefix-hierarchical, so a single parent entry covers
@@ -77,6 +83,8 @@ export const DEFAULT_ROLES: DefaultRoleSpec[] = [
       // parent and will be denied for viewers — which is the desired
       // viewer semantics.
       "kernel:agent:memory:read",
+      // Read-only: the agent may read app data store documents, never write.
+      "kernel:data:read",
     ],
   },
 ]

@@ -124,3 +124,81 @@ export async function onPing(payload: { title: string }, ctx: Ctx) {
 export async function verifyPing(req: { body: string }) {
   return { valid: true, replayKey: `ping:${req.body}` }
 }
+
+// ctx.store: one pass over every method, a version conflict included. Each
+// executor uses its own collection `p.c`, so the answers compare as equal.
+function stripTime(doc: { id: string; data: unknown; version: number } | null) {
+  return doc ? { id: doc.id, data: doc.data, version: doc.version } : doc
+}
+
+async function storeErr(fn: () => Promise<unknown>) {
+  try {
+    await fn()
+    return { thrown: false }
+  } catch (e) {
+    const err = e as { code?: unknown; status?: unknown; message?: unknown }
+    return typeof e === "string"
+      ? { thrown: true, message: e }
+      : { thrown: true, code: err.code ?? null, status: err.status ?? null }
+  }
+}
+
+export async function storeFlow(p: { c: string }, ctx: Ctx) {
+  const c = p.c
+  const missing = await ctx.store.get(c, "a")
+  const a1 = await ctx.store.set(c, "a", { title: "A", n: 1 }, { ifVersion: 0 })
+  const b1 = await ctx.store.set(c, "b", { title: "B", n: 2 })
+  const got = await ctx.store.get(c, "a")
+  const up = await ctx.store.update(c, "a", { n: 5 }, { ifVersion: a1.version })
+  const conflict = await storeErr(() =>
+    ctx.store.set(c, "a", { title: "stale" }, { ifVersion: a1.version }),
+  )
+  const q = await ctx.store.query(c, {
+    where: { n: { gte: 2 } },
+    orderBy: { field: "n", dir: "asc" },
+  })
+  const count = await ctx.store.count(c, { title: "B" })
+  const total = await ctx.store.count(c)
+  const del = await ctx.store.delete(c, "b", { ifVersion: b1.version })
+  const after = await ctx.store.count(c)
+  const badName = await storeErr(() => ctx.store.get("Bad-Name", "a"))
+  return {
+    missing,
+    a1: stripTime(a1),
+    got: stripTime(got),
+    up: stripTime(up),
+    conflict,
+    q: q.items.map((i: { id: string; data: { n: number }; version: number }) => ({
+      id: i.id,
+      n: i.data.n,
+      version: i.version,
+    })),
+    nextCursor: q.nextCursor,
+    count,
+    total,
+    del,
+    after,
+    badName,
+  }
+}
+
+/** Each write, then a read: on a read-only run the writes refuse and the read answers. */
+export async function storeWrites(p: { c: string }, ctx: Ctx) {
+  return {
+    set: await storeErr(() => ctx.store.set(p.c, "w", { title: "w" })),
+    update: await storeErr(() => ctx.store.update(p.c, "w", { title: "w2" })),
+    delete: await storeErr(() => ctx.store.delete(p.c, "w")),
+    read: stripTime(await ctx.store.get(p.c, "w")),
+  }
+}
+
+export async function storeGet(p: { c: string; id: string }, ctx: Ctx) {
+  return stripTime(await ctx.store.get(p.c, p.id))
+}
+
+export async function storePut(
+  p: { c: string; id: string; data: Record<string, unknown> },
+  ctx: Ctx,
+) {
+  return stripTime(await ctx.store.set(p.c, p.id, p.data))
+}

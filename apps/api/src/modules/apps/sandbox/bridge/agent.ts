@@ -502,14 +502,18 @@ export function createAgentMethods(ctx: BridgeContext): Record<string, any> {
         // actorType:"user" bridges with no origin at all). That is not an agent
         // either: attribute it "system" so the resulting mutation and its
         // approval card are not falsely stamped as agent-authored.
+        // A dashboard block's run stays one across the hop: what it reaches is refused,
+        // never parked, and never machine-authorized as a "system" dispatch would be.
         origin:
-          bridgeOptions?.origin === "mcp"
-            ? "mcp"
-            : bridgeOptions?.origin === "in-app-agent"
-              ? "in-app-agent"
-              : bridgeOptions?.origin === "human-ui"
+          bridgeOptions?.origin === "dashboard"
+            ? "dashboard"
+            : bridgeOptions?.origin === "mcp"
+              ? "mcp"
+              : bridgeOptions?.origin === "in-app-agent"
                 ? "in-app-agent"
-                : "system", // undefined or already "system": no re-entrant origin
+                : bridgeOptions?.origin === "human-ui"
+                  ? "in-app-agent"
+                  : "system", // undefined or already "system": no re-entrant origin
         internalCall: {
           callerApp: appName,
           idempotencyKey,

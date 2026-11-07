@@ -397,6 +397,15 @@ const REVIEWED: Record<string, Record<string, string>> = {
   "apps/api/src/modules/users/merge-placeholder.ts#conflictPredicate": {
     predicate: "partial-index predicate read from pg_catalog (pg_get_expr)",
   },
+  "apps/api/src/modules/data-store/service.ts#columnCompare": {
+    op: 'typed as a value of the module constant RANGE_OPS or the literal "=" (compileWhere); the compared value is a bound parameter',
+  },
+  "apps/api/src/modules/data-store/service.ts#compileWhere": {
+    op: "RANGE_OPS[key], after Object.hasOwn(RANGE_OPS, key): one of > >= < <=; the compared value is a bound parameter",
+  },
+  "apps/api/src/modules/data-store/service.ts#queryDocuments": {
+    'dir === "asc" ? ">" : "<"': "one of two literals; dir is checked to be 'asc' or 'desc' above",
+  },
   "apps/db-gate/src/gate-db.ts#GateDb.runRead": {
     "this.statementTimeoutMs":
       "number from the gate's own options (DEFAULT_STATEMENT_TIMEOUT_MS or operator config)",

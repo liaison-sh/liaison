@@ -252,6 +252,8 @@ import {
   replayRegistrationTemplate,
 } from "~/modules/apps/registries"
 import { registerReportBugTool } from "~/modules/bug-reports/tool"
+import { registerDashboardTools } from "~/modules/dashboards/tools"
+import { registerDataStoreTools } from "~/modules/data-store/tools"
 import {
   RULE_MAX_TEMPLATES,
   ruleRecordTypeSchema,
@@ -3647,6 +3649,9 @@ When to use: When an admin asks to set up a reusable role they will spawn repeat
   registerSetupStateTool(orgId)
   registerSetupGuideTools(orgId)
   registerConnectionTools(orgId)
+  // The data store and dashboard tools (their own modules).
+  registerDataStoreTools(orgId)
+  registerDashboardTools(orgId)
 
   // Skills + routines tools (read-only set; gated authoring lands in Tasks 3.2 + 3.3).
   await registerSkillRoutineTools(orgId)

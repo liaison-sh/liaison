@@ -20,7 +20,8 @@ The flow, with your tools:
    each page you found with `mode: "extract"`. If the user gave you a URL, fetch it.
 2. **Read this reference**: `auth`, `operations`, `roles`, `format` and
    `fields-checklist` before you write; `field-table` when you need a field's exact
-   constraints.
+   constraints. `woocommerce` is a complete worked example (a shop's orders,
+   products and best sellers).
 3. **Draft the document** and save it with `connector_adapter_save` under a short
    slug (`crm`, `erp`). The save validates first: invalid documents are refused with
    each issue at its path, before anyone is asked to approve. Fix every issue and
@@ -470,6 +471,152 @@ marks the fields of one variant of a union.
 | `operations[].chain[].params` | object | yes | keys match `^[A-Za-z_][A-Za-z0-9_]{0,63}$` | The step's params: a literal, or exactly `{field}`, an output field of the previous step. |
 | `operations[].chain[].params.<key>` | string \| number \| boolean | no | string: length ≤ 2000 |  |
 <!-- api-connector-schema:end -->
+
+## Example: a WooCommerce shop [woocommerce]
+
+A complete adapter for a WooCommerce store's REST API (v3): orders, one order,
+products, and the best sellers of a period. Copy it, put the store's own host in
+`baseUrl`, and test each read.
+
+- **Base URL:** `https://<store>/wp-json/wc/v3`, the store's public https address
+  (the one in WordPress's Site Address). WooCommerce accepts a consumer key over
+  https only; on plain http it asks for OAuth 1.0a request signing, which the
+  adapter cannot do (section `does-not-fit`).
+- **Auth:** HTTP Basic with a REST API key that the store owner creates in
+  WooCommerce > Settings > Advanced > REST API, permission Read: `auth:
+  {"type": "basic"}`, `username` = the consumer key (`ck_...`), `password` = the
+  consumer secret (`cs_...`). Ask for both with `request_secret`.
+- **Lists are the whole response** (a JSON array): leave `items` out.
+- **Pagination:** `orders` and `products` take `page` and `per_page` (at most 100).
+  Declare them as `pagination` (`"param": "page", "sizeParam": "per_page", "size":
+  100`), never as params: Liaison walks the pages itself from page 1, so one call
+  returns up to 200 items (2 pages of 100). For more, narrow the window with
+  `after` / `before` and call again per window.
+- **Dates:** `date_created` is in the store's timezone, `date_created_gmt` in UTC,
+  both without an offset. `after` / `before` take RFC 3339; the literal
+  `dates_are_gmt=true` makes the store compare them in UTC.
+- **Amounts** (`total`, `price`) are decimal strings in the order's `currency`.
+- **Line items** are a list of objects: map their leaves. `line_item_ids` (every
+  line's id) gives the line count as its length.
+- **Revenue by day and order counts** come from `orders_list` over a date window
+  (a dashboard groups its rows by `date_created`, by day, and sums `total`). **Top
+  products** come from `reports_top_sellers`.
+- **No `reports/sales` operation:** it answers one object whose per-day figures sit
+  under `totals`, keyed by the date (`"2026-10-01": {"sales": ...}`). A field path
+  cannot name a key that changes with the date, so those figures cannot be read as
+  rows; use `orders_list` for anything per day.
+
+```json
+{
+  "id": "woocommerce",
+  "name": "WooCommerce",
+  "version": "1.0.0",
+  "baseUrl": "https://shop.example.com/wp-json/wc/v3",
+  "auth": { "type": "basic" },
+  "operations": [
+    {
+      "name": "orders_list",
+      "description": "The store's orders, newest first, up to 200 per call. status = one order status (omit for all). after / before = RFC 3339 times in UTC (2026-10-01T00:00:00Z) bounding the order date; for a long period call once per shorter window.",
+      "kind": "read",
+      "method": "GET",
+      "path": "/orders",
+      "params": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["pending", "processing", "on-hold", "completed", "cancelled", "refunded", "failed"]
+          },
+          "after": { "type": "string", "format": "date-time" },
+          "before": { "type": "string", "format": "date-time" }
+        }
+      },
+      "query": {
+        "status": "{status}",
+        "after": "{after}",
+        "before": "{before}",
+        "dates_are_gmt": "true",
+        "orderby": "date",
+        "order": "desc"
+      },
+      "pagination": { "type": "page", "param": "page", "sizeParam": "per_page", "size": 100, "maxPages": 2 },
+      "fields": {
+        "id": "id",
+        "number": "number",
+        "status": "status",
+        "date_created": "date_created",
+        "date_created_gmt": "date_created_gmt",
+        "total": "total",
+        "currency": "currency",
+        "customer_email": "billing.email",
+        "line_item_ids": "line_items.id"
+      }
+    },
+    {
+      "name": "orders_get",
+      "description": "One order by its id (the id from orders_list, not the order number shown to the customer), with its lines.",
+      "kind": "read",
+      "method": "GET",
+      "path": "/orders/{id}",
+      "params": {
+        "type": "object",
+        "properties": { "id": { "type": "integer", "minimum": 1 } },
+        "required": ["id"]
+      },
+      "fields": {
+        "id": "id",
+        "number": "number",
+        "status": "status",
+        "date_created": "date_created",
+        "total": "total",
+        "currency": "currency",
+        "customer_email": "billing.email",
+        "customer_first_name": "billing.first_name",
+        "customer_last_name": "billing.last_name",
+        "line_product_ids": "line_items.product_id",
+        "line_names": "line_items.name",
+        "line_quantities": "line_items.quantity",
+        "line_totals": "line_items.total"
+      }
+    },
+    {
+      "name": "products_list",
+      "description": "The store's products, up to 200 per call. search = words in the name or description; sku = one exact SKU; status = publish, draft or private (omit for all).",
+      "kind": "read",
+      "method": "GET",
+      "path": "/products",
+      "params": {
+        "type": "object",
+        "properties": {
+          "search": { "type": "string", "maxLength": 100 },
+          "sku": { "type": "string", "maxLength": 100 },
+          "status": { "type": "string", "enum": ["publish", "draft", "private"] }
+        }
+      },
+      "query": { "search": "{search}", "sku": "{sku}", "status": "{status}" },
+      "pagination": { "type": "page", "param": "page", "sizeParam": "per_page", "size": 100, "maxPages": 2 },
+      "fields": ["id", "name", "sku", "status", "price", "stock_status", "stock_quantity", "total_sales"]
+    },
+    {
+      "name": "reports_top_sellers",
+      "description": "Best-selling products of a period, by quantity sold. Either period = week, month, last_month or year, or date_min and date_max = YYYY-MM-DD (both, inclusive).",
+      "kind": "read",
+      "method": "GET",
+      "path": "/reports/top_sellers",
+      "params": {
+        "type": "object",
+        "properties": {
+          "period": { "type": "string", "enum": ["week", "month", "last_month", "year"] },
+          "date_min": { "type": "string", "format": "date" },
+          "date_max": { "type": "string", "format": "date" }
+        }
+      },
+      "query": { "period": "{period}", "date_min": "{date_min}", "date_max": "{date_max}" },
+      "fields": { "product_id": "product_id", "title": "title", "quantity": "quantity" }
+    }
+  ]
+}
+```
 
 ## Test and troubleshoot [troubleshooting]
 

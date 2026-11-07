@@ -18,6 +18,7 @@
     "@kobalte/core": "^0.13.14",
     "@liaison/api-connector-core": "workspace:*",
     "@liaison/app-sdk": "workspace:*",
+    "@liaison/app-ui": "workspace:*",
     "@liaison/host": "workspace:*",
     "@liaison/mailbox-crypto": "workspace:*",
     "@liaison/shared": "workspace:*",

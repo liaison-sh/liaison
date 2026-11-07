@@ -326,6 +326,9 @@ const appDescriptorSchema = z.object({
       webhookSchema,
     )
     .optional(),
+  // Declared data store collections (@liaison/app-sdk app-store.ts): shape and
+  // readScope rule both in storeErrors below.
+  store: z.unknown().optional(),
   // Shape only; the cross-field rule is webhookHealthErrors (manifest-schema.ts webhookHealth).
   webhookHealth: z
     .object({
@@ -720,6 +723,7 @@ export function validateAppDescriptor(descriptor: any): ValidationResult {
   errors.push(...scheduledJobNameErrors(descriptor))
   errors.push(...runsForErrors(descriptor))
   errors.push(...settingsErrors(data as Record<string, any>))
+  errors.push(...storeErrors(descriptor))
   errors.push(...connectionAdminScopeErrors(data as Record<string, any>))
   errors.push(...dimensionReferenceErrors(descriptor))
   errors.push(...printDeclarationErrors(descriptor))
@@ -757,6 +761,7 @@ import {
   configKeysDeclarationErrors,
   listingDeclarationErrors,
   settingsDeclarationErrors,
+  storeDeclarationErrors,
 } from "@liaison/app-sdk"
 import { appIconSvgProblems, decidingScopeForToolDef, isAppIconName } from "@liaison/shared"
 import Ajv from "ajv"
@@ -793,6 +798,17 @@ function manifestOwnScopes(manifest: Record<string, any>): Set<string> {
   for (const s of Array.isArray(manifest.scopes) ? manifest.scopes : []) add(s)
   if (typeof manifest.name === "string") add(decidingScopeForToolDef({}, manifest.name))
   return out
+}
+
+/**
+ * The manifest's `store` declaration (app-sdk app-store.ts): its shape, and each
+ * collection's readScope one of the app's own declared scopes. Shared by the
+ * manifest and the descriptor validators.
+ */
+export function storeErrors(manifest: Record<string, any>): string[] {
+  if (manifest?.store === undefined) return []
+  const own = manifestOwnScopes(manifest)
+  return storeDeclarationErrors(manifest, { knownScopes: (s) => own.has(s) })
 }
 
 /**
@@ -950,6 +966,7 @@ export function validateAppManifest(manifest: any): ValidationResult {
   errors.push(...runsForErrors(manifest))
   errors.push(...configKeysDeclarationErrors(manifest.configKeys, manifest.connections))
   errors.push(...settingsErrors(manifest))
+  errors.push(...storeErrors(manifest))
   errors.push(...connectionAdminScopeErrors(manifest))
   errors.push(...dimensionReferenceErrors(manifest))
   errors.push(...oauthManifestKnobErrors(manifest))

@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
-import { appSettingsSchema } from "@liaison/app-sdk"
+import { appSettingsSchema, type StoreCollectionDeclaration } from "@liaison/app-sdk"
 import { sql as drizzleSql, inArray, type SQL } from "drizzle-orm"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { withPrivilegedDb, withSchemaAdmin } from "~/db/privileged"
@@ -46,6 +46,7 @@ import {
   approvalResourceOwnerRegistry,
   approvalSummarizerRegistry,
   appSettingsRegistry,
+  appStoreDeclarationsRegistry,
   assertReferenceableOutputs,
   attentionItemsRegistry,
   connectionBeforeDisconnectRegistry,
@@ -2957,6 +2958,15 @@ async function registerSingleApp(
       // with "not yet registered".
       appCapabilitiesRegistry.set([orgId, desc.name], declaredCapabilities)
 
+      // Declared data store collections (manifest `store`, validated with the manifest).
+      const storeCollections = (desc as { store?: { collections?: unknown } }).store?.collections
+      if (storeCollections && typeof storeCollections === "object") {
+        appStoreDeclarationsRegistry.set(
+          [orgId, desc.name],
+          Object.freeze({ ...(storeCollections as Record<string, StoreCollectionDeclaration>) }),
+        )
+      }
+
       // Bridge-manifest registry — the full manifest snapshot (with schema +
       // erasure declarations) for EVERY installed manifest-format app, including
       // tool-less/webhook-less ones whose schema would otherwise be unreachable.
@@ -4286,6 +4296,7 @@ const APP_KEYED_REGISTRIES = [
   appSettingsRegistry,
   attentionItemsRegistry,
   appCapabilitiesRegistry,
+  appStoreDeclarationsRegistry,
   viewRegistry,
   slotRegistry,
   exportRegistry,

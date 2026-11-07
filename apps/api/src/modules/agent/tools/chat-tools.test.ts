@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
+import { MeiliSearch } from "meilisearch"
 import { sql } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
+import * as searchClientModule from "~/infra/search/client"
+import { expectedSettings, SearchDriftTestAccess } from "~/modules/search/drift"
+import {
+  MessageIndexerTestAccess,
+  processMessageIndexerJob,
+} from "~/modules/search/message-indexer"
 
 const ORG_ID = "00000000-0000-0000-0000-000000d80001"
 const USER_A = "00000000-0000-0000-0000-000000d80002"
@@ -11,8 +18,30 @@ const READ_THREAD_ID = "00000000-0000-0000-0000-000000d80005"
 const THREAD_MSG_ID = "00000000-0000-0000-0000-000000d80010"
 const READ_THREAD_MSG_ID = "00000000-0000-0000-0000-000000d80011"
 
+// Message content is searched through the search index, which the product
+// fills on write. These rows are inserted directly, so this file indexes them
+// itself, into an index of its own, and never depends on what the shared one
+// holds or on whether it reads as ready.
+const INDEX = `test_chattools_${crypto.randomUUID().slice(0, 8)}`
+const meili = new MeiliSearch({
+  host: process.env.MEILISEARCH_HOST || "http://localhost:7700",
+  apiKey: process.env.MEILISEARCH_API_KEY || "dev-master-key",
+})
+let indexSpy: { mockRestore(): void } | null = null
+
 describe("chat tools", () => {
   beforeAll(async () => {
+    indexSpy = spyOn(searchClientModule, "effectiveIndexName").mockReturnValue(INDEX)
+    MessageIndexerTestAccess.setEmbedderFactory(async () => null)
+    const created = await meili.createIndex(INDEX, { primaryKey: "id" })
+    await meili.tasks.waitForTask(created.taskUid)
+    const applied = await meili
+      .index(INDEX)
+      .updateSettings(
+        expectedSettings({ registeredReadScopes: ["kernel:threads:read"], dimensionFields: [] }),
+      )
+    await meili.tasks.waitForTask(applied.taskUid)
+    SearchDriftTestAccess.setSearchReady(true)
     await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${ORG_ID}, 'ChatToolOrg', 'chat-tool-org') ON CONFLICT DO NOTHING`
     await sql`INSERT INTO kernel.users (id, org_id, email, name, password_hash, status) VALUES (${USER_A}, ${ORG_ID}, 'cta@test.com', 'Alice Chat', 'x', 'active') ON CONFLICT DO NOTHING`
     await sql`INSERT INTO kernel.users (id, org_id, email, name, password_hash, status) VALUES (${USER_B}, ${ORG_ID}, 'ctb@test.com', 'Bob Chat', 'x', 'active') ON CONFLICT DO NOTHING`
@@ -28,9 +57,18 @@ describe("chat tools", () => {
     await sql`INSERT INTO kernel.user_thread_state (user_id, thread_id, org_id) VALUES (${USER_B}, ${THREAD_ID}, ${ORG_ID}) ON CONFLICT DO NOTHING`
     await sql`INSERT INTO kernel.user_thread_state (user_id, thread_id, org_id, last_read_message_id) VALUES (${USER_A}, ${READ_THREAD_ID}, ${ORG_ID}, ${READ_THREAD_MSG_ID}) ON CONFLICT DO NOTHING`
     await sql`INSERT INTO kernel.user_thread_state (user_id, thread_id, org_id) VALUES (${USER_B}, ${READ_THREAD_ID}, ${ORG_ID}) ON CONFLICT DO NOTHING`
+    for (const messageId of [THREAD_MSG_ID, READ_THREAD_MSG_ID]) {
+      await processMessageIndexerJob({ action: "upsert", orgId: ORG_ID, messageId })
+    }
   })
 
   afterAll(async () => {
+    // Back to the state a fresh process starts in: not ready, probed on next use.
+    SearchDriftTestAccess.setSearchReady(false)
+    SearchDriftTestAccess.expireReadyProbe()
+    MessageIndexerTestAccess.setEmbedderFactory(null)
+    indexSpy?.mockRestore()
+    await meili.deleteIndex(INDEX).catch(() => undefined)
     await sql`DELETE FROM kernel.routines WHERE org_id = ${ORG_ID}`
     await sql`DELETE FROM kernel.user_thread_state WHERE org_id = ${ORG_ID}`
     await sql`DELETE FROM kernel.messages WHERE org_id = ${ORG_ID}`
@@ -96,10 +134,12 @@ describe("chat tools", () => {
     it("finds thread by message content with matchContext", async () => {
       const { handleThreadsSearch } = await import("./chat-tools")
       const result = await withRlsContext(actorA, async (tx) => {
+        // The scopes executeTool injects: the index pass reads only what they cover.
         return handleThreadsSearch({ query: "infrastructure migration" }, {
           userId: USER_A,
           orgId: ORG_ID,
           db: tx,
+          scopes: actorA.scopes,
         } as any)
       })
       const threads = (result as any).threads

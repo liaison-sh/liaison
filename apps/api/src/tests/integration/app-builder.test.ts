@@ -48,6 +48,7 @@ import { ensureAppsForOrg } from "~/modules/apps/init"
 import { installAppFromBytes } from "~/modules/apps/install-service"
 import { getInstallTrust, resetInstallTrustCache } from "~/modules/apps/install-trust"
 import { shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { resolveContact } from "~/modules/contacts/service"
 import { draftStoreApp, getDocument, setDocument } from "~/modules/data-store/service"
 import { setOrgCaps } from "~/modules/org/caps"
 import { purgeOrgCustomApps } from "~/modules/org/purge/purge-org"
@@ -299,7 +300,10 @@ export async function probe_store(_p: Record<string, never>, ctx: AppContext) {
   ctx.logger.warn("wrote x")
   return { got: await ctx.store.get("items", "x") }
 }
-export default defineHandlers({ probe_db, probe_fetch, probe_config, probe_store })
+export async function probe_contact(p: { email: string }, ctx: AppContext) {
+  return attempt(() => ctx.resolveContact({ email: p.email, name: "From a preview", company: "Preview Co", externalId: "preview-text" }))
+}
+export default defineHandlers({ probe_db, probe_fetch, probe_config, probe_store, probe_contact })
 `
   const tools = {
     probe_db: {},
@@ -311,6 +315,9 @@ export default defineHandlers({ probe_db, probe_fetch, probe_config, probe_store
     },
     probe_config: {},
     probe_store: {},
+    probe_contact: {
+      params: { type: "object", properties: { email: { type: "string" } } },
+    },
   }
   let draftId = ""
   let appName = ""
@@ -341,6 +348,26 @@ export default defineHandlers({ probe_db, probe_fetch, probe_config, probe_store
     const r = await run("probe_fetch", { url: "https://api.example.com/x" })
     expect(r.ok).toBe(false)
     expect(r.message).toContain("Domain not in allowlist")
+  }, 60_000)
+
+  it("ctx.resolveContact only looks up: an org contact stays as it was, a miss creates nothing", async () => {
+    const email = `preview-${crypto.randomUUID().slice(0, 8)}@example.com`
+    const seeded = await asAdmin(
+      async (tx) =>
+        (await resolveContact(tx, orgId, adminId, { email }, { audience: "org" })).contact!,
+    )
+    const found = await run("probe_contact", { email })
+    expect(found.ok).toBe(true)
+    expect((found.value as { id: string }).id).toBe(seeded.id)
+    const [row] = await sql<{ name: string | null; company: string | null; ids: unknown }[]>`
+      SELECT name, company, external_ids AS ids FROM kernel.contacts WHERE id = ${seeded.id}`
+    expect(row).toEqual({ name: null, company: null, ids: {} })
+    const missEmail = `miss-${email}`
+    const miss = await run("probe_contact", { email: missEmail })
+    expect(miss).toEqual({ ok: true, value: null })
+    const [{ n }] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM kernel.contacts WHERE org_id = ${orgId} AND email = ${missEmail}`
+    expect(n).toBe(0)
   }, 60_000)
 
   it("no config value and no configSecrets in a preview", async () => {

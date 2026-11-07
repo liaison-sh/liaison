@@ -51,6 +51,7 @@ export function createDbMethods(ctx: BridgeContext): Record<string, any> {
     multiTermSearch,
     orgId,
     refuseWriteOnReadOnlyRun,
+    bridgeReadOnlyRun,
     requireCapability,
     schemaName,
     stampMailAccountEncryptionState,
@@ -542,6 +543,7 @@ export function createDbMethods(ctx: BridgeContext): Record<string, any> {
       // every matching contact's `kernel.contacts.external_ids[<appName>]`
       // jsonb key. The contact row itself is preserved.
       if (rawParams.clear === true) {
+        refuseWriteOnReadOnlyRun("kernel.contacts", "ctx.resolveContact({ clear: true })")
         if (typeof rawParams.externalId !== "string" || !rawParams.externalId) {
           throw new Error(
             `App "${appName}" called resolveContact({ clear: true }) without a string externalId.`,
@@ -588,6 +590,9 @@ export function createDbMethods(ctx: BridgeContext): Record<string, any> {
           userId,
           params,
           appContactAudience(manifest.capabilities),
+          // A read-only run (an enforced read tool, a draft preview) only looks a
+          // contact up: it never links, enriches or creates one, for any app.
+          { lookupOnly: bridgeReadOnlyRun },
         )
         return JSON.stringify(contact)
       } catch (err) {

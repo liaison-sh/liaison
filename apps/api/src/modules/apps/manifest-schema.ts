@@ -544,7 +544,7 @@ const toolSchema = {
     searchKeywords: {
       type: "array",
       items: { type: "string", minLength: 1, maxLength: 40, pattern: "^\\S+$" },
-      maxItems: 30,
+      maxItems: 40,
     },
     agentVisible: { type: "boolean" },
     trustBoundary: { type: "string", enum: ["internal", "agent", "user"] },

@@ -206,7 +206,9 @@ describe("the member side of the boundary", () => {
         )
         return rows.map((r) => r["QUERY PLAN"]).join("\n")
       })
-      expect(plan).toContain("Index Scan using users_pkey")
+      // The planner may answer a one-row primary-key lookup with a plain or a bitmap index scan;
+      // either reads through users_pkey, and a sequential scan is the failure.
+      expect(plan).toMatch(/(Index Scan using|Bitmap Index Scan on) users_pkey/)
       expect(plan).toContain("Index Cond: (id = ")
       expect(plan).not.toContain("Seq Scan")
     } finally {

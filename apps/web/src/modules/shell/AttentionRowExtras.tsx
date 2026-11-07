@@ -30,7 +30,9 @@ export function isStoppedDraft(item: AttentionItem): boolean {
 
 /** A notice that the check stopped a send at the moment it went out. */
 export function isStoppedSendNotice(item: AttentionItem): boolean {
-  return item.kind === SEND_STOPPED_KIND
+  // An app event's kind ("mail:...") rides in `kind` beside the kernel's own kinds.
+  const kind: string = item.kind
+  return kind === SEND_STOPPED_KIND
 }
 
 /**

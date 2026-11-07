@@ -28,8 +28,10 @@ import { withServedSummaries } from "~/modules/approvals/served-summary"
 import { approvalEditableFieldsRegistry } from "~/modules/apps/app-registries"
 import {
   evaluateSendGuard,
+  evaluateSendGuardsAtCard,
   isPinnedSendGuard,
-  personZone,
+  type PinnedSendGuard,
+  personZones,
   recipientsOf,
   type SendGuardVerdict,
 } from "~/modules/mail/send-guard"
@@ -498,40 +500,58 @@ async function readSendGuards(
   at: "card" | "send",
 ): Promise<Map<string, ApprovalSendGuard>> {
   const out = new Map<string, ApprovalSendGuard>()
+  for (const [id, verdict] of await readSendGuardVerdicts(orgId, rows, at)) {
+    out.set(id, await cardGuard(db, verdict))
+  }
+  return out
+}
+
+async function readSendGuardVerdicts(
+  orgId: string,
+  rows: GuardRow[],
+  at: "card" | "send",
+): Promise<Map<string, SendGuardVerdict>> {
+  const out = new Map<string, SendGuardVerdict>()
   const guarded = rows.filter(
     (r) => GUARDED_SENDS.has(r.tool_name) && isPinnedSendGuard(r.current_payload?.sendGuard),
   )
   if (guarded.length === 0) return out
   const closed = guarded.filter((r) => r.status !== "pending")
-  const stopped = await readStoppedGuards(
+  const pending = guarded.filter((r) => r.status === "pending")
+  for (const [id, verdict] of await readStoppedGuards(
     orgId,
     closed.map((r) => r.id),
+  )) {
+    out.set(id, verdict)
+  }
+  if (pending.length === 0) return out
+  const zones = await personZones(
+    orgId,
+    pending.map((r) => r.requested_by),
   )
-  const zones = new Map<string, Awaited<ReturnType<typeof personZone>>>()
-  for (const r of guarded) {
-    let verdict: SendGuardVerdict | undefined
-    if (r.status === "pending") {
-      if (!zones.has(r.requested_by))
-        zones.set(r.requested_by, await personZone(orgId, r.requested_by))
-      const payload = r.current_payload
-      verdict = await evaluateSendGuard({
-        ...zones.get(r.requested_by),
-        orgId,
-        guard: payload.sendGuard as Parameters<typeof evaluateSendGuard>[0]["guard"],
-        recipients: recipientsOf(payload.to, payload.cc, payload.bcc),
-        at,
-      })
-    } else {
-      verdict = stopped.get(r.id)
+  const checks = pending.map((r) => {
+    const payload = r.current_payload
+    return {
+      ...(zones.get(r.requested_by) ?? { locale: null, timeZone: null }),
+      guard: payload.sendGuard as PinnedSendGuard,
+      recipients: recipientsOf(payload.to, payload.cc, payload.bcc),
     }
-    if (verdict) out.set(r.id, await cardGuard(db, verdict))
+  })
+  // One draft at a send asks the providers too; a list of drafts reads in shared queries.
+  const verdicts =
+    at === "send"
+      ? await Promise.all(checks.map((c) => evaluateSendGuard({ ...c, orgId, at })))
+      : await evaluateSendGuardsAtCard(orgId, checks)
+  for (const [i, r] of pending.entries()) {
+    const verdict = verdicts[i]
+    if (verdict) out.set(r.id, verdict)
   }
   return out
 }
 
 /**
- * The send check on the agent mail drafts of Home's feed and badge, as a card reads it: a held
- * draft is not on Home and not counted, one with a final state shows its reason uncounted.
+ * The send check on the agent mail drafts of Home's feed, as a card reads it: a held
+ * draft is not on Home, one with a final state shows its reason uncounted.
  */
 export function readFeedSendGuards(
   db: RlsClient,
@@ -539,6 +559,21 @@ export function readFeedSendGuards(
   rows: GuardRow[],
 ): Promise<Map<string, ApprovalSendGuard>> {
   return readSendGuards(db, orgId, rows, "card")
+}
+
+/**
+ * The send check's state alone on each draft, for the badge every push counts: no quote and no
+ * record read, and a number of queries that does not grow with the drafts.
+ */
+export async function readFeedSendGuardStates(
+  orgId: string,
+  rows: GuardRow[],
+): Promise<Map<string, ApprovalSendGuard["state"]>> {
+  const out = new Map<string, ApprovalSendGuard["state"]>()
+  for (const [id, verdict] of await readSendGuardVerdicts(orgId, rows, "card")) {
+    out.set(id, verdict.state)
+  }
+  return out
 }
 
 /** A guard state that ends a draft: nothing it says can still go out as written. */

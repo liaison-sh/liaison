@@ -217,13 +217,11 @@ async function ownAddresses(orgId: string): Promise<string[]> {
 async function guardContactSet(_orgId: string, pinned: readonly string[]): Promise<string[]> {
   return [...pinned]
 }
-
+/** What one draft's inbound read is about. */
 interface InboundQuery {
-  orgId: string
   contactIds: string[]
   addresses: string[]
   conversationId?: string
-  own: string[]
   since: string
 }
 
@@ -235,31 +233,85 @@ const INBOUND_MAX_ROWS = 2000
 /** Where the next page starts: the order key (full precision, as text) and the row id. */
 type InboundCursor = { ord: string; id: string } | null
 
+/** A draft's inbound rows, or null past `INBOUND_MAX_ROWS` without a reply. */
+type InboundRead = Map<string, GuardInbound[] | null>
+
 /**
  * Read inbound rows newest first, page by page, until one classifies as a reply (a reply
  * outranks everything else, so nothing older can change the answer) or the rows run out. The
  * classifier is code, not SQL, so a fixed window could hide a real reply behind newer
- * automated mail. Too many rows to read throws, and the check answers unavailable.
+ * automated mail. Every draft still open shares one query per page, so the number of queries
+ * is bounded by the pages one draft needs, not by the number of drafts. A draft with too many
+ * rows to read answers null, and its check answers unavailable.
  */
-async function pageInbound<R extends { ord: string; id: string }>(
-  readPage: (cursor: InboundCursor) => Promise<R[]>,
+async function pageInbound<R extends { k: string; ord: string; id: string }>(
+  keys: readonly string[],
+  readPage: (open: ReadonlyMap<string, InboundCursor>) => Promise<R[]>,
   toInbound: (row: R) => GuardInbound,
-): Promise<GuardInbound[]> {
-  const out: GuardInbound[] = []
-  let cursor: InboundCursor = null
-  while (out.length < INBOUND_MAX_ROWS) {
-    const rows = await readPage(cursor)
-    const items = rows.map(toInbound)
-    out.push(...items)
-    if (items.some((item) => item.kind === "reply") || rows.length < INBOUND_PAGE) return out
-    const last = rows[rows.length - 1] as R
-    cursor = { ord: last.ord, id: last.id }
+): Promise<InboundRead> {
+  const read: InboundRead = new Map()
+  const acc = new Map<string, GuardInbound[]>(keys.map((k) => [k, []]))
+  let open = new Map<string, InboundCursor>(keys.map((k) => [k, null]))
+  while (open.size > 0) {
+    const pages = new Map<string, R[]>()
+    for (const row of await readPage(open)) {
+      const page = pages.get(row.k)
+      if (page) page.push(row)
+      else pages.set(row.k, [row])
+    }
+    const next = new Map<string, InboundCursor>()
+    for (const k of open.keys()) {
+      const rows = pages.get(k) ?? []
+      const items = rows.map(toInbound)
+      const out = acc.get(k) as GuardInbound[]
+      out.push(...items)
+      if (items.some((item) => item.kind === "reply") || rows.length < INBOUND_PAGE) {
+        read.set(k, out)
+      } else if (out.length >= INBOUND_MAX_ROWS) {
+        read.set(k, null)
+      } else {
+        const last = rows[rows.length - 1] as R
+        next.set(k, { ord: last.ord, id: last.id })
+      }
+    }
+    open = next
   }
-  throw new Error(`over ${INBOUND_MAX_ROWS} inbound rows to read without a reply`)
+  return read
 }
 
-async function readMailInbound(q: InboundQuery): Promise<GuardInbound[]> {
+/** The drafts still open at a page, as rows a query joins against, each with its cursor. */
+function openDrafts(
+  queries: ReadonlyMap<string, InboundQuery>,
+  open: ReadonlyMap<string, InboundCursor>,
+): SQL {
+  const spec = [...open].map(([k, cursor]) => {
+    const q = queries.get(k) as InboundQuery
+    return {
+      k,
+      since: q.since,
+      conv: q.conversationId ?? null,
+      contacts: q.contactIds,
+      addrs: q.addresses,
+      cur_ord: cursor?.ord ?? null,
+      cur_id: cursor?.id ?? null,
+    }
+  })
+  return drizzleSql`
+    SELECT x.k, x.since::timestamptz AS since, x.conv::uuid AS conv,
+           ARRAY(SELECT jsonb_array_elements_text(x.contacts)::uuid) AS contacts,
+           ARRAY(SELECT jsonb_array_elements_text(x.addrs)) AS addrs,
+           x.cur_ord::timestamptz AS cur_ord, x.cur_id::uuid AS cur_id
+      FROM jsonb_to_recordset(${JSON.stringify(spec)}::jsonb)
+        AS x(k text, since text, conv text, contacts jsonb, addrs jsonb, cur_ord text, cur_id text)`
+}
+
+async function readMailInbound(
+  orgId: string,
+  own: readonly string[],
+  queries: ReadonlyMap<string, InboundQuery>,
+): Promise<InboundRead> {
   type Row = {
+    k: string
     id: string
     ord: string
     conversation_id: string
@@ -269,32 +321,39 @@ async function readMailInbound(q: InboundQuery): Promise<GuardInbound[]> {
     text_body: string | null
     subject: string | null
   }
-  return withPrivilegedDb(q.orgId, "send-guard-mail-inbound", (tx) =>
+  return withPrivilegedDb(orgId, "send-guard-mail-inbound", (tx) =>
     pageInbound(
-      async (cursor) =>
+      [...queries.keys()],
+      async (open) =>
         extractRows<Row>(
           await tx.execute(drizzleSql`
-            SELECT m.id, GREATEST(m.sent_at, m.synced_at)::text AS ord,
-                   m.conversation_id, m.from_address->>'email' AS sender,
-                   COALESCE(m.sent_at, m.synced_at) AS at,
-                   m.raw_headers, m.text_body, m.subject
-              FROM ${table("app_mail", "messages")} m
-              JOIN ${table("app_mail", "conversations")} c ON c.id = m.conversation_id
-              JOIN ${table("app_mail", "accounts")} a ON a.id = m.account_id
-             WHERE m.org_id = ${q.orgId}::uuid AND m.direction = 'inbound'
-               AND (c.contact_id = ANY(${uuidSet(q.contactIds)})
-                    OR c.id = ${q.conversationId ?? null}::uuid
-                    OR lower(m.from_address->>'email') = ANY(${textSet(q.addresses)}))
-               AND lower(m.from_address->>'email') <> ALL(${textSet(q.own)})
-               AND (COALESCE(m.sent_at, m.synced_at) > ${q.since}::timestamptz
-                    OR (m.synced_at > ${q.since}::timestamptz
-                        AND (m.sent_at > a.created_at
-                             OR m.sent_at > ${q.since}::timestamptz - interval '72 hours')))
-               AND (${cursor === null}::boolean
-                    OR (GREATEST(m.sent_at, m.synced_at), m.id)
-                       < (${cursor?.ord ?? null}::timestamptz, ${cursor?.id ?? null}::uuid))
-             ORDER BY GREATEST(m.sent_at, m.synced_at) DESC, m.id DESC
-             LIMIT ${INBOUND_PAGE}`),
+            WITH d AS (${openDrafts(queries, open)})
+            SELECT d.k, r.id, r.ord, r.conversation_id, r.sender, r.at,
+                   r.raw_headers, r.text_body, r.subject
+              FROM d CROSS JOIN LATERAL (
+                SELECT m.id, GREATEST(m.sent_at, m.synced_at) AS ord_at,
+                       GREATEST(m.sent_at, m.synced_at)::text AS ord,
+                       m.conversation_id, m.from_address->>'email' AS sender,
+                       COALESCE(m.sent_at, m.synced_at) AS at,
+                       m.raw_headers, m.text_body, m.subject
+                  FROM ${table("app_mail", "messages")} m
+                  JOIN ${table("app_mail", "conversations")} c ON c.id = m.conversation_id
+                  JOIN ${table("app_mail", "accounts")} a ON a.id = m.account_id
+                 WHERE m.org_id = ${orgId}::uuid AND m.direction = 'inbound'
+                   AND (c.contact_id = ANY(d.contacts)
+                        OR c.id = d.conv
+                        OR lower(m.from_address->>'email') = ANY(d.addrs))
+                   AND lower(m.from_address->>'email') <> ALL(${textSet(own)})
+                   AND (COALESCE(m.sent_at, m.synced_at) > d.since
+                        OR (m.synced_at > d.since
+                            AND (m.sent_at > a.created_at
+                                 OR m.sent_at > d.since - interval '72 hours')))
+                   AND (d.cur_id IS NULL
+                        OR (GREATEST(m.sent_at, m.synced_at), m.id) < (d.cur_ord, d.cur_id))
+                 ORDER BY GREATEST(m.sent_at, m.synced_at) DESC, m.id DESC
+                 LIMIT ${INBOUND_PAGE}
+              ) r
+             ORDER BY d.k, r.ord_at DESC, r.id DESC`),
         ),
       (row) => ({
         id: row.id,
@@ -314,8 +373,13 @@ async function readMailInbound(q: InboundQuery): Promise<GuardInbound[]> {
  * its dates say, so a ledger row rules it out. Ticket ingest already dropped
  * auto-responders, so only the subject and the text are left to classify.
  */
-async function readTicketInbound(q: InboundQuery): Promise<GuardInbound[]> {
+async function readTicketInbound(
+  orgId: string,
+  own: readonly string[],
+  queries: ReadonlyMap<string, InboundQuery>,
+): Promise<InboundRead> {
   type Row = {
+    k: string
     id: string
     ord: string
     ticket_id: string
@@ -324,38 +388,44 @@ async function readTicketInbound(q: InboundQuery): Promise<GuardInbound[]> {
     text_body: string | null
     subject: string | null
   }
-  return withPrivilegedDb(q.orgId, "send-guard-ticket-inbound", async (tx) => {
+  return withPrivilegedDb(orgId, "send-guard-ticket-inbound", async (tx) => {
     const present = extractRows<{ name: string | null }>(
       await tx.execute(
         drizzleSql`SELECT to_regclass(${`${quoteIdent(schemaRef("app_tickets"))}.messages`})::text AS name`,
       ),
     )
-    if (!present[0]?.name) return []
+    if (!present[0]?.name) return new Map([...queries.keys()].map((k) => [k, []]))
     return pageInbound(
-      async (cursor) =>
+      [...queries.keys()],
+      async (open) =>
         extractRows<Row>(
           await tx.execute(drizzleSql`
-            SELECT m.id, COALESCE(m.sent_at, m.received_at)::text AS ord,
-                   m.ticket_id, m.from_email AS sender,
-                   COALESCE(m.sent_at, m.received_at) AS at, m.text_body, m.subject
-              FROM ${table("app_tickets", "messages")} m
-              JOIN ${table("app_tickets", "tickets")} t ON t.id = m.ticket_id
-              LEFT JOIN ${table("app_tickets", "inboxes")} i ON i.id = t.source_inbox_id
-             WHERE m.org_id = ${q.orgId}::uuid AND m.kind = 'inbound'
-               AND (lower(m.from_email) = ANY(${textSet(q.addresses)})
-                    OR t.contact_id = ANY(${uuidSet(q.contactIds)}))
-               AND lower(m.from_email) <> ALL(${textSet(q.own)})
-               AND (COALESCE(m.sent_at, m.received_at) > ${q.since}::timestamptz
-                    OR (m.received_at > ${q.since}::timestamptz
-                        AND (m.sent_at > i.created_at
-                             OR m.sent_at > ${q.since}::timestamptz - interval '72 hours')))
-               AND NOT EXISTS (SELECT 1 FROM ${table("kernel", "import_ledger")} l
-                                WHERE l.table_name = 'app_tickets.messages' AND l.row_id = m.id)
-               AND (${cursor === null}::boolean
-                    OR (COALESCE(m.sent_at, m.received_at), m.id)
-                       < (${cursor?.ord ?? null}::timestamptz, ${cursor?.id ?? null}::uuid))
-             ORDER BY COALESCE(m.sent_at, m.received_at) DESC, m.id DESC
-             LIMIT ${INBOUND_PAGE}`),
+            WITH d AS (${openDrafts(queries, open)})
+            SELECT d.k, r.id, r.ord, r.ticket_id, r.sender, r.at, r.text_body, r.subject
+              FROM d CROSS JOIN LATERAL (
+                SELECT m.id, COALESCE(m.sent_at, m.received_at) AS ord_at,
+                       COALESCE(m.sent_at, m.received_at)::text AS ord,
+                       m.ticket_id, m.from_email AS sender,
+                       COALESCE(m.sent_at, m.received_at) AS at, m.text_body, m.subject
+                  FROM ${table("app_tickets", "messages")} m
+                  JOIN ${table("app_tickets", "tickets")} t ON t.id = m.ticket_id
+                  LEFT JOIN ${table("app_tickets", "inboxes")} i ON i.id = t.source_inbox_id
+                 WHERE m.org_id = ${orgId}::uuid AND m.kind = 'inbound'
+                   AND (lower(m.from_email) = ANY(d.addrs)
+                        OR t.contact_id = ANY(d.contacts))
+                   AND lower(m.from_email) <> ALL(${textSet(own)})
+                   AND (COALESCE(m.sent_at, m.received_at) > d.since
+                        OR (m.received_at > d.since
+                            AND (m.sent_at > i.created_at
+                                 OR m.sent_at > d.since - interval '72 hours')))
+                   AND NOT EXISTS (SELECT 1 FROM ${table("kernel", "import_ledger")} l
+                                    WHERE l.table_name = 'app_tickets.messages' AND l.row_id = m.id)
+                   AND (d.cur_id IS NULL
+                        OR (COALESCE(m.sent_at, m.received_at), m.id) < (d.cur_ord, d.cur_id))
+                 ORDER BY COALESCE(m.sent_at, m.received_at) DESC, m.id DESC
+                 LIMIT ${INBOUND_PAGE}
+              ) r
+             ORDER BY d.k, r.ord_at DESC, r.id DESC`),
         ),
       (row) => ({
         id: row.id,
@@ -529,43 +599,189 @@ export async function evaluateSendGuard(input: EvaluateSendGuardInput): Promise<
     }
 
     // 4 to 6.
-    const query: InboundQuery = {
-      orgId,
-      contactIds: await guardContactSet(orgId, guard.contactIds),
-      addresses: [...new Set([...guard.addresses, ...recipients])],
-      own: await ownAddresses(orgId),
-      since: guard.since,
-      ...(guard.conversationId ? { conversationId: guard.conversationId } : {}),
-    }
-    const inbound = [...(await readMailInbound(query)), ...(await readTicketInbound(query))]
-    const decision = decideSendGuard({
-      inbound,
-      now: input.now ?? new Date(),
-      ...(guard.ignoreAutoReply ? { ignoreAutoReply: guard.ignoreAutoReply } : {}),
-      locale: input.locale ?? null,
-      timeZone: input.timeZone ?? null,
-    })
-    if (decision.state === "clear") return CLEAR
-    const record = inbound.find((item) => item.id === decision.messageId)?.record
-    const named = {
-      who: decision.who,
-      at: decision.at.toISOString(),
-      ...(record ? { record } : {}),
-    }
-    if (decision.state === "held") {
-      return {
-        state: "held",
-        final: false,
-        ...named,
-        holdUntil: decision.holdUntil.toISOString(),
-        returnDate: decision.returnDate,
-      }
-    }
-    return { state: decision.state, final: true, ...named }
+    const [verdict] = await inboundVerdicts(orgId, [input])
+    return verdict ?? unavailable("the mail and tickets could not be read")
   } catch (err) {
     rootLogger.error({ err, orgId }, "send guard: a read failed, not sending")
     return unavailable("the mail and tickets could not be read")
   }
+}
+
+interface InboundCheck {
+  guard: PinnedSendGuard
+  recipients: readonly string[]
+  now?: Date
+  locale?: string | null
+  timeZone?: string | null
+}
+
+/** What the inbound rows say about one draft. */
+function inboundVerdict(inbound: readonly GuardInbound[], check: InboundCheck): SendGuardVerdict {
+  const { guard } = check
+  const decision = decideSendGuard({
+    inbound,
+    now: check.now ?? new Date(),
+    ...(guard.ignoreAutoReply ? { ignoreAutoReply: guard.ignoreAutoReply } : {}),
+    locale: check.locale ?? null,
+    timeZone: check.timeZone ?? null,
+  })
+  if (decision.state === "clear") return CLEAR
+  const record = inbound.find((item) => item.id === decision.messageId)?.record
+  const named = {
+    who: decision.who,
+    at: decision.at.toISOString(),
+    ...(record ? { record } : {}),
+  }
+  if (decision.state === "held") {
+    return {
+      state: "held",
+      final: false,
+      ...named,
+      holdUntil: decision.holdUntil.toISOString(),
+      returnDate: decision.returnDate,
+    }
+  }
+  return { state: decision.state, final: true, ...named }
+}
+
+/**
+ * Steps 4 to 6 for several drafts at once: one read of the org's own addresses, then mail and
+ * ticket pages shared by every draft. A draft with too many rows to rule a reply out answers
+ * unavailable; a read that fails throws.
+ */
+async function inboundVerdicts(
+  orgId: string,
+  checks: readonly InboundCheck[],
+): Promise<SendGuardVerdict[]> {
+  if (checks.length === 0) return []
+  const queries = new Map<string, InboundQuery>()
+  for (const [i, check] of checks.entries()) {
+    const { guard } = check
+    queries.set(String(i), {
+      contactIds: await guardContactSet(orgId, guard.contactIds),
+      addresses: [...new Set([...guard.addresses, ...check.recipients])],
+      since: guard.since,
+      ...(guard.conversationId ? { conversationId: guard.conversationId } : {}),
+    })
+  }
+  const own = await ownAddresses(orgId)
+  const mail = await readMailInbound(orgId, own, queries)
+  const tickets = await readTicketInbound(orgId, own, queries)
+  return checks.map((check, i) => {
+    const fromMail = mail.get(String(i))
+    const fromTickets = tickets.get(String(i))
+    if (!fromMail || !fromTickets) {
+      rootLogger.error(
+        { orgId },
+        `send guard: over ${INBOUND_MAX_ROWS} inbound rows to read without a reply, not sending`,
+      )
+      return unavailable("the mail and tickets could not be read")
+    }
+    return inboundVerdict([...fromMail, ...fromTickets], check)
+  })
+}
+
+export interface CardSendGuardCheck {
+  guard: PinnedSendGuard
+  /** The current payload's To, Cc and Bcc. */
+  recipients: readonly string[]
+  locale?: string | null
+  timeZone?: string | null
+}
+
+/**
+ * What `evaluateSendGuard` answers at `card`, for many drafts at once (a list, Home's feed, the
+ * badge every push counts). The number of queries does not grow with the drafts: the opt-out list
+ * is read once for all their recipients, and the inbound reads are shared pages. The answers are
+ * in the order of `checks`.
+ */
+export async function evaluateSendGuardsAtCard(
+  orgId: string,
+  checks: readonly CardSendGuardCheck[],
+  now: Date = new Date(),
+): Promise<SendGuardVerdict[]> {
+  const out: Array<SendGuardVerdict | undefined> = checks.map(() => undefined)
+
+  // 1. Stays on whatever the operator switch says.
+  const marketing = checks.flatMap((c, i) => (c.guard.classification === "marketing" ? [i] : []))
+  if (marketing.length > 0) {
+    const all = [
+      ...new Set(marketing.flatMap((i) => [...(checks[i] as CardSendGuardCheck).recipients])),
+    ]
+    let suppressed: Set<string> | null
+    try {
+      suppressed = new Set((await suppressedAmong(orgId, all)).map((a) => a.toLowerCase()))
+    } catch (err) {
+      rootLogger.error({ err, orgId }, "send guard: suppression check failed")
+      suppressed = null
+    }
+    for (const i of marketing) {
+      if (suppressed === null) {
+        out[i] = unavailable("the opt-out list could not be read", "suppression_check_unavailable")
+        continue
+      }
+      const hit = suppressed
+      const optedOut = (checks[i] as CardSendGuardCheck).recipients.filter((r) =>
+        hit.has(r.toLowerCase()),
+      )
+      if (optedOut.length > 0) out[i] = { state: "opted_out", final: true, optedOut }
+    }
+  }
+  if (!env.MAIL_SEND_GUARD_ENFORCE) return out.map((v) => v ?? CLEAR)
+
+  // 2. Typed slot, a final stop with its label on the card. 3. Providers do not run at a card.
+  for (const i of marketing) {
+    if (out[i]) continue
+    const check = checks[i] as CardSendGuardCheck
+    try {
+      const problem = await lawfulBasisProblem(orgId, check.guard.contactIds, [...check.recipients])
+      if (problem) {
+        out[i] = {
+          state: "ref_stop",
+          final: true,
+          code: problem.code,
+          label: problem.label,
+          who: problem.who,
+        }
+      }
+    } catch (err) {
+      rootLogger.error({ err, orgId }, "send guard: a read failed, not sending")
+      out[i] = unavailable("the mail and tickets could not be read")
+    }
+  }
+
+  // 4 to 6.
+  const rest = checks.flatMap((c, i) => (out[i] ? [] : [{ i, check: { ...c, now } }]))
+  try {
+    const verdicts = await inboundVerdicts(
+      orgId,
+      rest.map((r) => r.check),
+    )
+    for (const [j, r] of rest.entries()) out[r.i] = verdicts[j]
+  } catch (err) {
+    rootLogger.error({ err, orgId }, "send guard: a read failed, not sending")
+    for (const r of rest) out[r.i] = unavailable("the mail and tickets could not be read")
+  }
+  return out.map((v) => v ?? unavailable("the mail and tickets could not be read"))
+}
+
+/** Each person's zone and language, in one read. */
+export async function personZones(
+  orgId: string,
+  userIds: readonly (string | null)[],
+): Promise<Map<string, { locale: string | null; timeZone: string | null }>> {
+  const ids = [...new Set(userIds.filter((id): id is string => !!id && UUID.test(id)))]
+  const out = new Map<string, { locale: string | null; timeZone: string | null }>()
+  if (ids.length === 0) return out
+  const rows = await withPrivilegedDb(orgId, "send-guard-person-zone", async (tx) =>
+    extractRows<{ id: string; locale: string | null; timezone: string | null }>(
+      await tx.execute(drizzleSql`
+        SELECT id, locale, timezone FROM ${table("kernel", "users")}
+         WHERE id = ANY(${uuidSet(ids)}) AND org_id = ${orgId}::uuid`),
+    ),
+  )
+  for (const row of rows) out.set(row.id, { locale: row.locale, timeZone: row.timezone })
+  return out
 }
 
 // ── Build, in the preflight ─────────────────────────────────────────────────

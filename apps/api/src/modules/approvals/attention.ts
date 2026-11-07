@@ -17,7 +17,11 @@ import { appsLogger as log } from "~/lib/logger"
 import { apiViewer, authorityFacts, canSeeInFeed } from "~/modules/approvals/authority"
 import { humanizeToolName, splitToolName } from "~/modules/approvals/event-data"
 import { readApprovalLastFailures } from "~/modules/approvals/last-failure"
-import { isFinalSendGuardState, readFeedSendGuards } from "~/modules/approvals/list"
+import {
+  isFinalSendGuardState,
+  readFeedSendGuardStates,
+  readFeedSendGuards,
+} from "~/modules/approvals/list"
 import { approvalPayloadHash } from "~/modules/approvals/payload-hash"
 import { approvalActionPhrase, deriveApprovalDetail } from "~/modules/approvals/payload-title"
 import { readApprovalRequesters } from "~/modules/approvals/requester"
@@ -157,6 +161,36 @@ async function readGuardsQuietly(
     )
   } catch (err) {
     log.warn({ err, orgId }, "could not read the send check for the attention feed")
+    return new Map()
+  }
+}
+
+/** The send check's state alone on each pending agent mail draft, as the badge counts it. */
+async function readGuardStatesQuietly(
+  orgId: string,
+  rows: Array<{
+    id: string
+    status: string
+    tool_name: string
+    current_payload: Record<string, unknown> | null
+    requested_by: string
+  }>,
+): Promise<Map<string, ApprovalSendGuard["state"]>> {
+  const guarded = rows.filter((r) => r.status === "pending" && r.current_payload?.sendGuard)
+  if (guarded.length === 0) return new Map()
+  try {
+    return await readFeedSendGuardStates(
+      orgId,
+      guarded.map((r) => ({
+        id: r.id,
+        status: "pending" as const,
+        tool_name: r.tool_name,
+        current_payload: r.current_payload ?? {},
+        requested_by: r.requested_by,
+      })),
+    )
+  } catch (err) {
+    log.warn({ err, orgId }, "could not read the send check for the badge")
     return new Map()
   }
 }
@@ -400,9 +434,10 @@ export async function computeApprovalBadgeItems(
     `),
   ).filter((r) => isCallersDecision(r, callerUserId, callerScopes))
   // As on Home: a held draft, or one that can no longer go out as written, is not counted.
-  const guards = await readGuardsQuietly(tx, orgId, rows)
+  // The state alone, read for every draft in shared queries: this runs on every push.
+  const states = await readGuardStatesQuietly(orgId, rows)
   const counted = rows.filter((r) => {
-    const state = guards.get(r.id)?.state
+    const state = states.get(r.id)
     return state === undefined || (state !== "held" && !isFinalSendGuardState(state))
   })
   const routes = await readApprovalRoutes(tx, orgId, counted)

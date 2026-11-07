@@ -764,7 +764,8 @@ describe("home decisions", () => {
       app: "mail",
       entity: "conversation",
       entityId: "c-1",
-      kind: "mail:send_guard.stopped",
+      // As the event provider hands an app event's kind over.
+      kind: "mail:send_guard.stopped" as AttentionItem["kind"],
       summary: "Marc replied 2 hours ago, so this did not go out",
       urgency: 50,
       action: { type: "open_entity", tabType: "mail:conversation", entityId: "c-1" },

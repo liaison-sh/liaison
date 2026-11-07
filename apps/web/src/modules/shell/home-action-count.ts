@@ -129,7 +129,9 @@ export const SEND_STOPPED_KIND = "mail:send_guard.stopped"
  * longer go out as written (attention.ts `metadata.uncounted`). Each says why and offers Dismiss.
  */
 export function isUncountedItem(item: AttentionItem): boolean {
-  return item.kind === SEND_STOPPED_KIND || item.metadata?.uncounted === true
+  // An app event's kind ("mail:...") rides in `kind` beside the kernel's own kinds.
+  const kind: string = item.kind
+  return kind === SEND_STOPPED_KIND || item.metadata?.uncounted === true
 }
 
 /** An approval whose decision is queued or being sent (decision-queue.ts). */

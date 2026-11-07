@@ -74,7 +74,12 @@ async function feedIds(userId: string): Promise<string[]> {
   return items.map((i) => i.id)
 }
 
-function call(method: string, path: string, token: string, body?: unknown): Promise<Response> {
+async function call(
+  method: string,
+  path: string,
+  token: string,
+  body?: unknown,
+): Promise<Response> {
   return app.request(path, {
     method,
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },

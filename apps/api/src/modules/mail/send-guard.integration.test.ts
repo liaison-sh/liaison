@@ -53,6 +53,7 @@ import * as suppressionsModule from "~/modules/mail/suppressions"
 import { TestKeyring } from "~/modules/mailbox-keys/__fixtures__/keyring"
 import { enrollKeyring } from "~/modules/mailbox-keys/service"
 import { seedContext } from "~/seed/context"
+import { seedApprovalRequests } from "~/seed/factories/approvals/requests"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import { actorFor, asUser } from "~/seed/factories/people/actors"
 import * as minimal from "~/seed/tiers/minimal"
@@ -1520,6 +1521,95 @@ describe("the card says what the check says, and Send now", () => {
     expect(row?.metadata?.uncounted).toBe(true)
     expect(badge.some((i) => i.entityId === id)).toBe(false)
   }, 60_000)
+
+  it("the badge over 200 waiting drafts reads in a bounded number of queries", async () => {
+    const held = await heldDraft()
+    const answeredTo = unique("answered-many")
+    const answered = await stageCompose(answeredTo)
+    await seedInbound(answeredTo, { body: "Thanks, we will decide next week." })
+    const template = await stageCompose(unique("many-template"))
+    const [row] = await sql<
+      Array<{
+        thread_id: string
+        handle: string
+        requested_by: string
+        agent_id: string | null
+        notify_user_ids: string[]
+        current_payload: Record<string, unknown>
+        metadata: Record<string, unknown> | null
+      }>
+    >`SELECT thread_id, handle, requested_by, agent_id, notify_user_ids, current_payload, metadata
+        FROM kernel.approval_requests WHERE id = ${template}`
+    if (!row) throw new Error("no template request")
+    const guard = row.current_payload.sendGuard as PinnedSendGuard
+    const waiting = Array.from({ length: 200 }, (_, i) => {
+      const to = unique("many")
+      return {
+        id: crypto.randomUUID(),
+        handle: `${row.handle}-${i}`,
+        threadId: row.thread_id,
+        toolName: "mail:compose",
+        payload: { ...row.current_payload, to: [to], sendGuard: { ...guard, addresses: [to] } },
+        requestedBy: row.requested_by,
+        agentId: row.agent_id,
+        notifyUserIds: row.notify_user_ids,
+        status: "pending" as const,
+        createdAt: new Date(),
+        metadata: row.metadata ?? {},
+      }
+    })
+    await seedApprovalRequests(seedContext({ orgId, now: new Date() }), waiting, { seeded: false })
+
+    // Every statement the badge sends, through the viewer's own transaction or a privileged one.
+    let statements = 0
+    const counted = <T extends object>(tx: T): T =>
+      new Proxy(tx, {
+        get(target, prop) {
+          const value = Reflect.get(target, prop, target)
+          if (typeof value !== "function") return value
+          if (prop === "execute") {
+            return (...args: unknown[]) => {
+              statements++
+              return value.apply(target, args)
+            }
+          }
+          if (prop === "transaction") {
+            return (fn: (sp: object) => unknown, ...rest: unknown[]) =>
+              value.call(target, (sp: object) => fn(counted(sp)), ...rest)
+          }
+          return value.bind(target)
+        },
+      })
+    const real = privileged.withPrivilegedDb
+    const spy = spyOn(privileged, "withPrivilegedDb").mockImplementation(((
+      org: string,
+      label: string,
+      fn: (tx: object) => unknown,
+    ) => {
+      statements++
+      return real(org, label, ((tx: object) => fn(counted(tx))) as never)
+    }) as typeof privileged.withPrivilegedDb)
+    let badge: Awaited<ReturnType<typeof computeApprovalBadgeItems>>
+    try {
+      badge = await withRlsContext(admin, (tx) =>
+        computeApprovalBadgeItems(counted(tx) as never, orgId, admin.userId, 500),
+      )
+    } finally {
+      spy.mockRestore()
+    }
+    expect(statements).toBeLessThanOrEqual(25)
+
+    const ids = new Set(badge.map((i) => i.entityId))
+    for (const w of waiting) expect(ids.has(w.id)).toBe(true)
+    expect(ids.has(template)).toBe(true)
+    expect(ids.has(held.id)).toBe(false)
+    expect(ids.has(answered)).toBe(false)
+    const { feed } = await home()
+    expect(feed.some((i) => i.entityId === held.id)).toBe(false)
+    const stopped = feed.find((i) => i.entityId === answered)
+    expect(stopped?.metadata?.sendGuard).toMatchObject({ state: "replied" })
+    expect(stopped?.metadata?.uncounted).toBe(true)
+  }, 120_000)
 
   it("fixture pill Stripe: payment reminder names the row over the tool's", async () => {
     const id = await stageCompose(unique("pill"), {

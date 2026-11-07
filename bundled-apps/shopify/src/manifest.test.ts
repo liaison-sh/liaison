@@ -909,7 +909,10 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.6: the offline token stays host-side (ctx.fetch auth); the verifier checks by config key.
     // 0.4.7: backfill-customers and scope-seed are onDemand (a job with neither schedule nor onDemand never registers).
     // 0.4.8: declares that it places no config secret in any request (secrets: {}); the token goes by ctx.fetch auth.
-    expect(m.version).toBe("0.4.9")
+    // 0.4.9: screens work framed on their own origin (outside links through the host).
+    // 0.4.10: the home's attention rows open the admin through the host too; framed, a
+    // Cmd/Ctrl-click opens a row in place.
+    expect(m.version).toBe("0.4.10")
   })
 
   it("read_all_orders is a protected scope behind the org's full-order-history toggle", () => {

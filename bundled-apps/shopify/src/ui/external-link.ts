@@ -21,3 +21,8 @@ export function onOutsideLinkClick(event: MouseEvent, href: string): void {
   event.preventDefault()
   openOutside(href)
 }
+
+/** Whether this screen runs in a frame (no popups there; the host opens outside pages). */
+export function screenFramed(): boolean {
+  return (globalThis as { __liaisonHost?: { framed?: boolean } }).__liaisonHost?.framed === true
+}

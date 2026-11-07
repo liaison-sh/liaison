@@ -136,7 +136,8 @@ function AttentionRow(props: {
         ? "bg-warning"
         : "bg-border-strong"
   // Absolute hrefs (the Shopify admin — orders have no in-app detail view)
-  // open in a new browser tab; app-relative ones stay in-app.
+  // open in a new browser tab through the host (a framed screen has no popups);
+  // app-relative ones stay in-app.
   const isExternal = () => Boolean(props.href?.startsWith("http"))
   return (
     <a
@@ -146,6 +147,7 @@ function AttentionRow(props: {
       class="group grid grid-cols-[2px_1fr_auto] items-center gap-3 rounded-md border border-border-subtle bg-surface px-3 py-2 transition-colors hover:border-border hover:bg-surface-hover"
       onClick={(e) => {
         if (!props.href) e.preventDefault()
+        else if (isExternal()) onOutsideLinkClick(e, props.href)
       }}
     >
       <span class={`h-full min-h-[1.5rem] w-[2px] rounded-full ${bar}`} aria-hidden="true" />

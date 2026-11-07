@@ -48,7 +48,7 @@ import {
 } from "./list-helpers"
 import { adminOrderUrl, adminResourceId } from "./panels/url-template"
 import { Chip, Empty, For, Show, StatusPill, useShopDomain } from "./primitives"
-import { onOutsideLinkClick, openOutside } from "./external-link"
+import { onOutsideLinkClick, openOutside, screenFramed } from "./external-link"
 
 // ─────────────────────────────────────────────────────────────────────────
 // Shared types — the bundle's read tools return a uniform NormalizedHit.
@@ -207,11 +207,14 @@ function openDetailUrl(entity: string, id: string): string {
 }
 
 function onRowClick(href: string, e: MouseEvent): void {
-  if (e.metaKey || e.ctrlKey) {
+  if ((e.metaKey || e.ctrlKey) && !screenFramed()) {
     // Cmd/Ctrl-click opens a genuine new browser tab — that is a deliberate
     // browser-level action, not in-app SPA navigation.
     window.open(href, "_blank", "noopener,noreferrer")
   } else {
+    // Framed on its own origin the screen has no popups, and the host's
+    // openExternal opens outside pages only (never a Liaison route): the row
+    // opens in place.
     navigate(href)
   }
 }

@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, it, mock } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { onOutsideLinkClick, openOutside } from "./external-link"
+import { onOutsideLinkClick, openOutside, screenFramed } from "./external-link"
 
 const g = globalThis as Record<string, unknown>
 
@@ -43,6 +43,13 @@ describe("outside links", () => {
     }
   })
 
+  it("knows when its screen is framed", () => {
+    g.__liaisonHost = { framed: true }
+    expect(screenFramed()).toBe(true)
+    g.__liaisonHost = {}
+    expect(screenFramed()).toBe(false)
+  })
+
   it("no screen opens an outside page or another app's route by itself", () => {
     for (const file of ["home.tsx", "lists.tsx", "sidebar.tsx", "panels/index.tsx"]) {
       const src = readFileSync(join(import.meta.dir, file), "utf8")
@@ -53,11 +60,14 @@ describe("outside links", () => {
         file,
         invoicing: false,
       })
-      const blank = (src.match(/target="_blank"/g) ?? []).length
-      const handled = (src.match(/onClick=\{\(e\) => onOutsideLinkClick\(/g) ?? []).length
+      // Every `_blank` link, literal or conditional, has its click routed to the host.
+      const blank = (src.match(/target=(?:"_blank"|\{[^}]*"_blank")/g) ?? []).length
+      const handled = (src.match(/onOutsideLinkClick\(e, /g) ?? []).length
       expect({ file, blank }).toEqual({ file, blank: handled })
     }
     const lists = readFileSync(join(import.meta.dir, "lists.tsx"), "utf8")
     expect(lists).toContain('app.openRecord("invoicing", "document", link.invoice_id)')
+    // Its Cmd/Ctrl-click tab is the page's only: framed, the row opens in place.
+    expect(lists).toContain("if ((e.metaKey || e.ctrlKey) && !screenFramed()) {")
   })
 })

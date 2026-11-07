@@ -854,10 +854,7 @@ describe("home decisions", () => {
         routed(
           "w-block",
           "mine",
-          {
-            to: "person",
-            ...person("on_item", { blockedStandIn: "u-tom", awayUntil: "2026-12-20" }),
-          },
+          person("on_item", { blockedStandIn: "u-tom", awayUntil: "2026-12-20" }),
           { blockedName: "Tom Reyes" },
         ),
         routed("w-oth", "others", person("on_item")),

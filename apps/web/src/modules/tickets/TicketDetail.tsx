@@ -28,6 +28,7 @@ import { AssigneeListStatus, AssigneeSearchField } from "~/modules/members/Assig
 import { createAssignableMembers } from "~/modules/members/assignable-members"
 import { useApi } from "~/modules/shell/ApiContext"
 import { BacklinksPanel } from "~/modules/shell/references/BacklinksPanel"
+import { awayLabel } from "~/modules/shell/route-line"
 import { createSlotPanels, SlotPanels } from "~/modules/shell/SlotPanels"
 import { shellTier } from "~/modules/shell/shell-tier"
 import { makeTabId, openTab, tabStore } from "~/modules/shell/tab-store"
@@ -1346,6 +1347,16 @@ export const TicketDetail: Component<Props> = (props) => {
                                         {avatarInitials(m.name, m.id.slice(0, 2))}
                                       </span>
                                       {disambiguatedLabel(m.name, m.email, ambiguous)}
+                                      <Show when={awayLabel(m.away, i18n.t, i18n.locale())}>
+                                        {(away) => (
+                                          <span
+                                            data-testid={`tickets-detail-assign-away-${m.id}`}
+                                            class="text-[11px] text-text-tertiary"
+                                          >
+                                            {away()}
+                                          </span>
+                                        )}
+                                      </Show>
                                     </span>
                                   </PopupMenu.Item>
                                 )}

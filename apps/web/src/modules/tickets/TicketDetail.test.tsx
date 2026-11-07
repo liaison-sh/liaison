@@ -291,7 +291,9 @@ describe("TicketDetail", () => {
 
   // The assignee menu reads the member directory, never the people search.
   function routeMembers(
-    members: { id: string; name: string; email: string }[] | Error,
+    members:
+      | { id: string; name: string; email: string; away?: { until: string | null } | null }[]
+      | Error,
     total?: number,
   ) {
     const membersCalls: string[] = []
@@ -321,6 +323,21 @@ describe("TicketDetail", () => {
       .find((el) => el.textContent?.includes("Morgan Lee"))!
     fireEvent.click(morgan.closest("[role=menuitem]")!)
     expect(state.assignTicket).toHaveBeenCalledWith(state.api, "t1", "u-morgan", "Morgan Lee")
+  })
+
+  it("shows away until a date beside a teammate who is away; the list is unchanged", async () => {
+    routeMembers([
+      { id: "u-morgan", name: "Morgan Lee", email: "morgan@x.test", away: { until: "2099-12-20" } },
+      { id: "u-alice", name: "Alice Chen", email: "alice@x.test", away: null },
+    ])
+    render(() => <TicketDetail entityId="t1" />)
+    await waitFor(() =>
+      expect(screen.getAllByTestId("tickets-detail-assign-member").length).toBe(2),
+    )
+    expect(screen.getByTestId("tickets-detail-assign-away-u-morgan").textContent).toMatch(
+      /away until (20 Dec|Dec 20)/,
+    )
+    expect(screen.queryByTestId("tickets-detail-assign-away-u-alice")).toBeNull()
   })
 
   it("offers teammates while the people search is unavailable (only 'Assign to me' was left)", async () => {

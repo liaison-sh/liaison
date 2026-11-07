@@ -1028,7 +1028,7 @@ describe("home routing: back from away, and who is away in lists of people", () 
       world: await readAwayWorld(db, ORG),
     }))
     const ownerRow = result.items.find((i) => i.id === owner)
-    expect(ownerRow?.away).toEqual({ until: world.away(owner)?.until })
+    expect(ownerRow?.away).toEqual({ until: world.away(owner)?.until ?? null })
     expect(Object.keys(ownerRow?.away ?? {})).toEqual(["until"])
     expect(world.away(owner)?.nextInLineId).toBe(p.tom)
     // Who is listed does not change: everyone active, away or not.

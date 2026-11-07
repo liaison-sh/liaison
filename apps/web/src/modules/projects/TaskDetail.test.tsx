@@ -669,7 +669,12 @@ describe("TaskDetail status follows the store (LIF-25)", () => {
 })
 
 describe("TaskDetail assignee chip (assign to anyone, not only me)", () => {
-  type Member = { id: string; name: string; email: string }
+  type Member = {
+    id: string
+    name: string
+    email: string
+    away?: { until: string | null } | null
+  }
 
   function apiWithMembers(members: Member[] | Error, patch = vi.fn()) {
     const memberCalls: string[] = []
@@ -722,6 +727,24 @@ describe("TaskDetail assignee chip (assign to anyone, not only me)", () => {
     await waitFor(() =>
       expect(patch).toHaveBeenCalledWith("/projects/p1/tasks/t1", { assigneeId: "u-morgan" }),
     )
+  })
+
+  it("shows away until a date beside a teammate who is away; the list is unchanged", async () => {
+    const { api } = apiWithMembers([
+      { id: "u-morgan", name: "Morgan Lee", email: "morgan@x.test", away: { until: "2099-12-20" } },
+      { id: "u-alice", name: "Alice Chen", email: "alice@x.test", away: null },
+    ])
+    render(() => (
+      <ApiContext.Provider value={api}>
+        <TaskDetail entityId="t1" />
+      </ApiContext.Provider>
+    ))
+    await openAssigneeMenu()
+    await waitFor(() => expect(screen.getAllByTestId("task-detail.assign-member").length).toBe(2))
+    expect(screen.getByTestId("task-detail.assign-away-u-morgan").textContent).toMatch(
+      /away until (20 Dec|Dec 20)/,
+    )
+    expect(screen.queryByTestId("task-detail.assign-away-u-alice")).toBeNull()
   })
 
   it("shows an error with a retry when teammates cannot be loaded", async () => {

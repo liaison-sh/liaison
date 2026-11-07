@@ -60,6 +60,7 @@ import { useApi } from "~/modules/shell/ApiContext"
 import { copyLink, entityRoute } from "~/modules/shell/entity-link"
 import { MarkdownContent } from "~/modules/shell/markdown-content"
 import { BacklinksPanel } from "~/modules/shell/references/BacklinksPanel"
+import { awayLabel } from "~/modules/shell/route-line"
 import { SlotPanels } from "~/modules/shell/SlotPanels"
 import { closeTab, makeTabId, openTab } from "~/modules/shell/tab-store"
 import { addToast } from "~/modules/shell/toast-store"
@@ -986,6 +987,16 @@ const AssigneeChip: Component<{
                 >
                   <Avatar user={{ id: m.id, name: m.name, avatarUrl: null }} size="sm" />
                   {disambiguatedLabel(m.name, m.email, isAmbiguous)}
+                  <Show when={awayLabel(m.away, i18n.t, i18n.locale())}>
+                    {(away) => (
+                      <span
+                        data-testid={`task-detail.assign-away-${m.id}`}
+                        class="text-[11px] text-text-tertiary"
+                      >
+                        {away()}
+                      </span>
+                    )}
+                  </Show>
                 </span>
               </PopupMenu.Item>
             )}

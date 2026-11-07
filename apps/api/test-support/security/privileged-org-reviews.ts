@@ -89,6 +89,8 @@ export const REVIEWED_DISPATCH: Record<string, string> = {
  * follow to a trusted source, could not be traced, or is a literal: `file#enclosing` → why.
  */
 export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
+  "apps/api/src/modules/approvals/cancel.ts#cancelApprovalsForDeletedTasks":
+    "called only by deleteTask (apps/projects/service/tasks.ts) after it archived the tasks in the caller's RLS transaction for that same org (the route's auth org, or the projects bridge's own org); the update touches only that org's pending rows naming the archived task ids",
   "apps/api/src/seed/factories/support/inboxes.ts#ensureTicketMailboxInbox":
     "the /api/_test/seed route's factories (test-support/seed/factories.ts, mounted only in test builds; no product caller): the org a browser test names in its request, the one its lane seeded",
   "apps/api/src/seed/factories/support/inboxes.ts#ensureTicketMailboxAccount":

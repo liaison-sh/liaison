@@ -43,7 +43,7 @@ Open a task to set its **Assignee** (or **Assign to me**), **Due date**, **Prior
 
 **Copy link** (on a task, and in a project's actions menu) copies the page's address. Paste it in a message or a task description and it becomes a chip that opens the project or task; it never notifies anyone.
 
-To delete a task, click **Delete task**. Deleted tasks go to the project's **Trash**, where **Put back** restores them.
+To delete a task, click **Delete task**. Deleted tasks go to the project's **Trash**, where **Put back** restores them. A pending request to change a deleted task (an agent's request to delete it, for example) is cancelled, and the card tells the person who asked why; **Put back** makes it pending again.
 
 ## Find tasks
 

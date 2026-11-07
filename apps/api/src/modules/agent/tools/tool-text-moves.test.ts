@@ -17,15 +17,19 @@
 // section of that app's guide naming the tool, and that section reaches the
 // model with the tool loaded, through the same selection the system prompt,
 // the mid-run guide note and the MCP first result use.
-import { describe, expect, it } from "bun:test"
+import { beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import path from "node:path"
+import { asSchema } from "ai"
 import {
   type AppGuideInput,
   normalizeAppGuide,
   renderAppGuideBlock,
   selectAppGuideParts,
 } from "~/modules/agent/context/app-guide"
+import { registerKernelAgentTools } from "~/modules/agent/tools/kernel-tools"
+import { providerInputSchemaOf } from "~/modules/agent/tools/tool-bridge"
+import { agentInstructionsRegistry, toolRegistry } from "~/modules/apps/app-registries"
 
 interface MoveLine {
   tool: string
@@ -189,5 +193,97 @@ describe("text moved off app tools", () => {
     expect(overRatchet("x".repeat(599))).toBe(false)
     expect(overRatchet("x".repeat(600))).toBe(false)
     expect(overRatchet("x".repeat(601))).toBe(true)
+  })
+})
+
+/**
+ * Kernel tools whose description past its first 600 characters moved, word
+ * for word, to a section of the kernel guide that names the tool. A guide is
+ * copy held to the no-dash rule (scripts/lint-copy-dashes.ts), so a spaced
+ * dash arrives as a colon and a dash in a number range as a hyphen.
+ */
+const KERNEL_BATCH = [
+  "kernel:run_on_my_computer",
+  "kernel:describe_user_access",
+  "kernel:data_subject_export",
+  "kernel:create_role",
+] as const
+const KERNEL_ORG = "00000000-0000-4000-8000-0000000c0ffe"
+const asGuideCopy = (s: string) =>
+  s.replace(/\s+[\u2013\u2014]\s+/g, ": ").replace(/(?<=\d)\u2013(?=\d)/g, "-")
+const KERNEL_LINES = MOVES.moves.filter((m) => (KERNEL_BATCH as readonly string[]).includes(m.tool))
+
+function kernelToolText(name: string): string {
+  const def = toolRegistry.get([KERNEL_ORG, "kernel", name]) as
+    | { description?: string; params?: unknown }
+    | undefined
+  const out: string[] = [def?.description ?? ""]
+  const walk = (node: unknown) => {
+    if (Array.isArray(node)) for (const v of node) walk(v)
+    else if (node && typeof node === "object") {
+      for (const [k, v] of Object.entries(node)) {
+        if (k === "description" && typeof v === "string") out.push(v)
+        else walk(v)
+      }
+    }
+  }
+  walk(asSchema(providerInputSchemaOf(def?.params) as never).jsonSchema)
+  return fold(out.join("\n"))
+}
+
+describe("text moved off kernel tools", () => {
+  beforeAll(async () => {
+    await registerKernelAgentTools(KERNEL_ORG)
+  })
+  const kernelGuide = () =>
+    normalizeAppGuide(agentInstructionsRegistry.get([KERNEL_ORG, "kernel"]) ?? "")
+
+  it("lists the moves of each kernel tool of the batch, each to the kernel guide", () => {
+    for (const t of KERNEL_BATCH) expect(KERNEL_LINES.some((m) => m.tool === t)).toBe(true)
+    expect(KERNEL_LINES.filter((m) => m.to !== "guide:kernel").map((m) => m.sentence)).toEqual([])
+  })
+
+  it("a listed kernel sentence is off its tool and in the kernel guide section naming the tool", () => {
+    const still: string[] = []
+    const lost: string[] = []
+    for (const m of KERNEL_LINES) {
+      const name = m.tool.split(":")[1]!
+      if (kernelToolText(name).includes(fold(m.sentence))) still.push(m.sentence)
+      const found = kernelGuide().sections.some(
+        (s) =>
+          s.tools.includes(`kernel__${name}`) &&
+          fold(s.text).includes(fold(asGuideCopy(m.sentence))),
+      )
+      if (!found) lost.push(`${m.tool}: ${m.sentence.slice(0, 80)}`)
+    }
+    expect(still).toEqual([])
+    expect(lost).toEqual([])
+  })
+
+  it("each kernel section reaches the model with its tool loaded, and not with the others", () => {
+    for (const t of KERNEL_BATCH) {
+      const sdk = t.replace(":", "__")
+      const rendered = fold(
+        renderAppGuideBlock("kernel", selectAppGuideParts("kernel", kernelGuide(), new Set([sdk]))),
+      )
+      for (const m of KERNEL_LINES) {
+        const inIt = rendered.includes(fold(asGuideCopy(m.sentence)))
+        expect({ tool: t, line: m.sentence.slice(0, 60), inIt }).toEqual({
+          tool: t,
+          line: m.sentence.slice(0, 60),
+          inIt: m.tool === t,
+        })
+      }
+    }
+  })
+
+  it("each kernel batch description is at most 600 characters", () => {
+    const over = KERNEL_BATCH.filter((t) => {
+      const def = toolRegistry.get([KERNEL_ORG, "kernel", t.split(":")[1]!]) as
+        | { description?: string }
+        | undefined
+      return def === undefined || overRatchet(def.description ?? "")
+    })
+    expect(over).toEqual([])
   })
 })

@@ -23,6 +23,7 @@ import { z } from "zod"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
+import { parseGuideMarkdown } from "~/modules/agent/context/app-guide"
 import { getBriefRow, getEpisode } from "~/modules/agent/context/brief-store"
 import { isWebSearchConfigured } from "~/modules/agent/credits/credit-meter"
 import { handleMailAttachmentRead } from "~/modules/agent/media/mail-attachment-read"
@@ -570,12 +571,12 @@ async function buildKernelAgentTools(orgId: string): Promise<void> {
       continue
     }
     // A guide that names its tools (kernel-config, kernel-admin, ...) is not an
-    // app, so discovery cannot map a tool to it by app name: it renders in full
-    // while one of the tools it names is loaded, and as a summary line otherwise.
-    const tools = file.meta.tools
+    // app, so discovery cannot map a tool to it by app name: its core renders
+    // while one of the tools it names is loaded, and a summary line otherwise.
+    // A `<!-- tools: ... -->` section renders only while one of its tools is.
     agentInstructionsRegistry.set(
       [orgId, file.meta.name],
-      tools?.length ? { core: file.content, coveredTools: tools } : file.content,
+      parseGuideMarkdown(file.content, file.meta.tools),
     )
   }
   log.info({ count: files.length }, "Kernel agent instructions loaded")
@@ -2931,7 +2932,8 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     appName: "kernel",
     name: "create_role",
     deferLoading: true,
-    description: `Create an org role with scope grants. Use to set up team roles. You can only grant scopes you hold. Returns {error:"role already exists"} on duplicate name. When you map a natural-language permission request to scopes, AFTER kernel__create_role succeeds your reply MUST ENUMERATE the exact scopes you granted (list each one) AND explicitly CONFIRM the sensitive scopes you deliberately EXCLUDED (e.g. 'this role does NOT include refunds, Shopify writes, or org-admin'). A vague 'created with the requested scopes' is INCOMPLETE — the role record / approval card does not surface the scope list, so your reply is the only place the admin can verify the role grants exactly the intended permissions and none of the excluded ones. Grant ONLY the scopes the request explicitly names — do NOT add an adjacent WRITE scope the user did not ask for (for 'read and reply to tickets', grant tickets:tickets:read + tickets:tickets:reply, NOT tickets:tickets:write; for 'read knowledge', knowledge:documents:read, NOT :create/:update). Every scope is a REAL 3-part app:resource:action id — tickets:tickets:read, tickets:tickets:reply, knowledge:documents:read, kernel:contacts:read, mail:conversations:read — there is NO 2-part form (tickets:reply / tickets:read is wrong) and no tickets:tickets:write for a read+reply role; using a malformed or non-existent scope id silently grants nothing. INVOICING scopes are invoicing:documents:read, invoicing:documents:write, invoicing:settings:read, invoicing:settings:write, invoicing:contacts:read, invoicing:contacts:write — there is NO invoicing:drafts:create and NO invoicing:*:approve/send (don't invent them): DRAFTING / creating / issuing an invoice or credit note is invoicing:documents:write, and refund / credit-note APPROVAL is enforced by the gated two-eyes approval flow, not by a scope. A role that must DRAFT, CREATE, WRITE, or RECONCILE needs the relevant WRITE scope (e.g. invoicing:documents:write) — a read-only grant CANNOT draft, so do NOT under-grant a 'can draft/create X' request down to read-only; grant the write scope and rely on the gated approval flow (not scope withholding) to keep approve/send to senior staff.`,
+    description:
+      "Create an org role with scope grants. Use to set up team roles. You can only grant scopes you hold. Returns {error:\"role already exists\"} on duplicate name. When you map a natural-language permission request to scopes, AFTER kernel__create_role succeeds your reply MUST ENUMERATE the exact scopes you granted (list each one) AND explicitly CONFIRM the sensitive scopes you deliberately EXCLUDED (e.g. 'this role does NOT include refunds, Shopify writes, or org-admin').",
     searchKeywords: ["rôle", "créer"],
     requiredScopes: ["kernel:roles:admin"],
     approveScope: "kernel:approve",
@@ -3055,8 +3057,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     readOnly: true,
     deferLoading: true,
     description:
-      "Read ONE teammate's RESOLVED EFFECTIVE ACCESS by user id — their role memberships, the full set of effective scope STRINGS (each tagged with provenance: `fromRoles` for a scope inherited from a role, `direct:true` for a per-user grant), and any dimension grants. This is the DIAGNOSIS tool for permission troubleshooting: when someone reports a tool 'returns nothing' / 'does nothing' (the silent signature of a MISSING SCOPE — a tool the user lacks the scope for is filtered out of their tool set entirely, with NO error), call this on that person to VERIFY exactly which scope they hold vs lack, rather than guessing. It is the ONLY tool that returns a specific person's exact scope strings — kernel__roles_list gives only per-role scope COUNTS, never the strings. First resolve the person to a user id with kernel__users_search (it turns 'Theo' into an id), then pass that id here. Cross-reference the result against kernel__list_scopes (the catalog of every grantable scope) to name the precise missing capability — e.g. someone who can't SEND a quote and whose effectiveScopes lack `invoicing:documents:write` is missing exactly that scope. Read-only and org-scoped (never another org). After diagnosing, FIX with kernel__grant_user_scope (add the one missing scope directly, least-privilege) or kernel__assign_role (move them to a role that has it) — both gated. NEVER fabricate a person's scopes; if the id does not resolve this returns USER_NOT_FOUND. " +
-      'DETERMINISTIC SCOPE CHECK — pass `checkScopes: ["shopify:refunds:create", "shopify:approve", …]` to get back a `scopeChecks` map answering, EXACTLY and per scope, whether this user HOLDS each one (honoring scope hierarchy: an exact grant, a `*` wildcard, or a covering parent like `shopify:refunds` → `shopify:refunds:create`), with the provenance (`via`: exact/wildcard/parent, plus the role(s) or direct grant). USE THIS for a separation-of-duties / who-can-issue-vs-who-can-approve audit instead of eyeballing the `effectiveScopes` array — a power user\'s list can be 40–60+ strings and gets summarized/truncated in your view, so a decision scope may be off-screen; `scopeChecks` is the untruncatable, grounded YES/NO you cite (never guess from a truncated list, and never report a who-can-refund verdict a `scopeChecks` result doesn\'t back).',
+      "Read ONE teammate's RESOLVED EFFECTIVE ACCESS by user id — their role memberships, the full set of effective scope STRINGS (each tagged with provenance: `fromRoles` for a scope inherited from a role, `direct:true` for a per-user grant), and any dimension grants.",
     searchKeywords: ["droits", "accès", "permissions", "peut", "voir", "permission"],
     requiredScopes: ["kernel:users:admin"],
     params: z.object({ userId: z.string().uuid(), checkScopes: z.array(z.string()).optional() }),
@@ -3210,7 +3211,8 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     appName: "kernel",
     name: "data_subject_export",
     deferLoading: true,
-    description: `Compile EVERYTHING the org holds on ONE data subject (a contact) across apps into a single downloadable GDPR data-subject-request (DSR) export bundle, and return its fileId. Use this for a GDPR/data-access request — "export everything we have on <person> so I can send it to them". This is the PER-SUBJECT export: pass the subject's contactId (resolve it FIRST with kernel__contacts_search by name/email) and it assembles their contact record + support tickets (tickets__listForContact) + invoices (invoicing documents by contact) into ONE bundle written as a real downloadable file (returns { fileId, filename, counts, shopifyIncluded }). It contains ONLY the subject's REAL records you can see (runs under your RLS — never an org-wide dump, never invented data). It is DISTINCT from the admin \`export\` tool, which is org-admin-scoped and dumps WHOLE APPS with no per-subject filter. SHOPIFY orders are a LIVE connector (fetched live, NOT stored locally), so they are NOT auto-included — BUT if the request needs them in the SAME single bundle (e.g. "I need one complete file including her orders"), FIRST retrieve them with the shopify orders read (customers_search → orders_search/orders_get for that subject) and pass the returned order records as the \`shopifyOrders\` array — this tool then FOLDS them into the one bundle file and returns its single real fileId. If you do NOT include them, say honestly that Shopify orders are a live connector not in this file (point to the shopify orders read / Shopify admin export). CRITICAL ANTI-FABRICATION: the deliverable is the SINGLE fileId THIS tool returns — NEVER claim you "generated" a separate or supplemental file, and NEVER emit a \`file:<id>\` reference for any id this tool did not return; to put orders in the package, pass them via \`shopifyOrders\` and hand back this tool's one real fileId (do not invent a second file). Scoped to the dedicated DSR authority (a privacy/finance handler can run it WITHOUT org-admin powers); a caller lacking that scope is denied (and should ask whoever holds the DSR/privacy authority). UNGATED read-to-file: it sends nothing and changes no business data — it only materializes a file from records you can already read.`,
+    description:
+      'Compile EVERYTHING the org holds on ONE data subject (a contact) across apps into a single downloadable GDPR data-subject-request (DSR) export bundle, and return its fileId. Use this for a GDPR/data-access request — "export everything we have on <person> so I can send it to them".',
     searchKeywords: ["rgpd", "gdpr", "données", "personnelles", "exporter", "export", "personne"],
     requiredScopes: ["kernel:data_subject:export"],
     params: z.object({

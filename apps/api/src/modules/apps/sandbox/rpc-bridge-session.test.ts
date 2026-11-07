@@ -518,6 +518,14 @@ describe("createSessionRpcBridge — attachmentBytesLedger survives per-call bri
 
   afterAll(async () => {
     if (fileId) await sql`DELETE FROM kernel.files WHERE id = ${fileId}`
+    // The policy swap above is DDL: it outlives this process on this database.
+    // Left in place, every later file on the database reads its files through a
+    // policy that knows only the fixture's `items`, and a thread's own files come
+    // back as missing. Drop the fixture parent and put the catalog's policy back.
+    const { manifestFileParentRegistry } = await import("~/modules/apps/app-registries")
+    manifestFileParentRegistry.delete([ORG_A, APP_NAME, "items"])
+    const { restoreFilesSelectPolicy } = await import("~/tests/helpers/files-select-policy")
+    await restoreFilesSelectPolicy()
   })
 
   it("ledger.getAttachmentBytes.cumulative accumulates ACROSS two session-bridge calls instead of resetting per call", async () => {

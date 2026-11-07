@@ -242,12 +242,14 @@ export const kernelTranslations: Translation[] = [
     // `routineAlert` (D21): a routine that failed or paused, filed by Home
     // under Agents > "Routines failed or paused" (routine-alert.ts).
     // `awayNamed`: a colleague marked the person away (modules/users/away.ts).
+    // `awayCalendar`: the person's own calendar made, moved or asks about an away range.
     metadataFromData: [
       "link",
       "nodePermissionPromptId",
       "nodePermission",
       "routineAlert",
       "awayNamed",
+      "awayCalendar",
     ],
   },
   {

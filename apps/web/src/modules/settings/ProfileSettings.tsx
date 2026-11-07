@@ -496,6 +496,7 @@ interface AwayRangeView {
   nextInLine: (AwayPerson & { active: boolean }) | null
   nextInLineIsDefault: boolean
   setBy: AwayPerson | null
+  source?: "said" | "lead" | "calendar"
   runningToday: boolean
 }
 interface AwayState {
@@ -503,6 +504,8 @@ interface AwayState {
   ranges: AwayRangeView[]
   standingNextInLine: (AwayPerson & { active: boolean }) | null
   people: Array<{ id: string; name: string; awayUntil: string | null }>
+  /** Calendar events that looked like leave, waiting for Yes or No: dates only. */
+  questions: Array<{ id: string; said: string }>
 }
 interface AwaySaved {
   id: string
@@ -532,6 +535,7 @@ const AwaySection: Component = () => {
           ranges: Array.isArray(r?.ranges) ? r.ranges : [],
           standingNextInLine: r?.standingNextInLine ?? null,
           people: Array.isArray(r?.people) ? r.people : [],
+          questions: Array.isArray(r?.questions) ? r.questions : [],
         }),
       )
       .catch(() => null),
@@ -611,6 +615,18 @@ const AwaySection: Component = () => {
     }
   }
 
+  async function answer(id: string, yes: boolean) {
+    try {
+      const res = await api.post<{ message: string }>(`/user/preferences/away/${id}/answer`, {
+        yes,
+      })
+      addToast({ message: res.message, type: "success" })
+      void refetch()
+    } catch {
+      addToast({ message: t("kernel.settings.profile.away.failed"), type: "error" })
+    }
+  }
+
   async function setStanding(id: string) {
     try {
       const res = await api.put<{ message: string }>("/user/preferences/away/next-in-line", {
@@ -648,6 +664,40 @@ const AwaySection: Component = () => {
       <Show when={state()}>
         {(s) => (
           <>
+            <Show when={s().questions.length > 0}>
+              <ul class="flex flex-col gap-2">
+                <For each={s().questions}>
+                  {(q) => (
+                    <li
+                      data-testid="settings-away-question"
+                      class="flex items-start justify-between gap-3 text-[13px] text-text"
+                    >
+                      <span class="min-w-0">
+                        {t("kernel.settings.profile.away.question", { dates: q.said })}
+                      </span>
+                      <div class="flex shrink-0 gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          data-testid="settings-away-question-yes"
+                          onClick={() => void answer(q.id, true)}
+                        >
+                          {t("kernel.settings.profile.away.yes")}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          data-testid="settings-away-question-no"
+                          onClick={() => void answer(q.id, false)}
+                        >
+                          {t("kernel.settings.profile.away.no")}
+                        </Button>
+                      </div>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </Show>
             <Show
               when={s().ranges.length > 0}
               fallback={
@@ -673,6 +723,11 @@ const AwaySection: Component = () => {
                                 : t("kernel.settings.profile.away.hasLeft", { name: n().name })}
                             </span>
                           )}
+                        </Show>
+                        <Show when={r.source === "calendar"}>
+                          <span class="text-[12px] text-text-tertiary">
+                            {t("kernel.settings.profile.away.fromCalendar")}
+                          </span>
                         </Show>
                         <Show when={r.setBy}>
                           {(b) => (

@@ -395,10 +395,26 @@ export function kernelAttentionTitle(
     case "thread_reply":
     case "thread_followup":
       return localizeAgentNotice(s, t)
-    case "agent_notification":
+    case "agent_notification": {
+      // The person's own calendar made, moved or asks about an away range: dates, next in
+      // line, and for a question the event's title, read live by the feed and never stored.
+      const cal = item.metadata?.awayCalendar as
+        | { kind?: string; said?: string; nextInLine?: string | null; title?: string }
+        | undefined
+      if (cal?.said && (cal.kind === "set" || cal.kind === "moved" || cal.kind === "asked")) {
+        const next = cal.nextInLine
+          ? t("kernel.attentionTitle.awayCalendar.next", { name: cal.nextInLine })
+          : t("kernel.attentionTitle.awayCalendar.nobody")
+        if (cal.kind === "asked")
+          return cal.title
+            ? t("kernel.attentionTitle.awayCalendar.asked", { title: cal.title, dates: cal.said })
+            : t("kernel.attentionTitle.awayCalendar.askedNoTitle", { dates: cal.said })
+        return t(`kernel.attentionTitle.awayCalendar.${cal.kind}`, { dates: cal.said, next })
+      }
       // Someone marked this person away (modules/users/away.ts): the row carries `awayNamed`.
       m = item.metadata?.awayNamed ? /^(.+) marked you away (.+)$/.exec(s) : null
       return m ? t("kernel.attentionTitle.awayNamed", { name: m[1] ?? "", dates: m[2] ?? "" }) : s
+    }
     default:
       return s
   }

@@ -1037,6 +1037,12 @@ export async function registerKernelJobs(): Promise<void> {
     const { pruneAwayRanges } = await import("~/modules/users/away")
     log.info(await pruneAwayRanges(), "away_ranges_retention")
   })
+  // Away days from each person's own calendar: recurring series kept to 60 days ahead, and
+  // leave-looking events that waited behind the open questions asked about.
+  await registerScheduledJob("kernel", "calendar-away-refresh", "47 4 * * *", async () => {
+    const { refreshCalendarAwayAll } = await import("~/apps/calendar/away-from-calendar")
+    log.info(await refreshCalendarAwayAll(), "calendar_away_refresh")
+  })
   await registerScheduledJob("kernel", "agent-turn-retention", "17 4 * * *", async () => {
     const { runTurnRetention } = await import("~/modules/agent/runtime/turn-resume")
     await runTurnRetention()

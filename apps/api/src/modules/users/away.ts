@@ -15,8 +15,8 @@ import {
   personLocalDate,
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
-import { extractRows, type PrivilegedDb } from "~/db"
-import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
+import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
+import { privilegedFrom, withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { appsLogger as log } from "~/lib/logger"
 import { readPeopleDecide } from "~/modules/approvals/route-world"
@@ -1029,8 +1029,13 @@ export async function endAwayRange(
     const r = rows[0]
     if (!r) return { ended: false, message: "No such range of yours. Nothing was changed." }
     if (r.starts_on > today) {
-      // Not started: ending it early means it never happens.
-      await tx.execute(drizzleSql`DELETE FROM ${K}.away_ranges WHERE id = ${r.id}::uuid`)
+      // Not started: ending it early means it never happens. A calendar row is set aside rather
+      // than deleted, so the next sync of its event does not bring it back.
+      await tx.execute(
+        r.source === "calendar"
+          ? drizzleSql`UPDATE ${K}.away_ranges SET status = 'declined', updated_at = now() WHERE id = ${r.id}::uuid`
+          : drizzleSql`DELETE FROM ${K}.away_ranges WHERE id = ${r.id}::uuid`,
+      )
       return {
         ended: true,
         message: `Removed ${sayDates({ from: r.starts_on, to: r.ends_on, weekdays: r.weekdays })}, which had not started.`,
@@ -1134,5 +1139,436 @@ export async function clearStandingNextInLine(orgId: string, personId: string): 
       UPDATE ${K}.user_preferences SET next_in_line_id = NULL, updated_at = now()
       WHERE user_id = ${personId}::uuid
         AND user_id IN (SELECT id FROM ${K}.users WHERE org_id = ${orgId}::uuid)`)
+  })
+}
+
+// ---------------------------------------------------------------------------------------------
+// From the person's own calendar
+// ---------------------------------------------------------------------------------------------
+
+/** Days a calendar-derived range may span before it is asked about instead of counted. */
+export const CALENDAR_AWAY_MAX_DAYS = 30
+/** Open questions per person; the rest wait for a later sync. */
+export const CALENDAR_AWAY_MAX_OPEN_QUESTIONS = 3
+
+/** What one calendar event says about the person, decided from the event alone. */
+export interface CalendarAwayEffect {
+  /** `<calendar id>:<google event id>`, the row's only link to the event. */
+  ref: string
+  googleEventId: string
+  kind: "active" | "ask" | "none" | "cancelled"
+  startsOn?: string
+  endsOn?: string
+  /** The person organises the event: only then does a date change keep a Yes. */
+  organised: boolean
+}
+
+export interface CalendarAwayPerson {
+  id: string
+  name: string
+  timezone: string
+  workHoursStart: string
+  workHoursEnd: string
+  workDays: number[]
+}
+
+/**
+ * The person whose own calendar is read, with what "a whole working day" means for them. Runs
+ * on the caller's privileged transaction (the calendar sync's), never a slot of its own.
+ */
+export async function readCalendarAwayPerson(
+  tx: PrivilegedDb,
+  orgId: string,
+  personId: string,
+): Promise<CalendarAwayPerson | null> {
+  const person = (await readPeople(tx, orgId, [personId])).get(personId)
+  if (!person || person.status !== "active" || person.user_type === "external") return null
+  const prefs = extractRows<{ s: string; e: string; days: number[]; tz: string }>(
+    await tx.execute(drizzleSql`
+      SELECT to_char(work_hours_start, 'HH24:MI') AS s, to_char(work_hours_end, 'HH24:MI') AS e,
+        work_days AS days, timezone AS tz
+      FROM ${K}.user_preferences WHERE user_id = ${personId}::uuid`),
+  )[0]
+  const tz = person.timezone ?? (await orgTimezone(tx, orgId)) ?? prefs?.tz ?? "UTC"
+  return {
+    id: person.id,
+    name: person.name,
+    timezone: tz,
+    workHoursStart: prefs?.s ?? "09:00",
+    workHoursEnd: prefs?.e ?? "17:00",
+    workDays: prefs?.days ?? [1, 2, 3, 4, 5],
+  }
+}
+
+export interface CalendarAwayOutcome {
+  activated: number
+  asked: number
+  moved: number
+  deleted: number
+  waiting: number
+}
+
+interface CalendarRangeRow extends RangeRow {
+  source_event_ref: string
+}
+
+function spanDays(startsOn: string, endsOn: string): number {
+  return (
+    Math.round(
+      (Date.parse(`${endsOn}T00:00:00Z`) - Date.parse(`${startsOn}T00:00:00Z`)) / 86_400_000,
+    ) + 1
+  )
+}
+
+/**
+ * Applies what the person's own calendar says, one effect per event, to their calendar rows:
+ * an out-of-office over whole working days is active at once, a leave-looking all-day event is
+ * asked about once, a moved event moves its range with a line, a cancelled one deletes its row
+ * unless it was ended early. Ended early, undone or answered No: a later sync does not re-arm
+ * it, unless the event moves to start after the day it was ended. No title reaches this module.
+ *
+ * `seriesRefs`: for a recurring series read whole, the refs of its occurrences in the window;
+ * the series' other rows that have not started are removed (all of them when it is cancelled).
+ *
+ * Runs on the caller's privileged transaction, Home lines included (each in a savepoint, so a
+ * line that cannot be queued leaves the rows standing): one slot for the whole sync, never a
+ * second taken while the first is held.
+ */
+export async function applyCalendarAwayEffects(
+  tx: PrivilegedDb,
+  orgId: string,
+  personId: string,
+  effects: readonly CalendarAwayEffect[],
+  opts: {
+    seriesRefs?: Array<{ prefix: string; keep: ReadonlySet<string>; cancelled?: boolean }>
+    now?: Date
+  } = {},
+): Promise<CalendarAwayOutcome> {
+  const now = opts.now ?? new Date()
+  const out: CalendarAwayOutcome = { activated: 0, asked: 0, moved: 0, deleted: 0, waiting: 0 }
+  if (effects.length === 0 && (opts.seriesRefs ?? []).length === 0) return out
+  const lines: Array<{
+    rangeId: string
+    kind: "set" | "moved" | "asked"
+    said: string
+    eventRef: string
+    googleEventId: string
+  }> = []
+  let personName = ""
+  let nextName: string | null = null
+  await (async () => {
+    const person = (await readPeople(tx, orgId, [personId])).get(personId)
+    if (!person || person.status !== "active" || person.user_type === "external") return
+    personName = person.name
+    const today = await todayOf(tx, orgId, person, now)
+    const rows = extractRows<CalendarRangeRow>(
+      await tx.execute(drizzleSql`
+        SELECT ${RANGE_COLUMNS}, source_event_ref FROM ${K}.away_ranges
+        WHERE org_id = ${orgId}::uuid AND user_id = ${personId}::uuid AND source = 'calendar'`),
+    )
+    const byRef = new Map(rows.map((r) => [r.source_event_ref, r]))
+    let openQuestions = rows.filter((r) => r.status === "asked").length
+
+    const remove = async (r: CalendarRangeRow) => {
+      await tx.execute(drizzleSql`DELETE FROM ${K}.away_ranges WHERE id = ${r.id}::uuid`)
+      if (r.status === "asked") openQuestions--
+      byRef.delete(r.source_event_ref)
+      out.deleted++
+    }
+    const ask = async (
+      e: CalendarAwayEffect & { startsOn: string; endsOn: string },
+      existing: CalendarRangeRow | undefined,
+    ) => {
+      if (openQuestions >= CALENDAR_AWAY_MAX_OPEN_QUESTIONS && existing?.status !== "asked") {
+        out.waiting++
+        return
+      }
+      const said = sayDates({ from: e.startsOn, to: e.endsOn, weekdays: null })
+      if (existing) {
+        await tx.execute(drizzleSql`
+          UPDATE ${K}.away_ranges SET status = 'asked', starts_on = ${e.startsOn}::date,
+            ends_on = ${e.endsOn}::date, ended_early_on = NULL, updated_at = now()
+          WHERE id = ${existing.id}::uuid`)
+        if (existing.status !== "asked") {
+          openQuestions++
+          lines.push({
+            rangeId: existing.id,
+            kind: "asked",
+            said,
+            eventRef: e.ref,
+            googleEventId: e.googleEventId,
+          })
+          out.asked++
+        }
+        return
+      }
+      const id = extractRows<{ id: string }>(
+        await tx.execute(drizzleSql`
+          INSERT INTO ${K}.away_ranges (org_id, user_id, starts_on, ends_on, source, status, source_event_ref, set_by)
+          VALUES (${orgId}::uuid, ${personId}::uuid, ${e.startsOn}::date, ${e.endsOn}::date, 'calendar', 'asked', ${e.ref}, ${personId}::uuid)
+          RETURNING id`),
+      )[0]?.id
+      if (!id) return
+      openQuestions++
+      lines.push({
+        rangeId: id,
+        kind: "asked",
+        said,
+        eventRef: e.ref,
+        googleEventId: e.googleEventId,
+      })
+      out.asked++
+    }
+
+    for (const e of effects) {
+      const existing = byRef.get(e.ref)
+      if (e.kind === "cancelled" || e.kind === "none") {
+        // Ended early, the row records who was away when, and stays.
+        // A declined row stays while its event lives, so a later sync does not ask again.
+        if (
+          existing &&
+          existing.ended_early_on === null &&
+          (e.kind === "cancelled" || existing.status !== "declined")
+        )
+          await remove(existing)
+        continue
+      }
+      if (!e.startsOn || !e.endsOn) continue
+      const dated = e as CalendarAwayEffect & { startsOn: string; endsOn: string }
+      const tooLong = spanDays(dated.startsOn, dated.endsOn) > CALENDAR_AWAY_MAX_DAYS
+      const same =
+        existing && existing.starts_on === dated.startsOn && existing.ends_on === dated.endsOn
+      if (!existing) {
+        if (dated.endsOn < today) continue
+        if (e.kind === "ask" || tooLong) {
+          await ask(dated, undefined)
+          continue
+        }
+        const id = extractRows<{ id: string }>(
+          await tx.execute(drizzleSql`
+            INSERT INTO ${K}.away_ranges (org_id, user_id, starts_on, ends_on, source, status, source_event_ref, set_by)
+            VALUES (${orgId}::uuid, ${personId}::uuid, ${dated.startsOn}::date, ${dated.endsOn}::date, 'calendar', 'active', ${e.ref}, ${personId}::uuid)
+            RETURNING id`),
+        )[0]?.id
+        if (id) {
+          lines.push({
+            rangeId: id,
+            kind: "set",
+            said: sayDates({ from: dated.startsOn, to: dated.endsOn, weekdays: null }),
+            eventRef: e.ref,
+            googleEventId: e.googleEventId,
+          })
+          out.activated++
+        }
+        continue
+      }
+      if (same) continue
+      if (existing.status === "declined") continue
+      if (existing.ended_early_on !== null) {
+        // Ended early: only a move to after the day it was ended brings it back.
+        if (dated.startsOn <= existing.ended_early_on) continue
+      }
+      if (existing.status === "asked") {
+        await tx.execute(drizzleSql`
+          UPDATE ${K}.away_ranges SET starts_on = ${dated.startsOn}::date, ends_on = ${dated.endsOn}::date,
+            updated_at = now() WHERE id = ${existing.id}::uuid`)
+        continue
+      }
+      // Active and moved. Someone else's event, or one now too long, is a new question.
+      if (!e.organised || tooLong) {
+        await ask(dated, existing)
+        continue
+      }
+      await tx.execute(drizzleSql`
+        UPDATE ${K}.away_ranges SET starts_on = ${dated.startsOn}::date, ends_on = ${dated.endsOn}::date,
+          ended_early_on = NULL, updated_at = now() WHERE id = ${existing.id}::uuid`)
+      lines.push({
+        rangeId: existing.id,
+        kind: existing.ended_early_on !== null ? "set" : "moved",
+        said: sayDates({ from: dated.startsOn, to: dated.endsOn, weekdays: null }),
+        eventRef: e.ref,
+        googleEventId: e.googleEventId,
+      })
+      if (existing.ended_early_on !== null) out.activated++
+      else out.moved++
+    }
+
+    for (const series of opts.seriesRefs ?? []) {
+      for (const r of [...byRef.values()]) {
+        if (!r.source_event_ref.startsWith(series.prefix) || series.keep.has(r.source_event_ref))
+          continue
+        if (r.ended_early_on !== null) continue
+        // A rule change drops the occurrences that have not started; a cancelled series all.
+        if (!series.cancelled && r.starts_on <= today) continue
+        await remove(r)
+      }
+    }
+
+    if (lines.length > 0) {
+      const standingId = await standingNextInLine(tx, personId)
+      const next = standingId
+        ? (await readPeople(tx, orgId, [standingId])).get(standingId)
+        : undefined
+      nextName = next && next.status === "active" ? next.name : null
+    }
+  })()
+  for (const line of lines)
+    await announceCalendarLine(tx, orgId, personId, personName, nextName, line)
+  return out
+}
+
+/**
+ * The person's own Home line about a calendar row: dates with weekdays and who is next in
+ * line. An asked line names no event: the Home feed reads the title live from the person's
+ * own calendar when it shows the row, so the title is stored nowhere here.
+ */
+async function announceCalendarLine(
+  db: PrivilegedDb,
+  orgId: string,
+  personId: string,
+  _personName: string,
+  nextName: string | null,
+  line: {
+    rangeId: string
+    kind: "set" | "moved" | "asked"
+    said: string
+    eventRef: string
+    googleEventId: string
+  },
+): Promise<void> {
+  const next = nextName
+    ? ` Next in line: ${nextName}.`
+    : " Nobody is next in line, so items for you stay with the usual approvers."
+  const summary =
+    line.kind === "set"
+      ? `Your calendar marks you away ${line.said}.${next}`
+      : line.kind === "moved"
+        ? `Your away moved: ${line.said}.${next}`
+        : `Is this calendar event time off, ${line.said}? It counts for nothing until you say Yes.`
+  const calendarId = line.eventRef.slice(0, line.eventRef.indexOf(":"))
+  try {
+    await db.transaction(async (tx) => {
+      await tx.queueEvent({
+        app: "kernel",
+        entity: "agent_notification",
+        action: "create",
+        entityId: line.rangeId,
+        data: {
+          summary,
+          urgency: line.kind === "asked" ? 30 : 40,
+          targetUserIds: [personId],
+          link: { tabType: "settings", entityId: "profile" },
+          awayCalendar: {
+            rangeId: line.rangeId,
+            kind: line.kind,
+            said: line.said,
+            nextInLine: nextName,
+            calendarId,
+            googleEventId: line.googleEventId,
+          },
+        },
+        actorId: personId,
+        actorType: "system",
+        orgId,
+        timestamp: new Date().toISOString(),
+      })
+    })
+  } catch (err) {
+    // The row stands; the person still sees it on their profile.
+    log.warn({ err, orgId, personId }, "could not post the calendar away line")
+  }
+}
+
+/**
+ * The person answers about one of their calendar rows: Yes counts an asked row from now on;
+ * No declines it, and Undo on a row the calendar made active declines it too, so no later
+ * sync asks again or re-arms it.
+ */
+export async function answerCalendarAway(
+  orgId: string,
+  personId: string,
+  rangeId: string,
+  yes: boolean,
+): Promise<{ ok: boolean; status?: "active" | "declined"; message: string }> {
+  return withPrivilegedDb(orgId, "away-calendar-answer", async (tx) => {
+    const r = extractRows<CalendarRangeRow>(
+      await tx.execute(drizzleSql`
+        SELECT ${RANGE_COLUMNS}, source_event_ref FROM ${K}.away_ranges
+        WHERE id = ${rangeId}::uuid AND org_id = ${orgId}::uuid AND user_id = ${personId}::uuid
+          AND source = 'calendar'`),
+    )[0]
+    if (!r) return { ok: false, message: "No such calendar range of yours. Nothing was changed." }
+    const said = sayDates({ from: r.starts_on, to: r.ends_on, weekdays: null })
+    if (yes) {
+      if (r.status !== "asked")
+        return {
+          ok: false,
+          message: `That range is not waiting for an answer (${r.status}). Nothing was changed.`,
+        }
+      await tx.execute(drizzleSql`
+        UPDATE ${K}.away_ranges SET status = 'active', updated_at = now() WHERE id = ${r.id}::uuid`)
+      return {
+        ok: true,
+        status: "active",
+        message: `Recorded: you are away ${said}. Undo on your profile takes it back.`,
+      }
+    }
+    if (r.status === "declined")
+      return { ok: true, status: "declined", message: "Already set aside. Nothing was changed." }
+    await tx.execute(drizzleSql`
+      UPDATE ${K}.away_ranges SET status = 'declined', updated_at = now() WHERE id = ${r.id}::uuid`)
+    return {
+      ok: true,
+      status: "declined",
+      message: `Not counted: ${said} is not away time, and that event will not be asked about again.`,
+    }
+  })
+}
+
+/**
+ * Disconnecting a calendar account deletes the rows its calendars made; said rows stay. Runs on
+ * the purge's own transaction when it is privileged or may elevate (privilegedFrom), so the
+ * rows go with the account, in one commit, without a second privileged slot.
+ */
+export async function deleteCalendarAwayRanges(
+  db: Pick<RlsClient, "execute">,
+  orgId: string,
+  calendarIds: readonly string[],
+): Promise<number> {
+  if (calendarIds.length === 0) return 0
+  return privilegedFrom(db, orgId, "away-calendar-disconnect", async (tx) => {
+    const rows = extractRows<{ id: string }>(
+      await tx.execute(drizzleSql`
+        DELETE FROM ${K}.away_ranges
+        WHERE org_id = ${orgId}::uuid AND source = 'calendar'
+          AND split_part(source_event_ref, ':', 1) IN (${drizzleSql.join(
+            calendarIds.map((id) => drizzleSql`${id}`),
+            drizzleSql`, `,
+          )})
+        RETURNING id`),
+    )
+    return rows.length
+  })
+}
+
+/** The person's open calendar questions, for their profile: dates only, never a title. */
+export async function listCalendarQuestions(
+  orgId: string,
+  personId: string,
+): Promise<Array<{ id: string; from: string; to: string | null; said: string }>> {
+  return withPrivilegedDb(orgId, "away-calendar-questions", async (tx) => {
+    const rows = extractRows<RangeRow>(
+      await tx.execute(drizzleSql`
+        SELECT ${RANGE_COLUMNS} FROM ${K}.away_ranges
+        WHERE org_id = ${orgId}::uuid AND user_id = ${personId}::uuid AND source = 'calendar'
+          AND status = 'asked'
+        ORDER BY starts_on`),
+    )
+    return rows.map((r) => ({
+      id: r.id,
+      from: r.starts_on,
+      to: r.ends_on,
+      said: sayDates({ from: r.starts_on, to: r.ends_on, weekdays: null }),
+    }))
   })
 }

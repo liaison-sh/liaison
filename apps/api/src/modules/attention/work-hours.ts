@@ -167,3 +167,45 @@ export function nextWorkWindowStart(now: Date, prefs: WorkHoursPrefs): Date {
   }
   return now
 }
+
+/** `YYYY-MM-DD` plus `days`, on the calendar (no time zone involved). */
+function addLocalDays(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * The person's work days, as local `YYYY-MM-DD` dates in their time zone, whose whole work
+ * window lies inside [start, end). A window crossing midnight ends on the next day; a start
+ * equal to its end is the whole day. Part of a work window is not a whole working day, so a
+ * morning off counts for nothing.
+ */
+export function wholeWorkingDays(start: Date, end: Date, prefs: WorkHoursPrefs): string[] {
+  const s = parseHHmm(prefs.workHoursStart)
+  const e = parseHHmm(prefs.workHoursEnd)
+  if (!s || !e || end.getTime() <= start.getTime()) return []
+  const workDaySet = new Set(prefs.workDays)
+  const first = getLocalParts(start, prefs.timezone)
+  const out: string[] = []
+  // A window that starts the day before `start` (night shift) cannot be whole, so the walk
+  // starts on the local day of `start`, and stops once a window would open at or after `end`.
+  let day = `${first.year}-${String(first.month).padStart(2, "0")}-${String(first.day).padStart(2, "0")}`
+  for (let i = 0; i < 400; i++, day = addLocalDays(day, 1)) {
+    const [y, mo, d] = day.split("-").map(Number) as [number, number, number]
+    const open = utcFromLocal(y, mo, d, s.h, s.m, prefs.timezone)
+    if (open.getTime() >= end.getTime()) break
+    const sameDay = minutesOfDay(s.h, s.m) === minutesOfDay(e.h, e.m)
+    const crosses = !sameDay && minutesOfDay(s.h, s.m) > minutesOfDay(e.h, e.m)
+    const windowOpen = sameDay ? utcFromLocal(y, mo, d, 0, 0, prefs.timezone) : open
+    const closeDay = sameDay || crosses ? addLocalDays(day, 1) : day
+    const [cy, cmo, cd] = closeDay.split("-").map(Number) as [number, number, number]
+    const close = sameDay
+      ? utcFromLocal(cy, cmo, cd, 0, 0, prefs.timezone)
+      : utcFromLocal(cy, cmo, cd, e.h, e.m, prefs.timezone)
+    if (!workDaySet.has(isoWeekday(utcFromLocal(y, mo, d, 12, 0, prefs.timezone), prefs.timezone)))
+      continue
+    if (windowOpen.getTime() >= start.getTime() && close.getTime() <= end.getTime()) out.push(day)
+  }
+  return out
+}

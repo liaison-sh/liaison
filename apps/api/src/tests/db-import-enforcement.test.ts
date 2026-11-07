@@ -172,6 +172,9 @@ describe("db import enforcement", () => {
     // Away days: the one writer of kernel.away_ranges (no member write path), its daily prune,
     // and the next-in-line column a colleague's read needs, all pinned to one org but the prune.
     "modules/users/away.ts",
+    // Away days from a person's own calendar: the daily refresh lists every personal primary
+    // calendar and reads each one's stored events in a system transaction of that org.
+    "apps/calendar/away-from-calendar.ts",
     "modules/approvals/expiry.ts",
     "modules/approvals/approving-reaper.ts",
     "modules/approvals/cancel.ts",

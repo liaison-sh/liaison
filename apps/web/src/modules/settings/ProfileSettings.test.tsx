@@ -439,6 +439,7 @@ describe("ProfileSettings", () => {
           runningToday: false,
         },
       ],
+      questions: [{ id: "q-1", said: "from Mon 14 Dec 2026 to Fri 18 Dec 2026" }],
     }
 
     function mountAway(calls: Array<{ url: string; method: string; body?: unknown }>) {
@@ -490,6 +491,21 @@ describe("ProfileSettings", () => {
         expect(calls.some((c) => c.method === "POST" && c.url.endsWith("/away/r-1/end"))).toBe(
           true,
         ),
+      )
+    })
+
+    it("asks about a calendar event with its dates only, and Yes answers it", async () => {
+      const calls: Array<{ url: string; method: string; body?: unknown }> = []
+      mountAway(calls)
+      const q = await screen.findByTestId("settings-away-question")
+      expect(q.textContent).toContain(
+        "Your calendar has an event from Mon 14 Dec 2026 to Fri 18 Dec 2026 that looks like time off.",
+      )
+      fireEvent.click(screen.getByTestId("settings-away-question-yes"))
+      await waitFor(() =>
+        expect(
+          calls.find((c) => c.method === "POST" && c.url.endsWith("/away/q-1/answer"))?.body,
+        ).toEqual({ yes: true }),
       )
     })
 

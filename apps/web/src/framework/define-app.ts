@@ -616,6 +616,8 @@ export interface AppManifest {
   bulk?: Record<string, any>
   savedViews?: Record<string, any>
   entities?: Record<string, any>
+  attention?: { groupLabel?: { label: string; labelKey?: string } }
+  approvalCard?: { pill?: { label: string; labelKey?: string } }
 }
 
 // Attach per-shared-field render hints (enum/type/widget/label) to each bulk
@@ -1062,7 +1064,13 @@ export function registerAppFromManifest(
   if (manifest.bulk) manifestAppData.bulk = enrichBulkFieldSpecs(manifest)
   if (manifest.savedViews) manifestAppData.savedViews = manifest.savedViews as any
   if (manifest.entities) manifestAppData.entities = manifest.entities as any
-  if (manifestAppData.bulk || manifestAppData.savedViews || manifestAppData.entities) {
+  if (manifest.attention?.groupLabel) {
+    manifestAppData.attention = { groupLabel: manifest.attention.groupLabel }
+  }
+  if (manifest.approvalCard?.pill) {
+    manifestAppData.approvalCard = { pill: manifest.approvalCard.pill }
+  }
+  if (Object.keys(manifestAppData).length > 0) {
     registerManifestAppData(manifest.name, manifestAppData)
   }
 }

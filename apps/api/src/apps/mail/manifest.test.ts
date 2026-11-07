@@ -14,6 +14,13 @@ const guideText = (m: { agentInstructions?: unknown }): string => {
 }
 
 describe("mail app manifest validation", () => {
+  it("declares the heading over its attention items, in the words and catalog key Home shows", () => {
+    expect(mailManifest.attention.groupLabel).toEqual({
+      label: "Mail",
+      labelKey: "kernel.homeGroupMail",
+    })
+  })
+
   it("gives the sending tools a send sized budget, not the 5 s production default", () => {
     // A send with attachments (copy each file onto the message, MIME build,
     // provider round trip) passes 5 s; under the default an approved compose
@@ -57,7 +64,7 @@ describe("mail app manifest validation", () => {
       "smtpPort",
       "username",
     ])
-    expect(mailManifest.version).toBe("1.10.0")
+    expect(mailManifest.version).toBe("1.10.1")
   })
 
   it("passes manifest validation", () => {

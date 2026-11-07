@@ -17,6 +17,13 @@ const guideText = (m: { agentInstructions?: unknown }): string => {
 }
 
 describe("tickets manifest", () => {
+  it("declares the heading over its attention items, in the words and catalog key Home shows", () => {
+    expect(ticketsManifest.attention.groupLabel).toEqual({
+      label: "Support",
+      labelKey: "kernel.homeGroupSupport",
+    })
+  })
+
   it("gives the email sending tools a send sized budget, not the 5 s production default", () => {
     // A reply with a PDF (fetch from storage, MIME build, SMTP round trip)
     // routinely passes 5 s. Under the default the sandbox reported "App

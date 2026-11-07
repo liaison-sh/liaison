@@ -57,7 +57,7 @@
       }
     ]
   },
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Knowledge workspace for local documents and curated source links",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -1673,5 +1673,9 @@
       "kind": "guide",
       "enabledByDefault": true
     }
+  },
+  "attention": {
+    "groupLabel": { "label": "Knowledge", "labelKey": "kernel.homeGroupKnowledge" },
+    "translations": []
   }
 }

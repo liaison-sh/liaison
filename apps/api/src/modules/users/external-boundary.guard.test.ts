@@ -120,6 +120,7 @@ const TREATED: Record<string, [Treatment, string]> = {
   "modules/approvals/list.ts": ["stored-ids", "the people an approval names"],
   "modules/approvals/prompt-materialize.ts": ["stored-ids", "an approval's notify list"],
   "modules/approvals/reminders.ts": ["stored-ids", "an approval's notify list"],
+  "modules/approvals/routed-reminders.ts": ["stored-ids", "an approval's notify list"],
   "modules/approvals/route-world.ts": [
     "member-filter",
     "who on an approval's route is an active member; next in line by stored ids",

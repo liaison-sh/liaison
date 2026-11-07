@@ -47,6 +47,7 @@ export const ORGLESS_JOB_AUDIT: Readonly<Record<string, OrglessJobEntry>> = {
   "kernel:agent-turn-retention": skips("modules/agent/runtime/turn-ledger.ts"),
   "kernel:approval-expiry-sweep": skips("modules/approvals/expiry.ts"),
   "kernel:approval-reminder-sweep": skips("modules/approvals/reminders.ts"),
+  "kernel:approval-routed-reminder-sweep": skips("modules/approvals/routed-reminders.ts"),
   "kernel:approval-approving-reaper": skips("modules/approvals/approving-reaper.ts"),
   "kernel:approval-deferred-step-reaper": skips("modules/approvals/approving-reaper.ts"),
   "kernel:subrun-stuck-sweep": skips("modules/agent/subruns/subrun-worker.ts"),

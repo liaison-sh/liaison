@@ -367,6 +367,8 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "sweep: stale node rows; each closed in its own row's org and owner",
   "apps/api/src/modules/approvals/approving-reaper.ts#runApprovingReaper":
     "sweep: approval rows stuck in approving; each reaped in its own row's org",
+  "apps/api/src/modules/approvals/routed-reminders.ts#runRoutedReminderSweep":
+    "sweep: pending approval rows a day old; each org's rows are reminded in that org",
   "apps/api/src/modules/search/reindex.ts#runReindex":
     "reindex sweep: every org id (listOrgIds); each org's documents streamed in that org",
   "apps/api/src/modules/search/reindex.ts#setUpOrgsOf":

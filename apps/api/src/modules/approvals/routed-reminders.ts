@@ -30,6 +30,7 @@ import {
   readRoutesIgnoringAway,
 } from "~/modules/approvals/route-world"
 import { toolRegistry } from "~/modules/apps/app-registries"
+import { awaitOrgApps } from "~/modules/apps/init"
 import {
   SKIPPED_MOVING,
   sweepSkippingMoving,
@@ -97,6 +98,9 @@ function titleOf(r: WaitingRow): string {
 
 /** Remind the deciders of one org's waiting rows. Returns how many rows were reminded. */
 async function remindOrg(orgId: string, rows: readonly WaitingRow[]): Promise<number> {
+  // The sweep spans every org, an idle one included: its tools must be registered before
+  // `noAutoApprove` is read, or a row only a person may sign would never be reminded.
+  await awaitOrgApps(orgId)
   return withPrivilegedDb(orgId, "approval-routed-reminder", async (tx) => {
     const routes = await readRoutesIgnoringAway(tx, orgId, rows)
     const due = rows.filter((r) =>

@@ -61,6 +61,7 @@ const READERS: Record<string, string> = {
   "modules/approvals/edit.ts": REQUEST,
   "modules/approvals/poll-output.ts": JOB,
   "modules/approvals/required-step.ts": REQUEST,
+  "modules/approvals/routed-reminders.ts": ENSURES,
   "modules/approvals/result-notice.ts": JOB,
   "modules/apps/activation.ts": SETUP,
   "modules/apps/app-registries.ts": SETUP,

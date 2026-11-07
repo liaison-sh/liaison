@@ -195,6 +195,10 @@ describe("db import enforcement", () => {
     // own across orgs (one bounded, paged scan), then reads one person's requests,
     // agent and permissions by org id before any request actor exists.
     "modules/approvals/reminders.ts",
+    // Routed reminders: the hourly sweep scans pending requests of every org (one bounded,
+    // paged read), then reads one org's routes, deciders and people by org id before any
+    // request actor exists.
+    "modules/approvals/routed-reminders.ts",
     // Phase 13 — compound/sequenced gated operations. The cascade engine, its
     // failure path, and the async-output poll job all run outside any
     // per-request RLS context (decide flow, BullMQ-driven poll/reinvoke).

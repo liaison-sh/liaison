@@ -898,7 +898,8 @@ describe("Shopify app.manifest.json", () => {
     // (the shared package depends on it by workspace protocol); no change to what it does.
     // 0.4.4: above 0.4.3, so an instance on either line of work upgrades; no change of its own.
     // 0.4.5: above both lines of work, which each changed it under the number before; no change of its own.
-    expect(m.version).toBe("0.4.5")
+    // 0.4.6: the offline token stays host-side (ctx.fetch auth); the verifier checks by config key.
+    expect(m.version).toBe("0.4.6")
   })
 
   it("read_all_orders is a protected scope behind the org's full-order-history toggle", () => {

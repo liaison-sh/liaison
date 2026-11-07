@@ -31,6 +31,11 @@ import { createKnowledgeCurationMethods } from "~/modules/apps/sandbox/bridge/kn
 import { createMailMethods } from "~/modules/apps/sandbox/bridge/mail"
 import { createPlatformMethods } from "~/modules/apps/sandbox/bridge/platform"
 import { createProjectsMethods } from "~/modules/apps/sandbox/bridge/projects"
+import {
+  forWorkersRun,
+  manifestSecretConfigKeys,
+  WORKERS_RUN_BRIDGE,
+} from "~/modules/apps/sandbox/bridge/secret-free"
 import { type AppManifestForBridge, withPgCause } from "~/modules/apps/sandbox/bridge/shared"
 import { createTicketsMethods } from "~/modules/apps/sandbox/bridge/tickets"
 import { buildBridgeExtensions } from "~/modules/apps/sandbox/bridge-extensions"
@@ -125,6 +130,12 @@ export function createRpcBridge(
         throw readOnlyRunBlockedError(UNDECLARED_WRITE_TARGET, `ctx.${name}`)
       }
     }
+  }
+
+  // A Workers run: no method hands a secret back (applied last, so an app's
+  // extension cannot reintroduce one).
+  if (bridgeOptions?.workersRun) {
+    forWorkersRun(rpcBridge, { secretConfigKeys: manifestSecretConfigKeys(manifest.connections) })
   }
 
   return rpcBridge
@@ -587,6 +598,9 @@ export function createSessionRpcBridge(
     value: sharedOptions.withShortTx,
     enumerable: false,
   })
+  if (sharedOptions.workersRun) {
+    Object.defineProperty(sessionBridge, WORKERS_RUN_BRIDGE, { value: true, enumerable: false })
+  }
   return sessionBridge
 }
 

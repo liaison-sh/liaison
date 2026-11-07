@@ -15,7 +15,6 @@ describe("ShopifyClient", () => {
   it("query returns data on a 200 response", async () => {
     const client = new ShopifyClient({
       shop: "demo",
-      token: "t",
       fetch: async () => okResponse({ data: { ok: true }, extensions: COST_OK }),
     })
     const r = await client.query<{ ok: boolean }>("query { ok }", {})
@@ -27,7 +26,6 @@ describe("ShopifyClient", () => {
     let n = 0
     const client = new ShopifyClient({
       shop: "demo",
-      token: "t",
       fetch: async (req) => {
         bodies.push(typeof req.body === "string" ? req.body : "")
         n++
@@ -51,7 +49,6 @@ describe("ShopifyClient", () => {
     let n = 0
     const client = new ShopifyClient({
       shop: "demo",
-      token: "t",
       fetch: async () => {
         n++
         return okResponse({ errors: [{ message: "Malformed cursor" }], extensions: COST_OK })
@@ -65,7 +62,6 @@ describe("ShopifyClient", () => {
     let n = 0
     const client = new ShopifyClient({
       shop: "demo",
-      token: "t",
       fetch: async () => {
         n++
         return okResponse({ errors: [{ message: "Field 'foo' doesn't exist" }], extensions: COST_OK })
@@ -81,7 +77,6 @@ describe("ShopifyClient", () => {
     const calls: number[] = []
     const client = new ShopifyClient({
       shop: "demo",
-      token: "t",
       fetch: async () => {
         calls.push(Date.now())
         return okResponse({ data: { ok: true }, extensions: COST_LOW })
@@ -99,7 +94,6 @@ describe("ShopifyClient", () => {
     let n = 0
     const client = new ShopifyClient({
       shop: "demo",
-      token: "t",
       fetch: async () => {
         n++
         return { status: 429, headers: { "retry-after": "0" }, body: "" }
@@ -114,7 +108,6 @@ describe("ShopifyClient", () => {
     let n = 0
     const client = new ShopifyClient({
       shop: "demo",
-      token: "t",
       fetch: async () => {
         n++
         return { status: 401, headers: {}, body: "" }
@@ -127,7 +120,6 @@ describe("ShopifyClient", () => {
   it("propagates 403 as SCOPE_DENIED (no retry)", async () => {
     const client = new ShopifyClient({
       shop: "demo",
-      token: "t",
       fetch: async () => ({ status: 403, headers: {}, body: "" }),
     })
     await expect(client.query("query{}", {})).rejects.toMatchObject({ code: "SCOPE_DENIED" })
@@ -151,7 +143,6 @@ describe("ShopifyClient", () => {
     let i = 0
     const client = new ShopifyClient({
       shop: "demo",
-      token: "t",
       fetch: async () => okResponse(pages[i++]!),
     })
     const ids: string[] = []
@@ -165,7 +156,6 @@ describe("ShopifyClient", () => {
     const urls: string[] = []
     const client = new ShopifyClient({
       shop: "demo",
-      token: "t",
       baseUrlOverride: "http://127.0.0.1:40001",
       fetch: async (req) => {
         urls.push(req.url)
@@ -180,7 +170,6 @@ describe("ShopifyClient", () => {
     const urls: string[] = []
     const client = new ShopifyClient({
       shop: "demo",
-      token: "t",
       baseUrlOverride: "http://127.0.0.1:40001/",
       fetch: async (req) => {
         urls.push(req.url)
@@ -195,7 +184,6 @@ describe("ShopifyClient", () => {
     const urls: string[] = []
     const client = new ShopifyClient({
       shop: "demo",
-      token: "t",
       fetch: async (req) => {
         urls.push(req.url)
         return okResponse({ data: { ok: true }, extensions: COST_OK })
@@ -209,7 +197,6 @@ describe("ShopifyClient", () => {
     const calls: number[] = []
     const client = new ShopifyClient({
       shop: "demo",
-      token: "t",
       fetch: async () => {
         calls.push(Date.now())
         return okResponse({ data: { ok: true } })
@@ -227,7 +214,6 @@ describe("ShopifyClient on a runtime without timers", () => {
     let n = 0
     const client = new ShopifyClient({
       shop: "demo",
-      token: "t",
       fetch: async () => {
         n++
         return okResponse({ data: { ok: true }, extensions: COST_LOW })
@@ -247,7 +233,6 @@ describe("ShopifyClient on a runtime without timers", () => {
     let n = 0
     const client = new ShopifyClient({
       shop: "demo",
-      token: "t",
       fetch: async () => {
         n++
         if (n === 1) return { status: 429, headers: { "retry-after": "2" }, body: "" }

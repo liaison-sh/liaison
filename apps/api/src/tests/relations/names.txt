@@ -86,11 +86,14 @@ dashboard-owner: the person who made it deactivated, the link holds (fails with 
 dashboard-owner: its owner losing the scope to share dashboards, the link holds
 dashboard-owner: its owner losing the scope to share dashboards, the link holds (fails with the event replaced by a no-op)
 dashboard-owner: the person who made it exporting their own data, the export carries it
+dashboard-owner: the person who made it exporting their own data, the export carries it (fails with the event replaced by a no-op)
 dashboard-owner: its owner deactivated and reactivated, it reads as before
 dashboard-owner: its owner deactivated and reactivated, it reads as before (fails with the event replaced by a no-op)
 dashboard-author: the person who made it deactivated, the link holds
 dashboard-author: the person who made it deactivated, the link holds (fails with the event replaced by a no-op)
 dashboard-author: the person who made it exporting their own data, the export carries it
+dashboard-author: the person who made it exporting their own data, the export carries it (fails with the event replaced by a no-op)
 store-document-author: the person who made it deactivated, the link holds
 store-document-author: the person who made it deactivated, the link holds (fails with the event replaced by a no-op)
 store-document-author: the person who made it exporting their own data, the export carries it
+store-document-author: the person who made it exporting their own data, the export carries it (fails with the event replaced by a no-op)

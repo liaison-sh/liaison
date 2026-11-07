@@ -192,8 +192,6 @@ links:
     open:
       Mg: only an import placeholder merges, and a placeholder never owns a dashboard (dashboards are never imported); the merge moves the owner to the person (merge-references.ts)
       Dl: what an organization dashboard shows once its owner deleted their account is not defined; erasure deletes personal dashboards and leaves organization ones without an owner
-    broken:
-      Ex: the member data export (modules/export/member-data-subject-bundle.ts) has no dashboards section on this branch yet; main adds it
 
   - name: dashboard-author
     what: a dashboard to the people who made it and last changed it
@@ -211,8 +209,6 @@ links:
     open:
       Mg: only an import placeholder merges, and a placeholder never makes a dashboard; the merge moves the author columns to the person (merge-references.ts)
       Dl: what a dashboard shows once the person who made it deleted their account is not defined; erasure clears the author columns
-    broken:
-      Ex: the member data export (modules/export/member-data-subject-bundle.ts) has no dashboards section on this branch yet; main adds it
 
   - name: store-document-author
     what: a data store document to the people who wrote it and last changed it
@@ -230,8 +226,6 @@ links:
     open:
       Mg: only an import placeholder merges, and a placeholder never writes a store document (they are never imported); the merge moves the author columns to the person (merge-references.ts)
       Dl: what a store document shows once the person who wrote it deleted their account is not defined; erasure clears the author columns
-    broken:
-      Ex: the member data export (modules/export/member-data-subject-bundle.ts) has no store documents section on this branch yet; main adds it
 
   - name: store-document-key
     what: a data store document to its own key, which the app that owns the collection chooses

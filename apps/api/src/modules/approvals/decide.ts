@@ -36,7 +36,7 @@ import {
 import { approvalPayloadHash } from "~/modules/approvals/payload-hash"
 import { enqueuePoll } from "~/modules/approvals/poll-output"
 import { approvalFailureRequiredScopes } from "~/modules/approvals/result-notice"
-import { readApprovalRoutes } from "~/modules/approvals/route-world"
+import { readApprovalRouteOf } from "~/modules/approvals/route-world"
 import { rowTaintMustHold } from "~/modules/approvals/taint-narrow"
 import type { ToolOrigin } from "~/modules/apps/execute-tool"
 import {
@@ -609,17 +609,7 @@ type DecidedFor =
  */
 async function readDecidedFor(args: DecideArgs, row: ApprovalRow): Promise<DecidedFor | null> {
   try {
-    const route = await withRlsContext(args.actor, async (tx) => {
-      const [current] = extractRows<{ route_person_id: string | null }>(
-        await tx.execute(
-          drizzleSql`SELECT route_person_id FROM ${K}.approval_requests WHERE id = ${row.id}`,
-        ),
-      )
-      const routes = await readApprovalRoutes(tx, args.orgId, [
-        { ...row, route_person_id: current?.route_person_id ?? null },
-      ])
-      return routes.route(row.id)
-    })
+    const route = await withRlsContext(args.actor, (tx) => readApprovalRouteOf(tx, args.orgId, row))
     if (route.to !== "person" || route.userId === args.actor.userId) return null
     if (route.standIn === args.actor.userId) {
       return { userId: route.userId, as: "next_in_line", awayUntil: route.awayUntil }

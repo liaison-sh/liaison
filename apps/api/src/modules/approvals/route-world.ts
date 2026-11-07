@@ -333,6 +333,23 @@ export async function readApprovalRoutes(
   }
 }
 
+/** One row's route, its person on the item read fresh (the decide path's row has none). */
+export async function readApprovalRouteOf(
+  tx: RlsClient,
+  orgId: string,
+  row: Omit<RoutableApprovalRow, "route_person_id">,
+): Promise<ApprovalRoute> {
+  const [current] = extractRows<{ route_person_id: string | null }>(
+    await tx.execute(
+      drizzleSql`SELECT route_person_id FROM ${K}.approval_requests WHERE id = ${row.id}::uuid`,
+    ),
+  )
+  const routes = await readApprovalRoutes(tx, orgId, [
+    { ...row, route_person_id: current?.route_person_id ?? null },
+  ])
+  return routes.route(row.id)
+}
+
 /**
  * An item changed hands (a ticket assigned, a task's assignee changed): every pending request
  * linked to it is now for the new person, from the next feed read. Its own privileged

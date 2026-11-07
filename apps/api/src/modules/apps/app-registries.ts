@@ -284,7 +284,8 @@ export const toolRegistry = createTypedRegistry<
     readOnly?: boolean
     /** Set by runtime.ts only, never copied from a manifest: `readOnly` counts because
      *  every run of the tool is a read-only run (a custom app's read, with no outside host
-     *  to reach), so executeToolHandler builds its bridge with every write refused. */
+     *  of its own; a nested read it calls is judged as the agent's own call), so
+     *  executeToolHandler builds its bridge with every write refused. */
     readOnlyEnforced?: boolean
     /** True only for a kernel tool whose output holds no org record content (the
      *  tool catalog, capability listings, UI navigation): calling it reads no

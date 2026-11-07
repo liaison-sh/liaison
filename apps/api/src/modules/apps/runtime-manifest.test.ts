@@ -296,7 +296,7 @@ describe("registerApps — manifest format", () => {
     }
   })
 
-  it("a custom app's readOnly counts only as an enforced read-only run, and only when it reaches nothing outside", async () => {
+  it("a custom app's readOnly counts only as an enforced read-only run, and only when it has no outside host of its own", async () => {
     // A custom app of the test org itself (another org's key never registers here).
     const name = `roread-o${crypto.createHash("sha256").update(TEST_ORG).digest("hex").slice(0, 8)}`
     const customApp = (extra: Record<string, unknown> = {}) => ({

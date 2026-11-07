@@ -675,11 +675,14 @@ async function validateForRegistration(
 }
 
 /**
- * Whether an app can reach nothing outside the organisation: no network domain, no
- * connection and no cross-app call in its manifest. Its run can still read the org's data
- * (under the caller's own grants), but no bridge path of a read-only run then leaves the org.
+ * Whether an app has no outside reach of its own: no network domain, no connection and no
+ * cross-app call in its manifest, so its own `ctx.fetch` has no host to call. Its run can
+ * still read the org's data (under the caller's own grants), and a nested `ctx.executeTool`
+ * can still reach read tools that go outside (a web read, an API connector or MCP read):
+ * those run under the same checks as the agent's own call of them (web-read guardrails,
+ * payload rules, the turn's taint forwarded).
  */
-function customAppReachesNothingOutside(desc: AppDescriptor): boolean {
+function customAppHasNoOutsideHost(desc: AppDescriptor): boolean {
   const d = desc as {
     network?: { allowedDomains?: unknown[] }
     connections?: Record<string, unknown>
@@ -3079,13 +3082,14 @@ async function registerSingleApp(
               // A CUSTOM APP's read: nobody vouches for its code, so its claim counts only
               // because the run enforces it. Every run of the tool gets a read-only bridge
               // (executeToolHandler, `readOnlyEnforced`: the store, db, mail, job and
-              // approval writes are refused, nested calls run as reads), and the app reaches
-              // no outside host (no network domain, no connection, no cross-app call), so the
-              // known bound of a read-only run, `fetch`, has nowhere to carry the turn.
+              // approval writes are refused, nested calls run as reads), and the app has no
+              // outside host of its own (no network domain, no connection, no cross-app call),
+              // so the known bound of a read-only run, its own `fetch`, has nowhere to carry
+              // the turn. A nested read that goes outside is judged as the agent's own call.
               tool.readOnly === true &&
               entry.writesToTable === undefined &&
               isCustomAppName(desc.name) &&
-              customAppReachesNothingOutside(desc)
+              customAppHasNoOutsideHost(desc)
             ) {
               entry.readOnly = true
               entry.readOnlyEnforced = true

@@ -17,6 +17,7 @@ import { LIVE_INSTANCE_KEY } from "~/infra/instance-registry"
 import { redis } from "~/lib/redis"
 import { errorHandler } from "~/middleware/error-handler"
 import {
+  INTERNAL_IDLE_TIMEOUT_S,
   type InternalListener,
   startInternalListener,
 } from "~/modules/agent/mailbox-plaintext/mailbox-forward"
@@ -24,6 +25,7 @@ import {
   type BridgeForwardFields,
   bridgeForwardHeaders,
   createBridgeForwarder,
+  FORWARD_MAX_WAIT_MS,
   INTERNAL_APP_BRIDGE_MAX_BODY_BYTES,
   INTERNAL_APP_BRIDGE_PATH,
   INTERNAL_REFUSAL_HEADER,
@@ -329,6 +331,30 @@ describe("app bridge calls across processes", () => {
     } finally {
       ownerUrls.delete(GONE)
     }
+  })
+
+  it("waits less than the internal listener's idle timeout, then answers 504 expired", async () => {
+    // A hop idle for INTERNAL_IDLE_TIMEOUT_S is closed: the forward must give up first.
+    expect(FORWARD_MAX_WAIT_MS).toBe(250_000)
+    expect(FORWARD_MAX_WAIT_MS).toBeLessThan(INTERNAL_IDLE_TIMEOUT_S * 1000)
+    // An owner that never answers inside the bound (shortened here).
+    const hanging: typeof fetch = Object.assign(
+      (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason))
+        }),
+      { preconnect: fetch.preconnect },
+    )
+    const run = register(regA, { echo: async () => 1 })
+    const res = await call(
+      stackB({ fetch: hanging, maxWaitMs: 50 }),
+      run.runId,
+      run.runToken,
+      "echo",
+    )
+    expect(res.status).toBe(504)
+    expect(((await res.json()) as { reason: string }).reason).toBe("expired")
+    run.settle()
   })
 
   it("the per-IP limit counts forwarded calls only", async () => {

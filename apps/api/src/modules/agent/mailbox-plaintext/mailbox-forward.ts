@@ -47,6 +47,12 @@ const log = rootLogger.child({ module: "mailbox-forward" })
 export const INTERNAL_MAILBOX_ANSWER_PATH = "/internal/mailbox-answer"
 /** A signed call older or newer than this is refused. */
 export const INTERNAL_MAX_SKEW_MS = 30_000
+/**
+ * The internal listener's idle timeout, seconds: a forwarded app bridge call may
+ * run for minutes; Bun's default is 10 s and 255 s the most it accepts. A hop
+ * idle longer is closed, so a forwarder waits less than this (bridge-forward.ts).
+ */
+export const INTERNAL_IDLE_TIMEOUT_S = 255
 /** How long the forwarder waits for the owner. */
 export const FORWARD_TIMEOUT_MS = 5_000
 /**
@@ -426,9 +432,7 @@ export async function startInternalListener(
         INTERNAL_MAX_BODY_BYTES,
         ...(opts.extraRoutes ?? []).map((r) => r.maxBodyBytes),
       ),
-      // A forwarded app bridge call may run for minutes (to its run's deadline);
-      // Bun's default idle timeout is 10 s. 255 s is the most Bun accepts.
-      idleTimeout: 255,
+      idleTimeout: INTERNAL_IDLE_TIMEOUT_S,
       fetch: (req) => app.fetch(req),
     })
   } catch (err) {

@@ -33,10 +33,13 @@
 // forwarder answers it as 502 `forward_refused` (a deploy fault: two
 // processes with different secrets), never as the run's own status.
 //
-// The forward waits as long as the call may last: the owner ends the call at
-// the run's own deadline (504), and the forwarder's own bound is the longest
-// run deadline the loader accepts (MAX_RUN_DEADLINE_MS) plus the registry's
-// grace. It is aborted as soon as the caller disconnects.
+// The forward waits at most FORWARD_MAX_WAIT_MS, 250 s: the owner ends the call
+// at the run's own deadline (504) when that comes first, and the internal
+// listener closes a hop idle for 255 s (INTERNAL_IDLE_TIMEOUT_S), so a longer
+// wait would end in 502 `run_owner_unreachable` while the owner still runs the
+// call (and an app retrying on that error would run it twice). Past 250 s the
+// caller gets 504 `expired`, as for a run deadline. The forward is aborted as
+// soon as the caller disconnects.
 
 import { createHash, createHmac, timingSafeEqual } from "node:crypto"
 import type { Hono } from "hono"
@@ -44,6 +47,7 @@ import { INSTANCE_ID } from "~/infra/instance-id"
 import { readInstance } from "~/infra/instance-registry"
 import { rootLogger } from "~/lib/logger"
 import {
+  INTERNAL_IDLE_TIMEOUT_S,
   INTERNAL_MAX_SKEW_MS,
   type InternalRoute,
   internalSigningKey,
@@ -61,8 +65,14 @@ export const INTERNAL_APP_BRIDGE_PATH = "/internal/app-bridge"
 export const INTERNAL_APP_BRIDGE_MAX_BODY_BYTES = APP_BRIDGE_BODY_MAX_BYTES + 64 * 1024
 /** The loader's longest run deadline (its MAX_DEADLINE). */
 export const MAX_RUN_DEADLINE_MS = 15 * 60_000
-/** The forwarder's own bound on one forwarded call. */
-export const FORWARD_MAX_WAIT_MS = MAX_RUN_DEADLINE_MS + RUN_DEADLINE_GRACE_MS
+/**
+ * The forwarder's own bound on one forwarded call: below the internal listener's
+ * idle timeout, so the hop is never closed under a call the owner still runs.
+ */
+export const FORWARD_MAX_WAIT_MS = Math.min(
+  MAX_RUN_DEADLINE_MS + RUN_DEADLINE_GRACE_MS,
+  INTERNAL_IDLE_TIMEOUT_S * 1000 - 5_000,
+)
 /**
  * Forwarded calls per client IP and window, per process. A run's calls come
  * from the loader's addresses and only a share of them lands on a non-owner;
@@ -292,7 +302,7 @@ export function createBridgeForwarder(opts: BridgeForwarderOptions = {}): Bridge
         })
       } catch (err) {
         if ((err as Error)?.name === "TimeoutError") {
-          log.warn({ owner, runId }, "a forwarded app bridge call outlived the longest run")
+          log.warn({ owner, runId }, "a forwarded app bridge call outlived the forward's bound")
           return answer(504, {
             error: "Run deadline passed during the bridge call",
             reason: "expired",

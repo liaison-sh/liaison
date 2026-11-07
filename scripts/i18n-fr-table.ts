@@ -7674,4 +7674,10 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.settings.profile.away.failed": "Impossible d'enregistrer votre absence.",
   "kernel.settings.profile.away.endFailed": "Impossible d'y mettre fin.",
   "kernel.attentionTitle.awayNamed": "{{name}} vous a indiqué absent {{dates}}",
+  "kernel.entityDiscussion.empty": "Aucun message pour l'instant.",
+  "kernel.entityDiscussion.placeholder": "Écrivez à ce sujet, ou @ un agent",
+  "kernel.entityDiscussion.send": "Envoyer",
+  "kernel.entityDiscussion.unavailable": "La discussion n'a pas pu être ouverte.",
+  "kernel.entityDiscussion.retry": "Réessayer",
+  "kernel.entityDiscussion.loading": "Ouverture de la discussion…",
 }

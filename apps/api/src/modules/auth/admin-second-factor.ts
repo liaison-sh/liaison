@@ -23,9 +23,11 @@ import { hasScope } from "~/modules/permissions/permissions"
 import { getScopeCatalog } from "~/modules/permissions/scope-catalog"
 
 /** Kernel administrative scopes, checked even when the catalog is cold. */
-const KERNEL_ADMIN_SCOPES = [
+export const KERNEL_ADMIN_SCOPES = [
   "kernel:org:admin",
   "kernel:users:admin",
+  "kernel:portal:admin",
+  "kernel:dashboards:admin",
   "kernel:roles:admin",
   "kernel:apps:admin",
   "kernel:agents:admin",

@@ -10,8 +10,8 @@ import { runAdminOp } from "~/apps/tickets/admin"
 import { summarizeTicketApproveFromHomeSet } from "~/apps/tickets/summarizers"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
-import { withSystemDb } from "~/db/privileged"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { asOrgMember } from "~/tests/helpers/org-caller"
 import manifest from "./app.manifest.json"
 
 async function freshOrg(tickets: Record<string, unknown> = {}): Promise<string> {
@@ -35,7 +35,7 @@ const actor = (scopes: string[]) => ({
 })
 
 const op = (orgId: string, name: string, params: Record<string, unknown>, scopes: string[]) =>
-  withSystemDb("afh-tool-test", (tx) =>
+  asOrgMember(orgId, "00000000-0000-0000-0000-000000000001", (tx) =>
     runAdminOp(tx as never, orgId, name, params, actor(scopes)),
   ) as Promise<any>
 

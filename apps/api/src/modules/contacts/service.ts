@@ -1505,7 +1505,16 @@ interface DeleteContactParams {
   contactId: string
 }
 
-export async function deleteContact(db: RlsClient, params: DeleteContactParams) {
+/**
+ * `privileged`: the privileged transaction the caller already holds (a kernel
+ * job deleting as part of a larger write), so the contact's discussion goes in
+ * that same transaction instead of a second privileged slot.
+ */
+export async function deleteContact(
+  db: RlsClient,
+  params: DeleteContactParams,
+  privileged?: PrivilegedDb,
+) {
   const { orgId, userId, contactId } = params
 
   const [deleted] = await db
@@ -1514,10 +1523,10 @@ export async function deleteContact(db: RlsClient, params: DeleteContactParams) 
     .returning({ id: contacts.id })
 
   if (!deleted) return null
-  // Its discussion goes with it: a contact has no bin to restore it from. On the caller's own
-  // transaction when it can act privileged, so a caller already holding a privileged slot never
-  // takes a second one.
-  await privilegedFrom(db, orgId, "contact-discussion-delete", (ptx) =>
+  // Its discussion goes with it: a contact has no bin to restore it from. On the privileged
+  // transaction the caller holds, else on the caller's own one when it may elevate, so a caller
+  // already holding a privileged slot never takes a second one.
+  await privilegedFrom(privileged ?? db, orgId, "contact-discussion-delete", (ptx) =>
     deleteContactDiscussions({ orgId, contactIds: [contactId] }, ptx),
   )
 

@@ -5,7 +5,7 @@ import { connectFailureReason } from "@liaison/shared"
 import { and, desc, sql as drizzleSql, eq, inArray, isNull } from "drizzle-orm"
 import { HTTPException } from "hono/http-exception"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
-import { withPrivilegedDb } from "~/db/privileged"
+import { withPrivilegedDb, withPrivilegedReusing } from "~/db/privileged"
 import { apps as appsTable, connectedAccounts, users } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import { CryptoContext, decryptSecret, encryptSecret } from "~/lib/crypto"
@@ -771,14 +771,21 @@ async function loadConnectedAccounts(
   // row Postgres felt like returning — so a freshly entered credential could
   // silently lose to a dead one. Newest-updated wins, which is always the
   // credential the operator entered last.
+  // The privileged reads below run on `tx` when the caller already holds a
+  // privileged transaction of this org (a CLI step, a sync job): a second
+  // privileged slot taken under it is the nested shape that deadlocks a full pool.
   if (actorType === "system") {
-    return withPrivilegedDb(orgId, "connected-account-runtime-load", async (privilegedTx) =>
-      privilegedTx
-        .select()
-        .from(connectedAccounts)
-        .where(and(...conditions))
-        .orderBy(desc(connectedAccounts.updatedAt), desc(connectedAccounts.createdAt))
-        .limit(1),
+    return withPrivilegedReusing(
+      tx,
+      orgId,
+      "connected-account-runtime-load",
+      async (privilegedTx) =>
+        privilegedTx
+          .select()
+          .from(connectedAccounts)
+          .where(and(...conditions))
+          .orderBy(desc(connectedAccounts.updatedAt), desc(connectedAccounts.createdAt))
+          .limit(1),
     )
   }
 
@@ -801,7 +808,7 @@ async function loadConnectedAccounts(
   // for `app_name='kernel'`. When the RLS read finds nothing, the kernel resolves
   // the app's OWN org connection on its behalf via the privileged path, scoped to
   // (orgId, appName, connectionName) + owner_type='org'.
-  return withPrivilegedDb(orgId, "connected-account-app-load", (ptx) =>
+  return withPrivilegedReusing(tx, orgId, "connected-account-app-load", (ptx) =>
     ptx
       .select()
       .from(connectedAccounts)
@@ -833,12 +840,16 @@ async function loadMailAuthorizedConnectedAccounts(
   const connectedAccountId = accountRows[0]?.connected_account_id
   if (!connectedAccountId) return []
 
-  return withPrivilegedDb(orgId, "connected-account-mail-authorized-load", async (privilegedTx) =>
-    privilegedTx
-      .select()
-      .from(connectedAccounts)
-      .where(and(...conditions, eq(connectedAccounts.id, connectedAccountId)))
-      .limit(1),
+  return withPrivilegedReusing(
+    tx,
+    orgId,
+    "connected-account-mail-authorized-load",
+    async (privilegedTx) =>
+      privilegedTx
+        .select()
+        .from(connectedAccounts)
+        .where(and(...conditions, eq(connectedAccounts.id, connectedAccountId)))
+        .limit(1),
   )
 }
 
@@ -1325,7 +1336,7 @@ export async function createCredentialConnection(
   // covered by the same line. No-op unless this box is the demo instance.
   // An inbound-only connection is exempt: it holds no third-party credential.
   if (!isInboundOnlyConnection(connectionConfigRegistry.get([orgId, appName, connectionName]))) {
-    await assertDemoEgressAllowed(orgId, "connector_credentials")
+    await assertDemoEgressAllowed(orgId, "connector_credentials", tx)
   }
   // A mailbox outside the org's allowed domains is refused (mail-domains.ts).
   // Read on this transaction: no second privileged connection.
@@ -1464,7 +1475,9 @@ export async function createCredentialConnection(
   const holders =
     resolvedOwnerType === "org"
       ? await readHolders(tx)
-      : await withPrivilegedDb(orgId, "credential-connection-holders", (ptx) => readHolders(ptx))
+      : await withPrivilegedReusing(tx, orgId, "credential-connection-holders", (ptx) =>
+          readHolders(ptx),
+        )
   const foreign = holders.filter(
     (h) =>
       h.id !== existing[0]?.id &&
@@ -1473,7 +1486,8 @@ export async function createCredentialConnection(
   if (foreign.length > 0) {
     if (resolvedOwnerType === "user") {
       const held = foreign.find((h) => h.ownerType === "org") ?? foreign[0]
-      const canConnectForOrg = await withPrivilegedDb(
+      const canConnectForOrg = await withPrivilegedReusing(
+        tx,
         orgId,
         "credential-connection-held-by",
         (ptx) => mayConnectForOrg(ptx, { orgId, userId, appName, connectionName }),

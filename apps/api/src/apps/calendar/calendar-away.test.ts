@@ -21,7 +21,6 @@ import { answerCalendarAway, dayLabel, endAwayRange, readAwayToday } from "~/mod
 import { seedOrgRow, seedUserRow, setUserPreferences } from "~/seed/factories/org/rows"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireAppSchemaJsLock, releaseAppSchemaJsLock } from "~/tests/helpers/app-schema-lock"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 let orgId: string
 let colleagueEmail: string
@@ -221,8 +220,6 @@ function allDay(
     ...extra,
   } as GoogleEventItem
 }
-
-strictNestedPrivileged()
 
 describe("whole working days", () => {
   const prefs = {

@@ -2,7 +2,6 @@
 import { describe, expect, it } from "bun:test"
 import type { InboundKind } from "~/modules/mail/classify-inbound"
 import { decideSendGuard, type GuardInbound } from "~/modules/mail/send-guard"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 const NOW = new Date("2026-11-06T12:00:00.000Z")
 
@@ -14,8 +13,6 @@ function inbound(
 ): GuardInbound {
   return { id, kind, sender: `${id}@example.com`, at: new Date(at), textBody }
 }
-
-strictNestedPrivileged()
 
 describe("decideSendGuard", () => {
   it("nothing inbound reads clear", () => {

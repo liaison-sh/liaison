@@ -20,6 +20,7 @@ import {
 } from "@liaison/shared"
 import { asc } from "drizzle-orm"
 import { z } from "zod"
+import type { PrivilegedDb } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { modelPricing } from "~/db/schema/kernel"
 import { isManagedEdition } from "~/lib/edition"
@@ -224,10 +225,12 @@ export function knownKey(
 export async function resolvedAutoKey(
   orgId: string,
   settings: OrgKernelSettings,
+  /** The privileged transaction of this org a mutation holds: its reads go there. */
+  db?: PrivilegedDb,
 ): Promise<string | null> {
-  const pinned = await reservedDemoModelId(orgId)
+  const pinned = await reservedDemoModelId(orgId, db)
   if (pinned) return pinned
-  return (await selectAutoModelForOrg(orgId, "ai-models-auto", settings))?.modelId ?? null
+  return (await selectAutoModelForOrg(orgId, "ai-models-auto", settings, db))?.modelId ?? null
 }
 
 /** Auto's model's list prices (a native row or an added entry), for the multiplier. */
@@ -407,7 +410,7 @@ export async function patchAiModels(orgId: string, body: AiModelsPatch) {
     const nextSettings = withModels(settings, next)
 
     if (next.autoModelKey && body.autoModelKey !== undefined) {
-      if (!(await isModelKeyAvailable(orgId, next.autoModelKey, nextSettings))) {
+      if (!(await isModelKeyAvailable(orgId, next.autoModelKey, nextSettings, undefined, tx))) {
         return refuse(
           400,
           "Auto can only run a model that is switched on and has a key.",
@@ -420,16 +423,16 @@ export async function patchAiModels(orgId: string, body: AiModelsPatch) {
     // now. That model cannot be among the ones this patch switches off.
     const auto =
       body.autoModelKey === undefined
-        ? await resolvedAutoKey(orgId, settings)
+        ? await resolvedAutoKey(orgId, settings, tx)
         : body.autoModelKey === null
-          ? await resolvedAutoKey(orgId, nextSettings)
+          ? await resolvedAutoKey(orgId, nextSettings, tx)
           : body.autoModelKey
     if (auto && (body.disable ?? []).includes(auto)) {
       return refuse(409, "This model runs Auto. Choose another model for Auto first.", "auto_model")
     }
     // Nor may the patch leave Auto with nothing to run.
     const changesAuto = body.autoModelKey !== undefined || (body.disable ?? []).length > 0
-    if (changesAuto && !(await resolvedAutoKey(orgId, nextSettings))) {
+    if (changesAuto && !(await resolvedAutoKey(orgId, nextSettings, tx))) {
       return refuse(409, AUTO_NOTHING_TO_RUN, "auto_model")
     }
     return { next, result: { ok: true, models: next, settings: nextSettings } }

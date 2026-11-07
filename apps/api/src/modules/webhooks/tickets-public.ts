@@ -1017,6 +1017,8 @@ async function handleTicketCreate(c: Context<AppEnv>, forcedInboxId: string | nu
                 userId: "00000000-0000-0000-0000-000000000000",
                 orgId,
               },
+              // Its settings read runs on this transaction, not a second one.
+              privilegedTx: tx,
             })
             // Live-update any open ticket detail UIs by emitting the same
             // WS event the agent runtime uses for ticket-side message inserts.

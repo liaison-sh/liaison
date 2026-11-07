@@ -16,6 +16,11 @@ import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { createRpcBridge } from "./rpc-bridge"
 
+// A first-party app's privileged bridge runs on the background jobs pool (its
+// system events and polls, runtime.ts), so the renders below do too: a render
+// reads and writes on privileged connections of its own.
+const JOBS_POOL = { pool: "jobs" } as const
+
 describe("rpc-bridge — pdf_render (K2)", () => {
   beforeAll(async () => {
     await acquireTestLock()
@@ -30,42 +35,52 @@ describe("rpc-bridge — pdf_render (K2)", () => {
   test("rejects when the calling app did not declare 'pdf.render' capability", async () => {
     const org = await createTestOrg()
     const admin = await minimal.person(org.id, { role: "admin" })
-    await withPrivilegedDb(org.id, "b4-no-cap", async (tx) => {
-      const bridge = createRpcBridge(
-        "invoicing",
-        admin.id,
-        org.id,
-        tx as unknown as RlsClient,
-        { name: "invoicing", capabilities: [] } as never,
-      )
-      await expect(
-        bridge.pdf_render(
-          JSON.stringify({ template_kind: "invoicing:test_v1", data: {}, pdf_a3: false }),
-        ),
-      ).rejects.toMatchObject({ code: "CAPABILITY_NOT_DECLARED" })
-    })
+    await withPrivilegedDb(
+      org.id,
+      "b4-no-cap",
+      async (tx) => {
+        const bridge = createRpcBridge(
+          "invoicing",
+          admin.id,
+          org.id,
+          tx as unknown as RlsClient,
+          { name: "invoicing", capabilities: [] } as never,
+        )
+        await expect(
+          bridge.pdf_render(
+            JSON.stringify({ template_kind: "invoicing:test_v1", data: {}, pdf_a3: false }),
+          ),
+        ).rejects.toMatchObject({ code: "CAPABILITY_NOT_DECLARED" })
+      },
+      JOBS_POOL,
+    )
   })
 
   test("forwards to renderPdf and returns a JSON envelope with file_id + byte_size", async () => {
     const org = await createTestOrg()
     const admin = await minimal.person(org.id, { role: "admin" })
     registerTemplate("invoicing", "invoicing:test_v1", TEST_FIXTURE_SOURCE)
-    const raw = await withPrivilegedDb(org.id, "b4-forward", async (tx) => {
-      const bridge = createRpcBridge(
-        "invoicing",
-        admin.id,
-        org.id,
-        tx as unknown as RlsClient,
-        { name: "invoicing", capabilities: ["pdf.render"] } as never,
-      )
-      return bridge.pdf_render(
-        JSON.stringify({
-          template_kind: "invoicing:test_v1",
-          data: { title: "Hi" },
-          pdf_a3: false,
-        }),
-      )
-    })
+    const raw = await withPrivilegedDb(
+      org.id,
+      "b4-forward",
+      async (tx) => {
+        const bridge = createRpcBridge(
+          "invoicing",
+          admin.id,
+          org.id,
+          tx as unknown as RlsClient,
+          { name: "invoicing", capabilities: ["pdf.render"] } as never,
+        )
+        return bridge.pdf_render(
+          JSON.stringify({
+            template_kind: "invoicing:test_v1",
+            data: { title: "Hi" },
+            pdf_a3: false,
+          }),
+        )
+      },
+      JOBS_POOL,
+    )
     const parsed = JSON.parse(raw) as {
       file_id?: string
       byte_size?: number
@@ -81,18 +96,23 @@ describe("rpc-bridge — pdf_render (K2)", () => {
   test("returns an error envelope for unknown template_kind", async () => {
     const org = await createTestOrg()
     const admin = await minimal.person(org.id, { role: "admin" })
-    const raw = await withPrivilegedDb(org.id, "b4-not-found", async (tx) => {
-      const bridge = createRpcBridge(
-        "invoicing",
-        admin.id,
-        org.id,
-        tx as unknown as RlsClient,
-        { name: "invoicing", capabilities: ["pdf.render"] } as never,
-      )
-      return bridge.pdf_render(
-        JSON.stringify({ template_kind: "invoicing:nope", data: {}, pdf_a3: false }),
-      )
-    })
+    const raw = await withPrivilegedDb(
+      org.id,
+      "b4-not-found",
+      async (tx) => {
+        const bridge = createRpcBridge(
+          "invoicing",
+          admin.id,
+          org.id,
+          tx as unknown as RlsClient,
+          { name: "invoicing", capabilities: ["pdf.render"] } as never,
+        )
+        return bridge.pdf_render(
+          JSON.stringify({ template_kind: "invoicing:nope", data: {}, pdf_a3: false }),
+        )
+      },
+      JOBS_POOL,
+    )
     const parsed = JSON.parse(raw) as { error?: { code?: string } }
     expect(parsed.error?.code).toBe("template_not_found")
   })

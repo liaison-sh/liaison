@@ -11,7 +11,6 @@ import ticketsManifest from "~/apps/tickets/app.manifest.json"
 import { slotRegistry } from "~/modules/apps/app-registries"
 import { forgetOrgApps, rememberOrgAppStates } from "~/modules/apps/org-apps"
 import type { Scope } from "~/modules/permissions/types"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 import { listSlotPanels, registerAppSlots } from "./registry"
 import { slotsRoutes } from "./routes"
 
@@ -52,8 +51,6 @@ async function routePanels(scopes: string[], slot: string): Promise<Array<{ id: 
   expect(res.status).toBe(200)
   return ((await res.json()) as { data: { panels: Array<{ id: string }> } }).data.panels
 }
-
-strictNestedPrivileged()
 
 describe("mounted slots", () => {
   beforeEach(() => slotRegistry.deleteByPrefix([ORG]))

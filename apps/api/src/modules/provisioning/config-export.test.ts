@@ -9,6 +9,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { and, sql as drizzleSql, eq } from "drizzle-orm"
+import { sql } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import { agents, organizations, roleScopeGrants, roles } from "~/db/schema/kernel"
 import { registerConfigTools } from "~/modules/agent/tools/config-tools"
@@ -187,6 +188,9 @@ describe("config_export round trip", () => {
   })
 
   it("liaisonTeam is exported for the operator org, off until someone answers", async () => {
+    // The switches are instance-wide rows, not the org's: start from no answer
+    // whatever an earlier file in this database left.
+    await sql`DELETE FROM kernel.instance_settings WHERE key LIKE 'liaison_team.%'`
     const out = await exportOrgConfig(orgId, {
       userId: adminId,
       scopes: ["kernel:org:admin"],

@@ -34,7 +34,6 @@ import { ensureAppsForOrg } from "~/modules/apps/init"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -170,8 +169,6 @@ async function readWorld() {
   }
   return out
 }
-
-strictNestedPrivileged()
 
 describe("home routing: who a pending approval is for", () => {
   beforeAll(async () => {

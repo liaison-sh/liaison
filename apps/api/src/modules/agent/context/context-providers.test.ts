@@ -27,7 +27,6 @@ import { ensureAppsForOrg } from "~/modules/apps/init"
 import { openEntityDiscussion } from "~/modules/threads/entity-discussion"
 import { insertAppRow } from "~/seed/factories/app-tables"
 import * as minimal from "~/seed/tiers/minimal"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -140,8 +139,6 @@ const inB = (
     currentView: { tabType: "example:items", entityId },
     ...over,
   })
-
-strictNestedPrivileged()
 
 describe("context providers", () => {
   beforeAll(async () => {

@@ -1342,6 +1342,19 @@ describe("files_importAttachment — kernel.files INSERT runs PRIVILEGED, not on
         },
       })
     }) as unknown as typeof dbPrivilegedModule.withPrivilegedDb)
+    // The caller's tx here is an RLS one: the reuse helper takes its own
+    // privileged transaction (its role probe is covered in db/privileged-reusing.test.ts).
+    spyOn(dbPrivilegedModule, "withPrivilegedReusing").mockImplementation((async (
+      _tx: unknown,
+      org: string,
+      reason: string,
+      fn: (tx: unknown) => unknown,
+    ) =>
+      dbPrivilegedModule.withPrivilegedDb(
+        org,
+        reason,
+        fn as never,
+      )) as unknown as typeof dbPrivilegedModule.withPrivilegedReusing)
   })
   afterEach(() => {
     mock.restore()

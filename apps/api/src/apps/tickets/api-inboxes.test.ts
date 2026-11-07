@@ -16,6 +16,7 @@ import { loadInboxAndProvider, ticketsClose } from "~/apps/tickets/tools"
 import { extractRows } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { asOrgMember } from "~/tests/helpers/org-caller"
 
 let orgId: string
 let userId: string
@@ -57,9 +58,7 @@ beforeAll(async () => {
 
 const actor = () => ({ actorType: "user" as const, userId })
 const admin = (op: string, params: Record<string, unknown>) =>
-  withPrivilegedDb(orgId, "api-inbox-test", (tx) =>
-    runAdminOp(tx as never, orgId, op, params, actor()),
-  )
+  asOrgMember(orgId, userId, (tx) => runAdminOp(tx as never, orgId, op, params, actor()))
 
 describe("tickets: API inboxes (routing bucket, decoupled from reply-from)", () => {
   it("creates an API inbox with NO connected account", async () => {
@@ -156,6 +155,7 @@ describe("tickets: API inboxes (routing bucket, decoupled from reply-from)", () 
           initialMessage: { kind: "inbound", fromEmail: "cust@x.test", textBody: "hello" },
         },
         actor(),
+        { privilegedTx: tx },
       ),
     )) as { ticketId?: string; error?: unknown }
     expect(created.ticketId).toBeTruthy()
@@ -206,6 +206,7 @@ describe("tickets: API inboxes (routing bucket, decoupled from reply-from)", () 
           initialMessage: { kind: "inbound", fromEmail: "reporter@x.test", textBody: "telemetry" },
         },
         actor(),
+        { privilegedTx: tx },
       ),
     )) as { ticketId?: string }
     expect(exempt.ticketId).toBeTruthy()
@@ -240,6 +241,7 @@ describe("tickets: API inboxes (routing bucket, decoupled from reply-from)", () 
           initialMessage: { kind: "inbound", fromEmail: "cust@x.test", textBody: "hi" },
         },
         actor(),
+        { privilegedTx: tx },
       ),
     )) as { ticketId?: string }
     const normalRow = extractRows<{
@@ -325,11 +327,12 @@ describe("tickets: API inboxes (routing bucket, decoupled from reply-from)", () 
               initialMessage: { kind: "inbound", fromEmail: "cust@x.test", textBody: "hello" },
             },
             actor(),
+            { privilegedTx: tx },
           ),
         )) as { ticketId: string }
       ).ticketId
     const close = (ticketId: string, textBody?: string) =>
-      withPrivilegedDb(orgId, "api-inbox-test", (tx) =>
+      asOrgMember(orgId, userId, (tx) =>
         ticketsClose(
           { ticketId, closedReason: "resolved", textBody },
           { tx: tx as never, orgId, actor: actor() },
@@ -505,6 +508,7 @@ describe("tickets: draft signature resolution", () => {
           initialMessage: { kind: "inbound", fromEmail: "sig-cust@x.test", textBody: "hello" },
         },
         actor(),
+        { privilegedTx: tx },
       ),
     )) as { ticketId: string }
     sigTicketId = created.ticketId
@@ -518,7 +522,7 @@ describe("tickets: draft signature resolution", () => {
   })
 
   const draftSignature = (actorType: "user" | "agent") =>
-    withPrivilegedDb(orgId, "api-inbox-test", (tx) =>
+    asOrgMember(orgId, userId, (tx) =>
       runAdminOp(tx as never, orgId, "tools.draftSignature", { ticketId: sigTicketId }, {
         actorType,
         userId,

@@ -35,7 +35,6 @@ import { manifestRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { sendMessage } from "~/modules/threads/message"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -409,8 +408,6 @@ afterAll(async () => {
   await sql`DELETE FROM kernel.model_pricing WHERE model_id = ${MODEL_ID}`
   await releaseTestLock()
 })
-
-strictNestedPrivileged()
 
 describe("a card through a real turn", () => {
   it("a real agent turn persists card; reload deep-equals live when the result is clipped to truncatedResult", async () => {

@@ -26,9 +26,6 @@ import {
   userContextFor,
 } from "~/modules/mcp/test-helpers"
 import { handleToolCall, type ToolCallCtx } from "~/modules/mcp/tool-call"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
-
-strictNestedPrivileged()
 
 const API_APPS = join(import.meta.dir, "..", "..", "apps")
 const BUNDLED = join(import.meta.dir, "..", "..", "..", "..", "..", "bundled-apps")

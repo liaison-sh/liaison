@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
 import { sql as drizzleSql } from "drizzle-orm"
-import { extractRows } from "~/db"
+import { extractRows, type RlsClient } from "~/db"
 import { withReleasedSavepoint } from "~/db/savepoint"
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
@@ -39,6 +39,7 @@ const K = () => drizzleSql.raw(schemaRef("kernel"))
 async function mailboxSealErrorContext<T>(
   recipientUserId: string,
   orgId: string,
+  on: Pick<RlsClient, "execute">,
   fn: () => Promise<T>,
 ): Promise<T> {
   const { MailboxSealError } = await import("~/modules/mailbox-crypto/identity-resolver")
@@ -48,8 +49,10 @@ async function mailboxSealErrorContext<T>(
     if (!(err instanceof MailboxSealError)) throw err
     let code: string = err.code
     if (code === "NO_ACTIVE_IDENTITY_KEY") {
-      const { withPrivilegedDb } = await import("~/db/privileged")
-      const any = await withPrivilegedDb(orgId, "mailbox-enrollment-probe", (tx) =>
+      // On the bridge's transaction when it already is a privileged one of this
+      // org (a headless sync), else on its own privileged read.
+      const { withPrivilegedReusing } = await import("~/db/privileged")
+      const any = await withPrivilegedReusing(on, orgId, "mailbox-enrollment-probe", (tx) =>
         tx.execute(
           drizzleSql`SELECT 1 FROM ${K()}.user_mailbox_identities
                       WHERE user_id = ${recipientUserId}::uuid AND org_id = ${orgId}::uuid LIMIT 1`,
@@ -176,16 +179,21 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
           "mailbox_seal: mailbox is server-managed; seal its rows with mailbox_sealAndInsert",
         )
       }
-      const batch = await mailboxSealErrorContext(recipient, orgId, () =>
-        sealForUser(recipient, orgId, [
-          {
-            context: {
-              kind: params.aadContext as never,
-              entityId: params.entityId as string,
+      const batch = await mailboxSealErrorContext(recipient, orgId, txDb, () =>
+        sealForUser(
+          recipient,
+          orgId,
+          [
+            {
+              context: {
+                kind: params.aadContext as never,
+                entityId: params.entityId as string,
+              },
+              plaintext: new Uint8Array(Buffer.from(params.plaintextBase64 ?? "", "base64")),
             },
-            plaintext: new Uint8Array(Buffer.from(params.plaintextBase64 ?? "", "base64")),
-          },
-        ]),
+          ],
+          txDb,
+        ),
       )
       return JSON.stringify({
         ciphertextBase64: Buffer.from(
@@ -244,7 +252,7 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
       delete row.id
       validateFields(entity, row)
 
-      const sealed = await mailboxSealErrorContext(recipient, orgId, () =>
+      const sealed = await mailboxSealErrorContext(recipient, orgId, txDb, () =>
         sealMailFields({
           userId: recipient,
           orgId,
@@ -252,6 +260,7 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
           entityId: id,
           values: params.plaintext ?? {},
           headers: entity === "messages" ? (row.rawHeaders as Record<string, unknown>) : null,
+          on: txDb,
         }),
       )
       if (entity === "messages") row.rawHeaders = sealed.retainedHeaders ?? {}
@@ -399,7 +408,7 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
       // In a savepoint: a failure (a seal refused, a malformed row) leaves no row
       // and no event behind even when this call shares an enclosing
       // transaction (an atomic tool), exactly like mailbox_sealAndInsert.
-      const result = await mailboxSealErrorContext(account.ownerId ?? "", orgId, () =>
+      const result = await mailboxSealErrorContext(account.ownerId ?? "", orgId, txDb, () =>
         txDb.transaction((pageTx) =>
           writeMailPage(
             {

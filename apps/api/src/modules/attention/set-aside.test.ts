@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 import { nextMondayStart } from "./set-aside"
 
 const PARIS = "Europe/Paris"
-
-strictNestedPrivileged()
 
 describe("Not now: next Monday 00:00 in the person's zone", () => {
   // [now (UTC), expected (UTC), why]

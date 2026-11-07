@@ -10,7 +10,6 @@
 
 import { afterAll, describe, expect, test } from "bun:test"
 import postgres from "postgres"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 const ROLE = "liaison_portal"
 
@@ -45,8 +44,6 @@ const ALLOWED: Record<string, string> = {
   "function rls_ctx.enter()":
     "stores only variables that verify, so calling it again from inside a transaction gains nothing",
 }
-
-strictNestedPrivileged()
 
 describe("what the portal role can reach", () => {
   test("lists every grant, usage and executable definer function reachable by liaison_portal", async () => {

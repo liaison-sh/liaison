@@ -185,8 +185,7 @@ const heldSlot = new AsyncLocalStorage<{ held: boolean; reason: string }>()
  * One transaction on the privileged pool (withPrivilegedDb's default pool,
  * withSystemDb, withSchemaAdmin): counts the slot, its wait and hold times,
  * and a nested acquisition (counted on /diag; thrown when
- * NESTED_PRIVILEGED_STRICT=1, which tests opt into per file:
- * tests/helpers/nested-privileged.ts).
+ * NESTED_PRIVILEGED_STRICT=1, which the unit suite sets in scripts/test-run.ts).
  */
 function runOnPrivilegedPool<T>(
   poolDb: DbPool["db"],
@@ -393,6 +392,36 @@ export async function privilegedFrom<T>(
     }
   }
   return withPrivilegedDb(orgId, reason, fn)
+}
+
+/**
+ * Run `fn` privileged, on `tx` when it already is a privileged transaction (runs
+ * as liaison_admin) of the same org, and in its own withPrivilegedDb
+ * transaction otherwise. For code that can be reached both from a request
+ * transaction and from inside a privileged one (a sync, a job, a cascade): from
+ * a privileged caller it takes no second privileged slot, the nested shape that
+ * deadlocks a full pool. Unlike privilegedFrom it never elevates a non-admin
+ * transaction in place, so from a request transaction `fn` still commits on its
+ * own, as before.
+ */
+export async function withPrivilegedReusing<T>(
+  tx: ExecuteTx | null | undefined,
+  orgId: string,
+  reason: string,
+  fn: (ptx: PrivilegedDb) => Promise<T>,
+): Promise<T> {
+  if (tx && (await isPrivilegedTxOf(tx, orgId))) return fn(tx as unknown as PrivilegedDb)
+  return withPrivilegedDb(orgId, reason, fn)
+}
+
+/** Whether `tx` runs as liaison_admin with `orgId` as its org context. */
+async function isPrivilegedTxOf(tx: ExecuteTx, orgId: string): Promise<boolean> {
+  const [row] = extractRows<{ role: string; org: string | null }>(
+    await tx.execute(drizzleSql`
+      SELECT current_user::text AS role,
+             current_setting('app.current_org_id', true) AS org`),
+  )
+  return row?.role === "liaison_admin" && row.org === orgId
 }
 
 /** The restore target of an elevation is an identifier: only the product's own roles. */

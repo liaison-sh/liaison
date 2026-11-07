@@ -14,7 +14,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 import crypto from "node:crypto"
 import { eq } from "drizzle-orm"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
-import type { ActorContext } from "~/db/rls"
+import { type ActorContext, withRlsContext } from "~/db/rls"
 import {
   agentRuns,
   appsActiveVersion,
@@ -194,7 +194,8 @@ describe("sandbox agent_spawn bridge (T10)", () => {
       trusted: true,
       capabilities: ["agent.spawn"],
     })
-    await withPrivilegedDb(orgId, "bridge-ok", async (tx) => {
+    // A tool call's bridge runs on the caller's RLS transaction, as in production.
+    await withRlsContext(actor, async (tx) => {
       const bridge = createRpcBridge(
         appName,
         userId,
@@ -243,7 +244,8 @@ describe("sandbox agent_spawn bridge (T10)", () => {
       args: { appName: string; agentType: string; threadId: string },
     ): Promise<{ runId?: string; error?: { code?: string; message?: string } }> {
       const manifest = makeManifest(args.appName, { trusted: true, capabilities: ["agent.spawn"] })
-      return withPrivilegedDb(orgId, "bridge-depth", async (tx) => {
+      // On the caller's RLS transaction, as the tool dispatch gives the bridge.
+      return withRlsContext(actor, async (tx) => {
         // The bridge is built in the calling run's frame (as the tool dispatch
         // builds it) and the spawn callback runs after that frame is gone.
         const build = () =>

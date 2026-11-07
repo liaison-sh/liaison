@@ -22,6 +22,7 @@ import * as realSend from "~/apps/tickets/send"
 import { extractRows } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { asOrgMember } from "~/tests/helpers/org-caller"
 
 const realSendModule = { ...realSend }
 
@@ -154,7 +155,7 @@ describe("ticketsReply — a sent manual reply supersedes a stale pending draft"
     const staleDraftId = await insertPendingDraftApproval(ticketId)
     expect(await statusOf(staleDraftId)).toBe("pending")
 
-    const result = await withPrivilegedDb(orgId, "reply-supersedes-call", async (tx) => {
+    const result = await asOrgMember(orgId, userId, async (tx) => {
       const ctx = { tx: tx as never, orgId, actor: { actorType: "user" as const, userId } }
       return ticketsReply({ ticketId, textBody: "Here is my own answer." }, ctx)
     })
@@ -171,7 +172,7 @@ describe("ticketsReply — a sent manual reply supersedes a stale pending draft"
     const otherTicketId = await createTicketWithInbound()
     const unrelatedDraftId = await insertPendingDraftApproval(otherTicketId)
 
-    const result = await withPrivilegedDb(orgId, "reply-supersedes-call-2", async (tx) => {
+    const result = await asOrgMember(orgId, userId, async (tx) => {
       const ctx = { tx: tx as never, orgId, actor: { actorType: "user" as const, userId } }
       return ticketsReply({ ticketId, textBody: "Answering this one only." }, ctx)
     })
@@ -191,7 +192,7 @@ describe("ticketsReply — a sent manual reply supersedes a stale pending draft"
     const pendingNudgeId = await insertPendingDraftApproval(ticketId, "tickets:nudge")
     const pendingCloseId = await insertPendingDraftApproval(ticketId, "tickets:close")
 
-    const result = await withPrivilegedDb(orgId, "reply-supersedes-call-3", async (tx) => {
+    const result = await asOrgMember(orgId, userId, async (tx) => {
       const ctx = { tx: tx as never, orgId, actor: { actorType: "user" as const, userId } }
       return ticketsReply({ ticketId, textBody: "Replying, but not deciding the other two." }, ctx)
     })

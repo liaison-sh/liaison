@@ -34,6 +34,7 @@
 // connection, exported only to the instance operator's org (routes.ts).
 import crypto from "node:crypto"
 import { and, asc, desc, eq, gte, isNotNull, isNull, lt, or, sql } from "drizzle-orm"
+import type { PrivilegedDb } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import { demoLeads } from "~/db/schema/kernel"
 import { env } from "~/lib/env"
@@ -169,8 +170,12 @@ export interface DemoOrgLead {
 }
 
 /** The lead a demo org was created with (the latest, should there be two). */
-export async function leadForDemoOrg(orgId: string): Promise<DemoOrgLead | null> {
-  const [row] = await withSystemDb("demo-lead-for-org", (tx) =>
+export async function leadForDemoOrg(
+  orgId: string,
+  /** A privileged transaction the caller holds (it bypasses RLS), read on directly. */
+  on?: PrivilegedDb,
+): Promise<DemoOrgLead | null> {
+  const read = (tx: PrivilegedDb) =>
     tx
       .select({
         id: demoLeads.id,
@@ -186,8 +191,8 @@ export async function leadForDemoOrg(orgId: string): Promise<DemoOrgLead | null>
       .from(demoLeads)
       .where(eq(demoLeads.demoOrgId, orgId))
       .orderBy(desc(demoLeads.createdAt))
-      .limit(1),
-  )
+      .limit(1)
+  const [row] = on ? await read(on) : await withSystemDb("demo-lead-for-org", read)
   return row ?? null
 }
 

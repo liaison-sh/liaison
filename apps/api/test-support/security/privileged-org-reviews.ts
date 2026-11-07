@@ -149,6 +149,8 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
     "the privileged helper's own SET ROLE: every call site of it is enumerated and classified here",
   "apps/api/src/db/privileged.ts#privilegedFrom":
     "the privileged helper's own SET LOCAL ROLE liaison_admin on the caller's transaction, restored to the caller role checked against /^liaison_[a-z_]+$/ (privileged.ts:197-205). Its withPrivilegedDb fallback takes the org the caller's own RLS transaction runs in: countTeamReferences (setContactSharing, after loadVisible in params.orgId), sameOwnerNoWiderGrants (authorizeMerge, after the merged rows were read FOR UPDATE in params.orgId) and ensureBaseAgentOnTx (sendMessage's params.orgId, the thread write's org)",
+  "apps/api/src/modules/apps/activation.ts#withActivationLockTx":
+    "the nil org on purpose: the transaction only holds an app's activation advisory lock (app-activate:<name>, server-wide, no org) and reads no org data; everything it guards runs in transactions of its own",
   "apps/api/src/db/privileged.ts#runOnPrivilegedPool":
     "the privileged pool's own SET LOCAL ROLE, shared by withPrivilegedDb's default pool, withSystemDb and withSchemaAdmin (migrations and app DDL): it is module-private, its org id is theirs (null for withSystemDb and withSchemaAdmin), and every call site of those helpers is enumerated and classified here",
   "apps/api/src/infra/events/outbox-worker.ts#adminExec":

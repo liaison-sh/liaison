@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { generateText } from "ai"
-import { and, eq } from "drizzle-orm"
+import { and, eq, isNull, or } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
 import { threads } from "~/db/schema/kernel"
 import { isManagedEdition } from "~/lib/edition"
@@ -37,19 +37,36 @@ export async function autoTitleAgentChat(params: {
 }) {
   const { threadId, userMessage, agentReply, orgId } = params
 
-  await withPrivilegedDb(orgId, "auto-title-agent-chat", async (tx) => {
-    const [thread] = await tx
+  const [thread] = await withPrivilegedDb(orgId, "auto-title-agent-chat-read", (tx) =>
+    tx
       .select({ title: threads.title, type: threads.type })
       .from(threads)
       .where(and(eq(threads.id, threadId), eq(threads.orgId, orgId)))
-      .limit(1)
+      .limit(1),
+  )
+  if (!thread || thread.type !== "agent_chat" || thread.title) return
 
-    if (!thread || thread.type !== "agent_chat" || thread.title) return
+  // The model call runs with no transaction open: it takes its own privileged
+  // reads (the model settings), and a slot held across a provider round trip
+  // starves the pool.
+  const title = await generateTitleWithLLM(orgId, userMessage, agentReply)
+  if (!title) return
 
-    const title = await generateTitleWithLLM(orgId, userMessage, agentReply)
-    if (!title) return
-
-    await tx.update(threads).set({ title, updatedAt: new Date() }).where(eq(threads.id, threadId))
+  await withPrivilegedDb(orgId, "auto-title-agent-chat", async (tx) => {
+    // Only a thread still untitled: a title set meanwhile (by hand, or by a
+    // concurrent turn) wins.
+    const updated = await tx
+      .update(threads)
+      .set({ title, updatedAt: new Date() })
+      .where(
+        and(
+          eq(threads.id, threadId),
+          eq(threads.orgId, orgId),
+          or(isNull(threads.title), eq(threads.title, "")),
+        ),
+      )
+      .returning({ id: threads.id })
+    if (updated.length === 0) return
 
     // F2 — the auto-title is a DURABLE state transition: the thread's title
     // changed in the DB, so the WS notification must survive a crash and replay

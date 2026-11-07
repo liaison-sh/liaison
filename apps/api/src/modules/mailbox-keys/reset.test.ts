@@ -784,8 +784,21 @@ describe("POST /api/mailbox-keys/reset", () => {
     const mine = await seedEnrolledMailbox(orgId)
     const manifest = appBridgeManifest(orgId, "mail")
     if (!manifest) throw new Error("the mail manifest is not registered")
-    let resetPromise: Promise<Response> | null = null
     let resetDoneWhileWriting = false
+    let settled = false
+    // The reset is a separate request, so it starts from outside the racing
+    // write's transaction context: the gate's reaction runs in the context it
+    // was registered in, here, not in the write's.
+    let startReset: (code: string) => void = () => {}
+    const resetGate = new Promise<string>((resolve) => {
+      startReset = resolve
+    })
+    const resetPromise = resetGate.then((code) =>
+      post(mine.app, "/api/mailbox-keys/reset", { stepUpCode: code }),
+    )
+    void resetPromise.then(() => {
+      settled = true
+    })
     await withSystemDb("mailbox-reset-test-racing-write", async (tx) => {
       const bridge = createRpcBridge(
         "mail",
@@ -807,12 +820,7 @@ describe("POST /api/mailbox-keys/reset", () => {
         }),
       )
       // The reset starts while this write is uncommitted...
-      const code = await stepUpCode(mine.user.id)
-      resetPromise = post(mine.app, "/api/mailbox-keys/reset", { stepUpCode: code })
-      let settled = false
-      void resetPromise.then(() => {
-        settled = true
-      })
+      startReset(await stepUpCode(mine.user.id))
       // Until the reset is queued behind this transaction (or, wrongly, done).
       await waitFor(async () => settled || (await pgLockWaiters()) > 0, {
         label: "the reset to block on the open write",
@@ -821,7 +829,7 @@ describe("POST /api/mailbox-keys/reset", () => {
       resetDoneWhileWriting = settled
     })
     expect(resetDoneWhileWriting).toBe(false)
-    const res = (await resetPromise) as unknown as Response
+    const res = await resetPromise
     expect(res.status).toBe(200)
     const after = await snapshot(mine)
     expect(after.drafts, "the draft the racing write committed is gone").toBe(0)

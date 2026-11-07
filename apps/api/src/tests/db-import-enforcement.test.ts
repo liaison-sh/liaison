@@ -37,6 +37,13 @@ describe("db import enforcement", () => {
 
   // Allowlist: only these files may import from ~/db/privileged
   const privilegedAllowlist = new Set([
+    // Provisioning CLI: the connection's stored credentials are read in a privileged
+    // transaction of the org being provisioned, after the plan's org-less precheck.
+    "cli/provisioners/connector.ts",
+    // Knowledge sync of a connected database run by a job (no request transaction):
+    // the org-owned connection's credentials are read in a short privileged
+    // transaction of the source's own org; the database read itself holds no slot.
+    "apps/database/knowledge-read-runner.ts",
     "modules/security/security-events.ts", // security signals: the org comes from the event the auth path raised; writes the outbox event and reads the account it names
     // Magic-wand proofread/polish assist service — reads org model config + agent
     // keys via system-db (no per-request RLS context), like other host services.

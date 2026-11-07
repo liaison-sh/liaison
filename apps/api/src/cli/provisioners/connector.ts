@@ -40,6 +40,7 @@ import {
 } from "~/cli/provisioners/types"
 import type { VerifyProbe } from "~/cli/provisioners/verify-probes"
 import { extractRows, type PrivilegedDb } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
 import { isRecord } from "~/lib/guards"
 import { connectionConfigRegistry } from "~/modules/apps/app-registries"
 import { upsertConnectionOAuthClient } from "~/modules/apps/connections/oauth-client-provisioning"
@@ -225,7 +226,10 @@ async function readActiveConnection(
   )
   const row = extractRows<{ id: string }>(precheck)[0]
   if (!row) return null
-  const stored = await priv("cli-connector-read-creds", (tx) =>
+  // Read after `priv`, in a privileged transaction of the org: the service's
+  // system lookup reuses it (no second slot), which an org-less `priv` (a plan
+  // runs before the org is set) could not offer.
+  const stored = await withPrivilegedDb(orgId, "cli-connector-read-creds", (tx) =>
     getCredentialsForConnection(tx, orgId, actorUserId, appName, connName, identifier, {
       actorType: "system",
     }),

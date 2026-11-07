@@ -33,7 +33,7 @@ import {
   rowFromDb as syncedSourceRowFromDb,
 } from "~/apps/knowledge/synced-sources"
 import { extractRows } from "~/db"
-import { withSystemDb } from "~/db/privileged"
+import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import {
   createAppQueue,
   enqueueAppJob,
@@ -111,7 +111,7 @@ function resolveAdapter(
       // when it was added, never silently from another account of the same user,
       // and only within that account's read scope (an org account: the shared
       // drives an admin chose, drive-scope.ts).
-      return withSystemDb("knowledge-sync-token", (db) =>
+      return withPrivilegedDb(source.orgId, "knowledge-sync-token", (db) =>
         resolveDriveAccess(db, source.orgId, userId, {
           ...(source.sourceAccount ? { identifier: source.sourceAccount } : {}),
           // One Google account may hold an org row AND a member's own row: an
@@ -134,7 +134,9 @@ function resolveAdapter(
     const userId = source.ownerUserId ?? source.createdBy
     const loadCreds = async (): Promise<Record<string, string>> => {
       await assertOwnerMaySyncFrom("gitlab", source.orgId, userId)
-      return withSystemDb("knowledge-sync-gitlab-token", async (db) => {
+      // The org's own privileged transaction: the credential read runs on it,
+      // with no second privileged connection.
+      return withPrivilegedDb(source.orgId, "knowledge-sync-gitlab-token", async (db) => {
         const { getCredentialsForConnection } = await import("~/modules/apps/connections/service")
         return getCredentialsForConnection(
           db,
@@ -163,13 +165,9 @@ function resolveAdapter(
   }
   if (appName === "database") {
     const userId = source.ownerUserId ?? source.createdBy
-    // `createDatabaseKnowledgeReadRunner` wants a live `RlsClient`/`PrivilegedDb`
-    // for its (lazy, per-call) credential lookup inside `runRead`. The job has
-    // no ambient request tx, so build a fresh runner inside `withSystemDb` on
-    // every `runRead` call, mirroring the gitlab branch's per-call
-    // `withSystemDb` wrapping. Catalog resolution (`resolveDatabaseCatalog`) is
-    // synchronous and tx-independent, so `hasRead` is answered directly off it
-    // without needing any DB handle at all.
+    // Catalog resolution (`resolveDatabaseCatalog`) is synchronous and
+    // tx-independent, so `hasRead` is answered directly off it without
+    // needing any DB handle at all.
     const hasRead = (name: string): boolean => {
       try {
         return Boolean(resolveDatabaseCatalog().reads[name])
@@ -177,16 +175,14 @@ function resolveAdapter(
         return false
       }
     }
-    const runRead = async (
+    // No transaction around the read: the runner looks the credentials up in
+    // a short privileged transaction of its own, and the query on the
+    // connected database holds no privileged slot.
+    const runRead = (
       name: string,
       params: Record<string, unknown>,
     ): Promise<{ rows: Record<string, unknown>[] }> =>
-      withSystemDb("knowledge-sync-database-read", (db) =>
-        createDatabaseKnowledgeReadRunner({ tx: db as never, orgId: source.orgId, userId }).runRead(
-          name,
-          params,
-        ),
-      )
+      createDatabaseKnowledgeReadRunner({ orgId: source.orgId, userId }).runRead(name, params)
     return createDatabaseKnowledgeAdapter({ runRead, hasRead })
   }
   throw new Error(`No adapter registered for app: ${appName}`)

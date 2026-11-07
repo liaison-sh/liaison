@@ -12,7 +12,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
-import { withSystemDb } from "~/db/privileged"
+import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { answerManagedMarker } from "~/modules/agent/mailbox-plaintext/mailbox-managed-reader"
 import { sealMailFields } from "~/modules/mailbox-crypto/mail-writer"
@@ -394,7 +394,9 @@ describe("review: walls of the opener", () => {
     try {
       for (const reader of [other.id, admin.id, "system:google-drive"]) {
         await expect(
-          withSystemDb("managed-open-test-file-read", (tx) =>
+          // Production opens a file on an org privileged transaction (the
+          // make-private conversion, the agent's attachment read) or a request one.
+          withPrivilegedDb(owner.orgId, "managed-open-test-file-read", (tx) =>
             openManagedFile(tx, {
               orgId: owner.orgId,
               userId: reader,

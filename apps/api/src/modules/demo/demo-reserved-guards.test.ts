@@ -127,6 +127,7 @@ describe("the reserved demo org's guards outside a turn", () => {
   it("auto-title: the reserved org titles by heuristic, a normal org asks the model", async () => {
     DemoModeTestAccess.set(true)
     const titleFor = async (orgId: string) => {
+      const admin = await minimal.orgAdmin(orgId)
       const threadId = await withPrivilegedDb(orgId, "guards-thread", async (tx) => {
         const [t] = await tx
           .insert(kernelThreads)
@@ -134,7 +135,7 @@ describe("the reserved demo org's guards outside a turn", () => {
             orgId,
             handle: `rg-${crypto.randomUUID().slice(0, 8)}`,
             type: "agent_chat",
-            createdBy: (await minimal.orgAdmin(orgId)).id,
+            createdBy: admin.id,
           })
           .returning({ id: kernelThreads.id })
         return t!.id

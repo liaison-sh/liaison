@@ -14,6 +14,7 @@ import {
   tierAtLeast,
 } from "@liaison/shared"
 import { eq } from "drizzle-orm"
+import type { PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { creditTransactions, modelPricing, organizations } from "~/db/schema/kernel"
 import { currentUsdEurRate } from "~/infra/jobs/sync-model-pricing"
@@ -403,6 +404,21 @@ export async function resolveKey(
  * a capability should ask, because the environment key it used to also accept
  * is refused for a demo org by `resolveKey`. Use `isProviderUsable`.
  */
+/**
+ * Run a read on `db`, the privileged transaction of this org the caller already
+ * holds (a settings mutation under its row lock), or in its own privileged
+ * transaction without one. Reading on the held one takes no second privileged
+ * slot, so the checks of a mutation cannot deadlock a full pool.
+ */
+function onPrivileged<T>(
+  db: PrivilegedDb | undefined,
+  orgId: string,
+  reason: string,
+  fn: (tx: PrivilegedDb) => Promise<T>,
+): Promise<T> {
+  return db ? fn(db) : withPrivilegedDb(orgId, reason, fn)
+}
+
 function isProviderConfigured(
   provider: string,
   settings: { providerKeys?: Record<string, { encrypted?: string | null } | undefined> },
@@ -433,20 +449,26 @@ export async function isProviderUsable(
   orgId: string,
   provider: string,
   settings: { providerKeys?: Record<string, { encrypted?: string | null } | undefined> },
+  /** A privileged transaction of this org the caller holds (see onPrivileged). */
+  db?: PrivilegedDb,
 ): Promise<boolean> {
   if (isProviderConfigured(provider, settings)) return true
   if (!hasEnvKey(provider)) return false
   // A visitor org can use the box key for OpenRouter only, once verified and
   // while visitor spend is on: the pin runs there (and web search on it).
-  if (await isVisitorDemoOrg(orgId)) return visitorBoxKeyUsable(orgId, provider)
-  return await demoPlatformKeyAllowed(orgId)
+  if (await isVisitorDemoOrg(orgId, db)) return visitorBoxKeyUsable(orgId, provider, db)
+  return await demoPlatformKeyAllowed(orgId, db)
 }
 
 /** Can a visitor org reach the box key for `provider` right now? OpenRouter, verified, spend on. */
-async function visitorBoxKeyUsable(orgId: string, provider: string): Promise<boolean> {
+async function visitorBoxKeyUsable(
+  orgId: string,
+  provider: string,
+  db?: PrivilegedDb,
+): Promise<boolean> {
   if (provider !== "openrouter") return false
   if ((await demoVisitorSpendState()) !== "on") return false
-  return (await currentVerifiedIdentity(orgId)) !== null
+  return (await currentVerifiedIdentity(orgId, db)) !== null
 }
 
 /**
@@ -552,17 +574,19 @@ export async function isModelKeyAvailable(
   key: string,
   settings: OrgKernelSettings,
   nativeRow?: { provider: string } | null,
+  /** A privileged transaction of this org the caller holds (see onPrivileged). */
+  db?: PrivilegedDb,
 ): Promise<boolean> {
   const parsed = parseModelKey(key)
   if (!parsed) return false
   const models = aiModelsOf(settings)
-  if (await isVisitorDemoOrg(orgId)) {
+  if (await isVisitorDemoOrg(orgId, db)) {
     // The pin is available on the visitor's own OpenRouter key, or on the box
     // key once verified. An added model runs on the visitor's own key only.
     if (key === demoVisitorModelKey()) {
       return (
         isProviderConfigured("openrouter", settings) ||
-        (await visitorBoxKeyUsable(orgId, "openrouter"))
+        (await visitorBoxKeyUsable(orgId, "openrouter", db))
       )
     }
     if (parsed.kind !== "native") {
@@ -579,7 +603,7 @@ export async function isModelKeyAvailable(
     const row =
       nativeRow ??
       (
-        await withPrivilegedDb(orgId, "model-availability", (tx) =>
+        await onPrivileged(db, orgId, "model-availability", (tx) =>
           tx
             .select({ provider: modelPricing.provider })
             .from(modelPricing)
@@ -588,14 +612,14 @@ export async function isModelKeyAvailable(
         )
       )[0]
     if (!row || !isChatModelProvider(row.provider)) return false
-    return isProviderUsable(orgId, row.provider, settings)
+    return isProviderUsable(orgId, row.provider, settings, db)
   }
   const entry = findAddedModel(models, key)
   if (!entry?.enabled) return false
   if (entry.provider === "custom") {
     return (models.servers ?? []).some((sv) => sv.id === entry.serverId)
   }
-  return isProviderUsable(orgId, "openrouter", settings)
+  return isProviderUsable(orgId, "openrouter", settings, db)
 }
 
 /** A model key resolved to the ModelInfo a call runs on, regardless of enablement. */
@@ -603,11 +627,12 @@ async function lookupModelInfo(
   orgId: string,
   key: string,
   settings: OrgKernelSettings,
+  db?: PrivilegedDb,
 ): Promise<ModelInfo | null> {
   const parsed = parseModelKey(key)
   if (!parsed) return null
   if (parsed.kind === "native") {
-    const row = await withPrivilegedDb(orgId, "pre-check-model", async (tx) => {
+    const row = await onPrivileged(db, orgId, "pre-check-model", async (tx) => {
       const [r] = await tx.select().from(modelPricing).where(eq(modelPricing.modelId, key))
       return r
     })
@@ -687,23 +712,24 @@ async function visitorModelFor(
   orgId: string,
   requestedModelId: string | null | undefined,
   settings: OrgKernelSettings,
+  db?: PrivilegedDb,
 ): Promise<ModelInfo> {
   if (requestedModelId === demoVisitorModelKey()) {
     return demoVisitorModelInfo(!isProviderConfigured("openrouter", settings))
   }
   if (requestedModelId) {
-    const info = await lookupModelInfo(orgId, requestedModelId, settings)
+    const info = await lookupModelInfo(orgId, requestedModelId, settings, db)
     if (info && info.provider !== "custom" && isProviderConfigured(info.provider, settings)) {
       return info
     }
   }
   const byok = visitorByokProviders(settings).filter((p) => p !== "openrouter")
   if (byok.length > 0) {
-    const pick = await withPrivilegedDb(orgId, "visitor-auto", (tx) =>
+    const pick = await onPrivileged(db, orgId, "visitor-auto", (tx) =>
       selectAutoModel(tx, { providers: byok, exclude: aiModelsOf(settings).disabled ?? [] }),
     )
     if (pick) {
-      const info = await lookupModelInfo(orgId, pick.modelId, settings)
+      const info = await lookupModelInfo(orgId, pick.modelId, settings, db)
       if (info) return { ...info, autoPicked: true }
     }
   }
@@ -714,8 +740,9 @@ async function visitorModelFor(
 async function visitorSelection(
   orgId: string,
   settings: OrgKernelSettings,
+  db?: PrivilegedDb,
 ): Promise<{ provider: string; modelId: string }> {
-  const info = await visitorModelFor(orgId, null, settings)
+  const info = await visitorModelFor(orgId, null, settings, db)
   return { provider: info.provider, modelId: info.modelId }
 }
 
@@ -784,11 +811,12 @@ export async function selectSideCallModelForOrg(
 async function addedSideCallModel(
   orgId: string,
   settings: OrgKernelSettings,
+  db?: PrivilegedDb,
 ): Promise<{ provider: string; modelId: string } | null> {
   const models = aiModelsOf(settings)
   const autoKey = models.autoModelKey
-  if (autoKey && (await isModelKeyAvailable(orgId, autoKey, settings))) {
-    const info = await lookupModelInfo(orgId, autoKey, settings)
+  if (autoKey && (await isModelKeyAvailable(orgId, autoKey, settings, undefined, db))) {
+    const info = await lookupModelInfo(orgId, autoKey, settings, db)
     if (info) return { provider: info.provider, modelId: info.modelId }
   }
   const priceOf = (entry: AddedModel): number =>
@@ -799,7 +827,7 @@ async function addedSideCallModel(
     (a, b) => priceOf(a) - priceOf(b) || a.key.localeCompare(b.key),
   )
   for (const entry of candidates) {
-    if (!(await isModelKeyAvailable(orgId, entry.key, settings))) continue
+    if (!(await isModelKeyAvailable(orgId, entry.key, settings, undefined, db))) continue
     const info = addedModelInfo(entry, models)
     if (info) return { provider: info.provider, modelId: info.modelId }
   }
@@ -810,9 +838,10 @@ async function addedSideCallModel(
 export async function hasUsableNativeKey(
   orgId: string,
   settings: OrgKernelSettings,
+  db?: PrivilegedDb,
 ): Promise<boolean> {
   for (const provider of CHAT_MODEL_PROVIDERS) {
-    if (await isProviderUsable(orgId, provider, settings)) return true
+    if (await isProviderUsable(orgId, provider, settings, db)) return true
   }
   return false
 }
@@ -821,14 +850,20 @@ export async function hasUsableNativeKey(
 export async function hasUsableModelKey(
   orgId: string,
   settings: OrgKernelSettings,
+  /** A privileged transaction of this org the caller holds (see onPrivileged). */
+  db?: PrivilegedDb,
 ): Promise<boolean> {
-  return (await hasUsableNativeKey(orgId, settings)) || reachesAddedModels(orgId, settings)
+  return (await hasUsableNativeKey(orgId, settings, db)) || reachesAddedModels(orgId, settings, db)
 }
 
 /** Can this org reach any added model's provider (OpenRouter, or a server of its own)? */
-async function reachesAddedModels(orgId: string, settings: OrgKernelSettings): Promise<boolean> {
+async function reachesAddedModels(
+  orgId: string,
+  settings: OrgKernelSettings,
+  db?: PrivilegedDb,
+): Promise<boolean> {
   if ((aiModelsOf(settings).servers ?? []).length > 0) return true
-  return isProviderUsable(orgId, "openrouter", settings)
+  return isProviderUsable(orgId, "openrouter", settings, db)
 }
 
 /** The providers with an auto-eligible model that this org can get a key for. */
@@ -836,8 +871,9 @@ async function usableAutoProviders(
   orgId: string,
   reason: string,
   settings: OrgKernelSettings,
+  db?: PrivilegedDb,
 ): Promise<string[]> {
-  const providers = await withPrivilegedDb(orgId, `${reason}:providers`, (tx) =>
+  const providers = await onPrivileged(db, orgId, `${reason}:providers`, (tx) =>
     tx
       .selectDistinct({ provider: modelPricing.provider })
       .from(modelPricing)
@@ -846,7 +882,7 @@ async function usableAutoProviders(
   const usable: string[] = []
   for (const { provider } of providers) {
     if (!isChatModelProvider(provider)) continue
-    if (await isProviderUsable(orgId, provider, settings)) usable.push(provider)
+    if (await isProviderUsable(orgId, provider, settings, db)) usable.push(provider)
   }
   return usable
 }
@@ -864,11 +900,12 @@ async function turnRuleModelForOrg(
   orgId: string,
   reason: string,
   settings: OrgKernelSettings,
+  db?: PrivilegedDb,
 ): Promise<{ provider: string; modelId: string } | null> {
   const exclude = aiModelsOf(settings).disabled ?? []
-  const usable = await usableAutoProviders(orgId, reason, settings)
-  if (usable.length === 0) return addedSideCallModel(orgId, settings)
-  return withPrivilegedDb(orgId, reason, (tx) =>
+  const usable = await usableAutoProviders(orgId, reason, settings, db)
+  if (usable.length === 0) return addedSideCallModel(orgId, settings, db)
+  return onPrivileged(db, orgId, reason, (tx) =>
     selectAutoModel(tx, { providers: usable, exclude }),
   )
 }
@@ -888,19 +925,21 @@ export async function selectAutoModelForOrg(
   orgId: string,
   reason: string,
   preloaded?: OrgKernelSettings,
+  /** A privileged transaction of this org the caller holds (see onPrivileged). */
+  db?: PrivilegedDb,
 ): Promise<{ provider: string; modelId: string } | null> {
   const settings =
     preloaded ??
-    (await withPrivilegedDb(orgId, `${reason}:settings`, (tx) =>
+    (await onPrivileged(db, orgId, `${reason}:settings`, (tx) =>
       getOrgKernelSettings(tx, orgId, orgKernelSettingsSchema),
     ))
-  if (await isVisitorDemoOrg(orgId)) return visitorSelection(orgId, settings)
+  if (await isVisitorDemoOrg(orgId, db)) return visitorSelection(orgId, settings, db)
   const autoKey = aiModelsOf(settings).autoModelKey
-  if (autoKey && (await isModelKeyAvailable(orgId, autoKey, settings))) {
-    const info = await lookupModelInfo(orgId, autoKey, settings)
+  if (autoKey && (await isModelKeyAvailable(orgId, autoKey, settings, undefined, db))) {
+    const info = await lookupModelInfo(orgId, autoKey, settings, db)
     if (info) return { provider: info.provider, modelId: info.modelId }
   }
-  return turnRuleModelForOrg(orgId, reason, settings)
+  return turnRuleModelForOrg(orgId, reason, settings, db)
 }
 
 /** The error of a call whose org has no model key it can use. */

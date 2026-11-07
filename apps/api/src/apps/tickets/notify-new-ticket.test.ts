@@ -125,7 +125,11 @@ function mail(over: Partial<ParsedEmail> = {}): ParsedEmail {
 async function ingest(raw: ParsedEmail, ctx: { noAcknowledgement?: boolean } = {}) {
   const inbox = { ...mailboxInbox, org_id: orgId }
   const result = await withPrivilegedDb(orgId, "notify-new-ticket-inbound", (tx) =>
-    processInboundMessage(raw, inbox as never, { db: tx, orgId, ...ctx } as never),
+    processInboundMessage(
+      raw,
+      inbox as never,
+      { db: tx, privilegedTx: tx, orgId, ...ctx } as never,
+    ),
   )
   if ("error" in result) throw new Error(result.error.message)
   return result

@@ -27,7 +27,6 @@ import { KERNEL_SCOPES } from "~/modules/permissions/scope-catalog"
 import { createExternalUser } from "~/modules/users/external-user"
 import { listUsers } from "~/modules/users/service"
 import { insertSql } from "~/seed/factories/org/test-rows"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 const ORG_ID = crypto.randomUUID()
 const COMPANY_ID = crypto.randomUUID()
@@ -123,8 +122,6 @@ afterAll(async () => {
   await sql`DELETE FROM kernel.users WHERE org_id = ${ORG_ID}`
   await sql`DELETE FROM kernel.organizations WHERE id = ${ORG_ID}`
 })
-
-strictNestedPrivileged()
 
 describe("the portal role", () => {
   it("kernel.users, kernel.contacts and app_projects.tasks raise permission denied under the portal role", async () => {

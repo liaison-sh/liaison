@@ -267,9 +267,9 @@ export const aiKeysRoutes = new Hono<AppEnv>()
         const { [provider]: _gone, ...otherKeys } = settings.providerKeys ?? {}
         const without = { ...settings, providerKeys: otherKeys }
         if (
-          (await isModelKeyAvailable(orgId, autoKey, settings)) &&
-          !(await isModelKeyAvailable(orgId, autoKey, without)) &&
-          (await hasUsableModelKey(orgId, without))
+          (await isModelKeyAvailable(orgId, autoKey, settings, undefined, tx)) &&
+          !(await isModelKeyAvailable(orgId, autoKey, without, undefined, tx)) &&
+          (await hasUsableModelKey(orgId, without, tx))
         ) {
           return { result: false }
         }

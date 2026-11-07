@@ -8,7 +8,6 @@
 import { describe, expect, it } from "bun:test"
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 type Treatment =
   /** Filters user_type or refuses an external row itself. */
@@ -273,8 +272,6 @@ const reaching = sourceFiles(SRC)
   .filter((path) => reachesUsersPrivileged(readFileSync(path, "utf8")))
   .map((path) => relative(SRC, path))
   .sort()
-
-strictNestedPrivileged()
 
 describe("privileged readers of kernel.users", () => {
   it("a new privileged reader of kernel.users not listed fails", () => {

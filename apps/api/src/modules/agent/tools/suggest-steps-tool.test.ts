@@ -8,7 +8,6 @@ import {
   suggestNextStepsParams,
 } from "~/modules/agent/tools/suggest-steps-tool"
 import { viewRegistry } from "~/modules/apps/app-registries"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 const ORG = "org-suggest-steps"
 const ctx = { orgId: ORG, agentExecutionThreadId: "thread-1" }
@@ -17,8 +16,6 @@ const run = (steps: unknown[]) =>
   handleSuggestNextSteps(suggestNextStepsParams.parse({ steps }), ctx) as Promise<
     Record<string, any>
   >
-
-strictNestedPrivileged()
 
 describe("suggest_next_steps", () => {
   let tainted: Mock<typeof taint.isThreadTainted>

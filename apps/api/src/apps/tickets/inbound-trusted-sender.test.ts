@@ -42,7 +42,12 @@ function mail(overrides: Record<string, unknown>) {
 
 async function run(raw: never) {
   return withSystemDb("trusted-sender-run", async (tx) =>
-    processInboundMessage(raw, inboxRow as never, { orgId: ORG_ID, db: tx as never }),
+    processInboundMessage(raw, inboxRow as never, {
+      orgId: ORG_ID,
+      // As the mailbox sync ingests: on its privileged transaction, handed down.
+      db: tx as never,
+      privilegedTx: tx,
+    }),
   )
 }
 

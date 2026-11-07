@@ -352,8 +352,11 @@ export async function recordConsolidationAudit(params: {
   action: string
   jobId?: string
   metadata?: Record<string, unknown>
+  /** The privileged transaction the caller already holds, so the audit row
+   *  commits with the write it records instead of taking a second slot. */
+  tx?: PrivilegedDb
 }): Promise<void> {
-  await withPrivilegedDb(params.orgId, "consolidation:audit", (tx) =>
+  const insert = (tx: PrivilegedDb) =>
     tx.insert(auditLog).values({
       orgId: params.orgId,
       actorId: null,
@@ -364,8 +367,12 @@ export async function recordConsolidationAudit(params: {
       entityId: params.threadId,
       action: params.action,
       metadata: { ...(params.metadata ?? {}), jobId: params.jobId ?? null },
-    }),
-  )
+    })
+  if (params.tx) {
+    await insert(params.tx)
+    return
+  }
+  await withPrivilegedDb(params.orgId, "consolidation:audit", insert)
 }
 
 /** Model calls this agent has already made today, from its own usage rows. */
@@ -1133,6 +1140,7 @@ async function writeEpisodeForRegion(
       action: "memory_episode_written",
       ...(payload.jobId ? { jobId: payload.jobId } : {}),
       metadata: { path: written.path, messageCount: summarised.length, requiredScopes },
+      tx,
     })
     return written
   })

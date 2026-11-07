@@ -12,7 +12,6 @@ import { resetAppRegistries, toolRegistry } from "~/modules/apps/app-registries"
 import { validateAppManifest } from "~/modules/apps/contract"
 import { registerApps } from "~/modules/apps/runtime"
 import { insertSql } from "~/seed/factories/org/test-rows"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 const TEST_ORG = "00000000-0000-0000-0000-000000120004"
 const APP = "carried-keys-app"
@@ -126,8 +125,6 @@ async function cleanup() {
   await sql.unsafe(`DROP SCHEMA IF EXISTS "${SCHEMA}" CASCADE`)
   await sql`DELETE FROM kernel.apps WHERE name = ${APP}`
 }
-
-strictNestedPrivileged()
 
 describe("manifest keys carried onto the registry", () => {
   beforeAll(async () => {

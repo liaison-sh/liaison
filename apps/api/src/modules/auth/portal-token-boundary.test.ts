@@ -27,7 +27,6 @@ import { signAccessToken, signPortalToken, verifyAccessToken } from "~/modules/a
 import { cleanupSeededOrg, seedOrgWithUser } from "~/modules/mcp/test-helpers"
 import { createExternalUser } from "~/modules/users/external-user"
 import { insertSql } from "~/seed/factories/org/test-rows"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 let orgId: string
 let memberId: string
@@ -76,8 +75,6 @@ afterAll(async () => {
   )
   await cleanupSeededOrg(orgId)
 })
-
-strictNestedPrivileged()
 
 describe("signing", () => {
   const identity = {

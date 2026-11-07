@@ -68,7 +68,6 @@ import {
 import { handleToolCall } from "~/modules/mcp/tool-call"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 import { createTestOrg } from "~/tests/helpers/org"
 import { resetOrgRuntimeForTest } from "~/tests/helpers/org-runtime"
 import { seededApps } from "~/tests/helpers/seeded-app-rows"
@@ -297,8 +296,6 @@ afterAll(async () => {
   else delete process.env.LIAISON_MODEL_PROVIDER
   await releaseTestLock()
 })
-
-strictNestedPrivileged()
 
 describe("the catalog", () => {
   it("absent from listCatalogTools for both audiences and tool_search", async () => {

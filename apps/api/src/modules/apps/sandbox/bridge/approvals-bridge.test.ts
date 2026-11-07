@@ -13,7 +13,6 @@ import { createApprovalsMethods } from "~/modules/apps/sandbox/bridge/approvals"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import { seedOrgRow, seedUserRows } from "~/seed/factories/org/rows"
 import { insertSql } from "~/seed/factories/org/test-rows"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 const broadcastSpy = spyOn(eventBusModule, "broadcastEphemeral").mockImplementation(async () => {})
 
@@ -77,8 +76,6 @@ async function rowOf(id: string) {
 const count = async () =>
   (await sql`SELECT count(*)::int AS n FROM kernel.approval_requests WHERE org_id = ${ORG}`)[0]
     ?.n as number
-
-strictNestedPrivileged()
 
 describe("ctx.requestApproval approve_scope", () => {
   beforeAll(async () => {

@@ -59,7 +59,6 @@ import { insertSql } from "~/seed/factories/org/test-rows"
 import { actorFor, asUser } from "~/seed/factories/people/actors"
 import * as minimal from "~/seed/tiers/minimal"
 import { bootstrapAdminCtx } from "~/tests/helpers/agent-ctx"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
   appendMailMessages,
@@ -526,8 +525,6 @@ afterAll(async () => {
   await shutdownSandboxPool()
   await releaseTestLock()
 })
-
-strictNestedPrivileged()
 
 describe("a reply stops a staged send", () => {
   it("compose from a follow-up routine, inbound seeded, approve: no provider call, failed_no_effect, cancelled", async () => {

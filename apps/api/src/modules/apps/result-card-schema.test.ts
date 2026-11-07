@@ -6,7 +6,6 @@
 
 import { describe, expect, it } from "bun:test"
 import { validateAppManifest } from "~/modules/apps/contract"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 const APP = "card-app"
 
@@ -91,8 +90,6 @@ function groupsCard(over: Record<string, unknown> = {}) {
     ...over,
   }
 }
-
-strictNestedPrivileged()
 
 describe("a card template is checked when the manifest is registered", () => {
   it("accepts a plain entity card", () => {

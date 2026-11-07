@@ -13,7 +13,7 @@
 
 import { createHash, randomBytes } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
-import { extractRows } from "~/db"
+import { extractRows, type RlsClient } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 
@@ -169,7 +169,7 @@ async function readVisibleFile(
     // A server-managed mail attachment: opened for the mailbox owner (or a
     // host job acting for them), audited, never for anyone else.
     const { openManagedFile } = await import("~/modules/mailbox-crypto/managed-open")
-    const read = (tx: { execute(q: unknown): Promise<unknown> }) =>
+    const read = (tx: Pick<RlsClient, "execute">) =>
       openManagedFile(tx, {
         orgId: ctx.orgId,
         userId: ctx.userId,

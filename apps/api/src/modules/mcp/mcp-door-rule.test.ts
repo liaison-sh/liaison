@@ -25,9 +25,6 @@ import {
 } from "~/modules/mcp/test-helpers"
 import { handleToolCall, OUTSIDE_TEXT_KEY, type ToolCallCtx } from "~/modules/mcp/tool-call"
 import { listMcpTools } from "~/modules/mcp/tool-projection"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
-
-strictNestedPrivileged()
 
 type Seed = Awaited<ReturnType<typeof seedOrgWithTicketsApp>>
 

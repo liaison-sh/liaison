@@ -65,6 +65,8 @@ export async function injectInboundMail(ctx: SeedContext, input: InboundMailInpu
     // Seeded mail never acknowledges its (fictional) sender.
     return processInboundMessage(parsed as never, inbox as never, {
       db: tx as never,
+      // Every privileged read of the ingest runs on this transaction.
+      privilegedTx: tx,
       orgId,
       noAcknowledgement: true,
     })

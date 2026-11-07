@@ -27,8 +27,8 @@
 // made) transparent. Existing transparent mailboxes stay as they are.
 
 import { sql as drizzleSql } from "drizzle-orm"
-import { extractRows } from "~/db"
-import { withPrivilegedDb } from "~/db/privileged"
+import { extractRows, type RlsClient } from "~/db"
+import { withPrivilegedReusing } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { env } from "~/lib/env"
 import { appsLogger as log } from "~/lib/logger"
@@ -206,13 +206,16 @@ export async function effectiveMailboxEncryptionMode(
 /**
  * `effectiveMailboxEncryptionMode` on its own short privileged read: the
  * deployment default looks at every org, and the org switch and the person's
- * pick are read for exactly this org and this person.
+ * pick are read for exactly this org and this person. `on` is the caller's
+ * transaction: when it already is a privileged one of this org the read runs on
+ * it instead of taking a second privileged connection.
  */
 export async function effectiveMailboxEncryptionModeFor(
   orgId: string,
   userId: string,
+  on?: Pick<RlsClient, "execute"> | null,
 ): Promise<MailboxEncryptionMode> {
-  return withPrivilegedDb(orgId, "mail:encryption-mode", (tx) =>
+  return withPrivilegedReusing(on, orgId, "mail:encryption-mode", (tx) =>
     effectiveMailboxEncryptionMode(tx, orgId, userId),
   )
 }

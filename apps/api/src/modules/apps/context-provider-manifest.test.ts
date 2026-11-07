@@ -5,7 +5,6 @@
 
 import { describe, expect, it } from "bun:test"
 import { validateAppManifest } from "~/modules/apps/contract"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 const manifest = (tool: Record<string, unknown>, scope = "ctx-app:items:read") => ({
   name: "ctx-app",
@@ -25,8 +24,6 @@ const errorOf = (m: unknown) => {
   const judged = validateAppManifest(m)
   return judged.success ? "" : judged.error
 }
-
-strictNestedPrivileged()
 
 describe("context provider manifest rules", () => {
   it("accepts a read-only tool and one of its required scopes", () => {

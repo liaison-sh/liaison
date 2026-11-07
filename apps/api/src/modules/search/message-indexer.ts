@@ -685,11 +685,15 @@ export async function windowAnchorsCovering(
   orgId: string,
   threadId: string,
   messageId: string,
+  privileged?: PrivilegedDb,
 ): Promise<string[]> {
   const anchors = isWindowAnchor(messageId) ? [messageId] : []
-  const next = await withPrivilegedDb(orgId, "message-indexer:kernel:window-anchors", (tx) =>
-    coveringAnchorAfter(tx, orgId, threadId, messageId),
-  )
+  const read = (tx: PrivilegedDb) => coveringAnchorAfter(tx, orgId, threadId, messageId)
+  // On the caller's privileged transaction (an erasure), inside a savepoint so a
+  // failed read stays best effort and never aborts that transaction.
+  const next = privileged
+    ? await privileged.transaction(read)
+    : await withPrivilegedDb(orgId, "message-indexer:kernel:window-anchors", read)
   if (next) anchors.push(next)
   return anchors
 }
@@ -710,9 +714,10 @@ export async function deleteMessageAndWindowDocuments(
   orgId: string,
   threadId: string,
   messageId: string,
+  privileged?: PrivilegedDb,
 ): Promise<string[]> {
   try {
-    const anchors = await windowAnchorsCovering(orgId, threadId, messageId)
+    const anchors = await windowAnchorsCovering(orgId, threadId, messageId, privileged)
     const docId = messageDocId(orgId, messageId)
     await recordLiveIndex([
       rawDeleteItem(orgId, `${docId}:erase`, {

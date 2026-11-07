@@ -6,7 +6,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { randomUUID } from "node:crypto"
 import { sql } from "~/db"
-import { withPrivilegedDb } from "~/db/privileged"
+import { withRlsContext } from "~/db/rls"
 import { approvalExpiryRegistry } from "~/modules/apps/app-registries"
 import { buildJobBridge } from "~/modules/apps/runtime"
 
@@ -37,14 +37,20 @@ afterAll(async () => {
 })
 
 async function ask(input: Record<string, unknown>): Promise<{ approval_id?: string } | Error> {
-  return withPrivilegedDb(ORG, "test", async (tx) => {
-    const bridge = buildJobBridge(APP, `system:${APP}:daily`, ORG, { _tx: tx }, manifest, [
-      `${APP}:*`,
-    ])
-    return JSON.parse(await bridge.requestApproval(JSON.stringify(input))) as {
-      approval_id?: string
-    }
-  }).catch((e: Error) => e)
+  // A scheduled job's handler runs on an RLS transaction of the jobs pool
+  // (dispatchAppJobWithContext), so the bridge gets one here too.
+  return withRlsContext(
+    { actorType: "system", orgId: ORG, purpose: "job", scopes: [`${APP}:*`] },
+    async (tx) => {
+      const bridge = buildJobBridge(APP, `system:${APP}:daily`, ORG, { _tx: tx }, manifest, [
+        `${APP}:*`,
+      ])
+      return JSON.parse(await bridge.requestApproval(JSON.stringify(input))) as {
+        approval_id?: string
+      }
+    },
+    { pool: "jobs" },
+  ).catch((e: Error) => e)
 }
 
 describe("job approval requests", () => {

@@ -27,6 +27,8 @@ let inboxId = ""
 const seq = 700_000_000 + Math.floor(Math.random() * 1e8)
 const ids: Record<string, string> = {}
 
+// A privileged transaction, as the sync and the tools hold: every privileged read
+// under it is handed the transaction (the segment config, `privilegedTx`).
 async function sys<T>(fn: (tx: PrivilegedDb) => Promise<T>): Promise<T> {
   return withSystemDb("display-handle-test", fn)
 }
@@ -132,16 +134,24 @@ describe("segment config", () => {
 describe("display handles", () => {
   it("follow the CURRENT field value; the number never changes", async () => {
     await sys(async (db) => {
-      expect(await displayHandleFor(db, orgId, ids.b2b!)).toBe(`ticket-B2B-${seq}`)
-      expect(await displayHandleFor(db, orgId, ids.plain!)).toBe(`ticket-${seq + 1}`)
-      expect(await displayHandleFor(db, orgId, ids.odd!)).toBe(`ticket-${seq}-77`)
+      expect(await displayHandleFor(db, orgId, ids.b2b!, await loadSegmentConfig(orgId, db))).toBe(
+        `ticket-B2B-${seq}`,
+      )
+      expect(
+        await displayHandleFor(db, orgId, ids.plain!, await loadSegmentConfig(orgId, db)),
+      ).toBe(`ticket-${seq + 1}`)
+      expect(await displayHandleFor(db, orgId, ids.odd!, await loadSegmentConfig(orgId, db))).toBe(
+        `ticket-${seq}-77`,
+      )
     })
     await sys((db) =>
       db.execute(
         drizzleSql`UPDATE app_tickets.tickets SET audience = 'b2c' WHERE id = ${ids.b2b!}`,
       ),
     )
-    const m = await sys((db) => displayHandlesByIds(db, orgId, [ids.b2b!, ids.plain!]))
+    const m = await sys(async (db) =>
+      displayHandlesByIds(db, orgId, [ids.b2b!, ids.plain!], await loadSegmentConfig(orgId, db)),
+    )
     expect(m.get(ids.b2b!)).toBe(`ticket-B2C-${seq}`)
     expect(m.get(ids.plain!)).toBe(`ticket-${seq + 1}`)
     await sys((db) =>
@@ -153,7 +163,11 @@ describe("display handles", () => {
 
   it("a removed code falls back to ticket-<n>", async () => {
     await setSegment({ by: "audience", codes: { b2c: "B2C" } })
-    expect(await sys((db) => displayHandleFor(db, orgId, ids.b2b!))).toBe(`ticket-${seq}`)
+    expect(
+      await sys(async (db) =>
+        displayHandleFor(db, orgId, ids.b2b!, await loadSegmentConfig(orgId, db)),
+      ),
+    ).toBe(`ticket-${seq}`)
     await setSegment({ by: "audience", codes: { b2b: "B2B", b2c: "B2C" } })
   })
 })
@@ -210,7 +224,11 @@ describe("inbound threads every handle form onto the same ticket (S21)", () => {
   }
   const run = (subject: string) =>
     sys((tx) =>
-      processInboundMessage(email(subject), inboxRow() as never, { orgId, db: tx as never }),
+      processInboundMessage(email(subject), inboxRow() as never, {
+        orgId,
+        db: tx as never,
+        privilegedTx: tx,
+      }),
     )
 
   it("an old subject [#ticket-<n>] and a new one [#ticket-B2B-<n>] both append", async () => {
@@ -246,16 +264,22 @@ describe("team rename moves the segment codes (A22)", () => {
       by: "team",
       codes: { Operations: "OPS", Sales: "SAL", Support: "SUP" },
     })
-    expect(await sys((db) => displayHandleFor(db, orgId, ids.ops!))).toBe(`ticket-OPS-${seq + 10}`)
+    expect(
+      await sys(async (db) =>
+        displayHandleFor(db, orgId, ids.ops!, await loadSegmentConfig(orgId, db)),
+      ),
+    ).toBe(`ticket-OPS-${seq + 10}`)
 
     await sys((db) => renameTeam(db, orgId, { from: "Sales", to: "Support" }))
     expect(await loadSegmentConfig(orgId)).toEqual({
       by: "team",
       codes: { Operations: "OPS", Support: "SUP" },
     })
-    expect(await sys((db) => displayHandleFor(db, orgId, ids.sales!))).toBe(
-      `ticket-SUP-${seq + 11}`,
-    )
+    expect(
+      await sys(async (db) =>
+        displayHandleFor(db, orgId, ids.sales!, await loadSegmentConfig(orgId, db)),
+      ),
+    ).toBe(`ticket-SUP-${seq + 11}`)
     await setSegment({ by: "audience", codes: { b2b: "B2B", b2c: "B2C" } })
   })
 
@@ -315,6 +339,7 @@ describe("merge accepts every handle form (S20)", () => {
         orgId,
         { targetTicketId: `ticket-B2B-${seq + 20}`, sourceTicketIds: [`ticket-b2b-${seq + 21}`] },
         { actorType: "user", userId },
+        { privilegedTx: db },
       ),
     )
     expect(out).toMatchObject({ targetTicketId: ids.mtarget!, mergedSourceCount: 1 })
@@ -336,6 +361,7 @@ describe("merge accepts every handle form (S20)", () => {
         orgId,
         { targetTicketId: `ticket-B2B-${seq + 9999}`, sourceTicketIds: [`ticket-${seq + 1}`] },
         { actorType: "user", userId },
+        { privilegedTx: db },
       ),
     )
     expect(out).toMatchObject({ error: { code: "not_found" } })

@@ -158,10 +158,8 @@ async function attemptWritesThroughBridge(
           orgId,
           {
             ctx: actor,
-            run: <T>(fn: (t: RlsClient) => Promise<T>) =>
-              withPrivilegedDb(orgId, "test-ro-write-bridge", (privileged) =>
-                fn(privileged as unknown as RlsClient),
-              ),
+            // A production session runs each call on the actor's RLS transaction.
+            run: <T>(fn: (t: RlsClient) => Promise<T>) => withRlsContext(actor, fn),
           } as never,
           manifest() as never,
           actor.scopes,
@@ -410,15 +408,16 @@ describe("a read-only run writes nothing through a sandboxed app", () => {
       ...(readOnlyTools ? { readOnlyTools: true } : {}),
     })
 
-    const callWrites = async (readOnly: boolean): Promise<Record<string, Attempt>> =>
-      withPrivilegedDb(orgId, "test-ro-write-direct", async (tx) => {
-        const actor = await actorFor(requester)
+    // The bridge runs on the actor's RLS transaction, as `executeToolHandler`'s does.
+    const callWrites = async (readOnly: boolean): Promise<Record<string, Attempt>> => {
+      const actor = await actorFor(requester)
+      return withRlsContext(actor, async (tx) => {
         const bridge = runContextStore.run(frame(readOnly), () =>
           createRpcBridge(
             APP,
             requester,
             orgId,
-            tx as unknown as RlsClient,
+            tx,
             manifest() as never,
             actor.scopes,
             "user",
@@ -442,6 +441,7 @@ describe("a read-only run writes nothing through a sandboxed app", () => {
           db_delete: await attempt(() => bridge.db_delete("items", rowId)),
         }))
       })
+    }
 
     const refused = await callWrites(true)
     for (const [name, outcome] of Object.entries(refused)) {

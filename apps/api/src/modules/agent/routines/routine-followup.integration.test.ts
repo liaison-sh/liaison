@@ -45,7 +45,6 @@ import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/poo
 import { seedContext } from "~/seed/context"
 import * as minimal from "~/seed/tiers/minimal"
 import { bootstrapAdminCtx } from "~/tests/helpers/agent-ctx"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 import { ensureMailAccount } from "../../../../test-support/seed/mail"
 
@@ -301,8 +300,6 @@ afterAll(async () => {
   await shutdownSandboxPool()
   await releaseTestLock()
 })
-
-strictNestedPrivileged()
 
 describe("a follow-up routine stages its drafts and ends", () => {
   it("tick staging 3 gated calls in 2 steps: succeeded, 3 pending, no waiting_approval row, next tick runs", async () => {

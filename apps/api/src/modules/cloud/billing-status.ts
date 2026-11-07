@@ -11,6 +11,7 @@
 
 import type { CloudBillingStatus } from "@liaison/control-plane-contract"
 import { eq } from "drizzle-orm"
+import type { PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { orgBillingState } from "~/db/schema/kernel"
 import { isManagedEdition } from "~/lib/edition"
@@ -33,12 +34,17 @@ const cache = new Map<string, { at: number; value: OrgBillingStatus | null }>()
 /**
  * The org's pushed billing status, or null: on a self-hosted instance (no
  * query), and before the first push (an org Control has not billed yet is served).
+ * A caller holding a privileged transaction passes it: the row is then read on
+ * it, never on a second privileged connection.
  */
-export async function orgBillingStatus(orgId: string): Promise<OrgBillingStatus | null> {
+export async function orgBillingStatus(
+  orgId: string,
+  privilegedTx?: PrivilegedDb,
+): Promise<OrgBillingStatus | null> {
   if (!isManagedEdition()) return null
   const hit = cache.get(orgId)
   if (hit && Date.now() - hit.at < STATUS_TTL_MS) return hit.value
-  const [row] = await withPrivilegedDb(orgId, "billing-status-read", (tx) =>
+  const read = (tx: PrivilegedDb) =>
     tx
       .select({
         status: orgBillingState.status,
@@ -48,8 +54,10 @@ export async function orgBillingStatus(orgId: string): Promise<OrgBillingStatus 
       })
       .from(orgBillingState)
       .where(eq(orgBillingState.orgId, orgId))
-      .limit(1),
-  )
+      .limit(1)
+  const [row] = privilegedTx
+    ? await read(privilegedTx)
+    : await withPrivilegedDb(orgId, "billing-status-read", read)
   const value: OrgBillingStatus | null = row
     ? {
         status: row.status as CloudBillingStatus,

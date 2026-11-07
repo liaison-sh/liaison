@@ -8,8 +8,9 @@ import { describe, expect, it } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
 import { runAdminOp } from "~/apps/tickets/admin"
 import { extractRows } from "~/db"
-import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
+import { withSystemDb } from "~/db/privileged"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { asOrgMember } from "~/tests/helpers/org-caller"
 
 async function setupOrg(): Promise<{ orgId: string; userId: string }> {
   const slug = `idc-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
@@ -32,7 +33,7 @@ async function setupOrg(): Promise<{ orgId: string; userId: string }> {
 }
 
 function admin(orgId: string, userId: string, op: string, params: Record<string, unknown>) {
-  return withPrivilegedDb(orgId, "inbox-disconnect-connection-test", (tx) =>
+  return asOrgMember(orgId, userId, (tx) =>
     runAdminOp(tx as never, orgId, op, params, { actorType: "user" as const, userId }),
   )
 }

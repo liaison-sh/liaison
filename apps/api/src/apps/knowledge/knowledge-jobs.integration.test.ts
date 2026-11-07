@@ -28,7 +28,7 @@ import {
 } from "~/apps/knowledge/synced-sources"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
-import { withPrivilegedDb } from "~/db/privileged"
+import { withRlsContext } from "~/db/rls"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { env } from "~/lib/env"
 import { createTestOrg } from "~/tests/helpers/org"
@@ -53,8 +53,16 @@ function mkSource(
   who: KnowledgeActor,
   opts: CreateSyncedSourceOptions = {},
 ): Promise<SyncedSourceRow> {
-  return withPrivilegedDb(orgId, "knowledge-jobs-test-setup", (tx) =>
-    createSyncedSource(tx, input, who, opts),
+  // On the person's own RLS transaction, as the knowledge route creates one.
+  return withRlsContext(
+    {
+      actorType: "user",
+      orgId: who.orgId,
+      userId: who.userId,
+      scopes: who.scopes,
+      dimensionGrants: {},
+    },
+    (tx) => createSyncedSource(tx, input, who, opts),
   )
 }
 
@@ -565,7 +573,14 @@ describe("knowledge synced-source jobs — demo workspace", () => {
             RETURNING id`,
       ),
     )
-    const created = await withPrivilegedDb(demoOrgId, "knowledge-jobs-test-demo", (tx) =>
+    const founder = {
+      actorType: "user" as const,
+      orgId: demoOrgId,
+      userId: owner!.id,
+      scopes: [SOURCES_MANAGE, DOC_READ],
+      dimensionGrants: {},
+    }
+    const created = await withRlsContext(founder, (tx) =>
       createSyncedSource(
         tx,
         {

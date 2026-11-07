@@ -179,10 +179,14 @@ describe("a caught unique violation leaves the caller's transaction usable", () 
       },
     }
     const out = await withPrivilegedDb(orgId, "swallow-ticket-msg", async (tx) => {
-      const first = (await createTicket(tx as never, orgId, params as never, actor() as never)) as {
+      const first = (await createTicket(tx as never, orgId, params as never, actor() as never, {
+        privilegedTx: tx,
+      })) as {
         ticketId?: string
       }
-      const second = await createTicket(tx as never, orgId, params as never, actor() as never)
+      const second = await createTicket(tx as never, orgId, params as never, actor() as never, {
+        privilegedTx: tx,
+      })
       const n = rows(
         await tx.execute(drizzleSql`
           SELECT count(*)::int AS n FROM app_tickets.tickets WHERE org_id = ${orgId} AND subject = ${subject}`),
@@ -200,13 +204,17 @@ describe("a caught unique violation leaves the caller's transaction usable", () 
     const externalRef = `ext-${Date.now()}`
     const out = await withPrivilegedDb(orgId, "swallow-ticket-ref", async (tx) => {
       const params = { subject: "ref", channel: "api" as const, externalRef }
-      const first = (await createTicket(tx as never, orgId, params as never, actor() as never)) as {
+      const first = (await createTicket(tx as never, orgId, params as never, actor() as never, {
+        privilegedTx: tx,
+      })) as {
         ticketId?: string
       }
       let second: unknown
       let secondErr: unknown
       try {
-        second = await createTicket(tx as never, orgId, params as never, actor() as never)
+        second = await createTicket(tx as never, orgId, params as never, actor() as never, {
+          privilegedTx: tx,
+        })
       } catch (err) {
         secondErr = err
       }

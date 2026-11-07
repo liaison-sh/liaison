@@ -303,8 +303,8 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `MEDIA_TRANSFER_HOST_WHITELIST` | `apps/api/src/modules/agent/media/media-analysis-constants.ts:121` |
 | `MIGRATION_DATABASE_URL` | `apps/api/src/cli/export-full.ts:74`, `apps/api/src/cli/org-transfer.ts:243`, `apps/api/src/db/migrate.ts:405` and 3 more |
 | `MIGRATION_DATABASE_URL_TEST` | `apps/api/src/cli/export-full.ts:74` |
-| `NESTED_PRIVILEGED_STRICT` | `apps/api/src/db/privileged.ts:204` |
-| `OPENROUTER_API_KEY` | `apps/api/src/modules/agent/credits/credit-meter.ts:374`, `apps/api/src/modules/agent/providers/openrouter.ts:168` |
+| `NESTED_PRIVILEGED_STRICT` | `apps/api/src/db/privileged.ts:203` |
+| `OPENROUTER_API_KEY` | `apps/api/src/modules/agent/credits/credit-meter.ts:375`, `apps/api/src/modules/agent/providers/openrouter.ts:168` |
 | `OPENROUTER_BASE_URL` | `apps/api/src/modules/agent/providers/openrouter.ts:30` |
 | `OPENROUTER_HOST_MAX_TTFT_MS` | `apps/api/src/modules/agent/providers/openrouter-host-speed.ts:66` |
 | `OPENROUTER_HOST_MIN_TOKENS_PER_SECOND` | `apps/api/src/modules/agent/providers/openrouter-host-speed.ts:67` |
@@ -322,8 +322,8 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `SANDBOX_POOL_REPORT_INTERVAL_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:92` |
 | `SANDBOX_QUEUE_WAIT_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:89` |
 | `SANDBOX_WORKER_HOLD_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:90` |
-| `TICKETS_GMAIL_PUSH_ISSUER` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1306`, `apps/api/src/modules/webhooks/routes.ts:181`, `apps/api/src/modules/webhooks/routes.ts:416` |
-| `TICKETS_GMAIL_PUSH_JWKS_URL` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1307`, `apps/api/src/modules/webhooks/routes.ts:182`, `apps/api/src/modules/webhooks/routes.ts:415` |
+| `TICKETS_GMAIL_PUSH_ISSUER` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1308`, `apps/api/src/modules/webhooks/routes.ts:181`, `apps/api/src/modules/webhooks/routes.ts:416` |
+| `TICKETS_GMAIL_PUSH_JWKS_URL` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1309`, `apps/api/src/modules/webhooks/routes.ts:182`, `apps/api/src/modules/webhooks/routes.ts:415` |
 | `TICKETS_GMAIL_SYNC_SINCE` | `apps/api/src/apps/tickets/sync.ts:310` |
 | `VITE_API_BASE` | `apps/web/src/lib/env.ts:10` |
 | `VITE_API_TARGET` | `apps/web/src/lib/env.ts:68` |

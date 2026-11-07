@@ -45,6 +45,7 @@
 import { mailboxAad } from "@liaison/mailbox-crypto/src/aad"
 import { sealedFieldMatches, sealedStreamMatches } from "@liaison/mailbox-crypto/src/field-verify"
 import { STREAM_TAG_BYTES } from "@liaison/mailbox-crypto/src/stream-seal"
+import type { ShippedLocale } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -53,7 +54,10 @@ import type { AppEvent } from "~/infra/events/event-bus"
 import { quoteIdent } from "~/lib/sql-utils"
 import { sealAttachmentBytes } from "~/modules/mailbox-crypto/attachment-seal"
 import { mailboxEncryptionSettings } from "~/modules/mailbox-crypto/encryption-mode"
-import { resolveActiveIdentity } from "~/modules/mailbox-crypto/identity-resolver"
+import {
+  type MailboxCallerTx,
+  resolveActiveIdentity,
+} from "~/modules/mailbox-crypto/identity-resolver"
 import {
   type MailAccountCrypto,
   type MailboxSealEntity,
@@ -85,7 +89,7 @@ export class MailboxModeSwitchError extends Error {
   }
 }
 
-type Exec = { execute(q: unknown): Promise<unknown> }
+type Exec = MailboxCallerTx
 
 export type MailboxConversion = "to_private" | "to_managed"
 
@@ -314,6 +318,7 @@ async function convertFilesToPrivate(
       orgId,
       fileId: file.id,
       bytes: opened.bytes,
+      on: tx,
     })
     await writeResealedFile(tx, file, sealed.columns, sealed.body, opened.mimeType)
   }
@@ -468,6 +473,7 @@ async function resealRowToPrivate(
     rows: [row],
     actor: { userId },
     purpose: { kind: "reseal" },
+    on: tx,
   })
   const fields = opened.get(row.id) ?? {}
   const values: Record<string, string | null> = {}
@@ -488,6 +494,7 @@ async function resealRowToPrivate(
     values,
     headers,
     account,
+    on: tx,
   })
   await setUpdate(tx, entity, row.id, {
     ...clearedSealedColumns(entity),
@@ -845,6 +852,7 @@ export async function applyTransparentBatch(input: {
           // merged into the cleartext allowlisted headers, which stay as they are.
           headers: entity === "messages" ? (headers ?? null) : null,
           account: managedAccount,
+          on: tx,
         })
         const columns: Record<string, unknown> = {
           ...clearedSealedColumns(entity),
@@ -948,7 +956,7 @@ export async function applyTransparentFile(input: {
       plaintext: input.bytes as Uint8Array<ArrayBuffer>,
     })
     if (!proven) return { resealed: false }
-    const dek = await loadMailboxServerKeyPrivileged(orgId, accountId)
+    const dek = await loadMailboxServerKeyPrivileged(orgId, accountId, undefined, tx)
     try {
       const sealed = sealManagedAttachment({
         accountId,
@@ -996,6 +1004,9 @@ export async function finishMakeMailboxTransparent(input: {
   accountId: string
 }): Promise<{ done: boolean; remaining: number; counts: ConversionCounts }> {
   const { orgId, userId, accountId } = input
+  // The owner's language for the notice, read before the transaction: it needs
+  // no row lock, and reading it inside would take a second privileged connection.
+  const locale = await ownerLocale(orgId, userId)
   return withPrivilegedDb(orgId, "mailbox-mode:make-transparent:finish", async (tx) => {
     const account = await ownedAccount(tx, orgId, userId, accountId, true)
     if (account.encryption_state === "managed" && account.encryption_conversion === null) {
@@ -1031,6 +1042,7 @@ export async function finishMakeMailboxTransparent(input: {
         accountId,
         email: flipped?.email_address ?? "",
         connectedAccountId: flipped?.connected_account_id ?? null,
+        locale,
       }),
     )
     return { done: true, remaining: 0, counts }
@@ -1042,16 +1054,21 @@ export async function finishMakeMailboxTransparent(input: {
  * naming the owner alone (the attention pipeline's kernel notice, which the
  * socket and the feed hold to the people it names), in the owner's language.
  */
+async function ownerLocale(orgId: string, userId: string): Promise<ShippedLocale> {
+  const { recipientLocale } = await import("~/modules/push/fanout-consumer")
+  return recipientLocale(orgId, userId).catch(() => "en" as const)
+}
+
 async function madeTransparentNotice(input: {
   orgId: string
   userId: string
   accountId: string
   email: string
   connectedAccountId: string | null
+  locale: ShippedLocale
 }): Promise<AppEvent> {
-  const { recipientLocale } = await import("~/modules/push/fanout-consumer")
   const { serverT } = await import("~/modules/i18n/server-i18n")
-  const locale = await recipientLocale(input.orgId, input.userId).catch(() => "en" as const)
+  const { locale } = input
   return {
     app: "kernel",
     entity: "agent_notification",

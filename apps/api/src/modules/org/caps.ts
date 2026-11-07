@@ -56,6 +56,7 @@
 // once its notice is in the outbox, so a notice that could not be queued is
 // retried by the next evaluation.
 
+import { AsyncResource } from "node:async_hooks"
 import { createHash } from "node:crypto"
 import {
   ORG_CAP_KINDS,
@@ -656,6 +657,16 @@ export async function evaluateCapLevel(
   }
 }
 
+/**
+ * The async scope the queued evaluations run in: this module's, not the
+ * caller's. A promise reaction runs in the context of the code that queued it,
+ * so an evaluation queued from inside a privileged transaction (a seat check
+ * while a user is created) would otherwise read and write on privileged
+ * connections of its own while that caller still holds one. The evaluation is
+ * not part of the caller's work, so it runs outside it.
+ */
+const levelScope = new AsyncResource("org-cap-level")
+
 /** Fire-and-forget `evaluateCapLevel`, in call order per process. */
 let levelChain: Promise<void> = Promise.resolve()
 export function noteCapLevel(
@@ -664,7 +675,9 @@ export function noteCapLevel(
   used: number,
   limit: number,
 ): void {
-  levelChain = levelChain.then(() => evaluateCapLevel(orgId, kind, used, limit))
+  levelChain = levelChain.then(() =>
+    levelScope.runInAsyncScope(() => evaluateCapLevel(orgId, kind, used, limit)),
+  )
 }
 
 /** Waits for the queued level evaluations (tests). */

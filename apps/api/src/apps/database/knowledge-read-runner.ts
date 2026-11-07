@@ -22,7 +22,8 @@ import {
   resolveDatabaseCatalog,
 } from "~/apps/database/bridge"
 import { DbTransportError } from "~/apps/database/transport"
-import type { RlsClient } from "~/db"
+import type { PrivilegedDb, RlsClient } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
 import { rootLogger } from "~/lib/logger"
 
 const log = rootLogger.child({ module: "database-knowledge-read-runner" })
@@ -36,7 +37,12 @@ export interface DatabaseKnowledgeReadRunner {
 }
 
 export interface DatabaseKnowledgeReadRunnerInput {
-  tx: RlsClient
+  /**
+   * The caller's request transaction. A job has none: the credential lookup
+   * then runs in a short privileged transaction of the org of its own, and
+   * the read itself (a query on the connected database) holds no slot here.
+   */
+  tx?: RlsClient
   orgId: string
   userId: string
   identifier?: string
@@ -80,16 +86,20 @@ export function createDatabaseKnowledgeReadRunner(
       throw new DbTransportError(`Unknown read "${name}"`, "not_connected")
     }
     const { getCredentialsForConnection } = await import("~/modules/apps/connections/service")
-    const raw = await getCredentialsForConnection(
-      tx,
-      orgId,
-      userId,
-      "database",
-      "database",
-      identifier,
-      // Org-owned only, as in the bridge: the pooled transport is org-wide.
-      { actorType: "system", ownerType: "org" },
-    )
+    const lookup = (db: RlsClient | PrivilegedDb) =>
+      getCredentialsForConnection(
+        db,
+        orgId,
+        userId,
+        "database",
+        "database",
+        identifier,
+        // Org-owned only, as in the bridge: the pooled transport is org-wide.
+        { actorType: "system", ownerType: "org" },
+      )
+    const raw = tx
+      ? await lookup(tx)
+      : await withPrivilegedDb(orgId, "database-knowledge-creds", lookup)
     const creds: DatabaseCredentials = {
       connectionString: raw.connectionString,
       gateUrl: raw.gateUrl,

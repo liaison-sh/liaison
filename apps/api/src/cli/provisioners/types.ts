@@ -164,10 +164,19 @@ export interface ProvisionDbSeams {
   withSystemDb: <T>(reason: string, fn: (tx: PrivilegedDb) => Promise<T>) => Promise<T>
 }
 
+// Getters: each seam is the handle as it is when the context uses it, never a
+// copy taken at load, which would keep whatever stood in for the handle when
+// this module was first imported (a wrapper put in place and later removed).
 const defaultSeams: ProvisionDbSeams = {
-  withRlsContext,
-  withPrivilegedDb,
-  withSystemDb,
+  get withRlsContext() {
+    return withRlsContext
+  },
+  get withPrivilegedDb() {
+    return withPrivilegedDb
+  },
+  get withSystemDb() {
+    return withSystemDb
+  },
 }
 
 /**

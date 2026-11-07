@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { sql as drizzleSql } from "drizzle-orm"
 import { cancelSilentCloseCards, silentStepRefusal } from "~/apps/tickets/close-silent"
-import { displayHandleFor } from "~/apps/tickets/display-handle"
+import { displayHandleFor, loadSegmentConfig } from "~/apps/tickets/display-handle"
 import { loadTicketParties } from "~/apps/tickets/participants"
 import {
   plainTextToHtml,
@@ -1108,7 +1108,14 @@ async function renderAndSend(
     {
       id: ticket.id,
       // The email names the ticket by its display handle (`ticket-B2B-12`).
-      handle: (await displayHandleFor(db, ctx.orgId, ticket.id)) ?? ticket.handle,
+      // Its segment config is read on `db`: no second privileged connection.
+      handle:
+        (await displayHandleFor(
+          db,
+          ctx.orgId,
+          ticket.id,
+          await loadSegmentConfig(ctx.orgId, db),
+        )) ?? ticket.handle,
       subject: ticket.subject,
       reply_token: ticket.reply_token,
       language: ticket.language ?? null,
@@ -1466,7 +1473,11 @@ export async function sendTicketAcknowledgement(
         const email: StructuredEmail = await renderTicketEmail(
           {
             id: ticket.id,
-            handle: (await displayHandleFor(db, orgId, ticket.id)) ?? ticket.handle,
+            // The segment config is read on this transaction: a second
+            // privileged connection while this one is held can starve the pool.
+            handle:
+              (await displayHandleFor(db, orgId, ticket.id, await loadSegmentConfig(orgId, db))) ??
+              ticket.handle,
             subject: ticket.subject,
             reply_token: ticket.reply_token,
             language: ticket.language,

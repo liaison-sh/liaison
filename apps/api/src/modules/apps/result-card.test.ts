@@ -9,7 +9,6 @@ import { existsSync, readFileSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import type { CardTemplate } from "@liaison/shared"
 import { resolveToolCard } from "~/modules/apps/result-card"
-import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 const plain = (v: unknown) => JSON.parse(JSON.stringify(v))
 const bytes = (v: unknown) => new TextEncoder().encode(JSON.stringify(v)).length
@@ -70,8 +69,6 @@ const INVOICE = {
   due: "2026-11-20",
   late: true,
 }
-
-strictNestedPrivileged()
 
 describe("resolveToolCard", () => {
   it("resolves an entity card to the exact JSON", () => {

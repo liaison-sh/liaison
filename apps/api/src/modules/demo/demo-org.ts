@@ -20,7 +20,8 @@ import {
   type ShippedLocale,
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
-import { withPrivilegedDb } from "~/db/privileged"
+import type { PrivilegedDb, RlsClient } from "~/db"
+import { withPrivilegedDb, withPrivilegedReusing } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { boundedBy } from "~/lib/bounded"
 import { loadOrgSettingsFragment, rememberLoadOrg } from "~/lib/load-harness"
@@ -116,8 +117,16 @@ export async function invalidateDemoMarker(orgId?: string): Promise<void> {
  * The demo marker on `orgId` plus the org's language, or a null marker. One
  * query, because every caller that needs the marker also needs the language to
  * say why it refused. Cached; see the note above.
+ *
+ * `on` is the caller's transaction, when it has one: a privileged transaction
+ * of this org is read on directly (no second privileged slot); anything else
+ * reads in its own privileged transaction, as without it. A read on the
+ * caller's transaction may see its uncommitted writes, so it is not cached.
  */
-export async function loadDemoOrg(orgId: string): Promise<DemoOrgEntry> {
+export async function loadDemoOrg(
+  orgId: string,
+  on?: RlsClient | PrivilegedDb,
+): Promise<DemoOrgEntry> {
   const pinned = cache.get(orgId)
   if (pinned?.pinned) return pinned.entry
   const version = await markerVersion(orgId)
@@ -127,7 +136,7 @@ export async function loadDemoOrg(orgId: string): Promise<DemoOrgEntry> {
   }
 
   const k = drizzleSql.raw(schemaRef("kernel"))
-  const rows = await withPrivilegedDb(orgId, "load-demo-marker", async (tx) => {
+  const rows = await withPrivilegedReusing(on, orgId, "load-demo-marker", async (tx) => {
     const result = await tx.execute(
       drizzleSql`SELECT settings AS v, default_locale AS loc
                  FROM ${k}.organizations WHERE id = ${orgId}::uuid`,
@@ -140,13 +149,16 @@ export async function loadDemoOrg(orgId: string): Promise<DemoOrgEntry> {
   // some role/connection contexts, exactly as getOrgKernelSettings documents.
   const settings = typeof raw === "string" ? JSON.parse(raw) : raw
   const entry: DemoOrgEntry = { marker: demoMarker({ settings }), locale: shippedLocale(row?.loc) }
-  cache.set(orgId, { entry, at: Date.now(), version })
+  if (!on) cache.set(orgId, { entry, at: Date.now(), version })
   return entry
 }
 
-/** The demo marker on `orgId`, or null. */
-export async function loadDemoMarker(orgId: string): Promise<DemoOrgMarker | null> {
-  return (await loadDemoOrg(orgId)).marker
+/** The demo marker on `orgId`, or null (`on`: as for loadDemoOrg). */
+export async function loadDemoMarker(
+  orgId: string,
+  on?: RlsClient | PrivilegedDb,
+): Promise<DemoOrgMarker | null> {
+  return (await loadDemoOrg(orgId, on)).marker
 }
 
 /** Is `orgId` a demo org? The database-backed counterpart of `isDemoOrg`. */

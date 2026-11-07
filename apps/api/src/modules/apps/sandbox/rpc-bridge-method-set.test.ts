@@ -210,6 +210,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["resolveContact", "async"],
   ["sequences_allocate", "async"],
   ["smtp_send", "async"],
+  ["threads_deleteEntityDiscussion", "async"],
   ["tickets_admin", "async"],
   ["tickets_assign", "async"],
   ["tickets_attentionItems", "async"],

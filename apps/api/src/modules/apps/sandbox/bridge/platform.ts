@@ -106,6 +106,62 @@ export function createPlatformMethods(ctx: BridgeContext): Record<string, any> {
       return JSON.stringify({ ok: true })
     },
 
+    // --- Discussions ---
+    //
+    // The app deleted a record of its own that holds a discussion: the thread
+    // goes with it (an empty shell where an approval was asked in it), as a
+    // contact's does. Only for this app's declared discussion entities, and
+    // only once the record no longer reads in the handler's own transaction.
+    threads_deleteEntityDiscussion: async (paramsJson: string): Promise<string> => {
+      const p = JSON.parse(paramsJson || "{}") as { entityType?: unknown; entityId?: unknown }
+      if (typeof p.entityType !== "string" || typeof p.entityId !== "string" || !p.entityId) {
+        return errorEnvelope(
+          Object.assign(new Error("Give entityType and entityId of the deleted record."), {
+            code: "invalid_params",
+          }),
+        )
+      }
+      const ref = { app: appName, entityType: p.entityType, entityId: p.entityId }
+      const { deleteEntityDiscussions, isDiscussionEntity } = await import(
+        "~/modules/threads/entity-discussion"
+      )
+      if (!isDiscussionEntity(orgId, ref) || appName === "projects") {
+        return errorEnvelope(
+          Object.assign(
+            new Error(
+              `${appName}:${p.entityType} declares no discussion (entities.${p.entityType}.discussion): nothing was deleted.`,
+            ),
+            { code: "discussion_not_declared" },
+          ),
+        )
+      }
+      const { canReadThreadAnchorEntity } = await import("~/modules/threads/thread-anchor")
+      if (await canReadThreadAnchorEntity(txDb as never, orgId, ref)) {
+        return errorEnvelope(
+          Object.assign(
+            new Error(
+              `${appName}:${p.entityType} ${p.entityId} still exists: delete the record first, then its discussion. Nothing was deleted.`,
+            ),
+            { code: "entity_still_exists" },
+          ),
+        )
+      }
+      const removed = await deleteEntityDiscussions({
+        orgId,
+        app: appName,
+        entityType: p.entityType,
+        entityIds: [p.entityId],
+      })
+      return JSON.stringify({
+        ok: true,
+        deleted: removed.length,
+        result:
+          removed.length > 0
+            ? `The discussion of ${appName}:${p.entityType} ${p.entityId} was deleted.`
+            : `${appName}:${p.entityType} ${p.entityId} had no discussion: nothing to delete.`,
+      })
+    },
+
     // --- Jobs ---
     enqueueJob: async (jobName: string, payloadJson: string, optsJson?: string) => {
       const opts = optsJson ? JSON.parse(optsJson) : undefined

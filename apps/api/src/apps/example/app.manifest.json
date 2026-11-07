@@ -39,7 +39,13 @@
       "labelField": "text",
       "searchable": true,
       "tableName": "items",
-      "readScope": "example:items:read"
+      "readScope": "example:items:read",
+      "discussion": true
+    }
+  },
+  "views": {
+    "tabTypes": {
+      "items": { "label": "Example item", "icon": "Square", "urlPattern": "/example/items/:entityId" }
     }
   },
   "tools": {

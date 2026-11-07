@@ -1162,6 +1162,10 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
           }),
         )
         .optional(),
+      createdFrom: z
+        .object({ app: z.string(), entityType: z.string(), entityId: z.string() })
+        .optional()
+        .describe("The record it is about; posts into its discussion when it has one"),
     }),
     handler: handleThreadsCreate as (params: unknown, ctx: any) => Promise<unknown>,
     // Rule 11: the first message, title and references are read by these people; on a tainted

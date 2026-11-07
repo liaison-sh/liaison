@@ -172,6 +172,12 @@ describe("kernel hot tool set budget", () => {
       expect(prompt, `system.md no longer names ${name}`).toContain(name)
       expect(hot).toContain(name)
     }
+    // Every kernel tool the messaging paragraph names must be hot too, not only the two pinned above.
+    const messaging = prompt.split("\n").find((l) => l.includes("use a Liaison conversation")) ?? ""
+    const named = [...messaging.matchAll(/kernel__[a-z_]+/g)].map((m) => m[0])
+    expect(named.length, "the messaging paragraph names no kernel tool").toBeGreaterThan(0)
+    for (const name of named)
+      expect(hot, `${name} is named in the standing prompt but not hot`).toContain(name)
     expect(approvalActionRequiredClause(true)).toContain("kernel__approvals_list")
     expect(hot).toContain("kernel__approvals_list")
   })

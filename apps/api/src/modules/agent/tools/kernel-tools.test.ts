@@ -107,12 +107,6 @@ describe("kernel tool registration", () => {
     "memory_delete",
     "memory_rename",
   ]
-  const MEMORY_ENTRIES = [
-    ...MEMORY_VERBS,
-    "user_memory_get",
-    "user_memory_set",
-    "user_memory_delete",
-  ]
 
   it("every memory verb declares a taint posture", () => {
     for (const name of MEMORY_VERBS) {

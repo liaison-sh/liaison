@@ -228,7 +228,6 @@ describe("context providers", () => {
       requiredScopes: ["example:items:read"],
       readOnly: true,
       writesToTable: undefined,
-      atomic: undefined,
       params: {
         type: "object",
         properties: {

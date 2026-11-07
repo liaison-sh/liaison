@@ -7,10 +7,12 @@
 // families, a webhook replay mark and a consumer mark.
 //
 // Pinned:
-//   - full round trip: every closure table holds exactly the same rows on B as
-//     on A (secrets compared as plaintext: each opens on B with B's key and not
-//     with A's), the org lands `incoming`, a neighbour org on either side is
-//     untouched and never copied;
+//   - full round trip: every table the move carries holds exactly the same rows
+//     on B as on A (secrets compared as plaintext: each opens on B with B's key
+//     and not with A's), the org lands `incoming`, a neighbour org on either
+//     side is untouched and never copied. A carries a schema no app owns any
+//     more (an uninstalled app's, or one an earlier file in this database left):
+//     a move does not carry it, so the comparison leaves it out too;
 //   - B's sequences continue above A's (no handle collision for a new contact);
 //   - the webhook replay mark and the org's consumer marks arrive;
 //   - pass 2: a delta (update, insert, delete on A since pass 1) brings B to
@@ -59,7 +61,7 @@ import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { BundleError, BundleWriter, readBundle } from "./bundle"
 import { loadClosure, orgPredicate, rel } from "./closure"
 import { estimateTransfer } from "./estimate"
-import { exportOrg, type Fingerprint } from "./export"
+import { exportOrg, type Fingerprint, foreignCustomSchemas, knownSchemas } from "./export"
 import { countOrgClosure, foreignObjectKey, ImportRefused, importOrg } from "./import"
 import { purgeTransferCopy, TransferPurgeRefused } from "./purge"
 import { generateTransferKeys, type TransferKeys } from "./rekey"
@@ -82,6 +84,8 @@ const withDb = (url: string, db: string) => {
 let installRoot = ""
 let prevAppsDir: string | undefined
 const BUNDLED_APPS_DIR = join(import.meta.dir, "..", "..", "..", "..", "..", "..", "bundled-apps")
+
+const LEFTOVER_SCHEMA = "app_xfer_leftover"
 
 const INDEX = `test_org_transfer_${randomUUID().slice(0, 8)}`
 const meili = new MeiliSearch({
@@ -151,18 +155,28 @@ function openSecrets(table: string, row: Record<string, unknown>, keys: typeof K
   }
 }
 
-/** The org's closure, every row as comparable JSON text, per table. */
+/**
+ * The org's closure as a move carries it, every row as comparable JSON text,
+ * per table. The export's rule: other orgs' custom app schemas are left out,
+ * and so is a table of no app this instance knows unless it holds a row of the
+ * org (a schema such a table sits in may exist on one instance only).
+ */
 async function snapshot(
   sql: postgres.Sql,
   keys: typeof KEYS_A,
   org = orgId,
 ): Promise<Record<string, string[]>> {
   const closure = await loadClosure(sql as never)
+  const foreign = new Set(await foreignCustomSchemas(sql as never, org))
+  const known = await knownSchemas(sql as never, org)
   const out: Record<string, string[]> = {}
   for (const t of closure.tables) {
+    const schema = t.name.slice(0, t.name.indexOf("."))
+    if (foreign.has(schema)) continue
     const rows = await sql.unsafe<{ j: Record<string, unknown> }[]>(
       `SELECT to_jsonb(t) AS j FROM ${rel(t.name)} t WHERE ${orgPredicate(closure, t, "t", org)}`,
     )
+    if (!known.has(schema) && rows.length === 0) continue
     out[t.name] = rows
       .map((r) => {
         const row = r.j
@@ -267,6 +281,13 @@ beforeAll(async () => {
   await admin.end()
   A = postgres(superA, { max: 2, onnotice: () => {} })
   B = postgres(withDb(superA, dbB), { max: 2, onnotice: () => {} })
+  // A schema no app owns any more, on A only: what an uninstalled app leaves, and what an
+  // earlier file in this database leaves when it removes its fixture app's rows but not its
+  // schema. Created here so every run meets it, whatever ran before in the database.
+  await A.unsafe(`CREATE SCHEMA IF NOT EXISTS ${LEFTOVER_SCHEMA}`)
+  await A.unsafe(
+    `CREATE TABLE IF NOT EXISTS ${LEFTOVER_SCHEMA}.items (id uuid PRIMARY KEY, org_id uuid NOT NULL)`,
+  )
   poolB = createPool(4, withDb(env.DATABASE_URL, dbB))
 
   ;({ id: orgId } = await createTestOrg({ email: ADMIN }))
@@ -336,6 +357,7 @@ afterAll(async () => {
   await meili.deleteIndex(INDEX).catch(() => {})
   for (const s of spies) s.mockRestore()
   await redisBullMQ.del(`webhook:replay:${orgId}:shopify:orders:abc`)
+  await A?.unsafe(`DROP SCHEMA IF EXISTS ${LEFTOVER_SCHEMA} CASCADE`)
   await poolB?.client.end({ timeout: 5 })
   await B?.end({ timeout: 5 })
   await A?.end({ timeout: 5 })

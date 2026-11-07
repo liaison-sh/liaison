@@ -236,7 +236,7 @@ export function appSchemaOf(name: string): string {
  * `kernel`. A closure table in any other schema (one left behind by a removed
  * app) is carried only when it holds rows of the org.
  */
-async function knownSchemas(sql: TransferSql, orgId: string): Promise<Set<string>> {
+export async function knownSchemas(sql: TransferSql, orgId: string): Promise<Set<string>> {
   const rows = await query<{ name: string }>(
     sql,
     `SELECT name FROM kernel.apps_active_version WHERE org_id IS NULL OR org_id = $1::uuid

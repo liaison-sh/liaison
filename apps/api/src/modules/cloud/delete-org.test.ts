@@ -8,12 +8,13 @@
 //    deletion core run to completion → `done` and no residue;
 //  - a closed org's DELETE via the cell host is accepted (outside the gate);
 //  - 401 for an unsigned or mis-signed request on both endpoints.
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test"
+import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test"
 import { randomUUID } from "node:crypto"
 import { deriveControlToCellKey, signControlRequest } from "@liaison/control-plane-contract/node"
 import { app } from "~/app"
 import { sql } from "~/db"
 import { withSystemDb } from "~/db/privileged"
+import * as searchClientModule from "~/infra/search/client"
 import { _setEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
 import { clearOrgBillingStatusCache } from "~/modules/cloud/billing-status"
@@ -26,6 +27,8 @@ import {
 } from "~/modules/liaison-team/identity"
 import { processOrgDeleteJob } from "~/modules/org/delete/job"
 import { residueScan } from "~/modules/org/purge/residue"
+import { IndexWriterTestAccess } from "~/modules/search/index-writer"
+import { waitForMeiliTask } from "~/modules/search/meili-task"
 import { seedOrgExport } from "~/seed/factories/org/platform-rows"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -108,8 +111,21 @@ async function ledgerRows(orgId: string) {
     WHERE deleted_org_id = ${orgId} ORDER BY created_at`
 }
 
+// The deletion purges the org's search documents by org_id. A search index of
+// this file's own, with that filter, so the run's shared index (which an earlier
+// file may have created by a plain write, without settings) plays no part.
+const INDEX = `test_cloud_delete_org_${randomUUID().slice(0, 8)}`
+let indexSpy: { mockRestore: () => void } | null = null
+
 beforeAll(async () => {
   await acquireTestLock()
+  indexSpy = spyOn(searchClientModule, "effectiveIndexName").mockReturnValue(INDEX)
+  IndexWriterTestAccess.resetRebuildCache()
+  const meili = searchClientModule.getMeili()
+  const created = await meili.createIndex(INDEX, { primaryKey: "id" })
+  await waitForMeiliTask(meili, created.taskUid)
+  const settings = await meili.index(INDEX).updateSettings({ filterableAttributes: ["org_id"] })
+  await waitForMeiliTask(meili, settings.taskUid)
   await sql`DELETE FROM kernel.cloud_request_outcomes`
   _setEdition(null)
   mutableEnv.LIAISON_EDITION = "managed"
@@ -131,6 +147,12 @@ afterAll(async () => {
   clearOrgBillingStatusCache()
   await sql`DELETE FROM kernel.cloud_request_outcomes`
   await withSystemDb("test-cloud-identity", (db) => deleteIdentity(db))
+  indexSpy?.mockRestore()
+  IndexWriterTestAccess.resetRebuildCache()
+  await searchClientModule
+    .getMeili()
+    .deleteIndex(INDEX)
+    .catch(() => {})
   await releaseTestLock()
 })
 

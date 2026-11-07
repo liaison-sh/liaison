@@ -13,11 +13,11 @@
 // gets one thread with the handle `entity:<app>:<entityType>:<entityId>`; the
 // org's unique handle index makes two simultaneous first opens one thread.
 //
-// When a record's sharing narrows, its app calls pruneEntityDiscussion: the
-// people enrolled so far are dropped, and whoever can still see the record is
-// enrolled again the next time they open it. When a record is deleted, its app
-// calls deleteEntityDiscussions (the sandbox bridge's
-// `threads_deleteEntityDiscussion`).
+// When a record's sharing narrows, its app calls pruneEntityDiscussion (the
+// sandbox bridge's `threads_pruneEntityDiscussion`): the people enrolled so far
+// are dropped, and whoever can still see the record is enrolled again the next
+// time they open it. When a record is deleted, its app calls
+// deleteEntityDiscussions (the bridge's `threads_deleteEntityDiscussion`).
 import { randomUUID } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
@@ -82,8 +82,9 @@ export interface OpenedDiscussion {
 
 /**
  * Open an entity's discussion for `userId`: its thread id, created on first
- * use, with the caller enrolled. Null when the entity does not exist or the
- * caller may not see it under `tx`'s RLS (nothing is created then). Throws
+ * use, with the caller enrolled. Null when the entity does not exist, the
+ * caller may not see it under `tx`'s RLS, or the caller is not an active member
+ * of the organization (nothing is created then). Throws
  * DiscussionNotDeclaredError for a kind that holds none.
  */
 export async function openEntityDiscussion(
@@ -126,15 +127,24 @@ export async function openEntityDiscussion(
  * Find or create the thread of a declared entity and seat `userId` in it.
  * Privileged: the caller has already proved, under their own RLS, that they
  * see the entity, and a person not yet seated cannot see the thread under
- * `threads_select` (as getOrCreateContactPrimaryThread).
+ * `threads_select` (as getOrCreateContactPrimaryThread). Only an active member
+ * of the organization is seated, the rule `enrolInEntityDiscussion` applies to
+ * others: anyone else gets null and nothing is created.
  */
 async function getOrCreateEntityDiscussionThread(
   orgId: string,
   ref: ThreadAnchorRef,
   userId: string,
-): Promise<OpenedDiscussion> {
+): Promise<OpenedDiscussion | null> {
   const handle = entityDiscussionHandle(ref)
   return withPrivilegedDb(orgId, "entity-discussion-open", async (tx) => {
+    const member = extractRows<{ id: string }>(
+      await tx.execute(drizzleSql`
+        SELECT id::text AS id FROM ${ks}.users
+         WHERE id = ${userId}::uuid AND org_id = ${orgId}::uuid
+           AND status = 'active' AND user_type = 'member'`),
+    )
+    if (member.length === 0) return null
     const find = async (): Promise<string | null> => {
       const [row] = extractRows<{ id: string }>(
         await tx.execute(drizzleSql`
@@ -235,29 +245,33 @@ export async function enrolInEntityDiscussion(params: {
  * handle already open; without one the deletion runs in its own privileged,
  * org-scoped transaction, since a person's RLS may not remove someone else's
  * seat. A task has no row sharing (its project decides), so it has nothing to
- * prune here.
+ * prune here. Returns how many seats were dropped, or null when the entity has
+ * no discussion yet.
  */
 export async function pruneEntityDiscussion(
   params: { orgId: string; ref: ThreadAnchorRef; keepUserId: string | null },
   db?: Handle,
-): Promise<void> {
+): Promise<number | null> {
   const handle = entityDiscussionHandle(params.ref)
-  const run = async (h: Handle): Promise<void> => {
+  const run = async (h: Handle): Promise<number | null> => {
     const [thread] = extractRows<{ id: string }>(
       await h.execute(drizzleSql`
         SELECT id::text AS id FROM ${ks}.threads
          WHERE org_id = ${params.orgId}::uuid AND handle = ${handle}
          LIMIT 1`),
     )
-    if (!thread) return
-    await h.execute(drizzleSql`
-      DELETE FROM ${ks}.thread_participants
-       WHERE org_id = ${params.orgId}::uuid AND thread_id = ${thread.id}::uuid
-         AND user_id IS NOT NULL
-         AND (${params.keepUserId}::uuid IS NULL OR user_id <> ${params.keepUserId}::uuid)`)
+    if (!thread) return null
+    return extractRows(
+      await h.execute(drizzleSql`
+        DELETE FROM ${ks}.thread_participants
+         WHERE org_id = ${params.orgId}::uuid AND thread_id = ${thread.id}::uuid
+           AND user_id IS NOT NULL
+           AND (${params.keepUserId}::uuid IS NULL OR user_id <> ${params.keepUserId}::uuid)
+        RETURNING user_id`),
+    ).length
   }
   if (db) return run(db)
-  await withPrivilegedDb(params.orgId, "entity-discussion-prune", run)
+  return withPrivilegedDb(params.orgId, "entity-discussion-prune", run)
 }
 
 /** The discussion thread of each entity that has one, by entity id. */

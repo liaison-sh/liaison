@@ -264,7 +264,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `CLAMAV_HOST` | `apps/api/src/lib/clamav.ts:38` |
 | `CLAUDE_CONFIG_DIR` | `apps/desktop/sidecar/config-isolation.ts:23`, `apps/desktop/sidecar/session-import.ts:14` |
 | `CLAUDE_SECURESTORAGE_CONFIG_DIR` | `apps/desktop/sidecar/config-isolation.ts:17`, `apps/desktop/sidecar/config-isolation.ts:22` |
-| `CONTEXT_PROVIDERS_DISABLED` | `apps/api/src/modules/agent/context/context-providers.ts:264` |
+| `CONTEXT_PROVIDERS_DISABLED` | `apps/api/src/modules/agent/context/context-providers.ts:271` |
 | `DRIVE_API_BASE_URL` | `apps/api/src/apps/google-drive/drive-rest.ts:33` |
 | `DRIVE_UPLOAD_API_BASE_URL` | `apps/api/src/apps/google-drive/drive-rest.ts:37` |
 | `EVENT_ROUTINE_COALESCE_MS` | `apps/api/src/infra/jobs/event-routine-subscriber.ts:47`, `apps/api/src/modules/agent/tools/skills-routines-tools.ts:5020` |

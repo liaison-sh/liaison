@@ -15,6 +15,8 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
 import { assembleContext } from "~/modules/agent/context/context"
+import { appBridgeManifestRegistry } from "~/modules/apps/app-registries"
+import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import {
   DiscussionNotDeclaredError,
   enrolInEntityDiscussion,
@@ -80,6 +82,40 @@ const open = (actor: UserContext, entityType: string, entityId: string, appName 
       ref: { app: appName, entityType, entityId },
     }),
   )
+
+/** A sandbox bridge call of the example app, made as `actor` inside their own transaction. */
+async function bridgeCall(
+  actor: UserContext,
+  method: string,
+  params: Record<string, unknown>,
+  before?: (tx: Parameters<Parameters<typeof withRlsContext>[1]>[0]) => Promise<void>,
+): Promise<{ ok?: boolean; deleted?: number; dropped?: number; error?: { code: string } }> {
+  const manifest = appBridgeManifestRegistry.get([orgId, "example"])
+  if (!manifest) throw new Error("the example app is not registered for this org")
+  return withRlsContext(actor, async (tx) => {
+    if (before) await before(tx)
+    const bridge = createRpcBridge(
+      "example",
+      actor.userId,
+      orgId,
+      tx,
+      manifest as never,
+      actor.scopes,
+    )
+    return JSON.parse(await bridge[method](JSON.stringify(params)))
+  })
+}
+
+async function seatsOf(threadId: string): Promise<string[]> {
+  const ks = drizzleSql.raw(`"${schemaRef("kernel")}"`)
+  return withPrivilegedDb(orgId, "test-seats", async (tx) =>
+    extractRows<{ user_id: string }>(
+      await tx.execute(drizzleSql`
+        SELECT user_id::text AS user_id FROM ${ks}.thread_participants
+         WHERE thread_id = ${threadId}::uuid AND user_id IS NOT NULL ORDER BY user_id`),
+    ).map((r) => r.user_id),
+  )
+}
 
 describe("entity discussions", () => {
   beforeAll(async () => {
@@ -208,6 +244,88 @@ describe("entity discussions", () => {
     })
     expect(result.enrolled).not.toContain(clientId)
     expect(result.dropped).toContain(clientId)
+  })
+
+  test("a client's portal account opening a discussion is not seated and nothing is made", async () => {
+    const itemId = await item(orgId, "Opened by a client")
+    const ks = drizzleSql.raw(`"${schemaRef("kernel")}"`)
+    const clientId = await withPrivilegedDb(orgId, "test-portal-opener", async (tx) => {
+      const created = await createExternalUser(tx, {
+        orgId,
+        companyId: crypto.randomUUID(),
+        email: `opener-${crypto.randomUUID().slice(0, 8)}@client.example`,
+        name: "Client Opener",
+      })
+      if (!created.ok) throw new Error(created.code)
+      await tx.execute(drizzleSql`
+        UPDATE ${ks}.users SET status = 'active' WHERE id = ${created.userId}::uuid`)
+      return created.userId
+    })
+    expect(await open(as(clientId, SEES_ITEMS), "items", itemId)).toBeNull()
+    expect(await threadsWithHandle(`entity:example:items:${itemId}`)).toEqual([])
+    // On a discussion that exists already, the client is not seated either.
+    const opened = await open(as(aliceId, SEES_ITEMS), "items", itemId)
+    expect(await open(as(clientId, SEES_ITEMS), "items", itemId)).toBeNull()
+    expect(await seatsOf(opened!.threadId)).toEqual([aliceId])
+  })
+
+  test("the app prunes a discussion when its record narrows: the others drop out, the caller stays", async () => {
+    const itemId = await item(orgId, "Narrowed by its app")
+    const opened = await open(as(aliceId, SEES_ITEMS), "items", itemId)
+    await open(as(bobId, SEES_ITEMS), "items", itemId)
+    expect(await seatsOf(opened!.threadId)).toEqual([aliceId, bobId].sort())
+    const pruned = await bridgeCall(as(aliceId, SEES_ITEMS), "threads_pruneEntityDiscussion", {
+      entityType: "items",
+      entityId: itemId,
+    })
+    expect(pruned).toMatchObject({ ok: true, dropped: 1 })
+    expect(await seatsOf(opened!.threadId)).toEqual([aliceId])
+    expect(await canOpenThread(as(bobId, SEES_ITEMS), opened!.threadId)).toBe(false)
+    const undeclared = await bridgeCall(as(aliceId, SEES_ITEMS), "threads_pruneEntityDiscussion", {
+      entityType: "summaries",
+      entityId: itemId,
+    })
+    expect(undeclared.error?.code).toBe("discussion_not_declared")
+  })
+
+  test("deleting the discussion of a record the caller cannot see is refused, and nothing goes", async () => {
+    const itemId = await item(orgId, "Hidden from Carol")
+    const opened = await open(as(aliceId, SEES_ITEMS), "items", itemId)
+    const refused = await bridgeCall(as(carolId, THREAD_SCOPES), "threads_deleteEntityDiscussion", {
+      entityType: "items",
+      entityId: itemId,
+    })
+    expect(refused.error?.code).toBe("entity_still_exists")
+    expect(await threadsWithHandle(`entity:example:items:${itemId}`)).toEqual([opened!.threadId])
+    expect(await seatsOf(opened!.threadId)).toEqual([aliceId])
+  })
+
+  test("a record deleted in the same call, or before it, takes its discussion with it", async () => {
+    const items = drizzleSql.raw(`"${schemaRef("app_example")}".items`)
+    const writer = as(aliceId, [...SEES_ITEMS, "example:items:write"])
+    const sameCall = await item(orgId, "Deleted in the same call")
+    await open(writer, "items", sameCall)
+    const inCall = await bridgeCall(
+      writer,
+      "threads_deleteEntityDiscussion",
+      { entityType: "items", entityId: sameCall },
+      async (tx) => {
+        await tx.execute(drizzleSql`DELETE FROM ${items} WHERE id = ${sameCall}::uuid`)
+      },
+    )
+    expect(inCall).toMatchObject({ ok: true, deleted: 1 })
+    expect(await threadsWithHandle(`entity:example:items:${sameCall}`)).toEqual([])
+
+    const before = await item(orgId, "Deleted before the call")
+    await open(writer, "items", before)
+    await withPrivilegedDb(orgId, "test-delete-item", (tx) =>
+      tx.execute(drizzleSql`DELETE FROM ${items} WHERE id = ${before}::uuid`),
+    )
+    const after = await bridgeCall(writer, "threads_deleteEntityDiscussion", {
+      entityType: "items",
+      entityId: before,
+    })
+    expect(after).toMatchObject({ ok: true, deleted: 1 })
   })
 
   test("after prune an enrolled person cannot open it", async () => {

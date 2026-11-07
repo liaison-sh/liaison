@@ -19,7 +19,7 @@ It is a real in-tree app — auto-discovered at startup, packageable with
 | `resolve_contact` | `ctx.resolveContact` | The contacts integration surface |
 | `nightly_summary` | manifest `jobs` + `ctx.emit` | A scheduled (cron) background job |
 | (no handler) | manifest `slots` | A panel or action on each host slot (task tabs and actions, project, contact, ticket panel and actions), shown only to holders of `example:items:read` and only where the `slot_panels` feature is on |
-| (no handler) | `entities.items.discussion` + `views.tabTypes.items` | One discussion per item, readable by whoever can read the item: `POST /api/threads/entity-discussion`, or `host.mountEntityDiscussion` in a UI bundle. Delete it with the item through `threads_deleteEntityDiscussion` |
+| (no handler) | `entities.items.discussion` + `views.tabTypes.items` | One discussion per item, readable by whoever can read the item: `POST /api/threads/entity-discussion`, or `host.mountEntityDiscussion` in a UI bundle. Delete it with the item through `threads_deleteEntityDiscussion`, and prune its seats through `threads_pruneEntityDiscussion` when an item's sharing narrows |
 
 ## Layout
 

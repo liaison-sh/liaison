@@ -282,7 +282,7 @@
       }
     ]
   },
-  "version": "0.4.10",
+  "version": "0.4.11",
   "iconName": "shopping-cart",
   "description": "Shopify integration: orders, customers, products, markets, draft orders, refunds, fulfillments, returns",
   "listing": {
@@ -1228,6 +1228,7 @@
       "readOnly": true
     },
     "orders_search": {
+      "focusCore": true,
       "taintSource": true,
       "description": "Search Shopify orders by query (email, customer name, order name/number, financial_status, fulfillment_status, tag, …) AND/OR by a placed-date window. To scope to a DATE/WEEK ('yesterday', 'this week', 'Modular Expo week'), pass `created_at_min` and/or `created_at_max` (inclusive ISO dates) — these filter SERVER-SIDE on the order's PLACED date (its processedAt, which can differ from createdAt for an imported or backdated order; results are sorted newest createdAt first), so 'orders placed during week X' IS directly queryable; they COMPOSE with the `query` facet (e.g. tag a product SKU via query AND bound the week via the date params in ONE call). A date term written INSIDE the `query` string is still silently ignored — use the date-range params, not the query, for dates. Results come back most-recent-first and are bounded by `limit` + the opaque `cursor`; to enumerate the full matching set, PAGE the cursor (pass the returned nextCursor back until it is null) — do NOT re-run the same query and assume one page is complete.",
       "searchKeywords": ["commande", "commandes", "chercher", "rechercher", "retrouver", "trouver", "find", "vente", "ventes", "sale", "sales"],
@@ -1264,6 +1265,7 @@
       "readOnly": true
     },
     "orders_get": {
+      "focusCore": true,
       "taintSource": true,
       "description": "Get one Shopify order by id (line items, fulfillments, refunds, returns, customer). For a customer's POSTAL/SHIPPING ADDRESS the result carries TWO fields: `shippingAddress` (the per-order ship-to — frequently NULL, as many orders have no order-level address) and `customerAddress` (the customer's canonical defaultAddress: { address1, address2, city, province, provinceCode, zip, country, countryCode, phone }). If `shippingAddress` is null, do NOT conclude the address is unavailable — use `customerAddress` (the customer record is the source of the address). Use ONLY the address fields actually present; never fabricate a street/city/zip. PRICING: each lineItems[] entry carries `priceSet` (the LIST unit price before discounts) AND `discountedUnitPriceSet` (the unit price actually charged after ALL discounts, line-level and allocated order-level) — when invoicing or reconciling an order, ALWAYS use `discountedUnitPriceSet` (fall back to priceSet only when it is absent). Top-level `shippingLine` ({ title, priceSet }) is the shipping charge after shipping discounts, null when free. The result also carries `po_number`, the customer's purchase order reference taken from Shopify's native Order.poNumber (falling back to the originating draft order's), which invoicing prints on the invoice. TAX: US sales tax on a Shop channel order is collected and remitted by Shopify as marketplace facilitator, so it stays OFF our invoicing documents: never copy an order's tax onto an invoice or a quote, and never re-derive a tax figure the order already establishes. B2B SIGNALS in attributes: totalTax, taxExempt, b2bCompany {name, taxRegistrationId} (null for a consumer), customerTaxExempt.",
       "searchKeywords": ["commande", "détail", "voir", "lire"],
@@ -1321,6 +1323,7 @@
       "readOnly": true
     },
     "customers_search": {
+      "focusCore": true,
       "taintSource": true,
       "description": "Search Shopify customers. Each result carries the customer's NATIVE lifetime spend in `amountSpent` ({ amount, currencyCode }) and `numberOfOrders` — use these directly for any spend / lifetime-value / top-customers / spend-tier question. Do NOT sum orders by hand, and NEVER claim per-customer lifetime spend is uncomputable: amountSpent IS it. Results are PAGED/BOUNDED (~100 per page via cursor) and every page returns `totalCount` — the server-side total number of customers matching the same filter.",
       "searchKeywords": ["client", "clients", "acheteur", "chercher", "rechercher", "retrouver", "trouver"],
@@ -1477,6 +1480,7 @@
       "readOnly": true
     },
     "products_search": {
+      "focusCore": true,
       "description": "Search Shopify products",
       "searchKeywords": ["produit", "produits", "catalogue", "article", "chercher", "rechercher", "trouver", "find"],
       "requiredScopes": ["shopify:products:read"],
@@ -1889,6 +1893,7 @@
       "readOnly": true
     },
     "refunds_create": {
+      "focusCore": true,
       "description": "Refund a Shopify order: moves money on the order. For a FLAT goodwill / courtesy / partial refund of a fixed sum (e.g. a 50 EUR goodwill credit), pass `amount` (a money value like \"50.00\") and OMIT refundLineItems — the refund returns exactly that amount and is NOT tied to line items. To refund specific units, pass refundLineItems instead. Omit BOTH amount and refundLineItems to refund the whole order. You only need to specify HOW MUCH (amount) or WHICH items (refundLineItems) — the transaction plumbing (gateway/parent transaction) is derived from the order automatically; do not hand-build a transactions entry or split a goodwill amount onto shipping. Invoicing issues the matching credit note automatically once this refund lands, so never also call invoicing__credit_note_create_and_issue for it.",
       "searchKeywords": ["rembourser", "remboursement", "refund", "argent", "commande", "order", "rembourse"],
       "requiredScopes": ["shopify:refunds:create"],
@@ -2202,6 +2207,7 @@
       }
     },
     "fulfillments_create": {
+      "focusCore": true,
       "description": "Mark an order's items as fulfilled. SIMPLEST: pass just the order id as `orderId` (gid://shopify/Order/...) and ALL of that order's open line items are fulfilled — you do NOT need to look up fulfillment-order ids yourself. PARTIAL shipment (only some items or quantities shipped): pass `orderId` PLUS `lineItems` [{ sku, quantity }] (or { orderLineItemId, quantity } when a sku is missing or ambiguous): exactly those quantities are marked fulfilled and the rest stays open; the handler maps them onto the order's open fulfillment orders for you (call fulfillment_orders_get first to see what is still fulfillable). It errors instead of guessing when a sku is unknown/ambiguous or a quantity exceeds what remains. Advanced: an explicit `fulfillment.lineItemsByFulfillmentOrder` is still honored verbatim. Optionally add `fulfillment.trackingInfo` (company/number/url) and `fulfillment.notifyCustomer`. When the store sets a shipping email policy (customerShippingEmail, e.g. retail orders only: a retail customer is emailed, a B2B buyer, a Shopify B2B company or a line sku ending with a b2bSkuSuffixes suffix, never is), the policy decides notifyCustomer whatever you pass, and the result carries `customerNotification` {notified, reason, message}: tell the person whether Shopify emailed the customer.",
       "searchKeywords": ["expédié", "expédier", "expédition", "ship", "shipped", "fulfilled", "livrer", "marquer", "mark", "traiter"],
       "requiredScopes": ["shopify:fulfillments:write"],

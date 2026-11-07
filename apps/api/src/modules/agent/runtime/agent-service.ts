@@ -227,8 +227,10 @@ import {
 import {
   appOfSdkToolName,
   focusAppNames,
+  focusCorePreload,
   focusHeadroomFill,
   resolveTurnFocus,
+  withFocusCore,
 } from "~/modules/agent/runtime/turn-focus"
 import { registerDurableTurn } from "~/modules/agent/runtime/turn-handoff"
 import {
@@ -2422,7 +2424,6 @@ async function runAgentChatTurn(
   // A SOFT focus app (the view a person's message was sent from, in any
   // other org) only fills the room the budget left: the client's active tab
   // never pushes out what the conversation itself loaded.
-  const toolDefs = tools as Record<string, { description?: string; inputSchema?: unknown }>
   const focus = await resolveTurnFocus({
     orgId,
     threadId,
@@ -2433,6 +2434,11 @@ async function runAgentChatTurn(
   })
   const focusApps = focusAppNames(focus)
   const hardFocusApps = focusAppNames(focus, true)
+  const toolDefs = withFocusCore(
+    orgId,
+    hardFocusApps,
+    tools as Record<string, { description?: string; inputSchema?: unknown }>,
+  )
   // THE TOOLS THE LAST TURN SENT STAY. A tool that leaves the list moves every
   // tool after it, and the provider then re-reads the request from there: on
   // an upstream that renders the tools ahead of the conversation, the whole
@@ -2450,9 +2456,19 @@ async function runAgentChatTurn(
     carried.add(name)
   }
   const preloaded: string[] = []
-  for (const name of Object.keys(tools)) {
-    if (!deferredNames.has(name) || discoveredTools.has(name)) continue
-    if (!hardFocusApps.has(appOfSdkToolName(name))) continue
+  // An app with a core list (manifest `focusCore`) preloads that list; its
+  // other tools are listed by name and purpose once the budget has run, below.
+  const focusPlan = focusCorePreload({
+    candidates: Object.keys(tools).filter(
+      (name) =>
+        deferredNames.has(name) &&
+        !discoveredTools.has(name) &&
+        hardFocusApps.has(appOfSdkToolName(name)),
+    ),
+    tools: toolDefs,
+    focus,
+  })
+  for (const name of focusPlan.preload) {
     discoveredTools.add(name)
     // Counted as the turn's starting surface, not as its own discovery: a
     // preload is no evidence the conversation used the app, so it does not
@@ -2465,6 +2481,8 @@ async function runAgentChatTurn(
   // turn can call a loaded tool through kernel__call_tool: the tools the last
   // turn sent are the list, so none of them may be shed.
   const fixedListMode = CALL_TOOL_SDK_NAME in tools
+  // A hard focus app's tools off its core list, listed by name only (below).
+  const focusIndexed = new Set<string>()
   // THE TOOLS LOADED ON SPECULATION (the apps the last turns worked, the
   // view's app): most are never called, and on a fixed list a loaded tool's
   // schema rides a guide note that stays in the history for good. They are
@@ -2559,6 +2577,21 @@ async function runAgentChatTurn(
       discoveredTools.add(name)
       if (fixedListMode) speculativeTools.add(name)
     }
+    // THE REST OF A CORE-LISTED FOCUS APP: loaded for the SDK and listed by
+    // name and purpose (isIndexOnly), so a first call with fitting arguments
+    // runs through kernel__call_tool and the schema follows when asked for.
+    // They cost an index line, not a schema, so they come after the budget.
+    // Without a fixed list there is no index: they stay in the deferred
+    // catalog, announced and one tool_search away.
+    if (fixedListMode) {
+      for (const name of focusPlan.indexOnly) {
+        if (discoveredTools.has(name)) continue
+        discoveredTools.add(name)
+        discoveredAtStart.add(name)
+        speculativeTools.add(name)
+        focusIndexed.add(name)
+      }
+    }
     if (recentFill.length > 0) {
       log.info(
         {
@@ -2578,6 +2611,7 @@ async function runAgentChatTurn(
           focusApps: [...focusApps],
           hardFocusApps: [...hardFocusApps],
           preloadedToolCount: preloaded.filter((n) => discoveredTools.has(n)).length,
+          indexedFocusToolCount: focusIndexed.size,
           trimmedFocusToolCount: overflow.length,
           headroomToolCount: softFill.length,
         },
@@ -2607,7 +2641,9 @@ async function runAgentChatTurn(
   // (takeGuideNote), and the model calls it through kernel__call_tool.
   const fixedToolList: Set<string> | null = fixedListMode
     ? (() => {
-        const startSet = new Set(activeAtStart)
+        // A tool listed by name only is not on the list: it is called through
+        // kernel__call_tool, and listing it would send its schema after all.
+        const startSet = new Set(activeAtStart.filter((name) => !focusIndexed.has(name)))
         if (threadToolOrder.length === 0) return startSet
         const ordered = new Set(threadToolOrder)
         return new Set([

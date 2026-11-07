@@ -82,7 +82,8 @@ describe("projects.manifest", () => {
     // 1.10.2: more French and English tool search words
     // 1.10.3: approval_route_read says who an approval about a task is for; Home passes on.
     // 1.10.6: sentences shared by several tools, and the longest descriptions past 600 characters, read from guide sections.
-    expect(projectsManifest.version).toBe("1.10.6")
+    // 1.10.7: its core tools load on a hard focus of its entity, the others by name.
+    expect(projectsManifest.version).toBe("1.10.7")
   })
 
   it("projects.manifest.task-labels", () => {

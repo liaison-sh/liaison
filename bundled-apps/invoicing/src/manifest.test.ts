@@ -1510,7 +1510,8 @@ describe("invoicing manifest", () => {
     // 0.20.56: document search declares one search keyword fewer.
     // 0.20.57: hidden tools name the visible one to use instead.
     // 0.20.58: sentences shared by several tools, and the longest descriptions past 600 characters, read from guide sections.
-    expect(m.version).toBe("0.20.58")
+    // 0.20.59: its core tools load on a hard focus of its entity, the others by name.
+    expect(m.version).toBe("0.20.59")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

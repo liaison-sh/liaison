@@ -548,7 +548,7 @@ function containment(field: string, value: Scalar): SQL {
   return sql`${appDocuments.data} @> ${JSON.stringify({ [field]: value })}::jsonb`
 }
 
-function columnCompare(field: string, op: string, value: Scalar): SQL {
+function columnCompare(field: string, op: (typeof RANGE_OPS)[RangeOp] | "=", value: Scalar): SQL {
   if (field === DOC_ID_FIELD) {
     if (typeof value !== "string") {
       throw new DataStoreError("invalid_query", "doc_id compares with a string")
@@ -606,7 +606,7 @@ export function compileWhere(where: unknown): CompiledWhere {
       continue
     }
     for (const key of keys) {
-      if (!(key in RANGE_OPS)) {
+      if (!Object.hasOwn(RANGE_OPS, key)) {
         throw new DataStoreError("invalid_query", `unknown operator '${key}' on '${field}'`)
       }
       const value = (filter as Record<string, unknown>)[key]

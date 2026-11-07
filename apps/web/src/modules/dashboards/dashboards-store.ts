@@ -4,6 +4,7 @@
 // shows and each open tab's title (`resolveLabel`).
 import { createSignal } from "solid-js"
 import { createStore } from "solid-js/store"
+import { onSessionTeardown } from "~/lib/session-lifecycle"
 import { openTab } from "~/modules/shell/tab-store"
 import { type DashboardSummary, type DashboardsApi, listDashboards } from "./dashboards-client"
 
@@ -64,9 +65,11 @@ export function openDashboard(d: Pick<DashboardSummary, "id" | "title">): void {
   openTab({ type: DASHBOARD_TAB_TYPE, entityId: d.id, label: d.title })
 }
 
-/** Test seam. */
+/** Forget the viewer's dashboards: at sign-out (the next person must not see them) and between tests. */
 export function resetDashboardsStore(): void {
   setList([])
   setTitles({})
   pending = null
 }
+
+onSessionTeardown(resetDashboardsStore)

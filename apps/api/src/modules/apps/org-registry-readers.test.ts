@@ -84,6 +84,13 @@ const READERS: Record<string, string> = {
   "modules/connection-guides/plan.ts":
     "CLI, agent turn or request: each caller sets the org up first",
   "modules/demo/world/commerce-order.ts": ENSURES,
+  // A source lookup fills the org's registries on a miss (ensureAppsForOrg); the source
+  // listing runs from the dashboards routes and tools, each set up first.
+  "modules/dashboards/sources.ts":
+    "request or agent turn; a lookup miss awaits ensureAppsForOrg itself",
+  // Register the kernel dashboard and data tools for an org while it is set up.
+  "modules/dashboards/tools.ts": SETUP,
+  "modules/data-store/tools.ts": SETUP,
   "modules/documents/print.ts": ENSURES,
   "modules/files/service.ts": REQUEST,
   "modules/mcp-client/projector.ts": SETUP,

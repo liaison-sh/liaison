@@ -295,6 +295,9 @@ afterAll(async () => {
   files?.stop(true)
   await shutdownWorkerPool()
   for (const name of FIXTURE_APPS) await uninstallApp({ name }).catch(() => undefined)
+  // Uninstalling keeps an app's schema; a fixture schema left behind would join the next
+  // file's catalog (an org transfer copies every app_* table), so drop it.
+  for (const name of FIXTURE_APPS) await sql.unsafe(`DROP SCHEMA IF EXISTS app_${name} CASCADE`)
   clearInstalledIdentityCache()
   if (savedAppsDir === undefined) delete process.env.LIAISON_APPS_DIR
   else process.env.LIAISON_APPS_DIR = savedAppsDir

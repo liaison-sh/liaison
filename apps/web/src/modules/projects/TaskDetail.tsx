@@ -60,6 +60,7 @@ import { useApi } from "~/modules/shell/ApiContext"
 import { copyLink, entityRoute } from "~/modules/shell/entity-link"
 import { MarkdownContent } from "~/modules/shell/markdown-content"
 import { BacklinksPanel } from "~/modules/shell/references/BacklinksPanel"
+import { SlotPanels } from "~/modules/shell/SlotPanels"
 import { closeTab, makeTabId, openTab } from "~/modules/shell/tab-store"
 import { addToast } from "~/modules/shell/toast-store"
 import { DISCUSSION_RAIL_BOTTOM_PAD } from "~/modules/threads/discussion-rail"
@@ -600,6 +601,8 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
                     onChange={(v) => patch({ blocked: v })}
                     disabled={isArchived()}
                   />
+                  {/* Actions other apps add to the task. */}
+                  <SlotPanels slot="project:task:actions" entityId={t().id} position="actions" />
                 </div>
 
                 {/* Description — inline editable */}
@@ -645,6 +648,9 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
                     </ul>
                   </section>
                 </Show>
+
+                {/* Tabs other apps add to the task, above its discussion. */}
+                <SlotPanels slot="project:task:tabs" entityId={t().id} position="tabs" />
 
                 {/* Provenance footer — sits just below the metadata blocks,
                     above the discussion timeline. */}

@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { registerTabType, resetRegistry } from "~/framework/app-registry"
+import {
+  registerContribution,
+  registerTabType,
+  resetRegistry,
+  unregisterContributions,
+} from "~/framework/app-registry"
 import { ApiError } from "~/lib/api-error"
 import { installAudioContext, installMic, removeMic } from "~/modules/assist/dictation-fakes"
 import { editorOf } from "~/modules/editor/test-helpers"
@@ -134,6 +139,48 @@ beforeEach(() => {
 })
 
 describe("TaskDetail", () => {
+  it("shows the tabs and actions other apps add to the task, each with the task id", async () => {
+    for (const [slot, id] of [
+      ["project:task:tabs", "fixture-tab"],
+      ["project:task:actions", "fixture-action"],
+    ] as const) {
+      registerContribution(slot, {
+        appId: "fixture-app",
+        id,
+        label: id,
+        component: (props) => <span data-testid={id}>{props.entityId}</span>,
+      })
+    }
+    const api = {
+      post: vi.fn().mockResolvedValue(task()),
+      get: vi.fn(async (path: string) => {
+        if (path === "/v1/slots/project:task:tabs") {
+          return { panels: [{ id: "fixture-tab", app: "fixture-app", label: "Tab" }] }
+        }
+        if (path === "/v1/slots/project:task:actions") {
+          return { panels: [{ id: "fixture-action", app: "fixture-app", label: "Act" }] }
+        }
+        return { id: "thread-1", hiddenFromList: true }
+      }),
+      patch: vi.fn(),
+      delete: vi.fn(),
+      getEnvelope: vi.fn(),
+    } as any
+    try {
+      render(() => (
+        <ApiContext.Provider value={api}>
+          <TaskDetail entityId="t1" />
+        </ApiContext.Provider>
+      ))
+      expect((await screen.findByTestId("fixture-tab")).textContent).toBe("t1")
+      const action = await screen.findByTestId("fixture-action")
+      expect(action.textContent).toBe("t1")
+      expect(screen.getByTestId("task-detail.meta-row").contains(action)).toBe(true)
+    } finally {
+      unregisterContributions("fixture-app")
+    }
+  })
+
   describe("author line", () => {
     const apiFor = (row: Record<string, unknown>) =>
       ({

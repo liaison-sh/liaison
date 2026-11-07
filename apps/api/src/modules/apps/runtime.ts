@@ -170,6 +170,7 @@ import {
   tablesUnreachableByGrantableScopes,
 } from "~/modules/permissions/rls-generator"
 import { invalidateScopeCatalog } from "~/modules/permissions/scope-catalog"
+import { registerAppSlots } from "~/modules/slots/registry"
 import { declareWebhookHealth, forgetWebhookHealth } from "~/modules/webhooks/ingest-health"
 import {
   parseUpstreamProbeResult,
@@ -4083,14 +4084,8 @@ async function registerSingleApp(
         registerExternalSearchHandler(orgId, appNameLocal, handler, { timeoutMs })
       }
 
-      // Register slots
-      if (desc.slots) {
-        for (const [slotName, slotDef] of Object.entries(desc.slots as Record<string, any>)) {
-          slotRegistry.set([orgId, desc.name, slotName], slotDef)
-        }
-      }
-
-      // Register contributions
+      // Register slots and contributions: one list, read by `listSlotPanels`.
+      registerAppSlots(orgId, desc.name, desc.slots, desc.contributions)
       if (desc.contributions) {
         for (const [slotTarget, contribution] of Object.entries(
           desc.contributions as Record<string, any>,

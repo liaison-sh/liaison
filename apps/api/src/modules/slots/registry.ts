@@ -18,18 +18,26 @@
  * Per Phase 17 spec §K5: visibility is enforced by `panel.visibility_scope`
  * which must be granted to the caller (via `~/modules/permissions/permissions.hasScope`).
  * Panels without a `visibility_scope` are public-to-the-org. An app the org
- * admin turned Off (S19) contributes nothing; callers prime the org app state.
+ * admin turned Off contributes nothing, nor does a panel naming a feature the org
+ * has not switched on; callers prime the org app state.
+ *
+ * This is the one list: manifest `slots.<slot>.panels` and `.actions`, and
+ * `contributions.<slot>` (merged into the registry by the runtime), all pass
+ * the same filters and sort by `order`, then app name, then id.
  */
-import { slotRegistry } from "~/modules/apps/app-registries"
-import { isAppOffForOrg } from "~/modules/apps/org-apps"
+import { type SlotRegistryEntry, slotRegistry } from "~/modules/apps/app-registries"
+import { isAppOffForOrg, isFeatureOffForTool } from "~/modules/apps/org-apps"
 import { hasScope } from "~/modules/permissions/permissions"
 
 export interface SlotPanel {
   id: string
   label: string
   component: string
+  labelKey?: string
   order?: number
+  group?: string
   visibility_scope?: string
+  feature?: string
 }
 
 export interface ResolvedPanel extends SlotPanel {
@@ -41,6 +49,47 @@ export interface ListSlotPanelsOpts {
   orgId: string
   scopes: string[]
   slot: string
+}
+
+/**
+ * Put an app's manifest `slots` and `contributions` into the registry for one
+ * org. A contribution joins the slot's panel list with its component name as
+ * its id (the web registers it under the same id), so the scope, app-state and
+ * feature filters apply to it like any panel. Called by the app runtime.
+ */
+export function registerAppSlots(
+  orgId: string,
+  app: string,
+  slots: Record<string, unknown> | undefined,
+  contributions: Record<string, unknown> | undefined,
+): void {
+  for (const [slotName, slotDef] of Object.entries(slots ?? {})) {
+    slotRegistry.set([orgId, app, slotName], slotDef as SlotRegistryEntry)
+  }
+  for (const [slot, raw] of Object.entries(contributions ?? {})) {
+    const contribution = raw as Omit<SlotPanel, "id">
+    const current = slotRegistry.get([orgId, app, slot]) ?? {}
+    slotRegistry.set([orgId, app, slot], {
+      ...current,
+      panels: [
+        ...(Array.isArray(current.panels) ? current.panels : []),
+        { ...contribution, id: contribution.component },
+      ],
+    })
+  }
+}
+
+function visible(orgId: string, app: string, panel: SlotPanel, scopes: string[]): boolean {
+  if (panel.visibility_scope && !hasScope(panel.visibility_scope, scopes)) return false
+  return !isFeatureOffForTool(orgId, { appName: app, feature: panel.feature })
+}
+
+function byOrderThenApp(a: ResolvedPanel, b: ResolvedPanel): number {
+  const ao = a.order ?? Number.POSITIVE_INFINITY
+  const bo = b.order ?? Number.POSITIVE_INFINITY
+  if (ao !== bo) return ao - bo
+  if (a.app !== b.app) return a.app.localeCompare(b.app)
+  return a.id.localeCompare(b.id)
 }
 
 /**
@@ -72,17 +121,11 @@ export function listSlotPanels(opts: ListSlotPanelsOpts): ResolvedPanel[] {
       )?.[slotId]
       const tabs = nested?.[kind] ?? []
       for (const tab of tabs) {
-        if (tab.visibility_scope && !hasScope(tab.visibility_scope, opts.scopes)) continue
+        if (!visible(opts.orgId, app, tab, opts.scopes)) continue
         out.push({ ...tab, app })
       }
     }
-    out.sort((a, b) => {
-      const ao = a.order ?? Number.POSITIVE_INFINITY
-      const bo = b.order ?? Number.POSITIVE_INFINITY
-      if (ao !== bo) return ao - bo
-      return a.id.localeCompare(b.id)
-    })
-    return out
+    return out.sort(byOrderThenApp)
   }
 
   for (const [key, value] of slotRegistry.entriesOf(opts.orgId)) {
@@ -90,20 +133,17 @@ export function listSlotPanels(opts: ListSlotPanelsOpts): ResolvedPanel[] {
     if (orgId !== opts.orgId) continue
     if (slotName !== opts.slot) continue
     if (isAppOffForOrg(opts.orgId, app)) continue
-    // slotDef shape from the manifest: { panels?: SlotPanel[] }. Nested tabs go
+    // slotDef shape from the manifest: { panels?, actions? }. Nested tabs go
     // through the `<host>.<slot_id>.tabs` branch above.
-    const slotDef = value as { panels?: SlotPanel[] } | undefined
-    const panels = slotDef?.panels ?? []
-    for (const panel of panels) {
-      if (panel.visibility_scope && !hasScope(panel.visibility_scope, opts.scopes)) continue
+    const slotDef = value as { panels?: SlotPanel[]; actions?: SlotPanel[] } | undefined
+    const entries = [
+      ...(Array.isArray(slotDef?.panels) ? slotDef.panels : []),
+      ...(Array.isArray(slotDef?.actions) ? slotDef.actions : []),
+    ]
+    for (const panel of entries) {
+      if (!visible(opts.orgId, app, panel, opts.scopes)) continue
       out.push({ ...panel, app })
     }
   }
-  out.sort((a, b) => {
-    const ao = a.order ?? Number.POSITIVE_INFINITY
-    const bo = b.order ?? Number.POSITIVE_INFINITY
-    if (ao !== bo) return ao - bo
-    return a.id.localeCompare(b.id)
-  })
-  return out
+  return out.sort(byOrderThenApp)
 }

@@ -65,3 +65,6 @@ sinkReadersSelf: a tainted turn may write when the writer holds what it read -> 
 contentParams: a call with them all blank is not judged; each must be in params.properties -> apps/api/src/modules/agent/scopes/scope-taint.ts:849 ; apps/api/src/modules/apps/contract.ts:1047
 Not now route on a stored attention item -> apps/api/src/modules/apps/attention-routes.ts:190
 A provider pill names Home's row for a mail about that kind of record -> apps/api/src/modules/mail/send-guard.ts:395
+slots a page offers and the entityId each passes -> apps/web/src/modules/projects/TaskDetail.tsx:605,653 ; apps/web/src/modules/projects/ProjectWorkspace.tsx:741 ; apps/web/src/modules/contacts/ContactDetail.tsx:455 ; apps/web/src/modules/tickets/TicketDetail.tsx:244,707,1079
+GET /api/v1/slots/<key> is the one list: visibility_scope, app off, feature off; contributions by component name; order then app name -> apps/api/src/modules/slots/registry.ts:60,82-93 ; apps/api/src/modules/slots/routes.ts:17-24
+a throwing panel shows Panel unavailable; a framed app draws in its frame -> apps/web/src/modules/shell/SlotPanels.tsx:124-140 ; apps/web/src/framework/isolated-app.tsx:740-765

@@ -997,9 +997,13 @@ export function registerAppFromManifest(
   if (manifest.slots) {
     const legacyDecl: Record<string, { position: string }> = {}
     for (const [slotKey, raw] of Object.entries(manifest.slots)) {
-      // Contribution: `{ panels: [...] }` directly under the slot key.
-      const panels = (raw as { panels?: any[] } | null | undefined)?.panels
-      if (Array.isArray(panels)) {
+      // Contribution: `{ panels: [...] }` or `{ actions: [...] }` directly under the slot key.
+      const contributed = raw as { panels?: unknown[]; actions?: unknown[] } | null | undefined
+      const panels = [
+        ...(Array.isArray(contributed?.panels) ? contributed.panels : []),
+        ...(Array.isArray(contributed?.actions) ? contributed.actions : []),
+      ]
+      if (Array.isArray(contributed?.panels) || Array.isArray(contributed?.actions)) {
         for (const panel of panels as Array<{
           id: string
           label: string
@@ -1051,7 +1055,9 @@ export function registerAppFromManifest(
   if (manifest.contributions) {
     def.contributions = {}
     for (const [slot, contrib] of Object.entries(manifest.contributions)) {
+      // The server lists a contribution under its component name as its id.
       def.contributions[slot] = {
+        id: contrib.component,
         label: contrib.label,
         component: resolveExport(contrib.component),
       }

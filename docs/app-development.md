@@ -380,6 +380,24 @@ Keys on the app:
 A slot key takes `position` (the host declaring the slot) or `panels` / `actions` (an app
 contributing to it); a key with none of them is refused.
 
+The slots a page offers today, each giving its panel `entityId` (the record on the page):
+
+| Slot | Where it shows |
+|---|---|
+| `project:task:tabs` | A tab strip on a task, above its discussion |
+| `project:task:actions` | The task's meta row |
+| `project:detail:panel` | The project page, under its header |
+| `contact_detail` | The contact page |
+| `ticket:detail:panel` | The ticket's details panel; on a phone, the Customer row under More |
+| `ticket:detail:actions` | The ticket's header; on a phone, under More |
+
+`GET /api/v1/slots/<key>` is the one list a page reads: a panel the viewer lacks the
+`visibility_scope` for, from an app the org turned off, or naming a feature that is off, is
+not in it. `contributions.<key>` (`label`, `component`, `visibility_scope`, `order`) goes
+through the same list, with its component name as its id. The list is sorted by `order`,
+then app name. A panel that throws shows "Panel unavailable" and the page stands; an app
+that runs in a sandboxed frame draws its panel inside its frame.
+
 ## 5. Writing a panel
 
 `Panel.tsx` is a SolidJS leaf component. Keep state in a small store

@@ -233,8 +233,15 @@ describe("TicketDetail at phone tier", () => {
     const { registerContribution, unregisterContributions } = await import(
       "~/framework/app-registry"
     )
+    // The server lists the panel for this viewer; the app's UI registered its component.
+    state.api.get = vi.fn(async (path: string) =>
+      path === "/v1/slots/ticket:detail:panel"
+        ? { panels: [{ id: "panel", app: "fixture-crm", label: "Panel" }] }
+        : { panels: [] },
+    )
     registerContribution(TICKET_DETAIL_PANEL_SLOT, {
       appId: "fixture-crm",
+      id: "panel",
       label: "Customer",
       component: ((p: { ticketId: string }) => (
         <div data-testid="customer-card" data-ticket={p.ticketId} />
@@ -250,6 +257,7 @@ describe("TicketDetail at phone tier", () => {
       expect(card.dataset.ticket).toBe("t1")
     } finally {
       unregisterContributions("fixture-crm")
+      delete state.api.get
     }
   })
 

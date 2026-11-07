@@ -595,12 +595,49 @@ describe("TicketDetail layout", () => {
   // An app can add a panel to the details sidepanel (the CRM customer card is
   // one) through the `ticket:detail:panel` contribution slot; the panel gets
   // the ticket id and sits in the sidepanel, never outside it.
+  it("shows the header actions other apps add to the ticket, with the ticket id", async () => {
+    const { registerContribution, unregisterContributions } = await import(
+      "~/framework/app-registry"
+    )
+    state.api.get = vi.fn(async (path: string) =>
+      path === "/v1/slots/ticket:detail:actions"
+        ? { panels: [{ id: "action", app: "fixture-app", label: "Act" }] }
+        : { panels: [] },
+    )
+    registerContribution("ticket:detail:actions", {
+      appId: "fixture-app",
+      id: "action",
+      label: "Act",
+      component: ((props: { entityId?: string }) => (
+        <button type="button" data-testid="ticket-action-contribution">
+          {props.entityId}
+        </button>
+      )) as never,
+    })
+    try {
+      render(() => <TicketDetail entityId="t1" />)
+      const action = await screen.findByTestId("ticket-action-contribution")
+      expect(action.textContent).toBe("t1")
+      expect(screen.getByTestId("tickets-detail-header").contains(action)).toBe(true)
+    } finally {
+      unregisterContributions("fixture-app")
+      delete state.api.get
+    }
+  })
+
   it("renders the ticket:detail:panel contributions inside the sidepanel with the ticket id", async () => {
     const { registerContribution, unregisterContributions } = await import(
       "~/framework/app-registry"
     )
+    // The server lists the panel for this viewer; the app's UI registered its component.
+    state.api.get = vi.fn(async (path: string) =>
+      path === "/v1/slots/ticket:detail:panel"
+        ? { panels: [{ id: "panel", app: "test-panel-app", label: "Panel" }] }
+        : { panels: [] },
+    )
     registerContribution("ticket:detail:panel", {
       appId: "test-panel-app",
+      id: "panel",
       label: "Test panel",
       component: ((props: { ticketId: string }) => (
         <div data-testid="ticket-panel-contribution">{props.ticketId}</div>
@@ -614,6 +651,7 @@ describe("TicketDetail layout", () => {
       expect(screen.getByTestId("ticket-panel-contribution").textContent).toBe("t1")
     } finally {
       unregisterContributions("test-panel-app")
+      delete state.api.get
     }
   })
 })

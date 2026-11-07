@@ -105,6 +105,8 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   log_info: "read",
   log_warn: "read",
   mail_conversion_readConversation: "read",
+  mail_buildSendGuard: "read (computes the send check value; stores nothing)",
+  mail_checkSendGuard: "read (evaluates the send check at send; stores nothing)",
   mail_search: "read",
   mcp_checkConnectionWrite: "read",
   mcp_listConnections: "read",

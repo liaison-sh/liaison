@@ -41,7 +41,7 @@ const ORDER = {
   customer_id: 12,
   billing: { first_name: "Ana", last_name: "Silva", email: "ana@example.com", phone: "+33 1" },
   shipping: { address_1: "1 rue Example" },
-  payment_method: "stripe",
+  payment_method: "bacs",
   line_items: [
     { id: 315, product_id: 93, name: "Desk lamp", quantity: 2, total: "79.90", sku: "LAMP" },
     { id: 316, product_id: 22, name: "Bulb", quantity: 1, total: "50.00", sku: "BULB" },

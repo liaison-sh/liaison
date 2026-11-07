@@ -2258,5 +2258,13 @@
     "say": "like post",
     "typed": ["like post"],
     "any": ["social__like_item"]
+  },
+  {
+    "id": "H177",
+    "set": "heldout",
+    "lang": "en",
+    "say": "suggest next steps",
+    "typed": ["suggest next steps"],
+    "any": ["kernel__suggest_next_steps"]
   }
 ]

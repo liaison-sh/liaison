@@ -36,7 +36,7 @@ export function isSuggestStepsTool(name: string): boolean {
 function stepsOf(toolCall: ToolCallState): Step[] {
   if (!isSuggestStepsTool(toolCall.toolName) || toolCall.status !== "completed") return []
   const result = toolCall.result as { ok?: unknown; steps?: unknown } | null | undefined
-  if (!result || result.ok !== true || !Array.isArray(result.steps)) return []
+  if (result?.ok !== true || !Array.isArray(result.steps)) return []
   return (result.steps as Step[]).filter(
     (s) =>
       s &&

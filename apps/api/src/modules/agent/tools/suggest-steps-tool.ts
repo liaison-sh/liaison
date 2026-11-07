@@ -22,7 +22,11 @@ export const suggestNextStepsParams = z.object({
         label: z.string().trim().min(1).max(LABEL_MAX),
         prompt: z.string().optional(),
         open: z
-          .object({ app: z.string().min(1), view: z.string().optional(), id: z.string().optional() })
+          .object({
+            app: z.string().min(1),
+            view: z.string().optional(),
+            id: z.string().optional(),
+          })
           .optional(),
       }),
     )
@@ -85,10 +89,18 @@ function openStep(
     )
   }
   if (chosen.needsId && !id) {
-    return refuse("ID_REQUIRED", `${app} view "${chosen.view}" opens one record and needs its id.`, n)
+    return refuse(
+      "ID_REQUIRED",
+      `${app} view "${chosen.view}" opens one record and needs its id.`,
+      n,
+    )
   }
   if (!chosen.needsId && id) {
-    return refuse("ID_NOT_TAKEN", `${app} view "${chosen.view}" is not a record: it takes no id.`, n)
+    return refuse(
+      "ID_NOT_TAKEN",
+      `${app} view "${chosen.view}" is not a record: it takes no id.`,
+      n,
+    )
   }
   const shape = chosen.target.kind === "detail" ? PANEL_ID : TAB_ID
   if (id && !shape.test(id)) return refuse("BAD_ID", `"${id}" is not an id of ${app}.`, n)

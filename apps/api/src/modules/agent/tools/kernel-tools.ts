@@ -200,10 +200,6 @@ import {
 } from "~/modules/agent/tools/kernel-summarizers"
 import { handleOpenApp } from "~/modules/agent/tools/navigation-tool"
 import {
-  handleSuggestNextSteps,
-  suggestNextStepsParams,
-} from "~/modules/agent/tools/suggest-steps-tool"
-import {
   captureBusinessKnowledgePreflight,
   createRolePreflight,
   enableAppNoChange,
@@ -233,6 +229,10 @@ import { registerSecretRequestTool } from "~/modules/agent/tools/secret-request-
 import { registerSetupGuideTools } from "~/modules/agent/tools/setup-guide-tools"
 import { registerSetupStateTool } from "~/modules/agent/tools/setup-state-tool"
 import { registerSkillRoutineTools } from "~/modules/agent/tools/skills-routines-tools"
+import {
+  handleSuggestNextSteps,
+  suggestNextStepsParams,
+} from "~/modules/agent/tools/suggest-steps-tool"
 import { handleToolSearch } from "~/modules/agent/tools/tool-search"
 import { handleUsersSearch } from "~/modules/agent/tools/user-tools"
 import { handleWatchStateTool, handleWebWatchTool } from "~/modules/agent/tools/watch-tools"

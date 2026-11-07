@@ -132,6 +132,20 @@ The data store keeps JSON documents in named collections. Apps write their own c
 
 The write tools never write an app's collections.
 
+### Dashboards
+
+The agent builds dashboards from read tools and data store collections, and previews every block before it saves. The kernel skill `build-dashboard` teaches it the steps and one worked block per chart type ([See your dashboards](dashboards.md)).
+
+| Tool | What it does | Scope | Approval |
+| --- | --- | --- | --- |
+| `dashboards_sources` | List the read tools you may put on a dashboard, with their params and result fields. | `kernel:dashboards:write` | No |
+| `dashboards_preview_block` | Run one block as you and return what the chart would draw; saves nothing. | `kernel:dashboards:write` | No |
+| `dashboards_list` | List the dashboards you can see. | `kernel:dashboards:write` | No |
+| `dashboards_get` | Read one dashboard and its blocks. | `kernel:dashboards:write` | No |
+| `dashboards_create` | Save a new dashboard. | `kernel:dashboards:write` | For an org dashboard (decided by `kernel:dashboards:admin`) |
+| `dashboards_update` | Change a dashboard's title, blocks or visibility. | `kernel:dashboards:write` | For an org dashboard, or to make one org-visible |
+| `dashboards_delete` | Delete a dashboard. | `kernel:dashboards:write` | For an org dashboard |
+
 ### Contacts
 
 | Tool | What it does | Scope | Approval |

@@ -12,3 +12,26 @@ Rate limited keeps the figures -> apps/web/src/modules/dashboards/blocks/BlockCa
 Grid by width, up to three columns, one on a phone -> apps/web/src/modules/dashboards/DashboardView.tsx:20
 Block messages -> packages/shared/src/i18n/locales/en/kernel.json:6418
 Truncated note -> packages/shared/src/i18n/locales/en/kernel.json:6424
+Scopes write, share, admin and who may edit -> apps/api/src/modules/dashboards/service.ts:90
+Owning an org dashboard needs share or admin -> apps/api/src/modules/dashboards/service.ts:101
+share granted to members by default -> apps/api/src/modules/permissions/default-roles.ts:56
+Personal dashboards are their owner's alone (RLS) -> apps/api/src/db/migrations/0275_app_data_store.sql:168
+Agent writes touching an org dashboard are gated with kernel:dashboards:admin -> apps/api/src/modules/dashboards/tools.ts:310
+Approval card lists title and each block's source -> apps/api/src/modules/dashboards/tools.ts:117
+Kernel sources allowlist -> apps/api/src/modules/dashboards/sources.ts:33
+Custom apps cannot feed a dashboard -> apps/api/src/modules/dashboards/sources.ts:90
+Store sources: declared, agent-readable, read scope -> apps/api/src/modules/dashboards/sources.ts:198
+Source checked at save as the author -> apps/api/src/modules/dashboards/service.ts:135
+Source checked again at every view as the viewer -> apps/api/src/modules/dashboards/service.ts:330
+A gated tool on a dashboard is refused, never parked -> apps/api/src/modules/apps/execute-tool.ts:5037
+Block runs are read-only (bridge refuses writes) -> apps/api/src/modules/dashboards/execute.ts:8
+2,000 source rows, 24 blocks -> apps/api/src/modules/dashboards/spec.ts:13
+2,000 source rows -> apps/api/src/modules/dashboards/spec.ts:30
+Audit row dashboard.block_run -> apps/api/src/modules/dashboards/execute.ts:204
+Default 60 s, tool sources at most 900 s -> apps/api/src/modules/dashboards/spec.ts:26
+Tool source TTL cap -> apps/api/src/modules/dashboards/spec.ts:28
+Cache key per viewer and permission hash -> apps/api/src/modules/dashboards/cache.ts:79
+Four in flight, one refresh per 30 s -> apps/api/src/modules/dashboards/cache.ts:23
+Refresh window -> apps/api/src/modules/dashboards/cache.ts:24
+REST routes -> apps/api/src/modules/dashboards/routes.ts:71
+Block data endpoint and its 200 refusals -> apps/api/src/modules/dashboards/routes.ts:118

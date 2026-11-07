@@ -36,3 +36,43 @@ A block that cannot draw says why, and the rest of the dashboard still shows:
 | This block's data could not be read. Try again later. | The source failed, for example a connected service did not answer. |
 | No data for this block yet | The source answered with nothing to show. |
 | Some rows are left out: the block shows the first ones. | The source returned more rows than a block shows. |
+
+## Who can make and share dashboards
+
+| Scope | What it allows |
+| --- | --- |
+| `kernel:dashboards:write` | Make, change and delete your own personal dashboards. |
+| `kernel:dashboards:share` | Also share your own dashboard with the org, and change or delete your own org dashboards. Members have it by default. |
+| `kernel:dashboards:admin` | Change or delete any org dashboard, and decide the agent's requests about org dashboards. |
+
+Nobody else sees a personal dashboard, administrators included. Your own changes are never held for approval: your scopes decide. When the **agent** creates an org dashboard, makes one org-visible, or changes or deletes an org dashboard, the change waits for a person who holds `kernel:dashboards:admin`. The approval card lists the title and each block with the tool or collection it reads. A personal dashboard the agent makes for you saves at once.
+
+## What a block can read
+
+Each block reads one source:
+
+- a **read tool** of an app or a connector, such as a connector's read of a shop's orders. A tool that changes data, sends something, needs an approval or acts outside Liaison is refused. From the kernel only a short list of reads qualifies: `users_list`, `contacts_search`, `threads_list`, `list_routines`, `approvals_list` and `audit_search`. Custom apps cannot feed a dashboard yet.
+- a **data store collection** that its app declares readable outside the app, read with the collection's read scope (the agent's own collections need `kernel:data:read`).
+
+The source is checked when the dashboard is saved, as its author, and again every time a block is shown, as the viewer. A tool that later starts asking for approval shows "This block's source can no longer be shown on a dashboard". A block's run may only read: any write it attempts is refused, even when the tool claims to be a read. A tool can still call an outside service while it reads; a dashboard does not stop that.
+
+A block reads at most 2,000 rows from its source, and shows at most 100 rows, bars or slices. A dashboard holds at most 24 blocks. Each block's run is recorded in the audit log (`dashboard.block_run`) with the dashboard and the block.
+
+## How long figures are kept
+
+A block's figures are kept for a minute, or for the block's own interval, set by whoever built it (up to a day; at most 15 minutes for a tool source). They are kept per person and per set of access rights, so a change to your access is never answered with figures read under the old one. A block runs at most four sources at once for one person; the rest wait their turn. One refresh per block per person every 30 seconds.
+
+## The dashboards API
+
+Signed-in requests, with the person's own access:
+
+| Request | What it does |
+| --- | --- |
+| `GET /api/dashboards` | Your dashboards and the org's. |
+| `POST /api/dashboards` | Create one: `{ title, visibility, spec }`. |
+| `GET /api/dashboards/:id` | One dashboard and its spec. |
+| `PATCH /api/dashboards/:id` | Change `title`, `visibility` or `spec`; `ifVersion` refuses to overwrite a newer save (409). |
+| `DELETE /api/dashboards/:id` | Delete it. |
+| `GET /api/dashboards/:id/blocks/:blockId/data` | One block's data, run as you. `?refresh=1` reads it again. |
+
+A block's data is the chart's shape (`kind`, then `value`, `rows` or `labels` and `series`, and `meta`), or the block's own refusal `{ error, message }` with `error` one of `no_access`, `not_allowed`, `unknown_tool`, `source_failed`, `invalid_map` or `rate_limited`. Both answer 200, so the other blocks still render. A spec the server refuses answers 422 with every problem named.

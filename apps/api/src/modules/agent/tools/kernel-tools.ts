@@ -195,6 +195,7 @@ import {
   summarizeCaptureBusinessKnowledge,
   summarizeContactsExport,
   summarizeEnableApp,
+  summarizeSetAway,
   summarizeSubagentCreate,
   summarizeSubagentDelete,
 } from "~/modules/agent/tools/kernel-summarizers"
@@ -3706,6 +3707,7 @@ When to use: When an admin asks to set up a reusable role they will spawn repeat
   // A parked call is decided by the person who asked (a routine's card by its author), whatever
   // the tool's own scope, so a colleague or an admin can never decide it (SEC-18).
   approvalResourceOwnerRegistry.set([orgId, "kernel", "set_away"], { requesterAlways: true })
+  registerApprovalSummarizer(orgId, "kernel", "set_away", summarizeSetAway)
 
   // One-click next steps under the agent's reply, drawn by the chat from this tool's result
   // (suggest-steps-tool.ts). Like open_app its effect is on the requester's screen alone.

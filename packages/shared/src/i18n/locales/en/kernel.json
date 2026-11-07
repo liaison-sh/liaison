@@ -6445,7 +6445,8 @@
         "contact": "Open contact"
       }
     },
-    "hiddenTitle": "New message in a thread"
+    "hiddenTitle": "New message in a thread",
+    "gone": "Its app is switched off, so it cannot be opened"
   },
   "toolCard": {
     "actionUnreachable": "Nothing ran: the server could not be reached.",

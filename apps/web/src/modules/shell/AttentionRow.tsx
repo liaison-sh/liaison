@@ -344,7 +344,13 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
         ? props.item.entityId
         : (props.item.metadata?.threadId as string | undefined)
     const anchoredMessage = props.item.metadata?.messageId
-    if (a && typeof anchoredThread === "string" && anchoredThread.length > 0) {
+    // An entity whose app is switched off has no page: the row opens the thread itself.
+    if (
+      a &&
+      a.state !== "gone" &&
+      typeof anchoredThread === "string" &&
+      anchoredThread.length > 0
+    ) {
       void openNotificationRoute(
         typeof anchoredMessage === "string" && anchoredMessage.length > 0
           ? threadAnchorMessageRoute(a, anchoredThread, anchoredMessage)

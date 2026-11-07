@@ -4211,6 +4211,8 @@ export const FR: Record<string, string> = {
   "Open contact": "Ouvrir le contact",
   "Task not found": "Tâche introuvable",
   "New message in a thread": "Nouveau message dans une discussion",
+  "Its app is switched off, so it cannot be opened":
+    "Son application est désactivée, impossible de l’ouvrir",
   Approval: "Approbation",
   "Merge with...": "Fusionner avec...",
   "Delete contact": "Supprimer le contact",

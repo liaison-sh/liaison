@@ -22,6 +22,11 @@ export interface ThreadAnchor {
   label: string | null
   /** The fact that tells two entities of the same name apart (a task's project). */
   secondaryLabel: string | null
+  /**
+   * `gone`: the entity's app is switched off (or removed) in the organization, so the
+   * conversation keeps its name but cannot open it. Absent while the entity can be opened.
+   */
+  state?: "gone"
 }
 
 const NAME = /^[a-z][a-z0-9_-]{0,63}$/
@@ -47,6 +52,7 @@ export function parseThreadAnchor(value: unknown): ThreadAnchor | null {
     kindLabel: optionalText(v.kindLabel) ?? v.entityType,
     label: optionalText(v.label),
     secondaryLabel: optionalText(v.secondaryLabel),
+    ...(v.state === "gone" ? { state: "gone" as const } : {}),
   }
 }
 

@@ -99,7 +99,7 @@ From a conversation's header menu you can:
 
 Use **Search threads...** at the top of the list to find a conversation by name.
 
-A task's discussion is a conversation too. Opened as a conversation (from an old link, for example), it shows the task it belongs to above the messages, with **Open task**.
+A task's discussion is a conversation too. Opened as a conversation (from an old link, for example), it shows the task it belongs to above the messages, with **Open task**. A conversation started from a ticket follows the ticket when it is merged into another: it then belongs to the ticket that remains. While the app of the record is switched off, the conversation keeps its name but shows **Its app is switched off, so it cannot be opened** instead of the button.
 
 Any app can give its records a discussion the same way: one conversation per record, which everyone who can see the record may read and write. Opening the record's page seats you in it. Someone who cannot see the record never sees its discussion, and when a record's sharing narrows, people who lost access are taken out of it. If the discussion cannot be opened, the page says **The discussion could not be opened.** with **Retry**, and the rest of the page still works.
 

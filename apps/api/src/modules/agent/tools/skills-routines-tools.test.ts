@@ -1491,7 +1491,7 @@ describe("skills-routines-tools — read-only set", () => {
       // model picks kind:'event' from the start, not just deep in the enforcement clause — the smoke kept
       // defaulting to a polling cron because "never let more than N sit In Progress" doesn't read as "when X".
       expect(desc).toContain(
-        "a WIP limit reacts to each MOVE — it is an EVENT trigger, NOT a polling cron",
+        "a WIP limit reacts to each MOVE: it is an EVENT trigger, NOT a polling cron",
       )
       expect(desc).toContain("WIP / column-limit on a project board")
       expect(desc).toContain("reacts to a TASK MOVE, which emits 'projects:task:moved'")
@@ -1567,7 +1567,7 @@ describe("skills-routines-tools — read-only set", () => {
       expect(desc).toContain("A vague 'identifies tickets at each scan/tick' caveat is NOT enough")
       // The trigger-opener example must also be reconciled (no longer claims SLA breach has no event).
       expect(desc).toContain(
-        "a ticket APPROACHING but not yet past its SLA — there is a 'tickets:sla:breach' event that fires AFTER the deadline passes, but NO 'approaching-breach'",
+        "a ticket APPROACHING but not yet past its SLA: there is a 'tickets:sla:breach' event that fires AFTER the deadline passes, but NO 'approaching-breach'",
       )
     })
 
@@ -1586,7 +1586,7 @@ describe("skills-routines-tools — read-only set", () => {
       // "sampled" hedge), or a BOUNDED tickets__search sample HONESTLY framed as sampled — and must reject
       // the under-specified "cluster by topic / identify themes" phrasing that produces the count-free prose.
       expect(desc).toContain(
-        "A 'RECURRING SUPPORT THEMES' / 'TOP TICKET THEMES' DIGEST HALF MUST CARRY EXACT THEME COUNTS FROM A REAL TICKETS READ — NEVER A COUNT-FREE QUALITATIVE CLUSTERING",
+        "A 'RECURRING SUPPORT THEMES' / 'TOP TICKET THEMES' DIGEST HALF MUST CARRY EXACT THEME COUNTS FROM A REAL TICKETS READ: NEVER A COUNT-FREE QUALITATIVE CLUSTERING",
       )
       expect(desc).toContain("Such a count-free qualitative summary is a FAIL")
       expect(desc).toContain(
@@ -4277,13 +4277,18 @@ describe("handleToggleAppSkill — provenance (A3)", () => {
     const { handleToggleAppSkill } = await import("~/modules/agent/tools/skills-routines-tools")
     // seed a reconciler row (disabledBy:'seed', org-wide userId null)
     await withPrivilegedDb(orgId, "a3-seed", (tx) =>
-      tx.insert(disabledAppSkills).values({
-        orgId,
-        userId: null,
-        appName: "social",
-        skillName: "triage-social-findings",
-        disabledBy: "seed",
-      }),
+      tx
+        .insert(disabledAppSkills)
+        .values({
+          orgId,
+          userId: null,
+          appName: "social",
+          skillName: "triage-social-findings",
+          disabledBy: "seed",
+        })
+        // The app reconciler writes this same row once the org's apps are set up
+        // (another test in the process may have done it first): keep that one.
+        .onConflictDoNothing(),
     )
     const res = await handleToggleAppSkill(
       { appName: "social", skillName: "triage-social-findings", scope: "user" },
@@ -4312,13 +4317,18 @@ describe("handleToggleAppSkill — provenance (A3)", () => {
     const { disabledAppSkills } = await import("~/db/schema/kernel")
     const { handleToggleAppSkill } = await import("~/modules/agent/tools/skills-routines-tools")
     await withPrivilegedDb(orgId, "a3-seed2", (tx) =>
-      tx.insert(disabledAppSkills).values({
-        orgId,
-        userId: null,
-        appName: "social",
-        skillName: "triage-social-findings",
-        disabledBy: "seed",
-      }),
+      tx
+        .insert(disabledAppSkills)
+        .values({
+          orgId,
+          userId: null,
+          appName: "social",
+          skillName: "triage-social-findings",
+          disabledBy: "seed",
+        })
+        // The app reconciler writes this same row once the org's apps are set up
+        // (another test in the process may have done it first): keep that one.
+        .onConflictDoNothing(),
     )
     await handleToggleAppSkill(
       { appName: "social", skillName: "triage-social-findings", scope: "user" },

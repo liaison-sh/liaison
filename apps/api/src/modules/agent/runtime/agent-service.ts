@@ -50,11 +50,6 @@ import {
 } from "~/lib/failure-severity"
 import { rootLogger } from "~/lib/logger"
 import {
-  normalizeAppGuide,
-  renderAppGuideBlock,
-  selectAppGuideParts,
-} from "~/modules/agent/context/app-guide"
-import {
   advanceCheckpoint,
   checkpointAsHistoryRow,
   historyBudget,
@@ -68,12 +63,11 @@ import {
 import { estimateTokens, runCompaction } from "~/modules/agent/context/compaction"
 import {
   assembleContext,
-  coveringGuideKeys,
-  discoveredAppNames,
   estimateToolSchemaTokens,
   RUNTIME_TAIL_OPEN,
   stepInputBreakdown,
   TURN_TOOL_SCHEMA_TOKEN_CAP,
+  undeliveredGuideBlocks,
 } from "~/modules/agent/context/context"
 import {
   DISCOVERED_TOOLS_META_KEY,
@@ -302,7 +296,6 @@ import {
   isUnresolvedToolCallError,
   repairHeldToolCall,
 } from "~/modules/agent/tools/tool-name-resolve"
-import { agentInstructionsRegistry } from "~/modules/apps/app-registries"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { primeOrgApps } from "~/modules/apps/org-apps"
 import { PaymentRequiredError } from "~/modules/cloud/suspension"
@@ -2830,20 +2823,9 @@ async function runAgentChatTurn(
     const guidedTools = new Set([...discoveredTools].filter((name) => !isIndexOnly(name)))
     // A guide that names its tools (kernel-config, ...) arrives with the
     // first of them, like an app's guide arrives with the app's first tool.
-    for (const app of new Set([
-      ...discoveredAppNames(guidedTools),
-      ...coveringGuideKeys(orgId, guidedTools),
-    ])) {
-      const instr = agentInstructionsRegistry.get([orgId, app])
-      if (!instr) continue
-      const selected = selectAppGuideParts(app, normalizeAppGuide(instr), guidedTools)
-      const core = guidePartsDelivered.has(app) ? undefined : selected.core
-      const sections = selected.sections.filter((section) => !guidePartsDelivered.has(section.key))
-      if (core === undefined && sections.length === 0) continue
-      blocks.push(renderAppGuideBlock(app, { core, sections }))
-      if (core !== undefined) parts.push(app)
-      for (const section of sections) parts.push(section.key)
-    }
+    const guides = undeliveredGuideBlocks(orgId, guidedTools, guidePartsDelivered)
+    blocks.push(...guides.blocks)
+    parts.push(...guides.parts)
     // A loaded tool the thread's fixed list leaves out: its description and
     // parameters, once, so it can be called through kernel__call_tool.
     // A tool known by name only gets one index line instead.

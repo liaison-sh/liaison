@@ -836,6 +836,34 @@ export function buildAppInstructionBlock(
 }
 
 /**
+ * The guide blocks the tools in `guided` need that `delivered` does not hold:
+ * each of their apps' guides (the core and the sections of those tools) and
+ * each guide that names one of them (coveringGuideKeys), with the guide parts
+ * the blocks deliver. The agent loop and sub-agent runs send them as a note
+ * where the tools are loaded (guide-notes.ts).
+ */
+export function undeliveredGuideBlocks(
+  orgId: string,
+  guided: Set<string>,
+  delivered: ReadonlySet<string>,
+): { blocks: string[]; parts: string[] } {
+  const blocks: string[] = []
+  const parts: string[] = []
+  for (const app of new Set([...discoveredAppNames(guided), ...coveringGuideKeys(orgId, guided)])) {
+    const instr = agentInstructionsRegistry.get([orgId, app])
+    if (!instr) continue
+    const selected = selectAppGuideParts(app, normalizeAppGuide(instr), guided)
+    const core = delivered.has(app) ? undefined : selected.core
+    const sections = selected.sections.filter((section) => !delivered.has(section.key))
+    if (core === undefined && sections.length === 0) continue
+    blocks.push(renderAppGuideBlock(app, { core, sections }))
+    if (core !== undefined) parts.push(app)
+    for (const section of sections) parts.push(section.key)
+  }
+  return { blocks, parts }
+}
+
+/**
  * The per-turn system-prompt budget (spec.md Budgets): 8,000 tokens over the
  * INJECTED composed content, i.e. the agent definition, the app instruction
  * blocks and the surfaced skill bodies.

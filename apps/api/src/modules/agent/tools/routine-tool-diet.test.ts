@@ -58,6 +58,12 @@ const MOVES = JSON.parse(
 ) as { v: number; moves: MoveLine[] }
 
 const fold = (s: string) => s.replace(/\s+/g, " ").trim()
+/**
+ * A moved sentence as its destination holds it. A guide is copy the model
+ * quotes to people, held to the no-dash rule (scripts/lint-copy-dashes.ts), so
+ * a spaced dash in a sentence taken off the tool arrives as a colon.
+ */
+const asGuideCopy = (s: string) => s.replace(/\s+[\u2013\u2014]\s+/g, ": ")
 
 /** What a tool costs on tools/list: its name, description and projected input schema, chars / 4. */
 function wireTokens(orgId: string, name: string): number {
@@ -164,7 +170,7 @@ describe("create_routine diet", () => {
     for (const m of moved) {
       const name = m.tool.split(":")[1]!
       if (toolText(orgId, name).includes(m.sentence)) stillOnTool.push(m.sentence)
-      if (m.to !== `guide:${GUIDE_KEY}` || !guide.includes(m.sentence))
+      if (m.to !== `guide:${GUIDE_KEY}` || !guide.includes(asGuideCopy(m.sentence)))
         notAtDestination.push(`${m.to}: ${m.sentence}`)
     }
     expect(notAtDestination).toEqual([])
@@ -203,7 +209,7 @@ describe("the moved rules are not a skill", () => {
     // Each org is checked before the next is made (a test org starts from empty org tables).
     const noteMissing = (orgId: string) => {
       const note = guideNoteFor(orgId, "kernel__create_routine")
-      return moved.filter((m) => !note.includes(m.sentence)).map((m) => m.sentence)
+      return moved.filter((m) => !note.includes(asGuideCopy(m.sentence))).map((m) => m.sentence)
     }
     const forkSkills = await resolveAllSkills(forked.orgId, forked.userId, ["*"])
     const forkBody = forkSkills.find((s) => s.name === "author-routine")?.body ?? ""

@@ -19,10 +19,10 @@ immutable: retentionYears, writeOnceColumns -> apps/api/src/modules/apps/manifes
 legalRetention marker (true, where, parent) kept in the legal archive -> apps/api/src/modules/apps/manifest-schema.ts:828 ; apps/api/src/modules/org/delete/legal-archive.ts:166
 Manifest patterns (tool params, settings validation, template vars, authorize params) are refused at install unless at most 512 characters and proven linear -> apps/api/src/lib/manifest-regex.ts:10 ; apps/api/src/lib/manifest-regex.ts:219-228 ; apps/api/src/modules/apps/verify-package.ts:265 ; apps/api/src/modules/apps/param-validator.ts:44-50
 chat.message writes only into import-created channels or CLI existingChannels, audited -> apps/api/src/modules/imports/kernel-kinds/chat.ts:343 ; apps/api/src/modules/imports/kernel-kinds/chat.ts:354
-Custom apps (managed edition): POST /api/apps/custom/install and GET /api/apps/custom/namespace, kernel:apps:admin, managed only -> apps/api/src/modules/apps/install-routes.ts:264-335
+Custom apps (every edition): POST /api/apps/custom/install and GET /api/apps/custom/namespace, kernel:apps:admin; owner row decides visibility -> apps/api/src/modules/apps/install-routes.ts:258-317 ; apps/api/src/modules/apps/app-org-scope.ts:131-182
 Name <name>-o<key>, key = first 8 hex of sha256(org id); 422 custom_app_name with expectedName; base not a server-provided app -> apps/api/src/modules/apps/app-org-scope.ts:46-65 ; apps/api/src/modules/apps/app-org-scope.ts:272-300 ; apps/api/src/modules/apps/install-service.ts:175-226
 Allowed capabilities and refused declarations, 422 custom_app_capability -> apps/api/src/modules/apps/app-org-scope.ts:170-270
-Counts toward customApps, 409 CUSTOM_APP_LIMIT_REACHED; same app again takes none -> apps/api/src/modules/apps/install-service.ts:220-226 ; apps/api/src/modules/org/caps.ts:364-378
+Counts toward customApps, 409 CUSTOM_APP_LIMIT_REACHED; same app again takes none -> apps/api/src/modules/apps/install-service.ts:220-226 ; apps/api/src/modules/org/caps.ts:363-380
 Interface only on the owning org's host, with that org's admin approval -> apps/api/src/modules/apps/ui-bundle-routes.ts:44-72
 Per-name routes for the owning org only, 404 for others; no signature needed -> apps/api/src/modules/apps/install-routes.ts:107-136
 Jobs and events for the owning org only; suspended org refused; org deletion removes it -> apps/api/src/infra/jobs/fanout-runtime.ts:81-98 ; apps/api/src/modules/apps/runtime.ts:1535-1550 ; apps/api/src/modules/org/purge/purge-org.ts:180-185

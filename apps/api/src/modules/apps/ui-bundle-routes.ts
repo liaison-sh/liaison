@@ -27,7 +27,6 @@ import type { AppEnv } from "~/app"
 import { withSystemDb } from "~/db/privileged"
 import { users } from "~/db/schema/kernel"
 import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
-import { isManagedEdition } from "~/lib/edition"
 import { orgIdForSlug, requestHostBinding } from "~/lib/org-host"
 import { appFrameResponse, appFrameRuntime } from "~/modules/apps/app-frame"
 import { appOwnerOrg, customAppNameKey } from "~/modules/apps/app-org-scope"
@@ -54,7 +53,7 @@ async function orgPrivateBundleRefused(
   version: string,
 ): Promise<boolean> {
   const owner = await appOwnerOrg(name)
-  if (owner === null) return customAppNameKey(name) !== null && isManagedEdition()
+  if (owner === null) return customAppNameKey(name) !== null
   const binding = requestHostBinding(c)
   if (binding.kind !== "org" || (await orgIdForSlug(binding.slug)) !== owner) return true
   if (await orgSuspendedOrClosed(owner)) return true

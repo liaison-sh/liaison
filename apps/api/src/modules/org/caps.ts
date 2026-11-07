@@ -105,7 +105,9 @@ function capLimitMessage(kind: keyof typeof CAP_LIMIT_CODES, limit: number): str
     case "mailboxes":
       return `This organization uses all of its ${limit} mailboxes. Whoever runs the server can raise the limit, or an admin can disconnect a mailbox first.`
     case "customApps":
-      return `This organization uses all of its ${limit} custom apps. Remove one first, or move to a plan with more.`
+      return isManagedEdition()
+        ? `This organization uses all of its ${limit} custom apps. Remove one first, or move to a plan with more.`
+        : `This organization uses all of its ${limit} custom apps. Remove one first, or whoever runs the server can raise the limit.`
     case "auditDays":
       return `This organization's plan keeps the audit log for up to ${limit} days. Choose ${limit} days or fewer.`
   }

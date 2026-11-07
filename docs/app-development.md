@@ -508,13 +508,17 @@ self-host any admin with `kernel:apps:admin` manages apps. On a multi-tenant
 instance (demo mode or the managed edition) the routes that change the installs
 (install, upgrade, rollback, uninstall, interface approval) are also confined to the
 instance operator's org: `LIAISON_OPERATOR_ORG_ID`, or the instance's first org
-when it is unset. The one exception is a custom app in the managed edition,
-below.
+when it is unset. The one exception is a custom app, below.
 
-**Custom apps (managed edition).** An org admin with `kernel:apps:admin`
+**Custom apps (every edition).** An org admin with `kernel:apps:admin`
 installs their own app for their own organization only, with
 `POST /api/apps/custom/install` (same body as `/install`: `url` and the grants).
-No other organization on the server sees or runs it. The rules:
+No other organization on the server sees or runs it: not its tools, jobs,
+webhooks, events, interface, dashboard sources or MCP tools. This holds on a
+self-hosted server too, so on a server with several organizations an app one
+of them installs this way stays theirs. An app installed with `/install` (by
+the instance operator) is an instance app, shared by every organization, as
+before; its name cannot carry an organization key. The rules:
 
 - The app's `name` ends with your organization's key: `<name>-o<key>`, where the
   key is the first 8 hex characters of the SHA-256 of the organization id.
@@ -533,9 +537,11 @@ No other organization on the server sees or runs it. The rules:
   only one of its own tables (no `schema`), and it may not declare database
   triggers (422 `custom_app_capability`, naming
   `schema.<table>.fields.<field>.references` or `schema.<table>.triggers`).
-- Each one counts toward the plan's custom apps (409 `CUSTOM_APP_LIMIT_REACHED`
-  with `{limit, used}` at the limit). Installing a newer version of the same
-  app takes no extra one.
+- Each one counts toward the organization's custom apps cap (409
+  `CUSTOM_APP_LIMIT_REACHED` with `{limit, used}` at the limit). In the managed
+  edition the plan sets the cap; on a self-hosted server there is none unless
+  the operator sets one (`liaison org caps <org> --custom-apps <n>`).
+  Installing a newer version of the same app takes no extra one.
 - Its `ctx.fetch` goes through the same guard as every app: private, loopback,
   link-local and metadata addresses are refused. On top of that it never
   reaches the server itself: its own addresses and host names (the server's
@@ -553,7 +559,9 @@ No other organization on the server sees or runs it. The rules:
 - Its interface (`ui.js`) loads only on your organization's own address, after
   an admin of your organization approved it at install, and always in a
   sandboxed frame: its code never runs in Liaison's page and never holds a
-  member's session.
+  member's session. A server without organization addresses
+  (`LIAISON_ORG_HOST_TEMPLATE` unset) serves no custom app interface; its
+  tools, jobs and webhooks still run.
 - The operator of the server can disable it during an incident. A disabled app
   stays installed with its data, but nothing of it runs and it cannot be
   upgraded or uninstalled (409 `custom_app_disabled`) until the operator

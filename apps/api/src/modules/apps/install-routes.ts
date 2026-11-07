@@ -12,7 +12,6 @@ import { HTTPException } from "hono/http-exception"
 import type { AppEnv } from "~/app"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
-import { isManagedEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
 import { appsLogger as log } from "~/lib/logger"
 import { fetchWithPinnedHost, UnsafeOutboundUrlError } from "~/lib/outbound-fetch"
@@ -133,12 +132,6 @@ const requireAppManager = createMiddleware<AppEnv>(async (c, next) => {
   } else {
     await assertCanManageInstanceApps(c.get("orgId"))
   }
-  await next()
-})
-
-/** The custom app routes exist in the managed edition only (self-hosted: unchanged). */
-const managedOnly = createMiddleware<AppEnv>(async (_c, next) => {
-  if (!isManagedEdition()) throw new HTTPException(404, { message: "Not found" })
   await next()
 })
 
@@ -264,27 +257,22 @@ installRoutes.post(
 )
 
 // GET /custom/namespace — the name this org's custom apps carry: `<name>-o<orgKey>`.
-installRoutes.get(
-  "/custom/namespace",
-  requireScope("kernel:apps:admin"),
-  managedOnly,
-  async (c) => {
-    const orgId = c.get("orgId")
-    const orgKey = customAppOrgKey(orgId)
-    return success(c, {
-      orgKey,
-      suffix: `-o${orgKey}`,
-      example: expectedCustomAppName("my-app", orgId),
-    })
-  },
-)
+installRoutes.get("/custom/namespace", requireScope("kernel:apps:admin"), async (c) => {
+  const orgId = c.get("orgId")
+  const orgKey = customAppOrgKey(orgId)
+  return success(c, {
+    orgKey,
+    suffix: `-o${orgKey}`,
+    example: expectedCustomAppName("my-app", orgId),
+  })
+})
 
 // POST /custom/install — an org admin installs (or re-installs, or moves to a
-// newer version of) a custom app for their own org only (managed edition).
+// newer version of) a custom app for their own org only (every edition).
 // No instance-operator gate: the app is org-private, held to the org-level
 // declarations, the name rule and the org's `customApps` cap
 // (installAppFromTarball `ownerOrgId`), and invisible to every other org.
-installRoutes.post("/custom/install", requireScope("kernel:apps:admin"), managedOnly, async (c) => {
+installRoutes.post("/custom/install", requireScope("kernel:apps:admin"), async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as {
     url?: string
     grantedScopes?: string[]

@@ -17,7 +17,7 @@
 // short of naming it explicitly.
 //
 // A single-org self-host is not restricted: any admin holding `kernel:apps:admin`
-// manages apps, as always. In the managed edition an org admin may also install
+// manages apps, as always. On every edition an org admin may also install
 // a custom app for their own org only (install-routes.ts `/custom/install`,
 // app-org-scope.ts); everything instance-wide stays behind this gate.
 import { asc } from "drizzle-orm"

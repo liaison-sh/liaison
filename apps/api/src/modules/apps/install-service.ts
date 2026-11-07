@@ -23,7 +23,6 @@ import {
   appsInstalled,
   type InstalledPdfTemplate,
 } from "~/db/schema/kernel/apps-installed"
-import { isManagedEdition } from "~/lib/edition"
 import { appsLogger as log } from "~/lib/logger"
 import { ownOption } from "~/lib/safe-path"
 import {
@@ -176,9 +175,9 @@ async function currentOwnerOf(name: string): Promise<string | null> {
 /**
  * Who may install `name`. An org-private install: the custom app name
  * rule, the declarations an org-level app may carry, and no other owner of the
- * name. An instance install: never over an org's app, and in the managed
- * edition never a custom-app-shaped name (the boundary's DB-free rule keeps
- * such a name to one org).
+ * name. An instance install: never over an org's app, and never a
+ * custom-app-shaped name (the boundary's DB-free rule keeps such a name to one
+ * org). Every edition.
  */
 async function assertOrgOwnership(
   name: string,
@@ -201,14 +200,13 @@ async function assertOrgOwnership(
   }
   const others = rows.filter((r) => r.orgId !== ownerOrgId)
   if (ownerOrgId === null) {
-    if (others.length > 0 || (isManagedEdition() && customAppNameKey(name) !== null)) {
+    if (others.length > 0 || customAppNameKey(name) !== null) {
       throw new HTTPException(409, {
         message: `Cannot install '${name}': that name belongs to an organization's custom app.`,
       })
     }
     return
   }
-  if (!isManagedEdition()) throw new HTTPException(404, { message: "Not found" })
   const instanceNames = await withSystemDb("install-instance-names", (db) =>
     db
       .selectDistinct({ name: appsInstalled.name })

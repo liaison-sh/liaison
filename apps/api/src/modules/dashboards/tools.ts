@@ -218,6 +218,13 @@ export function registerDashboardTools(orgId: string): void {
     appName: "kernel",
     name: "dashboards_preview_block",
     readOnly: true,
+    // A store source hands the agent app-written documents, the content data_query reads as a
+    // taint source: the preview marks the thread the same way. A tool source runs its tool
+    // through the core with this thread, so that tool's own taintSource decides.
+    taintSource: true,
+    taintSourceWhen: async (params: unknown) =>
+      (params as { block?: { source?: { kind?: unknown } } } | null)?.block?.source?.kind !==
+      "tool",
     deferLoading: true,
     description:
       "Run one dashboard block as you, without saving anything, and return exactly what the chart would draw. Preview every block until its data is right, then save with kernel__dashboards_create or kernel__dashboards_update. A refusal names the reason and eligible alternatives.",

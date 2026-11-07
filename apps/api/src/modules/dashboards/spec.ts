@@ -24,8 +24,8 @@ export const MIN_REFRESH_SEC = 60
 export const MAX_REFRESH_SEC = 86_400
 /** What a block's data is cached for when it names no interval. */
 export const DEFAULT_REFRESH_SEC = 60
-/** The longest a TOOL source's data is cached, whatever the block asks (review #8). */
-export const MAX_TOOL_SOURCE_TTL_SEC = 900
+/** The longest a block's data is cached, tool or store source, whatever the block asks (review #8). */
+export const MAX_SOURCE_TTL_SEC = 900
 /** The most source rows the transform reads; the rest are dropped and the block says so. */
 export const MAX_SOURCE_ROWS = 2_000
 /** The most rows, groups or slices a block shows. */
@@ -198,8 +198,7 @@ export function specIssues(error: z.ZodError): string[] {
   return error.issues.map((i) => `${i.path.length ? `${i.path.join(".")}: ` : ""}${i.message}`)
 }
 
-/** How long a block's data is cached: its interval, capped for tool sources. */
-export function blockTtlSec(block: Pick<DashboardBlock, "refreshSec" | "source">): number {
-  const wanted = block.refreshSec ?? DEFAULT_REFRESH_SEC
-  return block.source.kind === "tool" ? Math.min(wanted, MAX_TOOL_SOURCE_TTL_SEC) : wanted
+/** How long a block's data is cached: its interval, capped for every source. */
+export function blockTtlSec(block: Pick<DashboardBlock, "refreshSec">): number {
+  return Math.min(block.refreshSec ?? DEFAULT_REFRESH_SEC, MAX_SOURCE_TTL_SEC)
 }

@@ -27,6 +27,7 @@
 
 import { and, asc, desc, eq, type SQL, sql } from "drizzle-orm"
 import { extractRows, type RlsClient } from "~/db"
+import { withReleasedSavepoint } from "~/db/savepoint"
 import { appDocuments, appDocumentUsage } from "~/db/schema/kernel"
 
 /** Serialized size limit of one document. */
@@ -61,6 +62,7 @@ export type DataStoreErrorCode =
   | "invalid_field"
   | "invalid_query"
   | "invalid_cursor"
+  | "query_timeout"
 
 /** A refused store call; `code` is stable for callers (bridge, tools, routes). */
 export class DataStoreError extends Error {
@@ -432,7 +434,14 @@ export async function setDocument(
   assertDocId(id)
   const ifVersion = assertIfVersion(opts)
   const next = normalizeData(data)
-  const current = await lockedDoc(tx, caller, collection, id)
+  let current = await lockedDoc(tx, caller, collection, id)
+  if (!current) {
+    // No row to lock: a concurrent first write of the same id may be in flight. The usage row
+    // lock serializes the collection's creators, so the re-read under it is authoritative (READ
+    // COMMITTED: the statement sees what the writer before us committed).
+    await lockUsage(tx, caller, collection)
+    current = await lockedDoc(tx, caller, collection, id)
+  }
   checkVersion(ifVersion, current, id)
   return indexed(caller, collection, await writeLocked(tx, caller, collection, id, next, current))
 }
@@ -662,20 +671,41 @@ function resolveLimit(limit: unknown): number {
   return limit as number
 }
 
-/** Runs `fn` with a statement timeout, then puts the transaction's own back. */
-async function withStatementTimeout<T>(
+/** What a query step runs on: the transaction, or the savepoint a statement timeout runs in. */
+type StoreReader = Pick<RlsClient, "select" | "execute">
+
+const isStatementTimeout = (err: unknown): boolean =>
+  ((err as { cause?: { code?: string } } | null)?.cause?.code ??
+    (err as { code?: string } | null)?.code) === "57014"
+
+/**
+ * Runs `fn` with a statement timeout, in a savepoint of `tx`. A query past the timeout is a typed
+ * `query_timeout` refusal; the savepoint rolls back with it (the timeout setting too), so the
+ * transaction stays usable. On success the transaction's own timeout is put back.
+ * Exported for tests.
+ */
+export async function withStatementTimeout<T>(
   tx: RlsClient,
   timeout: string,
-  fn: () => Promise<T>,
+  fn: (db: StoreReader) => Promise<T>,
 ): Promise<T> {
-  const [prev] = extractRows<{ v: string }>(
-    await tx.execute(sql`SELECT current_setting('statement_timeout') AS v`),
-  )
-  await tx.execute(sql`SELECT set_config('statement_timeout', ${timeout}, true)`)
   try {
-    return await fn()
-  } finally {
-    await tx.execute(sql`SELECT set_config('statement_timeout', ${prev?.v ?? "0"}, true)`)
+    return await withReleasedSavepoint(tx, async (sp) => {
+      const [prev] = extractRows<{ v: string }>(
+        await sp.execute(sql`SELECT current_setting('statement_timeout') AS v`),
+      )
+      await sp.execute(sql`SELECT set_config('statement_timeout', ${timeout}, true)`)
+      const result = await fn(sp)
+      await sp.execute(sql`SELECT set_config('statement_timeout', ${prev?.v ?? "0"}, true)`)
+      return result
+    })
+  } catch (err) {
+    if (!isStatementTimeout(err)) throw err
+    throw new DataStoreError(
+      "query_timeout",
+      `the query ran past ${timeout}: filter with equality or in on its fields, or sort by updated_at`,
+      { timeout },
+    )
   }
 }
 
@@ -748,8 +778,8 @@ export async function queryDocuments(
     }
   }
 
-  const run = () =>
-    tx
+  const run = (db: StoreReader) =>
+    db
       .select({ ...RETURNING, sortValue: sql<unknown>`${sortValue}` })
       .from(appDocuments)
       .where(and(...conditions))
@@ -759,7 +789,7 @@ export async function queryDocuments(
   const unindexed = compiled.unindexed || orderField !== UPDATED_AT_FIELD
   const rows = unindexed
     ? await withStatementTimeout(tx, UNINDEXED_STATEMENT_TIMEOUT, run)
-    : await run()
+    : await run(tx)
 
   const page = rows.slice(0, limit)
   const last = page[page.length - 1]
@@ -784,8 +814,8 @@ export async function countDocuments(
   assertCaller(caller)
   assertCollection(collection)
   const compiled = compileWhere(where)
-  const run = async () => {
-    const [row] = await tx
+  const run = async (db: StoreReader) => {
+    const [row] = await db
       .select({ n: sql<string>`count(*)::text` })
       .from(appDocuments)
       .where(
@@ -798,5 +828,5 @@ export async function countDocuments(
       )
     return Number(row?.n ?? 0)
   }
-  return compiled.unindexed ? withStatementTimeout(tx, UNINDEXED_STATEMENT_TIMEOUT, run) : run()
+  return compiled.unindexed ? withStatementTimeout(tx, UNINDEXED_STATEMENT_TIMEOUT, run) : run(tx)
 }

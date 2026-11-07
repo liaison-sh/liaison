@@ -366,18 +366,16 @@ export function registerDataStoreTools(orgId: string): void {
     handler: handleDataGet as Handler,
   })
 
-  const writeCommon = () => ({
+  // Each write declares its fields in place (no shared spread): the reference generator reads a
+  // tool's scopes from its own literal.
+  toolRegistry.set([orgId, "kernel", "data_set"], {
     appName: "kernel",
+    name: "data_set",
     deferLoading: true,
     searchKeywords: writeKeywords,
     requiredScopes: [DATA_WRITE_SCOPE],
     writesToTable: SINK_KERNEL_APP_DOCUMENTS,
     sinkReadScope: DATA_READ_SCOPE,
-  })
-
-  toolRegistry.set([orgId, "kernel", "data_set"], {
-    ...writeCommon(),
-    name: "data_set",
     description:
       "Save a document in one of your own data collections (created on first write), replacing it if the id exists. For structured records you keep for the org: a tracker, a list, notes per customer. Teammates with data access can read it.",
     params: DataToolParams.set,
@@ -385,8 +383,13 @@ export function registerDataStoreTools(orgId: string): void {
   })
 
   toolRegistry.set([orgId, "kernel", "data_update"], {
-    ...writeCommon(),
+    appName: "kernel",
     name: "data_update",
+    deferLoading: true,
+    searchKeywords: writeKeywords,
+    requiredScopes: [DATA_WRITE_SCOPE],
+    writesToTable: SINK_KERNEL_APP_DOCUMENTS,
+    sinkReadScope: DATA_READ_SCOPE,
     description:
       "Change some fields of an existing document in one of your own data collections; the other fields stay.",
     params: DataToolParams.update,
@@ -394,8 +397,13 @@ export function registerDataStoreTools(orgId: string): void {
   })
 
   toolRegistry.set([orgId, "kernel", "data_delete"], {
-    ...writeCommon(),
+    appName: "kernel",
     name: "data_delete",
+    deferLoading: true,
+    searchKeywords: writeKeywords,
+    requiredScopes: [DATA_WRITE_SCOPE],
+    writesToTable: SINK_KERNEL_APP_DOCUMENTS,
+    sinkReadScope: DATA_READ_SCOPE,
     description: "Delete a document from one of your own data collections. Returns {deleted}.",
     params: DataToolParams.delete,
     handler: handleDataDelete as Handler,

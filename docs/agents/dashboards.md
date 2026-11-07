@@ -60,7 +60,7 @@ A block reads at most 2,000 rows from its source, and shows at most 100 rows, ba
 
 ## How long figures are kept
 
-A block's figures are kept for a minute, or for the block's own interval, set by whoever built it (up to a day; at most 15 minutes for a tool source). They are kept per person and per set of access rights, so a change to your access is never answered with figures read under the old one. A block runs at most four sources at once for one person; the rest wait their turn. One refresh per block per person every 30 seconds.
+A block's figures are kept for a minute, or for the block's own interval, set by whoever built it (at most 15 minutes, whatever the interval). They are kept per person and per set of access rights, so a change to your access is never answered with figures read under the old one. A block runs at most four sources at once for one person; the rest wait their turn. One refresh per block per person every 30 seconds.
 
 ## The dashboards API
 

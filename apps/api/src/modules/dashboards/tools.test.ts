@@ -8,12 +8,14 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { z } from "zod"
-import type { UserContext } from "~/db/rls"
+import { type UserContext, withRlsContext } from "~/db/rls"
+import { isThreadTainted } from "~/modules/agent/scopes/taint"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { createDashboard, getDashboard, listDashboards } from "~/modules/dashboards/service"
 import type { EligibleSource } from "~/modules/dashboards/sources"
 import { registerDashboardTools } from "~/modules/dashboards/tools"
+import { setDocument } from "~/modules/data-store/service"
 import * as minimal from "~/seed/tiers/minimal"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -50,13 +52,19 @@ const pieBlock = (tool = `${APP}:orders_list`) => ({
   map: { groupBy: { field: "status" }, value: "total", agg: "sum" },
 })
 
-function call(userId: string, scopes: string[], name: string, params: unknown) {
+function call(
+  userId: string,
+  scopes: string[],
+  name: string,
+  params: unknown,
+  onThread = threadId,
+) {
   return executeTool({
     toolName: `kernel:${name}`,
     orgId,
     actor: as(userId, scopes),
     params,
-    threadId,
+    threadId: onThread,
     origin: "in-app-agent",
   })
 }
@@ -196,6 +204,41 @@ describe("preview and sources", () => {
       block: { ...pieBlock(), map: {} },
     })
     expect(invalid.data).toMatchObject({ ok: false, reason: "invalid_block" })
+  })
+
+  it("a store preview taints the thread as data_query does; a plain tool preview does not", async () => {
+    await withRlsContext(as(owner, ["kernel:data:write"]), (tx) =>
+      setDocument(tx, { orgId, app: "agent", userId: owner }, "leads", "l1", { stage: "new" }),
+    )
+    const toolThread = await minimal.thread(orgId, owner, { title: "Tool preview" })
+    const tool = await call(
+      owner,
+      [WRITE, READ],
+      "dashboards_preview_block",
+      { block: pieBlock() },
+      toolThread,
+    )
+    expect(tool.data).toMatchObject({ ok: true })
+    expect(await isThreadTainted(toolThread, orgId)).toBe(false)
+
+    const storeThread = await minimal.thread(orgId, owner, { title: "Store preview" })
+    const store = await call(
+      owner,
+      [WRITE, "kernel:data:read"],
+      "dashboards_preview_block",
+      {
+        block: {
+          id: "leads",
+          type: "metric",
+          title: "Leads",
+          source: { kind: "store", app: "agent", collection: "leads", query: {} },
+          map: { agg: "count" },
+        },
+      },
+      storeThread,
+    )
+    expect(store.data).toMatchObject({ ok: true })
+    expect(await isThreadTainted(storeThread, orgId)).toBe(true)
   })
 
   it("preview runs as the caller: without the tool's scope it is no_access", async () => {

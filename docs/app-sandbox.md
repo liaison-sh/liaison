@@ -392,7 +392,7 @@ await ctx.store.delete("orders", "1001")
 - A collection name matches `^[a-z][a-z0-9_]{0,62}$`, an id is at most 200 characters, a document is a JSON object of at most 256 KiB, and a collection holds at most 100,000 documents.
 - `get` answers `null` for a missing document. `update` merges the patch into the top level of the document.
 - `query` filters on top-level fields (a value, `{ in: [...] }`, or `gt`/`gte`/`lt`/`lte`), sorts on a top-level field, `doc_id` or `updated_at`, returns at most 200 documents a page (default 50) as `{ items: [{ id, data, version, updatedAt }], nextCursor }`, and takes `nextCursor` back as `cursor` for the next page.
-- `set`, `update` and `delete` take `{ ifVersion }`: the version you last read, or `0` for "must not exist yet". Another version rejects with `code: "version_conflict"` (status 409). Other refusals: `not_found` (404), `doc_too_large` (413), `collection_full` (409), `invalid_*` (400).
+- `set`, `update` and `delete` take `{ ifVersion }`: the version you last read, or `0` for "must not exist yet". Another version rejects with `code: "version_conflict"` (status 409). Other refusals: `not_found` (404), `doc_too_large` (413), `collection_full` (409), `invalid_*` (400), and `query_timeout` (408) for a query on unindexed fields that ran past 2 s (filter with equality or `in`, or sort by `updated_at`).
 - The collections are the calling app's own. An app cannot name another app, so it never reaches another app's documents, even in a collection of the same name.
 - On a read-only run (a rerun that may only read), `set`, `update` and `delete` are refused; `get`, `query` and `count` still answer.
 

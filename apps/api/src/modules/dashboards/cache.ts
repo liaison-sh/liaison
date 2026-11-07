@@ -4,7 +4,7 @@
 // dashboard and its version, the block, the viewer and a hash of the viewer's
 // scopes and dimension grants, so a revoked scope or grant is a new key and
 // never serves what the viewer could read before. TTL: the block's refreshSec
-// (spec.blockTtlSec, at most 900 s for a tool source).
+// (spec.blockTtlSec, at most 900 s for any source).
 //
 // Bounds, per viewer: at most MAX_IN_FLIGHT block runs at once (the rest wait
 // their turn), and one forced refresh per block per REFRESH_WINDOW_SEC (a

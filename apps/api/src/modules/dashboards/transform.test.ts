@@ -3,7 +3,12 @@
 // The map step, one chart type at a time, and the spec rules each type needs.
 
 import { describe, expect, test } from "bun:test"
-import { dashboardSpecSchema, MAX_SOURCE_ROWS } from "~/modules/dashboards/spec"
+import {
+  blockTtlSec,
+  dashboardSpecSchema,
+  MAX_SOURCE_ROWS,
+  MAX_SOURCE_TTL_SEC,
+} from "~/modules/dashboards/spec"
 import {
   bucketKey,
   extractRows,
@@ -226,5 +231,14 @@ describe("the spec", () => {
       dashboardSpecSchema.safeParse({ v: 1, blocks: [{ ...b, refreshSec: 3600 }] }).success,
     ).toBe(true)
     expect(dashboardSpecSchema.safeParse({ v: 2, blocks: [] }).success).toBe(false)
+  })
+})
+
+describe("cache lifetime", () => {
+  test("every source (store too) is cached at most 900 s; a shorter interval stays", () => {
+    expect(MAX_SOURCE_TTL_SEC).toBe(900)
+    expect(blockTtlSec({ refreshSec: 86_400 })).toBe(900)
+    expect(blockTtlSec({ refreshSec: 120 })).toBe(120)
+    expect(blockTtlSec({})).toBe(60)
   })
 })

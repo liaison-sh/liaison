@@ -26,6 +26,7 @@ import {
   type StoreCaller,
   setDocument,
   updateDocument,
+  withStatementTimeout,
 } from "./service"
 
 interface Org {
@@ -161,6 +162,90 @@ describe("versions", () => {
       expect((await refusal(inOrg(orgA, write))).code).toBe("version_conflict")
     }
     expect((await inOrg(orgA, (tx) => getDocument(tx, c, col, "v")))?.data).toEqual({ a: 2 })
+  })
+})
+
+/**
+ * Runs `first` in its own transaction and keeps that transaction open (its locks held) while
+ * `second` starts in another; `second` gets 300 ms to reach the lock it waits on, then `first`
+ * commits. Returns both outcomes, a refusal as the error.
+ */
+async function interleaved(
+  first: (tx: RlsClient) => Promise<unknown>,
+  second: (tx: RlsClient) => Promise<unknown>,
+): Promise<[unknown, unknown]> {
+  let commit!: () => void
+  const gate = new Promise<void>((r) => {
+    commit = r
+  })
+  let wrote!: () => void
+  const written = new Promise<void>((r) => {
+    wrote = r
+  })
+  const one = inOrg(orgA, async (tx) => {
+    const v = await first(tx)
+    wrote()
+    await gate
+    return v
+  })
+  await written
+  const two = inOrg(orgA, second).catch((err: unknown) => err)
+  await Bun.sleep(300)
+  commit()
+  return [await one, await two]
+}
+
+describe("concurrent writers", () => {
+  const usageOf = async (col: string) =>
+    (await inOrg(orgA, (tx) => listCollections(tx, { orgId: orgA.orgId, app: "store-test" }))).find(
+      (u) => u.collection === col,
+    )
+
+  it("a second first write of the same new id with ifVersion 0 is version_conflict", async () => {
+    const col = fresh()
+    const c = caller(orgA)
+    const [, second] = await interleaved(
+      (tx) => setDocument(tx, c, col, "n", { by: "one" }, { ifVersion: 0 }),
+      (tx) => setDocument(tx, c, col, "n", { by: "two" }, { ifVersion: 0 }),
+    )
+    expect(second).toBeInstanceOf(DataStoreError)
+    expect((second as DataStoreError).code).toBe("version_conflict")
+    expect((await inOrg(orgA, (tx) => getDocument(tx, c, col, "n")))?.data).toEqual({ by: "one" })
+    expect(await usageOf(col)).toMatchObject({ docs: 1 })
+  })
+
+  it("a second plain first write of the same new id replaces the first", async () => {
+    const col = fresh()
+    const c = caller(orgA)
+    const [, second] = await interleaved(
+      (tx) => setDocument(tx, c, col, "n", { by: "one" }),
+      (tx) => setDocument(tx, c, col, "n", { by: "second" }),
+    )
+    expect(second).toMatchObject({ id: "n", data: { by: "second" }, version: 2 })
+    expect(await usageOf(col)).toEqual({
+      app: "store-test",
+      collection: col,
+      docs: 1,
+      bytes: Buffer.byteLength(JSON.stringify({ by: "second" })),
+    })
+  })
+
+  it("a write racing a delete of the same id recreates it, counters exact", async () => {
+    const col = fresh()
+    const c = caller(orgA)
+    await inOrg(orgA, (tx) => setDocument(tx, c, col, "n", { by: "old" }))
+    const [deleted, second] = await interleaved(
+      (tx) => deleteDocument(tx, c, col, "n"),
+      (tx) => setDocument(tx, c, col, "n", { by: "new" }),
+    )
+    expect(deleted).toEqual({ deleted: true })
+    expect(second).toMatchObject({ data: { by: "new" }, version: 1 })
+    expect(await usageOf(col)).toEqual({
+      app: "store-test",
+      collection: col,
+      docs: 1,
+      bytes: Buffer.byteLength(JSON.stringify({ by: "new" })),
+    })
   })
 })
 
@@ -352,6 +437,22 @@ describe("query", () => {
       return (res as unknown as Array<{ v: string }>)[0]?.v
     })
     expect(timeout).not.toBe("2s")
+  })
+})
+
+describe("a query past its statement timeout", () => {
+  it("is a typed query_timeout, and the transaction stays usable with its own timeout", async () => {
+    const after = await inOrg(orgA, async (tx) => {
+      const err = await refusal(
+        withStatementTimeout(tx, "100ms", (db) => db.execute(sql`SELECT pg_sleep(1)`)),
+      )
+      expect(err.code).toBe("query_timeout")
+      expect(err.message).toContain("100ms")
+      const res = await tx.execute(sql`SELECT current_setting('statement_timeout') AS v`)
+      return (res as unknown as Array<{ v: string }>)[0]?.v
+    })
+    expect(after).toBeDefined()
+    expect(after).not.toBe("100ms")
   })
 })
 

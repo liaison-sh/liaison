@@ -90,3 +90,5 @@ Open task -> packages/shared/src/i18n/locales/en/kernel.json:6280
 AI service stops answering mid-turn: the step is tried again, then the reply says it stopped responding, say "continue" -> apps/api/src/modules/agent/runtime/agent-service.ts:3748 ; packages/shared/src/threads/agent-notice.ts:64
 Notify me of every message switch in the channel menu -> apps/web/src/modules/threads/ThreadHeader.tsx:600
 Notify me of every message label -> packages/shared/src/i18n/locales/en/kernel.json:2124
+A linked dashboard shows as a chip with its title -> apps/api/src/modules/threads/reference-display.ts:333
+Home's Dashboards sidebar section -> apps/web/src/modules/threads/sidebar-sections.ts:45

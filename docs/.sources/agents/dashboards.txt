@@ -28,7 +28,7 @@ Block runs are read-only (bridge refuses writes) -> apps/api/src/modules/dashboa
 2,000 source rows, 24 blocks -> apps/api/src/modules/dashboards/spec.ts:13
 2,000 source rows -> apps/api/src/modules/dashboards/spec.ts:30
 Audit row dashboard.block_run -> apps/api/src/modules/dashboards/execute.ts:204
-Default 60 s, tool sources at most 900 s -> apps/api/src/modules/dashboards/spec.ts:26
+Default 60 s, every source at most 900 s -> apps/api/src/modules/dashboards/spec.ts:26 ; apps/api/src/modules/dashboards/spec.ts:28
 Tool source TTL cap -> apps/api/src/modules/dashboards/spec.ts:28
 Cache key per viewer and permission hash -> apps/api/src/modules/dashboards/cache.ts:79
 Four in flight, one refresh per 30 s -> apps/api/src/modules/dashboards/cache.ts:23

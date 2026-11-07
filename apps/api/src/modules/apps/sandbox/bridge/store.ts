@@ -47,6 +47,8 @@ const STATUS_OF: Record<DataStoreErrorCode, number> = {
   invalid_field: 400,
   invalid_query: 400,
   invalid_cursor: 400,
+  // The app's query ran past the store's statement timeout: narrow it (not a retry).
+  query_timeout: 408,
 }
 
 /** A JSON argument: text from the shim, or the value itself from a direct caller. */

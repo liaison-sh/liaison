@@ -73,7 +73,20 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `create_role` | Create an org role with scope grants. | yes | `kernel:roles:admin` |
 | `create_routine` | Author a routine: an agent task that runs unattended on one of three triggers, recurring (cron), scheduled (a one-off runAt) or event (an in-tree app:entity:action event). | yes | `kernel:routines:write` |
 | `create_skill` | Create a personal or org shared SKILL: a reusable named playbook (reply macro, decision rule, tone guide) the agent later loads by name with kernel__skill_read and follows. | yes | `kernel:skills:write` |
+| `dashboards_create` | Save a new dashboard. |  | `kernel:dashboards:write` |
+| `dashboards_delete` | Delete a dashboard. |  | `kernel:dashboards:write` |
+| `dashboards_get` | Read one dashboard: title, visibility, version and its spec. |  | `kernel:dashboards:write` |
+| `dashboards_list` | List the dashboards you can see: yours and the organisation's, with their ids and visibility. |  | `kernel:dashboards:write` |
+| `dashboards_preview_block` | Run one dashboard block as you, without saving anything, and return exactly what the chart would draw. |  | `kernel:dashboards:write` |
+| `dashboards_sources` | List the read tools you can put on a dashboard (each block reads one), with their params and the fields of their result when declared. |  | `kernel:dashboards:write` |
+| `dashboards_update` | Change a dashboard's title, blocks (the whole spec) or visibility. |  | `kernel:dashboards:write` |
+| `data_collections_list` | List the data collections you can read: records apps keep (e.g. |  | `kernel:data:read` |
+| `data_delete` | Delete a document from one of your own data collections. |  | `kernel:data:write` |
+| `data_get` | Read one document of a data collection by id. |  | `kernel:data:read` |
+| `data_query` | Read documents of one data collection, filtered, sorted and paged. |  | `kernel:data:read` |
+| `data_set` | Save a document in one of your own data collections (created on first write), replacing it if the id exists. |  | `kernel:data:write` |
 | `data_subject_export` | Compile EVERYTHING the org holds on ONE data subject (a contact) across apps into a single downloadable GDPR data-subject-request (DSR) export bundle, and return its fileId. | yes | `kernel:data_subject:export` |
+| `data_update` | Change some fields of an existing document in one of your own data collections; the other fields stay. |  | `kernel:data:write` |
 | `deactivateUser` | Deactivate a user account (admin only). | yes | `kernel:users:admin` |
 | `delete_role` | PERMANENTLY delete an org role definition by `roleId` — the destructive complement to kernel__create_role. | yes | `kernel:roles:admin` |
 | `delete_routine` | Permanently delete a routine and its scheduler. | yes | `kernel:routines:write` |

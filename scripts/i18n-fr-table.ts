@@ -8,6 +8,27 @@
  * by the generator and intentionally absent here.
  */
 export const FR: Record<string, string> = {
+  "Nothing ran: the server could not be reached.":
+    "Rien n'a été exécuté : le serveur est injoignable.",
+  "It answered this time. Ask again to see the result here.":
+    "Cette fois, la réponse est arrivée. Redemandez pour voir le résultat ici.",
+  "{{app}} did not answer": "{{app}} n'a pas répondu",
+  "Could not run {{tool}}": "Impossible d'exécuter {{tool}}",
+  "How this number is worked out": "Comment ce chiffre est calculé",
+  "The tool gave no reason.": "L'outil n'a donné aucune raison.",
+  "Not saved: the server could not be reached. Your text is kept.":
+    "Non enregistré : le serveur est injoignable. Votre texte est conservé.",
+  "Read {{count}} apps": "{{count}} apps lues",
+  "Read 1 app": "1 app lue",
+  "Read {{count}} of {{total}} apps": "{{count}} apps lues sur {{total}}",
+  "Reading {{app}}": "Lecture de {{app}}",
+  "Source: {{source}}": "Source : {{source}}",
+  "Replaced by a newer card": "Remplacée par une carte plus récente",
+  "Nothing ran: this card cannot reach the server here.":
+    "Rien n'a été exécuté : cette carte ne peut pas joindre le serveur ici.",
+  "Waiting for approval. Nothing ran yet.":
+    "En attente d'approbation. Rien n'a encore été exécuté.",
+  "Working…": "En cours…",
   "Send me occasional news about Liaison": "M'envoyer de temps en temps des nouvelles de Liaison",
   "We use your email to send your confirmation code. Unless you tick the box and confirm your email, your name and email are deleted when your demo ends, after 72 hours.":
     "Nous utilisons votre mail pour vous envoyer votre code de confirmation. Sauf si vous cochez la case et confirmez votre mail, votre nom et votre mail sont supprimés à la fin de votre démo, après 72 heures.",

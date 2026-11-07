@@ -158,12 +158,13 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `LIAISON_TEAM_OUTBOX_INTERVAL_MS` | `number` |  | no | Test only (honoured only under NODE_ENV=test): drain the Liaison team outbox every this many ms instead of every minute, for process-level e2e. |
 | `SINGLETON_LEADER_URL` | `string (URL)` |  | no | Patroni leader gate (HA active/standby). URL of the LOCAL node's Patroni REST /leader (e.g. http://host.docker.internal:8008/leader). When set, the jobs (BullMQ workers) of this node run ONLY while this node is the Patroni leader, so a warm standby that comes up during a failover doesn't double-fire customer emails/webhooks. Singletons (outbox drain and other once-per-cluster loops) run only in the process that holds the Redis leader lease AND sits on the Patroni leader. UNSET (default) = gate off, this node counts as the Patroni leader. See infra/leadership.ts. Empty strings (compose ${VAR:-} defaults) = unset. |
 | `LIAISON_ROLE` | `"all" \| "api" \| "worker"` | `"all"` | no | What this process serves. `all` (default) = one container does everything: HTTP + WebSocket API, BullMQ job workers and the singletons (outbox drain), as a single-container self-host runs. `api` = HTTP + WebSocket only, no job workers, never the singleton leader. `worker` = BullMQ job workers and the singletons (behind the leader lease), with a health-only HTTP server. Any other value refuses boot. The CLI ignores it. |
-| `LIAISON_WORKERS_APPS` | `string` |  | no | Running listed apps on a remote V8 isolate loader instead of the local QuickJS sandbox (modules/apps/workers/config.ts). Used only when every one of LIAISON_WORKERS_APPS, LIAISON_APP_LOADER_URL, LIAISON_APP_LOADER_CELL_ID, LIAISON_APP_LOADER_KEY and LIAISON_WORKERS_BUNDLES is set and LIAISON_ROLE is `all`; otherwise every app runs on QuickJS and /api/app-bridge answers 404. Unset by default. The app names to run there, comma separated. |
+| `LIAISON_WORKERS_APPS` | `string` |  | no | Running listed apps on a remote V8 isolate loader instead of the local QuickJS sandbox (modules/apps/workers/config.ts). Used only when LIAISON_APP_LOADER_URL, LIAISON_APP_LOADER_CELL_ID and LIAISON_APP_LOADER_KEY are set, LIAISON_ROLE is `all`, and either LIAISON_WORKERS_APPS with LIAISON_WORKERS_BUNDLES or LIAISON_WORKERS_CUSTOM_APPS=1 is set; otherwise every app runs on QuickJS and /api/app-bridge answers 404. Unset by default. The app names to run there, comma separated. |
+| `LIAISON_WORKERS_CUSTOM_APPS` | `string` |  | no | `1`: every organisation's custom app built with the app builder runs on the loader too (with the loader variables below). Its Worker module is the one its publish built, recorded with the install, and the loader fetches it from this server (`GET /api/app-bridge/bundles/<sha256>`, signed with LIAISON_APP_LOADER_KEY) when it has no copy. With it, LIAISON_WORKERS_APPS and LIAISON_WORKERS_BUNDLES are optional. |
 | `LIAISON_APP_LOADER_URL` | `string (URL)` |  | no | The loader's base URL (it is called at `<url>/run`). |
 | `LIAISON_APP_LOADER_CELL_ID` | `string` |  | no | This instance's id at the loader; it picks the signing key and the bridge origin the loader accepts. |
 | `LIAISON_APP_LOADER_KEY` | `string` |  | no | The shared key that signs this instance's requests to the loader. |
 | `LIAISON_APP_BRIDGE_BASE_URL` | `string (URL)` |  | no | The public base URL the loader's isolates call back on (`<url>/api/app-bridge/<runId>`). Unset, BASE_URL. |
-| `LIAISON_WORKERS_BUNDLES` | `string` |  | no | The bundle each app version runs there, as JSON `{"<app>@<version>":"<sha256>"}`. A listed app whose installed version has no entry runs on QuickJS. |
+| `LIAISON_WORKERS_BUNDLES` | `string` |  | no | The bundle each listed app version runs there, as JSON `{"<app>@<version>":"<sha256>"}`. A listed app whose installed version has no entry runs on QuickJS. Custom apps need no entry. |
 | `LIAISON_APP_BRIDGE_TIMINGS_FILE` | `string` |  | no | A JSONL file that receives one timing line per /api/app-bridge call (run, app, method, duration, status). Unset, the timings stay in memory only. |
 | `LIAISON_READY_WARM_MS` | `number` | `30000` | no | How long a serving process may spend, before /readyz answers 200, registering the apps of the orgs with a live socket in the cell (the orgs a deploy's reconnecting sockets bring it first). Past it the process turns ready and the rest register on demand. 0 skips it. |
 | `LIAISON_ORG_RUNTIME_IDLE_MINUTES` | `number` | `60` | no | Minutes after which an org nothing has touched in this process (no request, job or event) has its in-memory setup released; its next touch sets it up again (in memory only: its rows are set up already). Default 60, so a process's memory follows the orgs used in the last hour, not every org it ever served; 0 keeps every org set up for the process's life. |
@@ -290,7 +291,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/apps/database/bridge.ts:374`, `apps/api/src/apps/database/bridge.ts:394` |
 | `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/apps/database/bridge.ts:383` |
 | `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:154` |
-| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1611` |
+| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1619` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:504`, `apps/api/src/modules/apps/app-frame.ts:35` |
 | `LIAISON_SANDBOX_FETCH_TIMEOUT_MS` | `apps/api/src/modules/apps/sandbox/bridge/egress.ts:63` |
@@ -317,7 +318,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `ORG_MAINTENANCE_FLAG_PATH` | `apps/api/src/middleware/org-maintenance.ts:25` |
 | `QA_DRIVE_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/knowledge.ts:79` |
 | `QA_GMAIL_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/rows.ts:462` |
-| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:558`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
+| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:559`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
 | `RECHECK_SYNC_BACKEND` | `apps/api/src/lib/manifest-regex.ts:33` |
 | `ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:62` |
 | `ROUTINE_EVENT_RECONCILE_MAX_RETRIES` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:65` |

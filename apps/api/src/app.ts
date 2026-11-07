@@ -81,6 +81,7 @@ import {
   APP_BRIDGE_PATH_PREFIX,
   appBridgeRoutes,
 } from "~/modules/apps/workers/bridge-route"
+import { appBridgeBundleRoutes } from "~/modules/apps/workers/bundle-route"
 import { assistRoutes } from "~/modules/assist/routes"
 import { TRANSCRIBE_REQUEST_TIMEOUT_MS } from "~/modules/assist/transcribe-service"
 import { attentionSubscriptionsRoutes } from "~/modules/attention/subscriptions-routes"
@@ -683,6 +684,9 @@ app.route("/api/cloud", cloudRoutes)
 // A remote isolate's bridge calls for one app run (Workers executor; 404 on
 // every path unless configured). Before the user JWT chain: its only
 // credential is the run's bearer token (modules/apps/workers/bridge-route.ts).
+// The loader's signed fetch of a custom app's Worker module (404 unless
+// LIAISON_WORKERS_CUSTOM_APPS is on): modules/apps/workers/bundle-route.ts.
+app.route("/api/app-bridge", appBridgeBundleRoutes)
 app.route("/api/app-bridge", appBridgeRoutes)
 
 // The former bearer credit-mint API: retired (credits reach an org only

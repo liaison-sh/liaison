@@ -368,6 +368,7 @@ services:
       # Workers app executor (apps on a remote V8 isolate loader). All empty by
       # default: every app runs on the local sandbox (docs/reference/env.md).
       LIAISON_WORKERS_APPS: ${LIAISON_WORKERS_APPS:-}
+      LIAISON_WORKERS_CUSTOM_APPS: ${LIAISON_WORKERS_CUSTOM_APPS:-}
       LIAISON_APP_LOADER_URL: ${LIAISON_APP_LOADER_URL:-}
       LIAISON_APP_LOADER_CELL_ID: ${LIAISON_APP_LOADER_CELL_ID:-}
       LIAISON_APP_LOADER_KEY: ${LIAISON_APP_LOADER_KEY:-}

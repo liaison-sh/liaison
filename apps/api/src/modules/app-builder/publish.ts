@@ -18,7 +18,8 @@
 //     when the app moved since the pin (`publish_stale`), and installs exactly
 //     those bytes with exactly the pinned grants (install-service.ts
 //     installAppFromBytes: the /custom/install path, the org as owner, the
-//     health gate, never a session-trusted interface). Then the draft is
+//     health gate, never a session-trusted interface), and the pinned Workers
+//     module (re-hashed the same way) on the install row. Then the draft is
 //     marked published (its app name fixed for good) and the audit row
 //     `app.custom.published` {draftId, n, sha256} written. Changing the draft
 //     after the approval changes nothing: the bytes are the pinned ones.
@@ -181,7 +182,11 @@ export function readPin(value: unknown): PublishPin | null {
     typeof p.appVersion !== "string" ||
     typeof p.packageSha256 !== "string" ||
     !/^[0-9a-f]{64}$/.test(p.packageSha256) ||
-    !(p.baseVersion === null || typeof p.baseVersion === "string")
+    !(p.baseVersion === null || typeof p.baseVersion === "string") ||
+    !(
+      p.workerSha256 === undefined ||
+      (typeof p.workerSha256 === "string" && /^[0-9a-f]{64}$/.test(p.workerSha256))
+    )
   ) {
     return null
   }
@@ -239,6 +244,20 @@ export async function executePublish(
       "the approved package bytes are no longer stored or changed: request the publish again",
     )
   }
+  // The Workers module of the same build, pinned beside the package: recorded
+  // on the install row (0278) so a cell with LIAISON_WORKERS_CUSTOM_APPS runs
+  // exactly these bytes on the loader (workers/bundle-route.ts serves them).
+  let workerModule: { sha256: string; bytes: Uint8Array } | undefined
+  if (pin.workerSha256) {
+    const worker = await getBuildArtifact(tx, { draftId: pin.draftId, sha256: pin.workerSha256 })
+    if (worker?.kind !== "worker") {
+      throw new DraftError(
+        "pin_mismatch",
+        "the approved Workers module is no longer stored or changed: request the publish again",
+      )
+    }
+    workerModule = { sha256: pin.workerSha256, bytes: worker.bytes }
+  }
   const installed = await installAppFromBytes({
     bytes: artifact.bytes,
     ownerOrgId: caller.orgId,
@@ -248,6 +267,7 @@ export async function executePublish(
     grantedCapabilities: pin.grants.capabilities,
     grantedCrossAppCalls: pin.grants.crossAppCalls,
     sourceUrl: builderSourceUrl(pin.draftId, pin.n),
+    ...(workerModule ? { workerModule } : {}),
   })
   await markDraftPublished(tx, caller, pin.draftId)
   await writePublishedAudit({

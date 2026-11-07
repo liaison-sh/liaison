@@ -4,10 +4,13 @@
 // what passes against it passes against the real one.
 //
 // It does what the loader does, in the same order: cell lookup by x-cell-id,
-// signature + ±60 s skew (sign.ts verifyCellRequest), body validation,
-// bridgeUrl origin == the cell's registered bridgeOrigin (403), bundle lookup
-// at `<app>/<version>/<sha256>.js` and a sha256 re-check of the Worker module
-// bytes (409), then ONE module instance per Dynamic Worker id
+// signature + ±60 s skew (sign.ts: v2 "cell->loader" POST /run, or a legacy
+// v1 without the version header), body validation, bridgeUrl origin == the
+// cell's registered bridgeOrigin (403), bundle lookup at
+// `<app>/<version>/<sha256>.js`, and when absent a v2-signed "loader->cell"
+// GET <bridgeOrigin>/api/app-bridge/bundles/<sha256> whose bytes must hash to
+// the sha (else 409) and are kept as the R2 object, then a sha256 re-check of
+// the Worker module bytes (409), then ONE module instance per Dynamic Worker id
 // `<cellId>:<orgId>:<app>@<version>#<sha256>`, cached like the loader's
 // `LOADER.get(id, cb)` (module globals persist across runs of one id). Each
 // /run mints a fresh execNonce and hands the module a per-run Bridge (never
@@ -21,24 +24,40 @@
 // Differences, on purpose: the module is the build's `worker-core.js` (no
 // `cloudflare:workers` import) instead of `worker.js`, imported in this
 // process (one import per id, via a query string), and fetch is not blocked
-// inside it. It also passes the module's `sleepMs` / `sleepExact` through in
+// inside it. A module fetched from the cell is the real `worker.js`: it runs
+// here with `cloudflare:workers` rewritten to a stand-in WorkerEntrypoint
+// (its default export's `run(req, bridge)` is the entry, as on the loader). It also passes the module's `sleepMs` / `sleepExact` through in
 // `timings` (the real loader needs the same two fields in its merge).
 
-import { readFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import type { Server } from "bun"
 import {
   CELL_ID_HEADER,
   CELL_SIGNATURE_HEADER,
+  CELL_SIGNATURE_VERSION_HEADER,
   CELL_TS_HEADER,
   sha256Hex,
-  verifyCellRequest,
+  signCellRequestV2,
+  verifyCellRequestV1,
+  verifyCellRequestV2,
 } from "../sign"
 
 export interface FakeLoaderBundle {
   /** The Worker module whose sha256 is the bundle's identity (worker.js). */
   workerPath: string
-  /** The same build without the Cloudflare entry (worker-core.js), what runs here. */
-  corePath: string
+  /**
+   * The same build without the Cloudflare entry (worker-core.js), what runs
+   * here; absent for a module fetched from the cell (then worker.js runs).
+   */
+  corePath?: string
+}
+
+export interface BundleFetch {
+  url: string
+  status: number
+  headers: Record<string, string>
 }
 
 export interface FakeLoaderOptions {
@@ -64,6 +83,10 @@ export interface FakeLoader {
   coldLoads: number
   /** Add or replace a bundle while running. */
   setBundle(key: string, bundle: FakeLoaderBundle): void
+  /** Drop a bundle (the R2 object) and its verified module, so the next run fetches it. */
+  dropBundle(key: string): void
+  /** Every bundle GET the loader sent to a cell. */
+  bundleFetches: BundleFetch[]
 }
 
 type ErrorKind = "handler" | "timeout" | "limit" | "load" | "auth"
@@ -110,15 +133,86 @@ export function startFakeLoader(opts: FakeLoaderOptions): FakeLoader {
   const bundles = { ...opts.bundles }
   const modules = new Map<string, Promise<CoreModule>>()
   const verified = new Map<string, true>()
+  const fetchedDir = mkdtempSync(join(tmpdir(), "fake-loader-fetched-"))
   const loader: FakeLoader = {
     url: "",
-    stop: () => server.stop(true),
+    stop: () => {
+      server.stop(true)
+      rmSync(fetchedDir, { recursive: true, force: true })
+    },
     runs: [],
     bridgeResponses: [],
     coldLoads: 0,
+    bundleFetches: [],
     setBundle: (key, bundle) => {
       bundles[key] = bundle
     },
+    dropBundle: (key) => {
+      delete bundles[key]
+      for (const id of [...verified.keys()]) {
+        if (id.endsWith(`#${key.split("/").pop()?.replace(/\.js$/, "")}`)) {
+          verified.delete(id)
+          modules.delete(id)
+        }
+      }
+    },
+  }
+
+  /** The loader's fallback: the module from the cell, signed v2 loader->cell, hash-checked. */
+  async function fetchFromCell(
+    cellId: string,
+    cell: { key: string; bridgeOrigin: string },
+    key: string,
+    sha: string,
+  ): Promise<FakeLoaderBundle | Response> {
+    const path = `/api/app-bridge/bundles/${sha}`
+    const url = `${cell.bridgeOrigin}${path}`
+    const headers = signCellRequestV2({
+      cellId,
+      cellKey: cell.key,
+      direction: "loader->cell",
+      method: "GET",
+      path,
+      body: "",
+      ts: now(),
+    })
+    let res: Response
+    try {
+      res = await fetch(url, { method: "GET", headers })
+    } catch (e) {
+      return fail(502, "load", `bundle fetch failed: ${(e as Error).message}`, {
+        code: "bundle_fetch_failed",
+      })
+    }
+    loader.bundleFetches.push({ url, status: res.status, headers })
+    if (res.status === 404) return fail(404, "load", "bundle not found", { code: "bundle_missing" })
+    if (res.status !== 200) {
+      return fail(502, "load", `bundle fetch answered ${res.status}`, {
+        code: "bundle_fetch_failed",
+      })
+    }
+    const bytes = new Uint8Array(await res.arrayBuffer())
+    if (sha256Hex(bytes) !== sha) {
+      return fail(409, "load", "bundle hash mismatch", { code: "hash_mismatch" })
+    }
+    // The R2 put: the real worker.js, plus a copy whose Cloudflare import is a stand-in.
+    const workerPath = join(fetchedDir, `${sha}.js`)
+    writeFileSync(workerPath, bytes)
+    const shim = join(fetchedDir, "cloudflare-workers-shim.js")
+    writeFileSync(
+      shim,
+      "export class WorkerEntrypoint { constructor(ctx, env) { this.ctx = ctx; this.env = env } }\n",
+    )
+    const text = new TextDecoder()
+      .decode(bytes)
+      .replaceAll(/from\s*["']cloudflare:workers["']/g, `from ${JSON.stringify(shim)}`)
+    const runnable = join(fetchedDir, `${sha}.run.js`)
+    writeFileSync(runnable, text)
+    const bundle = { workerPath, runnablePath: runnable } as FakeLoaderBundle & {
+      runnablePath: string
+    }
+    bundles[key] = bundle
+    return bundle
   }
 
   async function callBridge(
@@ -198,13 +292,28 @@ export function startFakeLoader(opts: FakeLoaderOptions): FakeLoader {
     const cellId = req.headers.get(CELL_ID_HEADER)
     const cell = cellId && Object.hasOwn(opts.cells, cellId) ? opts.cells[cellId] : undefined
     if (!cellId || !cell) return fail(401, "auth", "unknown cell")
-    const v = verifyCellRequest(
-      cell.key,
-      req.headers.get(CELL_TS_HEADER),
-      req.headers.get(CELL_SIGNATURE_HEADER),
-      raw,
-      now(),
-    )
+    // v2 when the version header is present; a legacy v1 without it (transition).
+    const version = req.headers.get(CELL_SIGNATURE_VERSION_HEADER)
+    const v =
+      version !== null
+        ? verifyCellRequestV2({
+            cellKey: cell.key,
+            direction: "cell->loader",
+            method: req.method,
+            path: url.pathname,
+            ts: req.headers.get(CELL_TS_HEADER),
+            signature: req.headers.get(CELL_SIGNATURE_HEADER),
+            version,
+            body: raw,
+            now: now(),
+          })
+        : verifyCellRequestV1(
+            cell.key,
+            req.headers.get(CELL_TS_HEADER),
+            req.headers.get(CELL_SIGNATURE_HEADER),
+            raw,
+            now(),
+          )
     if (!v.ok) return fail(401, "auth", `signature rejected: ${v.reason}`)
 
     let body: Record<string, unknown>
@@ -227,15 +336,26 @@ export function startFakeLoader(opts: FakeLoaderOptions): FakeLoader {
     const id = `${cellId}:${body.orgId}:${body.app}@${body.version}#${body.sha256}`
     let cold = false
     if (!verified.has(id)) {
-      const bundle = bundles[`${body.app}/${body.version}/${body.sha256}.js`]
-      if (!bundle) return fail(404, "load", "bundle not found", { code: "bundle_missing" })
+      const key = `${body.app}/${body.version}/${body.sha256}.js`
+      let bundle = bundles[key]
+      if (!bundle) {
+        const fetched = await fetchFromCell(cellId, cell, key, body.sha256 as string)
+        if (fetched instanceof Response) return fetched
+        bundle = fetched
+      }
       if (sha256Hex(readFileSync(bundle.workerPath)) !== body.sha256) {
         return fail(409, "load", "bundle hash mismatch", { code: "hash_mismatch" })
       }
       verified.set(id, true)
+      const runnable = (bundle as { runnablePath?: string }).runnablePath
       modules.set(
         id,
-        import(`${bundle.corePath}?id=${encodeURIComponent(id)}`) as Promise<CoreModule>,
+        bundle.corePath
+          ? (import(`${bundle.corePath}?id=${encodeURIComponent(id)}`) as Promise<CoreModule>)
+          : (import(`${runnable}?id=${encodeURIComponent(id)}`).then((m) => {
+              const Entry = (m as { default: new () => CoreModule }).default
+              return new Entry()
+            }) as Promise<CoreModule>),
       )
       loader.coldLoads++
       cold = true

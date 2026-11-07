@@ -278,3 +278,4 @@ LIAISON_RELEASE_CHANNEL, LIAISON_ALLOW_OLDER_IMAGE env -> deploy/docker-compose.
 LIAISON_RELEASE_CHANNEL values and default -> apps/api/src/lib/env.ts:72
 LIAISON_ALLOW_OLDER_IMAGE behaviour -> apps/api/src/db/schema-guard.ts:30
 quickstart --channel -> deploy/quickstart.sh:20
+LIAISON_WORKERS_CUSTOM_APPS=1 runs every custom app on the loader; the loader fetches its Worker module from /api/app-bridge/bundles/<sha256>, signed -> apps/api/src/lib/env.ts:1133 ; apps/api/src/modules/apps/workers/config.ts:1-30 ; apps/api/src/modules/apps/workers/bundle-route.ts:1-24

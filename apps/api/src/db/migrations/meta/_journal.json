@@ -1954,6 +1954,13 @@
       "when": 1900003370000,
       "tag": "0277_draft_store_namespace",
       "breakpoints": true
+    },
+    {
+      "idx": 279,
+      "version": "7",
+      "when": 1900003380000,
+      "tag": "0278_apps_installed_worker_module",
+      "breakpoints": true
     }
   ]
 }

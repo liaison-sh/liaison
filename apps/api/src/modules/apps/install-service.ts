@@ -11,6 +11,7 @@
 // activation.ts (which switches back to the previous version when it fails). The
 // server keeps two versions of each app, the active one and the one before it;
 // older ones are pruned here.
+import { createHash } from "node:crypto"
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve, sep } from "node:path"
@@ -114,6 +115,13 @@ export interface InstallOptions {
    * `customApps`, and only this org sees and runs it. Unset: an instance app.
    */
   ownerOrgId?: string
+  /**
+   * The Workers module the app builder built with this package (the sha256 its
+   * publish pinned, and the bytes): recorded on the install row so the Workers
+   * executor can run the version and the cell can serve the module to the app
+   * loader (0278). Only with `ownerOrgId`; the bytes must hash to the sha.
+   */
+  workerModule?: { sha256: string; bytes: Uint8Array }
 }
 
 export interface InstallResult {
@@ -779,6 +787,7 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
     assertIconClean(manifest)
     await assertNotBundled(manifest.name)
     const ownerOrgId = ownOption(opts, "ownerOrgId") ?? null
+    const workerModule = installWorkerModule(ownOption(opts, "workerModule"), ownerOrgId)
     await assertOrgOwnership(manifest.name, ownerOrgId, manifestFile(verified.stagingDir))
     await assertNameNotReserved(manifest, verified.sha256, verified.stagingDir)
     await assertTabRoutesOwned(manifest.name, manifestFile(verified.stagingDir))
@@ -905,6 +914,7 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
             pdfTemplates,
             manifestSchema,
             orgId: ownerOrgId,
+            ...workerModule,
           })
           .onConflictDoUpdate({
             target: [appsInstalled.name, appsInstalled.version],
@@ -921,6 +931,7 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
               installedBy: opts.installedBy,
               pdfTemplates,
               manifestSchema,
+              ...workerModule,
             },
           })
       })
@@ -941,6 +952,23 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
   }
 }
 
+/** The install row's Workers module columns: both set (checked), or both NULL. */
+function installWorkerModule(
+  given: InstallOptions["workerModule"],
+  ownerOrgId: string | null,
+): { workerSha256: string | null; workerModule: Uint8Array | null } {
+  if (!given) return { workerSha256: null, workerModule: null }
+  if (ownerOrgId === null) {
+    throw new Error("A Workers module is recorded for an organisation's custom app only")
+  }
+  if (!/^[0-9a-f]{64}$/.test(given.sha256)) throw new Error("Workers module sha256 is malformed")
+  const actual = createHash("sha256").update(given.bytes).digest("hex")
+  if (actual !== given.sha256) {
+    throw new Error("Workers module bytes do not match their sha256")
+  }
+  return { workerSha256: given.sha256, workerModule: given.bytes }
+}
+
 /**
  * Install an org's custom app from package bytes held by the server (the app
  * builder's publish, modules/app-builder/publish.ts): the bytes go to a temp
@@ -958,6 +986,8 @@ export async function installAppFromBytes(opts: {
   grantedCapabilities: string[]
   grantedCrossAppCalls: string[]
   sourceUrl: string
+  /** The Workers module the same build produced (see InstallOptions.workerModule). */
+  workerModule?: { sha256: string; bytes: Uint8Array }
 }): Promise<InstallResult> {
   const dir = mkdtempSync(join(tmpdir(), "liaison-app-bytes-"))
   try {
@@ -974,6 +1004,7 @@ export async function installAppFromBytes(opts: {
       requireSignature: false,
       sourceUrl: opts.sourceUrl,
       ownerOrgId: opts.ownerOrgId,
+      ...(opts.workerModule ? { workerModule: opts.workerModule } : {}),
     })
   } finally {
     rmSync(dir, { recursive: true, force: true })

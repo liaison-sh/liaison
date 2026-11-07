@@ -12,6 +12,7 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
 import { handleThreadsCreate } from "~/modules/agent/tools/chat-tools"
+import { insertAppRow } from "~/seed/factories/app-tables"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -25,14 +26,11 @@ let bobId: string
 let danId: string
 
 async function item(text: string): Promise<string> {
-  const ex = drizzleSql.raw(`"${schemaRef("app_example")}"`)
-  const [row] = await withPrivilegedDb(orgId, "test-example-item", async (tx) =>
-    extractRows<{ id: string }>(
-      await tx.execute(drizzleSql`
-        INSERT INTO ${ex}.items (org_id, text) VALUES (${orgId}::uuid, ${text}) RETURNING id::text AS id`),
-    ),
+  const id = crypto.randomUUID()
+  await withPrivilegedDb(orgId, "test-example-item", (tx) =>
+    insertAppRow(tx, "example", "items", { id, org_id: orgId, text }),
   )
-  return row!.id
+  return id
 }
 
 function create(params: Parameters<typeof handleThreadsCreate>[0], scopes = SEES_ITEMS) {

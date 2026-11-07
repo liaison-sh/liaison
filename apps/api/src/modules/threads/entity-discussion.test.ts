@@ -20,6 +20,7 @@ import {
   openEntityDiscussion,
   pruneEntityDiscussion,
 } from "~/modules/threads/entity-discussion"
+import { insertAppRow } from "~/seed/factories/app-tables"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -41,14 +42,11 @@ const as = (userId: string, scopes: string[]): UserContext => ({
 })
 
 async function item(org: string, text: string): Promise<string> {
-  const ex = drizzleSql.raw(`"${schemaRef("app_example")}"`)
-  const [row] = await withPrivilegedDb(org, "test-example-item", async (tx) =>
-    extractRows<{ id: string }>(
-      await tx.execute(drizzleSql`
-        INSERT INTO ${ex}.items (org_id, text) VALUES (${org}::uuid, ${text}) RETURNING id::text AS id`),
-    ),
+  const id = crypto.randomUUID()
+  await withPrivilegedDb(org, "test-example-item", (tx) =>
+    insertAppRow(tx, "example", "items", { id, org_id: org, text }),
   )
-  return row!.id
+  return id
 }
 
 async function threadsWithHandle(handle: string): Promise<string[]> {

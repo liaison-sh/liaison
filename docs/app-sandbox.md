@@ -316,6 +316,33 @@ In the desktop app the page also holds the shell's bridge (local sessions, files
 
 In a browser tab the page holds the signed-in user's session, so the same rule holds there: a first-party app's `ui.js` (the app list marks it `firstParty: true`) is a module the web client imports into its own origin, and every other app's interface runs in the same sandboxed frame as in the shells. The server serves the frame document beside the app's bundle, `GET /api/apps/<name>/<version>/frame` (the active version of a vouched-for app that is not first-party, against the same token as its `ui.js`; 404 otherwise): the shells' frame runtime inlined under a fresh nonce, its policy as a response header (scripts only from that runtime and the bundle the page hands it, `connect-src 'none'`, no frame, no form, `frame-ancestors 'self'`, `sandbox allow-scripts allow-forms`). An outside app's `ui.js` itself is served as `text/plain` (under `nosniff`), so this origin never runs it as a script: the page reads its text and hands it to the frame. A frame that navigates away from its document (a second load) is torn down at once, and the page posts nothing more to it. A frame mounted after its URL token has nearly expired asks the app list for fresh URLs first. The iframe is `sandbox="allow-scripts allow-forms"`, never `allow-same-origin`: an opaque origin with no session cookie, no storage and no API of its own, reaching Liaison only through the frame protocol (`apps/web/src/framework/isolated-app.tsx`, `apps/api/src/modules/apps/app-frame.ts`).
 
+### App screens on an origin of their own
+
+Set `LIAISON_APP_FRAME_ORIGIN_TEMPLATE` (`https://{app}--{org}.example-usercontent.com`) and a browser tab frames each outside app from a host of its own, `<app>--<org slug>` on that domain, instead of the opaque frame. The app then has a real origin, one per app and organization, so its own `localStorage` works; it still has no network (`connect-src 'none'`), no session and no API, and reaches Liaison only through the frame protocol.
+
+- **Use a domain of its own.** The template must start its host with the one label `{app}--{org}`. The managed edition refuses to boot when the frame domain is the registrable domain of `BASE_URL` or of `LIAISON_ORG_HOST_TEMPLATE`, or without `LIAISON_ORG_HOST_TEMPLATE`; a self-hosted server boots and logs a warning instead. Every edition refuses templates that can name the same host as the org template or `BASE_URL`.
+- **What the frame host serves.** Only `GET /frame/<version>?t=<token>`: the frame document of that app for that organization. Everything else on that host (`/`, `/api/*`, `/api/auth/*`, `/assets/*`, webhooks, the socket) answers 404, and no cookie is read or set there. The token is minted by the app list for the signed-in organization, names the frame host, the app, the version and the page's origin, and is refused on any other host. The document carries `frame-ancestors <the organization's page>`, no `X-Frame-Options`, and `sandbox allow-scripts allow-forms allow-same-origin`; the iframe gets `allow-same-origin` only for such a frame, never for the opaque one. The page posts to the frame's exact origin and hears only it; the frame posts to the page origin its server wrote into the document and drops any other message (`apps/api/src/modules/apps/app-frame-host-route.ts`, `apps/api/src/lib/app-frame-host.ts`).
+- **Images.** A framed screen shows images only from the hosts its manifest lists in `network.imageHosts` (https).
+- **Names.** An app name never holds `--` (the manifest refuses it). An organization whose slug holds `--`, or a label longer than 63 characters, keeps the opaque frame for that app, with a warning in the log.
+- **First-party apps.** `LIAISON_FRAMED_APPS` (comma-separated, for example `shopify,boxtal`) frames those first-party apps on their own origin too, while the template is set. In the desktop and mobile apps such an app runs in the shell's frame.
+- **Not framed this way.** App builder drafts stay in the opaque frame.
+
+### Host calls a framed screen makes
+
+A framed screen reaches only its own `/api/apps/<app>/...` routes through `fetch`. For the rest it calls `@liaison/host` (host API 1.3), and the page answers each call for that app only:
+
+| Call | What the host does |
+|---|---|
+| `getContext()` | Organization and person: ids, names, locale. Never a token. |
+| `app.openFile(fileId, filename)` | Fetches the file and opens it (the desktop viewer, a browser tab or a download). Only a file id this frame saw in its own tool results or prints, or a file attached to one of its own records. No bytes go back to the frame. |
+| `app.listDocumentTemplates(entity)`, `app.printDocuments({ entity, id, templateIds, merge })` | The organization's templates and prints for one of the app's own record types. |
+| `app.listMyApprovals()` | Pending approvals of the app's own tools that the person may decide. |
+| `app.decideApproval(id, decision, payloadHash)` | The host shows its own confirmation dialog, checks the approval belongs to one of the app's tools, and keeps the payload fingerprint the app showed. The app's button only asks. |
+| `app.openExternal(url)` | Opens an `https` page in a new tab, with no opener and no referrer, only on a host the manifest declares (fetch domains, connection domains, `network.imageHosts`, `network.linkHosts`) and never the Liaison page's own origin. |
+| `app.openRecord(app, entity, id)`, `app.openApprovals()` | Opens another app's record in its own tab (what it shows is up to the person's access), or the approvals queue. |
+
+In the page (a first-party app that is not framed) the same calls work; file opening, approval decisions and outside links then keep their direct path (`packages/host-sdk/src/index.ts`, `apps/web/src/framework/host-app-calls.ts`).
+
 An installed app's interface is listed and served only when someone accountable vouched for those exact bytes:
 
 - **first-party**: the install is the image's own catalog artifact, byte for byte;

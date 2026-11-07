@@ -7785,4 +7785,22 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.dashboards.blockNotFound": "Ce bloc n'est plus sur le tableau de bord.",
   "kernel.dashboards.blockNetwork":
     "Impossible de joindre le serveur pour le moment. Réessayez dans un instant.",
+  "tickets.card.pill": "Ticket",
+  "tickets.card.assignee": "Responsable",
+  "tickets.card.category": "Catégorie",
+  "tickets.card.slaDeadline": "Réponse attendue avant",
+  "tickets.card.lastInbound": "Dernier message du client",
+  "tickets.card.messages": "Messages",
+  "tickets.card.statusOpen": "Ouvert",
+  "tickets.card.statusAwaitingCustomer": "En attente du client",
+  "tickets.card.statusAwaitingFollowup": "Reporté",
+  "tickets.card.statusClosed": "Fermé",
+  "tickets.card.backlogPill": "Tickets ouverts",
+  "tickets.card.backlogHow":
+    "Compté par le serveur sur tous les tickets ouverts que vous pouvez voir, et non sur une page de résultats",
+  "tickets.card.runningGet": "Lecture du ticket",
+  "tickets.card.runningBacklog": "Comptage des tickets ouverts",
+  "projects.card.pill": "Projets",
+  "projects.card.more": "Ouvrir Projets",
+  "projects.card.runningSearch": "Recherche dans les projets et les tâches",
 }

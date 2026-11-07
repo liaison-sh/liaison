@@ -114,7 +114,7 @@
       }
     ]
   },
-  "version": "1.2.10",
+  "version": "1.2.11",
   "description": "Customer-facing ticketing: local foundations (7.1)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -974,6 +974,105 @@
       "resultRowPath": "ticket.id",
       "trustBoundary": "user",
       "handler": "get",
+      "returns": {
+        "schema": {
+          "ticket": "object",
+          "messages": "object"
+        }
+      },
+      "runningLabel": "Reading the ticket",
+      "runningLabelKey": "tickets.card.runningGet",
+      "resultCard": {
+        "kind": "entity",
+        "pill": {
+          "label": "Ticket",
+          "labelKey": "tickets.card.pill"
+        },
+        "ref": "{{result.ticket.handle}}",
+        "title": "{{result.ticket.subject}}",
+        "sub": "{{result.ticket.participantEmail}}",
+        "open": {
+          "view": "ticket",
+          "idPath": "result.ticket.id"
+        },
+        "status": {
+          "path": "result.ticket.status",
+          "map": {
+            "open": {
+              "label": {
+                "label": "Open",
+                "labelKey": "tickets.card.statusOpen"
+              },
+              "tone": "accent"
+            },
+            "awaiting_customer": {
+              "label": {
+                "label": "Waiting for the customer",
+                "labelKey": "tickets.card.statusAwaitingCustomer"
+              },
+              "tone": "muted"
+            },
+            "awaiting_followup": {
+              "label": {
+                "label": "Snoozed",
+                "labelKey": "tickets.card.statusAwaitingFollowup"
+              },
+              "tone": "muted"
+            },
+            "closed": {
+              "label": {
+                "label": "Closed",
+                "labelKey": "tickets.card.statusClosed"
+              },
+              "tone": "success"
+            }
+          }
+        },
+        "rows": [
+          {
+            "label": {
+              "label": "Assignee",
+              "labelKey": "tickets.card.assignee"
+            },
+            "value": "{{result.ticket.assigneeName}}"
+          },
+          {
+            "label": {
+              "label": "Category",
+              "labelKey": "tickets.card.category"
+            },
+            "value": "{{result.ticket.categoryName}}"
+          },
+          {
+            "label": {
+              "label": "Reply due",
+              "labelKey": "tickets.card.slaDeadline"
+            },
+            "value": "{{result.ticket.slaDeadline}}",
+            "format": "datetime",
+            "warnWhen": {
+              "path": "result.ticket.slaBreachedAt",
+              "exists": true
+            }
+          },
+          {
+            "label": {
+              "label": "Last customer message",
+              "labelKey": "tickets.card.lastInbound"
+            },
+            "value": "{{result.ticket.lastInboundAt}}",
+            "format": "relative"
+          },
+          {
+            "label": {
+              "label": "Messages",
+              "labelKey": "tickets.card.messages"
+            },
+            "value": "{{result.ticket.messageCount}}",
+            "format": "number"
+          }
+        ]
+      },
       "retryOnTransientDbError": true,
       "taintSource": true,
       "params": {
@@ -1698,6 +1797,32 @@
       "readsFromTable": "app_tickets.tickets",
       "trustBoundary": "user",
       "handler": "backlogHealth",
+      "returns": {
+        "schema": {
+          "byStatus": "object",
+          "bySla": "object",
+          "unassignedOpen": "number",
+          "byCategory": "object",
+          "byAge": "object",
+          "oldest": "object"
+        }
+      },
+      "runningLabel": "Counting open tickets",
+      "runningLabelKey": "tickets.card.runningBacklog",
+      "resultCard": {
+        "kind": "number",
+        "pill": {
+          "label": "Open tickets",
+          "labelKey": "tickets.card.backlogPill"
+        },
+        "value": "{{result.byStatus.totalOpen}}",
+        "valueFormat": "number",
+        "how": {
+          "label": "Counted by the server over every open ticket you can see, not over a page of results",
+          "labelKey": "tickets.card.backlogHow"
+        },
+        "source": "Tickets"
+      },
       "retryOnTransientDbError": true,
       "params": {
         "type": "object",

@@ -397,6 +397,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // real chat seam and decide path.
             "src/tests/integration/kernel-approval-deciding-scope.test.ts",
             "src/tests/integration/tickets-primitives.test.ts",
+            "src/tests/integration/real-cards.test.ts",
             "src/tests/integration/tickets.conversion.dependency-check.test.ts",
             "src/tests/integration/mail-tickets-conversion.test.ts",
             // Mailbox encryption (Phase 1, Task 1.7). mail-sync and mail-api

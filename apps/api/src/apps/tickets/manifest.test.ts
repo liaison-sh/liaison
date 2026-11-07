@@ -30,6 +30,27 @@ const guideText = (m: { agentInstructions?: unknown }): string => {
 }
 
 describe("tickets manifest", () => {
+  it("draws a ticket as an entity card and the open backlog as a number card, from fields the tools return", () => {
+    const tools = ticketsManifest.tools as unknown as Record<
+      string,
+      {
+        returns?: { schema?: Record<string, string> }
+        resultCard?: { kind?: string }
+        runningLabel?: string
+        runningLabelKey?: string
+      }
+    >
+    expect(tools.get?.resultCard?.kind).toBe("entity")
+    expect(tools.backlogHealth?.resultCard?.kind).toBe("number")
+    expect(Object.keys(tools.get?.returns?.schema ?? {})).toEqual(["ticket", "messages"])
+    expect(Object.keys(tools.backlogHealth?.returns?.schema ?? {})).toContain("byStatus")
+    expect(tools.get?.runningLabelKey).toBe("tickets.card.runningGet")
+    expect(tools.backlogHealth?.runningLabelKey).toBe("tickets.card.runningBacklog")
+    // 1.2.11: ticket and backlog results draw as cards.
+    expect(ticketsManifest.version).toBe("1.2.11")
+    expect(validateAppManifest(ticketsManifest).success).toBe(true)
+  })
+
   it("declares the heading over its attention items, in the words and catalog key Home shows", () => {
     expect(ticketsManifest.attention.groupLabel).toEqual({
       label: "Support",

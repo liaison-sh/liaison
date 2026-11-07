@@ -83,7 +83,24 @@ describe("projects.manifest", () => {
     // 1.10.3: approval_route_read says who an approval about a task is for; Home passes on.
     // 1.10.6: sentences shared by several tools, and the longest descriptions past 600 characters, read from guide sections.
     // 1.10.7: its core tools load on a hard focus of its entity, the others by name.
-    expect(projectsManifest.version).toBe("1.10.7")
+    // 1.10.8: search draws its result as a list card.
+    expect(projectsManifest.version).toBe("1.10.8")
+  })
+
+  it("projects.manifest.search-draws-a-list-card-from-fields-the-tool-returns", () => {
+    const search = projectsManifest.tools.search as {
+      returns?: { schema?: Record<string, string> }
+      resultCard?: { kind?: string; items?: { path?: string } }
+      runningLabel?: string
+      runningLabelKey?: string
+    }
+    expect(search.resultCard?.kind).toBe("list")
+    expect(search.resultCard?.items?.path).toBe("result.items")
+    expect(Object.keys(search.returns?.schema ?? {})).toContain("items")
+    expect(search.runningLabel).toBeTruthy()
+    expect(search.runningLabelKey).toBe("projects.card.runningSearch")
+    // The manifest as a whole still passes the deep card rules.
+    expect(validateAppManifest(projectsManifest).success).toBe(true)
   })
 
   it("projects.manifest.task-labels", () => {

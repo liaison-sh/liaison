@@ -601,8 +601,21 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.19: both of the above, merged.
     // 0.23.20: the longest descriptions past 600 characters read from guide sections.
     // 0.23.21: its core tools load on a hard focus of its entity, the others by name.
-    expect(m.version).toBe("0.23.21")
+    // 0.23.22: the invoice's Shipment tab is shown only to people who can read shipments.
+    expect(m.version).toBe("0.23.22")
     expect(m.packageFormat).toBe(1)
+  })
+
+  it("shows the invoice Shipment tab only to people who can read shipments", () => {
+    const m = load() as {
+      slots: { invoicing: { document_detail: { tabs: Array<{ id: string; visibility_scope?: string }> } } }
+      tools: Record<string, { requiredScopes: string[] }>
+    }
+    const tab = m.slots.invoicing.document_detail.tabs.find((t) => t.id === "shipment")
+    // The tab reads through the app's `search`, so its scope is that tool's: a person without it
+    // would otherwise see a tab whose first request is refused.
+    expect(tab?.visibility_scope).toBe("boxtal:shipments:read")
+    expect(m.tools.search?.requiredScopes).toContain(tab?.visibility_scope as string)
   })
 
   it("backfill-queue-facts reaches only workspaces with a shipment missing its snapshot", () => {

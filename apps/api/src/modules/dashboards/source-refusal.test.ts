@@ -29,8 +29,12 @@ describe("dashboardSourceRefusal", () => {
   })
 
   it("internal and agent-only tools are not", () => {
-    expect(dashboardSourceRefusal(read({ trustBoundary: "internal" }))).toBe("it crosses a trust boundary")
-    expect(dashboardSourceRefusal(read({ trustBoundary: "agent" }))).toBe("it crosses a trust boundary")
+    expect(dashboardSourceRefusal(read({ trustBoundary: "internal" }))).toBe(
+      "it crosses a trust boundary",
+    )
+    expect(dashboardSourceRefusal(read({ trustBoundary: "agent" }))).toBe(
+      "it crosses a trust boundary",
+    )
   })
 
   it("a write or a gated read is not", () => {

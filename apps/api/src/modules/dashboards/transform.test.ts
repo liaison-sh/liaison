@@ -3,6 +3,7 @@
 // The map step, one chart type at a time, and the spec rules each type needs.
 
 import { describe, expect, test } from "bun:test"
+import { wrapExternalContent } from "~/lib/external-content"
 import {
   blockTtlSec,
   dashboardSpecSchema,
@@ -14,6 +15,7 @@ import {
   extractRows,
   TransformError,
   transformBlock,
+  unfenceSourceResult,
 } from "~/modules/dashboards/transform"
 
 const orders = [
@@ -240,5 +242,32 @@ describe("cache lifetime", () => {
     expect(blockTtlSec({ refreshSec: 86_400 })).toBe(900)
     expect(blockTtlSec({ refreshSec: 120 })).toBe(120)
     expect(blockTtlSec({})).toBe(60)
+  })
+})
+
+describe("unfenceSourceResult", () => {
+  test("a connector read's fenced items become rows the map reads", () => {
+    const items = [
+      { number: "94", total: "692.50", date_created: "2026-11-07T10:00:00" },
+      { number: "93", total: "1026.00", date_created: "2026-11-06T10:00:00" },
+    ]
+    const result = {
+      connection: "woo",
+      operation: "orders_list",
+      count: 2,
+      items: wrapExternalContent(JSON.stringify(items)),
+    }
+    const unfenced = unfenceSourceResult(result) as { items: unknown }
+    expect(unfenced.items).toEqual(items)
+    expect(transformBlock("metric", { value: "total", agg: "sum" }, unfenced)).toMatchObject({
+      value: 1718.5,
+    })
+  })
+
+  test("fenced text that is not JSON, and unfenced results, stay as they are", () => {
+    const plain = { items: [{ a: 1 }] }
+    expect(unfenceSourceResult(plain)).toBe(plain)
+    const text = { note: wrapExternalContent("hello") }
+    expect(unfenceSourceResult(text)).toBe(text)
   })
 })

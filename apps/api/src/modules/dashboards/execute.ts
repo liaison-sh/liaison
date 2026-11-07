@@ -46,6 +46,7 @@ import {
   extractRows,
   TransformError,
   transformBlock,
+  unfenceSourceResult,
 } from "~/modules/dashboards/transform"
 import { DataStoreError, queryDocuments } from "~/modules/data-store/service"
 
@@ -150,7 +151,7 @@ async function readToolSource(source: ToolSource, ctx: BlockRunContext, runId: s
         ),
       }
     }
-    const result = envelope.data
+    const result = unfenceSourceResult(envelope.data)
     const { rows: pageRows } = extractRows(result, source.rowsPath)
     if (!pageRows) return { result }
     rows.push(...pageRows)

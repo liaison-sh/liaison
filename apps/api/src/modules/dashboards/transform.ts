@@ -16,6 +16,7 @@
 // category, or the aggregated field (or "value") to order by value. Defaults:
 // line and bucketed bar by category ascending, bar and pie by value descending.
 
+import { unwrapExternalContent } from "~/lib/external-content"
 import {
   type Aggregation,
   type BlockMap,
@@ -159,6 +160,34 @@ function compare(a: unknown, b: unknown): number {
   if (a === null || a === undefined) return b === null || b === undefined ? 0 : 1
   if (b === null || b === undefined) return -1
   return String(a).localeCompare(String(b))
+}
+
+/**
+ * A source result whose fields arrive fenced as untrusted text (a connector read
+ * answers `items: "<external-content ...>[...]</external-content>"`, so an agent
+ * reads them as data): the fenced JSON parsed back, top-level fields only, so the
+ * map reads its rows. A fenced field that is not JSON stays as it is. The fence is
+ * for a model reader; a block's rows go to the chart, and a preview runs the tool
+ * in the agent's thread, so the tool's own taint rule still applies there.
+ */
+export function unfenceSourceResult(result: unknown): unknown {
+  if (!result || typeof result !== "object" || Array.isArray(result)) return result
+  let out: Record<string, unknown> | null = null
+  for (const [k, v] of Object.entries(result as Record<string, unknown>)) {
+    if (typeof v !== "string") continue
+    const inner = unwrapExternalContent(v)
+    if (inner === v) continue
+    try {
+      const parsed: unknown = JSON.parse(inner)
+      if (parsed && typeof parsed === "object") {
+        out ??= { ...(result as Record<string, unknown>) }
+        out[k] = parsed
+      }
+    } catch {
+      // not JSON: the field stays text
+    }
+  }
+  return out ?? result
 }
 
 /**

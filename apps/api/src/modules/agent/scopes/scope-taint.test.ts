@@ -492,6 +492,9 @@ describe("writesToTable annotations on kernel tools", () => {
         // Its only write is the result cache on the file row, and that holds an unbriefed
         // analysis only (drawn from the file alone, none of the turn's data).
         "analyze_media",
+        // The org's model settings; its OpenRouter search filters the catalogue fetched whole
+        // from the fixed host, so no text of the turn goes out. Writes nothing.
+        "ai_models_get",
         "approval_policy_get",
         "approvals_list",
         "audit_search",
@@ -589,6 +592,9 @@ describe("writesToTable annotations on kernel tools", () => {
         "skill_search",
         "subagent_get",
         "subagent_list",
+        // Chips under the reply, drawn on the requester's own screen; a chip only sends its
+        // label as the person's next message, so it writes nothing.
+        "suggest_next_steps",
         "threads_list",
         "threads_read",
         "threads_search",

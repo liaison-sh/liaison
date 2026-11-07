@@ -2862,6 +2862,9 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
   toolRegistry.set([orgId, "kernel", "ai_models_get"], {
     appName: "kernel",
     name: "ai_models_get",
+    // A read: the org's model settings, and with openRouterSearch the OpenRouter catalogue,
+    // fetched whole from the fixed host and filtered here, so the search text never leaves.
+    readOnly: true,
     deferLoading: true,
     description: `Read the organization's AI model settings (admin), the same as Settings > Models: what Auto runs, the default reasoning level, each model with its key, whether it is on and available, its price and reasoning levels. Pass openRouterSearch to also search OpenRouter's catalogue for a model to add with ai_models_set.`,
     searchKeywords: ["modèle", "raisonnement", "default", "reasoning", "openrouter", "auto", "llm"],

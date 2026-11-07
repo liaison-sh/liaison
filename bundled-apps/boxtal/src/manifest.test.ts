@@ -52,6 +52,16 @@ function findOpaqueParams(m: unknown): string[] {
 }
 
 describe("Boxtal app.manifest.json", () => {
+  it("pins the webhook secret to the subscription body on Boxtal's API hosts (secrets, A5)", () => {
+    const m = load()
+    expect(m.secrets).toEqual({
+      boxtalWebhookSecret: { hosts: ["api.boxtal.build", "api.boxtal.com"], in: "body:webhookSecret" },
+    })
+    // The client writes it at exactly that path (lib/boxtal-v3-client.ts).
+    const src = readFileSync(join(import.meta.dir, "lib", "boxtal-v3-client.ts"), "utf8")
+    expect(src.match(/webhookSecret: placeholder/g)?.length).toBe(2)
+  })
+
   it("validates against packageManifestSchema (freeze-time zod)", () => {
     const r = packageManifestSchema.safeParse(load())
     if (!r.success) console.error(JSON.stringify(r.error.issues, null, 2))
@@ -583,7 +593,8 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.14: shipment_draft_create's description starts a new draft rather than opening one.
     // 0.23.15: shipment_draft_create is declared a write (it stores the draft), still ungated.
     // 0.23.16: API keys and the webhook secret stay host-side (ctx.fetch auth, configSecrets, by-key HMAC).
-    expect(m.version).toBe("0.23.17")
+    // 0.23.18: the webhook secret may go only into the subscription body's webhookSecret, on Boxtal's API hosts (secrets).
+    expect(m.version).toBe("0.23.18")
     expect(m.packageFormat).toBe(1)
   })
 

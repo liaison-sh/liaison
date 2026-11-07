@@ -18,8 +18,11 @@
 // off this server (the Workers executor: every ctx.* call crosses HTTPS) is
 // additionally built with `forWorkersRun`, which turns every method that would
 // hand a secret back into a typed refusal, so a regression fails loudly rather
-// than shipping a token into the isolate. The QuickJS executors keep the old
-// methods for the apps that still read their credentials themselves.
+// than shipping a token into the isolate. So is EVERY run of a custom app (an
+// org-private `<base>-o<orgKey>` app), on any executor, QuickJS included (A5):
+// its code is the org's, not the platform's, so it never holds a secret
+// either. The QuickJS executors keep the old methods for the first-party apps
+// that still read their credentials themselves.
 //
 // No key storage, encryption or KDF lives here: the secrets are read through
 // the same decrypt paths `config_get` and `connections_get*` always used.
@@ -72,9 +75,16 @@ export interface SecretNotAvailableOnWorkersError extends Error {
   code: typeof SECRET_NOT_AVAILABLE_ON_WORKERS
 }
 
-export function secretNotAvailableOnWorkers(what: string): SecretNotAvailableOnWorkersError {
+/** Why a bridge is secret-free: its isolate runs off this server, or its code is a custom app's. */
+export type SecretFreeReason = "workers" | "custom_app"
+
+export function secretNotAvailableOnWorkers(
+  what: string,
+  reason: SecretFreeReason = "workers",
+): SecretNotAvailableOnWorkersError {
+  const who = reason === "custom_app" ? "a custom app" : "an app running on Workers"
   const err = new Error(
-    `${what} would return a secret, which is not available to an app running on Workers. ` +
+    `${what} would return a secret, which is not available to ${who}. ` +
       "Use ctx.fetch auth, configSecrets or the *ForConfig crypto methods instead.",
   ) as SecretNotAvailableOnWorkersError
   err.status = 403
@@ -143,13 +153,18 @@ export function connectionOfSecretKey<C extends SecretKeySource>(
  */
 export function forWorkersRun<B extends Record<string, any>>(
   bridge: B,
-  opts: { secretConfigKeys: Iterable<string> | SecretConfigKeyResolver | null },
+  opts: {
+    secretConfigKeys: Iterable<string> | SecretConfigKeyResolver | null
+    /** What the refusal names; the contract is the same. Default "workers". */
+    reason?: SecretFreeReason
+  },
 ): B {
   const target = bridge as Record<string, any>
+  const reason = opts.reason ?? "workers"
   for (const name of SECRET_RETURNING_BRIDGE_METHODS) {
     if (typeof target[name] !== "function") continue
     target[name] = async () => {
-      throw secretNotAvailableOnWorkers(`ctx.${name}`)
+      throw secretNotAvailableOnWorkers(`ctx.${name}`, reason)
     }
   }
   const source = opts.secretConfigKeys
@@ -167,7 +182,7 @@ export function forWorkersRun<B extends Record<string, any>>(
   if (typeof configGet === "function") {
     target.config_get = async (key: string, ...rest: unknown[]) => {
       if (await isSecret(String(key))) {
-        throw secretNotAvailableOnWorkers(`ctx.config.get("${String(key)}")`)
+        throw secretNotAvailableOnWorkers(`ctx.config.get("${String(key)}")`, reason)
       }
       return configGet(key, ...rest)
     }

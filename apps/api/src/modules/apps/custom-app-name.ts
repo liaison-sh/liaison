@@ -9,6 +9,14 @@ export function customAppNameKey(name: string): string | null {
   return CUSTOM_SUFFIX.exec(name)?.[1] ?? null
 }
 
+/**
+ * Whether `name` is an org's custom app. The shape alone decides: an instance
+ * install never takes it (install-service.ts), on every edition.
+ */
+export function isCustomAppName(name: string | undefined): boolean {
+  return typeof name === "string" && customAppNameKey(name) !== null
+}
+
 /** The base of a custom-app-shaped name (the name without its org suffix). */
 export function customAppBase(name: string): string {
   return name.replace(CUSTOM_SUFFIX, "")

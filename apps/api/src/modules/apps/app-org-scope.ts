@@ -263,6 +263,16 @@ export function forbiddenCustomAppDeclaration(manifest: Rec): string | null {
   if (Array.isArray(manifest.routes) && manifest.routes.length > 0) return "routes"
   const network = isRec(manifest.network) ? manifest.network : {}
   if (network.allowPrivateHostsInTest === true) return "network.allowPrivateHostsInTest"
+  // A5: a custom app's credentials go only to hosts its connection names, so a
+  // connection that names none (any reachable host) is refused.
+  for (const [name, conn] of Object.entries(
+    isRec(manifest.connections) ? manifest.connections : {},
+  )) {
+    const domains = isRec(conn) ? conn.allowedDomains : undefined
+    if (!Array.isArray(domains) || domains.length === 0) {
+      return `connections.${name}.allowedDomains (empty)`
+    }
+  }
   for (const [name, tool] of Object.entries(isRec(manifest.tools) ? manifest.tools : {})) {
     if (isRec(tool) && overLimit(tool.timeoutMs, CUSTOM_APP_LIMITS.toolTimeoutMs)) {
       return `tools.${name}.timeoutMs`

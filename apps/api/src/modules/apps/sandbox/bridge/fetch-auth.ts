@@ -12,7 +12,8 @@
 //       tokenField?: "accessToken", expiresInField?: "expiresIn",
 //     },
 //   }
-//   configSecrets: { "<placeholder>": "<config key>" }   // written into the string body
+//   configSecrets: { "<placeholder>": "<config key>" }   // placed where the manifest's
+//                                                       // `secrets.<key>` says (A5)
 //
 // An oauth2 connection's value is its access token (the same lookup as
 // connections_getToken); a credentials connection's values are its stored
@@ -28,6 +29,12 @@
 // body (no token in it), which is what the app saw when it exchanged itself.
 
 import { createHmac, randomBytes } from "node:crypto"
+import {
+  parseSecretPlacementTarget,
+  SECRET_FORBIDDEN_HEADERS,
+  type SecretPlacementTarget,
+} from "@liaison/app-sdk"
+import { customAppNameKey } from "~/modules/apps/custom-app-name"
 import { connectionOfSecretKey, typedError } from "~/modules/apps/sandbox/bridge/secret-free"
 import type { AppManifestForBridge } from "~/modules/apps/sandbox/bridge/shared"
 import { matchesDomain } from "~/modules/apps/sandbox/bridge/shared"
@@ -73,15 +80,8 @@ export interface FetchResult {
 }
 
 const HEADER_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/
-const FORBIDDEN_HEADERS = new Set([
-  "host",
-  "content-length",
-  "content-type",
-  "cookie",
-  "connection",
-  "transfer-encoding",
-  "x-liaison-actor",
-])
+/** Headers no credential may be placed in: they frame the request, or a provider may log them. */
+const FORBIDDEN_HEADERS = SECRET_FORBIDDEN_HEADERS
 const IDENT_RE = /^[A-Za-z0-9_.:-]{1,128}$/
 const PLACEHOLDER_RE = /^[A-Za-z0-9_{}:.-]{12,128}$/
 const TOKEN_SKEW_MS = 60_000
@@ -181,14 +181,19 @@ function connectionDeclaration(manifest: AppManifestForBridge, name: string) {
   return declaration
 }
 
-/** Whether `url` is a host of `connection` (any host when it declares none). */
+/**
+ * Whether `url` is a host of `connection`. A connection that declares no
+ * domains takes any host the app may reach, except for a custom app, whose
+ * credentials go only to hosts its connection names (A5).
+ */
 export function matchesConnectionHost(
   manifest: AppManifestForBridge,
   connection: string,
   url: string | URL,
 ): boolean {
   const domains = manifest.connections?.[connection]?.allowedDomains ?? []
-  return domains.length === 0 || matchesDomain(url, domains)
+  if (domains.length === 0) return customAppNameKey(manifest.name) === null
+  return matchesDomain(url, domains)
 }
 
 /** The credential may only go to its own connection's hosts. */
@@ -492,22 +497,125 @@ export function dropBearer(key: string | undefined): void {
   if (key) bearerCache.delete(key)
 }
 
+export const SECRET_PLACEMENT_REFUSED = "secret_placement_refused"
+
+function placementRefused(message: string): Error {
+  return typedError(403, SECRET_PLACEMENT_REFUSED, `ctx.fetch configSecrets: ${message}`)
+}
+
+function countIn(haystack: string, needle: string): number {
+  return haystack.split(needle).length - 1
+}
+
+function safeDecode(text: string): string {
+  try {
+    return decodeURIComponent(text)
+  } catch {
+    return text
+  }
+}
+
+/** How often `placeholder` occurs in the URL, as sent and percent-decoded (the larger count). */
+function countInUrl(url: string, placeholder: string): number {
+  return Math.max(countIn(url, placeholder), countIn(safeDecode(url), placeholder))
+}
+
+/** Every string of a parsed JSON value (keys included) that contains `placeholder`, with its path. */
+function jsonOccurrences(
+  value: unknown,
+  placeholder: string,
+  path: Array<string | number> = [],
+  out: Array<{ path: Array<string | number>; exact: boolean }> = [],
+): Array<{ path: Array<string | number>; exact: boolean }> {
+  if (typeof value === "string") {
+    if (value.includes(placeholder)) out.push({ path, exact: value === placeholder })
+  } else if (Array.isArray(value)) {
+    value.forEach((v, i) => {
+      jsonOccurrences(v, placeholder, [...path, i], out)
+    })
+  } else if (value !== null && typeof value === "object") {
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (k.includes(placeholder)) out.push({ path: [...path, k], exact: false })
+      jsonOccurrences(v, placeholder, [...path, k], out)
+    }
+  }
+  return out
+}
+
+function samePath(a: Array<string | number>, b: Array<string | number>): boolean {
+  return a.length === b.length && a.every((seg, i) => seg === b[i])
+}
+
+function setAtPath(root: unknown, path: Array<string | number>, value: string): void {
+  let node = root as Record<string | number, unknown>
+  for (const seg of path.slice(0, -1)) node = node[seg] as Record<string | number, unknown>
+  node[path[path.length - 1]!] = value
+}
+
+export interface PlacedRequest {
+  /** The URL to send (a `query:` placement writes the secret into it). */
+  url: string
+  headers: Record<string, string>
+  body: unknown
+  /** Every secret written, for redaction. */
+  secrets: string[]
+  /** Per placed secret, the hosts it may reach: every redirect hop is held to each. */
+  hosts: string[][]
+}
+
+interface PlannedPlacement {
+  placeholder: string
+  key: string
+  target: SecretPlacementTarget
+  hosts: string[]
+}
+
 /**
- * Write each declared config secret into the string `body` where its
- * placeholder stands (verbatim). Each key must be a declared secret, the URL a
- * host of the connection that declares it, and the placeholder must occur.
+ * Write each config secret `map` names ({placeholder: configKey}) into the
+ * request, exactly where the manifest's `secrets` declaration says (A5):
+ *
+ *   - the key is a secret a connection declares, and `secrets.<key>` exists;
+ *   - the URL's host is one of the declaration's `hosts` (and of the owning
+ *     connection's domains);
+ *   - the placeholder is the WHOLE value of the declared header, query
+ *     parameter or JSON body path (the body parses as JSON), and occurs
+ *     nowhere else: not in another header, the URL, the body, or a JSON key.
+ *
+ * Anything else is `secret_placement_refused`, checked for every entry before
+ * any secret is read, so nothing is sent. A body placement is written into the
+ * parsed body and re-serialized, so an escaped copy of the placeholder
+ * elsewhere can never be the one replaced.
  */
-export async function substituteConfigSecrets(
-  url: string,
-  body: unknown,
+export async function placeConfigSecrets(
+  req: { url: string; headers: Record<string, string>; body: unknown },
   map: Record<string, string>,
   deps: FetchAuthDeps,
-): Promise<{ body: string; secrets: string[] }> {
-  if (typeof body !== "string") {
-    throw typedError(400, "invalid_fetch_auth", "ctx.fetch configSecrets: needs a string body")
+): Promise<PlacedRequest> {
+  if (req.body !== undefined && req.body !== null && typeof req.body !== "string") {
+    throw placementRefused("needs a string body (or none)")
   }
-  let out = body
-  const secrets: string[] = []
+  const rawBody = typeof req.body === "string" ? req.body : ""
+  const placeholders = Object.keys(map)
+  for (const a of placeholders) {
+    for (const b of placeholders) {
+      if (a !== b && a.includes(b)) throw placementRefused("one placeholder contains another")
+    }
+  }
+  let parsedBody: unknown
+  let bodyParsed = false
+  const parseBody = (): unknown => {
+    if (!bodyParsed) {
+      try {
+        parsedBody = JSON.parse(rawBody)
+      } catch {
+        throw placementRefused("a body placement needs a JSON body")
+      }
+      bodyParsed = true
+    }
+    return parsedBody
+  }
+
+  const plan: PlannedPlacement[] = []
   for (const [placeholder, key] of Object.entries(map)) {
     const owner = connectionOfSecretKey(deps.manifest.connections, key)
     if (!owner) {
@@ -517,22 +625,94 @@ export async function substituteConfigSecrets(
         `config key "${key}" is not a declared secret`,
       )
     }
-    assertConnectionHost(deps.manifest, owner.name, url)
-    if (!out.includes(placeholder)) {
-      throw typedError(
-        400,
-        "invalid_fetch_auth",
-        "ctx.fetch configSecrets: placeholder not in body",
-      )
+    const declared = deps.manifest.secrets
+    const declaration = declared && Object.hasOwn(declared, key) ? (declared[key] ?? null) : null
+    const target = declaration ? parseSecretPlacementTarget(declaration.in) : null
+    const hosts = Array.isArray(declaration?.hosts) ? declaration.hosts : []
+    if (!declaration || !target || hosts.length === 0) {
+      throw placementRefused(`the manifest declares no placement for "${key}" (secrets.${key})`)
     }
-    const secret = await deps.readConfigSecret(key)
-    if (!secret) {
-      throw typedError(409, "config_secret_missing", `config secret "${key}" is not set`)
+    let host = req.url
+    try {
+      host = new URL(req.url).hostname
+    } catch {
+      /* keep the raw url; matchesDomain refuses it */
     }
-    out = out.split(placeholder).join(secret)
-    secrets.push(secret)
+    if (!matchesDomain(req.url, hosts)) {
+      throw placementRefused(`"${key}" may not go to ${host}`)
+    }
+    assertConnectionHost(deps.manifest, owner.name, req.url)
+
+    const inUrl = countInUrl(req.url, placeholder)
+    const inBody = countIn(rawBody, placeholder)
+    const headerHits = Object.entries(req.headers).filter(
+      ([name, value]) => name.includes(placeholder) || String(value).includes(placeholder),
+    )
+    const where = declaration.in
+    if (target.kind === "header") {
+      const exact =
+        headerHits.length === 1 &&
+        headerHits[0]![0].toLowerCase() === target.name.toLowerCase() &&
+        headerHits[0]![1] === placeholder
+      if (!exact || inUrl > 0 || inBody > 0) {
+        throw placementRefused(`"${key}" must be the whole value of ${where} and nowhere else`)
+      }
+    } else if (target.kind === "query") {
+      let values: string[] = []
+      try {
+        values = new URL(req.url).searchParams.getAll(target.param)
+      } catch {
+        /* refused below */
+      }
+      if (
+        values.length !== 1 ||
+        values[0] !== placeholder ||
+        inUrl !== 1 ||
+        headerHits.length > 0 ||
+        inBody > 0
+      ) {
+        throw placementRefused(`"${key}" must be the whole value of ${where} and nowhere else`)
+      }
+    } else {
+      const hits = jsonOccurrences(parseBody(), placeholder)
+      if (
+        hits.length !== 1 ||
+        !hits[0]!.exact ||
+        !samePath(hits[0]!.path, target.path) ||
+        inUrl > 0 ||
+        headerHits.length > 0
+      ) {
+        throw placementRefused(`"${key}" must be the whole string at ${where} and nowhere else`)
+      }
+    }
+    plan.push({ placeholder, key, target, hosts })
   }
-  return { body: out, secrets }
+
+  // Every placement checked: read and write the secrets.
+  let url = req.url
+  const headers = req.headers
+  const secrets: string[] = []
+  for (const p of plan) {
+    const secret = await deps.readConfigSecret(p.key)
+    if (!secret) {
+      throw typedError(409, "config_secret_missing", `config secret "${p.key}" is not set`)
+    }
+    secrets.push(secret)
+    if (p.target.kind === "header") {
+      const name = Object.keys(headers).find(
+        (k) => k.toLowerCase() === (p.target as { name: string }).name.toLowerCase(),
+      )!
+      headers[name] = secret
+    } else if (p.target.kind === "query") {
+      const u = new URL(url)
+      u.searchParams.set(p.target.param, secret)
+      url = u.toString()
+    } else {
+      setAtPath(parseBody(), p.target.path, secret)
+    }
+  }
+  const body = bodyParsed ? JSON.stringify(parsedBody) : req.body
+  return { url, headers, body, secrets, hosts: plan.map((p) => p.hosts) }
 }
 
 /** Replace every injected value (and its base64 form) in `text`. */

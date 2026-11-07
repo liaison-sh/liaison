@@ -459,6 +459,9 @@ function buildManifestForBridge(desc: AppDescriptor, declaredCapabilities: strin
     events: (desc as any).events ?? {},
     connections: (desc as any).connections ?? {},
     network: (desc as any).network ?? {},
+    // Where ctx.fetch configSecrets may place each secret (bridge/fetch-auth.ts):
+    // none declared, none placed.
+    secrets: (desc as any).secrets ?? {},
     capabilities: declaredCapabilities,
     // I9 — carry the manifest's declared scope set into the bridge so
     // `grants_setUserScopes` can intersect app-issued grants against

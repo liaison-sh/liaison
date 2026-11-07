@@ -409,17 +409,57 @@ await ctx.fetch(`https://${shop}/admin/api/graphql.json`, {
 in `fields`), `"bearer"` (with `exchange`, a client-credentials token the host
 obtains, caches and drops on a 401), or `"basic"` (two credentials fields).
 `configSecrets: { "<placeholder>": "<config key>" }` writes a declared config
-secret into the string body where its placeholder stands, and `ctx.config.has(key)`
+secret where the manifest's `secrets` map places it (below), and `ctx.config.has(key)`
 tells whether a secret is set without reading it. For the non-secret part of a
 credentials connection, `ctx.connections.<name>.getSettings()` returns the fields
 the manifest marks `readable: true` and names the missing ones.
 
 Secret-returning calls (`getToken`, `getCredentials`, reading a secret config
-key) work on the local sandbox but are refused when the app runs on a remote
-isolate executor, so an app that should run on both sends its secrets with
-`auth`. `@liaison/app-sdk/connection-credentials` reads a credentials
+key) work on the local sandbox for a first-party app but are refused when the
+app runs on a remote isolate executor, and for every organization's custom app
+on any executor (`secret_not_available_on_workers`), so an app that should run
+everywhere sends its secrets with `auth`. `@liaison/app-sdk/connection-credentials` reads a credentials
 connection's fields whichever shape `ctx.connections` has, for code that still
 needs them locally.
+
+### Declare where a secret goes
+
+A config secret goes only where the manifest says. Declare each secret config
+key that `configSecrets` writes, with the hosts and the one place it goes:
+
+```json
+"secrets": {
+  "carrierWebhookSecret": {
+    "hosts": ["api.carrier.example"],
+    "in": "body:subscription.webhookSecret"
+  }
+}
+```
+
+```ts
+const placeholder = "__LIAISON_CONFIG_SECRET__carrierWebhookSecret__"
+await ctx.fetch("https://api.carrier.example/v1/subscriptions", {
+  method: "POST",
+  body: JSON.stringify({ subscription: { webhookSecret: placeholder } }),
+  configSecrets: { [placeholder]: "carrierWebhookSecret" },
+})
+```
+
+- `in` is `"header:<Name>"`, `"query:<param>"` or `"body:<json.path>"` (keys joined
+  by dots, `[n]` for an array index; the body must be JSON).
+- The key must be a secret one of the app's connections declares, and each host
+  one of that connection's `allowedDomains` (or of `network.allowedDomains` when the
+  connection names none).
+- At the call, the placeholder must be the whole value of that header, parameter
+  or path, and appear nowhere else: not in another header, field or key, nor in
+  the URL. The URL's host, and every redirect hop, must be in `hosts`.
+- Anything else fails with `secret_placement_refused` (403) before anything is
+  sent. A key with no entry is placed nowhere: an app without `secrets` cannot use
+  `configSecrets`.
+
+Connection credentials (`auth`) need no entry: they go only in a request header,
+to a host of their own connection. A custom app's connection must name its
+`allowedDomains`.
 
 ### Call out once
 

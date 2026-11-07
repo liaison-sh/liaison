@@ -58,3 +58,6 @@ An external entity is named by the id the page reported -> apps/api/src/modules/
 A tab type declares the entity its id belongs to -> apps/api/src/modules/apps/manifest-schema.ts:1564
 A field named *_minor holds a whole number; readMinorAmount and minorAmountRefusal -> packages/app-sdk/src/minor-amount.ts:15
 The server refuses a decimal in a declared *_minor parameter -> apps/api/src/modules/apps/execute-tool-params.ts:298
+secrets: where configSecrets may write each secret config key (hosts, header/query/body path), refused otherwise with secret_placement_refused -> packages/app-sdk/src/secret-placement.ts:67 ; packages/app-sdk/src/secret-placement.ts:145 ; apps/api/src/modules/apps/sandbox/bridge/fetch-auth.ts:589 ; apps/api/src/modules/apps/sandbox/bridge/egress.ts:442
+Custom apps get no secret-returning call on any executor -> apps/api/src/modules/apps/sandbox/rpc-bridge.ts:148 ; apps/api/src/modules/apps/sandbox/run-app.ts:241
+Credentials (auth) only in a header, to the connection's own hosts; a custom app's connection names its domains -> apps/api/src/modules/apps/sandbox/bridge/fetch-auth.ts:189 ; apps/api/src/modules/apps/app-org-scope.ts:273

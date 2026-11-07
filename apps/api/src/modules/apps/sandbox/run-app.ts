@@ -28,6 +28,7 @@ import { withSystemDb } from "~/db/privileged"
 import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
 import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
+import { isCustomAppName } from "~/modules/apps/custom-app-name"
 import {
   forWorkersRun,
   isWorkersRunBridge,
@@ -234,6 +235,15 @@ async function runOnExecutor(
   workersTarget: WorkersTarget | null,
   onInfo: (info: WorkersRunInfo) => void,
 ): Promise<unknown> {
+  // A custom app's code never holds a secret, on any executor (A5). Its bridge
+  // is built secret-free (rpc-bridge.ts); one built elsewhere is marked here,
+  // before any call.
+  if (isCustomAppName(opts.appName) && !isWorkersRunBridge(opts.bridge)) {
+    forWorkersRun(opts.bridge, {
+      secretConfigKeys: secretConfigKeysOf(opts.bridge),
+      reason: "custom_app",
+    })
+  }
   if (executor === "workers" && workersTarget) {
     // The isolate lives off this server: no method may hand it a secret. The
     // dispatching site may have built the bridge so already (workersRun);

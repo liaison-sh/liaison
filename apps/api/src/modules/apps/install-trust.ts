@@ -17,7 +17,7 @@
 // not installed apps; they report `installed: false`.
 import { join } from "node:path"
 import { eq } from "drizzle-orm"
-import { withSystemDb } from "~/db/privileged"
+import { withSystemReadReusingHeld } from "~/db/privileged"
 import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
 import { isCatalogArtifact, isCatalogInstall } from "~/modules/apps/catalog"
 import { getInstallRoot } from "~/modules/apps/discover-apps"
@@ -74,7 +74,9 @@ export async function getInstallTrust(name: string): Promise<InstallTrust> {
 }
 
 async function loadInstallTrust(name: string): Promise<InstallTrust> {
-  const found = await withSystemDb("install-trust", async (db) => {
+  // Reached from an app's bridge (its egress grant) inside a job's privileged
+  // transaction too: a read of instance-wide rows, so it reuses that one.
+  const found = await withSystemReadReusingHeld("install-trust", async (db) => {
     const [active] = await db
       .select()
       .from(appsActiveVersion)

@@ -179,7 +179,7 @@ export async function withPrivilegedDb<T>(
  * so an acquisition made while one is held (a nested acquisition: one caller
  * holding two slots, the shape that deadlocks a full pool) is seen.
  */
-const heldSlot = new AsyncLocalStorage<{ held: boolean; reason: string }>()
+const heldSlot = new AsyncLocalStorage<{ held: boolean; reason: string; tx: PrivilegedDb }>()
 
 /**
  * One transaction on the privileged pool (withPrivilegedDb's default pool,
@@ -215,12 +215,12 @@ function runOnPrivilegedPool<T>(
     onAcquired()
     const acquiredAt = performance.now()
     slot.acquired()
-    const marker = { held: true, reason }
+    const branded = tx as unknown as PrivilegedDb
+    const marker = { held: true, reason, tx: branded }
     try {
       return await heldSlot.run(marker, async () => {
         await tx.execute(drizzleSql.raw("SET LOCAL ROLE liaison_admin"))
         await setPrivilegedContext(tx, orgId, actor)
-        const branded = tx as unknown as PrivilegedDb
         attachQueueEvent(branded, queueOrgId, queued)
         return await fn(branded)
       })
@@ -305,6 +305,28 @@ export async function withSystemDb<T>(
 ): Promise<T> {
   log.debug({ reason }, "system db access")
   return runOnPrivilegedPool(testPool?.db ?? db, reason, null, undefined, fn)
+}
+
+/**
+ * A system READ that may be reached from inside a privileged transaction (an
+ * app's bridge call made under a job's or a sync's withPrivilegedDb): it runs on
+ * the transaction this async context already holds, when that one still runs
+ * as liaison_admin, instead of taking a second privileged slot (the nested
+ * shape that deadlocks a full pool). Elsewhere it is withSystemDb. Only for
+ * reads of rows no org owns or that BYPASSRLS reads alike from any org
+ * context; it sees the holder's uncommitted rows. Never for writes: they would
+ * commit or roll back with the holder's.
+ */
+export async function withSystemReadReusingHeld<T>(
+  reason: string,
+  fn: (db: PrivilegedDb) => Promise<T>,
+): Promise<T> {
+  const outer = heldSlot.getStore()
+  if (outer?.held) {
+    const { role } = await transactionRole(outer.tx)
+    if (role === "liaison_admin") return fn(outer.tx)
+  }
+  return withSystemDb(reason, fn)
 }
 
 /**

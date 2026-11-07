@@ -1567,13 +1567,11 @@ Write numbers, amounts and dates the way that language writes them, never as a r
   // step 0, so their full guide must be always-on — same invariant as
   // discovery: a tool is never callable without its app's full instructions.
   const hotApps = new Set<string>()
-  // The app tools every turn is shown: the hot ones. A guide SECTION rides in
-  // the system prompt only while one of its tools is in this set
-  // (app-guide.ts); the core rides with the app. The sections of a loaded
-  // tool arrive as a message.
-  const loadedAppTools = new Set<string>()
-  // Every tool every turn is shown, kernel included: a guide that names its
-  // tools (kernel-config, ...) renders in full while one of them is loaded.
+  // Every tool every turn is shown (the hot ones), kernel included. A guide
+  // SECTION rides in the system prompt only while one of its tools is in this
+  // set, for an app's guide, the kernel's and a guide that names its tools
+  // alike (app-guide.ts); the core rides with the app, or with a named tool.
+  // The sections of a tool loaded later arrive as a message.
   const loadedTools = new Set<string>()
   for (const [tkey, tdef] of toolRegistry.entriesOf(orgId)) {
     if (tkey[1] === "kernel") {
@@ -1586,7 +1584,6 @@ Write numbers, amounts and dates the way that language writes them, never as a r
     if (isFeatureOffForTool(orgId, tdef)) continue
     if (!isDeferredTool(tkey[1], tdef)) {
       hotApps.add(tkey[1])
-      loadedAppTools.add(`${tkey[1]}__${tkey[2]}`)
       loadedTools.add(`${tkey[1]}__${tkey[2]}`)
     }
   }
@@ -1609,10 +1606,8 @@ Write numbers, amounts and dates the way that language writes them, never as a r
     const app = key[1]
     // An Off (or restricted-away) app gets neither its guide nor a summary line.
     if (isAppUnavailableFor(orgId, app, actor.userId)) continue
-    if (app === "kernel") {
-      withGuide(app, instrText, "all")
-    } else if (hotApps.has(app) || guideCoversLoaded(instrText, loadedTools)) {
-      withGuide(app, instrText, loadedAppTools)
+    if (app === "kernel" || hotApps.has(app) || guideCoversLoaded(instrText, loadedTools)) {
+      withGuide(app, instrText, loadedTools)
     } else {
       summaryLines.push(`- **${app}**: ${appInstructionSummary(instrText)}`)
     }

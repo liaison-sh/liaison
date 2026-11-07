@@ -27,9 +27,19 @@ type Body = { system: Part[]; messages: Array<{ role: string; content: Part[] | 
 
 const MODEL_ID = `claude-subrun-guide-${crypto.randomUUID().slice(0, 6)}`
 const PAYLOAD = { draft: "d", confidence: 1 }
-const SCOPES = ["kernel:threads:read", "kernel:routines:read", "kernel:routines:write"]
+const SCOPES = [
+  "kernel:threads:read",
+  "kernel:routines:read",
+  "kernel:routines:write",
+  "kernel:users:admin",
+]
 /** A sentence only the routines guide carries. */
 const ROUTINES_GUIDE_MARK = "Choosing the trigger"
+/** Phrases only the kernel guide's sections about two kernel tools carry. */
+const ACCESS_SECTION_MARK = "DETERMINISTIC SCOPE CHECK"
+const ROLE_SECTION_MARK = "A vague 'created with the requested scopes' is INCOMPLETE"
+/** A sentence of the kernel guide's core (the main agent's system prompt). */
+const KERNEL_CORE_MARK = "Entity tagging: link every entity you mention"
 const ORIG_KEY = process.env.LIAISON_ANTHROPIC_API_KEY
 const realFetch = globalThis.fetch
 let calls: Array<{ name: string; input: unknown }> = []
@@ -223,6 +233,26 @@ describe("the guides a sub-agent run receives", () => {
     for (const body of sent) {
       expect(JSON.stringify(body.system)).not.toContain(ROUTINES_GUIDE_MARK)
       expect(textsOf(body).some((t) => t.includes(ROUTINES_GUIDE_MARK))).toBe(false)
+    }
+  }, 40_000)
+
+  it("a sub-agent run that loads a kernel tool receives that tool's kernel guide section, not another's", async () => {
+    const sent = await runLoading("kernel__describe_user_access")
+    expect(textsOf(sent[0] as Body).some((t) => t.includes(ACCESS_SECTION_MARK))).toBe(false)
+    const notes = textsOf(sent[1] as Body).filter(isGuideNote)
+    expect(notes).toHaveLength(1)
+    expect(notes[0]).toContain(ACCESS_SECTION_MARK)
+    expect(notes[0]).not.toContain(ROLE_SECTION_MARK)
+    // The section rides without the kernel guide's core, which a sub-agent never gets.
+    expect(notes[0]).not.toContain(KERNEL_CORE_MARK)
+  }, 40_000)
+
+  it("a sub-agent run that loads no such kernel tool receives no kernel guide section", async () => {
+    const sent = await runLoading("kernel__list_routines")
+    for (const body of sent) {
+      const all = `${JSON.stringify(body.system)}\n${textsOf(body).join("\n")}`
+      expect(all).not.toContain(ACCESS_SECTION_MARK)
+      expect(all).not.toContain(ROLE_SECTION_MARK)
     }
   }, 40_000)
 })

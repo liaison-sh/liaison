@@ -26,6 +26,8 @@ import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 /** `METHOD path` -> why a scopeless member may be answered. */
 const ANY_MEMBER: Record<string, string> = {
+  "GET /api/dashboards":
+    "the caller's own personal dashboards and the org-visible ones, filtered by RLS; titles and specs only, each block's data is read with the viewer's own scopes",
   "GET /api/health": "public route, see route-auth-invariant.test.ts",
   "GET /api/health/ready": "public route, see route-auth-invariant.test.ts",
   "GET /api/settings/branding": "public route, see route-auth-invariant.test.ts",

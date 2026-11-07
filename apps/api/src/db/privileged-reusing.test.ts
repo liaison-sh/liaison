@@ -7,7 +7,7 @@
 // NESTED_PRIVILEGED_STRICT=1, so a nested acquisition here would throw.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
-import { extractRows, type RlsClient, sql } from "~/db"
+import { extractRows, type RlsClient } from "~/db"
 import {
   PrivilegedDbTestAccess,
   withPrivilegedDb,
@@ -15,17 +15,20 @@ import {
   withSystemDb,
 } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
+import { ensureOrg } from "~/modules/provisioning/ensure-org"
 
-const ORG_ID = crypto.randomUUID()
-const OTHER_ORG_ID = crypto.randomUUID()
-const USER_ID = crypto.randomUUID()
+let ORG_ID = ""
+let OTHER_ORG_ID = ""
 
-const ctx: UserContext = {
-  actorType: "user",
-  userId: USER_ID,
-  orgId: ORG_ID,
-  scopes: [],
-  dimensionGrants: {},
+/** A request context in ORG_ID: its GUCs are all the probe reads. */
+function ctx(): UserContext {
+  return {
+    actorType: "user",
+    userId: crypto.randomUUID(),
+    orgId: ORG_ID,
+    scopes: [],
+    dimensionGrants: {},
+  }
 }
 
 type Probe = { pid: number; role: string; org: string }
@@ -45,19 +48,16 @@ let strictBefore: string | undefined
 beforeAll(async () => {
   strictBefore = process.env.NESTED_PRIVILEGED_STRICT
   process.env.NESTED_PRIVILEGED_STRICT = "1"
-  for (const id of [ORG_ID, OTHER_ORG_ID]) {
-    await sql`INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (${id}, 'PrivilegedReusing', ${`priv-reuse-${id.slice(0, 8)}`})`
-  }
-  await sql`INSERT INTO kernel.users (id, org_id, email, name, password_hash)
-    VALUES (${USER_ID}, ${ORG_ID}, ${`priv-reuse-${USER_ID.slice(0, 8)}@test.com`}, 'reuser', 'x')`
+  const tag = crypto.randomUUID().slice(0, 8)
+  ORG_ID = (await ensureOrg({ slug: `priv-reuse-${tag}`, name: "Privileged Reuse" })).orgId
+  OTHER_ORG_ID = (
+    await ensureOrg({ slug: `priv-reuse-other-${tag}`, name: "Privileged Reuse Other" })
+  ).orgId
 })
 
-afterAll(async () => {
+afterAll(() => {
   if (strictBefore === undefined) delete process.env.NESTED_PRIVILEGED_STRICT
   else process.env.NESTED_PRIVILEGED_STRICT = strictBefore
-  await sql`DELETE FROM kernel.users WHERE id = ${USER_ID}`
-  await sql`DELETE FROM kernel.organizations WHERE id IN (${ORG_ID}, ${OTHER_ORG_ID})`
 })
 
 describe("withPrivilegedReusing", () => {
@@ -89,7 +89,7 @@ describe("withPrivilegedReusing", () => {
   })
 
   it("from a request transaction, takes its own privileged transaction and leaves the caller's role alone", async () => {
-    const { outer, inner, after } = await withRlsContext(ctx, async (tx) => {
+    const { outer, inner, after } = await withRlsContext(ctx(), async (tx) => {
       const outer = await probe(tx)
       const inner = await withPrivilegedReusing(tx, ORG_ID, "reuse-from-rls", (ptx) => probe(ptx))
       return { outer, inner, after: await probe(tx) }

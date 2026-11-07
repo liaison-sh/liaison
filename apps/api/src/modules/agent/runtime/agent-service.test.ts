@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import { _setEdition } from "~/lib/edition"
 import { TurnHandoffTestAccess } from "~/modules/agent/runtime/turn-handoff"
+import { clearTestCreditPricing, setTestCreditPricing } from "~/tests/helpers/credit-pricing"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const ORIG_ANTHROPIC_KEY = process.env.LIAISON_ANTHROPIC_API_KEY
@@ -19,6 +20,8 @@ describe("agent-service", () => {
     await acquireTestLock()
     // Agent billing (402 on zero balance) is managed-edition behaviour.
     _setEdition("managed")
+    // A managed cell meters nothing without a pushed rate.
+    await setTestCreditPricing()
     await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${ORG_ID}, 'AgentOrg', 'agent-org')`
     await sql`INSERT INTO kernel.users (id, org_id, email, name) VALUES (${USER_ID}, ${ORG_ID}, 'agent@test.com', 'Agent User')`
     await sql`INSERT INTO kernel.agents (id, org_id, kind, handle, display_name, owner_user_id, scope_ceiling)
@@ -36,6 +39,7 @@ describe("agent-service", () => {
   })
 
   afterAll(async () => {
+    await clearTestCreditPricing()
     _setEdition(null)
     await releaseTestLock()
   })

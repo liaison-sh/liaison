@@ -115,8 +115,8 @@ Warm summary on by default -> apps/api/src/modules/agent/context/history-setting
 Only OpenRouter turns are kept for the warm summary -> apps/api/src/modules/agent/providers/provider.ts:196
 Only above about 32,000 tokens -> apps/api/src/modules/agent/context/warm-compaction.ts:65
 A new message cancels it -> apps/api/src/modules/agent/context/warm-compaction.ts:550
-AGENT_HISTORY_BUDGET_TOKENS -> apps/api/src/lib/env.ts:939
-AGENT_PROMPT_CACHE_TTL_S -> apps/api/src/lib/env.ts:948
+AGENT_HISTORY_BUDGET_TOKENS -> apps/api/src/lib/env.ts:944
+AGENT_PROMPT_CACHE_TTL_S -> apps/api/src/lib/env.ts:953
 OpenRouter step timed: first token and tokens per second -> apps/api/src/modules/agent/runtime/agent-service.ts:3298
 OpenRouter speed limits 2.5 s, 50 tokens per second, 5 samples, env overrides -> apps/api/src/modules/agent/providers/openrouter-host-speed.ts:66
 OpenRouter slow provider tried last for new conversations -> apps/api/src/modules/agent/providers/openrouter-host-speed.ts:123
@@ -139,4 +139,7 @@ Case-insensitive match -> apps/api/src/modules/agent/providers/openrouter-provid
 At most 20 hosts -> packages/shared/src/validation/org-kernel-settings.ts:174
 Admin only: AI models API behind kernel:org:admin -> apps/api/src/modules/settings/ai-models-routes.ts:3
 Blocked hosts saved through PATCH /settings/ai/models -> apps/api/src/modules/settings/ai-models-routes.ts:354
+Managed: Cost vs Auto multiplier, 3:1 blend, one decimal below 2x -> apps/api/src/modules/agent/credits/credit-cost.ts:45 ; apps/web/src/modules/settings/AiModelsSettings.tsx:218 ; apps/web/src/modules/agent/ModelSelector.tsx:349
+Managed: credits = provider cost x the instance credit rate, per call -> apps/api/src/modules/agent/credits/credit-cost.ts:25 ; apps/api/src/modules/agent/credits/credit-cost.ts:32
+Managed: adding an OpenRouter model runs its test call on the service key, metered in credits -> apps/api/src/modules/settings/ai-models-admin.ts:463 ; apps/api/src/modules/settings/ai-models-admin.ts:508
 AI model settings tools for agents and MCP clients -> apps/api/src/modules/agent/tools/kernel-tools.ts:2876

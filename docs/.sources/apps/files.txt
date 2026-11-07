@@ -27,7 +27,9 @@ analyze_media -> apps/api/src/modules/agent/tools/kernel-tools.ts:873
 managed attachment opens for its owner only -> apps/api/src/modules/files/routes.ts:336
 Storage limit from the operator, STORAGE_QUOTA_EXCEEDED, unlimited without -> apps/api/src/modules/files/service.ts:277
 a copy keeps who attached it; a webhook or job copy records no uploader -> apps/api/src/modules/files/attach.ts:370 ; apps/api/src/modules/files/attach.ts:390
+Download link bound to the org address -> apps/api/src/modules/files/routes.ts:521 ; apps/api/src/modules/files/routes.ts:586
 Merged PDFs, data-subject exports and import attachments are refused past the storage limit -> apps/api/src/modules/pdf/merge.ts:264 ; apps/api/src/modules/export/data-subject-export-tool.ts:513 ; apps/api/src/modules/imports/runner.ts:1138
+Managed instance analyzes inline up to 60 MB and refuses larger -> apps/api/src/modules/agent/media/media-analysis-constants.ts:27 ; apps/api/src/modules/agent/media/media-analysis-tool.ts:351 ; apps/api/src/modules/files/media-analysis-job.ts:157
 Attachments an app saves and PDFs an app renders for a person or an agent are refused past the storage limit -> apps/api/src/modules/apps/sandbox/bridge/files.ts:210 ; apps/api/src/modules/pdf/render.ts:267 ; apps/api/src/modules/apps/sandbox/bridge/platform.ts:246
 Kept at the limit and counted: mail synced by Liaison (system, no agent) and legal records (immutable parent with retention) -> apps/api/src/modules/files/service.ts:353
 Notification once past 80 % (upgrade or free space) and at 100 %, again only after use drops under 80 % -> apps/api/src/modules/org/caps.ts:406 ; apps/api/src/modules/org/caps.ts:471 ; apps/api/src/modules/org/caps.ts:405 ; apps/api/src/modules/files/service.ts:369

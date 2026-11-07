@@ -12,6 +12,7 @@ import {
 } from "~/lib/demo-expired"
 import { authApiUrl } from "~/lib/env"
 import { log } from "~/lib/logger"
+import { noteIfOrgSuspended } from "~/lib/org-suspended"
 import { runBeforeSignOut, teardownSession } from "~/lib/session-lifecycle"
 import { clearLiaisonStorage } from "~/lib/storage"
 import {
@@ -109,6 +110,8 @@ export function createAuthManager(options: AuthManagerOptions = {}) {
           authLog.warn({ status: res.status }, "Token refresh rejected, logging out")
           // A workspace that ended leaves for the demo door (lib/demo-expired.ts).
           await noteIfDemoWorkspaceExpired(res)
+          // A suspended org's page is the suspended view (lib/org-suspended.ts).
+          await noteIfOrgSuspended(res)
           clearAuth()
           throw new AuthRefreshError("invalid_credentials", "Refresh token rejected")
         }

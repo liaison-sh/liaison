@@ -164,6 +164,8 @@ const READ_ONLY: Record<string, string[]> = {
     "shipment_draft_get",
     "prep_unlinked_list",
     "prep_order_prefill",
+    // A shipment's print record, the data document templates fill.
+    "print_record_get",
     // Write back only Boxtal's or the invoicing app's own state (the shipment snapshot, a settled
     // proforma, the resolved-draft cache), best effort: a failed write never fails the read.
     "track",
@@ -172,8 +174,6 @@ const READ_ONLY: Record<string, string[]> = {
     // 0.14.27-0.14.28 (#145, #152): same, the proforma settle and the draft cache refresh.
     "queue_counts",
     "to_prepare_list",
-    // The print record a document template fills, read from the shipment.
-    "print_record_get",
   ],
   calls: ["calls_segments_since", "calls_list", "webhook_info"],
   invoicing: [
@@ -194,6 +194,10 @@ const READ_ONLY: Record<string, string[]> = {
     "settings_shop_mapping_list",
     "documents_preview_pdf",
     "documents_download_pdf",
+    // The approval cards' reads: issuer profiles and the buyer's VAT
+    // status (a VIES lookup), written nowhere.
+    "documents_issue_preview",
+    "documents_update_preview",
     "counterparty_identity_get",
     "counterparty_identity_lookup",
     "einvoicing_classify",
@@ -207,9 +211,6 @@ const READ_ONLY: Record<string, string[]> = {
     // The Received tab's reads: list and one received e-invoice, from the app's own rows.
     "received_einvoices_list",
     "received_einvoices_get",
-    // The issue and update approval cards' evidence (issuer profiles, the buyer's VAT status).
-    "documents_issue_preview",
-    "documents_update_preview",
     // A customer's earlier sales, lines and Shopify orders (cross-calls only reads).
     "customer_history",
   ],
@@ -249,7 +250,7 @@ const READ_ONLY: Record<string, string[]> = {
     "draft_orders_get",
     "locations_list",
     "products_search",
-    // The org's short display code per SKU, from the app's own rows.
+    // The short display code per SKU, read from the kernel product attributes.
     "products_short_codes",
     "products_get",
     // The channels a publish/unpublish would act on (the approval card's context); a GraphQL read.

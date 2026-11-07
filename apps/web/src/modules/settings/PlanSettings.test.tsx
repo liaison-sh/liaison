@@ -27,24 +27,27 @@ function renderPlan() {
 describe("PlanSettings (managed mode)", () => {
   afterEach(cleanup)
 
-  it("renders tier + status + 'Open billing portal' link", async () => {
+  it("renders tier + status from the pushed state, and no payment page link", async () => {
     mockApiClient({
       "/billing/state": {
         mode: "managed",
+        plan: "base",
         tier: "team",
         status: "active",
-        billingPortalUrl: "https://cp.example/portal",
-        checkoutUrl: "https://cp.example/checkout",
+        periodEnd: "2026-06-19T00:00:00.000Z",
         includedCredits: "500",
-        periodEnd: "2026-06-19",
-        stale: false,
+        previewEndsAt: null,
+        autoTopUp: { enabled: false, thresholdCredits: 10, amountCredits: 50 },
       },
     })
     renderPlan()
-    expect(await screen.findByText(/team/i)).toBeInTheDocument()
+    expect(await screen.findByText("Base")).toBeInTheDocument()
+    expect(screen.queryByText(/team/i)).toBeNull()
+    expect(screen.queryByText(/2026-06-19T/)).toBeNull()
+    expect(screen.getByTestId("plan-open-billing").getAttribute("href")).toBe("/settings/billing")
     expect(await screen.findByText(/active/i)).toBeInTheDocument()
-    const portal = await screen.findByTestId("plan-billing-portal-link")
-    expect(portal.getAttribute("href")).toBe("https://cp.example/portal")
+    expect(screen.queryByTestId("plan-billing-portal-link")).toBeNull()
+    expect(screen.queryByTestId("plan-checkout-link")).toBeNull()
   })
 
   it("self_hosted: renders 'Plan unavailable' fallback", async () => {

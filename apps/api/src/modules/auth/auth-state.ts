@@ -4,6 +4,7 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { users } from "~/db/schema/kernel"
 import { rootLogger } from "~/lib/logger"
 import { publishRedis, REDIS_PREFIX, redisSub } from "~/lib/redis"
+import { orgRefusesNonSessionCredentials } from "~/modules/cloud/suspension"
 import { isDemoOrgExpiredNow } from "~/modules/demo/demo-expiry"
 
 const log = rootLogger.child({ module: "auth/auth-state" })
@@ -174,6 +175,9 @@ export async function isUserAuthCurrent(
   // A live websocket (and a ticket minted before expiry) of an expired demo
   // workspace stops being current.
   if (await isDemoOrgExpiredNow(params.orgId)) return false
+  // Nor does one of a managed org suspended or closed for billing: no websocket
+  // credential is an admin's export or Billing session (cloud/suspension.ts).
+  if (await orgRefusesNonSessionCredentials(params.orgId)) return false
 
   return true
 }

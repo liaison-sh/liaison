@@ -52,6 +52,7 @@ import { rootLogger } from "~/lib/logger"
 import { redis } from "~/lib/redis"
 import { reportUndeliveredEvents } from "~/modules/agent/routines/routine-incident"
 import type { RoutineTriggerEvent } from "~/modules/agent/routines/routine-worker"
+import { sweepSkippingMoving, writeUnlessMoving } from "~/modules/org/transfer-state/skip-moving"
 
 const log = rootLogger.child({ module: "routine-event-reconciler" })
 
@@ -254,43 +255,55 @@ export async function reconcileEventRoutines(
   const maxPerRoutine = opts.maxPerRoutine ?? RECONCILE_DEFAULTS.maxPerRoutine
   const enqueue = opts.enqueue ?? defaultEnqueue
   const families = Object.keys(RECONCILE_FAMILIES)
+  // An org being moved keeps its routines and runs as they are until the move ends.
 
-  const routines = await withSystemDb("routine-reconcile-routines", async (db) =>
-    extractRows<{ id: string; org_id: string; name: string; event: string; event_filter: unknown }>(
-      await db.execute(drizzleSql`
+  const routines = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("routine-reconcile-routines", async (db) =>
+      extractRows<{
+        id: string
+        org_id: string
+        name: string
+        event: string
+        event_filter: unknown
+      }>(
+        await db.execute(drizzleSql`
         SELECT id, org_id, name, event, event_filter FROM ${kernelRel("routines")}
         WHERE kind = 'event' AND enabled AND status = 'active'
+          AND ${notMoving(drizzleSql.raw("org_id"))}
           AND event IN (${drizzleSql.join(
             families.map((f) => drizzleSql`${f}`),
             drizzleSql`, `,
           )})
           ${opts.orgId ? drizzleSql`AND org_id = ${opts.orgId}::uuid` : drizzleSql``}
           ${opts.routineId ? drizzleSql`AND id = ${opts.routineId}::uuid` : drizzleSql``}`),
-    ).map(
-      (r): RoutineRow => ({
-        id: r.id,
-        orgId: r.org_id,
-        name: r.name,
-        event: r.event,
-        eventFilter: (r.event_filter as MailSenderFilter | null) ?? null,
-      }),
+      ).map(
+        (r): RoutineRow => ({
+          id: r.id,
+          orgId: r.org_id,
+          name: r.name,
+          event: r.event,
+          eventFilter: (r.event_filter as MailSenderFilter | null) ?? null,
+        }),
+      ),
     ),
   )
 
   const report: ReconcileReport = { routines: routines.length, events: [], counts: {} }
   for (const routine of routines) {
     try {
-      await reconcileRoutine(routine, {
-        since,
-        until,
-        now,
-        maxRetries,
-        backoffBaseMs,
-        maxPerRoutine,
-        enqueue,
-        dryRun: !!opts.dryRun,
-        report,
-      })
+      await writeUnlessMoving(routine.orgId, () =>
+        reconcileRoutine(routine, {
+          since,
+          until,
+          now,
+          maxRetries,
+          backoffBaseMs,
+          maxPerRoutine,
+          enqueue,
+          dryRun: !!opts.dryRun,
+          report,
+        }),
+      )
     } catch (err) {
       log.error({ err, routineId: routine.id }, "Routine event reconcile failed for this routine")
     }

@@ -21,10 +21,17 @@ import {
 } from "./oauth-registration"
 
 let fixture: OAuthFixtureHandle | null = null
+/** The public base a test stands in (as the routes' mcpOAuthBaseUrl would answer). */
+let pub: string | null = null
+function setPub(url: string | null): void {
+  pub = url
+  OAuthRegistrationTestAccess.setPublicBaseUrl(url)
+}
+const base = () => (pub ?? env.BASE_URL).replace(/\/$/, "")
 afterEach(async () => {
   await fixture?.close()
   fixture = null
-  OAuthRegistrationTestAccess.setPublicBaseUrl(null)
+  setPub(null)
 })
 
 function asMeta(over: Partial<AuthorizationServerMetadata> = {}): AuthorizationServerMetadata {
@@ -41,9 +48,10 @@ function asMeta(over: Partial<AuthorizationServerMetadata> = {}): AuthorizationS
 describe("chooseClient priority", () => {
   it("uses the pre-registered client id and secret, never registering", async () => {
     fixture = await startOAuthMcpFixture({ cimd: true })
-    OAuthRegistrationTestAccess.setPublicBaseUrl("https://liaison.example")
+    setPub("https://liaison.example")
     const ctx = await discoverOAuthContext(fixture.mcpUrl)
     const chosen = await chooseClient({
+      base: base(),
       authFlavor: "oauth_static",
       existing: { clientId: "pre-1", clientSecret: "s3cret" },
       ctx,
@@ -58,9 +66,9 @@ describe("chooseClient priority", () => {
 
   it("prefers a Client ID Metadata Document over DCR when the AS supports it", async () => {
     fixture = await startOAuthMcpFixture({ cimd: true, registration: true })
-    OAuthRegistrationTestAccess.setPublicBaseUrl("https://liaison.example")
+    setPub("https://liaison.example")
     const ctx = await discoverOAuthContext(fixture.mcpUrl)
-    const chosen = await chooseClient({ authFlavor: "oauth_dcr", existing: {}, ctx })
+    const chosen = await chooseClient({ base: base(), authFlavor: "oauth_dcr", existing: {}, ctx })
     expect(chosen.source).toBe("cimd")
     expect(chosen.clientId).toBe(
       "https://liaison.example/api/apps/mcp-manager/oauth/client-metadata.json",
@@ -72,7 +80,7 @@ describe("chooseClient priority", () => {
   it("registers dynamically when there is no CIMD (localhost BASE_URL)", async () => {
     fixture = await startOAuthMcpFixture({ cimd: true, registration: true })
     const ctx = await discoverOAuthContext(fixture.mcpUrl)
-    const chosen = await chooseClient({ authFlavor: "oauth_dcr", existing: {}, ctx })
+    const chosen = await chooseClient({ base: base(), authFlavor: "oauth_dcr", existing: {}, ctx })
     expect(chosen.source).toBe("dcr")
     expect(chosen.clientId.startsWith("dcr-")).toBe(true)
     expect(fixture.stats.registerCalls).toBe(1)
@@ -82,6 +90,7 @@ describe("chooseClient priority", () => {
     fixture = await startOAuthMcpFixture()
     const ctx = await discoverOAuthContext(fixture.mcpUrl)
     const chosen = await chooseClient({
+      base: base(),
       authFlavor: "oauth_dcr",
       existing: { clientId: "dcr-earlier", clientIdSource: "dcr", clientIssuer: ctx.issuer },
       ctx,
@@ -94,6 +103,7 @@ describe("chooseClient priority", () => {
     fixture = await startOAuthMcpFixture()
     const ctx = await discoverOAuthContext(fixture.mcpUrl)
     const chosen = await chooseClient({
+      base: base(),
       authFlavor: "oauth_dcr",
       existing: {
         clientId: "dcr-elsewhere",
@@ -111,27 +121,27 @@ describe("chooseClient priority", () => {
     const ctx = await discoverOAuthContext(fixture.mcpUrl)
     let caught: unknown
     try {
-      await chooseClient({ authFlavor: "oauth_dcr", existing: {}, ctx })
+      await chooseClient({ base: base(), authFlavor: "oauth_dcr", existing: {}, ctx })
     } catch (err) {
       caught = err
     }
     expect(caught).toBeInstanceOf(OAuthRegistrationError)
     expect((caught as OAuthRegistrationError).code).toBe("client_registration_required")
-    expect((caught as Error).message).toContain(callbackUrl())
+    expect((caught as Error).message).toContain(callbackUrl(base()))
   })
 })
 
 describe("Client ID Metadata Document", () => {
   it("is not offered for a non-public BASE_URL", () => {
     expect(env.BASE_URL.startsWith("https://")).toBe(false)
-    expect(cimdDocumentUrl()).toBeNull()
+    expect(cimdDocumentUrl(base())).toBeNull()
   })
 
   it("names itself as client_id and lists the exact callback", () => {
-    OAuthRegistrationTestAccess.setPublicBaseUrl("https://liaison.example")
-    const url = cimdDocumentUrl()
+    setPub("https://liaison.example")
+    const url = cimdDocumentUrl(base())
     expect(url).toBe("https://liaison.example/api/apps/mcp-manager/oauth/client-metadata.json")
-    const doc = clientMetadataDocument()
+    const doc = clientMetadataDocument(base())
     expect(doc.client_id).toBe(url)
     expect(doc.redirect_uris).toEqual([
       "https://liaison.example/api/apps/mcp-manager/oauth/callback",
@@ -146,8 +156,11 @@ describe("Client ID Metadata Document", () => {
 
 describe("DCR request body", () => {
   it("declares grant types, response types and a native application for a localhost callback", () => {
-    const body = dcrClientMetadata(asMeta({ token_endpoint_auth_methods_supported: ["none"] }))
-    expect(body.redirect_uris).toEqual([callbackUrl()])
+    const body = dcrClientMetadata(
+      asMeta({ token_endpoint_auth_methods_supported: ["none"] }),
+      base(),
+    )
+    expect(body.redirect_uris).toEqual([callbackUrl(base())])
     expect(body.grant_types).toEqual(["authorization_code", "refresh_token"])
     expect(body.response_types).toEqual(["code"])
     expect(body.application_type).toBe("native")
@@ -156,19 +169,22 @@ describe("DCR request body", () => {
 
   it("picks a secret-bearing method when the AS does not accept public clients", () => {
     expect(
-      dcrClientMetadata(asMeta({ token_endpoint_auth_methods_supported: ["client_secret_post"] }))
-        .token_endpoint_auth_method,
+      dcrClientMetadata(
+        asMeta({ token_endpoint_auth_methods_supported: ["client_secret_post"] }),
+        base(),
+      ).token_endpoint_auth_method,
     ).toBe("client_secret_post")
     expect(
       dcrClientMetadata(
         asMeta({
           token_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post"],
         }),
+        base(),
       ).token_endpoint_auth_method,
     ).toBe("client_secret_basic")
   })
 
   it("leaves the method to the AS default when the AS lists none", () => {
-    expect(dcrClientMetadata(asMeta()).token_endpoint_auth_method).toBeUndefined()
+    expect(dcrClientMetadata(asMeta(), base()).token_endpoint_auth_method).toBeUndefined()
   })
 })

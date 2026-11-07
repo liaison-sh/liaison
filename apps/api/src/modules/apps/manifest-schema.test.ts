@@ -310,6 +310,18 @@ describe("manifest schema: Phase-16 additive extensions", () => {
     expect(r.success).toBe(true)
   })
 
+  it("a webhook's budget fits inside the request ceiling: 29000 is the most", () => {
+    const withBudget = (timeoutMs: number) =>
+      validateAppManifest({
+        ...minimal,
+        webhooks: { hook: { handler: "hook", verify: "verify", timeoutMs } },
+        webhookHealth: { probe: null, reason: "the provider has no list API" },
+      }).success
+    expect(withBudget(29_000)).toBe(true)
+    expect(withBudget(29_001)).toBe(false)
+    expect(withBudget(999)).toBe(false)
+  })
+
   it("rejects search.timeoutMs above 10000", () => {
     const r = validateAppManifest({
       ...minimal,

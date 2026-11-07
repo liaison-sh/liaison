@@ -1,0 +1,44 @@
+{
+  "data": {
+    "items": [
+      {
+        "id": "<uuid>",
+        "type": "byok_usage",
+        "amount": "-0.00300000",
+        "model": "voice-transcribe",
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "userId": "<uuid>",
+        "userName": "Money Admin",
+        "description": "Dictation, 40 s",
+        "createdAt": "<ts>"
+      },
+      {
+        "id": "<uuid>",
+        "type": "byok_usage",
+        "amount": "-0.40000000",
+        "model": "shm-pro",
+        "inputTokens": 90000,
+        "outputTokens": 4000,
+        "userId": "<uuid>",
+        "userName": "Money Member",
+        "description": null,
+        "createdAt": "<ts>"
+      },
+      {
+        "id": "<uuid>",
+        "type": "byok_usage",
+        "amount": "-0.01200000",
+        "model": "shm-flash",
+        "inputTokens": 12000,
+        "outputTokens": 800,
+        "userId": "<uuid>",
+        "userName": "Money Admin",
+        "description": null,
+        "createdAt": "<ts>"
+      }
+    ],
+    "cursor": null,
+    "hasMore": false
+  }
+}

@@ -1,14 +1,14 @@
-Connection drift is reported per field; the app entry lists it under connectionChanges -> apps/api/src/cli/provisioners/apps.ts:364
-A field not marked password shows stored and new values; a secret shows its name only -> apps/api/src/cli/provisioners/connector.ts:116
-Log format: baseUrl "old" -> "new", apiKey (secret) -> apps/api/src/cli/provisioners/connector.ts:136
---dry-run prints the comparison as a plan line for an existing org, without writing -> apps/api/src/cli/provisioners/connector.ts:264
-The apps plan calls it for each connection -> apps/api/src/cli/provisioners/apps.ts:109
-After apply, the app's config verify probe runs against the stored connection -> apps/api/src/cli/provisioners/connector.ts:298
+Connection drift is reported per field; the app entry lists it under connectionChanges -> apps/api/src/cli/provisioners/apps.ts:366
+A field not marked password shows stored and new values; a secret shows its name only -> apps/api/src/cli/provisioners/connector.ts:118
+Log format: baseUrl "old" -> "new", apiKey (secret) -> apps/api/src/cli/provisioners/connector.ts:138
+--dry-run prints the comparison as a plan line for an existing org, without writing -> apps/api/src/cli/provisioners/connector.ts:281
+The apps plan calls it for each connection -> apps/api/src/cli/provisioners/apps.ts:110
+After apply, the app's config verify probe runs against the stored connection -> apps/api/src/cli/provisioners/connector.ts:325
 config apply uses the config verify probe registry -> apps/api/src/cli/config/apply.ts:73
-An app without a probe is SKIPPED -> apps/api/src/cli/provisioners/connector.ts:308
-A failed health check is a pending item of kind credentials, not an error -> apps/api/src/cli/provisioners/apps.ts:350
+An app without a probe is SKIPPED -> apps/api/src/cli/provisioners/connector.ts:335
+A failed health check is a pending item of kind credentials, not an error -> apps/api/src/cli/provisioners/apps.ts:352
 A created role agent gets the org's least-used avatar color, an existing one keeps its own -> apps/api/src/cli/provisioners/agents.ts:260
-Catalog app: install when absent, upgrade only to a newer catalog version, nothing when the active one is newer (logged) -> apps/api/src/modules/apps/catalog.ts:271-278 ; apps/api/src/cli/provisioners/apps.ts:290-305
+Catalog app: install when absent, upgrade only to a newer catalog version, nothing when the active one is newer (logged) -> apps/api/src/modules/apps/catalog.ts:271-278 ; apps/api/src/cli/provisioners/apps.ts:291-305
 connect takes --email; with several Gmail entries and no --email it exits 2 -> apps/api/src/cli/connect/index.ts:382
 guide takes --account-type (google_consumer, google_workspace, microsoft, other, unknown) -> apps/api/src/cli/guide/index.ts:217
 guide prints a step's links as label: url -> apps/api/src/cli/guide/index.ts:85
@@ -51,7 +51,7 @@ STORAGE_QUOTA_EXCEEDED answers 409 (files and import uploads) -> apps/api/src/mo
 apps[].domainAccess on the database entry only, roles by name, people by email -> apps/api/src/cli/config/schema.ts:304-357
 domainAccess replaces the stored map, reported changed/unchanged as apps.database.domainAccess -> apps/api/src/cli/provisioners/database-domain-access.ts:34 ; apps/api/src/cli/provisioners/database-domain-access.ts:160-185
 Unknown role or person is a ConfigError (exit 2) at plan -> apps/api/src/cli/provisioners/database-domain-access.ts:61 ; apps/api/src/cli/provisioners/database-domain-access.ts:86 ; apps/api/src/cli/config/parse.ts:23-29
-An entry without domainAccess leaves the stored map untouched -> apps/api/src/cli/provisioners/apps.ts:401-407
+An entry without domainAccess leaves the stored map untouched -> apps/api/src/cli/provisioners/apps.ts:403-407
 Not on the agent's config_apps tool (its app schema is strict) -> apps/api/src/modules/provisioning/config-tool-input.ts:219-229
 Drift: apply records per org and path a hash of the stored value read back after the apply, when and who -> apps/api/src/cli/config/apply.ts:183-207 ; apps/api/src/db/migrations/0243_config_applied_fields.sql:16-23
 --applied-by default cli:<user>@<host> -> apps/api/src/cli/main.ts:99
@@ -66,7 +66,7 @@ First apply without a record checks nothing -> apps/api/src/cli/config/drift.ts:
 Tracked paths and the never-tracked secrets/sections -> apps/api/src/cli/config/drift.ts:229-231 ; apps/api/src/cli/config/drift.ts:275
 --only: org and admin always kept, rest pruned; out-of-scope tracked paths keep the server value and are not checked -> apps/api/src/cli/config/drift.ts:558-562 ; apps/api/src/cli/config/apply.ts:153
 config pull rewrites tracked values, keeps env refs and comments, prints or writes --out -> apps/api/src/cli/config/pull.ts:153-187 ; apps/api/src/cli/main.ts:386
-liaisonTeam section: register, forwardBugReports, needs register, recorded when false, operator org only, refused without endpoint -> apps/api/src/cli/provisioners/liaison-team.ts:23 ; apps/api/src/cli/provisioners/liaison-team.ts:69 ; apps/api/src/cli/config/schema.ts:628
+liaisonTeam section: register, forwardBugReports, needs register, recorded when false, operator org only, refused without endpoint -> apps/api/src/cli/provisioners/liaison-team.ts:23 ; apps/api/src/cli/provisioners/liaison-team.ts:70 ; apps/api/src/cli/config/schema.ts:628
 seed --tier demo: flags, tiers, usage on a missing tier -> apps/api/src/cli/seed/run.ts:15 ; apps/api/src/cli/seed/run.ts:47-53 ; apps/api/src/cli/commands.ts:823-856
 seed demo: reserved by default, reset by default for reserved, --no-reset, visitor has no owner, partial exits 1 -> apps/api/src/seed/tiers/demo/seed-demo.ts:479-514
 seed demo: an existing non-demo org is refused -> apps/api/src/seed/tiers/demo/seed-org.ts:712
@@ -74,6 +74,12 @@ seed demo: --passwords refused in demo mode -> apps/api/src/seed/tiers/demo/seed
 seed: a claimed, unmarked org left by a killed seed is cleared and made again -> apps/api/src/seed/tiers/demo/seed-org.ts:502-554
 seed lively: tier, flags (--passwords-env, --replace, --warehouse) -> apps/api/src/cli/seed/run.ts:16 ; apps/api/src/cli/seed/run.ts:52-53 ; apps/api/src/seed/tiers/lively/seed-lively.ts:736-803
 seed lively: ten people, fourteen days of activity, sixty tickets, newest three unread -> apps/api/src/seed/world/lively.ts:10-39 ; apps/api/src/seed/tiers/lively/activity-plan.ts
+seed lively: --replace refused in demo mode and for a non-demo org -> apps/api/src/seed/tiers/lively/seed-lively.ts:96-130
+Without the admin section, the apply acts as the org's earliest active admin -> apps/api/src/cli/provisioners/admin.ts:42
+Without an admin to act as, a step that needs one fails as a usage error naming the admin block -> apps/api/src/cli/provisioners/admin.ts:64
+A catalog install needs an acting admin -> apps/api/src/cli/provisioners/apps.ts:330
+A connection with no identifier and no manifest identifierVar uses an email or identifier credential, else the owner -> apps/api/src/cli/provisioners/connector.ts:191
+A multi-instance connection always needs an identifier -> apps/api/src/cli/provisioners/connector.ts:186
 seed lively: --replace refused in demo mode and for a non-demo org -> apps/api/src/seed/tiers/lively/seed-lively.ts:120-155
 seed --tier load: --orgs, --prefix default load-, demo shape, synthetic marker + expiresAt (--ttl-hours default 6) reaped by the demo reaper, load-harness flag when LOAD_HARNESS_KEY -> apps/api/src/seed/tiers/load/seed-load.ts:1-20 ; apps/api/src/seed/tiers/load/seed-load.ts (markLoadOrg, DEFAULT_LOAD_TTL_HOURS, runSeedLoadCli) ; apps/api/src/modules/demo/demo-expiry.ts (listExpiredDemoOrgs)
 seed --tier load --volume: default 1100/5000/3000/1000, per-kind flags, admin read-back under RLS, per-org reindex, --no-reindex, idempotent, result line -> apps/api/src/seed/bulk/volume.ts:1-45 ; apps/api/src/seed/bulk/volume.ts (seedVolume, volumeShortfalls)

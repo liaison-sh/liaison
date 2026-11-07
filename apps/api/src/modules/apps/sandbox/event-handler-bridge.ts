@@ -2,7 +2,7 @@
 import type { RlsClient } from "~/db"
 import type { ActorType } from "~/modules/apps/sandbox/bridge/context"
 import type { AppManifestForBridge } from "~/modules/apps/sandbox/bridge/shared"
-import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { createSandboxRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 
 /**
  * The bridge a manifest EVENT handler runs with. The handler holds its own
@@ -23,7 +23,7 @@ export function createEventHandlerBridge(args: {
   manifest: AppManifestForBridge
   actorType: ActorType
 }): Record<string, any> {
-  return createRpcBridge(
+  return createSandboxRpcBridge(
     args.appName,
     args.actorId,
     args.orgId,

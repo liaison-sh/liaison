@@ -1,0 +1,399 @@
+{
+  "$comment": "Contract v2 Control->cell signing vectors. Generated once by an independent HMAC implementation; literals on purpose: never regenerate to make a test pass.",
+  "label": "liaison-control-to-cell:v1",
+  "windowSeconds": 300,
+  "headers": {
+    "signature": "x-control-signature",
+    "ts": "x-control-ts",
+    "messageId": "x-control-message-id"
+  },
+  "derive": [
+    {
+      "instanceKey": "bdc9abb4dedf071522ec79947c800481744976593804deb1a000a1742e337892",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387"
+    },
+    {
+      "instanceKey": "a3a546870cf3be25cc3262ca470ba13b052fb2c0025acd01aba7ccdb948ef10b",
+      "controlKey": "fff74f2f31b9faf5b7308d523e3e06d99cfb7ce4d894f13457e3672734635bdc"
+    }
+  ],
+  "sign": [
+    {
+      "name": "create org",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/orgs",
+      "body": "{\"slug\":\"acme-audio\",\"name\":\"Acme Audio\",\"ownerEmail\":\"owner@example.com\",\"ownerName\":\"Ada Owner\",\"plan\":\"base\",\"locale\":\"fr-FR\"}",
+      "messageId": "0c6f1d2e-3b4a-4c5d-8e9f-a0b1c2d3e4f5",
+      "ts": 1793577600,
+      "bodySha256": "48d8764ff01dd4271e8672fd835a7149af14dd104fa8fae35c4e6e46213bdb34",
+      "canonical": "1793577600.0c6f1d2e-3b4a-4c5d-8e9f-a0b1c2d3e4f5.POST./api/cloud/orgs.48d8764ff01dd4271e8672fd835a7149af14dd104fa8fae35c4e6e46213bdb34",
+      "signature": "T9PcMt/aPE9oG68NaaHu5DLWsgvin3MFXqUUyksjAXs="
+    },
+    {
+      "name": "handoff",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/handoff",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17\"}",
+      "messageId": "5a8e2c71-4d3b-4f9a-b6c0-1e2d3f4a5b6c",
+      "ts": 1793577607,
+      "bodySha256": "c2f0201a73111510b657662fb0c48065e3d52bb3406eed4e48c5c151e5788970",
+      "canonical": "1793577607.5a8e2c71-4d3b-4f9a-b6c0-1e2d3f4a5b6c.POST./api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/handoff.c2f0201a73111510b657662fb0c48065e3d52bb3406eed4e48c5c151e5788970",
+      "signature": "0EFtZQ0sPUgd+Z4OWfUN0Uryu59ecCnNlahzRQz4XP4="
+    },
+    {
+      "name": "empty body",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/lookup",
+      "body": "",
+      "messageId": "9b2c4d6e-8f0a-4b1c-9d3e-5f7a9b1c3d5e",
+      "ts": 1793577660,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "canonical": "1793577660.9b2c4d6e-8f0a-4b1c-9d3e-5f7a9b1c3d5e.POST./api/cloud/lookup.e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "signature": "qczrkRMzQdWMmDhPi5FmGCPfDBcPn0RpDj0JPa6qzCk="
+    },
+    {
+      "name": "utf-8 body",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/orgs",
+      "body": "{\"slug\":\"cafe-creme\",\"name\":\"Café Crème ☕\",\"ownerEmail\":\"o@example.com\",\"ownerName\":\"Zoë\",\"plan\":\"pro\",\"locale\":\"fr\"}",
+      "messageId": "1d3f5b7c-9e1a-4c3e-8a5c-7e9b1d3f5a7c",
+      "ts": 1793577720,
+      "bodySha256": "9e251e0e4580d703b0345fd4f015659da24485467c47d98a61fcf6e4cc7eb05f",
+      "canonical": "1793577720.1d3f5b7c-9e1a-4c3e-8a5c-7e9b1d3f5a7c.POST./api/cloud/orgs.9e251e0e4580d703b0345fd4f015659da24485467c47d98a61fcf6e4cc7eb05f",
+      "signature": "BrfkUzZy4DZcH9zOZT3zYzU5sZXC8MPFVMYD8+dLobM="
+    },
+    {
+      "name": "billing push",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/billing",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17\",\"version\":3,\"plan\":\"preview\",\"status\":\"active\",\"periodEnd\":\"2026-12-02T00:00:00.000Z\",\"includedCredits\":\"40\",\"caps\":{\"seats\":3,\"mailboxes\":2,\"storageGb\":5,\"jobsPerHour\":600,\"customApps\":2,\"auditDays\":45},\"previewEndsAt\":\"2027-01-02T00:00:00.000Z\",\"autoTopUp\":{\"enabled\":true,\"thresholdCredits\":15,\"amountCredits\":25},\"accessUntil\":null,\"closedAt\":null,\"billingContact\":\"billing@example.com\"}",
+      "messageId": "a6b41283-1bee-4ae6-9541-240e8a67d1ae",
+      "ts": 1793577660,
+      "bodySha256": "db207a2831b86d905a9bfaffc871cd4345a0a0f1aa505300cefb11870bb5381c",
+      "canonical": "1793577660.a6b41283-1bee-4ae6-9541-240e8a67d1ae.POST./api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/billing.db207a2831b86d905a9bfaffc871cd4345a0a0f1aa505300cefb11870bb5381c",
+      "signature": "tA6/kr7UrAYMYPpDABm95aneESNLxdvpLh1V8RGvrEA="
+    },
+    {
+      "name": "delete org",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "DELETE",
+      "path": "/api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17\",\"timerId\":\"delete:7d1f3a52\"}",
+      "messageId": "c3d5e7f9-1a2b-4c3d-8e4f-5a6b7c8d9e0f",
+      "ts": 1793577720,
+      "bodySha256": "fb0139c3058ab1d805798a8e5edd4f029c47faf7b27863c1c3370bb0d1ef2abb",
+      "canonical": "1793577720.c3d5e7f9-1a2b-4c3d-8e4f-5a6b7c8d9e0f.DELETE./api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17.fb0139c3058ab1d805798a8e5edd4f029c47faf7b27863c1c3370bb0d1ef2abb",
+      "signature": "VqQx5S5etnmi6H47I+1o4dQsRFA2JHKCfyXTcqODzCo="
+    }
+  ],
+  "verify": [
+    {
+      "name": "valid at ts",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/handoff",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17\"}",
+      "headers": {
+        "x-control-signature": "0EFtZQ0sPUgd+Z4OWfUN0Uryu59ecCnNlahzRQz4XP4=",
+        "x-control-ts": "1793577607",
+        "x-control-message-id": "5a8e2c71-4d3b-4f9a-b6c0-1e2d3f4a5b6c"
+      },
+      "now": 1793577607,
+      "expect": {
+        "ok": true,
+        "replayKey": "5a8e2c71-4d3b-4f9a-b6c0-1e2d3f4a5b6c:1793577607"
+      }
+    },
+    {
+      "name": "valid at ts+300 (window edge)",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/handoff",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17\"}",
+      "headers": {
+        "x-control-signature": "0EFtZQ0sPUgd+Z4OWfUN0Uryu59ecCnNlahzRQz4XP4=",
+        "x-control-ts": "1793577607",
+        "x-control-message-id": "5a8e2c71-4d3b-4f9a-b6c0-1e2d3f4a5b6c"
+      },
+      "now": 1793577907,
+      "expect": {
+        "ok": true,
+        "replayKey": "5a8e2c71-4d3b-4f9a-b6c0-1e2d3f4a5b6c:1793577607"
+      }
+    },
+    {
+      "name": "valid at ts-300 (window edge)",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/handoff",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17\"}",
+      "headers": {
+        "x-control-signature": "0EFtZQ0sPUgd+Z4OWfUN0Uryu59ecCnNlahzRQz4XP4=",
+        "x-control-ts": "1793577607",
+        "x-control-message-id": "5a8e2c71-4d3b-4f9a-b6c0-1e2d3f4a5b6c"
+      },
+      "now": 1793577307,
+      "expect": {
+        "ok": true,
+        "replayKey": "5a8e2c71-4d3b-4f9a-b6c0-1e2d3f4a5b6c:1793577607"
+      }
+    },
+    {
+      "name": "stale at ts+301",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/handoff",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17\"}",
+      "headers": {
+        "x-control-signature": "0EFtZQ0sPUgd+Z4OWfUN0Uryu59ecCnNlahzRQz4XP4=",
+        "x-control-ts": "1793577607",
+        "x-control-message-id": "5a8e2c71-4d3b-4f9a-b6c0-1e2d3f4a5b6c"
+      },
+      "now": 1793577908,
+      "expect": {
+        "ok": false,
+        "reason": "stale"
+      }
+    },
+    {
+      "name": "future at ts-301",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/handoff",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17\"}",
+      "headers": {
+        "x-control-signature": "0EFtZQ0sPUgd+Z4OWfUN0Uryu59ecCnNlahzRQz4XP4=",
+        "x-control-ts": "1793577607",
+        "x-control-message-id": "5a8e2c71-4d3b-4f9a-b6c0-1e2d3f4a5b6c"
+      },
+      "now": 1793577306,
+      "expect": {
+        "ok": false,
+        "reason": "stale"
+      }
+    },
+    {
+      "name": "tampered method",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "PUT",
+      "path": "/api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/handoff",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17\"}",
+      "headers": {
+        "x-control-signature": "0EFtZQ0sPUgd+Z4OWfUN0Uryu59ecCnNlahzRQz4XP4=",
+        "x-control-ts": "1793577607",
+        "x-control-message-id": "5a8e2c71-4d3b-4f9a-b6c0-1e2d3f4a5b6c"
+      },
+      "now": 1793577607,
+      "expect": {
+        "ok": false,
+        "reason": "bad_signature"
+      }
+    },
+    {
+      "name": "tampered path (other org)",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/orgs/00000000-0000-4000-8000-000000000000/handoff",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17\"}",
+      "headers": {
+        "x-control-signature": "0EFtZQ0sPUgd+Z4OWfUN0Uryu59ecCnNlahzRQz4XP4=",
+        "x-control-ts": "1793577607",
+        "x-control-message-id": "5a8e2c71-4d3b-4f9a-b6c0-1e2d3f4a5b6c"
+      },
+      "now": 1793577607,
+      "expect": {
+        "ok": false,
+        "reason": "bad_signature"
+      }
+    },
+    {
+      "name": "tampered body",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/handoff",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a18\"}",
+      "headers": {
+        "x-control-signature": "0EFtZQ0sPUgd+Z4OWfUN0Uryu59ecCnNlahzRQz4XP4=",
+        "x-control-ts": "1793577607",
+        "x-control-message-id": "5a8e2c71-4d3b-4f9a-b6c0-1e2d3f4a5b6c"
+      },
+      "now": 1793577607,
+      "expect": {
+        "ok": false,
+        "reason": "bad_signature"
+      }
+    },
+    {
+      "name": "tampered ts header",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/handoff",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17\"}",
+      "headers": {
+        "x-control-signature": "0EFtZQ0sPUgd+Z4OWfUN0Uryu59ecCnNlahzRQz4XP4=",
+        "x-control-ts": "1793577608",
+        "x-control-message-id": "5a8e2c71-4d3b-4f9a-b6c0-1e2d3f4a5b6c"
+      },
+      "now": 1793577607,
+      "expect": {
+        "ok": false,
+        "reason": "bad_signature"
+      }
+    },
+    {
+      "name": "tampered message id header",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/handoff",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17\"}",
+      "headers": {
+        "x-control-signature": "0EFtZQ0sPUgd+Z4OWfUN0Uryu59ecCnNlahzRQz4XP4=",
+        "x-control-ts": "1793577607",
+        "x-control-message-id": "6b9f3d82-5e4c-4a0b-87d1-2f3e4a5b6c7d"
+      },
+      "now": 1793577607,
+      "expect": {
+        "ok": false,
+        "reason": "bad_signature"
+      }
+    },
+    {
+      "name": "signed with another cell's key",
+      "controlKey": "fff74f2f31b9faf5b7308d523e3e06d99cfb7ce4d894f13457e3672734635bdc",
+      "method": "POST",
+      "path": "/api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/handoff",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17\"}",
+      "headers": {
+        "x-control-signature": "0EFtZQ0sPUgd+Z4OWfUN0Uryu59ecCnNlahzRQz4XP4=",
+        "x-control-ts": "1793577607",
+        "x-control-message-id": "5a8e2c71-4d3b-4f9a-b6c0-1e2d3f4a5b6c"
+      },
+      "now": 1793577607,
+      "expect": {
+        "ok": false,
+        "reason": "bad_signature"
+      }
+    },
+    {
+      "name": "re-signed fresh ts verifies (retry, same messageId)",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/handoff",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17\"}",
+      "headers": {
+        "x-control-signature": "j3CKLDoLnKFZ2e7kVNjEDU56CCFQVvpU/Hwg2YhxfzM=",
+        "x-control-ts": "1793577807",
+        "x-control-message-id": "5a8e2c71-4d3b-4f9a-b6c0-1e2d3f4a5b6c"
+      },
+      "now": 1793577857,
+      "expect": {
+        "ok": true,
+        "replayKey": "5a8e2c71-4d3b-4f9a-b6c0-1e2d3f4a5b6c:1793577807"
+      }
+    },
+    {
+      "name": "missing signature",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/handoff",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17\"}",
+      "headers": {
+        "x-control-ts": "1793577607",
+        "x-control-message-id": "5a8e2c71-4d3b-4f9a-b6c0-1e2d3f4a5b6c"
+      },
+      "now": 1793577607,
+      "expect": {
+        "ok": false,
+        "reason": "missing_header"
+      }
+    },
+    {
+      "name": "missing ts",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/handoff",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17\"}",
+      "headers": {
+        "x-control-signature": "0EFtZQ0sPUgd+Z4OWfUN0Uryu59ecCnNlahzRQz4XP4=",
+        "x-control-message-id": "5a8e2c71-4d3b-4f9a-b6c0-1e2d3f4a5b6c"
+      },
+      "now": 1793577607,
+      "expect": {
+        "ok": false,
+        "reason": "missing_header"
+      }
+    },
+    {
+      "name": "missing message id",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/handoff",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17\"}",
+      "headers": {
+        "x-control-signature": "0EFtZQ0sPUgd+Z4OWfUN0Uryu59ecCnNlahzRQz4XP4=",
+        "x-control-ts": "1793577607"
+      },
+      "now": 1793577607,
+      "expect": {
+        "ok": false,
+        "reason": "missing_header"
+      }
+    },
+    {
+      "name": "ts not unix seconds",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/handoff",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17\"}",
+      "headers": {
+        "x-control-signature": "0EFtZQ0sPUgd+Z4OWfUN0Uryu59ecCnNlahzRQz4XP4=",
+        "x-control-ts": "2026-11-02T00:00:07Z",
+        "x-control-message-id": "5a8e2c71-4d3b-4f9a-b6c0-1e2d3f4a5b6c"
+      },
+      "now": 1793577607,
+      "expect": {
+        "ok": false,
+        "reason": "malformed_header"
+      }
+    },
+    {
+      "name": "message id not a uuid",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/handoff",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17\"}",
+      "headers": {
+        "x-control-signature": "0EFtZQ0sPUgd+Z4OWfUN0Uryu59ecCnNlahzRQz4XP4=",
+        "x-control-ts": "1793577607",
+        "x-control-message-id": "retry-1"
+      },
+      "now": 1793577607,
+      "expect": {
+        "ok": false,
+        "reason": "malformed_header"
+      }
+    },
+    {
+      "name": "signature not base64 sha256",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/handoff",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17\"}",
+      "headers": {
+        "x-control-signature": "785e0e3dfcfbc95d9218bbee240296b46383972538e02738770aafb9137e1716",
+        "x-control-ts": "1793577607",
+        "x-control-message-id": "5a8e2c71-4d3b-4f9a-b6c0-1e2d3f4a5b6c"
+      },
+      "now": 1793577607,
+      "expect": {
+        "ok": false,
+        "reason": "malformed_header"
+      }
+    }
+  ]
+}

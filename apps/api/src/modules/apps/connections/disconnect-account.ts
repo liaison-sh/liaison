@@ -23,7 +23,7 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { connectedAccounts, users } from "~/db/schema/kernel"
 import { connectionAdminScope } from "~/modules/apps/connections/admin-scope"
 import { runBeforeDisconnect } from "~/modules/apps/connections/before-disconnect"
-import { revokeStagedGrant } from "~/modules/apps/connections/revoke"
+import { runConnectionTeardown } from "~/modules/apps/connections/revoke"
 import { disconnectConnection } from "~/modules/apps/connections/service"
 import { writeAuditLog } from "~/modules/audit/service"
 import { serverT } from "~/modules/i18n/server-i18n"
@@ -188,5 +188,5 @@ export async function performDisconnect(input: {
       },
     })
   })
-  await revokeStagedGrant(target.id)
+  await runConnectionTeardown(target.id)
 }

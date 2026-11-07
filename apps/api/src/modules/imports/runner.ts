@@ -1265,6 +1265,7 @@ async function runBundleExport(
       params,
       bridge,
       priority: "background",
+      appId: k.app,
     })
   }
   return executeInSandbox({ pool: getSandboxPool(), bundleSource, exportName, params, bridge })
@@ -1481,6 +1482,7 @@ async function writeBundledBatch(
     )
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
+    log.warn({ err, orgId, runId, kind: k.kind }, "bundled import batch failed in the worker pool")
     return batch.map((p) => ({ dedupKey: p.dedupKey, status: "failed", rows: [], error: message }))
   }
   keepClaims(raw, claimed)

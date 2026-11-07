@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
-import { Archive, Lock, MailCheck, MailOpen, PenSquare, Search, Star } from "lucide-solid"
+import { Archive, Lock, Mail, MailCheck, MailOpen, PenSquare, Search, Star } from "lucide-solid"
 import {
   type Component,
   createEffect,
@@ -20,7 +20,12 @@ import { useI18n } from "~/modules/i18n/i18n-context"
 import { AssigneePicker } from "~/modules/mail/AssigneePicker"
 import { MailEncryptionEnrollmentBanner } from "~/modules/mail/MailEncryptionEnrollmentBanner"
 import { MailSyncProgressBanner } from "~/modules/mail/MailSyncProgressBanner"
-import { allAccounts, getAccount, loadAccounts } from "~/modules/mail/mail-account-store"
+import {
+  accountsLoaded,
+  allAccounts,
+  getAccount,
+  loadAccounts,
+} from "~/modules/mail/mail-account-store"
 import {
   type MailCategory,
   mailCategoryFor,
@@ -69,6 +74,7 @@ import { useApi } from "~/modules/shell/ApiContext"
 import { openPhoneNavigator } from "~/modules/shell/phone-navigator-store"
 import { shellTier } from "~/modules/shell/shell-tier"
 import { openTab } from "~/modules/shell/tab-store"
+import { Button } from "~/ui/Button"
 import { OverlaySheet } from "~/ui/OverlaySheet"
 import { SwipeRow } from "~/ui/SwipeRow"
 
@@ -282,7 +288,7 @@ export const MailInbox: Component<MailInboxProps> = (props) => {
     })
   }
 
-  const noAccounts = () => allAccounts().length === 0
+  const noAccounts = () => accountsLoaded() && allAccounts().length === 0
   const isEmpty = () => conversationStore.ids.length === 0
   const isDraftsView = () => currentView() === "drafts"
 
@@ -724,10 +730,13 @@ export const MailInbox: Component<MailInboxProps> = (props) => {
               data-testid="mail-empty-state-connect"
               class="flex-1 flex flex-col items-center justify-center gap-3 text-center px-8"
             >
+              <Mail size={28} class="text-text-tertiary" aria-hidden="true" />
               <p class="text-text-secondary">{i18n.t("mail.connectAnEmailAccountToGet")}</p>
-              <button
-                type="button"
-                class="text-sm text-accent hover:underline"
+              {/* Opens Settings > Mail, where the mailboxes are connected. */}
+              <Button
+                variant="primary"
+                size="sm"
+                data-testid="mail-empty-state-connect-button"
                 onClick={() =>
                   openTab({
                     type: "kernel:settings",
@@ -738,7 +747,7 @@ export const MailInbox: Component<MailInboxProps> = (props) => {
                 }
               >
                 {i18n.t("mail.connectAnAccount")}
-              </button>
+              </Button>
             </div>
           </Show>
         </Show>

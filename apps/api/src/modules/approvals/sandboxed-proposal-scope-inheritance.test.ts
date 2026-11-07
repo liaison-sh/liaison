@@ -365,7 +365,10 @@ describe("a gated call from a sandboxed app records the real proposing scopes (F
     const before = await approvalCount()
     const env = await callViaSandbox(frameOf({}), body)
 
+    expect(env.blocked).toBeUndefined()
     expect(env.error?.code).toBe("E_SCOPE_TAINT_BLOCKED")
+    expect(env.error?.message).toContain("scopes could not be determined")
+    expect(env.error?.message).toContain("No approval was created")
     expect(await approvalCount()).toBe(before)
     expect(
       await sql`SELECT id FROM kernel.messages WHERE org_id = ${ORG} AND content = ${body}`,

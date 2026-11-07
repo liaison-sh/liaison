@@ -56,9 +56,17 @@ test.describe("projects sidebar balance + archive", () => {
     const sidebar = page.getByTestId("projects-sidebar")
     await expect(sidebar).toBeVisible({ timeout: 15_000 })
     await expect
-      .poll(async () => sidebar.locator('[data-testid^="projects-sidebar.row-"]').count(), {
-        timeout: 10_000,
-      })
+      .poll(
+        async () =>
+          sidebar
+            .locator(
+              '[data-testid^="projects-sidebar.row-"]:not([data-testid^="projects-sidebar.row-key-"])',
+            )
+            .count(),
+        {
+          timeout: 10_000,
+        },
+      )
       .toBe(12)
     await expect(sidebar.getByTestId("saved-views-list")).toContainText("Sales pipeline")
 

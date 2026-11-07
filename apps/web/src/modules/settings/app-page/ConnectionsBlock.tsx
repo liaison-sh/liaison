@@ -59,12 +59,22 @@ function shortDate(iso: string): string {
   return Number.isNaN(d.getTime()) ? iso : d.toISOString().slice(0, 10)
 }
 
+/** The connection's own admin scope, as the server checks it (connections/admin-scope.ts). */
+export function canAdministerConnection(app: string, conn: { adminScope?: string }): boolean {
+  return canAccessScope(conn.adminScope ?? `${app}:accounts:admin`)
+}
+
 export const ConnectionsBlock: Component<{
   app: string
   block: SettingsConnectionsBlock
   blockId: string
   /** A connection whose form opens on arrival (`?open=`). */
   openConnection?: string
+  /**
+   * The section is open to every member, to connect their own account: whoever
+   * does not administer a connection sees only their own accounts on it.
+   */
+  personalSection?: boolean
 }> = (props) => {
   const api = useApi()
   const page = useAppPage()
@@ -97,7 +107,15 @@ export const ConnectionsBlock: Component<{
   }
   return (
     <div class="flex flex-col gap-3" data-testid={`settings-block-${props.blockId}`}>
-      <Show when={props.block.status}>
+      {/* The line reports what the org's connection does: for those who run it. */}
+      <Show
+        when={
+          !props.personalSection ||
+          (configs() ?? []).some((c) => canAdministerConnection(props.app, c))
+            ? props.block.status
+            : undefined
+        }
+      >
         {(status) => (
           <StatusLine
             app={props.app}
@@ -118,6 +136,7 @@ export const ConnectionsBlock: Component<{
           <ConnectionCard
             app={props.app}
             conn={conn}
+            personalSection={props.personalSection}
             initiallyOpen={props.openConnection === conn.name}
             fixRequest={fixRequest}
             onChanged={bumpChanged}
@@ -286,6 +305,7 @@ const StatusLine: Component<{
 const ConnectionCard: Component<{
   app: string
   conn: AppConnectionConfig
+  personalSection?: boolean
   initiallyOpen: boolean
   /** The block's status line asks this connection to be fixed. */
   fixRequest: Accessor<{ name: string } | null>
@@ -309,10 +329,10 @@ const ConnectionCard: Component<{
   const [busy, setBusy] = createSignal<string | null>(null)
   const isOAuth = () => props.conn.type === "oauth2"
   const multi = () => props.conn.multiInstance === true
-  // The connection's own admin scope, as the server checks it (connections/admin-scope.ts).
-  const canAdminOrg = () => canAccessScope(props.conn.adminScope ?? `${props.app}:accounts:admin`)
+  const canAdminOrg = () => canAdministerConnection(props.app, props.conn)
+  const ownOnly = () => props.personalSection === true && !canAdminOrg()
   const title = () => connectionLabel(props.app, props.conn, i18n.t, appDisplayNames()[props.app])
-  const rows = () => accounts() ?? []
+  const rows = () => (accounts() ?? []).filter((a) => !ownOnly() || a.ownerType !== "org")
   const known = () => accounts() !== null && accounts() !== undefined
   // A connection holds one account unless it is OAuth (one per person); a
   // multi-instance one is added through the app's own block.
@@ -400,6 +420,7 @@ const ConnectionCard: Component<{
   }
 
   const countLine = () => {
+    if (ownOnly()) return i18n.t(`${P}.noAccount`)
     const c = props.conn.accounts ?? { active: 0, error: 0 }
     const parts: string[] = []
     if (c.active > 0) parts.push(i18n.t(`${P}.countConnected`, { count: c.active }))

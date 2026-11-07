@@ -27,6 +27,7 @@ import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { apps, connectedAccounts, roles, users } from "~/db/schema/kernel"
 import { rootLogger } from "~/lib/logger"
 import { listAppVersionStates, orgAppProblems } from "~/modules/apps/activation"
+import { filterAppsVisibleToOrg } from "~/modules/apps/app-org-scope"
 import { manifestRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { reconcileAppConnections } from "~/modules/apps/connections/service"
 import { discoverInTreeApps } from "~/modules/apps/discover-apps"
@@ -140,7 +141,7 @@ async function onDependentsOf(app: string, states: OrgAppState[]): Promise<strin
 /** Every app of the workspace, Off and restricted included (A7), for admins. */
 export async function listOrgAppsForAdmin(orgId: string): Promise<OrgAppAdminView[]> {
   await ensureAppsForOrg(orgId)
-  const states = await listOrgAppStates(orgId)
+  const states = await filterAppsVisibleToOrg(await listOrgAppStates(orgId), orgId, (s) => s.app)
   const descriptors = new Map((await getDefaultApps()).map((d) => [d.name, d]))
   const inTree = new Set((await discoverInTreeApps()).map((a) => a.name))
   const problems = await orgAppProblems(orgId)

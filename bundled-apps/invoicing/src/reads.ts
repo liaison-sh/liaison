@@ -604,7 +604,38 @@ async function contactMatchedRows(ctx: ReadsCtx, contactId: string, where: Recor
 
 /** The one-line next step a free-text search that found nothing hands back. */
 export function documentsSearchNoHitHint(query: string): string {
-  return `No document matches "${query}". To find this customer's earlier sales and prices, call invoicing__customer_history with customer="${query}" (it also reads their Shopify orders), or search shopify__orders_search with the customer's name.`
+  return `No document matches "${query}". If "${query}" names a customer, their earlier sales and prices are in invoicing__customer_history with customer="${query}" (it also reads their Shopify orders), or shopify__orders_search with the customer's name.`
+}
+
+/** A query shaped like a document number ("F-2026-0006", "INV2026-14"): a prefix, then digits. */
+const NUMBER_LIKE = /^[A-Za-z]{1,8}[-/_.]?\d[\d/_.-]*$/
+
+/**
+ * What a search for a number that no document carries answers: that the number does not exist,
+ * and the numbers that end with the same digits, which may be the one the person means. None of
+ * them is opened or picked here.
+ */
+async function noSuchNumberHint(ctx: ReadsCtx, query: string): Promise<string | null> {
+  if (!NUMBER_LIKE.test(query)) return null
+  const digits = query.match(/(\d+)\D*$/)?.[1]
+  if (!digits) return null
+  const rows = (await ctx.db.findMany("documents", {
+    where: {},
+    search: { fields: ["number"], query: digits },
+    orderBy: { issued_at: "desc", number_int: "desc" },
+    limit: READS_MAX_LIMIT,
+  })) as Array<{ number?: unknown }>
+  const close = [
+    ...new Set(
+      rows
+        .map((r) => (typeof r.number === "string" ? r.number : ""))
+        .filter((n) => n && n.toLowerCase() !== query.toLowerCase() && n.endsWith(digits)),
+    ),
+  ].slice(0, 5)
+  const none = `No document is numbered "${query}".`
+  return close.length > 0
+    ? `${none} Numbers ending in ${digits}: ${close.join(", ")}. None of them is "${query}": ask the person which one they mean.`
+    : `${none} No document number ends in ${digits} either.`
 }
 
 /**
@@ -620,7 +651,9 @@ export async function documentsSearchTool(
     ? await documentsSearch(ctx, { ...input, countOnly: true })
     : await documentsSearch(ctx, input)
   const q = input.query?.trim()
-  if (q && Array.isArray(result) && result.length === 0) return { results: [], hint: documentsSearchNoHitHint(q) }
+  if (q && Array.isArray(result) && result.length === 0) {
+    return { results: [], hint: (await noSuchNumberHint(ctx, q)) ?? documentsSearchNoHitHint(q) }
+  }
   return result
 }
 

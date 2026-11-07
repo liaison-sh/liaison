@@ -18,7 +18,7 @@ import { organizations } from "~/db/schema/kernel"
 import { getOrgUsage, readOrgCaps, setOrgCaps } from "~/modules/org/caps"
 
 export const ORG_CAPS_USAGE =
-  "usage: liaison org caps <org slug or id> [--seats <n>] [--mailboxes <n>] [--storage-gb <n>] [--jobs-per-hour <n>] [--unset <seats|mailboxes|storage-gb|jobs-per-hour>]..."
+  "usage: liaison org caps <org slug or id> [--seats <n>] [--mailboxes <n>] [--storage-gb <n>] [--jobs-per-hour <n>] [--custom-apps <n>] [--audit-days <n>] [--unset <seats|mailboxes|storage-gb|jobs-per-hour|custom-apps|audit-days>]..."
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -28,6 +28,8 @@ const FLAG_OF: Record<OrgCapKind, string> = {
   mailboxes: "--mailboxes",
   storageGb: "--storage-gb",
   jobsPerHour: "--jobs-per-hour",
+  customApps: "--custom-apps",
+  auditDays: "--audit-days",
 }
 const KIND_OF_FLAG = new Map(ORG_CAP_KINDS.map((k) => [FLAG_OF[k], k] as const))
 const KIND_OF_NAME = new Map(ORG_CAP_KINDS.map((k) => [FLAG_OF[k].slice(2), k] as const))

@@ -206,4 +206,39 @@ describe("admin provisioner (Task 5)", () => {
     expect(result.section).toBeUndefined()
     expect(ctx.actor.userId).toBe("")
   })
+
+  // An apps-only (or roles-only, ...) config applied to an org that already has
+  // its owner: the run acts as the org's earliest active admin, so a catalog
+  // install or a connection has someone to record as its author.
+  test("no admin block on an org with admins → acts as the earliest active admin", async () => {
+    const orgId = await freshOrg()
+    const tag = crypto.randomUUID().slice(0, 8)
+    const first = await ensureUser({
+      orgId,
+      email: `first-${tag}@fabrikam.example`,
+      name: "First",
+      role: "admin",
+      allowPasswordless: true,
+    })
+    const second = await ensureUser({
+      orgId,
+      email: `second-${tag}@fabrikam.example`,
+      name: "Second",
+      role: "admin",
+      allowPasswordless: true,
+    })
+    // A suspended earlier admin is never the actor.
+    await withSystemDb("t", (db) =>
+      db.update(users).set({ status: "suspended" }).where(eq(users.id, first.userId)),
+    )
+    const config: ProvisioningConfig = { org: { slug: "x", name: "X" } }
+    const ctx = buildProvisionContext({ log: () => {}, validateByok: false })
+    ctx.orgId = orgId
+    const plan = await adminProvisioner.plan(ctx, config)
+    expect(plan.actions.join(" ")).toContain(`second-${tag}@fabrikam.example`)
+    const result = await adminProvisioner.apply(ctx, plan, config)
+    expect(ctx.actor.userId).toBe(second.userId)
+    expect(ctx.actor.scopes).toEqual(["*"])
+    expect(result.section).toBeUndefined()
+  })
 })

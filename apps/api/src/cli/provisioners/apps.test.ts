@@ -20,6 +20,7 @@ import { sql as drizzleSql, eq } from "drizzle-orm"
 import { kernelRel } from "~/apps/tickets/schema-refs"
 import { ConfigError } from "~/cli/config/parse"
 import type { ProvisioningConfig } from "~/cli/config/schema"
+import { adminProvisioner } from "~/cli/provisioners/admin"
 import { planAppSettings } from "~/cli/provisioners/app-settings"
 import { appsProvisioner } from "~/cli/provisioners/apps"
 import { buildProvisionContext, type ProvisionContext } from "~/cli/provisioners/types"
@@ -209,6 +210,67 @@ describe("apps provisioner (Task 11)", () => {
       const r2 = await appsProvisioner.apply(ctx, { actions: [] }, config)
       expect(r2.unchanged ?? []).toContain(`apps.${appName}.installed`)
       expect(r2.changed ?? []).not.toContain(`apps.${appName}.installed`)
+    } finally {
+      await withSystemDb("apps-prov-cleanup", async (db) => {
+        await db.delete(appsInstalled).where(eq(appsInstalled.name, appName))
+        await db.delete(appsActiveVersion).where(eq(appsActiveVersion.name, appName))
+      })
+      if (prevCatalog === undefined) delete process.env.LIAISON_APP_CATALOG_DIR
+      else process.env.LIAISON_APP_CATALOG_DIR = prevCatalog
+      if (prevApps === undefined) delete process.env.LIAISON_APPS_DIR
+      else process.env.LIAISON_APPS_DIR = prevApps
+      resetCatalogCache()
+      rmSync(catalogDir, { recursive: true, force: true })
+      rmSync(installRoot, { recursive: true, force: true })
+    }
+  })
+
+  // An apps-only config (no `admin` block) on an org that has its owner: the
+  // admin section acts as the org's admin, so the install records its author.
+  // Without one, the install is a usage error that names the missing block.
+  test("apps-only config (no admin block): catalog app installs as the org's admin; no admin = clear error", async () => {
+    const appName = `catnoadm-${crypto.randomUUID().slice(0, 8)}`
+    const { catalogDir, installRoot } = stageCatalog(appName)
+    const prevCatalog = process.env.LIAISON_APP_CATALOG_DIR
+    const prevApps = process.env.LIAISON_APPS_DIR
+    process.env.LIAISON_APP_CATALOG_DIR = catalogDir
+    process.env.LIAISON_APPS_DIR = installRoot
+    resetCatalogCache()
+    try {
+      const config: ProvisioningConfig = {
+        org: { slug: "x", name: "X" },
+        apps: [{ name: appName, enable: true }],
+      }
+
+      // Org without any admin: a clear ConfigError naming `admin`, no install.
+      const { orgId: bareOrg } = await ensureOrg({
+        slug: `cli-apps-bare-${crypto.randomUUID().slice(0, 8)}`,
+        name: "Bare",
+      })
+      await ensureAppsForOrg(bareOrg)
+      const bare = buildProvisionContext({ log: () => {}, validateByok: false })
+      bare.orgId = bareOrg
+      await adminProvisioner.apply(bare, { actions: [] }, config)
+      const err = await appsProvisioner.apply(bare, { actions: [] }, config).catch((e) => e)
+      expect(err).toBeInstanceOf(ConfigError)
+      expect(String(err.message)).toContain("admin")
+
+      // Org with its owner: installs, authored by that admin.
+      const { ctx: seeded, orgId } = await freshOrgWithAdmin()
+      const adminId = seeded.actor.userId
+      await ensureAppsForOrg(orgId)
+      const ctx = buildProvisionContext({ log: () => {}, validateByok: false })
+      ctx.orgId = orgId
+      await adminProvisioner.apply(ctx, { actions: [] }, config)
+      const r = await appsProvisioner.apply(ctx, { actions: [] }, config)
+      expect(findApp(r, appName).installed).toBe(true)
+      const rows = await withSystemDb("apps-prov-installed-by", (db) =>
+        db
+          .select({ installedBy: appsInstalled.installedBy })
+          .from(appsInstalled)
+          .where(eq(appsInstalled.name, appName)),
+      )
+      expect(rows.map((row) => row.installedBy)).toContain(adminId)
     } finally {
       await withSystemDb("apps-prov-cleanup", async (db) => {
         await db.delete(appsInstalled).where(eq(appsInstalled.name, appName))

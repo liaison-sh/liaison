@@ -40,7 +40,7 @@ Inline question before the rollback -> packages/shared/src/i18n/locales/en/kerne
 Rollback goes through the same health gate -> apps/api/src/modules/apps/activation.ts:506
 Security release refuses a rollback, button hidden -> apps/web/src/modules/settings/app-store/store-model.ts:154
 Rollback route: kernel:apps:admin and instance operator -> apps/api/src/modules/apps/install-routes.ts:408
-Operator: the operator org on a multi-tenant server, any app admin elsewhere -> apps/api/src/modules/apps/operator-org.ts:72
+Operator: the operator org on a multi-tenant server, any app admin elsewhere -> apps/api/src/modules/apps/operator-org.ts:75
 Rollback button only for the operator -> apps/web/src/modules/settings/app-store/AppStoreDetail.tsx:162
 liaison app rollback -> apps/api/src/cli/commands.ts:138
 Migrations under a lease, one runs, others wait then find nothing -> apps/api/src/db/migrate.ts:193-203 ; apps/api/src/db/migrate.ts:309-313

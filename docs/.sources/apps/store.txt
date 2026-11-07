@@ -33,9 +33,9 @@ store domain; development store works for testing -> bundled-apps/shopify/app.ma
 redirect_uri_mismatch when callback or BASE_URL wrong -> bundled-apps/shopify/README.md:107
 Store connection settings section -> bundled-apps/shopify/app.manifest.json:774
 Connect button on connections block -> apps/web/src/modules/settings/app-page/ConnectionsBlock.tsx:416
-Client ID field when app needs an OAuth client -> apps/web/src/modules/settings/ConnectAppDialog.tsx:296
-Client secret field -> apps/web/src/modules/settings/ConnectAppDialog.tsx:303
-template var field labelled by key (shop) -> apps/web/src/modules/settings/ConnectAppDialog.tsx:308
+Client ID field when app needs an OAuth client -> apps/web/src/modules/settings/ConnectAppDialog.tsx:321
+Client secret field -> apps/web/src/modules/settings/ConnectAppDialog.tsx:329
+template var field labelled by key (shop) -> apps/web/src/modules/settings/ConnectAppDialog.tsx:340
 shop template var, lowercased, .myshopify.com appended -> bundled-apps/shopify/app.manifest.json:362
 acme and acme.myshopify.com both resolve -> bundled-apps/shopify/README.md:58
 Connect via OAuth, permission screen, redirect back, no token copied -> bundled-apps/shopify/app.manifest.json:375

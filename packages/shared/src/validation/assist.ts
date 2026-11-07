@@ -75,6 +75,10 @@ export const dictationErrorCodeSchema = z.enum([
   "rate_limited",
   "no_transcription_model",
   "insufficient_credits",
+  // A managed cell with no pushed credit rate (its billing setup is incomplete).
+  "credit_rate_missing",
+  // A managed org whose renewal is unpaid: no metered usage until it is.
+  "payment_required",
   "demo_key_required",
   "upstream_failed",
   // A demo visitor dictating on the demo box's key (its spend gate's codes).
@@ -120,7 +124,10 @@ export const transcriptionModelOptionSchema = z.object({
   key: z.string(),
   label: z.string(),
   provider: z.string(),
-  pricePerMinuteUsd: z.number(),
+  /** The list price, on a self-hosted server. */
+  pricePerMinuteUsd: z.number().optional(),
+  /** Credits per minute, on a managed cell (which shows no money, S18). */
+  creditsPerMinute: z.number().optional(),
 })
 export type TranscriptionModelOption = z.infer<typeof transcriptionModelOptionSchema>
 

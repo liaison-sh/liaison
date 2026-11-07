@@ -3,13 +3,18 @@ import { createMiddleware } from "hono/factory"
 import { HTTPException } from "hono/http-exception"
 import type { AppEnv } from "~/app"
 import { rootLogger } from "~/lib/logger"
+import { hostAllowsOrg } from "~/lib/org-host"
+import { holdOrgRuntime } from "~/modules/apps/app-registries"
 import { awaitOrgApps } from "~/modules/apps/init"
 import { getUserAuthState, invalidateAuthCache } from "~/modules/auth/auth-state"
 import { verifyAccessToken } from "~/modules/auth/jwt"
 import { isSessionRevoked } from "~/modules/auth/session-revocation"
 import { noteSessionUse } from "~/modules/auth/session-use"
+import { assertOrgServable } from "~/modules/cloud/suspension"
 import { assertDemoOrgActive } from "~/modules/demo/demo-expiry"
 import { assertOrgNotDeleting } from "~/modules/org/purge/deleting"
+import { assertOrgRequestAllowed, isMutatingMethod } from "~/modules/org/transfer-state/gate"
+import { beginOrgActivity } from "~/modules/org/transfer-state/state"
 import { createScope } from "~/modules/permissions/types"
 
 export { invalidateAuthCache }
@@ -83,6 +88,30 @@ export function authMiddleware(secret: string) {
         throw new HTTPException(401, { message: "Unauthorized" })
       }
 
+      // A managed org suspended or closed for billing (modules/cloud/
+      // suspension.ts): 403 `org_suspended` unless this is an admin's own
+      // session on the org's host asking for export or Billing. After the
+      // revocation and user checks, so a revoked or disabled credential gets
+      // its 401 and learns nothing of the org's billing; before the host
+      // check, so a credential on a cell host reads as suspended, not as a
+      // sign-out. A no-op, without a query, on a self-hosted instance.
+      await assertOrgServable(c, {
+        orgId: payload.orgId,
+        scopes: payload.scopes ?? [],
+        agentId: payload.agentId,
+        restricted: payload.restricted === true,
+      })
+
+      // Host binding (lib/org-host.ts): with org hosts, a token of org A works
+      // only on A's host. A no-op without LIAISON_ORG_HOST_TEMPLATE.
+      if (!(await hostAllowsOrg(c, payload.orgId))) {
+        rootLogger.warn(
+          { method: c.req.method, path: c.req.path, reason: "foreign_host" },
+          "auth failure",
+        )
+        throw new HTTPException(401, { message: "Unauthorized" })
+      }
+
       // An expired demo visitor workspace refuses every token it ever issued,
       // on every route that authenticates through here (a no-op, with no query,
       // unless LIAISON_DEMO_MODE is on).
@@ -129,9 +158,25 @@ export function authMiddleware(secret: string) {
     // An org whose deletion has started (modules/org/purge/deleting.ts) serves
     // nothing more: 410 ORG_DELETED. Outside the try: it is not a 401.
     await assertOrgNotDeleting(c.get("orgId"))
-    // The org's apps, when it is still registering after a restart (a no-op
-    // otherwise). Outside the try: a registration failure is not a 401.
-    await awaitOrgApps(c.get("orgId"))
-    await next()
+    // A write in flight is counted until it answers: a move's freeze waits
+    // for the org's to reach zero on every process. Counted BEFORE the gate
+    // check and the org setup, so a write parked in either is already seen by
+    // the quiesce when the freeze lands.
+    const end = isMutatingMethod(c.req.method) ? beginOrgActivity(c.get("orgId"), "writes") : null
+    // Every request holds the org set up in this process until it answers
+    // (the org runtime cap, org-runtime-release.ts).
+    const unhold = holdOrgRuntime(c.get("orgId"))
+    try {
+      // An org moving to another instance (modules/org/transfer-state/): 503
+      // `org_moving` for a write while frozen, for everything once moved.
+      await assertOrgRequestAllowed(c.get("orgId"), c.req.method, c.req.path)
+      // The org's apps, when it is still registering after a restart (a no-op
+      // otherwise). Outside the 401 try: a registration failure is not a 401.
+      await awaitOrgApps(c.get("orgId"))
+      await next()
+    } finally {
+      end?.()
+      unhold()
+    }
   })
 }

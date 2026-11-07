@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { ImapSyncSummary } from "@liaison/shared"
-import { createStore, produce } from "solid-js/store"
+import { createStore, produce, reconcile } from "solid-js/store"
 import { onSessionTeardown } from "~/lib/session-lifecycle"
 
 interface MailApi {
@@ -74,10 +74,13 @@ export interface MailConnectionHealth {
 
 interface MailAccountStoreState {
   byId: Record<string, MailAccount>
+  /** True once the first account list arrived, so "no accounts" is known, not assumed. */
+  loaded: boolean
 }
 
 const [mailAccountStore, setMailAccountStore] = createStore<MailAccountStoreState>({
   byId: {},
+  loaded: false,
 })
 
 export { mailAccountStore }
@@ -88,6 +91,10 @@ export function getAccount(accountId: string): MailAccount | undefined {
 
 export function allAccounts(): MailAccount[] {
   return Object.values(mailAccountStore.byId)
+}
+
+export function accountsLoaded(): boolean {
+  return mailAccountStore.loaded
 }
 
 export const personalAccounts = () => allAccounts().filter((a) => a.ownerType === "user")
@@ -120,7 +127,12 @@ export async function loadAccounts(api: MailApi): Promise<void> {
   const list = await api.get<MailAccount[]>("/mail/accounts")
   const byId: Record<string, MailAccount> = {}
   for (const account of list) byId[account.id] = normalizeAccount(account)
-  setMailAccountStore({ byId })
+  // Reconciled, not replaced: a refetch (any `mail:account` change event, e.g.
+  // a sync tick) must keep each account's object identity, or the account list
+  // re-creates every row and drops the state of what is open inside one, such
+  // as a running mailbox verification sweep and its result.
+  setMailAccountStore("byId", reconcile(byId))
+  setMailAccountStore("loaded", true)
 }
 
 function normalizeSenderDomain(senderDomain: string): string {
@@ -181,7 +193,7 @@ export function handleAccountEvent(action: string, data: any): void {
 }
 
 export function resetMailAccountStore(): void {
-  setMailAccountStore({ byId: {} })
+  setMailAccountStore({ byId: {}, loaded: false })
 }
 
 onSessionTeardown(resetMailAccountStore)

@@ -20,6 +20,7 @@ import { buildMcpWorld, type McpTestWorld } from "~/apps/mcp-manager/test-helper
 import { withSystemDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { mcpConnectionHealth, mcpConnections } from "~/db/schema/app_mcp_manager"
+import { env } from "~/lib/env"
 import { errorHandler } from "~/middleware/error-handler"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { initMcpClient, McpClientTestAccess } from "./index"
@@ -203,7 +204,7 @@ describe("S29: Liaison's MCP client against a real OAuth-protected MCP server", 
           clientId: "pre-registered-1",
           clientSecret: "pre-secret",
           authMethod: "client_secret_post",
-          redirectUris: [callbackUrl()],
+          redirectUris: [callbackUrl(env.BASE_URL.replace(/\/$/, ""))],
         })
         const { id, probe } = await addAndSignIn(fixture, {
           clientId: "pre-registered-1",
@@ -317,7 +318,7 @@ describe("S29: Liaison's MCP client against a real OAuth-protected MCP server", 
             clientId: "s29-redirect-client",
             clientSecret: "S29-REDIRECT-SECRET",
             authMethod: "client_secret_basic",
-            redirectUris: [callbackUrl()],
+            redirectUris: [callbackUrl(env.BASE_URL.replace(/\/$/, ""))],
           })
           const { id } = await addAndSignIn(fixture, {
             clientId: "s29-redirect-client",

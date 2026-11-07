@@ -130,6 +130,51 @@ export async function noteOnceDelivery(name: string, event: AppEvent): Promise<v
   }
 }
 
+/**
+ * An event of an org moving to another instance (frozen, incoming or moved,
+ * modules/org/transfer-state/), or of an org whose move state cannot be read:
+ * not published now. The outbox worker releases the row unprocessed with its
+ * attempts untouched (retry later, not a failure); its claim then skips the
+ * org until the move is over, here after an abort or on the target, which
+ * receives the row unprocessed.
+ */
+export class EventDeferredError extends Error {
+  constructor(
+    readonly orgId: string,
+    readonly reason: "moving" | "state-unreadable",
+    cause?: unknown,
+  ) {
+    super(`Event of org ${orgId} deferred: ${reason}`, cause === undefined ? undefined : { cause })
+    this.name = "EventDeferredError"
+  }
+}
+
+/**
+ * Count the event's handlers as live writes of its org, then check the org
+ * takes them (in this order, so a freeze that lands between the two is seen
+ * by the quiesce). Returns the end of the count; throws `EventDeferredError`
+ * when the org is moving or its state cannot be read (fail closed, never
+ * skipped).
+ */
+async function beginOrgEventWork(orgId: string): Promise<() => void> {
+  const { beginOrgActivity, orgTransferStateOf, refusesWrites } = await import(
+    "~/modules/org/transfer-state/state"
+  )
+  const end = beginOrgActivity(orgId, "writes")
+  let rec: Awaited<ReturnType<typeof orgTransferStateOf>>
+  try {
+    rec = await orgTransferStateOf(orgId)
+  } catch (err) {
+    end()
+    throw new EventDeferredError(orgId, "state-unreadable", err)
+  }
+  if (rec !== null && refusesWrites(rec.state)) {
+    end()
+    throw new EventDeferredError(orgId, "moving")
+  }
+  return end
+}
+
 /** The org setup a `once` dispatch awaits first (`awaitOrgApps`; replaceable in tests). */
 const defaultEnsureEventOrg = async (orgId: string): Promise<void> => {
   const { awaitOrgApps } = await import("~/modules/apps/init")
@@ -447,6 +492,23 @@ export async function _publishEventInternal(event: AppEvent): Promise<void> {
     throw new Error(`App "${app}" did not declare event type "${entity}:${action}" in emits`)
   }
 
+  // An org moving to another instance takes none of its handlers now: the
+  // event is deferred, not dropped (EventDeferredError). Otherwise its
+  // handlers count as the org's live writes until the dispatch settles.
+  const endOrgWork = event.orgId ? await beginOrgEventWork(event.orgId) : () => {}
+  try {
+    await publishCounted(event, endOrgWork)
+  } catch (err) {
+    // Nothing was dispatched: the org's count must not stay up (every move of
+    // the org would then wait at its quiesce until this process restarts).
+    endOrgWork()
+    throw err
+  }
+}
+
+/** The rest of `_publishEventInternal`, once the org's work is counted (ended by the dispatch). */
+async function publishCounted(event: AppEvent, endOrgWork: () => void): Promise<void> {
+  const { app, entity, action } = event
   const channel = channelName(app, entity, action)
   const msgId = crypto.randomUUID()
   // Process-local dedup: track this msgId so the Redis subscriber skips it
@@ -549,6 +611,7 @@ export async function _publishEventInternal(event: AppEvent): Promise<void> {
       // eviction candidates), but guard defensively rather than proceed
       // without a slot.
       log.error({ channel }, "Durable dispatch waiter was dropped unexpectedly")
+      endOrgWork()
       _pendingDispatches.delete(dispatchPromise)
       return
     }
@@ -557,6 +620,7 @@ export async function _publishEventInternal(event: AppEvent): Promise<void> {
     } catch (err) {
       log.error({ err, channel }, "Handler dispatch failed")
     } finally {
+      endOrgWork()
       releaseDispatchSlot()
       _pendingDispatches.delete(dispatchPromise)
     }
@@ -828,6 +892,9 @@ export const KERNEL_DECLARED_EMITS: ReadonlySet<string> = new Set([
   // An org cap crossed 80 % or 100 %: the attention translator tells the org
   // admins (modules/org/caps.ts emitCapNotice).
   "org_cap:threshold",
+  // An org moved to this instance and its MCP connections were revoked: the
+  // attention translator tells the org admins (modules/org/transfer/after-commit.ts).
+  "org_move:reconnect",
   // A bug report sent only to the Liaison team ended undelivered: the attention
   // translator tells the org admins (modules/liaison-team/team-only.ts).
   "liaison_team_forward:undelivered",

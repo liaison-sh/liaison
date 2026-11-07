@@ -5,6 +5,7 @@
 // settings page's own checks (ai-models-routes.test.ts covers those in depth).
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
+import { _setEdition } from "~/lib/edition"
 import { redis } from "~/lib/redis"
 import { OPENROUTER_CATALOGUE_CACHE_KEY } from "~/modules/agent/credits/openrouter-catalogue"
 import {
@@ -84,6 +85,21 @@ describe("ai_models_get and ai_models_set", () => {
     expect(res.openRouter.models.map((m: any) => m.upstreamId)).toContain(UPSTREAM)
     expect(res.openRouter.models[0].added).toBe(false)
     expect(JSON.stringify(res)).not.toContain("maskedHint")
+  })
+
+  it("on a managed cell a read carries a multiplier against Auto, never a price", async () => {
+    _setEdition("managed")
+    try {
+      const res: any = await handleAiModelsGet({ openRouterSearch: "deepseek" }, admin)
+      expect(res.openRouter.models.length).toBeGreaterThan(0)
+      for (const m of [...res.models, ...res.openRouter.models]) {
+        expect(m).toHaveProperty("multiplier")
+        expect(m).not.toHaveProperty("inputCostPerM")
+        expect(m).not.toHaveProperty("outputCostPerM")
+      }
+    } finally {
+      _setEdition(null)
+    }
   })
 
   it("an agent's change parks one approval card and changes nothing yet", async () => {

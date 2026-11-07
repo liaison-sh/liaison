@@ -15,7 +15,7 @@
 // place and never moves a row count. Table and column names are quoted
 // identifiers (`sql.identifier`), never spliced text; every value is a bound
 // parameter, JSON columns as a `::jsonb` cast of the stringified value.
-import { sql } from "drizzle-orm"
+import { type SQL, sql } from "drizzle-orm"
 import type { PrivilegedDb } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
 
@@ -72,6 +72,39 @@ export async function upsertAppRow(
     sql`INSERT INTO ${target} (${colList}) VALUES (${values})
         ON CONFLICT (id) DO UPDATE SET ${assignments}`,
   )
+}
+
+/** The one call a writer needs: a transaction, the privileged connection, or an app's RLS client. */
+export interface AppRowWriter {
+  execute(query: SQL): Promise<unknown>
+}
+
+/**
+ * INSERT one row into `app_<app>.<table>`, as the app's own handler would
+ * (`db_insert`): no conflict clause, so a duplicate fails as it would there,
+ * and the column defaults (`id`, timestamps) fill whatever the row leaves out.
+ * For a write inside a test's own transaction or an app's RLS client.
+ */
+export async function insertAppRow(
+  tx: AppRowWriter,
+  app: string,
+  table: string,
+  row: Record<string, AppCell> & { org_id: string },
+): Promise<void> {
+  const cols = Object.keys(row)
+  const target = sql`${sql.identifier(schemaRef(`app_${app}`))}.${sql.identifier(table)}`
+  const colList = sql.join(
+    cols.map((c) => sql.identifier(c)),
+    sql`, `,
+  )
+  const values = sql.join(
+    cols.map((c) => {
+      const v = row[c] as AppCell
+      return isJson(v) ? sql`${JSON.stringify(v.__json)}::jsonb` : sql`${v}`
+    }),
+    sql`, `,
+  )
+  await tx.execute(sql`INSERT INTO ${target} (${colList}) VALUES (${values})`)
 }
 
 /** `base` shifted by a whole number of days and hours. */

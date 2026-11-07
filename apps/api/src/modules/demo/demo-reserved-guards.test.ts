@@ -12,7 +12,7 @@
 //    (auto-title.ts): the reserved org's title is asked of a model.
 //  * Make `runSandboxedExtraction` pick a model for the reserved org
 //    (web-tools.ts): the extraction is asked of a model.
-//  * Delete the `isReservedDemoOrg` return from `settleReservedDemoSideCall`:
+//  * Delete the `isReservedDemoOrg` return from `meterSideCall`:
 //    a normal org's unmetered side call gets a usage row.
 //  * Delete the release from `routineCreditGate` (kernel-jobs.ts): the gate
 //    leaves a turn's reservation held against the reserved org's ceiling.
@@ -26,7 +26,7 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { threads as kernelThreads } from "~/db/schema/kernel"
 import { routineCreditGate } from "~/infra/jobs/kernel-jobs"
 import { redis } from "~/lib/redis"
-import { preCheck, settleReservedDemoSideCall } from "~/modules/agent/credits/credit-meter"
+import { meterSideCall, preCheck } from "~/modules/agent/credits/credit-meter"
 import { autoTitleAgentChat } from "~/modules/agent/runtime/auto-title"
 import { runSandboxedExtraction } from "~/modules/agent/tools/web-tools"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
@@ -198,8 +198,8 @@ describe("the reserved demo org's guards outside a turn", () => {
       return Number(r?.n ?? 0)
     }
     const before = { reserved: await rows(reservedOrgId), normal: await rows(normalOrgId) }
-    await settleReservedDemoSideCall(reservedOrgId, credit, { inputTokens: 40, outputTokens: 2 })
-    await settleReservedDemoSideCall(normalOrgId, credit, { inputTokens: 40, outputTokens: 2 })
+    await meterSideCall(reservedOrgId, credit, { inputTokens: 40, outputTokens: 2 })
+    await meterSideCall(normalOrgId, credit, { inputTokens: 40, outputTokens: 2 })
     expect(await rows(reservedOrgId)).toBe(before.reserved + 1)
     expect(await rows(normalOrgId)).toBe(before.normal)
   })

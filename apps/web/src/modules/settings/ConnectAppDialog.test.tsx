@@ -2,8 +2,10 @@
 import { fireEvent, render, screen } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ApiClient } from "~/lib/api-client"
+import { ApiError } from "~/lib/api-error"
 import { clearAuth, setTokens } from "~/modules/auth/auth-store"
 import type { AppConnectionConfig } from "./apps-store"
+import { BillingStateTestAccess } from "./BillingState"
 import { ConnectAppDialog } from "./ConnectAppDialog"
 
 /** Minimal unsigned JWT the auth store can decode, carrying `scopes`. */
@@ -54,6 +56,31 @@ function mockApi(
     put: extra?.put ?? vi.fn().mockResolvedValue({ configured: true, created: true }),
   } as unknown as ApiClient
 }
+
+describe("ConnectAppDialog for a member connecting their own account", () => {
+  it("asks for no OAuth client and offers no Organization, and connects as personal", async () => {
+    setTokens(makeAccessToken([]))
+    const get = vi.fn().mockRejectedValue(new ApiError("forbidden", 403))
+    const post = vi.fn().mockResolvedValue({ redirectUrl: "https://accounts.example/o" })
+    const api = mockApi(post, { get })
+    render(() => (
+      <ConnectAppDialog
+        api={api}
+        appName="google-drive"
+        connectionName="drive"
+        connConfig={oauthConfig}
+        onClose={() => {}}
+      />
+    ))
+    expect(await screen.findByTestId("oauth-connect-account")).toBeInTheDocument()
+    expect(screen.queryByTestId("oauth-client-id")).toBeNull()
+    expect(screen.queryByTestId("connect-mode-toggle")).toBeNull()
+    expect(screen.queryByTestId("connect-mode-org")).toBeNull()
+    expect(screen.queryByTestId("oauth-client-replace-toggle")).toBeNull()
+    fireEvent.click(screen.getByTestId("connect-oauth"))
+    await vi.waitFor(() => expect(post.mock.calls[0]?.[1]).toMatchObject({ mode: "personal" }))
+  })
+})
 
 describe("ConnectAppDialog", () => {
   let hrefSet: string | undefined
@@ -190,7 +217,7 @@ describe("ConnectAppDialog", () => {
         }}
       />
     ))
-    fireEvent.input(screen.getByTestId("oauth-client-id"), { target: { value: "cid" } })
+    fireEvent.input(await screen.findByTestId("oauth-client-id"), { target: { value: "cid" } })
     fireEvent.input(screen.getByTestId("oauth-client-secret"), { target: { value: "csecret" } })
     fireEvent.click(screen.getByTestId("connect-oauth"))
     await vi.waitFor(() => expect(hrefSet).toBe("https://provider.test/authorize?x=1"))
@@ -235,7 +262,7 @@ describe("ConnectAppDialog", () => {
       />
     ))
     // Wait for the client-status load to mark it configured.
-    await screen.findByTestId("oauth-client-configured")
+    await screen.findByTestId("oauth-connect-account")
     fireEvent.input(screen.getByTestId("oauth-var-shop"), { target: { value: "my-store" } })
     fireEvent.click(screen.getByTestId("connect-oauth"))
     await Promise.resolve()
@@ -300,6 +327,105 @@ describe("ConnectAppDialog", () => {
     })
   })
 
+  // A client already configured (the org's, or the deployment's) needs nothing
+  // typed: the dialog is one Connect action, and replacing the client is an
+  // opt-in disclosure. Fields read as required otherwise (owner, managed cell).
+  describe("oauth2 with a client already configured", () => {
+    afterEach(() => {
+      BillingStateTestAccess.reset()
+      clearAuth()
+    })
+
+    const renderWith = (status: Record<string, unknown>, post = vi.fn()) => {
+      const put = vi.fn()
+      render(() => (
+        <ConnectAppDialog
+          api={mockApi(post, { get: vi.fn().mockResolvedValue(status), put })}
+          appName="drive"
+          connectionName="drive"
+          connConfig={oauthConfig}
+          onClose={() => {}}
+        />
+      ))
+      return { post, put }
+    }
+
+    it.each([
+      ["the org", { configured: true, source: "org", clientId: "org-cid", appManaged: false }],
+      [
+        "the deployment",
+        { configured: true, source: "deployment", clientIdHint: "...9xyz", appManaged: false },
+      ],
+    ])(
+      "a client from %s: no client fields, one Connect action, an opt-in disclosure",
+      async (_label, status) => {
+        const post = vi.fn().mockResolvedValue({ redirectUrl: "https://provider.test/authorize" })
+        const { put } = renderWith(status, post)
+        expect(await screen.findByTestId("oauth-connect-account")).toBeInTheDocument()
+        expect(screen.queryByTestId("oauth-client-id")).not.toBeInTheDocument()
+        expect(screen.queryByTestId("oauth-client-secret")).not.toBeInTheDocument()
+        expect(screen.getByTestId("connect-oauth")).toHaveTextContent(/^Connect$/)
+        expect(screen.getByTestId("oauth-client-replace-toggle")).toBeInTheDocument()
+        fireEvent.click(screen.getByTestId("connect-oauth"))
+        await vi.waitFor(() => expect(hrefSet).toBe("https://provider.test/authorize"))
+        expect(put).not.toHaveBeenCalled()
+      },
+    )
+
+    it("the sentence names whose account is connected (personal vs organization)", async () => {
+      setTokens(makeAccessToken(["drive:accounts:admin"]))
+      renderWith({ configured: true, source: "org", clientId: "org-cid", appManaged: false })
+      const sentence = await screen.findByTestId("oauth-connect-account")
+      expect(sentence).toHaveTextContent(/organization/i)
+      fireEvent.click(screen.getByTestId("connect-mode-personal"))
+      expect(screen.getByTestId("oauth-connect-account")).toHaveTextContent(/for you only/i)
+    })
+
+    it("the disclosure reveals the client fields, and entered values replace the client", async () => {
+      const post = vi.fn().mockResolvedValue({ redirectUrl: "https://provider.test/authorize" })
+      const { put } = renderWith(
+        { configured: true, source: "org", clientId: "org-cid", appManaged: false },
+        post,
+      )
+      fireEvent.click(await screen.findByTestId("oauth-client-replace-toggle"))
+      fireEvent.input(screen.getByTestId("oauth-client-id"), { target: { value: "new-cid" } })
+      fireEvent.input(screen.getByTestId("oauth-client-secret"), { target: { value: "new-sec" } })
+      fireEvent.click(screen.getByTestId("connect-oauth"))
+      await vi.waitFor(() => expect(hrefSet).toBe("https://provider.test/authorize"))
+      expect(put).toHaveBeenCalledWith("/connections/drive/drive/oauth-client", {
+        clientId: "new-cid",
+        clientSecret: "new-sec",
+      })
+    })
+
+    it("no client configured: the client fields show, no disclosure", async () => {
+      renderWith({ configured: false, appManaged: false })
+      expect(await screen.findByTestId("oauth-client-id")).toBeInTheDocument()
+      expect(screen.getByTestId("oauth-client-secret")).toBeInTheDocument()
+      expect(screen.queryByTestId("oauth-client-replace-toggle")).not.toBeInTheDocument()
+      expect(screen.queryByTestId("oauth-connect-account")).not.toBeInTheDocument()
+    })
+
+    it("managed edition with the deployment's client: client fields are never offered", async () => {
+      BillingStateTestAccess.setMode("managed")
+      renderWith({
+        configured: true,
+        source: "deployment",
+        clientIdHint: "...9xyz",
+        appManaged: false,
+      })
+      expect(await screen.findByTestId("oauth-connect-account")).toBeInTheDocument()
+      expect(screen.queryByTestId("oauth-client-replace-toggle")).not.toBeInTheDocument()
+      expect(screen.queryByTestId("oauth-client-id")).not.toBeInTheDocument()
+    })
+
+    it("managed edition with an org client: replacing it stays possible", async () => {
+      BillingStateTestAccess.setMode("managed")
+      renderWith({ configured: true, source: "org", clientId: "org-cid", appManaged: false })
+      expect(await screen.findByTestId("oauth-client-replace-toggle")).toBeInTheDocument()
+    })
+  })
+
   // A browser's password manager must never fill a credential in.
   describe("credential inputs refuse login autofill", () => {
     const expectNoAutofill = (input: HTMLInputElement, name: string, autocomplete: string) => {
@@ -321,7 +447,7 @@ describe("ConnectAppDialog", () => {
         />
       ))
       expectNoAutofill(
-        screen.getByTestId("oauth-client-id") as HTMLInputElement,
+        (await screen.findByTestId("oauth-client-id")) as HTMLInputElement,
         "oauth-client-id",
         "off",
       )

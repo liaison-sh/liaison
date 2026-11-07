@@ -61,6 +61,7 @@ import {
   removeReaction,
   toggleNestedExpanded,
 } from "~/modules/threads/message-store"
+import { isPaymentRequired, PaymentRequiredNotice } from "~/modules/threads/PaymentRequiredNotice"
 import QuoteSelection from "~/modules/threads/QuoteSelection"
 import { jumpToMessage } from "~/modules/threads/quote-jump"
 import { quoteSurfaceKey } from "~/modules/threads/quote-store"
@@ -720,7 +721,13 @@ export const MessageStream: Component<MessageStreamProps> = (props) => {
                 data-testid="agent-stream-error"
                 class="mt-2 rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-[12px] text-red-400"
               >
-                {run.stream.error?.message}
+                {/* An unpaid renewal (402 payment_required) offers Billing. */}
+                <Show
+                  when={isPaymentRequired(run.stream.error?.code)}
+                  fallback={run.stream.error?.message}
+                >
+                  <PaymentRequiredNotice />
+                </Show>
               </div>
             </Show>
           </div>

@@ -88,6 +88,11 @@ import type { ApprovalResultTurnPayload } from "~/modules/approvals/approval-res
 import type { ExecutionFailure } from "~/modules/approvals/cascade-fail"
 import { claimApprovalTurnOnce } from "~/modules/approvals/event-data"
 import { approvalResultRequiredScopes } from "~/modules/approvals/result-notice"
+import {
+  SKIPPED_MOVING,
+  sweepSkippingMoving,
+  writeUnlessMoving,
+} from "~/modules/org/transfer-state/skip-moving"
 
 const log = rootLogger.child({ module: "routine-run-resume" })
 const K = drizzleSql.raw(schemaRef("kernel"))
@@ -1056,6 +1061,7 @@ export async function sweepWaitingRoutineRuns(
   const deadBefore = new Date(now.getTime() - DEAD_RESUME_AFTER_MS).toISOString()
   const unresumedBefore = new Date(now.getTime() - UNRESUMED_AFTER_MS).toISOString()
   const lapsedBefore = new Date(now.getTime() - EXPIRED_GRACE_MS).toISOString()
+  // An org being moved keeps its routines and runs as they are until the move ends.
   let resumed = 0
   let ended = 0
   // Oldest first, a page at a time; only the runs that need something come back.
@@ -1064,17 +1070,18 @@ export async function sweepWaitingRoutineRuns(
     id: "00000000-0000-0000-0000-000000000000",
   }
   for (;;) {
-    const page = await withSystemDb("routine-run-waiting-sweep", async (db) =>
-      extractRows<{
-        org_id: string
-        id: string
-        routine_id: string
-        ran_at: string
-        pause_state: RoutineRunPauseState
-        verdict: "dead" | "decided" | "lapsed"
-        lapsed: string | null
-      }>(
-        await db.execute(drizzleSql`
+    const page = await sweepSkippingMoving((notMoving) =>
+      withSystemDb("routine-run-waiting-sweep", async (db) =>
+        extractRows<{
+          org_id: string
+          id: string
+          routine_id: string
+          ran_at: string
+          pause_state: RoutineRunPauseState
+          verdict: "dead" | "decided" | "lapsed"
+          lapsed: string | null
+        }>(
+          await db.execute(drizzleSql`
           SELECT * FROM (
             SELECT r.org_id::text, r.id::text, r.routine_id::text, r.ran_at::text, r.pause_state,
               CASE
@@ -1105,25 +1112,33 @@ export async function sweepWaitingRoutineRuns(
                   AND a.expires_at < ${lapsedBefore}::timestamptz) AS lapsed
               FROM ${K}.routine_runs r
              WHERE r.status = 'waiting_approval' AND r.pause_state IS NOT NULL
+               AND ${notMoving(drizzleSql.raw("r.org_id"))}
                AND (r.ran_at, r.id) > (${cursor.at}::timestamptz, ${cursor.id}::uuid)
           ) v
           WHERE v.verdict IS NOT NULL
           ORDER BY v.ran_at, v.id
           LIMIT ${SWEEP_PAGE}`),
+        ),
       ),
     )
     for (const r of page) {
       try {
         if (r.verdict === "decided") {
           const tag = `sweep-${r.pause_state.resumeCount}-${now.getTime()}`
-          if (await enqueueRerun(r.org_id, r.id, r.pause_state, tag)) resumed++
+          const queued = await writeUnlessMoving(r.org_id, () =>
+            enqueueRerun(r.org_id, r.id, r.pause_state, tag),
+          )
+          if (queued !== SKIPPED_MOVING && queued) resumed++
           continue
         }
         const error =
           r.verdict === "dead"
             ? "The run stopped while it carried on after an approval, and did not finish."
             : `The run ended: the approval it waited for (${r.lapsed ?? "unknown"}) expired without a decision.`
-        if (await endWaitingRun(r.org_id, r.routine_id, r.id, error)) ended++
+        const didEnd = await writeUnlessMoving(r.org_id, () =>
+          endWaitingRun(r.org_id, r.routine_id, r.id, error),
+        )
+        if (didEnd !== SKIPPED_MOVING && didEnd) ended++
       } catch (err) {
         log.error({ err, orgId: r.org_id, runId: r.id }, "waiting routine run not swept")
       }

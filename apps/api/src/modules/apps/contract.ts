@@ -7,6 +7,9 @@ import { resultCardErrors } from "~/modules/apps/result-card-schema"
 
 const SEMVER_REGEX = /^\d+\.\d+\.\d+(-[\w.]+)?(\+[\w.]+)?$/
 const NAME_REGEX = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/
+// A `schema.<table>` key becomes a Postgres table name, so the snake_case the
+// manifest path (and every bundled app) uses is valid here too.
+const TABLE_KEY_REGEX = /^[a-z0-9]([a-z0-9_-]*[a-z0-9])?$/
 const SLOT_KEY_REGEX = /^[a-z0-9-]+:[a-z0-9-]+(:[a-z0-9-]+)*$/
 const WEBHOOK_KEY_REGEX = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/
 const EVENT_REGEX = /^[a-z_]+:[a-z_]+$/
@@ -177,6 +180,7 @@ const webhookSchema = z.object({
     .min(1024)
     .max(10 * 1024 * 1024)
     .optional(),
+  timeoutMs: z.number().int().min(1000).max(29000).optional(),
   // See webhookHandlers registry's requiresUserActor doc comment
   // (modules/apps/app-registries.ts) — opt-in, defaults unset/false.
   requiresUserActor: z.boolean().optional(),
@@ -285,7 +289,12 @@ const appDescriptorSchema = z.object({
     .optional(),
   schema: z
     .record(
-      z.string().regex(NAME_REGEX, "Entity name must be lowercase alphanumeric + hyphens"),
+      z
+        .string()
+        .regex(
+          TABLE_KEY_REGEX,
+          "Table name must be lowercase alphanumeric with hyphens or underscores",
+        ),
       entitySchemaSchema,
     )
     .optional(),

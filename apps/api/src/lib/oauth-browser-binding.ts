@@ -2,7 +2,7 @@
 import { createHash, timingSafeEqual } from "node:crypto"
 import type { Context } from "hono"
 import { env } from "~/lib/env"
-import { readCookie } from "~/lib/response"
+import { hostOnlyCookies, readCookie } from "~/lib/response"
 
 /**
  * Bind an OAuth connect flow to the browser that started it.
@@ -47,7 +47,7 @@ function digest(state: string): string {
 export function bindingCookie(
   baseName: string,
   callbackPath: string,
-  isProd: boolean = env.NODE_ENV === "production",
+  isProd: boolean = hostOnlyCookies(),
   /** The flow's state: the cookie is named per flow (see above). */
   state?: string,
 ): { name: string; path: string } {
@@ -63,8 +63,8 @@ export function setConnectBindingCookie(
   callbackPath: string,
   state: string,
 ): void {
-  const cookie = bindingCookie(cookieName, callbackPath, env.NODE_ENV === "production", state)
-  const secure = env.NODE_ENV === "production" ? "; Secure" : ""
+  const cookie = bindingCookie(cookieName, callbackPath, hostOnlyCookies(), state)
+  const secure = hostOnlyCookies() ? "; Secure" : ""
   c.header(
     "Set-Cookie",
     `${cookie.name}=${digest(state)}; HttpOnly; SameSite=Lax; Path=${cookie.path}; Max-Age=600${secure}`,
@@ -76,7 +76,7 @@ export function connectBindingMatches(
   cookieHeader: string | undefined,
   cookieName: string,
   state: string,
-  isProd: boolean = env.NODE_ENV === "production",
+  isProd: boolean = hostOnlyCookies(),
 ): boolean {
   // The callback path does not matter for the name; only the name is read.
   const name = bindingCookie(cookieName, "/", isProd, state).name

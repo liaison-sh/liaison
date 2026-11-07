@@ -54,7 +54,7 @@ HTTP request / event / job
     → pool.release()
 ```
 
-Each invocation gets a **fresh context** — no state leaks between calls. The handler bundle is re-evaluated every time (no cached module state). For a trusted app's attention provider the bundle evaluated is the part the provider needs, tree-shaken once per bundle version (`modules/apps/sandbox/bundle-shake.ts`): source text derived from the bundle alone, never evaluated state. Timeout enforcement uses `runtime.setInterruptHandler()` polling against a deadline (default: 5s in production, 60s in development, overridable via `LIAISON_SANDBOX_TIMEOUT_MS` in non-production; production ignores the override).
+Each invocation gets a **fresh context** — no state leaks between calls. The handler bundle is re-evaluated every time (no cached module state). The bundle file's text is checked against the file on every load, so an app reinstalled at the same version runs its new code at once, without a restart. For a trusted app's attention provider the bundle evaluated is the part the provider needs, tree-shaken once per bundle version (`modules/apps/sandbox/bundle-shake.ts`): source text derived from the bundle alone, never evaluated state. Timeout enforcement uses `runtime.setInterruptHandler()` polling against a deadline (default: 5s in production, 60s in development, overridable via `LIAISON_SANDBOX_TIMEOUT_MS` in non-production; production ignores the override).
 
 **Bridge call pattern:** Bridge functions use QuickJS native promises (`ctx.newPromise()`) rather than WASM asyncify. When a handler calls `ctx.db.findMany(...)`, the bridge function creates a QuickJS promise, queues the async host work, and returns the promise handle. The host resolves the promise when the work completes, then `executePendingJobs()` resumes the QuickJS event loop. This works reliably across event loop boundaries — including IPC to worker subprocesses.
 
@@ -187,6 +187,8 @@ Subdomain matching: `*.example.com` accepts `api.example.com` but not `example.c
 Every target must be public and use HTTPS: a hostname that resolves to a private, loopback, link-local or metadata address is refused, checked against the address actually connected to and again on every redirect.
 
 **Private services on the deployment's own network.** A self-hoster whose app talks to a service next to Liaison (a container on the same compose network, a host on the private LAN) lists it in `LIAISON_APP_PRIVATE_HOSTS`: comma-separated exact hosts, `host` or `host:port` (for example `kpi-service:8787`). Empty by default. A listed host may be reached over plain HTTP and may resolve to a private or loopback address; the app's manifest must still list it in `allowedDomains`, link-local and metadata addresses stay refused, and a redirect to a host not on the list gets the public-HTTPS rule again. List only services you run and trust: every installed app whose manifest names the host can reach it.
+
+**An organization's custom app (managed edition).** It is one tenant's code on a server shared with others, so on top of the rules above: `LIAISON_APP_PRIVATE_HOSTS` never applies to it, and it never reaches the server itself, neither by name (the host of `BASE_URL`, of each `ALLOWED_ORIGINS` entry, and every organization host of `LIAISON_ORG_HOST_TEMPLATE`) nor by address (`LIAISON_CELL_PUBLIC_ADDRESSES`: the server's own public IPv4 and IPv6 addresses, comma-separated; traffic from a host to its own public address skips the cloud firewall). The address check runs on the address actually connected to and on every redirect, so a name that resolves to the server is refused too. Keep services off `0.0.0.0` on the host all the same.
 
 ### Token Security
 
@@ -568,6 +570,14 @@ const pool = new SandboxWorkerPool({
 ```
 
 Background work (jobs, webhooks, event handlers) may hold at most `maxSize` minus the workers reserved for interactive calls (`APP_WORKER_POOL_RESERVED_INTERACTIVE`, default 1). Within that, one app's jobs hold at most half of it (rounded up), so a flood of slow jobs of one app, such as many mailbox syncs waiting on slow mail servers, leaves the rest to other apps' background work. A job runs within its manifest `timeoutMs` (60 s when unset), not the 5 s default of a tool call.
+
+**Each organization's share (managed edition).** The executions of one organization's custom apps (tools, webhooks, event handlers, jobs, every other handler; the app name's organization key decides) hold at most 2 workers at once. Up to 8 more wait their turn for up to 5 s, and past that the call is refused with `SandboxTenantBusyError` (429 `custom_app_busy`, `Retry-After: 5`). A nested call (a custom app's tool calling another tool) is not counted again: its caller already holds the share. Catalog, in-tree and instance apps keep the rules above. A custom app's webhook also has a budget of 120 deliveries a minute per organization and app, checked before its `verify` runs (429 `custom_app_rate_limited`). The pool's `tenantStats()` shows each organization's executions in flight and waiting.
+
+**Its bulk downloads (managed edition).** `ctx.bulk.fetchToBlob` of a custom app writes to its own directory (`custom--<org>--<app>` under `BULK_BLOB_DIR`), limited to 256 MiB per app and 4 GiB for all custom apps on the server together; a download not written or read for an hour is deleted by a sweep, and the organization's deletion removes them all.
+
+**The operator's kill switch.** `PUT /api/cloud/orgs/:id/custom-apps/:name/state` (signed by the control plane, `{orgId, name, disabled, reason?}`) disables one organization's custom app: its rows, files and data stay, `apps_installed.disabled_at` makes the tenant boundary refuse it on every dispatch path (its own organization included), its schedulers and registrations go, and its owner can neither upgrade nor uninstall it (409 `custom_app_disabled`). `disabled: false` enables it again. Both are written to the organization's audit log (`app.custom.disabled`, `app.custom.enabled`) with the reason.
+
+**Where its interface runs.** A custom app is never first-party, so its `ui.js` is served as text and runs only in the sandboxed frame (opaque origin, `connect-src 'none'`, no session, no storage, no cookies), reaching Liaison through the frame protocol for its own calls, like any outside app.
 
 ### Import transform pool
 

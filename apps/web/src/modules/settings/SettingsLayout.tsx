@@ -186,7 +186,7 @@ const SettingsLayout: Component<SettingsLayoutProps> = (_props) => {
         if (!error) return
         const description = params.get("oauth_error_description")
         // An org cap refusal is told in the reader's language (cap-limit-message.ts).
-        const capped = capLimitMessage((k) => i18n.t(k), error)
+        const capped = capLimitMessage((k, p) => i18n.t(k, p), error)
         addToast({
           message: capped
             ? capped

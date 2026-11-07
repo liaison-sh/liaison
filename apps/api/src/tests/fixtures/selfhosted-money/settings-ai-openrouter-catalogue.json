@@ -1,0 +1,30 @@
+{
+  "data": {
+    "models": [
+      {
+        "upstreamId": "deepseek/deepseek-v4.1-flash-1017",
+        "displayName": "DeepSeek: DeepSeek V4.1 Flash 1017",
+        "contextWindow": 1048576,
+        "inputCostPerM": "0.24000000",
+        "outputCostPerM": "0.96000000",
+        "tools": true,
+        "reasoningEfforts": ["low", "high"],
+        "canDisableReasoning": true,
+        "added": false,
+        "addable": true
+      },
+      {
+        "upstreamId": "acme/always-thinks",
+        "displayName": "Acme: Always Thinks",
+        "contextWindow": 200000,
+        "inputCostPerM": "0.80000000",
+        "outputCostPerM": "1.60000000",
+        "tools": true,
+        "reasoningEfforts": ["low", "medium", "high"],
+        "canDisableReasoning": false,
+        "added": false,
+        "addable": true
+      }
+    ]
+  }
+}

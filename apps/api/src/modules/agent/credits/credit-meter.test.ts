@@ -16,6 +16,7 @@ import {
 } from "~/modules/agent/credits/credit-meter"
 import * as creditService from "~/modules/agent/credits/credit-service"
 import { sideCallUsage } from "~/modules/agent/providers/side-call-model"
+import { clearTestCreditPricing, setTestCreditPricing } from "~/tests/helpers/credit-pricing"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const ORG_ID = "00000000-0000-0000-0000-000000cc0001"
@@ -34,6 +35,8 @@ describe("credit-meter", () => {
     // This suite asserts the metered/billed behaviour — exercise it as a
     // managed instance. The self-hosted (no-credits) path has its own block.
     _setEdition("managed")
+    // A managed cell meters nothing without a pushed rate.
+    await setTestCreditPricing()
 
     // Encrypt BYOK key the same way ai-keys-routes does in production
     const encryptedByok = encryptSecret(
@@ -68,6 +71,7 @@ describe("credit-meter", () => {
   })
 
   afterAll(async () => {
+    await clearTestCreditPricing()
     _setEdition(null)
     await releaseTestLock()
   })

@@ -18,6 +18,7 @@
 
 import path from "node:path"
 import { api } from "@liaison/test-helpers"
+import { tokenAfterOrgAccessChange } from "./fixtures/org-access-change"
 import { expect, test } from "./fixtures/test"
 
 const SHOTS_DIR = path.resolve(__dirname, "../../../logs/playwright-diagnostics/mcp-disable")
@@ -55,6 +56,13 @@ test("admin disables and re-enables an MCP connection from the UI", async ({
     `expected id in create response, got: ${JSON.stringify(createdBody)}`,
   ).toBeTruthy()
 
+  // Adding an org server makes every member's older token stale (the server's
+  // `mcp:<slug>` comes with the next one): continue with a fresh admin token.
+  const adminToken = await tokenAfterOrgAccessChange(env, qa.admin.token, {
+    email: "admin@test.com",
+    password: "12345678",
+  })
+
   // Test the connection so health flips to `connected` before the UI loads —
   // otherwise the status dot races the first dial.
   const testRes = await api(
@@ -62,7 +70,7 @@ test("admin disables and re-enables an MCP connection from the UI", async ({
     `/api/apps/mcp-manager/connections/${connectionId}/test`,
     {
       method: "POST",
-      token: qa.admin.token,
+      token: adminToken,
     },
   )
   expect(testRes.status).toBe(200)
@@ -79,7 +87,7 @@ test("admin disables and re-enables an MCP connection from the UI", async ({
   const disableRes = await api(
     env.serverUrl,
     `/api/apps/mcp-manager/connections/${connectionId}/disable`,
-    { method: "POST", token: qa.admin.token },
+    { method: "POST", token: adminToken },
   )
   expect(disableRes.status).toBe(200)
 
@@ -93,7 +101,7 @@ test("admin disables and re-enables an MCP connection from the UI", async ({
   const enableRes = await api(
     env.serverUrl,
     `/api/apps/mcp-manager/connections/${connectionId}/enable`,
-    { method: "POST", token: qa.admin.token },
+    { method: "POST", token: adminToken },
   )
   expect(enableRes.status).toBe(200)
 

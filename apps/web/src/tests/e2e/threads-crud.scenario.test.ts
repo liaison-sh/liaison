@@ -223,17 +223,18 @@ test.describe("Flow G: Mute a Thread", () => {
       timeout: 5000,
     })
 
-    // Mute
-    await page.locator('[aria-label="Thread actions"]').click()
-    await expect(page.getByText("Mute")).toBeVisible({ timeout: 5000 })
-    await page.getByText("Mute").click()
+    // Mute. By test id: another element on the page also reads "Mute".
+    const toggle = page.getByTestId("thread-header.mute")
+    await page.getByTestId("thread-header.actions").click()
+    await expect(toggle).toHaveText("Mute", { timeout: 5000 })
+    await toggle.click()
 
     // Verify "Unmute" now visible
-    await page.locator('[aria-label="Thread actions"]').click()
-    await expect(page.getByText("Unmute")).toBeVisible({ timeout: 5000 })
+    await page.getByTestId("thread-header.actions").click()
+    await expect(toggle).toHaveText("Unmute", { timeout: 5000 })
 
     // Unmute
-    await page.getByText("Unmute").click()
+    await toggle.click()
   })
 })
 

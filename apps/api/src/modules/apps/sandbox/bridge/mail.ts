@@ -2,6 +2,7 @@
 
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
+import { withReleasedSavepoint } from "~/db/savepoint"
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
@@ -275,21 +276,24 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
         ),
         drizzleSql.raw(", "),
       )
-      await txDb.execute(drizzleSql`SAVEPOINT app_mailbox_seal_insert`)
+      // A driver savepoint, released when done: a failed insert (a unique
+      // race) rolls back alone and the caller may recover on the same
+      // transaction. Not a raw SAVEPOINT: postgres.js rethrows a scope's failed
+      // query when the scope ends, even one the caller caught.
       try {
-        const rows = extractRows(
-          await txDb.execute(
-            drizzleSql`INSERT INTO ${tableRef} (${colsChunk}) VALUES (${valsChunk}) RETURNING *`,
+        const rows = await withReleasedSavepoint(txDb, async (sp) =>
+          extractRows(
+            await sp.execute(
+              drizzleSql`INSERT INTO ${tableRef} (${colsChunk}) VALUES (${valsChunk}) RETURNING *`,
+            ),
           ),
         )
-        await txDb.execute(drizzleSql`RELEASE SAVEPOINT app_mailbox_seal_insert`)
         return JSON.stringify(
           coerceByteaRowFields(entity, coerceNumericRowFields(entity, [rows[0] ?? null]))[0] ?? {
             id: null,
           },
         )
       } catch (err) {
-        await txDb.execute(drizzleSql`ROLLBACK TO SAVEPOINT app_mailbox_seal_insert`)
         const e = err as { message?: string; cause?: { message?: string; code?: string } }
         if (e?.cause?.message) {
           throw new Error(

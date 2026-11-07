@@ -16,6 +16,8 @@ Manifest-driven apps that accept external webhooks declare two bundle exports pe
 
 Webhook keys must match `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`: lowercase alphanumerics and hyphens only, no slashes.
 
+A handler that makes several provider calls can declare a budget, `timeoutMs` (1000 to 29000), next to `bodyLimitBytes`. Its run is stopped at that budget, on the delivery and on the retry alike. `LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS` caps it, as it caps a tool's. Without one the handler has the sandbox default (5 s in production). A delivery with a budget waits for a free slot on the background connections first, within what the budget leaves of `REQUEST_TIMEOUT_MS`; if none frees up, it is answered `500` and goes to the retry job, unrun.
+
 ## Verifier signature
 
 ```ts
@@ -49,6 +51,17 @@ The kernel runs, in strict order:
 2. `verify(request)` resolved against the built bundle's named export (sandboxed for installed apps; in-process for in-tree trusted apps).
 3. On an unrecognized return value or a thrown error: HTTP 401, no handler invoked.
 4. On accept: replay-protection lookup; if first delivery, the topic handler runs under the same bundle. On reject or drop, the verifier's own status (and, for reject, `retry-after`) is returned instead of running the handler.
+
+Before step 1, a delivery under an org that may not see the app (another organization's custom app, managed instances) is answered `404`, like an unknown endpoint. A delivery to an organization's custom app past its budget (120 a minute per organization and app, managed instances) is answered `429` with `Retry-After` and code `custom_app_rate_limited`, before its `verify` runs. A delivery for an org whose app is Off, an org being deleted, or (managed instances) an org suspended or closed for billing is answered `200` with `{ "ok": true, "dropped": "<code>" }` and no handler runs, so the provider keeps the subscription. A suspended org's deliveries are not replayed after it resumes. While an organization is being moved to another server, its deliveries are answered `503` with `Retry-After` and code `org_moving`, and no handler runs: providers that retry deliver again once the move is over.
+
+## Server-level callbacks (managed edition)
+
+A managed server also answers two callbacks of its own, one per provider for the whole server; a self-hosted server answers neither (404):
+
+- `POST /webhooks/_cell/gmail-push`: the push subscription of the server's Gmail topic (`GMAIL_PUBSUB_TOPIC`). The kernel checks the Google OIDC token against `GMAIL_PUSH_AUDIENCE` and `GMAIL_PUSH_SERVICE_ACCOUNT`, reads the mailbox address from the message, and passes the original request to `/webhooks/<org>/<app>/gmail-push` of every org whose Mail or Tickets Gmail connection holds that address; each app's verifier checks it again, with the same values as instance config (`gmailPushAudience`, `gmailPushServiceAccount`). An address no org holds answers `204`.
+- `POST /webhooks/_cell/meta` (and its `hub.challenge` GET): the callback of the server's Meta app. The kernel checks `X-Hub-Signature-256` with `META_APP_SECRET`, splits `entry[]` by Page id, and runs each org's Social `meta` handler with only its own entries, from step 4 on (replay protection keyed per org). An org counts for a Page only while the Facebook account that recorded it is still connected with a working token; the Social app also checks the Page against Meta's list of the account's Pages before it ingests anything (see [Social](apps/social.md)).
+
+A suspended or closed org is skipped by both.
 
 ## Webhook health
 

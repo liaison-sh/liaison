@@ -9,6 +9,7 @@ Host needs only Docker, tar, gzip -> docs/runbooks/production-bootstrap.md:385
 -h/--help -> deploy/backup.sh:28
 Archive contents table -> deploy/backup.sh:9
 secrets.env contents -> deploy/backup.sh:17
+secrets.env carries the Meta app -> deploy/backup.sh:94
 Search index not copied, rebuilt -> deploy/backup.sh:22
 Other .env values stay with host -> docs/runbooks/production-bootstrap.md:375
 Archive holds data keys; keep private; encrypt -> docs/runbooks/production-bootstrap.md:378
@@ -38,7 +39,7 @@ ENCRYPTION_KEY covers stored secrets -> deploy/backup.sh:54
 BYOK_ENCRYPTION_KEY org model keys -> deploy/backup.sh:57
 JWT_SECRET signs tokens, file links, MCP tokens -> deploy/backup.sh:51
 Whole-org export: Settings button, kernel:org:admin -> apps/web/src/modules/settings/OrganizationSettings.tsx:18
-Org export routes behind kernel:org:admin -> apps/api/src/app.ts:750
+Org export routes behind kernel:org:admin -> apps/api/src/app.ts:737
 Archive built in background job, notification on completion -> apps/api/src/modules/attention/kernel-translations.ts:283
 Download link valid 5 minutes -> apps/api/src/modules/export/org-archive/routes.ts:28
 CLI org export [--wait] -> apps/api/src/cli/commands.ts:633
@@ -80,4 +81,5 @@ LEGAL_ARCHIVE_RETENTION_YEARS default 10 -> apps/api/src/lib/env.ts:810
 Daily deletion past retention -> apps/api/src/modules/org/delete/legal-archive.ts:538
 Org export link: presigned only with OBJECT_STORAGE_BROWSER_DIRECT, else the server streams it -> apps/api/src/modules/export/org-archive/routes.ts:147 ; apps/api/src/infra/storage/delivery.ts:36
 Compose passes LEGAL_ARCHIVE_RECIPIENT and LEGAL_ARCHIVE_RETENTION_YEARS to app and worker -> deploy/docker-compose.yml:642 ; deploy/docker-compose.yml:779
+Export download link bound to the org address -> apps/api/src/modules/export/org-archive/routes.ts:188
 data_subject_export file counts toward the storage limit, STORAGE_QUOTA_EXCEEDED and nothing saved at the limit -> apps/api/src/modules/export/data-subject-export-tool.ts:513

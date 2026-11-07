@@ -5,19 +5,6 @@ import { createBillingState, isManagedAvailable } from "~/modules/settings/Billi
 import { useApi } from "~/modules/shell/ApiContext"
 import { Skeleton } from "~/ui/Skeleton"
 
-const PORTAL_BTN_CLASS =
-  "inline-flex items-center justify-center gap-2 rounded-sm border border-border bg-transparent px-4 py-2 text-[13.5px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text"
-
-const CHECKOUT_BTN_CLASS =
-  "inline-flex items-center justify-center gap-2 rounded-sm bg-accent px-4 py-2 text-[13.5px] font-semibold text-bg transition-colors hover:bg-accent-hover"
-
-const TIER_LABELS: Record<string, string> = {
-  starter: "Starter",
-  team: "Team",
-  business: "Business",
-  enterprise: "Enterprise",
-}
-
 const PlanSettings: Component = () => {
   const api = useApi()
   const { t } = useI18n()
@@ -46,52 +33,30 @@ const PlanSettings: Component = () => {
               >
               return (
                 <div data-testid="plan-card" class="rounded-md border border-border p-5">
-                  <Show when={managed.stale}>
-                    <div
-                      data-testid="billing-stale-banner"
-                      class="mb-3 rounded-sm border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700"
-                    >
-                      {t("kernel.settingsUi.billingStateMayBeOutdatedShowing")}
-                    </div>
-                  </Show>
                   <p class="text-xs font-medium uppercase tracking-wide text-text-secondary">
                     {t("kernel.usage.currentTier")}
                   </p>
                   <p class="mt-1 text-2xl font-semibold text-text">
-                    {TIER_LABELS[managed.tier] ?? managed.tier}
+                    {/* The plan's name as sold and as Billing shows it, never the internal tier. */}
+                    {t(`cloud-billing.plan.name.${managed.plan}`)}
                   </p>
                   <p class="mt-2 text-sm text-text-secondary">
                     {t("kernel.usage.status")}: <span class="text-text">{managed.status}</span>
                   </p>
+                  <p class="mt-3 text-sm">
+                    <a href="/settings/billing" class="underline" data-testid="plan-open-billing">
+                      {t("cloud-limits.billing.openBilling")}
+                    </a>
+                  </p>
                   <Show when={managed.periodEnd}>
                     <p class="mt-1 text-xs text-text-tertiary">
-                      {t("kernel.usage.periodEnd", { date: managed.periodEnd })}
+                      {t("kernel.usage.periodEnd", {
+                        date: new Date(managed.periodEnd).toLocaleDateString(undefined, {
+                          dateStyle: "long",
+                        }),
+                      })}
                     </p>
                   </Show>
-                  <div class="mt-4 flex gap-2">
-                    <Show when={managed.billingPortalUrl}>
-                      <a
-                        data-testid="plan-billing-portal-link"
-                        href={managed.billingPortalUrl}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        class={PORTAL_BTN_CLASS}
-                      >
-                        {t("kernel.usage.openBillingPortal")}
-                      </a>
-                    </Show>
-                    <Show when={managed.checkoutUrl}>
-                      <a
-                        data-testid="plan-checkout-link"
-                        href={managed.checkoutUrl}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        class={CHECKOUT_BTN_CLASS}
-                      >
-                        {t("kernel.usage.addCredits")}
-                      </a>
-                    </Show>
-                  </div>
                 </div>
               )
             }}

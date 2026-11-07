@@ -8,6 +8,7 @@ import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { creditTransactions, organizations, users } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
+import { isManagedEdition } from "~/lib/edition"
 import { withRequestRls } from "~/lib/request-rls"
 import { success } from "~/lib/response"
 import { getOrgKernelSettings } from "~/lib/settings"
@@ -19,6 +20,7 @@ import {
   resolveAutoReasoningLevel,
 } from "~/modules/agent/credits/credit-meter"
 import { checkBalance } from "~/modules/agent/credits/credit-service"
+import { managedBalance, SPEND_TYPES, withMultiplier } from "~/modules/agent/credits/managed-money"
 
 // Cursor helpers — base64url encoding of "createdAt|id"
 function encodeCursor(createdAt: string, id: string): string {
@@ -65,17 +67,21 @@ export const creditRoutes = new Hono<AppEnv>()
         getOrgKernelSettings(tx, orgId, orgKernelSettingsSchema),
       ),
     ])
+    // Managed: a multiplier against Auto's model instead of prices (S18).
+    const auto = models.find((m) => m.key === autoResolvedKey) ?? null
     return success(c, {
       autoModelKey: settings.ai?.models?.autoModelKey ?? null,
       autoResolvedKey,
       autoReasoningLevel,
       // The org's level for a turn that asks for none (null: built-in default).
       defaultReasoningLevel: settings.ai?.models?.defaultReasoningLevel ?? null,
-      models,
+      models: isManagedEdition() ? models.map((m) => withMultiplier(m, auto)) : models,
     })
   })
   .get("/balance", async (c) => {
     const orgId = c.get("orgId")
+    // Managed: credits and the period's use, no currency (S18).
+    if (isManagedEdition()) return success(c, await managedBalance(orgId))
     const result = await withRequestRls(c, async (tx) => {
       return checkBalance(tx, orgId)
     })
@@ -196,14 +202,16 @@ export const creditRoutes = new Hono<AppEnv>()
             ? encodeCursor(page[page.length - 1].createdAt.toISOString(), page[page.length - 1].id)
             : null
 
+        const managed = isManagedEdition()
         return {
+          // Managed: credits only, no per-row token counts (S18: the rate
+          // could be derived from amount / tokens x list price).
           items: page.map((r) => ({
             id: r.id,
             type: r.type,
             amount: r.amount,
             model: r.model,
-            inputTokens: r.inputTokens,
-            outputTokens: r.outputTokens,
+            ...(managed ? {} : { inputTokens: r.inputTokens, outputTokens: r.outputTokens }),
             userId: r.userId,
             userName: r.userId ? (userNameMap[r.userId] ?? null) : null,
             description: r.description,
@@ -250,6 +258,14 @@ export const creditRoutes = new Hono<AppEnv>()
           ? drizzleSql`AND user_id = ${effectiveUserId}::uuid`
           : drizzleSql``
 
+        // Managed: only rows that spent credits (a BYOK monitoring row's amount is money).
+        const managed = isManagedEdition()
+        const types = drizzleSql.join(
+          (managed ? [...SPEND_TYPES] : ["usage", "tool_usage", "byok_usage"]).map(
+            (t) => drizzleSql`${t}`,
+          ),
+          drizzleSql`, `,
+        )
         const rows = await tx.execute(drizzleSql`
           SELECT
             date_trunc(${truncPeriod}, created_at) AS bucket,
@@ -257,7 +273,7 @@ export const creditRoutes = new Hono<AppEnv>()
             SUM(ABS(amount::numeric)) AS cost
           FROM ${k}.credit_transactions
           WHERE org_id = ${orgId}::uuid
-            AND type IN ('usage', 'tool_usage', 'byok_usage')
+            AND type IN (${types})
             AND created_at >= ${fromDate.toISOString()}::timestamptz
             AND created_at < ${toDate.toISOString()}::timestamptz
             ${userFilter}
@@ -286,14 +302,14 @@ export const creditRoutes = new Hono<AppEnv>()
           bucket.models[modelKey] = (Number(bucket.models[modelKey] ?? 0) + cost).toFixed(8)
         }
 
-        return {
-          buckets: Array.from(bucketMap.entries()).map(([date, b]) => ({
-            date,
-            total: b.total.toFixed(8),
-            models: b.models,
-          })),
-          totalCost: totalCost.toFixed(8),
-        }
+        const buckets = Array.from(bucketMap.entries()).map(([date, b]) => ({
+          date,
+          total: b.total.toFixed(8),
+          models: b.models,
+        }))
+        if (managed)
+          return { mode: "managed" as const, buckets, totalCredits: totalCost.toFixed(8) }
+        return { buckets, totalCost: totalCost.toFixed(8) }
       })
 
       return success(c, result)

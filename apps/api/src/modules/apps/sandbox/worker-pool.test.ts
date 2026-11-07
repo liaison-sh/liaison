@@ -10,6 +10,7 @@ import {
   SandboxWorkerPool,
   workerEnv,
 } from "~/modules/apps/sandbox/worker-pool"
+import { isSandboxFault } from "./bundle-loader"
 
 /** Wait until `predicate` holds, polling fast; throws via test timeout if never. */
 async function until(predicate: () => boolean, intervalMs = 5): Promise<void> {
@@ -318,6 +319,205 @@ describe("SandboxWorkerPool", () => {
   // (measured 92MB -> ~1.8GB over 400 varied execs), so long-lived workers
   // ratchet toward the container's cgroup OOM limit. The pool must retire a
   // worker past its exec/RSS threshold and keep serving from a replacement.
+  // A settled promise's result handle from getPromiseState was never disposed: it pinned the whole
+  // context, bundle included, so an app of a few hundred KB ran the shared runtime out of memory
+  // within 77 executions and every execution on that worker then failed until it crashed.
+  it("an async handler that settles at once leaves nothing behind in the shared runtime", async () => {
+    const leakPool = new SandboxWorkerPool({
+      size: 1,
+      maxSize: 1,
+      memoryLimitBytes: 8 * 1024 * 1024,
+      maxExecsPerWorker: 100_000,
+    })
+    await leakPool.init()
+    try {
+      const filler = Array.from(
+        { length: 3000 },
+        (_, i) => `function f${i}() { return { a: ${i} } }`,
+      )
+      const bundleSource = `${filler.join("\n")}\nasync function ok() { return { ok: true } }`
+      for (let i = 0; i < 60; i++) {
+        const result = await leakPool.execute({
+          bundleSource,
+          exportName: "ok",
+          params: {},
+          bridge: {},
+          timeoutMs: 10_000,
+        })
+        expect(result).toEqual({ ok: true })
+      }
+    } finally {
+      await leakPool.shutdown()
+    }
+  }, 60_000)
+
+  // The same pin on the paths that do not end in a clean return: a handler that throws skipped the
+  // bridge functions' disposal, and a bridge call still unanswered when the execution ended kept its
+  // deferred. Either one, at no cost to the tenant, ran the runtime other tenants share out of memory.
+  describe("no execution pins its context, however it ends", () => {
+    const filler = Array.from({ length: 3000 }, (_, i) => `function f${i}() { return { a: ${i} } }`)
+    const bundleOf = (body: string) =>
+      `${filler.join("\n")}
+      async function boom(params, ctx) { ${body} }
+      async function fine() { return { ok: true } }`
+    const ping = { ping: async () => "pong" }
+
+    /**
+     * 60 rounds of `failing` on one worker, each followed by a clean run. Each run must end its own
+     * way: a pinned context shows as `out of memory` in whichever run comes next, and the pool then
+     * replaces the worker, so only the runs' own outcomes can tell.
+     */
+    async function rounds(
+      failing: { bundleSource: string; exportName: string },
+      bridge: Record<string, (...args: never[]) => Promise<unknown>>,
+      ends: { throws: string } | { returns: unknown },
+    ) {
+      const pool = new SandboxWorkerPool({
+        size: 1,
+        maxSize: 1,
+        memoryLimitBytes: 8 * 1024 * 1024,
+        maxExecsPerWorker: 100_000,
+      })
+      await pool.init()
+      const common = { params: {}, bridge, timeoutMs: 10_000 }
+      try {
+        for (let i = 0; i < 60; i++) {
+          const run = pool.execute({ ...common, ...failing })
+          if ("throws" in ends) await expect(run).rejects.toThrow(ends.throws)
+          else expect(await run).toEqual(ends.returns)
+          const after = await pool.execute({
+            ...common,
+            bundleSource: bundleOf("return 1"),
+            exportName: "fine",
+          })
+          expect(after).toEqual({ ok: true })
+        }
+      } finally {
+        await pool.shutdown()
+      }
+    }
+
+    it("a handler that throws", async () => {
+      await rounds(
+        { bundleSource: bundleOf(`throw new Error("nope")`), exportName: "boom" },
+        ping,
+        { throws: "nope" },
+      )
+    }, 120_000)
+
+    it("a handler that throws after a bridge call", async () => {
+      await rounds(
+        { bundleSource: bundleOf(`await ctx.ping(); throw new Error("nope")`), exportName: "boom" },
+        ping,
+        { throws: "nope" },
+      )
+    }, 120_000)
+
+    it("an export that does not exist", async () => {
+      await rounds({ bundleSource: bundleOf("return 1"), exportName: "missing" }, ping, {
+        throws: 'Export "missing" not found',
+      })
+    }, 120_000)
+
+    it("a bundle that does not evaluate", async () => {
+      await rounds(
+        { bundleSource: `${bundleOf("return 1")}\nthrow new Error("at load")`, exportName: "fine" },
+        ping,
+        { throws: "at load" },
+      )
+    }, 120_000)
+
+    it("a bridge call nobody answered before the handler returned", async () => {
+      const never = new Promise<unknown>(() => {})
+      await rounds(
+        { bundleSource: bundleOf(`ctx.ping(); return { ok: true }`), exportName: "boom" },
+        { ping: () => never },
+        { returns: { ok: true } },
+      )
+    }, 120_000)
+  })
+
+  // Handler text is the tenant's: an error that merely says it must not retire a worker at will.
+  it("an error that only mentions memory does not cost the worker", async () => {
+    const pool = new SandboxWorkerPool({ size: 1, maxSize: 1, maxExecsPerWorker: 100_000 })
+    await pool.init()
+    try {
+      const bundleSource = `async function boom() { throw new Error("upstream said: out of memory") }`
+      const common = { params: {}, bridge: {}, timeoutMs: 10_000, bundleSource }
+      await expect(pool.execute({ ...common, exportName: "boom" })).rejects.toThrow("out of memory")
+      // A retiring worker is at once off the free list, and its replacement takes far longer than this.
+      await Bun.sleep(20)
+      expect(pool.stats().free).toBe(1)
+    } finally {
+      await pool.shutdown()
+    }
+  }, 60_000)
+
+  it("everything the pool itself answers when no code ran is a sandbox fault, not the handler's answer", async () => {
+    const pool = new SandboxWorkerPool({ size: 1, maxSize: 1 })
+    await pool.init()
+    await pool.shutdown()
+    const after = await pool
+      .execute({ bundleSource: "", exportName: "x", params: {}, bridge: {}, timeoutMs: 1000 })
+      .then(
+        () => null,
+        (e: unknown) => e,
+      )
+    expect(isSandboxFault(after)).toBe(true)
+    for (const message of [
+      "Sandbox worker crashed (exit 1)",
+      "Sandbox worker respawn failed — request dropped",
+      "App execution exceeded the sandbox worker memory ceiling",
+      "Queued sandbox request timed out waiting for a free worker",
+      "Worker pool shutting down",
+      "Worker IPC deserialization error",
+      "App execution timed out",
+      "Worker startup timeout",
+      "Worker exited during startup (code 1)",
+      "Worker message handling failed: x",
+      "out of memory",
+    ]) {
+      expect(isSandboxFault(new Error(message))).toBe(true)
+    }
+    expect(isSandboxFault(new Error("signature_mismatch"))).toBe(false)
+    expect(isSandboxFault(new Error("Bundle evaluation error: Unexpected token"))).toBe(false)
+  })
+
+  it("a worker that ran out of memory says so and is replaced at once", async () => {
+    const oomPool = new SandboxWorkerPool({
+      size: 1,
+      maxSize: 1,
+      memoryLimitBytes: 4 * 1024 * 1024,
+      maxExecsPerWorker: 100_000,
+    })
+    await oomPool.init()
+    try {
+      const firstWorkerId = (oomPool as any).workers[0].id as number
+      await expect(
+        oomPool.execute({
+          bundleSource: `var a = []; while (true) { a.push({ x: 1 }) }`,
+          exportName: "never",
+          params: {},
+          bridge: {},
+          timeoutMs: 10_000,
+        }),
+      ).rejects.toThrow("Bundle evaluation error: InternalError: out of memory")
+      await until(() => {
+        const ws = (oomPool as any).workers as Array<{ id: number; ready: boolean }>
+        return ws.length === 1 && ws[0].id !== firstWorkerId && ws[0].ready
+      })
+      const result = await oomPool.execute({
+        bundleSource: `function ok() { return { ok: true } }`,
+        exportName: "ok",
+        params: {},
+        bridge: {},
+      })
+      expect(result).toEqual({ ok: true })
+    } finally {
+      await oomPool.shutdown()
+    }
+  }, 60_000)
+
   it("recycles a worker after maxExecsPerWorker and keeps serving", async () => {
     const recyclePool = new SandboxWorkerPool({ size: 1, maxSize: 1, maxExecsPerWorker: 2 })
     await recyclePool.init()

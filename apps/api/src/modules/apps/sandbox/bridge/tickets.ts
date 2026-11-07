@@ -964,19 +964,21 @@ export function createTicketsMethods(ctx: BridgeContext): Record<string, any> {
       if (appName !== "tickets") {
         throw new Error("tickets_onGmailPushService is only available to the tickets app")
       }
-      logger.info({ accountEmail }, "tickets_onGmailPushService start")
       const { withPrivilegedDb } = await import("~/db/privileged")
       const ca = await withPrivilegedDb(orgId, "tickets-push-account-lookup", async (db) => {
         const r = await db.execute(drizzleSql`
           SELECT id FROM ${drizzleSql.raw(quoteIdent(schemaRef("kernel")))}.connected_accounts
           WHERE org_id = ${orgId}::uuid AND app_name = 'tickets'
+            AND status <> 'disconnected'
             AND lower(identifier) = ${String(accountEmail).toLowerCase()}
           LIMIT 1
         `)
         return extractRows<{ id: string }>(r)[0]
       })
+      // A push for an account no longer connected (a watch still lapsing at the provider):
+      // dropped and acknowledged, and its address is not kept even in the log.
       if (!ca?.id) {
-        logger.warn({ accountEmail }, "tickets_onGmailPushService: account not found")
+        logger.info({ orgId }, "tickets_onGmailPushService: push for no connected account, dropped")
         return JSON.stringify({ skipped: "unknown_account" })
       }
       // Push handler triggers the same incremental sync that the cron uses.

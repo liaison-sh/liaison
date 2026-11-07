@@ -2,11 +2,14 @@
 
 import { type Component, createEffect, createResource, createSignal, For, on, Show } from "solid-js"
 import { getTimezones } from "~/lib/timezones"
+import { canAccessScope } from "~/modules/auth/auth-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { ContextualSaveBar } from "~/modules/shell/save-bar/ContextualSaveBar"
 import { addToast } from "~/modules/shell/toast-store"
 import { Input } from "~/ui/Input"
+import { billingMode } from "./BillingState"
+import EmailSenderSection from "./EmailSenderSection"
 
 interface OrgData {
   id: string
@@ -147,6 +150,12 @@ const AdminOrgSettings: Component = () => {
               {i18n.t("kernel.common.save")}
             </button>
           </div>
+          {/* The org's own sending domain (S29): managed edition, org admins. */}
+          <Show when={billingMode() === "managed" && canAccessScope("kernel:org:admin")}>
+            <div class="border-t border-border pt-4">
+              <EmailSenderSection orgName={original()?.name ?? name()} />
+            </div>
+          </Show>
         </div>
       </Show>
     </div>

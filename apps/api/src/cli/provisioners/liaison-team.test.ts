@@ -151,3 +151,22 @@ describe("config apply: liaisonTeam", () => {
     }
   })
 })
+
+describe("config apply: liaisonTeam in the managed edition", () => {
+  // Discriminator: a provisioner that calls the service for a first answer
+  // fails on a managed server, where the switches are fixed on.
+  it("asking for sharing on is already true and queues nothing; asking for off is refused", async () => {
+    const admin = await minimal.adminSession((await createTestOrg()).id)
+    _setEdition("managed")
+    setOperator(admin.orgId)
+    const { result } = await run(admin.orgId, admin.userId, {
+      register: true,
+      forwardBugReports: true,
+    })
+    expect(result.unchanged).toEqual(["liaisonTeam"])
+    expect((await sql`SELECT 1 FROM kernel.control_plane_outbox`).length).toBe(0)
+    const err = await run(admin.orgId, admin.userId, { register: false }).catch((e) => e)
+    expect(String(err?.message)).toContain("managed edition")
+    expect(await identity()).toBeNull()
+  })
+})

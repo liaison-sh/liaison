@@ -21,29 +21,72 @@
 // that is not first-party, against the same token as its `ui.js`.
 import { existsSync, statSync } from "node:fs"
 import { join, resolve, sep } from "node:path"
-import { eq } from "drizzle-orm"
-import { Hono } from "hono"
+import { and, eq } from "drizzle-orm"
+import { type Context, Hono } from "hono"
 import type { AppEnv } from "~/app"
 import { withSystemDb } from "~/db/privileged"
-import { appsActiveVersion } from "~/db/schema/kernel/apps-installed"
+import { users } from "~/db/schema/kernel"
+import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
+import { isManagedEdition } from "~/lib/edition"
+import { orgIdForSlug, requestHostBinding } from "~/lib/org-host"
 import { appFrameResponse, appFrameRuntime } from "~/modules/apps/app-frame"
+import { appOwnerOrg, customAppNameKey } from "~/modules/apps/app-org-scope"
 import { catalogStatement } from "~/modules/apps/catalog"
 import { getInstallRoot } from "~/modules/apps/discover-apps"
 import { getInstallTrust } from "~/modules/apps/install-trust"
-import { verifyUiBundleToken } from "~/modules/apps/ui-bundle-token"
+import { boundHost, verifyUiBundleToken } from "~/modules/apps/ui-bundle-token"
+import { orgSuspendedOrClosed } from "~/modules/cloud/billing-status"
 
 const NAME_RE = /^[a-z][a-z0-9-]*$/
 const VERSION_RE = /^\d+\.\d+\.\d+(-[\w.]+)?$/
 
 const notFound = { error: { message: "Not found" } }
 
+/**
+ * An org's custom app (app-org-scope.ts) serves its bundle, frame and files
+ * only on its own org's host, to a live org, and only with an interface
+ * approval recorded by an admin of that org: never in another tenant's origin,
+ * on a cell host, or on a deployment without org hosts. Any other app: false.
+ */
+async function orgPrivateBundleRefused(
+  c: Context,
+  name: string,
+  version: string,
+): Promise<boolean> {
+  const owner = await appOwnerOrg(name)
+  if (owner === null) return customAppNameKey(name) !== null && isManagedEdition()
+  const binding = requestHostBinding(c)
+  if (binding.kind !== "org" || (await orgIdForSlug(binding.slug)) !== owner) return true
+  if (await orgSuspendedOrClosed(owner)) return true
+  const [approval] = await withSystemDb("ui-bundle-owner-approval", (db) =>
+    db
+      .select({ orgId: users.orgId })
+      .from(appsInstalled)
+      .innerJoin(users, eq(users.id, appsInstalled.uiFullAccessApprovedBy))
+      .where(and(eq(appsInstalled.name, name), eq(appsInstalled.version, version)))
+      .limit(1),
+  )
+  return approval?.orgId !== owner
+}
+
 export const uiBundleRoutes = new Hono<AppEnv>()
+  // Every refusal here (not installed, not vouched for, wrong host, a token for
+  // another app, a suspended org) can change minutes later, and the URL of the
+  // next valid request is often the same (the token is stable within its
+  // window). Without a cache header a CDN in front of the server keeps a `.js`
+  // 404 for hours and the interface stays missing after the install or the
+  // approval. The 200 already carries its own `private` header.
+  .use("*", async (c, next) => {
+    await next()
+    if (c.res.status >= 400) c.res.headers.set("Cache-Control", "no-store")
+  })
   .get("/:name/:version/:file{statement\\.json|statement\\.sig|manifest\\.json}", async (c) => {
     const name = c.req.param("name")
     const version = c.req.param("version")
     if (!NAME_RE.test(name) || !VERSION_RE.test(version)) {
       return c.json({ error: { message: "Invalid app name or version" } }, 400)
     }
+    if (await orgPrivateBundleRefused(c, name, version)) return c.json(notFound, 404)
     const active = await withSystemDb("ui-statement-active", (db) =>
       db.select().from(appsActiveVersion).where(eq(appsActiveVersion.name, name)),
     )
@@ -89,6 +132,7 @@ export const uiBundleRoutes = new Hono<AppEnv>()
     if (!NAME_RE.test(name) || !VERSION_RE.test(version)) {
       return c.json({ error: { message: "Invalid app name or version" } }, 400)
     }
+    if (await orgPrivateBundleRefused(c, name, version)) return c.json(notFound, 404)
     const active = await withSystemDb("ui-frame-active", (db) =>
       db.select().from(appsActiveVersion).where(eq(appsActiveVersion.name, name)),
     )
@@ -97,7 +141,7 @@ export const uiBundleRoutes = new Hono<AppEnv>()
     // an app nobody vouched for has no interface at all.
     const trust = await getInstallTrust(name)
     if (trust.uiTrust === null || trust.uiTrust === "first-party") return c.json(notFound, 404)
-    if (!(await verifyUiBundleToken(c.req.query("t"), name, version))) {
+    if (!(await verifyUiBundleToken(c.req.query("t"), name, version, boundHost(c)))) {
       return c.json(notFound, 404)
     }
     const runtime = await appFrameRuntime()
@@ -112,6 +156,7 @@ export const uiBundleRoutes = new Hono<AppEnv>()
     if (!NAME_RE.test(name) || !VERSION_RE.test(version)) {
       return c.json({ error: { message: "Invalid app name or version" } }, 400)
     }
+    if (await orgPrivateBundleRefused(c, name, version)) return c.json(notFound, 404)
     // Defense-in-depth: containment check against any future regex-escape bug.
     const installRoot = getInstallRoot()
     const filePath = join(installRoot, name, version, "ui.js")
@@ -138,7 +183,7 @@ export const uiBundleRoutes = new Hono<AppEnv>()
     // authenticated app list issued for this exact app and version; without it the
     // app reads as not installed, so its presence cannot be probed anonymously.
     const tokened = trust.uiTrust !== "first-party"
-    if (tokened && !(await verifyUiBundleToken(c.req.query("t"), name, version))) {
+    if (tokened && !(await verifyUiBundleToken(c.req.query("t"), name, version, boundHost(c)))) {
       return c.json({ error: { message: "Not found" } }, 404)
     }
     if (!existsSync(filePath) || !statSync(filePath).isFile()) {

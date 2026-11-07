@@ -31,15 +31,41 @@ import { triggerCronJob } from "./run-cron"
  */
 export async function clearAgentAppTables(env: WorkerEnv): Promise<void> {
   const ks = `${env.schemaPrefix}kernel`
-  await env.db.sql.unsafe(
-    `TRUNCATE
+  await retryOnDeadlock(() =>
+    env.db.sql.unsafe(
+      `TRUNCATE
        "${ks}".skills,
        "${ks}".disabled_app_skills,
        "${ks}".routines,
        "${ks}".routine_runs,
        "${ks}".approval_requests
      CASCADE`,
+    ),
   )
+}
+
+/**
+ * Run a statement that Postgres may pick as the victim of a deadlock (SQLSTATE
+ * 40P01) and run it again.
+ *
+ * `TRUNCATE ... CASCADE` takes ACCESS EXCLUSIVE locks on these tables and on
+ * every table with a foreign key to them, one after the other, while the
+ * worker's own server keeps writing to them (routine scheduler, approvals,
+ * attention materializer) in an order of its own. Two transactions that take
+ * the same locks in opposite orders deadlock, and Postgres aborts one. When it
+ * aborts this statement, nothing was applied, so running it again is exact.
+ * Anything else, and a deadlock that persists, still throws.
+ */
+async function retryOnDeadlock<T>(run: () => Promise<T>, attempts = 5): Promise<T> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await run()
+    } catch (error) {
+      const code = (error as { code?: string } | null)?.code
+      if (code !== "40P01" || attempt >= attempts) throw error
+      await new Promise((resolve) => setTimeout(resolve, 200 * attempt))
+    }
+  }
 }
 
 /** Truncate sub-run state in the worker's schema between tests.
@@ -68,8 +94,12 @@ export async function clearSubAgentTables(env: WorkerEnv): Promise<void> {
  * writes the baseline again, exactly as the lane seeded it.
  */
 export async function restoreAgentAppBaseline(env: WorkerEnv): Promise<void> {
-  await clearAgentAppTables(env)
-  await restoreStandardAgentApp(env, PW_ADMIN.email)
+  // Clear + seed as one unit: the leading clear makes a rerun after a deadlock
+  // in the seed start from the same empty tables.
+  await retryOnDeadlock(async () => {
+    await clearAgentAppTables(env)
+    await restoreStandardAgentApp(env, PW_ADMIN.email)
+  })
 }
 
 // ─── API lookups ─────────────────────────────────────────────────────────────

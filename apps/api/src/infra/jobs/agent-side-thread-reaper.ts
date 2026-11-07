@@ -16,6 +16,7 @@ import { extractRows } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
+import { sweepSkippingMoving } from "~/modules/org/transfer-state/skip-moving"
 
 const log = rootLogger.child({ module: "agent-side-thread-reaper" })
 
@@ -34,12 +35,15 @@ export async function runAgentSideThreadReaper(
 ): Promise<{ hiddenThreadIds: string[] }> {
   const cutoff = new Date((params.now?.getTime() ?? Date.now()) - AGENT_SIDE_THREAD_IDLE_MS)
   const K = sql.raw(schemaRef("kernel"))
-  const rows = await withSystemDb("agent-side-thread-reaper", (db) =>
-    db.execute(sql`
+  // An org being moved keeps its threads as they are until the move ends.
+  const rows = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("agent-side-thread-reaper", (db) =>
+      db.execute(sql`
       WITH candidate AS (
         SELECT t.id
         FROM ${K}.threads t
         WHERE t.hidden_from_list = false
+          AND ${notMoving(sql.raw("t.org_id"))}
           AND EXISTS (
             SELECT 1 FROM ${K}.thread_participants p
             WHERE p.thread_id = t.id AND p.participant_type = 'agent'
@@ -58,6 +62,7 @@ export async function runAgentSideThreadReaper(
       UPDATE ${K}.threads SET hidden_from_list = true
       WHERE id IN (SELECT id FROM candidate)
       RETURNING id::text AS id`),
+    ),
   )
   const hiddenThreadIds = extractRows<{ id: string }>(rows).map((r) => r.id)
   if (hiddenThreadIds.length > 0) {

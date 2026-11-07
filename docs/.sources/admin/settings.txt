@@ -103,12 +103,52 @@ Unsent cap notification retried at the next change -> apps/api/src/modules/org/c
 Export Download downloads, the page stays -> apps/web/src/modules/settings/OrgExportSection.tsx:94
 Export size in the reader's units -> apps/web/src/modules/settings/OrgExportSection.tsx:161 ; apps/web/src/modules/files/file-icons.ts:115
 Blocked hosts in Models -> packages/shared/src/i18n/locales/en/kernel.json:5509
-Liaison team section: two switches off by default, forwarding needs registration -> apps/web/src/modules/settings/LiaisonTeamSection.tsx:124 ; apps/api/src/modules/liaison-team/settings.ts:127
+Liaison team section: two switches off by default, forwarding needs registration -> apps/web/src/modules/settings/LiaisonTeamSection.tsx:124 ; apps/api/src/modules/liaison-team/settings.ts:151
 Fields sent: version, edition, users, server id -> packages/shared/src/i18n/locales/en/kernel.json:1622
 State Off/Registering/Registered/Leaving/Error with the last error -> apps/web/src/modules/settings/LiaisonTeamSection.tsx:67
 Server id and outbox counts for the operator only; other orgs cannot change the switches -> apps/api/src/modules/liaison-team/routes.ts:35 ; apps/api/src/modules/liaison-team/routes.ts:47
+Sharing not available without an endpoint -> apps/api/src/modules/liaison-team/settings.ts:158
 Sharing not available without an endpoint -> apps/api/src/modules/liaison-team/settings.ts:134
 An import's attached file counts toward the storage limit; at the limit the record fails with STORAGE_QUOTA_EXCEEDED -> apps/api/src/modules/imports/runner.ts:1138 ; apps/api/src/modules/imports/runner.ts:1551
+Plan card: plan, status, period end, no payment link -> apps/web/src/modules/settings/PlanSettings.tsx:42 ; apps/api/src/modules/billing-state/index.ts:22
+Managed: own provider keys and model servers refused -> apps/api/src/modules/settings/byok.ts:28 ; apps/api/src/app.ts:1395
+Managed Usage: credits left, included/purchased, % of the period used -> apps/web/src/modules/settings/UsageSettings.tsx:384 ; apps/web/src/modules/settings/UsageSettings.tsx:399 ; apps/api/src/modules/agent/credits/managed-money.ts:60 ; packages/shared/src/i18n/locales/en/kernel.json:2187
+Managed AI models: Cost vs Auto multiplier, keys and own server hidden -> apps/web/src/modules/settings/AiModelsSettings.tsx:218 ; apps/web/src/modules/settings/AiModelsSettings.tsx:721 ; packages/shared/src/i18n/locales/en/kernel.json:5600
+Managed dictation: credits per minute -> apps/api/src/modules/settings/ai-models-routes.ts:89 ; packages/shared/src/i18n/locales/en/kernel.json:5603
+Billing page: plan, next invoice, change plan, card, invoices, top-up, auto top-up, cancel; managed + admins only -> apps/web/src/framework/bootstrap.ts:659 ; apps/api/src/app.ts:1319
+Plan switch refused with the exceeded limits -> apps/web/src/modules/settings/BillingSettings.tsx:148 ; apps/api/src/modules/billing-managed/usage.ts:23
+Card details and confirmations only in the payment frame -> apps/web/src/modules/settings/PayFrame.tsx:1
+Buy credits from the minimum the page shows -> apps/web/src/modules/settings/BillingSettings.tsx:1
+Invoices with Download PDF -> apps/api/src/modules/billing-managed/routes.ts:1
+Payment failed: platform AI calls refused (resolveKey) -> apps/api/src/modules/agent/credits/credit-meter.ts:380
+Payment failed: statuses past_due, suspended, closed -> apps/api/src/modules/cloud/billing-status.ts:77
+Web search refused while unpaid -> apps/api/src/modules/agent/tools/web-tools.ts:476
+Dictation refused 402 while unpaid -> apps/api/src/modules/assist/transcribe-service.ts:121
+Suspended: admins keep Billing, billing state and exports -> apps/api/src/modules/cloud/suspension.ts:108
+Suspended: every other request refused -> apps/api/src/modules/cloud/suspension.ts:134
+Suspended: sign-in for admins only -> apps/api/src/modules/cloud/suspension.ts:159
+Suspended or closed: window and closed refuse everyone -> apps/api/src/modules/cloud/suspension.ts:52
+Suspended: MCP refused -> apps/api/src/modules/mcp/mcp-auth-middleware.ts:50
+Suspended: live updates closed -> apps/api/src/lib/server.ts:784
+Suspended: jobs paused, exports and deletion run -> apps/api/src/infra/jobs/jobs.ts:1172
+Suspended: webhooks paused -> apps/api/src/modules/webhooks/routes.ts:158
+Closed: deleted no sooner than 25 days after closing -> apps/api/src/modules/cloud/delete-org.ts:54
+Deletion reuses the one deletion core -> apps/api/src/modules/org/delete/start.ts:1
+Payment failed: conversation shows Open Billing link -> apps/web/src/modules/threads/PaymentRequiredNotice.tsx:19 ; apps/web/src/modules/threads/MessageList.tsx:1
+Billing: past-due banner, Pay the open invoice opens the frame on that invoice -> apps/web/src/modules/settings/BillingSettings.tsx:387 ; packages/shared/src/i18n/locales/en/cloud-limits.json:12
+Billing: top-up and automatic top-up hidden while payment failed -> apps/web/src/modules/settings/BillingSettings.tsx:26
+Suspended page: Workspace suspended, billing contact from the refusal -> apps/web/src/modules/shell/OrgSuspendedPage.tsx:1 ; apps/web/src/lib/org-suspended.ts:1
+Suspended page: admin with access gets Export your data, Billing, Reload -> apps/web/src/modules/shell/OrgSuspendedPage.tsx:45
+Managed plan limits custom apps -> apps/api/src/modules/org/caps.ts:1
+Managed audit retention: min(admin choice, plan days), deleted nightly -> apps/api/src/modules/org/audit-retention.ts:1 ; apps/api/src/infra/jobs/kernel-jobs.ts:822
+Managed: a longer audit retention than the plan is refused -> apps/api/src/modules/org/routes.ts:146
+Email sender: managed edition and kernel:org:admin only, in Settings > Organization -> apps/web/src/modules/settings/AdminOrgSettings.tsx:154 ; apps/api/src/app.ts:1329
+Email sender: Add domain, DNS records table with Copy, Verify, Remove domain -> apps/web/src/modules/settings/EmailSenderSection.tsx:158 ; apps/web/src/modules/settings/EmailSenderSection.tsx:190 ; apps/web/src/modules/settings/EmailSenderSection.tsx:234 ; apps/web/src/modules/settings/EmailSenderSection.tsx:244
+Email sender: invitations, digests, CSAT survey use the org sender, else "<org> via Liaison" -> apps/api/src/modules/org/email-from.ts:100 ; apps/api/src/modules/users/invites.ts:146 ; apps/api/src/modules/attention/digest-jobs.ts:390 ; apps/api/src/apps/tickets/admin.ts:1270
+Email sender: sign-in mail keeps the service's sender -> apps/api/src/modules/auth/magic-link.ts:205
+Email sender: refusals domain_taken, domain_limit (operator told) -> packages/shared/src/i18n/locales/en/cloud-limits.json:33 ; apps/api/src/modules/cloud/mail-sender-routes.ts:45
+Custom apps: org-only, counted toward the plan, removed with the organization -> apps/api/src/modules/org/caps.ts:364-378 ; apps/api/src/modules/org/purge/purge-org.ts:180-185 ; apps/api/src/modules/org/org-app-routes.ts:36-41
+App settings page ?section=<id> opens on that section, focus on its first control -> apps/web/src/modules/settings/app-page/AppSettingsPage.tsx:319 ; apps/web/src/modules/settings/app-page/AppSettingsPage.tsx:135 ; apps/web/src/modules/settings/app-page/reveal-section.ts:19
 Notification once per crossing, re-armed under 80 %; storage wording upgrade or free space; mail sync and legal records kept at the limit -> apps/api/src/modules/org/caps.ts:471 ; apps/api/src/modules/org/caps.ts:406 ; apps/api/src/modules/files/service.ts:353
 Cap notification written in the org default language -> apps/api/src/modules/org/caps.ts:411 ; apps/api/src/modules/org/caps.ts:436
 Approval reminders in Notifications: daily by default, every 3 days, weekly or off -> apps/web/src/modules/settings/NotificationSettings.tsx:152 ; packages/shared/src/i18n/locales/en/kernel.json:4298
@@ -131,3 +171,4 @@ Default quiet hours 20:00-08:00 weekdays and all weekend, once the time zone is 
 Muted conversations, Unmute, Channels that notify you of every message, Mentions only -> apps/web/src/modules/settings/notification-settings/ConversationsSection.tsx:106
 On call edited by admins, admins by default -> apps/web/src/modules/settings/notification-settings/OnCallSection.tsx:70 ; apps/api/src/modules/notifications/on-call.ts:25
 Channel on System -> apps/web/src/modules/settings/SystemSettings.tsx:78
+Managed Everything stored (estimate): nightly, warns once per crossing, never blocks, not on self-hosted -> apps/api/src/modules/cloud/storage-estimate.ts ; apps/web/src/modules/settings/OrgUsageSection.tsx

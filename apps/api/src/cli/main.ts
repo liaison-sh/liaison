@@ -812,6 +812,16 @@ async function orgDelete(argv: string[]): Promise<number> {
   return res.exitCode
 }
 
+// Moving one org between instances (cli/org-transfer.ts); stdout carries the
+// bundle (export) or one JSON report.
+async function orgTransfer(argv: string[]): Promise<number> {
+  const { runOrgTransferCli } = await import("~/cli/org-transfer")
+  const res = await runOrgTransferCli(argv.slice(2))
+  if (res.report) process.stdout.write(`${JSON.stringify(res.report, null, 2)}\n`)
+  if (res.message) err(res.message)
+  return res.exitCode
+}
+
 // The operator's per-org caps (cli/org-caps.ts).
 async function orgCaps(argv: string[]): Promise<number> {
   const { runOrgCapsCli } = await import("~/cli/org-caps")
@@ -878,6 +888,16 @@ async function appCmd(argv: string[]): Promise<number> {
   return res.exitCode
 }
 
+// The managed edition's identity with its control plane: minted here, pinned by
+// the operator, its key installed from a 0600 file (cli/team-identity.ts).
+async function teamIdentity(argv: string[]): Promise<number> {
+  const { runTeamIdentityCli } = await import("~/cli/team-identity")
+  const res = await runTeamIdentityCli(argv.slice(2))
+  if (res.report) process.stdout.write(`${JSON.stringify(res.report, null, 2)}\n`)
+  if (res.message) err(res.message)
+  return res.exitCode
+}
+
 async function eraseUserCmd(argv: string[]): Promise<number> {
   const userId = argv[1]
   if (!userId) {
@@ -930,6 +950,14 @@ export const HANDLERS: Record<CommandName, Handler> = {
   "org export": orgExport,
   "org delete": orgDelete,
   "org caps": orgCaps,
+  "org transfer keys": orgTransfer,
+  "org transfer export": orgTransfer,
+  "org transfer import": orgTransfer,
+  "org transfer estimate": orgTransfer,
+  "org transfer purge-source": orgTransfer,
+  "org transfer probe-write": orgTransfer,
+  "org transfer probe-clear": orgTransfer,
+  "org transfer agent": orgTransfer,
   "files purge-deleted-message-attachments": filesPurgeDeletedMessageAttachments,
   "routines reconcile": routinesReconcile,
   "approval-reminders run": approvalReminders,
@@ -937,6 +965,8 @@ export const HANDLERS: Record<CommandName, Handler> = {
   "tour list": tour,
   seed,
   "keys rotate": keysRotate,
+  "team identity mint": teamIdentity,
+  "team identity install": teamIdentity,
   "erase-user": eraseUserCmd,
 }
 

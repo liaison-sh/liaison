@@ -42,6 +42,11 @@ import {
   TURN_STALE_AFTER_MS,
 } from "~/modules/agent/runtime/turn-ledger"
 import { intersectScopes } from "~/modules/agent/subruns/spawn-agent"
+import {
+  SKIPPED_MOVING,
+  sweepSkippingMoving,
+  writeUnlessMoving,
+} from "~/modules/org/transfer-state/skip-moving"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { sendMessage } from "~/modules/threads/message"
 
@@ -393,36 +398,42 @@ export async function sweepOrphanTurns(): Promise<number> {
   await expireStaleTurns().catch((err: unknown) => log.warn({ err }, "turn_expire_failed"))
   const staleS = TURN_STALE_AFTER_MS / 1000
   const handoffS = HANDOFF_REQUEUE_AFTER_MS / 1000
-  const candidates = await withSystemDb("turn-resume:sweep", (tx) =>
-    tx
-      .select({
-        id: agentTurns.id,
-        orgId: agentTurns.orgId,
-        state: agentTurns.state,
-        runner: agentTurns.runnerInstanceId,
-        attempt: agentTurns.attempt,
-      })
-      .from(agentTurns)
-      .where(
-        or(
+  // An org being moved keeps its turns as they are until the move ends.
+  const candidates = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("turn-resume:sweep", (tx) =>
+      tx
+        .select({
+          id: agentTurns.id,
+          orgId: agentTurns.orgId,
+          state: agentTurns.state,
+          runner: agentTurns.runnerInstanceId,
+          attempt: agentTurns.attempt,
+        })
+        .from(agentTurns)
+        .where(
           and(
-            eq(agentTurns.state, "running"),
-            lt(agentTurns.heartbeatAt, sql`now() - make_interval(secs => ${staleS})`),
+            or(
+              and(
+                eq(agentTurns.state, "running"),
+                lt(agentTurns.heartbeatAt, sql`now() - make_interval(secs => ${staleS})`),
+              ),
+              and(
+                eq(agentTurns.state, "handoff"),
+                lt(agentTurns.updatedAt, sql`now() - make_interval(secs => ${handoffS})`),
+              ),
+            ),
+            notMoving(agentTurns.orgId),
           ),
-          and(
-            eq(agentTurns.state, "handoff"),
-            lt(agentTurns.updatedAt, sql`now() - make_interval(secs => ${handoffS})`),
-          ),
-        ),
-      )
-      .limit(100),
+        )
+        .limit(100),
+    ),
   )
   let queued = 0
   for (const turn of candidates) {
     if (turn.state === "running" && (await isInstanceLive(turn.runner).catch(() => true))) continue
-    await enqueueTurnResume(turn.orgId, turn.id, turn.attempt)
-      .then(() => {
-        queued++
+    await writeUnlessMoving(turn.orgId, () => enqueueTurnResume(turn.orgId, turn.id, turn.attempt))
+      .then((res) => {
+        if (res !== SKIPPED_MOVING) queued++
       })
       .catch((err: unknown) => log.warn({ err, turnId: turn.id }, "turn_sweep_enqueue_failed"))
   }

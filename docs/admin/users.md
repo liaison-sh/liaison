@@ -52,6 +52,10 @@ The user can sign in again.
 
 Whoever runs the server can limit how many people are active in the organization (**Settings › Organization › Usage and limits** shows it). Agents and deactivated people take no seat. Once every seat is taken, sending an invitation, accepting one, a first sign-in with the organization's single sign-on and reactivating someone are refused with **SEAT_LIMIT_REACHED**, which gives the limit and how many seats are used. Deactivate someone to free a seat, or ask whoever runs the server to raise the limit (see [Limit an organization](../provisioning-cli.md#limit-an-organization)).
 
+## When the managed subscription is suspended
+
+On a managed instance whose subscription is suspended (unpaid, or ended), only admins can sign in, and only to **Settings › Billing** and the organization's export. Other people get **org_suspended**, with the date until which admins can still export and the address to contact about billing. In the app, every screen then shows **Workspace suspended** with that contact; admins who still have access get **Export your data** and **Billing** there, and others **Sign out**. Once the subscription is closed, nobody can sign in. See [When a payment fails or the subscription ends](settings.md#when-a-payment-fails-or-the-subscription-ends).
+
 ## Delete an account
 
 There is no admin action that deletes a user. Each person can delete their own account in **Settings › Security › Delete my account**, after confirming a 6-digit code sent by email. Their profile, personal agent and its memory, preferences, connected accounts and registered devices are deleted. What they shared with the team (messages, tickets, documents) stays, without their name. The only admin of an organization cannot delete their account until another member is an admin.
@@ -74,6 +78,8 @@ The first administrator to sign in to a new workspace is greeted by their agent 
 
 Sign-in is passwordless by default: a person enters their email, clicks **Continue with email** and types the 6-digit code (valid 10 minutes) or opens the link in the email. A person who has a password can choose **Sign in with a password** instead, and changes it in **Settings › Security › Change password**. Changing or resetting a password ends every session of that person and every AI tool they connected over MCP; the tools must connect again. It also stops push notifications to every phone and browser the person registered: the phone app registers again at its next launch, and in a browser the person turns notifications on again.
 
+A sign-in link that someone else sent you, such as the one that opens a new hosted workspace for its owner, does not sign you in by itself: the page first shows **Sign in to** the workspace's name and the account it signs in as, and signs in only when you click **Continue**. Such a link works once, for 10 minutes, and only at the workspace's own address.
+
 A sign-in stays open for 30 days from its last use. A browser that loses the answer to a session renewal on a bad network (a train, a tunnel) and retries within 3 minutes stays signed in. If an old renewal token is used again after its replacement was already in use, Liaison treats it as stolen and ends that one sign-in (the device or browser that presented it), which then asks the person to sign in again. The person's other sign-ins, on other devices and browsers, stay open.
 
 Admins with `kernel:org:admin` see a **Sign-in methods** section in **Settings › Security**:
@@ -84,6 +90,8 @@ Admins with `kernel:org:admin` see a **Sign-in methods** section in **Settings �
 | **Single sign-on** | Add OIDC providers with **Add SSO Provider**. |
 | **Google credentials** | The Google OAuth client used for Google sign-in. |
 | **Require two-step verification for administrators** | Anyone who can administer the organization must enter an authenticator app code at sign-in. |
+
+A single sign-on or Google client lists one redirect URI: `<BASE_URL>/api/auth/oauth/callback`, or `<LIAISON_OAUTH_REDIRECT_BASE>/api/auth/oauth/callback` on a server that sends every provider to one central host (see [Connecting apps](../connecting-apps.md#one-redirect-host-for-several-org-hosts)).
 
 Each person turns on their own two-step verification in **Settings › Security** with **Enable 2FA**.
 

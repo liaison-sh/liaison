@@ -1,81 +1,59 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Phase 14 W2b — Plan tab is visible in managed mode and surfaces the control
-// plane's tier/status + hosted billing controls (E2E plan
-// 16-phase-14-e2e-plan.md).
+// The Plan tab in the managed edition shows the plan the control plane last
+// pushed to the cell (kernel.org_billing_state, served by GET /api/billing/state)
+// and links to no payment page (no portal, no checkout).
 //
-// The profiled fixture starts a per-worker fake control plane BEFORE
-// `createWorkerEnv`, then boots the API with both CONTROL_PLANE_URL and
-// CONTROL_PLANE_API_KEY set so app.ts's startup matrix puts the worker in
-// managed mode and `createBillingStateRoutes` proxies real fetches to the fake.
+// The profiled fixture restarts the API as the managed edition (LIAISON_EDITION=managed, helpers/managed-edition.ts), so the
+// worker runs as the managed edition; the push is seeded in the database.
 import { createProfiledE2ETest, expect } from "./fixtures/profiled-test"
-import { type FakeControlPlaneHandle, startFakeControlPlane } from "./helpers/mock-control-plane"
-
-let cp: FakeControlPlaneHandle | undefined
+import { seedBillingState } from "./helpers/billing-state-seed"
+import { MANAGED_VITE_ENV, managedEditionAfterWorld } from "./helpers/managed-edition"
 
 const test = createProfiledE2ETest({
   workerIdOffset: 60,
-  portCount: 4, // [0]=API, [1]=Vite, [2]=fake CP, [3]=spare
-  before: async (ports) => {
-    const cpPort = ports[2]
-    cp = await startFakeControlPlane(cpPort, {
-      initialPayload: {
-        tier: "team",
-        status: "active",
-        billingPortalUrl: "https://fake-cp.local/portal",
-        checkoutUrl: "https://fake-cp.local/checkout",
-        includedCredits: "10000",
-        periodEnd: "2099-01-01T00:00:00.000Z",
-      },
-    })
-    return {
-      env: {
-        CONTROL_PLANE_URL: cp.url,
-        CONTROL_PLANE_API_KEY: "w2b-control-plane-key-32-chars-padded-padded",
-      },
-      teardowns: [
-        async () => {
-          await cp?.kill()
-          cp = undefined
-        },
-      ],
-    }
-  },
+  portCount: 3, // [0]=API, [1]=Vite, [2]=spare
+  before: async () => ({
+    env: {},
+    teardowns: [],
+    // Managed after the world exists (helpers/managed-edition.ts): the managed edition has no web bootstrap.
+    viteEnv: MANAGED_VITE_ENV,
+    envAfterWorld: managedEditionAfterWorld,
+  }),
 })
 
 test.describe.configure({ mode: "serial" })
 
 test.describe("managed billing UX", () => {
-  test("Plan tab visible, /settings/plan shows tier + portal link, Usage shows add-credits link", async ({
+  test("Plan tab visible, /settings/plan shows the pushed plan, no payment page link", async ({
     authenticatedPage,
     env,
+    world,
   }) => {
     const page = authenticatedPage
+    await seedBillingState(env, world.org.id, { plan: "base" })
 
     await page.goto(`http://localhost:${env.ports[1]}/settings/profile`)
     await expect(page.getByTestId("settings-content")).toBeVisible({ timeout: 15000 })
 
-    // The Plan link is gated on billingMode === 'managed', which is hydrated
-    // by ensureBillingModeLoaded at startup. Give the resource a beat to
-    // resolve against the fake control plane.
+    // The Plan link is gated on billingMode === 'managed', hydrated by
+    // ensureBillingModeLoaded at startup.
     await expect(page.getByRole("link", { name: /^Plan$/ })).toBeVisible({
       timeout: 15000,
     })
 
     await page.goto(`http://localhost:${env.ports[1]}/settings/plan`)
     await expect(page.getByTestId("plan-card")).toBeVisible({ timeout: 15000 })
-    // Tier label rendered from the fake CP's payload ('team' → 'Team').
-    await expect(page.getByTestId("plan-card")).toContainText(/team/i)
+    // The plan's name as sold, never the kernel tier behind it, and a readable date.
+    await expect(page.getByTestId("plan-card")).toContainText("Base")
+    await expect(page.getByTestId("plan-card")).not.toContainText(/team/i)
+    await expect(page.getByTestId("plan-card")).toContainText("January 1, 2099")
+    await expect(page.getByTestId("plan-open-billing")).toHaveAttribute("href", "/settings/billing")
     await expect(page.getByTestId("plan-card")).toContainText(/active/)
+    await expect(page.getByTestId("plan-billing-portal-link")).toHaveCount(0)
 
-    const portal = page.getByTestId("plan-billing-portal-link")
-    await expect(portal).toBeVisible()
-    await expect(portal).toHaveAttribute("href", /fake-cp\.local\/portal/)
-
-    // Usage page: the managed-mode add-credits link, not the self-hosted buy link.
     await page.goto(`http://localhost:${env.ports[1]}/settings/usage`)
-    const add = page.getByTestId("add-credits-link")
-    await expect(add).toBeVisible({ timeout: 15000 })
-    await expect(add).toHaveAttribute("href", /fake-cp\.local\/checkout/)
+    await expect(page.getByTestId("usage-balance")).toBeVisible({ timeout: 15000 })
+    await expect(page.getByTestId("add-credits-link")).toHaveCount(0)
     await expect(page.getByTestId("buy-credits-link")).toHaveCount(0)
   })
 })

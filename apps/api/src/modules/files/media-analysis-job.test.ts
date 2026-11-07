@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test"
 import { sql } from "~/db"
+import { _setEdition } from "~/lib/edition"
 import {
   type GenaiFilesClient,
   type MediaAnalysisJobDeps,
@@ -234,6 +235,33 @@ describe("processMediaAnalysisJob", () => {
     )
     const [row] = await sql`SELECT analysis_status FROM kernel.files WHERE id = ${id}`
     expect(row.analysis_status).toBe("error")
+    expect(
+      (client.files.upload as unknown as { mock: { calls: unknown[] } }).mock.calls.length,
+    ).toBe(0)
+    expect(await creditRows()).toBe(0)
+  })
+
+  // The Gemini Files-API slow path never runs on a managed cell (a job
+  // queued before the switch, or by any other path, stops with the limit).
+  it("managed edition: refused with the inline limit, no key, no upload, no spend", async () => {
+    const id = "00000000-0000-4000-8000-00000000a006"
+    await seedVideo(id)
+    const client = fakeClient(["ACTIVE"])
+    const preCheck = mock(async () => ({ allowed: true as const }))
+    _setEdition("managed")
+    try {
+      await processMediaAnalysisJob(
+        basePayload(id),
+        deps(client, { preCheck: preCheck as unknown as MediaAnalysisJobDeps["preCheck"] }),
+      )
+    } finally {
+      _setEdition(null)
+    }
+    const [row] =
+      await sql`SELECT analysis_status, analysis_error FROM kernel.files WHERE id = ${id}`
+    expect(row.analysis_status).toBe("error")
+    expect(row.analysis_error).toContain("too large to analyse here")
+    expect(preCheck).not.toHaveBeenCalled()
     expect(
       (client.files.upload as unknown as { mock: { calls: unknown[] } }).mock.calls.length,
     ).toBe(0)

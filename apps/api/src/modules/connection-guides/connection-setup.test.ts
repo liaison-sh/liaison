@@ -10,6 +10,7 @@ import { readdirSync, readFileSync } from "node:fs"
 import path from "node:path"
 import {
   type ConnectionDecl,
+  connectionFamily,
   connectionSetup,
   connectionSetupExtraSteps,
   isPublicHttps,
@@ -244,5 +245,39 @@ describe("setup timings: one source, quoted everywhere", () => {
       expect({ rel, trial: text.includes(TRIAL_SUMMARY) }).toEqual({ rel, trial: true })
       expect({ rel, stale: /4\.5 to 8 hours/.test(text) }).toEqual({ rel, stale: false })
     }
+  })
+})
+
+describe("connectionFamily: a Shopify store connection", () => {
+  const oauth = (authorizationUrl: string): ConnectionDecl => ({
+    type: "oauth2",
+    authorizationUrl,
+  })
+
+  it("is recognised by the host it signs in at, per store or fixed", () => {
+    for (const url of [
+      "https://{shop}.myshopify.com/admin/oauth/authorize",
+      "https://test-store.myshopify.com/admin/oauth/authorize",
+    ]) {
+      expect(connectionFamily("custom", "shop", oauth(url))).toBe("shopify")
+    }
+  })
+
+  it("is not a URL that only mentions the domain outside its host", () => {
+    for (const url of [
+      "https://auth.example.test/authorize?shop=a.myshopify.com",
+      "https://auth.example.test/.myshopify.com/authorize",
+      "https://a.myshopify.com.example.test/authorize",
+      "https://a.myshopify.com@example.test/authorize",
+      "https://example.test/authorize#.myshopify.com",
+    ]) {
+      expect(connectionFamily("custom", "shop", oauth(url))).toBe("app")
+    }
+  })
+
+  it("is the shopify app whatever its URL says", () => {
+    expect(connectionFamily("shopify", "shop", oauth("https://{shop}/admin/oauth/authorize"))).toBe(
+      "shopify",
+    )
   })
 })

@@ -127,6 +127,38 @@ Leads are sent only when all of these hold: `LIAISON_TEAM_FORWARD_DEMO_LEADS` is
 
 Later changes go as updates to the same lead: the address was confirmed, the visitor opted in to news, the visitor opted out, and, just before a visitor's demo workspace is deleted (or the visitor starts over), the ids of the scenarios they opened (`scenarios`). A lead that opted out sends nothing more than its opt-out, and a lead that opts out before its first send attempt is cancelled instead, so neither goes out. When a visitor has both opted in and confirmed the address, the lead is sent in full once more, because the receiver may have dropped the name and address of a lead past its 72 hours; a receiver that still holds them ignores it. Emptying a row also empties its lead messages in the outbox and cancels one still waiting. A lead that cannot be queued is logged and never fails the signup. Messages follow the delivery rules above.
 
+## Managed edition
+
+A server started with `LIAISON_EDITION=managed` hosts many orgs and answers to its control plane, so sharing works differently there:
+
+- Registration and bug report forwarding are always on. Nobody changes them: Settings > System and the `liaisonTeam` config section refuse a change with 403 (`MANAGED_EDITION`).
+- The server never registers itself. Its identity is provisioned in two steps. `liaison team identity mint` picks a new server id (state `pending`) and prints it, so the operator can pin it on the control plane. `liaison team identity install --key-file <path>` stores the key the control plane derived for that id, read from a file only its owner can read (mode 0600), and prints the id and the key fingerprint (the first 16 hex characters of its SHA-256). `mint --force` replaces an existing identity to re-key.
+- If the control plane stops accepting the server's key, or the key no longer decrypts, the server logs an error and keeps its identity. It never registers again under a new id: provision a new identity instead.
+- The server refuses to start without `LIAISON_OPERATOR_ORG_ID`, `LIAISON_ORG_HOST_TEMPLATE` (with a `{slug}` placeholder), an explicit `LIAISON_TEAM_ENDPOINT` (the built-in default only with `LIAISON_TEAM_ENDPOINT_ALLOW_DEFAULT=1`), `LIAISON_PAY_FRAME_ORIGIN` (the https origin of the Billing page's payment frame, with no path), `LIAISON_MANAGED_DEFAULT_MODELS` (the OpenRouter model ids a new org gets switched on, comma-separated, the first one as Auto), a mail transport (`RESEND_API_KEY` or `SMTP_HOST`), `OPENROUTER_API_KEY` and an installed identity. The error names each missing setting.
+- Every AI call of a managed server runs on OpenRouter: chat, search embeddings, media analysis and web search. So it also refuses to start while any other provider key is set: `LIAISON_ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`, `EXA_API_KEY` or any `GEMINI_*` variable. The error names each one to unset. Google sign-in variables such as `GOOGLE_OAUTH_CLIENT_ID` are not provider keys and stay allowed.
+- Billing comes from the control plane: it pushes each org's plan, status and caps to the server, grants credits, and sets the credit rate, through signed requests under `/api/cloud`. The server keeps the latest state and answers `GET /api/billing/state` from it, so the control plane being down never blocks it. The former `/api/admin/billing` routes answer 404.
+- Organizations cannot add their own model provider keys or model servers: those requests answer 403 (`managed_no_byok`).
+- AI use is metered in credits: the provider's cost (in USD, converted to EUR at the day's ECB rate) times the credit rate the control plane set. Each usage row keeps the USD cost and the exchange rate used.
+- The server sends two money messages through the outbox, signed like the others and posted to `LIAISON_TEAM_ENDPOINT/cell-billing` (message version 2): `usage.report`, once a day after 00:10 UTC, with each org's billed provider cost in USD for the previous UTC day and its row count; and `billing.auto_topup_request`, when a deduction takes an org with auto top-up on below its threshold (once per crossing).
+- Only the org named by `LIAISON_OPERATOR_ORG_ID` may install, upgrade or remove apps; the instance's first org is never assumed. The first account is created from the command line: the sign-up page that creates a fresh server's first account answers 404.
+- Only `LIAISON_EDITION=managed` makes a server managed, and the boot checks always apply to it. The older `CONTROL_PLANE_URL` and `CONTROL_PLANE_API_KEY` pair no longer does: a server that sets the pair without `LIAISON_EDITION` runs self-hosted and logs a warning saying to set `LIAISON_EDITION=managed` or `self_hosted`, or to unset both.
+
+### Each org on its own address
+
+With `LIAISON_ORG_HOST_TEMPLATE` set, for example `https://{slug}.example.com`, every org is served on its own address:
+
+- Every link the server builds for an org (sign-in and invitation mails, password resets, connect links, file and export downloads, MCP discovery) uses the org's address.
+- Sign-in takes the org from the address: there is no workspace field. A workspace named in the request that is not the address's org is refused with 400, before any password is checked, so it never counts as a wrong password.
+- A session, refresh token, WebSocket, MCP token, download link, invitation or password-reset link of one org works on that org's address only. Anywhere else it is refused (401, or "invalid or expired" for an invitation or a reset link, which stays usable on its own address).
+- The browser may call the server only from the org's own address (CORS), and every cookie is a `__Host-` cookie.
+- An address that names no org (the server's own names, a tunnel host, an IP address) serves only the control API (`/api/cloud/`), `/healthz`, `/readyz`, `/diag` and inbound webhooks. Everything else there, the web app included, answers 404.
+
+### Sign in from the control plane
+
+The control plane creates an org with `POST /api/cloud/orgs` and then asks for a one-time sign-in link for its owner (`POST /api/cloud/orgs/<id>/handoff`). The link opens on the org's address and is valid 10 minutes, once. The page names the workspace and the account, and signs in only when the person clicks **Continue**. On any other address the link is refused.
+
+A new org can be signed in to on its address as soon as it is created. Deleting an org also frees its slug for a new org.
+
 ## Endpoints
 
 Messages are JSON posts to `LIAISON_TEAM_ENDPOINT/<type>`, one path segment per message type (`register`, `heartbeat`, `deregister`, `bug-report` and `bug-report-attachment` for forwarded bug reports, and for demo leads `lead` and `lead-update`). Each carries `v`, `type`, `messageId`, the server id, a timestamp and the fields above. Every message except the registration carries an `x-liaison-signature` header: a base64 HMAC-SHA256 of the body, keyed with the server's key.

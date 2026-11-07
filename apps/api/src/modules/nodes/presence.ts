@@ -31,6 +31,11 @@ import { isNotifyConnLive, type NotifyPresenceEntry, readNotifyPresence } from "
 import { rootLogger } from "~/lib/logger"
 import { redis } from "~/lib/redis"
 import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
+import {
+  SKIPPED_MOVING,
+  sweepSkippingMoving,
+  writeUnlessMoving,
+} from "~/modules/org/transfer-state/skip-moving"
 import { isSimulatedNode, verifyNodeCredential } from "./credentials"
 import { notifyNodePresence } from "./node-broadcast"
 
@@ -209,19 +214,28 @@ export async function touchNode(orgId: string, nodeId: string): Promise<void> {
  * (its process died, or its close never ran). Returns how many it closed.
  */
 export async function sweepStaleNodeSessions(): Promise<number> {
-  const open = await withSystemDb("nodes:session-sweep-load", (db) =>
-    db
-      .select({
-        id: nodeConnections.id,
-        orgId: nodeConnections.orgId,
-        connId: nodeConnections.connId,
-        nodeId: nodeConnections.nodeId,
-        ownerUserId: nodes.ownerUserId,
-      })
-      .from(nodeConnections)
-      .innerJoin(nodes, eq(nodes.id, nodeConnections.nodeId))
-      .where(and(isNull(nodeConnections.disconnectedAt), eq(nodes.simulated, false)))
-      .limit(5000),
+  // An org being moved keeps its connection rows as they are until the move ends.
+  const open = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("nodes:session-sweep-load", (db) =>
+      db
+        .select({
+          id: nodeConnections.id,
+          orgId: nodeConnections.orgId,
+          connId: nodeConnections.connId,
+          nodeId: nodeConnections.nodeId,
+          ownerUserId: nodes.ownerUserId,
+        })
+        .from(nodeConnections)
+        .innerJoin(nodes, eq(nodes.id, nodeConnections.nodeId))
+        .where(
+          and(
+            isNull(nodeConnections.disconnectedAt),
+            eq(nodes.simulated, false),
+            notMoving(nodeConnections.orgId),
+          ),
+        )
+        .limit(5000),
+    ),
   )
   let closed = 0
   for (const row of open) {
@@ -234,20 +248,22 @@ export async function sweepStaleNodeSessions(): Promise<number> {
       continue
     }
     if (live) continue
-    const swept = await withSystemDb("nodes:session-sweep-close", (db) =>
-      db
-        .update(nodeConnections)
-        .set({ disconnectedAt: sql`now()`, closeReason: "stale" })
-        .where(
-          and(
-            eq(nodeConnections.id, row.id),
-            eq(nodeConnections.orgId, row.orgId),
-            isNull(nodeConnections.disconnectedAt),
-          ),
-        )
-        .returning({ id: nodeConnections.id }),
+    const swept = await writeUnlessMoving(row.orgId, () =>
+      withSystemDb("nodes:session-sweep-close", (db) =>
+        db
+          .update(nodeConnections)
+          .set({ disconnectedAt: sql`now()`, closeReason: "stale" })
+          .where(
+            and(
+              eq(nodeConnections.id, row.id),
+              eq(nodeConnections.orgId, row.orgId),
+              isNull(nodeConnections.disconnectedAt),
+            ),
+          )
+          .returning({ id: nodeConnections.id }),
+      ),
     )
-    if (swept.length === 0) continue
+    if (swept === SKIPPED_MOVING || swept.length === 0) continue
     await notifyClosed(row.orgId, row.ownerUserId, row.nodeId, row.connId)
     // Walk D9: a connection that died without a close (network loss) leaves
     // the registry on its own; with no other connection bound, the node's

@@ -166,6 +166,25 @@ describe("documents_search finds a customer named only in the address", () => {
     // A hit keeps the bare array other apps and the UI read.
     expect(Array.isArray(await documentsSearchTool(ctx, { query: "3107" }))).toBe(true)
   })
+
+  test("a number no document carries says so and names the numbers ending in the same digits", async () => {
+    const { ctx } = makeCtx()
+    const r = (await documentsSearchTool(ctx, { type: "invoice", query: "F-2025-0007" })) as {
+      results: unknown[]
+      hint: string
+    }
+    expect(r.results).toEqual([])
+    expect(r.hint).toContain('No document is numbered "F-2025-0007"')
+    expect(r.hint).toContain("INV-2025-0007")
+    expect(r.hint).toContain('None of them is "F-2025-0007"')
+    expect(r.hint).not.toContain("customer_history")
+  })
+
+  test("a number with no close match says that too", async () => {
+    const { ctx } = makeCtx()
+    const r = (await documentsSearchTool(ctx, { query: "F-2026-9999" })) as { hint: string }
+    expect(r.hint).toBe('No document is numbered "F-2026-9999". No document number ends in 9999 either.')
+  })
 })
 
 describe("customer_history", () => {

@@ -40,6 +40,7 @@ const EXTENSIONS = new Set([
 const EXCLUDED_DIRS = new Set([
   "node_modules",
   "dist",
+  "dist-e2e",
   ".git",
   ".cache",
   ".turbo",

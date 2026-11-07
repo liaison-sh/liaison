@@ -560,11 +560,17 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.2: a carrier order id no longer reaches the uuid row-id lookup (print_pack,
     // ready_set_packed, import_label_document), and print_pack renders an issued invoice's missing
     // PDF on demand instead of failing the invoice job.
+    // 0.23.4: the app's own install resolves the control-plane contract through an override (the
+    // shared package depends on it by workspace protocol).
+    // 0.23.7: above 0.23.6, so an instance on either line of work upgrades; no change of its own.
     // 0.23.7: a prep reference that names no invoicing document is refused instead of minting a row.
     // 0.23.8: get_documents answers to "colis" and "expédition" in tool search.
     // 0.23.9: the create tab names the document it ships; Shipments reports the open row.
     // 0.23.10: the tracking note states nothing about a label it never read; import_label_document only attaches.
-    expect(m.version).toBe("0.23.13")
+    // 0.23.12: above both lines of work, which each changed it under the number before; no change of its own.
+    // 0.23.13: above the 0.23.12 that main took meanwhile; no change of its own.
+    // 0.23.14: shipment_draft_create's description starts a new draft rather than opening one.
+    expect(m.version).toBe("0.23.14")
     expect(m.packageFormat).toBe(1)
   })
 

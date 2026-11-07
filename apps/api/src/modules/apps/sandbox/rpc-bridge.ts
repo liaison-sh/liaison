@@ -2,6 +2,7 @@
 
 import type { RlsClient } from "~/db"
 import type { RlsSession } from "~/db/rls"
+import { type SavepointHost, withReleasedSavepoint } from "~/db/savepoint"
 import { readOnlyRunBlockedError } from "~/modules/agent/runtime/read-only-run"
 import {
   captureReadOnlyRun,
@@ -449,7 +450,7 @@ export function createSessionRpcBridge(
   appName: string,
   userId: string,
   orgId: string,
-  session: RlsSession,
+  session: Pick<RlsSession, "run">,
   manifest: AppManifestForBridge,
   callerScopes?: string[],
   actorType: "user" | "agent" | "system" | "mcp" = userId === "system" ||
@@ -463,7 +464,18 @@ export function createSessionRpcBridge(
     approvalExecutionId?: string
   },
   bridgeOptions?: Parameters<typeof createRpcBridge>[8],
+  perCall?: { serial: boolean },
 ): Record<string, any> {
+  // One transactional call at a time when the calls share one connection (the
+  // savepoints of `createSandboxRpcBridge`): two interleaved savepoints on one
+  // transaction release each other.
+  let callChain: Promise<unknown> = Promise.resolve()
+  const runCall = <T>(call: () => Promise<T>): Promise<T> => {
+    if (!perCall?.serial) return call()
+    const next = callChain.then(call, call)
+    callChain = next.catch(() => undefined)
+    return next
+  }
   // Handler-lifetime state, captured once (in the caller's ALS frame) and
   // injected into every per-call bridge rebuild.
   const sharedOptions: NonNullable<Parameters<typeof createRpcBridge>[8]> = {
@@ -491,10 +503,27 @@ export function createSessionRpcBridge(
       importAttachment: { cumulative: 0 },
       getAttachmentBytes: { cumulative: 0 },
     },
-    withShortTx: <T>(fn: (tx: RlsClient) => Promise<T>) => session.run(fn),
+    // The tx-less methods' short transaction. With calls sharing one
+    // connection (serial), it is a savepoint of that transaction and waits its
+    // turn in the call queue: opened beside a call in flight, a failure in
+    // either rolled back to the earlier savepoint and silently undid the
+    // other's writes while the run committed.
+    withShortTx: <T>(fn: (tx: RlsClient) => Promise<T>) =>
+      perCall?.serial ? runCall(() => session.run(fn)) : session.run(fn),
   }
+  // Inside a queued call the short transaction is a savepoint of the call's
+  // own: queueing it would wait on the call it runs in (a contract call reads
+  // the caller's file this way).
+  const callOptions = (tx: RlsClient): typeof sharedOptions =>
+    perCall?.serial
+      ? {
+          ...sharedOptions,
+          withShortTx: <T>(fn: (stx: RlsClient) => Promise<T>) =>
+            tx.transaction((sp) => fn(sp as unknown as RlsClient)),
+        }
+      : sharedOptions
 
-  const buildWith = (tx: RlsClient): Record<string, any> =>
+  const buildWith = (tx: RlsClient, options = callOptions(tx)): Record<string, any> =>
     createRpcBridge(
       appName,
       userId,
@@ -504,13 +533,16 @@ export function createSessionRpcBridge(
       callerScopes,
       actorType,
       approvalContext,
-      sharedOptions,
+      options,
     )
 
   // Enumerate the method surface once. Construction only creates closures; the
   // poison tx guarantees that assumption (a query during construction throws).
-  const enumerationInstance = buildWith(poisonTx("during bridge construction"))
-  const txlessInstance = buildWith(poisonTx("inside a tx-less (external-I/O-only) method"))
+  const enumerationInstance = buildWith(poisonTx("during bridge construction"), sharedOptions)
+  const txlessInstance = buildWith(
+    poisonTx("inside a tx-less (external-I/O-only) method"),
+    sharedOptions,
+  )
 
   const sessionBridge: Record<string, any> = {}
   for (const [name, member] of Object.entries(enumerationInstance)) {
@@ -545,11 +577,82 @@ export function createSessionRpcBridge(
     // the executor's AsyncFunction check above decides QuickJS marshaling.
     sessionBridge[name] = async (...args: unknown[]) => {
       try {
-        return await session.run((tx) => buildWith(tx)[name](...args))
+        return await runCall(() => session.run((tx) => buildWith(tx)[name](...args)))
       } catch (err) {
         throw inlinePgCause(err, name)
       }
     }
   }
+  Object.defineProperty(sessionBridge, SANDBOX_BRIDGE_SHORT_TX, {
+    value: sharedOptions.withShortTx,
+    enumerable: false,
+  })
   return sessionBridge
+}
+
+/** Test access to the short transaction a bridge's tx-less methods use. */
+export const SANDBOX_BRIDGE_SHORT_TX: unique symbol = Symbol("sandboxBridgeShortTx")
+
+/**
+ * The bridge for a sandboxed handler whose whole run shares ONE transaction
+ * (`txDb`: webhooks, jobs, event handlers, atomic tools). Same surface as
+ * `createRpcBridge`, but every transactional method call runs in its own
+ * driver savepoint, so a call that fails (a unique-key claim the handler
+ * catches, a bad cast) rolls back alone and the handler carries on, exactly as
+ * with any other caught error. A failed call the handler lets propagate still
+ * fails the run, which then rolls back as a whole.
+ *
+ * A savepoint must be the driver's (`tx.transaction`, postgres.js `savepoint`):
+ * postgres.js keeps the first failed query of a transaction scope and throws it
+ * again when the scope ends, even after the caller caught it, so a raw
+ * `SAVEPOINT` statement in the same scope still failed the whole transaction.
+ * Each call's savepoint is released when the call ends (`withReleasedSavepoint`),
+ * so calls are siblings, never nested one level deeper per call. The tx-less
+ * methods (`fetch`, imap, smtp, ...) run outside any call, as in the session
+ * bridge; the short transaction they open for a database read is a savepoint
+ * that waits its turn in the same call queue.
+ */
+export function createSandboxRpcBridge(
+  appName: string,
+  userId: string,
+  orgId: string,
+  txDb: RlsClient,
+  manifest: AppManifestForBridge,
+  callerScopes?: string[],
+  actorType: ActorType = userId === "system" || userId.startsWith("system:") ? "system" : "user",
+  approvalContext?: RpcBridgeApprovalContext,
+  bridgeOptions?: RpcBridgeOptions,
+): Record<string, any> {
+  // No transaction (an org-less scheduled job, whose handler only reaches
+  // tx-less methods such as tickets_runJob): nothing to take a savepoint of,
+  // so the plain bridge, as before.
+  if (!txDb) {
+    return createRpcBridge(
+      appName,
+      userId,
+      orgId,
+      txDb,
+      manifest,
+      callerScopes,
+      actorType,
+      approvalContext,
+      bridgeOptions,
+    )
+  }
+  // A released savepoint: postgres.js never releases one that succeeded, so
+  // each call would otherwise nest one more open subtransaction.
+  const run = <T>(fn: (tx: RlsClient) => Promise<T>): Promise<T> =>
+    withReleasedSavepoint(txDb as unknown as SavepointHost<RlsClient>, fn)
+  return createSessionRpcBridge(
+    appName,
+    userId,
+    orgId,
+    { run },
+    manifest,
+    callerScopes,
+    actorType,
+    approvalContext,
+    bridgeOptions,
+    { serial: true },
+  )
 }

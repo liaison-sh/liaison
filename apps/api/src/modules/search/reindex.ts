@@ -18,6 +18,10 @@
 //      entities, then every registered source (index-sources.ts: messages and
 //      windows, brief rows, episodes, mail fragments). Batches are pipelined:
 //      at most MAX_IN_FLIGHT Meili tasks queued, none awaited one by one.
+//      An org's entities come from its registered apps, so an org is set up
+//      in this process just before its stream, and one the rebuild alone set
+//      up is released right after it (rebuildOrgRuntime): a rebuild holds one
+//      org's runtime at a time, not every org of the instance at once.
 //   4. Carry the vectors over from the live index: only documents with
 //      `has_vector = true` are read with their vectors (every document on the
 //      first rebuild of an index that predates the flag), and only into ids
@@ -64,6 +68,11 @@ import { effectiveIndexName, ensureMeiliVectorStore, getMeili } from "~/infra/se
 import { searchLogger as log } from "~/lib/logger"
 import { redis } from "~/lib/redis"
 import { quoteIdent } from "~/lib/sql-utils"
+import {
+  initializedOrgRuntimes,
+  orgRuntimeInitPromises,
+  orgRuntimeLastTouch,
+} from "~/modules/apps/app-registries"
 import { catalogSearchInputs, currentCatalog } from "~/modules/apps/catalog-derivations"
 import { awaitOrgApps } from "~/modules/apps/init"
 import { buildSearchDocument } from "~/modules/search/doc-builder"
@@ -231,6 +240,36 @@ async function listOrgIds(): Promise<string[]> {
     const rows = ((res as { rows?: Doc[] }).rows ?? (res as Doc[])) as Array<{ id: string }>
     return rows.map((r) => r.id)
   })
+}
+
+/**
+ * Set `orgId` up in this process for the rebuild's stream of it. Returns the
+ * step that undoes it: an org the rebuild alone set up (not set up, nor being
+ * set up, before; nothing touched it while it streamed) is released again
+ * (org-runtime-release.ts), so the rebuild does not leave the runtime of every
+ * org of the instance behind in the leader. An org other work set up stays.
+ */
+export async function rebuildOrgRuntime(orgId: string): Promise<() => Promise<void>> {
+  const wasSetUp = initializedOrgRuntimes.has(orgId) || orgRuntimeInitPromises.has(orgId)
+  await awaitOrgApps(orgId)
+  if (wasSetUp || !initializedOrgRuntimes.has(orgId)) return async () => {}
+  const touchedAt = orgRuntimeLastTouch.get(orgId)
+  return async () => {
+    if (!initializedOrgRuntimes.has(orgId)) return
+    if (orgRuntimeLastTouch.get(orgId) !== touchedAt) return
+    const { releaseOrgRuntimes } = await import("~/modules/apps/org-runtime-release")
+    await releaseOrgRuntimes([orgId], { gone: false, reason: "search-rebuild" })
+  }
+}
+
+/** Set up the orgs of noted live writes, so their documents resolve (replayTouched). */
+async function setUpOrgsOf(items: LiveIndexItem[]): Promise<void> {
+  const orgIds = new Set<string>()
+  for (const i of items) {
+    const orgId = (i.payload as { orgId?: unknown }).orgId
+    if (typeof orgId === "string" && orgId !== "") orgIds.add(orgId)
+  }
+  for (const orgId of orgIds) await awaitOrgApps(orgId)
 }
 
 /**
@@ -410,6 +449,9 @@ async function replayTouched(indexName: string): Promise<number> {
       await writeIndexAndWait({ deleteIds, deleteFilters }, { indexName })
     }
     const rest = items.filter((i) => i.t !== "raw")
+    // The rebuild released the orgs it set up only for their stream: the ones
+    // written meanwhile are set up again before their documents are built.
+    await setUpOrgsOf(rest)
     for (let i = 0; i < rest.length; i += PAGE_SIZE) {
       const resolved = await resolveLiveIndexItems(rest.slice(i, i + PAGE_SIZE))
       if (resolved.failed.length > 0) throw new Error("search replay could not build documents")
@@ -544,9 +586,6 @@ export async function runReindex(): Promise<RebuildResult & { pruned: number }> 
     await new Promise((r) => setTimeout(r, 2 * rebuildStateCacheWindowMs() + 100))
 
     const orgIds = await listOrgIds()
-    // Each org's searchable entities come from its registered apps: an org
-    // still registering after a restart is registered first.
-    for (const orgId of orgIds) await awaitOrgApps(orgId)
     // The settings and shape come from the installed catalog, the same for
     // every org (catalog-derivations.ts).
     const catalog = catalogSearchInputs(await currentCatalog())
@@ -593,20 +632,30 @@ export async function runReindex(): Promise<RebuildResult & { pruned: number }> 
       await pipeline.add(await sendIndexWrite({ docs: batch }, { indexName: shadowName }))
     }
     for (const orgId of orgIds) {
-      for (const reg of collectSearchableRegistrations(orgId).entities) {
-        if (!reg.permissionFields || !reg.tableName) continue
-        await streamEntity(reg, orgId, (batch) => sink(batch))
-      }
-      for (const [name, source] of indexSources()) {
-        try {
-          await source(orgId, sink)
-        } catch (err) {
-          // A source that cannot stream fails the rebuild: swapping in an index
-          // missing a whole kind of document would be worse than keeping the
-          // live one.
-          log.error({ err, orgId, source: name }, "Search rebuild source failed")
-          throw err
+      // Each org's searchable entities come from its registered apps: the org
+      // is set up first (one still registering after a restart is awaited),
+      // and released after its stream when only the rebuild needed it.
+      const releaseOrg = await rebuildOrgRuntime(orgId)
+      try {
+        for (const reg of collectSearchableRegistrations(orgId).entities) {
+          if (!reg.permissionFields || !reg.tableName) continue
+          await streamEntity(reg, orgId, (batch) => sink(batch))
         }
+        for (const [name, source] of indexSources()) {
+          try {
+            await source(orgId, sink)
+          } catch (err) {
+            // A source that cannot stream fails the rebuild: swapping in an index
+            // missing a whole kind of document would be worse than keeping the
+            // live one.
+            log.error({ err, orgId, source: name }, "Search rebuild source failed")
+            throw err
+          }
+        }
+        // The org's batches are queued, not yet written: the documents are
+        // already built, so its registrations are no longer read.
+      } finally {
+        await releaseOrg()
       }
     }
     await pipeline.drain()

@@ -48,12 +48,36 @@ export interface ProfiledFixtureProfile {
   before: (ports: number[]) => Promise<{
     env: Record<string, string | undefined>
     teardowns: Array<() => Promise<void> | void>
+    /**
+     * Env applied by a server restart once the test world exists. The
+     * managed edition refuses the web bootstrap registration (its first
+     * account is provisioned out of band), so a managed profile boots
+     * self-hosted, creates the world, then restarts as managed. A function
+     * runs against the self-hosted server first (helpers/managed-edition.ts
+     * seeds what the managed boot requires) and returns the env.
+     */
+    envAfterWorld?: EnvAfterWorld
+    /** Extra env of the worker's Vite server (helpers/managed-edition.ts MANAGED_VITE_ENV). */
+    viteEnv?: Record<string, string>
   }>
 }
+
+/** Env for the restart after the world exists, or a function that prepares the server and returns it. */
+export type EnvAfterWorld =
+  | Record<string, string | undefined>
+  | ((ctx: { env: WorkerEnv; world: TestWorld }) => Promise<Record<string, string | undefined>>)
 
 export interface ProfiledWorkerEnv extends WorkerEnv {
   /** Extra ports past API/Vite — for fake servers, etc. */
   profilePorts: number[]
+  /** `envAfterWorld` from the profile, applied by the world fixture. */
+  envAfterWorld?: EnvAfterWorld
+  /**
+   * Set by a managed restart (helpers/managed-edition.ts): the org's host is
+   * the Vite origin, so after the restart the test process talks to the API
+   * through it too (`serverUrl` takes this value).
+   */
+  serverUrlAfterRestart?: string
 }
 
 interface TestFixtures {
@@ -169,7 +193,11 @@ export function createProfiledE2ETest(profile: ProfiledFixtureProfile) {
           vite = await spawnViteServer({
             port: env.ports[1],
             cwd: WEB_DIR,
-            env: { VITE_API_TARGET: env.serverUrl, VITE_TEST_MODE: "true" },
+            env: {
+              VITE_API_TARGET: env.serverUrl,
+              VITE_TEST_MODE: "true",
+              ...beforeResult.viteEnv,
+            },
           })
           const viteUrl = `http://127.0.0.1:${env.ports[1]}`
           await Promise.all([
@@ -179,6 +207,7 @@ export function createProfiledE2ETest(profile: ProfiledFixtureProfile) {
           ])
           const enriched = env as ProfiledWorkerEnv
           enriched.profilePorts = profilePorts
+          enriched.envAfterWorld = beforeResult.envAfterWorld
           await use(enriched)
         } finally {
           if (env) await env.teardown().catch(() => {})
@@ -205,6 +234,14 @@ export function createProfiledE2ETest(profile: ProfiledFixtureProfile) {
           admin: { email: "admin@test.com", password: "12345678", name: "Elodie Vasseur" },
         })
         await env.waitForReady(30_000)
+        if (env.envAfterWorld) {
+          const after =
+            typeof env.envAfterWorld === "function"
+              ? await env.envAfterWorld({ env, world })
+              : env.envAfterWorld
+          await env.restart({ env: after })
+          if (env.serverUrlAfterRestart) env.serverUrl = env.serverUrlAfterRestart
+        }
         await use(world)
         await world.destroy()
       },

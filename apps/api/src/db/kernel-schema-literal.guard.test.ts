@@ -23,11 +23,19 @@ import ts from "typescript"
 
 const SRC = resolve(import.meta.dir, "..")
 
+/** Why the org transfer's own connection names the kernel schema literally. */
+const TRANSFER_CONNECTION =
+  "the org transfer's bundle export/import: SQL on its own migration-role connection (TransferSql, not the server pool) over the catalog of the real `kernel` and `app_*` schemas that closure.ts readCatalog reads by name; the relation names travel in the bundle to another instance, so they are the unprefixed ones by design. Its server-pool queries (after-commit.ts, purge.ts) go through schemaRef"
+
 /**
  * Files skipped on purpose, each with its reason. Paths are relative to
  * apps/api/src; an entry ending in "/" covers a directory.
  */
-const ALLOWLIST: Record<string, string> = {}
+const ALLOWLIST: Record<string, string> = {
+  "modules/org/transfer/export.ts": TRANSFER_CONNECTION,
+  "modules/org/transfer/import.ts": TRANSFER_CONNECTION,
+  "modules/org/transfer/custom-apps.ts": TRANSFER_CONNECTION,
+}
 
 /**
  * A literal schema-qualified kernel relation or function: `kernel.users`,

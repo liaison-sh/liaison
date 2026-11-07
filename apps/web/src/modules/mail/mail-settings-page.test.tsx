@@ -32,8 +32,8 @@ import {
 
 let api: FakeApi
 
-function renderPage() {
-  window.history.pushState({}, "", "/settings/apps/mail")
+function renderPage(url = "/settings/apps/mail") {
+  window.history.pushState({}, "", url)
   return render(() => (
     <Router>
       <Route path="*" component={() => <AppSettingsPage appId="mail" />} />
@@ -104,6 +104,23 @@ describe("Mail settings page", () => {
       ),
     )
   })
+  it("arriving on ?section=providers scrolls to the Gmail switch and focuses it", async () => {
+    state.scopes = ["mail:accounts:read", "mail:accounts:admin"]
+    const scrolled = vi.fn()
+    const original = HTMLElement.prototype.scrollIntoView
+    HTMLElement.prototype.scrollIntoView = scrolled
+    try {
+      renderPage("/settings/apps/mail?section=providers")
+      const toggle = await screen.findByTestId("settings-input-gmail")
+      await waitFor(() => expect(document.activeElement).toBe(toggle))
+      const section = screen.getByTestId("settings-section-providers")
+      expect(section.id).toBe("settings-section-mail-providers")
+      expect(scrolled.mock.contexts[0]).toBe(section)
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original
+    }
+  })
+
   it("the Gmail switch turned on from a chat shows on the open page without a reload", async () => {
     state.scopes = ["mail:accounts:read", "mail:accounts:admin"]
     let gmail = false

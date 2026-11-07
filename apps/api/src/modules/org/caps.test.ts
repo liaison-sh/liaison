@@ -23,6 +23,7 @@ import {
 import { withRlsContext } from "~/db/rls"
 import { KERNEL_DECLARED_EMITS } from "~/infra/events/event-bus"
 import { generateToken, hashToken } from "~/lib/crypto"
+import { _setEdition } from "~/lib/edition"
 import { redis } from "~/lib/redis"
 import { registerConfigTools } from "~/modules/agent/tools/config-tools"
 import {
@@ -33,6 +34,7 @@ import {
 } from "~/modules/apps/app-registries"
 import { upsertConnectionOAuthClient } from "~/modules/apps/connections/oauth-client-provisioning"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
+import { currentPlanUsage } from "~/modules/billing-managed/usage"
 import { loadOrgSettings, orgQuotaBytes, wouldExceedOrgQuota } from "~/modules/files/service"
 import {
   CapLimitError,
@@ -73,6 +75,16 @@ function accept(token: string, name: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ inviteToken: token, name }),
   })
+}
+
+/** The cap refusal a call ends with; any other outcome fails the test. */
+async function capRefusal(call: Promise<unknown>): Promise<CapLimitError> {
+  const err = await call.then(
+    () => null,
+    (e: unknown) => e,
+  )
+  if (!(err instanceof CapLimitError)) throw new Error(`expected a cap refusal, got ${String(err)}`)
+  return err
 }
 
 async function activeSeats(orgId: string): Promise<number> {
@@ -236,6 +248,67 @@ describe("mailboxes", () => {
     const rejected = results.find((r) => r.status === "rejected") as PromiseRejectedResult
     expect(rejected.reason).toBeInstanceOf(CapLimitError)
     expect((await getOrgUsage(orgId)).mailboxes.used).toBe(1)
+  })
+})
+
+describe("mailboxes in the managed edition: a plan never refuses one", () => {
+  async function connect(
+    orgId: string,
+    userId: string,
+    app: "mail" | "tickets",
+    address: string,
+    ownerType: "org" | "user",
+  ): Promise<unknown> {
+    return withPrivilegedDb(orgId, "t", (tx) =>
+      createCredentialConnection(tx, orgId, userId, app, "imap", {
+        identifier: address,
+        credentials: { username: address, password: "x" },
+        displayName: address,
+        ownerType,
+      }),
+    )
+  }
+
+  it("org mailboxes pass even when an older push left a mailbox cap in the caps", async () => {
+    const { orgId, adminUserId } = await minimal.secondOrg()
+    await setCaps(orgId, { mailboxes: 1 })
+    _setEdition("managed")
+    try {
+      await connect(orgId, adminUserId, "tickets", "support@managed-caps.test", "org")
+      await connect(orgId, adminUserId, "mail", "sales@managed-caps.test", "org")
+      expect(Object.keys(await currentPlanUsage(orgId)).sort()).toEqual([
+        "customApps",
+        "seats",
+        "storageBytes",
+      ])
+    } finally {
+      _setEdition(null)
+    }
+  })
+
+  it("a member may connect more than one personal mailbox", async () => {
+    const { orgId } = await minimal.secondOrg()
+    const member = await minimal.person(orgId)
+    _setEdition("managed")
+    try {
+      await connect(orgId, member.id, "mail", "first@managed-caps.test", "user")
+      await connect(orgId, member.id, "tickets", "second@managed-caps.test", "user")
+    } finally {
+      _setEdition(null)
+    }
+  })
+
+  it("self-hosted keeps the operator's cap, personal mailboxes included", async () => {
+    const { orgId, adminUserId } = await minimal.secondOrg()
+    const member = await minimal.person(orgId)
+    await setCaps(orgId, { mailboxes: 1 })
+    await connect(orgId, member.id, "mail", "member@self-hosted-caps.test", "user")
+    const refused = await capRefusal(
+      connect(orgId, adminUserId, "mail", "sales@self-hosted-caps.test", "org"),
+    )
+    expect(refused).toBeInstanceOf(CapLimitError)
+    expect(refused.code).toBe("MAILBOX_LIMIT_REACHED")
+    expect(refused.message).toContain("runs the server")
   })
 })
 
@@ -534,6 +607,14 @@ describe("operator only", () => {
     expect(set.report?.caps).toEqual({ seats: 3, mailboxes: 2 })
     const unset = await runOrgCapsCli([orgId, "--unset", "seats", "--jobs-per-hour", "50"])
     expect(unset.report?.caps).toEqual({ mailboxes: 2, jobsPerHour: 50 })
+    const more = await runOrgCapsCli([orgId, "--custom-apps", "4", "--audit-days", "90"])
+    expect(more.report?.caps).toEqual({
+      mailboxes: 2,
+      jobsPerHour: 50,
+      customApps: 4,
+      auditDays: 90,
+    })
+    await runOrgCapsCli([orgId, "--unset", "custom-apps", "--unset", "audit-days"])
     const show = await runOrgCapsCli([orgId])
     expect(show.report?.changed).toBe(false)
     expect((show.report?.usage as { seats: unknown } | undefined)?.seats).toEqual({
@@ -549,17 +630,34 @@ describe("operator only", () => {
 describe("cap values", () => {
   it("every cap is a whole number >= 1: 0 is refused by the CLI, the limits section, setOrgCaps and the column", async () => {
     const { orgId } = await minimal.secondOrg()
-    for (const flag of ["--seats", "--mailboxes", "--storage-gb", "--jobs-per-hour"]) {
+    for (const flag of [
+      "--seats",
+      "--mailboxes",
+      "--storage-gb",
+      "--jobs-per-hour",
+      "--custom-apps",
+      "--audit-days",
+    ]) {
       const res = await runOrgCapsCli([orgId, flag, "0"])
       expect(res.exitCode).toBe(2)
       expect(String(res.message)).toContain("--unset")
     }
-    for (const kind of ["seats", "mailboxes", "storageGb", "jobsPerHour"]) {
+    for (const kind of [
+      "seats",
+      "mailboxes",
+      "storageGb",
+      "jobsPerHour",
+      "customApps",
+      "auditDays",
+    ]) {
       expect(limitsSchema.safeParse({ [kind]: 0 }).success).toBe(false)
       expect(limitsSchema.safeParse({ [kind]: 1 }).success).toBe(true)
       expect(orgCapsSchema.safeParse({ [kind]: 0 }).success).toBe(false)
     }
     await expect(setOrgCaps(orgId, { set: { jobsPerHour: 0 } })).rejects.toThrow()
+    // The bound comes from the one table: above it is refused everywhere too.
+    expect(limitsSchema.safeParse({ auditDays: 3651 }).success).toBe(false)
+    expect(orgCapsSchema.safeParse({ customApps: 10_001 }).success).toBe(false)
     expect(await readOrgCaps(orgId)).toEqual({})
     // The column refuses what the parsers would: 0, a fraction, a string.
     for (const bad of [{ seats: 0 }, { storageGb: 0.5 }, { jobsPerHour: -3 }, { mailboxes: "2" }]) {
@@ -586,6 +684,7 @@ describe("usage API", () => {
     expect(res.status).toBe(200)
     const { data } = (await res.json()) as { data: Record<string, unknown> }
     expect(data).toEqual({
+      storageEstimate: null,
       seats: { used: 1, limit: 4 },
       mailboxes: { used: 0, limit: null },
       storageGb: { used: 0, limit: null },

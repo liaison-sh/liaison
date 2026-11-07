@@ -756,6 +756,18 @@ export async function seedRichAttentionFeed(
     sourceInboxId: params.inboxId,
     createdMinutesAgo: Math.round((highTargetSeconds * 0.85) / 60),
   })
+  // The deadline walks the org's business hours from the creation time, so a
+  // ticket created 85% of the target ago is "inside the last quarter" only when
+  // the whole span fell inside working hours: after hours its deadline rolls to
+  // the next working morning and the row is not an SLA risk. Pin the deadline
+  // to the last quarter, whatever the time of day the run happens at.
+  const ticketsSchema = env.schemaPrefix ? `"${env.schemaPrefix}app_tickets"` : "app_tickets"
+  await env.db.sql.unsafe(
+    `UPDATE ${ticketsSchema}.tickets
+        SET sla_deadline = now() + make_interval(secs => sla_target_seconds * 0.15)
+      WHERE id = $1 AND org_id = $2`,
+    [slaImminent.id, params.orgId],
+  )
 
   // 2. Awaiting agent reply: assigned to the user (so the unassigned rule
   //    does not fire for it), answered once, then a newer customer message.

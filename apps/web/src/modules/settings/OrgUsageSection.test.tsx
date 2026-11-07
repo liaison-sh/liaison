@@ -3,8 +3,9 @@
 // read-only rows, each unlimited / under / at-or-over its limit, no edit
 // control, and no alarm colour (one neutral emphasis at the limit).
 import { Route, Router } from "@solidjs/router"
-import { render, screen } from "@solidjs/testing-library"
+import { cleanup, render, screen } from "@solidjs/testing-library"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { BillingStateTestAccess } from "~/modules/settings/BillingState"
 import OrgUsageSection from "~/modules/settings/OrgUsageSection"
 import { ApiProvider } from "~/modules/shell/ApiContext"
 
@@ -63,6 +64,65 @@ describe("OrgUsageSection", () => {
     expect(screen.getByTestId("org-usage-storage-reached")).toBeInTheDocument()
     expect(screen.getByTestId("org-usage-jobs").dataset.state).toBe("at-limit")
     expect(screen.getByTestId("org-usage-jobs-reached")).toBeInTheDocument()
+  })
+
+  const ESTIMATE = {
+    usedGb: 12.4,
+    limitGb: 10,
+    measuredAt: "2026-11-07T02:40:00.000Z",
+    partial: false,
+    overCap: true,
+  }
+
+  it("the nightly storage estimate is a row of its own, labelled as an estimate", async () => {
+    renderWith({ data: { ...USAGE, storageEstimate: ESTIMATE } })
+    const row = await screen.findByTestId("org-usage-storage-estimate")
+    expect(row.textContent).toContain("(estimate)")
+    expect(row.textContent).toContain("never blocks")
+    expect(row.dataset.state).toBe("over")
+    expect(screen.getByTestId("org-usage-storage-estimate-value").textContent).toBe(
+      "About 12.4 GB of 10 GB",
+    )
+    expect(screen.getByTestId("org-usage-storage-estimate-over")).toBeInTheDocument()
+    expect(screen.getByTestId("org-usage-storage-estimate-measured").textContent).toContain(
+      "Measured",
+    )
+  })
+
+  it("under the plan, without a cap, with a part unmeasured: says so; none before a measure", async () => {
+    renderWith({
+      data: {
+        ...USAGE,
+        storageEstimate: { ...ESTIMATE, limitGb: null, overCap: false, partial: true },
+      },
+    })
+    const row = await screen.findByTestId("org-usage-storage-estimate")
+    expect(row.dataset.state).toBe("under")
+    expect(screen.getByTestId("org-usage-storage-estimate-value").textContent).toBe("About 12.4 GB")
+    expect(screen.queryByTestId("org-usage-storage-estimate-over")).toBeNull()
+    expect(screen.getByTestId("org-usage-storage-estimate-measured").textContent).toContain(
+      "could not be read",
+    )
+    cleanup()
+    renderWith({ data: { ...USAGE, storageEstimate: null } })
+    await screen.findByTestId("org-usage-list")
+    expect(screen.queryByTestId("org-usage-storage-estimate")).toBeNull()
+  })
+
+  it("on a managed workspace the line points at the plan, not at whoever runs the server", async () => {
+    BillingStateTestAccess.setMode("managed")
+    try {
+      renderWith({ data: USAGE })
+      await screen.findByTestId("org-usage-list")
+      const help = screen.getByTestId("org-usage-help").textContent ?? ""
+      expect(help).toContain("Your plan sets these limits")
+      // A plan does not limit mailboxes, so the row is not there at all.
+      expect(screen.queryByTestId("org-usage-mailboxes")).toBeNull()
+      expect(screen.getByTestId("org-usage-storage")).toBeInTheDocument()
+      expect(help).not.toContain("whoever runs the server")
+    } finally {
+      BillingStateTestAccess.reset()
+    }
   })
 
   it("is read only and calm: no control, no alarm colour, one line on who sets limits", async () => {

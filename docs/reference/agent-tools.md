@@ -326,7 +326,7 @@ Boxtal: ship orders with Boxtal carriers, with quotes, shipments, tracking and c
 | `settings_sender_address_set` | Set the org's Boxtal ship-from (sender) address used on every shipment. | yes | `boxtal:catalog:write` |
 | `settings_sender_form_get` | The settings page's own read of the ship-from address: the stored fields, flat, in the shape settings_sender_address_set takes. |  | `boxtal:catalog:read` |
 | `settle_orphan_create` | Settle an orphaned label purchase: a stuck_list row of family create_orphan, whose create call was interrupted before the Boxtal order id was saved. | yes | `boxtal:shipments:write` |
-| `shipment_draft_create` | Open a shipment draft from an invoicing document — pre-fills parcels + customs from the document snapshot (zero re-entry). |  | `boxtal:shipments:read` |
+| `shipment_draft_create` | Start a new shipment draft from an invoicing document — pre-fills parcels + customs from the document snapshot (zero re-entry). |  | `boxtal:shipments:read` |
 | `shipment_draft_get` | Read the current draft for a draft/invoice id — returns its parcels and customsArticles (each line's index, tariffNumber/HS code, customs description, declared value, country of origin, and an `incomplete` flag). |  | `boxtal:shipments:read` |
 | `shipment_draft_set_customs` | Edit a customs article on the draft by index (correct its HS/tariff code, customs description, declared value, weight, or country of origin). |  | `boxtal:shipments:read` |
 | `shipment_draft_set_package` | Replace the draft's auto-resolved parcel set with an explicit carton set: ONE carton, OR an ARRAY of cartons for a MIXED multi-carton shipment (e.g. |  | `boxtal:shipments:read` |

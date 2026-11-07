@@ -60,7 +60,16 @@ interface HandleAgentDefault {
   turnMessageId: string | null
 }
 
-const handleAgentDefaults = new WeakMap<object, HandleAgentDefault>()
+/** A handle's declaration; `null` is a positive "no agent acted". */
+const handleAgentDefaults = new WeakMap<object, HandleAgentDefault | null>()
+
+/**
+ * Each savepoint handle's parent (`wireQueueEvent`): a handle with no
+ * declaration of its own reads the nearest one up the chain, so a service that
+ * opens its own savepoint inside a bridge call still writes as the bridge's
+ * agent.
+ */
+const handleParents = new WeakMap<object, object>()
 
 /**
  * Declare WHICH AGENT owns every event queued through this db handle from here
@@ -85,7 +94,7 @@ export function setEventAgentDefault(
 ): void {
   if (typeof tx !== "object" || tx === null) return
   if (!agentId) {
-    handleAgentDefaults.delete(tx)
+    handleAgentDefaults.set(tx, null)
     return
   }
   // The live frame when there is one; otherwise the turn the caller captured
@@ -108,7 +117,9 @@ export function setEventAgentDefault(
  * so that case still reads it.
  */
 function handleDefaultFor(handle: object): HandleAgentDefault | null {
-  const declared = handleAgentDefaults.get(handle)
+  let current: object | undefined = handle
+  while (current && !handleAgentDefaults.has(current)) current = handleParents.get(current)
+  const declared = current ? handleAgentDefaults.get(current) : null
   if (!declared) return null
   const live = currentRunContext()
   if (live && live.rootRunId !== declared.turnKey) return null
@@ -199,15 +210,26 @@ function assertKernelEventDeclared(event: AppEvent): void {
  *
  * The orgId for the pending_events row is taken from `event.orgId`. The row is
  * inserted as the transaction's own role (liaison_rls or liaison_admin).
+ *
+ * Each handle queues through ITSELF: the row is inserted through the handle the
+ * event was queued on and stamped from that handle's agent declaration. Bound
+ * to the outer transaction instead, an event queued inside a savepoint lost
+ * the agent the sandbox bridge declared on the savepoint, and a failed outbox
+ * insert the caller caught still failed the whole transaction (postgres.js
+ * rethrows a scope's failed query when the scope ends).
  */
 function wireQueueEvent(
   tx: any,
-  impl: (event: AppEvent) => Promise<void>,
-  implMany: (events: AppEvent[]) => Promise<void>,
+  impl: (handle: any, event: AppEvent) => Promise<void>,
+  implMany: (handle: any, events: AppEvent[]) => Promise<void>,
 ): void {
-  Object.defineProperty(tx, "queueEvent", { value: impl, enumerable: false, configurable: true })
+  Object.defineProperty(tx, "queueEvent", {
+    value: (event: AppEvent) => impl(tx, event),
+    enumerable: false,
+    configurable: true,
+  })
   Object.defineProperty(tx, "queueEvents", {
-    value: implMany,
+    value: (events: AppEvent[]) => implMany(tx, events),
     enumerable: false,
     configurable: true,
   })
@@ -215,6 +237,7 @@ function wireQueueEvent(
   Object.defineProperty(tx, "transaction", {
     value: async (fn: (nestedTx: any) => Promise<any>) => {
       return originalTransaction(async (nestedTx: any) => {
+        handleParents.set(nestedTx, tx)
         wireQueueEvent(nestedTx, impl, implMany) // Recursive — works at ANY depth
         return fn(nestedTx)
       })
@@ -259,28 +282,28 @@ export function attachQueueEvent(tx: any, defaultOrgId: string, mark?: QueuedEve
   // 0000_initial.sql), and liaison_admin bypasses RLS. A request transaction on
   // the split request login cannot step into liaison_admin at all, and the
   // outbox row still commits or rolls back with the transaction that queued it.
-  const insertRows = async (rows: Array<{ orgId: string; payload: AppEvent }>) => {
+  const insertRows = async (handle: any, rows: Array<{ orgId: string; payload: AppEvent }>) => {
     for (let start = 0; start < rows.length; start += QUEUE_EVENTS_CHUNK) {
-      await tx.insert(pendingEvents).values(rows.slice(start, start + QUEUE_EVENTS_CHUNK))
+      await handle.insert(pendingEvents).values(rows.slice(start, start + QUEUE_EVENTS_CHUNK))
     }
     if (mark && rows.length > 0) mark.queued = true
   }
-  const toRow = (rawEvent: AppEvent) => {
+  const toRow = (handle: object, rawEvent: AppEvent) => {
     const event = stampTurnMessageId(
-      stampActingAgentId(stampFiringRoutineId(stampSeeded(rawEvent)), tx),
-      tx,
+      stampActingAgentId(stampFiringRoutineId(stampSeeded(rawEvent)), handle),
+      handle,
     )
     assertKernelEventDeclared(event)
     return { orgId: event.orgId || defaultOrgId, payload: event }
   }
-  const queueEventImpl = async (rawEvent: AppEvent) => {
-    await insertRows([toRow(rawEvent)])
+  const queueEventImpl = async (handle: any, rawEvent: AppEvent) => {
+    await insertRows(handle, [toRow(handle, rawEvent)])
   }
-  const queueEventsImpl = async (rawEvents: AppEvent[]) => {
+  const queueEventsImpl = async (handle: any, rawEvents: AppEvent[]) => {
     // All stamped and checked before anything is written: one undeclared kernel
     // event refuses the batch.
-    const rows = rawEvents.map(toRow)
-    if (rows.length > 0) await insertRows(rows)
+    const rows = rawEvents.map((event) => toRow(handle, event))
+    if (rows.length > 0) await insertRows(handle, rows)
   }
 
   wireQueueEvent(tx, queueEventImpl, queueEventsImpl)

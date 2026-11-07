@@ -565,7 +565,6 @@ describe("db import enforcement", () => {
     // Phase 14 — integration test for the permissionVersion-bump contract reads
     // the bumped column directly (no request context). System-level read.
     "tests/permission-version-bump.test.ts",
-    "modules/billing-admin/index.ts",
     // Phase 14 — version-check reads org.update_checks_enabled cross-org via
     // privileged db (no per-request RLS context; runs on Redis-cached schedule).
     "modules/admin/version-check.ts",
@@ -737,6 +736,78 @@ describe("db import enforcement", () => {
     // privileged-only) and reads the played tour ids of a demo workspace.
     "modules/liaison-team/lead-forwarding.ts",
     "modules/liaison-team/outbox.ts",
+    // Managed edition boot check: reads the instance-wide liaison team identity
+    // (kernel.instance_settings, privileged only) before any request.
+    "lib/managed-boot.ts",
+    // Mints and installs a provisioned identity (kernel.instance_settings)
+    // under the liaison team lock, from the CLI; no org data.
+    "modules/liaison-team/provisioned-identity.ts",
+    // An org's link base: reads only the org's slug by id, before any actor.
+    "lib/org-public-url.ts",
+    // Host binding: the org id a request's host names, read by slug before any
+    // actor exists (the auth middleware, refresh, WebSocket and MCP checks).
+    "lib/org-host.ts",
+    // The signed Control→cell API (managed edition): its idempotency store
+    // (kernel.cloud_request_outcomes, RLS forced with no policy) and the
+    // instance key read before any org is known; creating an org and reading
+    // its owner for a handoff are pre-actor writes and reads bound to that org.
+    // Money (no actor either): the billing push and the state served from it,
+    // credit grants, the instance-wide credit rate, the workspace lookup by
+    // email across orgs, and the admins' auto top-up attention item.
+    "modules/cloud/attention.ts",
+    // The managed Billing page (admins only, scope checked by the mount): the
+    // instance key that signs its calls to the control plane, and the org's
+    // usage counts a plan change sends (seats, org mailboxes, storage, apps),
+    // read for the caller's own org only.
+    "modules/billing-managed/control-client.ts",
+    "modules/billing-managed/usage.ts",
+    "modules/cloud/billing.ts",
+    "modules/cloud/create-org.ts",
+    "modules/cloud/credit-rate.ts",
+    "modules/cloud/credits.ts",
+    "modules/cloud/lookup.ts",
+    "modules/cloud/handoff.ts",
+    "modules/cloud/outcomes.ts",
+    "modules/cloud/verify.ts",
+    // Managed money without an actor: the daily usage report sums every org's
+    // billed rows from a job, the auto top-up check reads the org's pushed
+    // setting after a deduction, and the managed AI-usage view reads the org's
+    // own balance and billing state by id (credits_balance is privileged only).
+    "modules/cloud/storage-estimate.ts",
+    "modules/cloud/usage-report.ts",
+    "modules/cloud/auto-topup-trigger.ts",
+    // The billing status the control plane pushed (kernel.org_billing_state,
+    // privileged only), read by id on every request, job and paid call before
+    // or outside any actor; the side-call gate's attribution user (a job has no
+    // actor) read by the org's id.
+    "modules/cloud/billing-status.ts",
+    "modules/agent/credits/managed-side-call.ts",
+    // Signed Control→cell pushes bound to the org they name (no actor): the
+    // org's verified mail sender, the operator's custom-app kill switch, and the
+    // delete timer's org load before the shared deletion core.
+    "modules/cloud/mail-sender.ts",
+    "modules/cloud/custom-app-disable.ts",
+    "modules/cloud/delete-org.ts",
+    // The server's own inbound callbacks (Gmail push, Meta): one per provider for
+    // the whole server, resolved to the orgs a delivery concerns before any
+    // actor exists.
+    "modules/cloud/cell-webhooks.ts",
+    // The cell's org header for a move between instances: the org's frozen
+    // state, read per request before any actor exists.
+    "modules/cloud/cell-header.ts",
+    // An org transfer between cells runs outside any person's request: the
+    // transfer state an org's sweeps and writers consult, the after-commit
+    // steps (credential revocation, outbox) and the purge of a copy no longer
+    // needed, each bound to the one org being moved.
+    "modules/org/transfer-state/state.ts",
+    "modules/org/transfer/after-commit.ts",
+    "modules/org/transfer/purge.ts",
+    // Which orgs may see an org-private custom app: the instance-wide app
+    // registry's tenant boundary, read before any request context.
+    "modules/apps/app-org-scope.ts",
+    // The daily audit-log retention job: one DELETE over every org from a job.
+    "modules/org/audit-retention.ts",
+    "modules/agent/credits/managed-money.ts",
     "modules/liaison-team/settings.ts",
     // team-only.ts stages a team-only report's ticked files as kernel.files rows
     // no user can read (no fileParent) and sweeps them with their outbox rows;
@@ -792,6 +863,7 @@ describe("db import enforcement", () => {
     // legal rows, files and audit log before the purge, and the CLI's gates
     // (the org row, its exports). Every write is pinned to the org the operator
     // named, after the gates.
+    "modules/org/delete/start.ts",
     "modules/org/delete/ledger.ts",
     "modules/org/delete/legal-archive.ts",
     "cli/org-delete.ts",
@@ -872,6 +944,13 @@ describe("db import enforcement", () => {
     "seed/factories/org/org.ts",
     "seed/factories/people/people.ts",
     "seed/factories/people/role-grants.ts",
+    // Bare rows for tests (an org, a user, a role, an audit entry; a connected
+    // account, an MCP connection, a pending event; an org's billing state and
+    // credit rows) written over the system connection as the provisioning and
+    // billing paths write them, each bound to the org the test names.
+    "seed/factories/org/rows.ts",
+    "seed/factories/org/platform-rows.ts",
+    "seed/factories/billing/billing.ts",
     // A kernel.files row with no object behind it, written as the upload and mail import
     // paths write it (privileged), for tests that fake the storage read.
     "seed/factories/files/file-row.ts",
@@ -1387,6 +1466,13 @@ describe("db import enforcement", () => {
     // there is nothing for an RLS handle to bind and no query builder that
     // expresses it. Not loaded by a production build.
     "tests/helpers/files-select-policy.ts",
+    // Test fixture: writes the cell's pushed credit pricing, an instance-wide
+    // setting outside any org. Not loaded by a production build.
+    "tests/helpers/credit-pricing.ts",
+    // Test fixture, the same category: seeds a managed org with its billing
+    // state, balance and user (privileged-only tables) for the side-call tests.
+    // Not loaded by a production build.
+    "tests/helpers/managed-openrouter.ts",
     // Test fixture, the same category as tests/helpers/org.ts: it seeds a
     // thread with replies before any API exists to seed through. Not loaded by
     // a production build.

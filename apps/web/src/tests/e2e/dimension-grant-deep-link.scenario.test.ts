@@ -15,13 +15,15 @@ test("Dimension grants: deep-link from org mail account highlights value", async
   await page.goto(`http://localhost:${env.ports[1]}/settings/mail/accounts`)
   await expect(page.getByTestId("mail-account-settings")).toBeVisible({ timeout: 10000 })
 
+  // "Manage access" opens Settings > Roles & access on the inbox dimension,
+  // with this account's value picked.
   const manageLink = page
-    .locator(`a[href*="dimension-grants"][href*="${seeded.accountId}"]`)
-    .first()
+    .getByTestId("mail-shared-account-manage-access")
+    .and(page.locator(`[href*="${seeded.accountId}"]`))
   await expect(manageLink).toBeVisible({ timeout: 10000 })
   await manageLink.click()
 
-  await page.waitForURL(/\/settings\/admin\/dimension-grants\?dimension=mail%3Ainbox/, {
+  await page.waitForURL(/\/settings\/admin\/roles\?dimension=mail%3Ainbox/, {
     timeout: 10000,
   })
   expect(page.url()).toContain(`value=${seeded.accountId}`)

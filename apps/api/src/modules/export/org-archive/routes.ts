@@ -17,6 +17,7 @@
  * export and its object key; the relay re-checks the export is still completed
  * and unexpired before streaming.
  */
+
 import { Hono } from "hono"
 import * as jose from "jose"
 import { z } from "zod"
@@ -25,6 +26,8 @@ import { storageDelivery } from "~/infra/storage/delivery"
 import { getObjectStream, presignGet } from "~/infra/storage/object-storage"
 import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
+import { assertHostAllowsOrg } from "~/lib/org-host"
+import { orgPublicBaseUrl } from "~/lib/org-public-url"
 import { enqueueOrgExport } from "~/modules/export/org-archive/job"
 import {
   createOrgExport,
@@ -154,11 +157,13 @@ export const orgExportRoutes = new Hono<AppEnv>()
             responseContentDisposition: `attachment; filename="${archiveFilename(row)}"`,
             responseContentType: "application/zip",
           })
-        : `${env.BASE_URL.replace(/\/$/, "")}/api/org-export-dl/${await signOrgExportDownloadToken({
-            orgId,
-            exportId: id,
-            objectKey: row.objectKey,
-          })}`
+        : `${(await orgPublicBaseUrl(orgId)).replace(/\/$/, "")}/api/org-export-dl/${await signOrgExportDownloadToken(
+            {
+              orgId,
+              exportId: id,
+              objectKey: row.objectKey,
+            },
+          )}`
     await recordOrgExportDownload(orgId, id, c.get("userId"))
     return c.json({ data: { url, delivery, expiresInSec: ORG_EXPORT_DOWNLOAD_TTL_SEC } })
   })
@@ -180,6 +185,8 @@ orgExportDownloadRelay.on(["GET", "HEAD"], "/:token", async (c) => {
       401,
     )
   }
+  // Host binding (lib/org-host.ts): org A's link works on A's host only.
+  await assertHostAllowsOrg(c, token.orgId)
   // Outside authMw, so the deletion guard runs here: once an org's deletion
   // has started, a link minted before it stops working (410 ORG_DELETED).
   await assertOrgNotDeleting(token.orgId)

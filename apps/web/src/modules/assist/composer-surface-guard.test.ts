@@ -17,7 +17,7 @@ const MODULES = join(__dirname, "..")
 /** Fields that are not composer surfaces, per file: how many, and why. */
 const EXCLUDED: Record<string, { fields: number; reason: string }> = {
   "settings/ProfileSettings.tsx": { fields: 1, reason: "magic wand instructions (a setting)" },
-  "tickets/TicketsInboxRouting.tsx": { fields: 3, reason: "inbox configuration" },
+  "tickets/TicketsInboxRouting.tsx": { fields: 4, reason: "inbox configuration" },
   "settings/app-page/fields.tsx": {
     fields: 1,
     reason: "a declarative settings field (reply signature, email footer: settings)",
@@ -35,6 +35,12 @@ const EXCLUDED: Record<string, { fields: number; reason: string }> = {
   "threads/ChannelDetailsDialog.tsx": { fields: 1, reason: "channel description, not listed" },
   "projects/Checklist.tsx": { fields: 4, reason: "checklist item fields, not listed" },
   "bug-report/BugReportDialog.tsx": { fields: 1, reason: "bug report, not listed" },
+  "projects/ProjectEditForm.tsx": { fields: 1, reason: "project description, not listed" },
+  "contacts/ContactAddresses.tsx": { fields: 1, reason: "a postal address's note (contact data)" },
+  "settings/documents/RichTextEditor.tsx": {
+    fields: 1,
+    reason: "document template text with {{field}} placeholders (configuration)",
+  },
 }
 
 /**

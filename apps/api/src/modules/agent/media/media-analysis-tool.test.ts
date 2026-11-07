@@ -1,8 +1,15 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test"
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test"
 import sharp from "sharp"
 import { sql } from "~/db"
 import { withRlsContext } from "~/db/rls"
+import { _setEdition } from "~/lib/edition"
+import {
+  INLINE_VIDEO_MAX_REQUEST_BYTES,
+  MANAGED_INLINE_MEDIA_MAX_BYTES,
+  MANAGED_MEDIA_ANALYSIS_UPSTREAM_ID,
+  MAX_OUTPUT_TOKENS,
+} from "~/modules/agent/media/media-analysis-constants"
 import { hashContext } from "~/modules/agent/media/media-analysis-shared"
 import {
   type AnalyzeMediaParams,
@@ -13,10 +20,19 @@ import {
   type MediaAnalysisToolDeps,
 } from "~/modules/agent/media/media-analysis-tool"
 import type { AppContext } from "~/modules/apps/context"
+import { clearOrgBillingStatusCache } from "~/modules/cloud/billing-status"
+import { clearTestCreditPricing, setTestCreditPricing } from "~/tests/helpers/credit-pricing"
 import {
   installPermissiveFilesSelectPolicy,
   restoreFilesSelectPolicy,
 } from "~/tests/helpers/files-select-policy"
+import {
+  type ManagedOpenRouterStub,
+  STUB_ANSWER,
+  STUB_CALL_COST_USD,
+  setManagedOrgStatus,
+  startManagedOpenRouterStub,
+} from "~/tests/helpers/managed-openrouter"
 
 const ORG_A = "00000000-0000-4000-8000-0000000a0001"
 const ORG_B = "00000000-0000-4000-8000-0000000b0001"
@@ -730,5 +746,165 @@ describe("handleAnalyzeMedia", () => {
     expect(deps.getObjectBuffer).not.toHaveBeenCalled()
     const [row] = await sql`SELECT analysis_summary FROM kernel.files WHERE id = ${id}`
     expect(row.analysis_summary).toBeNull()
+  })
+
+  // S31: a managed cell analyses media inline on OpenRouter with zero data
+  // retention, metered at the reported cost; the Gemini Files-API slow path is
+  // never used there, so media above the inline limit is refused with the limit.
+  // Drop the managed branch: the Gemini fake is called and the stub sees nothing.
+  describe("managed edition: inline on OpenRouter", () => {
+    const saved: Record<string, string | undefined> = {}
+    let stub: ManagedOpenRouterStub
+    const CELL_KEY = "sk-or-test-media-cell"
+
+    async function managedRows(): Promise<Array<{ model: string; raw_cost_usd: string }>> {
+      return await sql`SELECT model, raw_cost_usd FROM kernel.credit_transactions
+        WHERE org_id = ${ORG_A}`
+    }
+
+    beforeAll(async () => {
+      for (const k of ["OPENROUTER_API_KEY", "OPENROUTER_BASE_URL"]) saved[k] = process.env[k]
+      stub = startManagedOpenRouterStub()
+      process.env.OPENROUTER_BASE_URL = stub.baseUrl
+      process.env.OPENROUTER_API_KEY = CELL_KEY
+      await sql`INSERT INTO kernel.credit_balances (org_id, included_balance, purchased_balance, currency)
+        VALUES (${ORG_A}, '100.00000000', '0', 'EUR') ON CONFLICT (org_id) DO NOTHING`
+      await setManagedOrgStatus(ORG_A, "active")
+      await sql`
+        INSERT INTO kernel.system_config (key, value, updated_at)
+        VALUES ('usd_eur_rate', ${JSON.stringify({ rate: 1.25, fetchedAt: new Date().toISOString() })}::jsonb, now())
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`
+      await setTestCreditPricing()
+    })
+
+    afterAll(async () => {
+      stub.stop()
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+      _setEdition(null)
+      clearOrgBillingStatusCache()
+      await clearTestCreditPricing()
+      await sql`DELETE FROM kernel.org_billing_state WHERE org_id = ${ORG_A}`
+      await sql`DELETE FROM kernel.credit_balances WHERE org_id = ${ORG_A}`
+    })
+
+    beforeEach(async () => {
+      stub.requests.length = 0
+      _setEdition("managed")
+      await setManagedOrgStatus(ORG_A, "active")
+      clearOrgBillingStatusCache()
+    })
+
+    afterEach(() => {
+      _setEdition(null)
+      clearOrgBillingStatusCache()
+    })
+
+    it("image: one OpenRouter call with zdr and the cell key, metered at the reported cost", async () => {
+      const id = "00000000-0000-4000-8000-00000000e001"
+      await seedFile({ id, orgId: ORG_A, app: "tickets" })
+      const deps = fakeDeps()
+      const res = await runAnalyze(ORG_A, USER_A, { fileId: id }, deps)
+      expect(res).toMatchObject({ summary: STUB_ANSWER, cached: false })
+      expect(deps.analyzeWithGemini).not.toHaveBeenCalled()
+
+      expect(stub.requests).toHaveLength(1)
+      const [req] = stub.requests
+      expect(req.path).toBe("/api/v1/chat/completions")
+      expect(req.authorization).toBe(`Bearer ${CELL_KEY}`)
+      expect(req.body.model).toBe(MANAGED_MEDIA_ANALYSIS_UPSTREAM_ID)
+      expect(req.body.max_tokens).toBe(MAX_OUTPUT_TOKENS)
+      expect(req.body.provider).toMatchObject({ zdr: true, data_collection: "deny" })
+      const messages = req.body.messages as Array<{ role: string; content: unknown }>
+      expect(messages[0].role).toBe("system")
+      const parts = messages[1].content as Array<Record<string, unknown>>
+      expect(parts[0].type).toBe("image_url")
+      expect(String((parts[0].image_url as { url: string }).url)).toStartWith(
+        "data:image/jpeg;base64,",
+      )
+
+      const rows = await managedRows()
+      expect(rows).toHaveLength(1)
+      expect(rows[0].model).toBe(`openrouter/${MANAGED_MEDIA_ANALYSIS_UPSTREAM_ID}`)
+      expect(Number(rows[0].raw_cost_usd)).toBeCloseTo(STUB_CALL_COST_USD, 8)
+    })
+
+    it("PDF: sent as a file part", async () => {
+      const id = "00000000-0000-4000-8000-00000000e002"
+      await seedFile({ id, orgId: ORG_A, app: "kernel" })
+      const pdf = makePdf()
+      const deps = fakeDeps({
+        getObjectBuffer: mock(async () => pdf),
+        headObject: mock(async () => ({
+          contentLength: pdf.byteLength,
+          contentType: "application/pdf",
+        })),
+      })
+      const res = await runAnalyze(ORG_A, USER_A, { fileId: id }, deps)
+      expect("summary" in res).toBe(true)
+      const parts = (stub.requests[0].body.messages as Array<{ content: unknown }>)[1]
+        .content as Array<Record<string, unknown>>
+      expect(parts[0].type).toBe("file")
+      expect(String((parts[0].file as { file_data: string }).file_data)).toStartWith(
+        "data:application/pdf;base64,",
+      )
+    })
+
+    it("a video above the self-hosted inline cap but within the managed one runs inline", async () => {
+      const id = "00000000-0000-4000-8000-00000000e003"
+      await seedFile({ id, orgId: ORG_A, app: "tickets" })
+      const video = makeMp4(INLINE_VIDEO_MAX_REQUEST_BYTES + 1024)
+      const enqueueAppJob = mock(async () => {})
+      const deps = fakeDeps({
+        getObjectBuffer: mock(async () => video),
+        headObject: mock(async () => ({
+          contentLength: video.byteLength,
+          contentType: "video/mp4",
+        })),
+        enqueueAppJob: enqueueAppJob as unknown as MediaAnalysisToolDeps["enqueueAppJob"],
+      })
+      const res = await runAnalyze(ORG_A, USER_A, { fileId: id }, deps)
+      expect("summary" in res).toBe(true)
+      expect(enqueueAppJob).not.toHaveBeenCalled()
+      const parts = (stub.requests[0].body.messages as Array<{ content: unknown }>)[1]
+        .content as Array<Record<string, unknown>>
+      expect(parts[0].type).toBe("video_url")
+    })
+
+    it("a video above the managed inline limit is refused with the limit, nothing sent or queued", async () => {
+      const id = "00000000-0000-4000-8000-00000000e004"
+      await seedFile({ id, orgId: ORG_A, app: "tickets" })
+      const video = makeMp4(MANAGED_INLINE_MEDIA_MAX_BYTES + 1024)
+      const enqueueAppJob = mock(async () => {})
+      const deps = fakeDeps({
+        getObjectBuffer: mock(async () => video),
+        headObject: mock(async () => ({
+          contentLength: video.byteLength,
+          contentType: "video/mp4",
+        })),
+        enqueueAppJob: enqueueAppJob as unknown as MediaAnalysisToolDeps["enqueueAppJob"],
+      })
+      const res = await runAnalyze(ORG_A, USER_A, { fileId: id }, deps)
+      expect("error" in res && res.error.code).toBe("too_large")
+      expect("error" in res && res.error.message).toContain(
+        `too large to analyse here (max ${MANAGED_INLINE_MEDIA_MAX_BYTES / (1024 * 1024)} MB)`,
+      )
+      expect(enqueueAppJob).not.toHaveBeenCalled()
+      expect(stub.requests).toHaveLength(0)
+      expect(await managedRows()).toHaveLength(0)
+    })
+
+    it("past_due: refused before any call", async () => {
+      const id = "00000000-0000-4000-8000-00000000e005"
+      await seedFile({ id, orgId: ORG_A, app: "tickets" })
+      await setManagedOrgStatus(ORG_A, "past_due")
+      clearOrgBillingStatusCache()
+      const res = await runAnalyze(ORG_A, USER_A, { fileId: id }, fakeDeps())
+      expect("error" in res && res.error.code).toBe("precheck_failed")
+      expect(stub.requests).toHaveLength(0)
+      expect(await managedRows()).toHaveLength(0)
+    })
   })
 })

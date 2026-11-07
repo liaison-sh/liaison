@@ -11,6 +11,7 @@ import { type TaintOriginRows, UNKNOWN_TURN_TAINT } from "~/modules/agent/scopes
 import { intersectScopes } from "~/modules/agent/subruns/spawn-agent"
 import { getUserAuthState } from "~/modules/auth/auth-state"
 import { signAccessToken, verifyAccessToken } from "~/modules/auth/jwt"
+import { orgRefusesNonSessionCredentials } from "~/modules/cloud/suspension"
 import { isDemoOrgExpiredNow } from "~/modules/demo/demo-expiry"
 // Verified path: decide.ts imports loadEffectivePermissions from here; return
 // type EffectivePermissions = { roles, scopes, dimensionGrants }.
@@ -122,6 +123,7 @@ export async function mintAccessToken(connectionId: string): Promise<{ token: st
   if (!conn) throw new Error("mcp connection not found")
   if (conn.revokedAt) throw new Error("mcp connection revoked")
   if (await isDemoOrgExpiredNow(conn.orgId)) throw new Error("mcp demo workspace expired")
+  if (await orgRefusesNonSessionCredentials(conn.orgId)) throw new Error("mcp org suspended")
 
   // Parity with the REST authMiddleware (same getUserAuthState source): a
   // deactivated/suspended/deleted owner must not keep minting MCP tokens. The
@@ -197,6 +199,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<{ token:
   if (!conn) throw new Error("mcp connection not found")
   if (conn.revokedAt) throw new Error("mcp connection revoked")
   if (await isDemoOrgExpiredNow(conn.orgId)) throw new Error("mcp demo workspace expired")
+  if (await orgRefusesNonSessionCredentials(conn.orgId)) throw new Error("mcp org suspended")
   if (!secretMatches(parsed.secret, conn.refreshTokenHash)) {
     throw new Error("mcp refresh secret mismatch")
   }

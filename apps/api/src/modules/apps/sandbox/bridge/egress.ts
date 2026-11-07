@@ -8,10 +8,11 @@ import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import { buildMultipartBody, type MultipartUpload } from "~/modules/apps/sandbox/bridge/multipart"
 import {
   SANDBOX_FETCH_MAX_REDIRECTS,
-  SANDBOX_PRIVATE_HOST_POLICY,
   sandboxEgressOverrides,
+  sandboxEgressPolicy,
   validateSandboxFetchUrl,
 } from "~/modules/apps/sandbox/bridge/shared"
+import { maybeTestViesResponse } from "~/modules/apps/sandbox/bridge/test-vies"
 import {
   type ImapCredentials,
   imapAppendSent,
@@ -198,6 +199,7 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
           url,
           allowedDomains,
           manifest.network?.allowPrivateHostsInTest ?? false,
+          appName,
         )
         upload = await buildMultipartBody(
           ctx,
@@ -234,7 +236,7 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
       // Run initial allowlist + scheme validation; pinned helper does private-net
       // + DNS-pin enforcement on every hop, with onHopValidate re-running the
       // sandbox allowlist on each redirect target.
-      await validateSandboxFetchUrl(url, allowedDomains, allowPrivateHostsInTest)
+      await validateSandboxFetchUrl(url, allowedDomains, allowPrivateHostsInTest, appName)
 
       // P4 (Phase 16 E2E) — test-mode actor marker.
       // When `LIAISON_TEST_INJECT_ACTOR=1` is set on the worker, the bridge
@@ -283,11 +285,17 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
             headers: headersWithActor,
           })
 
+      // TEST STACKS ONLY (LIAISON_TEST_VIES_STUB=1 under NODE_ENV test): the EU VIES VAT check
+      // is answered by a stand-in, so a test never depends on the live service (test-vies.ts).
+      const testVies = demoShopify || demoBoxtal ? null : maybeTestViesResponse(url)
+
       let response: Response
       if (demoShopify) {
         response = demoShopify
       } else if (demoBoxtal) {
         response = demoBoxtal
+      } else if (testVies) {
+        response = testVies
       } else {
         // Everything the fixture provider did NOT answer. A demo org's app
         // traffic to Pennylane, Boxtal, Meta, the VIES VAT service or anything
@@ -334,10 +342,15 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
                 {
                   maxRedirects: SANDBOX_FETCH_MAX_REDIRECTS,
                   fetchImpl: sandboxEgressOverrides.fetch ?? undefined,
-                  ...SANDBOX_PRIVATE_HOST_POLICY,
+                  ...sandboxEgressPolicy(appName),
                   allowPrivateHostsInTest,
                   onHopValidate: async (next) => {
-                    await validateSandboxFetchUrl(next, allowedDomains, allowPrivateHostsInTest)
+                    await validateSandboxFetchUrl(
+                      next,
+                      allowedDomains,
+                      allowPrivateHostsInTest,
+                      appName,
+                    )
                   },
                 },
               )

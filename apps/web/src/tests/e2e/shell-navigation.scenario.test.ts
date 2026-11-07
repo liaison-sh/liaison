@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { api } from "@liaison/test-helpers"
 import { expect, test } from "./fixtures/test"
-import { openMessages } from "./helpers/new-conversation"
+import { openMessages, showAllChannels } from "./helpers/new-conversation"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Scenario 06: Navigation, Tabs, Shell
@@ -37,6 +37,7 @@ test.describe("Flow B: Tab System — Open and Switch", () => {
     qa,
   }) => {
     await openMessages(authenticatedPage)
+    await showAllChannels(authenticatedPage)
     const sidebar = authenticatedPage.locator('[data-testid="sidebar"]')
     await expect(sidebar.getByText("Q2 Marketing Plan")).toBeVisible({ timeout: 10000 })
 
@@ -79,6 +80,7 @@ test.describe("Flow C: Close Tab", () => {
 test.describe("Flow D: Close Tab with Cmd+W", () => {
   test("Cmd+W closes active tab", async ({ authenticatedPage, qa }) => {
     await openMessages(authenticatedPage)
+    await showAllChannels(authenticatedPage)
     const sidebar = authenticatedPage.locator('[data-testid="sidebar"]')
     await expect(sidebar.getByText("Sprint retrospective")).toBeVisible({ timeout: 10000 })
     await sidebar.getByText("Sprint retrospective").click()
@@ -130,6 +132,7 @@ test.describe("Flow F: Tab Persistence Across Reload", () => {
 test.describe("Flow G: Command Palette — Search Threads", () => {
   test("Cmd+P palette searches QA threads and navigates", async ({ authenticatedPage, qa }) => {
     await openMessages(authenticatedPage)
+    await showAllChannels(authenticatedPage)
     await expect(authenticatedPage.getByText("Sprint retrospective")).toBeVisible({
       timeout: 10000,
     })
@@ -183,6 +186,7 @@ test.describe("Flow I: Command Palette — Execute Command", () => {
 test.describe("Flow J: Command Palette — Keyboard Navigation", () => {
   test("Arrow keys navigate, Enter selects", async ({ authenticatedPage, qa }) => {
     await openMessages(authenticatedPage)
+    await showAllChannels(authenticatedPage)
     await expect(authenticatedPage.getByText("Sprint retrospective")).toBeVisible({
       timeout: 10000,
     })
@@ -320,6 +324,7 @@ test.describe("Flow O: Sidebar Unread Indicators", () => {
   }) => {
     // Open thread A (marks it read)
     await openMessages(authenticatedPage)
+    await showAllChannels(authenticatedPage)
     const sidebar = authenticatedPage.locator('[data-testid="sidebar"]')
     await expect(sidebar.getByText("Q2 Marketing Plan")).toBeVisible({ timeout: 10000 })
     await sidebar.getByText("Q2 Marketing Plan").click()
@@ -371,6 +376,7 @@ test.describe("Flow P: URL Sync with Tabs", () => {
     qa,
   }) => {
     await openMessages(authenticatedPage)
+    await showAllChannels(authenticatedPage)
     const sidebar = authenticatedPage.locator('[data-testid="sidebar"]')
     await expect(sidebar.getByText("Q2 Marketing Plan")).toBeVisible({ timeout: 10000 })
 

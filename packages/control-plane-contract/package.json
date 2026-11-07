@@ -7,7 +7,10 @@
   "types": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./node": "./src/node.ts"
+    "./node": "./src/node.ts",
+    "./web": "./src/web.ts",
+    "./vectors/c2c.json": "./vectors/c2c.json",
+    "./vectors/router-lookup.json": "./vectors/router-lookup.json"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

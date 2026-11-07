@@ -4,9 +4,9 @@ import { randomUUID } from "node:crypto"
 import { APP_DISABLED_CODE, APP_DISABLED_MESSAGE, findRefTokens } from "@liaison/shared"
 import { HTTPException } from "hono/http-exception"
 import type { UserContext } from "~/db/rls"
-import { env } from "~/lib/env"
 import { EXTERNAL_CONTENT_NOTICE } from "~/lib/external-content"
 import { rootLogger } from "~/lib/logger"
+import { orgPublicBaseUrl } from "~/lib/org-public-url"
 import {
   type GatewayTurn,
   resolveGatewayTurn,
@@ -1007,7 +1007,9 @@ export async function handleToolCall(
           // Cite THIS to the user — it is the reference they can see and
           // search for; the uuid is for tool calls (approval_status, @ref).
           approvalHandle,
-          approvalUrl: approvalThreadId ? `${env.BASE_URL}/threads/${approvalThreadId}` : null,
+          approvalUrl: approvalThreadId
+            ? `${await orgPublicBaseUrl(ctx.orgId)}/threads/${approvalThreadId}`
+            : null,
           // What opening that link does, so the agent can tell the user before
           // they click: a browser with no Liaison session (Claude's built-in
           // one) shows the sign-in page first and comes back here after.

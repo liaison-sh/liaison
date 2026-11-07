@@ -275,9 +275,9 @@ Type `object`, optional.
 
 ## limits
 
-Type `strictObject`, optional.
+Type `orgCapsSchema`, optional.
 
-The authoritative provisioning config schema. Top level is strict. The org's caps (modules/org/caps.ts), operator only: no agent config tool takes this section. A named cap is set, `null` makes it unlimited, a cap not named is kept. A cap is a whole number of at least 1 (0 is refused).
+The authoritative provisioning config schema. Top level is strict. The org's caps (modules/org/caps.ts), operator only: no agent config tool takes this section. A named cap is set, `null` makes it unlimited, a cap not named is kept. A cap is a whole number of at least 1 (0 is refused) and at most its bound: the same schema as `organizations.caps` (one bounds table).
 
 ## liaisonTeam
 

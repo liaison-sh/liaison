@@ -656,6 +656,19 @@ export function bootstrapKernelApps(): void {
         visibleWhen: () => billingMode() === "managed",
       },
       {
+        // Workspace > Billing (managed edition, S17): plan, card, invoices,
+        // credits, top-ups; payments run in the payment frame.
+        id: "billing",
+        label: "Billing",
+        labelKey: "kernel.nav.section.billing",
+        href: "/settings/billing",
+        component: lazy(() => import("~/modules/settings/BillingSettings")),
+        group: "admin",
+        adminScope: "kernel:org:admin",
+        order: 19.5,
+        visibleWhen: () => billingMode() === "managed",
+      },
+      {
         // Workspace > Organization: details, then the data export.
         id: "org",
         label: "Organization",
@@ -1252,6 +1265,13 @@ export function bootstrapKernelApps(): void {
     entityId: id,
     label: "Settings",
     routePath: SETTINGS_CONNECTORS_PATH,
+  }))
+  // An auto top-up failure's attention row (modules/cloud/attention.ts) lands on Billing.
+  registerEntityOpener("kernel", "billing", (_api, id) => ({
+    tabType: "kernel:settings",
+    entityId: id,
+    label: "Settings",
+    routePath: "/settings/billing",
   }))
   // Attention-only entity types: rows keyed on something no component renders.
   // A row that carries `metadata.link` opens the link (AttentionRow); these cover

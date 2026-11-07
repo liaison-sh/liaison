@@ -136,6 +136,8 @@ interface ExecuteRequest {
 interface PendingBridgeCall {
   resolve: (data: unknown) => void
   reject: (msg: string, typed?: TypedBridgeFailure) => void
+  /** Frees the call's deferred when nobody will answer it. */
+  dispose: () => void
 }
 
 const pendingBridgeCalls = new Map<string, PendingBridgeCall>()
@@ -177,6 +179,15 @@ function ownRssBytes(): number | undefined {
   } catch {
     return undefined
   }
+}
+
+/** A QuickJS error dump is an object ({name, message, stack}): keep its text in the message. */
+function describeDump(err: unknown): string {
+  if (typeof err === "object" && err !== null) {
+    const { name, message } = err as { name?: unknown; message?: unknown }
+    return `${typeof name === "string" ? name : "Error"}: ${typeof message === "string" ? message : JSON.stringify(err)}`
+  }
+  return String(err)
 }
 
 /** The runtime's live heap (`memory_used_size`), or undefined when it cannot be read. */
@@ -230,9 +241,11 @@ async function handleExecute(req: ExecuteRequest): Promise<void> {
     if (used !== undefined) heapPeak = Math.max(heapPeak ?? 0, used)
   }
 
+  // Declared out here: every way out of the try disposes them. One live handle keeps its whole
+  // context, bundle included, in the runtime every execution of this worker shares.
+  const handles: QuickJSHandle[] = []
   try {
     // 1. Inject bridge proxy functions using native QuickJS promises
-    const handles: QuickJSHandle[] = []
     for (const method of req.bridgeMethods) {
       const handle = ctx.newFunction(`__bridge_${method}`, (...argHandles) => {
         if (req.measureHeap) sampleHeap()
@@ -258,6 +271,7 @@ async function handleExecute(req: ExecuteRequest): Promise<void> {
             deferred.reject(errHandle)
             errHandle.dispose()
           },
+          dispose: () => deferred.dispose(),
         })
 
         deferred.settled.then(ctx.runtime.executePendingJobs)
@@ -407,7 +421,7 @@ async function handleExecute(req: ExecuteRequest): Promise<void> {
     if (shimResult.error) {
       const err = ctx.dump(shimResult.error)
       shimResult.error.dispose()
-      throw new Error(`Context shim error: ${err}`)
+      throw new Error(`Context shim error: ${describeDump(err)}`)
     }
     shimResult.value.dispose()
 
@@ -416,7 +430,7 @@ async function handleExecute(req: ExecuteRequest): Promise<void> {
     if (bundleResult.error) {
       const err = ctx.dump(bundleResult.error)
       bundleResult.error.dispose()
-      throw new Error(`Bundle evaluation error: ${err}`)
+      throw new Error(`Bundle evaluation error: ${describeDump(err)}`)
     }
     bundleResult.value.dispose()
 
@@ -450,14 +464,19 @@ async function handleExecute(req: ExecuteRequest): Promise<void> {
 
     // Check if the result is a promise (async handler)
     const promiseState = ctx.getPromiseState(callResult.value)
+    // A settled state hands out a new handle of its own. Left undisposed it keeps the whole
+    // context alive, bundle included, in the runtime every execution of this worker shares.
+    if (!(promiseState as any).notAPromise) {
+      if (promiseState.type === "fulfilled") promiseState.value.dispose()
+      else if (promiseState.type === "rejected") promiseState.error.dispose()
+    }
     let result: unknown
     if ((promiseState as any).notAPromise) {
       // Synchronous handler — dump directly
-      result = ctx.dump(callResult.value)
       try {
+        result = ctx.dump(callResult.value)
+      } finally {
         callResult.value.dispose()
-      } catch {
-        /* ok */
       }
     } else {
       // Async handler — resolve the QuickJS promise to a native Promise.
@@ -490,19 +509,10 @@ async function handleExecute(req: ExecuteRequest): Promise<void> {
         }
         throw hostErrorFromDump(errVal)
       }
-      result = ctx.dump(resolved.value)
       try {
+        result = ctx.dump(resolved.value)
+      } finally {
         resolved.value.dispose()
-      } catch {
-        /* ok */
-      }
-    }
-
-    for (const h of handles) {
-      try {
-        h.dispose()
-      } catch {
-        /* ok */
       }
     }
 
@@ -572,14 +582,30 @@ async function handleExecute(req: ExecuteRequest): Promise<void> {
       /* ok */
     }
   } finally {
-    // Clear pending bridge calls so stale callbacks don't reference the old context
-    pendingBridgeCalls.clear()
-    // Drain pending jobs, then dispose the context (runtime is long-lived)
+    // Drain pending jobs first: one may still start a bridge call.
     try {
       rt.executePendingJobs()
     } catch {
       /* ok */
     }
+    // A call nobody answered in time (an un-awaited `ctx.logger.*`, a timeout) still holds its
+    // deferred's handles. Clear the map too, so stale callbacks don't reference the old context.
+    for (const pending of pendingBridgeCalls.values()) {
+      try {
+        pending.dispose()
+      } catch {
+        /* ok */
+      }
+    }
+    pendingBridgeCalls.clear()
+    for (const h of handles) {
+      try {
+        h.dispose()
+      } catch {
+        /* ok */
+      }
+    }
+    // The context goes; the runtime is long-lived (shared across requests).
     try {
       ctx.dispose()
     } catch {

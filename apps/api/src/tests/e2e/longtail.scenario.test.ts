@@ -955,11 +955,12 @@ describe("Long-tail per-app E2E — projects + boxtal + contacts (Module J)", ()
       expect(String(res.body.error.message)).toMatch(/scope|forbidden|contacts:export/i)
     }, 60_000)
 
-    it("J-C6: a holder of the export scope who cannot approve PROPOSES (an approval lands, no file is written)", async () => {
-      // contacts_export is gated because it materializes bulk PII. A caller who
-      // holds the export scope but not the approve scope must land a pending
-      // approval and produce NO artifact, and the envelope must say so rather
-      // than looking like a completed export.
+    it("an agent's export for a holder of the export scope PROPOSES (an approval lands, no file is written)", async () => {
+      // contacts_export is gated because it materializes bulk PII. An agent call
+      // must land a pending approval and produce NO artifact, and the envelope
+      // must say so rather than looking like a completed export. A kernel tool is
+      // decided by its own scope (approveScope kernel:contacts:export), so the
+      // person the agent acts for holds it and can decide the approval.
       const ks = kernelSchema()
       const before = (await env.db.sql.unsafe(
         `SELECT count(*)::int AS n FROM ${ks}.files WHERE org_id = $1 AND entity_type = 'contacts_export'`,
@@ -973,7 +974,7 @@ describe("Long-tail per-app E2E — projects + boxtal + contacts (Module J)", ()
       )
       expect(res.status).toBe(200)
       // The envelope is a BLOCKED one, not a completed export: no fileId, and it
-      // names the approval plus the fact that this requester cannot decide it.
+      // names the approval plus the fact that this requester can decide it.
       expect(res.body.data?.fileId).toBeUndefined()
       const blocked = res.body.data?.blocked as {
         reason?: string
@@ -981,7 +982,7 @@ describe("Long-tail per-app E2E — projects + boxtal + contacts (Module J)", ()
         requesterCanApprove?: boolean
       }
       expect(blocked?.reason).toBe("gated")
-      expect(blocked?.requesterCanApprove).toBe(false)
+      expect(blocked?.requesterCanApprove).toBe(true)
       const approvalId = blocked?.approvalRequestId
       expect(typeof approvalId).toBe("string")
       const [row] = (await env.db.sql.unsafe(

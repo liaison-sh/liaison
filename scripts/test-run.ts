@@ -367,6 +367,12 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/app-contract.test.ts",
             "src/tests/contacts.test.ts",
             "src/tests/db-import-enforcement.test.ts",
+            // Host binding on every credential path, and OAuth through a central
+            // redirect host (managed edition, org hosts): app + database.
+            "src/tests/host-binding-matrix.test.ts",
+            // Org-private custom apps (managed edition): the hostile-tenant boundary.
+            "src/tests/integration/custom-apps-tenant-boundary.test.ts",
+            "src/tests/oauth-redirect-base.test.ts",
             // Repo-wide grep: no agent-specific node templates or features.
             "src/tests/no-agent-specific-node.test.ts",
             // Every tool that hands the agent third-party text marks the turn,
@@ -400,6 +406,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/mail-send-credentials-missing.test.ts",
             "src/tests/integration/mail-encrypted-conversation-state.test.ts",
             "src/tests/integration/mail-agent-search.test.ts",
+            "src/tests/integration/mail-conversation-search.test.ts",
             "src/tests/integration/mail-backfill.test.ts",
             // The Shopify fixture provider driven through the REAL app runtime:
             // home_load, orders_search, products_search and boxtal's
@@ -646,6 +653,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/routine-tick-agents-ask.test.ts",
             "src/tests/integration/morning-brief-template.test.ts",
             "src/tests/integration/rpc-bridge.security-b1.test.ts",
+            "src/tests/integration/sandbox-bridge-savepoints.test.ts",
           ]),
     ],
     cwd: path.join(ROOT, "apps/api"),
@@ -1791,6 +1799,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/internal.test.ts",
             "src/lib/html-entities.test.ts",
             "src/manifest.test.ts",
+            "src/meta-pages.test.ts",
             "src/own-auto-watch.test.ts",
             "src/pending.test.ts",
             "src/post-back.test.ts",
@@ -1966,6 +1975,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
         : [
             "src/tests/raw-fetch-discipline.test.ts",
             "src/tests/no-stripe-imports.test.ts",
+            // Every org link built through orgPublicBaseUrl (a source scan).
+            "src/tests/no-raw-base-url.test.ts",
             // The image entrypoint: migrate-on-start flag, the `migrate`
             // one-shot, and SIGTERM reaching the exec'd server. A `bun` shim
             // on PATH, no database.
@@ -1978,7 +1989,6 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "scripts/measure-prompt-size.test.ts",
             "src/tests/imports.test.ts",
             "src/tests/control-plane-env-matrix.test.ts",
-            "src/tests/control-plane-billing-admin-half-config.test.ts",
             // P4c-T18: the thread-creation census (a pure source scan, no
             // database) and the DM row-delta invariant it stands guard
             // with (integration — POST /threads/dm must never grow the

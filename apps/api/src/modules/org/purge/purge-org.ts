@@ -20,7 +20,8 @@
 //   verify       the rows and the search delete again (a straggler that wrote
 //                after the first pass), then the residue scan: anything left
 //                fails the purge and the org row stays for the re-run
-//   org-row      `kernel.organizations`. A write that lands between the
+//   org-row      `kernel.organizations`, and the stored reply of the cloud
+//                create of its slug (modules/cloud/create-org.ts). A write that lands between the
 //                verify step and this delete is not re-checked: a kernel row
 //                holds a foreign key to the org, so it goes with the org row
 //                (ON DELETE CASCADE) or makes the delete fail (the re-run
@@ -35,13 +36,19 @@
 // head of the row delete. For an operator deletion it is "the stored row
 // carries deleting_at" (`assertOrgDeleting`), and the purge first waits until
 // every process has seen that state (`settle`).
-import { sql as drizzleSql } from "drizzle-orm"
+import { sql as drizzleSql, eq } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
+import { appsInstalled } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
+import { forgetOrgHostSlug } from "~/lib/org-host"
 import { runBeforeDisconnectForOrg } from "~/modules/apps/connections/before-disconnect"
+import { teardownOrgConnections } from "~/modules/apps/connections/revoke"
+import { validateIdentifier } from "~/modules/apps/ddl"
+import { uninstallApp } from "~/modules/apps/install-service"
 import { forgetOrgApps } from "~/modules/apps/org-apps"
 import { releaseOrgRuntimesEverywhere } from "~/modules/apps/org-runtime-release"
+import { CLOUD_CREATE_ORG_ENDPOINT } from "~/modules/cloud/outcomes"
 import {
   assertOrgDeleting,
   readOrgDeletion,
@@ -63,6 +70,7 @@ const log = rootLogger.child({ module: "org-purge" })
 export const ORG_PURGE_STEPS = [
   "triggers",
   "disconnect",
+  "custom-apps",
   "rows",
   "search",
   "objects",
@@ -123,6 +131,12 @@ export interface PurgeOrgOptions {
    * never blocks reaping.
    */
   regenerateTriggers?: boolean
+  /**
+   * Run the apps' provider-side disconnect hooks (default true). An org
+   * transfer passes false when it purges a copy it moved away (or an aborted
+   * incoming one): the provider state belongs to the copy that stays live.
+   */
+  providerHooks?: boolean
   externalDeps?: OrgExternalStateDeps
   /** Called after each step with what it did (a deletion ledger records it). */
   onStep?: (step: OrgPurgeStep, detail: Record<string, unknown>) => Promise<void> | void
@@ -168,8 +182,17 @@ export async function purgeOrg(orgId: string, opts: PurgeOrgOptions): Promise<Pu
     opts.regenerateTriggers === false ? { skipped: true } : await ensureImmutableTriggersCurrent()
   await step("triggers", triggers)
 
-  await runBeforeDisconnectForOrg(orgId)
-  await step("disconnect", {})
+  if (opts.providerHooks !== false) {
+    await runBeforeDisconnectForOrg(orgId)
+    // Stop watches and revoke grants, while the org's OAuth client still exists.
+    await teardownOrgConnections(orgId)
+  }
+  await step("disconnect", opts.providerHooks === false ? { skipped: true } : {})
+
+  // Before the rows: the org's own apps go whole (files, schema, schedulers),
+  // not just their rows.
+  const customApps = await purgeOrgCustomApps(orgId)
+  await step("custom-apps", { apps: customApps })
 
   const allTables = (tx: Parameters<typeof orgScopedTables>[0]) => orgScopedTables(tx, "all")
   Object.assign(deleted, await deleteOrgRows(reason, orgId, allTables, assertAllowed))
@@ -205,8 +228,17 @@ export async function purgeOrg(orgId: string, opts: PurgeOrgOptions): Promise<Pu
     await tx.execute(
       drizzleSql`DELETE FROM ${drizzleSql.raw(schemaRef("kernel"))}.organizations WHERE id = ${orgId}::uuid`,
     )
+    // The managed edition's stored create reply for the slug (keyed by slug,
+    // no org_id, so the row sweep above does not see it): with the org gone it
+    // would answer a later create of the slug with the deleted org's id, or
+    // refuse another owner the slug forever.
+    await tx.execute(
+      drizzleSql`DELETE FROM ${drizzleSql.raw(schemaRef("kernel"))}.cloud_request_outcomes
+                  WHERE endpoint = ${CLOUD_CREATE_ORG_ENDPOINT} AND idem_key = ${stored.slug}`,
+    )
   })
   deleted["kernel.organizations"] = 1
+  forgetOrgHostSlug(stored.slug)
   // The next gate reloads the org's state and finds it missing.
   forgetOrgApps(orgId)
   await step("org-row", {})
@@ -215,4 +247,33 @@ export async function purgeOrg(orgId: string, opts: PurgeOrgOptions): Promise<Pu
   await step("release", {})
   log.warn({ orgId, slug: stored.slug, reason, deleted }, "organization purged")
   return { orgRowDeleted: true, deleted, ...(residue ? { residue } : {}) }
+}
+
+/**
+ * Uninstall every custom app the org owns (app-org-scope.ts): its
+ * install and active-version rows, version files and stored packages, cron
+ * schedulers and in-memory registrations (uninstallApp), then its `app_<name>`
+ * schema. Idempotent; returns the names removed. No other org runs these apps,
+ * so nothing outside the org changes.
+ */
+export async function purgeOrgCustomApps(orgId: string): Promise<string[]> {
+  const rows = await withSystemDb("org-purge-custom-apps", (db) =>
+    db
+      .selectDistinct({ name: appsInstalled.name })
+      .from(appsInstalled)
+      .where(eq(appsInstalled.orgId, orgId)),
+  )
+  const names = rows.map((r) => r.name)
+  for (const name of names) {
+    await uninstallApp({ name })
+    const schema = validateIdentifier(schemaRef(`app_${name.replace(/-/g, "_")}`))
+    await withSystemDb("org-purge-custom-app-schema", (db) =>
+      db.execute(drizzleSql.raw(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)),
+    )
+  }
+  // Their bulk downloads (bulk-blob.ts custom scopes) go too.
+  const { deleteOrgCustomBulkBlobs } = await import("~/modules/apps/sandbox/bulk-blob")
+  await deleteOrgCustomBulkBlobs(orgId)
+  if (names.length > 0) log.warn({ orgId, apps: names }, "organization's custom apps removed")
+  return names
 }

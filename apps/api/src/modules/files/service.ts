@@ -8,6 +8,7 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { files } from "~/db/schema/kernel/files"
 import { schemaRef } from "~/db/schema-ref"
 import { env } from "~/lib/env"
+import { orgPublicBaseUrl } from "~/lib/org-public-url"
 import { UUID_RE } from "~/lib/uuid"
 
 const K = sql.raw(schemaRef("kernel"))
@@ -445,7 +446,7 @@ export interface AuthorizeUploadDeps {
   tokenTtlSeconds?: number
   /** Overrides the deployment's delivery decision (tests). */
   delivery?: StorageDelivery
-  /** Public base for the relay URL. Defaults to env.BASE_URL. */
+  /** Public base for the relay URL. Defaults to the org's (orgPublicBaseUrl). */
   baseUrl?: string
 }
 
@@ -693,7 +694,7 @@ async function authorizeUploadCore(
 
   const uploadMode = deliveryFor({ sealed: false }, deps.delivery)
   if (uploadMode === "relay") {
-    const base = (deps.baseUrl ?? env.BASE_URL).replace(/\/$/, "")
+    const base = (deps.baseUrl ?? (await orgPublicBaseUrl(input.orgId))).replace(/\/$/, "")
     const uploadUrl = `${base}/api/file-relay/${encodeURIComponent(fileToken)}`
     return { uploadUrl, uploadMode, fileToken, storageKey }
   }
@@ -1404,7 +1405,7 @@ export async function getDownloadUrl(
 
 export interface RelayDownloadDeps {
   rlsTx: RlsClient
-  /** Public base for the capability URL. Defaults to env.BASE_URL. */
+  /** Public base for the capability URL. Defaults to the org's (orgPublicBaseUrl). */
   baseUrl?: string
   ttlSeconds?: number
   jwtSecret?: string
@@ -1442,7 +1443,7 @@ async function mintRelayDownloadUrl(
     deps.jwtSecret,
     ttl,
   )
-  const base = (deps.baseUrl ?? env.BASE_URL).replace(/\/$/, "")
+  const base = (deps.baseUrl ?? (await orgPublicBaseUrl(row.orgId))).replace(/\/$/, "")
   return { downloadUrl: `${base}/api/file-relay-dl/${token}`, expiresInSec: ttl }
 }
 

@@ -90,9 +90,6 @@ describe("raw fetch discipline", () => {
     // Provider API-key validation pings the LLM provider's own fixed base URL
     // to verify a key the operator just entered; host is provider-controlled.
     "modules/settings/ai-keys-routes.ts",
-    // Control-plane billing-state read against the trusted control plane URL
-    // (managed-edition internal service, configured by the operator).
-    "modules/billing-state/index.ts",
     // GitHub releases version check — fixed api.github.com (or operator-set
     // mirror) on a cached schedule; not request-influenced.
     "modules/admin/version-check.ts",

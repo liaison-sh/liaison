@@ -15,9 +15,10 @@ import { mcpManagerOAuthRoutes } from "~/apps/mcp-manager/oauth-routes"
 import { mcpManagerRoutes } from "~/apps/mcp-manager/routes"
 import { projectsRoutes } from "~/apps/projects/routes"
 import { parseOriginAllowlist, resolveCorsOrigin } from "~/lib/app-origins"
-import { env, qaSeedRoutesEnabled, validateControlPlaneEnv } from "~/lib/env"
+import { env, qaSeedRoutesEnabled } from "~/lib/env"
 import { envFlag } from "~/lib/env-boolean"
 import { classifyFailure } from "~/lib/failure-severity"
+import { latencyWindowMiddleware } from "~/lib/latency-window"
 import {
   HARNESS_HEADER_SIGNATURE,
   loadHarnessEnabled,
@@ -29,6 +30,12 @@ import {
   importOptionalModule,
   QA_SEED_ROUTES_MODULE,
 } from "~/lib/optional-module"
+import {
+  boundCorsOrigin,
+  hostBindingEnabled,
+  isNonOrgHostPath,
+  requestHostBinding,
+} from "~/lib/org-host"
 import { redis } from "~/lib/redis"
 import { appRouteStateGate, kernelPrefixStateGate } from "~/middleware/app-state-gate"
 import { authMiddleware } from "~/middleware/auth"
@@ -62,7 +69,7 @@ import { bulkRoutes } from "~/modules/apps/bulk-routes"
 import { connectionRoutes } from "~/modules/apps/connections/routes"
 import { installRoutes } from "~/modules/apps/install-routes"
 import { manifestsAxesRoutes } from "~/modules/apps/manifests-axes-route"
-import { initOrgAppsInvalidation } from "~/modules/apps/org-apps"
+import { initOrgAppsInvalidation, UUID_RE } from "~/modules/apps/org-apps"
 import { appRoutes, hostApiRoutes } from "~/modules/apps/routes"
 import { registerKernelAttentionProvider } from "~/modules/apps/runtime"
 import { appSettingsRoutes } from "~/modules/apps/settings-routes"
@@ -78,11 +85,14 @@ import { oauth, oauthAdmin } from "~/modules/auth/oauth-routes"
 import { auth } from "~/modules/auth/routes"
 import { initSessionRevocation } from "~/modules/auth/session-revocation"
 import { wsTicket } from "~/modules/auth/ws-ticket-routes"
-import { createBillingAdminRoutes } from "~/modules/billing-admin"
-import { createBillingStateRoutes } from "~/modules/billing-state"
+import { billingManagedRoutes, managedBillingOnly } from "~/modules/billing-managed/routes"
+import { billingStateRoutes } from "~/modules/billing-state"
 import { brandingRoutes } from "~/modules/branding/routes"
 import { bugReports } from "~/modules/bug-reports/routes"
 import { CLIENT_HEADER, clientPolicyRoutes, logClientHeader } from "~/modules/client-policy/routes"
+import { cellHeaderMiddleware } from "~/modules/cloud/cell-header"
+import { mailSenderRoutes, managedMailSenderOnly } from "~/modules/cloud/mail-sender-routes"
+import { cloudRoutes } from "~/modules/cloud/routes"
 import { contacts } from "~/modules/contacts/routes"
 import { trustedSendersRoutes } from "~/modules/contacts/trusted-senders-routes"
 import { databaseRoutes } from "~/modules/database/routes"
@@ -141,6 +151,8 @@ import { qaNotificationRoutes } from "~/modules/notifications/qa-routes"
 import { notificationSettingsRoutes } from "~/modules/notifications/routes"
 import { orgAppRoutes } from "~/modules/org/org-app-routes"
 import { org } from "~/modules/org/routes"
+import { assertOrgAcceptsWrites, isMutatingMethod } from "~/modules/org/transfer-state/gate"
+import { beginOrgActivity, initOrgTransferSync } from "~/modules/org/transfer-state/state"
 import { dimensionCatalogRoutes } from "~/modules/permissions/dimension-catalog-routes"
 import { adminRoles } from "~/modules/permissions/roles-routes"
 import { scopeCatalogRoutes } from "~/modules/permissions/scope-catalog-routes"
@@ -152,6 +164,7 @@ import { search } from "~/modules/search/routes"
 import { secretRequestRoutes } from "~/modules/secret-requests/routes"
 import { aiKeysRoutes } from "~/modules/settings/ai-keys-routes"
 import { aiModelsRoutes } from "~/modules/settings/ai-models-routes"
+import { refuseByokInManaged } from "~/modules/settings/byok"
 import { integrationsRoutes } from "~/modules/settings/integrations-routes"
 import { sharingRoutes } from "~/modules/sharing/routes"
 import { slotsRoutes } from "~/modules/slots/routes"
@@ -234,6 +247,12 @@ registerKernelAttentionProvider({
   handler: "computeMailboxEnrollmentAttentionItems",
   bundlePath: new URL("./modules/mailbox-keys/attention.ts", import.meta.url).pathname,
 })
+registerKernelAttentionProvider({
+  appName: "kernel.cloud_billing",
+  handler: "computeCloudBillingAttentionItems",
+  scope: "kernel:org:admin",
+  bundlePath: new URL("./modules/cloud/attention.ts", import.meta.url).pathname,
+})
 
 export const app = new Hono<AppEnv>()
 
@@ -255,6 +274,12 @@ void initSessionRevocation().catch((err) => {
 // one node reloads the entry on every peer, with the TTL as the backstop.
 void initOrgAppsInvalidation().catch((err) => {
   rootLogger.warn({ err }, "org-apps invalidation subscribe failed")
+})
+// The orgs moving to another instance (modules/org/transfer-state/): every
+// process refreshes its view each second and at once on a change broadcast,
+// and confirms what it applies.
+void initOrgTransferSync().catch((err) => {
+  rootLogger.warn({ err }, "org transfer state sync start failed; gates read on demand")
 })
 // App versions another server process activated (install, upgrade, rollback).
 void initAppActivationSync().catch((err) => {
@@ -323,6 +348,10 @@ app.use(
   }),
 )
 app.use("*", securityHeaders())
+// Managed edition: every response names the instance that served it (an org's
+// move between two instances is measured with it).
+app.use("*", cellHeaderMiddleware)
+app.use("*", latencyWindowMiddleware())
 // X-Liaison-Client (modules/client-policy): debug log only, never access.
 app.use("/api/*", logClientHeader)
 
@@ -340,12 +369,29 @@ const corsAllowlist = [
   ...parseOriginAllowlist(env.LIAISON_APP_ORIGINS),
 ]
 
+// With org hosts (LIAISON_ORG_HOST_TEMPLATE), CORS allows exactly the request's
+// own org origin plus the shells' fixed origins: never another tenant's host,
+// never a pattern (lib/org-host.ts). The template is read per request.
+const appShellOrigins = parseOriginAllowlist(env.LIAISON_APP_ORIGINS)
+
+// Host binding: a host that names no org (the cell's own names, a tunnel host,
+// loopback, an IP) serves only the control API, health, diagnostics and inbound
+// webhooks. A no-op without org hosts.
+app.use("*", async (c, next) => {
+  if (requestHostBinding(c).kind === "non-org" && !isNonOrgHostPath(c.req.path)) {
+    return c.json({ error: { message: "Not found", code: "HOST_NOT_ORG" } }, 404)
+  }
+  await next()
+})
+
 app.use(
   cors({
-    origin:
-      env.ALLOWED_ORIGINS === "*"
-        ? (origin) => origin // Reflect any origin in dev/test (credentials-compatible wildcard)
-        : (origin) => resolveCorsOrigin(origin ?? "", corsAllowlist),
+    origin: (origin, c) => {
+      if (hostBindingEnabled()) return boundCorsOrigin(c, origin ?? "", appShellOrigins)
+      return env.ALLOWED_ORIGINS === "*"
+        ? origin // Reflect any origin in dev/test (credentials-compatible wildcard)
+        : resolveCorsOrigin(origin ?? "", corsAllowlist)
+    },
     credentials: true,
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     // X-Liaison-Refresh is how a wrapped shell presents the refresh token it
@@ -497,6 +543,9 @@ const ipLimiter = rateLimiter(redis)
 const ipLimiterFailOpen = rateLimiter(redis, { failOpen: true })
 app.use("/api/*", async (c, next) => {
   if (env.NODE_ENV === "test" && !envFlag("RATE_LIMIT_FORCE_ENABLED")) return next()
+  // The signed Control→cell API: one caller for every tenant, budgeted after
+  // its signature is verified (modules/cloud/verify.ts), never per IP.
+  if (c.req.path.startsWith("/api/cloud/")) return next()
   if (await isHarnessSignedRequest(c)) return next()
   return isCredentialRecoveryPath(c.req.path) ? ipLimiterFailOpen(c, next) : ipLimiter(c, next)
 })
@@ -607,27 +656,17 @@ if (envFlag("ENABLE_LOAD_TEST_ENDPOINT")) {
 // also bypasses /healthz as defense-in-depth.
 app.use("*", maintenanceMiddleware())
 
-// Control-plane billing admin — mounted BEFORE the user JWT chain so the
-// control plane talks to the instance via its dedicated bearer + 404s the
-// entire group in self-hosted mode (both env vars unset) or half-configured
-// dev/test (one env var set; production would have failed startup already).
-// Only pass the bearer secret when the full managed pair is configured.
-const controlPlaneMode = (() => {
-  try {
-    return validateControlPlaneEnv(
-      {
-        NODE_ENV: env.NODE_ENV,
-        CONTROL_PLANE_URL: env.CONTROL_PLANE_URL,
-        CONTROL_PLANE_API_KEY: env.CONTROL_PLANE_API_KEY,
-      },
-      { warn: () => {} },
-    ).mode
-  } catch {
-    return "self_hosted" as const
-  }
-})()
-const billingAdminKey = controlPlaneMode === "managed" ? env.CONTROL_PLANE_API_KEY : undefined
-app.route("/api/admin/billing", createBillingAdminRoutes(billingAdminKey))
+// The signed Control→cell API (managed edition; 404 on self-hosted, checked
+// per request). Before the user JWT chain: its only credential is Control's
+// signature (modules/cloud/verify.ts).
+app.route("/api/cloud", cloudRoutes)
+
+// The former bearer credit-mint API: retired (credits reach an org only
+// through the signed /api/cloud grants). Its paths keep answering 404 in every
+// edition, before the user JWT chain, so they never turn into a 401.
+for (const path of ["/api/admin/billing", "/api/admin/billing/*"]) {
+  app.all(path, (c) => c.json({ error: { message: "not found", code: "not_found" } }, 404))
+}
 
 // Post-auth per-user limiter (RATE_LIMIT_PER_USER). Composed ONTO the auth
 // middleware rather than registered as its own `/api/*` middleware because a
@@ -1075,9 +1114,12 @@ app.get("/api/connections/callback", async (c) => {
         "~/modules/apps/connections/connect-links"
       )
       await recordConnectLinkRefusal(started.connectLink, refusal)
-      return connectLinkRefusedUrl(refusal)
+      return connectLinkRefusedUrl(started.orgId, refusal)
     }
-    if (!card) return getFrontendRedirectUrl(settingsPath, params)
+    // A card comes only with the state that started the flow, so `started` is set.
+    if (!card || !started) {
+      return getFrontendRedirectUrl(started?.orgId ?? null, settingsPath, params)
+    }
     // An admin-policy block (a Workspace that has not trusted the client) is told
     // apart from a person's refusal by the provider's description.
     const reason = connectFailureReason(
@@ -1088,7 +1130,7 @@ app.get("/api/connections/callback", async (c) => {
       const { announceConnectFailure } = await import("~/modules/secret-requests/service")
       await announceConnectFailure(started.orgId, card.requestId, reason)
     }
-    return connectCardReturnUrl(card, { error: reason })
+    return connectCardReturnUrl(started.orgId, card, { error: reason })
   }
   if (error) {
     // A flow a desktop or mobile app started is told in that app, through its
@@ -1109,7 +1151,13 @@ app.get("/api/connections/callback", async (c) => {
   // started for (completeOAuthGrant). Other providers' extras are ignored.
   const callbackParams: Record<string, string> = c.req.query()
   try {
-    const outcome = await receiveOAuthCallback(code, state, callbackParams, c.req.header("cookie"))
+    const outcome = await receiveOAuthCallback(
+      code,
+      state,
+      callbackParams,
+      c.req.header("cookie"),
+      requestHostBinding(c),
+    )
     // A shell's flow is parked, not completed: the handoff page sends the
     // browser back to the app, which redeems it (shell-connect.ts).
     if (outcome.kind === "shell-handoff") {
@@ -1330,16 +1378,24 @@ app.use("/api/credits", authMw, orgLimiter)
 app.use("/api/credits/*", authMw, orgLimiter)
 app.route("/api/credits", creditRoutes)
 
-// Billing state proxy (authenticated; reflects current control-plane env at request time)
+// Billing state (authenticated; the edition is read per request)
 app.use("/api/billing/state", authMw, orgLimiter)
 app.use("/api/billing/state/*", authMw, orgLimiter)
-app.route(
-  "/api/billing/state",
-  createBillingStateRoutes({
-    controlPlaneUrl: env.CONTROL_PLANE_URL,
-    controlPlaneApiKey: env.CONTROL_PLANE_API_KEY,
-  }),
-)
+app.route("/api/billing/state", billingStateRoutes)
+
+// The managed Billing page (S17): 404 in any other edition (read per request),
+// then org admins only; every route forwards signed to the control plane.
+app.use("/api/billing/managed/*", managedBillingOnly)
+app.use("/api/billing/managed/*", authMw, orgLimiter)
+app.use("/api/billing/managed/*", requireScope("kernel:org:admin"))
+app.route("/api/billing/managed", billingManagedRoutes)
+
+// The org's own email sender domain (S29): managed only, org admins only;
+// every route forwards signed to the control plane.
+app.use("/api/mail-sender/*", managedMailSenderOnly)
+app.use("/api/mail-sender/*", authMw, orgLimiter)
+app.use("/api/mail-sender/*", requireScope("kernel:org:admin"))
+app.route("/api/mail-sender", mailSenderRoutes)
 
 // Thread routes (authenticated, scope checked per-route in threads.ts)
 app.use("/api/threads", authMw, orgLimiter)
@@ -1420,6 +1476,8 @@ app.use("/api/settings/ai/keys", authMw, orgLimiter)
 app.use("/api/settings/ai/keys/*", authMw, orgLimiter)
 app.use("/api/settings/ai/keys", requireScope("kernel:org:admin"))
 app.use("/api/settings/ai/keys/*", requireScope("kernel:org:admin"))
+app.use("/api/settings/ai/keys", refuseByokInManaged)
+app.use("/api/settings/ai/keys/*", refuseByokInManaged)
 app.route("/api/settings/ai/keys", aiKeysRoutes)
 
 // Settings AI models (admin-scoped: enablement, Auto, OpenRouter, own servers,
@@ -1436,6 +1494,8 @@ for (const path of [
   app.use(path, authMw, orgLimiter)
   app.use(path, requireScope("kernel:org:admin"))
 }
+app.use("/api/settings/ai/servers", refuseByokInManaged)
+app.use("/api/settings/ai/servers/*", refuseByokInManaged)
 app.route("/api/settings/ai", aiModelsRoutes)
 
 // Settings Integrations (admin-scoped shared integration config)
@@ -1465,8 +1525,20 @@ if (env.NODE_ENV !== "test") {
 // An inbound webhook may be the first touch of an org this process never
 // registered: set it up before the route looks up the org's handlers (S3).
 app.use("/webhooks/:orgId/*", async (c, next) => {
-  await setUpOrgForInboundWebhook(c.req.param("orgId"))
-  return next()
+  const orgId = c.req.param("orgId")
+  // An org moving to another instance (modules/org/transfer-state/): a write
+  // is counted first (a freeze landing meanwhile sees it), then gated: 503
+  // `org_moving` while frozen, incoming or moved. One gate in front of both
+  // routers (the public ticket routes included); draining orgs still take it.
+  const end =
+    UUID_RE.test(orgId) && isMutatingMethod(c.req.method) ? beginOrgActivity(orgId, "writes") : null
+  try {
+    if (UUID_RE.test(orgId)) await assertOrgAcceptsWrites(orgId)
+    await setUpOrgForInboundWebhook(orgId)
+    return await next()
+  } finally {
+    end?.()
+  }
 })
 // Tickets public ticket-create endpoint must mount before the generic webhook route
 // because it uses synchronous API-style envelopes that the manifest runtime does not provide.

@@ -27,6 +27,7 @@ type Credential =
   | "flag-gated"
   | "mcp-token"
   | "webhook-verifier"
+  | "control-signature"
 
 interface PublicRoute {
   credential: Credential
@@ -194,6 +195,20 @@ const PUBLIC_ROUTES: Record<string, PublicRoute> = {
     credential: "webhook-verifier",
     reason: "per-app verifier",
   },
+  // The server's own callbacks (managed edition; 404 on any other server).
+  "POST /webhooks/_cell/gmail-push": {
+    credential: "webhook-verifier",
+    reason:
+      "managed edition only; Pub/Sub OIDC token checked against the push audience and account",
+  },
+  "POST /webhooks/_cell/meta": {
+    credential: "webhook-verifier",
+    reason: "managed edition only; x-hub-signature-256 under the instance Meta app secret",
+  },
+  "GET /webhooks/_cell/meta": {
+    credential: "webhook-verifier",
+    reason: "managed edition only; hub.challenge verify token derived from the Meta app secret",
+  },
   "GET /webhooks/:orgId/:appName/:endpointName": {
     credential: "webhook-verifier",
     reason: "hub.challenge verify token",
@@ -238,17 +253,93 @@ const PUBLIC_ROUTES: Record<string, PublicRoute> = {
     credential: "flag-gated",
     reason: "LIAISON_QA_ROUTES, then session",
   },
-  "POST /api/admin/billing/credits": {
-    credential: "own-bearer",
-    reason: "control-plane key, 404 self-hosted",
+  "POST /api/cloud/orgs": {
+    credential: "control-signature",
+    reason: "managed edition only; signed by the control plane (modules/cloud/verify.ts)",
   },
-  "POST /api/admin/billing/credits/reset": {
-    credential: "own-bearer",
-    reason: "control-plane key, 404 self-hosted",
+  "POST /api/cloud/orgs/:id/handoff": {
+    credential: "control-signature",
+    reason: "managed edition only; signed by the control plane (modules/cloud/verify.ts)",
   },
-  "PATCH /api/admin/billing/org/:orgId/tier": {
-    credential: "own-bearer",
-    reason: "control-plane key, 404 self-hosted",
+  "POST /api/cloud/orgs/:id/billing": {
+    credential: "control-signature",
+    reason: "managed edition only; signed by the control plane (modules/cloud/verify.ts)",
+  },
+  "POST /api/cloud/orgs/:id/credits": {
+    credential: "control-signature",
+    reason: "managed edition only; signed by the control plane (modules/cloud/verify.ts)",
+  },
+  "PUT /api/cloud/settings/credit-rate": {
+    credential: "control-signature",
+    reason: "managed edition only; signed by the control plane (modules/cloud/verify.ts)",
+  },
+  "POST /api/cloud/lookup": {
+    credential: "control-signature",
+    reason: "managed edition only; signed by the control plane (modules/cloud/verify.ts)",
+  },
+  "DELETE /api/cloud/orgs/:id": {
+    credential: "control-signature",
+    reason: "managed edition only; signed by the control plane (modules/cloud/verify.ts)",
+  },
+  "PUT /api/cloud/orgs/:id/mail-sender": {
+    credential: "control-signature",
+    reason: "managed edition only; signed by the control plane (modules/cloud/verify.ts)",
+  },
+  "PUT /api/cloud/orgs/:id/custom-apps/:name/state": {
+    credential: "control-signature",
+    reason: "managed edition only; signed by the control plane (modules/cloud/verify.ts)",
+  },
+  "GET /api/billing/managed/summary": {
+    credential: "flag-gated",
+    reason: "managed edition only, then session + kernel:org:admin (app.ts)",
+  },
+  "GET /api/billing/managed/invoices": {
+    credential: "flag-gated",
+    reason: "managed edition only, then session + kernel:org:admin (app.ts)",
+  },
+  "GET /api/billing/managed/invoices/:id/pdf": {
+    credential: "flag-gated",
+    reason: "managed edition only, then session + kernel:org:admin (app.ts)",
+  },
+  "POST /api/billing/managed/cancel": {
+    credential: "flag-gated",
+    reason: "managed edition only, then session + kernel:org:admin (app.ts)",
+  },
+  "POST /api/billing/managed/change-plan": {
+    credential: "flag-gated",
+    reason: "managed edition only, then session + kernel:org:admin (app.ts)",
+  },
+  "POST /api/billing/managed/frame-session": {
+    credential: "flag-gated",
+    reason: "managed edition only, then session + kernel:org:admin (app.ts)",
+  },
+  "POST /api/billing/managed/resume": {
+    credential: "flag-gated",
+    reason: "managed edition only, then session + kernel:org:admin (app.ts)",
+  },
+  "POST /api/billing/managed/topup": {
+    credential: "flag-gated",
+    reason: "managed edition only, then session + kernel:org:admin (app.ts)",
+  },
+  "PUT /api/billing/managed/auto-topup": {
+    credential: "flag-gated",
+    reason: "managed edition only, then session + kernel:org:admin (app.ts)",
+  },
+  "GET /api/mail-sender/status": {
+    credential: "flag-gated",
+    reason: "managed edition only, then session + kernel:org:admin (app.ts)",
+  },
+  "POST /api/mail-sender/domain": {
+    credential: "flag-gated",
+    reason: "managed edition only, then session + kernel:org:admin (app.ts)",
+  },
+  "POST /api/mail-sender/verify": {
+    credential: "flag-gated",
+    reason: "managed edition only, then session + kernel:org:admin (app.ts)",
+  },
+  "DELETE /api/mail-sender/domain": {
+    credential: "flag-gated",
+    reason: "managed edition only, then session + kernel:org:admin (app.ts)",
   },
 }
 

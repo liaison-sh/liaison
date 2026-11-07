@@ -9,6 +9,7 @@ import { withSystemDb } from "~/db/privileged"
 import { mcpConnections, mcpOauthClients } from "~/db/schema/kernel"
 import { env } from "~/lib/env"
 import { escapeHtml } from "~/lib/html-page"
+import { requestPublicBaseUrl } from "~/lib/org-public-url"
 import { redis } from "~/lib/redis"
 import { getClientIp } from "~/lib/request-context"
 import { zValidator } from "~/lib/validate"
@@ -33,24 +34,25 @@ export const mcpOAuth = new Hono<AppEnv>()
 // `.well-known` lives under its own instance so it can mount at the root.
 export const mcpOAuthWellKnown = new Hono<AppEnv>()
 
-function base() {
-  return env.BASE_URL
+/** The base of every advertised URL: the org host the client came to (lib/org-public-url.ts). */
+function base(c: Context) {
+  return requestPublicBaseUrl(c)
 }
 
 mcpOAuthWellKnown.get("/oauth-protected-resource", (c) =>
   c.json({
-    resource: base(),
-    authorization_servers: [base()],
+    resource: base(c),
+    authorization_servers: [base(c)],
   }),
 )
 
 mcpOAuthWellKnown.get("/oauth-authorization-server", (c) =>
   c.json({
-    issuer: base(),
-    authorization_endpoint: `${base()}/mcp/oauth/authorize`,
-    token_endpoint: `${base()}/mcp/oauth/token`,
-    registration_endpoint: `${base()}/mcp/oauth/register`,
-    device_authorization_endpoint: `${base()}/mcp/device/initiate`,
+    issuer: base(c),
+    authorization_endpoint: `${base(c)}/mcp/oauth/authorize`,
+    token_endpoint: `${base(c)}/mcp/oauth/token`,
+    registration_endpoint: `${base(c)}/mcp/oauth/register`,
+    device_authorization_endpoint: `${base(c)}/mcp/device/initiate`,
     grant_types_supported: [
       "authorization_code",
       "refresh_token",
@@ -65,7 +67,7 @@ mcpOAuthWellKnown.get("/oauth-authorization-server", (c) =>
 mcpOAuthWellKnown.get("/mcp", (c) =>
   c.json({
     transport: "streamable-http",
-    endpoint: `${base()}/mcp`,
+    endpoint: `${base(c)}/mcp`,
     catalog_version: 1,
     auth_methods: ["oauth2", "device_code"],
   }),

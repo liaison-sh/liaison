@@ -145,7 +145,7 @@ Search, read and import Google Drive files, and upload new reports.
 
 ### Connection
 
-Section `connection`, scope `org`, edited with `google-drive:accounts:admin`.
+Section `connection`, scope `user`.
 
 | Key | Label | Type |
 | --- | --- | --- |

@@ -42,14 +42,21 @@ export const VoiceDictationSection: Component<{
   }
   const [saving, setSaving] = createSignal(false)
 
-  const perMinute = (usd: number) =>
-    t("kernel.aiModels.voicePerMinute", {
-      price: new Intl.NumberFormat(currentLocale(), {
-        style: "currency",
-        currency: "USD",
-        maximumFractionDigits: 4,
-      }).format(usd),
-    })
+  // Self-hosted: the list price in USD; a managed cell serves credits instead (S18).
+  const perMinute = (m: { pricePerMinuteUsd?: number; creditsPerMinute?: number }) =>
+    typeof m.creditsPerMinute === "number"
+      ? t("kernel.aiModels.voicePerMinuteCredits", {
+          amount: new Intl.NumberFormat(currentLocale(), { maximumFractionDigits: 4 }).format(
+            m.creditsPerMinute,
+          ),
+        })
+      : t("kernel.aiModels.voicePerMinute", {
+          price: new Intl.NumberFormat(currentLocale(), {
+            style: "currency",
+            currency: "USD",
+            maximumFractionDigits: 4,
+          }).format(m.pricePerMinuteUsd ?? 0),
+        })
 
   async function choose(key: string) {
     const s = current()
@@ -121,7 +128,7 @@ export const VoiceDictationSection: Component<{
                       </span>
                     </Show>
                     <span class="shrink-0 tabular-nums text-[12px] text-text-tertiary">
-                      {perMinute(m.pricePerMinuteUsd)}
+                      {perMinute(m)}
                     </span>
                   </label>
                 )}

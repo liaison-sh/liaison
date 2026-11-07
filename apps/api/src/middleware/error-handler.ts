@@ -40,6 +40,12 @@ function backpressureCause(err: unknown): QueueBackpressureError | null {
 }
 
 export function errorHandler(err: Error, c: Context) {
+  // A refusal that says when to come back (a rate limit, a tenant's sandbox
+  // share) carries `retryAfterSeconds`: the client gets it as Retry-After.
+  const retryAfter = (err as { retryAfterSeconds?: unknown }).retryAfterSeconds
+  if (typeof retryAfter === "number" && Number.isFinite(retryAfter) && retryAfter > 0) {
+    c.header("Retry-After", String(Math.ceil(retryAfter)))
+  }
   // The job queues refused new work (Redis memory or a queue backlog past its
   // bound, infra/jobs/backpressure.ts). This is overload, not a bug: answer
   // 503 with Retry-After so the client retries, never a 500. Writes a handler
@@ -75,7 +81,13 @@ export function errorHandler(err: Error, c: Context) {
     // client can tell it apart from any other answer with the same status.
     const own = "code" in err && typeof err.code === "string" ? err.code : undefined
     const code = own ?? STATUS_CODES[err.status]
-    return c.json({ error: { message: err.message, ...(code && { code }) } }, err.status)
+    // A subclass may add fields of its own to the error body (`errorFields`),
+    // e.g. the suspended org's `accessUntil` and `contact`.
+    const fields =
+      "errorFields" in err && typeof err.errorFields === "object" && err.errorFields !== null
+        ? (err.errorFields as Record<string, unknown>)
+        : {}
+    return c.json({ error: { ...(code && { code }), ...fields, message: err.message } }, err.status)
   }
 
   const typedErr = err as Error & { status?: number; code?: string; details?: unknown }

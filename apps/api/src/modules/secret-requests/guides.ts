@@ -21,11 +21,12 @@
 // ever goes in a guide: it is shown to everyone who can see the conversation.
 
 import type { GoogleSetupValues, ShopifyDashboardValues } from "@liaison/shared"
-import { env } from "~/lib/env"
+import { oauthRedirectBaseUrl, orgPublicBaseUrl } from "~/lib/org-public-url"
 import { connectionConfigRegistry } from "~/modules/apps/app-registries"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import {
   connectionSetupExtraSteps,
+  isShopifyAuthorizeUrl,
   setupStepMarkdown,
 } from "~/modules/connection-guides/connection-setup"
 import { computeGoogleSetupValues, isGoogleConnection } from "~/modules/connection-guides/google"
@@ -41,7 +42,7 @@ export type SecretRequestGuide =
 
 /** Whether a connection signs in at a Shopify store (its authorize URL is per store). */
 function isShopifyConnection(app: string, authorizationUrl: string | undefined): boolean {
-  return app === "shopify" || (authorizationUrl ?? "").includes(".myshopify.com")
+  return app === "shopify" || isShopifyAuthorizeUrl(authorizationUrl)
 }
 
 /** The steps for this card, or null when it shows none. */
@@ -69,8 +70,9 @@ export async function clientCardGuide(
         // The scopes the app's configuration must list: a protected scope the org
         // opted in to is granted only when the released configuration names it.
         ...shopifyAppValues(
-          env.BASE_URL,
+          await orgPublicBaseUrl(orgId),
           config,
+          oauthRedirectBaseUrl(),
           await shopifyOptedInProtectedScopes(orgId, config),
         ),
       },
@@ -78,7 +80,7 @@ export async function clientCardGuide(
   }
   // The manifest's steps, then the values the code fixes (redirect URI,
   // scopes, webhook URLs): the same lines `liaison guide <app>/<connection>` prints.
-  const setup = appConnectionSetup(orgId, target.app, target.connection)
+  const setup = await appConnectionSetup(orgId, target.app, target.connection)
   if (!setup) return null
   const steps = [...setup.steps, ...connectionSetupExtraSteps(setup, "card")].map(setupStepMarkdown)
   if (steps.length === 0 && !setup.summary) return null

@@ -11,7 +11,7 @@ import crypto from "node:crypto"
 import { stepCountIs, streamText, tool } from "ai"
 import { z } from "zod"
 import { redis } from "~/lib/redis"
-import { convertToCoreMessages } from "~/modules/agent/context/context"
+import { convertToCoreMessages, RUNTIME_TAIL_OPEN } from "~/modules/agent/context/context"
 import {
   clearScriptedTurns,
   createScriptedModel,
@@ -249,6 +249,29 @@ describe("scripted model provider", () => {
     const text = parts.filter((p) => p.type === "text-delta").map((p) => p.delta)
     expect(text).toEqual(["third step"])
     expect(parts.some((p) => p.type === "tool-call")).toBe(false)
+  })
+
+  it("a follow-up sent while the first turn still answers is a turn of its own; the tail moving keeps a turn's key", () => {
+    const text = (t: string) => ({ role: "user", content: [{ type: "text", text: t }] })
+    const tail = text(`${RUNTIME_TAIL_OPEN}">now</runtime-context>`)
+    const step = {
+      role: "assistant",
+      content: [
+        { type: "tool-call", toolCallId: `${SCRIPTED_CALL_PREFIX}1-0`, toolName: "x", input: "{}" },
+      ],
+    }
+    const result = { role: "tool", content: [] }
+    const firstCall = scriptedStepPosition({ prompt: [text("research it"), tail, text("a note")] })
+    const laterCall = scriptedStepPosition({
+      prompt: [text("research it"), step, result, tail, text("a note")],
+    })
+    expect(laterCall.turn).toBe(firstCall.turn)
+    expect(laterCall.stepsSoFar).toBe(1)
+    const followUp = scriptedStepPosition({
+      prompt: [text("research it"), text("now a task"), tail],
+    })
+    expect(followUp.turn).not.toBe(firstCall.turn)
+    expect(followUp.stepsSoFar).toBe(0)
   })
 
   it("an earlier turn replayed from the thread history is not counted as a step of the next turn", () => {

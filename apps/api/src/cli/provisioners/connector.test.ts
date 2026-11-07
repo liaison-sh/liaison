@@ -275,6 +275,52 @@ describe("generic connector (Task 11)", () => {
     expect(creds.token).toBe("glpat-NEW")
   })
 
+  // No explicit identifier and no manifest identifierVar: the account is keyed
+  // the way the settings form keys it (an `email`/`identifier` field, else the
+  // org for an org-owned connection), so config and UI meet on one account.
+  test("no identifier and no identifierVar: an org connection is keyed on the org; re-run unchanged", async () => {
+    const { ctx, orgId } = await freshOrgWithAdmin()
+    const group = `grp-${crypto.randomUUID().slice(0, 8)}`
+    const spec = {
+      name: "gitlab",
+      ownerType: "org" as const,
+      credentials: { token: "glpat-noid-1", group },
+    }
+    const r1 = await provisionConnection(ctx, "gitlab", spec)
+    expect(r1.connected).toBe(true)
+    expect(r1.identifier).toBe(orgId)
+    expect(await countActive(orgId, "gitlab", "gitlab", orgId)).toBe(1)
+    const r2 = await provisionConnection(ctx, "gitlab", spec)
+    expect(r2.unchanged ?? []).toContain("apps.gitlab.connection")
+    expect(await countActive(orgId, "gitlab", "gitlab", orgId)).toBe(1)
+    // The read-only plan resolves the same account.
+    expect(await planConnection(ctx, orgId, "gitlab", spec)).toEqual([
+      "app 'gitlab' connection 'gitlab' unchanged",
+    ])
+  })
+
+  // A multiInstance connection is one account per admin-chosen slug: there is
+  // no sensible default, so the error names the missing field.
+  test("multiInstance connection without identifier → ConfigError naming 'identifier', no row", async () => {
+    const { ctx, orgId } = await freshOrgWithAdmin()
+    const key = [orgId, "gitlab", "gitlab"] as const
+    const decl = connectionConfigRegistry.get([...key])
+    expect(decl).toBeDefined()
+    try {
+      connectionConfigRegistry.set([...key], { ...decl!, multiInstance: true })
+      const err = await provisionConnection(ctx, "gitlab", {
+        name: "gitlab",
+        ownerType: "org" as const,
+        credentials: { token: "glpat-mi", group: "g" },
+      }).catch((e) => e)
+      expect(err).toBeInstanceOf(ConfigError)
+      expect(String(err.message)).toContain("'identifier'")
+      expect(await countActive(orgId, "gitlab", "gitlab", orgId)).toBe(0)
+    } finally {
+      connectionConfigRegistry.set([...key], decl!)
+    }
+  })
+
   // A manifest that later declares an identifierVar (ads/google-config: the
   // customer id) must not fork an existing account: a config that names its
   // identifier explicitly keeps updating the account stored under it.

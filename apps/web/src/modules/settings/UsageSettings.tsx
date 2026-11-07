@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
-import { MODEL_PRICING_SEED, TIER_ALLOWANCE } from "@liaison/shared"
+import { MODEL_PRICING_SEED } from "@liaison/shared"
 import { A } from "@solidjs/router"
 import {
   type Component,
@@ -18,26 +18,26 @@ import {
 } from "solid-js"
 import { hasScope } from "~/modules/auth/auth-store"
 import { currentLocale, tNow, useI18n } from "~/modules/i18n/i18n-context"
-import {
-  createBillingState,
-  isManagedAvailable,
-  isManagedUnavailable,
-} from "~/modules/settings/BillingState"
+import { createBillingState, isManagedUnavailable } from "~/modules/settings/BillingState"
 import { creditVersion } from "~/modules/settings/credit-store"
+import { formatCreditAmount } from "~/modules/settings/credits-format"
 import { usageAmountDisplay } from "~/modules/settings/usage-amount"
 import { useApi } from "~/modules/shell/ApiContext"
 import { addToast } from "~/modules/shell/toast-store"
 import { Button } from "~/ui/Button"
-import { Dialog } from "~/ui/Dialog"
 import { Skeleton } from "~/ui/Skeleton"
 
+/** A managed cell's balance (S18): credits and the period's use, never money. */
 interface BalanceData {
-  included: string
-  purchased: string
-  currency: string
-  tier: string
-  includedAllowance: string
-  resetDate: string | null
+  mode: "managed"
+  credits: { included: string; purchased: string; total: string }
+  period: {
+    start: string | null
+    end: string | null
+    availableThisPeriod: string
+    usedThisPeriod: string
+    usedPercent: number
+  }
 }
 
 interface Transaction {
@@ -45,8 +45,9 @@ interface Transaction {
   type: string
   amount: string
   model: string | null
-  inputTokens: number | null
-  outputTokens: number | null
+  /** Self-hosted only: a managed cell serves no token counts (S18). */
+  inputTokens?: number | null
+  outputTokens?: number | null
   userId: string | null
   userName: string | null
   description: string | null
@@ -69,13 +70,6 @@ interface OrgUser {
   id: string
   name: string
   email: string
-}
-
-const TIER_LABELS: Record<string, string> = {
-  starter: "Starter",
-  team: "Team",
-  business: "Business",
-  enterprise: "Enterprise",
 }
 
 const TYPE_BADGES: Record<string, { label: string; class: string }> = {
@@ -148,39 +142,6 @@ function providerForModel(modelId: string): string | undefined {
   return best?.provider
 }
 
-const PLAN_TIERS = [
-  {
-    id: "starter",
-    name: "Starter",
-    allowance: TIER_ALLOWANCE.starter,
-    features: ["3 users", "Basic AI models", "Community support"],
-  },
-  {
-    id: "team",
-    name: "Team",
-    allowance: TIER_ALLOWANCE.team,
-    features: ["10 users", "All AI models", "Priority support"],
-  },
-  {
-    id: "business",
-    name: "Business",
-    allowance: TIER_ALLOWANCE.business,
-    features: ["Unlimited users", "All AI models", "Dedicated support", "SSO & audit logs"],
-  },
-  {
-    id: "enterprise",
-    name: "Enterprise",
-    allowance: null,
-    features: [
-      "Unlimited users",
-      "All AI models",
-      "24/7 support",
-      "SSO & audit logs",
-      "Custom SLA",
-    ],
-  },
-]
-
 const UsageSettings: Component = () => {
   const api = useApi()
   const { t } = useI18n()
@@ -201,7 +162,13 @@ const UsageSettings: Component = () => {
     async () => api.get<BalanceData>("/credits/balance"),
   )
 
-  const currency = () => balance()?.currency ?? "EUR"
+  // Self-hosted shows the real cost in EUR (S19); a managed cell shows credits (S18).
+  const amount = (value: string | number) =>
+    isManaged()
+      ? t("kernel.usage.creditsAmount", { amount: formatCreditAmount(value) })
+      : fmt(String(value), "EUR")
+  const chartAmount = (value: number, maxFractionDigits: number) =>
+    isManaged() ? formatCreditAmount(value) : chartMoney(value, "EUR", maxFractionDigits)
 
   // ─── Org members (admin-only, for user filter) ───
   const [orgUsers] = createResource(
@@ -211,9 +178,6 @@ const UsageSettings: Component = () => {
       return api.get<OrgUser[]>("/admin/users")
     },
   )
-
-  // ─── Plan Dialog ───
-  const [planDialogOpen, setPlanDialogOpen] = createSignal(false)
 
   // ─── Usage Chart ───
   const [chartPeriod, setChartPeriod] = createSignal<"7d" | "30d" | "90d">("30d")
@@ -232,7 +196,7 @@ const UsageSettings: Component = () => {
   })
 
   const [usageData] = createResource(usageDateRange, async (range) => {
-    return api.get<{ buckets: UsageBucket[]; totalCost: string }>(
+    return api.get<{ buckets: UsageBucket[]; totalCost?: string; totalCredits?: string }>(
       `/credits/usage?period=${range.period}&from=${range.from}&to=${range.to}`,
     )
   })
@@ -302,7 +266,7 @@ const UsageSettings: Component = () => {
                 font: { size: 11 },
                 // The same locale formatter as the table beside it ("2,41 €"),
                 // not a hand-glued "€2.5".
-                callback: (v: any) => chartMoney(Number(v), currency()),
+                callback: (v: any) => chartAmount(Number(v), 2),
               },
             },
           },
@@ -320,7 +284,7 @@ const UsageSettings: Component = () => {
             tooltip: {
               callbacks: {
                 label: (ctx: any) =>
-                  `${ctx.dataset.label}${tNow("kernel.capabilities.separator")}${chartMoney(Number(ctx.raw), currency(), 4)}`,
+                  `${ctx.dataset.label}${tNow("kernel.capabilities.separator")}${chartAmount(Number(ctx.raw), 4)}`,
               },
             },
           },
@@ -335,6 +299,14 @@ const UsageSettings: Component = () => {
 
   // ─── Transactions ───
   const [transactions, setTransactions] = createSignal<Transaction[]>([])
+  // A managed org's models are its own (OpenRouter ids): offer what it actually used, not the
+  // native list of a self-hosted server. Stays stable once a model has been seen.
+  const seenModels = new Set<string>()
+  const modelOptions = () => {
+    if (!isManaged()) return MODEL_OPTIONS
+    for (const row of transactions()) if (row.model) seenModels.add(row.model)
+    return [...seenModels].sort().map((id) => ({ id, label: id.replace(/^openrouter\//, "") }))
+  }
   const [txnCursor, setTxnCursor] = createSignal<string | null>(null)
   const [txnHasMore, setTxnHasMore] = createSignal(false)
   const [txnLoading, setTxnLoading] = createSignal(false)
@@ -388,7 +360,9 @@ const UsageSettings: Component = () => {
 
   return (
     <div class="flex flex-col gap-8">
-      <h1 class="text-lg font-semibold text-text">{t("kernel.usage.title")}</h1>
+      <h1 data-testid="usage-title" class="text-lg font-semibold text-text">
+        {t("kernel.usage.title")}
+      </h1>
 
       <ErrorBoundary fallback={(err) => <p class="text-sm text-error">{err.message}</p>}>
         <Suspense
@@ -399,272 +373,73 @@ const UsageSettings: Component = () => {
             </div>
           }
         >
-          {/* Section 1 — Plan / Tier (managed mode only; self-hosted hides
-              the entire plan-management surface per spec Track D). */}
-          <Show when={billingState()?.mode === "managed" && balance()}>
+          {/* Section 1 — Credits left and the period's use (managed only;
+              self-hosted BYOK has no credit balance). Plans and their prices
+              are on the Billing page. */}
+          <Show when={isManaged() && balance()?.mode === "managed" ? balance() : undefined}>
             {(b) => {
-              const currentTier = () => PLAN_TIERS.find((t) => t.id === b().tier)
-              const isTopTier = () => b().tier === "enterprise"
-              return (
-                <>
-                  <div data-testid="plan-tier" class="rounded-md border border-border p-4">
-                    <div class="flex items-center justify-between">
-                      <div class="flex items-center gap-3">
-                        <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/10">
-                          <svg viewBox="0 0 20 20" fill="currentColor" class="h-5 w-5 text-accent">
-                            <path
-                              fill-rule="evenodd"
-                              d="M9.674 2.075a.75.75 0 01.652 0l7.25 3.5A.75.75 0 0117.75 6.5v-.75a.75.75 0 00-.75-.75h-14a.75.75 0 00-.75.75v.75a.75.75 0 01.174-.675l7.25-3.5zM10 4.768L5.354 7h9.292L10 4.768zM4.25 8.5h11.5v5h.25a.75.75 0 010 1.5H4a.75.75 0 010-1.5h.25v-5zm2 0v5h2v-5h-2zm4 0v5h2v-5h-2zm4 5v-5h1.5v5h-1.5zM3 16.75a.75.75 0 01.75-.75h12.5a.75.75 0 010 1.5H3.75a.75.75 0 01-.75-.75z"
-                              clip-rule="evenodd"
-                            />
-                          </svg>
-                        </div>
-                        <div>
-                          <p class="text-sm font-semibold text-text">
-                            {TIER_LABELS[b().tier] ?? b().tier} {t("kernel.usage.planSuffix")}
-                          </p>
-                          <p class="text-xs text-text-secondary">
-                            {fmt(b().includedAllowance, b().currency)}{" "}
-                            {t("kernel.usage.includedPerMonth")}
-                          </p>
-                        </div>
-                      </div>
-                      <Show
-                        when={!isTopTier()}
-                        fallback={
-                          <span class="rounded-full bg-accent/10 px-3 py-1 text-xs font-medium text-accent">
-                            {t("kernel.usage.currentPlan")}
-                          </span>
-                        }
-                      >
-                        <Button
-                          data-testid="change-plan-btn"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setPlanDialogOpen(true)}
-                        >
-                          {t("kernel.usage.changePlan")}
-                        </Button>
-                      </Show>
-                    </div>
-                    <Show when={currentTier()?.features}>
-                      <div class="mt-3 flex flex-wrap gap-2 border-t border-border-subtle pt-3">
-                        <For each={currentTier()!.features}>
-                          {(f) => (
-                            <span class="flex items-center gap-1 text-xs text-text-secondary">
-                              <svg
-                                viewBox="0 0 16 16"
-                                fill="currentColor"
-                                class="h-3.5 w-3.5 text-emerald-500"
-                              >
-                                <path
-                                  fill-rule="evenodd"
-                                  d="M12.416 3.376a.75.75 0 01.208 1.04l-5 7.5a.75.75 0 01-1.154.114l-3-3a.75.75 0 011.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 011.04-.207z"
-                                  clip-rule="evenodd"
-                                />
-                              </svg>
-                              {f}
-                            </span>
-                          )}
-                        </For>
-                      </div>
-                    </Show>
-                  </div>
-
-                  {/* Plan comparison dialog */}
-                  <Dialog open={planDialogOpen()} onOpenChange={setPlanDialogOpen}>
-                    <Dialog.Content class="max-w-2xl">
-                      <Dialog.Title>{t("kernel.usage.changePlan")}</Dialog.Title>
-                      <Dialog.Description>
-                        {t("kernel.usage.changePlanDescription")}
-                      </Dialog.Description>
-                      <div class="mt-5 grid grid-cols-2 gap-3">
-                        <For each={PLAN_TIERS.filter((t) => t.id !== "enterprise")}>
-                          {(tier) => {
-                            const isCurrent = () => tier.id === b().tier
-                            return (
-                              <div
-                                data-testid={`plan-option-${tier.id}`}
-                                class={`rounded-lg border p-4 transition-colors ${isCurrent() ? "border-accent bg-accent/5" : "border-border hover:border-text-tertiary"}`}
-                              >
-                                <div class="flex items-center justify-between">
-                                  <p class="text-sm font-semibold text-text">{tier.name}</p>
-                                  <Show when={isCurrent()}>
-                                    <span class="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
-                                      {t("kernel.usage.current")}
-                                    </span>
-                                  </Show>
-                                </div>
-                                <p class="mt-1 text-lg font-bold text-text">
-                                  {fmt(tier.allowance!, b().currency)}
-                                  <span class="text-xs font-normal text-text-secondary">
-                                    {" "}
-                                    {t("kernel.usage.perMonth")}
-                                  </span>
-                                </p>
-                                <ul class="mt-3 flex flex-col gap-1.5">
-                                  <For each={tier.features}>
-                                    {(f) => (
-                                      <li class="flex items-center gap-1.5 text-xs text-text-secondary">
-                                        <svg
-                                          viewBox="0 0 16 16"
-                                          fill="currentColor"
-                                          class="h-3 w-3 shrink-0 text-emerald-500"
-                                        >
-                                          <path
-                                            fill-rule="evenodd"
-                                            d="M12.416 3.376a.75.75 0 01.208 1.04l-5 7.5a.75.75 0 01-1.154.114l-3-3a.75.75 0 011.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 011.04-.207z"
-                                            clip-rule="evenodd"
-                                          />
-                                        </svg>
-                                        {f}
-                                      </li>
-                                    )}
-                                  </For>
-                                </ul>
-                                <Show when={!isCurrent()}>
-                                  <Button
-                                    class="mt-4 w-full"
-                                    variant={tier.id === "business" ? "default" : "outline"}
-                                    size="sm"
-                                    onClick={() => {
-                                      setPlanDialogOpen(false)
-                                      addToast({
-                                        message: t("kernel.usage.contactSupportChangePlan"),
-                                        type: "info",
-                                      })
-                                    }}
-                                  >
-                                    {PLAN_TIERS.findIndex((t) => t.id === tier.id) >
-                                    PLAN_TIERS.findIndex((t) => t.id === b().tier)
-                                      ? t("kernel.usage.upgrade")
-                                      : t("kernel.usage.downgrade")}
-                                  </Button>
-                                </Show>
-                              </div>
-                            )
-                          }}
-                        </For>
-                      </div>
-                      {/* Enterprise banner */}
-                      <div class="mt-3 flex items-center justify-between rounded-lg border border-border bg-surface-secondary/50 px-4 py-3">
-                        <div>
-                          <p class="text-sm font-semibold text-text">
-                            {t("kernel.usage.enterprise")}
-                          </p>
-                          <p class="text-xs text-text-secondary">
-                            {t("kernel.usage.enterpriseTagline")}
-                          </p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setPlanDialogOpen(false)
-                            addToast({
-                              message: t("kernel.usage.contactSupportEnterprise"),
-                              type: "info",
-                            })
-                          }}
-                        >
-                          {t("kernel.usage.contactSales")}
-                        </Button>
-                      </div>
-                      <div class="mt-4 flex justify-end">
-                        <Dialog.Close class="rounded-md px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-secondary">
-                          {t("kernel.usage.close")}
-                        </Dialog.Close>
-                      </div>
-                    </Dialog.Content>
-                  </Dialog>
-                </>
-              )
-            }}
-          </Show>
-
-          {/* Section 2 — Balance Cards + Top-up CTA (managed mode only;
-              self-hosted BYOK has no credit balance) */}
-          <Show when={isManaged() && balance()}>
-            {(b) => {
-              const allow = () => Number(b().includedAllowance)
-              const remaining = () => Number(b().included)
-              const used = () => allow() - remaining()
-              const usedPct = () =>
-                allow() > 0 ? Math.min(100, Math.max(0, (used() / allow()) * 100)) : 0
+              const pct = () => Math.min(100, Math.max(0, b().period.usedPercent))
               const resetDays = () => {
-                if (!b().resetDate) return null
-                const diff = new Date(b().resetDate!).getTime() - Date.now()
+                if (!b().period.end) return null
+                const diff = new Date(b().period.end!).getTime() - Date.now()
                 return Math.max(0, Math.ceil(diff / 86400000))
               }
-              const isHigh = () => usedPct() > 80
+              const isHigh = () => pct() > 80
               return (
                 <div data-testid="usage-balance" class="grid gap-4 sm:grid-cols-2">
                   <div data-testid="balance-included" class="rounded-md border border-border p-4">
-                    <div class="flex items-center justify-between">
-                      <p class="text-xs font-medium text-text-secondary">
-                        {t("kernel.usage.includedUsage")}
-                      </p>
-                      <p class="text-xs text-text-tertiary">
-                        {fmt(b().includedAllowance, b().currency)} {t("kernel.usage.monthSuffix")}
-                      </p>
-                    </div>
-                    <p class="mt-1.5 text-2xl font-bold text-text">
-                      {Math.round(usedPct())}%
-                      <span class="ml-1 text-sm font-normal text-text-tertiary">
-                        {t("kernel.usage.used")}
-                      </span>
+                    <p class="text-xs font-medium text-text-secondary">
+                      {t("kernel.usage.creditsLeft")}
                     </p>
-                    <div class="mt-2 h-2 w-full overflow-hidden rounded-full bg-surface-secondary">
-                      <div
-                        class={`h-2 rounded-full transition-all ${isHigh() ? (usedPct() >= 100 ? "bg-error" : "bg-amber-500") : "bg-accent"}`}
-                        style={{ width: `${usedPct()}%` }}
-                      />
-                    </div>
-                    <div class="mt-1.5 flex items-center justify-between">
-                      <Show when={resetDays() !== null}>
-                        <p class="text-xs text-text-tertiary">
-                          {t("kernel.usage.resetsInDays", { days: resetDays() ?? 0 })}
-                        </p>
-                      </Show>
-                      <Show when={isHigh() && usedPct() < 100}>
-                        <p class="text-xs text-amber-500">{t("kernel.usage.runningLow")}</p>
-                      </Show>
-                      <Show when={usedPct() >= 100}>
-                        <p class="text-xs text-error">{t("kernel.usage.depleted")}</p>
-                      </Show>
-                    </div>
+                    <p data-testid="credits-left" class="mt-1.5 text-2xl font-bold text-text">
+                      {formatCreditAmount(b().credits.total)}
+                    </p>
+                    <p data-testid="credits-breakdown" class="mt-1 text-xs text-text-tertiary">
+                      {t("kernel.usage.creditsBreakdown", {
+                        included: formatCreditAmount(b().credits.included),
+                        purchased: formatCreditAmount(b().credits.purchased),
+                      })}
+                    </p>
                   </div>
                   <div data-testid="balance-purchased" class="rounded-md border border-border p-4">
                     <p class="text-xs font-medium text-text-secondary">
-                      {t("kernel.usage.purchasedCredits")}
+                      {t("kernel.usage.includedUsage")}
                     </p>
-                    <p class="mt-1.5 text-2xl font-bold text-text">
-                      {fmt(b().purchased, b().currency)}
+                    <p
+                      data-testid="credits-used-percent"
+                      class="mt-1.5 text-2xl font-bold text-text"
+                    >
+                      {t("kernel.usage.periodUsed", { percent: Math.round(pct()) })}
                     </p>
-                    <Show when={isAdmin() && billingState()}>
-                      {(bs) => (
-                        <Show when={isManagedAvailable(bs())}>
-                          {(_) => {
-                            const managed = bs() as Extract<
-                              ReturnType<typeof billingState>,
-                              { mode: "managed"; tier: string }
-                            >
-                            return (
-                              <Show when={managed.checkoutUrl}>
-                                <a
-                                  data-testid="add-credits-link"
-                                  href={managed.checkoutUrl}
-                                  target="_blank"
-                                  rel="noreferrer noopener"
-                                  class="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-accent/30 bg-accent/10 px-4 py-2.5 text-sm font-medium text-accent transition-colors hover:bg-accent/20"
-                                >
-                                  {t("kernel.usage.addCredits")}
-                                </a>
-                              </Show>
-                            )
-                          }}
-                        </Show>
-                      )}
+                    <div class="mt-2 h-2 w-full overflow-hidden rounded-full bg-surface-secondary">
+                      <div
+                        data-testid="credits-used-bar"
+                        class={`h-2 rounded-full transition-all ${isHigh() ? (pct() >= 100 ? "bg-error" : "bg-amber-500") : "bg-accent"}`}
+                        style={{ width: `${pct()}%` }}
+                      />
+                    </div>
+                    <div class="mt-1.5 flex items-center justify-between">
+                      <p data-testid="credits-period-used" class="text-xs text-text-tertiary">
+                        {t("kernel.usage.periodAvailable", {
+                          used: formatCreditAmount(b().period.usedThisPeriod),
+                          available: formatCreditAmount(b().period.availableThisPeriod),
+                        })}
+                      </p>
+                      <Show when={resetDays() !== null}>
+                        <p data-testid="credits-resets-in" class="text-xs text-text-tertiary">
+                          {t("kernel.usage.resetsInDays", { days: resetDays() ?? 0 })}
+                        </p>
+                      </Show>
+                    </div>
+                    <Show when={isHigh() && pct() < 100}>
+                      <p data-testid="credits-running-low" class="mt-1 text-xs text-amber-500">
+                        {t("kernel.usage.runningLow")}
+                      </p>
+                    </Show>
+                    <Show when={pct() >= 100}>
+                      <p data-testid="credits-depleted" class="mt-1 text-xs text-error">
+                        {t("kernel.usage.depleted")}
+                      </p>
                     </Show>
                   </div>
                 </div>
@@ -707,6 +482,7 @@ const UsageSettings: Component = () => {
                     <button
                       type="button"
                       data-testid={`chart-period-${p}`}
+                      aria-pressed={chartPeriod() === p}
                       class={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${chartPeriod() === p ? "bg-accent text-accent-foreground shadow-sm" : "text-text-secondary hover:text-text"}`}
                       onClick={() => setChartPeriod(p)}
                     >
@@ -716,24 +492,29 @@ const UsageSettings: Component = () => {
                 </For>
               </div>
             </div>
-            <Show when={usageData()?.totalCost}>
-              <span class="text-xs text-text-secondary">
-                {t("kernel.usage.totalLabel")}{" "}
-                <span class="font-medium text-text">{fmt(usageData()!.totalCost, currency())}</span>
-              </span>
+            <Show when={usageData()?.totalCredits ?? usageData()?.totalCost}>
+              {(total) => (
+                <span data-testid="usage-chart-total" class="text-xs text-text-secondary">
+                  {t("kernel.usage.totalLabel")}{" "}
+                  <span class="font-medium text-text">{amount(total())}</span>
+                </span>
+              )}
             </Show>
           </div>
           <Suspense fallback={<Skeleton class="h-52 w-full" />}>
             <Show
               when={usageData()?.buckets?.length}
               fallback={
-                <p class="py-12 text-center text-sm text-text-tertiary">
+                <p
+                  data-testid="usage-chart-empty"
+                  class="py-12 text-center text-sm text-text-tertiary"
+                >
                   {t("kernel.usage.noUsageData")}
                 </p>
               }
             >
               <div class="h-52">
-                <canvas ref={canvasRef} />
+                <canvas data-testid="usage-chart-canvas" ref={canvasRef} />
               </div>
             </Show>
           </Suspense>
@@ -747,13 +528,14 @@ const UsageSettings: Component = () => {
 
         {/* Section 5 — Transaction History (managed) / Usage activity log (self-hosted) */}
         <div>
-          <p class="mb-3 text-sm font-medium text-text">
+          <p data-testid="transactions-heading" class="mb-3 text-sm font-medium text-text">
             {isManaged() ? t("kernel.usage.transactions") : t("kernel.usage.activity")}
           </p>
           <div data-testid="transaction-filters" class="mb-3 flex flex-wrap items-center gap-2">
             {/* Admin-only: user filter */}
             <Show when={isAdmin()}>
               <select
+                data-testid="filter-user"
                 class="rounded border border-border bg-bg px-2 py-1 text-xs text-text"
                 value={filterUserId() ?? ""}
                 onChange={(e) => {
@@ -766,6 +548,7 @@ const UsageSettings: Component = () => {
               </select>
             </Show>
             <select
+              data-testid="filter-model"
               class="rounded border border-border bg-bg px-2 py-1 text-xs text-text"
               value={filterModel() ?? ""}
               onChange={(e) => {
@@ -774,11 +557,12 @@ const UsageSettings: Component = () => {
               }}
             >
               <option value="">{t("kernel.usage.allModels")}</option>
-              <For each={MODEL_OPTIONS}>{(m) => <option value={m.id}>{m.label}</option>}</For>
+              <For each={modelOptions()}>{(m) => <option value={m.id}>{m.label}</option>}</For>
             </select>
             {/* Type filter only in managed mode — self-hosted rows are all byok_usage. */}
             <Show when={isManaged()}>
               <select
+                data-testid="filter-type"
                 class="rounded border border-border bg-bg px-2 py-1 text-xs text-text"
                 value={filterType() ?? ""}
                 onChange={(e) => {
@@ -818,7 +602,10 @@ const UsageSettings: Component = () => {
             when={transactions().length > 0}
             fallback={
               <Show when={!txnLoading()} fallback={<Skeleton class="h-32 w-full" />}>
-                <p class="py-4 text-center text-sm text-text-tertiary">
+                <p
+                  data-testid="transactions-empty"
+                  class="py-4 text-center text-sm text-text-tertiary"
+                >
                   {isManaged() ? t("kernel.usage.noTransactions") : t("kernel.usage.noActivity")}
                 </p>
               </Show>
@@ -837,7 +624,9 @@ const UsageSettings: Component = () => {
                       <th class="px-3 py-2">{t("kernel.usage.colType")}</th>
                     </Show>
                     <Show when={isAdmin()}>
-                      <th class="px-3 py-2">{t("kernel.usage.colUser")}</th>
+                      <th data-testid="txn-col-user" class="px-3 py-2">
+                        {t("kernel.usage.colUser")}
+                      </th>
                     </Show>
                     <th class="px-3 py-2">{t("kernel.usage.colModel")}</th>
                     <th class="px-3 py-2 text-right">{t("kernel.usage.colAmount")}</th>
@@ -850,8 +639,12 @@ const UsageSettings: Component = () => {
                       const shown = usageAmountDisplay(txn.amount, isManaged())
                       const isPositive = shown.credit
                       return (
-                        <tr class="border-b border-border-subtle last:border-0">
-                          <td class="px-3 py-2 text-xs text-text-secondary">
+                        <tr
+                          data-testid="transaction-row"
+                          data-type={txn.type}
+                          class="border-b border-border-subtle last:border-0"
+                        >
+                          <td data-testid="txn-date" class="px-3 py-2 text-xs text-text-secondary">
                             {new Date(txn.createdAt).toLocaleDateString(currentLocale(), {
                               month: "short",
                               day: "numeric",
@@ -862,6 +655,7 @@ const UsageSettings: Component = () => {
                           <Show when={isManaged()}>
                             <td class="px-3 py-2">
                               <span
+                                data-testid="txn-type"
                                 class={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${badge.class}`}
                               >
                                 {badge.label.startsWith("kernel.") ? t(badge.label) : badge.label}
@@ -875,10 +669,15 @@ const UsageSettings: Component = () => {
                           </Show>
                           <td class="px-3 py-2 text-xs text-text-secondary">{txn.model ?? "-"}</td>
                           <td
+                            data-testid="txn-amount"
                             class={`px-3 py-2 text-right text-xs font-medium ${isPositive ? "text-emerald-600" : "text-text"}`}
                           >
                             {shown.prefix}
-                            {fmt(shown.value, currency())}
+                            {isManaged()
+                              ? t("kernel.usage.creditsAmount", {
+                                  amount: formatCreditAmount(shown.value),
+                                })
+                              : fmt(shown.value, "EUR")}
                           </td>
                         </tr>
                       )
@@ -905,7 +704,7 @@ const UsageSettings: Component = () => {
 
         {/* Section 6 — Spend by provider (admin only, always visible). The keys
             themselves live on Settings -> AI models now; Usage keeps the spend. */}
-        <Show when={isAdmin()}>
+        <Show when={isAdmin() && !isManaged()}>
           <div data-testid="providers-section">
             <p class="mb-1 text-sm font-medium text-text">{t("kernel.usage.providers")}</p>
             <p class="mb-3 text-xs text-text-tertiary">{t("kernel.usage.providersDisclaimer")}</p>
@@ -922,7 +721,7 @@ const UsageSettings: Component = () => {
                       class="text-xs font-medium text-text"
                       title={t("kernel.usage.computedUsageDisclaimer")}
                     >
-                      ~{fmt((spendByProvider()[prov.id] ?? 0).toFixed(8), currency())}
+                      ~{fmt((spendByProvider()[prov.id] ?? 0).toFixed(8), "EUR")}
                     </span>
                   </div>
                 )}

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
-import { TIER_ALLOWANCE } from "@liaison/shared"
 import { sql as drizzleSql, eq } from "drizzle-orm"
 import { extractRows, type PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { creditBalances, creditTransactions } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
+import { isManagedEdition } from "~/lib/edition"
 import { rootLogger } from "~/lib/logger"
 
 const log = rootLogger.child({ module: "credit-service" })
@@ -56,6 +56,9 @@ interface DeductParams {
   inputTokens: number
   outputTokens: number
   rawCost: string
+  /** The raw cost in USD and the USD per EUR rate used (migration 0265), when known. */
+  rawCostUsd?: string | null
+  usdEurRate?: string | null
   creditCost: string
   // Nullable: system-initiated usage (summarizer, scheduled jobs) has no real
   // user. `credit_transactions.user_id` is a nullable uuid, so a null records a
@@ -98,47 +101,66 @@ async function atomicDeductBalance(
 export async function deductCredits(
   orgId: string,
   params: DeductParams,
-): Promise<{ balanceAfter: string }> {
+): Promise<{ balanceAfter: string; transactionId: string }> {
   const { creditCost, ...txnData } = params
 
   return withPrivilegedDb(orgId, "deduct-credits", async (tx) => {
     const balanceAfter = await atomicDeductBalance(tx, orgId, creditCost)
 
-    await tx.insert(creditTransactions).values({
-      orgId,
-      userId: txnData.userId,
-      type: "usage",
-      amount: (Number.parseFloat(creditCost) * -1).toFixed(8),
-      balanceAfter,
-      model: txnData.model,
-      inputTokens: txnData.inputTokens,
-      outputTokens: txnData.outputTokens,
-      rawCost: txnData.rawCost,
-      ...(txnData.description ? { description: txnData.description } : {}),
-    })
+    const [row] = await tx
+      .insert(creditTransactions)
+      .values({
+        orgId,
+        userId: txnData.userId,
+        type: "usage",
+        amount: (Number.parseFloat(creditCost) * -1).toFixed(8),
+        balanceAfter,
+        model: txnData.model,
+        inputTokens: txnData.inputTokens,
+        outputTokens: txnData.outputTokens,
+        rawCost: txnData.rawCost,
+        rawCostUsd: txnData.rawCostUsd ?? null,
+        usdEurRate: txnData.usdEurRate ?? null,
+        ...(txnData.description ? { description: txnData.description } : {}),
+      })
+      .returning({ id: creditTransactions.id })
 
-    return { balanceAfter }
+    return { balanceAfter, transactionId: row.id }
   })
 }
 
 export async function deductToolUsageCost(
   orgId: string,
-  params: { amount: string; description: string; userId?: string },
-): Promise<{ balanceAfter: string }> {
+  params: {
+    amount: string
+    description: string
+    userId?: string
+    /** The call's raw cost in EUR, in USD and the USD per EUR rate used, when metered (S21). */
+    rawCost?: string
+    rawCostUsd?: string | null
+    usdEurRate?: string | null
+  },
+): Promise<{ balanceAfter: string; transactionId: string }> {
   const { amount, description, userId } = params
   return withPrivilegedDb(orgId, "deduct-tool-usage", async (tx) => {
     const balanceAfter = await atomicDeductBalance(tx, orgId, amount)
 
-    await tx.insert(creditTransactions).values({
-      orgId,
-      userId,
-      type: "tool_usage",
-      amount: (Number.parseFloat(amount) * -1).toFixed(8),
-      balanceAfter,
-      description,
-    })
+    const [row] = await tx
+      .insert(creditTransactions)
+      .values({
+        orgId,
+        userId,
+        type: "tool_usage",
+        amount: (Number.parseFloat(amount) * -1).toFixed(8),
+        balanceAfter,
+        description,
+        ...(params.rawCost !== undefined ? { rawCost: params.rawCost } : {}),
+        rawCostUsd: params.rawCostUsd ?? null,
+        usdEurRate: params.usdEurRate ?? null,
+      })
+      .returning({ id: creditTransactions.id })
 
-    return { balanceAfter }
+    return { balanceAfter, transactionId: row.id }
   })
 }
 
@@ -265,27 +287,6 @@ function isUniqueViolation(err: unknown): boolean {
   return false
 }
 
-/**
- * Kernel default monthly credit allowance per tier. Control plane (Phase 18)
- * may override per-org; this is the self-hosted fallback used during reset.
- */
-export function tierAllowanceFor(tier: string): string {
-  return TIER_ALLOWANCE[tier as keyof typeof TIER_ALLOWANCE] ?? "0"
-}
-
-export async function resetMonthlyCredits(
-  orgId: string,
-  cycleId: string,
-  allowance: string,
-): Promise<{ balanceAfter: string; alreadyProcessed?: boolean }> {
-  return addCredits(orgId, {
-    amount: allowance,
-    type: "monthly_reset",
-    cycleId,
-    description: `monthly reset ${cycleId}`,
-  })
-}
-
 export async function broadcastBalanceUpdate(orgId: string): Promise<void> {
   try {
     const balance = await withPrivilegedDb(orgId, "ws-balance-broadcast", (tx) =>
@@ -301,11 +302,10 @@ export async function broadcastBalanceUpdate(orgId: string): Promise<void> {
       entityId: orgId,
       orgId,
       actorType: "system",
-      data: {
-        included: balance.included,
-        purchased: balance.purchased,
-        currency: balance.currency,
-      },
+      // Managed: credits only, no currency (S18).
+      data: isManagedEdition()
+        ? { included: balance.included, purchased: balance.purchased }
+        : { included: balance.included, purchased: balance.purchased, currency: balance.currency },
     })
   } catch (err) {
     log.error({ err, orgId }, "Failed to broadcast balance update")

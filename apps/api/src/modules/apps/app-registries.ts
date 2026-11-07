@@ -103,6 +103,27 @@ export const orgRuntimeLastTouch = new Map<string, number>()
  */
 export const orgRuntimeReleases = new Map<string, Promise<void>>()
 
+/**
+ * Live work holding each org's runtime in this process beyond what the move
+ * accounting counts (transfer-state `beginOrgActivity`: writes, jobs, agent
+ * turns): every authenticated request, reads included, and every open
+ * WebSocket. The org runtime cap (org-runtime-release.ts) never evicts a held org.
+ */
+export const orgRuntimeHolds = new Map<string, number>()
+
+/** Hold the org's runtime until the returned function is called (idempotent). */
+export function holdOrgRuntime(orgId: string): () => void {
+  orgRuntimeHolds.set(orgId, (orgRuntimeHolds.get(orgId) ?? 0) + 1)
+  let ended = false
+  return () => {
+    if (ended) return
+    ended = true
+    const n = (orgRuntimeHolds.get(orgId) ?? 1) - 1
+    if (n > 0) orgRuntimeHolds.set(orgId, n)
+    else orgRuntimeHolds.delete(orgId)
+  }
+}
+
 // Track in-flight org initialization promises so concurrent requests await the same work.
 export const orgRuntimeInitPromises = new Map<string, Promise<void>>()
 
@@ -741,6 +762,8 @@ export const webhookHandlers = createTypedRegistry<
     appName: string
     orgId: string
     bodyLimitBytes?: number
+    /** Sandbox budget for one run of a manifest handler (manifest `timeoutMs`). */
+    timeoutMs?: number
     _manifest?: BridgeManifest
     /**
      * U4.12 (CI→projects webhook): most webhook handlers only ever write to
@@ -1320,6 +1343,12 @@ export const connectionConfigRegistry = createTypedRegistry<
      *  connection of the org holds the same account at the same endpoint (one grant).
      *  Best effort: a failure is logged and never blocks the disconnect. */
     revocationUrl?: string
+    /**
+     * Ends a push watch at the provider when the connection goes (POST with its bearer
+     * token, before the revocation): Gmail's users.stop. Kept while another active
+     * connection on this instance declares the same endpoint for the same account.
+     */
+    watchStopUrl?: string
     /**
      * The same provider account may hold an ORGANIZATION connection and a
      * member's PERSONAL connection at once, as two separate rows (own tokens,

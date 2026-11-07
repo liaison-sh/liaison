@@ -192,6 +192,11 @@ export async function executeInSandbox(opts: ExecuteOptions): Promise<unknown> {
 
     // Check if the result is a promise (async handler)
     const promiseState = ctx.getPromiseState(callValueHandle)
+    // A settled state hands out a new handle of its own, which would pin the context.
+    if (!(promiseState as any).notAPromise) {
+      if (promiseState.type === "fulfilled") promiseState.value.dispose()
+      else if (promiseState.type === "rejected") promiseState.error.dispose()
+    }
     let result: unknown
     if ((promiseState as any).notAPromise) {
       // Synchronous handler — dump directly

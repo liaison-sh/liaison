@@ -7,6 +7,8 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { app } from "~/app"
+import { ResendEmailProvider, setSystemEmailProvider } from "~/infra/email"
+import { _clearEmailOutage } from "~/infra/email-outage"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
@@ -30,6 +32,43 @@ function post(path: string, body: unknown) {
     body: JSON.stringify(body),
   })
 }
+
+describe("a step-up refused because mail is off", () => {
+  it("leaves no resend cooldown: after the outage the page gets a code, not a wait for one never sent", async () => {
+    await clearRedisPatterns(["totp-stepup-rate:*", "totp-stepup-cooldown:*"])
+    const purpose = "mcp_connect"
+    const refusing = new ResendEmailProvider({
+      apiKey: "re_test",
+      from: "no-reply@test.com",
+      fetch: async () =>
+        new Response(JSON.stringify({ name: "daily_quota_exceeded", message: "quota" }), {
+          status: 429,
+        }),
+    })
+    let accepted = 0
+    const accepting = new ResendEmailProvider({
+      apiKey: "re_test",
+      from: "no-reply@test.com",
+      fetch: async () => {
+        accepted += 1
+        return new Response(JSON.stringify({ id: "m1" }), { status: 200 })
+      },
+    })
+    try {
+      setSystemEmailProvider(refusing)
+      const refused = await post("/api/auth/totp/step-up", { purpose })
+      expect(refused.status).toBe(403)
+      setSystemEmailProvider(accepting)
+      const next = await post("/api/auth/totp/step-up", { purpose })
+      expect(next.status).toBe(200)
+      expect(((await next.json()) as { data: { sent: boolean } }).data.sent).toBe(true)
+      expect(accepted).toBe(1)
+    } finally {
+      setSystemEmailProvider(null)
+      await _clearEmailOutage()
+    }
+  })
+})
 
 describe("step-up code guessing is bounded per account, not only per code", () => {
   it("an hour of fresh step-up codes does not buy dozens of guesses", async () => {

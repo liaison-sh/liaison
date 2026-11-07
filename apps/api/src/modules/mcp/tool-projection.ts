@@ -11,6 +11,7 @@ import {
   canonicalToolNamesBySdkName,
   type DiscoveredTools,
 } from "~/modules/agent/tools/tool-bridge"
+import { appVisibleToOrg } from "~/modules/apps/app-org-scope"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { primeOrgApps } from "~/modules/apps/org-apps"
 import { isToolAllowedByAgentPolicy, loadAgentToolPolicy } from "~/modules/mcp/agent-tool-policy"
@@ -189,6 +190,10 @@ export async function listMcpTools(
     }
     if (agentBoundNames?.has(name)) continue
     if (sessionBlocked?.has(name)) continue
+    // Another org's custom app lists nothing here (app-org-scope.ts).
+    // An SDK name is `<app>__<tool>`; app names hold no underscore.
+    const appName = canonical?.split(":")[0] ?? name.split("__")[0]
+    if (appName && name.includes("__") && !(await appVisibleToOrg(appName, ctx.orgId))) continue
     const description = (def as { description?: string }).description ?? ""
     try {
       tools.push({

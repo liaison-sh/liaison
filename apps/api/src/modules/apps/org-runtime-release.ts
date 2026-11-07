@@ -23,6 +23,16 @@
 // never saw them. On by default: a process serving orgs that come and go (a
 // public demo, a hosted instance) otherwise holds every org it ever served.
 //
+// The idle release alone leaves a process's set-up orgs unbounded while they
+// keep being touched (a system job that fans out to every org, a burst of
+// first touches). So a process also holds at most LIAISON_ORG_RUNTIME_MAX_ORGS
+// (default 2000, 0 no cap): past it, each new setup releases the least
+// recently touched orgs that no live work holds (a request or socket,
+// `orgRuntimeHolds`; a write, job or agent turn, or a move in progress, from
+// the transfer state's accounting), through the same release as an idle one.
+// Held orgs are never released: the cap may be exceeded until they end, and
+// the minute sweep trims it then.
+//
 // A release first marks the org not set up, so a touch arriving meanwhile
 // waits for the release (`orgRuntimeReleases`, init.ts) and then sets it up
 // afresh; then it disposes the org's event subscriptions and deletes every
@@ -38,6 +48,7 @@ import {
   declaredEmits,
   eventSubscriptionDisposers,
   initializedOrgRuntimes,
+  orgRuntimeHolds,
   orgRuntimeInitPromises,
   orgRuntimeLastTouch,
   orgRuntimeReleases,
@@ -47,6 +58,7 @@ import {
   rememberMissingOrg,
 } from "~/modules/apps/app-registries"
 import { deleteRegistryEntriesOfOrgs } from "~/modules/apps/registries"
+import { orgRuntimePinnedByTransfer } from "~/modules/org/transfer-state/state"
 
 /** How often a process looks for set-up orgs that are gone. */
 export const ORG_RUNTIME_SWEEP_MS = 5 * 60_000
@@ -160,6 +172,45 @@ export async function sweepIdleOrgRuntimes(now: number = Date.now()): Promise<st
   }
 }
 
+/**
+ * The set-up orgs to release so that at most `cap` stay set up: the least
+ * recently touched first, never one being set up or released, held by live
+ * work (`isHeld`), or moving. Fewer than the excess when too many are held.
+ */
+export function orgRuntimesOverCap(
+  cap: number,
+  isHeld: (orgId: string) => boolean = orgRuntimeHeld,
+): string[] {
+  const excess = initializedOrgRuntimes.size - cap
+  if (cap <= 0 || excess <= 0) return []
+  const candidates: Array<[string, number]> = []
+  for (const orgId of initializedOrgRuntimes) {
+    if (orgRuntimeInitPromises.has(orgId) || orgsRegistering.has(orgId)) continue
+    if (orgRuntimeReleases.has(orgId) || isHeld(orgId)) continue
+    candidates.push([orgId, orgRuntimeLastTouch.get(orgId) ?? 0])
+  }
+  candidates.sort((a, b) => a[1] - b[1])
+  return candidates.slice(0, excess).map(([orgId]) => orgId)
+}
+
+/** Live work in this process holds the org's runtime, or the org is moving. */
+function orgRuntimeHeld(orgId: string): boolean {
+  return orgRuntimeHolds.has(orgId) || orgRuntimePinnedByTransfer(orgId)
+}
+
+/** Release the orgs past LIAISON_ORG_RUNTIME_MAX_ORGS (`orgRuntimesOverCap`). Never throws. */
+export async function enforceOrgRuntimeCap(
+  cap: number = env.LIAISON_ORG_RUNTIME_MAX_ORGS,
+): Promise<string[]> {
+  try {
+    const over = orgRuntimesOverCap(cap)
+    return over.length > 0 ? await releaseOrgRuntimes(over, { gone: false, reason: "cap" }) : []
+  } catch (err) {
+    log.warn({ err }, "org runtime cap enforcement failed; the next setup or sweep retries")
+    return []
+  }
+}
+
 /** The orgs set up in this process whose organization row is gone. */
 export async function setUpOrgsThatAreGone(): Promise<string[]> {
   // Org ids are uuids (init.ts never sets up anything else), so the array
@@ -242,7 +293,7 @@ export async function subscribeOrgRuntimeRelease(): Promise<void> {
   }
 }
 
-/** How often a process looks for idle orgs, when idle release is on. */
+/** How often a process looks for idle orgs and orgs past the cap, when either is on. */
 export const ORG_RUNTIME_IDLE_SWEEP_MS = 60_000
 
 let sweepTimer: ReturnType<typeof setInterval> | null = null
@@ -255,8 +306,11 @@ export function startOrgRuntimeSweep(): void {
     sweepTimer = setInterval(() => void sweepDeletedOrgRuntimes(), ORG_RUNTIME_SWEEP_MS)
     sweepTimer.unref?.()
   }
-  if (!idleTimer && env.LIAISON_ORG_RUNTIME_IDLE_MINUTES > 0) {
-    idleTimer = setInterval(() => void sweepIdleOrgRuntimes(), ORG_RUNTIME_IDLE_SWEEP_MS)
+  const capped = env.LIAISON_ORG_RUNTIME_MAX_ORGS > 0
+  if (!idleTimer && (env.LIAISON_ORG_RUNTIME_IDLE_MINUTES > 0 || capped)) {
+    idleTimer = setInterval(() => {
+      void sweepIdleOrgRuntimes().then(() => (capped ? enforceOrgRuntimeCap() : undefined))
+    }, ORG_RUNTIME_IDLE_SWEEP_MS)
     idleTimer.unref?.()
   }
 }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { DEMO_WORKSPACE_EXPIRED_CODE } from "@liaison/shared"
+import { DEMO_WORKSPACE_EXPIRED_CODE, ORG_MOVING_CODE } from "@liaison/shared"
 import { ApiError, isAppAccessLost } from "~/lib/api-error"
 import { type EnsureFreshToken, isAuthRefreshError, type PendingRefresh } from "~/lib/auth-refresh"
 import { clientHeaders } from "~/lib/client-version"
@@ -10,6 +10,12 @@ import {
 } from "~/lib/demo-expired"
 import { apiBase } from "~/lib/env"
 import {
+  isOrgSuspendedRefusal,
+  noteOrgSuspended,
+  orgSuspended,
+  suspensionFromError,
+} from "~/lib/org-suspended"
+import {
   isRestartingResponse,
   noteServerBack,
   noteServerRestarting,
@@ -18,6 +24,22 @@ import {
 } from "~/lib/server-pause"
 import { noteWebBuildFrom } from "~/lib/web-build"
 import { tNow } from "~/modules/i18n/i18n-context"
+
+/**
+ * How long a request waits out an org move: the longest a refusal lasts, with a margin. A message
+ * is refused from the start of the drain (at most 30 s, while live agent turns run down) through
+ * the write gap (at most 20 s).
+ */
+const ORG_MOVE_WAIT_MS = 60_000
+
+async function isOrgMoving(response: Response): Promise<boolean> {
+  try {
+    const json = (await response.clone().json()) as { error?: { code?: unknown } }
+    return json?.error?.code === ORG_MOVING_CODE
+  } catch {
+    return false
+  }
+}
 
 /** The global toast for a 5xx: names the server's reference when it sent one,
  *  so "something went wrong" always carries a key to its log line. */
@@ -90,6 +112,8 @@ export function assertKernelRelativePath(path: string): void {
 }
 
 export interface ApiClientConfig {
+  /** How long a request waits out an org move (tests). */
+  orgMoveWaitMs?: number
   getAccessToken: () => string | null
   onUnauthorized: () => void
   /**
@@ -366,8 +390,20 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
   // An expired demo workspace leaves through its own exit (lib/demo-expired.ts):
   // the refresh it fails on also clears the session, and that must not send the
   // person to the login page on top of the demo door.
+  // A suspended org's page is the suspended view (lib/org-suspended.ts): a
+  // member's refused refresh must not send them to the login page on top of it.
   const onUnauthorized = () => {
-    if (!demoWorkspaceEnded()) config.onUnauthorized()
+    if (!demoWorkspaceEnded() && !orgSuspended()) config.onUnauthorized()
+  }
+
+  /**
+   * The org is suspended or closed (403 `org_suspended`): the suspended page
+   * takes over, once, and the refusal raises no toast.
+   */
+  function suspendedOrg(status: number, code: string | undefined, error: unknown): boolean {
+    if (!isOrgSuspendedRefusal(status, code)) return false
+    noteOrgSuspended(suspensionFromError(error))
+    return true
   }
 
   /** The demo workspace is over: hand over to its exit, never a toast. */
@@ -643,15 +679,32 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     if (response.status === 401)
       response = await refreshAndResend(method, path, body, init, read, first.token)
 
+    // The org is being moved between servers: nothing was done, and the move ends in seconds. The
+    // same request goes again (a typed message is not lost, a form is not refused). The flip's
+    // first answer can be a 401 (the new server signs its own tokens), which refresh answers.
+    const moveWaitUntil = Date.now() + (config.orgMoveWaitMs ?? ORG_MOVE_WAIT_MS)
+    while (response.status === 503 && (await isOrgMoving(response)) && Date.now() < moveWaitUntil) {
+      const hinted = readRetryAfter(response)
+      const ms = Math.min(Math.max((hinted ?? 1) * 1000, 250), moveWaitUntil - Date.now())
+      await pause(ms, init?.signal ?? new AbortController().signal)
+      if (init?.signal?.aborted) throw new DOMException("The request was cancelled", "AbortError")
+      const again = await sendFirst(method, path, body, init, read)
+      response = again.response
+      if (response.status === 401)
+        response = await refreshAndResend(method, path, body, init, read, again.token)
+    }
+
     if (!response.ok) {
       let message = "Request failed"
       let code: string | undefined
       let ref: string | undefined
       let retryAfter: number | undefined
       let details: Record<string, unknown> | undefined
+      let rawError: unknown
       try {
         const json = await response.json()
         if (json.error) {
+          rawError = json.error
           message = json.error.message ?? message
           code = json.error.code
           if (typeof json.error.ref === "string") ref = json.error.ref
@@ -671,7 +724,8 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
       // Restricted away from an app (S20) or the app turned Off (S19): the
       // shell drops its entry now.
       if (isAppAccessLost(response.status, code)) config.onAppRestricted?.()
-      if (!endedDemoWorkspace(response.status, code) && !init?.suppressGlobalError) {
+      const suspended = suspendedOrg(response.status, code, rawError)
+      if (!suspended && !endedDemoWorkspace(response.status, code) && !init?.suppressGlobalError) {
         if (response.status === 429) {
           config.onError?.(429, tNow("kernel.apiErrors.rateLimited"))
         } else if (response.status >= 500 && code !== SERVER_RESTARTING_CODE) {
@@ -708,9 +762,11 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
       let message = "Request failed"
       let code: string | undefined
       let ref: string | undefined
+      let rawError: unknown
       try {
         const json = await response.json()
         if (json.error) {
+          rawError = json.error
           message = json.error.message ?? message
           code = json.error.code
           if (typeof json.error.ref === "string") ref = json.error.ref
@@ -732,7 +788,8 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
       // Restricted away from an app (S20) or the app turned Off (S19): the
       // shell drops its entry now.
       if (isAppAccessLost(response.status, code)) config.onAppRestricted?.()
-      if (!endedDemoWorkspace(response.status, code) && !init?.suppressGlobalError) {
+      const suspended = suspendedOrg(response.status, code, rawError)
+      if (!suspended && !endedDemoWorkspace(response.status, code) && !init?.suppressGlobalError) {
         if (response.status >= 500) {
           config.onError?.(response.status, serverFaultMessage(error.ref))
         } else if (response.status === 403) {
@@ -762,9 +819,11 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
       let code: string | undefined
       let ref: string | undefined
       let details: Record<string, unknown> | undefined
+      let rawError: unknown
       try {
         const json = await response.json()
         if (json.error) {
+          rawError = json.error
           message = json.error.message ?? message
           code = json.error.code
           if (typeof json.error.ref === "string") ref = json.error.ref
@@ -783,7 +842,8 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
       // Restricted away from an app (S20) or the app turned Off (S19): the
       // shell drops its entry now.
       if (isAppAccessLost(response.status, code)) config.onAppRestricted?.()
-      if (!endedDemoWorkspace(response.status, code) && !init?.suppressGlobalError) {
+      const suspended = suspendedOrg(response.status, code, rawError)
+      if (!suspended && !endedDemoWorkspace(response.status, code) && !init?.suppressGlobalError) {
         if (response.status === 429) {
           config.onError?.(429, tNow("kernel.apiErrors.rateLimited"))
         } else if (response.status >= 500 && code !== SERVER_RESTARTING_CODE) {

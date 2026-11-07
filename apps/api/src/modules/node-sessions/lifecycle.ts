@@ -46,6 +46,11 @@ import {
   SessionNotResumableError,
 } from "~/modules/nodes/jobs"
 import { liveDesktopConnections } from "~/modules/nodes/presence"
+import {
+  SKIPPED_MOVING,
+  sweepSkippingMoving,
+  writeUnlessMoving,
+} from "~/modules/org/transfer-state/skip-moving"
 import { wakeNode } from "./commands"
 import { type Appended, appendServerEvents, fanOut, type NodeSessionRow } from "./store"
 import { fireSessionStatus, type SessionStatusChange } from "./waiting-hook"
@@ -785,20 +790,24 @@ async function failUnreadMessages(
  * leaves these jobs out of its interrupt path.
  */
 export async function sweepSessionLeases(): Promise<{ paused: number; dead: number }> {
-  const lapsed = await withSystemDb("node-sessions:lease-sweep", (db) =>
-    db
-      .select({ session: nodeSessions, job: nodeJobs })
-      .from(nodeJobs)
-      .innerJoin(nodeSessions, eq(nodeSessions.jobId, nodeJobs.id))
-      .where(
-        and(
-          eq(nodeJobs.status, "running"),
-          lt(nodeJobs.leaseExpiresAt, sql`now()`),
-          sql`${nodeJobs.startedAt} IS NOT NULL`,
-          // A demo replay's run has no lease to lapse: its ticker owns it.
-          notOnSimulatedNode,
+  // An org being moved keeps its runs as they are until the move ends.
+  const lapsed = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("node-sessions:lease-sweep", (db) =>
+      db
+        .select({ session: nodeSessions, job: nodeJobs })
+        .from(nodeJobs)
+        .innerJoin(nodeSessions, eq(nodeSessions.jobId, nodeJobs.id))
+        .where(
+          and(
+            eq(nodeJobs.status, "running"),
+            lt(nodeJobs.leaseExpiresAt, sql`now()`),
+            sql`${nodeJobs.startedAt} IS NOT NULL`,
+            // A demo replay's run has no lease to lapse: its ticker owns it.
+            notOnSimulatedNode,
+            notMoving(nodeJobs.orgId),
+          ),
         ),
-      ),
+    ),
   )
   let paused = 0
   let dead = 0
@@ -813,11 +822,14 @@ export async function sweepSessionLeases(): Promise<{ paused: number; dead: numb
       }
       const lapseMs = Date.now() - (job.leaseExpiresAt?.getTime() ?? Date.now())
       if (job.leaseHolder && nodes.has(job.leaseHolder) && lapseMs > DEAD_LEASE_LAPSE_MS) {
-        if (await endDeadRun(job)) dead++
+        const ended = await writeUnlessMoving(job.orgId, () => endDeadRun(job))
+        if (ended !== SKIPPED_MOVING && ended) dead++
         continue
       }
-      const moved = await moveSession(session.orgId, session.id, "paused", RUNNING, "node_silent")
-      if (moved) {
+      const moved = await writeUnlessMoving(session.orgId, () =>
+        moveSession(session.orgId, session.id, "paused", RUNNING, "node_silent"),
+      )
+      if (moved !== SKIPPED_MOVING && moved) {
         paused++
         await fanOutAll([moved])
       }

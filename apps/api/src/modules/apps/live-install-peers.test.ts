@@ -335,7 +335,10 @@ describe("S1.3: the package store", () => {
     process.env.LIAISON_APPS_DIR = freshRoot
     const store = await import("~/modules/apps/package-store")
     const result = await store.materialiseActiveVersions()
-    expect(result.failed).toEqual([])
+    // apps_active_version is instance-wide and outlives the per-file reset (it has no org), so
+    // an earlier file of the same process can leave other apps' active rows behind whose
+    // packages this run never stored. Their outcome is not this case's subject: this app's is.
+    expect(result.failed.filter((f) => f.app.startsWith(`${APP}@`))).toEqual([])
     expect(result.materialised).toContain(`${APP}@1.0.0`)
     expect(existsSync(join(freshRoot, APP, "1.0.0", "bundle.js"))).toBe(true)
   }, 60_000)

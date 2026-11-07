@@ -8,6 +8,7 @@
 // drives the Component-A event-triage routine (Task A7). `parseWebhookJob` is
 // the deferred work the webhook handler enqueues after its fast-ack 200.
 
+import { livePagesOnly } from "./meta-pages"
 import { facebookAdapter } from "./adapters/facebook"
 import type { NormalizedFinding, NormalizedMessage, Platform } from "./adapters/types"
 import type { SocialToolCtx } from "./ctx"
@@ -459,7 +460,10 @@ export async function parseWebhookJob(
 ): Promise<{ ingested: number; messagesIngested: number }> {
   const parser = WEBHOOK_PARSERS[payload.platform]
   if (!parser) return { ingested: 0, messagesIngested: 0 }
-  const { findings, messages } = parser(payload.body)
+  // A server-wide Meta callback routes by stored Page ids: only Pages this
+  // workspace still manages are ingested (meta-pages.ts).
+  const body = payload.platform === "facebook" ? await livePagesOnly(ctx, payload.body) : payload.body
+  const { findings, messages } = parser(body)
   let ingested = 0
   for (const f of findings) {
     const res = await upsertFinding(ctx, {

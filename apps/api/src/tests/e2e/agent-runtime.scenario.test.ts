@@ -232,15 +232,9 @@ describe("Agent Runtime Scenario", () => {
     const result = await setupScenario({
       seed: 5,
       org: { name: "Agent Runtime E2E Org" },
-      // Boot the server as a managed instance: credit metering, balance
-      // deduction, and the 402 zero-balance response only exist with a control
-      // plane connected. This suite exercises that billed path (SC3, SC13).
-      // The URL is never contacted — these scenarios hit /api/agent/chat, not
-      // /billing/state — it only needs to be present for managed detection.
-      serverEnv: {
-        CONTROL_PLANE_URL: "http://127.0.0.1:9/control-plane",
-        CONTROL_PLANE_API_KEY: "test-control-plane-key",
-      },
+      // A self-hosted server: only LIAISON_EDITION=managed switches credits
+      // on (lib/edition.ts), and that edition boots only under the managed
+      // checks. The managed billed path is covered by the route tests.
       populate: {
         users: { count: 10 },
         threads: { count: 20, participants: "random(2-4)", messages: "random(1-3)" },
@@ -911,54 +905,39 @@ describe("Agent Runtime Scenario", () => {
   }, 60_000)
 
   // ═══════════════════════════════════════════════════════════════
-  //  S13: Zero Balance — 402 With System Message
+  //  S13: Zero Balance — self-hosted never gates a turn on credits
   // ═══════════════════════════════════════════════════════════════
+  // Credits exist only in the managed edition (LIAISON_EDITION=managed, which
+  // boots under the managed checks and runs every AI call on OpenRouter); this
+  // server is self-hosted, so a zero balance must not refuse the turn. The
+  // managed 402 with its persisted system message is covered by
+  // modules/agent/routes.test.ts ("returns 402 when balance is zero").
 
   itAlways(
-    "S13: zero balance — 402 response with system message persisted",
+    "S13: zero balance — a self-hosted turn is not refused for credits",
     async () => {
-      // Temporarily drain the bootstrapped org's balance to zero
       await env.db.sql.unsafe(
         `UPDATE ${ks}.credit_balances SET included_balance = '0.00000000', purchased_balance = '0.00000000' WHERE org_id = $1`,
         [world.org.id],
       )
-
-      const threadId = await seedAgentThread(env.db.sql, ks, world.org.id, agentUser.id)
-
-      // Count existing transactions before
-      const txnsBefore = await getCreditTransactions(env.db.sql, ks, world.org.id)
-      const txnCountBefore = txnsBefore.length
-
-      const { status, events } = await consumeSse(url, "/api/agent/chat", agentUser.token, {
-        threadId,
-        content: "Hello",
-        modelId: DEFAULT_MODEL,
-      })
-
-      // 402 response (not SSE stream)
-      expect(status).toBe(402)
-      const err = events.find((e) => e.event === "error")
-      expect((err?.data as any)?.code).toBe("CREDITS_EXHAUSTED")
-
-      // System message persisted in thread
-      const msgs = await getThreadMessages(env.db.sql, ks, threadId)
-      const systemMsg = msgs.find((m: any) => m.author_type === "system")
-      expect(systemMsg).toBeDefined()
-      expect(systemMsg.content).toBeTruthy()
-
-      // User message also persisted
-      const userMsg = msgs.find((m: any) => m.author_type === "user")
-      expect(userMsg).toBeDefined()
-
-      // No NEW credit transactions (LLM was never called)
-      const txnsAfter = await getCreditTransactions(env.db.sql, ks, world.org.id)
-      expect(txnsAfter.length).toBe(txnCountBefore)
-
-      // Restore balance
-      await env.db.sql.unsafe(
-        `UPDATE ${ks}.credit_balances SET included_balance = '50.00000000', purchased_balance = '50.00000000' WHERE org_id = $1`,
-        [world.org.id],
-      )
+      try {
+        const threadId = await seedAgentThread(env.db.sql, ks, world.org.id, agentUser.id)
+        const { status, events } = await consumeSse(url, "/api/agent/chat", agentUser.token, {
+          threadId,
+          content: "Hello",
+          modelId: DEFAULT_MODEL,
+        })
+        expect(status).not.toBe(402)
+        const err = events.find((e) => e.event === "error")
+        expect((err?.data as { code?: string } | undefined)?.code).not.toBe("CREDITS_EXHAUSTED")
+        const msgs = await getThreadMessages(env.db.sql, ks, threadId)
+        expect(msgs.find((m: { author_type: string }) => m.author_type === "user")).toBeDefined()
+      } finally {
+        await env.db.sql.unsafe(
+          `UPDATE ${ks}.credit_balances SET included_balance = '50.00000000', purchased_balance = '50.00000000' WHERE org_id = $1`,
+          [world.org.id],
+        )
+      }
     },
     60_000,
   )

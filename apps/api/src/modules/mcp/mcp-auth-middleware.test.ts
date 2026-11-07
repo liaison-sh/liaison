@@ -4,7 +4,9 @@ import { Hono } from "hono"
 import { HTTPException } from "hono/http-exception"
 import type { AppEnv } from "~/app"
 import { sql } from "~/db"
+import { _setEdition } from "~/lib/edition"
 import { forgetOrgApps } from "~/modules/apps/org-apps"
+import { clearOrgBillingStatusCache } from "~/modules/cloud/billing-status"
 import { createMcpConnection, mintAccessToken } from "~/modules/mcp/connection-service"
 import { mcpAuthMiddleware } from "~/modules/mcp/mcp-auth-middleware"
 import {
@@ -13,6 +15,7 @@ import {
   seedAgentForOrg,
   seedOrgWithUser,
 } from "~/modules/mcp/test-helpers"
+import { seedOrgBillingState } from "~/seed/factories/billing/billing"
 
 // A throwaway route behind the real middleware, echoing back the request
 // context the middleware populated. The agent binding must reach the Hono
@@ -157,5 +160,54 @@ describe("mcpAuthMiddleware: an org being deleted", () => {
     expect(res.headers.get("www-authenticate")).toBeNull()
     const body = (await res.json()) as { error: { code?: string } }
     expect(body.error.code).toBe("ORG_DELETED")
+  }, 30_000)
+})
+
+// A managed org suspended or closed for billing (cloud/suspension.ts): its MCP
+// token is refused 403 `org_suspended` (not a 401 that restarts sign-in), and
+// no new token is minted. Self-hosted, the same row changes nothing.
+describe("mcpAuthMiddleware: suspended org (managed)", () => {
+  const orgs: string[] = []
+
+  afterEach(async () => {
+    _setEdition(null)
+    clearOrgBillingStatusCache()
+    for (const o of orgs.splice(0)) {
+      await sql`DELETE FROM kernel.org_billing_state WHERE org_id = ${o}`
+      await cleanupSeededOrg(o)
+    }
+  })
+
+  it("refuses the token and the mint while suspended; self-hosted unaffected", async () => {
+    const { orgId, userId } = await seedOrgWithUser()
+    orgs.push(orgId)
+    const { connection } = await createMcpConnection({
+      orgId,
+      userId,
+      clientId: "claude-code",
+      label: "Claude Code",
+    })
+    const { token } = await mintAccessToken(connection.id)
+    await seedOrgBillingState(orgId, {
+      plan: "base",
+      status: "suspended",
+      includedCredits: 0,
+      accessUntil: new Date(Date.now() + 20 * 86_400_000),
+    })
+
+    _setEdition("managed")
+    clearOrgBillingStatusCache()
+    const res = await createProbeApp().request("/probe", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    expect(res.status).toBe(403)
+    await expect(mintAccessToken(connection.id)).rejects.toThrow("mcp org suspended")
+
+    _setEdition("self_hosted")
+    clearOrgBillingStatusCache()
+    const served = await createProbeApp().request("/probe", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    expect(served.status).toBe(200)
   }, 30_000)
 })

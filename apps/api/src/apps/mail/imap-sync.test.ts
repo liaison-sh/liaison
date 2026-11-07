@@ -849,6 +849,54 @@ describe("a failing incremental sync backs off; the schedule never hammers a slo
     expect(w.account.sync_state.nextRetryAt).toBeUndefined()
   })
 
+  describe("a scheduled poll while nobody is online", () => {
+    const tickAlone = async (account: any, others: any[] = []) => {
+      const w = mailWorld(account, { inbox: [10, 11] }, bundle)
+      const findMany = async (entity: string, optsJson: string) => {
+        const where = JSON.parse(optsJson).where ?? {}
+        if (entity !== "accounts" || where.syncStatus !== "active") return "[]"
+        return JSON.stringify([w.account, ...others])
+      }
+      await executeInSandbox({
+        pool: getSandboxPool(),
+        bundleSource,
+        exportName: "imapIncrementalSync",
+        params: { orgId: "org-1" },
+        bridge: {
+          ...w.bridge(async (opts) => fakeImapBridge([10, 11], opts)),
+          db_findMany: findMany,
+          hasOnlineUsers: async () => JSON.stringify(false),
+        },
+        timeoutMs: 15000,
+      })
+      return w
+    }
+    const personal = {
+      ...ACTIVE,
+      owner_type: "user",
+      owner_id: "user-1",
+      encryption_state: "ready",
+    }
+
+    it("an org's mailbox is polled: IMAP has no push, and nobody has to be signed in for its mail", async () => {
+      const w = await tickAlone({ ...ACTIVE, owner_type: "org", owner_id: null })
+      expect(w.fetches).toHaveLength(1)
+    })
+
+    it("a person's own mailbox waits for them, as before", async () => {
+      const w = await tickAlone(personal)
+      expect(w.fetches).toEqual([])
+    })
+
+    it("of several mailboxes, only the org's get a job", async () => {
+      const w = await tickAlone({ ...ACTIVE, owner_type: "org", owner_id: null }, [
+        { ...personal, id: "acc-p", email_address: "me@northwind.test" },
+      ])
+      expect(w.fetches).toEqual([])
+      expect(w.jobs.map((j: any) => j.payload.accountId)).toEqual(["acc-r"])
+    })
+  })
+
   it("a tick with several mailboxes runs each in a job of its own", async () => {
     const w = mailWorld(ACTIVE, { inbox: [10] }, bundle)
     const second = { ...ACTIVE, id: "acc-s", email_address: "sales@northwind.test" }

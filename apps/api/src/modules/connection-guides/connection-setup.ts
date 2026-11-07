@@ -109,6 +109,11 @@ function hostOf(url: string | undefined): string | null {
   }
 }
 
+/** Whether a connection signs in at a Shopify store: its authorize host, per store or fixed. */
+export function isShopifyAuthorizeUrl(url: string | undefined): boolean {
+  return hostOf(url)?.endsWith(".myshopify.com") ?? false
+}
+
 export function connectionFamily(
   app: string,
   name: string,
@@ -116,8 +121,7 @@ export function connectionFamily(
 ): ConnectionFamily {
   const host = hostOf(decl.authorizationUrl)
   if (decl.type === "oauth2" && host === GOOGLE_AUTHORIZE_HOST) return "google"
-  if (app === "shopify" || (decl.authorizationUrl ?? "").includes(".myshopify.com"))
-    return "shopify"
+  if (app === "shopify" || isShopifyAuthorizeUrl(decl.authorizationUrl)) return "shopify"
   if (decl.type === "credentials" && name === "imap") return "imap"
   return "app"
 }
@@ -142,7 +146,10 @@ export function guideCommandFor(app: string, connection: string, family: Connect
 }
 
 export function connectionSetup(input: {
+  /** The base of the webhook URLs a person registers (the org's). */
   baseUrl: string
+  /** The base of the OAuth redirect URI, when not `baseUrl`. */
+  redirectBaseUrl?: string
   /** The org's id (webhook URLs carry it); a placeholder in generated docs. */
   orgId: string
   app: string
@@ -175,7 +182,11 @@ export function connectionSetup(input: {
     ...(decl.setupGuide?.summary ? { summary: decl.setupGuide.summary } : {}),
     steps: (decl.setupGuide?.steps ?? []).map(normalizeSetupStep),
     ...(decl.setupGuide?.docsUrl ? { docsUrl: decl.setupGuide.docsUrl } : {}),
-    ...(oauth ? { redirectUri: `${base}${CONNECTIONS_CALLBACK_PATH}` } : {}),
+    ...(oauth
+      ? {
+          redirectUri: `${(input.redirectBaseUrl ?? base).replace(/\/+$/, "")}${CONNECTIONS_CALLBACK_PATH}`,
+        }
+      : {}),
     ...(oauth ? { scopes: [...(decl.scopes ?? [])] } : {}),
     ...(oauth && decl.authorizeConfigParams
       ? { appSettings: Object.values(decl.authorizeConfigParams).map((p) => p.configKey) }

@@ -74,7 +74,7 @@ liaison slack import --export-dir <path> --user-map <path.json> [--org <slug>] [
 liaison search reindex
 liaison export --full --output <path>
 liaison org export <org slug or id> [--wait] [--timeout <seconds>]
-liaison org caps <org slug or id> [--seats <n>] [--mailboxes <n>] [--storage-gb <n>] [--jobs-per-hour <n>] [--unset <cap>]
+liaison org caps <org slug or id> [--seats <n>] [--mailboxes <n>] [--storage-gb <n>] [--jobs-per-hour <n>] [--custom-apps <n>] [--audit-days <n>] [--unset <cap>]
 liaison org delete <org slug or id> [--dry-run] [--yes <slug>] [--export-to <path>] [--no-legal-archive] [--abort]
 liaison mailbox verify-attachment --file-id <kernel.files id>
 liaison mailbox purge --user <uuid> --org <uuid> [--execute --confirm <same user uuid>]
@@ -128,7 +128,10 @@ liaison erase-user <userId>
   in the config's `apps[].connection.credentials`. `config apply` stores such a
   connection under `apps[].connection.identifier` when the config names one,
   else under the field the manifest names (Google Ads settings: the customer
-  id), so a config that names its identifier keeps updating the same account. It refuses
+  id), so a config that names its identifier keeps updating the same account.
+  With neither, it uses the key the settings form uses: an `email` or
+  `identifier` credential, else the org (the person, for `ownerType: user`). A
+  connection that holds several accounts by slug always needs `identifier`. It refuses
   (exit `2`) a personal Gmail address while the instance's Google client is not
   verified for the restricted scopes, and points to `liaison guide imap`.
   - `mail/gmail` connects a Mail app mailbox and nothing else.
@@ -448,7 +451,7 @@ The annotated full example is
 | Section | What it ensures |
 |---|---|
 | `org` | The org (`slug`, `name`, optional `timezone`, `defaultLocale`, `credits`, `requireAdminSecondFactor`). `requireAdminSecondFactor: true` makes two-step verification mandatory for administrators: one without it signs in to a screen that only sets it up. Absent leaves the org's setting unchanged. |
-| `admin` | The owner account, with a personal agent. `password` is optional (passwordless sign-in). An existing admin's password is never reset. Without this section, the run acts as the org's earliest active admin (for example, as the person who connected an API connector's credentials). With no active admin, any step that would store a connection (credentials in `apiConnectors`, an `apps` connection, an IMAP tickets inbox or shared mailbox) is refused before writing, with a message naming the step and saying to add an `admin` section. A connection that already exists unchanged needs no admin. |
+| `admin` | The owner account, with a personal agent. `password` is optional (passwordless sign-in). An existing admin's password is never reset. Without this section, the run acts as the org's earliest active admin (for example, as the person who connected an API connector's credentials). With no active admin, any step that would store a connection (credentials in `apiConnectors`, an `apps` connection, an IMAP tickets inbox or shared mailbox) is refused before writing, with a message naming the step and saying to add an `admin` section. A catalog app install fails the same way (exit `2`). An org-owned connection that already exists unchanged needs no admin. |
 | `roles` | Custom roles: a name plus the exact scope set, reconciled on every apply. |
 | `users` | Members by email with a role name; `mode: invite` (default) or `mode: create` with `password`. A re-run that gives an existing `mode: create` user a role they do not hold yet grants it and reports the user under `changed` (the plan says `exists: grant role <name>`); an identical re-run reports them `unchanged`, and so does an invite to a user who already holds the role or already has an invite waiting. The password of an existing user is never changed. |
 | `byok` | Per-org AI provider keys (`openrouter`, `anthropic`, `openai`, `google`, `mistral`), validated live unless `validate: false` or `--no-validate-byok`. One `openrouter` key is the recommended single key: when the org has no other usable model key, the apply adds OpenRouter's default model (DeepSeek V4.1 Flash 1017) and makes it Auto, so the org can chat without a dashboard step (reported as `byok.openRouterAuto`). |
@@ -520,8 +523,9 @@ tickets:
 - Settings converge on every apply. `default: false` never clears the flag: to
   move the default, mark another inbox `default: true`. At most one entry may be
   the default.
-- At most one IMAP entry per section and owner: a second IMAP connection for the
-  same owner in the same app replaces the first.
+- At most one personal IMAP entry per owner in a section: a second IMAP
+  connection for the same person in the same app replaces the first. An org holds
+  several shared IMAP mailboxes, one per address.
 - A ticket source such as an API key needs a default inbox, otherwise ticket
   creation returns `422 inbox_required`. For a pure receiving bucket without a
   mailbox, use `liaison tickets inbox create --kind api`.
@@ -801,6 +805,8 @@ limits:
   mailboxes: 10      # connected mailboxes
   storageGb: 100     # stored files, in GB
   jobsPerHour: 5000  # background jobs per clock hour
+  customApps: 5      # custom apps installed for the org
+  auditDays: 365     # days of audit log kept
 ```
 
 ### `liaisonTeam`

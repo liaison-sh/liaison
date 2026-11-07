@@ -3,6 +3,7 @@
 import { sql as drizzleSql } from "drizzle-orm"
 import { z } from "zod"
 import { extractRows } from "~/db"
+import { withReleasedSavepoint } from "~/db/savepoint"
 import { sanitizeCustomerHtml } from "~/lib/email/sanitize"
 import { fetchWithPinnedHost } from "~/lib/outbound-fetch"
 import { quoteIdent } from "~/lib/sql-utils"
@@ -10,8 +11,8 @@ import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import {
   BASE_ENTITY_FIELDS,
   SANDBOX_FETCH_MAX_REDIRECTS,
-  SANDBOX_PRIVATE_HOST_POLICY,
   sandboxEgressOverrides,
+  sandboxEgressPolicy,
   snakeCase,
   validateSandboxFetchUrl,
   withPgCause,
@@ -260,30 +261,27 @@ export function createDbMethods(ctx: BridgeContext): Record<string, any> {
         entries.map(([k, v]) => (k === "org_id" ? drizzleSql`${v}` : toSqlValue(entity, k, v))),
         drizzleSql.raw(", "),
       )
-      // Wrap the INSERT in a SAVEPOINT so a constraint violation (e.g. a 23505 unique-key race on a
-      // read-then-insert upsert like boxtal's draft_override) does NOT poison the surrounding tool
-      // transaction. Without the savepoint, the failed INSERT aborts the whole tx, and the handler's
-      // OWN recovery (catch the unique-violation → re-read → UPDATE) then hits 25P02 "current
-      // transaction is aborted" on its next statement — turning a recoverable race into a hard tool
-      // failure (the boxtal set_customs CH/JP wobble: BL-254). Rolling back to the savepoint leaves the
-      // transaction usable so the handler can recover; the error still propagates with full pg detail.
-      await txDb.execute(drizzleSql`SAVEPOINT app_db_insert`)
+      // The INSERT runs in a driver savepoint (`txDb.transaction`) so a constraint violation (e.g. a
+      // 23505 unique-key race on a read-then-insert upsert like boxtal's draft_override, or an insert
+      // used as a claim) does NOT poison the surrounding transaction: the handler's own recovery
+      // (catch the unique violation, re-read, UPDATE) keeps working on the same transaction. It must
+      // be the driver's savepoint, not a raw SAVEPOINT statement: postgres.js rethrows the first
+      // failed query of a transaction scope when the scope ends, even one the caller caught. It is
+      // released when the insert ends, so a handler's many inserts do not nest.
       try {
-        const rows = extractRows(
-          await txDb.execute(
-            drizzleSql`INSERT INTO ${tableRef} (${colsChunk}) VALUES (${valsChunk}) RETURNING *`,
+        const rows = await withReleasedSavepoint(txDb, async (sp) =>
+          extractRows(
+            await sp.execute(
+              drizzleSql`INSERT INTO ${tableRef} (${colsChunk}) VALUES (${valsChunk}) RETURNING *`,
+            ),
           ),
         )
-        await txDb.execute(drizzleSql`RELEASE SAVEPOINT app_db_insert`)
         return JSON.stringify(
           coerceByteaRowFields(entity, coerceNumericRowFields(entity, [rows[0] ?? null]))[0] ?? {
             id: null,
           },
         )
       } catch (err) {
-        // Roll back to the savepoint so a failed INSERT doesn't abort the whole tool transaction —
-        // the caller may recover (unique-key upsert) and continue issuing statements on the same tx.
-        await txDb.execute(drizzleSql`ROLLBACK TO SAVEPOINT app_db_insert`)
         // Surface the postgres cause through Drizzle's wrap. Without this
         // we only see the SQL+params, losing visibility on RLS/role/column-
         // mismatch errors (same pattern as db_findMany above).
@@ -444,11 +442,11 @@ export function createDbMethods(ctx: BridgeContext): Record<string, any> {
       try {
         requireCapability("bulk.fetch")
         const opts = optsJson ? (JSON.parse(optsJson) as { headers?: Record<string, string> }) : {}
-        const { fetchToBlob } = await import("~/modules/apps/sandbox/bulk-blob")
+        const { bulkBlobScope, fetchToBlob } = await import("~/modules/apps/sandbox/bulk-blob")
         const allowPrivateHostsInTest = manifest.network?.allowPrivateHostsInTest ?? false
         // Reuse the sandbox URL validator so quota+fetch share the same allowlist
         // and private-net protection as `ctx.fetch`.
-        await validateSandboxFetchUrl(url, allowedDomains, allowPrivateHostsInTest)
+        await validateSandboxFetchUrl(url, allowedDomains, allowPrivateHostsInTest, appName)
         // Same demo posture as `ctx.fetch`: a demo org's bulk download is
         // refused before the stream opens. Unlike `ctx.fetch` there is no
         // fixture exception, Shopify included — the demo provider answers the
@@ -468,13 +466,13 @@ export function createDbMethods(ctx: BridgeContext): Record<string, any> {
           fetchWithPinnedHost(targetUrl, init ?? {}, {
             maxRedirects: SANDBOX_FETCH_MAX_REDIRECTS,
             fetchImpl: sandboxEgressOverrides.fetch ?? undefined,
-            ...SANDBOX_PRIVATE_HOST_POLICY,
+            ...sandboxEgressPolicy(appName),
             allowPrivateHostsInTest,
             onHopValidate: async (next) => {
-              await validateSandboxFetchUrl(next, allowedDomains, allowPrivateHostsInTest)
+              await validateSandboxFetchUrl(next, allowedDomains, allowPrivateHostsInTest, appName)
             },
           })) as typeof fetch
-        const result = await fetchToBlob(orgId, url, opts, pinnedBulkFetch)
+        const result = await fetchToBlob(bulkBlobScope(orgId, appName), url, opts, pinnedBulkFetch)
         // Track which iterators are open per blobId — first iteration starts at offset 0.
         bulkIteratorCursors.set(result.blobId, { iterator: null, done: false })
         return JSON.stringify(result)
@@ -486,7 +484,7 @@ export function createDbMethods(ctx: BridgeContext): Record<string, any> {
     bulk_iterateJsonl_next: async (blobId: string, batchSize?: number): Promise<string> => {
       try {
         requireCapability("bulk.fetch")
-        const { iterateJsonl } = await import("~/modules/apps/sandbox/bulk-blob")
+        const { bulkBlobScope, iterateJsonl } = await import("~/modules/apps/sandbox/bulk-blob")
         let entry = bulkIteratorCursors.get(blobId)
         if (!entry) {
           entry = { iterator: null, done: false }
@@ -494,9 +492,9 @@ export function createDbMethods(ctx: BridgeContext): Record<string, any> {
         }
         if (entry.done) return JSON.stringify({ batch: [], done: true })
         if (!entry.iterator) {
-          entry.iterator = iterateJsonl(orgId, blobId, { batchSize: batchSize ?? 50 })[
-            Symbol.asyncIterator
-          ]()
+          entry.iterator = iterateJsonl(bulkBlobScope(orgId, appName), blobId, {
+            batchSize: batchSize ?? 50,
+          })[Symbol.asyncIterator]()
         }
         const step = await entry.iterator.next()
         if (step.done) {
@@ -512,8 +510,8 @@ export function createDbMethods(ctx: BridgeContext): Record<string, any> {
     bulk_deleteBlob: async (blobId: string): Promise<string> => {
       try {
         requireCapability("bulk.fetch")
-        const { deleteBlob } = await import("~/modules/apps/sandbox/bulk-blob")
-        await deleteBlob(orgId, blobId)
+        const { bulkBlobScope, deleteBlob } = await import("~/modules/apps/sandbox/bulk-blob")
+        await deleteBlob(bulkBlobScope(orgId, appName), blobId)
         bulkIteratorCursors.delete(blobId)
         return JSON.stringify({ ok: true })
       } catch (e) {

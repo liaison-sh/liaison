@@ -51,8 +51,12 @@ export type { AutoApprovePolicy, NewAutoApprovePolicy } from "./auto-approve-pol
 export { autoApprovePolicies } from "./auto-approve-policies"
 export type { AwayRange, NewAwayRange } from "./away-ranges"
 export { awayRanges } from "./away-ranges"
+export type { CloudRequestOutcomeRow } from "./cloud-request-outcomes"
+export { cloudRequestOutcomes } from "./cloud-request-outcomes"
 export { type ConfigAppliedFieldRow, configAppliedFields } from "./config-applied-fields"
 export { connectedAccounts } from "./connected-accounts"
+export type { ConnectionTeardownRow } from "./connection-teardowns"
+export { connectionTeardowns } from "./connection-teardowns"
 export type {
   ContactAddressOrigin,
   ContactAddressRole,
@@ -182,6 +186,7 @@ export {
 export { oauthAccounts, oauthProviders } from "./oauth"
 export type { NewOrgAppFeature, OrgAppFeature } from "./org-app-features"
 export { orgAppFeatures } from "./org-app-features"
+export { type OrgBillingStateRow, orgBillingState, type StorageEstimate } from "./org-billing-state"
 export {
   type LegalArchiveRow,
   legalArchives,
@@ -192,6 +197,8 @@ export {
   orgDeletions,
 } from "./org-deletions"
 export { type OrgExportRow, type OrgExportStatus, orgExports } from "./org-exports"
+export type { OrgTransferLedgerRow } from "./org-transfer-ledger"
+export { orgTransferLedger } from "./org-transfer-ledger"
 export { kernel, organizations } from "./organizations"
 export { passwordResets } from "./password-resets"
 export { pendingEvents } from "./pending-events"
@@ -199,6 +206,8 @@ export { type ProductAttributeRow, productAttributes } from "./product-attribute
 export type { NewPushToken, PushToken } from "./push-tokens"
 export { pushPlatformEnum, pushTokens } from "./push-tokens"
 export { resourceGrants } from "./resource-grants"
+export type { RestoreDrillMarkerRow } from "./restore-drill-markers"
+export { restoreDrillMarkers } from "./restore-drill-markers"
 export {
   appScopeGrantAudit,
   roleDimensionGrants,

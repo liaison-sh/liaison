@@ -15,7 +15,7 @@ import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs"
 import { join, resolve, sep } from "node:path"
 import { isReservedSettingsNamespace } from "@liaison/app-sdk"
 import { isReservedWebRouteSegment, labelSkeleton } from "@liaison/shared"
-import { and, eq, notInArray } from "drizzle-orm"
+import { and, eq, isNotNull, isNull, notInArray } from "drizzle-orm"
 import { HTTPException } from "hono/http-exception"
 import { withSystemDb } from "~/db/privileged"
 import {
@@ -23,6 +23,7 @@ import {
   appsInstalled,
   type InstalledPdfTemplate,
 } from "~/db/schema/kernel/apps-installed"
+import { isManagedEdition } from "~/lib/edition"
 import { appsLogger as log } from "~/lib/logger"
 import { ownOption } from "~/lib/safe-path"
 import {
@@ -34,6 +35,13 @@ import {
   withAppActivationLock,
 } from "~/modules/apps/activation"
 import { assertAdditiveSchema } from "~/modules/apps/additive-schema"
+import {
+  assertCustomAppManifestAllowed,
+  assertCustomAppName,
+  CustomAppDisabledError,
+  customAppNameKey,
+  invalidateAppOrgScope,
+} from "~/modules/apps/app-org-scope"
 import { isCatalogArtifact, listCatalog } from "~/modules/apps/catalog"
 import { bumpCatalogGeneration } from "~/modules/apps/catalog-generation"
 import { appIconErrors } from "~/modules/apps/contract"
@@ -50,6 +58,7 @@ import { reviewTriggerBody } from "~/modules/apps/trigger-review"
 import { type VerifyResult, verifyAppPackage } from "~/modules/apps/verify-package"
 import { isTransientDir, placeVersionDir, sweepTransientDirs } from "~/modules/apps/version-dir"
 import { versionsInUse } from "~/modules/apps/versions-in-use"
+import { assertCustomAppRoom } from "~/modules/org/caps"
 
 export interface InstallOptions {
   /** Local path to the `.liaisonapp` tarball to install. */
@@ -98,6 +107,13 @@ export interface InstallOptions {
    * or upgrade an operator asked for always fails when the package cannot be stored.
    */
   storeBestEffort?: boolean
+  /**
+   * Managed edition: install an org-private custom app for this org. Its
+   * name must be `<base>-o<orgKey>`, its manifest may declare org-level
+   * declarations only (app-org-scope.ts), a new one takes one of the org's
+   * `customApps`, and only this org sees and runs it. Unset: an instance app.
+   */
+  ownerOrgId?: string
 }
 
 export interface InstallResult {
@@ -145,6 +161,77 @@ export interface ApplyUpgradeOptions {
 }
 
 /** Reject installs whose name collides with a bundled in-tree app. */
+/** The org that owns installed app `name`; null for an instance app (or none installed). */
+async function currentOwnerOf(name: string): Promise<string | null> {
+  const [row] = await withSystemDb("install-current-owner", (db) =>
+    db
+      .select({ orgId: appsInstalled.orgId })
+      .from(appsInstalled)
+      .where(and(eq(appsInstalled.name, name), isNotNull(appsInstalled.orgId)))
+      .limit(1),
+  )
+  return row?.orgId ?? null
+}
+
+/**
+ * Who may install `name`. An org-private install: the custom app name
+ * rule, the declarations an org-level app may carry, and no other owner of the
+ * name. An instance install: never over an org's app, and in the managed
+ * edition never a custom-app-shaped name (the boundary's DB-free rule keeps
+ * such a name to one org).
+ */
+async function assertOrgOwnership(
+  name: string,
+  ownerOrgId: string | null,
+  rawManifest: Record<string, unknown>,
+): Promise<void> {
+  const rows = await withSystemDb("install-owner", (db) =>
+    db
+      .selectDistinct({
+        orgId: appsInstalled.orgId,
+        disabled: isNotNull(appsInstalled.disabledAt),
+      })
+      .from(appsInstalled)
+      .where(eq(appsInstalled.name, name)),
+  )
+  // The operator disabled it (modules/cloud/custom-app-disable.ts): no new
+  // version until the operator enables it again.
+  if (rows.some((r) => r.disabled)) {
+    throw new CustomAppDisabledError(name)
+  }
+  const others = rows.filter((r) => r.orgId !== ownerOrgId)
+  if (ownerOrgId === null) {
+    if (others.length > 0 || (isManagedEdition() && customAppNameKey(name) !== null)) {
+      throw new HTTPException(409, {
+        message: `Cannot install '${name}': that name belongs to an organization's custom app.`,
+      })
+    }
+    return
+  }
+  if (!isManagedEdition()) throw new HTTPException(404, { message: "Not found" })
+  const instanceNames = await withSystemDb("install-instance-names", (db) =>
+    db
+      .selectDistinct({ name: appsInstalled.name })
+      .from(appsInstalled)
+      .where(isNull(appsInstalled.orgId)),
+  )
+  const taken = new Set<string>([
+    ...(await discoverInTreeApps()).map((a) => a.name),
+    ...listCatalog().map((e) => e.name),
+    ...instanceNames.map((r) => r.name),
+  ])
+  assertCustomAppName(name, ownerOrgId, taken)
+  assertCustomAppManifestAllowed(rawManifest)
+  if (others.length > 0) {
+    throw new HTTPException(409, { message: `Cannot install '${name}': the name is taken.` })
+  }
+  // A new custom app: refused at the cap before any file is placed. The write
+  // transaction checks again under the lock (a concurrent install).
+  if (!rows.some((r) => r.orgId === ownerOrgId)) {
+    await withSystemDb("custom-app-room", (db) => assertCustomAppRoom(db, ownerOrgId))
+  }
+}
+
 async function assertNotBundled(name: string): Promise<void> {
   const bundled = await discoverInTreeApps()
   if (bundled.some((a) => a.name === name)) {
@@ -692,6 +779,8 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
     assertHostApiCompatible(manifest)
     assertIconClean(manifest)
     await assertNotBundled(manifest.name)
+    const ownerOrgId = ownOption(opts, "ownerOrgId") ?? null
+    await assertOrgOwnership(manifest.name, ownerOrgId, manifestFile(verified.stagingDir))
     await assertNameNotReserved(manifest, verified.sha256, verified.stagingDir)
     await assertTabRoutesOwned(manifest.name, manifestFile(verified.stagingDir))
     assertScopesGranted(manifest.scopes, opts.grantedScopes)
@@ -783,6 +872,16 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
       const pdfTemplates = readPdfTemplateBundles(manifest, versionDir)
 
       await withSystemDb("install-app", async (db) => {
+        // A new custom app takes one of the org's `customApps`, under the org's
+        // cap lock, in the transaction that writes its row.
+        if (ownerOrgId !== null) {
+          const [own] = await db
+            .select({ name: appsInstalled.name })
+            .from(appsInstalled)
+            .where(and(eq(appsInstalled.name, manifest.name), eq(appsInstalled.orgId, ownerOrgId)))
+            .limit(1)
+          if (!own) await assertCustomAppRoom(db, ownerOrgId)
+        }
         // Idempotent per (name, version): a re-install of the SAME version
         // overwrites the row in place (documented contract). Without this, a single
         // `config apply` that lists one app across several entries (e.g. `social`
@@ -806,6 +905,7 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
             installedBy: opts.installedBy,
             pdfTemplates,
             manifestSchema,
+            orgId: ownerOrgId,
           })
           .onConflictDoUpdate({
             target: [appsInstalled.name, appsInstalled.version],
@@ -825,7 +925,8 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
             },
           })
       })
-      // The install row (grants, vouchers) changed: getDefaultApps reads it again.
+      // The install row (grants, vouchers, owner) changed: getDefaultApps reads it again.
+      invalidateAppOrgScope()
       bumpCatalogGeneration()
     }
 
@@ -914,6 +1015,9 @@ export async function applyUpgrade(opts: ApplyUpgradeOptions): Promise<InstallRe
     assertHostApiCompatible(manifest)
     assertIconClean(manifest)
     await assertNotBundled(manifest.name)
+    // An org's custom app upgrades under the same rules and stays that org's.
+    const upgradeOwner = await currentOwnerOf(manifest.name)
+    await assertOrgOwnership(manifest.name, upgradeOwner, manifestFile(verified.stagingDir))
     await assertNameNotReserved(manifest, verified.sha256, verified.stagingDir)
     await assertTabRoutesOwned(manifest.name, manifestFile(verified.stagingDir))
     // Every manifest scope — old or new — must be in the granted set. If a new
@@ -993,6 +1097,7 @@ export async function applyUpgrade(opts: ApplyUpgradeOptions): Promise<InstallRe
         installedBy: opts.installedBy,
         pdfTemplates,
         manifestSchema: { schema: declaredSchema(verified.stagingDir) ?? null },
+        orgId: upgradeOwner,
       }
       try {
         await withSystemDb("apply-upgrade-row", (db) =>
@@ -1060,6 +1165,7 @@ export async function uninstallApp(opts: UninstallOptions): Promise<void> {
       await db.delete(appsInstalled).where(eq(appsInstalled.name, opts.name))
       await db.delete(appsActiveVersion).where(eq(appsActiveVersion.name, opts.name))
     })
+    invalidateAppOrgScope()
     bumpCatalogGeneration()
     // Its cron fan-out schedulers go with it (best effort; the leader's
     // reconcile removes any left behind).

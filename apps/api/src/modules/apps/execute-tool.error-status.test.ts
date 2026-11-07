@@ -47,10 +47,10 @@ function declaredCodes(dir: string): string[] {
       }
     }
     // A local helper that takes the code first: `fail("x", ...)`, `err("x", ...)`,
-    // `dateRefused("x", ...)`. The code literal is not next to `code:`, and such refusals answered
+    // `dateRefused("x", ...)`, `refuse("x", ...)`. The code literal is not next to `code:`, and such refusals answered
     // 500 unseen. `refuseTool` and its wrappers are not listed: the host makes those a 4xx itself.
     for (const m of text.matchAll(
-      /\b(?:fail|err|dateRefused)\(\s*"([a-z][a-z0-9]*(?:_[a-z0-9]+)*)"\s*,/g,
+      /\b(?:fail|err|dateRefused|refuse)\(\s*"([a-z][a-z0-9]*(?:_[a-z0-9]+)*)"\s*,/g,
     )) {
       if (!NOT_A_CODE.has(m[1]!)) codes.add(m[1]!)
     }
@@ -75,6 +75,15 @@ describe("statusForToolError: every deliberate app code is a non-500", () => {
       })
     }
   }
+
+  it("the buyer-VAT guard's refusals are 4xx, found by the positional refuse() scan", () => {
+    const codes = declaredCodes(join(REPO, "bundled-apps", "invoicing", "src"))
+    for (const code of ["vat_id_invalid", "buyer_vat_id_required", "buyer_is_consumer_refused"]) {
+      expect(codes).toContain(code)
+      expect(statusForToolError(code)).toBe(422)
+    }
+    expect(statusForToolError("buyer_status_contradiction")).toBe(400)
+  })
 
   it("tickets ref resolver codes are client errors", () => {
     expect(statusForToolError("invalid_params")).toBe(400)

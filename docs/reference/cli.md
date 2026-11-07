@@ -518,12 +518,109 @@ liaison org delete <org slug or id> [--dry-run] [--yes <slug>] [--export-to <pat
 | `--abort` | no | Cancel a deletion whose purge has not started, and restore the org. |
 | `--timeout <seconds>` | no | Stop following after this long (default 21600). The deletion keeps running on the server. |
 
+## org transfer keys
+
+Print one line of fresh one-time transfer keys (one per key family) for a move: feed it as the first stdin line of both the export and the import, and keep it nowhere else.
+
+```
+liaison org transfer keys
+```
+
+## org transfer export
+
+Write one org's whole state (every table it owns, its search documents, its webhook replay marks) to stdout as a checksummed bundle, read in one snapshot, its stored secrets re-encrypted under the transfer keys. Read only. Refuses a demo org, an org being deleted, and a secret this instance's key cannot open. The first line of stdin holds the transfer keys (`org transfer keys`), never an argument or a file.
+
+```
+liaison org transfer export <org id> --transfer <id> [--since <file>] [--fingerprint-out <file>]
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `<org id>` | yes | The org to move, by its id. |
+| `--transfer <id>` | yes | The move's id (a uuid); the same on both sides. |
+| `--since <file>` | no | A delta: only rows changed, added or deleted since the export that wrote this fingerprint. |
+| `--fingerprint-out <file>` | no | Save this export's fingerprint (primary keys and row versions, no content) for a later `--since`. |
+
+## org transfer import
+
+Apply a bundle from stdin to this instance in one transaction: the org arrives `incoming` (it serves nothing until the move commits), its secrets re-encrypted under this instance's keys. Refused, with nothing written, when the schema, an app version or a table's columns differ, when another org here holds one of its unique keys (a sign-in, the slug), or when the org already exists here (except its own `moved` copy on a move back). Prints a JSON report. The first line of stdin holds the transfer keys (`org transfer keys`), never an argument or a file.
+
+```
+liaison org transfer import [--dry-run]
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `--dry-run` | no | Run every check and write nothing: the move's precheck. |
+
+## org transfer estimate
+
+Print the org's rows and bytes per table and the estimated write pause of a move, as JSON.
+
+```
+liaison org transfer estimate <org id>
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `<org id>` | yes | The org to move, by its id. |
+
+## org transfer purge-source
+
+Delete this instance's copy of an org that was moved away, in every store. Refused unless the org is `moved` by that transfer, the move proved the two instances' stores differ, and a fresh storage probe of the target (the line `org transfer probe-write` printed there, on stdin) is not visible here: a target rebuilt during the hold with this instance's object store, search index or Redis is caught before anything is deleted. Run `org transfer probe-clear` on the target afterwards.
+
+```
+liaison org transfer purge-source <org id> --transfer <id>
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `<org id>` | yes | The org to move, by its id. |
+| `--transfer <id>` | yes | The move's id (a uuid); the same on both sides. |
+
+## org transfer probe-write
+
+On the instance an org moved to: write a storage probe (an object, a search document and a Redis key) and print it as one JSON line, for `org transfer purge-source` on the source to look for.
+
+```
+liaison org transfer probe-write <org id> --transfer <id>
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `<org id>` | yes | The org to move, by its id. |
+| `--transfer <id>` | yes | The move's id (a uuid); the same on both sides. |
+
+## org transfer probe-clear
+
+Remove the storage probe whose line (from `org transfer probe-write`) is on stdin.
+
+```
+liaison org transfer probe-clear
+```
+
+## org transfer agent
+
+Run one side of a live move. The target agent reads the source's commands on stdin and answers on stdout (make it an ssh forced command). The source agent starts the target agent with `--target-cmd`, copies the org twice while it is live, drains it, freezes its writes for the last changes (each step under a time limit, past which it aborts), and commits with the control plane, which holds the move's lease. Its first stdin line is `{"operator":{"control":"<webhook base>","operatorKey":"<key>"}}`. Exit 0 committed, 1 aborted (the org stays here), 3 no decision reachable (the org stays frozen until the control plane answers).
+
+```
+liaison org transfer agent --role target | agent --role source <org id> --transfer <id> --target-cmd <command> [--fail-at <step>]
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `--role <source\|target>` | yes | `source` (drives the move) or `target` (receives it). |
+| `<org id>` | no | The org to move, by its id. |
+| `--transfer <id>` | no | The move's id (a uuid); the same on both sides. |
+| `--target-cmd <command>` | no | Source only: the command that starts the target agent (e.g. an ssh to the target). |
+| `--fail-at <precopy\|draining\|frozen\|after-cas>` | no | Source only, for rehearsals on test servers: stop on the spot at that step (no abort, no more heartbeats), as a crash would. |
+
 ## org caps
 
 Show or set an organization's caps: seats (active people), mailboxes (connected Gmail or IMAP addresses), storage in GB, and background jobs per hour. Without a change flag it prints the caps and the usage; a change keeps the caps it does not name. A missing cap is unlimited, which is how every org starts. Each cap is a whole number of at least 1: 0 is refused, and `--unset` makes a cap unlimited. Only the operator sets caps: org admins see them read only in Settings → Organization. A cap below current usage removes nothing; new seats and mailboxes are refused until usage drops, and background jobs over the hourly cap wait for the next hour.
 
 ```
-liaison org caps <org slug or id> [--seats <n>] [--mailboxes <n>] [--storage-gb <n>] [--jobs-per-hour <n>] [--unset <cap>]
+liaison org caps <org slug or id> [--seats <n>] [--mailboxes <n>] [--storage-gb <n>] [--jobs-per-hour <n>] [--custom-apps <n>] [--audit-days <n>] [--unset <cap>]
 ```
 
 | Flag | Required | Description |
@@ -533,7 +630,9 @@ liaison org caps <org slug or id> [--seats <n>] [--mailboxes <n>] [--storage-gb 
 | `--mailboxes <n>` | no | Most connected mailboxes (distinct addresses). |
 | `--storage-gb <n>` | no | Most stored file bytes, in GB. |
 | `--jobs-per-hour <n>` | no | Most background jobs started per clock hour; the rest wait for the next hour. |
-| `--unset <seats\|mailboxes\|storage-gb\|jobs-per-hour>` | no | Make that cap unlimited again. Repeatable. |
+| `--custom-apps <n>` | no | Most custom apps installed for the org. |
+| `--audit-days <n>` | no | Most days of audit log the org keeps. |
+| `--unset <seats\|mailboxes\|storage-gb\|jobs-per-hour\|custom-apps\|audit-days>` | no | Make that cap unlimited again. Repeatable. |
 
 ## mailbox purge
 
@@ -674,6 +773,30 @@ liaison keys rotate --family encryption|byok --from-env <VAR> --to-env <VAR> [--
 | `--to-env <VAR>` | yes | The environment variable holding the new key. |
 | `--execute` | no | Re-encrypt for real. |
 | `--skip-undecryptable` | no | Proceed even when a value opens with neither key. |
+
+## team identity mint
+
+Managed edition only. Mint this server's identity with its control plane: a new random instance id, state `pending`, printed as JSON for the operator to pin on the control plane. Nothing is sent. Refuses when an identity exists unless `--force`.
+
+```
+liaison team identity mint [--force]
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `--force` | no | Replace an existing identity (re-keying); its waiting outbox messages are cancelled. |
+
+## team identity install
+
+Managed edition only. Install the instance key the control plane derived for the minted id, read from a file only its owner can read (0600). The key is stored encrypted under `ENCRYPTION_KEY` and the identity becomes `registered`. Prints the instance id and the key fingerprint (first 16 hex characters of its SHA-256).
+
+```
+liaison team identity install --key-file <path>
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `--key-file <path>` | yes | The file holding the 64-hex-character instance key, mode 0600. |
 
 ## erase-user
 

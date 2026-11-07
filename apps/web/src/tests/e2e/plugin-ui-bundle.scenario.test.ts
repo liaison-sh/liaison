@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Phase 16.5 — End-to-end Playwright proof that a runtime-installed plugin app
-// ships a UI bundle that the real frontend can dynamic-import, with the Solid
-// shim resolving via the import map. The settings-page DOM mount is verified
-// by the actual Phase 16 (Shopify) and Phase 17+ e2e harnesses once a plugin
-// declares a manifest view; this scenario keeps the surface minimal and pins
-// the loader half: install → manifest announcement → bundle fetch → import
-// map + shim actually resolve `solid-js` in the live browser.
+// End-to-end proof that a runtime-installed plugin app ships a UI bundle the
+// real frontend runs: install → manifest announcement (a signed bundle URL) →
+// bundle route → its settings block mounts the sandboxed frame (an outside
+// app's code never runs in the page, bootstrap.ts S16), which loads the
+// bundle and renders the app's Solid component. The page keeps the Solid
+// shims first-party bundles import from.
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -14,7 +13,7 @@ import { freezeApp } from "../../../../../scripts/freeze-app"
 import { expect, loginAs, test } from "./fixtures/test"
 
 test.describe("Plugin UI bundle — end-to-end mount", () => {
-  test("installed plugin's ui.js is dynamic-imported and Solid runtime is shared", async ({
+  test("installed plugin's ui.js loads in its sandboxed frame and renders its Solid component", async ({
     page,
     env,
     world,
@@ -32,6 +31,23 @@ test.describe("Plugin UI bundle — end-to-end mount", () => {
         packageFormat: 1,
         license: "MIT",
         scopes: ["e2e-ui-fixture:noop"],
+        // Its interface: one custom block on its own settings page.
+        settings: {
+          sections: [
+            {
+              id: "panel",
+              title: "Fixture",
+              scope: "org",
+              blocks: [
+                {
+                  block: "custom",
+                  component: "SettingsPanel",
+                  reason: "Renders the fixture's own Solid component.",
+                },
+              ],
+            },
+          ],
+        },
       }),
     )
     writeFileSync(join(appDir, "handlers.ts"), `export const noop = async () => ({})`)
@@ -103,15 +119,18 @@ test.describe("Plugin UI bundle — end-to-end mount", () => {
     const directBody = await directBundleRes.text()
     expect(directBody).toContain("SettingsPanel")
 
-    // Shell.onMount → loadManifestApps fires the dynamic import() — wait for
-    // the recorded request before asserting. `performance.getEntriesByType`
-    // is unreliable for Vite-proxied ESM-import fetches in dev mode, so we
-    // assert on the wire-level request log captured via `page.on("request")`.
-    await expect
-      .poll(() => seenRequests.some((u) => u.includes("/api/apps/e2e-ui-fixture/1.0.0/ui.js")), {
-        timeout: 10000,
-      })
-      .toBe(true)
+    // An installed app that is not first-party runs in its sandboxed frame,
+    // never in the page (bootstrap.ts S16): its settings block mounts the
+    // frame, which loads the bundle and renders the app's Solid component.
+    await page.goto(`http://localhost:${env.ports[1]}/settings/apps/e2e-ui-fixture`)
+    const frame = page
+      .getByTestId("settings-custom-SettingsPanel")
+      .frameLocator('[data-testid="isolated-app-frame"][data-app="e2e-ui-fixture"]')
+    await expect(frame.getByTestId("e2e-ui-fixture-settings")).toHaveText("value:42", {
+      timeout: 20000,
+    })
+    // The wire-level request log (`page.on("request")`, frames included).
+    expect(seenRequests.some((u) => u.includes("/api/apps/e2e-ui-fixture/1.0.0/ui.js"))).toBe(true)
 
     const shims = await page.evaluate(() => ({
       // biome-ignore lint/suspicious/noExplicitAny: window-global shim probe

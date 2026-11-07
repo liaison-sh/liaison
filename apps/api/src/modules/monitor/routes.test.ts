@@ -11,6 +11,8 @@ import { sql } from "~/db/connection"
 import { FairnessTestAccess, fairMetricsKey } from "~/infra/jobs/fairness"
 import { JOBS_METRICS_KEY } from "~/infra/jobs/fanout-keys"
 import * as searchClient from "~/infra/search/client"
+import { _setEdition } from "~/lib/edition"
+import { _resetLatencyWindow } from "~/lib/latency-window"
 import { monitorLogger } from "~/lib/logger"
 import { redis } from "~/lib/redis"
 import { _resetMaintenanceCache } from "~/middleware/maintenance"
@@ -58,6 +60,31 @@ describe("GET /diag", () => {
     expect(Array.isArray(body.webhookIngest.staleProbeApps)).toBe(true)
     expect(Array.isArray(body.webhookIngest.probedApps)).toBe(true)
     expect("silentApps" in body.webhookIngest).toBe(false)
+  })
+
+  it("http latency field: managed only (self-hosted has none)", async () => {
+    const app = await buildTestApp()
+    const diag = async () =>
+      (await (
+        await app.request("/diag", { headers: { Authorization: `Bearer ${MONITOR_TOKEN}` } })
+      ).json()) as { http?: { p95Ms: number | null; count: number; windowS: number } }
+    try {
+      _setEdition("self_hosted")
+      _resetLatencyWindow()
+      await app.request("/api/client-policy")
+      expect("http" in (await diag())).toBe(false)
+      _setEdition("managed")
+      _resetLatencyWindow()
+      await app.request("/api/client-policy")
+      await app.request("/api/client-policy")
+      const body = await diag()
+      expect(body.http?.windowS).toBe(900)
+      expect(body.http?.count).toBeGreaterThanOrEqual(2)
+      expect(typeof body.http?.p95Ms).toBe("number")
+    } finally {
+      _setEdition(null)
+      _resetLatencyWindow()
+    }
   })
 
   it("no token -> 401", async () => {

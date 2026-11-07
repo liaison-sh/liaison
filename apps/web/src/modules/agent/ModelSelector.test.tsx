@@ -96,6 +96,39 @@ describe("ModelSelector", () => {
     expect(domWithin(menu).getByText("Anthropic")).toBeInTheDocument()
   })
 
+  it("managed: each model reads its ≈ N× against Auto, never a price (S18)", async () => {
+    BillingStateTestAccess.setMode("managed")
+    const managed = {
+      ...SERVED_MODELS_FIXTURE,
+      models: SERVED_MODELS_FIXTURE.models.map(
+        ({ inputCostPerM: _i, outputCostPerM: _o, ...m }, i) => ({
+          ...m,
+          multiplier: i === 0 ? 1.4 : 3,
+        }),
+      ),
+    }
+    setServedModels(parseServedModels(managed))
+    render(() => <ModelSelector balance={null} selectedModelId={null} onSelect={() => {}} />)
+    const trigger = screen.getByLabelText("Select model")
+    trigger.focus()
+    fireEvent.keyDown(trigger, { key: "ArrowDown" })
+    const menu = await screen.findByRole("menu")
+    const first = SERVED_MODELS_FIXTURE.models[0].key
+    expect(domWithin(menu).getByTestId(`model-multiplier-${first}`).textContent).toBe("≈ 1.4×")
+    expect(menu.textContent).toContain("≈ 3×")
+    expect(menu.textContent).not.toMatch(/€|EUR|USD|\$/)
+  })
+
+  it("self_hosted: no multiplier is shown (the server serves none)", async () => {
+    BillingStateTestAccess.setMode("self_hosted")
+    render(() => <ModelSelector balance={null} selectedModelId={null} onSelect={() => {}} />)
+    const trigger = screen.getByLabelText("Select model")
+    trigger.focus()
+    fireEvent.keyDown(trigger, { key: "ArrowDown" })
+    const menu = await screen.findByRole("menu")
+    expect(menu.querySelector('[data-testid^="model-multiplier-"]')).toBeNull()
+  })
+
   it("a CONFIRMED empty balance locks the menu and says why, still naming the model", () => {
     BillingStateTestAccess.setMode("managed")
     render(() => (

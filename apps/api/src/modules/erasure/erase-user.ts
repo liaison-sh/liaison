@@ -23,9 +23,9 @@ import {
   listInstalledAppNames,
 } from "~/modules/apps/app-registries"
 import {
-  type RevocableConnection,
-  revocationUrlFor,
-  revokeUnlessShared,
+  runConnectionTeardown,
+  type StageableConnection,
+  stageConnectionTeardown,
 } from "~/modules/apps/connections/revoke"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { writeAuditLog } from "~/modules/audit/service"
@@ -886,8 +886,8 @@ export async function eraseUser(
     const deletedEntityDocs: Array<{ app: string; entityType: string; entityId: string }> = []
     // The person's profile picture object, removed from storage after the commit.
     let erasedAvatarKey: string | null = null
-    // The person's OAuth grants to revoke at the provider after the commit.
-    const revokeAfterCommit: RevocableConnection[] = []
+    // The person's connections with something left to do at the provider after the commit.
+    const teardownAfterCommit: string[] = []
     // The sign-in sessions the erasure ends: their access tokens are revoked
     // after the commit.
     let endedSessionIds: string[] = []
@@ -1052,25 +1052,26 @@ export async function eraseUser(
         entityId: userId,
       })
       await tx.execute(drizzleSql`DELETE FROM ${K}.oauth_accounts WHERE user_id = ${userId}`)
-      // The user's own OAuth grants are revoked at the provider after the commit
-      // (best effort, `revokeAfterCommit`): collected here, while the rows and the
-      // tokens still exist. Whether another active connection on the instance still
-      // uses the grant is checked after the commit too (revokeUnlessShared).
-      const ownConnections = extractRows<RevocableConnection>(
+      // The user's own OAuth connections: their push watches are stopped and their
+      // grants revoked at the provider after the commit. Staged here in this transaction,
+      // while the rows and the tokens still exist; whether another active connection on
+      // the instance still uses them is checked when that work runs (connections/revoke.ts).
+      const ownConnections = extractRows<StageableConnection>(
         await tx.execute(drizzleSql`
           SELECT id, org_id AS "orgId", app_name AS "appName",
                  connection_name AS "connectionName", provider_type AS "providerType",
                  identifier, access_token_encrypted AS "accessTokenEncrypted",
-                 refresh_token_encrypted AS "refreshTokenEncrypted"
+                 refresh_token_encrypted AS "refreshTokenEncrypted",
+                 oauth_client_source AS "oauthClientSource",
+                 oauth_client_id AS "oauthClientId",
+                 token_expires_at AS "tokenExpiresAt"
           FROM ${K}.connected_accounts
           WHERE owner_type = 'user' AND owner_id = ${userId} AND status <> 'disconnected'
         `),
       )
       for (const conn of ownConnections) {
-        if (conn.providerType !== "oauth2") continue
-        if (!conn.accessTokenEncrypted && !conn.refreshTokenEncrypted) continue
-        if (!revocationUrlFor(conn.orgId, conn.appName, conn.connectionName)) continue
-        revokeAfterCommit.push(conn)
+        await stageConnectionTeardown(tx, conn)
+        teardownAfterCommit.push(conn.id)
       }
       await tx.execute(drizzleSql`
         DELETE FROM ${K}.connected_accounts
@@ -1479,21 +1480,11 @@ export async function eraseUser(
       }
     }
 
-    // The erased user's OAuth grants (Google and any provider declaring a
-    // `revocationUrl`): the tokens are gone with the rows, and the provider is
-    // told to end the grant. Best effort, never fatal to a committed erasure.
-    if (result.exitCode === 0 && revokeAfterCommit.length > 0) {
-      const erasedIds = revokeAfterCommit.map((c) => c.id)
-      for (const conn of revokeAfterCommit) {
-        try {
-          await revokeUnlessShared(conn, erasedIds)
-        } catch (revokeErr) {
-          log.warn(
-            { revokeErr, userId, connectionId: conn.id },
-            "erase-user: could not revoke an OAuth grant at the provider",
-          )
-        }
-      }
+    // The erased user's OAuth connections (Google and any provider declaring a
+    // `watchStopUrl` or `revocationUrl`): the provider is told to stop and to end the
+    // grant. Never fatal to a committed erasure: what an outage prevents stays queued.
+    if (result.exitCode === 0) {
+      for (const connectionId of teardownAfterCommit) await runConnectionTeardown(connectionId)
     }
 
     // The profile picture: the tombstone cleared avatar_key, so the public

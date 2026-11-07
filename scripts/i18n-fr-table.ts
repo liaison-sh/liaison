@@ -8,6 +8,11 @@
  * by the generator and intentionally absent here.
  */
 export const FR: Record<string, string> = {
+  "Send a new code in {{seconds}} s": "Envoyer un nouveau code dans {{seconds}} s",
+  "We sent a new 6-digit code to {{email}}. It expires in 10 minutes.":
+    "Nous avons envoy\u00e9 un nouveau code \u00e0 6 chiffres \u00e0 {{email}}. Il expire dans 10 minutes.",
+  "We can't send email right now. Try again later, or sign in with your password if you have one.":
+    "Nous ne pouvons pas envoyer d'e-mails pour le moment. R\u00e9essayez plus tard, ou connectez-vous avec votre mot de passe si vous en avez un.",
   "Send me occasional news about Liaison": "M'envoyer de temps en temps des nouvelles de Liaison",
   "We use your email to send your confirmation code. Unless you tick the box and confirm your email, your name and email are deleted when your demo ends, after 72 hours.":
     "Nous utilisons votre mail pour vous envoyer votre code de confirmation. Sauf si vous cochez la case et confirmez votre mail, votre nom et votre mail sont supprimés à la fin de votre démo, après 72 heures.",
@@ -30,7 +35,11 @@ export const FR: Record<string, string> = {
   "Usage and limits": "Utilisation et limites",
   "Limits are set by whoever runs the server. You can see them here but not change them.":
     "Les limites sont fixées par la personne qui gère le serveur. Vous les voyez ici sans pouvoir les modifier.",
+  "Your plan sets these limits. To raise them, choose a larger plan in Billing.":
+    "Votre forfait fixe ces limites. Pour les relever, choisissez un forfait supérieur dans Facturation.",
   Seats: "Places",
+  "Custom apps": "Applications personnalisées",
+  "Audit log days": "Jours de journal d'audit",
   "Active people": "Personnes actives",
   Mailboxes: "Boîtes mail",
   "Connected addresses": "Adresses connectées",
@@ -50,6 +59,24 @@ export const FR: Record<string, string> = {
     "{{label}} : {{shown}} utilisés, 80 % de la limite.",
   "Background work past the limit waits for the next hour.":
     "Les tâches de fond au-delà de la limite attendent l'heure suivante.",
+  "The cheapest model": "Le modèle le moins cher",
+  "New files from people and agents are refused until you move to a plan with more storage in Billing or free space.":
+    "Les nouveaux fichiers des personnes et des agents sont refusés jusqu'à ce que vous passiez à une offre avec plus de stockage dans Facturation ou libériez de l'espace.",
+  "Everything stored (estimate)": "Tout ce qui est stocké (estimation)",
+  "Files plus mail, tickets, conversations, knowledge and the search index. Measured each night. Going over warns you and never blocks anything.":
+    "Les fichiers, plus les e-mails, tickets, conversations, connaissances et l'index de recherche. Mesuré chaque nuit. Un dépassement vous avertit et ne bloque jamais rien.",
+  "About {{used}} GB of {{limit}} GB": "Environ {{used}} Go sur {{limit}} Go",
+  "About {{used}} GB": "Environ {{used}} Go",
+  "Measured {{date}}": "Mesuré le {{date}}",
+  "Measured {{date}}, some parts could not be read":
+    "Mesuré le {{date}}, certaines parties n'ont pas pu être lues",
+  "Over the plan": "Au-delà de l'offre",
+  "Your organization's data is estimated at about {{used}} GB, over your plan's {{limit}} GB of storage. Nothing is blocked. To stay within your plan, move to a plan with more storage in Billing or remove data you no longer need.":
+    "Les données de votre organisation sont estimées à environ {{used}} Go, au-delà des {{limit}} Go de stockage de votre offre. Rien n'est bloqué. Pour rester dans votre offre, passez à une offre avec plus de stockage dans Facturation ou supprimez les données dont vous n'avez plus besoin.",
+  "Move to a plan with more storage in Billing or free space, otherwise new files will be refused once storage is full.":
+    "Passez à une offre avec plus de stockage dans Facturation ou libérez de l'espace, sinon les nouveaux fichiers seront refusés une fois le stockage plein.",
+  "Your plan sets this limit. A larger plan in Billing raises it.":
+    "Votre offre fixe cette limite. Une offre supérieure dans Facturation la relève.",
   "New files from people and agents are refused until you upgrade your plan or free space (ask whoever runs the server to raise the limit).":
     "Les nouveaux fichiers des personnes et des agents sont refusés jusqu'à ce que vous passiez à une offre supérieure ou libériez de l'espace (demandez à la personne qui gère le serveur de relever la limite).",
   "Upgrade your plan or free space (ask whoever runs the server to raise the limit), otherwise new files will be refused once storage is full.":
@@ -2712,6 +2739,9 @@ export const FR: Record<string, string> = {
   "This sign-in link is invalid or has expired.":
     "Ce lien de connexion n'est pas valide ou a expiré.",
   "Back to sign in": "Retour à la connexion",
+  "Sign in to {{workspace}}": "Se connecter à {{workspace}}",
+  "You are signing in as {{email}}.": "Vous vous connectez en tant que {{email}}.",
+  "Continue only if you asked for this link.": "Continuez uniquement si vous avez demandé ce lien.",
   "Full name": "Nom complet",
   "Create account": "Créer le compte",
   "We'll email you a sign-in code, no password required.":
@@ -5030,6 +5060,7 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.nav.monitoring": "Supervision",
   "kernel.nav.search": "Recherche",
   "kernel.nav.section.dataExport": "Export des données",
+  "kernel.nav.section.billing": "Facturation",
   "kernel.nav.section.dimensionGrants": "Équipe et permissions",
   "kernel.nav.section.mailSetup": "Configuration mail",
   "kernel.permissionModeAuto": "Auto",
@@ -7500,6 +7531,26 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.aiModels.blockedHostsReset": "Rétablir la valeur par défaut",
   "kernel.aiModels.blockedHostsSaveFailed": "Les hôtes bloqués n'ont pas pu être enregistrés.",
   "kernel.aiModels.blockedHostsMax": "{{max}} hôtes au maximum.",
+  "kernel.settingsUi.oauthConnectAccountPersonal":
+    "Vous vous connectez à {{app}} dans votre navigateur. Le compte choisi est connecté pour vous seul.",
+  "kernel.settingsUi.oauthConnectAccountOrg":
+    "Vous vous connectez à {{app}} dans votre navigateur. Le compte choisi est connecté pour toute l'organisation.",
+  "kernel.settingsUi.oauthUseOwnClient": "Utiliser votre propre client OAuth",
+  "kernel.settingsUi.oauthReplaceClientHint":
+    "Saisissez l'ID client et le secret depuis la console développeur du fournisseur. Ils remplacent le client utilisé actuellement par cette application.",
+  "kernel.dictationErrors.billingUnavailable":
+    "La dictée est momentanément indisponible : la configuration de facturation de cet espace de travail est incomplète. Réessayez dans un instant.",
+  "kernel.dictationErrors.paymentRequired":
+    "La dictée est suspendue jusqu'au paiement de la facture en attente. Un administrateur peut la régler dans Facturation.",
+  "kernel.usage.creditsLeft": "Crédits restants",
+  "kernel.usage.creditsAmount": "{{amount}} crédits",
+  "kernel.usage.creditsBreakdown": "{{included}} inclus · {{purchased}} achetés",
+  "kernel.usage.periodUsed": "{{percent}} % des crédits de la période utilisés",
+  "kernel.usage.periodAvailable": "{{used}} crédits utilisés sur {{available}} cette période",
+  "kernel.aiModels.colCost": "Coût par rapport à Auto",
+  "kernel.aiModels.autoRunsCredits": "Actuellement {{model}}, {{multiplier}}",
+  "kernel.aiModels.multiplierHint": "Crédits consommés par un tour, comparés à Auto",
+  "kernel.aiModels.voicePerMinuteCredits": "{{amount}} crédits / min",
   "kernel.deviceApproval.stepUpPrompt":
     "L'accès complet demande une confirmation de plus : un code que nous vous envoyons par mail.",
   "kernel.deviceApproval.stepUpCodeLabel": "Code reçu par mail",

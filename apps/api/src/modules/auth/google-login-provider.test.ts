@@ -82,6 +82,16 @@ describe("google login provider", () => {
     expect((await googleRows(orgId)).length).toBe(0)
   })
 
+  it("calls at the same moment leave one provider: the login page shows one button", async () => {
+    await withSystemDb("test-google-clear", (db) =>
+      db
+        .delete(oauthProviders)
+        .where(and(eq(oauthProviders.orgId, orgId), eq(oauthProviders.issuerUrl, GOOGLE_ISSUER))),
+    )
+    await Promise.all(Array.from({ length: 6 }, () => ensureGoogleLoginProvider(orgId, CREDS)))
+    expect(await googleRows(orgId)).toHaveLength(1)
+  })
+
   it("seeds an invited-only Google provider and is idempotent across rotations", async () => {
     await ensureGoogleLoginProvider(orgId, CREDS)
     let rows = await googleRows(orgId)

@@ -14,6 +14,7 @@ import { convertToCoreMessages } from "~/modules/agent/context/context"
 import {
   type DemoStepMeter,
   finalizeUsage,
+  meterSideCall,
   preCheck,
   selectSideCallModelForOrg,
 } from "~/modules/agent/credits/credit-meter"
@@ -260,7 +261,9 @@ export async function runMemoryFlush(params: {
    * closes the meter (`finish`) on every path, so a flush that sent nothing
    * gives its hold back.
    */
-  credit?: {
+  // Required, so a caller cannot leave the flush unmetered by omission: a
+  // flush once ran with none and spent on the instance's key unbilled.
+  credit: {
     model: Parameters<typeof finalizeUsage>[1]["model"]
     keySource: "liaison" | "byok"
     demo?: DemoStepMeter
@@ -275,8 +278,8 @@ export async function runMemoryFlush(params: {
   const { demoOrgKind } = await import("~/modules/demo/demo-spend")
   const kind = await demoOrgKind(orgId)
   if (kind === "reserved") return false
-  if (kind === "visitor" && !params.credit?.demo) return false
-  const meter = params.credit?.demo
+  if (kind === "visitor" && !params.credit.demo) return false
+  const meter = params.credit.demo
   // A system actor has no user id; the memory context still needs the field, and
   // an empty one is the fail-closed viewer (it matches no disclosure list).
   const actorUserId = actor.actorType === "user" ? actor.userId : ""
@@ -333,16 +336,15 @@ export async function runMemoryFlush(params: {
     const result = await generateText({
       // biome-ignore lint/suspicious/noExplicitAny: the model instance is opaque here
       model: params.model as any,
-      ...(meter
-        ? {
-            abortSignal: abort.signal,
-            onStepFinish: async (step: { usage?: unknown; providerMetadata?: unknown }) => {
-              reportedCostUsd = addProviderCostUsd(reportedCostUsd, step.providerMetadata)
-              const next = await meter.stepFinished(step.usage, step.providerMetadata)
-              if (next.exhausted) abort.abort("demo_budget")
-            },
-          }
-        : {}),
+      ...(meter ? { abortSignal: abort.signal } : {}),
+      // Every step's reported cost is summed, so a metered flush is billed at
+      // what the provider charged for all of its steps.
+      onStepFinish: async (step: { usage?: unknown; providerMetadata?: unknown }) => {
+        reportedCostUsd = addProviderCostUsd(reportedCostUsd, step.providerMetadata)
+        if (!meter) return
+        const next = await meter.stepFinished(step.usage, step.providerMetadata)
+        if (next.exhausted) abort.abort("demo_budget")
+      },
       system:
         "You are the agent's memory keeper. This conversation is about to be summarized. Persist only what the user asked you to remember and lasting corrections or preferences about how you should work, as Markdown files under your memory tree, using memory_create for a new file and memory_str_replace to correct an existing one. Never write task state, secrets, or data an app already holds (contacts, addresses, orders, prices). When there is nothing like that, write nothing.",
       messages: [
@@ -384,19 +386,13 @@ export async function runMemoryFlush(params: {
       },
       stopWhen: isStepCount(5),
     })
-    if (meter && params.credit) {
-      // The org's usage row, and the meter closed at what the steps cost (the
-      // hold reserved after the last step was never sent: released).
-      const usage = sideCallUsage(result.totalUsage)
-      await finalizeUsage(orgId, {
-        model: params.credit.model,
-        ...usage,
-        ...(typeof reportedCostUsd === "number" ? { providerCostUsd: reportedCostUsd } : {}),
-        keySource: params.credit.keySource,
-        userId: "system",
-        demo: meter,
-      })
-    }
+    // The org's usage (a billed row on a managed cell, a visitor's meter
+    // closed at what the steps cost: the hold reserved after the last step
+    // was never sent is released). Every step's reported cost is summed.
+    await meterSideCall(orgId, params.credit, result.totalUsage, undefined, {
+      userId: actorUserId || null,
+      ...(typeof reportedCostUsd === "number" ? { providerCostUsd: reportedCostUsd } : {}),
+    })
   } catch (err) {
     log.warn({ err }, "Memory flush failed, continuing with the advance")
   }
@@ -525,6 +521,8 @@ export async function runCompaction(params: {
     }
 
     // Step 1: Memory flush, once per checkpoint version (P4m-T17).
+    // Metered on the summary's pre check (no demo meter: a visitor's flush
+    // needs one of its own, and does not run here).
     await runMemoryFlush({
       orgId,
       actor,
@@ -533,6 +531,7 @@ export async function runCompaction(params: {
       messages: coreMessages,
       inputBudgetTokens,
       requiredScopes: summaryRequiredScopes(historyMessages, orgId),
+      credit: { model: creditCheck.model, keySource: creditCheck.keySource },
     })
 
     // Step 2: Prune messages

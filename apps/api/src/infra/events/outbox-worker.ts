@@ -8,13 +8,19 @@ import {
   runDurableConsumerLanes,
   runDurableConsumers,
 } from "~/infra/events/durable-consumers"
-import { _publishEventInternal, type AppEvent, assignWsReplayId } from "~/infra/events/event-bus"
+import {
+  _publishEventInternal,
+  type AppEvent,
+  assignWsReplayId,
+  EventDeferredError,
+} from "~/infra/events/event-bus"
 import { subscribeOutboxWake } from "~/infra/events/outbox-wake"
 import { isLeader, registerSingleton } from "~/infra/leadership"
 import { rootLogger } from "~/lib/logger"
 import { initializedOrgRuntimes, orgRuntimeLastTouch } from "~/modules/apps/app-registries"
 import type { OrgSetupTrigger } from "~/modules/apps/init"
 import { markOrgsChanged } from "~/modules/attention/org-changes"
+import { movingOrgIds } from "~/modules/org/transfer-state/state"
 
 const log = rootLogger.child({ module: "outbox-worker" })
 /**
@@ -211,6 +217,18 @@ const outboxOrgInit = { current: initOrgRuntime }
 export async function processOutboxBatch(): Promise<number> {
   const table = `${schemaRef("kernel")}.pending_events`
 
+  // The events of an org moving to another instance (modules/org/
+  // transfer-state/) stay unclaimed until the move is over: processed here
+  // after an abort, or on the target, which receives them unprocessed. When
+  // the moving orgs cannot be read, nothing is claimed this tick (fail closed).
+  let movingOrgs: string[]
+  try {
+    movingOrgs = await movingOrgIds()
+  } catch (err) {
+    log.warn({ err }, "Moving orgs unreadable: the outbox claims nothing this tick")
+    return 0
+  }
+
   // Phase 1: Claim a batch — mark as ours without setting processed_at.
   //
   // ORDERING (load-bearing): `UPDATE ... RETURNING` does NOT preserve the
@@ -233,7 +251,7 @@ export async function processOutboxBatch(): Promise<number> {
       FOR UPDATE SKIP LOCKED
     )
     RETURNING id, payload, attempts, seq, created_at`,
-    [WORKER_ID, CLAIM_TIMEOUT_SECONDS, BATCH_SIZE, orgsWaitingForRetry()],
+    [WORKER_ID, CLAIM_TIMEOUT_SECONDS, BATCH_SIZE, [...orgsWaitingForRetry(), ...movingOrgs]],
   )
   const claimed = [...claimedUnordered].sort((a, b) => {
     const sa = BigInt(a.seq as string | number)
@@ -353,6 +371,24 @@ export async function processOutboxBatch(): Promise<number> {
           { err: flushErr, eventId: row.id },
           "Failed to flush batched outbox completions before handling event failure",
         )
+      }
+      if (err instanceof EventDeferredError) {
+        // The org started moving after the claim (or its move state cannot be
+        // read): retry later, not a failure. Released unprocessed, attempts
+        // untouched; the claim skips the org while it moves.
+        log.info({ eventId: row.id, orgId: err.orgId, reason: err.reason }, "Outbox event deferred")
+        try {
+          await adminExec(
+            `UPDATE ${table} SET claimed_at = NULL, claimed_by = NULL WHERE id = $1`,
+            [row.id],
+          )
+        } catch (resetErr) {
+          log.error(
+            { err: resetErr, eventId: row.id },
+            "Failed to release a deferred outbox event — will auto-recover after timeout",
+          )
+        }
+        continue
       }
       const newAttempts = (row.attempts ?? 0) + 1
       if (newAttempts >= MAX_ATTEMPTS) {

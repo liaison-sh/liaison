@@ -4,13 +4,19 @@
 // entry validates its args and calls one seed engine factory; none writes a
 // row itself. Add a factory here when a browser test needs a row the engine
 // can make, never a raw insert in the test.
+import { randomBytes } from "node:crypto"
 import type { z } from "zod"
 import { z as zod } from "zod"
 import { writeAppConfigKey } from "~/modules/apps/app-config"
+import {
+  installProvisionedKey,
+  mintProvisionedIdentity,
+} from "~/modules/liaison-team/provisioned-identity"
 import { hasScope } from "~/modules/permissions/permissions"
 import type { SeedContext } from "~/seed/context"
 import { seedBaseAgent, upsertRoleAgent } from "~/seed/factories/agent/agents"
 import { seedOrgSkills } from "~/seed/factories/agent/skills"
+import { seedOrgBillingState } from "~/seed/factories/billing/billing"
 import { actorFor } from "~/seed/factories/people/actors"
 import { resolveContacts } from "~/seed/factories/people/contacts"
 import {
@@ -437,6 +443,21 @@ export const SEED_FACTORIES: Record<string, SeedRouteFactory> = {
   /** The model pricing catalog as the server seeds it at boot, and the bootstrap USD to EUR rate. */
   "pricing.catalog": factory(zod.object({}), () => seedPricingCatalog(), { org: "none" }),
 
+  /**
+   * A registered liaison team identity, as `liaison team identity mint` then
+   * `install --key-file` leave it: the managed edition refuses to boot without
+   * one (lib/managed-boot.ts). The key is random; nothing delivers with it.
+   */
+  "liaisonTeam.identity": factory(
+    zod.object({}),
+    async () => {
+      const minted = await mintProvisionedIdentity({ force: true })
+      await installProvisionedKey(randomBytes(32).toString("hex"))
+      return { instanceId: minted.instanceId }
+    },
+    { org: "none" },
+  ),
+
   /** The org's credit balance set to exactly these amounts (credit service: monthly reset, top up or refund). */
   "credits.balance": factory(
     zod.object({
@@ -450,6 +471,33 @@ export const SEED_FACTORIES: Record<string, SeedRouteFactory> = {
         .default("50.00000000"),
     }),
     (ctx, a, call) => setCreditBalance(ctx, { ...a, key: call.key }),
+  ),
+
+  /**
+   * The billing state a managed cell holds after a control plane push, for a
+   * scenario that needs a managed org with a plan. A repeat call is a newer
+   * push: it replaces the plan, status, period end and included credits.
+   */
+  "billing.state": factory(
+    zod.object({
+      plan: zod.enum(["preview", "base", "pro"]),
+      status: zod.enum(["active", "past_due", "suspended", "closed"]).default("active"),
+      periodEnd: zod.string().datetime().default("2099-01-01T00:00:00.000Z"),
+      includedCredits: zod.number().nonnegative().default(10000),
+    }),
+    async (ctx, a) => {
+      await seedOrgBillingState(
+        ctx.orgId,
+        {
+          plan: a.plan,
+          status: a.status,
+          periodEnd: new Date(a.periodEnd),
+          includedCredits: a.includedCredits,
+        },
+        { onConflict: "replace" },
+      )
+      return { plan: a.plan, status: a.status }
+    },
   ),
 
   /** Take a scope from a person through the role editor (their roles and direct grant); what to restore. */

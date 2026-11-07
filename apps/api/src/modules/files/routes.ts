@@ -9,6 +9,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { storageDelivery } from "~/infra/storage/delivery"
 import { getObjectRange, getObjectStream, headObject } from "~/infra/storage/object-storage"
 import { filesLogger as log } from "~/lib/logger"
+import { assertHostAllowsOrg } from "~/lib/org-host"
 import { RequestBodyTooLargeError, readRequestBytesWithLimit } from "~/lib/request-body"
 import { withRequestRls } from "~/lib/request-rls"
 import { success } from "~/lib/response"
@@ -517,6 +518,8 @@ fileUploadRelay.put("/:token", async (c) => {
       401,
     )
   }
+  // Outside authMw: host binding (lib/org-host.ts), org A's token works on A's host only.
+  await assertHostAllowsOrg(c, payload.orgId)
   // Outside authMw: no upload into an org whose deletion has started.
   await assertOrgNotDeleting(payload.orgId)
   // Reject oversized bodies before buffering when the length is declared.
@@ -580,6 +583,8 @@ fileDownloadRelay.on(["GET", "HEAD"], "/:token", async (c) => {
       401,
     )
   }
+  // Outside authMw: host binding (lib/org-host.ts), org A's token works on A's host only.
+  await assertHostAllowsOrg(c, payload.orgId)
   // Outside authMw: nothing more is served for an org being deleted.
   await assertOrgNotDeleting(payload.orgId)
   const headers: Record<string, string> = {

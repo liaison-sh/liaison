@@ -46,6 +46,7 @@ import { useSettingsPageActive } from "../settings-page-active"
 import { appSettingsPage } from "./app-settings-pages"
 import { AppPageProvider, createAppPageState } from "./page-context"
 import { createSaveQueue, entryLabel, visibleSections } from "./page-model"
+import { revealSettingsSection } from "./reveal-section"
 import { SectionView } from "./SectionView"
 import { loadSettingsValues, type SaveOutcome, saveSetting, saveSettingsUnit } from "./settings-api"
 import type { AppSettingsPageEntry, SettingsScope, SettingsSection } from "./types"
@@ -68,6 +69,8 @@ export const AppSettingsBody: Component<{
   active: Accessor<boolean>
   /** A connection whose inline form opens on arrival (`?open=`). */
   openConnection?: string
+  /** A section scrolled into view, its first control focused, on arrival (`?section=`). */
+  revealSection?: string
   compact?: boolean
 }> = (props) => {
   const i18n = useI18n()
@@ -123,6 +126,23 @@ export const AppSettingsBody: Component<{
         }
       },
       { defer: true },
+    ),
+  )
+
+  // `?section=<id>`: once the section's values are in (its controls exist),
+  // bring it into view. Asked again when the parameter changes.
+  createEffect(
+    on(
+      () => {
+        const id = props.revealSection
+        const section = id ? sections().find((s) => s.id === id) : undefined
+        if (!section) return null
+        const values = loaded(section.scope)
+        return values.loading ? null : section.id
+      },
+      (id) => {
+        if (id) requestAnimationFrame(() => revealSettingsSection(app(), id))
+      },
     ),
   )
 
@@ -312,6 +332,7 @@ export const AppSettingsPage: Component<{ appId: string; active?: Accessor<boole
     if (canManageApps()) void orgAppsStore.ensureLoaded(pageApi).catch(() => {})
   })
   const openConnection = () => new URLSearchParams(location.search).get("open") ?? undefined
+  const revealSection = () => new URLSearchParams(location.search).get("section") ?? undefined
   return (
     <div data-testid={`app-settings-page-${props.appId}`}>
       <Show
@@ -338,7 +359,12 @@ export const AppSettingsPage: Component<{ appId: string; active?: Accessor<boole
               />
             </AppSettingsHeader>
             <Show when={!off()} fallback={<AppOffNotice name={entryLabel(i18n.t, e())} />}>
-              <AppSettingsBody entry={e()} active={active} openConnection={openConnection()} />
+              <AppSettingsBody
+                entry={e()}
+                active={active}
+                openConnection={openConnection()}
+                revealSection={revealSection()}
+              />
             </Show>
           </>
         )}

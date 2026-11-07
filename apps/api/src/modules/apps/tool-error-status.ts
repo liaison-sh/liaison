@@ -169,6 +169,15 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   no_issuer_profile: 422,
   no_recipient: 422,
   counterparty_incomplete: 422,
+  // The intra-EU buyer-VAT guard (buyer-vat.ts): VIES says the VAT number is not valid, a
+  // business buyer has no VAT number, or the consumer declaration contradicts the evidence.
+  vat_id_invalid: 422,
+  buyer_vat_id_required: 422,
+  buyer_is_consumer_refused: 422,
+  buyer_status_contradiction: 400,
+  // deferred_tax_override on a park already resolved, or parked on something other than a tax review.
+  already_resolved: 409,
+  not_a_tax_review: 409,
   over_credit: 422,
   draft_order_sync_skipped: 422,
   // E-invoicing issue gate: buyer data the regime needs is missing or unconfirmed.

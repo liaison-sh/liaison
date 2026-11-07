@@ -9,7 +9,7 @@ Default Facebook Page id field -> bundled-apps/ads/app.manifest.json:258
 google + google-config both required for google_/merchant_ tools -> bundled-apps/ads/README.md:45
 Google Cloud OAuth client, callback redirect URI -> bundled-apps/ads/README.md:92
 Google Ads account connection -> bundled-apps/ads/app.manifest.json:268
-Client ID / Client secret / Connect via OAuth -> apps/web/src/modules/settings/ConnectAppDialog.tsx:296
+Client ID / Client secret / Connect via OAuth when no client, one Connect otherwise -> apps/web/src/modules/settings/ConnectAppDialog.tsx:321
 sign in with account with Ads + Merchant access, grant Ads + Content -> bundled-apps/ads/README.md:101
 Google Ads API settings connection -> bundled-apps/ads/app.manifest.json:326
 Google Ads optional; no developer token; Explorer access via Cloud console ads-apis overview; not the API Center form -> bundled-apps/ads/app.manifest.json:333

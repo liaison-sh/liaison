@@ -59,6 +59,7 @@ import {
 import { turnStatus } from "~/modules/agent/runtime/turn-ledger"
 import { takeStreamSlot } from "~/modules/agent/stream-slots"
 import { uiEffectRequester } from "~/modules/agent/tools/open-targets"
+import { PaymentRequiredError } from "~/modules/cloud/suspension"
 import { FileServiceError, moveFilesToParent } from "~/modules/files/service"
 import { getThread } from "~/modules/threads/thread"
 import { isMessageVisible } from "~/services/security/visibility"
@@ -352,6 +353,9 @@ async function chatTurn(
     releaseStreamSlot()
 
     if (err instanceof HTTPException) throw err
+    // An unpaid renewal is a 402 `payment_required` the client offers
+    // Billing for, never a 500 (errorHandler keeps its status and code).
+    if (err instanceof PaymentRequiredError) throw err
     log.error({ err }, "Agent chat initialization failed")
     throw new HTTPException(500, { message: "Agent service error" })
   }
@@ -770,7 +774,7 @@ async function chatTurn(
           agentReply: finalText,
           orgId,
           agentId: chatResult.actingAgentId,
-        }).catch((err) => log.warn({ err, threadId }, "Auto-title failed"))
+        }).catch((err) => log.error({ err, orgId, threadId }, "Auto-title failed"))
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : "Internal error"

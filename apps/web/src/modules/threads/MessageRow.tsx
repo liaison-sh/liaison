@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
 import type { MessageQuote, ReasoningLevel } from "@liaison/shared"
-import { PERSONAL_AGENT_DISPLAY_NAME } from "@liaison/shared"
+import { OUT_OF_CREDITS_CODE, PERSONAL_AGENT_DISPLAY_NAME } from "@liaison/shared"
 import { Copy, Ellipsis, MessageSquareReply, Pencil, Quote, Trash2 } from "lucide-solid"
 import { type Component, createSignal, For, Show } from "solid-js"
 import { getModelLabel } from "~/lib/model-groups"
@@ -37,6 +37,7 @@ import {
 import { TurnEndApprovals } from "~/modules/threads/NodeDispatchApprovalCard"
 import NodeDispatchBlockedCard from "~/modules/threads/NodeDispatchBlockedCard"
 import NodeSessionCard from "~/modules/threads/NodeSessionCard"
+import { billingRefusalOf, PaymentRequiredNotice } from "~/modules/threads/PaymentRequiredNotice"
 import { excerptForWholeMessage, plainQuoteText } from "~/modules/threads/quote-excerpt"
 import { setQuoteDraft } from "~/modules/threads/quote-store"
 import ReactionPicker, { reactorsLabel } from "~/modules/threads/ReactionPicker"
@@ -872,7 +873,11 @@ const MessageRow: Component<MessageRowProps> = (props) => {
         data-system-line="turn-refusal"
         class="mt-2 flex justify-center px-1 py-0.5"
       >
-        <span class="text-[11.5px] text-text-tertiary">{props.message.content}</span>
+        <span class="text-[11.5px] text-text-tertiary">
+          <Show when={billingRefusalOf(props.message.metadata)} fallback={props.message.content}>
+            {(code) => <PaymentRequiredNotice outOfCredits={code() === OUT_OF_CREDITS_CODE} />}
+          </Show>
+        </span>
       </div>
     )
   }

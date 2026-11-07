@@ -25,12 +25,13 @@ import { extractRows, type PrivilegedDb, type RlsClient, type RlsTx } from "~/db
 import { withPrivilegedDb } from "~/db/privileged"
 import { getEmailProvider } from "~/infra/email"
 import { renderBrandedEmail } from "~/infra/email-layout"
-import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
+import { orgPublicBaseUrl } from "~/lib/org-public-url"
 import { base32Token } from "~/lib/random-token"
 import { pgErrorFacts } from "~/lib/transient-db-error"
 import { UUID_RE } from "~/lib/uuid"
 import { FileServiceError, moveFilesToParent } from "~/modules/files/service"
+import { getOrgSenderTransport } from "~/modules/org/email-from"
 import { hasScope } from "~/modules/permissions/permissions"
 
 const csatLog = rootLogger.child({ module: "tickets-csat" })
@@ -1274,8 +1275,11 @@ async function csatRequest(
   // a contact without a routable address, a transient provider error) is logged and never alters
   // the dispatch result. The link carries the opaque per-survey token the public ingest validates.
   let emailed = 0
+  // Managed edition: the org's own verified sender, else "<Org> via Liaison"
+  // (S29). Null elsewhere: the survey goes out exactly as before.
+  const orgSender = toDeliver.length > 0 ? await getOrgSenderTransport(orgId) : null
   for (const d of toDeliver) {
-    const link = `${env.BASE_URL}/csat/${orgId}/${d.token}`
+    const link = `${await orgPublicBaseUrl(orgId)}/csat/${orgId}/${d.token}`
     const subject = `How did we do? -- ${d.subject}`
     const { html, text } = renderBrandedEmail({
       subject,
@@ -1288,8 +1292,9 @@ async function csatRequest(
       cta: { label: "Rate your experience", href: link },
     })
     try {
-      await getEmailProvider().send({
+      await (orgSender?.provider ?? getEmailProvider()).send({
         to: d.email,
+        ...(orgSender ? { from: orgSender.from } : {}),
         subject,
         template: "tickets.csat-survey",
         idempotencyKey: `csat:${orgId}:${d.token}`,
@@ -2167,9 +2172,9 @@ async function releaseInboxConnection(
       if (live.length === 0) return
       await disconnectConnection(ptx, orgId, actor.userId, connectedAccountId)
     })
-    // Committed: revoke the grant at the provider (best effort, never throws).
-    const { revokeStagedGrant } = await import("~/modules/apps/connections/revoke")
-    await revokeStagedGrant(connectedAccountId)
+    // Committed: stop the push watch and revoke the grant at the provider (never throws).
+    const { runConnectionTeardown } = await import("~/modules/apps/connections/revoke")
+    await runConnectionTeardown(connectedAccountId)
   } catch (err) {
     log.warn(
       { orgId, inboxId, connectedAccountId, err: (err as Error).message },

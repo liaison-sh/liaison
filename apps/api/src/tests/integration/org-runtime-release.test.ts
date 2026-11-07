@@ -10,6 +10,7 @@ import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { env } from "~/lib/env"
 import {
+  holdOrgRuntime,
   initializedOrgRuntimes,
   orgRuntimeLastTouch,
   registeredApps,
@@ -94,6 +95,42 @@ describe("org runtime release", () => {
       expect(toolRegistry.get([idle, "kernel", "user_memory_get"])).toBeDefined()
     } finally {
       env.LIAISON_ORG_RUNTIME_IDLE_MINUTES = saved
+    }
+  })
+
+  it("past LIAISON_ORG_RUNTIME_MAX_ORGS a new setup releases the least recently used org, set up again at its next touch", async () => {
+    const a = await newOrg()
+    const b = await newOrg()
+    const c = await newOrg()
+    await awaitOrgApps(a)
+    await awaitOrgApps(b)
+    // Every other org this process holds stays out of it.
+    const unholds = [...initializedOrgRuntimes]
+      .filter((id) => id !== a && id !== b)
+      .map((id) => holdOrgRuntime(id))
+    const saved = env.LIAISON_ORG_RUNTIME_MAX_ORGS
+    const until = async (check: () => boolean) => {
+      const deadline = Date.now() + 10_000
+      while (!check() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20))
+      return check()
+    }
+    try {
+      orgRuntimeLastTouch.set(a, Date.now() - 60_000)
+      env.LIAISON_ORG_RUNTIME_MAX_ORGS = initializedOrgRuntimes.size
+      await awaitOrgApps(c)
+      expect(await until(() => !initializedOrgRuntimes.has(a))).toBe(true)
+      expect(initializedOrgRuntimes.has(b)).toBe(true)
+      expect(initializedOrgRuntimes.has(c)).toBe(true)
+      expect(toolRegistry.get([a, "kernel", "user_memory_get"])).toBeUndefined()
+      // Its next touch sets it up again; now b is the least recently used.
+      await awaitOrgApps(a)
+      expect(toolRegistry.get([a, "kernel", "user_memory_get"])).toBeDefined()
+      expect(await until(() => !initializedOrgRuntimes.has(b))).toBe(true)
+      expect(initializedOrgRuntimes.has(a)).toBe(true)
+      expect(initializedOrgRuntimes.has(c)).toBe(true)
+    } finally {
+      env.LIAISON_ORG_RUNTIME_MAX_ORGS = saved
+      for (const unhold of unholds) unhold()
     }
   })
 

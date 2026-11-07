@@ -18,6 +18,7 @@ import { Hono } from "hono"
 import { z } from "zod"
 import type { AppEnv } from "~/app"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
+import { isManagedEdition } from "~/lib/edition"
 import { byokEncryptionKey } from "~/lib/env"
 import { success } from "~/lib/response"
 import { getOrgKernelSettings } from "~/lib/settings"
@@ -27,7 +28,9 @@ import {
   setOrgHistorySettings,
 } from "~/modules/agent/context/history-settings"
 import { mutateAiModels, setProviderKeyEntry } from "~/modules/agent/credits/ai-models-store"
+import { cellCreditPricing, creditsForUnits } from "~/modules/agent/credits/credit-cost"
 import { isProviderUsable, resolveKey } from "~/modules/agent/credits/credit-meter"
+import { withMultiplier } from "~/modules/agent/credits/managed-money"
 import {
   customModelKey,
   customServerKeyName,
@@ -53,11 +56,13 @@ import {
   transcriptionSettingsView,
 } from "~/modules/assist/transcription-models"
 import {
-  addedView,
+  addedReply,
   addOpenRouterModel,
   aiModelsPatchSchema,
+  autoPriceOf,
   demoModelsLocked,
   getAiModelsState,
+  isNoZeroRetentionRefusal,
   loadSettings,
   notAddableReason,
   patchAiModels,
@@ -67,12 +72,32 @@ import {
   withModels,
 } from "~/modules/settings/ai-models-admin"
 
-export { testCallRateLimitKey }
+export { isNoZeroRetentionRefusal, testCallRateLimitKey }
 
 const DEFAULT_CUSTOM_CONTEXT_WINDOW = 32_768
 
 function errorBody(message: string, code?: string) {
   return { error: code ? { message, code } : { message } }
+}
+
+/**
+ * Voice dictation's models as the page shows them: USD per minute on a
+ * self-hosted server, credits per minute on a managed cell (S18): the pushed
+ * `dictationMinute` credit price, the same for every model, absent while
+ * the cell has no pushed pricing.
+ */
+async function transcriptionView(orgId: string) {
+  const view = await transcriptionSettingsView(orgId)
+  if (!isManagedEdition()) return view
+  const pricing = await cellCreditPricing("transcription-view")
+  const perMinute = pricing ? creditsForUnits(pricing, "dictationMinute", 1) : null
+  return {
+    ...view,
+    available: view.available.map(({ pricePerMinuteUsd: _list, ...m }) => ({
+      ...m,
+      ...(perMinute !== null ? { creditsPerMinute: perMinute } : {}),
+    })),
+  }
 }
 
 const keyParam = z.object({ key: z.string().min(1).max(200) })
@@ -99,7 +124,7 @@ export const aiModelsRoutes = new Hono<AppEnv>()
 
   // ── Voice dictation's transcription model (S7) ───────────────────────────
   .get("/transcription", async (c) => {
-    return success(c, await transcriptionSettingsView(c.get("orgId")))
+    return success(c, await transcriptionView(c.get("orgId")))
   })
   .patch("/transcription", zValidator("json", transcriptionSettingsPatchSchema), async (c) => {
     const orgId = c.get("orgId")
@@ -111,7 +136,7 @@ export const aiModelsRoutes = new Hono<AppEnv>()
         422,
       )
     }
-    return success(c, await transcriptionSettingsView(orgId))
+    return success(c, await transcriptionView(orgId))
   })
 
   // ── Conversation history: summarize after N tokens, warm-cache compaction ─
@@ -202,18 +227,22 @@ export const aiModelsRoutes = new Hono<AppEnv>()
         throw err
       }
       const added = new Set((settings.ai?.models?.added ?? []).map((m) => m.key))
+      const managed = isManagedEdition()
+      const autoKey = managed ? await resolvedAutoKey(orgId, settings) : null
+      const auto = autoKey ? await autoPriceOf(autoKey, settings) : null
       const rows = filterCatalogue(catalogue, {
         q: q ?? "",
         toolsOnly: toolsOnly !== "false",
         limit: 200,
       }).map((m) => {
         const reason = notAddableReason(m)
-        return {
+        const row = {
           ...m,
           added: added.has(openRouterModelKey(m.upstreamId)),
           addable: reason === null,
           ...(reason ? { notAddableReason: reason } : {}),
         }
+        return managed ? withMultiplier(row, auto) : row
       })
       return success(c, { models: rows })
     },
@@ -224,7 +253,11 @@ export const aiModelsRoutes = new Hono<AppEnv>()
     "/openrouter/models",
     zValidator("json", z.strictObject({ upstreamId: z.string().min(1).max(180) })),
     async (c) => {
-      const outcome = await addOpenRouterModel(c.get("orgId"), c.req.valid("json").upstreamId)
+      const outcome = await addOpenRouterModel(
+        c.get("orgId"),
+        c.req.valid("json").upstreamId,
+        c.get("userId"),
+      )
       if (!outcome.ok) {
         if (outcome.retryAfterSeconds) c.header("Retry-After", String(outcome.retryAfterSeconds))
         return c.json(errorBody(outcome.message, outcome.code), outcome.status)
@@ -360,6 +393,7 @@ export const aiModelsRoutes = new Hono<AppEnv>()
           apiKey,
           baseURL: server.baseURL,
         })
+        // unmetered-model-call: the org's own model server, on its own key (its bill, not the instance's)
         test = await runModelTestCall(model, { orgId, key })
       } catch (err) {
         if (err instanceof ModelServerError) {
@@ -403,7 +437,10 @@ export const aiModelsRoutes = new Hono<AppEnv>()
       }
       return success(
         c,
-        { ...addedView(entry, models, true), test: { toolCalled: test.toolCalled } },
+        {
+          ...(await addedReply(orgId, entry, settings, true)),
+          test: { toolCalled: test.toolCalled },
+        },
         undefined,
         201,
       )

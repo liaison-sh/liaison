@@ -169,7 +169,7 @@ describe("open_app to a view or a record", () => {
   })
 
   it("an unknown view is refused and names the valid ones", async () => {
-    const res = await handleOpenApp({ app: "projects", view: "taks", id: TASK }, asPerson(ROW))
+    const res = await handleOpenApp({ app: "projects", view: "taks", id: TASK }, asPerson([]))
     expect(res).toMatchObject({ ok: false, code: "UNKNOWN_VIEW", valid: ["home", "task"] })
     expect(res).toMatchObject({ message: expect.stringContaining("task (Task, takes an id)") })
   })
@@ -270,6 +270,119 @@ describe("open_app to a view or a record", () => {
     )
     expect(res).toMatchObject({ ok: false, code: "OPENS_OUTSIDE" })
     expect(frames()).toHaveLength(0)
+  })
+
+  describe("a record named by its handle, or under the wrong view", () => {
+    const TICKET = "22222222-2222-4222-8222-222222222222"
+    /** A reader answering each query in turn: what the actor's row security lets through. */
+    function sequence(...answers: Array<Array<Record<string, unknown>>>) {
+      const tx = { execute: async () => answers.shift() ?? [] }
+      return {
+        userId: "u1",
+        orgId: ORG,
+        db: { ...tx, transaction: async (fn: (t: unknown) => unknown) => fn(tx) },
+        scopes: ["*"],
+        agentExecutionThreadId: "thread-1",
+      }
+    }
+
+    beforeEach(() => {
+      viewRegistry.set([ORG, "desk"], {
+        tabTypes: { ticket: { label: "Ticket", urlPattern: "/desk/tickets/:entityId" } },
+      } as never)
+      entityRegistry.set([ORG, "desk", "ticket"], {
+        labelField: "subject",
+        tableName: "tickets",
+        readScope: "desk:tickets:read",
+        indexFields: { handle: "number" },
+      } as never)
+      viewRegistry.set([ORG, "billing"], {
+        tabTypes: {
+          editor: { label: "Editor", entity: "document", urlPattern: "/billing/editor/:id" },
+          detail: {
+            label: "Document",
+            entity: "document",
+            urlPattern: "/billing/document/:id",
+            referenceable: true,
+          },
+        },
+      } as never)
+      entityRegistry.set([ORG, "billing", "document"], {
+        labelField: "number",
+        tableName: "documents",
+        readScope: "billing:documents:read",
+      } as never)
+    })
+
+    afterEach(() => {
+      viewRegistry.delete([ORG, "desk"])
+      entityRegistry.delete([ORG, "desk", "ticket"])
+      viewRegistry.delete([ORG, "billing"])
+      entityRegistry.delete([ORG, "billing", "document"])
+    })
+
+    it("a handle passed as the id opens the record it names exactly", async () => {
+      const res = await handleOpenApp(
+        { app: "desk", view: "ticket", id: "T-2026-0009" },
+        sequence([{ id: TICKET }], [{ label: "Pump noise", handle: "T-2026-0009" }]),
+      )
+      expect(res).toEqual({
+        ok: true,
+        app: "desk",
+        view: "ticket",
+        id: TICKET,
+        opened: "ticket T-2026-0009",
+      })
+      expect(frames()[0]?.data).toMatchObject({ tab: { type: "desk:ticket", entityId: TICKET } })
+    })
+
+    it("a handle no visible record has opens nothing and names the close ones", async () => {
+      const res = await handleOpenApp(
+        { app: "desk", view: "ticket", id: "F-2026-0009" },
+        sequence([], [{ handle: "T-2026-0009" }], []),
+      )
+      expect(res).toMatchObject({ ok: false, code: "NOT_FOUND" })
+      const message = (res as { message: string }).message
+      expect(message).toContain('No Ticket visible to this person has the number "F-2026-0009".')
+      expect(message).toContain("T-2026-0009")
+      expect(message).toContain('None of them is "F-2026-0009"')
+      expect(frames()).toHaveLength(0)
+    })
+
+    it("a hidden record's handle answers as one that does not exist", async () => {
+      const hidden = await handleOpenApp(
+        { app: "desk", view: "ticket", id: "T-2026-0001" },
+        sequence([], [], []),
+      )
+      expect(hidden).toEqual({
+        ok: false,
+        code: "NOT_FOUND",
+        message: 'No Ticket visible to this person has the number "T-2026-0001". No tab opened.',
+      })
+    })
+
+    it("an id of the wrong shape says so, for a kind with no handle", async () => {
+      const res = await handleOpenApp({ app: "projects", view: "task", id: "task-7" }, sequence([]))
+      expect(res).toMatchObject({
+        ok: false,
+        code: "NOT_FOUND",
+        message: expect.stringContaining('"task-7" is not a Task id'),
+      })
+    })
+
+    it("a wrong view name with an id opens the view that holds the record", async () => {
+      const res = await handleOpenApp(
+        { app: "billing", view: "invoice", id: TICKET },
+        asPerson([{ label: "INV-2026-0006", present: true }]),
+      )
+      expect(res).toMatchObject({ ok: true, view: "detail", id: TICKET })
+      expect(frames()[0]?.data).toMatchObject({ tab: { type: "billing:detail", entityId: TICKET } })
+    })
+
+    it("a wrong view name with an id no view holds still lists the views", async () => {
+      const res = await handleOpenApp({ app: "billing", view: "invoice", id: TICKET }, asPerson([]))
+      expect(res).toMatchObject({ ok: false, code: "UNKNOWN_VIEW", valid: ["editor", "detail"] })
+    })
   })
 
   it("a routine's run has no viewer: it opens nothing and says so, even with only an app", async () => {

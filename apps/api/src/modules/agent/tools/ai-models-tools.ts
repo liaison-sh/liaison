@@ -7,6 +7,8 @@
 // secret.
 import { reasoningLevelSchema } from "@liaison/shared"
 import { z } from "zod"
+import { isManagedEdition } from "~/lib/edition"
+import { withMultiplier } from "~/modules/agent/credits/managed-money"
 import { openRouterModelKey } from "~/modules/agent/credits/model-keys"
 import {
   filterCatalogue,
@@ -17,8 +19,10 @@ import {
   type AiModelsPatch,
   type AiModelsRefusal,
   addOpenRouterModel,
+  autoPriceOf,
   demoModelsLocked,
   getAiModelsState,
+  loadSettings,
   notAddableReason,
   patchAiModels,
 } from "~/modules/settings/ai-models-admin"
@@ -49,6 +53,7 @@ export type AiModelsSetParams = z.infer<typeof aiModelsSetParams>
 
 interface AiModelsToolCtx {
   orgId: string
+  userId: string
 }
 
 function toolRefusal(refused: AiModelsRefusal) {
@@ -81,8 +86,10 @@ export async function handleAiModelsGet(
       displayName: m.displayName,
       enabled: m.enabled,
       available: m.available,
-      inputCostPerM: m.inputCostPerM,
-      outputCostPerM: m.outputCostPerM,
+      // Managed: a multiplier against Auto's model instead of prices, as the page shows it.
+      ...("multiplier" in m
+        ? { multiplier: m.multiplier }
+        : { inputCostPerM: m.inputCostPerM, outputCostPerM: m.outputCostPerM }),
       reasoningLevels: m.reasoning.allowedLevels,
     })),
   }
@@ -92,6 +99,9 @@ export async function handleAiModelsGet(
   }
   try {
     const added = new Set(state.models.map((m) => m.key))
+    const managed = isManagedEdition()
+    const autoKey = managed ? state.auto.resolvedKey : null
+    const auto = autoKey ? await autoPriceOf(autoKey, await loadSettings(ctx.orgId)) : null
     const rows = filterCatalogue(await getOpenRouterCatalogue(), {
       q: params.openRouterSearch,
       toolsOnly: true,
@@ -100,14 +110,17 @@ export async function handleAiModelsGet(
     return {
       ...view,
       openRouter: {
-        models: rows.map((m) => ({
-          upstreamId: m.upstreamId,
-          displayName: m.displayName,
-          inputCostPerM: m.inputCostPerM,
-          outputCostPerM: m.outputCostPerM,
-          added: added.has(openRouterModelKey(m.upstreamId)),
-          addable: notAddableReason(m) === null,
-        })),
+        models: rows.map((m) => {
+          const row = {
+            upstreamId: m.upstreamId,
+            displayName: m.displayName,
+            inputCostPerM: m.inputCostPerM,
+            outputCostPerM: m.outputCostPerM,
+            added: added.has(openRouterModelKey(m.upstreamId)),
+            addable: notAddableReason(m) === null,
+          }
+          return managed ? withMultiplier(row, auto) : row
+        }),
       },
     }
   } catch (err) {
@@ -137,7 +150,7 @@ export async function handleAiModelsSet(params: AiModelsSetParams, ctx: AiModels
     const key = openRouterModelKey(params.addFromOpenRouter)
     const { models } = await getAiModelsState(ctx.orgId)
     if (!models.some((m) => m.key === key)) {
-      const outcome = await addOpenRouterModel(ctx.orgId, params.addFromOpenRouter)
+      const outcome = await addOpenRouterModel(ctx.orgId, params.addFromOpenRouter, ctx.userId)
       if (!outcome.ok) return toolRefusal(outcome)
       added = key
     }

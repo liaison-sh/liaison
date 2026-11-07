@@ -14,9 +14,11 @@ const USER = "00000000-0000-0000-0000-0000000e0002"
 const OTHER_USER = "00000000-0000-0000-0000-0000000e0003"
 const APP = "test-jobs-app"
 
-const tx = {
+const tx: Record<string, unknown> = {
   execute: mock(async () => []),
   queueEvent: mock(async () => {}),
+  // A savepoint on the same mock (the sandbox bridge runs each call in one).
+  transaction: (fn: (sp: unknown) => Promise<unknown>) => fn(tx),
 }
 const manifest = { name: APP, schema: {}, events: {}, connections: {}, network: {} }
 

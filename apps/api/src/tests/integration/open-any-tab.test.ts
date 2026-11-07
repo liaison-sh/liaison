@@ -352,6 +352,33 @@ describe("open_app under real row security", () => {
     expect(frame()?.label?.startsWith("Ignore previous")).toBe(true)
   })
 
+  test("a ticket opens by its handle, and a hidden one answers as one that does not exist", async () => {
+    const ticket = ids.get("tickets:ticket")!
+    const byId = await open(everything(viewer), "tickets", "ticket", ticket.id)
+    const handle = (byId as { opened: string }).opened.replace(/^ticket /, "")
+    expect(handle).not.toBe(ticket.id)
+
+    const byHandle = await open(everything(viewer), "tickets", "ticket", handle)
+    expect(byHandle).toMatchObject({ ok: true, id: ticket.id, opened: `ticket ${handle}` })
+
+    const hidden = await open(
+      everything(strangerElsewhere, otherOrgId),
+      "tickets",
+      "ticket",
+      handle,
+    )
+    const missing = await open(
+      everything(strangerElsewhere, otherOrgId),
+      "tickets",
+      "ticket",
+      "zz-404",
+    )
+    expect(hidden).toMatchObject({ ok: false, code: "NOT_FOUND" })
+    expect((hidden as { message: string }).message).toBe(
+      (missing as { message: string }).message.replace('"zz-404"', `"${handle}"`),
+    )
+  })
+
   test("a routine opens on the page of the agent that owns it, selected", async () => {
     const routine = ids.get("kernel:routine")!
     await open(everything(viewer), "kernel", "routine", routine.id)

@@ -49,6 +49,7 @@ import {
 import { appsLogger, rootLogger } from "~/lib/logger"
 import { publishRedis, REDIS_PREFIX, redisSub } from "~/lib/redis"
 import { UUID_RE } from "~/lib/uuid"
+import { appVisibleToOrg } from "~/modules/apps/app-org-scope"
 
 const log = rootLogger.child({ module: "apps/org-apps" })
 
@@ -327,6 +328,9 @@ export async function listOrgAppStates(orgId: string): Promise<OrgAppState[]> {
  */
 export async function isAppActiveForOrgAsync(orgId: string, app: string): Promise<boolean> {
   if (app === "kernel") return true
+  // Another org's custom app is never On here (app-org-scope.ts): this is the
+  // gate the tool, job, webhook, event, PDF and connection paths all read.
+  if (!(await appVisibleToOrg(app, orgId))) return false
   await primeOrgApps(orgId)
   return !isOffStatus(cache.get(orgId)?.apps.get(app)?.status)
 }

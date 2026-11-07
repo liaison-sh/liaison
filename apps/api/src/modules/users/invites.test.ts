@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { type PrivilegedDb, type RlsClient, sql } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
+import * as emailInfra from "~/infra/email"
+import { env } from "~/lib/env"
 import { deactivateUser } from "~/modules/users/service"
 
 const publishedEvents: any[] = []
@@ -19,6 +21,7 @@ const originalTransaction = (rlsDb as any).transaction.bind(rlsDb)
   })
 }
 
+import { organizations } from "~/db/schema/kernel"
 import { createInvitation } from "~/modules/users/invites"
 
 const ORG_A = "00000000-0000-0000-0000-c10000000001"
@@ -63,6 +66,34 @@ describe("invites service", () => {
     await sql`DELETE FROM kernel.organizations WHERE id IN (${ORG_A}, ${ORG_B})`
   })
 
+  it("the invitation link is on the org's host with org hosts, and BASE_URL's link without", async () => {
+    const saved = env.LIAISON_ORG_HOST_TEMPLATE
+    const invite = (email: string) =>
+      createInvitation(rlsDb, {
+        orgId: ORG_A,
+        email,
+        roleId: roleAId,
+        invitedBy: INVITER,
+        actorScopes: ["kernel"],
+        actorDimensionGrants: {},
+      })
+    try {
+      env.LIAISON_ORG_HOST_TEMPLATE = undefined
+      const plain = await invite("org-host-off@example.com")
+      if (!plain || "error" in plain) throw new Error("invitation refused")
+      expect(plain.inviteUrl).toBe(`${env.BASE_URL}/register?token=${plain.inviteToken}`)
+
+      env.LIAISON_ORG_HOST_TEMPLATE = "https://{slug}.example.com"
+      const hosted = await invite("org-host-on@example.com")
+      if (!hosted || "error" in hosted) throw new Error("invitation refused")
+      expect(hosted.inviteUrl).toBe(
+        `https://invite-orga.example.com/register?token=${hosted.inviteToken}`,
+      )
+    } finally {
+      env.LIAISON_ORG_HOST_TEMPLATE = saved
+    }
+  })
+
   it("creates an invitation for a valid same-org role", async () => {
     const result = await createInvitation(rlsDb, {
       orgId: ORG_A,
@@ -93,6 +124,48 @@ describe("invites service", () => {
       actorDimensionGrants: {},
     })
     expect(result).toBeNull()
+  })
+
+  it("names the organization in the mail even when the caller's RLS client cannot read organizations", async () => {
+    const sent: Array<{ subject: string; text?: string }> = []
+    const spy = spyOn(emailInfra, "getSystemEmailProvider").mockReturnValue({
+      name: "capture",
+      send: async (m: { subject: string; text?: string }) => {
+        sent.push(m)
+        return { id: "m1" }
+      },
+    } as never)
+    // organizations has a deny-all policy for the app role: a plain select on the RLS client gets no row.
+    const blind = new Proxy(rlsDb as object, {
+      get(target, prop, recv) {
+        if (prop !== "select") return Reflect.get(target, prop, recv)
+        return (...args: unknown[]) => {
+          const q = (target as any).select(...args)
+          return new Proxy(q, {
+            get(qt, qp, qr) {
+              if (qp !== "from") return Reflect.get(qt, qp, qr)
+              return (table: unknown) =>
+                table === organizations
+                  ? { where: () => ({ limit: async () => [] }) }
+                  : (qt as any).from(table)
+            },
+          })
+        }
+      },
+    }) as unknown as RlsClient
+    try {
+      await createInvitation(blind, {
+        orgId: ORG_A,
+        email: "named-org@example.com",
+        roleId: roleAId,
+        invitedBy: INVITER,
+        actorScopes: ["*"],
+      } as never)
+    } finally {
+      spy.mockRestore()
+    }
+    expect(sent[0]?.subject).toBe("You're invited to InviteOrgA")
+    expect(sent[0]?.text).toContain("join InviteOrgA on Liaison")
   })
 
   it("returns USER_EXISTS error when inviting an already-registered email", async () => {

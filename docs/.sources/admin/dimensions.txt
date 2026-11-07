@@ -29,4 +29,4 @@ list_dimensions tool, kernel:users:admin -> apps/api/src/modules/agent/tools/ker
 grant_dimension_value tool, gated -> apps/api/src/modules/agent/tools/kernel-tools.ts:2392
 Role dimension grants inherited -> apps/api/src/modules/permissions/roles-routes.ts:247
 POST /:roleId/dimensions route -> apps/api/src/modules/permissions/roles-routes.ts:153
-Admin roles routes mounted at /api/admin/roles -> apps/api/src/app.ts:699
+Admin roles routes mounted at /api/admin/roles -> apps/api/src/app.ts:686

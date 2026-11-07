@@ -16,6 +16,7 @@ import {
   computeGoogleSetupValues,
   googleApiForScope,
   googleSetupValuesFrom,
+  instancePushTopicFor,
   isGoogleConnection,
   parseInternalDomains,
 } from "./google"
@@ -57,9 +58,8 @@ function manifestConnection(app: string, connection: string): ManifestConnection
 /** The paths the code appends to BASE_URL for an OAuth redirect_uri. */
 function redirectPathsIn(file: string): string[] {
   const src = readFileSync(path.join(API_SRC, file), "utf8")
-  return [...src.matchAll(/(?:redirect_uri:|redirectUri =)\s*`\$\{env\.BASE_URL\}([^`]+)`/g)].map(
-    (m) => m[1] as string,
-  )
+  // Every flow builds its redirect_uri on the one OAuth redirect base.
+  return [...src.matchAll(/`\$\{oauthRedirectBaseUrl\(\)\}([^`]+)`/g)].map((m) => m[1] as string)
 }
 
 describe("redirect URIs (drift against the flows)", () => {
@@ -473,5 +473,35 @@ describe("computeGoogleSetupValues", () => {
       connectionConfigRegistry.deleteByPrefix([orgId])
       connectionConfigRegistry.deleteByPrefix([other])
     }
+  })
+})
+
+// S30: a managed server's topic lives in the project of the server's own Google
+// client; Gmail's watch only publishes to a topic in the calling client's project,
+// so a workspace on its own client keeps the push step (a topic in its own project).
+describe("instance push topic in the Google guide", () => {
+  test("a server topic covers the workspace on the server's client or none", () => {
+    for (const workspaceSource of ["instance", "none", undefined] as const) {
+      expect(
+        instancePushTopicFor({ topic: "projects/p/topics/t", managed: true, workspaceSource }),
+      ).toBe(true)
+    }
+    expect(
+      instancePushTopicFor({ topic: undefined, managed: true, workspaceSource: "instance" }),
+    ).toBe(false)
+  })
+  test("managed, a workspace on its own client: no shared topic, the push step stays", () => {
+    expect(
+      instancePushTopicFor({ topic: "projects/p/topics/t", managed: true, workspaceSource: "org" }),
+    ).toBe(false)
+  })
+  test("self-hosted: unchanged, the topic alone decides", () => {
+    expect(
+      instancePushTopicFor({
+        topic: "projects/p/topics/t",
+        managed: false,
+        workspaceSource: "org",
+      }),
+    ).toBe(true)
   })
 })

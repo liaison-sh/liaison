@@ -452,6 +452,34 @@ describe("createWebSocket", () => {
     vi.useRealTimers()
   })
 
+  it("an org moving (4005) retries every 2 s without growing the backoff, and never refreshes the token", async () => {
+    vi.useFakeTimers()
+    const ensureFreshToken = vi.fn(() => Promise.resolve())
+    const { createWebSocket, ORG_MOVING_RETRY_MS } = await import("~/primitives/createWebSocket")
+    const { ORG_MOVING_WS_CLOSE } = await import("@liaison/shared")
+    expect(ORG_MOVING_RETRY_MS).toBe(2_000)
+    const ws = createWebSocket({ getToken: () => "token", ensureFreshToken })
+    ws.connect()
+    await waitForInstance()
+    instances[0]._open()
+
+    // Five refusals in a row: each retry comes 2 s after the last, never later.
+    for (let i = 0; i < 5; i++) {
+      const socket = instances[instances.length - 1]!
+      socket.onclose?.(new CloseEvent("close", { code: ORG_MOVING_WS_CLOSE }))
+      const before = instances.length
+      await vi.advanceTimersByTimeAsync(ORG_MOVING_RETRY_MS - 1)
+      expect(instances.length).toBe(before)
+      await vi.advanceTimersByTimeAsync(1)
+      await vi.waitFor(() => expect(instances.length).toBeGreaterThan(before))
+    }
+    expect(ensureFreshToken).not.toHaveBeenCalledWith({ force: true })
+    expect(ws.status()).not.toBe("disconnected")
+
+    ws.disconnect()
+    vi.useRealTimers()
+  })
+
   it("pauses reconnection when navigator.onLine is false", async () => {
     vi.useFakeTimers()
     const { createWebSocket } = await import("~/primitives/createWebSocket")

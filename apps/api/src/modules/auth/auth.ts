@@ -26,11 +26,14 @@ import { ensureGoogleLoginProvider } from "~/modules/auth/google-login-provider"
 import { signAccessToken, signPortalToken } from "~/modules/auth/jwt"
 import { applyScopeCeiling } from "~/modules/auth/session-ceiling"
 import { revokeSessions } from "~/modules/auth/session-revocation"
+import { assertOrgSessionAllowed, SUSPENDED_ADMIN_SCOPE } from "~/modules/cloud/suspension"
 import { assertDemoOrgActive } from "~/modules/demo/demo-expiry"
 import { revokeAllMcpConnectionsForUser } from "~/modules/mcp/end-user-connections"
 import { assertSeatRoom } from "~/modules/org/caps"
+import { assertOrgAcceptsWrites, withOrgWrite } from "~/modules/org/transfer-state/gate"
+import { beginOrgActivity } from "~/modules/org/transfer-state/state"
 import { seedDefaultRoles } from "~/modules/permissions/default-roles"
-import { loadEffectivePermissions } from "~/modules/permissions/permissions"
+import { hasScope, loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { startSetupKickoff } from "~/modules/provisioning/setup-kickoff"
 import { removeAllPushDeliveryForUser } from "~/modules/push/end-user-push"
 
@@ -384,6 +387,18 @@ export async function createSession(
   scopeCeiling?: string[],
   rotation?: SessionRotation,
 ): Promise<TokenPair> {
+  // A session row is a write of the org: counted, then refused while the org is
+  // frozen or moved (503 `org_moving`; the client retries, and its token still
+  // works on the new instance).
+  return withOrgWrite(orgId, () => createSessionUnder(userId, orgId, scopeCeiling, rotation))
+}
+
+async function createSessionUnder(
+  userId: string,
+  orgId: string,
+  scopeCeiling?: string[],
+  rotation?: SessionRotation,
+): Promise<TokenPair> {
   // The one door every login, token refresh, OAuth sign-in and magic link goes
   // through: an expired demo workspace mints no new credential (403).
   await assertDemoOrgActive(orgId)
@@ -502,6 +517,15 @@ export async function createSession(
         if (linked.length === 0) throw new RefreshRaceError()
       }
       const perms = await loadEffectivePermissions(tx, userId, orgId)
+      // A managed org suspended for billing: only its admins sign in (to export
+      // and pay), nobody once closed (modules/cloud/suspension.ts). Thrown in
+      // the transaction, so no session row is left behind. A no-op, without a
+      // query, on a self-hosted instance.
+      await assertOrgSessionAllowed(
+        orgId,
+        hasScope(SUSPENDED_ADMIN_SCOPE, perms.scopes) &&
+          (scopeCeiling === undefined || hasScope(SUSPENDED_ADMIN_SCOPE, scopeCeiling)),
+      )
       const pending = await adminSecondFactorPending(tx, userId, orgId, perms.scopes)
 
       return {
@@ -675,7 +699,32 @@ type RefreshDecision =
  */
 export async function refreshSession(
   refreshToken: string,
-  client: { userAgent?: string | null } = {},
+  client: {
+    userAgent?: string | null
+    /** Host binding: the org this host serves; a session of any other org is refused untouched. */
+    expectedOrgId?: string | null
+  } = {},
+): Promise<TokenPair> {
+  // The rotation writes the session rows of an org found by the token: counted
+  // from the lookup, refused while the org is frozen or moved.
+  const ends: Array<() => void> = []
+  try {
+    return await refreshSessionUnder(refreshToken, client, async (orgId) => {
+      ends.push(beginOrgActivity(orgId, "writes"))
+      await assertOrgAcceptsWrites(orgId)
+    })
+  } finally {
+    for (const end of ends) end()
+  }
+}
+
+async function refreshSessionUnder(
+  refreshToken: string,
+  client: {
+    userAgent?: string | null
+    expectedOrgId?: string | null
+  },
+  gate: (orgId: string) => Promise<void>,
 ): Promise<TokenPair> {
   const tokenHash = hashToken(refreshToken)
   const uaHash = hashToken(client.userAgent ?? "")
@@ -691,6 +740,12 @@ export async function refreshSession(
       .where(eq(sessions.refreshTokenHash, tokenHash))
       .for("update")
     if (!session) return { kind: "invalid", reason: "unknown token" }
+    await gate(session.orgId)
+    // Presented on another org's host: refused, and nothing about the session
+    // changes (its own host may still rotate it).
+    if (client.expectedOrgId !== undefined && session.orgId !== client.expectedOrgId) {
+      return { kind: "invalid", reason: "another org's host" }
+    }
     if (session.expiresAt.getTime() <= now.getTime()) {
       await tx.delete(sessions).where(eq(sessions.id, session.id))
       return { kind: "invalid", reason: "expired" }
@@ -860,6 +915,21 @@ export async function refreshSession(
 export async function logout(
   refreshToken: string,
 ): Promise<{ userId: string; orgId: string } | null> {
+  const ends: Array<() => void> = []
+  try {
+    return await logoutUnder(refreshToken, async (orgId) => {
+      ends.push(beginOrgActivity(orgId, "writes"))
+      await assertOrgAcceptsWrites(orgId)
+    })
+  } finally {
+    for (const end of ends) end()
+  }
+}
+
+async function logoutUnder(
+  refreshToken: string,
+  gate: (orgId: string) => Promise<void>,
+): Promise<{ userId: string; orgId: string } | null> {
   const tokenHash = hashToken(refreshToken)
 
   const ended = await withSystemDb("logout", async (db) => {
@@ -870,6 +940,7 @@ export async function logout(
       .limit(1)
 
     if (!session) return null
+    await gate(session.orgId)
 
     // Delete only this session. Grace-period sessions (from consumed refresh tokens)
     // expire naturally in 30 seconds — no need to sweep them here.

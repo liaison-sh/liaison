@@ -291,5 +291,10 @@
       "description": "Les groupes et leurs valeurs. Faites glisser pour réordonner dans un groupe ; une valeur ne peut pas changer de groupe."
     }
   },
-  "taskNotFound": "Tâche introuvable"
+  "taskNotFound": "Tâche introuvable",
+  "card": {
+    "pill": "Projets",
+    "more": "Ouvrir Projets",
+    "runningSearch": "Recherche dans les projets et les tâches"
+  }
 }

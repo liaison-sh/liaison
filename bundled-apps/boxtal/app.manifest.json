@@ -222,7 +222,7 @@
       }
     ]
   },
-  "version": "0.23.21",
+  "version": "0.23.22",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {
@@ -578,6 +578,7 @@
             "id": "shipment",
             "label": "Shipment",
             "component": "BoxtalShipmentTab",
+            "visibility_scope": "boxtal:shipments:read",
             "order": 25
           }
         ]

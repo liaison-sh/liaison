@@ -903,10 +903,6 @@ export const slotRegistry = createTypedRegistry<
   [orgId: string, appName: string, slotName: string],
   SlotRegistryEntry
 >()
-export const contributionRegistry = createTypedRegistry<
-  [orgId: string, slotTarget: string],
-  any[]
->()
 /** One record path a template may map (manifest `entities.<e>.print.fields`). */
 export interface PrintFieldDeclaration {
   path: string
@@ -1495,7 +1491,6 @@ export function resetAppRegistries(): void {
   slotRegistry.clear()
   timelineDeclarations.clear()
   dimensionDefRegistry.clear()
-  contributionRegistry.clear()
   entityRegistry.clear()
   manifestFileParentRegistry.clear()
   manifestAttentionRegistry.clear()

@@ -1203,8 +1203,6 @@ export interface ManifestLabel {
 export interface ManifestAppData {
   /** The heading over the app's attention items on Home. */
   attention?: { groupLabel?: ManifestLabel }
-  /** The pill an approval card of the app carries. */
-  approvalCard?: { pill?: ManifestLabel }
   bulk?: Record<string, ManifestBulkAction>
   savedViews?: Record<string, ManifestSavedView>
   entities?: Record<string, { handlePrefix?: string; readScope?: string }>
@@ -1229,12 +1227,6 @@ export function unregisterManifestAppData(appId: string): void {
 export function getAttentionGroupLabel(appId: string): ManifestLabel | undefined {
   manifestAppDataVersion()
   return manifestAppData.get(appId)?.attention?.groupLabel
-}
-
-/** The pill an app declares for its approval cards, if it declares one. */
-export function getApprovalCardPill(appId: string): ManifestLabel | undefined {
-  manifestAppDataVersion()
-  return manifestAppData.get(appId)?.approvalCard?.pill
 }
 
 export function getManifestBulkActions(

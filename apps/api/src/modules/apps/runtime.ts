@@ -51,7 +51,6 @@ import {
   attentionItemsRegistry,
   connectionBeforeDisconnectRegistry,
   connectionConfigRegistry,
-  contributionRegistry,
   declaredEmits,
   deleteDeclaredEmits,
   dimensionDefRegistry,
@@ -1979,7 +1978,7 @@ async function grantDefinerOnShareableTables(
 
 /**
  * What a version switch keeps of the old registration until the new one is in
- * place: every app-keyed registry's entries, its slot contributions, declared
+ * place: every app-keyed registry's entries, declared
  * emits, external-search handler, event subscriptions and registration record.
  * On success `pruneOldVersion` removes what only the old version had; on failure
  * `restoreOldVersion` puts it all back, so the running version never has a gap.
@@ -1987,7 +1986,6 @@ async function grantDefinerOnShareableTables(
 interface OldVersionSnapshot {
   journal: RegistryJournal
   entries: Map<string, unknown>[]
-  contributions: Set<unknown>
   emits: Set<string> | undefined
   searchHandler: object | undefined
   subscriptions: Array<() => Promise<void> | void> | undefined
@@ -1996,17 +1994,11 @@ interface OldVersionSnapshot {
 
 async function snapshotOldVersion(orgId: string, appName: string): Promise<OldVersionSnapshot> {
   const { externalSearchHandlerEntry } = await import("~/modules/search/external-handlers")
-  const contributions = new Set<unknown>()
-  for (const [key, entries] of contributionRegistry.entriesOf(orgId)) {
-    if (key[0] !== orgId) continue
-    for (const e of entries as Array<{ app: string }>) if (e.app === appName) contributions.add(e)
-  }
   return {
     journal: openRegistryJournal(),
     entries: APP_KEYED_REGISTRIES.map(
       (registry) => registry.snapshotUnder([orgId, appName]) as Map<string, unknown>,
     ),
-    contributions,
     emits: declaredEmits.get(`${orgId}:${appName}`),
     searchHandler: externalSearchHandlerEntry(orgId, appName),
     subscriptions: eventSubscriptionDisposers.get([orgId, appName]) as
@@ -2043,13 +2035,6 @@ async function pruneOldVersion(
       snap.journal,
     )
   })
-  for (const [key, entries] of contributionRegistry.entriesOf(orgId)) {
-    if (key[0] !== orgId) continue
-    const remaining = entries.filter((e: unknown) => !snap.contributions.has(e))
-    if (remaining.length === entries.length) continue
-    if (remaining.length === 0) contributionRegistry.delete(key)
-    else contributionRegistry.set(key, remaining)
-  }
   if (snap.emits && declaredEmits.get(`${orgId}:${appName}`) === snap.emits) {
     deleteDeclaredEmits(orgId, appName)
   }
@@ -2079,15 +2064,6 @@ async function restoreOldVersion(
       snap.entries[i] ?? new Map(),
     )
   })
-  for (const [key, entries] of contributionRegistry.entriesOf(orgId)) {
-    if (key[0] !== orgId) continue
-    const kept = entries.filter(
-      (e: { app: string }) => e.app !== appName || snap.contributions.has(e),
-    )
-    if (kept.length === entries.length) continue
-    if (kept.length === 0) contributionRegistry.delete(key)
-    else contributionRegistry.set(key, kept)
-  }
   if (snap.emits) setDeclaredEmits(orgId, appName, snap.emits)
   else deleteDeclaredEmits(orgId, appName)
   const { restoreExternalSearchHandlerEntry } = await import("~/modules/search/external-handlers")
@@ -4104,15 +4080,6 @@ async function registerSingleApp(
 
       // Register slots and contributions: one list, read by `listSlotPanels`.
       registerAppSlots(orgId, desc.name, desc.slots, desc.contributions)
-      if (desc.contributions) {
-        for (const [slotTarget, contribution] of Object.entries(
-          desc.contributions as Record<string, any>,
-        )) {
-          const existing = contributionRegistry.get([orgId, slotTarget]) ?? []
-          existing.push({ app: desc.name, contribution })
-          contributionRegistry.set([orgId, slotTarget], existing)
-        }
-      }
 
       // Register export handlers. A manifest app with a handler bundle resolves
       // to the sandbox export by name. Bundle-less manifest apps (kernel-owned
@@ -4398,16 +4365,6 @@ export async function teardownAppRegistrations(orgId: string, appName: string): 
   {
     const { unregisterExternalSearchHandler } = await import("~/modules/search/external-handlers")
     unregisterExternalSearchHandler(orgId, appName)
-  }
-  // contributionRegistry is keyed by [orgId, slotTarget] (NOT appName), and a
-  // single slot can hold contributions from multiple apps. Filter out only the
-  // entries this app contributed; drop the key when it becomes empty.
-  for (const [key, entries] of contributionRegistry.entriesOf(orgId)) {
-    if (key[0] !== orgId) continue
-    const remaining = entries.filter((e: { app: string }) => e.app !== appName)
-    if (remaining.length === entries.length) continue
-    if (remaining.length === 0) contributionRegistry.delete(key)
-    else contributionRegistry.set(key, remaining)
   }
   // DB-side pause of the app's instantiated routines (sourceKind='app') —
   // distinct from the in-memory registry sweep above. Disposes their event

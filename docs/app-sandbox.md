@@ -524,7 +524,6 @@ All registries are in-memory, keyed by `[orgId, appName, ...]`. Each process fil
 | `entityRegistry` | `[orgId, app, entity]` | Card display metadata |
 | `manifestRegistry` | `[orgId, app]` | Frontend manifest for panel/tab registration |
 | `declaredEmits` | `orgId:app` → Set | Allowed event keys |
-| `contributionRegistry` | `[orgId, slot]` | Cross-app slot contributions |
 
 ### Handler Dispatch
 

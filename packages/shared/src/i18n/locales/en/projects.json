@@ -291,5 +291,10 @@
       "description": "Groups and their values. Drag to reorder within a group; a value cannot move to another group."
     }
   },
-  "taskNotFound": "Task not found"
+  "taskNotFound": "Task not found",
+  "card": {
+    "pill": "Projects",
+    "more": "Open Projects",
+    "runningSearch": "Searching projects and tasks"
+  }
 }

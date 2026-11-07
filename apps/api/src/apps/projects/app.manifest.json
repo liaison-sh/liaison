@@ -122,7 +122,7 @@
       }
     ]
   },
-  "version": "1.10.7",
+  "version": "1.10.8",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -469,6 +469,36 @@
       "requiredScopes": ["projects:projects:read"],
       "trustBoundary": "user",
       "handler": "search",
+      "returns": {
+        "schema": {
+          "items": "object"
+        }
+      },
+      "runningLabel": "Searching projects and tasks",
+      "runningLabelKey": "projects.card.runningSearch",
+      "resultCard": {
+        "kind": "list",
+        "pill": {
+          "label": "Projects",
+          "labelKey": "projects.card.pill"
+        },
+        "title": "Projects and tasks",
+        "items": {
+          "path": "result.items",
+          "label": "{{item.key}}",
+          "meta": "{{item.title}}",
+          "limit": 10
+        },
+        "more": {
+          "label": {
+            "label": "Open Projects",
+            "labelKey": "projects.card.more"
+          },
+          "open": {
+            "view": "home"
+          }
+        }
+      },
       "retryOnTransientDbError": true,
       "params": {
         "type": "object",

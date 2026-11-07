@@ -16,7 +16,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { and, eq } from "drizzle-orm"
 import { z } from "zod"
-import { sql } from "~/db"
+import { type RlsClient, sql } from "~/db"
 import { withRlsContext } from "~/db/rls"
 import { contacts, threads } from "~/db/schema/kernel"
 import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
@@ -229,7 +229,7 @@ describe("S3f-1: a read-only run refuses every bridge write", () => {
 // ─── 1b. read-only run: resolveContact only looks up ───────────────────────
 
 describe("S3f-1b: resolveContact on a read-only run is a lookup", () => {
-  const as = <T>(fn: (tx: any) => Promise<T>) =>
+  const as = <T>(fn: (tx: RlsClient) => Promise<T>): Promise<T> =>
     withRlsContext(
       {
         actorType: "user",
@@ -262,7 +262,6 @@ describe("S3f-1b: resolveContact on a read-only run is a lookup", () => {
 
   it("returns an org contact unchanged, creates nothing on a miss, and refuses clear", async () => {
     const seeded = await as(async (tx) => {
-      ;(tx as any).queueEvent ??= async () => {}
       return (
         await resolveContactService(
           tx,
@@ -322,7 +321,6 @@ describe("S3f-1b: resolveContact on a read-only run is a lookup", () => {
 
     // An ordinary run of the same app still links and enriches.
     await as(async (tx) => {
-      ;(tx as any).queueEvent ??= async () => {}
       return bridgeOn(tx, false).resolveContact(JSON.stringify({ email, name: "Linked" }))
     })
     const [linked] = await read(eq(contacts.id, seeded.id))

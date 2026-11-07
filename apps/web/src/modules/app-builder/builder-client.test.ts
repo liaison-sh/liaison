@@ -20,24 +20,29 @@ import {
   uiComponents,
 } from "./builder-client"
 
+/** A BuilderApi whose routes answer an empty object, with the calls each one got. */
 function fakeApi() {
-  return {
-    get: vi.fn(async () => ({})),
-    post: vi.fn(async () => ({})),
-    rawGet: vi.fn(async () => new Response("export const X = 1")),
-  } satisfies BuilderApi
+  const get = vi.fn((_path: string, _init?: unknown) => ({}))
+  const post = vi.fn((_path: string, _body?: unknown, _init?: unknown) => ({}))
+  const api: BuilderApi = {
+    // The generic answer type is the caller's to pick; an empty object stands in for any.
+    get: async <T>(path: string, init?: unknown) => get(path, init) as T,
+    post: async <T>(path: string, body?: unknown, init?: unknown) => post(path, body, init) as T,
+    rawGet: vi.fn(async (_path: string, _init?: unknown) => new Response("export const X = 1")),
+  }
+  return { api, get, post }
 }
 
 const ID = "11111111-1111-4111-8111-111111111111"
 
 describe("builder client", () => {
   it("calls each draft route with its shape", async () => {
-    const api = fakeApi()
+    const { api, get, post } = fakeApi()
     await listDrafts(api)
     await getDraft(api, ID)
     await getDraft(api, ID, 3)
     await listVersions(api, ID)
-    expect(api.get.mock.calls.map((c) => (c as unknown[])[0])).toEqual([
+    expect(get.mock.calls.map((c) => (c as unknown[])[0])).toEqual([
       "/apps/builder/drafts",
       `/apps/builder/drafts/${ID}`,
       `/apps/builder/drafts/${ID}?n=3`,
@@ -49,7 +54,7 @@ describe("builder client", () => {
     await restoreVersion(api, ID, 1)
     await discardDraft(api, ID)
     await publishDraft(api, ID)
-    expect(api.post.mock.calls.map((c) => (c as unknown[]).slice(0, 2))).toEqual([
+    expect(post.mock.calls.map((c) => (c as unknown[]).slice(0, 2))).toEqual([
       [`/apps/builder/drafts/${ID}/check`, { n: 2 }],
       [
         `/apps/builder/drafts/${ID}/preview`,
@@ -62,16 +67,16 @@ describe("builder client", () => {
   })
 
   it("reads the interface as text from the draft's ui.js", async () => {
-    const api = fakeApi()
+    const { api } = fakeApi()
     expect(await draftUiSource(api, ID, 4)).toBe("export const X = 1")
     expect(api.rawGet).toHaveBeenCalledWith(`/apps/builder/drafts/${ID}/4/ui.js`, expect.anything())
   })
 
   it("passes the log filters as query params", async () => {
-    const api = fakeApi()
+    const { api, get } = fakeApi()
     await readAppLogs(api, "tracker-oabcdef12")
     await readAppLogs(api, "tracker-oabcdef12", { level: "warn", runId: ID, limit: 50 })
-    expect(api.get.mock.calls.map((c) => (c as unknown[])[0])).toEqual([
+    expect(get.mock.calls.map((c) => (c as unknown[])[0])).toEqual([
       "/apps/tracker-oabcdef12/logs",
       `/apps/tracker-oabcdef12/logs?level=warn&runId=${ID}&limit=50`,
     ])

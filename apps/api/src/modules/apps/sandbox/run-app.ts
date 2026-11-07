@@ -196,7 +196,7 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
   let info: WorkersRunInfo = {}
   let ok = false
   try {
-    const result = await dispatch(opts, executor, workersTarget, (i) => {
+    const result = await runOnExecutor(opts, executor, workersTarget, (i) => {
       info = i
     })
     ok = true
@@ -228,7 +228,7 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
   }
 }
 
-async function dispatch(
+async function runOnExecutor(
   opts: RunAppOptions,
   executor: AppExecutor,
   workersTarget: WorkersTarget | null,

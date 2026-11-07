@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it, mock } from "bun:test"
 
-// The Workers runtime module, absent outside workerd.
-mock.module("cloudflare:workers", () => ({
+// The Workers runtime module exists only inside workerd, so there is no real
+// module to spread: this record is the whole stand-in, covering every export
+// the declaration in cloudflare-workers.d.ts gives the host code.
+const workersRuntime = {
   WorkerEntrypoint: class {
     constructor(
       protected ctx: unknown,
       protected env: unknown,
     ) {}
   },
-}))
+}
+mock.module("cloudflare:workers", () => workersRuntime)
 
 describe("worker entry", () => {
   it("run(req, bridge) runs the export over the Bridge's reply envelopes", async () => {

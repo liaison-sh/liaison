@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import { registerJobWorker } from "~/infra/jobs/jobs"
 import { forgetOrgApps } from "~/modules/apps/org-apps"
+import { seedOrgRow } from "~/seed/factories/org/rows"
 import { createAppJobRunRoutes } from "./app-job-run-routes"
 
 const ORG = crypto.randomUUID()
@@ -57,8 +58,7 @@ describe("POST /api/_test/apps/:app/jobs/:job/run", () => {
 
   describe("through the real job dispatch", () => {
     beforeAll(async () => {
-      await sql`INSERT INTO kernel.organizations (id, name, slug)
-        VALUES (${ORG}, 'Job run route org', ${`job-run-${ORG.slice(0, 8)}`})`
+      await seedOrgRow({ id: ORG, name: "Job run route org", slug: `job-run-${ORG.slice(0, 8)}` })
     })
     afterAll(async () => {
       forgetOrgApps(ORG)

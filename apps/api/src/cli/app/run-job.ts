@@ -54,7 +54,7 @@ export async function defaultAppRunJobDeps(): Promise<AppRunJobDeps> {
   return {
     resolveOrg: (org) =>
       resolveOrgId(org, "multiple orgs exist — pass --org <slug|id> to say which one"),
-    ensureAppsForOrg: (orgId) => ensureAppsForOrg(orgId),
+    ensureAppsForOrg,
     enqueue: (appName, jobName, payload) =>
       jobs.enqueueAppJob(appName, jobName, payload, { attempts: 1 }),
     readJob: async (appName, jobName, jobId) => {

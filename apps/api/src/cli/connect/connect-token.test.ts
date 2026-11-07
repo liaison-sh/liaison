@@ -24,6 +24,7 @@ import { env } from "~/lib/env"
 import { connectionConfigRegistry } from "~/modules/apps/app-registries"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { ensureUser } from "~/modules/provisioning/ensure-user"
+import { seedAppRow } from "~/seed/factories/org/platform-rows"
 import { acquireTestLock, releaseTestLock, truncateOrgTables } from "~/tests/route-test-setup"
 
 beforeAll(acquireTestLock)
@@ -50,12 +51,7 @@ beforeEach(async () => {
       role: "admin",
     })
   ).userId
-  await withPrivilegedDb(orgId, "test-token-app-row", (tx) =>
-    tx.execute(drizzleSql`
-      INSERT INTO ${kernelRel("apps")} (org_id, name, version, config)
-      VALUES (${orgId}::uuid, ${APP}, '1.0.0', '{"keep":"me"}'::jsonb)
-    `),
-  )
+  await seedAppRow({ orgId, name: APP, version: "1.0.0", config: { keep: "me" } })
   connectionConfigRegistry.set([orgId, APP, "shop"], {
     type: "oauth2",
     authorizationUrl: "https://{shop}/admin/oauth/authorize",

@@ -240,19 +240,19 @@ export async function runHandler(
     }
   }
 
-  const name = req.exportName
-  if (typeof name !== "string" || !SAFE_IDENTIFIER_RE.test(name)) {
+  const exportName = req.exportName
+  if (typeof exportName !== "string" || !SAFE_IDENTIFIER_RE.test(exportName)) {
     return {
       ok: false,
-      error: { message: `Invalid export name: "${String(name)}"`, kind: "handler" },
+      error: { message: `Invalid export name: "${String(exportName)}"`, kind: "handler" },
       timings: timings(),
     }
   }
-  const fn = Object.hasOwn(mod, name) ? mod[name] : undefined
+  const fn = Object.hasOwn(mod, exportName) ? mod[exportName] : undefined
   if (typeof fn !== "function") {
     return {
       ok: false,
-      error: { message: `Export "${name}" not found (got ${typeof fn})`, kind: "handler" },
+      error: { message: `Export "${exportName}" not found (got ${typeof fn})`, kind: "handler" },
       timings: timings(),
     }
   }

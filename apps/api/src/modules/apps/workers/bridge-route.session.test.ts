@@ -8,20 +8,23 @@
 // dispatching code built, not in the route.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
-import { sql as drizzleSql } from "drizzle-orm"
+import { randomUUID } from "node:crypto"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { createRlsSession } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
 import { declaredEmits } from "~/infra/events/event-bus"
 import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
 import { typedBridgeFailure } from "~/modules/apps/sandbox/bridge-rejection"
 import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { generateRlsPolicySql } from "~/modules/permissions/rls-generator"
+import { upsertAppRow } from "~/seed/factories/app-tables"
+import { seedOrgRow, seedUserRows } from "~/seed/factories/org/rows"
 import { createAppBridgeRoutes } from "./bridge-route"
 import { RunRegistry } from "./run-registry"
 
-const SCHEMA = "app_wbridgetest"
 const APP_NAME = "wbridgetest"
+const SCHEMA = schemaRef(`app_${APP_NAME}`)
 const ORG_A = "00000000-0000-0000-0000-0000000e0a01"
 const ORG_B = "00000000-0000-0000-0000-0000000e0b01"
 const USER_A = "00000000-0000-0000-0000-0000000e0a02"
@@ -120,21 +123,27 @@ beforeAll(async () => {
     [ORG_A, "wbridge-org-a"],
     [ORG_B, "wbridge-org-b"],
   ] as const) {
-    await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${id}, ${slug}, ${slug})
-      ON CONFLICT (id) DO NOTHING`
+    await seedOrgRow({ id, name: slug, slug }, { onConflict: "skip" })
   }
-  await sql`INSERT INTO kernel.users (id, org_id, email, name, status, auth_version)
-    VALUES (${USER_A}, ${ORG_A}, 'wbridge-a@test.com', 'W Bridge A', 'active', 1)
-    ON CONFLICT (id) DO NOTHING`
+  await seedUserRows(
+    [
+      {
+        id: USER_A,
+        orgId: ORG_A,
+        email: "wbridge-a@test.com",
+        name: "W Bridge A",
+        status: "active",
+        authVersion: 1,
+      },
+    ],
+    { onConflict: "skip" },
+  )
   for (const [org, title] of [
     [ORG_A, "A item"],
     [ORG_B, "B item"],
   ] as const) {
     await withPrivilegedDb(org, "wbridge-seed", async (tx) => {
-      await tx.execute(
-        drizzleSql`INSERT INTO ${drizzleSql.raw(`"${SCHEMA}".items`)} (org_id, title)
-          VALUES (${org}::uuid, ${title})`,
-      )
+      await upsertAppRow(tx, APP_NAME, "items", { id: randomUUID(), org_id: org, title })
     })
   }
   declaredEmits.set(APP_NAME, new Set(MANIFEST.events.emits))

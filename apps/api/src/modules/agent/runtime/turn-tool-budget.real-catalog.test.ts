@@ -76,6 +76,15 @@ const hardFocus = (app: string, entity: string): TurnFocus =>
 
 const kernelTools: ToolDefs = {}
 const coreTools: string[] = []
+/** The load a thread's heaviest kernel tools put on a turn: about one large app's worth. */
+const HEAVY_LOAD_TOKENS = 5000
+/**
+ * The deferred kernel tools a thread loaded, heaviest first, until together
+ * they cost more than HEAVY_LOAD_TOKENS on the wire. Picked from the real
+ * catalog, not by name, so a tool whose own text shrinks does not take the
+ * pressure out of these tests.
+ */
+const heavyKernelLoad: string[] = []
 
 beforeAll(async () => {
   const { registerKernelAgentTools } = await import("~/modules/agent/tools/kernel-tools")
@@ -88,6 +97,14 @@ beforeAll(async () => {
       inputSchema: providerInputSchemaOf((def as { params?: unknown }).params),
     }
     if (!isDeferredTool(key[1], def as { deferLoading?: boolean })) coreTools.push(name)
+  }
+  let load = 0
+  for (const [name, def] of Object.entries(kernelTools)
+    .filter(([name]) => !coreTools.includes(name))
+    .sort(([a, x], [b, y]) => wireTokens(b, y) - wireTokens(a, x))) {
+    if (load > HEAVY_LOAD_TOKENS) break
+    heavyKernelLoad.push(name)
+    load += wireTokens(name, def)
   }
 })
 
@@ -167,39 +184,41 @@ describe("a hard focus turn on a large app", () => {
   }
 })
 
-describe("a thread holding a kernel tool whose cost the meter used to miss", () => {
+describe("a thread holding kernel tools whose cost the meter used to miss", () => {
   const app = LARGE_APPS.find((a) => a.app === "tickets")
   const plan = (recency: Map<string, number>) => {
     const appTools = manifestTools(app?.manifest ?? "")
     const names = Object.keys(appTools)
     const tools = { ...kernelTools, ...appTools }
-    const heavy = "kernel__create_routine"
+    const heavy = heavyKernelLoad
     const out = planTurnToolBudget({
-      visible: [...coreTools, heavy, ...names],
+      visible: [...coreTools, ...heavy, ...names],
       tools,
-      droppable: (n) => n === heavy || n in appTools,
+      droppable: (n) => heavy.includes(n) || n in appTools,
       preloaded: new Set(names),
       hardFocusApps: new Set(["tickets"]),
       focus: hardFocus("tickets", "ticket"),
       recency,
       cap: TURN_TOOL_SCHEMA_TOKEN_CAP,
     })
-    return { ...out, heavy, cost: wireTokens(heavy, tools[heavy]) }
+    const cost = heavy.reduce((n, name) => n + wireTokens(name, tools[name]), 0)
+    return { ...out, heavy, cost }
   }
+  const usedLastTurn = () => new Map(heavyKernelLoad.map((name) => [name, 0]))
 
-  it("is a large tool on the wire", () => {
-    expect(plan(new Map()).cost).toBeGreaterThan(5000)
+  it("is a large load on the wire", () => {
+    expect(plan(new Map()).cost).toBeGreaterThan(HEAVY_LOAD_TOKENS)
   })
 
-  it("sheds it first when the last turns did not use it, and the app keeps its room", () => {
+  it("sheds them first when the last turns did not use them, and the app keeps its room", () => {
     const out = plan(new Map())
-    expect(out.drop).toContain(out.heavy)
+    for (const name of out.heavy) expect(out.drop).toContain(name)
     expect(out.toolSchemaTokens).toBeLessThanOrEqual(TURN_TOOL_SCHEMA_TOKEN_CAP)
   })
 
-  it("keeps it when the last turn used it, beside the tools acting on the ticket", () => {
-    const out = plan(new Map([["kernel__create_routine", 0]]))
-    expect(out.drop).not.toContain(out.heavy)
+  it("keeps them when the last turn used them, beside the tools acting on the ticket", () => {
+    const out = plan(usedLastTurn())
+    for (const name of out.heavy) expect(out.drop).not.toContain(name)
     for (const name of ["reply", "get", "addNote"]) {
       expect(out.drop).not.toContain(`tickets__${name}`)
     }
@@ -295,22 +314,22 @@ describe("the tool order on a real entity page", () => {
     const appTools = projectTools()
     const names = Object.keys(appTools)
     const tools = { ...kernelTools, ...appTools }
-    const heavy = "kernel__create_routine"
+    const heavy = heavyKernelLoad
     const plan = planTurnToolBudget({
-      visible: [...coreTools, heavy, ...names],
+      visible: [...coreTools, ...heavy, ...names],
       tools,
-      droppable: (n) => n === heavy || n in appTools,
+      droppable: (n) => heavy.includes(n) || n in appTools,
       preloaded: new Set(names),
       hardFocusApps: new Set(["projects"]),
       focus: hardFocus("projects", "task"),
-      recency: new Map([[heavy, 0]]),
+      recency: new Map(heavy.map((name) => [name, 0])),
       cap: TURN_TOOL_SCHEMA_TOKEN_CAP,
     })
     for (const name of ["comment", "comments", "get", "update"]) {
       expect(plan.drop).not.toContain(`projects__${name}`)
     }
     expect(plan.drop).toContain("projects__createProject")
-    expect(plan.drop).not.toContain(heavy)
+    for (const name of heavy) expect(plan.drop).not.toContain(name)
   })
 
   it("loads the tools of the entity in view first when only a little room is left", () => {

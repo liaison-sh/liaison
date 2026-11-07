@@ -22,5 +22,12 @@
  *  - `kernel:bug_reports:file`: report a bug about Liaison itself, the
  *    "Report a bug" dialog's REST route (open to every member) and the agent's
  *    `kernel:report_bug`, filed under the person's own name.
+ *  - `kernel:data_subject:export:self`: export everything the organization
+ *    holds about yourself as a member (`kernel:data_subject_export` with
+ *    `userId` "me"), the access right every person has over their own data.
+ *    Any other subject needs its parent, `kernel:data_subject:export`.
  */
-export const KERNEL_EVERY_MEMBER_SCOPES: readonly string[] = ["kernel:bug_reports:file"]
+export const KERNEL_EVERY_MEMBER_SCOPES: readonly string[] = [
+  "kernel:bug_reports:file",
+  "kernel:data_subject:export:self",
+]

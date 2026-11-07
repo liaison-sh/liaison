@@ -7,11 +7,18 @@ import { extractRows } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
 import { appsLogger as log } from "~/lib/logger"
 import { UUID_RE } from "~/lib/uuid"
+import {
+  type MemberSectionResult,
+  readMemberSections,
+  withoutSecrets,
+} from "~/modules/export/member-data-subject-bundle"
+import { hasScope } from "~/modules/permissions/permissions"
 
 /**
  * `kernel.data_subject_export` agent-tool handler (BL-261).
  *
- * GDPR data-subject-request (DSR) export: given ONE contactId, assemble every
+ * GDPR data-subject-request (DSR) export: given ONE contactId, or ONE member
+ * (`userId`, see `buildMemberDataSubjectBundle`), assemble every
  * record the org holds on that data subject ACROSS apps into a single
  * downloadable JSON bundle (a `kernel.files` artifact, like
  * `mail:export_conversations` — returns a fileId). Distinct from the admin
@@ -19,10 +26,13 @@ import { UUID_RE } from "~/lib/uuid"
  * per-subject filter. This is the per-data-subject path a privacy/finance DSR
  * handler runs WITHOUT org-admin powers.
  *
- * AUTHORITY: gated by the dedicated `kernel:data_subject:export` scope (not
+ * AUTHORITY: the dedicated `kernel:data_subject:export` scope (not
  * `kernel:users:admin`) — a privacy/DSR-officer authority that does NOT confer
- * org admin. The export tool is registered with that scope, so the scope check
- * runs before this handler.
+ * org admin — exports any subject the caller can see. A member may also export
+ * THEMSELF: the tool is registered with the child scope
+ * `kernel:data_subject:export:self`, which every active member holds, and
+ * `mayExportSubject` refuses any other subject without the parent scope, with
+ * the same NOT_FOUND a missing subject gets.
  *
  * RLS / INTEGRITY: every per-app read runs under the CALLER's RLS context
  * (`ctx.db`), so the bundle contains ONLY the subject's REAL records the caller
@@ -47,6 +57,95 @@ export interface DataSubjectExportToolCtx {
   orgId: string
   userId: string
   db: RlsClient
+  /** The caller's effective scopes (the tool bridge sets them). Absent = none. */
+  scopes?: readonly string[]
+}
+
+/** The data-subject authority: export anyone the caller can see, contact or member. */
+export const DATA_SUBJECT_EXPORT_SCOPE = "kernel:data_subject:export"
+/**
+ * Export your own data as a member. Every active member holds it
+ * (`KERNEL_EVERY_MEMBER_SCOPES`), and the authority above covers it as its
+ * parent, so it is the tool's registered scope.
+ */
+export const DATA_SUBJECT_EXPORT_SELF_SCOPE = "kernel:data_subject:export:self"
+
+/** Who the export is about. */
+export type DataSubjectRef = { kind: "contact"; id: string } | { kind: "user"; id: string }
+
+const NOT_VISIBLE = {
+  contact: "Data subject contact not found or not visible",
+  user: "Data subject member not found or not visible",
+} as const
+
+/**
+ * The subject a call names: `contactId`, or `userId` (a member's id, or "me"
+ * for the caller). Exactly one.
+ */
+export function resolveDataSubject(
+  params: Pick<DataSubjectExportParams, "contactId" | "userId">,
+  callerUserId: string,
+): DataSubjectRef | { error: { code: string; message: string } } {
+  const { contactId, userId } = params
+  if ((contactId === undefined) === (userId === undefined)) {
+    return {
+      error: {
+        code: "INVALID_PARAMS",
+        message: 'Pass exactly one of contactId (a contact) or userId (a member, or "me")',
+      },
+    }
+  }
+  if (contactId !== undefined) {
+    if (typeof contactId !== "string" || !UUID_RE.test(contactId)) {
+      return { error: { code: "INVALID_PARAMS", message: "contactId must be a UUID" } }
+    }
+    return { kind: "contact", id: contactId }
+  }
+  const id = userId === "me" ? callerUserId : userId
+  if (typeof id !== "string" || !UUID_RE.test(id)) {
+    return {
+      error: {
+        code: "INVALID_PARAMS",
+        message:
+          userId === "me"
+            ? 'userId "me" needs a signed-in member as the caller'
+            : 'userId must be a member\'s UUID or "me"',
+      },
+    }
+  }
+  return { kind: "user", id }
+}
+
+/**
+ * Whether the caller may export this subject: a member may always export
+ * themself; anyone else needs the data-subject authority. A refusal is the
+ * same NOT_FOUND a missing subject gets, so it says nothing about whether the
+ * person exists.
+ */
+export function mayExportSubject(
+  subject: DataSubjectRef,
+  caller: { userId: string; scopes?: readonly string[] },
+): { ok: true } | { error: { code: "NOT_FOUND"; message: string; status: 404 } } {
+  if (subject.kind === "user" && subject.id === caller.userId) return { ok: true }
+  if (hasScope(DATA_SUBJECT_EXPORT_SCOPE, [...(caller.scopes ?? [])])) return { ok: true }
+  return { error: { code: "NOT_FOUND", message: NOT_VISIBLE[subject.kind], status: 404 } }
+}
+
+/**
+ * The registry's `refuseBeforeGate`: a call the caller may never run gets its
+ * NOT_FOUND before any approval is parked, so no card is raised for it.
+ */
+export function refuseDataSubjectExportBeforeGate(
+  params: unknown,
+  ctx: { userId: string; scopes: readonly string[] },
+): unknown | null {
+  const subject = resolveDataSubject(
+    (params ?? {}) as Pick<DataSubjectExportParams, "contactId" | "userId">,
+    ctx.userId,
+  )
+  if ("error" in subject) return null // the handler answers malformed params
+  const may = mayExportSubject(subject, ctx)
+  return "error" in may ? may : null
 }
 
 /**
@@ -72,7 +171,10 @@ export interface SuppliedShopifyOrder {
 }
 
 export interface DataSubjectExportParams {
-  contactId: string
+  /** A contact (customer, supplier, anyone outside the org). */
+  contactId?: string
+  /** A member of the organization, or "me" for the caller. */
+  userId?: string
   format?: "json"
   /**
    * OPTIONAL — live-connector (Shopify) order records the agent retrieved via
@@ -234,13 +336,13 @@ export interface DataSubjectExportBundle {
  * slice added travels with the file, because "why does it think that" is the
  * question a subject access request is really asking.
  *
- * Resolved through the contact's EMAIL to a user of this org and then to that
+ * Resolved through the contact's EMAIL (a member: their id) to a user of this org and then to that
  * user's personal agent. A contact who is not a member of the org has no agent
  * and no memory, and the section says so rather than going missing: an absent
  * key reads as a bug, an empty section reads as an answer.
  */
 async function buildMemorySection(
-  contactEmail: string | null,
+  who: { email: string | null } | { userId: string },
   ctx: DataSubjectExportToolCtx,
 ): Promise<DataSubjectExportBundle["records"]["memory"]> {
   const empty = {
@@ -249,7 +351,11 @@ async function buildMemorySection(
     episodes: [],
     checkpoints: [],
   }
-  if (!contactEmail) return empty
+  if ("email" in who && !who.email) return empty
+  const match =
+    "userId" in who
+      ? drizzleSql`u.id = ${who.userId}`
+      : drizzleSql`lower(u.email) = lower(${who.email})`
   const { withPrivilegedDb } = await import("~/db/privileged")
   const K = drizzleSql.raw(schemaRef("kernel"))
   try {
@@ -259,7 +365,7 @@ async function buildMemorySection(
         SELECT a.id AS agent_id, u.id AS user_id
         FROM ${K}.users u
         JOIN ${K}.agents a ON a.owner_user_id = u.id AND a.kind = 'personal'
-        WHERE u.org_id = ${ctx.orgId} AND lower(u.email) = lower(${contactEmail})
+        WHERE u.org_id = ${ctx.orgId} AND ${match}
         LIMIT 1`),
       )
       const owner = owners[0]
@@ -393,7 +499,7 @@ export async function buildDataSubjectBundle(
     : undefined
 
   // (4) Memory leg — what this subject's own agent remembers (P4m-T32).
-  const memory = await buildMemorySection(contact.email, ctx)
+  const memory = await buildMemorySection({ email: contact.email }, ctx)
 
   return {
     kind: "gdpr_data_subject_export",
@@ -465,40 +571,126 @@ export async function buildDataSubjectBundle(
   }
 }
 
-export async function handleDataSubjectExport(
-  params: DataSubjectExportParams,
-  ctx: DataSubjectExportToolCtx,
-): Promise<
-  | {
-      fileId: string
-      filename: string
-      mimeType: string
-      sizeBytes: number
-      contactId: string
-      subjectName: string | null
-      counts: { tickets: number; invoices: number; shopifyOrders: number }
-      shopifyIncluded: boolean
-    }
-  | { error: { code: string; message: string } }
-> {
-  const contactId = params.contactId
-  if (typeof contactId !== "string" || !UUID_RE.test(contactId)) {
-    return { error: { code: "INVALID_PARAMS", message: "contactId must be a UUID" } }
+interface MemberRow {
+  id: string
+  email: string
+  name: string
+  avatar_url: string | null
+  timezone: string | null
+  locale: string | null
+  status: string
+  totp_enabled: boolean
+  invited_by: string | null
+  settings: Record<string, unknown> | null
+  created_at: string | Date | null
+  updated_at: string | Date | null
+}
+
+/**
+ * The bundle for a MEMBER of the organization: their profile, then one section
+ * per kind of record about them (member-data-subject-bundle.ts), then what
+ * their agent remembers. Records of other people appear only where they name
+ * this member (a conversation the member started, an approval they decided).
+ */
+export interface MemberDataSubjectExportBundle {
+  kind: "gdpr_data_subject_export"
+  schemaVersion: 1
+  generatedAt: string
+  subject: {
+    kind: "user"
+    userId: string
+    name: string
+    email: string
+    avatarUrl: string | null
+    timezone: string | null
+    locale: string | null
+    status: string
+    twoFactorEnabled: boolean
+    invitedBy: string | null
+    settings: unknown
+    createdAt: string | null
+    updatedAt: string | null
   }
+  /** One entry per `MEMBER_SECTIONS` key, plus `memory`. */
+  records: Record<string, MemberSectionResult | DataSubjectExportBundle["records"]["memory"]>
+  counts: Record<string, number>
+}
 
-  const bundle = await buildDataSubjectBundle(contactId, ctx, params.shopifyOrders)
-  if ("error" in bundle) return bundle
+export async function buildMemberDataSubjectBundle(
+  subjectUserId: string,
+  ctx: DataSubjectExportToolCtx,
+): Promise<MemberDataSubjectExportBundle | { error: { code: string; message: string } }> {
+  // The member, under the caller's RLS: one the caller cannot see is NOT_FOUND.
+  const member = extractRows<MemberRow>(
+    await ctx.db.execute(drizzleSql`
+      SELECT id::text AS id, email, name, avatar_url, timezone, locale, status::text AS status,
+             totp_enabled, invited_by::text AS invited_by, settings, created_at, updated_at
+      FROM ${drizzleSql.raw(schemaRef("kernel"))}.users
+      WHERE org_id = ${ctx.orgId} AND id = ${subjectUserId}
+      LIMIT 1
+    `),
+  )[0]
+  if (!member) return { error: { code: "NOT_FOUND", message: NOT_VISIBLE.user } }
 
+  const sections = await readMemberSections(ctx.db, { orgId: ctx.orgId, subjectUserId })
+  const memory = await buildMemorySection({ userId: subjectUserId }, ctx)
+
+  const counts: Record<string, number> = {}
+  for (const [key, section] of Object.entries(sections)) counts[key] = section.rows.length
+  counts.memoryFiles = memory.tree.length
+  counts.memoryEpisodes = memory.episodes.length
+  counts.memoryCheckpoints = memory.checkpoints.length
+
+  return {
+    kind: "gdpr_data_subject_export",
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    subject: {
+      kind: "user",
+      userId: member.id,
+      name: member.name,
+      email: member.email,
+      avatarUrl: member.avatar_url,
+      timezone: member.timezone,
+      locale: member.locale,
+      status: member.status,
+      twoFactorEnabled: member.totp_enabled,
+      invitedBy: member.invited_by,
+      settings: withoutSecrets(member.settings ?? {}),
+      createdAt: toIso(member.created_at),
+      updatedAt: toIso(member.updated_at),
+    },
+    records: { ...sections, memory },
+    counts,
+  }
+}
+
+type ExportError = { error: { code: string; message: string; status?: number } }
+
+interface SavedFile {
+  fileId: string
+  filename: string
+  mimeType: string
+  sizeBytes: number
+}
+
+/** Writes the bundle as a kernel file attached to its subject. */
+async function saveBundle(
+  bundle: unknown,
+  base: string,
+  subject: DataSubjectRef,
+  ctx: DataSubjectExportToolCtx,
+): Promise<SavedFile | ExportError> {
   const { putObject, sanitizeFilename } = await import("~/infra/storage/object-storage")
   const { withPrivilegedDb } = await import("~/db/privileged")
 
   const content = JSON.stringify(bundle, null, 2)
   const bytes = Buffer.from(content, "utf-8")
   const safeBase = sanitizeFilename(
-    `gdpr-export-${(bundle.subject.name ?? bundle.subject.handle ?? "subject").toLowerCase().replace(/[^a-z0-9]+/g, "-")}.json`,
+    `gdpr-export-${base.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.json`,
   )
   const fileId = randomUUID()
-  const storageKey = `orgs/${ctx.orgId}/kernel/contact/${contactId}/${fileId}/${safeBase}`
+  const storageKey = `orgs/${ctx.orgId}/kernel/${subject.kind}/${subject.id}/${fileId}/${safeBase}`
   const mimeType = "application/json"
 
   // The bundle counts toward the org's storage, like an upload: refused before
@@ -519,9 +711,10 @@ export async function handleDataSubjectExport(
   await putObject({ key: storageKey, body: bytes, contentType: mimeType })
 
   // kernel.files INSERT is kernel-privileged (no liaison_rls INSERT policy). The
-  // contact-visibility SELECT above (under the caller's RLS) is the authorization;
-  // the row write itself routes through withPrivilegedDb (l647/BL-264 — an
-  // RLS-restricted txDb INSERT would be silently denied → 500).
+  // subject-visibility SELECT (under the caller's RLS) and the authorization
+  // check before it are what allow it; the row write itself routes through
+  // withPrivilegedDb (l647/BL-264 — an RLS-restricted txDb INSERT would be
+  // silently denied → 500).
   const K = drizzleSql.raw(schemaRef("kernel"))
   const uploaderId = UUID_RE.test(ctx.userId) ? ctx.userId : null
   await withPrivilegedDb(ctx.orgId, "data_subject_export kernel.files insert", (pdb) =>
@@ -530,17 +723,78 @@ export async function handleDataSubjectExport(
         (id, org_id, app, entity_type, entity_id, filename, mime_type, size_bytes,
          storage_key, uploaded_by, disposition, ordinal)
       VALUES (
-        ${fileId}, ${ctx.orgId}, 'kernel', 'contact', ${contactId},
+        ${fileId}, ${ctx.orgId}, 'kernel', ${subject.kind}, ${subject.id},
         ${safeBase}, ${mimeType}, ${bytes.byteLength},
         ${storageKey}, ${uploaderId}, 'attachment', 0
       )
     `),
   )
+  return { fileId, filename: safeBase, mimeType, sizeBytes: bytes.byteLength }
+}
+
+export async function handleDataSubjectExport(
+  params: DataSubjectExportParams,
+  ctx: DataSubjectExportToolCtx,
+): Promise<
+  | (SavedFile & {
+      contactId: string
+      subjectName: string | null
+      counts: { tickets: number; invoices: number; shopifyOrders: number }
+      shopifyIncluded: boolean
+    })
+  | (SavedFile & {
+      subject: { kind: "user"; userId: string; name: string }
+      counts: Record<string, number>
+      note: string
+    })
+  | ExportError
+> {
+  const subject = resolveDataSubject(params, ctx.userId)
+  if ("error" in subject) return subject
+  const may = mayExportSubject(subject, ctx)
+  if ("error" in may) return may
+
+  if (subject.kind === "user") {
+    const bundle = await buildMemberDataSubjectBundle(subject.id, ctx)
+    if ("error" in bundle) return bundle
+    const saved = await saveBundle(bundle, bundle.subject.name || "member", subject, ctx)
+    if ("error" in saved) return saved
+    const truncated = Object.entries(bundle.records)
+      .filter(([, s]) => "truncated" in s && s.truncated)
+      .map(([k]) => k)
+    const total = Object.values(bundle.counts).reduce((a, b) => a + b, 0)
+    log.info(
+      { subjectUserId: subject.id, fileId: saved.fileId, total },
+      "data_subject_export member bundle written",
+    )
+    return {
+      ...saved,
+      subject: { kind: "user", userId: bundle.subject.userId, name: bundle.subject.name },
+      counts: bundle.counts,
+      note:
+        `Saved ${saved.filename} (file ${saved.fileId}): ${total} records about ${bundle.subject.name} as a member. ` +
+        "Conversations and files are only those the requester can open; nothing was sent to anyone." +
+        (truncated.length > 0
+          ? ` These sections stopped at their row limit: ${truncated.join(", ")}.`
+          : ""),
+    }
+  }
+
+  const contactId = subject.id
+  const bundle = await buildDataSubjectBundle(contactId, ctx, params.shopifyOrders)
+  if ("error" in bundle) return bundle
+  const saved = await saveBundle(
+    bundle,
+    bundle.subject.name ?? bundle.subject.handle ?? "subject",
+    subject,
+    ctx,
+  )
+  if ("error" in saved) return saved
 
   log.info(
     {
       contactId,
-      fileId,
+      fileId: saved.fileId,
       tickets: bundle.counts.tickets,
       invoices: bundle.counts.invoices,
       shopifyOrders: bundle.counts.shopifyOrders,
@@ -549,10 +803,7 @@ export async function handleDataSubjectExport(
   )
 
   return {
-    fileId,
-    filename: safeBase,
-    mimeType,
-    sizeBytes: bytes.byteLength,
+    ...saved,
     contactId,
     subjectName: bundle.subject.name,
     counts: bundle.counts,

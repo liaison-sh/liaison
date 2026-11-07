@@ -259,7 +259,11 @@ import {
   ruleRecordTypeSchema,
   ruleWhenSchema,
 } from "~/modules/documents/rules-store"
-import { handleDataSubjectExport } from "~/modules/export/data-subject-export-tool"
+import {
+  DATA_SUBJECT_EXPORT_SELF_SCOPE,
+  handleDataSubjectExport,
+  refuseDataSubjectExportBeforeGate,
+} from "~/modules/export/data-subject-export-tool"
 import { handleKernelExport } from "~/modules/export/kernel-export-tool"
 import {
   COMPUTER_SESSION_ANSWER_DESCRIPTION,
@@ -3181,11 +3185,20 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     appName: "kernel",
     name: "data_subject_export",
     deferLoading: true,
-    description: `Compile EVERYTHING the org holds on ONE data subject (a contact) across apps into a single downloadable GDPR data-subject-request (DSR) export bundle, and return its fileId. Use this for a GDPR/data-access request — "export everything we have on <person> so I can send it to them". This is the PER-SUBJECT export: pass the subject's contactId (resolve it FIRST with kernel__contacts_search by name/email) and it assembles their contact record + support tickets (tickets__listForContact) + invoices (invoicing documents by contact) into ONE bundle written as a real downloadable file (returns { fileId, filename, counts, shopifyIncluded }). It contains ONLY the subject's REAL records you can see (runs under your RLS — never an org-wide dump, never invented data). It is DISTINCT from the admin \`export\` tool, which is org-admin-scoped and dumps WHOLE APPS with no per-subject filter. SHOPIFY orders are a LIVE connector (fetched live, NOT stored locally), so they are NOT auto-included — BUT if the request needs them in the SAME single bundle (e.g. "I need one complete file including her orders"), FIRST retrieve them with the shopify orders read (customers_search → orders_search/orders_get for that subject) and pass the returned order records as the \`shopifyOrders\` array — this tool then FOLDS them into the one bundle file and returns its single real fileId. If you do NOT include them, say honestly that Shopify orders are a live connector not in this file (point to the shopify orders read / Shopify admin export). CRITICAL ANTI-FABRICATION: the deliverable is the SINGLE fileId THIS tool returns — NEVER claim you "generated" a separate or supplemental file, and NEVER emit a \`file:<id>\` reference for any id this tool did not return; to put orders in the package, pass them via \`shopifyOrders\` and hand back this tool's one real fileId (do not invent a second file). Scoped to the dedicated DSR authority (a privacy/finance handler can run it WITHOUT org-admin powers); a caller lacking that scope is denied (and should ask whoever holds the DSR/privacy authority). UNGATED read-to-file: it sends nothing and changes no business data — it only materializes a file from records you can already read.`,
+    description: `Compile EVERYTHING the org holds on ONE data subject (a contact, or a member of the organization) across apps into a single downloadable GDPR data-subject-request (DSR) export bundle, and return its fileId. Use this for a GDPR/data-access request — "export everything we have on <person> so I can send it to them". This is the PER-SUBJECT export: pass the subject's contactId (resolve it FIRST with kernel__contacts_search by name/email) and it assembles their contact record + support tickets (tickets__listForContact) + invoices (invoicing documents by contact) into ONE bundle written as a real downloadable file (returns { fileId, filename, counts, shopifyIncluded }). For a MEMBER (a teammate, or the requester: "export my data"), pass userId instead ("me" for the requester): the bundle holds their profile, preferences, roles, messages, conversations they started, uploaded files, approvals, routines, audit entries, connected accounts (never tokens) and agent memory. It contains ONLY the subject's REAL records you can see (runs under your RLS — never an org-wide dump, never invented data). It is DISTINCT from the admin \`export\` tool, which is org-admin-scoped and dumps WHOLE APPS with no per-subject filter. SHOPIFY orders are a LIVE connector (fetched live, NOT stored locally), so they are NOT auto-included — BUT if the request needs them in the SAME single bundle (e.g. "I need one complete file including her orders"), FIRST retrieve them with the shopify orders read (customers_search → orders_search/orders_get for that subject) and pass the returned order records as the \`shopifyOrders\` array — this tool then FOLDS them into the one bundle file and returns its single real fileId. If you do NOT include them, say honestly that Shopify orders are a live connector not in this file (point to the shopify orders read / Shopify admin export). CRITICAL ANTI-FABRICATION: the deliverable is the SINGLE fileId THIS tool returns — NEVER claim you "generated" a separate or supplemental file, and NEVER emit a \`file:<id>\` reference for any id this tool did not return; to put orders in the package, pass them via \`shopifyOrders\` and hand back this tool's one real fileId (do not invent a second file). Exporting anyone else needs the dedicated DSR authority (a privacy/finance handler can run it WITHOUT org-admin powers); without it the subject reads as not found (ask whoever holds the DSR/privacy authority). Every member may export their own data. UNGATED read-to-file: it sends nothing and changes no business data — it only materializes a file from records you can already read.`,
     searchKeywords: ["rgpd", "gdpr", "données", "personnelles"],
-    requiredScopes: ["kernel:data_subject:export"],
+    // The self-export scope every member holds; its parent, the DSR authority, covers it. Any
+    // other subject is refused before the gate without the parent (data-subject-export-tool.ts).
+    requiredScopes: [DATA_SUBJECT_EXPORT_SELF_SCOPE],
+    refuseBeforeGate: refuseDataSubjectExportBeforeGate,
     params: z.object({
-      contactId: z.string().uuid(),
+      contactId: z.string().uuid().optional(),
+      userId: z
+        .union([z.string().uuid(), z.literal("me")])
+        .optional()
+        .describe(
+          'A member of the organization, or "me" for the requester. Pass this or contactId.',
+        ),
       format: z.enum(["json"]).default("json"),
       shopifyOrders: z
         .array(z.record(z.string(), z.unknown()))

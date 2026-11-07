@@ -104,7 +104,8 @@ apps_set_enabled tool: scope and approval flag -> apps/api/src/modules/agent/too
 apps_set_access tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2020
 audit_search tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2184
 export tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2269
-data_subject_export tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2286
+data_subject_export tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:3192
+data_subject_export: a member exports themself, anyone else needs kernel:data_subject:export -> apps/api/src/modules/export/data-subject-export-tool.ts:125
 capture_business_knowledge tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2226
 notify_user tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1692
 notifications_get tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1722

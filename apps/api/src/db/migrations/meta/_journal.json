@@ -1940,6 +1940,13 @@
       "when": 1900003350000,
       "tag": "0275_app_data_store",
       "breakpoints": true
+    },
+    {
+      "idx": 277,
+      "version": "7",
+      "when": 1900003360000,
+      "tag": "0276_every_member_self_export_scope",
+      "breakpoints": true
     }
   ]
 }

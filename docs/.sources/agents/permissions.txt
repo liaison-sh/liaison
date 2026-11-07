@@ -78,4 +78,5 @@ create_pinned_thread needs kernel:threads:admin -> apps/api/src/modules/agent/to
 Access request waits in the Home Approvals list with Grant / Deny -> apps/web/src/modules/admin-scope-requests/AccessRequestRow.tsx:77
 Decision Undo window covers access requests -> apps/web/src/modules/approvals/decision-queue.ts:50
 kernel:bug_reports:file held by every active member, kept by their agent whatever its ceiling -> apps/api/src/modules/permissions/every-member-scopes.ts:23 ; apps/api/src/modules/permissions/permissions.ts:154 ; apps/api/src/modules/agent/scopes/effective-scope.ts:45-56
+kernel:data_subject:export:self held by every active member -> apps/api/src/modules/permissions/every-member-scopes.ts:32 ; apps/api/src/modules/export/data-subject-export-tool.ts:125
 Every-member scopes count for approver eligibility, dropped for a restricted app -> apps/api/src/modules/permissions/eligible-approvers.ts:36

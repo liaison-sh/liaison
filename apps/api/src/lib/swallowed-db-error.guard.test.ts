@@ -220,6 +220,12 @@ const ALLOWLIST: AllowlistEntry[] = [
     note: "Maps a key collision to ProjectsServiceError(409) and throws; the caller's tx rolls back.",
   },
   {
+    file: "modules/app-builder/drafts.ts",
+    function: "createDraft",
+    why: "rethrows",
+    note: "The insert runs in withReleasedSavepoint(); a live-base-name clash maps to DraftError(base_name_taken) and throws.",
+  },
+  {
     file: "modules/contacts/groups.ts",
     function: "createGroup",
     why: "rethrows",

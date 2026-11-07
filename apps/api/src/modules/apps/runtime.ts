@@ -142,6 +142,7 @@ export class AppRegistrationFatalError extends Error {
 }
 
 import { TAINT_ENFORCING_SINKS } from "~/modules/agent/scopes/scope-taint"
+import { isCustomAppName } from "~/modules/apps/custom-app-name"
 import {
   closeRegistryJournal,
   openRegistryJournal,
@@ -459,6 +460,9 @@ function buildManifestForBridge(desc: AppDescriptor, declaredCapabilities: strin
     events: (desc as any).events ?? {},
     connections: (desc as any).connections ?? {},
     network: (desc as any).network ?? {},
+    // Where ctx.fetch configSecrets may place each secret (bridge/fetch-auth.ts):
+    // none declared, none placed.
+    secrets: (desc as any).secrets ?? {},
     capabilities: declaredCapabilities,
     // I9 — carry the manifest's declared scope set into the bridge so
     // `grants_setUserScopes` can intersect app-issued grants against
@@ -668,6 +672,27 @@ async function validateForRegistration(
       ...(isManifest ? { [SHARED_MANIFEST]: result.data } : {}),
     } as AppDescriptor,
   }
+}
+
+/**
+ * Whether an app has no outside reach of its own: no network domain, no connection and no
+ * cross-app call in its manifest, so its own `ctx.fetch` has no host to call. Its run can
+ * still read the org's data (under the caller's own grants), and a nested `ctx.executeTool`
+ * can still reach read tools that go outside (a web read, an API connector or MCP read):
+ * those run under the same checks as the agent's own call of them (web-read guardrails,
+ * payload rules, the turn's taint forwarded).
+ */
+function customAppHasNoOutsideHost(desc: AppDescriptor): boolean {
+  const d = desc as {
+    network?: { allowedDomains?: unknown[] }
+    connections?: Record<string, unknown>
+    cross_app_calls?: unknown[]
+  }
+  return (
+    (d.network?.allowedDomains?.length ?? 0) === 0 &&
+    Object.keys(d.connections ?? {}).length === 0 &&
+    (d.cross_app_calls?.length ?? 0) === 0
+  )
 }
 
 /** How `registerApps` treats the org's persistent rows. */
@@ -3053,6 +3078,21 @@ async function registerSingleApp(
                 desc._publisherSigned === true)
             ) {
               entry.readOnly = true
+            } else if (
+              // A CUSTOM APP's read: nobody vouches for its code, so its claim counts only
+              // because the run enforces it. Every run of the tool gets a read-only bridge
+              // (executeToolHandler, `readOnlyEnforced`: the store, db, mail, job and
+              // approval writes are refused, nested calls run as reads), and the app has no
+              // outside host of its own (no network domain, no connection, no cross-app call),
+              // so the known bound of a read-only run, its own `fetch`, has nowhere to carry
+              // the turn. A nested read that goes outside is judged as the agent's own call.
+              tool.readOnly === true &&
+              entry.writesToTable === undefined &&
+              isCustomAppName(desc.name) &&
+              customAppHasNoOutsideHost(desc)
+            ) {
+              entry.readOnly = true
+              entry.readOnlyEnforced = true
             }
             // The sink's reader scope (scope-taint.ts, consequence 4). It turns a refusal into
             // an audience judgement, so it is a claim about who reads the table and is vouched
@@ -3739,7 +3779,7 @@ async function registerSingleApp(
                 entity,
                 action,
                 gateEventOnAppState(desc.name, orgId, handler),
-                // Once (A5): an app's subscription writes; it runs in the
+                // Once: an app's subscription writes; it runs in the
                 // publishing process only, not once per process.
                 { delivery: "once", name: `app-subscription:${desc.name}` },
               ),

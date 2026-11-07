@@ -296,6 +296,59 @@ describe("registerApps — manifest format", () => {
     }
   })
 
+  it("a custom app's readOnly counts only as an enforced read-only run, and only when it has no outside host of its own", async () => {
+    // A custom app of the test org itself (another org's key never registers here).
+    const name = `roread-o${crypto.createHash("sha256").update(TEST_ORG).digest("hex").slice(0, 8)}`
+    const customApp = (extra: Record<string, unknown> = {}) => ({
+      name,
+      version: "1.0.0",
+      _format: "manifest" as const,
+      _bundlePath: `/apps/${name}/handlers.js`,
+      trusted: false,
+      _installed: true,
+      scopes: [`${name}:items:read`, `${name}:items:write`],
+      ...extra,
+      tools: {
+        listItems: {
+          description: "List items",
+          requiredScopes: [`${name}:items:read`],
+          readOnly: true,
+          handler: "listItems",
+        },
+        addItem: {
+          description: "Add an item",
+          requiredScopes: [`${name}:items:write`],
+          handler: "addItem",
+        },
+      },
+    })
+    const cases: Array<[Record<string, unknown>, boolean]> = [
+      [{}, true],
+      [{ network: { allowedDomains: ["api.example.com"] } }, false],
+      [{ connections: { crm: { allowedDomains: ["crm.example.com"] } } }, false],
+      [{ cross_app_calls: [{ target: "tickets__search" }] }, false],
+    ]
+    for (const [extra, honoured] of cases) {
+      try {
+        await registerApps([customApp(extra) as never], TEST_ORG)
+        const get = (tool: string) => toolRegistry.get([TEST_ORG, name, tool])
+        expect({ extra, readOnly: get("listItems")?.readOnly === true }).toEqual({
+          extra,
+          readOnly: honoured,
+        })
+        // Honoured only together with the enforcement: every run gets a read-only bridge.
+        expect(get("listItems")?.readOnlyEnforced === true).toBe(honoured)
+        // A tool that does not claim to read stays a write.
+        expect(get("addItem")?.readOnly).toBeUndefined()
+        expect(get("addItem")?.readOnlyEnforced).toBeUndefined()
+      } finally {
+        resetAppRegistries()
+        await sql.unsafe(`DROP SCHEMA IF EXISTS "app_${name.replace(/-/g, "_")}" CASCADE`)
+        await sql`DELETE FROM kernel.apps WHERE name = ${name}`
+      }
+    }
+  })
+
   it("never takes taintFree from a manifest, trusted or not: only kernel code sets it", async () => {
     for (const trusted of [true, false]) {
       const app = taintDeclApp(trusted) as ReturnType<typeof taintDeclApp> & {

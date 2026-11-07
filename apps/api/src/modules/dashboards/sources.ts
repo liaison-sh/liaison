@@ -9,10 +9,9 @@
 // nothing a view cannot give: not gated (statically or for some params), no
 // outward effect, not a contract-only op, not hidden from the agent, no human
 // turn, no trust boundary, not a web read. Kernel tools are not judged by their
-// marker alone: only the ones listed here qualify. Org-private (custom) apps
-// are not sources at all yet: their outbound calls are bounded per request only
-// once their secrets are placed per request (the custom-app plan), so a view
-// must not be the way to run them on every page load.
+// marker alone: only the ones listed here qualify. An org's own custom app is
+// a source under the same rules (its secrets are placed per request);
+// another org's never is.
 //
 // The `readOnly` marker is still the app's own claim. What makes a view safe
 // against a manifest that lies is the run itself, which is read-only
@@ -20,7 +19,7 @@
 
 import { APP_DISABLED_CODE } from "@liaison/shared"
 import { checkToolScopes } from "~/modules/agent/scopes/required-scopes"
-import { isOrgPrivateApp } from "~/modules/apps/app-org-scope"
+import { appVisibleToOrg } from "~/modules/apps/app-org-scope"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { dashboardSourceRefusal } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
@@ -87,11 +86,11 @@ export async function checkToolSource(
       message: `${toolName} is not a dashboard source; kernel sources are ${[...KERNEL_DASHBOARD_SOURCES].map((n) => `kernel:${n}`).join(", ")}`,
     }
   }
-  if (app !== "kernel" && (await isOrgPrivateApp(app))) {
+  if (app !== "kernel" && !(await appVisibleToOrg(app, orgId))) {
     return {
       ok: false,
-      code: "not_allowed",
-      message: `${toolName} belongs to a custom app, which cannot feed a dashboard yet`,
+      code: "unknown_tool",
+      message: `${toolName} is not a tool of this workspace`,
     }
   }
   const tool = await lookupTool(orgId, app, name)
@@ -203,12 +202,8 @@ export async function checkStoreSource(
 ): Promise<StoreSourceCheck> {
   if (app !== AGENT_STORE_APP) {
     await ensureAppsForOrg(orgId)
-    if (await isOrgPrivateApp(app)) {
-      return {
-        ok: false,
-        code: "not_allowed",
-        message: `${app} is a custom app, which cannot feed a dashboard yet`,
-      }
+    if (!(await appVisibleToOrg(app, orgId))) {
+      return { ok: false, code: "unknown_tool", message: `${app} is not an app of this workspace` }
     }
     if (!(await isAppActiveForOrgAsync(orgId, app))) {
       return {

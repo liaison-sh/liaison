@@ -131,8 +131,17 @@ function blockLines(spec: unknown, max = 6): string[] {
   return lines
 }
 
+// A create parks for an org dashboard, and also for a personal one when the turn's taint parks it
+// (scope-taint rule 8b): the card says which, from the visibility the call carries.
 const summarizeCreate: ApprovalSummarizer = async (raw) => {
-  const p = (raw ?? {}) as { title?: string; spec?: unknown }
+  const p = (raw ?? {}) as { title?: string; spec?: unknown; visibility?: string }
+  if (p.visibility !== "org") {
+    return {
+      kind: "dashboard_create",
+      title: `Save the personal dashboard "${p.title ?? ""}"`,
+      lines: ["Only its author will see it.", ...blockLines(p.spec)],
+    }
+  }
   return {
     kind: "dashboard_create",
     title: `Share the dashboard "${p.title ?? ""}" with the organisation`,

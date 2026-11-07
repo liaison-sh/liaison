@@ -365,9 +365,13 @@ services:
       # Emergency override of the refusal to start an image older than the
       # database's schema. Not supported: docs/admin/upgrades.md.
       LIAISON_ALLOW_OLDER_IMAGE: ${LIAISON_ALLOW_OLDER_IMAGE:-false}
+      # Organisations' own custom apps and the app builder: on|off. Empty = on in
+      # the managed edition, off on a self-hosted server (docs/reference/env.md).
+      LIAISON_CUSTOM_APPS: ${LIAISON_CUSTOM_APPS:-}
       # Workers app executor (apps on a remote V8 isolate loader). All empty by
       # default: every app runs on the local sandbox (docs/reference/env.md).
       LIAISON_WORKERS_APPS: ${LIAISON_WORKERS_APPS:-}
+      LIAISON_WORKERS_CUSTOM_APPS: ${LIAISON_WORKERS_CUSTOM_APPS:-}
       LIAISON_APP_LOADER_URL: ${LIAISON_APP_LOADER_URL:-}
       LIAISON_APP_LOADER_CELL_ID: ${LIAISON_APP_LOADER_CELL_ID:-}
       LIAISON_APP_LOADER_KEY: ${LIAISON_APP_LOADER_KEY:-}

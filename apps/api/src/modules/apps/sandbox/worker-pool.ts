@@ -93,7 +93,7 @@ const DEFAULT_POOL_REPORT_INTERVAL_MS =
 
 export type ExecPriority = "interactive" | "background"
 
-// TENANT BUDGET (managed edition). Every org's custom apps share this pool with
+// TENANT BUDGET (every edition). Every org's custom apps share this pool with
 // every other org's apps, and a sandboxed handler holds a worker and an open
 // Postgres transaction for its whole run. Without a share, one tenant's busy
 // loop (a webhook driven from the internet, a flood of its own events) holds
@@ -378,7 +378,7 @@ export interface WorkerExecOptions {
   signal?: AbortSignal
   /**
    * The app whose code runs. Also decides the tenant budget: an org's custom
-   * app on a managed cell counts against its org's share (sandboxTenantKey).
+   * app counts against its org's share (sandboxTenantKey).
    */
   appId?: string
   /** Tool name, for saturation/hold-time log fields when available. */

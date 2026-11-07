@@ -282,6 +282,11 @@ export const toolRegistry = createTypedRegistry<
      *  (scope-taint.ts, consequence 1). Scope taint lets it run on a tainted turn; an
      *  unmarked tool counts as a write. A declared `writesToTable` wins over it. */
     readOnly?: boolean
+    /** Set by runtime.ts only, never copied from a manifest: `readOnly` counts because
+     *  every run of the tool is a read-only run (a custom app's read, with no outside host
+     *  of its own; a nested read it calls is judged as the agent's own call), so
+     *  executeToolHandler builds its bridge with every write refused. */
+    readOnlyEnforced?: boolean
     /** True only for a kernel tool whose output holds no org record content (the
      *  tool catalog, capability listings, UI navigation): calling it reads no
      *  scoped data, so the bridge does not record its scope into the turn's
@@ -347,6 +352,10 @@ export const toolRegistry = createTypedRegistry<
      *  the preflight, and a call carrying an `@ref:` token (which skips the preflight) is refused
      *  at stage time (execute-tool.ts). */
     pinnedParams?: readonly string[]
+    /** No field of this tool's pending approval may ever be edited (`approval_update_payload`
+     *  refuses every edit): what a person approves is the whole payload as staged, so a change
+     *  means withdrawing the request and asking again (the app builder's publish). */
+    payloadImmutable?: boolean
     /** The params carrying text a person outside the org reads (an email body, a ticket reply,
      *  a DM). A call whose text there holds an unfilled placeholder ("[DATE]", "{{name}}", "TBD")
      *  is refused before any gate stages an approval (outbound-placeholders.ts). */
@@ -409,6 +418,13 @@ export const toolRegistry = createTypedRegistry<
      *  no pre-commit external side-effect (an outbox `queueEvent` inside the same tx is fine —
      *  it rolls back too). Defaults off. (BL-180) */
     retryOnTransientDbError?: boolean
+    /** Host-only (kernel). The handler runs no whole-call transaction: it gets the call's
+     *  RlsSession as `ctx.rlsSession` (a short transaction per step) and `ctx.db` refuses
+     *  every use, so a call that waits on long work (a build, an install's health gate)
+     *  never holds a connection idle in a transaction. Its preflight and its approved
+     *  execution get a session too. Without a session (a caller holding a live
+     *  transaction) the handler gets that transaction as usual. */
+    ownsTransactions?: boolean
     /** When true, this tool is deferred — the model sees only its name until it discovers
      *  it via the tool_search tool. App tools are deferred by default; kernel tools are not. */
     deferLoading?: boolean

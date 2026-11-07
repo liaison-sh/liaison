@@ -26,6 +26,8 @@ paths-ignore:
   - "apps/web/src/tests/**"
   - "apps/desktop/src/tests/**"
   - "packages/test-helpers/**"
+  # The Workers loader stand-in the executor tests run against (nothing deployed imports it).
+  - "apps/api/src/modules/apps/workers/__fixtures__/**"
   # Developer scripts.
   - "scripts/*"
   - "scripts/bench/**"

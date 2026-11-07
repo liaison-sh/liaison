@@ -212,6 +212,16 @@ export async function updatePayload(args: UpdatePayloadArgs): Promise<UpdatePayl
     throw new UpdatePayloadError(409, "stale_status", "stale_status", { currentStatus: row.status })
   }
 
+  // 4a. A tool whose approval is the whole staged payload takes no edit at all.
+  if (toolRegistry.get([args.orgId, appName, toolShortName])?.payloadImmutable === true) {
+    throw new UpdatePayloadError(
+      400,
+      "invalid_edit",
+      `${row.tool_name} cannot be edited once requested: what the approver sees is exactly what runs. Withdraw it with kernel__approval_withdraw and request it again.`,
+      { editableFields: [] },
+    )
+  }
+
   // 4. Field allowlist + widget-aware revision validation (Phase 16 Task A5).
   const editableFields =
     approvalEditableFieldsRegistry.get([args.orgId, appName, toolShortName]) ?? []

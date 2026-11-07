@@ -8,6 +8,8 @@ import { randomBytes } from "node:crypto"
 import type { z } from "zod"
 import { z as zod } from "zod"
 import { withRlsContext } from "~/db/rls"
+import { createDraft, draftAppName } from "~/modules/app-builder/drafts"
+import { DRAFT_TEMPLATES, templateFiles } from "~/modules/app-builder/templates"
 import { writeAppConfigKey } from "~/modules/apps/app-config"
 import { setDocument } from "~/modules/data-store/service"
 import {
@@ -656,6 +658,35 @@ export const SEED_FACTORIES: Record<string, SeedRouteFactory> = {
         ),
       )
       return { id: doc.id, version: doc.version }
+    },
+  ),
+
+  /**
+   * An app builder draft from one of its templates, through the drafts service
+   * the agent's apps_build_create calls, as `createdBy` (default: the org's admin).
+   */
+  "apps.builderDraft": factory(
+    zod.object({
+      baseName: zod.string().min(2),
+      title: zod.string().min(1),
+      template: zod.enum(DRAFT_TEMPLATES).optional(),
+      createdBy: uuid.optional(),
+    }),
+    async (ctx, a) => {
+      const actor = await actorFor(ctx, a.createdBy ?? (await orgAdmin(ctx.orgId)).id)
+      const appName = draftAppName(ctx.orgId, a.baseName)
+      const { draft, version } = await withRlsContext(actor, (tx) =>
+        createDraft(
+          tx,
+          { orgId: ctx.orgId, userId: actor.userId },
+          {
+            baseName: a.baseName,
+            title: a.title,
+            files: templateFiles(a.template ?? "store-crud", appName, a.title),
+          },
+        ),
+      )
+      return { id: draft.id, appName, n: version.n }
     },
   ),
 

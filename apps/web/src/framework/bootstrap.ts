@@ -2,7 +2,7 @@
 // Kernel app registrations — imports from domain stores live HERE, not in app-registry.
 // bootstrap.ts is a leaf module: it imports from stores, but no store imports from it.
 
-import { Home, LayoutGrid, MessageSquare, Search, Settings, Terminal } from "lucide-solid"
+import { Hammer, Home, LayoutGrid, MessageSquare, Search, Settings, Terminal } from "lucide-solid"
 import { createRoot, lazy } from "solid-js"
 import {
   getConnectorApps,
@@ -32,6 +32,7 @@ import { apiUrl, serverAddressOverride } from "~/lib/env"
 import { onSessionStart, onSessionTeardown } from "~/lib/session-lifecycle"
 import { scopeRequestsStore } from "~/modules/admin-scope-requests/scope-requests-store"
 import { registerAgentApp } from "~/modules/agent/agent-app"
+import { BUILDER_TAB_TYPE, draftTitle } from "~/modules/app-builder/builder-store"
 import {
   ensureLoaded as ensureApprovalLoaded,
   handleWsCreate as handleApprovalWsCreate,
@@ -518,6 +519,17 @@ export function bootstrapKernelApps(): void {
         defaultLabel: "Dashboard",
         defaultLabelKey: "kernel.nav.dashboard",
         resolveLabel: (entityId) => dashboardTitle(entityId),
+        referenceable: false,
+      },
+      // P4: one app draft in the builder (`/apps/builder/:id`), named by its title.
+      "app-builder": {
+        component: lazy(() => import("~/modules/app-builder/BuilderView")),
+        sidebar: HomeAttentionSidebar,
+        icon: Hammer,
+        urlPattern: "/apps/builder/:entityId",
+        defaultLabel: "App builder",
+        defaultLabelKey: "kernel.nav.appBuilder",
+        resolveLabel: (entityId) => draftTitle(entityId),
         referenceable: false,
       },
     },
@@ -1265,6 +1277,11 @@ export function bootstrapKernelApps(): void {
     tabType: "kernel:dashboard",
     entityId: id,
     label: dashboardTitle(id),
+  }))
+  registerEntityOpener("kernel", "app-builder", (_api, id) => ({
+    tabType: BUILDER_TAB_TYPE,
+    entityId: id,
+    label: draftTitle(id),
   }))
   registerEntityOpener("kernel", "contact", (_api, id) => ({
     tabType: "contacts:contact-detail",

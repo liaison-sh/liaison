@@ -10,6 +10,8 @@ import {
   currentRunContext,
 } from "~/modules/agent/runtime/run-context"
 import { UNDECLARED_WRITE_TARGET } from "~/modules/agent/scopes/scope-taint"
+import { attachRunLogSink } from "~/modules/app-builder/logs"
+import { isCustomAppName } from "~/modules/apps/custom-app-name"
 import { createAgentMethods } from "~/modules/apps/sandbox/bridge/agent"
 import { createApprovalsMethods } from "~/modules/apps/sandbox/bridge/approvals"
 import { createCalendarMethods } from "~/modules/apps/sandbox/bridge/calendar"
@@ -84,6 +86,8 @@ export function createRpcBridge(
     rpcBridge,
   )
   const { bridgeReadOnlyRun } = ctx
+  // The run's end (runApp) flushes its log lines (modules/app-builder/logs.ts).
+  if (ctx.appLogSink) attachRunLogSink(rpcBridge, ctx.appLogSink)
   Object.assign(
     rpcBridge,
     createIdentityMethods(ctx),
@@ -141,10 +145,14 @@ export function createRpcBridge(
   // exactly those, wherever it is marked (here, or later in runApp).
   markSecretConfigKeys(rpcBridge, secretConfigKeyResolver(orgId, appName, manifest))
 
-  // A Workers run: no method hands a secret back (applied last, so an app's
-  // extension cannot reintroduce one).
-  if (bridgeOptions?.workersRun) {
-    forWorkersRun(rpcBridge, { secretConfigKeys: secretConfigKeysOf(rpcBridge) })
+  // A Workers run, and every run of a custom app on any executor: no
+  // method hands a secret back (applied last, so an app's extension cannot
+  // reintroduce one).
+  if (bridgeOptions?.workersRun || isCustomAppName(appName)) {
+    forWorkersRun(rpcBridge, {
+      secretConfigKeys: secretConfigKeysOf(rpcBridge),
+      reason: bridgeOptions?.workersRun ? "workers" : "custom_app",
+    })
   }
 
   return rpcBridge
@@ -630,7 +638,7 @@ export function createSessionRpcBridge(
     enumerable: false,
   })
   markSecretConfigKeys(sessionBridge, secretConfigKeyResolver(orgId, appName, manifest))
-  if (sharedOptions.workersRun) {
+  if (sharedOptions.workersRun || isCustomAppName(appName)) {
     Object.defineProperty(sessionBridge, WORKERS_RUN_BRIDGE, { value: true, enumerable: false })
   }
   return sessionBridge

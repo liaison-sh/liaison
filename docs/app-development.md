@@ -409,17 +409,57 @@ await ctx.fetch(`https://${shop}/admin/api/graphql.json`, {
 in `fields`), `"bearer"` (with `exchange`, a client-credentials token the host
 obtains, caches and drops on a 401), or `"basic"` (two credentials fields).
 `configSecrets: { "<placeholder>": "<config key>" }` writes a declared config
-secret into the string body where its placeholder stands, and `ctx.config.has(key)`
+secret where the manifest's `secrets` map places it (below), and `ctx.config.has(key)`
 tells whether a secret is set without reading it. For the non-secret part of a
 credentials connection, `ctx.connections.<name>.getSettings()` returns the fields
 the manifest marks `readable: true` and names the missing ones.
 
 Secret-returning calls (`getToken`, `getCredentials`, reading a secret config
-key) work on the local sandbox but are refused when the app runs on a remote
-isolate executor, so an app that should run on both sends its secrets with
-`auth`. `@liaison/app-sdk/connection-credentials` reads a credentials
+key) work on the local sandbox for a first-party app but are refused when the
+app runs on a remote isolate executor, and for every organization's custom app
+on any executor (`secret_not_available_on_workers`), so an app that should run
+everywhere sends its secrets with `auth`. `@liaison/app-sdk/connection-credentials` reads a credentials
 connection's fields whichever shape `ctx.connections` has, for code that still
 needs them locally.
+
+### Declare where a secret goes
+
+A config secret goes only where the manifest says. Declare each secret config
+key that `configSecrets` writes, with the hosts and the one place it goes:
+
+```json
+"secrets": {
+  "carrierWebhookSecret": {
+    "hosts": ["api.carrier.example"],
+    "in": "body:subscription.webhookSecret"
+  }
+}
+```
+
+```ts
+const placeholder = "__LIAISON_CONFIG_SECRET__carrierWebhookSecret__"
+await ctx.fetch("https://api.carrier.example/v1/subscriptions", {
+  method: "POST",
+  body: JSON.stringify({ subscription: { webhookSecret: placeholder } }),
+  configSecrets: { [placeholder]: "carrierWebhookSecret" },
+})
+```
+
+- `in` is `"header:<Name>"`, `"query:<param>"` or `"body:<json.path>"` (keys joined
+  by dots, `[n]` for an array index; the body must be JSON).
+- The key must be a secret one of the app's connections declares, and each host
+  one of that connection's `allowedDomains` (or of `network.allowedDomains` when the
+  connection names none).
+- At the call, the placeholder must be the whole value of that header, parameter
+  or path, and appear nowhere else: not in another header, field or key, nor in
+  the URL. The URL's host, and every redirect hop, must be in `hosts`.
+- Anything else fails with `secret_placement_refused` (403) before anything is
+  sent. A key with no entry is placed nowhere: an app without `secrets` cannot use
+  `configSecrets`.
+
+Connection credentials (`auth`) need no entry: they go only in a request header,
+to a host of their own connection. A custom app's connection must name its
+`allowedDomains`.
 
 ### Call out once
 
@@ -508,13 +548,17 @@ self-host any admin with `kernel:apps:admin` manages apps. On a multi-tenant
 instance (demo mode or the managed edition) the routes that change the installs
 (install, upgrade, rollback, uninstall, interface approval) are also confined to the
 instance operator's org: `LIAISON_OPERATOR_ORG_ID`, or the instance's first org
-when it is unset. The one exception is a custom app in the managed edition,
-below.
+when it is unset. The one exception is a custom app, below.
 
-**Custom apps (managed edition).** An org admin with `kernel:apps:admin`
+**Custom apps (every edition).** An org admin with `kernel:apps:admin`
 installs their own app for their own organization only, with
 `POST /api/apps/custom/install` (same body as `/install`: `url` and the grants).
-No other organization on the server sees or runs it. The rules:
+No other organization on the server sees or runs it: not its tools, jobs,
+webhooks, events, interface, dashboard sources or MCP tools. This holds on a
+self-hosted server too, so on a server with several organizations an app one
+of them installs this way stays theirs. An app installed with `/install` (by
+the instance operator) is an instance app, shared by every organization, as
+before; its name cannot carry an organization key. The rules:
 
 - The app's `name` ends with your organization's key: `<name>-o<key>`, where the
   key is the first 8 hex characters of the SHA-256 of the organization id.
@@ -533,9 +577,11 @@ No other organization on the server sees or runs it. The rules:
   only one of its own tables (no `schema`), and it may not declare database
   triggers (422 `custom_app_capability`, naming
   `schema.<table>.fields.<field>.references` or `schema.<table>.triggers`).
-- Each one counts toward the plan's custom apps (409 `CUSTOM_APP_LIMIT_REACHED`
-  with `{limit, used}` at the limit). Installing a newer version of the same
-  app takes no extra one.
+- Each one counts toward the organization's custom apps cap (409
+  `CUSTOM_APP_LIMIT_REACHED` with `{limit, used}` at the limit). In the managed
+  edition the plan sets the cap; on a self-hosted server there is none unless
+  the operator sets one (`liaison org caps <org> --custom-apps <n>`).
+  Installing a newer version of the same app takes no extra one.
 - Its `ctx.fetch` goes through the same guard as every app: private, loopback,
   link-local and metadata addresses are refused. On top of that it never
   reaches the server itself: its own addresses and host names (the server's
@@ -547,13 +593,21 @@ No other organization on the server sees or runs it. The rules:
   that the call is refused with 429 `custom_app_busy` and `Retry-After`. Its
   webhooks accept 120 deliveries a minute each; past that they answer 429
   `custom_app_rate_limited` with `Retry-After` before any of its code runs.
+- On a server that runs apps on a remote isolate loader with
+  `LIAISON_WORKERS_CUSTOM_APPS=1`, an app built with the app builder runs
+  there too, as the Worker module its publish built (recorded with the
+  install, no `LIAISON_WORKERS_BUNDLES` entry). The loader fetches that
+  module from the server with a signed request when it has no copy. An app
+  installed from a package file stays on the local sandbox.
 - `ctx.bulk.fetchToBlob` keeps its downloads apart from your organization's
   other apps: 256 MiB per custom app, a shared limit for all custom apps on the
   server, and a download not used for an hour is deleted.
 - Its interface (`ui.js`) loads only on your organization's own address, after
   an admin of your organization approved it at install, and always in a
   sandboxed frame: its code never runs in Liaison's page and never holds a
-  member's session.
+  member's session. A server without organization addresses
+  (`LIAISON_ORG_HOST_TEMPLATE` unset) serves no custom app interface; its
+  tools, jobs and webhooks still run.
 - The operator of the server can disable it during an incident. A disabled app
   stays installed with its data, but nothing of it runs and it cannot be
   upgraded or uninstalled (409 `custom_app_disabled`) until the operator
@@ -564,9 +618,16 @@ No other organization on the server sees or runs it. The rules:
 - Its scheduled jobs and event subscriptions run for your organization only.
   While the organization is suspended, the app is refused like the rest.
   Deleting the organization removes the app with its data.
-
-On a self-hosted server none of this applies: there is no custom install route,
-and installs follow the rule above.
+- What its handlers write with `ctx.logger` is kept for your organization:
+  `GET /api/apps/<name>/logs` returns the newest lines first, for holders of
+  `kernel:apps:logs` (admins by default). Query: `since` (an ISO time),
+  `level` (the lowest level returned: `debug`, `info`, `warn` or `error`),
+  `runId` and `limit` (1 to 200, default 100). One run keeps at most 200 lines
+  and 256 KiB, the last line saying when more were dropped; a message is cut
+  at 4 KiB and its fields at 8 KiB. Lines are kept 7 days, and at most 10,000
+  per app. A line is shown only to a reader whose permissions cover what its
+  run had read, and the lines of an app builder preview only to the person who
+  ran it. The route still answers an admin while the app is off.
 
 **Admin UI** (the primary path): Settings -> Apps -> "Install app...". Enter the
 URL, click Preflight, review the requested scopes (each is a checkbox you can

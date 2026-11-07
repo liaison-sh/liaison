@@ -64,6 +64,10 @@ const MANIFEST: AppManifestForBridge = {
       ],
     },
   },
+  // where configSecrets may write the webhook secret (secret-placement.test.ts has the rules).
+  secrets: {
+    carrierWebhookSecret: { hosts: ["api.carrier.test"], in: "body:webhookSecret" },
+  },
 }
 const ALLOWED = ["*.myshopify.com", "api.carrier.test", "docs.carrier.test"]
 const CREDS = { key: KEY, secret: SECRET, environment: "sandbox" }

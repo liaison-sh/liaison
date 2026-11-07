@@ -898,6 +898,20 @@ export async function registerKernelJobs(): Promise<void> {
     await runAttentionEventsRetention()
   })
 
+  // App logs retention, daily at 4:45 AM: 7 days and the newest 10,000 rows per
+  // (org, app) (modules/app-builder/logs.ts).
+  await registerScheduledJob("kernel", "app-logs-retention", "45 4 * * *", async () => {
+    const { pruneAppLogs } = await import("~/modules/app-builder/logs")
+    await pruneAppLogs()
+  })
+
+  // App builder preview namespaces of the data store (`draft:<id>`), hourly at :17:
+  // a namespace whose last write is a day old goes (modules/app-builder/installed.ts).
+  await registerScheduledJob("kernel", "app-draft-store-retention", "17 * * * *", async () => {
+    const { pruneDraftStoreNamespaces } = await import("~/modules/app-builder/installed")
+    await pruneDraftStoreNamespaces()
+  })
+
   // Notification delivery log + receipts (S1): 30 days, payloads included.
   await registerScheduledJob(
     "kernel",

@@ -19,10 +19,10 @@ immutable: retentionYears, writeOnceColumns -> apps/api/src/modules/apps/manifes
 legalRetention marker (true, where, parent) kept in the legal archive -> apps/api/src/modules/apps/manifest-schema.ts:828 ; apps/api/src/modules/org/delete/legal-archive.ts:166
 Manifest patterns (tool params, settings validation, template vars, authorize params) are refused at install unless at most 512 characters and proven linear -> apps/api/src/lib/manifest-regex.ts:10 ; apps/api/src/lib/manifest-regex.ts:219-228 ; apps/api/src/modules/apps/verify-package.ts:265 ; apps/api/src/modules/apps/param-validator.ts:44-50
 chat.message writes only into import-created channels or CLI existingChannels, audited -> apps/api/src/modules/imports/kernel-kinds/chat.ts:343 ; apps/api/src/modules/imports/kernel-kinds/chat.ts:354
-Custom apps (managed edition): POST /api/apps/custom/install and GET /api/apps/custom/namespace, kernel:apps:admin, managed only -> apps/api/src/modules/apps/install-routes.ts:264-335
+Custom apps (every edition): POST /api/apps/custom/install and GET /api/apps/custom/namespace, kernel:apps:admin; owner row decides visibility -> apps/api/src/modules/apps/install-routes.ts:258-317 ; apps/api/src/modules/apps/app-org-scope.ts:131-182
 Name <name>-o<key>, key = first 8 hex of sha256(org id); 422 custom_app_name with expectedName; base not a server-provided app -> apps/api/src/modules/apps/app-org-scope.ts:46-65 ; apps/api/src/modules/apps/app-org-scope.ts:272-300 ; apps/api/src/modules/apps/install-service.ts:175-226
 Allowed capabilities and refused declarations, 422 custom_app_capability -> apps/api/src/modules/apps/app-org-scope.ts:170-270
-Counts toward customApps, 409 CUSTOM_APP_LIMIT_REACHED; same app again takes none -> apps/api/src/modules/apps/install-service.ts:220-226 ; apps/api/src/modules/org/caps.ts:364-378
+Counts toward customApps, 409 CUSTOM_APP_LIMIT_REACHED; same app again takes none -> apps/api/src/modules/apps/install-service.ts:220-226 ; apps/api/src/modules/org/caps.ts:363-380
 Interface only on the owning org's host, with that org's admin approval -> apps/api/src/modules/apps/ui-bundle-routes.ts:44-72
 Per-name routes for the owning org only, 404 for others; no signature needed -> apps/api/src/modules/apps/install-routes.ts:107-136
 Jobs and events for the owning org only; suspended org refused; org deletion removes it -> apps/api/src/infra/jobs/fanout-runtime.ts:81-98 ; apps/api/src/modules/apps/runtime.ts:1535-1550 ; apps/api/src/modules/org/purge/purge-org.ts:180-185
@@ -58,3 +58,14 @@ An external entity is named by the id the page reported -> apps/api/src/modules/
 A tab type declares the entity its id belongs to -> apps/api/src/modules/apps/manifest-schema.ts:1564
 A field named *_minor holds a whole number; readMinorAmount and minorAmountRefusal -> packages/app-sdk/src/minor-amount.ts:15
 The server refuses a decimal in a declared *_minor parameter -> apps/api/src/modules/apps/execute-tool-params.ts:298
+secrets: where configSecrets may write each secret config key (hosts, header/query/body path), refused otherwise with secret_placement_refused -> packages/app-sdk/src/secret-placement.ts:67 ; packages/app-sdk/src/secret-placement.ts:145 ; apps/api/src/modules/apps/sandbox/bridge/fetch-auth.ts:589 ; apps/api/src/modules/apps/sandbox/bridge/egress.ts:442
+Custom apps get no secret-returning call on any executor -> apps/api/src/modules/apps/sandbox/rpc-bridge.ts:148 ; apps/api/src/modules/apps/sandbox/run-app.ts:241
+Credentials (auth) only in a header, to the connection's own hosts; a custom app's connection names its domains -> apps/api/src/modules/apps/sandbox/bridge/fetch-auth.ts:189 ; apps/api/src/modules/apps/app-org-scope.ts:273
+A custom app's ctx.logger lines are kept: GET /api/apps/<name>/logs, kernel:apps:logs, admins by default -> apps/api/src/modules/apps/sandbox/bridge/identity.ts:111-126 ; apps/api/src/modules/app-builder/logs-routes.ts:28-47 ; apps/api/src/modules/permissions/scope-catalog.ts ("kernel:apps:logs")
+Query since, level (lowest), runId, limit 1-200 default 100 -> apps/api/src/modules/app-builder/logs-routes.ts:21-26 ; apps/api/src/modules/app-builder/logs.ts (readAppLogs)
+Per run 200 lines and 256 KiB with a last notice line; message 4 KiB, fields 8 KiB -> apps/api/src/modules/app-builder/logs.ts (RUN_LOG_MAX_LINES, RUN_LOG_MAX_BYTES, LOG_MESSAGE_MAX_BYTES, LOG_FIELDS_MAX_BYTES, createRunLogSink)
+Kept 7 days and 10,000 lines per app -> apps/api/src/modules/app-builder/logs.ts (pruneAppLogs) ; apps/api/src/infra/jobs/kernel-jobs.ts (app-logs-retention)
+A line only to a reader covering its run's scope tags; a preview's lines only to its person -> apps/api/src/db/migrations/0276_app_builder.sql (app_logs_select)
+The logs route answers an admin while the app is off -> apps/api/src/middleware/app-state-gate.ts:50-51
+With LIAISON_WORKERS_CUSTOM_APPS=1 a builder app runs on the loader as the Worker module its publish built -> apps/api/src/modules/apps/workers/config.ts:170 ; apps/api/src/modules/apps/sandbox/run-app.ts:156 ; apps/api/src/modules/app-builder/publish.ts:250
+The loader fetches the module from the server with a signed request; an app installed from a package file has none -> apps/api/src/modules/apps/workers/bundle-route.ts:1-24 ; apps/api/src/db/migrations/0278_apps_installed_worker_module.sql

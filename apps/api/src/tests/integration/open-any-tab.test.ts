@@ -18,6 +18,8 @@ import * as eventBus from "~/infra/events/event-bus"
 import { handleOpenApp } from "~/modules/agent/tools/navigation-tool"
 import { openViewsOf } from "~/modules/agent/tools/open-targets"
 import { listGatewayTools } from "~/modules/agent/tools/tool-bridge"
+import { createDraft, draftAppName } from "~/modules/app-builder/drafts"
+import { templateFiles } from "~/modules/app-builder/templates"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { createDashboard } from "~/modules/dashboards/service"
 import { seedContext } from "~/seed/context"
@@ -108,6 +110,20 @@ async function seed(): Promise<void> {
     spec: { v: 1, blocks: [] },
   })
   put("kernel:dashboard", dashboard.id, "Weekly sales")
+
+  const draftBase = `tracker-${tag()}`
+  const { draft } = await withRlsContext(everything(viewer), (tx) =>
+    createDraft(
+      tx,
+      { orgId, userId: viewer },
+      {
+        baseName: draftBase,
+        title: "Returns tracker",
+        files: templateFiles("read-only", draftAppName(orgId, draftBase), "Returns tracker"),
+      },
+    ),
+  )
+  put("kernel:app-builder", draft.id, "Returns tracker")
 
   const routineId = await seedRoutine(ctx, {
     createdByUserId: viewer,
@@ -274,6 +290,7 @@ describe("open_app under real row security", () => {
     "kernel:agent",
     "kernel:session",
     "kernel:dashboard",
+    "kernel:app-builder",
     "contacts:contact-detail",
     "tickets:ticket",
     "projects:project",

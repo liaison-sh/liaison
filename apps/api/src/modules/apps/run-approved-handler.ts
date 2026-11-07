@@ -3,7 +3,7 @@ import { sql as drizzleSql } from "drizzle-orm"
 import { HTTPException } from "hono/http-exception"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { ActorContext, UserContext } from "~/db/rls"
-import { withRlsContext } from "~/db/rls"
+import { createRlsSession, withRlsContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
 import { isRecord } from "~/lib/guards"
 import { appsLogger as log } from "~/lib/logger"
@@ -277,8 +277,14 @@ export async function runApprovedToolHandler(args: RunApprovedToolHandlerArgs): 
   let result: unknown
   let originalError: unknown
   try {
+    // A tool that owns its transactions (`ownsTransactions`: a build, an
+    // install's health gate) runs on a session, never inside one long one.
+    const inExecutionTx = <T>(fn: (tx: any) => Promise<T>): Promise<T> =>
+      tool.ownsTransactions === true
+        ? fn(createRlsSession(executionActor))
+        : withRlsContext(executionActor, fn)
     result = await runContextStore.run(reentryFrame, () =>
-      withRlsContext(executionActor, async (tx) => {
+      inExecutionTx(async (tx) => {
         return executeApprovedToolHandlerInternal({
           tool,
           orgId: args.orgId,

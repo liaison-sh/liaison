@@ -31,10 +31,13 @@
 import { createHash } from "node:crypto"
 import { existsSync, mkdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
+import {
+  workerCoreEntrySource,
+  workerEntrySource,
+  workerNodeImport,
+} from "../apps/api/src/modules/app-builder/build/freeze-core"
 
 const REPO_ROOT = resolve(import.meta.dir, "..")
-const CORE = join(REPO_ROOT, "apps/api/src/modules/apps/workers/worker-core.ts")
-const ENTRY = join(REPO_ROOT, "apps/api/src/modules/apps/workers/worker-entry.ts")
 
 export interface WorkerBundleBuild {
   app: string
@@ -90,8 +93,8 @@ async function bundle(entry: string, outDir: string, naming: string): Promise<st
     )
   }
   const text = readFileSync(out, "utf8")
-  const nodeImport = /(?:from\s*|import\s*\(?\s*|require\s*\(\s*)["']node:[^"']+["']/.exec(text)
-  if (nodeImport) throw new Error(`${naming} still imports a Node builtin: ${nodeImport[0]}`)
+  const nodeImport = workerNodeImport(text)
+  if (nodeImport) throw new Error(`${naming} still imports a Node builtin: ${nodeImport}`)
   return out
 }
 
@@ -111,26 +114,8 @@ export async function buildWorkerBundle(opts: {
   mkdirSync(entriesDir, { recursive: true })
   const workerEntry = join(entriesDir, `${name}.worker.ts`)
   const coreEntry = join(entriesDir, `${name}.core.ts`)
-  writeFileSync(
-    workerEntry,
-    [
-      `import * as handlers from ${JSON.stringify(handlers)}`,
-      `import { createWorkerEntrypoint } from ${JSON.stringify(ENTRY)}`,
-      `export default createWorkerEntrypoint(handlers as Record<string, unknown>)`,
-      "",
-    ].join("\n"),
-  )
-  writeFileSync(
-    coreEntry,
-    [
-      `import * as handlers from ${JSON.stringify(handlers)}`,
-      `import { runWithBridge, type WorkerBridge, type WorkerRunRequest } from ${JSON.stringify(CORE)}`,
-      "export function run(req: WorkerRunRequest, bridge: WorkerBridge) {",
-      "  return runWithBridge(handlers as Record<string, unknown>, req, bridge)",
-      "}",
-      "",
-    ].join("\n"),
-  )
+  writeFileSync(workerEntry, workerEntrySource(handlers))
+  writeFileSync(coreEntry, workerCoreEntrySource(handlers))
   try {
     const workerPath = await bundle(workerEntry, outDir, "worker.js")
     const corePath = await bundle(coreEntry, outDir, "worker-core.js")

@@ -2,7 +2,15 @@
 import { and, sql as drizzleSql, eq } from "drizzle-orm"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
-import { agents, dashboards, nodeSessions, routines, skills, threads } from "~/db/schema/kernel"
+import {
+  agents,
+  appDrafts,
+  dashboards,
+  nodeSessions,
+  routines,
+  skills,
+  threads,
+} from "~/db/schema/kernel"
 import { approvalRequests } from "~/db/schema/kernel/agent-memory"
 import { contacts } from "~/db/schema/kernel/contacts"
 import { entityRegistry, type SearchIndexFields, viewRegistry } from "~/modules/apps/app-registries"
@@ -340,6 +348,18 @@ async function loadKnownEntityLabelAndSnippet(
       return {
         label: row.title,
         snippet: `[Entity: kernel:dashboard, id: ${entityId}] { title: "${row.title}" }`,
+      }
+    }
+    if (app === "kernel" && entityType === "app-builder") {
+      const [row] = await tx
+        .select({ title: appDrafts.title })
+        .from(appDrafts)
+        .where(and(eq(appDrafts.id, entityId), eq(appDrafts.orgId, orgId)))
+        .limit(1)
+      if (!row) return null
+      return {
+        label: row.title,
+        snippet: `[Entity: kernel:app-builder, id: ${entityId}] { title: "${row.title}" }`,
       }
     }
     // Non-kernel app entities resolve generically through the entity registry —

@@ -1,0 +1,23 @@
+Building needs kernel:apps:build, publishing kernel:apps:admin; admin scopes by default -> apps/api/src/modules/permissions/scope-catalog.ts:192 ; apps/api/src/modules/permissions/scope-catalog.ts:199 ; apps/api/src/modules/app-builder/tools.ts:435
+Two templates store-crud and read-only -> apps/api/src/modules/app-builder/templates.ts:15
+Draft from a template, change, check, preview, publish -> apps/api/src/modules/app-builder/tools.ts:152 ; apps/api/src/modules/app-builder/tools.ts:322 ; apps/api/src/modules/app-builder/tools.ts:338 ; apps/api/src/modules/app-builder/tools.ts:427
+Check builds and type-checks -> apps/api/src/modules/app-builder/check.ts (checkDraft)
+Last 20 versions kept; 512 KiB of files -> apps/api/src/modules/app-builder/drafts.ts:47 ; apps/api/src/modules/app-builder/build/build-draft.ts:43
+A try is read-only; store writes to the draft's namespace, kept for the same version, emptied on another version, a fresh store, discard and a day after; one try at a time -> apps/api/src/modules/app-builder/drafts.ts:459 ; apps/api/src/modules/app-builder/drafts.ts:444 ; apps/api/src/modules/app-builder/installed.ts:29
+No tables before the first publish; websites only those the published version was approved for -> apps/api/src/modules/app-builder/preview.ts:253 ; apps/api/src/modules/app-builder/preview.ts:168
+No password, token or account in a try -> apps/api/src/modules/app-builder/preview.ts:245
+30 seconds at most; logs returned -> apps/api/src/modules/app-builder/preview.ts:60
+The card shows name, version, sha256, the type check and the delta (type check line: publish.ts:501); no automatic approval -> apps/api/src/modules/app-builder/publish.ts (summarizePin, manifestDelta) ; apps/api/src/modules/app-builder/tools.ts:436 ; apps/api/src/modules/app-builder/publish.ts:353
+Exactly the pinned package installs; the request takes no edit; a moved app refuses -> apps/api/src/modules/app-builder/publish.ts (executePublish) ; apps/api/src/modules/app-builder/tools.ts:441 ; apps/api/src/modules/approvals/edit.ts:216
+An admin publishes from the builder directly -> apps/api/src/modules/app-builder/routes.ts:194
+First publish 0.1.0, counts against the custom apps limit; next patch after -> apps/api/src/modules/app-builder/check.ts:33 ; apps/api/src/modules/app-builder/check.ts:36 ; apps/api/src/modules/apps/install-service.ts:882
+An app installed another way or by another draft is refused -> apps/api/src/modules/app-builder/publish.ts:118
+Page runs framed, never with the session -> apps/api/src/modules/apps/install-service.ts:973 ; apps/api/src/modules/app-builder/routes.ts:242
+Logs kept 7 days -> apps/api/src/modules/app-builder/logs.ts (APP_LOG_RETENTION_DAYS)
+Drafts listed on the App store page as "Apps in the making", for kernel:apps:build -> apps/web/src/modules/app-builder/DraftsSection.tsx ; apps/web/src/modules/settings/app-store/AppStorePage.tsx ; packages/shared/src/i18n/locales/en/kernel.json (appBuilder.draftsTitle)
+Builder tab: versions with build status, files, framed interface; toolbar Check, Preview, Publish, Discard; Restore per older version -> apps/web/src/modules/app-builder/BuilderView.tsx
+Preview runs read-only with params as JSON -> apps/web/src/modules/app-builder/BuilderView.tsx (runPreview) ; apps/api/src/modules/app-builder/routes.ts:138
+Publish: admin confirms, others are told to ask the agent -> apps/web/src/modules/app-builder/BuilderView.tsx (publishClicked) ; apps/api/src/modules/app-builder/routes.ts:194
+Logs panel on a custom app's settings page, level and run filters, kernel:apps:logs -> apps/web/src/modules/app-builder/AppLogsPanel.tsx ; apps/api/src/modules/app-builder/logs-routes.ts
+Off on self-hosted, on in managed; LIAISON_CUSTOM_APPS=on|off; off: no builder tools, no Apps in the making, 404; installed apps keep running -> apps/api/src/lib/env.ts:1061 ; apps/api/src/lib/edition.ts:53 ; apps/api/src/modules/app-builder/routes.ts:89 ; apps/api/src/modules/app-builder/tools.ts:196 ; apps/api/src/modules/apps/install-routes.ts:265 ; apps/web/src/modules/app-builder/DraftsSection.tsx:22
+The card says what data the agent had read while writing the draft (carried forward version to version) -> apps/api/src/modules/app-builder/publish.ts:512 ; apps/api/src/modules/app-builder/publish.ts:541 ; apps/api/src/modules/app-builder/drafts.ts:419

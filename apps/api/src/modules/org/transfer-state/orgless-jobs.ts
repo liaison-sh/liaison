@@ -40,6 +40,8 @@ export const ORGLESS_JOB_AUDIT: Readonly<Record<string, OrglessJobEntry>> = {
     "modules/agent/routines/routine-run-resume.ts",
   ),
   "kernel:attention-events-retention": skips("infra/jobs/kernel-jobs.ts"),
+  "kernel:app-logs-retention": skips("modules/app-builder/logs.ts"),
+  "kernel:app-draft-store-retention": skips("modules/app-builder/installed.ts"),
   "kernel:notification-deliveries-retention": skips("modules/notifications/delivery-log.ts"),
   "kernel:effect-ledger-retention": skips("lib/effect-once.ts"),
   "kernel:agent-turn-retention": skips("modules/agent/runtime/turn-ledger.ts"),

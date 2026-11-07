@@ -15,10 +15,13 @@ import {
   currentRunContext,
   type SpawnParentFrame,
 } from "~/modules/agent/runtime/run-context"
+import { projectTaintScopes } from "~/modules/agent/scopes/taint-read-scopes"
 import {
   capturedFrameWriteScopes,
   scopeUnknownError,
 } from "~/modules/agent/scopes/write-required-scopes"
+import { createRunLogSink, UNKNOWN_TAINT_TAGS } from "~/modules/app-builder/logs"
+import { isCustomAppName } from "~/modules/apps/custom-app-name"
 import {
   type AppManifestForBridge,
   BASE_ENTITY_FIELDS,
@@ -96,6 +99,13 @@ export type RpcBridgeApprovalContext = {
 
 export type RpcBridgeOptions = {
   callChain?: string[]
+  /**
+   * The run is a draft preview of the app builder: its `ctx.logger` lines go to
+   * kernel.app_logs under the draft (readable by this run's person only), with
+   * this run id when given. A custom app's runs log there without it
+   * (modules/app-builder/logs.ts).
+   */
+  appLogs?: { draftId?: string; runId?: string }
   /**
    * The run's isolate lives off this server (the Workers executor): every
    * method that would return a secret (connections_getToken,
@@ -449,6 +459,27 @@ export function createBridgeContext(
    * the empty positive assertion. A turn whose taint is unknowable is refused,
    * never written untagged.
    */
+  /**
+   * The run's log sink (kernel.app_logs), for a custom app or a draft preview.
+   * Its rows carry what this run read: the calling turn's taint WITH the
+   * calling tool (the tool reads what its scope covers), or the app's own
+   * scopes for a run no turn started (a job, a webhook).
+   */
+  const appLogSink =
+    isCustomAppName(appName) || bridgeOptions?.appLogs
+      ? createRunLogSink({
+          orgId,
+          app: appName,
+          draftId: bridgeOptions?.appLogs?.draftId ?? null,
+          ...(bridgeOptions?.appLogs?.runId ? { runId: bridgeOptions.appLogs.runId } : {}),
+          actorUserId: actorType === "user" ? userId : null,
+          scopeTags:
+            bridgeSpawnParentFrame === null
+              ? projectTaintScopes(manifest.scopes ?? [])
+              : (capturedFrameWriteScopes(bridgeSpawnParentFrame, callerScopes) ??
+                UNKNOWN_TAINT_TAGS),
+        })
+      : undefined
   const knowledgeWriteRequiredScopes = (toolName: string): string[] => {
     if (bridgeTurnTaintScopes === null) throw scopeUnknownError(toolName)
     return bridgeTurnTaintScopes
@@ -1293,6 +1324,7 @@ export function createBridgeContext(
     approvalContext,
     bridgeOptions,
     logger,
+    appLogSink,
     bridgeRoutineId,
     bridgeReadOnlyRun,
     refuseWriteOnReadOnlyRun,

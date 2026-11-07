@@ -43,7 +43,7 @@ Return shapes:
 
 A verifier reads its signing secret with `config_get(<key>)`. When the key is a connection's `clientSecretConfigKey` (a provider that signs webhooks with the app's OAuth client secret, such as Shopify), the kernel answers with the connection's current client secret: the workspace's own client, else the client the instance provides for every workspace (`modules/apps/connections/oauth-client.ts`). With no client at all, it answers with the copy stored in the app's config when the account connected. Every other key is read from the app's config.
 
-A verifier should not read the secret itself: `config_has(<key>)` says whether it is set, and `crypto_verifyHmacForConfig(<key>, body, signature, "base64" | "hex")` checks a signature with it on the host, in constant time (`modules/webhooks/verify-bridge.ts`). On the Workers executor, `config_get` of a declared secret key is refused.
+A verifier should not read the secret itself: `config_has(<key>)` says whether it is set, and `crypto_verifyHmacForConfig(<key>, body, signature, "base64" | "hex")` checks a signature with it on the host, in constant time (`modules/webhooks/verify-bridge.ts`). On the Workers executor, and for an organization's custom app on any executor, `config_get` of a declared secret key is refused (`secret_not_available_on_workers`).
 
 ## Runtime sequence
 
@@ -54,7 +54,7 @@ The kernel runs, in strict order:
 3. On an unrecognized return value or a thrown error: HTTP 401, no handler invoked.
 4. On accept: replay-protection lookup; if first delivery, the topic handler runs under the same bundle. On reject or drop, the verifier's own status (and, for reject, `retry-after`) is returned instead of running the handler.
 
-Before step 1, a delivery under an org that may not see the app (another organization's custom app, managed instances) is answered `404`, like an unknown endpoint. A delivery to an organization's custom app past its budget (120 a minute per organization and app, managed instances) is answered `429` with `Retry-After` and code `custom_app_rate_limited`, before its `verify` runs. A delivery for an org whose app is Off, an org being deleted, or (managed instances) an org suspended or closed for billing is answered `200` with `{ "ok": true, "dropped": "<code>" }` and no handler runs, so the provider keeps the subscription. A suspended org's deliveries are not replayed after it resumes. While an organization is being moved to another server, its deliveries are answered `503` with `Retry-After` and code `org_moving`, and no handler runs: providers that retry deliver again once the move is over.
+Before step 1, a delivery under an org that may not see the app (another organization's custom app) is answered `404`, like an unknown endpoint. A delivery to an organization's custom app past its budget (120 a minute per organization and app) is answered `429` with `Retry-After` and code `custom_app_rate_limited`, before its `verify` runs. A delivery for an org whose app is Off, an org being deleted, or (managed instances) an org suspended or closed for billing is answered `200` with `{ "ok": true, "dropped": "<code>" }` and no handler runs, so the provider keeps the subscription. A suspended org's deliveries are not replayed after it resumes. While an organization is being moved to another server, its deliveries are answered `503` with `Retry-After` and code `org_moving`, and no handler runs: providers that retry deliver again once the move is over.
 
 ## Server-level callbacks (managed edition)
 

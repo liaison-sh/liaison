@@ -740,6 +740,8 @@
       "kernel:dashboards:write": "Create and edit your own personal dashboards",
       "kernel:dashboards:share": "Create and edit dashboards shared with the org",
       "kernel:dashboards:admin": "Manage every dashboard shared with the org",
+      "kernel:apps:build": "Create and edit drafts of the organization's own apps in the app builder",
+      "kernel:apps:logs": "Read the logs of the organization's own apps",
       "kernel:apps:admin": "Install, upgrade, and uninstall apps (instance operator)",
       "kernel:agents:spawn": "Dispatch fresh-context sub-agent runs via the spawn_agent kernel tool",
       "kernel:agents:admin": "Author and remove sub-agent role definitions (subagent_create / _delete)",
@@ -1916,7 +1918,8 @@
     "groupConnectors": "Connectors",
     "oauthError": "Signing in with the provider failed ({{error}}). Try connecting again.",
     "oauthErrorWithDescription": "Signing in with the provider failed: {{description}}",
-    "dashboard": "Dashboard"
+    "dashboard": "Dashboard",
+    "appBuilder": "App builder"
   },
   "newConversation": {
     "newChannel": "New channel",
@@ -6424,5 +6427,74 @@
     "blockNotFound": "This block is no longer on the dashboard.",
     "blockNetwork": "Can't reach the server right now. Try again in a moment.",
     "blockTruncated": "Some rows are left out: the block shows the first ones."
+  },
+  "appBuilder": {
+    "check": "Check",
+    "checking": "Checking…",
+    "preview": "Preview",
+    "publish": "Publish",
+    "discard": "Discard",
+    "cancel": "Cancel",
+    "restore": "Restore",
+    "publishNeedsAdmin": "Publishing needs an apps admin. Ask your agent to publish it: it will request their approval.",
+    "published": "Published {{app}} {{version}}.",
+    "confirmPublish": "Publish version {{n}} as {{app}}? It installs for the whole workspace.",
+    "confirmDiscard": "Discard this draft? Its versions are kept no longer.",
+    "discarded": "Draft discarded.",
+    "notFound": "This draft no longer exists, or you can't build apps.",
+    "loadFailed": "This could not be loaded. Try again in a moment.",
+    "versions": "Versions",
+    "files": "Files",
+    "checkTitle": "Last check",
+    "noBuild": "Not built yet. Check builds it and lists any errors.",
+    "buildOk": "Builds without errors.",
+    "previewTitle": "Preview a run",
+    "noEntries": "The manifest declares no tool, job or webhook to run.",
+    "entry": "Entry point",
+    "params": "Params (JSON)",
+    "paramsInvalid": "Params must be a JSON object.",
+    "run": "Run",
+    "running": "Running…",
+    "resultTitle": "Last preview",
+    "resultOk": "succeeded",
+    "resultFailed": "failed",
+    "neverPublished": "never published: read-only, no database",
+    "logs": "Logs",
+    "noLogs": "Nothing logged.",
+    "code": "Code",
+    "interface": "Interface",
+    "draftsTitle": "Apps in the making",
+    "draftsIntro": "Drafts your agent builds for this workspace. Open one to check, preview and publish it.",
+    "draftsEmpty": "No drafts yet. Ask your agent to build an app.",
+    "status": {
+      "draft": "Draft",
+      "published": "Published",
+      "discarded": "Discarded"
+    },
+    "build": {
+      "none": "Not built",
+      "ok": "Built",
+      "failed": "Build failed"
+    },
+    "kind": {
+      "tool": "Tool",
+      "job": "Job",
+      "webhook": "Webhook"
+    }
+  },
+  "appLogs": {
+    "title": "Logs",
+    "level": "Level",
+    "allLevels": "All levels",
+    "atLeast": {
+      "debug": "Debug and above",
+      "info": "Info and above",
+      "warn": "Warnings and errors",
+      "error": "Errors only"
+    },
+    "runId": "Run id",
+    "refresh": "Refresh",
+    "failed": "The logs could not be read. Try again in a moment.",
+    "empty": "Nothing logged in the last 7 days."
   }
 }

@@ -20,6 +20,7 @@ import {
   Show,
 } from "solid-js"
 import { appLabel } from "~/lib/app-label"
+import { DraftsSection } from "~/modules/app-builder/DraftsSection"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { addToast } from "~/modules/shell/toast-store"
@@ -525,6 +526,8 @@ export const AppStorePage: Component = () => {
           </ul>
         </Show>
       </Show>
+
+      <DraftsSection />
 
       <p class="mt-5 text-xs text-text-tertiary">{i18n.t(`${S}.footer`)}</p>
 

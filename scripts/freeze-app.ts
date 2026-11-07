@@ -8,9 +8,7 @@
 //
 // The build runs entirely inside an isolated staging dir — the source tree never
 // receives a generated `bundle.js` / `ui.js`.
-import { spawnSync } from "node:child_process"
 import {
-  chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
@@ -19,15 +17,23 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
-  utimesSync,
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { isAbsolute, join, relative, resolve } from "node:path"
-import { gzipSync } from "node:zlib"
-import { type PackageManifest, packageManifestSchema } from "@liaison/app-sdk"
+import type { PackageManifest } from "@liaison/app-sdk"
 import { build as esbuild } from "esbuild"
 import { solidPlugin } from "esbuild-plugin-solid"
+import {
+  bunBuildFailureDetail,
+  checkPackageManifest,
+  manifestErrorMessage,
+  reproducibleTarGz,
+  resolveExportedLocalName,
+  stripEsmExportBlock,
+  UI_EXTERNALS,
+  webhookExportError,
+} from "../apps/api/src/modules/app-builder/build/freeze-core"
 import { findUnsupportedBundleImports, readAllShimExports } from "./lib/app-runtime-shims"
 
 export interface FreezeOptions {
@@ -224,19 +230,9 @@ export async function freezeApp(opts: FreezeOptions): Promise<FreezeResult> {
     relative(realpathSync(repoRoot), realpathSync(join(appDir, name)))
       .split("\\")
       .join("/")
-  const result = packageManifestSchema.safeParse(raw)
-  if (!result.success) {
-    const messages = result.error.issues.map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
-    // Surface the `trusted: true` rejection explicitly — installed apps can
-    // never be trusted, and the freeze tool fails loud at the source.
-    if (raw.trusted === true) {
-      throw new Error(
-        `Manifest declares "trusted: true" — installed apps are always sandboxed and cannot claim trust. Remove the field. (${messages.join("; ")})`,
-      )
-    }
-    throw new Error(`Invalid app manifest: ${messages.join("; ")}`)
-  }
-  const manifest = result.data
+  const checked = checkPackageManifest(raw)
+  if (!checked.ok) throw new Error(manifestErrorMessage(checked))
+  const manifest = checked.manifest
 
   const outDir = opts.outDir ?? join(repoRoot, "dist/apps")
   mkdirSync(outDir, { recursive: true })
@@ -266,12 +262,7 @@ export async function freezeApp(opts: FreezeOptions): Promise<FreezeResult> {
       metafile: true,
       plugins: bunPlugins,
     })
-    if (!build.success) {
-      const detail = build.logs.length
-        ? build.logs.map(String).join("\n")
-        : "<bun.build returned no logs — entry resolution or transformer failure>"
-      throw new Error(`Bundle failed: ${detail}`)
-    }
+    if (!build.success) throw new Error(`Bundle failed: ${bunBuildFailureDetail(build.logs)}`)
     // Bun.build reports metafile paths relative to the process's cwd.
     for (const p of bundleSources(
       build.metafile?.outputs,
@@ -283,29 +274,10 @@ export async function freezeApp(opts: FreezeOptions): Promise<FreezeResult> {
     }
 
     // Phase 16 Task A6 — verify every webhook's `handler` AND `verify` export
-    // resolves to a callable in the built bundle. Fails freeze with a clear
-    // error if missing. Read from the raw manifest because the SDK's zod
-    // schema strips unknown keys (webhooks live in the runtime manifest, not
-    // the packaging manifest).
-    const builtBundlePath = join(stage, "bundle.js")
-    const builtBundleSource = readFileSync(builtBundlePath, "utf8")
-    const rawWebhooks = (raw as { webhooks?: Record<string, { handler: string; verify: string }> })
-      .webhooks
-    if (rawWebhooks) {
-      for (const [topic, entry] of Object.entries(rawWebhooks)) {
-        for (const role of ["handler", "verify"] as const) {
-          const exportName = entry[role]
-          if (!exportName) {
-            throw new Error(`webhook '${topic}': missing '${role}' in manifest`)
-          }
-          if (!isExportPresentInBundle(builtBundleSource, exportName)) {
-            throw new Error(
-              `webhook '${topic}': ${role} export '${exportName}' not found in built bundle`,
-            )
-          }
-        }
-      }
-    }
+    // resolves to a callable in the built bundle.
+    const builtBundleSource = readFileSync(join(stage, "bundle.js"), "utf8")
+    const webhookError = webhookExportError(raw, builtBundleSource)
+    if (webhookError) throw new Error(webhookError)
 
     // Optional frontend UI bundle (Phase 16.5). Build with target:"browser" and
     // externalize solid-js / solid-js/web / solid-js/store so the kernel + the
@@ -327,7 +299,7 @@ export async function freezeApp(opts: FreezeOptions): Promise<FreezeResult> {
         // takes effect (module caching would otherwise force one shim instance to
         // serve all plugins simultaneously). The package's runtime body reads from
         // window.__liaisonHost, so the bundled copy is small and stateless.
-        external: ["solid-js", "solid-js/web", "solid-js/store"],
+        external: [...UI_EXTERNALS],
         // Anchor module resolution at the repo root so `@liaison/host` resolves
         // via `<repoRoot>/node_modules/@liaison/host` (the workspace symlink).
         // Without this, builds whose entrypoint lives in a tmp dir (e.g. e2e
@@ -404,10 +376,9 @@ export async function freezeApp(opts: FreezeOptions): Promise<FreezeResult> {
           plugins: bunPlugins,
         })
         if (!templateBuild.success) {
-          const detail = templateBuild.logs.length
-            ? templateBuild.logs.map(String).join("\n")
-            : "<bun.build returned no logs — entry resolution or transformer failure>"
-          throw new Error(`pdf template '${tpl.kind}' bundle failed: ${detail}`)
+          throw new Error(
+            `pdf template '${tpl.kind}' bundle failed: ${bunBuildFailureDetail(templateBuild.logs)}`,
+          )
         }
         for (const p of bundleSources(
           templateBuild.metafile?.outputs,
@@ -468,106 +439,6 @@ export async function freezeApp(opts: FreezeOptions): Promise<FreezeResult> {
   } finally {
     rmSync(stage, { recursive: true, force: true })
   }
-}
-
-// Every packaged file's mtime, so the tar headers never carry the build time.
-const FIXED_MTIME = new Date("2000-01-01T00:00:00Z")
-
-/**
- * Pack `files` (relative to `stage`) into a gzipped tar whose bytes depend only on
- * the files' contents: sorted entries, fixed mtime and mode, owner 0:0 without
- * names, no extended attributes, and a gzip header without a timestamp.
- *
- * The artifact sha256 is the install's identity: the catalog reconcile reinstalls
- * a first-party app whose stored sha256 differs from the tarball the image bakes.
- * A tarball stamped with build-time metadata changes sha on every image build,
- * so every deploy reinstalled every catalog app although nothing in it changed.
- */
-function reproducibleTarGz(stage: string, files: string[]): Buffer {
-  const sorted = [...files].sort()
-  for (const f of sorted) {
-    chmodSync(join(stage, f), 0o644)
-    utimesSync(join(stage, f), FIXED_MTIME, FIXED_MTIME)
-  }
-  const version = spawnSync("tar", ["--version"]).stdout?.toString() ?? ""
-  const ownerFlags = version.includes("GNU tar")
-    ? ["--owner=0", "--group=0", "--numeric-owner", "--format=gnu"]
-    : ["--uid", "0", "--gid", "0", "--uname", "", "--gname", "", "--format=ustar"]
-  const tarRes = spawnSync("tar", ["-cf", "-", ...ownerFlags, "-C", stage, ...sorted], {
-    // macOS tar otherwise adds AppleDouble entries for extended attributes.
-    env: { ...process.env, COPYFILE_DISABLE: "1" },
-    maxBuffer: 1024 * 1024 * 1024,
-  })
-  if (tarRes.status !== 0) {
-    throw new Error(`tar failed: ${tarRes.stderr?.toString() ?? "unknown error"}`)
-  }
-  // zlib writes a zero MTIME and no file name into the gzip header.
-  return gzipSync(tarRes.stdout, { level: 9 })
-}
-
-/**
- * Phase 16 Task A6 — light export-presence check on the built bundle.
- * Bun.build emits ES-module bundles whose exports appear as one of:
- *   export {NAME}, export {NAME as ...}, export {... as NAME},
- *   export const NAME, export function NAME, export async function NAME, export class NAME,
- *   or `... NAME };` re-exports.
- * The check is intentionally textual — robust enough to catch fat-finger typos and
- * deleted exports without booting a sandbox. A false-positive on minified output
- * is acceptable for now (freeze is run on un-minified Bun.build output).
- */
-/**
- * Strip the trailing ESM `export { ... };` block Bun.build (target:"bun",
- * format:"esm") emits. QuickJS `evalCode` is script-mode and rejects a bare
- * `export` statement; PDF template bundles bind their export to
- * `globalThis.renderTemplate` instead. Mirrors the handler bundle-loader's
- * `esmExportsToGlobalThis` (kept inline here so this repo-root script does not
- * import apps/api internals).
- */
-function stripEsmExportBlock(source: string): string {
-  return source.replace(/\nexport\s*\{[\s\S]*?\}\s*;?\s*$/, "\n")
-}
-
-/**
- * Resolve the LOCAL binding name that a Bun.build ESM bundle exports as
- * `exportName`, from the trailing `export { ... };` block. Returns:
- *   - the local name for `export { local as exportName }` (alias / bundler-rename),
- *   - `exportName` for a bare `export { exportName }` (local === exported),
- *   - `null` when the bundle does not export `exportName` (e.g. only a default
- *     export, or no such export) — caller fails the freeze with a clear error.
- * This lets the PDF-template binding `globalThis.renderTemplate = <local>` use
- * the real local identifier rather than assuming it equals `renderTemplate`.
- */
-function resolveExportedLocalName(source: string, exportName: string): string | null {
-  if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(exportName)) return null
-  const block = source.match(/export\s*\{([\s\S]*?)\}\s*;?\s*$/)
-  if (!block) return null
-  for (const spec of block[1]
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)) {
-    const aliased = spec.match(/^([A-Za-z_$][\w$]*)\s+as\s+([A-Za-z_$][\w$]*)$/)
-    if (aliased) {
-      if (aliased[2] === exportName) return aliased[1]
-    } else if (spec === exportName) {
-      return exportName
-    }
-  }
-  return null
-}
-
-function isExportPresentInBundle(source: string, exportName: string): boolean {
-  if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(exportName)) return false
-  const escaped = exportName.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")
-  const patterns = [
-    new RegExp(`\\bexport\\s+(?:async\\s+)?function\\s+${escaped}\\b`),
-    new RegExp(`\\bexport\\s+(?:const|let|var)\\s+${escaped}\\b`),
-    new RegExp(`\\bexport\\s+class\\s+${escaped}\\b`),
-    // `export { foo, bar, NAME }` — anywhere in a named-export list.
-    new RegExp(`\\bexport\\s*\\{[^}]*\\b${escaped}\\b[^}]*\\}`),
-    // `export { other as NAME }` — aliased re-export.
-    new RegExp(`\\bas\\s+${escaped}\\b[^}]*\\}`),
-  ]
-  return patterns.some((p) => p.test(source))
 }
 
 // CLI entry point.

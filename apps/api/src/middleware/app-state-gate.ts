@@ -6,8 +6,8 @@
  * (`/api/mail`, `/api/projects`, ...). For an app turned Off or removed for the
  * org it answers 410 `{error:{code:"app_disabled"}}`; for a restricted app the
  * person is restricted away from, 403. Admins (`kernel:apps:admin`) keep the
- * app's read-only management surface while it is Off (its config, connections
- * and settings reads, and the instance install actions: upgrade, UI approval,
+ * app's read-only management surface while it is Off (its config, connections,
+ * settings and logs reads, and the instance install actions: upgrade, UI approval,
  * OAuth client, uninstall), so the app page can show and turn it back On.
  *
  * Data export (`/api/apps/export/:app`) is not under an app segment and stays
@@ -48,7 +48,7 @@ export const KERNEL_MOUNTED_APP_PREFIXES: Readonly<Record<string, string>> = {
 
 /** What an admin may still do on an Off app's own `/api/apps/:app/...` routes. */
 function adminMayReachOffApp(method: string, rest: string): boolean {
-  if (method === "GET" && /^(config|connections|settings)(\/|$)/.test(rest)) return true
+  if (method === "GET" && /^(config|connections|settings|logs)(\/|$)/.test(rest)) return true
   if (/^(upgrade|ui-approval|oauth-client)(\/|$)/.test(rest)) return true
   return method === "DELETE" && rest === ""
 }

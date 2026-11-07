@@ -21,6 +21,7 @@ import {
   invalidateAppOrgScope,
   isOrgPrivateApp,
 } from "~/modules/apps/app-org-scope"
+import { sandboxTenantKey } from "~/modules/apps/custom-app-name"
 import { KNOWN_CAPABILITIES } from "~/modules/apps/manifest-schema"
 
 const ORG = "11111111-2222-3333-4444-555555555555"
@@ -169,23 +170,44 @@ describe("what a custom app may declare", () => {
   })
 })
 
-describe("self-hosted (S19)", () => {
-  it("dispatch reads no owner rows: every app is visible, none is org-private", async () => {
-    _setEdition("self_hosted")
-    invalidateAppOrgScope()
-    const read = spyOn(privileged, "withSystemDb").mockImplementation((() => {
-      throw new Error("the database must not be read")
-    }) as never)
-    try {
-      expect(await appVisibleToOrg("tickets", ORG)).toBe(true)
-      expect(await appVisibleToOrg(`crm-o${KEY}`, ORG)).toBe(true)
-      expect(await appVisibleToOrg("crm-o00000000", ORG)).toBe(true)
-      expect(await isOrgPrivateApp("crm-o00000000")).toBe(false)
-      expect(await appOwnerOrg("crm-o00000000")).toBeNull()
-      expect(read).not.toHaveBeenCalled()
-    } finally {
-      read.mockRestore()
-      _setEdition(null)
-    }
-  })
+describe("every edition: ownership comes from the owner row, never the edition", () => {
+  for (const ed of ["self_hosted", "managed"] as const) {
+    it(`${ed}: another org's key is refused before any database read; the owner rows decide the rest`, async () => {
+      _setEdition(ed)
+      invalidateAppOrgScope()
+      const read = spyOn(privileged, "withSystemDb").mockImplementation((() => {
+        throw new Error("the owner rows are unreadable")
+      }) as never)
+      try {
+        // DB-free: a custom-app name of another org's key is never visible.
+        expect(await appVisibleToOrg("crm-o00000000", ORG)).toBe(false)
+        expect(await isOrgPrivateApp("crm-o00000000")).toBe(true)
+        expect(read).not.toHaveBeenCalled()
+        expect(await appVisibleToOrg("kernel", ORG)).toBe(true)
+        // Anything else reads the owner rows, and fails closed when it cannot.
+        await expect(appVisibleToOrg("tickets", ORG)).rejects.toThrow("unreadable")
+        await expect(appVisibleToOrg(`crm-o${KEY}`, ORG)).rejects.toThrow("unreadable")
+        await expect(appOwnerOrg("tickets")).rejects.toThrow("unreadable")
+      } finally {
+        read.mockRestore()
+        invalidateAppOrgScope()
+        _setEdition(null)
+      }
+    })
+  }
+})
+
+describe("sandboxTenantKey (every edition)", () => {
+  for (const ed of ["self_hosted", "managed"] as const) {
+    it(`${ed}: an org's custom app counts against its org's share; any other app none`, () => {
+      _setEdition(ed)
+      try {
+        expect(sandboxTenantKey(`crm-o${KEY}`)).toBe(`org:${KEY}`)
+        expect(sandboxTenantKey("tickets")).toBeUndefined()
+        expect(sandboxTenantKey(undefined)).toBeUndefined()
+      } finally {
+        _setEdition(null)
+      }
+    })
+  }
 })

@@ -64,13 +64,27 @@ const [demoMode, setDemoMode] = createSignal(false)
 const [noAccountEntry, setNoAccountEntry] = createSignal(false)
 
 /**
+ * Organisations may have their own apps on this server (the `customApps`
+ * flag): the app builder and its drafts show only then. False until told.
+ */
+const [customAppsEnabled, setCustomAppsEnabled] = createSignal(false)
+
+/**
  * The instance's privacy policy, when the operator configured one
  * (LIAISON_PRIVACY_URL). The demo signup notice links it; null shows the notice
  * without a link. Only an http(s) URL is accepted.
  */
 const [privacyUrl, setPrivacyUrl] = createSignal<string | null>(null)
 
-export { demoMode, demoOrgSurfaces, noAccountEntry, orgName, privacyUrl, signedInOrgDemo }
+export {
+  customAppsEnabled,
+  demoMode,
+  demoOrgSurfaces,
+  noAccountEntry,
+  orgName,
+  privacyUrl,
+  signedInOrgDemo,
+}
 
 let inFlight: Promise<void> | null = null
 /**
@@ -98,6 +112,7 @@ export function ensureBrandingLoaded(fetchImpl: typeof fetch = fetch): Promise<v
       if (flags && typeof flags === "object") {
         setDemoMode((flags as Record<string, unknown>).demo === true)
         setNoAccountEntry((flags as Record<string, unknown>).noAccountEntry === true)
+        setCustomAppsEnabled((flags as Record<string, unknown>).customApps === true)
       }
       const privacy = body?.data?.privacyUrl
       if (typeof privacy === "string" && /^https?:\/\//i.test(privacy)) setPrivacyUrl(privacy)
@@ -166,6 +181,7 @@ export function _resetBranding(): void {
   orgLoaded = false
   setDemoMode(false)
   setNoAccountEntry(false)
+  setCustomAppsEnabled(false)
   setPrivacyUrl(null)
   inFlight = null
   loaded = false

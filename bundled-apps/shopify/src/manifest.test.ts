@@ -57,6 +57,11 @@ function findOpaqueParams(manifest: unknown): string[] {
 }
 
 describe("Shopify app.manifest.json", () => {
+  it("places no config secret in any request (secrets: {}): its token goes by ctx.fetch auth", () => {
+    const m = loadManifest() as { secrets?: unknown }
+    expect(m.secrets).toEqual({})
+  })
+
   it("parses as JSON", () => {
     expect(loadManifest()).toBeTypeOf("object")
   })
@@ -903,7 +908,8 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.5: above both lines of work, which each changed it under the number before; no change of its own.
     // 0.4.6: the offline token stays host-side (ctx.fetch auth); the verifier checks by config key.
     // 0.4.7: backfill-customers and scope-seed are onDemand (a job with neither schedule nor onDemand never registers).
-    expect(m.version).toBe("0.4.7")
+    // 0.4.8: declares that it places no config secret in any request (secrets: {}); the token goes by ctx.fetch auth.
+    expect(m.version).toBe("0.4.8")
   })
 
   it("read_all_orders is a protected scope behind the org's full-order-history toggle", () => {

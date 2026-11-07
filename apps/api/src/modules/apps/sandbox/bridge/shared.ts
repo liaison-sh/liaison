@@ -139,6 +139,12 @@ export interface AppManifestForBridge {
   >
   network?: { allowedDomains?: string[]; allowPrivateHostsInTest?: boolean }
   /**
+   * where `ctx.fetch` configSecrets may write each declared secret config
+   * key: its hosts and the one header / query parameter / JSON body path
+   * (@liaison/app-sdk secret-placement.ts). A key with no entry is placed nowhere.
+   */
+  secrets?: Record<string, { hosts: string[]; in: string }>
+  /**
    * Phase 17 B7 — when present, the sandbox `executeTool` bridge translates
    * the in-process `{ data | blocked | error }` envelope into the K4
    * `{ status, result | approval_id | code }` envelope. Apps that pre-date

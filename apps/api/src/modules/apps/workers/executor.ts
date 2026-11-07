@@ -5,7 +5,7 @@
 //   1. admission (admission.ts): per-org queue, holdsTx cap, nested never queued
 //   2. registerRun (run-registry.ts): the run's own bridge, built by the
 //      dispatching code in its frame, behind a one-run bearer token
-//   3. POST <loaderUrl>/run, signed (sign.ts), with the run token, the
+//   3. POST <loaderUrl>/run, signed v2 "cell->loader" (sign.ts), with the run token, the
 //      bridge URL and the method list; the isolate calls back on
 //      /api/app-bridge/<runId> (bridge-route.ts)
 //   4. the loader's answer becomes the run's result, or an Error shaped like
@@ -23,7 +23,7 @@ import { rootLogger } from "~/lib/logger"
 import { type WorkersAdmission, workersAdmission } from "./admission"
 import { bridgeUrlFor, type WorkersConfig } from "./config"
 import { type RunBridge, type RunRegistry, runRegistry } from "./run-registry"
-import { signCellRequest } from "./sign"
+import { signCellRequestV2 } from "./sign"
 import type { LoaderTimings } from "./timings"
 
 const log = rootLogger.child({ module: "apps-workers-executor" })
@@ -42,7 +42,10 @@ export interface WorkersRunOptions {
   appName: string
   orgId: string
   version: string
-  /** sha256 of the Worker module (LIAISON_WORKERS_BUNDLES), not of the package. */
+  /**
+   * sha256 of the Worker module (LIAISON_WORKERS_BUNDLES, or a custom app's
+   * installed row), not of the package.
+   */
   bundleSha256: string
   exportName: string
   params: unknown
@@ -176,9 +179,17 @@ export async function executeOnWorkers(
       deadlineMs: timeoutMs,
       limits: WORKERS_RUN_LIMITS,
     })
+    const runUrl = `${opts.config.loaderUrl}/run`
     const headers = {
       "content-type": "application/json",
-      ...signCellRequest(opts.config.cellId, opts.config.loaderKey, body),
+      ...signCellRequestV2({
+        cellId: opts.config.cellId,
+        cellKey: opts.config.loaderKey,
+        direction: "cell->loader",
+        method: "POST",
+        path: new URL(runUrl).pathname,
+        body,
+      }),
     }
     const fetchTimeout = AbortSignal.timeout(timeoutMs + LOADER_FETCH_GRACE_MS)
     const signal = opts.signal ? AbortSignal.any([opts.signal, fetchTimeout]) : fetchTimeout
@@ -186,7 +197,7 @@ export async function executeOnWorkers(
     let res: Response
     let text: string
     try {
-      res = await fetchImpl(`${opts.config.loaderUrl}/run`, {
+      res = await fetchImpl(runUrl, {
         method: "POST",
         headers,
         body,

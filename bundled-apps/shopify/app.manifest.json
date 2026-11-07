@@ -274,7 +274,7 @@
       }
     ]
   },
-  "version": "0.4.7",
+  "version": "0.4.8",
   "iconName": "shopping-cart",
   "description": "Shopify integration: orders, customers, products, markets, draft orders, refunds, fulfillments, returns",
   "listing": {
@@ -319,6 +319,7 @@
     "shopify:admin:scope-seed",
     "shopify:internal"
   ],
+  "secrets": {},
   "connections": {
     "shop": {
       "purpose": "Shopify store",

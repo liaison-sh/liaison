@@ -206,6 +206,16 @@ describe("collecting expired demo workspaces", () => {
     expect(before).toBeGreaterThan(DEMO_REAP_MAX_PER_RUN)
     let inFlight = 0
     let maxInFlight = 0
+    // The first DEMO_REAP_CONCURRENCY purges meet at their object step: each
+    // waits there until all of them have arrived, so the count of purges in
+    // flight does not depend on how long each one's database part takes on a
+    // loaded box. A reaper running fewer at once never fills the meeting, and
+    // after a second the waiters go on and the count below is short.
+    let met = 0
+    let allMet: () => void = () => {}
+    const meeting = new Promise<void>((resolve) => {
+      allMet = resolve
+    })
     const { out, lines } = await reapInfoLines(() =>
       reapExpiredDemoOrgs(new Date(), {
         // An idle box: no pressure signal.
@@ -215,7 +225,13 @@ describe("collecting expired demo workspaces", () => {
           deleteObjects: async () => {
             inFlight++
             maxInFlight = Math.max(maxInFlight, inFlight)
-            await new Promise((r) => setTimeout(r, 30))
+            if (met < DEMO_REAP_CONCURRENCY) {
+              met++
+              if (met === DEMO_REAP_CONCURRENCY) allMet()
+              await Promise.race([meeting, new Promise((r) => setTimeout(r, 1_000))])
+            } else {
+              await new Promise((r) => setTimeout(r, 30))
+            }
             inFlight--
             return 0
           },

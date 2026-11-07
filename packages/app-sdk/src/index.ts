@@ -51,6 +51,17 @@ export {
   settingsDeclarationErrors,
   settingsSectionSchema,
 } from "./app-settings"
+export {
+  type AppStoreDeclaration,
+  appStoreDeclarationSchema,
+  MAX_STORE_SEARCH_FIELDS,
+  STORE_COLLECTION_PATTERN,
+  STORE_FIELD_PATTERN,
+  type StoreCollectionDeclaration,
+  type StoreDeclarationOptions,
+  storeCollectionDeclarationSchema,
+  storeDeclarationErrors,
+} from "./app-store"
 export { defineHandlers } from "./define-handlers"
 export { refuseTool, ToolError, type ToolRefusal } from "./errors"
 export { minorAmountRefusal, readMinorAmount } from "./minor-amount"
@@ -87,6 +98,11 @@ export type {
   FetchAuth,
   FetchMultipartPart,
   Logger,
+  StoreClient,
+  StoreDocument,
+  StoreQuery,
+  StoreQueryResult,
+  StoreWhere,
   UpstreamProbeResult,
   WebhookResult,
 } from "./types"

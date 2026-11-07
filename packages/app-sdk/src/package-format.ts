@@ -9,6 +9,7 @@ import { z } from "zod"
 import { appConfigKeySchema, configKeysDeclarationErrors } from "./app-config-keys"
 import { appListingSchema, isSpdxLicenseExpression } from "./app-listing"
 import { appKindSchema, appSettingsSchema, settingsDeclarationErrors } from "./app-settings"
+import { appStoreDeclarationSchema, storeDeclarationErrors } from "./app-store"
 
 /** Major version of the `.liaisonapp` format. Bumped only on a breaking change. */
 export const LIAISON_APP_VERSION = 1
@@ -197,6 +198,9 @@ export const packageManifestSchema = z
           .optional(),
       )
       .optional(),
+    // The app data store's declared collections (./app-store.ts): what the
+    // agent's data tools, dashboard blocks and search may read, under which scope.
+    store: appStoreDeclarationSchema.optional(),
     // Phase 17 — explicit dependency tools (canonical form). Synthesized from
     // `cross_app_calls` when only that is declared. `passthrough` preserves
     // any other dependency keys other plans may add.
@@ -213,6 +217,13 @@ export const packageManifestSchema = z
     }
     for (const message of settingsDeclarationErrors(data)) {
       ctx.addIssue({ code: "custom", message, path: ["settings"] })
+    }
+    const ownScopes = new Set([
+      ...data.scopes,
+      ...Object.values(data.tools ?? {}).flatMap((t) => t.requiredScopes),
+    ])
+    for (const message of storeDeclarationErrors(data, { knownScopes: (s) => ownScopes.has(s) })) {
+      ctx.addIssue({ code: "custom", message, path: ["store"] })
     }
     if (data.listing !== undefined && !isSpdxLicenseExpression(data.license)) {
       ctx.addIssue({

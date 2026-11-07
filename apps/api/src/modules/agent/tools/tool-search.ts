@@ -486,8 +486,8 @@ export async function handleToolSearch(
     // underscore between app and tool missed, and the model searched again.
     const key = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "")
     const names = query.slice("select:".length).split(",").map(key).filter(Boolean)
-    // A bare tool name two apps both use (`refunds_create`: Shopify and
-    // Stripe) loads neither: each moves money in a different system, and a
+    // A bare tool name two apps both use (`refunds_create`: two shop and
+    // payment apps) loads neither: each moves money in a different system, and a
     // guess parks an approval against the wrong one. Both are listed, so the
     // next call names the one meant.
     const ambiguousNames = names.filter((n) => {

@@ -10,6 +10,19 @@ import ticketsManifest from "./app.manifest.json"
 // The app guide is a short core plus sections keyed by the tools they are
 // about (app-guide.ts); these assertions read the whole guide.
 type ManifestGuide = string | { core: string; sections?: Array<{ tools: string[]; text: string }> }
+/** A tool's description, then every guide section naming it: what the model reads while the tool
+ *  is loaded. A description's text past its first 600 characters reads from such a section. */
+const toolText = (m: { tools?: unknown; agentInstructions?: unknown }, tool: string): string => {
+  const def = (m.tools as Record<string, { description?: string }> | undefined)?.[tool]
+  const g = m.agentInstructions as
+    | { sections?: Array<{ tools: string[]; text: string }> }
+    | string
+    | undefined
+  const sections =
+    g && typeof g === "object" ? (g.sections ?? []).filter((s) => s.tools.includes(tool)) : []
+  return [def?.description ?? "", ...sections.map((s) => s.text)].join("\n\n")
+}
+
 const guideText = (m: { agentInstructions?: unknown }): string => {
   const g = m.agentInstructions as ManifestGuide | undefined
   if (!g) return ""
@@ -230,8 +243,7 @@ describe("tickets manifest", () => {
     // digest to one group (and dropped the DE tickets that lived in those statuses). The fix is a search-
     // description steer teaching that a backlog / status-grouped / awaiting-customer-section request means
     // the whole non-closed set via smartFilter:'all-open'. Pin it so the steer can't silently regress.
-    const tools = ticketsManifest.tools as Record<string, { description?: string }>
-    const desc = tools.search.description ?? ""
+    const desc = toolText(ticketsManifest, "search")
     expect(desc).toContain("all-open")
     // The steer must name the non-closed-set semantics AND warn that status='open' drops the other two.
     expect(desc).toMatch(
@@ -565,7 +577,7 @@ describe("tickets manifest", () => {
   it("the assign tool description carries a triage gate (claim only criterion-passing tickets) (l583)", () => {
     // l583 run 2: the agent self-assigned 3 English tickets in an FR/DE/IT-only claim. Reinforce the gate
     // on the exact surface the agent touches at the moment of the mistake — the assign tool description.
-    const assign = (ticketsManifest.tools as Record<string, { description: string }>).assign
+    const assign = { description: toolText(ticketsManifest, "assign") }
     expect(assign.description).toMatch(/TRIAGE GATE/i)
     expect(assign.description).toMatch(/ONLY on tickets that PASS the criterion/i)
     expect(assign.description).toMatch(/Tagging a ticket's language is NOT a reason to claim it/i)

@@ -904,7 +904,8 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.4: above 0.4.3, so an instance on either line of work upgrades; no change of its own.
     // 0.4.5: above both lines of work, which each changed it under the number before; no change of its own.
     // 0.4.6: its attention heading is declared here, not in the web shell.
-    expect(m.version).toBe("0.4.8")
+    // 0.4.9: the longest descriptions past 600 characters read from guide sections.
+    expect(m.version).toBe("0.4.9")
   })
 
   it("read_all_orders is a protected scope behind the org's full-order-history toggle", () => {

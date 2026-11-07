@@ -1167,10 +1167,19 @@ describe("invoicing manifest", () => {
     expect(patch.properties?.notes, "drafts_update.patch must expose notes").toBeDefined()
   })
 
-  it("documents_update's description lists notes among the fields editable after issue", () => {
-    const desc = (manifest as unknown as {
+  it("documents_update's description or its guide section lists notes among the fields editable after issue", () => {
+    // Past its first 600 characters the description reads from a guide section naming the tool,
+    // which renders whenever the tool is loaded.
+    const m = manifest as unknown as {
       tools: Record<string, { description?: string }>
-    }).tools.documents_update?.description ?? ""
+      agentInstructions: { sections?: Array<{ tools?: string[]; text?: string }> }
+    }
+    const desc = [
+      m.tools.documents_update?.description ?? "",
+      ...(m.agentInstructions.sections ?? [])
+        .filter((x) => x.tools?.includes("documents_update"))
+        .map((x) => x.text ?? ""),
+    ].join("\n\n")
     expect(desc).toContain("po_number, notes) stays editable post-issue")
   })
 
@@ -1500,7 +1509,8 @@ describe("invoicing manifest", () => {
     // 0.20.52: its attention heading is declared here, not in the web shell.
     // 0.20.56: document search declares one search keyword fewer.
     // 0.20.57: hidden tools name the visible one to use instead.
-    expect(m.version).toBe("0.20.57")
+    // 0.20.58: sentences shared by several tools, and the longest descriptions past 600 characters, read from guide sections.
+    expect(m.version).toBe("0.20.58")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

@@ -10,11 +10,14 @@
 //
 // `reminders.ts` is something else (the requester's own agent reminding the requester), so this
 // is a sweep of its own. "Once" is `metadata.routedReminderAt`, set by one conditional UPDATE in
-// the same transaction as the notification: two workers cannot both send it. The notification is
-// an ordinary agent notification event, so it goes through the attention pipeline, the router and
-// the person's settings like any other. Deciders are read the way the feed reads them (in the
-// notify set, holding the deciding scope, not denied the app), so nobody learns of a request
-// they could not already see; an owner-routed row reminds its owner alone.
+// the same transaction as the notification: two workers cannot both send it. A row the sweep read
+// and did not remind (routed to the usual deciders, or with no decider left) gets
+// `metadata.routedReminderCheckedAt`, and each sweep reads the rows checked longest ago first, so
+// a pass that stops at its page limit leaves the rows it did not reach first in line for the next.
+// The notification is an ordinary agent notification event, so it goes through the attention
+// pipeline, the router and the person's settings like any other. Deciders are read the way the
+// feed reads them (in the notify set, holding the deciding scope, not denied the app), so nobody
+// learns of a request they could not already see; an owner-routed row reminds its owner alone.
 
 import { decidingScope } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
@@ -49,18 +52,36 @@ const MAX_PAGES = 20
 
 interface WaitingRow extends RoutableApprovalRow {
   org_id: string
+  /** When the sweep last read it without reminding, `-infinity` when never: the sweep's order. */
+  checked_at_key: string
   approve_scope: string | null
   summary: { title?: unknown } | null
   current_payload: unknown
   thread_id: string | null
 }
 
+const CHECKED_AT = drizzleSql.raw(
+  "COALESCE((ar.metadata->>'routedReminderCheckedAt')::timestamptz, '-infinity'::timestamptz)",
+)
+
+/** Where a sweep stands: the check time and id of the last row it read. */
+interface Cursor {
+  checkedAt: string
+  id: string
+}
+
 // Every column is read: the route's inputs travel with the row to the routing module, which alone reads them.
-async function scan(after: string | null, orgId?: string): Promise<WaitingRow[]> {
+// Rows checked longest ago come first, never checked first of all, and a row this sweep checked
+// (checked at or after its start) is not read again by it.
+async function scan(
+  startedAt: string,
+  after: Cursor | null,
+  orgId?: string,
+): Promise<WaitingRow[]> {
   const result: unknown = await sweepSkippingMoving((notMoving) =>
     withSystemDb("approval-routed-reminder-scan", (db) =>
       db.execute(drizzleSql`
-        SELECT ar.*
+        SELECT ar.*, ${CHECKED_AT}::text AS checked_at_key
           FROM ${K}.approval_requests ar
          WHERE ar.status = 'pending'
            AND ar.created_at <= now() - make_interval(hours => ${ROUTED_REMINDER_HOURS})
@@ -68,10 +89,11 @@ async function scan(after: string | null, orgId?: string): Promise<WaitingRow[]>
            AND (ar.bundle_id IS NULL OR ar.bundle_id = ar.id)
            AND NOT (ar.metadata ? 'routedReminderAt')
            AND COALESCE(ar.metadata->>'seeded', 'false') <> 'true'
+           AND ${CHECKED_AT} < ${startedAt}::timestamptz
            AND ${notMoving(drizzleSql.raw("ar.org_id"))}
            ${orgId ? drizzleSql`AND ar.org_id = ${orgId}::uuid` : drizzleSql``}
-           ${after ? drizzleSql`AND ar.id > ${after}::uuid` : drizzleSql``}
-         ORDER BY ar.id
+           ${after ? drizzleSql`AND (${CHECKED_AT}, ar.id) > (${after.checkedAt}::timestamptz, ${after.id}::uuid)` : drizzleSql``}
+         ORDER BY ${CHECKED_AT}, ar.id
          LIMIT ${PAGE_SIZE}`),
     ),
   )
@@ -108,6 +130,16 @@ async function remindOrg(orgId: string, rows: readonly WaitingRow[]): Promise<nu
         ? routes.route(r.id).to === "person" || isNoAutoApprove(r.tool_name, orgId)
         : isNoAutoApprove(r.tool_name, orgId),
     )
+    // Every row read is checked now; one reminded below also gets its marker and leaves the scan.
+    await tx.execute(drizzleSql`
+      UPDATE ${K}.approval_requests
+         SET metadata = COALESCE(metadata, '{}'::jsonb)
+                        || jsonb_build_object('routedReminderCheckedAt', to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))
+       WHERE org_id = ${orgId}::uuid AND status = 'pending'
+         AND id IN (${drizzleSql.join(
+           rows.map((r) => drizzleSql`${r.id}::uuid`),
+           drizzleSql`, `,
+         )})`)
     if (due.length === 0) return 0
 
     // Who decides each row: its notify set holding its deciding scope, active, not denied the app.
@@ -193,11 +225,15 @@ async function remindOrg(orgId: string, rows: readonly WaitingRow[]): Promise<nu
 export async function runRoutedReminderSweep(
   opts: { orgId?: string } = {},
 ): Promise<{ candidates: number; notified: number }> {
-  let after: string | null = null
+  const [start] = await withSystemDb("approval-routed-reminder-start", async (db) =>
+    extractRows<{ at: string }>(await db.execute(drizzleSql`SELECT clock_timestamp()::text AS at`)),
+  )
+  const startedAt = (start as { at: string }).at
+  let after: Cursor | null = null
   let candidates = 0
   let notified = 0
   for (let page = 0; page < MAX_PAGES; page++) {
-    const batch = await scan(after, opts.orgId)
+    const batch = await scan(startedAt, after, opts.orgId)
     if (batch.length === 0) break
     candidates += batch.length
     const byOrg = new Map<string, WaitingRow[]>()
@@ -210,7 +246,8 @@ export async function runRoutedReminderSweep(
         log.warn({ err, orgId }, "routed reminders failed for an org; the next sweep tries again")
       }
     }
-    after = batch[batch.length - 1]?.id ?? null
+    const last = batch[batch.length - 1]
+    after = last ? { checkedAt: last.checked_at_key, id: last.id } : null
     if (batch.length < PAGE_SIZE) break
   }
   return { candidates, notified }

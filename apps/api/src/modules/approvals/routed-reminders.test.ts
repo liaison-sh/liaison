@@ -238,3 +238,95 @@ describe("routed reminders: a routed row is not lost", () => {
     expect(await remindersFor(id)).toHaveLength(1)
   })
 })
+
+describe("routed reminders: a sweep's page limit starves no row", () => {
+  // More waiting rows than one sweep reads (20 pages of 200): rows routed to the usual deciders,
+  // whose ids sort before the routed row's, so a sweep that restarts at the lowest id each hour
+  // would never reach it.
+  const USUAL_ROWS = 4_100
+  let org = ""
+  let routed = ""
+  let asker = ""
+  let decider = ""
+
+  function waiting(id: string, title: string, routePersonId: string | null, thread: string) {
+    return {
+      id,
+      org_id: org,
+      handle: `APR-${id.slice(0, 8)}${id.slice(-4)}`,
+      thread_id: thread,
+      originating_thread_id: thread,
+      tool_name: "projects:createTask",
+      tool_params: "{}",
+      current_payload: JSON.stringify({ title }),
+      expires_at: { raw: "now() + INTERVAL '3 days'" },
+      created_at: { raw: AGE["24h01"] },
+      notify_user_ids: `{${asker},${decider}}`,
+      requested_by: asker,
+      status: "pending",
+      summary: JSON.stringify({ title }),
+      metadata: JSON.stringify({ originRoutineId: randomUUID() }),
+      resource_owner_id: null,
+      route_person_id: routePersonId,
+    }
+  }
+
+  beforeAll(async () => {
+    await acquireTestLock()
+    org = (await createTestOrg()).id
+    asker = (await minimal.person(org, { name: "Fixture asker" })).id
+    decider = (await minimal.person(org, { name: "Fixture decider" })).id
+    await minimal.grantScope(decider, "projects:approve")
+    await minimal.grantScope(asker, "projects:approve")
+    const thread = await minimal.thread(org, asker, { title: "Many waiting requests" })
+    const ids = Array.from({ length: USUAL_ROWS }, () => `0000${randomUUID().slice(4)}`).sort()
+    for (let at = 0; at < ids.length; at += 500) {
+      await sql.unsafe(
+        insertSql(
+          "kernel.approval_requests",
+          ids.slice(at, at + 500).map((id) => waiting(id, "Usual deciders", null, thread)),
+        ),
+      )
+    }
+    routed = `ffff${randomUUID().slice(4)}`
+    await sql.unsafe(
+      insertSql(
+        "kernel.approval_requests",
+        waiting(routed, "Routed past the page limit", decider, thread),
+      ),
+    )
+  }, 180_000)
+
+  afterAll(async () => {
+    await releaseTestLock()
+  })
+
+  async function remindedFor(rowId: string): Promise<number> {
+    const [row] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM kernel.pending_events
+       WHERE org_id = ${org}::uuid
+         AND payload->>'entity' = 'agent_notification'
+         AND payload->>'entityId' = ${rowId}`
+    return (row as { n: number }).n
+  }
+
+  it("a routed row behind more than 4,000 waiting rows is reminded by the next sweep, once", async () => {
+    const first = await runRoutedReminderSweep({ orgId: org })
+    // One sweep reads 4,000 rows, so the routed row, sorting last, is not among them.
+    expect(first.candidates).toBe(4_000)
+    expect(await remindedFor(routed)).toBe(0)
+
+    const second = await runRoutedReminderSweep({ orgId: org })
+    expect(second.notified).toBe(1)
+    expect(await remindedFor(routed)).toBe(1)
+
+    // Every waiting row has now been read once; the next sweep starts again from the oldest check.
+    const [unread] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM kernel.approval_requests
+       WHERE org_id = ${org}::uuid AND status = 'pending'
+         AND NOT (metadata ? 'routedReminderCheckedAt')`
+    expect((unread as { n: number }).n).toBe(0)
+    await runRoutedReminderSweep({ orgId: org })
+    expect(await remindedFor(routed)).toBe(1)
+  }, 300_000)
+})

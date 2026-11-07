@@ -160,6 +160,7 @@ appRoutes.post("/:appName/tools/:toolName", async (c) => {
           orgId: c.get("orgId"),
           scopes: (c.get("scopes") as unknown as string[]) ?? [],
           slot,
+          userId: c.get("userId"),
         })
       : []
     return success(c, { panels })

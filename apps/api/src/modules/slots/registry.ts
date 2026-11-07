@@ -18,15 +18,16 @@
  * Per Phase 17 spec §K5: visibility is enforced by `panel.visibility_scope`
  * which must be granted to the caller (via `~/modules/permissions/permissions.hasScope`).
  * Panels without a `visibility_scope` are public-to-the-org. An app the org
- * admin turned Off contributes nothing, nor does a panel naming a feature the org
- * has not switched on; callers prime the org app state.
+ * admin turned Off, or restricted away from the caller, contributes nothing, nor
+ * does a panel naming a feature the org has not switched on; callers prime the
+ * org app state.
  *
  * This is the one list: manifest `slots.<slot>.panels` and `.actions`, and
  * `contributions.<slot>` (merged into the registry by the runtime), all pass
  * the same filters and sort by `order`, then app name, then id.
  */
 import { type SlotRegistryEntry, slotRegistry } from "~/modules/apps/app-registries"
-import { isAppOffForOrg, isFeatureOffForTool } from "~/modules/apps/org-apps"
+import { isAppUnavailableFor, isFeatureOffForTool } from "~/modules/apps/org-apps"
 import { hasScope } from "~/modules/permissions/permissions"
 
 export interface SlotPanel {
@@ -49,6 +50,8 @@ export interface ListSlotPanelsOpts {
   orgId: string
   scopes: string[]
   slot: string
+  /** The caller. Without one, an app restricted to some people shows nobody its panels. */
+  userId?: string | null
 }
 
 /**
@@ -56,6 +59,10 @@ export interface ListSlotPanelsOpts {
  * org. A contribution joins the slot's panel list with its component name as
  * its id (the web registers it under the same id), so the scope, app-state and
  * feature filters apply to it like any panel. Called by the app runtime.
+ *
+ * Each slot's entry is built from this version's manifest alone: a re-registration
+ * (a live upgrade) replaces what the previous version contributed rather than
+ * adding to it, so a panel is listed once and a panel the new version dropped is gone.
  */
 export function registerAppSlots(
   orgId: string,
@@ -63,13 +70,14 @@ export function registerAppSlots(
   slots: Record<string, unknown> | undefined,
   contributions: Record<string, unknown> | undefined,
 ): void {
+  const entries = new Map<string, SlotRegistryEntry>()
   for (const [slotName, slotDef] of Object.entries(slots ?? {})) {
-    slotRegistry.set([orgId, app, slotName], slotDef as SlotRegistryEntry)
+    entries.set(slotName, slotDef as SlotRegistryEntry)
   }
   for (const [slot, raw] of Object.entries(contributions ?? {})) {
     const contribution = raw as Omit<SlotPanel, "id">
-    const current = slotRegistry.get([orgId, app, slot]) ?? {}
-    slotRegistry.set([orgId, app, slot], {
+    const current = entries.get(slot) ?? {}
+    entries.set(slot, {
       ...current,
       panels: [
         ...(Array.isArray(current.panels) ? current.panels : []),
@@ -77,6 +85,7 @@ export function registerAppSlots(
       ],
     })
   }
+  for (const [slot, entry] of entries) slotRegistry.set([orgId, app, slot], entry)
 }
 
 function visible(orgId: string, app: string, panel: SlotPanel, scopes: string[]): boolean {
@@ -115,7 +124,7 @@ export function listSlotPanels(opts: ListSlotPanelsOpts): ResolvedPanel[] {
       if (orgId !== opts.orgId) continue
       if (slotName !== host) continue
       // An Off app (S19) keeps its data but shows no surface, embedded ones included.
-      if (isAppOffForOrg(opts.orgId, app)) continue
+      if (isAppUnavailableFor(opts.orgId, app, opts.userId)) continue
       const nested = (
         value as Record<string, { [k: string]: SlotPanel[] } | undefined> | undefined
       )?.[slotId]
@@ -132,7 +141,8 @@ export function listSlotPanels(opts: ListSlotPanelsOpts): ResolvedPanel[] {
     const [orgId, app, slotName] = key
     if (orgId !== opts.orgId) continue
     if (slotName !== opts.slot) continue
-    if (isAppOffForOrg(opts.orgId, app)) continue
+    // Off for the org, or restricted away from this person: the same rule as its tools.
+    if (isAppUnavailableFor(opts.orgId, app, opts.userId)) continue
     // slotDef shape from the manifest: { panels?, actions? }. Nested tabs go
     // through the `<host>.<slot_id>.tabs` branch above.
     const slotDef = value as { panels?: SlotPanel[]; actions?: SlotPanel[] } | undefined

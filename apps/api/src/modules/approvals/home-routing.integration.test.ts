@@ -23,6 +23,8 @@ import {
 } from "~/modules/approvals/attention"
 import { ApprovalDecisionError, decideApproval } from "~/modules/approvals/decide"
 import { updateItemRoutePerson } from "~/modules/approvals/route-world"
+import { executeTool } from "~/modules/apps/execute-tool"
+import { ensureAppsForOrg } from "~/modules/apps/init"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
@@ -489,5 +491,99 @@ describe("home routing: who a pending approval is for", () => {
     expect(await decidedFor(byOther)).toEqual({ userId: people.sara, as: "also_could" })
     await decide("sara", byOwn)
     expect(await decidedFor(byOwn)).toBeUndefined()
+  })
+
+  describe("an item changing hands moves its pending rows", () => {
+    let admin: UserContext
+    beforeAll(async () => {
+      await ensureAppsForOrg(ORG)
+      admin = await ctxOf((await minimal.orgAdmin(ORG)).id)
+    }, 120_000)
+
+    async function routedTo(link: unknown[], personId: string): Promise<string> {
+      return insertRow({
+        requestedBy: people.ines as string,
+        notify: deciders(),
+        metadata: { originRoutineId: randomUUID() },
+        routePersonId: personId,
+        links: link,
+        title: "Follows its item",
+      })
+    }
+
+    async function newTicket(): Promise<string> {
+      const created = await executeTool({
+        toolName: "tickets:create",
+        orgId: ORG,
+        actor: admin,
+        params: { subject: "Routing door", channel: "manual" },
+      })
+      const ticketId = (created.data as { ticketId?: string } | undefined)?.ticketId
+      if (!ticketId) throw new Error(`ticket not created: ${JSON.stringify(created)}`)
+      return ticketId
+    }
+
+    it("assigning a ticket moves its row to the new assignee on the next read", async () => {
+      const ticketId = await newTicket()
+      const id = await routedTo(ticketLink(ticketId), people.sara as string)
+      const res = await executeTool({
+        toolName: "tickets:assign",
+        orgId: ORG,
+        actor: admin,
+        params: { ticketId, assignedTo: people.tom },
+      })
+      expect(res.error).toBeUndefined()
+      expect((await placed("tom", id))?.route).toMatchObject({ userId: people.tom, why: "on_item" })
+      expect((await placed("sara", id))?.placement).toBe("others")
+    })
+
+    it("claiming an unassigned ticket moves its row to the one who claimed it", async () => {
+      const ticketId = await newTicket()
+      const id = await routedTo(ticketLink(ticketId), people.sara as string)
+      const res = await executeTool({
+        toolName: "tickets:assign",
+        orgId: ORG,
+        actor: admin,
+        params: { ticketId, assignedTo: people.tom, onlyIfUnassigned: true },
+      })
+      expect(res.error).toBeUndefined()
+      expect((await placed("tom", id))?.placement).toBe("mine")
+    })
+
+    it("changing a task's assignee moves its row on the next read", async () => {
+      const project = await executeTool({
+        toolName: "projects:createProject",
+        orgId: ORG,
+        actor: admin,
+        params: { name: "Routing doors", tasks: [{ title: "Door task" }] },
+      })
+      const data = project.data as { tasks?: Array<{ id: string }> } | undefined
+      const taskId = data?.tasks?.[0]?.id
+      if (!taskId) throw new Error(`task not created: ${JSON.stringify(project)}`)
+      const id = await routedTo(
+        [{ label: "Task", app: "projects", entityType: "task", entityId: taskId }],
+        people.sara as string,
+      )
+      const res = await executeTool({
+        toolName: "projects:update",
+        orgId: ORG,
+        actor: admin,
+        params: { taskId, assigneeId: people.tom },
+      })
+      expect(res.error).toBeUndefined()
+      expect((await placed("tom", id))?.placement).toBe("mine")
+    })
+
+    it("a failing route update is logged and changes nothing else", async () => {
+      expect(
+        await updateItemRoutePerson({
+          orgId: ORG,
+          app: "tickets",
+          entityType: "ticket",
+          entityId: randomUUID(),
+          personId: "not-a-person",
+        }),
+      ).toBe(0)
+    })
   })
 })

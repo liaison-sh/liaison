@@ -215,16 +215,24 @@ describe("/api/imports", () => {
       await minimal.grantScope(memberId, s)
     }
     await minimal.grantScope(memberId, "kernel:threads:read")
-    const token = await minimal.token(memberId)
     const ref = `T-${tag()}`
     const fileId = await uploadPrivateImportFile(orgId, memberId, ticketLine(ref))
-    const started = await call(token, "POST", "", {
-      fileId,
+    // The run row the route writes for this person, but not enqueued: a POST
+    // enqueues at once, and the job worker this file registers can take the
+    // run (and import it, the scope still held) before the revoke below lands.
+    // The job's payload is the run id only, so the revoke must reach the run
+    // from the database, which is what this test proves.
+    const run = await createImportRun({
+      orgId,
       kinds: ["tickets.ticket"],
       sourceLabel: "jira",
+      source: { fileId },
+      mode: "api",
+      dryRun: false,
+      placeholders: false,
+      startedBy: memberId,
     })
-    expect(started.status).toBe(202)
-    const runId = String((started.json.data as { id: string }).id)
+    const runId = run.id
     await minimal.revokeScope(memberId, "tickets:tickets:write")
     const r = await execute(runId)
     expect(r.status).toBe("failed")

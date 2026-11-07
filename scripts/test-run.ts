@@ -879,6 +879,10 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // catalog read from source, its baseline, the catalog lint and the
             // known bad answers. Pure file reads, about 2 s.
             "apps/api/src/modules/agent/tools/tool-bench/bench.test.ts",
+            // The tool ladder's numbers (announcement, tools listed, summary lines,
+            // each app's schema total) against their targets, from source with no
+            // server; a number over target needs a reason line. About 3 s.
+            "apps/api/src/modules/agent/context/ladder-budget.guard.test.ts",
           ]),
     ],
     cwd: ROOT,

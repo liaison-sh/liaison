@@ -1,0 +1,298 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// What the tool ladder costs, measured from source with no server, database or
+// env: for a world (the apps that are on, the scopes held, the client surface)
+// the deferred-tool announcement the real builder writes, the tools listed, the
+// summary lines, and each app's schema total through the product's own meter.
+// The numbers are TARGETS. A number over its target needs a line in
+// `ladder-budget.reasons.json` naming the capability that needs it; nothing here
+// forbids a tool, and nothing here edits a description.
+//
+// The guard test and the wrapper's world runner both call `measureLadder`.
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+import { checkToolScopes } from "~/modules/agent/scopes/required-scopes"
+import { providerInputSchemaOf } from "~/modules/agent/tools/tool-bridge"
+import { collectKernelTools, loadManifests } from "../../../../../../scripts/docs/gen-reference"
+import { estimateTokens } from "./compaction"
+import {
+  appInstructionSummary,
+  buildDeferredToolsAnnouncement,
+  composeTurnSystemText,
+  estimateToolSchemaTokens,
+  renderClientSurfaceLine,
+} from "./context"
+
+export const LADDER_REPO_ROOT = join(import.meta.dir, "../../../../../..")
+
+/** Apps no org runs: the template app. */
+const LEFT_OUT_APPS = new Set(["example"])
+
+export interface LadderTool {
+  app: string
+  name: string
+  sdkName: string
+  description: string
+  requiredScopes: string[]
+  deferred: boolean
+  agentVisible: boolean
+  routineOnly: boolean
+  /** Name, description and schema as the provider receives them, by `ceil(chars / 4)`. */
+  wireTokens: number
+  /** A kernel tool's schema is code, so its schema is estimated from the source text. */
+  estimated: boolean
+  /** The app's one-line agent guide, for the summary line. */
+  guide?: string
+}
+
+interface ManifestTool {
+  description?: string
+  agentVisible?: boolean
+  deferLoading?: boolean
+  contractOnly?: boolean
+  routineOnly?: boolean
+  requiredScopes?: string[]
+  params?: unknown
+}
+
+const sdkNameOf = (app: string, tool: string) => `${app}__${tool.replace(/[^a-zA-Z0-9_-]/g, "_")}`
+
+/** Every tool of every shipped app and of the kernel, read from source. */
+export function loadLadderTools(root: string = LADDER_REPO_ROOT): LadderTool[] {
+  const out: LadderTool[] = []
+  for (const m of loadManifests(root)) {
+    if (LEFT_OUT_APPS.has(m.name)) continue
+    const instructions = m.manifest.agentInstructions
+    const guide = typeof instructions === "string" ? instructions : undefined
+    const tools = (m.manifest.tools ?? {}) as Record<string, ManifestTool>
+    for (const [name, def] of Object.entries(tools)) {
+      if (def.contractOnly) continue
+      const sdkName = sdkNameOf(m.name, name)
+      out.push({
+        app: m.name,
+        name,
+        sdkName,
+        description: def.description ?? "",
+        requiredScopes: def.requiredScopes ?? [],
+        deferred: def.deferLoading ?? true,
+        agentVisible: def.agentVisible !== false,
+        routineOnly: def.routineOnly === true,
+        wireTokens: estimateToolSchemaTokens(sdkName, {
+          description: def.description,
+          inputSchema: providerInputSchemaOf(def.params),
+        }),
+        estimated: false,
+        ...(guide ? { guide } : {}),
+      })
+    }
+  }
+  for (const t of collectKernelTools(root).tools) {
+    const sdkName = sdkNameOf("kernel", t.name)
+    out.push({
+      app: "kernel",
+      name: t.name,
+      sdkName,
+      description: t.fullDescription,
+      requiredScopes: t.requiredScopes,
+      deferred: t.deferLoading ?? false,
+      agentVisible: t.agentVisible,
+      routineOnly: t.routineOnly,
+      wireTokens:
+        Math.ceil(`${sdkName}\n${t.fullDescription}\n`.length / 4) + Math.ceil(t.paramsChars / 4),
+      estimated: true,
+    })
+  }
+  return out.sort((a, b) => a.sdkName.localeCompare(b.sdkName))
+}
+
+export interface LadderWorld {
+  name: string
+  /** Apps that are on; absent means every app. */
+  apps?: readonly string[]
+  /** Scopes the turn holds. */
+  scopes: readonly string[]
+  surface?: "web" | "mobile" | "desktop"
+}
+
+export interface LadderMeasure {
+  world: string
+  /** Tools the agent can see: hot and deferred. */
+  visibleTools: number
+  /** Tools the announcement lists. */
+  announcedTools: number
+  announcementTokens: number
+  summaryLines: number
+  summaryTokens: number
+  /** Schema total per app over its visible tools, through the product's meter. */
+  appSchemaTokens: Record<string, number>
+  /** The client-surface line this world adds to the prompt tail. */
+  surfaceLineTokens: number
+}
+
+/** The numbers a world is measured against. Targets, not caps. */
+export interface LadderTargets {
+  visibleTools?: number
+  announcementTokens?: number
+  /** Per app; an app absent here has no target of its own. */
+  appSchemaTokens: Record<string, number>
+}
+
+/** Every measure of one world, through the real announcement builder and meter. */
+export function measureLadder(tools: readonly LadderTool[], world: LadderWorld): LadderMeasure {
+  const on = world.apps ? new Set(world.apps) : null
+  const usable = tools.filter(
+    (t) =>
+      t.agentVisible &&
+      (!on || on.has(t.app) || t.app === "kernel") &&
+      checkToolScopes({ requiredScopes: t.requiredScopes }, [...world.scopes]).authorized,
+  )
+  const announced = usable.filter((t) => t.deferred || t.routineOnly)
+  const announcement = buildDeferredToolsAnnouncement(
+    announced.map((t) => ({ appName: t.app, toolName: t.name })),
+  )
+  const apps = [...new Set(usable.map((t) => t.app))].filter((a) => a !== "kernel")
+  const summaries = apps.map((app) => {
+    const guide = usable.find((t) => t.app === app)?.guide
+    return `- **${app}**: ${guide ? appInstructionSummary(guide) : ""}`
+  })
+  const appSchemaTokens: Record<string, number> = {}
+  const estimatedApps = [...new Set(usable.filter((t) => t.estimated).map((t) => t.app))]
+  for (const t of usable) appSchemaTokens[t.app] = (appSchemaTokens[t.app] ?? 0) + t.wireTokens
+  return {
+    world: world.name,
+    visibleTools: usable.length,
+    announcedTools: announced.length,
+    announcementTokens: estimateTokens(announcement),
+    summaryLines: summaries.length,
+    summaryTokens: estimateTokens(summaries.join("\n")),
+    appSchemaTokens,
+    estimatedApps,
+    surfaceLineTokens: estimateTokens(renderClientSurfaceLine(world.surface)),
+  }
+}
+
+export interface LadderReason {
+  /** `<world>` or `<world>:<measure>` or `<world>:<app>`, as `overTarget` names it. */
+  key: string
+  /** The capability that needs the number to be over. */
+  capability: string
+}
+
+export interface LadderOver {
+  key: string
+  measured: number
+  target: number
+}
+
+/** Every number over its target, named so a reason line can clear it. */
+export function overTarget(measure: LadderMeasure, targets: LadderTargets): LadderOver[] {
+  const over: LadderOver[] = []
+  const check = (key: string, measured: number, target: number | undefined) => {
+    if (target !== undefined && measured > target)
+      over.push({ key: `${measure.world}:${key}`, measured, target })
+  }
+  check("visibleTools", measure.visibleTools, targets.visibleTools)
+  check("announcementTokens", measure.announcementTokens, targets.announcementTokens)
+  for (const [app, tokens] of Object.entries(measure.appSchemaTokens)) {
+    check(app, tokens, targets.appSchemaTokens[app])
+  }
+  return over
+}
+
+/** The numbers over target with no reason naming a capability. */
+export function unexplained(
+  over: readonly LadderOver[],
+  reasons: readonly LadderReason[],
+): LadderOver[] {
+  const explained = new Set(reasons.filter((r) => r.capability.trim().length > 0).map((r) => r.key))
+  return over.filter((o) => !explained.has(o.key))
+}
+
+export function readLadderReasons(file: string): LadderReason[] {
+  return JSON.parse(readFileSync(file, "utf8")) as LadderReason[]
+}
+
+export interface StaticFixedPrompt {
+  total: number
+  /** Tokens per part, so a difference from the composed prompt can be traced. */
+  parts: Record<string, number>
+}
+
+const PROMPTS_DIR = join(import.meta.dir, "../prompts")
+
+/** A prompt file without its front matter. */
+function promptBody(file: string): string {
+  return readFileSync(join(PROMPTS_DIR, file), "utf8").replace(/^---\n[\s\S]*?\n---\n/, "")
+}
+
+/**
+ * The fixed parts of the system prompt with every app on, from source: the base
+ * text, the charter and roster templates, the kernel guide, the summary lines
+ * and the announcement. The integration case in `context.token-cap.test.ts`
+ * composes the real prompt and holds this within 1,000 tokens of it.
+ */
+export function staticFixedPromptTokens(
+  tools: readonly LadderTool[] = loadLadderTools(),
+): StaticFixedPrompt {
+  const everyApp = measureLadder(tools, { name: "every app", scopes: ["*"] })
+  const parts: Record<string, number> = {
+    base: estimateTokens(composeTurnSystemText(promptBody("system.md"), "Organisation")),
+    charter: estimateTokens(promptBody("agent-charter.md")),
+    roster: estimateTokens(promptBody("agent-roster.md")),
+    kernelGuide: estimateTokens(promptBody("kernel/overview.md")),
+    summaries: everyApp.summaryTokens,
+    announcement: everyApp.announcementTokens,
+  }
+  return { total: Object.values(parts).reduce((a, b) => a + b, 0), parts }
+}
+
+export interface LadderReport {
+  /** Every number of every world, and every reason that clears one over target. */
+  lines: string[]
+  /** One message per number over target with no reason, naming it. */
+  failures: string[]
+}
+
+/**
+ * The report of a set of worlds against their targets. A number over its target
+ * is a failure only until a reason line names the capability that needs it; the
+ * lines print every number either way. No outcome here removes or hides a tool.
+ */
+export function ladderReport(
+  measures: readonly LadderMeasure[],
+  targets: Readonly<Record<string, LadderTargets>>,
+  reasons: readonly LadderReason[],
+): LadderReport {
+  const lines: string[] = []
+  const failures: string[] = []
+  for (const m of measures) {
+    lines.push(
+      `${m.world}: ${m.visibleTools} visible tools, ${m.announcedTools} announced in ${m.announcementTokens} tokens, ` +
+        `${m.summaryLines} summary lines in ${m.summaryTokens} tokens, surface line ${m.surfaceLineTokens} tokens`,
+    )
+    for (const [app, tokens] of Object.entries(m.appSchemaTokens).sort(([a], [b]) =>
+      a.localeCompare(b),
+    )) {
+      const target = targets[m.world]?.appSchemaTokens[app]
+      lines.push(
+        `  ${app}: ${tokens} schema tokens${m.estimatedApps.includes(app) ? " (estimated from source)" : ""}${target === undefined ? "" : ` (target ${target})`}`,
+      )
+    }
+    const target = targets[m.world]
+    if (!target) continue
+    for (const o of overTarget(m, target)) {
+      const reason = reasons.find((r) => r.key === o.key && r.capability.trim().length > 0)
+      if (reason)
+        lines.push(
+          `  OVER ${o.key}: ${o.measured} against ${o.target}; reason: ${reason.capability}`,
+        )
+      else {
+        lines.push(`  OVER ${o.key}: ${o.measured} against ${o.target}; NO REASON`)
+        failures.push(
+          `${o.key} is ${o.measured} against a target of ${o.target}: add a line to ladder-budget.reasons.json naming the capability that needs it`,
+        )
+      }
+    }
+  }
+  return { lines, failures }
+}

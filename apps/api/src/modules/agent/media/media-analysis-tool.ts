@@ -139,7 +139,7 @@ export const defaultMediaAnalysisToolDeps: MediaAnalysisToolDeps = {
   preCheck: defaultPreCheck,
   finalizeUsage: defaultFinalizeUsage,
   enqueueAppJob: defaultEnqueueAppJob,
-  privileged: (orgId, reason, fn) => withPrivilegedDb(orgId, reason, fn),
+  privileged: withPrivilegedDb,
   normalizeMedia: defaultNormalizeMedia,
   isPrivateMailFile: (orgId, fileId) =>
     withPrivilegedDb(orgId, "media-analysis:private-mail", (tx) =>

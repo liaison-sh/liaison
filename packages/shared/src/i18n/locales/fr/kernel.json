@@ -2365,6 +2365,12 @@
     "expired": "Expirée",
     "withdrawn": "Retirée",
     "lastAttemptFailed": "Dernière tentative échouée :",
+    "cancelledWhy": {
+      "ticketMerged": "Annulée : le ticket a été fusionné dans un autre",
+      "requesterDeleted": "Annulée : le demandeur a supprimé son compte",
+      "soleApproverDeleted": "Annulée : le seul approbateur a supprimé son compte",
+      "taskDeleted": "Annulée : la tâche qu'elle devait modifier a été supprimée"
+    },
     "message": "Écrire",
     "approvalRequestNoLongerExists": "Cette demande d'approbation n'existe plus.",
     "requestedBy": "Demandée par",

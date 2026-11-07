@@ -72,6 +72,9 @@ export async function cancelApprovalsForSourceTicket(
   return { cancelledCount: cancelled.length }
 }
 
+/** What a request shows once the ticket it would act on was merged into another. */
+export const TICKET_MERGED_REASON = "Cancelled: the ticket was merged into another"
+
 /** What an approval list shows for an approval its requester's deletion cancelled. */
 export const REQUESTER_DELETED_REASON = "Cancelled: the requester deleted their account"
 /** And for one whose only approver deleted their account. */

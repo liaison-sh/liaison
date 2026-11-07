@@ -130,7 +130,9 @@ export function buildApprovalSummary(input: {
     ...(r.decided_by ? { decidedBy: r.decided_by } : {}),
     ...(r.decided_by && input.decidedByName ? { decidedByName: input.decidedByName } : {}),
     ...(r.decided_at ? { decidedAt: new Date(r.decided_at).toISOString() } : {}),
-    ...(r.status === "denied" && r.reason ? { reason: r.reason } : {}),
+    ...((r.status === "denied" || r.status === "cancelled") && r.reason
+      ? { reason: r.reason }
+      : {}),
     ...(r.reason === "taint_escalation" ? { heldForOutsideText: true as const } : {}),
     bundleId: r.bundle_id ?? null,
     bundlePosition: r.bundle_position ?? null,

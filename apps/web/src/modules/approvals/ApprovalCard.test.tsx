@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { APPROVING_WEDGE_GRACE_MS } from "@liaison/shared"
-import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
+import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { createSignal } from "solid-js"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { formatDateTime } from "~/lib/relative-time"
@@ -281,6 +281,29 @@ describe("ApprovalCard", () => {
     expect(banner).toHaveTextContent("This order was already fulfilled in Shopify.")
     // The approve action is still available (the card is pending again).
     expect(screen.getByTestId("approval-card-action-approve")).toBeInTheDocument()
+  })
+
+  it("a request cancelled by a ticket merge shows its readable sentence, in French too", async () => {
+    handleWsCreate(
+      baseRow({
+        status: "cancelled",
+        reason: "Cancelled: the ticket was merged into another",
+      }),
+      "u-approver",
+    )
+    render(() => <ApprovalCard requestId="ar-1" />)
+    const line = await screen.findByTestId("approval-card-cancelled-reason")
+    expect(line).toHaveTextContent("Cancelled: the ticket was merged into another")
+    expect(line).not.toHaveTextContent("ticket_merged")
+    cleanup()
+    render(() => (
+      <I18nProvider initialLocale="fr">
+        <ApprovalCard requestId="ar-1" />
+      </I18nProvider>
+    ))
+    expect(await screen.findByTestId("approval-card-cancelled-reason")).toHaveTextContent(
+      "Annulée : le ticket a été fusionné dans un autre",
+    )
   })
 
   it("shows no failure banner when lastFailure is null", async () => {

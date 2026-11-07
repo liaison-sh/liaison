@@ -209,6 +209,8 @@
       "tool": "kernel:data_subject_export",
       "field": "description",
       "sentence": "UNGATED read-to-file: it sends nothing and changes no business data — it only materializes a file from records you can already read.",
+      "guideSentence": "GATED: a full personal-data bundle of one person is always a human decision, so the call parks as an approval first; once approved it sends nothing and changes no business data, it only materializes a file from records you can already read.",
+      "note": "corrected: gating",
       "to": "guide:kernel"
     },
     {

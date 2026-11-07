@@ -36,6 +36,10 @@ interface MoveLine {
   field: string
   sentence: string
   to: string
+  // Set when the text in the guide corrects a fact the tool text got wrong:
+  // `sentence` stays what left the tool, `guideSentence` is what the guide says.
+  guideSentence?: string
+  note?: string
 }
 
 interface ManifestTool {
@@ -252,7 +256,7 @@ describe("text moved off kernel tools", () => {
       const found = kernelGuide().sections.some(
         (s) =>
           s.tools.includes(`kernel__${name}`) &&
-          fold(s.text).includes(fold(asGuideCopy(m.sentence))),
+          fold(s.text).includes(fold(asGuideCopy(m.guideSentence ?? m.sentence))),
       )
       if (!found) lost.push(`${m.tool}: ${m.sentence.slice(0, 80)}`)
     }
@@ -267,7 +271,7 @@ describe("text moved off kernel tools", () => {
         renderAppGuideBlock("kernel", selectAppGuideParts("kernel", kernelGuide(), new Set([sdk]))),
       )
       for (const m of KERNEL_LINES) {
-        const inIt = rendered.includes(fold(asGuideCopy(m.sentence)))
+        const inIt = rendered.includes(fold(asGuideCopy(m.guideSentence ?? m.sentence)))
         expect({ tool: t, line: m.sentence.slice(0, 60), inIt }).toEqual({
           tool: t,
           line: m.sentence.slice(0, 60),

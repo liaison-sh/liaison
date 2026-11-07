@@ -2093,6 +2093,13 @@ export const FR: Record<string, string> = {
   Denied: "Refusée",
   Withdrawn: "Retirée",
   "Last attempt failed:": "Dernière tentative échouée :",
+  "Cancelled: the ticket was merged into another":
+    "Annulée : le ticket a été fusionné dans un autre",
+  "Cancelled: the requester deleted their account": "Annulée : le demandeur a supprimé son compte",
+  "Cancelled: the only approver deleted their account":
+    "Annulée : le seul approbateur a supprimé son compte",
+  "Cancelled: the task it would change was deleted":
+    "Annulée : la tâche qu'elle devait modifier a été supprimée",
   "Approval request no longer exists.": "Cette demande d'approbation n'existe plus.",
   "Requested by": "Demandée par",
   "Routed privately to the resource owner. Only they can see and decide it.":

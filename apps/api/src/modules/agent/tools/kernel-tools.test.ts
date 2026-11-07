@@ -5,6 +5,7 @@ import { z } from "zod"
 import { sql } from "~/db"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { byokEncryptionKey } from "~/lib/env"
+import { type AppGuideInput, normalizeAppGuide } from "~/modules/agent/context/app-guide"
 import {
   agentInstructionsRegistry,
   skillRegistry,
@@ -28,6 +29,12 @@ async function affordance(name: string, orgId: string = ORG_ID): Promise<string>
   const params = (entry as { params?: unknown }).params
   const schema = params ? JSON.stringify(z.toJSONSchema(params as z.ZodType)) : ""
   return `${entry.description}\n${KERNEL_RESULT_HINTS[name] ?? ""}\n${schema}`
+}
+
+// The kernel guide is a core plus sections; a test about its words reads all of them.
+function guideText(raw: AppGuideInput): string {
+  const g = normalizeAppGuide(raw)
+  return [g.core, ...g.sections.map((x) => x.text)].join("\n")
 }
 
 describe("kernel tool registration", () => {
@@ -356,7 +363,7 @@ describe("kernel tool registration", () => {
     // states the identity-match + same-name disambiguation. Guard the guidance so an edit can't drop it.
     const kernelInstr = agentInstructionsRegistry.get([ORG_ID, "kernel"])
     expect(kernelInstr, "kernel agent instructions must be registered").toBeDefined()
-    const lc = (kernelInstr as string).toLowerCase()
+    const lc = guideText(kernelInstr as AppGuideInput).toLowerCase()
     expect(lc.includes("web-sourced")).toBe(true)
     expect(lc.includes("unverified")).toBe(true)
     expect(lc.includes("identity-match") || lc.includes("identity match")).toBe(true)
@@ -527,7 +534,7 @@ describe("kernel tool registration", () => {
   it("registerKernelAgentTools seeds agentInstructionsRegistry with the kernel overview body", () => {
     const overview = agentInstructionsRegistry.get([ORG_ID, "kernel"])
     expect(overview).toBeDefined()
-    expect(overview!).toContain("thread management")
+    expect(guideText(overview!)).toContain("thread management")
     // The legacy _overview skillRegistry slot must no longer exist for kernel.
     expect(skillRegistry.get([ORG_ID, "kernel", "_overview" as any])).toBeUndefined()
   })

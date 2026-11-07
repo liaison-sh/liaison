@@ -2368,6 +2368,12 @@
     "expired": "Expired",
     "withdrawn": "Withdrawn",
     "lastAttemptFailed": "Last attempt failed:",
+    "cancelledWhy": {
+      "ticketMerged": "Cancelled: the ticket was merged into another",
+      "requesterDeleted": "Cancelled: the requester deleted their account",
+      "soleApproverDeleted": "Cancelled: the only approver deleted their account",
+      "taskDeleted": "Cancelled: the task it would change was deleted"
+    },
     "message": "Message",
     "approvalRequestNoLongerExists": "Approval request no longer exists.",
     "requestedBy": "Requested by",

@@ -116,6 +116,17 @@ interface ApprovalCardProps {
 }
 
 const TIMEOUT_MS = 30_000
+/** The reasons the server writes on a request it cancelled itself, each with its words in the
+ *  viewer's language. A reason not listed here (an older row) shows as stored. */
+const CANCEL_REASON_KEYS: Record<string, string> = {
+  "Cancelled: the ticket was merged into another": "kernel.approvalsUi.cancelledWhy.ticketMerged",
+  "Cancelled: the requester deleted their account":
+    "kernel.approvalsUi.cancelledWhy.requesterDeleted",
+  "Cancelled: the only approver deleted their account":
+    "kernel.approvalsUi.cancelledWhy.soleApproverDeleted",
+  "Cancelled: the task it would change was deleted": "kernel.approvalsUi.cancelledWhy.taskDeleted",
+}
+
 const TERMINAL_STATUSES = new Set(["approved", "denied", "expired", "cancelled", "withdrawn"])
 
 function relativeFromNow(iso: string | undefined, locale: string): string {
@@ -1975,6 +1986,20 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
                         {i18n.t("kernel.approvalsUi.lastAttemptFailed")} {f().message}
                       </div>
                     )}
+                  </Show>
+
+                  {/* Why the server cancelled this request: a calm line, in the viewer's language. */}
+                  <Show when={c().status === "cancelled" && c().reason}>
+                    <div
+                      class="mt-2 text-[12px] text-text-secondary"
+                      data-testid="approval-card-cancelled-reason"
+                    >
+                      {(() => {
+                        const r = c().reason as string
+                        const key = CANCEL_REASON_KEYS[r]
+                        return key ? i18n.t(key) : r
+                      })()}
+                    </div>
                   </Show>
 
                   {/* What the send check says now, read for this card. Calm: a line, not an alarm. */}

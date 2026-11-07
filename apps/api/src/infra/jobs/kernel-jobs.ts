@@ -1031,6 +1031,12 @@ export async function registerKernelJobs(): Promise<void> {
     const { pruneEffectLedger } = await import("~/lib/effect-once")
     log.info(await pruneEffectLedger(), "effect_ledger_retention")
   })
+  // Away ranges 90 days past their last day (or the day they were ended): dates about a
+  // person are kept no longer than capacity and routing can use them.
+  await registerScheduledJob("kernel", "away-ranges-prune", "37 4 * * *", async () => {
+    const { pruneAwayRanges } = await import("~/modules/users/away")
+    log.info(await pruneAwayRanges(), "away_ranges_retention")
+  })
   await registerScheduledJob("kernel", "agent-turn-retention", "17 4 * * *", async () => {
     const { runTurnRetention } = await import("~/modules/agent/runtime/turn-resume")
     await runTurnRetention()

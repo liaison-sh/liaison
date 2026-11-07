@@ -169,6 +169,9 @@ describe("db import enforcement", () => {
     // Approval routing: reads away ranges and preferences of the people in one org, and moves
     // the pending requests linked to an item that changed hands, all pinned to that org.
     "modules/approvals/route-world.ts",
+    // Away days: the one writer of kernel.away_ranges (no member write path), its daily prune,
+    // and the next-in-line column a colleague's read needs, all pinned to one org but the prune.
+    "modules/users/away.ts",
     "modules/approvals/expiry.ts",
     "modules/approvals/approving-reaper.ts",
     "modules/approvals/cancel.ts",

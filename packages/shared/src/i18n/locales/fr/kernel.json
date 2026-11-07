@@ -2077,7 +2077,31 @@
       "localeEs": "Espagnol",
       "localePtBr": "Portugais (Brésil)",
       "localeJa": "Japonais",
-      "localeZhCn": "Chinois (simplifié)"
+      "localeZhCn": "Chinois (simplifié)",
+      "away": {
+        "title": "Absence",
+        "hint": "Indiquez quand vous êtes absent et qui prend le relais. Seules les dates sont gardées, jamais le motif.",
+        "from": "Premier jour",
+        "to": "Dernier jour",
+        "nextInLine": "Relais",
+        "nobody": "Personne",
+        "standing": "Relais par défaut",
+        "standingHint": "Utilisé quand une absence ne nomme personne.",
+        "save": "M'indiquer absent",
+        "endEarly": "Terminer maintenant",
+        "undo": "Annuler",
+        "range": "Du {{from}} au {{to}}",
+        "weekly": "Chaque {{days}} à partir du {{from}}",
+        "oneDay": "{{day}}",
+        "setBy": "Indiqué par {{name}}",
+        "nextInLineIs": "Relais : {{name}}",
+        "awayToo": "{{name}} est aussi absent, jusqu'au {{until}}.",
+        "hasLeft": "{{name}} a quitté l'organisation, choisissez quelqu'un.",
+        "awayUntilOption": "{{name}} (absent jusqu'au {{until}})",
+        "none": "Aucune absence enregistrée.",
+        "failed": "Impossible d'enregistrer votre absence.",
+        "endFailed": "Impossible d'y mettre fin."
+      }
     },
     "languageOrgDefault": "Langue de l'organisation ({{language}})",
     "sections": {
@@ -3728,7 +3752,8 @@
     "approvalDecided": {
       "approved": "Demande {{handle}} approuvée",
       "rejected": "Demande {{handle}} refusée"
-    }
+    },
+    "awayNamed": "{{name}} vous a indiqué absent {{dates}}"
   },
   "approvalDecisionLine": {
     "withdrawn": "Retirée par le demandeur.",

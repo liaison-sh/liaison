@@ -305,6 +305,7 @@ import {
   RUN_ON_MY_COMPUTER_DESCRIPTION,
   summarizeRunOnMyComputer,
 } from "~/modules/nodes/run-on-my-computer"
+import { handleSetAwayTool, setAwayRefusal } from "~/modules/users/away"
 import {
   handleMergeImportedUser,
   handleMergeImportedUserPreview,
@@ -3639,6 +3640,65 @@ When to use: When an admin asks to set up a reusable role they will spawn repeat
     }),
     handler: handleOpenApp as (params: unknown, ctx: any) => Promise<unknown>,
   })
+
+  // Away days and next in line (one kernel record, modules/users/away.ts). It changes who sees
+  // approvals, so outside text must not make it happen, and a person saying "I'm away" must not
+  // pay a click for it: the person's own untainted turn runs it at once, and so does a holder of
+  // the scope for someone else (D50). Any other call (outside text read, a routine, an MCP
+  // client) parks to the requester's own decision, never to the person named, and no
+  // auto-approve policy answers it. Refusals (another's range without the scope, a next in line
+  // who cannot be one) come before any gate.
+  toolRegistry.set([orgId, "kernel", "set_away"], {
+    appName: "kernel",
+    name: "set_away",
+    deferLoading: true,
+    description:
+      "Record that a person is away (dates only, never a reason), end it, or name their standing next in line. Own range: no userId. Someone else's needs kernel:users:admin or projects:capacity:write. Dates are resolved on the server: give on, from and to, week (ISO number), or everyWeekday (ISO days 1-7, optional from/to); MM-DD means the next one. Say back the dates the result states, with weekdays.",
+    searchKeywords: [
+      "absent",
+      "absence",
+      "congés",
+      "vacances",
+      "remplaçant",
+      "next in line",
+      "away",
+      "holiday",
+      "leave",
+    ],
+    requiredScopes: ["kernel:threads:read"],
+    params: z.object({
+      on: z.string().optional().describe("One day, YYYY-MM-DD or MM-DD."),
+      from: z.string().optional().describe("First day, YYYY-MM-DD or MM-DD."),
+      to: z.string().optional().describe("Last day, included, YYYY-MM-DD or MM-DD."),
+      week: z.number().int().min(1).max(53).optional().describe("ISO week number."),
+      weekYear: z.number().int().min(2000).max(2100).optional(),
+      everyWeekday: z
+        .array(z.number().int().min(1).max(7))
+        .min(1)
+        .max(7)
+        .optional()
+        .describe("Every week on these ISO days (Mon 1 to Sun 7)."),
+      userId: z.string().uuid().optional().describe("Someone else's range; omit for your own."),
+      nextInLineId: z
+        .string()
+        .uuid()
+        .optional()
+        .describe("Who stands in. With no dates: the standing next in line."),
+      end: z.boolean().optional().describe("true: end what is running today."),
+    }),
+    handler: handleSetAwayTool as (params: unknown, ctx: any) => Promise<unknown>,
+    writesToTable: "kernel.away_ranges",
+    conditionalGate: true,
+    externalEffect: true,
+    requiresHumanTurn: true,
+    noAutoApprove: true,
+    approvalImpact: "internal",
+    refuseBeforeGate: (params, ctx) =>
+      setAwayRefusal(params as { userId?: string; nextInLineId?: string }, ctx),
+  })
+  // A parked call is decided by the person who asked (a routine's card by its author), whatever
+  // the tool's own scope, so a colleague or an admin can never decide it (SEC-18).
+  approvalResourceOwnerRegistry.set([orgId, "kernel", "set_away"], { requesterAlways: true })
 
   // One-click next steps under the agent's reply, drawn by the chat from this tool's result
   // (suggest-steps-tool.ts). Like open_app its effect is on the requester's screen alone.

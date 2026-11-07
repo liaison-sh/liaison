@@ -52,6 +52,31 @@ export const FIELD_RE = /^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/
 /** The agent's own namespace in the store. */
 export const AGENT_STORE_APP = "agent"
 
+/**
+ * A draft preview's own namespace (modules/app-builder/preview.ts):
+ * `draft:<draftId>`. The ':' never occurs in an app name, so no app's
+ * collections and no other draft's can share it; the preview's bridge sets it
+ * from the draft it runs (never from app code), it is wiped at the draft's next
+ * preview and a day after its last write (`pruneDraftStoreNamespaces`), and no
+ * collection in it is ever declared, listed or indexed.
+ */
+export const DRAFT_STORE_APP_RE =
+  /^draft:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+/** The store namespace of a draft's previews. */
+export function draftStoreApp(draftId: string): string {
+  const app = `draft:${draftId.toLowerCase()}`
+  if (!DRAFT_STORE_APP_RE.test(app)) {
+    throw new DataStoreError("invalid_name", `'${draftId}' is not a draft id`)
+  }
+  return app
+}
+
+/** Whether `app` is a draft preview's namespace (not an app's). */
+export function isDraftStoreApp(app: string): boolean {
+  return DRAFT_STORE_APP_RE.test(app)
+}
+
 export type DataStoreErrorCode =
   | "version_conflict"
   | "not_found"
@@ -130,7 +155,7 @@ export interface CollectionUsage {
 // ---------------------------------------------------------------------------
 
 function assertCaller(caller: StoreCaller): void {
-  if (!APP_NAME_RE.test(caller.app)) {
+  if (!APP_NAME_RE.test(caller.app) && !DRAFT_STORE_APP_RE.test(caller.app)) {
     throw new DataStoreError("invalid_name", `'${caller.app}' is not a valid app name`)
   }
 }
@@ -829,4 +854,24 @@ export async function countDocuments(
     return Number(row?.n ?? 0)
   }
   return compiled.unindexed ? withStatementTimeout(tx, UNINDEXED_STATEMENT_TIMEOUT, run) : run(tx)
+}
+
+/**
+ * Empties a draft preview's namespace (`draft:<draftId>`) in the caller's org:
+ * its documents and their counters. Runs in the caller's RLS transaction.
+ */
+export async function wipeDraftStore(
+  tx: RlsClient,
+  orgId: string,
+  draftId: string,
+): Promise<{ deleted: number }> {
+  const app = draftStoreApp(draftId)
+  const gone = await tx
+    .delete(appDocuments)
+    .where(and(eq(appDocuments.orgId, orgId), eq(appDocuments.app, app)))
+    .returning({ id: appDocuments.docId })
+  await tx
+    .delete(appDocumentUsage)
+    .where(and(eq(appDocumentUsage.orgId, orgId), eq(appDocumentUsage.app, app)))
+  return { deleted: gone.length }
 }

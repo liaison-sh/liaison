@@ -1947,6 +1947,13 @@
       "when": 1900003360000,
       "tag": "0276_app_builder",
       "breakpoints": true
+    },
+    {
+      "idx": 278,
+      "version": "7",
+      "when": 1900003370000,
+      "tag": "0277_draft_store_namespace",
+      "breakpoints": true
     }
   ]
 }

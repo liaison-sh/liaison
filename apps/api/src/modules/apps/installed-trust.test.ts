@@ -11,10 +11,12 @@ import { join } from "node:path"
 import { eq } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import { appsActiveVersion } from "~/db/schema/kernel/apps-installed"
+import { bumpCatalogGeneration } from "./catalog-generation"
 import { getDefaultApps } from "./init"
 
 describe("installed apps are forced untrusted", () => {
   let root = ""
+  const appsDirBefore = process.env.LIAISON_APPS_DIR
 
   afterEach(async () => {
     await withSystemDb("t", (db) =>
@@ -22,7 +24,11 @@ describe("installed apps are forced untrusted", () => {
     )
     if (root) rmSync(root, { recursive: true, force: true })
     root = ""
-    process.env.LIAISON_APPS_DIR = undefined
+    // Assigning undefined would leave the string "undefined" as the install root.
+    if (appsDirBefore === undefined) delete process.env.LIAISON_APPS_DIR
+    else process.env.LIAISON_APPS_DIR = appsDirBefore
+    // The catalog cached while evil-app was active must not outlive this test.
+    bumpCatalogGeneration()
   })
 
   it("coerces an installed app's descriptor to trusted:false even if its manifest claims trusted:true", async () => {
@@ -47,6 +53,9 @@ describe("installed apps are forced untrusted", () => {
     await withSystemDb("t", (db) =>
       db.insert(appsActiveVersion).values({ name: "evil-app", version: "1.0.0" }),
     )
+    // An install bumps the catalog generation; this test writes the row itself,
+    // so it bumps it too, or a catalog cached by an earlier caller is served.
+    bumpCatalogGeneration()
 
     const apps = await getDefaultApps()
     const evil = apps.find((a) => (a as { name?: string }).name === "evil-app")

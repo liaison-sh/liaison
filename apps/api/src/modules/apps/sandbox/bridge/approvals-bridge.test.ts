@@ -3,6 +3,7 @@
 // ctx.requestApproval through the sandbox bridge: a handler may name the scope that decides its
 // request. It is written on the row as the deciding scope, the notified audience and the decide
 // check read it from there, it must belong to the calling app, and without it nothing changes.
+
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { sql } from "~/db"
 import * as eventBusModule from "~/infra/events/event-bus"
@@ -12,6 +13,7 @@ import { createApprovalsMethods } from "~/modules/apps/sandbox/bridge/approvals"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import { seedOrgRow, seedUserRows } from "~/seed/factories/org/rows"
 import { insertSql } from "~/seed/factories/org/test-rows"
+import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 const broadcastSpy = spyOn(eventBusModule, "broadcastEphemeral").mockImplementation(async () => {})
 
@@ -75,6 +77,8 @@ async function rowOf(id: string) {
 const count = async () =>
   (await sql`SELECT count(*)::int AS n FROM kernel.approval_requests WHERE org_id = ${ORG}`)[0]
     ?.n as number
+
+strictNestedPrivileged()
 
 describe("ctx.requestApproval approve_scope", () => {
   beforeAll(async () => {

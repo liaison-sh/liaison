@@ -3,6 +3,7 @@
 // A staged send cannot leave when the state says it must not. These run the real
 // mail handlers in the sandbox, through the real gate and decision, on a stubbed
 // SMTP: a recorded send is the one thing that must not happen after a reply.
+
 import { afterAll, beforeAll, describe, expect, it, setSystemTime, spyOn } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -58,6 +59,7 @@ import { insertSql } from "~/seed/factories/org/test-rows"
 import { actorFor, asUser } from "~/seed/factories/people/actors"
 import * as minimal from "~/seed/tiers/minimal"
 import { bootstrapAdminCtx } from "~/tests/helpers/agent-ctx"
+import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
   appendMailMessages,
@@ -524,6 +526,8 @@ afterAll(async () => {
   await shutdownSandboxPool()
   await releaseTestLock()
 })
+
+strictNestedPrivileged()
 
 describe("a reply stops a staged send", () => {
   it("compose from a follow-up routine, inbound seeded, approve: no provider call, failed_no_effect, cancelled", async () => {

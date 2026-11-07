@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Mounted slots: one list for manifest slot panels, slot actions and
 // `contributions`, filtered by scope, app state and feature.
+
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { Hono } from "hono"
 import type { AppEnv } from "~/app"
@@ -10,6 +11,7 @@ import ticketsManifest from "~/apps/tickets/app.manifest.json"
 import { slotRegistry } from "~/modules/apps/app-registries"
 import { forgetOrgApps, rememberOrgAppStates } from "~/modules/apps/org-apps"
 import type { Scope } from "~/modules/permissions/types"
+import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 import { listSlotPanels, registerAppSlots } from "./registry"
 import { slotsRoutes } from "./routes"
 
@@ -50,6 +52,8 @@ async function routePanels(scopes: string[], slot: string): Promise<Array<{ id: 
   expect(res.status).toBe(200)
   return ((await res.json()) as { data: { panels: Array<{ id: string }> } }).data.panels
 }
+
+strictNestedPrivileged()
 
 describe("mounted slots", () => {
   beforeEach(() => slotRegistry.deleteByPrefix([ORG]))

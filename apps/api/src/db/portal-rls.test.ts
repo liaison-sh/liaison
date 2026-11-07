@@ -2,11 +2,13 @@
 //
 // withPortalContext on the login requests really use (liaison_request): it
 // reaches the portal role, and it opens only for an active external user.
+
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, sql } from "~/db"
 import { PortalContextRefusedError, withPortalContext } from "~/db/portal-rls"
 import { insertSql } from "~/seed/factories/org/test-rows"
+import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 const ORG_ID = crypto.randomUUID()
 const OTHER_ORG_ID = crypto.randomUUID()
@@ -62,6 +64,8 @@ afterAll(async () => {
   await sql`DELETE FROM kernel.users WHERE org_id = ${ORG_ID}`
   await sql`DELETE FROM kernel.organizations WHERE id IN (${ORG_ID}, ${OTHER_ORG_ID})`
 })
+
+strictNestedPrivileged()
 
 describe("withPortalContext", () => {
   test("on the request login, withPortalContext reaches liaison_portal and reads portal.me", async () => {

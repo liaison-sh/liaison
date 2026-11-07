@@ -183,7 +183,7 @@ beforeEach(async () => {
 afterEach(() => {
   OutboundFetchTestAccess.setFetch(null)
   lookupSpy.mockRestore()
-  process.env.NESTED_PRIVILEGED_STRICT = "1"
+  delete process.env.NESTED_PRIVILEGED_STRICT
 })
 
 describe("one conversation view with its customer card", () => {

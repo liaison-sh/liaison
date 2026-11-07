@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
 import { parseReturnDate } from "~/modules/mail/parse-return-date"
+import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 const SENT = new Date("2026-11-06T10:00:00.000Z")
 const SEVEN_DAYS = new Date("2026-11-13T10:00:00.000Z")
 
 const returnDate = (text: string | null, sentAt = SENT, locale?: string) =>
   parseReturnDate(text, sentAt, locale, "UTC").returnDate
+
+strictNestedPrivileged()
 
 describe("parseReturnDate: what it reads", () => {
   for (const [text, expected] of [

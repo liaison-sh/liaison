@@ -5,6 +5,7 @@
 // kind that is neither a task nor a contact. Who reads the discussion is who
 // reads the item: a person whose grants do not show the item gets nothing and
 // creates nothing, and someone who loses sight of it loses the thread.
+
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
 import { app } from "~/app"
@@ -26,6 +27,7 @@ import {
 import { createExternalUser } from "~/modules/users/external-user"
 import { insertAppRow } from "~/seed/factories/app-tables"
 import * as minimal from "~/seed/tiers/minimal"
+import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -116,6 +118,8 @@ async function seatsOf(threadId: string): Promise<string[]> {
     ).map((r) => r.user_id),
   )
 }
+
+strictNestedPrivileged()
 
 describe("entity discussions", () => {
   beforeAll(async () => {

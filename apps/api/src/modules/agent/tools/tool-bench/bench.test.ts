@@ -3,7 +3,9 @@
 // The tool-finding bench, with no server, database or env: the corpus against
 // the catalog read from source, the baseline of each typed form, the catalog
 // lint and the known bad answers. Runs in the guards suite on every change.
+
 import { describe, expect, it } from "bun:test"
+import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 import { rankDeferredTools } from "../tool-rank"
 import {
   type Baseline,
@@ -46,6 +48,8 @@ function tool(sdkName: string, over: Partial<BenchTool> = {}): BenchTool {
 function line(id: string, typed: string[], any: string[]): CorpusLine {
   return { id, set: "seed", lang: "en", say: typed[0] ?? "", typed, any }
 }
+
+strictNestedPrivileged()
 
 describe("the corpus", () => {
   it("every line has the corpus shape", () => {

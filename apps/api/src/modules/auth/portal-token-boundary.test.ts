@@ -6,6 +6,7 @@
 // member product: the walk below requests every route the booted app registers
 // with a real one, for a real active row, so only the audience stands in the way.
 // A new route is tested by being registered.
+
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
@@ -26,6 +27,7 @@ import { signAccessToken, signPortalToken, verifyAccessToken } from "~/modules/a
 import { cleanupSeededOrg, seedOrgWithUser } from "~/modules/mcp/test-helpers"
 import { createExternalUser } from "~/modules/users/external-user"
 import { insertSql } from "~/seed/factories/org/test-rows"
+import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 let orgId: string
 let memberId: string
@@ -74,6 +76,8 @@ afterAll(async () => {
   )
   await cleanupSeededOrg(orgId)
 })
+
+strictNestedPrivileged()
 
 describe("signing", () => {
   const identity = {

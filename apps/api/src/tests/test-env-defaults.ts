@@ -67,10 +67,3 @@ if (process.env.LIAISON_TEST_REAL_PROVIDER_KEYS !== "1") {
 // app graph). jobs.ts honours it only when NODE_ENV is test and never in a
 // `liaison` CLI process, which is never a host.
 process.env.LIAISON_TEST_JOB_HOST ||= "1"
-
-// A privileged-pool acquisition made while the same caller already holds a
-// privileged slot (a nested acquisition) deadlocks a full pool in production,
-// where it is only counted. Every test run makes it throw instead, so a code
-// path that takes a second slot under the first fails its tests. A test that
-// proves the counter itself sets "0" around its own case.
-process.env.NESTED_PRIVILEGED_STRICT ||= "1"

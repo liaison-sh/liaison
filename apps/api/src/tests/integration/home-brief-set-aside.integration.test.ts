@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Home: "Not now" on a persisted item, and "Today's brief" from the caller's own routine.
+
 import { beforeAll, describe, expect, it } from "bun:test"
 import { randomUUID } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
@@ -12,6 +13,7 @@ import { seedContext } from "~/seed/context"
 import { seedAttentionEvents } from "~/seed/factories/attention/events"
 import { seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
 import { insertSql } from "~/seed/factories/org/test-rows"
+import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 let orgId: string
 let me: { id: string; token: string }
@@ -94,6 +96,8 @@ async function call(
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
 }
+
+strictNestedPrivileged()
 
 describe("POST /api/attention-items/set-aside", () => {
   it("sets the event aside until next Monday 00:00 in the person's zone, and it leaves the feed", async () => {

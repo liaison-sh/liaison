@@ -29,6 +29,7 @@ import {
 import { deactivateUser } from "~/modules/users/service"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
+import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -44,6 +45,8 @@ function futureMonday(): string {
   while (new Date(`${d}T00:00:00Z`).getUTCDay() !== 1) d = addDays(d, 1)
   return d
 }
+
+strictNestedPrivileged()
 
 describe("resolveAwayDates: forms read on the server", () => {
   const today = "2026-11-04" // a Wednesday

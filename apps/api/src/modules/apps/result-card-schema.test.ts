@@ -3,8 +3,10 @@
 // The deep rules for a tool's `resultCard`. Before them, the manifest schema accepted any object
 // there, so a template with a script in a label, a missing title or a path outside the result
 // reached the registry and was drawn from data.
+
 import { describe, expect, it } from "bun:test"
 import { validateAppManifest } from "~/modules/apps/contract"
+import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 const APP = "card-app"
 
@@ -89,6 +91,8 @@ function groupsCard(over: Record<string, unknown> = {}) {
     ...over,
   }
 }
+
+strictNestedPrivileged()
 
 describe("a card template is checked when the manifest is registered", () => {
   it("accepts a plain entity card", () => {

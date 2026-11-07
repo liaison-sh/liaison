@@ -4,6 +4,7 @@
 // portal): on the member side a restrictive policy hides the row, on the portal
 // side the role reaches kernel tables not at all. Everything runs through the
 // real roles on the real request login; a privileged test sees past both.
+
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
 import { app } from "~/app"
@@ -26,6 +27,7 @@ import { KERNEL_SCOPES } from "~/modules/permissions/scope-catalog"
 import { createExternalUser } from "~/modules/users/external-user"
 import { listUsers } from "~/modules/users/service"
 import { insertSql } from "~/seed/factories/org/test-rows"
+import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 const ORG_ID = crypto.randomUUID()
 const COMPANY_ID = crypto.randomUUID()
@@ -121,6 +123,8 @@ afterAll(async () => {
   await sql`DELETE FROM kernel.users WHERE org_id = ${ORG_ID}`
   await sql`DELETE FROM kernel.organizations WHERE id = ${ORG_ID}`
 })
+
+strictNestedPrivileged()
 
 describe("the portal role", () => {
   it("kernel.users, kernel.contacts and app_projects.tasks raise permission denied under the portal role", async () => {
@@ -435,7 +439,16 @@ describe("creating an external row", () => {
     let second: ReturnType<typeof create> | undefined
     // The first create stays uncommitted while the second reads no holder and
     // then waits on the unique index, so the second learns of it at the insert.
-    await withPrivilegedDb(ORG_ID, "external-user-race", async (tx) => {
+    // The second create starts outside the first's transaction, as another caller would.
+    let created!: () => void
+    const firstCreated = new Promise<void>((resolve) => {
+      created = resolve
+    })
+    let release!: () => void
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const firstTx = withPrivilegedDb(ORG_ID, "external-user-race", async (tx) => {
       const first = await createExternalUser(tx, {
         orgId: ORG_ID,
         companyId: COMPANY_ID,
@@ -443,9 +456,14 @@ describe("creating an external row", () => {
         name: "Client",
       })
       expect(first.ok).toBe(true)
-      second = create(email)
-      await Bun.sleep(300)
+      created()
+      await held
     })
+    await firstCreated
+    second = create(email)
+    await Bun.sleep(300)
+    release()
+    await firstTx
     expect(await second).toEqual({ ok: false, code: "email_is_external" })
     expect((await rowsWithEmail(email)).length).toBe(1)
   })

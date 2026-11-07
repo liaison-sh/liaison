@@ -16,6 +16,7 @@
 // goes with it. Roles are cluster wide: an older migration, replayed on the way,
 // takes back any extra membership of the request login, so that one is given
 // back in the same breath.
+
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { randomBytes } from "node:crypto"
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -24,6 +25,7 @@ import { join } from "node:path"
 import postgres from "postgres"
 import { runMigrations } from "~/db/migrate"
 import { insertSql } from "~/seed/factories/org/test-rows"
+import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 const MIGRATIONS = join(import.meta.dir, "migrations")
 const FIRST_NEW_TAG = "0275_mail_inbound_sender_index"
@@ -160,6 +162,8 @@ afterAll(async () => {
   }
   for (const dir of folders) rmSync(dir, { recursive: true, force: true })
 })
+
+strictNestedPrivileged()
 
 describe("the external-user migrations on a live database, by a non-superuser login", () => {
   test("the new migrations apply on a fresh database as a non-superuser migration login", async () => {

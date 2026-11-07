@@ -2,11 +2,13 @@
 //
 // Two kernel tables a member reads and never writes: who is away, and which of
 // an app's features an org has on. Under the real liaison_rls role.
+
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type RlsClient, sql } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { insertSql } from "~/seed/factories/org/test-rows"
+import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 const ORG_ID = crypto.randomUUID()
 const OTHER_ORG_ID = crypto.randomUUID()
@@ -109,6 +111,8 @@ afterAll(async () => {
   await sql`DELETE FROM kernel.users WHERE org_id IN (${ORG_ID}, ${OTHER_ORG_ID})`
   await sql`DELETE FROM kernel.organizations WHERE id IN (${ORG_ID}, ${OTHER_ORG_ID})`
 })
+
+strictNestedPrivileged()
 
 describe("kernel.away_ranges", () => {
   it("column list of away_ranges holds no title or reason", async () => {

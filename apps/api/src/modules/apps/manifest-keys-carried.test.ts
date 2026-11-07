@@ -5,12 +5,14 @@
 // copy line is missing reads undefined for every app in every org (runtime.ts says so next to
 // `pinnedParams`). This table walks each tool key the manifest accepts and fails for the key
 // whose copy is missing, naming it.
+
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db/connection"
 import { resetAppRegistries, toolRegistry } from "~/modules/apps/app-registries"
 import { validateAppManifest } from "~/modules/apps/contract"
 import { registerApps } from "~/modules/apps/runtime"
 import { insertSql } from "~/seed/factories/org/test-rows"
+import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 const TEST_ORG = "00000000-0000-0000-0000-000000120004"
 const APP = "carried-keys-app"
@@ -124,6 +126,8 @@ async function cleanup() {
   await sql.unsafe(`DROP SCHEMA IF EXISTS "${SCHEMA}" CASCADE`)
   await sql`DELETE FROM kernel.apps WHERE name = ${APP}`
 }
+
+strictNestedPrivileged()
 
 describe("manifest keys carried onto the registry", () => {
   beforeAll(async () => {

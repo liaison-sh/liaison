@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
 import { classifyInbound } from "~/modules/mail/classify-inbound"
+import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 const DELIVERY_REPORT = 'multipart/report; report-type=delivery-status; boundary="b1"'
 const READ_RECEIPT = 'multipart/report; report-type=disposition-notification; boundary="b1"'
@@ -15,6 +16,8 @@ const dsnBody = (...actions: string[]) =>
       `Action: ${action}`,
     ]),
   ].join("\n")
+
+strictNestedPrivileged()
 
 describe("classifyInbound: bounces", () => {
   it("a delivery report whose Action is not delayed is a bounce", () => {

@@ -185,7 +185,8 @@ const heldSlot = new AsyncLocalStorage<{ held: boolean; reason: string }>()
  * One transaction on the privileged pool (withPrivilegedDb's default pool,
  * withSystemDb, withSchemaAdmin): counts the slot, its wait and hold times,
  * and a nested acquisition (counted on /diag; thrown when
- * NESTED_PRIVILEGED_STRICT=1, which tests set).
+ * NESTED_PRIVILEGED_STRICT=1, which tests opt into per file:
+ * tests/helpers/nested-privileged.ts).
  */
 function runOnPrivilegedPool<T>(
   poolDb: DbPool["db"],

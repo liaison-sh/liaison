@@ -3,6 +3,7 @@
 // A switch inside an app, per org: its tools leave what a turn is given, not only
 // the catalog. The real agent loop and the real bridge run here; only the model's
 // tokens are scripted, and the request it receives is what these tests read.
+
 import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import crypto from "node:crypto"
 import { NoSuchToolError, streamText } from "ai"
@@ -67,6 +68,7 @@ import {
 import { handleToolCall } from "~/modules/mcp/tool-call"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
+import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 import { createTestOrg } from "~/tests/helpers/org"
 import { resetOrgRuntimeForTest } from "~/tests/helpers/org-runtime"
 import { seededApps } from "~/tests/helpers/seeded-app-rows"
@@ -295,6 +297,8 @@ afterAll(async () => {
   else delete process.env.LIAISON_MODEL_PROVIDER
   await releaseTestLock()
 })
+
+strictNestedPrivileged()
 
 describe("the catalog", () => {
   it("absent from listCatalogTools for both audiences and tool_search", async () => {

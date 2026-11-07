@@ -14,6 +14,7 @@
 // notes table but not that scope makes the plain write a disclosure: it parks, or is refused in a
 // conversation that colleague is a member of. The keyed write lands, because its only reader is
 // the acting user, who holds what the turn read.
+
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -37,6 +38,7 @@ import {
 import { handleToolCall, type ToolCallCtx } from "~/modules/mcp/tool-call"
 import { seedOrgRow, seedUserRows } from "~/seed/factories/org/rows"
 import { insertSql } from "~/seed/factories/org/test-rows"
+import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 const ORG = "00000000-0000-4000-8000-0000000d5e01"
 const OWNER = "00000000-0000-4000-8000-0000000d5e02"
@@ -179,6 +181,8 @@ async function mcpSequence(calls: Array<[string, Record<string, unknown>]>): Pro
 async function cleanupSchema() {
   await sql.unsafe(`DROP SCHEMA IF EXISTS "app_${APP}" CASCADE`)
 }
+
+strictNestedPrivileged()
 
 describe("scope-taint keys on a first-party manifest tool", () => {
   beforeAll(async () => {

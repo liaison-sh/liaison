@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Away days read from the person's own calendar: what counts at once, what is asked about once,
 // what counts for nothing, and how a row follows its event.
+
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import type { AttentionItem } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
@@ -20,6 +21,7 @@ import { answerCalendarAway, dayLabel, endAwayRange, readAwayToday } from "~/mod
 import { seedOrgRow, seedUserRow, setUserPreferences } from "~/seed/factories/org/rows"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireAppSchemaJsLock, releaseAppSchemaJsLock } from "~/tests/helpers/app-schema-lock"
+import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 
 let orgId: string
 let colleagueEmail: string
@@ -219,6 +221,8 @@ function allDay(
     ...extra,
   } as GoogleEventItem
 }
+
+strictNestedPrivileged()
 
 describe("whole working days", () => {
   const prefs = {

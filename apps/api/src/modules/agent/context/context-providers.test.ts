@@ -4,6 +4,7 @@
 // its items (`contextProviders`, tool `item_context`), the fixture a real turn
 // reads. A second organization carries in-memory fixture providers for what the
 // example cannot show: a spy, a slow one, a writer, exact byte sizes.
+
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
 import { z } from "zod"
@@ -26,6 +27,7 @@ import { ensureAppsForOrg } from "~/modules/apps/init"
 import { openEntityDiscussion } from "~/modules/threads/entity-discussion"
 import { insertAppRow } from "~/seed/factories/app-tables"
 import * as minimal from "~/seed/tiers/minimal"
+import { strictNestedPrivileged } from "~/tests/helpers/nested-privileged"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -138,6 +140,8 @@ const inB = (
     currentView: { tabType: "example:items", entityId },
     ...over,
   })
+
+strictNestedPrivileged()
 
 describe("context providers", () => {
   beforeAll(async () => {

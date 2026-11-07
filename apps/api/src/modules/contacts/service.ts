@@ -1514,8 +1514,12 @@ export async function deleteContact(db: RlsClient, params: DeleteContactParams) 
     .returning({ id: contacts.id })
 
   if (!deleted) return null
-  // Its discussion goes with it: a contact has no bin to restore it from.
-  await deleteContactDiscussions({ orgId, contactIds: [contactId] })
+  // Its discussion goes with it: a contact has no bin to restore it from. On the caller's own
+  // transaction when it can act privileged, so a caller already holding a privileged slot never
+  // takes a second one.
+  await privilegedFrom(db, orgId, "contact-discussion-delete", (ptx) =>
+    deleteContactDiscussions({ orgId, contactIds: [contactId] }, ptx),
+  )
 
   await db.queueEvent({
     app: "kernel",

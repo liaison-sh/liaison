@@ -86,3 +86,4 @@ data_subject_export member bundle: sections and what they hold -> apps/api/src/m
 member export never selects tokens or credentials, drops secret-named keys -> apps/api/src/modules/export/member-data-subject-bundle.ts:59
 every member may export themself, another member needs kernel:data_subject:export -> apps/api/src/modules/export/data-subject-export-tool.ts:125
 data_subject_export file counts toward the storage limit, STORAGE_QUOTA_EXCEEDED and nothing saved at the limit -> apps/api/src/modules/export/data-subject-export-tool.ts:705
+data_subject_export file: only the requester can open it, never the subject, another member or an admin -> apps/api/src/modules/files/rls-builder.ts:108 ; apps/api/src/modules/export/data-subject-export-tool.ts:739

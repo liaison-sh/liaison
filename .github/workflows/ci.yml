@@ -5,8 +5,8 @@
 # checkout and one `bun install` instead of four). Beside it, in parallel: the
 # api `unit` suite split over three jobs (each with its own Postgres, Redis,
 # MeiliSearch and SeaweedFS from docker-compose.yml) and the whole web unit
-# suite split over two jobs. Before they ran here, only a release ran them, and failures sat on
-# main unseen. Integration, e2e and Playwright stay out (see scripts/test-run.ts).
+# suite split over two jobs, and the relation cells as one job. Before they ran here, only a
+# release ran them, and failures sat on main unseen. Integration, e2e and Playwright stay out (see scripts/test-run.ts).
 name: ci
 
 on:
@@ -230,6 +230,52 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: unit-logs-${{ matrix.part }}
+          path: logs/
+      - name: Tear down test infra
+        if: always()
+        run: docker compose down -v
+
+  # The relation cells (scripts/test-run.ts `relations`): every link between objects that the
+  # tree builds, against each event that can break it, and the schema guard that fails on a
+  # reference column no link names. About 120 tests in under two minutes, beside the unit parts.
+  relations:
+    name: relations
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Install postgres/redis CLIs
+        # As in the unit job: the client's major matches docker-compose's postgres.
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y --no-install-recommends postgresql-client-17 redis-tools libxml2-utils
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+      - name: Write .env.test
+        run: |
+          set -euo pipefail
+          cp .env.test.example .env.test
+          sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|; s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=$(openssl rand -hex 32)|" .env.test
+      - name: Bring up test infra (Postgres, Redis, MeiliSearch, SeaweedFS)
+        run: bun run infra:up
+      - name: Relation cells
+        env:
+          TEST_MEM_RESERVE_MB: "2048"
+          LIAISON_TEST_SLOTS: "1"
+        run: bun run scripts/test-run.ts relations
+      - name: Keep the run's logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: relations-logs
           path: logs/
       - name: Tear down test infra
         if: always()

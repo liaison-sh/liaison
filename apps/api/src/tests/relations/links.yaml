@@ -175,3 +175,71 @@ links:
       Dl: what a conversation shows once its record is deleted is not defined
       Rs: needs a knowledge document as the record
       Ex: no data subject export exists for a person; the export takes a contact
+
+  - name: dashboard-owner
+    what: a dashboard to the person whose it is
+    storedIn: kernel.dashboards.owner_user_id
+    columns: [kernel.dashboards.owner_user_id]
+    paths:
+      - apps/api/src/modules/dashboards/
+      - apps/api/src/modules/users/service.ts
+      - apps/api/src/modules/users/merge-references.ts
+      - apps/api/src/modules/export/member-data-subject-bundle.ts
+    visibleState: []
+    whoIsTold: [owner, admin, colleague]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: K, Pm: K, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Mg: only an import placeholder merges, and a placeholder never owns a dashboard (dashboards are never imported); the merge moves the owner to the person (merge-references.ts)
+      Dl: what an organization dashboard shows once its owner deleted their account is not defined; erasure deletes personal dashboards and leaves organization ones without an owner
+    broken:
+      Ex: the member data export (modules/export/member-data-subject-bundle.ts) has no dashboards section on this branch yet; main adds it
+
+  - name: dashboard-author
+    what: a dashboard to the people who made it and last changed it
+    storedIn: kernel.dashboards.created_by, updated_by
+    columns: [kernel.dashboards.created_by, kernel.dashboards.updated_by]
+    paths:
+      - apps/api/src/modules/dashboards/
+      - apps/api/src/modules/users/service.ts
+      - apps/api/src/modules/users/merge-references.ts
+      - apps/api/src/modules/export/member-data-subject-bundle.ts
+    visibleState: []
+    whoIsTold: [owner, admin, colleague]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: K, Pm: c, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: c, Aw: a }
+    open:
+      Mg: only an import placeholder merges, and a placeholder never makes a dashboard; the merge moves the author columns to the person (merge-references.ts)
+      Dl: what a dashboard shows once the person who made it deleted their account is not defined; erasure clears the author columns
+    broken:
+      Ex: the member data export (modules/export/member-data-subject-bundle.ts) has no dashboards section on this branch yet; main adds it
+
+  - name: store-document-author
+    what: a data store document to the people who wrote it and last changed it
+    storedIn: kernel.app_documents.created_by, updated_by
+    columns: [kernel.app_documents.created_by, kernel.app_documents.updated_by]
+    paths:
+      - apps/api/src/modules/data-store/
+      - apps/api/src/modules/users/service.ts
+      - apps/api/src/modules/users/merge-references.ts
+      - apps/api/src/modules/export/member-data-subject-bundle.ts
+    visibleState: []
+    whoIsTold: [owner, admin, colleague]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: K, Pm: c, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: c, Aw: a }
+    open:
+      Mg: only an import placeholder merges, and a placeholder never writes a store document (they are never imported); the merge moves the author columns to the person (merge-references.ts)
+      Dl: what a store document shows once the person who wrote it deleted their account is not defined; erasure clears the author columns
+    broken:
+      Ex: the member data export (modules/export/member-data-subject-bundle.ts) has no store documents section on this branch yet; main adds it
+
+  - name: store-document-key
+    what: a data store document to its own key, which the app that owns the collection chooses
+    storedIn: kernel.app_documents.doc_id
+    columns: [kernel.app_documents.doc_id]
+    paths:
+      - apps/api/src/modules/data-store/
+    visibleState: []
+    whoIsTold: []
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: a, Dx: a, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: a, Mi: a, Rv: a, Aw: a }

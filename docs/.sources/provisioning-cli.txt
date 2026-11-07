@@ -44,6 +44,9 @@ Mailboxes: gmail/imap any app, not disconnected, same address once, reconnect al
 Storage cap from caps.storageGb, STORAGE_QUOTA_EXCEEDED; old setting 10 = default, other values kept -> apps/api/src/modules/files/service.ts:277 ; apps/api/src/db/migrations/0237_organizations_caps.sql:24
 Jobs per hour: delayed to next hour with room, up to a day, never dropped; person-waited work exempt (Run now, imports, exports, upload derivatives) -> apps/api/src/infra/jobs/org-job-cap.ts:1 ; apps/api/src/infra/jobs/org-job-cap.ts:50
 Cap below usage removes nothing -> apps/api/src/cli/org-caps.ts:8
+App day caps (runs, bridge calls, CPU per UTC day), counted at settle, CPU pulled hourly -> apps/api/src/modules/apps/usage/app-usage.ts:1 ; apps/api/src/modules/apps/usage/loader-usage.ts:1
+Per entry point past an app day cap: tool 429 typed, webhook verify + 2xx + held retry job, events and jobs after midnight, scheduled ticks skipped, poll not ready, search refused, nested counted never refused -> apps/api/src/modules/apps/usage/app-day-cap.ts:8 ; apps/api/src/modules/apps/execute-tool.ts:1 ; apps/api/src/modules/webhooks/routes.ts:1 ; apps/api/src/modules/apps/usage/deferred-event.ts:1 ; apps/api/src/modules/search/external-bridge.ts:1
+Daily totals in kernel.app_usage_daily -> apps/api/src/db/migrations/0282_app_usage_daily.sql:1
 Admins see Usage and limits read only; notifications at 80 % and 100 % -> apps/web/src/modules/settings/OrgUsageSection.tsx:1 ; apps/api/src/modules/attention/kernel-translations.ts:306
 Each cap a whole number >= 1, 0 refused (CLI, limits, column check) -> apps/api/src/cli/org-caps.ts:65 ; apps/api/src/cli/config/schema.ts:588 ; apps/api/src/db/migrations/0237_organizations_caps.sql:50
 connect --for refused: stops with the reason, exit 1 -> apps/api/src/cli/connect/index.ts:454

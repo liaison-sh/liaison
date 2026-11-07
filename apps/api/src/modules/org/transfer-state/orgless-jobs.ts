@@ -58,6 +58,7 @@ export const ORGLESS_JOB_AUDIT: Readonly<Record<string, OrglessJobEntry>> = {
     "modules/node-sessions/lifecycle.ts",
   ),
   "kernel:control-plane-outbox": skips("modules/liaison-team/team-only.ts"),
+  "kernel:app-usage-loader-pull": skips("modules/apps/usage/loader-usage.ts"),
   "kernel:attention-state-email-materialize": skips("modules/attention/state-materializer.ts"),
   "kernel:attention-digest-urgent": skips("modules/attention/digest-jobs.ts"),
   "kernel:attention-digest-cadence": skips("modules/attention/digest-jobs.ts"),

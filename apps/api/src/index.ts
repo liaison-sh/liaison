@@ -57,12 +57,14 @@ import {
   installShutdownSignals,
   isShuttingDown,
   markBootFinished,
+  registerShutdownPhase,
   shutdownBudgets,
 } from "~/lib/shutdown"
 import { registerProcessShutdownPhases } from "~/lib/shutdown-phases"
 import { startInternalListener } from "~/modules/agent/mailbox-plaintext/mailbox-forward"
 import { registerConnectionTeardownSweep } from "~/modules/apps/connections/revoke"
 import { awaitOrgApps, getDefaultApps } from "~/modules/apps/init"
+import { startAppUsageRecorder, stopAppUsageRecorder } from "~/modules/apps/usage/app-usage"
 import { startVersionsInUseHeartbeat } from "~/modules/apps/versions-in-use"
 import { internalAppBridgeRoute } from "~/modules/apps/workers/bridge-forward"
 import { consumeWsTicket } from "~/modules/auth/ws-ticket"
@@ -242,6 +244,15 @@ registerAppCronFanout()
 await registerKernelJobs()
 await registerKnowledgeJobs()
 initWebhookWorker()
+// Per-org app usage (modules/apps/usage/app-usage.ts): counted as runs settle,
+// written in batches; what is pending is written at shutdown.
+startAppUsageRecorder()
+registerShutdownPhase({
+  name: "app-usage-flush",
+  at: "after-drain",
+  deadlineMs: 3_000,
+  run: () => stopAppUsageRecorder(),
+})
 // The load harness's synthetic job, only on a box with the harness key.
 if (loadHarnessEnabled()) registerLoadSyntheticWorker()
 

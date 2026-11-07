@@ -98,6 +98,11 @@ Usage and limits block, read only, kernel:org:admin -> apps/web/src/modules/sett
 Usage rows Seats, Mailboxes, Storage, Background jobs this hour; unlimited; Limit reached; set by whoever runs the server -> packages/shared/src/i18n/locales/en/kernel.json:5599
 Notification at 80 % and 100 % -> apps/api/src/modules/org/caps.ts:405
 Background work past limit waits -> apps/api/src/infra/jobs/org-job-cap.ts:6
+App rows App runs today, App calls today, App CPU today (ms), since midnight UTC -> packages/shared/src/i18n/locales/en/kernel.json:5912
+App rows shown once capped or used -> apps/web/src/modules/settings/OrgUsageSection.tsx:78
+Past a daily app limit tools are refused, background work after midnight UTC -> apps/api/src/modules/apps/usage/app-day-cap.ts:133
+Webhooks held and answered 2xx -> apps/api/src/modules/webhooks/routes.ts:605
+Notice tail for app day caps -> packages/shared/src/i18n/locales/en/kernel.json:5930
 connect link page: refused connect says Nothing was connected and why -> apps/web/src/modules/settings/ConnectLink.tsx:1 ; packages/shared/src/i18n/locales/en/kernel.json:5856
 Unsent cap notification retried at the next change -> apps/api/src/modules/org/caps.ts:486
 Export Download downloads, the page stays -> apps/web/src/modules/settings/OrgExportSection.tsx:94

@@ -58,6 +58,7 @@ export {
   appDocumentUsage,
 } from "./app-documents"
 export type { AppSeededAssets, NewAppSeededAssets } from "./app-seeded-assets"
+export { type AppUsageDailyRow, type AppUsageExecutor, appUsageDaily } from "./app-usage"
 export { appSeededAssets } from "./app-seeded-assets"
 export { appSequences } from "./app-sequences"
 export type { ApprovalPolicy, NewApprovalPolicy } from "./approval-policies"

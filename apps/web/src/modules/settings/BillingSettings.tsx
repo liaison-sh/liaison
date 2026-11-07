@@ -180,7 +180,16 @@ export function createIntentKeys(mint: () => string = () => crypto.randomUUID())
 const FIELD = "h-8 rounded-sm border border-border bg-transparent px-2 text-text"
 
 /** What the plan comparison shows, in this order; a plan never caps mailboxes. */
-const COMPARED_CAPS = ["seats", "storageGb", "customApps", "auditDays", "jobsPerHour"] as const
+const COMPARED_CAPS = [
+  "seats",
+  "storageGb",
+  "customApps",
+  "auditDays",
+  "jobsPerHour",
+  "appRunsPerDay",
+  "appBridgeCallsPerDay",
+  "appCpuMsPerDay",
+] as const
 
 /**
  * What each plan offers, from the control plane's plan data only: nothing here

@@ -284,7 +284,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_ALLOW_PRIVATE_API_CONNECTOR_HOSTS` | `apps/api/src/apps/api-connector/adapter-policy.ts:25` |
 | `LIAISON_ALLOW_PRIVATE_MODEL_SERVERS` | `apps/api/src/modules/agent/providers/model-server.ts:33` |
 | `LIAISON_APP_CATALOG_DIR` | `apps/api/src/modules/apps/catalog.ts:75`, `apps/api/src/modules/permissions/scope-registry.ts:81` |
-| `LIAISON_APP_PRIVATE_HOSTS` | `apps/api/src/modules/apps/sandbox/bridge/shared.ts:203` |
+| `LIAISON_APP_PRIVATE_HOSTS` | `apps/api/src/modules/apps/sandbox/bridge/shared.ts:209` |
 | `LIAISON_BUNDLED_APPS_FROM_SOURCE` | `apps/api/src/modules/apps/sandbox/bundle-loader.ts:51` |
 | `LIAISON_CLI_OPERATOR` | `apps/api/src/cli/agent/ask.ts:168` |
 | `LIAISON_DATABASE_ADAPTER` | `apps/api/src/apps/database/bridge.ts:1198` |
@@ -294,7 +294,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/apps/database/bridge.ts:374`, `apps/api/src/apps/database/bridge.ts:394` |
 | `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/apps/database/bridge.ts:383` |
 | `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:154` |
-| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1627` |
+| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1666` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:504`, `apps/api/src/modules/apps/app-frame.ts:35` |
 | `LIAISON_SANDBOX_FETCH_TIMEOUT_MS` | `apps/api/src/modules/apps/sandbox/bridge/egress.ts:63` |
@@ -321,18 +321,18 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `ORG_MAINTENANCE_FLAG_PATH` | `apps/api/src/middleware/org-maintenance.ts:25` |
 | `QA_DRIVE_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/knowledge.ts:79` |
 | `QA_GMAIL_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/rows.ts:462` |
-| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:559`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
+| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:561`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
 | `RECHECK_SYNC_BACKEND` | `apps/api/src/lib/manifest-regex.ts:33` |
 | `ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:62` |
 | `ROUTINE_EVENT_RECONCILE_MAX_RETRIES` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:65` |
 | `ROUTINE_OVERLAP_DEFER_DELAY_MS` | `apps/api/src/infra/jobs/kernel-jobs.ts:69` |
 | `ROUTINE_OVERLAP_MAX_DEFERRALS` | `apps/api/src/infra/jobs/kernel-jobs.ts:73` |
-| `SANDBOX_BOOT_RAMP_MS` | `apps/api/src/index.ts:385` |
+| `SANDBOX_BOOT_RAMP_MS` | `apps/api/src/index.ts:417` |
 | `SANDBOX_POOL_REPORT_INTERVAL_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:92` |
 | `SANDBOX_QUEUE_WAIT_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:89` |
 | `SANDBOX_WORKER_HOLD_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:90` |
-| `TICKETS_GMAIL_PUSH_ISSUER` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1296`, `apps/api/src/modules/webhooks/routes.ts:180`, `apps/api/src/modules/webhooks/verify-bridge.ts:150` |
-| `TICKETS_GMAIL_PUSH_JWKS_URL` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1297`, `apps/api/src/modules/webhooks/routes.ts:181`, `apps/api/src/modules/webhooks/verify-bridge.ts:149` |
+| `TICKETS_GMAIL_PUSH_ISSUER` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1296`, `apps/api/src/modules/webhooks/routes.ts:181`, `apps/api/src/modules/webhooks/verify-bridge.ts:150` |
+| `TICKETS_GMAIL_PUSH_JWKS_URL` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1297`, `apps/api/src/modules/webhooks/routes.ts:182`, `apps/api/src/modules/webhooks/verify-bridge.ts:149` |
 | `TICKETS_GMAIL_SYNC_SINCE` | `apps/api/src/apps/tickets/sync.ts:310` |
 | `VITE_API_BASE` | `apps/web/src/lib/env.ts:10` |
 | `VITE_API_TARGET` | `apps/web/src/lib/env.ts:68` |

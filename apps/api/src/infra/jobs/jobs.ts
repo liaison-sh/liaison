@@ -50,6 +50,7 @@ import {
   isOrgDeletingAsync,
   isOrgMissingAsync,
 } from "~/modules/apps/org-apps"
+import { AppDayCapHeldJobError } from "~/modules/apps/usage/app-day-cap"
 import { orgSuspendedOrClosed } from "~/modules/cloud/billing-status"
 import { beginOrgActivity, orgTransferStateOf } from "~/modules/org/transfer-state/state"
 import { assertEnqueueAllowed, bindBackpressureClient } from "./backpressure"
@@ -125,6 +126,12 @@ export class OrgTransferHeldJobError extends Error {
 export const TRANSFER_HELD_JOB_DELAY_MS = 5_000
 /** Once the org has moved away its jobs only wait for the export to take them. */
 export const TRANSFER_MOVED_JOB_DELAY_MS = 30_000
+
+let jobsHeldAppDayCap = 0
+/** Org jobs put back because their org reached an app day cap. */
+export function jobsHeldAppDayCapCount(): number {
+  return jobsHeldAppDayCap
+}
 
 let jobsHeldOrgTransfer = 0
 /** Org jobs put back because their org was moving. */
@@ -784,6 +791,14 @@ function ensureWorker(queueName: string): void {
         // The org started moving between the check above and the dispatch's.
         if (err instanceof OrgTransferHeldJobError && token) {
           jobsHeldOrgTransfer++
+          await job.moveToDelayed(Date.now() + err.delayMs, token)
+          await uncountFanoutRun(job.id, job.attemptsMade)
+          throw new DelayedError()
+        }
+        // The org reached an app day cap (modules/apps/usage/app-day-cap.ts):
+        // back as delayed until the next UTC day, its data and attempts kept.
+        if (err instanceof AppDayCapHeldJobError && token) {
+          jobsHeldAppDayCap++
           await job.moveToDelayed(Date.now() + err.delayMs, token)
           await uncountFanoutRun(job.id, job.attemptsMade)
           throw new DelayedError()

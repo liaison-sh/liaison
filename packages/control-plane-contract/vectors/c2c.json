@@ -89,6 +89,18 @@
       "bodySha256": "fb0139c3058ab1d805798a8e5edd4f029c47faf7b27863c1c3370bb0d1ef2abb",
       "canonical": "1793577720.c3d5e7f9-1a2b-4c3d-8e4f-5a6b7c8d9e0f.DELETE./api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17.fb0139c3058ab1d805798a8e5edd4f029c47faf7b27863c1c3370bb0d1ef2abb",
       "signature": "VqQx5S5etnmi6H47I+1o4dQsRFA2JHKCfyXTcqODzCo="
+    },
+    {
+      "name": "billing push with app caps (caps version 2)",
+      "controlKey": "c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387",
+      "method": "POST",
+      "path": "/api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/billing",
+      "body": "{\"orgId\":\"7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17\",\"version\":3,\"plan\":\"preview\",\"status\":\"active\",\"periodEnd\":\"2026-12-02T00:00:00.000Z\",\"includedCredits\":\"40\",\"caps\":{\"seats\":3,\"mailboxes\":2,\"storageGb\":5,\"jobsPerHour\":600,\"customApps\":2,\"auditDays\":45,\"appRunsPerDay\":5000,\"appBridgeCallsPerDay\":50000,\"appCpuMsPerDay\":600000},\"previewEndsAt\":\"2027-01-02T00:00:00.000Z\",\"autoTopUp\":{\"enabled\":true,\"thresholdCredits\":15,\"amountCredits\":25},\"accessUntil\":null,\"closedAt\":null,\"billingContact\":\"billing@example.com\"}",
+      "messageId": "e8b2c4d6-1f3a-4b5c-9d7e-2a4b6c8d0e1f",
+      "ts": 1793577780,
+      "bodySha256": "e41bce0aa8ff6e017dde566d4c4076a35a0c49bad4f75e090909fbed98a2ab2e",
+      "canonical": "1793577780.e8b2c4d6-1f3a-4b5c-9d7e-2a4b6c8d0e1f.POST./api/cloud/orgs/7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17/billing.e41bce0aa8ff6e017dde566d4c4076a35a0c49bad4f75e090909fbed98a2ab2e",
+      "signature": "hUbIKvJzEgnI/+bWW7q4V9mmM1P+bN/96XQ2bAWN+AA="
     }
   ],
   "verify": [

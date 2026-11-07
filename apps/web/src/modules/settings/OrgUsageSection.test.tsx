@@ -66,6 +66,28 @@ describe("OrgUsageSection", () => {
     expect(screen.getByTestId("org-usage-jobs-reached")).toBeInTheDocument()
   })
 
+  it("app rows: shown with a cap or some use, at the limit like any cap, absent from an older server", async () => {
+    renderWith({
+      data: {
+        ...USAGE,
+        appRunsToday: { used: 500, limit: 500 },
+        appBridgeCallsToday: { used: 0, limit: null },
+        appCpuMsToday: { used: 1200, limit: null },
+      },
+    })
+    const runs = await screen.findByTestId("org-usage-appRuns")
+    expect(runs.dataset.state).toBe("at-limit")
+    expect(screen.getByTestId("org-usage-appRuns-value").textContent).toBe("500 of 500")
+    expect(screen.getByTestId("org-usage-appRuns-reached")).toBeInTheDocument()
+    // No cap and nothing used: quiet, not shown.
+    expect(screen.queryByTestId("org-usage-appBridgeCalls")).toBeNull()
+    expect(screen.getByTestId("org-usage-appCpuMs").dataset.state).toBe("unlimited")
+    cleanup()
+    renderWith({ data: USAGE })
+    await screen.findByTestId("org-usage-seats")
+    expect(screen.queryByTestId("org-usage-appRuns")).toBeNull()
+  })
+
   const ESTIMATE = {
     usedGb: 12.4,
     limitGb: 10,

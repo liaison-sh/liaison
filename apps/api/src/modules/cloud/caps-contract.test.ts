@@ -41,7 +41,17 @@ describe("plan caps: contract and cell agree", () => {
     expect(ORG_CAP_KINDS).toContain("jobsPerHour")
     const kinds: string[] = [...ORG_CAP_KINDS].sort()
     expect(kinds).toEqual(
-      ["seats", "mailboxes", "storageGb", "jobsPerHour", "customApps", "auditDays"].sort(),
+      [
+        "seats",
+        "mailboxes",
+        "storageGb",
+        "jobsPerHour",
+        "customApps",
+        "auditDays",
+        "appRunsPerDay",
+        "appBridgeCallsPerDay",
+        "appCpuMsPerDay",
+      ].sort(),
     )
   })
 

@@ -1231,6 +1231,22 @@ export async function registerKernelJobs(): Promise<void> {
   await registerScheduledJob("kernel", "cloud-usage-report", "15 0 * * *", async () => {
     const { sendDailyUsageReports } = await import("~/modules/cloud/usage-report")
     await sendDailyUsageReports(new Date())
+    // The app usage of the same day, in its own message (modules/cloud/apps-usage-report.ts).
+    const { sendDailyAppsUsageReports } = await import("~/modules/cloud/apps-usage-report")
+    await sendDailyAppsUsageReports(new Date())
+  })
+  // App CPU from the Workers loader (modules/apps/usage/loader-usage.ts):
+  // today's running total and yesterday's final one, every hour. Nothing
+  // without a Workers configuration.
+  await registerScheduledJob("kernel", "app-usage-loader-pull", "7 * * * *", async () => {
+    const { pullLoaderUsage } = await import("~/modules/apps/usage/loader-usage")
+    await pullLoaderUsage(new Date())
+  })
+  // Events of an org at an app day cap, held until the next UTC day
+  // (modules/apps/usage/deferred-event.ts).
+  registerJobWorker("kernel", "app-deferred-event", async (data: unknown) => {
+    const { runDeferredAppEvent } = await import("~/modules/apps/usage/deferred-event")
+    await runDeferredAppEvent(data)
   })
   // Nightly storage estimate (modules/cloud/storage-estimate.ts), managed
   // edition only: paced, one org at a time, and it never blocks anything.

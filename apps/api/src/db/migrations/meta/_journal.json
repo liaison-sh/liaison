@@ -1982,6 +1982,13 @@
       "when": 1900003365000,
       "tag": "0281_apps_installed_granted_domains",
       "breakpoints": true
+    },
+    {
+      "idx": 283,
+      "version": "7",
+      "when": 1900003366000,
+      "tag": "0282_app_usage_daily",
+      "breakpoints": true
     }
   ]
 }

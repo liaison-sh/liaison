@@ -905,6 +905,13 @@ export async function registerKernelJobs(): Promise<void> {
     await pruneAppLogs()
   })
 
+  // App builder preview namespaces of the data store (`draft:<id>`), hourly at :17:
+  // a namespace whose last write is a day old goes (modules/app-builder/installed.ts).
+  await registerScheduledJob("kernel", "app-draft-store-retention", "17 * * * *", async () => {
+    const { pruneDraftStoreNamespaces } = await import("~/modules/app-builder/installed")
+    await pruneDraftStoreNamespaces()
+  })
+
   // Notification delivery log + receipts (S1): 30 days, payloads included.
   await registerScheduledJob(
     "kernel",

@@ -21,6 +21,17 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `approval_update_payload` | Update the editable fields of a pending approval you can see as its requester or an approver. |  | `kernel:approvals:write` |
 | `approval_withdraw` | Retract a PENDING approval request that you raised. |  | `kernel:approvals:write` |
 | `approvals_list` | List the approvals waiting on this user to decide, oldest first, each tagged with its origin app, requester, summary and ageDays. |  | `kernel:approvals:read` |
+| `apps_build_check` | Build a draft version (the latest by default) and type-check it against the app SDK. |  | `kernel:apps:build` |
+| `apps_build_create` | Start a new app for the organisation: a draft from a working template (store-crud: one stored collection with a list and an add tool; read-only: one read tool), or from your own files. |  | `kernel:apps:build` |
+| `apps_build_discard` | Discard a draft: its built bytes go, its base name is free again unless it published an app (a published app stays installed). |  | `kernel:apps:build` |
+| `apps_build_get` | Read a draft: its status, app name and one version's files and build (the latest by default). |  | `kernel:apps:build` |
+| `apps_build_list` | List the organisation's app drafts, newest change first. |  | `kernel:apps:build` |
+| `apps_build_logs` | Read log lines, newest first: an app's (give app; needs kernel:apps:logs) or a draft's preview runs (give draftId; only your own runs). |  | `kernel:apps:build` |
+| `apps_build_preview` | Run one tool, job or webhook handler of a draft version as you, without installing it. |  | `kernel:apps:build` |
+| `apps_build_publish` | Publish a draft version (the latest by default) as the organisation's app. | yes | `kernel:apps:build` |
+| `apps_build_restore` | Make an earlier version's files the draft's newest version (n+1). |  | `kernel:apps:build` |
+| `apps_build_update` | Save new files for a draft as its next version (the last 20 are kept). |  | `kernel:apps:build` |
+| `apps_build_versions` | List a draft's kept versions (newest first) with their message and build result. |  | `kernel:apps:build` |
 | `apps_set_access` | Set who may use an app (admin): mode "everyone", or "restricted" to the listed roleIds and userIds (org admins always keep it). | yes | `kernel:apps:admin` |
 | `apps_set_enabled` | Turn an installed app On or Off (enable or disable it) for EVERYONE (admin). | yes | `kernel:apps:admin` |
 | `assign_role` | Assign an existing team member to a role. | yes | `kernel:users:admin` |

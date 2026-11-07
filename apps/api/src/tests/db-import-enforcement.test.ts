@@ -77,6 +77,10 @@ describe("db import enforcement", () => {
     // App logs retention: one DELETE over every org's kernel.app_logs (daily kernel
     // job, no request, moving orgs skipped). Writes and reads go through RLS.
     "modules/app-builder/logs.ts",
+    // App builder: the org's OWN custom app install (apps_installed has no RLS path for a
+    // person; every read is narrowed to the caller's org), the publish audit row, and the
+    // hourly wipe of day-old draft preview namespaces in the data store (moving orgs skipped).
+    "modules/app-builder/installed.ts",
     "modules/apps/bulk-dispatch.ts",
     // A restricted session's hidden thread: its session family (kernel.sessions has no RLS
     // path for this read) and the thread, created for the token's own org and user.

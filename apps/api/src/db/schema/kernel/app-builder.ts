@@ -28,6 +28,14 @@ export interface AppDraftBuild {
   workerSha256?: string
   sizeBytes?: number
   errors?: Array<{ file?: string; line?: number; message: string; code?: string }>
+  /** The name and version the bytes carry (forced before the build). */
+  appName?: string
+  appVersion?: string
+  /** `tsc --noEmit` against the SDK types, when the build ran it (apps_build_check). */
+  typecheck?: {
+    ok: boolean
+    errors: Array<{ file?: string; line?: number; message: string; code?: string }>
+  }
   /** ISO timestamp. */
   at: string
 }

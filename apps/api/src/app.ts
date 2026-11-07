@@ -62,6 +62,7 @@ import {
 } from "~/modules/agent/skills/skills-routes"
 import { apiConnectorRoutes } from "~/modules/api-connector/routes"
 import { appLogsRoutes } from "~/modules/app-builder/logs-routes"
+import { builderRoutes } from "~/modules/app-builder/routes"
 import { APPROVAL_DECIDE_BODY_MAX_BYTES } from "~/modules/approvals/mailbox-fulfilment"
 import { approvals } from "~/modules/approvals/routes"
 import { initAppActivationSync } from "~/modules/apps/activation"
@@ -1023,7 +1024,9 @@ const isMcpManagerOAuthLanding = (path: string): boolean =>
 const isPluginUiBundle = (path: string): boolean =>
   /^\/api\/apps\/[a-z][a-z0-9-]*\/\d+\.\d+\.\d+(-[\w.]+)?\/(ui\.js|statement\.json|statement\.sig|manifest\.json|frame)$/.test(
     path,
-  )
+  ) ||
+  // A draft version's preview frame (app-builder/routes.ts): served against its own token.
+  /^\/api\/apps\/builder\/drafts\/[0-9a-f-]{36}\/\d+\/frame$/.test(path)
 app.use("/api/apps", async (c, next) => {
   if (isMcpManagerOAuthLanding(c.req.path) || isPluginUiBundle(c.req.path)) return next()
   return authMw(c, next)
@@ -1050,6 +1053,8 @@ app.use("/api/apps/*", async (c, next) => {
 app.route("/api/apps", bulkRoutes)
 // GET /api/apps/:name/logs (kernel:apps:logs): what a custom app logged.
 app.route("/api/apps", appLogsRoutes)
+// /api/apps/builder/drafts: the app builder tab (drafts, check, preview, publish).
+app.route("/api/apps/builder", builderRoutes)
 app.route("/api/apps", installRoutes)
 // Phase 16.5 — UI bundle serving for installed plugin apps. Mount BEFORE
 // appRoutes so the more-specific `:name/:version/ui.js` pattern wins. Auth +

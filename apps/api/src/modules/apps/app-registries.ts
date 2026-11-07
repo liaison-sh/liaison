@@ -347,6 +347,10 @@ export const toolRegistry = createTypedRegistry<
      *  the preflight, and a call carrying an `@ref:` token (which skips the preflight) is refused
      *  at stage time (execute-tool.ts). */
     pinnedParams?: readonly string[]
+    /** No field of this tool's pending approval may ever be edited (`approval_update_payload`
+     *  refuses every edit): what a person approves is the whole payload as staged, so a change
+     *  means withdrawing the request and asking again (the app builder's publish). */
+    payloadImmutable?: boolean
     /** The params carrying text a person outside the org reads (an email body, a ticket reply,
      *  a DM). A call whose text there holds an unfilled placeholder ("[DATE]", "{{name}}", "TBD")
      *  is refused before any gate stages an approval (outbound-placeholders.ts). */

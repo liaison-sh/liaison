@@ -11,7 +11,8 @@
 // activation.ts (which switches back to the previous version when it fails). The
 // server keeps two versions of each app, the active one and the one before it;
 // older ones are pruned here.
-import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { join, resolve, sep } from "node:path"
 import { isReservedSettingsNamespace } from "@liaison/app-sdk"
 import { isReservedWebRouteSegment, labelSkeleton } from "@liaison/shared"
@@ -518,7 +519,7 @@ function assertIconClean(manifest: VerifyResult["manifest"]): void {
  * its legacy `dependencies.tools` list (which also authorizes dispatch to an
  * internal tool), as one set the admin approves.
  */
-function declaredCrossAppCalls(manifest: VerifyResult["manifest"]): string[] {
+export function declaredCrossAppCalls(manifest: VerifyResult["manifest"]): string[] {
   const m = manifest as {
     cross_app_calls?: Array<{ target?: string }>
     dependencies?: { tools?: unknown[] }
@@ -545,7 +546,7 @@ function resolveGrantedCrossAppCalls(
   return declared.filter((t) => granted.includes(t))
 }
 
-function declaredCapabilities(manifest: VerifyResult["manifest"]): string[] {
+export function declaredCapabilities(manifest: VerifyResult["manifest"]): string[] {
   return ((manifest as { capabilities?: string[] }).capabilities ?? []).slice()
 }
 
@@ -937,6 +938,45 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
     return { name: manifest.name, version: manifest.version }
   } finally {
     rmSync(verified.stagingDir, { recursive: true, force: true })
+  }
+}
+
+/**
+ * Install an org's custom app from package bytes held by the server (the app
+ * builder's publish, modules/app-builder/publish.ts): the bytes go to a temp
+ * file and through exactly the path `POST /custom/install` takes
+ * (`installAppFromTarball` with the org as owner, unsigned, the 30 s health
+ * gate and switch-back of the activation), with the grants given and never a
+ * session-trusted interface: its ui.js only ever runs framed.
+ */
+export async function installAppFromBytes(opts: {
+  bytes: Uint8Array
+  ownerOrgId: string
+  installedBy: string
+  grantedScopes: string[]
+  grantedConnections: string[]
+  grantedCapabilities: string[]
+  grantedCrossAppCalls: string[]
+  sourceUrl: string
+}): Promise<InstallResult> {
+  const dir = mkdtempSync(join(tmpdir(), "liaison-app-bytes-"))
+  try {
+    const tarballPath = join(dir, "package.liaisonapp")
+    writeFileSync(tarballPath, opts.bytes)
+    return await installAppFromTarball({
+      tarballPath,
+      installedBy: opts.installedBy,
+      grantedScopes: opts.grantedScopes,
+      grantedConnections: opts.grantedConnections,
+      grantedCapabilities: opts.grantedCapabilities,
+      grantedCrossAppCalls: opts.grantedCrossAppCalls,
+      approveUiFullAccess: false,
+      requireSignature: false,
+      sourceUrl: opts.sourceUrl,
+      ownerOrgId: opts.ownerOrgId,
+    })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
 }
 

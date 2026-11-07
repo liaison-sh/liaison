@@ -61,6 +61,11 @@ export type DraftErrorCode =
   | "draft_discarded"
   | "published_name_immutable"
   | "invalid_build"
+  | "build_failed"
+  | "app_owned_by_other_draft"
+  | "app_not_built_by_builder"
+  | "publish_stale"
+  | "pin_mismatch"
 
 /** A refused draft call; `code` is stable for callers (tools, routes). */
 export class DraftError extends Error {

@@ -16,6 +16,7 @@
       "type": "credentials",
       "description": "Test carrier",
       "allowedDomains": ["api.carrier.test"],
+      "appSecretConfigKeys": ["carrierAppSecret"],
       "credentialFields": [
         {
           "name": "key",
@@ -104,6 +105,11 @@
       "handler": "slow",
       "requiredScopes": ["wparity:items:read"],
       "timeoutMs": 1500
+    },
+    "configSecret": {
+      "description": "Store an app-held secret, then read it back with ctx.config.get",
+      "handler": "configSecret",
+      "requiredScopes": ["wparity:items:read"]
     },
     "slowCreate": {
       "description": "Wait, then insert",

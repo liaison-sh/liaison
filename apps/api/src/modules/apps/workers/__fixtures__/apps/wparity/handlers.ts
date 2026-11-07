@@ -99,6 +99,16 @@ export async function slow(p: { ms: number }, ctx: Ctx) {
   return { n }
 }
 
+export async function configSecret(p: { value: string }, ctx: Ctx) {
+  await ctx.config.setSecret("carrierAppSecret", p.value)
+  try {
+    return { read: await ctx.config.get("carrierAppSecret") }
+  } catch (e) {
+    const err = e as { code?: string; status?: number }
+    return { refused: true, code: err?.code ?? null, status: err?.status ?? null }
+  }
+}
+
 export async function slowCreate(p: { ms: number; title: string }, ctx: Ctx) {
   const until = Date.now() + p.ms
   while (Date.now() < until) await ctx.db.count("items", {})

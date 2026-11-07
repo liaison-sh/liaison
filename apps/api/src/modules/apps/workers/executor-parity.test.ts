@@ -20,6 +20,7 @@ import { app } from "~/app"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { env } from "~/lib/env"
+import { connectionConfigRegistry } from "~/modules/apps/app-registries"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
 import { reloadInstalledApps } from "~/modules/apps/init"
 import { installAppFromTarball, uninstallApp } from "~/modules/apps/install-service"
@@ -44,6 +45,7 @@ const CELL_ID = "cell-parity"
 const CELL_KEY = "parity-cell-key-0123456789abcdef"
 const CARRIER_KEY = "carrier-api-key-7f3e9a1c55d2"
 const SECRETS = { carrierKey: CARRIER_KEY, cellKey: CELL_KEY }
+const APP_SECRET = "carrier-app-held-secret-4b8d1e"
 
 const ENV_KEYS = [
   "LIAISON_WORKERS_APPS",
@@ -289,6 +291,35 @@ describe("Workers executor parity with the QuickJS pool", () => {
     expect(injectedKeys).toEqual([CARRIER_KEY, CARRIER_KEY])
     expect(r.workers).toEqual(r.quickjs)
     assertNoSecretsIn(r.quickjs, SECRETS)
+  })
+
+  it("ctx.config.get of a declared secret: QuickJS reads it, Workers refuses it, even with the registry cleared", async () => {
+    // The refusal must come from the bridge's own manifest (what config_get
+    // decrypts), never the in-memory connection registry, which can be empty.
+    const registered = connectionConfigRegistry.snapshotUnder([orgId, "wparity"])
+    connectionConfigRegistry.deleteByPrefix([orgId, "wparity"])
+    try {
+      workersOff()
+      const quickjs = await callTool("configSecret", { value: APP_SECRET })
+      expect(lastRun("tool:configSecret")?.executor).toBe("quickjs")
+      expect(quickjs.status).toBe(200)
+      expect(quickjs.body.data).toEqual({ read: APP_SECRET })
+      workersOn()
+      const before = loader.bridgeResponses.length
+      const workers = await callTool("configSecret", { value: APP_SECRET })
+      expect(lastRun("tool:configSecret")?.executor).toBe("workers")
+      expect(workers.status).toBe(200)
+      expect(workers.body.data).toEqual({
+        refused: true,
+        code: "secret_not_available_on_workers",
+        status: 403,
+      })
+      for (const text of loader.bridgeResponses.slice(before)) {
+        assertNoSecretsIn(text, { ...SECRETS, app: APP_SECRET })
+      }
+    } finally {
+      connectionConfigRegistry.restoreUnder([orgId, "wparity"], registered)
+    }
   })
 
   it("emit and logger", async () => {

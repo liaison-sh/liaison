@@ -28,11 +28,10 @@ import { withSystemDb } from "~/db/privileged"
 import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
 import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
-import { connectionConfigRegistry } from "~/modules/apps/app-registries"
 import {
   forWorkersRun,
   isWorkersRunBridge,
-  manifestSecretConfigKeys,
+  secretConfigKeysOf,
 } from "~/modules/apps/sandbox/bridge/secret-free"
 import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
 import { executeInSandbox } from "~/modules/apps/sandbox/executor"
@@ -185,13 +184,6 @@ let timedAppsSet: ReadonlySet<string> = new Set()
 /** Running executions by token -> app, so a nested run's record names its parent app. */
 const runningExecutions = new Map<string, string>()
 
-/** The declared secret config keys of an app for an org (its registered connections). */
-function secretConfigKeysOf(orgId: string, appName: string): Set<string> {
-  return manifestSecretConfigKeys(
-    Object.fromEntries(connectionConfigRegistry.snapshotUnder([orgId, appName])),
-  )
-}
-
 export async function runApp(opts: RunAppOptions): Promise<unknown> {
   const timed = timedApps().has(opts.appName)
   const started = Date.now()
@@ -245,12 +237,13 @@ async function dispatch(
   if (executor === "workers" && workersTarget) {
     // The isolate lives off this server: no method may hand it a secret. The
     // dispatching site may have built the bridge so already (workersRun);
-    // otherwise it is marked here, before any call, in the caller's frame.
+    // otherwise it is marked here, before any call, in the caller's frame. The
+    // refused config keys are the ones the bridge's own config_get decrypts
+    // (recorded on it when it was built); a bridge that records none refuses
+    // every config_get (fail closed).
     const bridge = isWorkersRunBridge(opts.bridge)
       ? opts.bridge
-      : forWorkersRun(opts.bridge, {
-          secretConfigKeys: secretConfigKeysOf(opts.orgId, opts.appName),
-        })
+      : forWorkersRun(opts.bridge, { secretConfigKeys: secretConfigKeysOf(opts.bridge) })
     return executeOnWorkers(
       {
         config: workersTarget.config,

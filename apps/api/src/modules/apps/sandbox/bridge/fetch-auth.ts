@@ -27,6 +27,7 @@
 // A failed exchange answers the app with the token endpoint's own status and
 // body (no token in it), which is what the app saw when it exchanged itself.
 
+import { createHmac, randomBytes } from "node:crypto"
 import { connectionOfSecretKey, typedError } from "~/modules/apps/sandbox/bridge/secret-free"
 import type { AppManifestForBridge } from "~/modules/apps/sandbox/bridge/shared"
 import { matchesDomain } from "~/modules/apps/sandbox/bridge/shared"
@@ -52,8 +53,11 @@ export interface FetchAuthDeps {
   orgId: string
   userId: string
   appName: string
-  /** The connection's access token (connections_getToken's lookup). */
-  readToken: (connection: string, identifier?: string) => Promise<string>
+  /** The connection's access token and the account it belongs to (connections_getToken's lookup). */
+  readToken: (
+    connection: string,
+    identifier?: string,
+  ) => Promise<{ token: string; identifier: string }>
   /** The connection's stored fields (connections_getCredentials' lookup). */
   readCredentials: (connection: string, identifier?: string) => Promise<Record<string, unknown>>
   /** A declared config secret, decrypted (config_get's lookup); null when unset. */
@@ -209,6 +213,44 @@ export function assertConnectionHost(
   }
 }
 
+/**
+ * The one host an oauth2 account's token may go to, when the account names a
+ * host of its own: an account whose identifier is itself one of the
+ * connection's hosts (a shop domain under a wildcard such as `*.myshopify.com`)
+ * is bound to that host, so one account's token never reaches another
+ * account's host under the same wildcard. `null` for an account that names no
+ * host (the connection's domains then bound it, as before).
+ */
+export function accountBoundHost(
+  manifest: AppManifestForBridge,
+  connection: string,
+  identifier: string | undefined,
+): string | null {
+  if (!identifier || !/^[a-z0-9.-]+$/i.test(identifier) || !identifier.includes(".")) return null
+  const host = identifier.toLowerCase()
+  return matchesConnectionHost(manifest, connection, `https://${host}/`) &&
+    (manifest.connections?.[connection]?.allowedDomains ?? []).length > 0
+    ? host
+    : null
+}
+
+function assertAccountHost(boundHost: string | null, connection: string, url: string): void {
+  if (!boundHost) return
+  let host = ""
+  try {
+    host = new URL(url).hostname.toLowerCase()
+  } catch {
+    /* an unparsable url names no host: refused below */
+  }
+  if (host !== boundHost) {
+    throw typedError(
+      403,
+      "credential_host_not_allowed",
+      `ctx.fetch auth: ${host || url} is not the host of this "${connection}" account`,
+    )
+  }
+}
+
 function fieldValue(
   creds: Record<string, unknown>,
   connection: string,
@@ -238,18 +280,24 @@ interface CachedBearer {
 }
 const bearerCache = new Map<string, CachedBearer>()
 const bearerInflight = new Map<string, Promise<CachedBearer | FetchResult>>()
+/** Account slot -> the full cache key (with its credential fingerprint) last cached there. */
+const bearerSlots = new Map<string, string>()
+/** Per-process key for the credential fingerprint, so the cache holds no plain digest of a secret. */
+const FINGERPRINT_KEY = randomBytes(32)
 
 export const FetchAuthTestAccess = {
   reset(): void {
     bearerCache.clear()
     bearerInflight.clear()
+    bearerSlots.clear()
   },
   cachedCount(): number {
     return bearerCache.size
   },
 }
 
-function exchangeKey(deps: FetchAuthDeps, auth: FetchAuth, exchange: FetchAuthExchange): string {
+/** The account slot of an exchange: who, which connection account, which token endpoint. */
+function exchangeSlot(deps: FetchAuthDeps, auth: FetchAuth, exchange: FetchAuthExchange): string {
   return [
     deps.orgId,
     deps.appName,
@@ -302,13 +350,40 @@ async function runExchange(
   return { token, expiresAtMs: Date.now() + Math.max(expiresIn * 1000 - TOKEN_SKEW_MS, 0) }
 }
 
+/**
+ * The cache key: the account slot plus a keyed fingerprint of the stored
+ * credential pair the exchange sends. Reconnecting the account with other keys
+ * (or rotating them) changes the fingerprint, so the old account's bearer is
+ * never answered for the new credentials; the slot's previous entry is dropped.
+ */
+async function exchangeKey(
+  deps: FetchAuthDeps,
+  auth: FetchAuth,
+  exchange: FetchAuthExchange,
+  declared: Set<string>,
+): Promise<string> {
+  const creds = await deps.readCredentials(auth.connection, auth.identifier)
+  const user = fieldValue(creds, auth.connection, exchange.fields[0], declared)
+  const pass = fieldValue(creds, auth.connection, exchange.fields[1], declared)
+  const fingerprint = createHmac("sha256", FINGERPRINT_KEY)
+    .update(`${user.length}:${user}\u0000${pass}`, "utf8")
+    .digest("hex")
+  const slot = exchangeSlot(deps, auth, exchange)
+  const key = `${slot}\u0000${fingerprint}`
+  const previous = bearerSlots.get(slot)
+  if (previous !== undefined && previous !== key) bearerCache.delete(previous)
+  bearerSlots.set(slot, key)
+  return key
+}
+
 async function exchangedBearer(
   deps: FetchAuthDeps,
   auth: FetchAuth,
   exchange: FetchAuthExchange,
+  declared: Set<string>,
   timeoutMs: number | undefined,
 ): Promise<{ key: string; bearer: CachedBearer } | { failed: FetchResult }> {
-  const key = exchangeKey(deps, auth, exchange)
+  const key = await exchangeKey(deps, auth, exchange, declared)
   const cached = bearerCache.get(key)
   if (cached && Date.now() < cached.expiresAtMs) return { key, bearer: cached }
   let inflight = bearerInflight.get(key)
@@ -333,6 +408,8 @@ export interface InjectedAuth {
   bearerKey?: string
   /** The token exchange failed: answer the app with this instead of fetching. */
   failed?: FetchResult
+  /** The one host the injected credential may reach (an account bound to its own host). */
+  boundHost?: string
 }
 
 function setHeader(headers: Record<string, string>, name: string, value: string): void {
@@ -359,7 +436,8 @@ export async function injectFetchAuth(
   const declared = new Set((declaration.credentialFields ?? []).map((f) => f.name))
 
   if (auth.exchange) {
-    const got = await exchangedBearer(deps, auth, auth.exchange, timeoutMs)
+    if (!isCredentials) throw invalid("a bearer exchange needs a credentials connection")
+    const got = await exchangedBearer(deps, auth, auth.exchange, declared, timeoutMs)
     if ("failed" in got) return { secrets: [], failed: got.failed }
     setHeader(headers, "Authorization", `Bearer ${got.bearer.token}`)
     return { secrets: [got.bearer.token], bearerKey: got.key }
@@ -378,6 +456,7 @@ export async function injectFetchAuth(
   }
 
   let value: string
+  let boundHost: string | null = null
   if (isCredentials) {
     if (auth.fields?.length !== 1) {
       throw invalid("a credentials connection names the one field to send")
@@ -386,17 +465,26 @@ export async function injectFetchAuth(
     value = fieldValue(creds, auth.connection, auth.fields[0]!, declared)
   } else {
     if (auth.fields) throw invalid("an oauth2 connection sends its token; fields do not apply")
-    value = await deps.readToken(auth.connection, auth.identifier)
+    // A named account that is itself a host is checked before its token is read.
+    assertAccountHost(
+      accountBoundHost(deps.manifest, auth.connection, auth.identifier),
+      auth.connection,
+      url,
+    )
+    const account = await deps.readToken(auth.connection, auth.identifier)
+    value = account.token
     if (typeof value !== "string" || value.length === 0) {
       throw typedError(409, "credential_missing", `Connection "${auth.connection}" has no token`)
     }
+    boundHost = accountBoundHost(deps.manifest, auth.connection, account.identifier)
+    assertAccountHost(boundHost, auth.connection, url)
   }
   if (auth.scheme === "bearer") {
     setHeader(headers, "Authorization", `Bearer ${value}`)
   } else {
     setHeader(headers, auth.scheme.slice("header:".length), value)
   }
-  return { secrets: [value] }
+  return { secrets: [value], ...(boundHost ? { boundHost } : {}) }
 }
 
 /** The bearer a 401 answered: drop it so the next call exchanges again. */

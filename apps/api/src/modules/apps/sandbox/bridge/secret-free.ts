@@ -37,6 +37,36 @@ export const SECRET_RETURNING_BRIDGE_METHODS: readonly string[] = [
 /** Marks a bridge built for a Workers run (non-enumerable, so not a method). */
 export const WORKERS_RUN_BRIDGE: unique symbol = Symbol("liaison.workersRunBridge")
 
+/**
+ * Carries, on a bridge, the resolver of the config keys its `config_get`
+ * decrypts (non-enumerable, so not a method). A Workers run refuses exactly
+ * those keys, read from the same source at the moment of the call.
+ */
+export const BRIDGE_SECRET_CONFIG_KEYS: unique symbol = Symbol("liaison.bridgeSecretConfigKeys")
+
+/** The config keys a bridge's `config_get` treats as secrets. */
+export type SecretConfigKeyResolver = () => Promise<Iterable<string>>
+
+/** Record on `bridge` (in place) which config keys its `config_get` decrypts. */
+export function markSecretConfigKeys<B extends object>(
+  bridge: B,
+  resolve: SecretConfigKeyResolver,
+): B {
+  Object.defineProperty(bridge, BRIDGE_SECRET_CONFIG_KEYS, {
+    value: resolve,
+    enumerable: false,
+    configurable: true,
+  })
+  return bridge
+}
+
+/** The resolver `markSecretConfigKeys` recorded on `bridge`, or null when it has none. */
+export function secretConfigKeysOf(bridge: unknown): SecretConfigKeyResolver | null {
+  if (!bridge || typeof bridge !== "object") return null
+  const resolve = (bridge as Record<symbol, unknown>)[BRIDGE_SECRET_CONFIG_KEYS]
+  return typeof resolve === "function" ? (resolve as SecretConfigKeyResolver) : null
+}
+
 export interface SecretNotAvailableOnWorkersError extends Error {
   status: 403
   code: typeof SECRET_NOT_AVAILABLE_ON_WORKERS
@@ -105,12 +135,15 @@ export function connectionOfSecretKey<C extends SecretKeySource>(
  * Mark `bridge` as serving a Workers run, IN PLACE (and return it): every
  * secret-returning method rejects with `secret_not_available_on_workers`, and
  * `config_get` does for a key in `secretConfigKeys` (other keys read as
- * before). Methods that are absent stay absent. Refusals are `async`
- * functions, so the executors' AsyncFunction dispatch is unchanged.
+ * before). `secretConfigKeys` is a fixed set, or a resolver read at each call
+ * (the source `config_get` decrypts from). Fail closed: with `null`, or a
+ * resolver that throws, every `config_get` is refused, since no key can be
+ * shown not to be a secret. Methods that are absent stay absent. Refusals are
+ * `async` functions, so the executors' AsyncFunction dispatch is unchanged.
  */
 export function forWorkersRun<B extends Record<string, any>>(
   bridge: B,
-  opts: { secretConfigKeys: Iterable<string> },
+  opts: { secretConfigKeys: Iterable<string> | SecretConfigKeyResolver | null },
 ): B {
   const target = bridge as Record<string, any>
   for (const name of SECRET_RETURNING_BRIDGE_METHODS) {
@@ -119,11 +152,21 @@ export function forWorkersRun<B extends Record<string, any>>(
       throw secretNotAvailableOnWorkers(`ctx.${name}`)
     }
   }
-  const secretKeys = new Set(opts.secretConfigKeys)
+  const source = opts.secretConfigKeys
+  const fixed = source === null || typeof source === "function" ? null : new Set(source)
+  const isSecret = async (key: string): Promise<boolean> => {
+    if (fixed) return fixed.has(key)
+    if (source === null || typeof source !== "function") return true
+    try {
+      return new Set(await source()).has(key)
+    } catch {
+      return true
+    }
+  }
   const configGet = target.config_get
   if (typeof configGet === "function") {
     target.config_get = async (key: string, ...rest: unknown[]) => {
-      if (secretKeys.has(String(key))) {
+      if (await isSecret(String(key))) {
         throw secretNotAvailableOnWorkers(`ctx.config.get("${String(key)}")`)
       }
       return configGet(key, ...rest)

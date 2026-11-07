@@ -21,12 +21,17 @@ import {
   isWorkersRunBridge,
   manifestSecretConfigKeys,
   SECRET_NOT_AVAILABLE_ON_WORKERS,
+  secretConfigKeysOf,
 } from "~/modules/apps/sandbox/bridge/secret-free"
 import {
   type AppManifestForBridge,
   SandboxBridgeTestAccess,
 } from "~/modules/apps/sandbox/bridge/shared"
-import { createRpcBridge, createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import {
+  createRpcBridge,
+  createSessionRpcBridge,
+  inlinePgCauseOnBridge,
+} from "~/modules/apps/sandbox/rpc-bridge"
 import { assertNoSecretsIn, findSecretsIn } from "~/modules/apps/workers/secret-scan"
 import { buildVerifyBridge } from "~/modules/webhooks/verify-bridge"
 
@@ -81,7 +86,10 @@ function upstream(answer: (req: Seen) => Response): Seen[] {
   return seen
 }
 
-function egress(config: Record<string, unknown> = {}): Record<string, any> {
+function egress(
+  config: Record<string, unknown> = {},
+  creds: () => Record<string, unknown> = () => CREDS,
+): Record<string, any> {
   return createEgressMethods({
     orgId: ORG,
     userId: USER,
@@ -99,7 +107,7 @@ function egress(config: Record<string, unknown> = {}): Record<string, any> {
       withShortTx: async (fn: (db: unknown) => Promise<unknown>) =>
         fn({ execute: async () => [{ config }] }),
     },
-    resolveCredentials: async (name: string) => (name === "carrier" ? CREDS : {}),
+    resolveCredentials: async (name: string) => (name === "carrier" ? creds() : {}),
   } as unknown as BridgeContext)
 }
 
@@ -162,6 +170,46 @@ describe("ctx.fetch auth: the credential is added host-side", () => {
     expect(deps.tokenCalls).toEqual([["shop", "demo-store.myshopify.com"]])
   })
 
+  it("an oauth2 account that is a host sends its token to that host only, not another shop under the wildcard", async () => {
+    const otherShop = "https://other-store.myshopify.com/admin/api/2026-04/graphql.json"
+    const refusedWith = async (identifier: string | undefined) => {
+      const headers: Record<string, string> = {}
+      const deps = fakeDeps()
+      const err = (await injectFetchAuth(
+        otherShop,
+        headers,
+        parseFetchAuth({
+          connection: "shop",
+          ...(identifier ? { identifier } : {}),
+          scheme: "header:X-Shopify-Access-Token",
+        })!,
+        deps,
+      ).catch((e: unknown) => e)) as { status?: number; code?: string }
+      return { err, headers, deps }
+    }
+    // Named account: refused before its token is read.
+    const named = await refusedWith("demo-store.myshopify.com")
+    expect(named.err.status).toBe(403)
+    expect(named.err.code).toBe("credential_host_not_allowed")
+    expect(named.headers).toEqual({})
+    expect(named.deps.tokenCalls).toEqual([])
+    // Default account (it resolves to demo-store): refused, no header added.
+    const byDefault = await refusedWith(undefined)
+    expect(byDefault.err.code).toBe("credential_host_not_allowed")
+    expect(byDefault.headers).toEqual({})
+    expect(byDefault.deps.tokenCalls).toEqual([["shop", undefined]])
+    // Its own host still gets it, and the injection names the host it is bound to.
+    const headers: Record<string, string> = {}
+    const ok = await injectFetchAuth(
+      "https://Demo-Store.myshopify.com/admin/api/2026-04/graphql.json",
+      headers,
+      parseFetchAuth({ connection: "shop", scheme: "header:X-Shopify-Access-Token" })!,
+      fakeDeps(),
+    )
+    expect(headers["X-Shopify-Access-Token"]).toBe(SHOP_TOKEN)
+    expect(ok.boundHost).toBe("demo-store.myshopify.com")
+  })
+
   it("refuses a host outside the connection's own domains, before reading the credential", async () => {
     const seen = upstream(() => new Response("{}", { status: 200 }))
     const err = (await guestFetch(egress(), "https://docs.carrier.test/x", {
@@ -219,6 +267,47 @@ describe("ctx.fetch auth: the credential is added host-side", () => {
     ).toBe(401)
     await guestFetch(b, "https://api.carrier.test/v3/orders", { auth })
     expect(tokenPosts()).toHaveLength(2)
+  })
+
+  it("bearer exchange: a reconnect with other keys exchanges again, never reusing the old bearer", async () => {
+    let issued = 0
+    const seen = upstream((req) => {
+      if (req.url.endsWith("/token")) {
+        issued++
+        return new Response(
+          JSON.stringify({ accessToken: `${BEARER}-${issued}`, expiresIn: 3600 }),
+          {
+            status: 200,
+          },
+        )
+      }
+      return new Response("{}", { status: 200 })
+    })
+    let stored: Record<string, unknown> = CREDS
+    const b = egress({}, () => stored)
+    const auth = {
+      connection: "carrier",
+      scheme: "bearer",
+      exchange: { url: "https://api.carrier.test/token", fields: ["key", "secret"] },
+    }
+    await guestFetch(b, "https://api.carrier.test/v3/orders", { auth })
+    await guestFetch(b, "https://api.carrier.test/v3/orders", { auth })
+    // The account is reconnected with another key pair (same connection, same account slot).
+    stored = { key: "other-account-key-9876", secret: "other-account-secret-5432" }
+    await guestFetch(b, "https://api.carrier.test/v3/orders", { auth })
+    const tokenPosts = seen.filter((s) => s.url.endsWith("/token"))
+    expect(tokenPosts).toHaveLength(2)
+    expect(tokenPosts[1]!.headers.Authorization).toBe(
+      `Basic ${Buffer.from("other-account-key-9876:other-account-secret-5432").toString("base64")}`,
+    )
+    const business = seen.filter((s) => !s.url.endsWith("/token"))
+    expect(business.map((s) => s.headers.Authorization)).toEqual([
+      `Bearer ${BEARER}-1`,
+      `Bearer ${BEARER}-1`,
+      `Bearer ${BEARER}-2`,
+    ])
+    // The old account's bearer is dropped, not kept beside the new one.
+    expect(FetchAuthTestAccess.cachedCount()).toBe(1)
   })
 
   it("a failed exchange answers the guest with the token endpoint's status and no business call", async () => {
@@ -400,6 +489,40 @@ describe("Workers mode", () => {
     expect(bridge.connections_getToken.toString()).not.toContain("secretNotAvailableOnWorkers")
   })
 
+  it("a bridge records the secret keys its config_get decrypts, so runApp's forWorkersRun refuses them (no registry)", async () => {
+    // The connection registry is empty in this process: the keys come from the manifest.
+    const session = { run: async <T>(fn: (tx: RlsClient) => Promise<T>) => fn(null as never) }
+    const session2 = createSessionRpcBridge("carrier", USER, ORG, session, MANIFEST, [], "user")
+    const ambient = inlinePgCauseOnBridge(
+      createRpcBridge("carrier", USER, ORG, null as unknown as RlsClient, MANIFEST),
+    )
+    for (const built of [session2, ambient]) {
+      expect(isWorkersRunBridge(built)).toBe(false)
+      const resolve = secretConfigKeysOf(built)
+      expect(resolve).not.toBeNull()
+      expect(new Set(await resolve!())).toEqual(new Set(["shopSecret", "carrierWebhookSecret"]))
+      const b = forWorkersRun(built, { secretConfigKeys: resolve })
+      for (const key of ["carrierWebhookSecret", "shopSecret"]) {
+        expect((await refusal(b.config_get(key))).code).toBe(SECRET_NOT_AVAILABLE_ON_WORKERS)
+      }
+    }
+  })
+
+  it("forWorkersRun fails closed: no key source, or one that throws, refuses every config_get", async () => {
+    const plain = () => ({ config_get: async (k: string) => `value-of-${k}` })
+    const none = forWorkersRun(plain(), { secretConfigKeys: null })
+    expect((await refusal(none.config_get("plain"))).code).toBe(SECRET_NOT_AVAILABLE_ON_WORKERS)
+    const broken = forWorkersRun(plain(), {
+      secretConfigKeys: async () => {
+        throw new Error("manifest unavailable")
+      },
+    })
+    expect((await refusal(broken.config_get("plain"))).code).toBe(SECRET_NOT_AVAILABLE_ON_WORKERS)
+    const resolved = forWorkersRun(plain(), { secretConfigKeys: async () => ["s"] })
+    expect(await resolved.config_get("plain")).toBe("value-of-plain")
+    expect((await refusal(resolved.config_get("s"))).code).toBe(SECRET_NOT_AVAILABLE_ON_WORKERS)
+  })
+
   it("forWorkersRun lets a non-secret config key through", async () => {
     const b = forWorkersRun(
       { config_get: async (k: string) => `value-of-${k}` },
@@ -452,7 +575,7 @@ function fakeDeps(): FetchAuthDeps & { tokenCalls: Array<[string, string | undef
     appName: "carrier",
     readToken: async (c, id) => {
       tokenCalls.push([c, id])
-      return SHOP_TOKEN
+      return { token: SHOP_TOKEN, identifier: id ?? "demo-store.myshopify.com" }
     },
     readCredentials: async () => CREDS,
     readConfigSecret: async () => null,

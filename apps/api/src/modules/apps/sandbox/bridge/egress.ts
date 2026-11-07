@@ -201,12 +201,13 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
     appName,
     readToken: async (connectionName, identifier) => {
       noteConnection(connectionName, identifier)
-      const { getTokenForConnection } = await import("~/modules/apps/connections/service")
-      return shortDb((db) =>
-        getTokenForConnection(db, orgId, userId, appName, connectionName, identifier, {
+      const { resolveConnectionAccount } = await import("~/modules/apps/connections/service")
+      const account = await shortDb((db) =>
+        resolveConnectionAccount(db, orgId, userId, appName, connectionName, identifier, {
           actorType: actorType === "user" ? "user" : "system",
         }),
       )
+      return { token: account.token, identifier: account.identifier }
     },
     readCredentials: (connectionName, identifier) => {
       noteConnection(connectionName, identifier)
@@ -322,6 +323,7 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
         injected.secrets.push(...substituted.secrets)
       }
       const injectedFor = auth?.connection ?? null
+      const injectedHost = injected.boundHost ?? null
 
       // DEMO INSTANCE ONLY. On a normal deployment this is one boolean read of
       // a module-local that is false, and the call path below is byte-identical
@@ -420,6 +422,12 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
                     if (injectedFor && !matchesConnectionHost(manifest, injectedFor, next)) {
                       throw new Error(
                         `Redirect to ${new URL(next).hostname} refused: not a host of connection "${injectedFor}"`,
+                      )
+                    }
+                    // A credential bound to its account's own host follows no redirect elsewhere.
+                    if (injectedHost && new URL(next).hostname.toLowerCase() !== injectedHost) {
+                      throw new Error(
+                        `Redirect to ${new URL(next).hostname} refused: not the host of this "${injectedFor}" account`,
                       )
                     }
                   },

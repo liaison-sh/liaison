@@ -4,7 +4,8 @@
  * registry. Each registered `(app, entityType)` adds an EXISTS branch joining
  * the file's `entity_id` to the parent table's join column, scoped by org. Apps
  * that have not registered are not addressable through the policy, so files with
- * an unknown parent are denied by default.
+ * an unknown parent are denied by default. The uploader-only kinds
+ * (`UPLOADER_ONLY_FILE_KINDS`) add one branch each, with no parent join.
  */
 
 const IDENT_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/
@@ -31,6 +32,23 @@ export interface FileParentRegistration {
    */
   softDeleteColumn?: string
 }
+
+/**
+ * A kind of kernel file with no parent row, readable only by the member who
+ * uploaded it (`uploaded_by` is the reading user, in the reading org). A
+ * data-subject export bundle is one: it is written for the person who asked
+ * for it, so neither the subject, nor another member, nor an admin reaches it
+ * through a parent.
+ */
+export interface UploaderOnlyFileKind {
+  app: string
+  entityType: string
+}
+
+/** The uploader-only kinds, in policy order. */
+export const UPLOADER_ONLY_FILE_KINDS: readonly UploaderOnlyFileKind[] = [
+  { app: "kernel", entityType: "data_subject_export" },
+]
 
 // Anchored UUID shape guard for the entity_id → uuid cast in the policy join.
 const UUID_SHAPE_RE =
@@ -82,5 +100,12 @@ export function buildFilesSelectPolicy(
       `) )`
     )
   })
-  return `${head} USING (${branches.join(" OR ")});`
+  const uploaderOnly = UPLOADER_ONLY_FILE_KINDS.map(
+    (kind) =>
+      `( ${k}.files.app = ${lit(kind.app)} ` +
+      `AND ${k}.files.entity_type = ${lit(kind.entityType)} ` +
+      `AND ${k}.files.org_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid ` +
+      `AND ${k}.files.uploaded_by = NULLIF(current_setting('app.current_user_id', true), '')::uuid )`,
+  )
+  return `${head} USING (${[...branches, ...uploaderOnly].join(" OR ")});`
 }

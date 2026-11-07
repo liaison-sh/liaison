@@ -117,6 +117,23 @@ describe("buildFilesSelectPolicy", () => {
     expect(sql).toContain(`"kernel".files.entity_type = 'e''kind'`)
   })
 
+  it("an uploader-only kind is readable by its uploader in its org, with no parent join", () => {
+    const sql = buildFilesSelectPolicy([
+      {
+        app: "kernel",
+        entityType: "thread",
+        schemaRef: "kernel",
+        tableName: "threads",
+        joinOn: "id",
+      },
+    ])
+    expect(sql).toContain(
+      `( "kernel".files.app = 'kernel' AND "kernel".files.entity_type = 'data_subject_export' ` +
+        `AND "kernel".files.org_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid ` +
+        `AND "kernel".files.uploaded_by = NULLIF(current_setting('app.current_user_id', true), '')::uuid )`,
+    )
+  })
+
   it("empty parents → policy denies all", () => {
     const sql = buildFilesSelectPolicy([])
     expect(sql).toContain("USING (false)")

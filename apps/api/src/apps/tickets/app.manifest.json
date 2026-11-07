@@ -106,7 +106,7 @@
       }
     ]
   },
-  "version": "1.2.7",
+  "version": "1.2.8",
   "description": "Customer-facing ticketing: local foundations (7.1)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -2657,7 +2657,7 @@
     "nudge": {
       "outboundTextParams": ["textBody", "htmlBody"],
       "description": "Send a polite follow-up to the customer. Gated — only when awaiting_customer.",
-      "searchKeywords": ["relance", "relancer", "rappeler", "remind", "followup"],
+      "searchKeywords": ["relance", "relancer", "rappeler", "remind", "followup", "envoyer"],
       "requiredScopes": ["tickets:tickets:reply"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",

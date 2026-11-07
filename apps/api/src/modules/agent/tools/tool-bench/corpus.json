@@ -15,6 +15,24 @@
     "modelRun": true
   },
   {
+    "id": "C04",
+    "set": "seed",
+    "lang": "en",
+    "say": "Elodie is off next week",
+    "typed": ["away", "set away", "out of office", "holiday", "next in line"],
+    "any": ["kernel__set_away"],
+    "modelRun": true
+  },
+  {
+    "id": "C05",
+    "set": "seed",
+    "lang": "fr",
+    "say": "je suis en congés la semaine prochaine, Tom me remplace",
+    "typed": ["congés", "absent", "vacances", "remplaçant", "absence"],
+    "any": ["kernel__set_away"],
+    "modelRun": true
+  },
+  {
     "id": "C15",
     "set": "seed",
     "lang": "fr",
@@ -210,6 +228,33 @@
     "say": "typo: invocie Alpine",
     "typed": ["invocie", "invoce search"],
     "any": ["invoicing__documents_search"],
+    "modelRun": true
+  },
+  {
+    "id": "N01",
+    "set": "seed",
+    "lang": "en",
+    "say": "what should I do next here",
+    "typed": ["suggest next steps", "next steps", "what next", "propose follow-up actions"],
+    "any": ["kernel__suggest_next_steps"],
+    "modelRun": true
+  },
+  {
+    "id": "N02",
+    "set": "seed",
+    "lang": "en",
+    "say": "remember that Sara prefers calls in the morning",
+    "typed": ["remember", "memory insert", "save a note to memory", "remember that"],
+    "any": ["kernel__memory_insert"],
+    "modelRun": true
+  },
+  {
+    "id": "N03",
+    "set": "seed",
+    "lang": "fr",
+    "say": "souviens-toi que Sara préfère les appels le matin",
+    "typed": ["souviens-toi", "se souvenir", "mémoriser", "retenir", "ajouter à la mémoire"],
+    "any": ["kernel__memory_insert"],
     "modelRun": true
   },
   {

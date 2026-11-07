@@ -10,7 +10,9 @@ import {
   type Baseline,
   bar,
   type CorpusLine,
+  catalogBars,
   corpusShapeErrors,
+  type FormRun,
   type LintInput,
   lint,
   loadGuides,
@@ -312,5 +314,49 @@ describe("bars", () => {
     expect(bar(8, 9, 85)).toMatchObject({ kind: "count", ok: true })
     expect(bar(7, 9, 85)).toMatchObject({ kind: "count", ok: false })
     expect(bar(0, 4, 85)).toMatchObject({ kind: "none", ok: true })
+  })
+})
+
+describe("bars hold on the catalog", () => {
+  const run = (lang: "fr" | "en", reached: boolean): FormRun => ({
+    key: `${lang}${Math.random()}`,
+    form: "x",
+    line: { id: "L", set: "seed", lang, say: "x", typed: ["x"], any: ["a__b"] },
+    result: {
+      top1: reached,
+      top5: reached,
+      top5Ties: reached,
+      loaded: reached,
+      zeroHit: false,
+      above: [],
+    },
+  })
+  /** 100 forms, `fr` of them French; `miss` English and `frMiss` French forms missed. */
+  const fixture = (miss: number, frMiss: number) => [
+    ...Array.from({ length: 80 }, (_, i) => run("en", i >= miss)),
+    ...Array.from({ length: 20 }, (_, i) => run("fr", i >= frMiss)),
+  ]
+
+  it("85% overall: 84 of 100 misses, 85 and 86 hold", () => {
+    expect(catalogBars(fixture(16, 0)).overall.ok).toBe(false) // 84
+    expect(catalogBars(fixture(15, 0)).overall.ok).toBe(true) // 85
+    expect(catalogBars(fixture(14, 0)).overall.ok).toBe(true) // 86
+  })
+
+  it("80% French: 15 of 20 misses by one, 16 and 17 hold", () => {
+    expect(catalogBars(fixture(0, 5)).french.ok).toBe(false) // 15 of 20 = 75
+    expect(catalogBars(fixture(0, 4)).french.ok).toBe(true) // 16 of 20 = 80
+    expect(catalogBars(fixture(0, 3)).french.ok).toBe(true) // 17 of 20
+  })
+
+  it("a French class under 10 forms is held to a count bar, not a share", () => {
+    const few = [...Array.from({ length: 8 }, (_, i) => run("fr", i > 0)), run("en", true)]
+    expect(catalogBars(few).french).toMatchObject({ kind: "count", ok: true })
+  })
+
+  it("the catalog holds both bars", () => {
+    const bars = catalogBars(runForms(catalog, files.corpus))
+    expect(bars.overall.ok).toBe(true)
+    expect(bars.french.ok).toBe(true)
   })
 })

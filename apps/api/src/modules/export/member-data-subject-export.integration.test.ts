@@ -3,7 +3,8 @@
 // A member's own data-subject export, through the real tool path
 // (`executeTool` → scope check → handler → kernel file). Two members, Alice and
 // Bob, each hold messages, a conversation, a file, approvals, a routine-free
-// profile, an audit entry, a connected account and an outside AI client. Alice's
+// profile, an audit entry, a connected account, an outside AI client, a
+// dashboard and an agent store document. Alice's
 // bundle holds her rows and none of Bob's, never a token or a hash, she can
 // export herself without the data-subject authority, and she cannot export Bob:
 // that answers 404 exactly like a person who does not exist, and parks no
@@ -13,11 +14,13 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import crypto from "node:crypto"
 import { and, eq } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
-import type { UserContext } from "~/db/rls"
+import { type UserContext, withRlsContext } from "~/db/rls"
 import { agents, approvalRequests, files, users } from "~/db/schema/kernel"
 import { getObjectBuffer } from "~/infra/storage/object-storage"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { createDashboard } from "~/modules/dashboards/service"
+import { AGENT_STORE_APP, setDocument } from "~/modules/data-store/service"
 import { seedContext } from "~/seed/context"
 import { seedMemoryEntries } from "~/seed/factories/agent/memory"
 import { seedApprovalRequests } from "~/seed/factories/approvals/requests"
@@ -156,6 +159,16 @@ async function seedMember(person: minimal.Person, mark: string, secrets?: typeof
       },
     ],
   })
+  await createDashboard(actor, {
+    title: `${mark} dashboard`,
+    visibility: "personal",
+    spec: { v: 1, blocks: [] },
+  })
+  await withRlsContext(actor, (tx) =>
+    setDocument(tx, { orgId, app: AGENT_STORE_APP, userId: person.id }, "notes", `${mark}-note`, {
+      title: `${mark} note contents`,
+    }),
+  )
 }
 
 beforeAll(async () => {
@@ -204,6 +217,8 @@ describe("data subject export of a member", () => {
       "auditEntries",
       "connectedAccounts",
       "connectedApps",
+      "dashboards",
+      "storeDocuments",
     ]) {
       expect(bundle.records[key].rows.length).toBeGreaterThan(0)
       expect(saved.counts[key]).toBe(bundle.records[key].rows.length)
@@ -215,6 +230,10 @@ describe("data subject export of a member", () => {
     expect(text).toContain(`${ALICE_MARK}@mailbox.example`)
     expect(text).toContain(`${ALICE_MARK} renamed`)
     expect(text).toContain("compact")
+    expect(text).toContain(`${ALICE_MARK} dashboard`)
+    expect(text).toContain(`${ALICE_MARK}-note`)
+    // A store document's contents stay out: the export lists it, it does not copy it.
+    expect(text).not.toContain(`${ALICE_MARK} note contents`)
     // Nothing of Bob's, not even the payload of Alice's own approval request.
     expect(text).not.toContain(BOB_MARK)
     expect(text).not.toContain(`${ALICE_MARK}-payload@example.com`)

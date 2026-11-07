@@ -245,7 +245,7 @@ export function buildAppHostCalls(deps: AppHostCallDeps) {
         if (row.status !== undefined && row.status !== "pending") {
           throw new Error("decideApproval: this approval is no longer pending")
         }
-        return row
+        return { ...row, toolName: row.toolName }
       }
       const approval = await read()
       // The approve is bound to the payload the HOST read and shows, never to a

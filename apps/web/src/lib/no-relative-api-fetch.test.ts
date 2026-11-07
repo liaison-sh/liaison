@@ -27,6 +27,8 @@ const HOST_CLIENT_PATH_FILES = new Set([
   path.join("framework", "isolated-app.tsx"),
 ])
 const BARE_SRC = /src="\/api\//
+/** In those files `host.fetch("/api/...")` is the host client; a bare `fetch(` is not. */
+const BARE_RELATIVE_API_FETCH = /(?<![.\w])fetch\(\s*[`"']\/api\b/
 /**
  * An avatar the server stored as "/api/avatars/<key>" fed straight into an
  * <img>. Under a shell that resolves inside the bundle: every uploaded picture
@@ -58,8 +60,10 @@ describe("no request is built on the page's own origin", () => {
         .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
         .join("\n")
       const rel = path.relative(SRC, file)
-      const srcRule = HOST_CLIENT_PATH_FILES.has(rel) ? BARE_SRC : RELATIVE_API_SRC
-      if (RELATIVE_API_FETCH.test(text) || srcRule.test(text)) {
+      const hostClient = HOST_CLIENT_PATH_FILES.has(rel)
+      const fetchRule = hostClient ? BARE_RELATIVE_API_FETCH : RELATIVE_API_FETCH
+      const srcRule = hostClient ? BARE_SRC : RELATIVE_API_SRC
+      if (fetchRule.test(text) || srcRule.test(text)) {
         offenders.push(rel)
       }
     }

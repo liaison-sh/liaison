@@ -887,7 +887,7 @@ function routeLineOf(route: ApprovalRoute, names: Map<string, string>): RouteLin
  * The names of the people the feed's routes name, read once as the viewer. A name that cannot be
  * read leaves the line without it, never a failed feed.
  */
-async function readRouteNames(
+export async function readRouteNames(
   tx: RlsClient,
   orgId: string,
   callerUserId: string,
@@ -905,13 +905,16 @@ async function readRouteNames(
   const out = new Map<string, string>()
   if (ids.size === 0) return out
   try {
-    const found = extractRows<{ id: string; name: string }>(
-      await tx.execute(drizzleSql`
-        SELECT id, name FROM ${K}.users
-        WHERE org_id = ${orgId}::uuid AND id IN (${drizzleSql.join(
-          [...ids].map((id) => drizzleSql`${id}::uuid`),
-          drizzleSql`, `,
-        )})`),
+    // In a savepoint: a failed read leaves the feed's transaction usable for the rest of the feed.
+    const found = await tx.transaction(async (sp) =>
+      extractRows<{ id: string; name: string }>(
+        await sp.execute(drizzleSql`
+          SELECT id, name FROM ${K}.users
+          WHERE org_id = ${orgId}::uuid AND id IN (${drizzleSql.join(
+            [...ids].map((id) => drizzleSql`${id}::uuid`),
+            drizzleSql`, `,
+          )})`),
+      ),
     )
     for (const u of found) out.set(u.id, u.name)
   } catch (err) {

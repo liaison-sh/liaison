@@ -677,24 +677,27 @@ async function loadStoredRecipientContext(
 
 /**
  * The last day of the run of away days the recipient is in today, in their own zone, or null.
- * Read on the loader's transaction (a range of one person; no second privileged acquisition).
- * Unreadable means not away, so a failure can only make a notification arrive, never wait.
+ * Read in a savepoint of the loader's transaction (a range of one person; no second privileged
+ * acquisition), so a failed read leaves the loader's transaction usable. Unreadable means not
+ * away, so a failure can only make a notification arrive, never wait. Every range not over is
+ * read, later ones included: a range that starts the day after another ends continues the run.
  */
-async function readAwayUntil(
+export async function readAwayUntil(
   tx: PrivilegedDb,
   recipient: RouterRecipient,
   profileTimezone: string | null,
   orgTimezone: string | null,
 ): Promise<string | null> {
   try {
-    const rows = (await tx.execute(
-      sql`SELECT starts_on::text AS starts_on, ends_on::text AS ends_on, weekdays, status,
-                 ended_early_on::text AS ended_early_on
-            FROM ${K}.away_ranges
-           WHERE org_id = ${recipient.orgId}::uuid AND user_id = ${recipient.userId}::uuid
-             AND status = 'active'
-             AND starts_on <= (now() AT TIME ZONE 'UTC')::date + 1
-             AND (ends_on IS NULL OR ends_on >= (now() AT TIME ZONE 'UTC')::date - 1)`,
+    const rows = (await tx.transaction((sp) =>
+      sp.execute(
+        sql`SELECT starts_on::text AS starts_on, ends_on::text AS ends_on, weekdays, status,
+                   ended_early_on::text AS ended_early_on
+              FROM ${K}.away_ranges
+             WHERE org_id = ${recipient.orgId}::uuid AND user_id = ${recipient.userId}::uuid
+               AND status = 'active'
+               AND (ends_on IS NULL OR ends_on >= (now() AT TIME ZONE 'UTC')::date - 1)`,
+      ),
     )) as unknown as Array<{
       starts_on: string
       ends_on: string | null

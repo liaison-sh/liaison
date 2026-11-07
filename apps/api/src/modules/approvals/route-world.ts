@@ -134,14 +134,18 @@ export async function readAwayWorld(
   now: Date = new Date(),
 ): Promise<AwayWorld> {
   try {
-    const ranges = extractRows<RangeRow>(
-      await tx.execute(drizzleSql`
-        SELECT user_id, starts_on::text AS starts_on, ends_on::text AS ends_on, weekdays,
-               next_in_line_id, status, ended_early_on::text AS ended_early_on
-        FROM ${K}.away_ranges
-        WHERE org_id = ${orgId}::uuid AND status = 'active'
-          AND starts_on <= (now() AT TIME ZONE 'UTC')::date + 1
-          AND (ends_on IS NULL OR ends_on >= (now() AT TIME ZONE 'UTC')::date - 1)`),
+    // Every range not over, later ones included: a range that starts the day after another ends
+    // continues the same run, and the run's walk bounds how far it reads. In a savepoint, so a
+    // failed read leaves the caller's transaction usable.
+    const ranges = await tx.transaction(async (sp) =>
+      extractRows<RangeRow>(
+        await sp.execute(drizzleSql`
+          SELECT user_id, starts_on::text AS starts_on, ends_on::text AS ends_on, weekdays,
+                 next_in_line_id, status, ended_early_on::text AS ended_early_on
+          FROM ${K}.away_ranges
+          WHERE org_id = ${orgId}::uuid AND status = 'active'
+            AND (ends_on IS NULL OR ends_on >= (now() AT TIME ZONE 'UTC')::date - 1)`),
+      ),
     )
     if (ranges.length === 0) return NOBODY_AWAY
     const userIds = [...new Set(ranges.map((r) => r.user_id))]

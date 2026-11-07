@@ -219,11 +219,10 @@ describe("known bad answers stay fixed", () => {
   const searchable = searchableTools(catalog)
   const appNames = new Set(searchable.map((t) => t.appName).filter((a) => a !== "kernel"))
 
-  for (const l of files.mustNot) {
-    it(`"${l.query}"`, () => {
-      expect(mustNotBroken(catalog, [l])).toEqual([])
-    })
-  }
+  it("every known bad answer in must-not.json stays fixed", () => {
+    expect(files.mustNot.length).toBeGreaterThanOrEqual(7)
+    expect(mustNotBroken(catalog, files.mustNot)).toEqual([])
+  })
 
   it("a broken line is reported", () => {
     const loud = [tool("shop__la_list", { keywords: ["la"] })]

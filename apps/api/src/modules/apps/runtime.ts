@@ -82,7 +82,11 @@ import {
 } from "~/modules/apps/approval-summarizers"
 import { projectBulkToolSchemas } from "~/modules/apps/bulk-field-schemas"
 import { manifestFileParentOf } from "~/modules/apps/catalog-derivations"
-import { validateAppDescriptor, validateAppManifest } from "~/modules/apps/contract"
+import {
+  firstPartyOnlyToolKeyErrors,
+  validateAppDescriptor,
+  validateAppManifest,
+} from "~/modules/apps/contract"
 // --- DDL helpers ---
 import {
   computeSchemaHash,
@@ -612,6 +616,22 @@ async function validateForRegistration(
     if (typeof desc.name === "string" && desc.name.length > 0) {
       await persistAppErrorState(orgId, desc.name, String(desc.version ?? ""), problem)
     }
+    return { ok: false, problem }
+  }
+  // Tool keys that narrow a scope-taint refusal count only for an app the platform vouches
+  // for (contract.ts): any other app declaring one is not loaded, same errored state.
+  const firstPartyKeyErrors =
+    isManifest && !hasPrivilegedBridge(desc) ? firstPartyOnlyToolKeyErrors(manifestOnly) : []
+  if (firstPartyKeyErrors.length > 0) {
+    const problem: AppProblem = {
+      code: "manifest_invalid",
+      message: firstPartyKeyErrors.join("; "),
+    }
+    log.error(
+      { app: desc.name, version: desc.version, error: problem.message },
+      "Invalid app descriptor",
+    )
+    await persistAppErrorState(orgId, String(desc.name ?? ""), String(desc.version ?? ""), problem)
     return { ok: false, problem }
   }
   // An app that needs a host API this server does not provide is not loaded
@@ -3155,12 +3175,8 @@ async function registerSingleApp(
               entry.taintSourceWhenRow = tool.taintSourceWhen
             }
             // What a tool writes is read only by the person writing it: it narrows a scope-taint
-            // refusal, so it is a claim vouched for like readOnly, never on a manifest's own say.
-            if (
-              desc.trusted !== false ||
-              desc._firstParty === true ||
-              desc._publisherSigned === true
-            ) {
+            // refusal, so it counts for a first-party app alone (registration refuses any other).
+            if (hasPrivilegedBridge(desc)) {
               if (tool.sinkReadersSelf === true) entry.sinkReadersSelf = true
               if (Array.isArray(tool.contentParams)) entry.contentParams = tool.contentParams
             }

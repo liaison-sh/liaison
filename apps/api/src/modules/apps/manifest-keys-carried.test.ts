@@ -66,7 +66,7 @@ const CASES: KeyCase[] = [
   },
   {
     key: "contentParams",
-    tool: { contentParams: ["note"] },
+    tool: { contentParams: ["note"], params: { type: "object", properties: { note: {} } } },
     registry: "contentParams",
     expected: ["note"],
   },
@@ -169,16 +169,20 @@ describe("manifest keys carried onto the registry", () => {
     expect(missing).toEqual([])
   })
 
-  it("a sink-reader declaration is not carried for an app nobody vouched for", async () => {
+  it("a sink-reader declaration refuses an app nobody vouched for, so nothing is carried", async () => {
     const manifest = appWith(
-      { put: { sinkReadersSelf: true, contentParams: ["note"] } },
+      {
+        put: {
+          sinkReadersSelf: true,
+          contentParams: ["note"],
+          params: { type: "object", properties: { note: {} } },
+        },
+      },
       { trusted: false },
     )
-    await registerApps([manifest], TEST_ORG)
-    const entry = toolRegistry.get([TEST_ORG, APP, "put"]) as Record<string, unknown> | undefined
-    expect(entry).toBeDefined()
-    expect(entry?.sinkReadersSelf).toBeUndefined()
-    expect(entry?.contentParams).toBeUndefined()
+    const { failedApps } = await registerApps([manifest], TEST_ORG)
+    expect(failedApps).toEqual([APP])
+    expect(toolRegistry.get([TEST_ORG, APP, "put"])).toBeUndefined()
   })
 })
 

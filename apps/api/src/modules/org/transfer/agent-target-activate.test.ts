@@ -4,9 +4,12 @@
 // committed: the source agent's `activate` alone does not unfreeze it.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { randomUUID } from "node:crypto"
+import { sql } from "drizzle-orm"
+import { withSystemDb } from "~/db/privileged"
 import { effectiveIndexName, getMeili } from "~/infra/search/client"
 import { _setEdition } from "~/lib/edition"
 import { BillingUnavailableError } from "~/modules/billing-managed/control-client"
+import { resultRows } from "~/modules/org/purge/rows"
 import { writeIndexAndWait } from "~/modules/search/index-writer"
 import { waitForMeiliTask } from "~/modules/search/meili-task"
 import * as minimal from "~/seed/tiers/minimal"
@@ -108,6 +111,42 @@ describe("target activation", () => {
       }
     }, 60_000)
   }
+
+  it("an abort right after the import purges the incoming copy, even when this process's view predates it", async () => {
+    const { orgId } = await minimal.secondOrg({ name: "Aborted Incoming Org" })
+    // The purge removes the org's search documents by org_id.
+    const meili = getMeili()
+    const index = effectiveIndexName()
+    const created = await meili.createIndex(index, { primaryKey: "id" })
+    await waitForMeiliTask(meili, created.taskUid).catch(() => {})
+    const settings = await meili.index(index).updateSettings({ filterableAttributes: ["org_id"] })
+    await waitForMeiliTask(meili, settings.taskUid)
+    const transferId = randomUUID()
+    const agent = new TargetAgent({ sql: {} as never, ownKeys: {} as never, ackInstances: [] })
+    await agent.handle("hello", {
+      orgId,
+      transferId,
+      keys: { encryption: "a".repeat(64), byok: "b".repeat(64) },
+    })
+    await agent.handle("storage-checked", { distinct: true })
+    // This process read the org as not moving a moment ago...
+    expect(await orgTransferStateOf(orgId)).toBeNull()
+    // ...then the import lands the row as incoming, straight in the database.
+    await withSystemDb("test-import-incoming", (db) =>
+      db.execute(sql`UPDATE kernel.organizations
+        SET transfer_state = 'incoming', transfer_id = ${transferId}::uuid, transfer_at = now()
+        WHERE id = ${orgId}::uuid`),
+    )
+    try {
+      expect(await agent.handle("abort", {})).toEqual({ purged: true })
+      const left = await withSystemDb("test-import-incoming", (db) =>
+        db.execute(sql`SELECT 1 FROM kernel.organizations WHERE id = ${orgId}::uuid`),
+      )
+      expect(resultRows(left)).toHaveLength(0)
+    } finally {
+      await setOrgTransferState(orgId, null, transferId).catch(() => {})
+    }
+  }, 60_000)
 
   it("a second hello cannot switch the org mid-session", async () => {
     const agent = new TargetAgent({ sql: {} as never, ownKeys: {} as never })

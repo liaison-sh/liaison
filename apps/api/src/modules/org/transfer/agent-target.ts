@@ -24,6 +24,7 @@ import { askControlPlane } from "~/modules/org/transfer-state/resolver"
 import {
   awaitOrgTransferAcks,
   orgTransferStateOf,
+  readMovingOrgs,
   setOrgTransferState,
 } from "~/modules/org/transfer-state/state"
 import {
@@ -284,7 +285,11 @@ export class TargetAgent {
       }
       case "abort": {
         if (!this.orgId || !this.transferId) return { purged: false }
-        const state = await orgTransferStateOf(this.orgId).catch(() => null)
+        // The row itself, not this process's view: the import wrote `incoming`
+        // straight to the database, and a view refreshed just before it still
+        // reads the org as not moving for up to a second.
+        const orgId = this.orgId
+        const state = (await readMovingOrgs()).find((r) => r.orgId === orgId) ?? null
         if (state?.state !== "incoming" || state.transferId !== this.transferId) {
           return { purged: false, state: state?.state ?? null }
         }

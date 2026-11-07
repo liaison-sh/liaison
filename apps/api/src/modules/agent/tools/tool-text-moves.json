@@ -202,7 +202,13 @@
     {
       "tool": "kernel:data_subject_export",
       "field": "description",
-      "sentence": "Scoped to the dedicated DSR authority (a privacy/finance handler can run it WITHOUT org-admin powers); a caller lacking that scope is denied (and should ask whoever holds the DSR/privacy authority).",
+      "sentence": "For a MEMBER (a teammate, or the requester: \"export my data\"), pass userId instead (\"me\" for the requester): the bundle holds their profile, preferences, roles, messages, conversations they started, uploaded files, approvals, routines, audit entries, connected accounts (never tokens) and agent memory.",
+      "to": "guide:kernel"
+    },
+    {
+      "tool": "kernel:data_subject_export",
+      "field": "description",
+      "sentence": "Exporting anyone else needs the dedicated DSR authority (a privacy/finance handler can run it WITHOUT org-admin powers); without it the subject reads as not found (ask whoever holds the DSR/privacy authority). Every member may export their own data.",
       "to": "guide:kernel"
     },
     {

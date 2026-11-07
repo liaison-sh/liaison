@@ -278,7 +278,7 @@ Rules that say which document templates a record needs (a customs declaration, a
 | `ai_models_set` | Change what Auto runs and the default reasoning level, switch models on or off, add a model from OpenRouter. | `kernel:org:admin` | Yes |
 | `audit_search` | Search the audit log. | `kernel:audit:read` | No |
 | `export` | Export the data you can see for chosen apps as a zip. | `kernel:users:admin` | No |
-| `data_subject_export` | Compile everything held on one contact into a GDPR export. | `kernel:data_subject:export` | Yes |
+| `data_subject_export` | Compile everything held on one contact, or one member of the organization, into a GDPR export. A member may export their own data; anyone else needs `kernel:data_subject:export`. | `kernel:data_subject:export:self` | Yes |
 | `capture_business_knowledge` | Save company knowledge as an organization document. | `knowledge:documents:create` | Yes |
 | `config_export` | Read the organization's configuration, without secrets. | `kernel:org:admin` | No |
 | `setup_state` | Show what is set up in the workspace and what is left of the features the person chose (the basics until they answer; the other features come as a menu with their times), including permissions a connected account still lacks because the provider must approve them first (Shopify's Read all orders). | `kernel:threads:read` | No |

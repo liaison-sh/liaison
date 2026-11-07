@@ -265,7 +265,11 @@ import {
   ruleRecordTypeSchema,
   ruleWhenSchema,
 } from "~/modules/documents/rules-store"
-import { handleDataSubjectExport } from "~/modules/export/data-subject-export-tool"
+import {
+  DATA_SUBJECT_EXPORT_SELF_SCOPE,
+  handleDataSubjectExport,
+  refuseDataSubjectExportBeforeGate,
+} from "~/modules/export/data-subject-export-tool"
 import { handleKernelExport } from "~/modules/export/kernel-export-tool"
 import {
   COMPUTER_SESSION_ANSWER_DESCRIPTION,
@@ -3214,11 +3218,20 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     name: "data_subject_export",
     deferLoading: true,
     description:
-      'Compile EVERYTHING the org holds on ONE data subject (a contact) across apps into a single downloadable GDPR data-subject-request (DSR) export bundle, and return its fileId. Use this for a GDPR/data-access request — "export everything we have on <person> so I can send it to them".',
+      'Compile EVERYTHING the org holds on ONE data subject (a contact, or a member of the organization) across apps into a single downloadable GDPR data-subject-request (DSR) export bundle, and return its fileId. Use this for a GDPR/data-access request — "export everything we have on <person> so I can send it to them".',
     searchKeywords: ["rgpd", "gdpr", "données", "personnelles", "exporter", "export", "personne"],
-    requiredScopes: ["kernel:data_subject:export"],
+    // The self-export scope every member holds; its parent, the DSR authority, covers it. Any
+    // other subject is refused before the gate without the parent (data-subject-export-tool.ts).
+    requiredScopes: [DATA_SUBJECT_EXPORT_SELF_SCOPE],
+    refuseBeforeGate: refuseDataSubjectExportBeforeGate,
     params: z.object({
-      contactId: z.string().uuid(),
+      contactId: z.string().uuid().optional(),
+      userId: z
+        .union([z.string().uuid(), z.literal("me")])
+        .optional()
+        .describe(
+          'A member of the organization, or "me" for the requester. Pass this or contactId.',
+        ),
       format: z.enum(["json"]).default("json"),
       shopifyOrders: z
         .array(z.record(z.string(), z.unknown()))

@@ -1476,6 +1476,8 @@ export const FR: Record<string, string> = {
   "Write product attributes (short codes)": "Modifier les attributs produit (codes courts)",
   "Compile a single data subject's records across apps into one GDPR data-subject-request (DSR) export bundle (privacy/DSR handler authority, NOT org admin)":
     "Rassembler les données d'une personne dans toutes les applications en un export RGPD (traitement des demandes d'accès, sans droits d'administration)",
+  "Export everything the organization holds about yourself as a member (every active member holds it)":
+    "Exporter tout ce que l'organisation détient sur vous en tant que membre (tout membre actif le détient)",
   "Read files attached to entities": "Lire les fichiers joints",
   "Analyze image/video files with the media-analysis tool":
     "Analyser des images et des vidéos avec l'outil d'analyse des médias",

@@ -1244,6 +1244,11 @@ describe("db import enforcement", () => {
     // subject, which is by construction not one actor's own rows, and the
     // bundle is written to object storage under the same handle.
     "modules/export/data-subject-export-tool.ts",
+    // Its member half: the sections about the member alone (preferences, roles,
+    // approvals, routines, audit entries, connected accounts) are read filtered
+    // on the member's id after the export was authorized, as RLS hides most of
+    // them from the member themself.
+    "modules/export/member-data-subject-bundle.ts",
     // Boot-time app discovery: which installs are first-party is read off the
     // instance-wide kernel.apps_installed before any request exists.
     "modules/apps/init.ts",

@@ -58,6 +58,12 @@ export const KERNEL_SCOPES: ScopeCatalogEntry[] = [
     description:
       "Compile a single data subject's records across apps into one GDPR data-subject-request (DSR) export bundle (privacy/DSR handler authority, NOT org admin)",
   },
+  {
+    scope: "kernel:data_subject:export:self",
+    app: "kernel",
+    description:
+      "Export everything the organization holds about yourself as a member (every active member holds it)",
+  },
   { scope: "kernel:files:read", app: "kernel", description: "Read files attached to entities" },
   {
     scope: "kernel:files:analyze",

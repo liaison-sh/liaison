@@ -2,7 +2,7 @@
 //
 // WHEN SOMEONE IS AWAY, AND WHO IS NEXT IN LINE: the one writer of kernel.away_ranges.
 //
-// A member has no write path on away_ranges, not on their own row either (migration 0279): every
+// A member has no write path on away_ranges, not on their own row either (migration 0281): every
 // write goes through this module, for the `set_away` tool and the profile's Away section alike.
 // A range holds dates and ids, never a reason. Going away rewrites no approval: who an item is
 // for is computed at read time (modules/approvals/route-world.ts), so a range only moves where a

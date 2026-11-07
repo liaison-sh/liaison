@@ -111,7 +111,7 @@ interface BundleOutcome extends BundleStepRow {
 }
 
 /**
- * The row's pill: a send-guard provider's for the first ref's kind ("Stripe: payment reminder"),
+ * The row's pill: a send-guard provider's for the first ref's kind ("Billing: payment reminder"),
  * else the tool's manifest `approvalCard.pill`, else none (the client names the action as before).
  */
 function approvalRowPill(

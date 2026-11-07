@@ -461,7 +461,7 @@ beforeAll(async () => {
       "fixture:invoice": {
         tool: "invoice_state",
         serviceMessage: true,
-        pill: { label: "Stripe: payment reminder" },
+        pill: { label: "Billing: payment reminder" },
       },
       "fixture:slow": { tool: "slow_state" },
       "fixture:broken": { tool: "broken_state" },
@@ -1611,14 +1611,14 @@ describe("the card says what the check says, and Send now", () => {
     expect(stopped?.metadata?.uncounted).toBe(true)
   }, 120_000)
 
-  it("fixture pill Stripe: payment reminder names the row over the tool's", async () => {
+  it("fixture pill Billing: payment reminder names the row over the tool's", async () => {
     const id = await stageCompose(unique("pill"), {
       followUp: { refs: [{ kind: "fixture:invoice", id: "F-2026-0418" }] },
     })
     const plain = await stageCompose(unique("nopill"))
     const { feed } = await home()
     expect(feed.find((i) => i.entityId === id)?.metadata?.pill).toEqual({
-      label: "Stripe: payment reminder",
+      label: "Billing: payment reminder",
     })
     expect(feed.find((i) => i.entityId === plain)?.metadata?.pill).toBeUndefined()
   }, 60_000)

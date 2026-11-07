@@ -228,7 +228,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
   const namedToolName = (): unknown =>
     props.item.metadata?.outcomeToolName ?? props.item.metadata?.toolName
   const actionLabel = (): string | null => {
-    // A declared pill names the row: a send-guard provider's for the mail's record ("Stripe:
+    // A declared pill names the row: a send-guard provider's for the mail's record ("Billing:
     // payment reminder"), else the tool's own (attention.ts).
     const pill = props.item.metadata?.pill as { label?: unknown; labelKey?: unknown } | undefined
     if (pill && typeof pill.label === "string" && pill.label.length > 0) {

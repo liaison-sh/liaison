@@ -458,7 +458,7 @@ function findProvider(orgId: string, kind: string): FoundProvider | null {
 }
 
 /**
- * The pill a provider declares for a mail about one of its records ("Stripe: payment reminder"):
+ * The pill a provider declares for a mail about one of its records ("Billing: payment reminder"):
  * the first ref's provider entry names the row, over the tool's own pill, since one tool
  * (`mail:compose`) carries several kinds of send.
  */

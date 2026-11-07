@@ -733,16 +733,16 @@ describe("home decisions", () => {
     DecisionQueueTestAccess.reset()
   })
 
-  it("fixture pill Stripe: payment reminder", () => {
+  it("fixture pill Billing: payment reminder", () => {
     const a = approval("ap-1", {
       toolName: "mail:compose",
       actionLabel: "Mail: compose",
-      pill: { label: "Stripe: payment reminder" },
+      pill: { label: "Billing: payment reminder" },
     })
     const plain = approval("ap-2", { toolName: "mail:compose", actionLabel: "Mail: compose" })
     attentionStore._setForTest({ items: [a, plain], errors: [] })
     render(() => <Home entityId="home" />)
-    expect(screen.getByTestId(`${row(a)}-action-chip`).textContent).toBe("Stripe: payment reminder")
+    expect(screen.getByTestId(`${row(a)}-action-chip`).textContent).toBe("Billing: payment reminder")
     expect(screen.getByTestId(`${row(plain)}-action-chip`).textContent).toBe("Mail: compose")
   })
 
@@ -817,15 +817,15 @@ describe("home decisions", () => {
   it("failed source names itself with Retry and the rest shows", () => {
     attentionStore._setForTest({
       items: [approval("ap-1")],
-      errors: [{ app: "stripe", reason: "timeout", message: "timed out" }],
+      errors: [{ app: "billing", reason: "timeout", message: "timed out" }],
     })
     render(() => <Home entityId="home" />)
-    const card = screen.getByTestId("home-source-failed-stripe")
-    expect(card.textContent).toContain("Could not load what Stripe has for you")
+    const card = screen.getByTestId("home-source-failed-billing")
+    expect(card.textContent).toContain("Could not load what Billing has for you")
     expect(card.textContent).toContain("Anything waiting there is safe and still waiting.")
     expect(screen.getByTestId(row(approval("ap-1")))).toBeTruthy()
     apiGetEnvelope.mockClear()
-    fireEvent.click(screen.getByTestId("home-source-failed-stripe-retry"))
+    fireEvent.click(screen.getByTestId("home-source-failed-billing-retry"))
     expect(apiGetEnvelope).toHaveBeenCalledWith("/attention-items")
   })
 

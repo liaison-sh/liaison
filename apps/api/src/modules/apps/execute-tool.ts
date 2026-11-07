@@ -3508,7 +3508,11 @@ export function dashboardSourceRefusal(
   if (tool.contractOnly) return "it is reached only through a provider contract"
   if (tool.agentVisible === false) return "it is not offered to agents"
   if (tool.requiresHumanTurn) return "it runs only on a person's own turn"
-  if (tool.trustBoundary) return "it crosses a trust boundary"
+  // A "user" boundary is a read people and agents both call (taint-checked inside a
+  // thread): a view may show it like any other read. Internal and agent-only tools
+  // are not a viewer's to call.
+  if (tool.trustBoundary === "internal" || tool.trustBoundary === "agent")
+    return "it crosses a trust boundary"
   if (tool.routineOnly || tool.requiresAgentExecutionThread)
     return "it runs only inside an agent run"
   if (tool.searchResultUrlParam !== undefined || tool.outboundWebRead) return "it reads the web"

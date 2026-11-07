@@ -2091,6 +2091,10 @@
         "standing": "Standing next in line",
         "standingHint": "Used whenever an away range names nobody.",
         "save": "Mark me away",
+        "question": "Your calendar has an event {{dates}} that looks like time off. Count it as away?",
+        "yes": "Yes",
+        "no": "No",
+        "fromCalendar": "From your calendar",
         "endEarly": "End early",
         "undo": "Undo",
         "range": "{{from}} to {{to}}",
@@ -3756,7 +3760,15 @@
       "approved": "Approval {{handle}} approved",
       "rejected": "Approval {{handle}} rejected"
     },
-    "awayNamed": "{{name}} marked you away {{dates}}"
+    "awayNamed": "{{name}} marked you away {{dates}}",
+    "awayCalendar": {
+      "set": "Your calendar marks you away {{dates}}. {{next}}",
+      "moved": "Your away moved: {{dates}}. {{next}}",
+      "asked": "Is “{{title}}” time off, {{dates}}? It counts for nothing until you say Yes.",
+      "askedNoTitle": "Is this calendar event time off, {{dates}}? It counts for nothing until you say Yes.",
+      "next": "Next in line: {{name}}.",
+      "nobody": "Nobody is next in line, so items for you stay with the usual approvers."
+    }
   },
   "approvalDecisionLine": {
     "withdrawn": "Withdrawn by the requester.",

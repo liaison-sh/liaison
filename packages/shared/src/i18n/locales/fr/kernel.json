@@ -2088,6 +2088,10 @@
         "standing": "Relais par défaut",
         "standingHint": "Utilisé quand une absence ne nomme personne.",
         "save": "M'indiquer absent",
+        "question": "Votre agenda contient un événement {{dates}} qui ressemble à une absence. Le compter comme absence ?",
+        "yes": "Oui",
+        "no": "Non",
+        "fromCalendar": "Depuis votre agenda",
         "endEarly": "Terminer maintenant",
         "undo": "Annuler",
         "range": "Du {{from}} au {{to}}",
@@ -3753,7 +3757,15 @@
       "approved": "Demande {{handle}} approuvée",
       "rejected": "Demande {{handle}} refusée"
     },
-    "awayNamed": "{{name}} vous a indiqué absent {{dates}}"
+    "awayNamed": "{{name}} vous a indiqué absent {{dates}}",
+    "awayCalendar": {
+      "set": "Votre agenda vous indique absent {{dates}}. {{next}}",
+      "moved": "Votre absence a changé : {{dates}}. {{next}}",
+      "asked": "« {{title}} » est-il une absence, {{dates}} ? Rien n’est compté tant que vous n’avez pas répondu Oui.",
+      "askedNoTitle": "Cet événement de l’agenda est-il une absence, {{dates}} ? Rien n’est compté tant que vous n’avez pas répondu Oui.",
+      "next": "Suivant : {{name}}.",
+      "nobody": "Personne n’est désigné : vos éléments restent chez les approbateurs habituels."
+    }
   },
   "approvalDecisionLine": {
     "withdrawn": "Retirée par le demandeur.",

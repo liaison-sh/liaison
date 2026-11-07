@@ -360,6 +360,9 @@ export async function aggregateAttentionItems(args: {
     )
   }
   await Promise.all(tasks)
+  // A calendar question shows its event's title, read now under the viewer's own access.
+  const { withLiveCalendarTitles } = await import("~/apps/calendar/away-from-calendar")
+  await withLiveCalendarTitles(args.actor, items)
 
   items.sort(compareAttentionItems)
   return { items: dedupeByEntity(dedupeByApproval(items)), errors }

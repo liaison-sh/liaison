@@ -7661,6 +7661,11 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.settings.profile.away.standing": "Relais par défaut",
   "kernel.settings.profile.away.standingHint": "Utilisé quand une absence ne nomme personne.",
   "kernel.settings.profile.away.save": "M'indiquer absent",
+  "kernel.settings.profile.away.question":
+    "Votre agenda contient un événement {{dates}} qui ressemble à une absence. Le compter comme absence ?",
+  "kernel.settings.profile.away.yes": "Oui",
+  "kernel.settings.profile.away.no": "Non",
+  "kernel.settings.profile.away.fromCalendar": "Depuis votre agenda",
   "kernel.settings.profile.away.endEarly": "Terminer maintenant",
   "kernel.settings.profile.away.undo": "Annuler",
   "kernel.settings.profile.away.range": "Du {{from}} au {{to}}",
@@ -7674,6 +7679,15 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.settings.profile.away.failed": "Impossible d'enregistrer votre absence.",
   "kernel.settings.profile.away.endFailed": "Impossible d'y mettre fin.",
   "kernel.attentionTitle.awayNamed": "{{name}} vous a indiqué absent {{dates}}",
+  "kernel.attentionTitle.awayCalendar.set": "Votre agenda vous indique absent {{dates}}. {{next}}",
+  "kernel.attentionTitle.awayCalendar.moved": "Votre absence a changé : {{dates}}. {{next}}",
+  "kernel.attentionTitle.awayCalendar.asked":
+    "« {{title}} » est-il une absence, {{dates}} ? Rien n’est compté tant que vous n’avez pas répondu Oui.",
+  "kernel.attentionTitle.awayCalendar.askedNoTitle":
+    "Cet événement de l’agenda est-il une absence, {{dates}} ? Rien n’est compté tant que vous n’avez pas répondu Oui.",
+  "kernel.attentionTitle.awayCalendar.next": "Suivant : {{name}}.",
+  "kernel.attentionTitle.awayCalendar.nobody":
+    "Personne n’est désigné : vos éléments restent chez les approbateurs habituels.",
   "kernel.entityDiscussion.empty": "Aucun message pour l'instant.",
   "kernel.entityDiscussion.placeholder": "Écrivez à ce sujet, ou @ un agent",
   "kernel.entityDiscussion.send": "Envoyer",

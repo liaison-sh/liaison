@@ -121,6 +121,7 @@ export const KERNEL_JOBS: Readonly<Record<string, KernelJobSpec>> = {
   "agent-turn-retention": { queueClass: "cron", priority: YIELD },
   "effect-ledger-retention": { queueClass: "cron", priority: YIELD },
   "away-ranges-prune": { queueClass: "cron", priority: YIELD },
+  "calendar-away-refresh": { queueClass: "cron", priority: YIELD },
   "attention-events-retention": { queueClass: "cron", priority: YIELD },
   "notification-deliveries-retention": { queueClass: "cron", priority: YIELD },
   "sync-model-pricing": { queueClass: "cron", priority: YIELD },

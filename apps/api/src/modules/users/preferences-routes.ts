@@ -18,9 +18,11 @@ import { zValidator } from "~/lib/validate"
 import { broadcastReadState } from "~/modules/threads/read-state-broadcast"
 import {
   AwayRefusal,
+  answerCalendarAway,
   clearStandingNextInLine,
   endAwayRange,
   listAwayRanges,
+  listCalendarQuestions,
   nextInLineChoices,
   setAway,
   undoAway,
@@ -190,11 +192,12 @@ const awayDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 preferencesRoutes.get("/away", async (c) => {
   const userId = c.get("userId")
   const orgId = c.get("orgId")
-  const [list, people] = await Promise.all([
+  const [list, people, questions] = await Promise.all([
     listAwayRanges(orgId, userId),
     nextInLineChoices(orgId, userId),
+    listCalendarQuestions(orgId, userId),
   ])
-  return success(c, { ...list, people })
+  return success(c, { ...list, people, questions })
 })
 
 preferencesRoutes.post(
@@ -250,6 +253,19 @@ preferencesRoutes.post(
   async (c) => {
     const { id } = c.req.valid("param")
     return success(c, await endAwayRange(c.get("orgId"), c.get("userId"), id))
+  },
+)
+
+// Yes or No on a calendar event that looked like leave; No (or Undo on a row the calendar made
+// active) sets it aside for good.
+preferencesRoutes.post(
+  "/away/:id/answer",
+  zValidator("param", z.object({ id: z.string().uuid() })),
+  zValidator("json", z.object({ yes: z.boolean() })),
+  async (c) => {
+    const { id } = c.req.valid("param")
+    const { yes } = c.req.valid("json")
+    return success(c, await answerCalendarAway(c.get("orgId"), c.get("userId"), id, yes))
   },
 )
 

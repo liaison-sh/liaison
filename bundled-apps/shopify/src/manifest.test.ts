@@ -211,6 +211,9 @@ describe("Shopify app.manifest.json", () => {
     const m = loadManifest() as { jobs: Record<string, { handler: string; schedule?: string }> }
     expect(m.jobs["backfill-customers"]?.handler).toBe("backfillCustomersJob")
     expect(m.jobs["scope-seed"]?.handler).toBe("scopeSeedJob")
+    // Neither has a schedule: without onDemand the runtime never registers them, so nothing could run them.
+    expect((m.jobs["backfill-customers"] as { onDemand?: boolean }).onDemand).toBe(true)
+    expect((m.jobs["scope-seed"] as { onDemand?: boolean }).onDemand).toBe(true)
     expect(m.jobs["reconcile-customers"]?.handler).toBe("reconcileCustomersJob")
     expect(m.jobs["reconcile-customers"]?.schedule).toBe("0 3 * * *")
     expect(m.jobs["scan-unfulfilled-orders"]?.handler).toBe("scanUnfulfilledOrdersJob")
@@ -904,7 +907,10 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.4: above 0.4.3, so an instance on either line of work upgrades; no change of its own.
     // 0.4.5: above both lines of work, which each changed it under the number before; no change of its own.
     // 0.4.6: its attention heading is declared here, not in the web shell.
-    expect(m.version).toBe("0.4.8")
+    // 0.4.6 (main): the offline token stays host-side (ctx.fetch auth); the verifier checks by config key.
+    // 0.4.7 (main): backfill-customers and scope-seed are onDemand (a job with neither schedule nor onDemand never registers).
+    // 0.4.9: both of the above, merged.
+    expect(m.version).toBe("0.4.9")
   })
 
   it("read_all_orders is a protected scope behind the org's full-order-history toggle", () => {

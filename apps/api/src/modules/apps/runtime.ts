@@ -142,6 +142,7 @@ export class AppRegistrationFatalError extends Error {
 }
 
 import { TAINT_ENFORCING_SINKS } from "~/modules/agent/scopes/scope-taint"
+import { isCustomAppName } from "~/modules/apps/custom-app-name"
 import {
   closeRegistryJournal,
   openRegistryJournal,
@@ -671,6 +672,24 @@ async function validateForRegistration(
       ...(isManifest ? { [SHARED_MANIFEST]: result.data } : {}),
     } as AppDescriptor,
   }
+}
+
+/**
+ * Whether an app can reach nothing outside the organisation: no network domain, no
+ * connection and no cross-app call in its manifest. Its run can still read the org's data
+ * (under the caller's own grants), but no bridge path of a read-only run then leaves the org.
+ */
+function customAppReachesNothingOutside(desc: AppDescriptor): boolean {
+  const d = desc as {
+    network?: { allowedDomains?: unknown[] }
+    connections?: Record<string, unknown>
+    cross_app_calls?: unknown[]
+  }
+  return (
+    (d.network?.allowedDomains?.length ?? 0) === 0 &&
+    Object.keys(d.connections ?? {}).length === 0 &&
+    (d.cross_app_calls?.length ?? 0) === 0
+  )
 }
 
 /** How `registerApps` treats the org's persistent rows. */
@@ -3056,6 +3075,20 @@ async function registerSingleApp(
                 desc._publisherSigned === true)
             ) {
               entry.readOnly = true
+            } else if (
+              // A CUSTOM APP's read: nobody vouches for its code, so its claim counts only
+              // because the run enforces it. Every run of the tool gets a read-only bridge
+              // (executeToolHandler, `readOnlyEnforced`: the store, db, mail, job and
+              // approval writes are refused, nested calls run as reads), and the app reaches
+              // no outside host (no network domain, no connection, no cross-app call), so the
+              // known bound of a read-only run, `fetch`, has nowhere to carry the turn.
+              tool.readOnly === true &&
+              entry.writesToTable === undefined &&
+              isCustomAppName(desc.name) &&
+              customAppReachesNothingOutside(desc)
+            ) {
+              entry.readOnly = true
+              entry.readOnlyEnforced = true
             }
             // The sink's reader scope (scope-taint.ts, consequence 4). It turns a refusal into
             // an audience judgement, so it is a claim about who reads the table and is vouched

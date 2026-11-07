@@ -3076,6 +3076,11 @@ export async function executeToolHandler(
     const upstreamTrace: UpstreamTrace = {}
     const handlerBridgeOptions = {
       ...bridgeOptions,
+      // A tool whose read-only claim counts only because the run enforces it (a custom
+      // app's, runtime.ts): every write through the bridge is refused, whoever dispatched it.
+      ...((tool as { readOnlyEnforced?: boolean }).readOnlyEnforced === true
+        ? { readOnlyRunOverride: true }
+        : {}),
       requestApprovalImpl,
       parentExecutionToken: executionToken,
       upstreamTrace,

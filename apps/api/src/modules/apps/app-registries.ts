@@ -282,6 +282,10 @@ export const toolRegistry = createTypedRegistry<
      *  (scope-taint.ts, consequence 1). Scope taint lets it run on a tainted turn; an
      *  unmarked tool counts as a write. A declared `writesToTable` wins over it. */
     readOnly?: boolean
+    /** Set by runtime.ts only, never copied from a manifest: `readOnly` counts because
+     *  every run of the tool is a read-only run (a custom app's read, with no outside host
+     *  to reach), so executeToolHandler builds its bridge with every write refused. */
+    readOnlyEnforced?: boolean
     /** True only for a kernel tool whose output holds no org record content (the
      *  tool catalog, capability listings, UI navigation): calling it reads no
      *  scoped data, so the bridge does not record its scope into the turn's

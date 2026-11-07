@@ -10,6 +10,8 @@ import { authorityFacts, decidingScope } from "~/modules/approvals/authority"
 import { createHandlerApprovalRequest } from "~/modules/apps/execute-tool"
 import { createApprovalsMethods } from "~/modules/apps/sandbox/bridge/approvals"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
+import { seedOrgRow, seedUserRows } from "~/seed/factories/org/rows"
+import { insertSql } from "~/seed/factories/org/test-rows"
 
 const broadcastSpy = spyOn(eventBusModule, "broadcastEphemeral").mockImplementation(async () => {})
 
@@ -76,19 +78,37 @@ const count = async () =>
 
 describe("ctx.requestApproval approve_scope", () => {
   beforeAll(async () => {
-    await sql`INSERT INTO kernel.organizations (id, name, slug, settings) VALUES (${ORG}, 'Bridge approve scope', 'bridge-approve-scope', '{}') ON CONFLICT DO NOTHING`
-    for (const [id, mail] of [
-      [REQUESTER, "bas-requester"],
-      [DECIDER, "bas-decider"],
-      [GENERIC_APPROVER, "bas-generic"],
-    ] as const) {
-      await sql`INSERT INTO kernel.users (id, org_id, email, name) VALUES (${id}, ${ORG}, ${`${mail}@test.com`}, ${mail}) ON CONFLICT DO NOTHING`
-    }
-    await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by, tainted)
-      VALUES (${THREAD}, ${ORG}, 'bas-thread', 'agent_chat', ${REQUESTER}, false) ON CONFLICT DO NOTHING`
-    await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id) VALUES (${THREAD}, ${REQUESTER}, ${ORG}) ON CONFLICT DO NOTHING`
-    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope) VALUES (${DECIDER}, ${ORG}, ${DECIDING}) ON CONFLICT DO NOTHING`
-    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope) VALUES (${GENERIC_APPROVER}, ${ORG}, 'widgets:approve') ON CONFLICT DO NOTHING`
+    await seedOrgRow(
+      { id: ORG, name: "Bridge approve scope", slug: "bridge-approve-scope", settings: {} },
+      { onConflict: "skip" },
+    )
+    await seedUserRows(
+      (
+        [
+          [REQUESTER, "bas-requester"],
+          [DECIDER, "bas-decider"],
+          [GENERIC_APPROVER, "bas-generic"],
+        ] as const
+      ).map(([id, mail]) => ({ id, orgId: ORG, email: `${mail}@test.com`, name: mail })),
+      { onConflict: "skip" },
+    )
+    const row = (table: string, values: Record<string, string | boolean>) =>
+      sql.unsafe(insertSql(table, values, { onConflictDoNothing: true }))
+    await row("kernel.threads", {
+      id: THREAD,
+      org_id: ORG,
+      handle: "bas-thread",
+      type: "agent_chat",
+      created_by: REQUESTER,
+      tainted: false,
+    })
+    await row("kernel.thread_participants", { thread_id: THREAD, user_id: REQUESTER, org_id: ORG })
+    await row("kernel.user_scope_grants", { user_id: DECIDER, org_id: ORG, scope: DECIDING })
+    await row("kernel.user_scope_grants", {
+      user_id: GENERIC_APPROVER,
+      org_id: ORG,
+      scope: "widgets:approve",
+    })
   })
 
   afterAll(async () => {

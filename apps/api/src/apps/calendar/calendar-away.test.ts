@@ -17,6 +17,8 @@ import { sql } from "~/db"
 import { PrivilegedDbTestAccess, withSystemDb } from "~/db/privileged"
 import { wholeWorkingDays } from "~/modules/attention/work-hours"
 import { answerCalendarAway, dayLabel, endAwayRange, readAwayToday } from "~/modules/users/away"
+import { seedOrgRow, seedUserRow, setUserPreferences } from "~/seed/factories/org/rows"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireAppSchemaJsLock, releaseAppSchemaJsLock } from "~/tests/helpers/app-schema-lock"
 
 let orgId: string
@@ -44,12 +46,7 @@ beforeAll(async () => {
   await acquireAppSchemaJsLock("app_calendar")
   const slug = `cal-away-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
   colleagueEmail = `colleague-${slug}@x.test`
-  await withSystemDb("calendar-away-fixture", async (tx) => {
-    const o = (await tx.execute(drizzleSql`
-      INSERT INTO kernel.organizations (id, name, slug) VALUES (gen_random_uuid(), 'Calendar Away Org', ${slug})
-      RETURNING id`)) as any
-    orgId = (o.rows ?? o)[0].id
-  })
+  orgId = await seedOrgRow({ id: crypto.randomUUID(), name: "Calendar Away Org", slug })
   await registerCalendarSchema()
 }, 120_000)
 
@@ -61,14 +58,23 @@ afterAll(async () => {
 async function person(name = "Tom Martin", extraCalendars: string[] = []) {
   const email = `p-${crypto.randomUUID()}@x.test`
   const connectionId = crypto.randomUUID()
+  const userId = await seedUserRow({
+    orgId,
+    email,
+    name,
+    status: "active",
+    passwordHash: "h",
+    authVersion: 1,
+    permissionVersion: 1,
+    timezone: "Europe/Paris",
+  })
+  await setUserPreferences(userId, {
+    workHoursStart: "09:00",
+    workHoursEnd: "18:00",
+    workDays: [1, 2, 3, 4, 5],
+    timezone: "Europe/Paris",
+  })
   return withSystemDb("calendar-away-person", async (tx) => {
-    const u = (await tx.execute(drizzleSql`
-      INSERT INTO kernel.users (id, org_id, email, name, status, password_hash, auth_version, permission_version, timezone)
-      VALUES (gen_random_uuid(), ${orgId}::uuid, ${email}, ${name}, 'active', 'h', 1, 1, 'Europe/Paris') RETURNING id`)) as any
-    const userId = (u.rows ?? u)[0].id as string
-    await tx.execute(drizzleSql`
-      INSERT INTO kernel.user_preferences (user_id, work_hours_start, work_hours_end, work_days, timezone)
-      VALUES (${userId}::uuid, '09:00', '18:00', '{1,2,3,4,5}', 'Europe/Paris')`)
     const { accountId } = await onAccountConnected(
       tx as any,
       orgId,
@@ -558,9 +564,17 @@ describe("calendar reading: follows its event", () => {
   it("disconnecting the account deletes its calendar rows and keeps the person's said rows", async () => {
     const p = await person()
     await syncInitial(p, [ooo("g1", `${mon} 09:00`, `${fri} 18:00`)])
-    await sql`
-      INSERT INTO kernel.away_ranges (org_id, user_id, starts_on, ends_on, source, status, set_by)
-      VALUES (${orgId}, ${p.userId}, ${addDays(mon, 14)}, ${addDays(mon, 15)}, 'said', 'active', ${p.userId})`
+    await sql.unsafe(
+      insertSql("kernel.away_ranges", {
+        org_id: orgId,
+        user_id: p.userId,
+        starts_on: addDays(mon, 14),
+        ends_on: addDays(mon, 15),
+        source: "said",
+        status: "active",
+        set_by: p.userId,
+      }),
+    )
     await withSystemDb("calendar-away-disconnect", (tx) =>
       onAccountDisconnected(tx as any, orgId, {
         orgId,

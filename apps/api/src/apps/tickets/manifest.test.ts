@@ -71,7 +71,7 @@ describe("tickets manifest", () => {
     }
     expect(result.success).toBe(true)
     expect(ticketsManifest.views.activityBar).toMatchObject({
-      order: 11,
+      order: 12,
       tabAction: { type: "inbox" },
     })
     expect(ticketsManifest.views.tabTypes.inbox).toMatchObject({

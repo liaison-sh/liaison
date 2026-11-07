@@ -35,6 +35,8 @@ import {
   userContextFor,
 } from "~/modules/mcp/test-helpers"
 import { handleToolCall, type ToolCallCtx } from "~/modules/mcp/tool-call"
+import { seedOrgRow, seedUserRows } from "~/seed/factories/org/rows"
+import { insertSql } from "~/seed/factories/org/test-rows"
 
 const ORG = "00000000-0000-4000-8000-0000000d5e01"
 const OWNER = "00000000-0000-4000-8000-0000000d5e02"
@@ -191,15 +193,24 @@ describe("scope-taint keys on a first-party manifest tool", () => {
         .join(""),
     )
     await cleanupSeededOrg(ORG)
-    await sql`INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (${ORG}, 'Selfnote Taint Keys Org', 'selfnote-taint-keys-org') ON CONFLICT DO NOTHING`
-    for (const [id, email] of [
-      [OWNER, "selfnote-owner@test.com"],
-      [COLLEAGUE, "selfnote-colleague@test.com"],
-    ] as const) {
-      await sql`INSERT INTO kernel.users (id, org_id, email, name, status, password_hash)
-        VALUES (${id}, ${ORG}, ${email}, ${email}, 'active', 'x') ON CONFLICT DO NOTHING`
-    }
+    await seedOrgRow(
+      { id: ORG, name: "Selfnote Taint Keys Org", slug: "selfnote-taint-keys-org" },
+      { onConflict: "skip" },
+    )
+    await seedUserRows(
+      [
+        [OWNER, "selfnote-owner@test.com"],
+        [COLLEAGUE, "selfnote-colleague@test.com"],
+      ].map(([id, email]) => ({
+        id,
+        orgId: ORG,
+        email,
+        name: email,
+        status: "active",
+        passwordHash: "x",
+      })),
+      { onConflict: "skip" },
+    )
     for (const scope of OWNER_SCOPES) await grantScope(ORG, OWNER, scope)
     // Reads the notes table, not the ledger the turn read.
     await grantScope(ORG, COLLEAGUE, NOTES_READ)
@@ -208,13 +219,28 @@ describe("scope-taint keys on a first-party manifest tool", () => {
       [DM, "selfnote-dm", "agent_chat", [OWNER]],
       [SHARED, "selfnote-shared", "thread", [OWNER, COLLEAGUE]],
     ] as const) {
-      await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by)
-        VALUES (${id}, ${ORG}, ${handle}, ${type}, ${OWNER}) ON CONFLICT DO NOTHING`
+      await sql.unsafe(
+        insertSql(
+          "kernel.threads",
+          { id, org_id: ORG, handle, type, created_by: OWNER },
+          { onConflictDoNothing: true },
+        ),
+      )
       for (const user of members) {
-        await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id, role)
-          VALUES (${id}, ${user}, ${ORG}, 'admin') ON CONFLICT DO NOTHING`
-        await sql`INSERT INTO kernel.user_thread_state (user_id, thread_id, org_id)
-          VALUES (${user}, ${id}, ${ORG}) ON CONFLICT DO NOTHING`
+        await sql.unsafe(
+          insertSql(
+            "kernel.thread_participants",
+            { thread_id: id, user_id: user, org_id: ORG, role: "admin" },
+            { onConflictDoNothing: true },
+          ),
+        )
+        await sql.unsafe(
+          insertSql(
+            "kernel.user_thread_state",
+            { user_id: user, thread_id: id, org_id: ORG },
+            { onConflictDoNothing: true },
+          ),
+        )
       }
     }
     const { failedApps } = await registerApps([descriptor(FIRST_PARTY) as never], ORG)
@@ -301,9 +327,10 @@ describe("scope-taint keys on a first-party manifest tool", () => {
 
 describe("scope-taint keys: first-party only", () => {
   async function problemOf(voucher: Record<string, unknown>, tools: Record<string, unknown>) {
-    await sql`INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (${VALIDATION_ORG}, 'Selfnote Validation Org', 'selfnote-validation-org')
-      ON CONFLICT DO NOTHING`
+    await seedOrgRow(
+      { id: VALIDATION_ORG, name: "Selfnote Validation Org", slug: "selfnote-validation-org" },
+      { onConflict: "skip" },
+    )
     const { failedApps } = await registerApps(
       [descriptor(voucher, tools as never) as never],
       VALIDATION_ORG,

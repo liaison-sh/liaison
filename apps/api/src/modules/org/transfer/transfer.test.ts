@@ -10,9 +10,11 @@
 //   - full round trip: every table the move carries holds exactly the same rows
 //     on B as on A (secrets compared as plaintext: each opens on B with B's key
 //     and not with A's), the org lands `incoming`, a neighbour org on either
-//     side is untouched and never copied. A carries a schema no app owns any
-//     more (an uninstalled app's, or one an earlier file in this database left):
-//     a move does not carry it, so the comparison leaves it out too;
+//     side is untouched and never copied. The two instances need not hold the
+//     same empty tables (A carries a schema no app owns any more, as an
+//     uninstalled app or an earlier file in this database leaves; B registers
+//     apps A's truncated rows no longer name), so the comparison is over the
+//     tables that hold rows of the org, and both sides hold the same set;
 //   - B's sequences continue above A's (no handle collision for a new contact);
 //   - the webhook replay mark and the org's consumer marks arrive;
 //   - pass 2: a delta (update, insert, delete on A since pass 1) brings B to
@@ -61,7 +63,7 @@ import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { BundleError, BundleWriter, readBundle } from "./bundle"
 import { loadClosure, orgPredicate, rel } from "./closure"
 import { estimateTransfer } from "./estimate"
-import { exportOrg, type Fingerprint, foreignCustomSchemas, knownSchemas } from "./export"
+import { exportOrg, type Fingerprint } from "./export"
 import { countOrgClosure, foreignObjectKey, ImportRefused, importOrg } from "./import"
 import { purgeTransferCopy, TransferPurgeRefused } from "./purge"
 import { generateTransferKeys, type TransferKeys } from "./rekey"
@@ -156,10 +158,9 @@ function openSecrets(table: string, row: Record<string, unknown>, keys: typeof K
 }
 
 /**
- * The org's closure as a move carries it, every row as comparable JSON text,
- * per table. The export's rule: other orgs' custom app schemas are left out,
- * and so is a table of no app this instance knows unless it holds a row of the
- * org (a schema such a table sits in may exist on one instance only).
+ * The org's rows in its closure, every row as comparable JSON text, per table
+ * that holds at least one (which empty tables exist differs between instances:
+ * an orphan app schema, an app one side registered and the other no longer names).
  */
 async function snapshot(
   sql: postgres.Sql,
@@ -167,16 +168,12 @@ async function snapshot(
   org = orgId,
 ): Promise<Record<string, string[]>> {
   const closure = await loadClosure(sql as never)
-  const foreign = new Set(await foreignCustomSchemas(sql as never, org))
-  const known = await knownSchemas(sql as never, org)
   const out: Record<string, string[]> = {}
   for (const t of closure.tables) {
-    const schema = t.name.slice(0, t.name.indexOf("."))
-    if (foreign.has(schema)) continue
     const rows = await sql.unsafe<{ j: Record<string, unknown> }[]>(
       `SELECT to_jsonb(t) AS j FROM ${rel(t.name)} t WHERE ${orgPredicate(closure, t, "t", org)}`,
     )
-    if (!known.has(schema) && rows.length === 0) continue
+    if (rows.length === 0) continue
     out[t.name] = rows
       .map((r) => {
         const row = r.j
@@ -580,6 +577,7 @@ describe("org transfer between two instances", () => {
 
     const a = await snapshot(A, KEYS_A)
     const b = await snapshot(B, KEYS_B)
+    expect(Object.keys(b).sort()).toEqual(Object.keys(a).sort())
     for (const table of Object.keys(a))
       expect({ table, rows: b[table] }).toEqual({ table, rows: a[table] })
     expect(a["kernel.role_scope_grants"]?.length ?? 0).toBeGreaterThan(0)

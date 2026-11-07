@@ -52,6 +52,12 @@ The user can sign in again.
 
 Whoever runs the server can limit how many people are active in the organization (**Settings › Organization › Usage and limits** shows it). Agents and deactivated people take no seat. Once every seat is taken, sending an invitation, accepting one, a first sign-in with the organization's single sign-on and reactivating someone are refused with **SEAT_LIMIT_REACHED**, which gives the limit and how many seats are used. Deactivate someone to free a seat, or ask whoever runs the server to raise the limit (see [Limit an organization](../provisioning-cli.md#limit-an-organization)).
 
+## Clients with a portal account
+
+A client can have a portal account: a separate kind of sign-in for people outside the organization. A portal account is not a member. It takes no seat, it does not appear in the people list, role pickers, mentions or approver lists, and it cannot reach any of the organization's data on its own; the database refuses it.
+
+The scope `kernel:portal:admin` ("See and manage clients' portal accounts") is the permission to see and manage these accounts. It is an administration scope, like `kernel:users:admin`: it can be given to a person, but never to a role agent's scope ceiling.
+
 ## When the managed subscription is suspended
 
 On a managed instance whose subscription is suspended (unpaid, or ended), only admins can sign in, and only to **Settings › Billing** and the organization's export. Other people get **org_suspended**, with the date until which admins can still export and the address to contact about billing. In the app, every screen then shows **Workspace suspended** with that contact; admins who still have access get **Export your data** and **Billing** there, and others **Sign out**. Once the subscription is closed, nobody can sign in. See [When a payment fails or the subscription ends](settings.md#when-a-payment-fails-or-the-subscription-ends).

@@ -24,7 +24,7 @@ To see them all, open **Agents**. Your own agent is marked **Your agent** in the
 1. Open **Agents** and pick an agent.
 2. Click **Message** to open a direct conversation with it.
 
-Some tool calls draw a card under the agent's message that you act on, such as a Connect card or, for a Drive that sees only picked files, **Choose files for Liaison**, or, on a server that sends bug reports only to the Liaison team, the bug report the agent prepared with **Send to the Liaison team** (only you see it, and nothing is sent until you click).
+Some tool calls draw a card under the agent's message that you act on, such as a Connect card or, for a Drive that sees only picked files, **Choose files for Liaison**, or, on a server that sends bug reports only to the Liaison team, the bug report the agent prepared with **Send to the Liaison team** (only you see it, and nothing is sent until you click). Some tools also have a card of their own: an app can say how a tool's result is drawn, for example a few labelled facts and a button that opens the record. A card shows only what the tool returned to the agent, nothing more, and when a result does not fit the card, the conversation shows the ordinary tool row instead.
 
 Under its reply the agent may offer up to four next steps as buttons. Clicking one either sends the words on the button as your own message or opens the tab it names. The buttons show only under the newest message, and never in a conversation that holds outside text, such as a mail or a web page the agent read.
 

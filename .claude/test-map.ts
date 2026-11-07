@@ -40,6 +40,11 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
     glob: "apps/api/src/modules/agent/subruns/spawn-agent.ts",
     suites: ["unit", "integration", "cell"],
   },
+  // The client-row guard scans every privileged read of kernel.users, and the manifest
+  // and tool-rule guards read the declarations: the pure scans run with the module.
+  { glob: "apps/api/src/modules/users/**", suites: ["unit", "integration", "api-guards"] },
+  { glob: "apps/api/src/modules/mcp/**", suites: ["unit", "integration", "api-guards"] },
+  { glob: "apps/api/src/modules/apps/**", suites: ["unit", "integration", "api-guards"] },
   { glob: "apps/api/src/modules/**", suites: ["unit", "integration"] },
   // Event delivery across processes is what the cell scenarios prove.
   { glob: "apps/api/src/infra/events/**", suites: ["unit", "integration", "cell"] },

@@ -2044,6 +2044,12 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // manifest), and the static half of the rule for tools called over MCP.
             "src/modules/apps/outside-fields.guard.test.ts",
             "src/modules/mcp/mcp-tool-rule.guard.test.ts",
+            // Privileged code that reads kernel.users says what it does about a client's
+            // row (a source scan), and the manifest declarations that feed the context
+            // ladder and the result cards are valid (pure schema checks).
+            "src/modules/users/external-boundary.guard.test.ts",
+            "src/modules/apps/context-provider-manifest.test.ts",
+            "src/modules/apps/result-card-schema.test.ts",
             // the monitoring notification group lists the incident kinds
             // by name; this reads the monitoring manifest (pure fs, no database)
             // so a manifest-only edit, which the test map sends to this suite,

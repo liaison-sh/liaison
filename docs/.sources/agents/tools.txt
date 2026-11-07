@@ -326,3 +326,13 @@ shopify_app_toml: managed installation, file posted again after full order histo
 A message from a device sign-in is not a typed turn -> apps/api/src/modules/agent/runtime/agent-service.ts:1931-1938
 ai_models_get tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2857
 ai_models_set tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2876
+data_collections_list tool: scope and approval flag -> apps/api/src/modules/data-store/tools.ts:328
+data_query tool: scope and approval flag -> apps/api/src/modules/data-store/tools.ts:341
+data_get tool: scope and approval flag -> apps/api/src/modules/data-store/tools.ts:355
+data_set tool: scope and approval flag -> apps/api/src/modules/data-store/tools.ts:378
+data_update tool: scope and approval flag -> apps/api/src/modules/data-store/tools.ts:387
+data_delete tool: scope and approval flag -> apps/api/src/modules/data-store/tools.ts:396
+data store reads: declared agent-readable collections under their read scope -> apps/api/src/modules/data-store/tools.ts:77
+data store writes: the agent's own namespace only -> apps/api/src/modules/data-store/tools.ts:170
+data store search: declared searchable agent-readable collections -> apps/api/src/modules/data-store/search.ts:81
+data store search: read scopes admitted by the permission filter -> apps/api/src/modules/data-store/search.ts:331

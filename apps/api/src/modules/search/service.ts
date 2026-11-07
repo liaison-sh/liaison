@@ -4,6 +4,12 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { effectiveIndexName, getMeili } from "~/infra/search/client"
 import { searchLogger as log } from "~/lib/logger"
+import {
+  APP_DOCUMENT_ENTITY_TYPE,
+  APP_DOCUMENT_SEARCH_REGISTRATION,
+  appDocumentSearchReadScopes,
+  rejectStaleAppDocumentHits,
+} from "~/modules/data-store/search"
 import { hasScope } from "~/modules/permissions/permissions"
 import { documentId } from "~/modules/search/document-id"
 import { isSearchReady } from "~/modules/search/drift"
@@ -698,7 +704,7 @@ async function countVisibleHits(
   if (hits.length === 0) return 0
   const rechecked = await rejectStaleThreadHits(actor.orgId, actor.userId, parentHits(hits))
   const visible = await rejectHiddenMessageHits(actor, rechecked)
-  return defensiveFilterHits(visible, byType).length
+  return (await rejectStaleAppDocumentHits(actor, defensiveFilterHits(visible, byType))).length
 }
 
 // ---------------------------------------------------------------------------
@@ -825,7 +831,12 @@ async function executeSearch(
     userId: actor.userId,
     scopes: actor.scopes,
     dimensionGrants,
-    registeredReadScopes: regs.registeredReadScopes,
+    // The data store's indexed collections are not registered entities (the
+    // generic rebuild walk cannot build their documents, data-store/search.ts
+    // streams them), so their read scopes join here, on the query path.
+    registeredReadScopes: [
+      ...new Set([...regs.registeredReadScopes, ...appDocumentSearchReadScopes(actor.orgId)]),
+    ],
     dimensionFields: regs.dimensionFields,
     roleIds: actor.roleIds ?? [],
     aclFieldDeclarations: regs.aclFieldDeclarations,
@@ -840,6 +851,7 @@ async function executeSearch(
   // the registration here instead, where the two visibility layers below
   // apply to every hit it lets through.
   byType.set(MESSAGE_ENTITY_TYPE, MESSAGE_SEARCH_REGISTRATION)
+  byType.set(APP_DOCUMENT_ENTITY_TYPE, APP_DOCUMENT_SEARCH_REGISTRATION)
   const includeExternal = opts.includeExternal && opts.projection === "hits"
 
   if (!filter) {
@@ -956,7 +968,9 @@ async function executeSearch(
   // Layer 2: the database decides every message hit, on membership and on
   // `isMessageVisible`, exactly as the messages SELECT policy would.
   const visibleHits = await rejectHiddenMessageHits(actor, recheckedHits)
-  const hits = defensiveFilterHits(visibleHits, byType)
+  // A data store hit is re-checked against its collection's live declaration
+  // and its row (data-store/search.ts).
+  const hits = await rejectStaleAppDocumentHits(actor, defensiveFilterHits(visibleHits, byType))
   // THE COUNT PASSES THROUGH THE SAME FILTERS AS THE HITS. The engine's
   // estimate is taken before all three: a message document carries neither its
   // room nor its disclosure list, a thread document's indexed participants can

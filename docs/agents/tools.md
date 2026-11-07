@@ -117,6 +117,21 @@ A mail tool that reads a private mailbox (`mail__read`, `mail__search`) asks you
 | `memory_open` | Read the messages around a search hit. | `kernel:agent:memory` | No |
 | `memory_episode` | Read one closed episode of a conversation. | `kernel:agent:memory` | No |
 
+### Data store
+
+The data store keeps JSON documents in named collections. Apps write their own collections; the agent keeps its own under the app `agent`. An app's collection can be read by these tools only when its manifest declares it readable by agents, and only by someone who holds the collection's read scope. Declared searchable collections also show up in search, to people who hold that scope.
+
+| Tool | What it does | Scope | Approval |
+| --- | --- | --- | --- |
+| `data_collections_list` | List the collections you can read, with their document counts. | `kernel:data:read` | No |
+| `data_query` | Read documents of a collection, filtered, sorted and paged. | `kernel:data:read` plus the collection's read scope | No |
+| `data_get` | Read one document by id. | `kernel:data:read` plus the collection's read scope | No |
+| `data_set` | Save a document in one of the agent's own collections. | `kernel:data:write` | No |
+| `data_update` | Change some fields of one of the agent's own documents. | `kernel:data:write` | No |
+| `data_delete` | Delete one of the agent's own documents. | `kernel:data:write` | No |
+
+The write tools never write an app's collections.
+
 ### Contacts
 
 | Tool | What it does | Scope | Approval |

@@ -363,6 +363,41 @@ async function writeLocked(
 }
 
 // ---------------------------------------------------------------------------
+// Search indexing
+// ---------------------------------------------------------------------------
+
+/**
+ * Every write (the agent's data tools and an app's ctx.store alike) hands the
+ * document as written to search (data-store/search.ts), which indexes it only
+ * when its collection is declared searchable and agent-readable. Best effort:
+ * a write never fails on the search queue. Imported lazily: search.ts reads
+ * the declarations, which import this module.
+ */
+async function indexWrite(write: {
+  caller: StoreCaller
+  collection: string
+  docId: string
+  written: { data: Record<string, unknown>; updatedAt: string } | null
+}): Promise<void> {
+  const { recordAppDocumentIndex } = await import("~/modules/data-store/search")
+  await recordAppDocumentIndex(write)
+}
+
+async function indexed(
+  caller: StoreCaller,
+  collection: string,
+  doc: StoreDocument,
+): Promise<StoreDocument> {
+  await indexWrite({
+    caller,
+    collection,
+    docId: doc.id,
+    written: { data: doc.data, updatedAt: doc.updatedAt },
+  })
+  return doc
+}
+
+// ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
 
@@ -399,7 +434,7 @@ export async function setDocument(
   const next = normalizeData(data)
   const current = await lockedDoc(tx, caller, collection, id)
   checkVersion(ifVersion, current, id)
-  return writeLocked(tx, caller, collection, id, next, current)
+  return indexed(caller, collection, await writeLocked(tx, caller, collection, id, next, current))
 }
 
 /** Shallow-merges `patch` into an existing document (a key set to null stays, as null). */
@@ -424,7 +459,7 @@ export async function updateDocument(
     throw new DataStoreError("not_found", `document '${id}' is not in collection '${collection}'`)
   }
   const next = normalizeData({ ...current.data, ...patch })
-  return writeLocked(tx, caller, collection, id, next, current)
+  return indexed(caller, collection, await writeLocked(tx, caller, collection, id, next, current))
 }
 
 /** Deletes the document; `deleted` false when there was none. */
@@ -445,6 +480,7 @@ export async function deleteDocument(
   await lockUsage(tx, caller, collection)
   await tx.delete(appDocuments).where(docKey(caller, collection, id))
   await moveUsage(tx, caller, collection, -1, -current.sizeBytes)
+  await indexWrite({ caller, collection, docId: id, written: null })
   return { deleted: true }
 }
 

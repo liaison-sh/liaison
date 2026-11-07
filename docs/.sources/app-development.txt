@@ -63,3 +63,5 @@ contextProviders: on kinds, readOnly tool, scope in requiredScopes, subject para
 sinkReadersSelf and contentParams are first-party only; any other app declaring either is not loaded -> apps/api/src/modules/apps/contract.ts:943 ; apps/api/src/modules/apps/runtime.ts:623,3179
 sinkReadersSelf: a tainted turn may write when the writer holds what it read -> apps/api/src/modules/apps/execute-tool.ts:3845
 contentParams: a call with them all blank is not judged; each must be in params.properties -> apps/api/src/modules/agent/scopes/scope-taint.ts:849 ; apps/api/src/modules/apps/contract.ts:1047
+Not now route on a stored attention item -> apps/api/src/modules/apps/attention-routes.ts:190
+A provider pill names Home's row for a mail about that kind of record -> apps/api/src/modules/mail/send-guard.ts:395

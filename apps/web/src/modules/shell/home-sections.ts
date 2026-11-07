@@ -36,6 +36,7 @@ import {
   homeActionItems,
   homeApprovalItems,
   isRoutineAlertItem,
+  isUncountedItem,
 } from "~/modules/shell/home-action-count"
 
 /** Conversation kinds: Messages owns the kernel's, so Home's queues never
@@ -60,6 +61,8 @@ export interface HomeSections {
     peerCount: number
     alerts: AttentionItem[]
     alertEntries: AlertEntry[]
+    /** Shown in Needs you, not counted: stopped sends and drafts that can no longer go out. */
+    uncounted: AttentionItem[]
   }
   /** Work groups by app, biggest urgency first (splitFeed's own order). */
   queues: AttentionGroup[]
@@ -145,6 +148,7 @@ export function buildHomeSections(
       peerCount,
       alerts,
       alertEntries: clusterAlerts(alerts, nowMs),
+      uncounted: items.filter(isUncountedItem),
     },
     queues,
     queueTotal: queues.reduce((sum, g) => sum + g.items.length, 0),

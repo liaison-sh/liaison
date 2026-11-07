@@ -82,7 +82,7 @@
       }
     ]
   },
-  "version": "1.10.4",
+  "version": "1.10.5",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -2362,7 +2362,7 @@
       "icon": "ProjectsIcon",
       "label": "Projects",
       "labelKey": "kernel.nav.projects",
-      "order": 12,
+      "order": 14,
       "tabAction": {
         "type": "home",
         "entityId": "projects-home",

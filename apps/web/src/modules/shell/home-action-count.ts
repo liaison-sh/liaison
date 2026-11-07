@@ -34,6 +34,7 @@ import {
   collapseMailboxWaits,
   isExpiredMailboxWait,
 } from "~/modules/agent/routine-mailbox-wait-item"
+import { isDecisionInFlight } from "~/modules/approvals/decision-queue"
 import { hasScope, userFromToken } from "~/modules/auth/auth-store"
 import { isApprovalItem, partitionPeerRequests } from "~/modules/shell/approval-facets"
 import { newestPromptPerChat, splitFeed, urgentStripItems } from "~/modules/shell/attention-groups"
@@ -120,6 +121,25 @@ export function isRoutineAlertItem(item: AttentionItem): boolean {
   return typeof alert === "object" && alert !== null
 }
 
+/** The mail app's notice that the send check stopped a send as it went out (manifest kind). */
+export const SEND_STOPPED_KIND = "mail:send_guard.stopped"
+
+/**
+ * Shown on Home, never counted: a send the check stopped, and a draft whose check says it can no
+ * longer go out as written (attention.ts `metadata.uncounted`). Each says why and offers Dismiss.
+ */
+export function isUncountedItem(item: AttentionItem): boolean {
+  return item.kind === SEND_STOPPED_KIND || item.metadata?.uncounted === true
+}
+
+/** An approval whose decision is queued or being sent (decision-queue.ts). */
+export function isApprovalDecisionInFlight(item: AttentionItem): boolean {
+  return (
+    item.action?.type === "decide_approval" &&
+    isDecisionInFlight("approval", item.action.approvalId)
+  )
+}
+
 /** Every item Home presents as needing the user's action, each once. This is
  *  the sidebar's "Needs you" section and the Home badge (D21). */
 export function homeActionItems(
@@ -132,6 +152,9 @@ export function homeActionItems(
   const out: AttentionItem[] = []
   for (const item of [...homeApprovalItems(now, peersShown, viewer), ...urgentStripItems(now)]) {
     if (seen.has(item.id)) continue
+    if (isUncountedItem(item)) continue
+    // Decided, waiting out its Undo window or being carried out: the row is gone, so is its count.
+    if (isApprovalDecisionInFlight(item)) continue
     if (isQueueVolumeItem(item, viewer)) continue
     if (isRoutineAlertItem(item)) continue
     if (item.kind === "scope_request" && !viewer.canGrantAccess) continue

@@ -68,8 +68,8 @@ describe("projects.manifest", () => {
     // 1.7.9: task labels
     // 1.10.2: more French and English tool search words
     // 1.10.3: approval_route_read says who an approval about a task is for; Home passes on.
-    // 1.10.4: its attention heading is declared in the manifest.
-    expect(projectsManifest.version).toBe("1.10.4")
+    // 1.10.5: its attention heading is declared in the manifest.
+    expect(projectsManifest.version).toBe("1.10.5")
   })
 
   it("projects.manifest.task-labels", () => {

@@ -4,8 +4,8 @@
 // what passes against it passes against the real one.
 //
 // It does what the loader does, in the same order: cell lookup by x-cell-id,
-// signature + ±60 s skew (sign.ts: v2 "cell->loader" POST /run, or a legacy
-// v1 without the version header), body validation, bridgeUrl origin == the
+// signature + ±60 s skew (sign.ts: v2 "cell->loader" POST /run; a v1
+// signature is refused, as the loader does), body validation, bridgeUrl origin == the
 // cell's registered bridgeOrigin (403), bundle lookup at
 // `<app>/<version>/<sha256>.js`, and when absent a v2-signed "loader->cell"
 // GET <bridgeOrigin>/api/app-bridge/bundles/<sha256> whose bytes must hash to
@@ -14,9 +14,13 @@
 // `<cellId>:<orgId>:<app>@<version>#<sha256>`, cached like the loader's
 // `LOADER.get(id, cb)` (module globals persist across runs of one id). Each
 // /run mints a fresh execNonce and hands the module a per-run Bridge (never
-// in the module's env) whose `call(method, args)` POSTs the cell's
-// /api/app-bridge with the run token and nonce, exactly like the loader's
-// bridge.ts. The run races `deadlineMs`; a timeout answers
+// in the module's env) whose `call(method, args)` is the loader's own
+// `bridgeCall` (bridge-reply.ts, vendored byte for byte from the loader with
+// its vectors; bridge-reply.test.ts runs them). Every error answer carries a
+// kind, as the loader's do: `auth` / `loader_internal` (the loader's own),
+// `bundle_missing` / `bundle_fetch_failed` / `load` (the module), `limit` /
+// `handler` / `timeout` (the run). The module's `logs` / `logsDropped`
+// (worker-core.ts console capture) pass through unchanged. The run races `deadlineMs`; a timeout answers
 // `{ok:false, error:{kind:"timeout"}}` while the module keeps running (as an
 // isolate would until its CPU limit), and its later bridge calls meet a
 // settled run.
@@ -40,9 +44,9 @@ import {
   CELL_TS_HEADER,
   sha256Hex,
   signCellRequestV2,
-  verifyCellRequestV1,
   verifyCellRequestV2,
 } from "../sign"
+import { bridgeCall } from "./bridge-reply"
 
 export interface FakeLoaderBundle {
   /** The Worker module whose sha256 is the bundle's identity (worker.js). */
@@ -89,7 +93,15 @@ export interface FakeLoader {
   bundleFetches: BundleFetch[]
 }
 
-type ErrorKind = "handler" | "timeout" | "limit" | "load" | "auth"
+type ErrorKind =
+  | "auth"
+  | "loader_internal"
+  | "bundle_missing"
+  | "bundle_fetch_failed"
+  | "load"
+  | "limit"
+  | "handler"
+  | "timeout"
 type CoreModule = {
   run(req: unknown, bridge: { call(m: string, a: unknown): Promise<unknown> }): Promise<unknown>
 }
@@ -120,9 +132,14 @@ function validateBody(r: Record<string, unknown>): string | null {
   return null
 }
 
-function isRunVerdict(
-  v: unknown,
-): v is { ok: boolean; result?: unknown; error?: unknown; timings?: Record<string, unknown> } {
+function isRunVerdict(v: unknown): v is {
+  ok: boolean
+  result?: unknown
+  error?: unknown
+  timings?: Record<string, unknown>
+  logs?: unknown
+  logsDropped?: unknown
+} {
   return (
     !!v &&
     typeof v === "object" &&
@@ -170,7 +187,9 @@ export function startFakeLoader(opts: FakeLoaderOptions): FakeLoader {
   ): Promise<FakeLoaderBundle | Response> {
     // The sha names files below: only a hex digest, never a path.
     if (!/^[0-9a-f]{64}$/.test(sha)) {
-      return fail(400, "load", "bundle sha is not a sha256 hex digest", { code: "bad_sha" })
+      return fail(400, "loader_internal", "bundle sha is not a sha256 hex digest", {
+        code: "bad_request",
+      })
     }
     const path = `/api/app-bridge/bundles/${sha}`
     const url = `${cell.bridgeOrigin}${path}`
@@ -187,14 +206,16 @@ export function startFakeLoader(opts: FakeLoaderOptions): FakeLoader {
     try {
       res = await fetch(url, { method: "GET", headers })
     } catch (e) {
-      return fail(502, "load", `bundle fetch failed: ${(e as Error).message}`, {
+      return fail(502, "bundle_fetch_failed", `bundle fetch failed: ${(e as Error).message}`, {
         code: "bundle_fetch_failed",
       })
     }
     loader.bundleFetches.push({ url, status: res.status, headers })
-    if (res.status === 404) return fail(404, "load", "bundle not found", { code: "bundle_missing" })
+    if (res.status === 404) {
+      return fail(404, "bundle_missing", "bundle not found", { code: "bundle_missing" })
+    }
     if (res.status !== 200) {
-      return fail(502, "load", `bundle fetch answered ${res.status}`, {
+      return fail(502, "bundle_fetch_failed", `bundle fetch answered ${res.status}`, {
         code: "bundle_fetch_failed",
       })
     }
@@ -222,67 +243,17 @@ export function startFakeLoader(opts: FakeLoaderOptions): FakeLoader {
     return bundle
   }
 
-  async function callBridge(
+  function callBridge(
     props: { bridgeUrl: string; runToken: string; execNonce: string; bridgeMethods: string[] },
     stats: { calls: number; ms: number },
     method: string,
     args: unknown,
   ): Promise<unknown> {
-    if (typeof method !== "string" || !props.bridgeMethods.includes(method)) {
-      return {
-        error: `Unknown bridge method: ${String(method)}`,
-        errorStatus: 404,
-        errorCode: "unknown_method",
-      }
-    }
-    const t0 = now()
-    try {
-      const res = await fetch(props.bridgeUrl, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${props.runToken}`,
-          "x-exec-nonce": props.execNonce,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ callId: crypto.randomUUID(), method, args }),
-      })
-      const text = await res.text()
-      loader.bridgeResponses.push(text)
-      let body: Record<string, unknown> | null = null
-      try {
-        const parsed = JSON.parse(text)
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) body = parsed
-      } catch {}
-      if (res.ok && body && "data" in body) return { data: body.data }
-      if (body && typeof body.error === "string") {
-        const out: Record<string, unknown> = {
-          error: body.error,
-          errorStatus: typeof body.errorStatus === "number" ? body.errorStatus : res.status,
-        }
-        if (typeof body.errorCode === "string") out.errorCode = body.errorCode
-        else if (typeof body.reason === "string") out.errorCode = body.reason
-        return out
-      }
-      if (body && typeof body.reason === "string") {
-        return { error: body.reason, errorStatus: res.status, errorCode: body.reason }
-      }
-      // A bare `{}` 200 (undefined data) is `{data: undefined}` to the isolate.
-      if (res.ok && body) return { data: undefined }
-      return {
-        error: `Bridge returned ${res.status}`,
-        errorStatus: res.status >= 400 ? res.status : 502,
-        errorCode: "bridge_bad_response",
-      }
-    } catch (e) {
-      return {
-        error: `Bridge unreachable: ${e instanceof Error ? e.message : String(e)}`,
-        errorStatus: 502,
-        errorCode: "bridge_unreachable",
-      }
-    } finally {
-      stats.calls++
-      stats.ms += now() - t0
-    }
+    return bridgeCall(props, method, args, {
+      now,
+      stats,
+      onResponseText: (text) => loader.bridgeResponses.push(text),
+    })
   }
 
   async function handle(req: Request): Promise<Response> {
@@ -299,43 +270,35 @@ export function startFakeLoader(opts: FakeLoaderOptions): FakeLoader {
     const cellId = req.headers.get(CELL_ID_HEADER)
     const cell = cellId && Object.hasOwn(opts.cells, cellId) ? opts.cells[cellId] : undefined
     if (!cellId || !cell) return fail(401, "auth", "unknown cell")
-    // v2 when the version header is present; a legacy v1 without it (transition).
+    // v2 only: a v1 signature (no version header) is refused, as on the loader.
     const version = req.headers.get(CELL_SIGNATURE_VERSION_HEADER)
-    const v =
-      version !== null
-        ? verifyCellRequestV2({
-            cellKey: cell.key,
-            direction: "cell->loader",
-            method: req.method,
-            path: url.pathname,
-            ts: req.headers.get(CELL_TS_HEADER),
-            signature: req.headers.get(CELL_SIGNATURE_HEADER),
-            version,
-            body: raw,
-            now: now(),
-          })
-        : verifyCellRequestV1(
-            cell.key,
-            req.headers.get(CELL_TS_HEADER),
-            req.headers.get(CELL_SIGNATURE_HEADER),
-            raw,
-            now(),
-          )
+    if (version === null) return fail(401, "auth", "signature rejected: v1 is no longer accepted")
+    const v = verifyCellRequestV2({
+      cellKey: cell.key,
+      direction: "cell->loader",
+      method: req.method,
+      path: url.pathname,
+      ts: req.headers.get(CELL_TS_HEADER),
+      signature: req.headers.get(CELL_SIGNATURE_HEADER),
+      version,
+      body: raw,
+      now: now(),
+    })
     if (!v.ok) return fail(401, "auth", `signature rejected: ${v.reason}`)
 
     let body: Record<string, unknown>
     try {
       body = JSON.parse(new TextDecoder().decode(raw))
     } catch {
-      return fail(400, "load", "body is not JSON")
+      return fail(400, "loader_internal", "body is not JSON", { code: "bad_request" })
     }
     const invalid = validateBody(body)
-    if (invalid) return fail(400, "load", invalid)
+    if (invalid) return fail(400, "loader_internal", invalid, { code: "bad_request" })
     let origin: string
     try {
       origin = new URL(body.bridgeUrl as string).origin
     } catch {
-      return fail(400, "load", "invalid bridgeUrl")
+      return fail(400, "loader_internal", "invalid bridgeUrl", { code: "bad_request" })
     }
     if (origin !== cell.bridgeOrigin)
       return fail(403, "auth", "bridgeUrl origin not allowed for this cell")
@@ -427,17 +390,24 @@ export function startFakeLoader(opts: FakeLoaderOptions): FakeLoader {
           sleepMs: inner.sleepMs,
           sleepExact: inner.sleepExact,
         }
+        const logs = {
+          ...(outcome.logs !== undefined ? { logs: outcome.logs } : {}),
+          ...(outcome.logsDropped !== undefined ? { logsDropped: outcome.logsDropped } : {}),
+        }
         return Response.json(
           outcome.ok
             ? {
                 ok: true,
                 result: outcome.result === undefined ? null : outcome.result,
                 timings: merged,
+                ...logs,
               }
             : {
                 ok: false,
-                error: { kind: "handler", ...(outcome.error as object) },
+                // The kind is the loader's to set: an app cannot pass for a loader-level fault.
+                error: { ...(outcome.error as object), kind: "handler" },
                 timings: merged,
+                ...logs,
               },
         )
       }

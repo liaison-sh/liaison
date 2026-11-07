@@ -34,7 +34,7 @@ import { getInstallTrust } from "~/modules/apps/install-trust"
 import { APP_STATE_UNAVAILABLE_CODE, pathOrgAppState } from "~/modules/apps/org-apps"
 import { isBundleLoadError, isSandboxFault, loadBundle } from "~/modules/apps/sandbox/bundle-loader"
 import { createSandboxRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
-import { appRunsOnWorkers } from "~/modules/apps/sandbox/run-app"
+import { planWorkersRun } from "~/modules/apps/sandbox/run-app"
 import { writeAuditLog } from "~/modules/audit/service"
 import { orgSuspendedOrClosed } from "~/modules/cloud/billing-status"
 import {
@@ -313,13 +313,15 @@ webhookRoutes.post("/:orgId/:appName/:endpointName", async (c) => {
         query: Object.fromEntries(new URL(c.req.url).searchParams.entries()),
       }
       const source = await loadBundle(handlerRef.bundlePath)
-      // A verifier on Workers gets a bridge that hands back no secret.
-      const workersRun = await appRunsOnWorkers({
+      // A verifier on Workers gets a bridge that hands back no secret; the
+      // executor is decided once, here, and the run follows that decision.
+      const workersPlan = await planWorkersRun({
         trusted: handlerRef.trusted === true,
         appName,
         orgId: appOrgId,
         bundlePath: handlerRef.bundlePath,
       })
+      const workersRun = workersPlan.target !== null
       verificationResult = await executeManifestWebhook({
         appName,
         orgId: appOrgId,
@@ -329,6 +331,7 @@ webhookRoutes.post("/:orgId/:appName/:endpointName", async (c) => {
         bundleSource: source,
         params: requestData,
         entryKind: "webhook-verify",
+        workersPlan,
         bridge: createWebhookVerifyBridge({
           appOrgId,
           appName,

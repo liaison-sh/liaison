@@ -37,6 +37,7 @@ import { buildWorkerBundle } from "../../../../../../scripts/apps-build-worker-b
 import { freezeApp } from "../../../../../../scripts/freeze-app"
 import { type FakeLoader, startFakeLoader } from "./__fixtures__/fake-loader"
 import { workersAdmission } from "./admission"
+import { loaderBreaker, WorkersFallbackTestAccess } from "./fallback"
 import { runRegistry } from "./run-registry"
 import { assertNoSecretsIn } from "./secret-scan"
 import { clearBridgeTimings, recentBridgeTimings, recentRunTimings } from "./timings"
@@ -651,6 +652,42 @@ describe("Workers-only properties", () => {
       body: JSON.stringify({ callId: 1, method: "db_findMany", args: ["items", "{}"] }),
     })
     expect(res.status).toBe(410)
+    // A loader-level fault before any bridge call: retried once, then the run's error.
+    expect(lastRun("tool:list")).toMatchObject({
+      attempts: 2,
+      faultClass: "loader",
+      errorKind: "auth",
+    })
+    expect(loader.runs.length - from).toBe(2)
+    WorkersFallbackTestAccess.reset()
+  })
+
+  it("an open loader breaker sends every app to QuickJS, tagged, until a probe closes it", async () => {
+    let now = Date.now()
+    WorkersFallbackTestAccess.reset(() => now)
+    try {
+      workersOn()
+      for (let i = 0; i < 5; i++) loaderBreaker.record("loader_fault")
+      expect(loaderBreaker.state()).toBe("open")
+      const from = loader.runs.length
+      const r = await callTool("list")
+      expect(r.status).toBe(200)
+      expect(lastRun("tool:list")).toMatchObject({
+        executor: "quickjs",
+        ok: true,
+        fallback: "breaker",
+      })
+      expect(loader.runs.length).toBe(from)
+      // Half-open after 60 s: the next run is the probe, the loader answers, the breaker closes.
+      now += 61_000
+      expect((await callTool("list")).status).toBe(200)
+      const probe = lastRun("tool:list")
+      expect(probe?.executor).toBe("workers")
+      expect(probe?.fallback).toBeUndefined()
+      expect(loaderBreaker.state()).toBe("closed")
+    } finally {
+      WorkersFallbackTestAccess.reset()
+    }
   })
 
   it('role "worker" runs apps on Workers too, its isolate calling back on the bridge URL', async () => {

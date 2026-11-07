@@ -93,3 +93,10 @@ App names never hold --; slug with -- or label over 63 keeps the opaque frame ->
 LIAISON_FRAMED_APPS frames listed first-party apps -> apps/api/src/lib/app-frame-host.ts:109 ; apps/web/src/framework/bootstrap.ts:1661
 Host API 1.3 calls and their limits -> packages/host-sdk/src/index.ts:209 ; apps/web/src/framework/host-app-calls.ts:93 ; apps/web/src/framework/isolated-app.tsx:395
 decideApproval: host confirm dialog, the app's own tool, payloadHash kept -> apps/web/src/framework/host-app-calls.ts:217 ; apps/web/src/modules/shell/app-approval-confirm.tsx:52
+Workers faults: loader-level (no kind, network, auth, loader_internal), app-level (load, bundle_missing, bundle_fetch_failed), final (limit, handler, timeout) -> apps/api/src/modules/apps/workers/faults.ts:32-45
+Retry once with jitter: zero bridge calls and twice the attempt's time left of the deadline -> apps/api/src/modules/apps/workers/executor.ts:262-290
+Breaker 5 faults / 60 s, open 60 s, one probe; app fallback per org:app@version for 10 minutes -> apps/api/src/modules/apps/workers/fallback.ts:29-33 ; apps/api/src/modules/apps/workers/fallback.ts:63-110
+Decided once before the bridge is built, recorded in the run line -> apps/api/src/modules/apps/sandbox/run-app.ts:211-226 ; apps/api/src/modules/apps/sandbox/run-app.ts:274
+Workers console capture: 200 lines / 64 KiB per run, 4 KiB per line, shared lines -> apps/api/src/modules/apps/workers/worker-core.ts:131-133 ; apps/api/src/modules/apps/workers/worker-core.ts:222
+Process log 600 lines per minute, 512 bytes; custom app logs marked source console; shared lines not filed -> apps/api/src/modules/apps/workers/worker-logs.ts:38-39 ; apps/api/src/modules/apps/workers/worker-logs.ts:165 ; apps/api/src/modules/apps/workers/worker-logs.ts:185
+QuickJS console shim over log_* marked source console -> apps/api/src/modules/apps/sandbox/ctx-shim.ts:124 ; apps/api/src/modules/apps/sandbox/bridge/identity.ts:45

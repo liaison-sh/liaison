@@ -113,6 +113,40 @@ function planShim(bridgeMethods: readonly string[], rules: ShimRules): ShimPlan 
 // QuickJS source
 // ---------------------------------------------------------------------------
 
+/**
+ * QuickJS has no `console`: a `console.log` threw a ReferenceError there while
+ * it works on Workers. This one sends each line over the bridge's
+ * `log_<level>` method marked {source:"console"} (fire and forget, like an
+ * un-awaited ctx.logger call), so the line reaches the same places as on
+ * Workers: the process log (capped) and a custom app's logs
+ * (workers/worker-logs.ts). Without log_* methods, a line is dropped.
+ */
+const CONSOLE_SHIM = `if (typeof console === "undefined") {
+  (function () {
+    function fmt(a) {
+      if (typeof a === "string") return a;
+      if (a === undefined) return "undefined";
+      if (a && typeof a === "object" && typeof a.stack === "string") return a.stack;
+      try { var t = JSON.stringify(a); return t === undefined ? String(a) : t; }
+      catch (e) { try { return String(a); } catch (e2) { return "[unprintable]"; } }
+    }
+    var levels = { log: "info", info: "info", warn: "warn", error: "error", debug: "debug" };
+    var c = {};
+    Object.keys(levels).forEach(function (name) {
+      c[name] = function () {
+        var fn = globalThis["__bridge_log_" + levels[name]];
+        if (typeof fn !== "function") return;
+        var msg = Array.prototype.map.call(arguments, fmt).join(" ");
+        try {
+          var p = fn(msg, '{"source":"console"}');
+          if (p && typeof p.then === "function") p.then(null, function () {});
+        } catch (e) {}
+      };
+    });
+    globalThis.console = c;
+  })();
+}`
+
 const WRAP_HELPER = `function __wrap(fn) {
   return async function() {
     var args = Array.prototype.slice.call(arguments);
@@ -191,7 +225,7 @@ export function buildCtxShimSource(
       ([group, members]) => `${group}: { ${members.map(memberSource).join(", ")} }`,
     ),
   ].join(",\n    ")
-  return `${WRAP_HELPER}\nvar __ctx = {\n    ${props}\n  };`
+  return `${WRAP_HELPER}\nvar __ctx = {\n    ${props}\n  };\n${CONSOLE_SHIM}`
 }
 
 // ---------------------------------------------------------------------------

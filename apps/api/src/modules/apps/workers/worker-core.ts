@@ -13,9 +13,12 @@
 //
 // Result (JSON-safe, the body of the loader's answer minus what only the
 // loader knows, `loadMs` and `cold`):
-//   {ok:true, result, timings:{runMs, bridgeCalls, bridgeMsTotal, sleepMs, sleepExact}}
+//   {ok:true, result, timings:{runMs, bridgeCalls, bridgeMsTotal, sleepMs, sleepExact},
+//    logs?, logsDropped?}
 //   {ok:false, error:{message, status?, code?, name?, safe?, retryable?, kind:"handler"},
-//    timings:{...}}
+//    timings:{...}, logs?, logsDropped?}
+// `logs` (see "Console capture"): [{level, msg, at, shared?}], present when the
+// run's code logged anything; `logsDropped` counts lines past the cap.
 // `result` is the handler's return through JSON (undefined -> null), as the
 // QuickJS subprocess dumps it. The error fields follow the subprocess's IPC
 // error message (sandbox-worker.ts): `status`/`code` for a typed 4xx/5xx
@@ -110,6 +113,189 @@ function stopSleepMeter(meter: SleepMeter): void {
   originalSetTimeout = undefined
 }
 
+// -- Console capture -------------------------------------------------------------
+//
+// Every run first logs `__liaison_run <runId>` at debug level on the real
+// console (the loader's inline tail correlates the run's CPU time by it; it is
+// never part of `logs`). Then, while at least one run is in flight in this
+// isolate, `console.{log,info,warn,error,debug}` are wrapped: a line goes to
+// the run's `logs` instead of the isolate's console (the cell decides where it
+// is written), and an uncaught error or unhandled rejection is kept as an
+// error line. Per run at most 200 lines and 64 KiB (a line is cut at 4 KiB);
+// past that lines are counted in `logsDropped`. Runs of one cached module
+// share the isolate's globals, so a line logged while several runs are in
+// flight cannot be told apart: it goes to each of them marked `shared: true`
+// (the cell never files a shared line under one run's access tags). The
+// originals are put back when the last run ends (unless replaced meanwhile).
+
+export const RUN_CONSOLE_MAX_LINES = 200
+export const RUN_CONSOLE_MAX_BYTES = 64 * 1024
+export const RUN_CONSOLE_LINE_MAX_BYTES = 4 * 1024
+export const RUN_MARKER = "__liaison_run"
+
+export type WorkerLogLevel = "debug" | "info" | "warn" | "error"
+
+export interface WorkerLogLine {
+  level: WorkerLogLevel
+  msg: string
+  /** Epoch ms. */
+  at: number
+  /** Logged while other runs shared the isolate: not attributable to this run alone. */
+  shared?: true
+}
+
+interface LogMeter {
+  lines: WorkerLogLine[]
+  bytes: number
+  dropped: number
+}
+
+const CONSOLE_METHODS: ReadonlyArray<readonly [string, WorkerLogLevel]> = [
+  ["log", "info"],
+  ["info", "info"],
+  ["warn", "warn"],
+  ["error", "error"],
+  ["debug", "debug"],
+]
+
+type ConsoleFn = (...args: unknown[]) => void
+type ConsoleLike = Record<string, unknown>
+type EventTargetLike = {
+  addEventListener?: (type: string, fn: (ev: unknown) => void) => void
+  removeEventListener?: (type: string, fn: (ev: unknown) => void) => void
+}
+
+/** The isolate's console object (read through Reflect: the lib's Console type has no index). */
+function currentConsole(): ConsoleLike | undefined {
+  const c: unknown = Reflect.get(globalThis, "console")
+  return c !== null && typeof c === "object" ? (c as ConsoleLike) : undefined
+}
+
+const logMeters = new Set<LogMeter>()
+let savedConsole: Map<string, unknown> | undefined
+let wrappedConsole: Map<string, ConsoleFn> | undefined
+let errorListener: ((ev: unknown) => void) | undefined
+let rejectionListener: ((ev: unknown) => void) | undefined
+
+const encoder = typeof TextEncoder === "function" ? new TextEncoder() : undefined
+function byteLength(text: string): number {
+  return encoder ? encoder.encode(text).length : text.length * 3
+}
+
+function cutBytes(text: string, max: number): string {
+  if (byteLength(text) <= max) return text
+  let lo = 0
+  let hi = text.length
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1
+    if (byteLength(text.slice(0, mid)) <= max) lo = mid
+    else hi = mid - 1
+  }
+  return text.slice(0, lo)
+}
+
+function formatArg(a: unknown): string {
+  if (typeof a === "string") return a
+  if (a instanceof Error) return a.stack || `${a.name}: ${a.message}`
+  if (a === undefined) return "undefined"
+  if (typeof a === "function") return `[function ${(a as { name?: string }).name || "anonymous"}]`
+  if (typeof a === "bigint") return `${a}n`
+  try {
+    const text = JSON.stringify(a)
+    return text === undefined ? String(a) : text
+  } catch {
+    try {
+      return String(a)
+    } catch {
+      return "[unprintable]"
+    }
+  }
+}
+
+function captureLine(level: WorkerLogLevel, args: unknown[]): void {
+  let msg: string
+  try {
+    msg = cutBytes(args.map(formatArg).join(" "), RUN_CONSOLE_LINE_MAX_BYTES)
+  } catch {
+    msg = "[unprintable]"
+  }
+  const shared = logMeters.size > 1
+  const size = byteLength(msg)
+  const at = Date.now()
+  for (const meter of logMeters) {
+    if (meter.lines.length >= RUN_CONSOLE_MAX_LINES || meter.bytes + size > RUN_CONSOLE_MAX_BYTES) {
+      meter.dropped++
+      continue
+    }
+    meter.bytes += size
+    meter.lines.push(shared ? { level, msg, at, shared: true } : { level, msg, at })
+  }
+}
+
+function errorText(prefix: string, value: unknown): string {
+  const v = value as { message?: unknown; stack?: unknown } | null
+  if (v && typeof v === "object" && typeof v.stack === "string") return `${prefix}: ${v.stack}`
+  if (v && typeof v === "object" && typeof v.message === "string") return `${prefix}: ${v.message}`
+  return `${prefix}: ${formatArg(value)}`
+}
+
+function startLogMeter(runId: unknown): LogMeter {
+  const c = currentConsole()
+  if (typeof runId === "string" && c && typeof c.debug === "function") {
+    // The real console, never captured (the inline tail reads it).
+    const realDebug = (savedConsole?.get("debug") ?? c.debug) as ConsoleFn
+    try {
+      realDebug.call(c, `${RUN_MARKER} ${runId}`)
+    } catch {
+      /* a console that throws loses the marker, never the run */
+    }
+  }
+  const meter: LogMeter = { lines: [], bytes: 0, dropped: 0 }
+  logMeters.add(meter)
+  if (logMeters.size === 1 && c && !wrappedConsole) {
+    savedConsole = new Map()
+    wrappedConsole = new Map()
+    for (const [name, level] of CONSOLE_METHODS) {
+      savedConsole.set(name, c[name])
+      const wrapper: ConsoleFn = (...args: unknown[]) => captureLine(level, args)
+      wrappedConsole.set(name, wrapper)
+      c[name] = wrapper
+    }
+    const g = globalThis as EventTargetLike
+    if (typeof g.addEventListener === "function") {
+      errorListener = (ev) =>
+        captureLine("error", [errorText("Uncaught", (ev as { error?: unknown })?.error ?? ev)])
+      rejectionListener = (ev) =>
+        captureLine("error", [
+          errorText("Unhandled rejection", (ev as { reason?: unknown })?.reason),
+        ])
+      g.addEventListener("error", errorListener)
+      g.addEventListener("unhandledrejection", rejectionListener)
+    }
+  }
+  return meter
+}
+
+function stopLogMeter(meter: LogMeter): void {
+  logMeters.delete(meter)
+  if (logMeters.size > 0 || !wrappedConsole) return
+  const c = currentConsole()
+  if (c && savedConsole) {
+    for (const [name] of CONSOLE_METHODS) {
+      if (c[name] === wrappedConsole.get(name)) c[name] = savedConsole.get(name)
+    }
+  }
+  const g = globalThis as EventTargetLike
+  if (typeof g.removeEventListener === "function") {
+    if (errorListener) g.removeEventListener("error", errorListener)
+    if (rejectionListener) g.removeEventListener("unhandledrejection", rejectionListener)
+  }
+  errorListener = undefined
+  rejectionListener = undefined
+  wrappedConsole = undefined
+  savedConsole = undefined
+}
+
 /** The `/run` body fields the isolate reads. */
 export interface WorkerRunRequest {
   exportName: string
@@ -140,9 +326,14 @@ export interface WorkerRunError {
   kind: "handler"
 }
 
+interface WorkerRunLogs {
+  logs?: WorkerLogLine[]
+  logsDropped?: number
+}
+
 export type WorkerRunResult =
-  | { ok: true; result: unknown; timings: WorkerRunTimings }
-  | { ok: false; error: WorkerRunError; timings: WorkerRunTimings }
+  | ({ ok: true; result: unknown; timings: WorkerRunTimings } & WorkerRunLogs)
+  | ({ ok: false; error: WorkerRunError; timings: WorkerRunTimings } & WorkerRunLogs)
 
 /** A cell `/api/app-bridge` 200 reply body. */
 export type BridgeReply =
@@ -215,6 +406,23 @@ function jsonSafe(value: unknown): unknown {
  * answer with a JSON-safe result. Never throws.
  */
 export async function runHandler(
+  mod: Record<string, unknown>,
+  req: WorkerRunRequest,
+  dispatch: CtxDispatch,
+): Promise<WorkerRunResult> {
+  const logMeter = startLogMeter(req.runId)
+  let answer: WorkerRunResult
+  try {
+    answer = await runHandlerInner(mod, req, dispatch)
+  } finally {
+    stopLogMeter(logMeter)
+  }
+  if (logMeter.lines.length > 0) answer.logs = logMeter.lines
+  if (logMeter.dropped > 0) answer.logsDropped = logMeter.dropped
+  return answer
+}
+
+async function runHandlerInner(
   mod: Record<string, unknown>,
   req: WorkerRunRequest,
   dispatch: CtxDispatch,

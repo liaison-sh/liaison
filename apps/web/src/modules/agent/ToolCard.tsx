@@ -27,7 +27,13 @@ import { getTabType } from "~/framework/app-registry"
 import { ApiError } from "~/lib/api-error"
 import { formatToolName } from "~/modules/agent/format-tool-name"
 import { userFromToken } from "~/modules/auth/auth-store"
-import { catalogHasKey, currentLocale, type Translate, useI18n } from "~/modules/i18n/i18n-context"
+import {
+  catalogHasKey,
+  currentLocale,
+  type Translate,
+  type TranslateParams,
+  useI18n,
+} from "~/modules/i18n/i18n-context"
 import { useOptionalApi } from "~/modules/shell/ApiContext"
 import { openTab } from "~/modules/shell/tab-store"
 import {
@@ -309,7 +315,7 @@ export const ToolCard: Component<ToolCardProps> = (props) => {
   const stored = () => findToolCallMessage(props.toolCall.toolCallId)
   const superseded = () => props.toolCall.cardSuperseded === true && !local()
 
-  const t = (key: string, params?: Record<string, string | number>) => i18n.t(key, params)
+  const t = (key: string, params?: TranslateParams) => i18n.t(key, params)
 
   async function post(tool: string, params: Record<string, unknown>, withRef: boolean) {
     const app = target()?.app

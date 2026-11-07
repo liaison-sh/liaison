@@ -313,7 +313,7 @@ describe("merging a placeholder into the real person", () => {
 })
 
 describe("merging a placeholder named on approvals, away records and feature changes", () => {
-  it("merging a placeholder repoints route person, setter, changer and both next in line", async () => {
+  it("merging a placeholder repoints route person, setter, changer, both next in line and its own away record", async () => {
     const ph = await placeholder("away")
     const room = await thread(admin.userId)
     const [req] = await sql<Array<{ id: string }>>`
@@ -324,13 +324,15 @@ describe("merging a placeholder named on approvals, away records and feature cha
               'kernel:x', '{}'::jsonb, '{}'::jsonb, ${admin.userId}, ${ph}, 'denied',
               now() + interval '1 day')
       RETURNING id`
-    // Someone else's away record names the placeholder twice; its own is its own.
+    // Someone else's away record names the placeholder twice; it has one of its own too.
     const [theirs] = await sql<Array<{ id: string }>>`
       INSERT INTO kernel.away_ranges (org_id, user_id, starts_on, ends_on, next_in_line_id, source, set_by)
       VALUES (${orgId}, ${admin.userId}, '2026-12-01', '2026-12-05', ${ph}, 'said', ${ph})
       RETURNING id`
-    await sql`INSERT INTO kernel.away_ranges (org_id, user_id, starts_on, ends_on, source)
-              VALUES (${orgId}, ${ph}, '2026-12-01', '2026-12-05', 'said')`
+    const [own] = await sql<Array<{ id: string }>>`
+      INSERT INTO kernel.away_ranges (org_id, user_id, starts_on, ends_on, source)
+      VALUES (${orgId}, ${ph}, '2026-12-01', '2026-12-05', 'said')
+      RETURNING id`
     await sql`INSERT INTO kernel.user_preferences (user_id, next_in_line_id)
               VALUES (${admin.userId}, ${ph})
               ON CONFLICT (user_id) DO UPDATE SET next_in_line_id = ${ph}`
@@ -353,9 +355,9 @@ describe("merging a placeholder named on approvals, away records and feature cha
     const [changed] = await sql`SELECT changed_by FROM kernel.org_app_features
                                  WHERE org_id = ${orgId} AND feature = ${feature}`
     expect(changed?.changed_by).toBe(realId)
-    // The placeholder's own away record does not become the person's.
-    const own = await sql`SELECT 1 FROM kernel.away_ranges WHERE user_id IN (${ph}, ${realId})`
-    expect(own.length).toBe(0)
+    // The placeholder's own away record is a real absence: it becomes the person's.
+    const [moved] = await sql`SELECT user_id FROM kernel.away_ranges WHERE id = ${own!.id}`
+    expect(moved?.user_id).toBe(realId)
   })
 })
 

@@ -78,6 +78,8 @@ export class ApprovalCase {
   projectId = ""
   requestId = ""
   rangeId: string | null = null
+  ticketId = ""
+  survivorId = ""
 
   constructor(readonly org: ApprovalOrg) {}
 
@@ -201,6 +203,60 @@ export class ApprovalCase {
       ORDER BY created_at DESC LIMIT 1`) as Array<{ id: string }>
     if (!row) throw new Error("the delete was not parked as a pending request")
     return row.id
+  }
+
+  /**
+   * A ticket and the one it will merge into, and the requester's agent proposing to close the
+   * first: the kernel parks the close as a pending request, which becomes the request read. A close
+   * with no message needs no mailbox, and a merge cancels it as it cancels a pending reply.
+   */
+  async onTicket(): Promise<this> {
+    for (const scope of ["tickets:tickets:read", "tickets:tickets:close"])
+      await minimal.grantScope(this.people.requester, scope)
+    await minimal.grantScope(this.people.usual, "tickets:approve")
+    const ids: string[] = []
+    for (const subject of ["Merged ticket", "Surviving ticket"]) {
+      const res = await this.tool("tickets:create", {
+        subject: `${subject} ${randomUUID().slice(0, 6)}`,
+        channel: "manual",
+      })
+      ids.push((res.data as { ticketId?: string }).ticketId ?? "")
+    }
+    const [ticketId = "", survivorId = ""] = ids
+    if (!ticketId || !survivorId) throw new Error("tickets not created")
+    this.ticketId = ticketId
+    this.survivorId = survivorId
+    await executeTool({
+      toolName: "tickets:close",
+      orgId: this.orgId,
+      actor: await ctxOf(this.orgId, this.people.requester),
+      threadId: this.thread,
+      params: { ticketId },
+      origin: "in-app-agent",
+    })
+    const [row] = (await sql`
+      SELECT id FROM kernel.approval_requests
+      WHERE org_id = ${this.orgId} AND tool_name = 'tickets:close' AND status = 'pending'
+        AND tool_params->>'ticketId' = ${ticketId}
+      ORDER BY created_at DESC LIMIT 1`) as Array<{ id: string }>
+    if (!row) throw new Error("the close was not parked as a pending request")
+    this.requestId = row.id
+    return this
+  }
+
+  async mergeTicket(): Promise<void> {
+    await this.tool("tickets:merge", {
+      targetTicketId: this.survivorId,
+      sourceTicketIds: [this.ticketId],
+    })
+  }
+
+  async mergedInto(id: string): Promise<string | null> {
+    const [row] = (await sql`
+      SELECT merged_into_ticket_id FROM app_tickets.tickets WHERE id = ${id}::uuid`) as Array<{
+      merged_into_ticket_id: string | null
+    }>
+    return row?.merged_into_ticket_id ?? null
   }
 
   async goAway(who: Role, nextInLine: Role | null): Promise<string> {

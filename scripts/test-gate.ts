@@ -23,7 +23,7 @@
 
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import { TEST_MAP } from "../.claude/test-map"
+import { relationSuitesFor, TEST_MAP } from "../.claude/test-map"
 import {
   namespaceEnv,
   namespaceForCheckout,
@@ -43,6 +43,7 @@ export const BROAD_SUITES = [
   "integration",
   "integration-extra",
   "integration-mocked",
+  "relations",
   "e2e-parallel",
   "security",
   "web-unit",
@@ -61,6 +62,7 @@ export const DB_SUITES = new Set([
   "integration",
   "integration-extra",
   "integration-mocked",
+  "relations",
   "live",
   "e2e",
   "e2e-parallel",
@@ -162,7 +164,7 @@ export function colocatedTests(file: string, listDir: (dir: string) => string[])
 
 function suitesFor(file: string): string[] | null {
   for (const entry of TEST_MAP) {
-    if (new Bun.Glob(entry.glob).match(file)) return entry.suites
+    if (new Bun.Glob(entry.glob).match(file)) return relationSuitesFor(file, entry.suites)
   }
   return null
 }

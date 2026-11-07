@@ -1,7 +1,11 @@
 approval-target: its task renamed while the request is pending, the frozen record keeps its text
 approval-target: its task renamed while the request is pending, the frozen record keeps its text (fails with the event replaced by a no-op)
+approval-target: its ticket merged into another while a request on it is pending, the link closes with a visible state
+approval-target: its ticket merged into another while a request on it is pending, the link closes with a visible state (fails with the event replaced by a no-op)
 approval-target: its task deleted from its page while the request is pending, the link closes with a visible state
+approval-target: its task deleted from its page while the request is pending, the link closes with a visible state (fails with the event replaced by a no-op)
 approval-target: its app switched off while the request is pending, the link closes with a visible state
+approval-target: its app switched off while the request is pending, the link closes with a visible state (fails with the event replaced by a no-op)
 approval-target: its task deleted and taken back out of the bin, it reads as before
 approval-target: its task deleted and taken back out of the bin, it reads as before (fails with the event replaced by a no-op)
 approval-requester: the person who asked deleting their account, the link closes with a visible state
@@ -22,9 +26,11 @@ approval-route: the person it is for deactivated and reactivated, it reads as be
 approval-route: the person it is for away with a next in line, it passes on to the next in line
 approval-route: the person it is for away with a next in line, it passes on to the next in line (fails with the event replaced by a no-op)
 routine-owner: its owner deactivated, at its next tick, the link closes with a visible state
+routine-owner: its owner deactivated, at its next tick, the link closes with a visible state (fails with the event replaced by a no-op)
 routine-owner: its owner losing a scope it runs with, at its next tick, the link closes with a visible state
 routine-owner: its owner losing a scope it runs with, at its next tick, the link closes with a visible state (fails with the event replaced by a no-op)
 routine-owner: its owner losing and regaining a scope it runs with, a tick after each, it reads as before
+routine-owner: its owner losing and regaining a scope it runs with, a tick after each, it reads as before (fails with the event replaced by a no-op)
 calendar-event-away-range: its out-of-office event renamed, at the next sync, the link holds
 calendar-event-away-range: its out-of-office event renamed, at the next sync, the link holds (fails with the event replaced by a no-op)
 calendar-event-away-range: its out-of-office event cancelled, at the next sync, the link closes with a visible state
@@ -56,6 +62,7 @@ stand-in-row-item: the stand-in deactivated, the link closes with a visible stat
 stand-in-row-item: the stand-in losing the scope to decide, the link closes with a visible state
 stand-in-row-item: the stand-in losing the scope to decide, the link closes with a visible state (fails with the event replaced by a no-op)
 stand-in-row-item: its app switched off while the stand-in holds it, the link closes with a visible state
+stand-in-row-item: its app switched off while the stand-in holds it, the link closes with a visible state (fails with the event replaced by a no-op)
 stand-in-row-item: its task moved to another project, the link holds
 stand-in-row-item: its task moved to another project, the link holds (fails with the event replaced by a no-op)
 stand-in-row-item: the stand-in losing and regaining the scope to decide, it reads as before
@@ -65,9 +72,11 @@ stand-in-row-item: the stand-in away too, with their own next in line, it passes
 thread-created-from: its task renamed, the link holds
 thread-created-from: its task renamed, the link holds (fails with the event replaced by a no-op)
 thread-created-from: its ticket merged into another, the link moves to the survivor
+thread-created-from: its ticket merged into another, the link moves to the survivor (fails with the event replaced by a no-op)
 thread-created-from: a member losing read access to its task, the reader who lost access sees nothing
 thread-created-from: a member losing read access to its task, the reader who lost access sees nothing (fails with the event replaced by a no-op)
 thread-created-from: its task's app switched off, the link closes with a visible state
+thread-created-from: its task's app switched off, the link closes with a visible state (fails with the event replaced by a no-op)
 thread-created-from: its task moved to another project, the link holds
 thread-created-from: its task moved to another project, the link holds (fails with the event replaced by a no-op)
 thread-created-from: its task deleted and taken back out of the bin, it reads as before

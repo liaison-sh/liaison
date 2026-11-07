@@ -28,16 +28,12 @@ links:
     visibleState: [cancelled, expired, failed]
     whoIsTold: [requester]
     copiedNameAt: []
-    cells: { Rn: S, Mg: P, Dl: C, Dx: a, Pm: C, Ap: C, Mv: C, Rs: H, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    cells: { Rn: S, Mg: C, Dl: C, Dx: a, Pm: C, Ap: C, Mv: C, Rs: H, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
     open:
-      Mg: a merged ticket's pending replies are cancelled, not moved to the ticket that survives (apps/tickets/merge.ts calls cancelApprovalsForSourceTicket); which of the two is right needs a ruling before the cell is written
       Pm: no reader of the target is defined that loses a permission while a decider keeps theirs
       Mv: the visible state of a pending row whose task moved project is not defined yet
       Rs: no approval targets a restricted document in this tree
       Ex: no data subject export exists for a person; the export takes a contact
-    broken:
-      Ap: a request whose app was switched off stays pending in Home as before, with no state saying its app is off; nothing closes it or tells the person who asked (apps/api/src/modules/apps/org-app-admin.ts disableOrgApp)
-      Dl: a task deleted from its page while a request to delete it is pending leaves the request pending with no state, and nothing tells the person who asked (apps/api/src/apps/projects/service/tasks.ts deleteTask)
 
   - name: approval-requester
     what: a pending approval to the person who asked for it
@@ -93,9 +89,6 @@ links:
       Ap: no code sets a routine to paused_app_disabled; what it shows once its app is switched off is not defined
       Ex: no data subject export exists for a person; the export takes a contact
       Aw: what a routine does while its owner is away is not defined
-    broken:
-      Dx: a routine whose owner was deactivated still runs at its next tick (the tick answers succeeded) and reads active; nothing pauses it or tells an admin (apps/api/src/modules/agent/routines/routine-worker.ts runRoutineTick, whose scope drift check reads the deactivated owner's scopes)
-      Rv: a routine paused because its owner lost a scope stays paused after the scope is given back; its tick only skips (apps/api/src/modules/agent/routines/routine-worker.ts recordInactiveSkip), while a credit pause resumes on its own
 
   - name: calendar-event-away-range
     what: a calendar event to the away range read from it
@@ -125,7 +118,7 @@ links:
     copiedNameAt: []
     cells: { Rn: a, Mg: P, Dl: C, Dx: C, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
     open:
-      Mg: a person merge drops the placeholder's own away record (merge-references.ts), and a placeholder is never away
+      Mg: a person merge moves the placeholder's away record to the person (merge-references.ts, tested in merge-placeholder.test.ts); no placeholder is away in this world, so the cell's reader test waits for one
       Ex: no data subject export exists for a person; the export takes a contact
       Rv: a range is deleted when its person is deactivated, so after reactivation it cannot read as before; the way back is not defined
 
@@ -156,15 +149,13 @@ links:
       - apps/api/src/modules/approvals/route-world.ts
       - apps/api/src/modules/approvals/decide.ts
       - apps/api/src/modules/users/away.ts
-    visibleState: [denied, approved, left, blocked]
+    visibleState: [denied, approved, cancelled, left, blocked]
     whoIsTold: [usual, person]
     copiedNameAt: []
     cells: { Rn: a, Mg: P, Dl: C, Dx: C, Pm: C, Ap: C, Mv: K, Rs: H, Dr: e, Ex: a, Mi: a, Rv: V, Aw: W }
     open:
       Mg: only an import placeholder merges, and a placeholder never stands in
       Rs: no stand-in row comes from a restricted document in this tree
-    broken:
-      Ap: a stand-in row whose app was switched off stays in the stand-in's Home as before, with no state; the same as a request whose app was switched off (apps/api/src/modules/apps/org-app-admin.ts disableOrgApp)
 
   - name: thread-created-from
     what: a conversation to the record it was made from
@@ -182,6 +173,3 @@ links:
       Dl: what a conversation shows once its record is deleted is not defined
       Rs: needs a knowledge document as the record
       Ex: no data subject export exists for a person; the export takes a contact
-    broken:
-      Ap: a conversation made from a task still names the task and opens on it after the projects app is switched off; nothing marks the record as off (apps/api/src/modules/threads/thread-anchor.ts resolveThreadAnchor)
-      Mg: a conversation made from a ticket keeps pointing at the merged-away ticket; nothing moves created_from to the ticket that survives (apps/api/src/apps/tickets/merge.ts)

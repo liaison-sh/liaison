@@ -115,6 +115,20 @@ export const CELLS: CellImpl[] = [
   // ── approval-target ────────────────────────────────────────────────────────
   cell<ApprovalCase>({
     link: "approval-target",
+    event: "Mg",
+    says: "its ticket merged into another while a request on it is pending",
+    build: async (worlds) => (await build()(worlds)).onTicket(),
+    mustSee: ["requester", "usual"],
+    act: (w) => w.mergeTicket(),
+    took: async (w) => {
+      expect(await w.mergedInto(w.ticketId)).toBe(w.survivorId)
+      // Its line leaves the decider's Home.
+      expect((await w.sightOf("usual", w.requestId)).placement).toBeNull()
+    },
+    facts: () => ({}),
+  }),
+  cell<ApprovalCase>({
+    link: "approval-target",
     event: "Rn",
     says: "its task renamed while the request is pending",
     build: build(),
@@ -516,7 +530,11 @@ export const CELLS: CellImpl[] = [
     build: ownOrg({ away: true }),
     mustSee: ["usual", "person", "nextInLine"],
     act: (w) => w.setApp("projects", false),
-    took: async (w) => expect(await w.appStatus("projects")).not.toBe("enabled"),
+    took: async (w) => {
+      expect(await w.appStatus("projects")).not.toBe("enabled")
+      // The row leaves the stand-in's Home with the request it stood for.
+      expect((await w.sightOf("nextInLine", w.requestId)).placement).toBeNull()
+    },
     facts: () => ({}),
   }),
   cell<ApprovalCase>({

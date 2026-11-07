@@ -68,7 +68,7 @@ Imports (for example a Slack import) create accounts for the authors of imported
 2. Click **Link to a person** in the row.
 3. Pick the **Person** and click **Link and merge**.
 
-Everything the imported author holds moves to that person: messages, mentions, reactions, files and conversations. The imported account is then removed. This cannot be undone.
+Everything the imported author holds moves to that person: messages, mentions, reactions, files, conversations and the dates they are away. The imported account is then removed. This cannot be undone.
 
 To give one of these people their own access, invite them with their real email.
 

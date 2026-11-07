@@ -78,6 +78,8 @@ export const USER_FK_DISPOSITION: Record<string, ReferenceDisposition> = {
   // Who an approval is routed to, who takes over for someone away, and who set
   // that or changed a feature: the real person now holds those.
   "kernel.approval_requests.route_person_id": repoint,
+  // A person's own away record is a real absence: it moves to them too.
+  "kernel.away_ranges.user_id": repoint,
   "kernel.away_ranges.set_by": repoint,
   "kernel.away_ranges.next_in_line_id": repoint,
   "kernel.user_preferences.next_in_line_id": repoint,
@@ -116,10 +118,6 @@ export const USER_FK_DISPOSITION: Record<string, ReferenceDisposition> = {
   "kernel.app_scope_grant_audit.target_user_id": repoint,
 
   // ── the placeholder's own deliveries and rules: dropped ──────────────────
-  "kernel.away_ranges.user_id": {
-    kind: "drop",
-    reason: "the placeholder's own away record",
-  },
   "kernel.attention_events.user_id": {
     kind: "drop",
     reason: "notifications addressed to the placeholder, which nobody read",

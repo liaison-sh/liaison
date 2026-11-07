@@ -217,6 +217,11 @@ export class ThreadCase {
       return ref ? resolveThreadAnchor(tx as never, this.orgId, ref) : null
     })
     if (!anchor?.label) return { visible: false }
-    return { visible: true, label: anchor.label, points: this.roleOf(anchor.entityId) }
+    return {
+      visible: true,
+      label: anchor.label,
+      points: this.roleOf(anchor.entityId),
+      state: anchor.state ?? null,
+    }
   }
 }

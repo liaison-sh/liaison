@@ -79,10 +79,50 @@
       {
         "tools": ["checklist_get", "checklist_add_items", "checklist_update_item", "checklist_set_validation", "checklist_remove_item", "update", "move"],
         "text": "CHECKLISTS AND VALIDATION LEVELS: a task can carry a checklist of items (a QA list, a shopping list, anything), each validated per project level (for example AI, Dev, Beta) with `checklist_set_validation`, or checked in a project without levels. RECORD WHAT THE HUMAN TELLS YOU: when a tester or developer walks the items with you, set the state they report on any level, with `source` = the https URL of their record when there is one (optional); never invent a verdict. A `fail` always needs a `note` saying what failed; the note is posted on the task's discussion. MOVING TO DONE: the checklist never blocks a status change, so moving a task to Done or any other terminal status works even when the checklist is incomplete. When it is, you get `checklistWarning` ({ message, status } with `status.blocking` listing the items not proven): `move` returns it in its result, `bulkUpdate` returns it on each affected item, and `update` returns it in its result. Read it and say plainly to the user which items are not proven. Add checklist items with `checklist_add_items` only after the human validated the list you proposed; you cannot add items to a task already in a terminal status. NEVER remove items without the human's approval: `checklist_remove_item` waits for a human approval. One pass over many items is one `checklist_set_validation` call with `entries` (up to 50). `get` on a task carries its checklist status as `checklist`."
+      },
+      {
+        "tools": ["createProject", "create"],
+        "text": "`tasks[].description`, `create`: Make it SELF-CONTAINED — a reviewer opens the task, not your chat reply, so the facts must live HERE. When the task captures something you found via web research (a competitor spec/price, a prospect's details, any external figure), the body MUST carry the concrete data point itself and — for a comparison task — our own product's contrasting fact/angle. A task body that only names the topic ('compare connectivity', 'review their software') is incomplete. For a ONE-TASK-PER-RESEARCHED-ENTITY outreach/shortlist board (a creator, influencer, prospect, dealer, lead, school), the body MUST carry, for that entity: its link (channel/profile/website URL), any contact found (email/phone), AND a one-line WHY-RELEVANT rationale (why this entity fits the goal) — all three. The 'why relevant' note is required, not optional: a body that lists only the link + contact and drops the rationale is incomplete even though the link/contact are present. The relevance line is right there in the research snippet you read — carry it through. Put the source URL of any web-derived fact in the `sourceUrl` param (preferred — it is auto-appended to the body) or inline it here; never present an external figure with no source."
+      },
+      {
+        "tools": ["createProject", "create", "update"],
+        "text": "`tasks[].description`, `create`, `update`: MARKDOWN + LINKED DOCUMENTS: the body is rendered as markdown (headings, lists, bold, code, links). To LINK a document so it shows as a collapsible preview on the task card and page, write an entity mention in the body: `@[Title](knowledge:document:<id>)` for a Knowledge document (id from knowledge create/search), `@[Title](knowledge:source_link:<id>)` for a live Drive/remote doc registered with knowledge source_link_create (id from that call), `@[name.png](kernel:file:<id>)` for a file. A bare URL is only a link; the mention is what makes the spec visible from the board."
+      },
+      {
+        "tools": ["createProject", "create"],
+        "text": "`tasks[].assigneeName`, `assigneeName`: Optional assignee by display name — resolved to a user in this org (alternative to assigneeId)."
+      },
+      {
+        "tools": ["create", "update"],
+        "text": "`labels`: Optional labels: an object whose keys are label group names (or ids) and whose values are value names (or ids), e.g. {\"Nature\": \"bug\"}; null clears this task's own value for that group; groups you leave out are untouched. An invalid value refuses the whole call with label_not_found or label_archived, listing the valid values. Subtasks inherit each group's value from their parent unless they set their own."
+      },
+      {
+        "tools": ["create", "update"],
+        "text": "`statusId`: If you only know the column's NAME, prefer statusLabel; a non-UUID value here is treated as a label."
+      },
+      {
+        "tools": ["tasks_byAssignee", "tasks_byProject"],
+        "text": "`tasks_byAssignee`, `tasks_byProject`: Each row carries a `threadId` for the task's discussion; it is participant-gated, so do not hand it to kernel threads_read directly — use `comments` (and `comment` to post). Each task row carries `labels`: its effective value per label group (own, or inherited from the nearest parent, with `inherited` and `inheritedFromKey`)."
+      },
+      {
+        "tools": ["tasks_byAssignee", "tasks_byProject"],
+        "text": "`release`: Optional: only tasks whose EFFECTIVE release (their own, else the nearest parent's) matches, case-insensitive."
+      },
+      {
+        "tools": ["tasks_byAssignee", "tasks_byProject"],
+        "text": "`due`: Every value excludes tasks in a done (terminal) status column: a done task never appears under any due filter, including none and later."
+      },
+      {
+        "tools": ["tasks_byProject"],
+        "text": "`tasks_byProject`: This single call answers a 'sprint board / burndown / who's overloaded' proxy (done-vs-remaining task counts + per-assignee counts) WITHOUT a per-id user lookup — though burndown/velocity/story-points themselves are not modeled (see agentInstructions). NOTE: `search` is title-text only and `tasks_byAssignee` is per-person across projects — neither lists a project's tasks; this is the tool for that. DERIVING BOARD-HEALTH FIGURES (a roadmap/board digest's per-status + overdue + blocked + unassigned counts): each row carries `statusLabel`, `statusTerminal`, `dueDate`, `assigneeName`, AND a server-computed `overdue` boolean. OVERDUE is the one you should TRUST DIRECTLY: each row's `overdue` field is TRUE iff that task has a due date in the PAST and is NON-terminal (the server already excludes done/cancelled tasks), so the overdue set = the rows where `overdue === true` — do NOT re-derive it by comparing `dueDate` ISO strings to today yourself; just filter/flag on `overdue`. There is still NO separate boolean `blocked` / `isBlocked` flag, so compute BLOCKED from the status label, not a blocked field: BLOCKED = tasks whose `statusLabel` is the board's blocked column (a status named 'Blocked' / 'On Hold' / 'Stuck') — count by that status label; UNASSIGNED = tasks whose `assigneeName` is null; per-status counts = group by `statusLabel`; OPEN = the non-terminal tasks (statusTerminal false). Keep the blocked count CONSISTENT with the per-status breakdown — if the status rollup shows N tasks in the 'Blocked' status, the blocked figure is N (a digest that says 'Blocked status: 2' in one section and 'Blocked: 0' in another, because it looked for a nonexistent blocked flag, is wrong). Returns up to 100 tasks by default (max 200), ordered by status then board position."
+      },
+      {
+        "tools": ["createProject"],
+        "text": "`createProject`: Tasks for an EXISTING project are added with the `create` tool and its project id. Create the board ONCE per goal: if you already created (or found) a project for this request, REUSE its id for all the tasks — do NOT call createProject again for the same goal across turns (that scatters the tasks across stray duplicate boards). SCAFFOLDING A BOARD/CHECKLIST OVER A KNOWN ENUMERATED SET (N units, N orders, N shipments, N rows, N people — anything you've already listed or counted): the default shape is ONE TASK PER ITEM, each titled by that item and carrying its identifying details in the title/body (e.g. the recipient/owner, the id or tracking number, the due/return date) — NOT a handful of generic action-category buckets ('clear the exceptions', 'coordinate returns') that collapse the N items into 4-5 verbs. Per-item is what makes the board actually trackable: each row is one thing the human checks off. Cover EVERY enumerated item with its own task; if all N tasks won't fit one turn's step budget, create as many per-item tasks as fit, ADD the rest to the SAME project next turn, and tell the user it's a partial pass (X of N done so far) — never start a fresh project, never collapse to generic buckets to save steps, and never claim all N are done when you only created a few. IMPROVISING WHEN THERE IS NO NATIVE OBJECT for the thing being tracked (e.g. no 'loaner', 'asset', or 'fleet' entity exists, so you model it as a projects board + tasks): say so plainly in your reply — name that there is no native X concept and that you've improvised a project board to track it — rather than silently presenting the board as if a purpose-built tracker existed."
       }
     ]
   },
-  "version": "1.10.5",
+  "version": "1.10.6",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -481,7 +521,7 @@
       }
     },
     "createProject": {
-      "description": "Create a PROJECT (the container/board) TOGETHER WITH ITS TASKS: pass the tasks you plan (up to 20, each with a title, and optionally a description and an assignee) in `tasks`, in this ONE call. Never create the project first and its tasks afterwards when you already know them: if this call waits for approval, the tasks are approved and created with it, and a task created before the project exists has nowhere to go. More than 20 tasks: pass the first 20 here, then add the rest with `create` and the returned project id. Tasks for an EXISTING project are added with the `create` tool and its project id. Create the board ONCE per goal: if you already created (or found) a project for this request, REUSE its id for all the tasks — do NOT call createProject again for the same goal across turns (that scatters the tasks across stray duplicate boards). SCAFFOLDING A BOARD/CHECKLIST OVER A KNOWN ENUMERATED SET (N units, N orders, N shipments, N rows, N people — anything you've already listed or counted): the default shape is ONE TASK PER ITEM, each titled by that item and carrying its identifying details in the title/body (e.g. the recipient/owner, the id or tracking number, the due/return date) — NOT a handful of generic action-category buckets ('clear the exceptions', 'coordinate returns') that collapse the N items into 4-5 verbs. Per-item is what makes the board actually trackable: each row is one thing the human checks off. Cover EVERY enumerated item with its own task; if all N tasks won't fit one turn's step budget, create as many per-item tasks as fit, ADD the rest to the SAME project next turn, and tell the user it's a partial pass (X of N done so far) — never start a fresh project, never collapse to generic buckets to save steps, and never claim all N are done when you only created a few. IMPROVISING WHEN THERE IS NO NATIVE OBJECT for the thing being tracked (e.g. no 'loaner', 'asset', or 'fleet' entity exists, so you model it as a projects board + tasks): say so plainly in your reply — name that there is no native X concept and that you've improvised a project board to track it — rather than silently presenting the board as if a purpose-built tracker existed.",
+      "description": "Create a PROJECT (the container/board) TOGETHER WITH ITS TASKS: pass the tasks you plan (up to 20, each with a title, and optionally a description and an assignee) in `tasks`, in this ONE call. Never create the project first and its tasks afterwards when you already know them: if this call waits for approval, the tasks are approved and created with it, and a task created before the project exists has nowhere to go. More than 20 tasks: pass the first 20 here, then add the rest with `create` and the returned project id.",
       "searchKeywords": ["project", "projet", "nouveau", "créer", "new"],
       "requiredScopes": ["projects:projects:write"],
       "trustBoundary": "user",
@@ -526,7 +566,7 @@
                 },
                 "description": {
                   "type": "string",
-                  "description": "Task body. Make it SELF-CONTAINED — a reviewer opens the task, not your chat reply, so the facts must live HERE. When the task captures something you found via web research (a competitor spec/price, a prospect's details, any external figure), the body MUST carry the concrete data point itself and — for a comparison task — our own product's contrasting fact/angle. A task body that only names the topic ('compare connectivity', 'review their software') is incomplete. For a ONE-TASK-PER-RESEARCHED-ENTITY outreach/shortlist board (a creator, influencer, prospect, dealer, lead, school), the body MUST carry, for that entity: its link (channel/profile/website URL), any contact found (email/phone), AND a one-line WHY-RELEVANT rationale (why this entity fits the goal) — all three. The 'why relevant' note is required, not optional: a body that lists only the link + contact and drops the rationale is incomplete even though the link/contact are present. The relevance line is right there in the research snippet you read — carry it through. Put the source URL of any web-derived fact in the `sourceUrl` param (preferred — it is auto-appended to the body) or inline it here; never present an external figure with no source. MARKDOWN + LINKED DOCUMENTS: the body is rendered as markdown (headings, lists, bold, code, links). To LINK a document so it shows as a collapsible preview on the task card and page, write an entity mention in the body: `@[Title](knowledge:document:<id>)` for a Knowledge document (id from knowledge create/search), `@[Title](knowledge:source_link:<id>)` for a live Drive/remote doc registered with knowledge source_link_create (id from that call), `@[name.png](kernel:file:<id>)` for a file. A bare URL is only a link; the mention is what makes the spec visible from the board."
+                  "description": "Task body."
                 },
                 "assigneeId": {
                   "type": [
@@ -539,8 +579,7 @@
                   "type": [
                     "string",
                     "null"
-                  ],
-                  "description": "Optional assignee by display name — resolved to a user in this org (alternative to assigneeId)."
+                  ]
                 }
               },
               "required": [
@@ -638,7 +677,7 @@
                 "null"
               ]
             },
-            "description": "Optional labels: an object whose keys are label group names (or ids) and whose values are value names (or ids), e.g. {\"Nature\": \"bug\"}; null clears this task's own value for that group; groups you leave out are untouched. Call `labels.list` for the valid groups and values. An invalid value refuses the whole call with label_not_found or label_archived, listing the valid values. Subtasks inherit each group's value from their parent unless they set their own."
+            "description": "Call `labels.list` for the valid groups and values."
           },
           "release": {
             "type": ["string", "null"],
@@ -665,7 +704,7 @@
           },
           "description": {
             "type": "string",
-            "description": "Task body. Make it SELF-CONTAINED — a reviewer opens the task, not your chat reply, so the facts must live HERE. When the task captures something you found via web research (a competitor spec/price, a prospect's details, any external figure), the body MUST carry the concrete data point itself and — for a comparison task — our own product's contrasting fact/angle. A task body that only names the topic ('compare connectivity', 'review their software') is incomplete. For a ONE-TASK-PER-RESEARCHED-ENTITY outreach/shortlist board (a creator, influencer, prospect, dealer, lead, school), the body MUST carry, for that entity: its link (channel/profile/website URL), any contact found (email/phone), AND a one-line WHY-RELEVANT rationale (why this entity fits the goal) — all three. The 'why relevant' note is required, not optional: a body that lists only the link + contact and drops the rationale is incomplete even though the link/contact are present. The relevance line is right there in the research snippet you read — carry it through. Put the source URL of any web-derived fact in the `sourceUrl` param (preferred — it is auto-appended to the body) or inline it here; never present an external figure with no source. MARKDOWN + LINKED DOCUMENTS: the body is rendered as markdown (headings, lists, bold, code, links). To LINK a document so it shows as a collapsible preview on the task card and page, write an entity mention in the body: `@[Title](knowledge:document:<id>)` for a Knowledge document (id from knowledge create/search), `@[Title](knowledge:source_link:<id>)` for a live Drive/remote doc registered with knowledge source_link_create (id from that call), `@[name.png](kernel:file:<id>)` for a file. A bare URL is only a link; the mention is what makes the spec visible from the board."
+            "description": "Task body."
           },
           "sourceUrl": {
             "type": [
@@ -676,7 +715,7 @@
           },
           "statusId": {
             "type": "string",
-            "description": "Optional status column id (defaults to the project's first status). If you only know the column's NAME, prefer statusLabel; a non-UUID value here is treated as a label."
+            "description": "Optional status column id (defaults to the project's first status)."
           },
           "statusLabel": {
             "type": [
@@ -703,8 +742,7 @@
             "type": [
               "string",
               "null"
-            ],
-            "description": "Optional assignee by display name — resolved to a user in this org (alternative to assigneeId)."
+            ]
           },
           "priority": {
             "type": "string",
@@ -748,7 +786,7 @@
                 "null"
               ]
             },
-            "description": "Optional labels: an object whose keys are label group names (or ids) and whose values are value names (or ids), e.g. {\"Nature\": \"bug\"}; null clears this task's own value for that group; groups you leave out are untouched. Call `labels.list` for the valid groups and values. An invalid value refuses the whole call with label_not_found or label_archived, listing the valid values. Subtasks inherit each group's value from their parent unless they set their own."
+            "description": "Call `labels.list` for the valid groups and values."
           },
           "release": {
             "type": ["string", "null"],
@@ -765,11 +803,11 @@
           },
           "description": {
             "type": "string",
-            "description": "New task body (markdown). MARKDOWN + LINKED DOCUMENTS: the body is rendered as markdown (headings, lists, bold, code, links). To LINK a document so it shows as a collapsible preview on the task card and page, write an entity mention in the body: `@[Title](knowledge:document:<id>)` for a Knowledge document (id from knowledge create/search), `@[Title](knowledge:source_link:<id>)` for a live Drive/remote doc registered with knowledge source_link_create (id from that call), `@[name.png](kernel:file:<id>)` for a file. A bare URL is only a link; the mention is what makes the spec visible from the board."
+            "description": "New task body (markdown)."
           },
           "statusId": {
             "type": "string",
-            "description": "New status column id. If you only know the column's NAME, prefer statusLabel; a non-UUID value here is treated as a label."
+            "description": "New status column id."
           },
           "statusLabel": {
             "type": [
@@ -864,7 +902,7 @@
       }
     },
     "tasks_byAssignee": {
-      "description": "List one person's tasks across ALL projects (not scoped to a single project), each carrying its project name AND its status label + whether that status is terminal/done (`statusTerminal`). This is THE tool to answer 'what is X working on', build a per-person workload view, or REASSIGN a departing teammate's work — resolve the person's user id first (via users_search), then pass it here. By default it returns ALL of the person's tasks (open AND done); to act on only their OPEN/unfinished tasks (e.g. 'reassign all her non-done tasks'), pass `terminal:false` (or read `statusTerminal` per item and SKIP the terminal/done ones) — never reassign or mutate a task whose `statusTerminal` is true when the ask is scoped to open work. Optionally also filter to overdue / due-this-week. Each row carries a `threadId` for the task's discussion; it is participant-gated, so do not hand it to kernel threads_read directly — use `comments` (and `comment` to post). Each task row carries `labels`: its effective value per label group (own, or inherited from the nearest parent, with `inherited` and `inheritedFromKey`).",
+      "description": "List one person's tasks across ALL projects (not scoped to a single project), each carrying its project name AND its status label + whether that status is terminal/done (`statusTerminal`). This is THE tool to answer 'what is X working on', build a per-person workload view, or REASSIGN a departing teammate's work — resolve the person's user id first (via users_search), then pass it here. By default it returns ALL of the person's tasks (open AND done); to act on only their OPEN/unfinished tasks (e.g. 'reassign all her non-done tasks'), pass `terminal:false` (or read `statusTerminal` per item and SKIP the terminal/done ones) — never reassign or mutate a task whose `statusTerminal` is true when the ask is scoped to open work. Optionally also filter to overdue / due-this-week.",
       "searchKeywords": ["attribuées", "assignées", "assignee", "responsable", "charge", "workload"],
       "readOnly": true,
       "requiredScopes": ["projects:tasks:read"],
@@ -876,7 +914,7 @@
         "properties": {
           "release": {
             "type": "string",
-            "description": "Optional: only tasks whose EFFECTIVE release (their own, else the nearest parent's) matches, case-insensitive. `__none__` selects tasks with no release."
+            "description": "`__none__` selects tasks with no release."
           },
           "assigneeId": {
             "type": "string",
@@ -891,7 +929,7 @@
               "none",
               "this_week"
             ],
-            "description": "Optional due date status filter across all projects. overdue: past due and not done. due_soon: due within the next 7 days and not done. later: due beyond 7 days and not done. none: no due date and not done. this_week is an accepted alias for due_soon. Every value excludes tasks in a done (terminal) status column: a done task never appears under any due filter, including none and later."
+            "description": "Optional due date status filter across all projects. overdue: past due and not done. due_soon: due within the next 7 days and not done. later: due beyond 7 days and not done. none: no due date and not done. this_week is an accepted alias for due_soon."
           },
           "terminal": {
             "type": "boolean",
@@ -921,7 +959,7 @@
       }
     },
     "tasks_byProject": {
-      "description": "List the tasks IN a single project (by project id), each with its status label + whether that status is terminal/done (`statusTerminal`) + the assignee's display name (`assigneeName`, null when unassigned). Use this to enumerate or summarize a project's tasks — a backlog/roadmap/weekly digest, a per-status rollup (group by the terminal/done flag for a DONE-vs-REMAINING count), a per-PERSON workload tally (group by `assigneeName` to find the most-loaded person), 'what's in project X', or reading a source project's task list to copy it. This single call answers a 'sprint board / burndown / who's overloaded' proxy (done-vs-remaining task counts + per-assignee counts) WITHOUT a per-id user lookup — though burndown/velocity/story-points themselves are not modeled (see agentInstructions). NOTE: `search` is title-text only and `tasks_byAssignee` is per-person across projects — neither lists a project's tasks; this is the tool for that. DERIVING BOARD-HEALTH FIGURES (a roadmap/board digest's per-status + overdue + blocked + unassigned counts): each row carries `statusLabel`, `statusTerminal`, `dueDate`, `assigneeName`, AND a server-computed `overdue` boolean. OVERDUE is the one you should TRUST DIRECTLY: each row's `overdue` field is TRUE iff that task has a due date in the PAST and is NON-terminal (the server already excludes done/cancelled tasks), so the overdue set = the rows where `overdue === true` — do NOT re-derive it by comparing `dueDate` ISO strings to today yourself; just filter/flag on `overdue`. There is still NO separate boolean `blocked` / `isBlocked` flag, so compute BLOCKED from the status label, not a blocked field: BLOCKED = tasks whose `statusLabel` is the board's blocked column (a status named 'Blocked' / 'On Hold' / 'Stuck') — count by that status label; UNASSIGNED = tasks whose `assigneeName` is null; per-status counts = group by `statusLabel`; OPEN = the non-terminal tasks (statusTerminal false). Keep the blocked count CONSISTENT with the per-status breakdown — if the status rollup shows N tasks in the 'Blocked' status, the blocked figure is N (a digest that says 'Blocked status: 2' in one section and 'Blocked: 0' in another, because it looked for a nonexistent blocked flag, is wrong). Returns up to 100 tasks by default (max 200), ordered by status then board position. Each row carries a `threadId` for the task's discussion; it is participant-gated, so do not hand it to kernel threads_read directly — use `comments` (and `comment` to post). Each task row carries `labels`: its effective value per label group (own, or inherited from the nearest parent, with `inherited` and `inheritedFromKey`).",
+      "description": "List the tasks IN a single project (by project id), each with its status label + whether that status is terminal/done (`statusTerminal`) + the assignee's display name (`assigneeName`, null when unassigned). Use this to enumerate or summarize a project's tasks — a backlog/roadmap/weekly digest, a per-status rollup (group by the terminal/done flag for a DONE-vs-REMAINING count), a per-PERSON workload tally (group by `assigneeName` to find the most-loaded person), 'what's in project X', or reading a source project's task list to copy it.",
       "searchKeywords": ["project", "projet", "avancement", "statut", "status", "kanban", "tableau", "board", "tâche", "tâches", "task", "tasks"],
       "readOnly": true,
       "requiredScopes": ["projects:tasks:read"],
@@ -948,7 +986,7 @@
           },
           "release": {
             "type": "string",
-            "description": "Optional: only tasks whose EFFECTIVE release (their own, else the nearest parent's) matches, case-insensitive. `__none__` selects tasks with no release."
+            "description": "`__none__` selects tasks with no release."
           },
           "projectId": {
             "type": "string",
@@ -971,7 +1009,7 @@
               "none",
               "this_week"
             ],
-            "description": "Optional due date status filter. overdue: past due and not done. due_soon: due within the next 7 days and not done. later: due beyond 7 days and not done. none: no due date and not done. this_week is an accepted alias for due_soon. Every value excludes tasks in a done (terminal) status column: a done task never appears under any due filter, including none and later."
+            "description": "Optional due date status filter. overdue: past due and not done. due_soon: due within the next 7 days and not done. later: due beyond 7 days and not done. none: no due date and not done. this_week is an accepted alias for due_soon."
           },
           "limit": {
             "type": "number",

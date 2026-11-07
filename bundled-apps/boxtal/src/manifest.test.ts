@@ -24,6 +24,17 @@ const guideText = (m: unknown): string => {
   return ""
 }
 
+/** What the model reads about one tool: its description, then every guide section naming it.
+ *  Text past a description's first 600 characters lives in a section that names the tool, which
+ *  renders whenever the tool is loaded. */
+const toolText = (m: unknown, tool: string): string => {
+  const mm = m as { tools?: Record<string, { description?: string }>; agentInstructions?: unknown }
+  const ai = mm.agentInstructions as { sections?: Array<{ tools?: string[]; text?: string }> } | undefined
+  const sections =
+    ai && typeof ai === "object" ? (ai.sections ?? []).filter((x) => x.tools?.includes(tool)) : []
+  return [mm.tools?.[tool]?.description ?? "", ...sections.map((x) => x.text ?? "")].join("\n\n")
+}
+
 /** Dotted paths of every OPAQUE param on an agent-visible tool — a `type:object` with neither
  *  `properties` nor `additionalProperties:true`, or a `type:array` with no `items` schema. Such a
  *  param hides its shape from the weak agent, which guesses wrong field names (the from/to/parcels
@@ -141,7 +152,7 @@ describe("Boxtal app.manifest.json", () => {
   // is draftable — NOTHING staged) from a staged shipment, which only create_shipment (GATED) produces.
   it("to_prepare_list description disambiguates prep_status=ready_to_prepare from a staged shipment (relabel anti-fabrication)", () => {
     const m = load() as { tools: Record<string, { description?: string }> }
-    const desc = m.tools.to_prepare_list?.description ?? ""
+    const desc = toolText(m, "to_prepare_list")
     expect(desc).toContain("prep_status")
     expect(desc).toContain("ready_to_prepare")
     // No bare `ready or needs-fix` framing that reads as staged.
@@ -163,7 +174,7 @@ describe("Boxtal app.manifest.json", () => {
   // staging should carry — it does not name a tool/step sequence.
   it("create_shipment description teaches the EXPORT-treatment pending-approval framing (zero-rated + commercial invoice + incoterm; no dispatch wording)", () => {
     const m = load() as { tools: Record<string, { description?: string }> }
-    const desc = m.tools.create_shipment?.description ?? ""
+    const desc = toolText(m, "create_shipment")
     // Names the export-route trigger and the three export-treatment elements the staged report must carry.
     expect(/EXPORT SHIPMENTS/i.test(desc)).toBe(true)
     expect(/zero-rated/i.test(desc)).toBe(true)
@@ -232,7 +243,7 @@ describe("Boxtal app.manifest.json", () => {
     const m = load() as {
       tools: Record<string, { description?: string }>
     }
-    const d = m.tools.search?.description ?? ""
+    const d = toolText(m, "search")
     // A tracking_status query is a single-value match, not a 'stuck'/'needs-attention' grouping.
     expect(/single-value match|EXACTLY ONE status/i.test(d)).toBe(true)
     // query='IN_TRANSIT' is explicitly called out as the WRONG way to find stuck parcels.
@@ -395,7 +406,9 @@ describe("Boxtal app.manifest.json", () => {
     // agentInstructions (appended last), so it runs to the end of the string.
     const clauseStart = ai.indexOf("PACK_UPSERT CARTON_TARE IS FULL REPLACE")
     expect(clauseStart).toBeGreaterThan(-1)
-    const clause = ai.slice(clauseStart)
+    // The clause runs to the end of its own guide part (sections after it are about other tools).
+    const partEnd = ai.indexOf("\n\n", clauseStart)
+    const clause = ai.slice(clauseStart, partEnd === -1 ? undefined : partEnd)
     expect(/^[\x00-\x7F]*$/.test(clause)).toBe(true)
     expect(clause).not.toMatch(/--|‒|–|—|―/)
   })
@@ -586,7 +599,8 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.16 (main): API keys and the webhook secret stay host-side (ctx.fetch auth, configSecrets, by-key HMAC).
     // 0.23.18: a hidden tool names the visible one to use instead.
     // 0.23.19: both of the above, merged.
-    expect(m.version).toBe("0.23.19")
+    // 0.23.20: the longest descriptions past 600 characters read from guide sections.
+    expect(m.version).toBe("0.23.20")
     expect(m.packageFormat).toBe(1)
   })
 
@@ -925,7 +939,7 @@ describe("Boxtal app.manifest.json", () => {
   // (cost → declared_value) at the description level too.
   it("search description teaches carrier-volume tally + no-date-filter + declared_value≠spend; queue_counts says live-state-not-throughput", () => {
     const m = load() as { tools: Record<string, { description?: string }> }
-    const s = m.tools.search?.description ?? ""
+    const s = toolText(m, "search")
     expect(/CARRIER VOLUME \/ THROUGHPUT BY CARRIER/i.test(s)).toBe(true)
     expect(/NO created_at \/ ship-date field and NO date-range parameter/i.test(s)).toBe(true)
     expect(/OFFSET-PAGED SAMPLE/i.test(s)).toBe(true)

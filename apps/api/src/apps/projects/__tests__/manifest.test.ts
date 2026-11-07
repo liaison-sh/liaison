@@ -13,6 +13,19 @@ const guideText = (m: { agentInstructions?: unknown }): string => {
   return typeof g === "string" ? g : [g.core, ...(g.sections ?? []).map((s) => s.text)].join("\n\n")
 }
 
+/**
+ * The text the model reads about one part of a tool while the tool is loaded:
+ * that part (its description, or one argument's), then every guide section
+ * naming the tool. A sentence several tools shared, and a description's text
+ * past its first 600 characters, read from such a section.
+ */
+const withToolSections = (tool: string, text: string): string => {
+  const g = projectsManifest.agentInstructions as ManifestGuide
+  const sections =
+    typeof g === "string" ? [] : (g.sections ?? []).filter((s) => s.tools.includes(tool))
+  return [text, ...sections.map((s) => s.text)].join("\n\n")
+}
+
 describe("projects.manifest", () => {
   it("declares the heading over its attention items, in the words and catalog key Home shows", () => {
     expect(projectsManifest.attention.groupLabel).toEqual({
@@ -68,8 +81,8 @@ describe("projects.manifest", () => {
     // 1.7.9: task labels
     // 1.10.2: more French and English tool search words
     // 1.10.3: approval_route_read says who an approval about a task is for; Home passes on.
-    // 1.10.5: its attention heading is declared in the manifest.
-    expect(projectsManifest.version).toBe("1.10.5")
+    // 1.10.6: sentences shared by several tools, and the longest descriptions past 600 characters, read from guide sections.
+    expect(projectsManifest.version).toBe("1.10.6")
   })
 
   it("projects.manifest.task-labels", () => {
@@ -318,7 +331,10 @@ describe("projects.manifest", () => {
       tools: Record<string, { params?: { properties?: Record<string, { description?: string }> } }>
     }
     for (const name of ["create", "update"]) {
-      const desc = m.tools[name]?.params?.properties?.description?.description ?? ""
+      const desc = withToolSections(
+        name,
+        m.tools[name]?.params?.properties?.description?.description ?? "",
+      )
       expect(desc, `${name}.description`).toContain("knowledge:source_link:<id>")
       expect(desc, `${name}.description`).toContain("knowledge:document:<id>")
       expect(desc, `${name}.description`).toContain("kernel:file:<id>")
@@ -546,7 +562,7 @@ describe("projects.manifest", () => {
     // object exists. Assert both steers are present (root cause: the prose only mentioned per-unit
     // inside the budget-partial clause, reading as conditional rather than the default shape).
     const tools = (projectsManifest as { tools: Record<string, { description: string }> }).tools
-    const desc = tools.createProject.description
+    const desc = withToolSections("createProject", tools.createProject.description)
     // per-item scaffold default over an enumerated set
     expect(desc).toContain("ENUMERATED SET")
     expect(desc).toContain("ONE TASK PER ITEM")
@@ -575,7 +591,7 @@ describe("projects.manifest", () => {
         >
       }
     ).tools.create.params
-    const descParam = params?.properties?.description?.description ?? ""
+    const descParam = withToolSections("create", params?.properties?.description?.description ?? "")
     expect(descParam).toMatch(/SELF-CONTAINED/i)
     expect(descParam).toMatch(/source URL/i)
     expect(descParam).toMatch(/contrasting|angle/i)
@@ -605,12 +621,15 @@ describe("projects.manifest", () => {
         >
       }
     ).tools
-    const toolDesc = tools.create.description
+    const toolDesc = withToolSections("create", tools.create.description)
     expect(toolDesc).toMatch(/outreach|shortlist/i)
     expect(toolDesc).toMatch(/why[\s-]?relevant|relevance/i)
     // …and the description PARAM (the body-authoring surface) must carry the same requirement, so the
     // model is steered at the exact moment it writes the body, not only in the tool blurb.
-    const descParam = tools.create.params?.properties?.description?.description ?? ""
+    const descParam = withToolSections(
+      "create",
+      tools.create.params?.properties?.description?.description ?? "",
+    )
     expect(descParam).toMatch(/outreach|shortlist|researched[\s-]?entity/i)
     expect(descParam).toMatch(/why[\s-]?relevant|relevance/i)
     expect(descParam).toMatch(/required|not optional|incomplete/i)

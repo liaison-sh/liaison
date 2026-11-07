@@ -1284,6 +1284,2190 @@
       "field": "ownerUserId",
       "sentence": "Do not misread 'for Liam' as a routine for yourself, and do not merely set visibility and claim it runs as Liam: visibility does not change the run-as identity, only this parameter does.",
       "to": "guide:kernel-routines"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "For a status breakdown / total-open / by-category / oldest / backlog-health read there IS an authoritative aggregate — use the backlogHealth tool (exact server-side GROUP BY over the whole backlog), NOT a tally of search pages.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "(backlogHealth ALSO returns authoritative SLA COUNTS — bySla.approaching + bySla.breached with named exemplars — so the count of at-risk/breached tickets comes from there, not a search tally.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "For a weekly SLA POST-MORTEM — which tickets breached in a date window, the breach MARGIN, PER-AGENT breach counts, and the overall SLA-ATTAINMENT RATE — there IS now an authoritative aggregate: use the slaReport tool (exact server-side counts + rate over the window), NOT a search tally.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "The only remaining gaps are resolution-time AVERAGES and an aggregate CSAT score/trend, which stay a bounded per-ticket sample / honest unavailability, never a fabricated percentage.) Use search to retrieve the actual matching ticket ROWS (e.g. the slaApproaching set, or the tickets behind a backlogHealth count when the user wants the list), noting any such list is a bounded page, not an exact total.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "OLDEST / BACKLOG-BURNDOWN — 'the 10 oldest still-open tickets, how long each has been open, what state they're stuck in, and who owns them': search is age-sortable — call search({ smartFilter: 'all-open', sort: 'oldest', limit: 10 }) to get the actual N OLDEST open tickets in ONE bounded call (sort='oldest' orders by created_at, so you get the real global oldest, not the first relevance page).",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "Each returned row carries createdAt (compute age from it / now), status (open or awaiting_followup = on our plate / awaiting_customer = waiting on the customer — the stuck-state), and assigneeName (the OWNER — null = unassigned), so present age + stuck-state + owner per ticket WITHOUT a per-ticket get.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "(backlogHealth.oldest also returns the same oldest-10 with ageDays + assigneeName as an authoritative aggregate; either is the right oldest-first read — never present the default unsorted page as 'the oldest'.) 'OPEN' / BACKLOG SCOPE — when a request asks for someone's 'open tickets', a 'backlog' digest, or a list GROUPED BY STATUS (and especially one that must surface an 'awaiting customer / to nudge' section), 'open' means the WHOLE NON-CLOSED set — open AND awaiting_customer AND awaiting_followup — NOT the literal status='open' bucket alone. status='open' silently DROPS the awaiting_customer and awaiting_followup tickets, which (a) guts the awaiting-customer/nudge section entirely (those tickets ARE the awaiting_customer status), and (b) collapses a status-grouped digest to a single group.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "So read the full backlog with search({ smartFilter: 'all-open' }) (= status IN open/awaiting_customer/awaiting_followup, closed excluded) — or pass status: ['open','awaiting_customer','awaiting_followup'] explicitly — then GROUP the returned rows by their status field yourself.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "When the backlog is the CALLER'S OWN in INTERACTIVE chat ('my open tickets', 'my backlog', 'my queue'), use search({ smartFilter: 'my-backlog' }) — it returns exactly that non-closed set ASSIGNED TO YOU in ONE call (auto-scoped to the caller, NO assignee UUID to look up, and you can NOT accidentally fall into a whole-org read).",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "CAUTION — in a ROUTINE PROMPT do NOT use smartFilter:'my-backlog' or assignedTo:'me': at tick time those resolve to the ROUTINE'S OWNER, which for an agent-authored, admin-approved routine may NOT be the person who asked — so they silently read the wrong queue.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "A routine that digests a specific person's tickets must filter by that person's EXPLICIT user id (resolved once at authoring time and baked into the prompt).",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "Only filter to a single status when the user explicitly asks for that one bucket.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "AGING / 'OLDER THAN N DAYS' — THE SERVER COMPUTES IT, YOU RENDER IT.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "To flag tickets 'aging past N days', pass `agingThresholdDays: N` (e.g.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "`agingThresholdDays: 3` for 'aging past 3 days'; default 3) and EACH returned row then carries an `aging` BOOLEAN — already computed server-side as `ageDays > N`.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "Just RENDER each row's `aging` flag into your digest (true → flag it as aging, false → leave it unflagged).",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "Do NOT recompute the comparison yourself, and do NOT mark a row 'aging' unless its `aging` field is true — copying the per-row boolean is the whole point (it removes the fragile in-context date arithmetic where rows get mis-flagged).",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "Each row also carries `ageDays` (whole days open, = floor((now − createdAt)/1 day), the same figure backlogHealth.oldest reports) for display.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "The result is a real DISCRIMINATION: in a backlog some rows have aging:true and some aging:false, so the flagged set is EXACTLY the over-threshold rows — never the whole set, never none.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "CUSTOMER-SILENCE / 'NO REPLY FOR N+ DAYS' (auto-close) — THE SERVER COMPUTES IT, YOU RENDER IT.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "To find the awaiting_customer tickets that have gone SILENT (no inbound customer reply for N+ days — the stale-auto-close window), pass `silentForDays: N` (e.g. silentForDays: 7) ALONGSIDE status:'awaiting_customer' (or smartFilter:'awaiting-customer').",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "EACH returned row then carries `customerSilentDays` (whole days since the customer last wrote, from last_inbound_at) AND a `customerSilent` BOOLEAN (= customerSilentDays >= N) — already computed server-side.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "The STALE set to act on (final-notice reply + close) is EXACTLY the rows where customerSilent is true; the FRESH set to SKIP is the rows where it is false.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "Just RENDER each row's `customerSilent` flag — do NOT recompute the last-inbound age yourself, and do NOT act on a row whose customerSilent is false (a customer who replied 1-2 days ago is FRESH, not stale).",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "This removes the fragile in-context staleness arithmetic where a tick acted on fresh tickets, sending a 'we haven't heard from you in over a week' notice to someone who just replied — copying the per-row boolean is the whole point.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "WHEN TO USE THE STRUCTURED FILTERS (not free-text q): to find a TOPIC's tickets that are AT SLA RISK — e.g.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "'shipping tickets at SLA risk' — call search({ category: 'Shipping', slaApproaching: true }), NOT a free-text q of keywords. q matches subject+body text ONLY, so it both MISSES correctly-categorized tickets whose words differ and surfaces unrelated noise — the precise, grounded set comes from the category + slaApproaching filters.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "Each returned row carries categoryName (the topic) and slaDeadline.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:search",
+      "field": "description",
+      "sentence": "ANTI-FABRICATION: every ticket field you report (id, subject, priority, slaDeadline, order ref, category) MUST come from a search/get tool result row — NEVER reconstruct or 'flesh out' ticket cards from a sidebar/summary line, and NEVER assert a shipment↔ticket correlation unless a returned ticket's order ref actually matches the shipment's; if a shipment has no matching ticket, say so.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:assign",
+      "field": "description",
+      "sentence": "Decide the criterion (read the body / detect the language) BEFORE assigning, and skip non-matching tickets entirely.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:assign",
+      "field": "description",
+      "sentence": "Tagging a ticket's language is NOT a reason to claim it.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:assign",
+      "field": "description",
+      "sentence": "SHARED-INBOX RACE — CLAIM SAFELY WITH onlyIfUnassigned:true: when you are claiming UNASSIGNED tickets out of a SHARED inbox where a teammate may be working the SAME queue at the SAME time (a post-launch spike, two agents both told to 'grab the high-priority ones'), a plain assign is a blind overwrite — you can stomp a ticket your colleague just grabbed and BOTH of you then think you own it.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:assign",
+      "field": "description",
+      "sentence": "To claim safely, pass onlyIfUnassigned:true: the assign then succeeds ONLY while the ticket is still unowned, and if a teammate beat you to it the call returns an error with code 'conflict' (and currentAssignee = who holds it now) instead of clobbering their claim.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:assign",
+      "field": "description",
+      "sentence": "On a 'conflict' result you MUST SKIP that ticket — do NOT retry, do NOT blind-reassign it to yourself, and do NOT report that you own it.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:assign",
+      "field": "description",
+      "sentence": "ACKNOWLEDGE it was already taken (e.g.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:assign",
+      "field": "description",
+      "sentence": "'ticket X was already claimed by a teammate — left it with them') so your summary reflects the REAL post-claim state.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:assign",
+      "field": "description",
+      "sentence": "ALWAYS pass the assignee too — to claim a ticket for yourself you MUST send BOTH assignedTo:'me' AND onlyIfUnassigned:true; onlyIfUnassigned WITHOUT an assignedTo is rejected (it would unassign, not claim).",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:assign",
+      "field": "description",
+      "sentence": "VERIFY THE RESULT BEFORE REPORTING: a successful claim returns assignedTo set to the new owner's id; only report a ticket as 'assigned to you' when the response's assignedTo is your id (not null) — if assignedTo came back null or the call errored, the claim did NOT take, so do NOT claim ownership.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:assign",
+      "field": "description",
+      "sentence": "Only the tickets whose assign SUCCEEDED with a non-null assignedTo are yours; never claim ownership of a ticket you lost the race for or whose assign returned null.",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "tickets:assign",
+      "field": "description",
+      "sentence": "Use expectedAssignee to require a specific current owner before swapping (general compare-and-swap).",
+      "to": "guide:tickets"
+    },
+    {
+      "tool": "boxtal:create_shipment",
+      "field": "description",
+      "sentence": "SOURCE THE ADDRESS, do not re-key it: for a Shopify DTC order the customer's full shipping address is on the order — fetch it with shopify__orders_get and read `shippingAddress` (street/city/zip/countryCode/phone), then pass it as `recipient_address`.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:create_shipment",
+      "field": "description",
+      "sentence": "The address the customer entered at checkout is the canonical source; pull it rather than asking the operator to retype what the store already captured.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:create_shipment",
+      "field": "description",
+      "sentence": "Only ASK the operator for an address field if it is genuinely absent from the order/record AND cannot be fetched — and if a tool call (e.g. set_package) errors, say so plainly and never claim a draft was modified or addressed when the call did not succeed.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:create_shipment",
+      "field": "description",
+      "sentence": "When rerouting/staging SEVERAL orders, stage create_shipment for EACH and then give a per-order summary (old carrier → new carrier + the cost).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:create_shipment",
+      "field": "description",
+      "sentence": "EXPORT SHIPMENTS (the route leaves the customs union — a non-EU destination, so the draft carries customs articles): your PENDING-APPROVAL report to the user is not done after 'staged, awaiting your approval' — for an export you MUST also spell out the export treatment so the operator can sanity-check the paperwork before approving: (1) the tax basis is ZERO-RATED (0% VAT — an export sale, not a domestic-VAT one), (2) a COMMERCIAL INVOICE / customs declaration travels with the parcel carrying the HS code(s) + the declared value (= the invoice line total), and (3) the INCOTERM (e.g.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:create_shipment",
+      "field": "description",
+      "sentence": "DAP for a prepaid distributor export) that governs who clears customs.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:create_shipment",
+      "field": "description",
+      "sentence": "State these plainly in the staged summary alongside the HS code and declared value you set.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:create_shipment",
+      "field": "description",
+      "sentence": "Frame the whole thing as STAGED / pending the human's approval — never use 'dispatched', 'initiated', 'sent', or 'finalize the dispatch' wording, since nothing ships until the human approves.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:create_shipment",
+      "field": "description",
+      "sentence": "WARRANTY/RMA RETURN pipeline: draft from the original sale invoice (shipment_draft_create) → quote with is_return:true → create_shipment with is_return:true + return_reason + the customer's address/phone (the customer is the SENDER; carriers require their phone).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:create_shipment",
+      "field": "description",
+      "sentence": "For a NON-EU return leg, follow the warranty-return-label skill: issue a proforma at the org's nominal value (RETURN FOR REPAIR - NO COMMERCIAL VALUE) and open the draft from THAT proforma so customs never sees the sale value.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:create_shipment",
+      "field": "description",
+      "sentence": "SEQUENCED BUNDLE (one human approval for the whole flow): this tool's result exposes referenceable outputs (boxtal_order_id, tracking_number, label_file_id — the imported label PDF as a kernel file id).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:create_shipment",
+      "field": "description",
+      "sentence": "Stage the follow-up in the SAME turn by copying the @ref token from this call's blocked envelope `outputs` into the next gated call (e.g. tickets__reply attachments=[<label_file_id token>]) — the human then sees and approves ALL stacked actions in one decision, and each step executes with the real values after approval. label_file_id can be null if Boxtal has not generated the label yet at execution (it is produced asynchronously); recover with import_label_document (standalone, or as the sequenced middle step between create_shipment and the reply so the chain carries the real file id).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:create_shipment",
+      "field": "description",
+      "sentence": "ALWAYS pass quoted_price_ttc: copy offers[].price_ttc for your chosen offer_code from the quote result — the approval card shows it to the reviewer and a call without it is rejected.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:create_shipment",
+      "field": "description",
+      "sentence": "WORKLIST TIMING: staging this (pending approval) does NOT remove the order from to_prepare_list / the prep dashboard -- the row leaves ONLY after the approval is EXECUTED (the label is reserved).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:create_shipment",
+      "field": "description",
+      "sentence": "So when you stage, tell the operator the order stays in the to-prepare list until they approve it.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:create_shipment",
+      "field": "description",
+      "sentence": "OFFER SELECTION: to ship a prep-dashboard row, stage its `quote.selected` offer (the operator's chosen offer, or the cheapest when none is chosen) -- pass that offer_code + its price as quoted_price_ttc.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:create_shipment",
+      "field": "description",
+      "sentence": "RELAY / PICKUP-POINT: a relay / access-point offer_code is REFUSED (offer_not_quoted) because the pre-buy re-quote drops relay services; pass include_pickup_point:true only when the customer explicitly wants a relay delivery.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:create_shipment",
+      "field": "description",
+      "sentence": "CARRIER ALLOWLIST (advisory, NOT a buy-time block): unlike the relay exclusion, the carrier allowlist does NOT refuse a buy -- a non-allowlisted carrier the operator explicitly picked (e.g.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:create_shipment",
+      "field": "description",
+      "sentence": "Chronopost quoted via ignore_allowlist) still ships once the human approves this gated action, so you never need to add a carrier to the allowlist just to book it once.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote",
+      "field": "description",
+      "sentence": "Only for a DIRECT (no-draft) route do you build `to` (as an OBJECT {country, postalCode, city}) and `parcels` (each parcel may carry `quantity` for N identical cartons, e.g. {quantity:5, weight:19,...}; content_code defaults from the org catalog's dominant product content category when omitted).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote",
+      "field": "description",
+      "sentence": "When quoting an existing draft, pass its `draft_id` — the route (destination country/postal/city), parcels and content are taken from the draft so you never re-enter the destination, and the offers come back for the ACTUAL destination (an export route returns international carriers, not domestic ones).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote",
+      "field": "description",
+      "sentence": "Otherwise pass `to` (destination, including the ISO country code) and `parcels` explicitly.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote",
+      "field": "description",
+      "sentence": "EACH OFFER CARRIES BOTH A PRICE AND AN ETA — `price_ht`/`price_ttc` (the carrier cost) AND a `collection_date` + `delivery_date` (the arrival estimate).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote",
+      "field": "description",
+      "sentence": "CHEAPEST-THAT-MEETS-THE-DEADLINE (not absolute cheapest): when the ask constrains delivery speed ('arrives within N business/working days', 'must land by <date>', 'fastest under X EUR'), you MUST filter the offers to those whose `delivery_date` MEETS the deadline FIRST, then pick the cheapest of THOSE — never the absolute-cheapest offer if a faster-but-pricier one is the only one that meets the deadline.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote",
+      "field": "description",
+      "sentence": "Compute the ETA from the offer's own `collection_date`→`delivery_date` dates; when the deadline is in BUSINESS/WORKING days, count weekdays (Mon–Fri) only — a delivery_date that is N calendar days out can be fewer business days, so use the actual dates and exclude weekends rather than eyeballing calendar days (this is the single most common mis-pick: rejecting a carrier that DOES meet the business-day deadline, or accepting the cheapest while ignoring the deadline entirely).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote",
+      "field": "description",
+      "sentence": "ON-PREMISE PICKUP + HOME DELIVERY (collection vs delivery mode): each offer ALSO carries `collection_type` (the raw Boxtal collection-mode code, e.g.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote",
+      "field": "description",
+      "sentence": "\"PICKUP\" = the carrier collects at the sender's own premises, \"DROPOFF_POINT\" = the sender must drop the parcel at a relay/post point) and a derived `pickup_at_sender` boolean computed from it.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote",
+      "field": "description",
+      "sentence": "To propose carriers with on-premise pickup AND home delivery, filter offers to `pickup_at_sender === true` (equivalently `collection_type === \"PICKUP\"`) AND `needs_relay_point === false` (home delivery, not a relay-point drop).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote",
+      "field": "description",
+      "sentence": "When `collection_type` is `null` the offer's collection block was absent from the carrier response, so the pickup mode is UNKNOWN — surface that offer WITH the caveat that its pickup mode could not be determined rather than silently EXCLUDING it from an on-premise-pickup match (excluding it on a null would wrongly drop an offer that might in fact be on-premise).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote",
+      "field": "description",
+      "sentence": "NO BATCH-QUOTE / COST-ROLLUP TOOL: quote is ONE route per call; there is NO tool that quotes many orders at once or sums projected shipping spend across a batch.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote",
+      "field": "description",
+      "sentence": "To total shipping cost over several orders you must quote each one and HAND-SUM the chosen offers IN-CONTEXT.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote",
+      "field": "description",
+      "sentence": "Because a draft→quote chain per order plus the per-turn step/time budget caps how many you can process in one turn, a multi-order 'total what we'll spend' is a BOUNDED SAMPLE, not an authoritative whole-batch figure: process a handful, keep a running total of the offers you actually chose, and DISCLOSE in your reply (a) how many orders you covered vs how many remain, and (b) that creating each label is still a separate GATED create_shipment (a quote is not a booked shipment).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote",
+      "field": "description",
+      "sentence": "NEVER present a hand-summed subset total as the authoritative spend for the entire batch.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote",
+      "field": "description",
+      "sentence": "RETURN (reverse) LEG — quoting a prepaid return label (RMA/warranty, parcel ships customer→you): pass is_return:true (with draft_id, or with the same from/to you would use outbound) — the route is swapped for you, so you still pass the CUSTOMER side as `to`/the draft recipient and the org ship-from stays the configured origin.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote",
+      "field": "description",
+      "sentence": "Pick the offer_code from THAT quote and stage it via create_shipment with is_return:true.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote",
+      "field": "description",
+      "sentence": "RELAY / PICKUP-POINT EXCLUSION: by default the org drops relay / access-point delivery services (a B2C order ships door to door), so a relay offer is never surfaced as the cheapest; pass include_pickup_point:true to include them for a customer who explicitly wants a relay.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:search",
+      "field": "description",
+      "sentence": "A tracking_status query matches EXACTLY ONE status string (it is a single-value match, NOT a 'stuck'/'needs-attention' grouping): query='IN_TRANSIT' returns ONLY in-transit parcels and EXCLUDES failed-delivery / pickup-expiring ones, so it is the WRONG way to find stuck parcels.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:search",
+      "field": "description",
+      "sentence": "There is NO single status that means 'stuck' — the needs-attention set spans SEVERAL DISTINCT tracking_status values: EXCEPTION (incl. customs hold), FAILED_ATTEMPT (a failed delivery — a DISTINCT status, NOT an EXCEPTION), and REACHED_DELIVERY_PICKUP_POINT (a parcel awaiting collection that may expire).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:search",
+      "field": "description",
+      "sentence": "To find EVERY stuck parcel reliably, BLANK-enumerate the fleet and classify each hit's tracking_status in-context (or run one filtered query per stuck status) — never assume one filter or one enum captures them all.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:search",
+      "field": "description",
+      "sentence": "Each hit returns the recipient, carrier, order_status, a CACHED tracking_status, the real tracking_number, and the external_id (the ORDER reference / order number this shipment is for — cite THAT for the dossier's order, no separate shopify call needed).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:search",
+      "field": "description",
+      "sentence": "The hit's tracking_status is a LOCALLY-CACHED snapshot (last webhook/track write) and MAY BE STALE — it is NOT a live carrier read.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:search",
+      "field": "description",
+      "sentence": "Do NOT decide stuck-ness (or skip a shipment as 'delivered/healthy') from this cached field; call track per shipment for the authoritative live status, and for a shipment cached DELIVERED cross-check the open support-ticket queue (a delivered-but-disputed parcel is still stuck).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:search",
+      "field": "description",
+      "sentence": "The result also carries a cachedStatusNotice saying exactly this.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:search",
+      "field": "description",
+      "sentence": "For a shipment's live carrier checkpoint detail (latest event + message), call track.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:search",
+      "field": "description",
+      "sentence": "CARRIER VOLUME / THROUGHPUT BY CARRIER: to tally how many parcels per carrier, BLANK-enumerate (empty query) and PAGE to the end, then group the hits by the `carrier` (offer_code) field in context.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:search",
+      "field": "description",
+      "sentence": "Two HARD bounds you MUST disclose when you report such a tally: (1) search exposes NO created_at / ship-date field and NO date-range parameter, so you CANNOT isolate 'this month' (or any period) — the count is over the whole active fleet you paged, a per-turn OFFSET-PAGED SAMPLE, and 'this month' is APPROXIMATE at best; never present it as a precise authoritative this-month count.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:search",
+      "field": "description",
+      "sentence": "(2) Each hit's `declared_value` is the declared parcel VALUE (customs/insurance), NOT the carrier shipping spend — Boxtal persists NO shipping-price/label-cost field, so shipping SPEND by carrier CANNOT be computed or summed from this index.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:search",
+      "field": "description",
+      "sentence": "Do NOT add up declared_value (or invent a figure) and report it as shipping spend; if asked what was spent by carrier, state honestly that spend is not recorded and cannot be derived, and report only the parcel COUNT by carrier with the sample/period caveat.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:search",
+      "field": "description",
+      "sentence": "The result also carries dateBoundNotice and spendNotice saying exactly this.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:search",
+      "field": "description",
+      "sentence": "COVERAGE — the result carries a real `total` (the COUNT of ALL shipments matching this query across the whole fleet) alongside `nextCursor`: `total` is your coverage DENOMINATOR.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:search",
+      "field": "description",
+      "sentence": "The `results` array is ONE offset page (size bounded by `limit`); `nextCursor` is non-null when more pages remain.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:search",
+      "field": "description",
+      "sentence": "To report coverage HONESTLY, cite `total` and how many you actually fetched ('I read N of total parcels'); you have paged the WHOLE fleet ONLY after you have fetched all `total` rows (followed `nextCursor` to null AND your fetched count equals `total`).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:search",
+      "field": "description",
+      "sentence": "NEVER claim you 'paged to exhaustion' / 'nextCursor is null' / a fleet count you did not actually retrieve, and NEVER invent a total or assert exhaustive coverage you did not perform — read it off `total`.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:search",
+      "field": "description",
+      "sentence": "The result also carries a coverageNotice saying exactly this.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:stuck_list",
+      "field": "description",
+      "sentence": "It returns the UNION of the three stuck families exceptions_list does and does NOT catch, each row pre-labelled with its `family` and a grounded `reason`/next-action: (1) family='exception' — the hard carrier states EXCEPTION/INCIDENT/RETURNED/LOST (e.g. a CUSTOMS HOLD), the same set exceptions_list returns; (2) family='failed_delivery' — a FAILED_ATTEMPT (a failed delivery attempt — a DISTINCT status, NOT an EXCEPTION); (3) family='pickup_expiring' — a REACHED_DELIVERY_PICKUP_POINT parcel awaiting collection at a Mondial Relay / point-relais pickup point that will RETURN TO SENDER if not collected.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:stuck_list",
+      "field": "description",
+      "sentence": "HEALTHY states (ANNOUNCED/SHIPPED/IN_TRANSIT/OUT_FOR_DELIVERY/DELIVERED) and CANCELLED shipments are EXCLUDED — a healthy in-transit / out-for-delivery / delivered parcel never appears here, so it is safe to render every returned row as genuinely stuck.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:stuck_list",
+      "field": "description",
+      "sentence": "A fully healthy fleet returns an empty list — that is normal, not an error.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:stuck_list",
+      "field": "description",
+      "sentence": "This is the reliable, single-call way to find EVERY stuck parcel for a sweep or a watcher routine: read stuck_list, then for each row report its family + reason + the ORDER REFERENCE (the `order_ref` field) + carrier tracking_number; for a parcel's LIVE carrier checkpoint detail (or a pickup point's exact collection deadline) you can still call track on that shipment.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:stuck_list",
+      "field": "description",
+      "sentence": "ORDER REFERENCE: each row carries `order_ref` — the single order reference to cite — which is the merchant `external_id` (e.g. the Shopify order number) when the shipment has one, ELSE the `boxtal_order_id` (the carrier-side Boxtal order id).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:stuck_list",
+      "field": "description",
+      "sentence": "`order_ref` is ALWAYS tool-backed and is the right value to quote as the order id; the row also exposes the raw `external_id` and `boxtal_order_id` separately.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:stuck_list",
+      "field": "description",
+      "sentence": "Cite `order_ref` + tracking_number returned (never the internal shipment-row uuid, never an invented number), and quote the EXACT tracking_status string (do not paraphrase it).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:stuck_list",
+      "field": "description",
+      "sentence": "(4) family='create_orphan': NOT a carrier state.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:stuck_list",
+      "field": "description",
+      "sentence": "A label purchase whose create call was interrupted before the Boxtal order id was saved, so a paid label may exist at Boxtal with no local record.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:stuck_list",
+      "field": "description",
+      "sentence": "These rows have no tracking_status and no tracking number; they are only listed once the reservation is at least 15 minutes old, so a create running right now never appears.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:stuck_list",
+      "field": "description",
+      "sentence": "Report them for a human to check in the Boxtal dashboard: never buy, re-buy or cancel anything in response.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:stuck_list",
+      "field": "description",
+      "sentence": "Once the person says what the dashboard shows, settle the row with settle_orphan_create (adopt with the Boxtal order id, or release when no label was bought).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:prep_list",
+      "field": "description",
+      "sentence": "Pass order_keys to refresh exactly those named rows live.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:prep_list",
+      "field": "description",
+      "sentence": "Call prep_sync to refresh stale or missing Shopify meta and quotes.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:prep_list",
+      "field": "description",
+      "sentence": "Each row's `state` is 'ready' (quoted + resolves cleanly), 'needs_fix' (a blocking defect — see `reason`, same as to_prepare_list), or 'quote_missing' (resolves fine but has no cached quote yet — prep_sync it).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:prep_list",
+      "field": "description",
+      "sentence": "`quote.stale:true` means the cached quote's route/parcels/category no longer matches the row's current state (an edit happened since the last quote) — re-sync before trusting the price.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:prep_list",
+      "field": "description",
+      "sentence": "Filterable by `search` (invoice ref/order name/customer/destination substring), `country`, `tag` (an order tag), `product` (substring of the products summary), and `include_excluded` (defaults to hiding excluded rows).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:prep_list",
+      "field": "description",
+      "sentence": "`last_sync_at` is when prep_sync last ran.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:prep_list",
+      "field": "description",
+      "sentence": "ANTI-FABRICATION: this worklist mirrors to_prepare_list's honesty rules — a 'ready' row means draftable/quoted, NOT staged; only the gated create_shipment stages a label.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:prep_list",
+      "field": "description",
+      "sentence": "SCOPE: the worklist covers ONLY invoices generated from a Shopify order (the invoice carries a shopify_order_id) — manual, repair, and free-text invoices are never shipping work and are excluded by design.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:prep_list",
+      "field": "description",
+      "sentence": "WORKLIST TIMING: a row leaves this worklist ONLY when a full shipment goes LIVE (create_shipment approved AND executed) -- a merely STAGED / pending create_shipment does NOT remove it.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:prep_list",
+      "field": "description",
+      "sentence": "The list is DERIVED from live shipments, so there is nothing to update by hand; after you stage a shipment, tell the operator the order stays here until they approve.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:prep_list",
+      "field": "description",
+      "sentence": "Each row's `quote.offers` lists every cached offer (for the offer dropdown) with a per-offer `is_pickup_point` flag; `quote.selected_offer_code`/`quote.selected` is the operator's chosen offer (via prep_select_offer) that staging uses instead of the cheapest, null when unchosen or invalidated by a stale quote.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:prep_list",
+      "field": "description",
+      "sentence": "Relay / pickup-point offers are excluded by the org policy (default on) before caching, so they normally do not appear here.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:to_prepare_list",
+      "field": "description",
+      "sentence": "ANTI-FABRICATION: enumerate the ready list ONLY from the real `ready_to_prepare[].invoice_ref` values the tool returned — NEVER invent an invoice/order reference to fill a count, and NEVER list a `needs_fix` invoice (e.g. one missing a customs value / weight / HS code) under \"ready\".",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:to_prepare_list",
+      "field": "description",
+      "sentence": "If the user wants a clean ready list, output `ready_to_prepare` verbatim and keep `needs_fix` strictly separate.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:to_prepare_list",
+      "field": "description",
+      "sentence": "Each row carries `prep_status` — \"ready_to_prepare\" means the invoice resolves cleanly so you CAN open a draft and stage a (gated) shipment; \"needs_fix\" means a blocking defect (in `reason`) must be cleared first.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:to_prepare_list",
+      "field": "description",
+      "sentence": "CRITICAL: `prep_status:\"ready_to_prepare\"` is NOT \"a shipment is staged / ready to ship / sent\" — NOTHING here is staged.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:to_prepare_list",
+      "field": "description",
+      "sentence": "It is only a hint that the invoice is draftable.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:to_prepare_list",
+      "field": "description",
+      "sentence": "To actually stage a shipment you must open a draft, quote it, and call create_shipment (GATED → pending approval); a draft or quote is PREPARATION, only create_shipment stages the label.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:to_prepare_list",
+      "field": "description",
+      "sentence": "Never report a row as shipped/staged off its prep_status — that is fabrication.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:to_prepare_list",
+      "field": "description",
+      "sentence": "SCOPE: the worklist covers ONLY invoices generated from a Shopify order (the invoice carries a shopify_order_id) — manual, repair, and free-text invoices are never shipping work and are excluded by design.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:to_prepare_list",
+      "field": "description",
+      "sentence": "WORKLIST TIMING: a row leaves this worklist ONLY when a full shipment goes LIVE (create_shipment approved AND executed) -- a merely STAGED / pending create_shipment does NOT remove it.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:to_prepare_list",
+      "field": "description",
+      "sentence": "The list is DERIVED from live shipments, so there is nothing to update by hand; after you stage a shipment, tell the operator the order stays here until they approve.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote_batch",
+      "field": "description",
+      "sentence": "Unlike `quote` (one route per call), quote_batch fans out SERVER-SIDE: it opens a draft + quotes EACH order, filters each order's offers to those whose ETA meets the deadline, picks the CHEAPEST within-ETA offer per order, and SUMS the selected prices into one AUTHORITATIVE aggregate `total_projected_spend` — so you do NOT quote one-by-one and hand-total a sample.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote_batch",
+      "field": "description",
+      "sentence": "CHEAPEST-WITHIN-ETA, not absolute cheapest: pass `max_eta_business_days` (e.g. 5) and each order's pick is the cheapest offer arriving within that many BUSINESS days (Mon–Fri, computed server-side from collection→delivery) — an absolute-cheaper-but-too-slow offer is EXCLUDED, and an order with NO offer within the ETA is FLAGGED (`no_offer_within_eta:true`), never silently summed at a slower price.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote_batch",
+      "field": "description",
+      "sentence": "SOURCE OF ORDERS: omit `order_refs` to price the To-prepare worklist (shippable issued invoices with no live shipment yet), optionally narrowed by `destination_country` (e.g.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote_batch",
+      "field": "description",
+      "sentence": "'US'); or pass explicit invoice/document refs in `order_refs`.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote_batch",
+      "field": "description",
+      "sentence": "BOUNDED HONESTLY: the fan-out is capped by `limit` (default 25 — sized so a normal wall is priced authoritatively in ONE call); a bigger wall is reported as priced N of M via `covered_count`/`total_count` — when `covered_count < total_count`, DISCLOSE that the rest still need pricing in another pass (never present a capped subset as the whole-batch total).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote_batch",
+      "field": "description",
+      "sentence": "READ-ONLY / UNGATED: quote_batch QUOTES + TOTALS only — it creates NOTHING.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote_batch",
+      "field": "description",
+      "sentence": "A quote is a point-in-time ESTIMATE, and buying each label is a SEPARATE GATED create_shipment that needs per-order approval; report the projected total as an estimate and keep the label buys gated (never auto-create shipments from a rollup).",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "boxtal:quote_batch",
+      "field": "description",
+      "sentence": "Read `aggregate.total_projected_spend` (major units) / `total_projected_spend_minor` (minor units) for the batch total, and the per-order `rows[].selected` for each chosen carrier + price + ETA.",
+      "to": "guide:boxtal"
+    },
+    {
+      "tool": "shopify:customers_search",
+      "field": "description",
+      "sentence": "GROUND your coverage in it: say 'reviewed N of totalCount customers' (N = how many you actually paged through).",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_search",
+      "field": "description",
+      "sentence": "If you did not reach all totalCount (nextCursor still set / N < totalCount), you reviewed a PARTIAL/sampled subset — state that explicitly and NEVER claim 'all'/'the entire base'/'a full audit'.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_search",
+      "field": "description",
+      "sentence": "Only when N == totalCount (you paged to nextCursor=null) is the coverage complete.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_search",
+      "field": "description",
+      "sentence": "Report ONLY figures present in the tool results — never invent or extrapolate a spend amount or a customer.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_search",
+      "field": "description",
+      "sentence": "Match/label a customer by the EXACT email this tool returns (do not invent an email).",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_search",
+      "field": "description",
+      "sentence": "CURRENCY (spend threshold in a different currency than the data): amountSpent is denominated in its own `currencyCode` (e.g.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_search",
+      "field": "description",
+      "sentence": "USD).",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_search",
+      "field": "description",
+      "sentence": "If the user states a threshold in a DIFFERENT currency (e.g.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_search",
+      "field": "description",
+      "sentence": "'over 1000 EUR') you CANNOT silently treat the native figure as that currency and you have NO authorized FX rate — so apply the threshold AGAINST amountSpent's native currency and SAY SO ('amountSpent is in USD; I applied the >1000 cut in USD and have not converted to EUR — confirm a rate if you need a strict EUR threshold').",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_search",
+      "field": "description",
+      "sentence": "Do NOT assume 1:1 parity, do NOT fabricate a rate, and — critically — do NOT flip to claiming the spend is 'uncomputable' / pivot to the accounting system (Pennylane) because of the currency question: amountSpent IS the per-customer lifetime spend, fully computable here; the currency is a disclosure caveat, never a reason the figure is unavailable.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_search",
+      "field": "description",
+      "sentence": "DATA-REALITY UNDER DOUBT: the customers and amountSpent figures this tool returns ARE the store's real customer records — when a user doubts a name ('I don't recognise them / is this real or a test account?'), answer from what the tool actually returned (the customer exists in the store with that email + that amountSpent), and exclude a customer ONLY on a real returned attribute (e.g. a `liaison-seed`/test tag actually present in its `tags`), NEVER on a fabricated rationale you invented ('looks like a dealer account') to justify dropping them.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_search",
+      "field": "description",
+      "sentence": "Do not over-correct a correct, tool-grounded result into a wholesale reversal just because the user expressed doubt — re-verify against the tool output and stand on what it says.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_search",
+      "field": "description",
+      "sentence": "Each result also carries the customer's CANONICAL postal address in `defaultAddress` ({ address1, address2, city, province, provinceCode, zip, country, countryCode }) plus `phone` — this is THE source of a customer's shipping/postal address: read it to backfill a CRM contact's address.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_search",
+      "field": "description",
+      "sentence": "An individual ORDER often has NO per-order shippingAddress (orders_get returns null), so do NOT conclude the address is unavailable from the order — pivot to the customer record's defaultAddress.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_search",
+      "field": "description",
+      "sentence": "Use ONLY the address fields actually present; never fabricate a street/city/zip.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_search",
+      "field": "description",
+      "sentence": "BUILDING A SPEND SEGMENT (e.g.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_search",
+      "field": "description",
+      "sentence": "'customers who spent over 1000', 'high-value customers', 'top spenders'): do NOT page this whole-base search and filter by hand — the base can hold thousands of customers, far beyond one turn's page budget, so you would only ever reach a sampled subset and must never claim a complete sweep.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_search",
+      "field": "description",
+      "sentence": "Use `customers_segment_search` instead: it asks Shopify to evaluate the spend threshold SERVER-SIDE and returns ONLY the matching customers plus a server-side `totalCount`, so you get the EXACT, COMPLETE high-value set in one (or a few) bounded pages.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_segment_search",
+      "field": "description",
+      "sentence": "This is how you segment a large store without enumerating it: do NOT page `customers_search` over thousands of customers and filter by hand (you would only reach a sampled subset within one turn, then be tempted to over-claim a sweep you never did).",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_segment_search",
+      "field": "description",
+      "sentence": "Each page returns `totalCount` — the server-side count of ALL customers over the threshold across every page.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_segment_search",
+      "field": "description",
+      "sentence": "GROUND your coverage in it: if `totalCount` fits in the page(s) you read (nextCursor=null), you have the COMPLETE high-value set and may say so; if nextCursor is still set you have a partial page — say 'reviewed N of totalCount' and page on.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_segment_search",
+      "field": "description",
+      "sentence": "Each result carries the customer's `amountSpent` ({ amount, currencyCode }), email, name, and numberOfOrders.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_segment_search",
+      "field": "description",
+      "sentence": "CURRENCY: the threshold is compared against each customer's NATIVE lifetime spend in its own `currencyCode` (e.g.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_segment_search",
+      "field": "description",
+      "sentence": "USD).",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_segment_search",
+      "field": "description",
+      "sentence": "If the user stated the threshold in a DIFFERENT currency (e.g.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_segment_search",
+      "field": "description",
+      "sentence": "'over 1000 EUR'), you have NO authorized FX rate — the segment is computed against the native figure, so SAY SO ('amountSpent is in USD; the >1000 cut was applied in USD, not converted to EUR — confirm a rate for a strict EUR threshold'); never assume 1:1 parity, never fabricate a rate.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_segment_search",
+      "field": "description",
+      "sentence": "To LABEL these customers (so marketing can target them), match each to a kernel contact by the EXACT email returned here (contacts_search by email) and apply a tag via contacts_write(tags=['high-value']); that produces a filterable TAG (contacts_search(tag='high-value')), NOT a persisted named spend-segment object — there is no agent tool to create a stored Shopify/kernel segment, so describe what you built as a tag, never claim a named segment was saved.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "shopify:customers_segment_search",
+      "field": "description",
+      "sentence": "Report ONLY customers this tool returned; never invent or extrapolate a customer or a spend figure.",
+      "to": "guide:shopify"
+    },
+    {
+      "tool": "knowledge:create",
+      "field": "description",
+      "sentence": "ORGANIZATION documents must additionally be access-classified: pass an explicit sensitivity, and for 'confidential'/'restricted' pass shareWithRoles naming who may access it (roles_list gives role ids; finance, pricing, margin, revenue and contract material belongs to the executive/C-Level role, NOT org-wide).",
+      "to": "guide:knowledge"
+    },
+    {
+      "tool": "knowledge:create",
+      "field": "description",
+      "sentence": "Missing placement or access rules returns a structured error listing existing collections so you can retry.",
+      "to": "guide:knowledge"
+    },
+    {
+      "tool": "knowledge:create",
+      "field": "description",
+      "sentence": "The result includes the new document's id, a `resourceUrl`, and a ready-made `mentionTag` (an @[Title](knowledge:document:<id>) entity tag) — after creating, ALWAYS confirm to the user by pasting the returned mentionTag verbatim in your reply (it renders as a clickable entity pill that opens the doc), never just a bare success sentence.",
+      "to": "guide:knowledge"
+    },
+    {
+      "tool": "knowledge:create",
+      "field": "description",
+      "sentence": "NEVER FABRICATE DATES OR AN EVENT SCHEDULE INTO A DOC: do not author a document containing SPECIFIC dates (an event/expo/launch start or end date, a 'schedule', a 'calendar', a date-bounded window like 'July 1–14') unless those exact dates came from a source you actually READ (a retrieved Knowledge article, a project task's real due date, an order/invoice).",
+      "to": "guide:knowledge"
+    },
+    {
+      "tool": "knowledge:create",
+      "field": "description",
+      "sentence": "If the user frames a request with a RELATIVE window ('in the two weeks before the launch', 'in the run-up to the expo', 'until the event') but the SPECIFIC dates are not in any readable source, do NOT search-then-invent and do NOT create a 'Schedule'/'Launch Calendar' doc to fill the gap — manufacturing concrete dates and persisting them here is a fabrication.",
+      "to": "guide:knowledge"
+    },
+    {
+      "tool": "knowledge:create",
+      "field": "description",
+      "sentence": "Just report the real records you read (e.g. the project's open + overdue tasks) and, for a recurring digest, bound the recurrence with the cron schedule, not with an invented date doc.",
+      "to": "guide:knowledge"
+    },
+    {
+      "tool": "invoicing:drafts_create",
+      "field": "buyer_is_consumer",
+      "sentence": "Only for an EU buyer in another country with NO VAT number whom the org's data shows as a business: set true when the buyer really is a private consumer (charged their country's VAT).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_create",
+      "field": "customer_kind",
+      "sentence": "E-invoicing: who the buyer is. business (a company or a registered professional), individual (a consumer), public_entity, or non_registered_entity.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_create",
+      "field": "customer_kind",
+      "sentence": "For a buyer in France it decides whether the invoice is an e-invoice; when nothing on file records it and the call does not say, issuing to a French buyer is refused with customer_kind_missing rather than guessed.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_create",
+      "field": "operation_category",
+      "sentence": "Required when the document is an e-invoice to a French business: line kinds alone never decide it.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_create",
+      "field": "counterparty_name",
+      "sentence": "A draft may be saved incomplete, but ISSUING refuses without counterparty_name, counterparty_address, counterparty_email and counterparty_country — fill all four before invoice_issue / quote_issue / proforma_issue / po_issue / documents_convert_to_invoice.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_create",
+      "field": "counterparty_address",
+      "sentence": "Counterparty postal address (freeform, multi-line) shown on the document's Bill-to block.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_create",
+      "field": "counterparty_shipping_address",
+      "sentence": "Set it ONLY when the parcel goes somewhere other than the billing address: the PDF then prints a separate SHIP TO block next to BILL TO.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_create",
+      "field": "counterparty_shipping_address",
+      "sentence": "Leave it null when both addresses are the same (an identical value is not printed twice).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_create",
+      "field": "counterparty_shipping_address",
+      "sentence": "Render only: the tax treatment is still derived from counterparty_country, never from this address.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_create",
+      "field": "counterparty_shipping_name",
+      "sentence": "Consignee name for the shipping (ship to) block, when the parcel is addressed to someone other than the billing customer (a forwarder, a site contact, a reseller's end customer).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_create",
+      "field": "counterparty_email",
+      "sentence": "Used as a fallback recipient by documents_send_to_customer when the linked contact has none on file.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_create",
+      "field": "shopify_order_id",
+      "sentence": "When this invoice is for a Shopify order, set this to that order's id/name (e.g. the order's `name` like '#1149' or its gid).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_create",
+      "field": "shopify_order_number",
+      "sentence": "Set it whenever you set shopify_order_id: it is PRINTED on the document PDF (an \"Order\" line in the header, so the order can be read straight off the invoice) and it is INDEXED for documents_search, so searching \"#1149\" finds this document.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_create",
+      "field": "shopify_order_number",
+      "sentence": "Omit it only when the order's name is genuinely unknown -- never invent one from the numeric id.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_create",
+      "field": "items[].hs_code",
+      "sentence": "Harmonized System tariff code for this line on an export/customs invoice, e.g. 9207.90.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_create",
+      "field": "items[].hs_code",
+      "sentence": "Set it here to assign the HS code inline — no separate hs_codes_assign call needed.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_create",
+      "field": "items[].product_source",
+      "sentence": "Paired with `external_id`, it links the line to a catalog product so issue-time customs enrichment (the product_customs_overlay — HS code / country of origin / customs description) fills in whatever this line leaves blank; an explicit hs_code/country_of_origin/customs_description on the line ALWAYS wins over the overlay.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_create",
+      "field": "items[].external_id",
+      "sentence": "Optional catalog id for this line (e.g. a Shopify variant gid like 'gid://shopify/ProductVariant/123' or its bare numeric id), paired with `product_source`.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_create",
+      "field": "items[].external_id",
+      "sentence": "Enables the same automatic HS-code/customs enrichment the Shopify paid-order auto-flow gets — set it when you know the underlying catalog product so you don't have to type every customs fact by hand.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_create",
+      "field": "notes",
+      "sentence": "Free-text notes printed on the document PDF, in a \"Notes\" block under the totals: a contract reference, extra customs information, a special mention the customer asked for.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_update",
+      "field": "patch.buyer_is_consumer",
+      "sentence": "Only for an EU buyer in another country with NO VAT number whom the org's data shows as a business: set true when the buyer really is a private consumer (charged their country's VAT).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_update",
+      "field": "patch.customer_kind",
+      "sentence": "E-invoicing: who the buyer is. business (a company or a registered professional), individual (a consumer), public_entity, or non_registered_entity.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_update",
+      "field": "patch.customer_kind",
+      "sentence": "For a buyer in France it decides whether the invoice is an e-invoice; when nothing on file records it and the call does not say, issuing to a French buyer is refused with customer_kind_missing rather than guessed.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_update",
+      "field": "patch.operation_category",
+      "sentence": "Required when the document is an e-invoice to a French business: line kinds alone never decide it.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_update",
+      "field": "patch.counterparty_name",
+      "sentence": "A draft may be saved incomplete, but ISSUING refuses without counterparty_name, counterparty_address, counterparty_email and counterparty_country — fill all four before invoice_issue / quote_issue / proforma_issue / po_issue / documents_convert_to_invoice.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_update",
+      "field": "patch.counterparty_address",
+      "sentence": "Counterparty postal address (freeform, multi-line) shown on the document's Bill-to block.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_update",
+      "field": "patch.counterparty_shipping_address",
+      "sentence": "Set it ONLY when the parcel goes somewhere other than the billing address: the PDF then prints a separate SHIP TO block next to BILL TO.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_update",
+      "field": "patch.counterparty_shipping_address",
+      "sentence": "Leave it null when both addresses are the same (an identical value is not printed twice).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_update",
+      "field": "patch.counterparty_shipping_address",
+      "sentence": "Render only: the tax treatment is still derived from counterparty_country, never from this address.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_update",
+      "field": "patch.counterparty_shipping_name",
+      "sentence": "Consignee name for the shipping (ship to) block, when the parcel is addressed to someone other than the billing customer (a forwarder, a site contact, a reseller's end customer).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_update",
+      "field": "patch.counterparty_email",
+      "sentence": "Used as a fallback recipient by documents_send_to_customer when the linked contact has none on file.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_update",
+      "field": "patch.notes",
+      "sentence": "Free-text notes printed on the document PDF, in a \"Notes\" block under the totals: a contract reference, extra customs information, a special mention the customer asked for.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_update",
+      "field": "patch.lines",
+      "sentence": "Replaying read-back lines divides the tax out again and silently shrinks the stored price a little more on every call.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_update",
+      "field": "patch.lines[].product_source",
+      "sentence": "Paired with `external_id`, it links the line to a catalog product so issue-time customs enrichment (the product_customs_overlay — HS code / country of origin / customs description) fills in whatever this line leaves blank; an explicit hs_code/country_of_origin/customs_description on the line ALWAYS wins over the overlay.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_update",
+      "field": "patch.lines[].external_id",
+      "sentence": "Optional catalog id for this line (e.g. a Shopify variant gid like 'gid://shopify/ProductVariant/123' or its bare numeric id), paired with `product_source`.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:drafts_update",
+      "field": "patch.lines[].external_id",
+      "sentence": "Enables the same automatic HS-code/customs enrichment the Shopify paid-order auto-flow gets — set it when you know the underlying catalog product so you don't have to type every customs fact by hand.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:invoice_create_and_issue",
+      "field": "buyer_is_consumer",
+      "sentence": "Only for an EU buyer in another country with NO VAT number whom the org's data shows as a business: set true when the buyer really is a private consumer (charged their country's VAT).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:invoice_create_and_issue",
+      "field": "operation_category",
+      "sentence": "Required when the document is an e-invoice to a French business: line kinds alone never decide it.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:invoice_create_and_issue",
+      "field": "counterparty",
+      "sentence": "The customer the document is issued TO. legal_name, country, address and email are ALL required — a document cannot be issued to an unnamed, unaddressed or unreachable recipient. country is the ISO-3166 alpha-2 code (e.g.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:invoice_create_and_issue",
+      "field": "counterparty",
+      "sentence": "'FR','DE','US') — it drives the tax classification (domestic / intra-EU / export).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:invoice_create_and_issue",
+      "field": "counterparty.customer_kind",
+      "sentence": "E-invoicing: who the buyer is. business (a company or a registered professional), individual (a consumer), public_entity, or non_registered_entity.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:invoice_create_and_issue",
+      "field": "counterparty.customer_kind",
+      "sentence": "For a buyer in France it decides whether the invoice is an e-invoice; when nothing on file records it and the call does not say, issuing to a French buyer is refused with customer_kind_missing rather than guessed.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:invoice_create_and_issue",
+      "field": "counterparty.vat_id",
+      "sentence": "REQUIRED for a business buyer in another EU country (reverse charge, no VAT); without it the document charges the buyer's country VAT as a consumer sale.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:invoice_create_and_issue",
+      "field": "counterparty.vat_id",
+      "sentence": "Look it up on earlier documents, the Shopify order's company, or the buyer's legal notice.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:invoice_create_and_issue",
+      "field": "counterparty.address",
+      "sentence": "REQUIRED — an issued document is a legal record and must say where its recipient is; issuance is refused without it.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:invoice_create_and_issue",
+      "field": "counterparty.email",
+      "sentence": "REQUIRED — it is how the document reaches them and how the recipient is identified; issuance is refused without it.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:invoice_create_and_issue",
+      "field": "items[].hs_code",
+      "sentence": "Harmonized System tariff code for this line on an export/customs invoice, e.g. 9207.90.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:invoice_create_and_issue",
+      "field": "items[].hs_code",
+      "sentence": "Set it here to assign the HS code inline — no separate hs_codes_assign call needed.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:invoice_create_and_issue",
+      "field": "items[].product_source",
+      "sentence": "Paired with `external_id`, it links the line to a catalog product so issue-time customs enrichment (the product_customs_overlay — HS code / country of origin / customs description) fills in whatever this line leaves blank; an explicit hs_code/country_of_origin/customs_description on the line ALWAYS wins over the overlay.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:invoice_create_and_issue",
+      "field": "items[].external_id",
+      "sentence": "Optional catalog id for this line (e.g. a Shopify variant gid like 'gid://shopify/ProductVariant/123' or its bare numeric id), paired with `product_source`.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:invoice_create_and_issue",
+      "field": "items[].external_id",
+      "sentence": "Enables the same automatic HS-code/customs enrichment the Shopify paid-order auto-flow gets — set it when you know the underlying catalog product so you don't have to type every customs fact by hand.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:invoice_create_and_issue",
+      "field": "shopify_order_id",
+      "sentence": "When this invoice is for a Shopify order, set this to that order's id/name (e.g. the order's `name` like '#1149' or its gid).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:invoice_create_and_issue",
+      "field": "shopify_order_number",
+      "sentence": "Set it whenever you set shopify_order_id: it is PRINTED on the document PDF (an \"Order\" line in the header, so the order can be read straight off the invoice) and it is INDEXED for documents_search, so searching \"#1149\" finds this document.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:invoice_create_and_issue",
+      "field": "shopify_order_number",
+      "sentence": "Omit it only when the order's name is genuinely unknown -- never invent one from the numeric id.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:invoice_create_and_issue",
+      "field": "notes",
+      "sentence": "Free-text notes printed on the document PDF, in a \"Notes\" block under the totals: a contract reference, extra customs information, a special mention the customer asked for.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:quote_create_and_issue",
+      "field": "buyer_is_consumer",
+      "sentence": "Only for an EU buyer in another country with NO VAT number whom the org's data shows as a business: set true when the buyer really is a private consumer (charged their country's VAT).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:quote_create_and_issue",
+      "field": "counterparty",
+      "sentence": "The customer the document is issued TO. legal_name, country, address and email are ALL required — a document cannot be issued to an unnamed, unaddressed or unreachable recipient. country is the ISO-3166 alpha-2 code (e.g.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:quote_create_and_issue",
+      "field": "counterparty",
+      "sentence": "'FR','DE','US') — it drives the tax classification (domestic / intra-EU / export).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:quote_create_and_issue",
+      "field": "counterparty.vat_id",
+      "sentence": "REQUIRED for a business buyer in another EU country (reverse charge, no VAT); without it the document charges the buyer's country VAT as a consumer sale.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:quote_create_and_issue",
+      "field": "counterparty.vat_id",
+      "sentence": "Look it up on earlier documents, the Shopify order's company, or the buyer's legal notice.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:quote_create_and_issue",
+      "field": "counterparty.address",
+      "sentence": "REQUIRED — an issued document is a legal record and must say where its recipient is; issuance is refused without it.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:quote_create_and_issue",
+      "field": "counterparty.email",
+      "sentence": "REQUIRED — it is how the document reaches them and how the recipient is identified; issuance is refused without it.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:quote_create_and_issue",
+      "field": "items[].discount_minor",
+      "sentence": "Optional discount for this line in MINOR currency units: the TOTAL discount for the whole line (subtracted once from quantity x unit_price_minor, before tax), NOT per unit and NOT a percentage.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:quote_create_and_issue",
+      "field": "items[].discount_minor",
+      "sentence": "Example: 40 units at unit_price_minor 89900 with 38% off -> discount_minor 1366480 (40 x 89900 x 0.38); the line then totals 2229520 before tax.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:quote_create_and_issue",
+      "field": "items[].hs_code",
+      "sentence": "Harmonized System tariff code for this line on an export/customs invoice, e.g. 9207.90.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:quote_create_and_issue",
+      "field": "items[].hs_code",
+      "sentence": "Set it here to assign the HS code inline — no separate hs_codes_assign call needed.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:quote_create_and_issue",
+      "field": "items[].product_source",
+      "sentence": "Paired with `external_id`, it links the line to a catalog product so issue-time customs enrichment (the product_customs_overlay — HS code / country of origin / customs description) fills in whatever this line leaves blank; an explicit hs_code/country_of_origin/customs_description on the line ALWAYS wins over the overlay.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:quote_create_and_issue",
+      "field": "items[].external_id",
+      "sentence": "Optional catalog id for this line (e.g. a Shopify variant gid like 'gid://shopify/ProductVariant/123' or its bare numeric id), paired with `product_source`.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:quote_create_and_issue",
+      "field": "items[].external_id",
+      "sentence": "Enables the same automatic HS-code/customs enrichment the Shopify paid-order auto-flow gets — set it when you know the underlying catalog product so you don't have to type every customs fact by hand.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:quote_create_and_issue",
+      "field": "issued_at",
+      "sentence": "The date decides the number's year: a date in a past year takes that year's series.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:quote_create_and_issue",
+      "field": "notes",
+      "sentence": "Free-text notes printed on the document PDF, in a \"Notes\" block under the totals: a contract reference, extra customs information, a special mention the customer asked for.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:quote_create_and_issue",
+      "field": "customer_reference",
+      "sentence": "Your own reference for this customer in another system, e.g. their CRM record id; printed on the PDF as 'Customer ref'.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:proforma_create_and_issue",
+      "field": "buyer_is_consumer",
+      "sentence": "Only for an EU buyer in another country with NO VAT number whom the org's data shows as a business: set true when the buyer really is a private consumer (charged their country's VAT).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:proforma_create_and_issue",
+      "field": "counterparty",
+      "sentence": "The customer the document is issued TO. legal_name, country, address and email are ALL required — a document cannot be issued to an unnamed, unaddressed or unreachable recipient. country is the ISO-3166 alpha-2 code (e.g.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:proforma_create_and_issue",
+      "field": "counterparty",
+      "sentence": "'FR','DE','US') — it drives the tax classification (domestic / intra-EU / export).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:proforma_create_and_issue",
+      "field": "counterparty.vat_id",
+      "sentence": "REQUIRED for a business buyer in another EU country (reverse charge, no VAT); without it the document charges the buyer's country VAT as a consumer sale.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:proforma_create_and_issue",
+      "field": "counterparty.vat_id",
+      "sentence": "Look it up on earlier documents, the Shopify order's company, or the buyer's legal notice.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:proforma_create_and_issue",
+      "field": "counterparty.address",
+      "sentence": "REQUIRED — an issued document is a legal record and must say where its recipient is; issuance is refused without it.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:proforma_create_and_issue",
+      "field": "counterparty.email",
+      "sentence": "REQUIRED — it is how the document reaches them and how the recipient is identified; issuance is refused without it.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:proforma_create_and_issue",
+      "field": "items[].discount_minor",
+      "sentence": "Optional discount for this line in MINOR currency units: the TOTAL discount for the whole line (subtracted once from quantity x unit_price_minor, before tax), NOT per unit and NOT a percentage.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:proforma_create_and_issue",
+      "field": "items[].discount_minor",
+      "sentence": "Example: 40 units at unit_price_minor 89900 with 38% off -> discount_minor 1366480 (40 x 89900 x 0.38); the line then totals 2229520 before tax.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:proforma_create_and_issue",
+      "field": "items[].hs_code",
+      "sentence": "Harmonized System tariff code for this line on an export/customs invoice, e.g. 9207.90.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:proforma_create_and_issue",
+      "field": "items[].hs_code",
+      "sentence": "Set it here to assign the HS code inline — no separate hs_codes_assign call needed.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:proforma_create_and_issue",
+      "field": "items[].product_source",
+      "sentence": "Paired with `external_id`, it links the line to a catalog product so issue-time customs enrichment (the product_customs_overlay — HS code / country of origin / customs description) fills in whatever this line leaves blank; an explicit hs_code/country_of_origin/customs_description on the line ALWAYS wins over the overlay.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:proforma_create_and_issue",
+      "field": "items[].external_id",
+      "sentence": "Optional catalog id for this line (e.g. a Shopify variant gid like 'gid://shopify/ProductVariant/123' or its bare numeric id), paired with `product_source`.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:proforma_create_and_issue",
+      "field": "items[].external_id",
+      "sentence": "Enables the same automatic HS-code/customs enrichment the Shopify paid-order auto-flow gets — set it when you know the underlying catalog product so you don't have to type every customs fact by hand.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:proforma_create_and_issue",
+      "field": "issued_at",
+      "sentence": "The date decides the number's year: a date in a past year takes that year's series.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:proforma_create_and_issue",
+      "field": "shopify_order_number",
+      "sentence": "Set it whenever you set shopify_order_id: it is PRINTED on the document PDF (an \"Order\" line in the header, so the order can be read straight off the invoice) and it is INDEXED for documents_search, so searching \"#1149\" finds this document.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:proforma_create_and_issue",
+      "field": "shopify_order_number",
+      "sentence": "Omit it only when the order's name is genuinely unknown -- never invent one from the numeric id.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:proforma_create_and_issue",
+      "field": "notes",
+      "sentence": "Free-text notes printed on the document PDF, in a \"Notes\" block under the totals: a contract reference, extra customs information, a special mention the customer asked for.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:proforma_create_and_issue",
+      "field": "customer_reference",
+      "sentence": "Your own reference for this customer in another system, e.g. their CRM record id; printed on the PDF as 'Customer ref'.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:po_create_and_issue",
+      "field": "counterparty",
+      "sentence": "The customer the document is issued TO. legal_name, country, address and email are ALL required — a document cannot be issued to an unnamed, unaddressed or unreachable recipient. country is the ISO-3166 alpha-2 code (e.g.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:po_create_and_issue",
+      "field": "counterparty",
+      "sentence": "'FR','DE','US') — it drives the tax classification (domestic / intra-EU / export).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:po_create_and_issue",
+      "field": "counterparty.address",
+      "sentence": "REQUIRED — an issued document is a legal record and must say where its recipient is; issuance is refused without it.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:po_create_and_issue",
+      "field": "counterparty.email",
+      "sentence": "REQUIRED — it is how the document reaches them and how the recipient is identified; issuance is refused without it.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:po_create_and_issue",
+      "field": "items[].discount_minor",
+      "sentence": "Optional discount for this line in MINOR currency units: the TOTAL discount for the whole line (subtracted once from quantity x unit_price_minor, before tax), NOT per unit and NOT a percentage.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:po_create_and_issue",
+      "field": "items[].discount_minor",
+      "sentence": "Example: 40 units at unit_price_minor 89900 with 38% off -> discount_minor 1366480 (40 x 89900 x 0.38); the line then totals 2229520 before tax.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:po_create_and_issue",
+      "field": "items[].hs_code",
+      "sentence": "Harmonized System tariff code for this line on an export/customs invoice, e.g. 9207.90.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:po_create_and_issue",
+      "field": "items[].hs_code",
+      "sentence": "Set it here to assign the HS code inline — no separate hs_codes_assign call needed.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:po_create_and_issue",
+      "field": "items[].product_source",
+      "sentence": "Paired with `external_id`, it links the line to a catalog product so issue-time customs enrichment (the product_customs_overlay — HS code / country of origin / customs description) fills in whatever this line leaves blank; an explicit hs_code/country_of_origin/customs_description on the line ALWAYS wins over the overlay.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:po_create_and_issue",
+      "field": "items[].external_id",
+      "sentence": "Optional catalog id for this line (e.g. a Shopify variant gid like 'gid://shopify/ProductVariant/123' or its bare numeric id), paired with `product_source`.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:po_create_and_issue",
+      "field": "items[].external_id",
+      "sentence": "Enables the same automatic HS-code/customs enrichment the Shopify paid-order auto-flow gets — set it when you know the underlying catalog product so you don't have to type every customs fact by hand.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:po_create_and_issue",
+      "field": "issued_at",
+      "sentence": "The date decides the number's year: a date in a past year takes that year's series.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:po_create_and_issue",
+      "field": "notes",
+      "sentence": "Free-text notes printed on the document PDF, in a \"Notes\" block under the totals: a contract reference, extra customs information, a special mention the customer asked for.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:po_create_and_issue",
+      "field": "customer_reference",
+      "sentence": "Your own reference for this customer in another system, e.g. their CRM record id; printed on the PDF as 'Customer ref'.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:documents_convert_to_invoice",
+      "field": "notes",
+      "sentence": "Free-text notes printed on the document PDF, in a \"Notes\" block under the totals: a contract reference, extra customs information, a special mention the customer asked for.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:credit_note_create_and_issue",
+      "field": "description",
+      "sentence": "To reverse/correct an ISSUED invoice, pass `original_document_id` set to that invoice's id — it MUST reference an existing invoice (validated before issuance) and, on success, the original invoice's lifecycle_log records a `credit_note_issued` entry naming this credit note.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:credit_note_create_and_issue",
+      "field": "description",
+      "sentence": "Handler-conditional gating against issuer.invoice_approval_threshold_minor (unset means always approve, threshold 0; a credit note with no original_document_id is ALWAYS approved), compared against the ABSOLUTE VALUE of the credit note's grand total (a -6,744€ correction gates exactly like a +6,744€ invoice would).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:credit_note_create_and_issue",
+      "field": "description",
+      "sentence": "For a legally clean reversal, ALSO call documents_record_refund on the original invoice to record the payment-side event — the credit note is the legal document, record_refund is the payment status change; do BOTH, never just one.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:credit_note_create_and_issue",
+      "field": "description",
+      "sentence": "ALWAYS pass original_document_id when you reverse an invoice: without it the over_credit cap (a credit note can never push an invoice's cumulative credited total past its own grand total) cannot apply.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:credit_note_create_and_issue",
+      "field": "description",
+      "sentence": "A Shopify refund or cancellation already issues its credit note automatically, and a cancellation of a partly credited invoice reverses only the REMAINDER, so check documents_for_orders before issuing one by hand rather than crediting twice.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:credit_note_create_and_issue",
+      "field": "description",
+      "sentence": "A hand built partial credit note carries its OWN tax: mirror the original's per line rates, because only the automatic refund path allocates the VAT for you.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:credit_note_create_and_issue",
+      "field": "description",
+      "sentence": "On a split order, credit the document that actually carries the refunded line, not whichever invoice you saw first.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:credit_note_create_and_issue",
+      "field": "counterparty.customer_kind",
+      "sentence": "E-invoicing: who the buyer is. business (a company or a registered professional), individual (a consumer), public_entity, or non_registered_entity.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:credit_note_create_and_issue",
+      "field": "counterparty.customer_kind",
+      "sentence": "For a buyer in France it decides whether the invoice is an e-invoice; when nothing on file records it and the call does not say, issuing to a French buyer is refused with customer_kind_missing rather than guessed.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:credit_note_create_and_issue",
+      "field": "counterparty.address",
+      "sentence": "REQUIRED — an issued document is a legal record and must say where its recipient is; issuance is refused without it.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:credit_note_create_and_issue",
+      "field": "counterparty.email",
+      "sentence": "REQUIRED — it is how the document reaches them and how the recipient is identified; issuance is refused without it.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:credit_note_create_and_issue",
+      "field": "issued_at",
+      "sentence": "The date decides the number's year: a date in a past year takes that year's series.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:credit_note_create_and_issue",
+      "field": "notes",
+      "sentence": "Free-text notes printed on the document PDF, in a \"Notes\" block under the totals: a contract reference, extra customs information, a special mention the customer asked for.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:order_reissue_apply",
+      "field": "notes",
+      "sentence": "Free-text notes printed on the document PDF, in a \"Notes\" block under the totals: a contract reference, extra customs information, a special mention the customer asked for.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:documents_update",
+      "field": "description",
+      "sentence": "An issued invoice is legally immutable; to correct amounts, tax treatment, or the counterparty's legal identity, issue a CREDIT NOTE with credit_note_create_and_issue (referencing this invoice), never an in-place edit.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:documents_update",
+      "field": "description",
+      "sentence": "A PROFORMA, a QUOTE or a PURCHASE ORDER is not an accounting document and is never frozen: on an issued one, every field above stays editable exactly like a draft, including a full `lines` replacement (totals recompute, the PDF re-renders, the edit is logged).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:documents_update",
+      "field": "description",
+      "sentence": "This is THE way to change an issued proforma's amount or lines (e.g. a 0 value proforma that must declare 1.00): calling proforma_create_and_issue again for the same order does not change it.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:documents_update",
+      "field": "description",
+      "sentence": "Harmless metadata (address, email, linked contact, incoterm, issued_at/due_at, po_number, notes) stays editable post-issue for a Sufio-style typo fix.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:documents_update",
+      "field": "description",
+      "sentence": "An issued document's date stays in its number's year (issue_date_crosses_number_year, and an invoice or credit note then needs a credit note, never another date); an issued invoice or credit note's date also stays between its neighbouring numbers (issue_date_breaks_number_order) and on or before today (issue_date_in_future), a credit note stays on or after the invoice it corrects (issue_date_before_original) and that invoice on or before its credit notes (issue_date_after_credit_note), and an issued document cannot lose its date (issued_at_invalid).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:documents_update",
+      "field": "description",
+      "sentence": "`number`, `type`, `status`, `issuer_profile_id`, and `currency` are never editable here (no such params).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:documents_update",
+      "field": "description",
+      "sentence": "The customer's purchase order number IS a non financial reference like the address or due date: set or correct it with `po_number` on a draft or an already-issued document alike, and the PDF re-renders with the new value.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:documents_update",
+      "field": "description",
+      "sentence": "Editing the underlying Shopify order is NOT a substitute for this: it changes the order without changing the document that was already sent to the customer.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:documents_update",
+      "field": "description",
+      "sentence": "`notes` is free text in the same class: a contract reference, extra customs information or a special mention, printed on the PDF and settable on a draft or on an already issued, sent or paid document, capped at 2000 characters.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:documents_update",
+      "field": "description",
+      "sentence": "A voided or cancelled document is fully immutable (the call fails `document_not_editable`).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:documents_update",
+      "field": "description",
+      "sentence": "Every applied edit appends a lifecycle_log entry recording the changed field names and forces a fresh PDF re-render (a render FAILURE does not undo the edit: the edit persists and pdf_status reflects the failure; retry with documents_retry_pdf).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:documents_update",
+      "field": "buyer_is_consumer",
+      "sentence": "Only for an EU buyer in another country with NO VAT number whom the org's data shows as a business: set true when the buyer really is a private consumer (charged their country's VAT).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:documents_update",
+      "field": "counterparty_shipping_address",
+      "sentence": "Set it ONLY when the parcel goes somewhere other than the billing address: the PDF then prints a separate SHIP TO block next to BILL TO.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:documents_update",
+      "field": "counterparty_shipping_address",
+      "sentence": "Leave it null when both addresses are the same (an identical value is not printed twice).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:documents_update",
+      "field": "counterparty_shipping_address",
+      "sentence": "Render only: the tax treatment is still derived from counterparty_country, never from this address.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:documents_update",
+      "field": "counterparty_shipping_name",
+      "sentence": "Consignee name for the shipping (ship to) block, when the parcel is addressed to someone other than the billing customer (a forwarder, a site contact, a reseller's end customer).",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:documents_update",
+      "field": "notes",
+      "sentence": "Free-text notes printed on the document PDF, in a \"Notes\" block under the totals: a contract reference, extra customs information, a special mention the customer asked for.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:documents_update",
+      "field": "customer_reference",
+      "sentence": "Your own reference for this customer in another system, e.g. their CRM record id; printed on the PDF as 'Customer ref'.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:documents_update",
+      "field": "lines",
+      "sentence": "Replaying read-back lines divides the tax out again and silently shrinks the stored price a little more on every call.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "invoicing:documents_update",
+      "field": "lines[].hs_code",
+      "sentence": "Harmonized System tariff code for this line on an export/customs invoice, e.g. 9207.90.",
+      "to": "guide:invoicing"
+    },
+    {
+      "tool": "projects:createProject",
+      "field": "description",
+      "sentence": "Tasks for an EXISTING project are added with the `create` tool and its project id.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:createProject",
+      "field": "description",
+      "sentence": "Create the board ONCE per goal: if you already created (or found) a project for this request, REUSE its id for all the tasks — do NOT call createProject again for the same goal across turns (that scatters the tasks across stray duplicate boards).",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:createProject",
+      "field": "description",
+      "sentence": "SCAFFOLDING A BOARD/CHECKLIST OVER A KNOWN ENUMERATED SET (N units, N orders, N shipments, N rows, N people — anything you've already listed or counted): the default shape is ONE TASK PER ITEM, each titled by that item and carrying its identifying details in the title/body (e.g. the recipient/owner, the id or tracking number, the due/return date) — NOT a handful of generic action-category buckets ('clear the exceptions', 'coordinate returns') that collapse the N items into 4-5 verbs.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:createProject",
+      "field": "description",
+      "sentence": "Per-item is what makes the board actually trackable: each row is one thing the human checks off.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:createProject",
+      "field": "description",
+      "sentence": "Cover EVERY enumerated item with its own task; if all N tasks won't fit one turn's step budget, create as many per-item tasks as fit, ADD the rest to the SAME project next turn, and tell the user it's a partial pass (X of N done so far) — never start a fresh project, never collapse to generic buckets to save steps, and never claim all N are done when you only created a few.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:createProject",
+      "field": "description",
+      "sentence": "IMPROVISING WHEN THERE IS NO NATIVE OBJECT for the thing being tracked (e.g. no 'loaner', 'asset', or 'fleet' entity exists, so you model it as a projects board + tasks): say so plainly in your reply — name that there is no native X concept and that you've improvised a project board to track it — rather than silently presenting the board as if a purpose-built tracker existed.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:createProject",
+      "field": "tasks[].description",
+      "sentence": "Make it SELF-CONTAINED — a reviewer opens the task, not your chat reply, so the facts must live HERE.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:createProject",
+      "field": "tasks[].description",
+      "sentence": "When the task captures something you found via web research (a competitor spec/price, a prospect's details, any external figure), the body MUST carry the concrete data point itself and — for a comparison task — our own product's contrasting fact/angle.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:createProject",
+      "field": "tasks[].description",
+      "sentence": "A task body that only names the topic ('compare connectivity', 'review their software') is incomplete.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:createProject",
+      "field": "tasks[].description",
+      "sentence": "For a ONE-TASK-PER-RESEARCHED-ENTITY outreach/shortlist board (a creator, influencer, prospect, dealer, lead, school), the body MUST carry, for that entity: its link (channel/profile/website URL), any contact found (email/phone), AND a one-line WHY-RELEVANT rationale (why this entity fits the goal) — all three.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:createProject",
+      "field": "tasks[].description",
+      "sentence": "The 'why relevant' note is required, not optional: a body that lists only the link + contact and drops the rationale is incomplete even though the link/contact are present.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:createProject",
+      "field": "tasks[].description",
+      "sentence": "The relevance line is right there in the research snippet you read — carry it through.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:createProject",
+      "field": "tasks[].description",
+      "sentence": "Put the source URL of any web-derived fact in the `sourceUrl` param (preferred — it is auto-appended to the body) or inline it here; never present an external figure with no source.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:createProject",
+      "field": "tasks[].description",
+      "sentence": "MARKDOWN + LINKED DOCUMENTS: the body is rendered as markdown (headings, lists, bold, code, links).",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:createProject",
+      "field": "tasks[].description",
+      "sentence": "To LINK a document so it shows as a collapsible preview on the task card and page, write an entity mention in the body: `@[Title](knowledge:document:<id>)` for a Knowledge document (id from knowledge create/search), `@[Title](knowledge:source_link:<id>)` for a live Drive/remote doc registered with knowledge source_link_create (id from that call), `@[name.png](kernel:file:<id>)` for a file.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:createProject",
+      "field": "tasks[].description",
+      "sentence": "A bare URL is only a link; the mention is what makes the spec visible from the board.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:createProject",
+      "field": "tasks[].assigneeName",
+      "sentence": "Optional assignee by display name — resolved to a user in this org (alternative to assigneeId).",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:create",
+      "field": "description",
+      "sentence": "Make it SELF-CONTAINED — a reviewer opens the task, not your chat reply, so the facts must live HERE.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:create",
+      "field": "description",
+      "sentence": "When the task captures something you found via web research (a competitor spec/price, a prospect's details, any external figure), the body MUST carry the concrete data point itself and — for a comparison task — our own product's contrasting fact/angle.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:create",
+      "field": "description",
+      "sentence": "A task body that only names the topic ('compare connectivity', 'review their software') is incomplete.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:create",
+      "field": "description",
+      "sentence": "For a ONE-TASK-PER-RESEARCHED-ENTITY outreach/shortlist board (a creator, influencer, prospect, dealer, lead, school), the body MUST carry, for that entity: its link (channel/profile/website URL), any contact found (email/phone), AND a one-line WHY-RELEVANT rationale (why this entity fits the goal) — all three.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:create",
+      "field": "description",
+      "sentence": "The 'why relevant' note is required, not optional: a body that lists only the link + contact and drops the rationale is incomplete even though the link/contact are present.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:create",
+      "field": "description",
+      "sentence": "The relevance line is right there in the research snippet you read — carry it through.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:create",
+      "field": "description",
+      "sentence": "Put the source URL of any web-derived fact in the `sourceUrl` param (preferred — it is auto-appended to the body) or inline it here; never present an external figure with no source.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:create",
+      "field": "description",
+      "sentence": "MARKDOWN + LINKED DOCUMENTS: the body is rendered as markdown (headings, lists, bold, code, links).",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:create",
+      "field": "description",
+      "sentence": "To LINK a document so it shows as a collapsible preview on the task card and page, write an entity mention in the body: `@[Title](knowledge:document:<id>)` for a Knowledge document (id from knowledge create/search), `@[Title](knowledge:source_link:<id>)` for a live Drive/remote doc registered with knowledge source_link_create (id from that call), `@[name.png](kernel:file:<id>)` for a file.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:create",
+      "field": "description",
+      "sentence": "A bare URL is only a link; the mention is what makes the spec visible from the board.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:create",
+      "field": "labels",
+      "sentence": "Optional labels: an object whose keys are label group names (or ids) and whose values are value names (or ids), e.g. {\"Nature\": \"bug\"}; null clears this task's own value for that group; groups you leave out are untouched.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:create",
+      "field": "labels",
+      "sentence": "An invalid value refuses the whole call with label_not_found or label_archived, listing the valid values.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:create",
+      "field": "labels",
+      "sentence": "Subtasks inherit each group's value from their parent unless they set their own.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:create",
+      "field": "statusId",
+      "sentence": "If you only know the column's NAME, prefer statusLabel; a non-UUID value here is treated as a label.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:create",
+      "field": "assigneeName",
+      "sentence": "Optional assignee by display name — resolved to a user in this org (alternative to assigneeId).",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:update",
+      "field": "description",
+      "sentence": "MARKDOWN + LINKED DOCUMENTS: the body is rendered as markdown (headings, lists, bold, code, links).",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:update",
+      "field": "description",
+      "sentence": "To LINK a document so it shows as a collapsible preview on the task card and page, write an entity mention in the body: `@[Title](knowledge:document:<id>)` for a Knowledge document (id from knowledge create/search), `@[Title](knowledge:source_link:<id>)` for a live Drive/remote doc registered with knowledge source_link_create (id from that call), `@[name.png](kernel:file:<id>)` for a file.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:update",
+      "field": "description",
+      "sentence": "A bare URL is only a link; the mention is what makes the spec visible from the board.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:update",
+      "field": "labels",
+      "sentence": "Optional labels: an object whose keys are label group names (or ids) and whose values are value names (or ids), e.g. {\"Nature\": \"bug\"}; null clears this task's own value for that group; groups you leave out are untouched.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:update",
+      "field": "labels",
+      "sentence": "An invalid value refuses the whole call with label_not_found or label_archived, listing the valid values.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:update",
+      "field": "labels",
+      "sentence": "Subtasks inherit each group's value from their parent unless they set their own.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:update",
+      "field": "statusId",
+      "sentence": "If you only know the column's NAME, prefer statusLabel; a non-UUID value here is treated as a label.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:tasks_byAssignee",
+      "field": "description",
+      "sentence": "Each row carries a `threadId` for the task's discussion; it is participant-gated, so do not hand it to kernel threads_read directly — use `comments` (and `comment` to post).",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:tasks_byAssignee",
+      "field": "description",
+      "sentence": "Each task row carries `labels`: its effective value per label group (own, or inherited from the nearest parent, with `inherited` and `inheritedFromKey`).",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:tasks_byAssignee",
+      "field": "release",
+      "sentence": "Optional: only tasks whose EFFECTIVE release (their own, else the nearest parent's) matches, case-insensitive.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:tasks_byAssignee",
+      "field": "due",
+      "sentence": "Every value excludes tasks in a done (terminal) status column: a done task never appears under any due filter, including none and later.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:tasks_byProject",
+      "field": "description",
+      "sentence": "This single call answers a 'sprint board / burndown / who's overloaded' proxy (done-vs-remaining task counts + per-assignee counts) WITHOUT a per-id user lookup — though burndown/velocity/story-points themselves are not modeled (see agentInstructions).",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:tasks_byProject",
+      "field": "description",
+      "sentence": "NOTE: `search` is title-text only and `tasks_byAssignee` is per-person across projects — neither lists a project's tasks; this is the tool for that.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:tasks_byProject",
+      "field": "description",
+      "sentence": "DERIVING BOARD-HEALTH FIGURES (a roadmap/board digest's per-status + overdue + blocked + unassigned counts): each row carries `statusLabel`, `statusTerminal`, `dueDate`, `assigneeName`, AND a server-computed `overdue` boolean.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:tasks_byProject",
+      "field": "description",
+      "sentence": "OVERDUE is the one you should TRUST DIRECTLY: each row's `overdue` field is TRUE iff that task has a due date in the PAST and is NON-terminal (the server already excludes done/cancelled tasks), so the overdue set = the rows where `overdue === true` — do NOT re-derive it by comparing `dueDate` ISO strings to today yourself; just filter/flag on `overdue`.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:tasks_byProject",
+      "field": "description",
+      "sentence": "There is still NO separate boolean `blocked` / `isBlocked` flag, so compute BLOCKED from the status label, not a blocked field: BLOCKED = tasks whose `statusLabel` is the board's blocked column (a status named 'Blocked' / 'On Hold' / 'Stuck') — count by that status label; UNASSIGNED = tasks whose `assigneeName` is null; per-status counts = group by `statusLabel`; OPEN = the non-terminal tasks (statusTerminal false).",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:tasks_byProject",
+      "field": "description",
+      "sentence": "Keep the blocked count CONSISTENT with the per-status breakdown — if the status rollup shows N tasks in the 'Blocked' status, the blocked figure is N (a digest that says 'Blocked status: 2' in one section and 'Blocked: 0' in another, because it looked for a nonexistent blocked flag, is wrong).",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:tasks_byProject",
+      "field": "description",
+      "sentence": "Returns up to 100 tasks by default (max 200), ordered by status then board position.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:tasks_byProject",
+      "field": "description",
+      "sentence": "Each row carries a `threadId` for the task's discussion; it is participant-gated, so do not hand it to kernel threads_read directly — use `comments` (and `comment` to post).",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:tasks_byProject",
+      "field": "description",
+      "sentence": "Each task row carries `labels`: its effective value per label group (own, or inherited from the nearest parent, with `inherited` and `inheritedFromKey`).",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:tasks_byProject",
+      "field": "release",
+      "sentence": "Optional: only tasks whose EFFECTIVE release (their own, else the nearest parent's) matches, case-insensitive.",
+      "to": "guide:projects"
+    },
+    {
+      "tool": "projects:tasks_byProject",
+      "field": "due",
+      "sentence": "Every value excludes tasks in a done (terminal) status column: a done task never appears under any due filter, including none and later.",
+      "to": "guide:projects"
     }
   ]
 }

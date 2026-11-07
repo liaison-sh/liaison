@@ -221,10 +221,110 @@
       {
         "tools": ["einvoicing_classify", "counterparty_identity_get", "counterparty_identity_lookup", "counterparty_identity_set", "counterparty_territory_set", "einvoicing_readiness", "einvoicing_backfill_identities", "invoice_issue", "invoice_create_and_issue", "credit_note_create_and_issue", "legal_originals_verify", "einvoice_send_request", "einvoice_transmission_get", "einvoice_status_refresh", "einvoicing_settings_get", "received_einvoices_list", "received_einvoices_get", "received_einvoices_refresh", "received_einvoice_action_request"],
         "text": "E-INVOICING (France). Every invoice, credit note and order has ONE regime; say it in plain words with its reasons: e_invoice (a French business buyer with its SIREN: the invoice is sent electronically through the e-invoicing platform), e_reporting (a consumer, or a buyer outside France: the sale is only reported to the tax office, never sent as an e-invoice), out_of_scope (nothing to send or report), needs_review (a territory a person must decide). Only a French business buyer with its SIREN is ever e-invoiced: never offer to e-invoice or transmit an invoice to a consumer or a foreign buyer, and say why. To answer 'can I e-invoice this order / this customer, and why?', CALL einvoicing_classify (shopify_order_id for an order, contact_id for a customer, document_id for a document) and report its regime and reasons; never guess the regime from the country alone.\nWHEN AN ISSUE TOOL REFUSES (codes einvoice_data_missing, customer_kind_missing, registry_unconfirmed, siren_invalid, siren_inactive, operation_category_missing, einvoice_needs_review), the error lists each missing field with the tool that fixes it (error.body.missing[].fix_tool, also named in the message): call that tool, then call the SAME issue tool again with the same arguments. Never stop at the refusal while a fix tool remains to try.\nMISSING SIREN of a French business buyer, in this order: (1) counterparty_identity_lookup with the buyer's contact_id and its company name as query; when a candidate's registered name is the buyer, record it with counterparty_identity_set (contact_id, customer_kind business, siren, source registry). (2) Only when the registry finds no candidate that is the buyer: web_search for the company name plus SIREN, and web_fetch the most relevant result. A web page is only a POINTER, never the source: take the SIREN it shows, call counterparty_identity_lookup again with that siren, then counterparty_identity_set with that siren, source agent_web and source_url set to the page URL. Even when the registered name differs from the buyer, still call counterparty_identity_set: it re-checks the registry itself and, when the registry does not confirm the buyer, writes nothing and returns pending_approval so a person decides; then tell the user a person must confirm the SIREN, and do not retry the issue. (3) If neither the registry nor the web gives a SIREN, or web_search / web_fetch is refused or blocked, record nothing and tell the user the SIREN is missing and could not be found. Never invent a SIREN, never take one from memory or from the user's wording alone, never try made-up numbers in counterparty_identity_lookup: only a registry candidate or a page you fetched in this turn. source manual is for a SIREN a person typed, never for one you chose. customer_kind is who the buyer IS: never change it (to individual, non_registered_entity or anything else) to get an invoice past a refusal; when a fix tool is refused or blocked, stop and tell the user what is missing and why.\nOTHER FIXES: when the user says who the buyer is, pass customer_kind (business, individual, public_entity, non_registered_entity) on the counterparty; when the user says what was sold, pass operation_category (goods, services or mixed) on the issuing call; a missing billing address goes on the issuing call's counterparty (billing_line1, billing_postcode, billing_city, billing_country_code). A territory decision (einvoice_needs_review) is an administrator's: counterparty_territory_set. To list everything that blocks e-invoicing, call einvoicing_readiness; to fill identities for existing customers, einvoicing_backfill_identities. A result carrying einvoicing_warning means the document WAS issued: tell the user what to complete.\nLEGAL ORIGINAL: an issued invoice or credit note keeps the exact file of its first render (for an e-invoice, the Factur-X); every email sends that file. documents_update refusing with legal_original_locked means that value is part of the legal original: offer a credit note (credit_note_create_and_issue) and a new invoice instead. legal_originals_verify checks the stored originals are intact.\nSENDING THROUGH THE E-INVOICING PLATFORM: once sending is switched on, an issued e-invoice gets its send approval request by itself; to ask for it (again, or for one issued earlier) call einvoice_send_request with its document_id. It only creates the approval: a person approves and nothing is sent before. It refuses anything that is not e_invoice with einvoice_not_eligible: that sale is reported, never sent; tell the user so and do not call it again. To say where a document stands with the platform, call einvoice_transmission_get (status, history with official codes); einvoice_status_refresh re-reads it now. A refused or rejected e-invoice is a person's decision (credit note or dispute): never issue a credit note on your own for it. Reported sales are booked into the platform's ledger by a daily batch a person approves; no tool books a single document. einvoicing_settings_get shows the platform, the cut-over date and whether sending and booking are on. RECEIVED SUPPLIER E-INVOICES (what suppliers sent the organisation through the e-invoicing platform; the Received tab): received_einvoices_list and received_einvoices_get show them (supplier, number, dates, totals, status with its official code, files, history); received_einvoices_refresh re-reads them now. To refuse or dispute one, call received_einvoices_get first and use one of the reasons it lists for that action, then received_einvoice_action_request: it only asks for a person's approval, nothing reaches the supplier before; say so. A refusal is final and closes the invoice; for a commercial disagreement (price, quantity, delivery) prefer dispute, which can be withdrawn (action undispute). Never refuse or dispute on your own initiative, never choose a reason the user did not give or confirm, and never upload a received e-invoice into the accounting app again: it is already there."
+      },
+      {
+        "tools": ["drafts_create", "drafts_update", "invoice_create_and_issue", "quote_create_and_issue", "proforma_create_and_issue", "documents_update"],
+        "text": "`buyer_is_consumer`, `patch.buyer_is_consumer`: Only for an EU buyer in another country with NO VAT number whom the org's data shows as a business: set true when the buyer really is a private consumer (charged their country's VAT)."
+      },
+      {
+        "tools": ["drafts_create", "drafts_update", "invoice_create_and_issue", "credit_note_create_and_issue"],
+        "text": "`customer_kind`, `patch.customer_kind`, `counterparty.customer_kind`: E-invoicing: who the buyer is. business (a company or a registered professional), individual (a consumer), public_entity, or non_registered_entity. For a buyer in France it decides whether the invoice is an e-invoice; when nothing on file records it and the call does not say, issuing to a French buyer is refused with customer_kind_missing rather than guessed."
+      },
+      {
+        "tools": ["drafts_create", "drafts_update", "invoice_create_and_issue"],
+        "text": "`operation_category`, `patch.operation_category`: Required when the document is an e-invoice to a French business: line kinds alone never decide it."
+      },
+      {
+        "tools": ["drafts_create", "drafts_update"],
+        "text": "`counterparty_name`, `patch.counterparty_name`: A draft may be saved incomplete, but ISSUING refuses without counterparty_name, counterparty_address, counterparty_email and counterparty_country — fill all four before invoice_issue / quote_issue / proforma_issue / po_issue / documents_convert_to_invoice."
+      },
+      {
+        "tools": ["drafts_create", "drafts_update"],
+        "text": "`counterparty_address`, `patch.counterparty_address`: Counterparty postal address (freeform, multi-line) shown on the document's Bill-to block."
+      },
+      {
+        "tools": ["drafts_create", "drafts_update", "documents_update"],
+        "text": "`counterparty_shipping_address`, `patch.counterparty_shipping_address`: Set it ONLY when the parcel goes somewhere other than the billing address: the PDF then prints a separate SHIP TO block next to BILL TO. Leave it null when both addresses are the same (an identical value is not printed twice). Render only: the tax treatment is still derived from counterparty_country, never from this address."
+      },
+      {
+        "tools": ["drafts_create", "drafts_update", "documents_update"],
+        "text": "`counterparty_shipping_name`, `patch.counterparty_shipping_name`: Consignee name for the shipping (ship to) block, when the parcel is addressed to someone other than the billing customer (a forwarder, a site contact, a reseller's end customer)."
+      },
+      {
+        "tools": ["drafts_create", "drafts_update"],
+        "text": "`counterparty_email`, `patch.counterparty_email`: Used as a fallback recipient by documents_send_to_customer when the linked contact has none on file."
+      },
+      {
+        "tools": ["drafts_create", "invoice_create_and_issue"],
+        "text": "`shopify_order_id`: When this invoice is for a Shopify order, set this to that order's id/name (e.g. the order's `name` like '#1149' or its gid)."
+      },
+      {
+        "tools": ["drafts_create", "invoice_create_and_issue", "proforma_create_and_issue"],
+        "text": "`shopify_order_number`: Set it whenever you set shopify_order_id: it is PRINTED on the document PDF (an \"Order\" line in the header, so the order can be read straight off the invoice) and it is INDEXED for documents_search, so searching \"#1149\" finds this document. Omit it only when the order's name is genuinely unknown -- never invent one from the numeric id."
+      },
+      {
+        "tools": ["drafts_create", "invoice_create_and_issue", "quote_create_and_issue", "proforma_create_and_issue", "po_create_and_issue", "documents_update"],
+        "text": "`items[].hs_code`, `lines[].hs_code`: Harmonized System tariff code for this line on an export/customs invoice, e.g. 9207.90."
+      },
+      {
+        "tools": ["drafts_create", "invoice_create_and_issue", "quote_create_and_issue", "proforma_create_and_issue", "po_create_and_issue"],
+        "text": "`items[].hs_code`: Set it here to assign the HS code inline — no separate hs_codes_assign call needed."
+      },
+      {
+        "tools": ["drafts_create", "drafts_update", "invoice_create_and_issue", "quote_create_and_issue", "proforma_create_and_issue", "po_create_and_issue"],
+        "text": "`items[].product_source`, `patch.lines[].product_source`: Paired with `external_id`, it links the line to a catalog product so issue-time customs enrichment (the product_customs_overlay — HS code / country of origin / customs description) fills in whatever this line leaves blank; an explicit hs_code/country_of_origin/customs_description on the line ALWAYS wins over the overlay."
+      },
+      {
+        "tools": ["drafts_create", "drafts_update", "invoice_create_and_issue", "quote_create_and_issue", "proforma_create_and_issue", "po_create_and_issue"],
+        "text": "`items[].external_id`, `patch.lines[].external_id`: Optional catalog id for this line (e.g. a Shopify variant gid like 'gid://shopify/ProductVariant/123' or its bare numeric id), paired with `product_source`. Enables the same automatic HS-code/customs enrichment the Shopify paid-order auto-flow gets — set it when you know the underlying catalog product so you don't have to type every customs fact by hand."
+      },
+      {
+        "tools": ["drafts_create", "drafts_update", "invoice_create_and_issue", "quote_create_and_issue", "proforma_create_and_issue", "po_create_and_issue", "documents_convert_to_invoice", "credit_note_create_and_issue", "order_reissue_apply", "documents_update"],
+        "text": "`notes`, `patch.notes`: Free-text notes printed on the document PDF, in a \"Notes\" block under the totals: a contract reference, extra customs information, a special mention the customer asked for."
+      },
+      {
+        "tools": ["drafts_update", "documents_update"],
+        "text": "`patch.lines`, `lines`: Replaying read-back lines divides the tax out again and silently shrinks the stored price a little more on every call."
+      },
+      {
+        "tools": ["invoice_create_and_issue", "quote_create_and_issue", "proforma_create_and_issue", "po_create_and_issue"],
+        "text": "`counterparty`: The customer the document is issued TO. legal_name, country, address and email are ALL required — a document cannot be issued to an unnamed, unaddressed or unreachable recipient. country is the ISO-3166 alpha-2 code (e.g. 'FR','DE','US') — it drives the tax classification (domestic / intra-EU / export)."
+      },
+      {
+        "tools": ["invoice_create_and_issue", "quote_create_and_issue", "proforma_create_and_issue"],
+        "text": "`counterparty.vat_id`: REQUIRED for a business buyer in another EU country (reverse charge, no VAT); without it the document charges the buyer's country VAT as a consumer sale. Look it up on earlier documents, the Shopify order's company, or the buyer's legal notice."
+      },
+      {
+        "tools": ["invoice_create_and_issue", "quote_create_and_issue", "proforma_create_and_issue", "po_create_and_issue", "credit_note_create_and_issue"],
+        "text": "`counterparty.address`: REQUIRED — an issued document is a legal record and must say where its recipient is; issuance is refused without it."
+      },
+      {
+        "tools": ["invoice_create_and_issue", "quote_create_and_issue", "proforma_create_and_issue", "po_create_and_issue", "credit_note_create_and_issue"],
+        "text": "`counterparty.email`: REQUIRED — it is how the document reaches them and how the recipient is identified; issuance is refused without it."
+      },
+      {
+        "tools": ["quote_create_and_issue", "proforma_create_and_issue", "po_create_and_issue"],
+        "text": "`items[].discount_minor`: Optional discount for this line in MINOR currency units: the TOTAL discount for the whole line (subtracted once from quantity x unit_price_minor, before tax), NOT per unit and NOT a percentage. Example: 40 units at unit_price_minor 89900 with 38% off -> discount_minor 1366480 (40 x 89900 x 0.38); the line then totals 2229520 before tax."
+      },
+      {
+        "tools": ["quote_create_and_issue", "proforma_create_and_issue", "po_create_and_issue", "credit_note_create_and_issue"],
+        "text": "`issued_at`: The date decides the number's year: a date in a past year takes that year's series."
+      },
+      {
+        "tools": ["quote_create_and_issue", "proforma_create_and_issue", "po_create_and_issue", "documents_update"],
+        "text": "`customer_reference`: Your own reference for this customer in another system, e.g. their CRM record id; printed on the PDF as 'Customer ref'."
+      },
+      {
+        "tools": ["documents_update"],
+        "text": "`documents_update`: An issued invoice is legally immutable; to correct amounts, tax treatment, or the counterparty's legal identity, issue a CREDIT NOTE with credit_note_create_and_issue (referencing this invoice), never an in-place edit. A PROFORMA, a QUOTE or a PURCHASE ORDER is not an accounting document and is never frozen: on an issued one, every field above stays editable exactly like a draft, including a full `lines` replacement (totals recompute, the PDF re-renders, the edit is logged). This is THE way to change an issued proforma's amount or lines (e.g. a 0 value proforma that must declare 1.00): calling proforma_create_and_issue again for the same order does not change it. Harmless metadata (address, email, linked contact, incoterm, issued_at/due_at, po_number, notes) stays editable post-issue for a Sufio-style typo fix. An issued document's date stays in its number's year (issue_date_crosses_number_year, and an invoice or credit note then needs a credit note, never another date); an issued invoice or credit note's date also stays between its neighbouring numbers (issue_date_breaks_number_order) and on or before today (issue_date_in_future), a credit note stays on or after the invoice it corrects (issue_date_before_original) and that invoice on or before its credit notes (issue_date_after_credit_note), and an issued document cannot lose its date (issued_at_invalid). `number`, `type`, `status`, `issuer_profile_id`, and `currency` are never editable here (no such params). The customer's purchase order number IS a non financial reference like the address or due date: set or correct it with `po_number` on a draft or an already-issued document alike, and the PDF re-renders with the new value. Editing the underlying Shopify order is NOT a substitute for this: it changes the order without changing the document that was already sent to the customer. `notes` is free text in the same class: a contract reference, extra customs information or a special mention, printed on the PDF and settable on a draft or on an already issued, sent or paid document, capped at 2000 characters. A voided or cancelled document is fully immutable (the call fails `document_not_editable`). Every applied edit appends a lifecycle_log entry recording the changed field names and forces a fresh PDF re-render (a render FAILURE does not undo the edit: the edit persists and pdf_status reflects the failure; retry with documents_retry_pdf)."
+      },
+      {
+        "tools": ["credit_note_create_and_issue"],
+        "text": "`credit_note_create_and_issue`: To reverse/correct an ISSUED invoice, pass `original_document_id` set to that invoice's id — it MUST reference an existing invoice (validated before issuance) and, on success, the original invoice's lifecycle_log records a `credit_note_issued` entry naming this credit note. Handler-conditional gating against issuer.invoice_approval_threshold_minor (unset means always approve, threshold 0; a credit note with no original_document_id is ALWAYS approved), compared against the ABSOLUTE VALUE of the credit note's grand total (a -6,744€ correction gates exactly like a +6,744€ invoice would). For a legally clean reversal, ALSO call documents_record_refund on the original invoice to record the payment-side event — the credit note is the legal document, record_refund is the payment status change; do BOTH, never just one. ALWAYS pass original_document_id when you reverse an invoice: without it the over_credit cap (a credit note can never push an invoice's cumulative credited total past its own grand total) cannot apply. A Shopify refund or cancellation already issues its credit note automatically, and a cancellation of a partly credited invoice reverses only the REMAINDER, so check documents_for_orders before issuing one by hand rather than crediting twice. A hand built partial credit note carries its OWN tax: mirror the original's per line rates, because only the automatic refund path allocates the VAT for you. On a split order, credit the document that actually carries the refunded line, not whichever invoice you saw first."
       }
     ]
   },
-  "version": "0.20.57",
+  "version": "0.20.58",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -2359,7 +2459,7 @@
         "properties": {
           "buyer_is_consumer": {
             "type": "boolean",
-            "description": "Only for an EU buyer in another country with NO VAT number whom the org's data shows as a business: set true when the buyer really is a private consumer (charged their country's VAT). The approval card shows it."
+            "description": "The approval card shows it."
           },
           "customer_kind": {
             "type": [
@@ -2372,8 +2472,7 @@
               "public_entity",
               "non_registered_entity",
               null
-            ],
-            "description": "E-invoicing: who the buyer is. business (a company or a registered professional), individual (a consumer), public_entity, or non_registered_entity. For a buyer in France it decides whether the invoice is an e-invoice; when nothing on file records it and the call does not say, issuing to a French buyer is refused with customer_kind_missing rather than guessed."
+            ]
           },
           "operation_category": {
             "type": [
@@ -2386,7 +2485,7 @@
               "mixed",
               null
             ],
-            "description": "E-invoicing: the operation category, goods, services or mixed. Required when the document is an e-invoice to a French business: line kinds alone never decide it."
+            "description": "E-invoicing: the operation category, goods, services or mixed."
           },
           "billing_line1": {
             "type": [
@@ -2444,28 +2543,27 @@
               "string",
               "null"
             ],
-            "description": "Counterparty legal / display name shown on the document's Bill-to block. Set it when drafting a named invoice for a customer without (or in addition to) a linked contact. A draft may be saved incomplete, but ISSUING refuses without counterparty_name, counterparty_address, counterparty_email and counterparty_country — fill all four before invoice_issue / quote_issue / proforma_issue / po_issue / documents_convert_to_invoice."
+            "description": "Counterparty legal / display name shown on the document's Bill-to block. Set it when drafting a named invoice for a customer without (or in addition to) a linked contact."
           },
           "counterparty_address": {
             "type": [
               "string",
               "null"
-            ],
-            "description": "Counterparty postal address (freeform, multi-line) shown on the document's Bill-to block."
+            ]
           },
           "counterparty_shipping_address": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Counterparty shipping (ship to) postal address, freeform and multi-line. Set it ONLY when the parcel goes somewhere other than the billing address: the PDF then prints a separate SHIP TO block next to BILL TO. Leave it null when both addresses are the same (an identical value is not printed twice). Render only: the tax treatment is still derived from counterparty_country, never from this address."
+            "description": "Counterparty shipping (ship to) postal address, freeform and multi-line."
           },
           "counterparty_shipping_name": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Consignee name for the shipping (ship to) block, when the parcel is addressed to someone other than the billing customer (a forwarder, a site contact, a reseller's end customer). Falls back to counterparty_name when null."
+            "description": "Falls back to counterparty_name when null."
           },
           "counterparty_vat_id": {
             "type": [
@@ -2479,7 +2577,7 @@
               "string",
               "null"
             ],
-            "description": "Counterparty email address. Used as a fallback recipient by documents_send_to_customer when the linked contact has none on file."
+            "description": "Counterparty email address."
           },
           "counterparty_country": {
             "type": [
@@ -2507,14 +2605,14 @@
               "string",
               "null"
             ],
-            "description": "When this invoice is for a Shopify order, set this to that order's id/name (e.g. the order's `name` like '#1149' or its gid). This LINKS the invoice to the order and is IDEMPOTENT: only ONE invoice can exist per shopify_order_id, so a second drafts_create for an order that is already invoiced is REJECTED (duplicate) rather than silently double-billing the customer. ALWAYS set it when invoicing a batch of orders so you never issue two invoices for the same order — and so you can verify, per order, which are already invoiced. Omit it for a non-order invoice."
+            "description": "This LINKS the invoice to the order and is IDEMPOTENT: only ONE invoice can exist per shopify_order_id, so a second drafts_create for an order that is already invoiced is REJECTED (duplicate) rather than silently double-billing the customer. ALWAYS set it when invoicing a batch of orders so you never issue two invoices for the same order — and so you can verify, per order, which are already invoiced. Omit it for a non-order invoice."
           },
           "shopify_order_number": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The order's HUMAN name as the store and the customer both write it (e.g. \"#1149\"), NOT the numeric order id. Set it whenever you set shopify_order_id: it is PRINTED on the document PDF (an \"Order\" line in the header, so the order can be read straight off the invoice) and it is INDEXED for documents_search, so searching \"#1149\" finds this document. Omit it only when the order's name is genuinely unknown -- never invent one from the numeric id."
+            "description": "The order's HUMAN name as the store and the customer both write it (e.g. \"#1149\"), NOT the numeric order id."
           },
           "items": {
             "type": "array",
@@ -2546,8 +2644,7 @@
                   "description": "Optional per-line tax rate in basis points (2000 = 20%); omit to inherit the document's classified rate."
                 },
                 "hs_code": {
-                  "type": "string",
-                  "description": "Harmonized System tariff code for this line on an export/customs invoice, e.g. 9207.90. Set it here to assign the HS code inline — no separate hs_codes_assign call needed."
+                  "type": "string"
                 },
                 "customs_description": {
                   "type": "string",
@@ -2567,14 +2664,13 @@
                     "manual",
                     null
                   ],
-                  "description": "Optional catalog source for this line ('shopify' or 'manual'). Paired with `external_id`, it links the line to a catalog product so issue-time customs enrichment (the product_customs_overlay — HS code / country of origin / customs description) fills in whatever this line leaves blank; an explicit hs_code/country_of_origin/customs_description on the line ALWAYS wins over the overlay. Omit for a free-text, non-catalog line."
+                  "description": "Optional catalog source for this line ('shopify' or 'manual'). Omit for a free-text, non-catalog line."
                 },
                 "external_id": {
                   "type": [
                     "string",
                     "null"
-                  ],
-                  "description": "Optional catalog id for this line (e.g. a Shopify variant gid like 'gid://shopify/ProductVariant/123' or its bare numeric id), paired with `product_source`. Enables the same automatic HS-code/customs enrichment the Shopify paid-order auto-flow gets — set it when you know the underlying catalog product so you don't have to type every customs fact by hand."
+                  ]
                 }
               },
               "required": [
@@ -2607,7 +2703,7 @@
               "string",
               "null"
             ],
-            "description": "Free-text notes printed on the document PDF, in a \"Notes\" block under the totals: a contract reference, extra customs information, a special mention the customer asked for. Non financial metadata, max 2000 characters, editable at any status (on a draft and on an already issued, sent or paid document alike). Null or an empty string clears it."
+            "description": "Non financial metadata, max 2000 characters, editable at any status (on a draft and on an already issued, sent or paid document alike). Null or an empty string clears it."
           }
         },
         "required": [
@@ -2641,7 +2737,7 @@
             "properties": {
               "buyer_is_consumer": {
                 "type": "boolean",
-                "description": "Only for an EU buyer in another country with NO VAT number whom the org's data shows as a business: set true when the buyer really is a private consumer (charged their country's VAT). The approval card shows it."
+                "description": "The approval card shows it."
               },
               "customer_kind": {
                 "type": [
@@ -2654,8 +2750,7 @@
                   "public_entity",
                   "non_registered_entity",
                   null
-                ],
-                "description": "E-invoicing: who the buyer is. business (a company or a registered professional), individual (a consumer), public_entity, or non_registered_entity. For a buyer in France it decides whether the invoice is an e-invoice; when nothing on file records it and the call does not say, issuing to a French buyer is refused with customer_kind_missing rather than guessed."
+                ]
               },
               "operation_category": {
                 "type": [
@@ -2668,7 +2763,7 @@
                   "mixed",
                   null
                 ],
-                "description": "E-invoicing: the operation category, goods, services or mixed. Required when the document is an e-invoice to a French business: line kinds alone never decide it."
+                "description": "E-invoicing: the operation category, goods, services or mixed."
               },
               "billing_line1": {
                 "type": [
@@ -2721,28 +2816,27 @@
                   "string",
                   "null"
                 ],
-                "description": "Counterparty legal / display name shown on the document's Bill-to block. A draft may be saved incomplete, but ISSUING refuses without counterparty_name, counterparty_address, counterparty_email and counterparty_country — fill all four before invoice_issue / quote_issue / proforma_issue / po_issue / documents_convert_to_invoice."
+                "description": "Counterparty legal / display name shown on the document's Bill-to block."
               },
               "counterparty_address": {
                 "type": [
                   "string",
                   "null"
-                ],
-                "description": "Counterparty postal address (freeform, multi-line) shown on the document's Bill-to block."
+                ]
               },
               "counterparty_shipping_address": {
                 "type": [
                   "string",
                   "null"
                 ],
-                "description": "Counterparty shipping (ship to) postal address, freeform and multi-line. Set it ONLY when the parcel goes somewhere other than the billing address: the PDF then prints a separate SHIP TO block next to BILL TO. Leave it null when both addresses are the same (an identical value is not printed twice). Render only: the tax treatment is still derived from counterparty_country, never from this address."
+                "description": "Counterparty shipping (ship to) postal address, freeform and multi-line."
               },
               "counterparty_shipping_name": {
                 "type": [
                   "string",
                   "null"
                 ],
-                "description": "Consignee name for the shipping (ship to) block, when the parcel is addressed to someone other than the billing customer (a forwarder, a site contact, a reseller's end customer). Falls back to counterparty_name when null."
+                "description": "Falls back to counterparty_name when null."
               },
               "counterparty_vat_id": {
                 "type": [
@@ -2756,7 +2850,7 @@
                   "string",
                   "null"
                 ],
-                "description": "Counterparty email address. Used as a fallback recipient by documents_send_to_customer when the linked contact has none on file."
+                "description": "Counterparty email address."
               },
               "counterparty_country": {
                 "type": [
@@ -2796,7 +2890,7 @@
                   "string",
                   "null"
                 ],
-                "description": "Free-text notes printed on the document PDF, in a \"Notes\" block under the totals: a contract reference, extra customs information, a special mention the customer asked for. Non financial metadata, max 2000 characters, editable at any status (on a draft and on an already issued, sent or paid document alike). Null or an empty string clears it."
+                "description": "Non financial metadata, max 2000 characters, editable at any status (on a draft and on an already issued, sent or paid document alike). Null or an empty string clears it."
               },
               "external_refs": {
                 "type": "object",
@@ -2805,7 +2899,7 @@
               },
               "lines": {
                 "type": "array",
-                "description": "Replaces ALL draft lines. Under an issuer profile with prices_include_tax on, unit_price_minor here is treated as GROSS (tax included) and is divided down to net before storage, every time this is called, with no way to tell a freshly typed price apart from an echoed one. So a line read back from documents_get or from this same tool's own response is ALREADY NET: never echo those values back unchanged in a future call, and never replay ALL lines just to change one — read the others back only to know what they are, then resend the lines you actually mean as newly typed gross prices (or leave lines out of the patch entirely if none of them changed). Replaying read-back lines divides the tax out again and silently shrinks the stored price a little more on every call.",
+                "description": "Replaces ALL draft lines. Under an issuer profile with prices_include_tax on, unit_price_minor here is treated as GROSS (tax included) and is divided down to net before storage, every time this is called, with no way to tell a freshly typed price apart from an echoed one. So a line read back from documents_get or from this same tool's own response is ALREADY NET: never echo those values back unchanged in a future call, and never replay ALL lines just to change one — read the others back only to know what they are, then resend the lines you actually mean as newly typed gross prices (or leave lines out of the patch entirely if none of them changed).",
                 "items": {
                   "type": "object",
                   "additionalProperties": true,
@@ -2854,14 +2948,13 @@
                         "manual",
                         null
                       ],
-                      "description": "Optional catalog source for this line ('shopify' or 'manual'). Paired with `external_id`, it links the line to a catalog product so issue-time customs enrichment (the product_customs_overlay — HS code / country of origin / customs description) fills in whatever this line leaves blank; an explicit hs_code/country_of_origin/customs_description on the line ALWAYS wins over the overlay. Omit for a free-text, non-catalog line."
+                      "description": "Optional catalog source for this line ('shopify' or 'manual'). Omit for a free-text, non-catalog line."
                     },
                     "external_id": {
                       "type": [
                         "string",
                         "null"
-                      ],
-                      "description": "Optional catalog id for this line (e.g. a Shopify variant gid like 'gid://shopify/ProductVariant/123' or its bare numeric id), paired with `product_source`. Enables the same automatic HS-code/customs enrichment the Shopify paid-order auto-flow gets — set it when you know the underlying catalog product so you don't have to type every customs fact by hand."
+                      ]
                     }
                   },
                   "required": [
@@ -2953,7 +3046,7 @@
         "properties": {
           "buyer_is_consumer": {
             "type": "boolean",
-            "description": "Only for an EU buyer in another country with NO VAT number whom the org's data shows as a business: set true when the buyer really is a private consumer (charged their country's VAT). The approval card shows it."
+            "description": "The approval card shows it."
           },
           "operation_category": {
             "type": [
@@ -2966,12 +3059,11 @@
               "mixed",
               null
             ],
-            "description": "E-invoicing: the operation category, goods, services or mixed. Required when the document is an e-invoice to a French business: line kinds alone never decide it."
+            "description": "E-invoicing: the operation category, goods, services or mixed."
           },
           "counterparty": {
             "type": "object",
             "additionalProperties": true,
-            "description": "The customer the document is issued TO. legal_name, country, address and email are ALL required — a document cannot be issued to an unnamed, unaddressed or unreachable recipient. country is the ISO-3166 alpha-2 code (e.g. 'FR','DE','US') — it drives the tax classification (domestic / intra-EU / export).",
             "properties": {
               "customer_kind": {
                 "type": [
@@ -2984,8 +3076,7 @@
                   "public_entity",
                   "non_registered_entity",
                   null
-                ],
-                "description": "E-invoicing: who the buyer is. business (a company or a registered professional), individual (a consumer), public_entity, or non_registered_entity. For a buyer in France it decides whether the invoice is an e-invoice; when nothing on file records it and the call does not say, issuing to a French buyer is refused with customer_kind_missing rather than guessed."
+                ]
               },
               "billing_line1": {
                 "type": [
@@ -3042,15 +3133,15 @@
                   "string",
                   "null"
                 ],
-                "description": "The buyer's VAT number. REQUIRED for a business buyer in another EU country (reverse charge, no VAT); without it the document charges the buyer's country VAT as a consumer sale. Checked against VIES. Look it up on earlier documents, the Shopify order's company, or the buyer's legal notice."
+                "description": "The buyer's VAT number. Checked against VIES."
               },
               "address": {
                 "type": "string",
-                "description": "The customer's postal address. REQUIRED — an issued document is a legal record and must say where its recipient is; issuance is refused without it."
+                "description": "The customer's postal address."
               },
               "email": {
                 "type": "string",
-                "description": "The customer's email address. REQUIRED — it is how the document reaches them and how the recipient is identified; issuance is refused without it."
+                "description": "The customer's email address."
               }
             },
             "required": [
@@ -3090,8 +3181,7 @@
                   "description": "Optional per-line tax rate in basis points (2000 = 20%); omit to inherit the document's classified rate."
                 },
                 "hs_code": {
-                  "type": "string",
-                  "description": "Harmonized System tariff code for this line on an export/customs invoice, e.g. 9207.90. Set it here to assign the HS code inline — no separate hs_codes_assign call needed."
+                  "type": "string"
                 },
                 "customs_description": {
                   "type": "string",
@@ -3111,14 +3201,13 @@
                     "manual",
                     null
                   ],
-                  "description": "Optional catalog source for this line ('shopify' or 'manual'). Paired with `external_id`, it links the line to a catalog product so issue-time customs enrichment (the product_customs_overlay — HS code / country of origin / customs description) fills in whatever this line leaves blank; an explicit hs_code/country_of_origin/customs_description on the line ALWAYS wins over the overlay. Omit for a free-text, non-catalog line."
+                  "description": "Optional catalog source for this line ('shopify' or 'manual'). Omit for a free-text, non-catalog line."
                 },
                 "external_id": {
                   "type": [
                     "string",
                     "null"
-                  ],
-                  "description": "Optional catalog id for this line (e.g. a Shopify variant gid like 'gid://shopify/ProductVariant/123' or its bare numeric id), paired with `product_source`. Enables the same automatic HS-code/customs enrichment the Shopify paid-order auto-flow gets — set it when you know the underlying catalog product so you don't have to type every customs fact by hand."
+                  ]
                 }
               },
               "required": [
@@ -3145,14 +3234,14 @@
               "string",
               "null"
             ],
-            "description": "When this invoice is for a Shopify order, set this to that order's id/name (e.g. the order's `name` like '#1149' or its gid). This LINKS the invoice to the order and is IDEMPOTENT: only ONE invoice can exist per shopify_order_id, so a second create for an order that is already invoiced is REJECTED (already_invoiced) rather than silently double-billing the customer. ALWAYS set it when invoicing a batch of orders. Omit it for a non-order invoice."
+            "description": "This LINKS the invoice to the order and is IDEMPOTENT: only ONE invoice can exist per shopify_order_id, so a second create for an order that is already invoiced is REJECTED (already_invoiced) rather than silently double-billing the customer. ALWAYS set it when invoicing a batch of orders. Omit it for a non-order invoice."
           },
           "shopify_order_number": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The order's HUMAN name as the store and the customer both write it (e.g. \"#1149\"), NOT the numeric order id. Set it whenever you set shopify_order_id: it is PRINTED on the document PDF (an \"Order\" line in the header, so the order can be read straight off the invoice) and it is INDEXED for documents_search, so searching \"#1149\" finds this document. Omit it only when the order's name is genuinely unknown -- never invent one from the numeric id."
+            "description": "The order's HUMAN name as the store and the customer both write it (e.g. \"#1149\"), NOT the numeric order id."
           },
           "po_number": {
             "type": [
@@ -3166,7 +3255,7 @@
               "string",
               "null"
             ],
-            "description": "Free-text notes printed on the document PDF, in a \"Notes\" block under the totals: a contract reference, extra customs information, a special mention the customer asked for. Non financial metadata, max 2000 characters, editable at any status (on a draft and on an already issued, sent or paid document alike). Null or an empty string clears it."
+            "description": "Non financial metadata, max 2000 characters, editable at any status (on a draft and on an already issued, sent or paid document alike). Null or an empty string clears it."
           }
         },
         "required": [
@@ -3233,12 +3322,11 @@
         "properties": {
           "buyer_is_consumer": {
             "type": "boolean",
-            "description": "Only for an EU buyer in another country with NO VAT number whom the org's data shows as a business: set true when the buyer really is a private consumer (charged their country's VAT). The approval card shows it."
+            "description": "The approval card shows it."
           },
           "counterparty": {
             "type": "object",
             "additionalProperties": true,
-            "description": "The customer the document is issued TO. legal_name, country, address and email are ALL required — a document cannot be issued to an unnamed, unaddressed or unreachable recipient. country is the ISO-3166 alpha-2 code (e.g. 'FR','DE','US') — it drives the tax classification (domestic / intra-EU / export).",
             "properties": {
               "contact_id": {
                 "type": [
@@ -3260,15 +3348,15 @@
                   "string",
                   "null"
                 ],
-                "description": "The buyer's VAT number. REQUIRED for a business buyer in another EU country (reverse charge, no VAT); without it the document charges the buyer's country VAT as a consumer sale. Checked against VIES. Look it up on earlier documents, the Shopify order's company, or the buyer's legal notice."
+                "description": "The buyer's VAT number. Checked against VIES."
               },
               "address": {
                 "type": "string",
-                "description": "The customer's postal address. REQUIRED — an issued document is a legal record and must say where its recipient is; issuance is refused without it."
+                "description": "The customer's postal address."
               },
               "email": {
                 "type": "string",
-                "description": "The customer's email address. REQUIRED — it is how the document reaches them and how the recipient is identified; issuance is refused without it."
+                "description": "The customer's email address."
               }
             },
             "required": [
@@ -3308,15 +3396,14 @@
                     "integer",
                     "string"
                   ],
-                  "description": "Optional discount for this line in MINOR currency units: the TOTAL discount for the whole line (subtracted once from quantity x unit_price_minor, before tax), NOT per unit and NOT a percentage. Example: 40 units at unit_price_minor 89900 with 38% off -> discount_minor 1366480 (40 x 89900 x 0.38); the line then totals 2229520 before tax. Must be between 0 and quantity x unit_price_minor. It prints on the PDF as a visible discount, never folded into the unit price. Omit for no discount."
+                  "description": "Must be between 0 and quantity x unit_price_minor. It prints on the PDF as a visible discount, never folded into the unit price. Omit for no discount."
                 },
                 "tax_rate_bp_override": {
                   "type": "integer",
                   "description": "Optional per-line tax rate in basis points (2000 = 20%); omit to inherit the document's classified rate."
                 },
                 "hs_code": {
-                  "type": "string",
-                  "description": "Harmonized System tariff code for this line on an export/customs invoice, e.g. 9207.90. Set it here to assign the HS code inline — no separate hs_codes_assign call needed."
+                  "type": "string"
                 },
                 "customs_description": {
                   "type": "string",
@@ -3336,14 +3423,13 @@
                     "manual",
                     null
                   ],
-                  "description": "Optional catalog source for this line ('shopify' or 'manual'). Paired with `external_id`, it links the line to a catalog product so issue-time customs enrichment (the product_customs_overlay — HS code / country of origin / customs description) fills in whatever this line leaves blank; an explicit hs_code/country_of_origin/customs_description on the line ALWAYS wins over the overlay. Omit for a free-text, non-catalog line."
+                  "description": "Optional catalog source for this line ('shopify' or 'manual'). Omit for a free-text, non-catalog line."
                 },
                 "external_id": {
                   "type": [
                     "string",
                     "null"
-                  ],
-                  "description": "Optional catalog id for this line (e.g. a Shopify variant gid like 'gid://shopify/ProductVariant/123' or its bare numeric id), paired with `product_source`. Enables the same automatic HS-code/customs enrichment the Shopify paid-order auto-flow gets — set it when you know the underlying catalog product so you don't have to type every customs fact by hand."
+                  ]
                 }
               },
               "required": [
@@ -3365,7 +3451,7 @@
           },
           "issued_at": {
             "type": ["string", "null"],
-            "description": "Issue date, ISO date (YYYY-MM-DD), for a date a person chose. Defaults to today in the issuer's time zone. The date decides the number's year: a date in a past year takes that year's series. A date after today is refused (issue_date_in_future). On an issuer linked to a Shopify shop the quote takes the day its draft order is created, so another date is refused (issue_date_set_by_draft_order)."
+            "description": "Issue date, ISO date (YYYY-MM-DD), for a date a person chose. Defaults to today in the issuer's time zone. A date after today is refused (issue_date_in_future). On an issuer linked to a Shopify shop the quote takes the day its draft order is created, so another date is refused (issue_date_set_by_draft_order)."
           },
           "due_at": {
             "type": "string"
@@ -3396,14 +3482,14 @@
               "string",
               "null"
             ],
-            "description": "Free-text notes printed on the document PDF, in a \"Notes\" block under the totals: a contract reference, extra customs information, a special mention the customer asked for. Non financial metadata, max 2000 characters, editable at any status (on a draft and on an already issued, sent or paid document alike). Null or an empty string clears it."
+            "description": "Non financial metadata, max 2000 characters, editable at any status (on a draft and on an already issued, sent or paid document alike). Null or an empty string clears it."
           },
           "customer_reference": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Your own reference for this customer in another system, e.g. their CRM record id; printed on the PDF as 'Customer ref'. Max 200 characters, trimmed; empty means none. Returned by documents_get as customer_reference."
+            "description": "Max 200 characters, trimmed; empty means none. Returned by documents_get as customer_reference."
           }
         },
         "required": [
@@ -3473,12 +3559,11 @@
         "properties": {
           "buyer_is_consumer": {
             "type": "boolean",
-            "description": "Only for an EU buyer in another country with NO VAT number whom the org's data shows as a business: set true when the buyer really is a private consumer (charged their country's VAT). The approval card shows it."
+            "description": "The approval card shows it."
           },
           "counterparty": {
             "type": "object",
             "additionalProperties": true,
-            "description": "The customer the document is issued TO. legal_name, country, address and email are ALL required — a document cannot be issued to an unnamed, unaddressed or unreachable recipient. country is the ISO-3166 alpha-2 code (e.g. 'FR','DE','US') — it drives the tax classification (domestic / intra-EU / export).",
             "properties": {
               "contact_id": {
                 "type": [
@@ -3500,15 +3585,15 @@
                   "string",
                   "null"
                 ],
-                "description": "The buyer's VAT number. REQUIRED for a business buyer in another EU country (reverse charge, no VAT); without it the document charges the buyer's country VAT as a consumer sale. Checked against VIES. Look it up on earlier documents, the Shopify order's company, or the buyer's legal notice."
+                "description": "The buyer's VAT number. Checked against VIES."
               },
               "address": {
                 "type": "string",
-                "description": "The customer's postal address. REQUIRED — an issued document is a legal record and must say where its recipient is; issuance is refused without it."
+                "description": "The customer's postal address."
               },
               "email": {
                 "type": "string",
-                "description": "The customer's email address. REQUIRED — it is how the document reaches them and how the recipient is identified; issuance is refused without it."
+                "description": "The customer's email address."
               }
             },
             "required": [
@@ -3548,15 +3633,14 @@
                     "integer",
                     "string"
                   ],
-                  "description": "Optional discount for this line in MINOR currency units: the TOTAL discount for the whole line (subtracted once from quantity x unit_price_minor, before tax), NOT per unit and NOT a percentage. Example: 40 units at unit_price_minor 89900 with 38% off -> discount_minor 1366480 (40 x 89900 x 0.38); the line then totals 2229520 before tax. Must be between 0 and quantity x unit_price_minor. It prints on the PDF as a visible discount, never folded into the unit price. Omit for no discount."
+                  "description": "Must be between 0 and quantity x unit_price_minor. It prints on the PDF as a visible discount, never folded into the unit price. Omit for no discount."
                 },
                 "tax_rate_bp_override": {
                   "type": "integer",
                   "description": "Optional per-line tax rate in basis points (2000 = 20%); omit to inherit the document's classified rate."
                 },
                 "hs_code": {
-                  "type": "string",
-                  "description": "Harmonized System tariff code for this line on an export/customs invoice, e.g. 9207.90. Set it here to assign the HS code inline — no separate hs_codes_assign call needed."
+                  "type": "string"
                 },
                 "customs_description": {
                   "type": "string",
@@ -3576,14 +3660,13 @@
                     "manual",
                     null
                   ],
-                  "description": "Optional catalog source for this line ('shopify' or 'manual'). Paired with `external_id`, it links the line to a catalog product so issue-time customs enrichment (the product_customs_overlay — HS code / country of origin / customs description) fills in whatever this line leaves blank; an explicit hs_code/country_of_origin/customs_description on the line ALWAYS wins over the overlay. Omit for a free-text, non-catalog line."
+                  "description": "Optional catalog source for this line ('shopify' or 'manual'). Omit for a free-text, non-catalog line."
                 },
                 "external_id": {
                   "type": [
                     "string",
                     "null"
-                  ],
-                  "description": "Optional catalog id for this line (e.g. a Shopify variant gid like 'gid://shopify/ProductVariant/123' or its bare numeric id), paired with `product_source`. Enables the same automatic HS-code/customs enrichment the Shopify paid-order auto-flow gets — set it when you know the underlying catalog product so you don't have to type every customs fact by hand."
+                  ]
                 }
               },
               "required": [
@@ -3611,7 +3694,7 @@
           },
           "issued_at": {
             "type": ["string", "null"],
-            "description": "Issue date, ISO date (YYYY-MM-DD), for a date a person chose. Defaults to today in the issuer's time zone. The date decides the number's year: a date in a past year takes that year's series. A date after today is refused (issue_date_in_future)."
+            "description": "Issue date, ISO date (YYYY-MM-DD), for a date a person chose. Defaults to today in the issuer's time zone. A date after today is refused (issue_date_in_future)."
           },
           "due_at": {
             "type": "string"
@@ -3628,7 +3711,7 @@
               "string",
               "null"
             ],
-            "description": "The order's HUMAN name as the store and the customer both write it (e.g. \"#1149\"), NOT the numeric order id. Set it whenever you set shopify_order_id: it is PRINTED on the document PDF (an \"Order\" line in the header, so the order can be read straight off the invoice) and it is INDEXED for documents_search, so searching \"#1149\" finds this document. Omit it only when the order's name is genuinely unknown -- never invent one from the numeric id."
+            "description": "The order's HUMAN name as the store and the customer both write it (e.g. \"#1149\"), NOT the numeric order id."
           },
           "shipment_ref": {
             "type": [
@@ -3649,14 +3732,14 @@
               "string",
               "null"
             ],
-            "description": "Free-text notes printed on the document PDF, in a \"Notes\" block under the totals: a contract reference, extra customs information, a special mention the customer asked for. Non financial metadata, max 2000 characters, editable at any status (on a draft and on an already issued, sent or paid document alike). Null or an empty string clears it."
+            "description": "Non financial metadata, max 2000 characters, editable at any status (on a draft and on an already issued, sent or paid document alike). Null or an empty string clears it."
           },
           "customer_reference": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Your own reference for this customer in another system, e.g. their CRM record id; printed on the PDF as 'Customer ref'. Max 200 characters, trimmed; empty means none. Returned by documents_get as customer_reference."
+            "description": "Max 200 characters, trimmed; empty means none. Returned by documents_get as customer_reference."
           }
         },
         "required": [
@@ -3724,7 +3807,6 @@
           "counterparty": {
             "type": "object",
             "additionalProperties": true,
-            "description": "The customer the document is issued TO. legal_name, country, address and email are ALL required — a document cannot be issued to an unnamed, unaddressed or unreachable recipient. country is the ISO-3166 alpha-2 code (e.g. 'FR','DE','US') — it drives the tax classification (domestic / intra-EU / export).",
             "properties": {
               "contact_id": {
                 "type": [
@@ -3750,11 +3832,11 @@
               },
               "address": {
                 "type": "string",
-                "description": "The customer's postal address. REQUIRED — an issued document is a legal record and must say where its recipient is; issuance is refused without it."
+                "description": "The customer's postal address."
               },
               "email": {
                 "type": "string",
-                "description": "The customer's email address. REQUIRED — it is how the document reaches them and how the recipient is identified; issuance is refused without it."
+                "description": "The customer's email address."
               }
             },
             "required": [
@@ -3794,15 +3876,14 @@
                     "integer",
                     "string"
                   ],
-                  "description": "Optional discount for this line in MINOR currency units: the TOTAL discount for the whole line (subtracted once from quantity x unit_price_minor, before tax), NOT per unit and NOT a percentage. Example: 40 units at unit_price_minor 89900 with 38% off -> discount_minor 1366480 (40 x 89900 x 0.38); the line then totals 2229520 before tax. Must be between 0 and quantity x unit_price_minor. It prints on the PDF as a visible discount, never folded into the unit price. Omit for no discount."
+                  "description": "Must be between 0 and quantity x unit_price_minor. It prints on the PDF as a visible discount, never folded into the unit price. Omit for no discount."
                 },
                 "tax_rate_bp_override": {
                   "type": "integer",
                   "description": "Optional per-line tax rate in basis points (2000 = 20%); omit to inherit the document's classified rate."
                 },
                 "hs_code": {
-                  "type": "string",
-                  "description": "Harmonized System tariff code for this line on an export/customs invoice, e.g. 9207.90. Set it here to assign the HS code inline — no separate hs_codes_assign call needed."
+                  "type": "string"
                 },
                 "customs_description": {
                   "type": "string",
@@ -3822,14 +3903,13 @@
                     "manual",
                     null
                   ],
-                  "description": "Optional catalog source for this line ('shopify' or 'manual'). Paired with `external_id`, it links the line to a catalog product so issue-time customs enrichment (the product_customs_overlay — HS code / country of origin / customs description) fills in whatever this line leaves blank; an explicit hs_code/country_of_origin/customs_description on the line ALWAYS wins over the overlay. Omit for a free-text, non-catalog line."
+                  "description": "Optional catalog source for this line ('shopify' or 'manual'). Omit for a free-text, non-catalog line."
                 },
                 "external_id": {
                   "type": [
                     "string",
                     "null"
-                  ],
-                  "description": "Optional catalog id for this line (e.g. a Shopify variant gid like 'gid://shopify/ProductVariant/123' or its bare numeric id), paired with `product_source`. Enables the same automatic HS-code/customs enrichment the Shopify paid-order auto-flow gets — set it when you know the underlying catalog product so you don't have to type every customs fact by hand."
+                  ]
                 }
               },
               "required": [
@@ -3851,7 +3931,7 @@
           },
           "issued_at": {
             "type": ["string", "null"],
-            "description": "Issue date, ISO date (YYYY-MM-DD), for a date a person chose. Defaults to today in the issuer's time zone. The date decides the number's year: a date in a past year takes that year's series. A date after today is refused (issue_date_in_future)."
+            "description": "Issue date, ISO date (YYYY-MM-DD), for a date a person chose. Defaults to today in the issuer's time zone. A date after today is refused (issue_date_in_future)."
           },
           "due_at": {
             "type": "string"
@@ -3868,14 +3948,14 @@
               "string",
               "null"
             ],
-            "description": "Free-text notes printed on the document PDF, in a \"Notes\" block under the totals: a contract reference, extra customs information, a special mention the customer asked for. Non financial metadata, max 2000 characters, editable at any status (on a draft and on an already issued, sent or paid document alike). Null or an empty string clears it."
+            "description": "Non financial metadata, max 2000 characters, editable at any status (on a draft and on an already issued, sent or paid document alike). Null or an empty string clears it."
           },
           "customer_reference": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Your own reference for this customer in another system, e.g. their CRM record id; printed on the PDF as 'Customer ref'. Max 200 characters, trimmed; empty means none. Returned by documents_get as customer_reference."
+            "description": "Max 200 characters, trimmed; empty means none. Returned by documents_get as customer_reference."
           }
         },
         "required": [
@@ -4053,7 +4133,7 @@
               "string",
               "null"
             ],
-            "description": "Free-text notes printed on the document PDF, in a \"Notes\" block under the totals: a contract reference, extra customs information, a special mention the customer asked for. Non financial metadata, max 2000 characters, editable at any status (on a draft and on an already issued, sent or paid document alike). Null or an empty string clears it. Omit it to carry the source quote or proforma's own notes onto the invoice."
+            "description": "Non financial metadata, max 2000 characters, editable at any status (on a draft and on an already issued, sent or paid document alike). Null or an empty string clears it. Omit it to carry the source quote or proforma's own notes onto the invoice."
           }
         },
         "required": [
@@ -4067,7 +4147,7 @@
       }
     },
     "credit_note_create_and_issue": {
-      "description": "Create a credit note, a legal document, and issue it in one call. A credit note is a first-class legal document — its own gap-free CN-{YYYY}- number series, issued straight to 'issued' status (never a payable document — no due date, no mark_paid). Lines carry NEGATIVE unit_price_minor mirroring what is reversed on the original invoice, and the total must come out negative. To reverse/correct an ISSUED invoice, pass `original_document_id` set to that invoice's id — it MUST reference an existing invoice (validated before issuance) and, on success, the original invoice's lifecycle_log records a `credit_note_issued` entry naming this credit note. Handler-conditional gating against issuer.invoice_approval_threshold_minor (unset means always approve, threshold 0; a credit note with no original_document_id is ALWAYS approved), compared against the ABSOLUTE VALUE of the credit note's grand total (a -6,744€ correction gates exactly like a +6,744€ invoice would). For a legally clean reversal, ALSO call documents_record_refund on the original invoice to record the payment-side event — the credit note is the legal document, record_refund is the payment status change; do BOTH, never just one. ALWAYS pass original_document_id when you reverse an invoice: without it the over_credit cap (a credit note can never push an invoice's cumulative credited total past its own grand total) cannot apply. A Shopify refund or cancellation already issues its credit note automatically, and a cancellation of a partly credited invoice reverses only the REMAINDER, so check documents_for_orders before issuing one by hand rather than crediting twice. A hand built partial credit note carries its OWN tax: mirror the original's per line rates, because only the automatic refund path allocates the VAT for you. On a split order, credit the document that actually carries the refunded line, not whichever invoice you saw first.",
+      "description": "Create a credit note, a legal document, and issue it in one call. A credit note is a first-class legal document — its own gap-free CN-{YYYY}- number series, issued straight to 'issued' status (never a payable document — no due date, no mark_paid). Lines carry NEGATIVE unit_price_minor mirroring what is reversed on the original invoice, and the total must come out negative.",
       "searchKeywords": ["avoir", "crédit", "annulation", "remboursement", "rectificative", "émettre", "émission", "nouveau"],
       "requiredScopes": ["invoicing:documents:write"],
       "atomic": true,
@@ -4116,8 +4196,7 @@
                   "public_entity",
                   "non_registered_entity",
                   null
-                ],
-                "description": "E-invoicing: who the buyer is. business (a company or a registered professional), individual (a consumer), public_entity, or non_registered_entity. For a buyer in France it decides whether the invoice is an e-invoice; when nothing on file records it and the call does not say, issuing to a French buyer is refused with customer_kind_missing rather than guessed."
+                ]
               },
               "billing_line1": {
                 "type": [
@@ -4178,11 +4257,11 @@
               },
               "address": {
                 "type": "string",
-                "description": "The customer's postal address. REQUIRED — an issued document is a legal record and must say where its recipient is; issuance is refused without it."
+                "description": "The customer's postal address."
               },
               "email": {
                 "type": "string",
-                "description": "The customer's email address. REQUIRED — it is how the document reaches them and how the recipient is identified; issuance is refused without it."
+                "description": "The customer's email address."
               }
             },
             "required": [
@@ -4205,7 +4284,7 @@
               "string",
               "null"
             ],
-            "description": "Issue date, ISO date (YYYY-MM-DD). Defaults to today in the issuer's time zone. The date decides the number's year: a date in a past year takes that year's series. A date before the last number of that series is refused (issue_date_before_last_number), so is a date before the invoice it corrects (issue_date_before_original), and so is a date after today (issue_date_in_future)."
+            "description": "Issue date, ISO date (YYYY-MM-DD). Defaults to today in the issuer's time zone. A date before the last number of that series is refused (issue_date_before_last_number), so is a date before the invoice it corrects (issue_date_before_original), and so is a date after today (issue_date_in_future)."
           },
           "original_document_id": {
             "type": [
@@ -4233,7 +4312,7 @@
               "string",
               "null"
             ],
-            "description": "Free-text notes printed on the document PDF, in a \"Notes\" block under the totals: a contract reference, extra customs information, a special mention the customer asked for. Non financial metadata, max 2000 characters, editable at any status (on a draft and on an already issued, sent or paid document alike). Null or an empty string clears it."
+            "description": "Non financial metadata, max 2000 characters, editable at any status (on a draft and on an already issued, sent or paid document alike). Null or an empty string clears it."
           },
           "items": {
             "type": "array",
@@ -4411,7 +4490,7 @@
               "string",
               "null"
             ],
-            "description": "Free-text notes printed on the document PDF, in a \"Notes\" block under the totals: a contract reference, extra customs information, a special mention the customer asked for. Non financial metadata, max 2000 characters, editable at any status (on a draft and on an already issued, sent or paid document alike). Null or an empty string clears it. Applied to BOTH the credit note and the replacement invoice; omit it to carry the original invoice's own notes onto both."
+            "description": "Non financial metadata, max 2000 characters, editable at any status (on a draft and on an already issued, sent or paid document alike). Null or an empty string clears it. Applied to BOTH the credit note and the replacement invoice; omit it to carry the original invoice's own notes onto both."
           },
           "items": {
             "type": "array",
@@ -4724,7 +4803,7 @@
       }
     },
     "documents_update": {
-      "description": "Edit a document. On a DRAFT, every field is editable: counterparty snapshot fields (name/address/VAT id/email/country/linked contact), incoterm, issued_at/due_at, po_number, notes, tax_treatment, and a full LINE REPLACEMENT (when `lines` is passed it REPLACES every line and totals, subtotal/tax/grand total, are recomputed exactly like issuance). Once an INVOICE or a CREDIT NOTE is ISSUED its FINANCIAL SUBSTANCE is FROZEN: `lines`, `tax_treatment`, `counterparty_name`, and `counterparty_vat_id` can no longer be changed in place (the call fails `issued_document_immutable`). An issued invoice is legally immutable; to correct amounts, tax treatment, or the counterparty's legal identity, issue a CREDIT NOTE with credit_note_create_and_issue (referencing this invoice), never an in-place edit. A PROFORMA, a QUOTE or a PURCHASE ORDER is not an accounting document and is never frozen: on an issued one, every field above stays editable exactly like a draft, including a full `lines` replacement (totals recompute, the PDF re-renders, the edit is logged). This is THE way to change an issued proforma's amount or lines (e.g. a 0 value proforma that must declare 1.00): calling proforma_create_and_issue again for the same order does not change it. Harmless metadata (address, email, linked contact, incoterm, issued_at/due_at, po_number, notes) stays editable post-issue for a Sufio-style typo fix. An issued document's date stays in its number's year (issue_date_crosses_number_year, and an invoice or credit note then needs a credit note, never another date); an issued invoice or credit note's date also stays between its neighbouring numbers (issue_date_breaks_number_order) and on or before today (issue_date_in_future), a credit note stays on or after the invoice it corrects (issue_date_before_original) and that invoice on or before its credit notes (issue_date_after_credit_note), and an issued document cannot lose its date (issued_at_invalid). `number`, `type`, `status`, `issuer_profile_id`, and `currency` are never editable here (no such params). The customer's purchase order number IS a non financial reference like the address or due date: set or correct it with `po_number` on a draft or an already-issued document alike, and the PDF re-renders with the new value. Editing the underlying Shopify order is NOT a substitute for this: it changes the order without changing the document that was already sent to the customer. `notes` is free text in the same class: a contract reference, extra customs information or a special mention, printed on the PDF and settable on a draft or on an already issued, sent or paid document, capped at 2000 characters. A voided or cancelled document is fully immutable (the call fails `document_not_editable`). Every applied edit appends a lifecycle_log entry recording the changed field names and forces a fresh PDF re-render (a render FAILURE does not undo the edit: the edit persists and pdf_status reflects the failure; retry with documents_retry_pdf).",
+      "description": "Edit a document. On a DRAFT, every field is editable: counterparty snapshot fields (name/address/VAT id/email/country/linked contact), incoterm, issued_at/due_at, po_number, notes, tax_treatment, and a full LINE REPLACEMENT (when `lines` is passed it REPLACES every line and totals, subtotal/tax/grand total, are recomputed exactly like issuance). Once an INVOICE or a CREDIT NOTE is ISSUED its FINANCIAL SUBSTANCE is FROZEN: `lines`, `tax_treatment`, `counterparty_name`, and `counterparty_vat_id` can no longer be changed in place (the call fails `issued_document_immutable`).",
       "searchKeywords": ["modifier", "corriger", "edit", "fix", "correct", "invoice"],
       "requiredScopes": ["invoicing:documents:write"],
       "gated": true,
@@ -4744,7 +4823,7 @@
         "properties": {
           "buyer_is_consumer": {
             "type": "boolean",
-            "description": "Only for an EU buyer in another country with NO VAT number whom the org's data shows as a business: set true when the buyer really is a private consumer (charged their country's VAT). The approval card shows it."
+            "description": "The approval card shows it."
           },
           "id": {
             "type": "string",
@@ -4767,14 +4846,14 @@
               "string",
               "null"
             ],
-            "description": "Counterparty shipping (ship to) postal address, freeform and multi-line. Set it ONLY when the parcel goes somewhere other than the billing address: the PDF then prints a separate SHIP TO block next to BILL TO. Leave it null when both addresses are the same (an identical value is not printed twice). Render only: the tax treatment is still derived from counterparty_country, never from this address."
+            "description": "Counterparty shipping (ship to) postal address, freeform and multi-line."
           },
           "counterparty_shipping_name": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Consignee name for the shipping (ship to) block, when the parcel is addressed to someone other than the billing customer (a forwarder, a site contact, a reseller's end customer). Falls back to counterparty_name when null."
+            "description": "Falls back to counterparty_name when null."
           },
           "counterparty_vat_id": {
             "type": [
@@ -4839,14 +4918,14 @@
               "string",
               "null"
             ],
-            "description": "Free-text notes printed on the document PDF, in a \"Notes\" block under the totals: a contract reference, extra customs information, a special mention the customer asked for. Non financial metadata, max 2000 characters, editable at any status (on a draft and on an already issued, sent or paid document alike). Null or an empty string clears it."
+            "description": "Non financial metadata, max 2000 characters, editable at any status (on a draft and on an already issued, sent or paid document alike). Null or an empty string clears it."
           },
           "customer_reference": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Your own reference for this customer in another system, e.g. their CRM record id; printed on the PDF as 'Customer ref'. Editable at any status. Null or an empty string clears it."
+            "description": "Editable at any status. Null or an empty string clears it."
           },
           "tax_treatment": {
             "type": [
@@ -4856,7 +4935,7 @@
           },
           "lines": {
             "type": "array",
-            "description": "REPLACES every line on the document. Omit this param entirely to leave lines untouched. When provided, subtotal_minor/tax_total_minor/grand_total_minor are recomputed from these lines (each line's tax_rate_bp_override, else the document's classified rate). Under an issuer profile with prices_include_tax on, unit_price_minor here is treated as GROSS (tax included) and is divided down to net before storage, every time this is called, with no way to tell a freshly typed price apart from an echoed one. So a line read back from documents_get is ALREADY NET: never echo those values back unchanged in a future call. Read the others back only to know what they are, then resend the lines you actually mean as newly typed gross prices — or better, omit `lines` from the call entirely when none of them changed. Replaying read-back lines divides the tax out again and silently shrinks the stored price a little more on every call.",
+            "description": "REPLACES every line on the document. Omit this param entirely to leave lines untouched. When provided, subtotal_minor/tax_total_minor/grand_total_minor are recomputed from these lines (each line's tax_rate_bp_override, else the document's classified rate). Under an issuer profile with prices_include_tax on, unit_price_minor here is treated as GROSS (tax included) and is divided down to net before storage, every time this is called, with no way to tell a freshly typed price apart from an echoed one. So a line read back from documents_get is ALREADY NET: never echo those values back unchanged in a future call. Read the others back only to know what they are, then resend the lines you actually mean as newly typed gross prices — or better, omit `lines` from the call entirely when none of them changed.",
             "items": {
               "type": "object",
               "additionalProperties": false,
@@ -4884,8 +4963,7 @@
                   "description": "Optional per-line tax rate in basis points (2000 = 20%); omit to inherit the document's classified rate."
                 },
                 "hs_code": {
-                  "type": "string",
-                  "description": "Harmonized System tariff code for this line on an export/customs invoice, e.g. 9207.90."
+                  "type": "string"
                 },
                 "customs_description": {
                   "type": "string",

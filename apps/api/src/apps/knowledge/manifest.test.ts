@@ -15,6 +15,19 @@ import { assertCanReadDocumentRow, type KnowledgeActor } from "./service"
 // The app guide is a short core plus sections keyed by the tools they are
 // about (app-guide.ts); these assertions read the whole guide.
 type ManifestGuide = string | { core: string; sections?: Array<{ tools: string[]; text: string }> }
+/** A tool's description, then every guide section naming it: what the model reads while the tool
+ *  is loaded. A description's text past its first 600 characters reads from such a section. */
+const toolText = (m: { tools?: unknown; agentInstructions?: unknown }, tool: string): string => {
+  const def = (m.tools as Record<string, { description?: string }> | undefined)?.[tool]
+  const g = m.agentInstructions as
+    | { sections?: Array<{ tools: string[]; text: string }> }
+    | string
+    | undefined
+  const sections =
+    g && typeof g === "object" ? (g.sections ?? []).filter((s) => s.tools.includes(tool)) : []
+  return [def?.description ?? "", ...sections.map((s) => s.text)].join("\n\n")
+}
+
 const guideText = (m: { agentInstructions?: unknown }): string => {
   const g = m.agentInstructions as ManifestGuide | undefined
   if (!g) return ""
@@ -129,8 +142,7 @@ describe("knowledge app manifest (T14)", () => {
     expect(ai).toMatch(/DATES ARE FIGURES TOO[,:] NEVER FABRICATE AN EVENT DATE OR SCHEDULE/i)
     expect(ai).toMatch(/RELATIVE window/i)
     expect(ai).toMatch(/bound a recurring routine by its cron, not by an invented date doc/i)
-    const tools = manifest.tools as Record<string, { description?: string }>
-    const createDesc = tools.create?.description ?? ""
+    const createDesc = toolText(manifest, "create")
     expect(createDesc).toMatch(/NEVER FABRICATE DATES OR AN EVENT SCHEDULE INTO A DOC/i)
     expect(createDesc).toMatch(
       /manufacturing concrete dates and persisting them here is a fabrication/i,

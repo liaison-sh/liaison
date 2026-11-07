@@ -910,7 +910,8 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.6 (main): the offline token stays host-side (ctx.fetch auth); the verifier checks by config key.
     // 0.4.7 (main): backfill-customers and scope-seed are onDemand (a job with neither schedule nor onDemand never registers).
     // 0.4.9: both of the above, merged.
-    expect(m.version).toBe("0.4.9")
+    // 0.4.10: the longest descriptions past 600 characters read from guide sections.
+    expect(m.version).toBe("0.4.10")
   })
 
   it("read_all_orders is a protected scope behind the org's full-order-history toggle", () => {

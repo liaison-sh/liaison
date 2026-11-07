@@ -1044,7 +1044,10 @@ things per organization, with `liaison org caps` or the `limits` section above:
 - **App runs, app calls and app CPU per day**: the organization's app runs
   (`appRunsPerDay`), the calls apps running on Workers make back to the
   server (`appBridgeCallsPerDay`) and their CPU milliseconds
-  (`appCpuMsPerDay`), per UTC day. Runs and calls are counted as each run
+  (`appCpuMsPerDay`), per UTC day. Only runs on Workers make counted calls:
+  a run on the local sandbox (an app not on Workers, or one the server moved
+  back to it after loader failures) counts 0 calls, so `appBridgeCallsPerDay`
+  does not limit it; `appRunsPerDay` does. Runs and calls are counted as each run
   ends; CPU is what the Workers loader measured, pulled every hour, so that
   cap applies from the first run after the pull that shows it reached. Past
   a limit, until midnight UTC:

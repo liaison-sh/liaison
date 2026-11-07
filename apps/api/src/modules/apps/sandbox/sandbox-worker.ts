@@ -245,6 +245,28 @@ async function handleExecute(req: ExecuteRequest): Promise<void> {
   // Declared out here: every way out of the try disposes them. One live handle keeps its whole
   // context, bundle included, in the runtime every execution of this worker shares.
   const handles: QuickJSHandle[] = []
+  // A bridge answer that lands after the deadline runs guest code (the
+  // deferred's resolve) under an interrupt handler that now says stop: QuickJS
+  // throws "interrupted" out of resolve/reject. Thrown from the IPC message
+  // handler, that used to kill this process ("Sandbox worker crashed (exit 1)"
+  // instead of the timeout). It ends the execution instead, as a timeout.
+  let interrupt: ((err: unknown) => void) | undefined
+  const interrupted = new Promise<never>((_, reject) => {
+    interrupt = reject
+  })
+  interrupted.catch(() => {})
+  const settleGuarded = (settle: () => void, deferred: { dispose(): void }): void => {
+    try {
+      settle()
+    } catch (err) {
+      try {
+        deferred.dispose()
+      } catch {
+        /* ok */
+      }
+      interrupt?.(err)
+    }
+  }
   try {
     // 1. Inject bridge proxy functions using native QuickJS promises
     for (const method of req.bridgeMethods) {
@@ -256,22 +278,33 @@ async function handleExecute(req: ExecuteRequest): Promise<void> {
 
         // Store deferred for when IPC result arrives
         pendingBridgeCalls.set(callId, {
-          resolve: (data) => {
-            const json = JSON.stringify(data ?? null)
-            const parsed = ctx.evalCode(`(${json})`)
-            if (parsed.error) {
-              deferred.reject(parsed.error)
-              parsed.error.dispose()
-            } else {
-              deferred.resolve(parsed.value)
-              parsed.value.dispose()
-            }
-          },
-          reject: (msg, typed) => {
-            const errHandle = newBridgeRejection(ctx, msg, typed)
-            deferred.reject(errHandle)
-            errHandle.dispose()
-          },
+          resolve: (data) =>
+            settleGuarded(() => {
+              const json = JSON.stringify(data ?? null)
+              const parsed = ctx.evalCode(`(${json})`)
+              if (parsed.error) {
+                try {
+                  deferred.reject(parsed.error)
+                } finally {
+                  parsed.error.dispose()
+                }
+              } else {
+                try {
+                  deferred.resolve(parsed.value)
+                } finally {
+                  parsed.value.dispose()
+                }
+              }
+            }, deferred),
+          reject: (msg, typed) =>
+            settleGuarded(() => {
+              const errHandle = newBridgeRejection(ctx, msg, typed)
+              try {
+                deferred.reject(errHandle)
+              } finally {
+                errHandle.dispose()
+              }
+            }, deferred),
           dispose: () => deferred.dispose(),
         })
 
@@ -372,7 +405,17 @@ async function handleExecute(req: ExecuteRequest): Promise<void> {
       // deferred.settled pump takes over from there.
       const resolvedPromise = ctx.resolvePromise(callResult.value)
       rt.executePendingJobs()
-      const resolved = await resolvedPromise
+      let resolved: Awaited<typeof resolvedPromise>
+      try {
+        resolved = await Promise.race([resolvedPromise, interrupted])
+      } catch (err) {
+        try {
+          callResult.value.dispose()
+        } catch {
+          /* ok */
+        }
+        throw err
+      }
       try {
         callResult.value.dispose()
       } catch {

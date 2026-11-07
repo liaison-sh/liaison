@@ -659,6 +659,7 @@ export async function computeApprovalAttentionItems(
   // read fresh each time, so the row comes back with no write. A draft whose check says it can
   // no longer go out as written shows why, and is not counted.
   const guards = await readGuardsQuietly(tx, orgId, rows)
+  const routeNames = await readRouteNames(tx, orgId, callerUserId, rows, routes)
 
   const items: AttentionItem[] = []
   for (const r of rows) {
@@ -789,6 +790,11 @@ export async function computeApprovalAttentionItems(
         // Whose the row is, and where it sits on this viewer's Home.
         route,
         placement,
+        // The names Home's "why" line says, for a row routed to a person or with a blocked stand-in.
+        ...(() => {
+          const line = routeLineOf(route, routeNames)
+          return line ? { routeLine: line } : {}
+        })(),
         // A bundle reads as external when any end of it is (the chip shows the outcome).
         approvalImpact:
           shown !== r &&
@@ -856,4 +862,60 @@ export async function computeApprovalAttentionItems(
     })
   }
   return items
+}
+
+/** The names a row's "why" line says (`metadata.routeLine`): who it is for, who stands in. */
+export interface RouteLine {
+  forName?: string
+  standInName?: string
+  blockedName?: string
+}
+
+function routeLineOf(route: ApprovalRoute, names: Map<string, string>): RouteLine | null {
+  if (route.to !== "person") return null
+  const line: RouteLine = {}
+  const forName = names.get(route.userId)
+  if (forName) line.forName = forName
+  const standInName = route.standIn ? names.get(route.standIn) : undefined
+  if (standInName) line.standInName = standInName
+  const blockedName = route.blockedStandIn ? names.get(route.blockedStandIn) : undefined
+  if (blockedName) line.blockedName = blockedName
+  return line
+}
+
+/**
+ * The names of the people the feed's routes name, read once as the viewer. A name that cannot be
+ * read leaves the line without it, never a failed feed.
+ */
+async function readRouteNames(
+  tx: RlsClient,
+  orgId: string,
+  callerUserId: string,
+  rows: readonly { id: string }[],
+  routes: RoutedRows,
+): Promise<Map<string, string>> {
+  const ids = new Set<string>()
+  for (const r of rows) {
+    const route = routes.route(r.id)
+    if (route.to !== "person") continue
+    for (const id of [route.userId, route.standIn, route.blockedStandIn]) {
+      if (id && id !== callerUserId) ids.add(id)
+    }
+  }
+  const out = new Map<string, string>()
+  if (ids.size === 0) return out
+  try {
+    const found = extractRows<{ id: string; name: string }>(
+      await tx.execute(drizzleSql`
+        SELECT id, name FROM ${K}.users
+        WHERE org_id = ${orgId}::uuid AND id IN (${drizzleSql.join(
+          [...ids].map((id) => drizzleSql`${id}::uuid`),
+          drizzleSql`, `,
+        )})`),
+    )
+    for (const u of found) out.set(u.id, u.name)
+  } catch (err) {
+    log.warn({ err, orgId }, "could not read the names of the approval routes")
+  }
+  return out
 }

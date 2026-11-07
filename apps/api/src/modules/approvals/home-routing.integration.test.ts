@@ -898,3 +898,155 @@ describe("home routing: who a pending approval is for", () => {
     })
   })
 })
+
+describe("home routing: back from away, and who is away in lists of people", () => {
+  const p: Record<string, string> = {}
+
+  beforeAll(async () => {
+    await acquireTestLock()
+    ORG = (await createTestOrg()).id
+    for (const name of ["elodie", "tom", "sara", "owner", "lea"]) {
+      p[name] = (await minimal.person(ORG, { name: `Fixture ${name}` })).id
+    }
+    for (const name of ["elodie", "tom", "sara", "owner"]) {
+      await minimal.grantScope(p[name] as string, "projects:approve")
+    }
+    THREAD = await minimal.thread(ORG, p.elodie as string, { title: "Away fixtures" })
+  }, 180_000)
+
+  afterAll(async () => {
+    await releaseTestLock()
+  })
+
+  async function range(userId: string, from: string, to: string | null, extra = {}) {
+    const [r] = (await sql.unsafe(
+      insertSql(
+        "kernel.away_ranges",
+        {
+          org_id: ORG,
+          user_id: userId,
+          starts_on: { raw: from },
+          ends_on: to === null ? null : { raw: to },
+          source: "said",
+          ...extra,
+        },
+        { returning: "id" },
+      ),
+    )) as Array<{ id: string }>
+    return (r as { id: string }).id
+  }
+
+  /** A request decided two days ago by `by`, recorded as taken for `forId`. */
+  async function decidedFor(forId: string, by: string, spec: Partial<RowSpec> & { title: string }) {
+    const id = await insertRow({
+      requestedBy: spec.requestedBy ?? (p.lea as string),
+      notify: spec.notify ?? [forId, by],
+      ...spec,
+    })
+    await sql`
+      UPDATE kernel.approval_requests
+      SET status = 'approved', decided_by = ${by}::uuid, decided_at = now() - INTERVAL '2 days',
+          metadata = jsonb_build_object('decidedFor', jsonb_build_object('userId', ${forId}::text, 'as', 'next_in_line'))
+      WHERE id = ${id}::uuid`
+    return id
+  }
+
+  async function recapOf(userId: string) {
+    const { getAwayRecapAttentionItems } = await import("~/modules/approvals/away-recap")
+    const ctx = await ctxOf(userId)
+    return withRlsContext(ctx, (tx) => getAwayRecapAttentionItems(tx, ORG, userId))
+  }
+
+  it("one readable, one restricted, one owner-routed: only the readable shows", async () => {
+    const elodie = p.elodie as string
+    const tom = p.tom as string
+    await range(elodie, "current_date - 5", "current_date - 1")
+    await decidedFor(elodie, tom, { title: "Readable refund" })
+    // Not notified to her: her own read of the requests does not return it.
+    await decidedFor(elodie, tom, { title: "Restricted refund", notify: [tom] })
+    await decidedFor(elodie, tom, {
+      title: "Owner refund",
+      requestedBy: p.owner as string,
+      notify: [p.owner as string, elodie],
+      resourceOwner: p.owner as string,
+    })
+    const items = await recapOf(elodie)
+    expect(items).toHaveLength(1)
+    const recap = (
+      items[0]!.metadata as { awayRecap: { lines: { title: string }[]; more: number } }
+    ).awayRecap
+    expect(recap.lines.map((l) => l.title)).toEqual(["Readable refund"])
+    expect(recap.more).toBe(0)
+    expect(JSON.stringify(items)).not.toContain("Restricted refund")
+    expect(JSON.stringify(items)).not.toContain("Owner refund")
+  })
+
+  it("no decision: no row", async () => {
+    // Tom was away too and reads the requests he decided for Élodie: none was taken for him.
+    await range(p.tom as string, "current_date - 4", "current_date - 1")
+    expect(await recapOf(p.tom as string)).toEqual([])
+  })
+
+  it("at most 3 and N more, and Dismiss keeps it gone", async () => {
+    const sara = p.sara as string
+    const rangeId = await range(sara, "current_date - 6", "current_date - 1")
+    for (const n of [1, 2, 3, 4, 5]) {
+      await decidedFor(sara, p.tom as string, { title: `Sara refund ${n}` })
+    }
+    const [item] = await recapOf(sara)
+    const recap = (item!.metadata as { awayRecap: { lines: unknown[]; more: number } }).awayRecap
+    expect(recap.lines).toHaveLength(3)
+    expect(recap.more).toBe(2)
+    expect(item?.persisted).toBeUndefined()
+    const { dismissAwayRecap } = await import("~/modules/approvals/away-recap")
+    const ctx = await ctxOf(sara)
+    expect(await withRlsContext(ctx, (tx) => dismissAwayRecap(tx, ORG, sara, rangeId))).toBe(true)
+    expect(await recapOf(sara)).toEqual([])
+    // Someone else's range cannot be dismissed by her.
+    const tomRange = await range(p.lea as string, "current_date - 3", "current_date - 1")
+    expect(await withRlsContext(ctx, (tx) => dismissAwayRecap(tx, ORG, sara, tomRange))).toBe(false)
+  })
+
+  it("users_search has away with no source or reason, the same away Home reads, standing default included", async () => {
+    const { handleUsersSearch } = await import("~/modules/agent/tools/user-tools")
+    const { readAwayWorld } = await import("~/modules/approvals/route-world")
+    const owner = p.owner as string
+    // Away today with no next in line on the range: the standing one is read as Home reads it.
+    await range(owner, "current_date - 1", "current_date + 3")
+    await sql.unsafe(
+      `${insertSql("kernel.user_preferences", {
+        user_id: owner,
+        next_in_line_id: p.tom as string,
+      })} ON CONFLICT (user_id) DO UPDATE SET next_in_line_id = EXCLUDED.next_in_line_id`,
+    )
+    const ctx = await ctxOf(p.elodie as string)
+    const { result, world } = await withRlsContext(ctx, async (db) => ({
+      result: await handleUsersSearch(
+        { query: "Fixture" },
+        { db, userId: p.elodie as string, orgId: ORG },
+      ),
+      world: await readAwayWorld(db, ORG),
+    }))
+    const ownerRow = result.items.find((i) => i.id === owner)
+    expect(ownerRow?.away).toEqual({ until: world.away(owner)?.until })
+    expect(Object.keys(ownerRow?.away ?? {})).toEqual(["until"])
+    expect(world.away(owner)?.nextInLineId).toBe(p.tom)
+    // Who is listed does not change: everyone active, away or not.
+    expect(result.items.map((i) => i.id).sort()).toEqual(
+      [p.elodie, p.tom, p.sara, p.owner, p.lea].map(String).sort(),
+    )
+    expect(result.items.find((i) => i.id === p.lea)?.away).toBeNull()
+  })
+
+  it("recurring reads away today, back on the next working day, and users_list carries it", async () => {
+    const { handleUsersList } = await import("~/modules/agent/tools/admin-tools")
+    const lea = p.lea as string
+    const [{ dow }] = (await sql`SELECT extract(isodow FROM current_date)::int AS dow`) as Array<{
+      dow: number
+    }>
+    await range(lea, "current_date - 14", null, { weekdays: `{${dow}}` })
+    const listed = await handleUsersList({}, { orgId: ORG, userId: p.elodie as string } as never)
+    const [{ today }] = (await sql`SELECT current_date::text AS today`) as Array<{ today: string }>
+    expect(listed.users.find((u) => u.id === lea)?.away).toEqual({ until: today })
+  })
+})

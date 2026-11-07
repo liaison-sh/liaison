@@ -7713,4 +7713,26 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.entityDiscussion.unavailable": "La discussion n'a pas pu être ouverte.",
   "kernel.entityDiscussion.retry": "Réessayer",
   "kernel.entityDiscussion.loading": "Ouverture de la discussion…",
+  "kernel.homeRouting.othersGroup": "Pour d'autres, vous pouvez aussi approuver",
+  "kernel.homeRouting.someone": "un collègue",
+  "kernel.homeRouting.standingIn":
+    "Pour {{name}}, absent jusqu'au {{date}}. Vous êtes son remplaçant.",
+  "kernel.homeRouting.othersAsked": "Pour {{name}}, qui l'a demandé. Vous pouvez aussi approuver",
+  "kernel.homeRouting.othersOnItem":
+    "Pour {{name}}, à qui c'est attribué. Vous pouvez aussi approuver",
+  "kernel.homeRouting.othersManager":
+    "Pour {{name}}, qui gère ce compte. Vous pouvez aussi approuver",
+  "kernel.homeRouting.blocked":
+    "Pour vous : {{blocked}} ne peut pas approuver ceci pendant l'absence de {{name}}",
+  "kernel.homeRouting.mineAsked": "Vous l'avez demandé",
+  "kernel.homeRouting.mineOnItem": "Pour vous : attribué à vous",
+  "kernel.homeRouting.mineManager": "Pour vous : vous gérez ce compte",
+  "kernel.homeRouting.recapApproved": "{{title}} : approuvé par {{name}}",
+  "kernel.homeRouting.recapDenied": "{{title}} : refusé par {{name}}",
+  "kernel.homeRouting.recapMore": "et {{count}} de plus",
+  "kernel.homeRouting.dismissFailed": "Impossible de fermer ceci. Réessayez.",
+  "kernel.homeRouting.awayUntil": "absent jusqu'au {{date}}",
+  "kernel.homeRouting.awayToday": "absent aujourd'hui",
+  "kernel.homeRouting.awayTodayBack": "absent aujourd'hui, de retour {{day}}",
+  "kernel.homeRouting.recapTitle": "Pendant votre absence",
 }

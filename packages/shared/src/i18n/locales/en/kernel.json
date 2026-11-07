@@ -1321,8 +1321,6 @@
   "hiIMLiaison": "Hi, I'm Liaison",
   "home": "Home",
   "homeAlso": "also",
-  "homeApprovalsHidePeers": "Hide requests from colleagues who can approve their own",
-  "homeApprovalsShowPeers": "Show {{count}} more, from colleagues who can approve their own requests",
   "homeCardActivity": "Activity",
   "homeCardAlertsMessages": "Alerts & messages",
   "homeCardApprovals": "Approvals",
@@ -1634,8 +1632,6 @@
     "needsYou": "Needs you",
     "nothingNeedsYou": "Nothing needs you",
     "minutesLeft": "{{count}} min",
-    "peersShow": "Show {{count}} from peers",
-    "peersHide": "Hide peers' requests",
     "accessRequests": "Access requests",
     "yourQueues": "Your queues",
     "queuesChip": "Queues",
@@ -6498,5 +6494,25 @@
     "briefNone": "No brief set up. Ask your agent for one each morning, and say what you want in it.",
     "briefSetUp": "Set up a morning brief",
     "briefOpen": "Open"
+  },
+  "homeRouting": {
+    "othersGroup": "For others, you can also approve",
+    "someone": "a colleague",
+    "standingIn": "For {{name}}, away until {{date}}. You are next in line.",
+    "othersAsked": "For {{name}}, who asked for this. You can also approve",
+    "othersOnItem": "For {{name}}, assigned to them. You can also approve",
+    "othersManager": "For {{name}}, who manages this account. You can also approve",
+    "blocked": "For you: {{blocked}} cannot approve this while {{name}} is away",
+    "mineAsked": "You asked for this",
+    "mineOnItem": "For you: assigned to you",
+    "mineManager": "For you: you manage this account",
+    "recapApproved": "{{title}}: approved by {{name}}",
+    "recapDenied": "{{title}}: rejected by {{name}}",
+    "recapMore": "and {{count}} more",
+    "dismissFailed": "Could not dismiss this. Try again.",
+    "awayUntil": "away until {{date}}",
+    "awayToday": "away today",
+    "awayTodayBack": "away today, back {{day}}",
+    "recapTitle": "While you were away"
   }
 }

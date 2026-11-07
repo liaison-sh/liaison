@@ -1318,8 +1318,6 @@
   "hiIMLiaison": "Bonjour, je suis Liaison",
   "home": "Accueil",
   "homeAlso": "aussi",
-  "homeApprovalsHidePeers": "Masquer les demandes des collègues qui peuvent approuver les leurs",
-  "homeApprovalsShowPeers": "Afficher {{count}} de plus, venant de collègues qui peuvent approuver leurs propres demandes",
   "homeCardActivity": "Activité",
   "homeCardAlertsMessages": "Alertes et messages",
   "homeCardApprovals": "Approbations",
@@ -1631,8 +1629,6 @@
     "needsYou": "À traiter",
     "nothingNeedsYou": "Rien à traiter",
     "minutesLeft": "{{count}} min",
-    "peersShow": "Afficher {{count}} de collègues",
-    "peersHide": "Masquer les demandes des collègues",
     "accessRequests": "Demandes d'accès",
     "yourQueues": "Vos files d'attente",
     "queuesChip": "Files d'attente",
@@ -6495,5 +6491,25 @@
     "briefNone": "Aucun point du matin. Demandez-en un à votre agent chaque matin, et dites ce que vous voulez y voir.",
     "briefSetUp": "Mettre en place un point du matin",
     "briefOpen": "Ouvrir"
+  },
+  "homeRouting": {
+    "othersGroup": "Pour d'autres, vous pouvez aussi approuver",
+    "someone": "un collègue",
+    "standingIn": "Pour {{name}}, absent jusqu'au {{date}}. Vous êtes son remplaçant.",
+    "othersAsked": "Pour {{name}}, qui l'a demandé. Vous pouvez aussi approuver",
+    "othersOnItem": "Pour {{name}}, à qui c'est attribué. Vous pouvez aussi approuver",
+    "othersManager": "Pour {{name}}, qui gère ce compte. Vous pouvez aussi approuver",
+    "blocked": "Pour vous : {{blocked}} ne peut pas approuver ceci pendant l'absence de {{name}}",
+    "mineAsked": "Vous l'avez demandé",
+    "mineOnItem": "Pour vous : attribué à vous",
+    "mineManager": "Pour vous : vous gérez ce compte",
+    "recapApproved": "{{title}} : approuvé par {{name}}",
+    "recapDenied": "{{title}} : refusé par {{name}}",
+    "recapMore": "et {{count}} de plus",
+    "dismissFailed": "Impossible de fermer ceci. Réessayez.",
+    "awayUntil": "absent jusqu'au {{date}}",
+    "awayToday": "absent aujourd'hui",
+    "awayTodayBack": "absent aujourd'hui, de retour {{day}}",
+    "recapTitle": "Pendant votre absence"
   }
 }

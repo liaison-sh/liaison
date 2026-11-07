@@ -6477,5 +6477,23 @@
     "unavailable": "La discussion n'a pas pu être ouverte.",
     "retry": "Réessayer",
     "loading": "Ouverture de la discussion…"
+  },
+  "homeStatusOtherWork": "DANS VOS AUTRES TÂCHES",
+  "homeDecisions": {
+    "notNow": "Plus tard",
+    "setAside": "Mis de côté jusqu'à lundi. Il reviendra alors.",
+    "setAsideFailed": "Impossible de mettre ceci de côté. Réessayez.",
+    "askDraft": "Demander un brouillon à l'agent",
+    "askDraftMessage": "Rédige ce qu'il faut pour ceci : {{summary}}",
+    "askDraftFailed": "Impossible de joindre votre agent. Réessayez.",
+    "dismiss": "Retirer",
+    "guardClear": "Ne partira pas si on vous répond d'abord, même après votre accord.",
+    "sourceFailedTitle": "Impossible de charger ce que {{app}} a pour vous",
+    "sourceFailedBody": "{{app}} n'a pas répondu. Ce qui y attend est en sécurité et attend toujours.",
+    "retry": "Réessayer",
+    "briefTitle": "Le point du jour",
+    "briefNone": "Aucun point du matin. Demandez-en un à votre agent chaque matin, et dites ce que vous voulez y voir.",
+    "briefSetUp": "Mettre en place un point du matin",
+    "briefOpen": "Ouvrir"
   }
 }

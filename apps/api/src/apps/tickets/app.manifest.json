@@ -106,7 +106,7 @@
       }
     ]
   },
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "Customer-facing ticketing: local foundations (7.1)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -3896,7 +3896,7 @@
       "icon": "TicketsIcon",
       "label": "Tickets",
       "labelKey": "kernel.nav.tickets",
-      "order": 11,
+      "order": 12,
       "tabAction": {
         "type": "inbox",
         "entityId": "inbox",

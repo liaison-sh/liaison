@@ -117,8 +117,7 @@ describe("the attention feed chrome follows the reader's language", () => {
     renderHome("fr")
     const status = screen.getByTestId("home-status").textContent ?? ""
     expect(status).toContain("RIEN D'URGENT")
-    expect(status).toContain("EN ATTENTE DANS")
-    expect(status).toContain("DOMAINE")
+    expect(status).toContain("DANS VOS AUTRES TÂCHES")
   })
 
   // D21: the card holds the alerts only (conversations left Home), so its

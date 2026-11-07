@@ -6480,5 +6480,23 @@
     "unavailable": "The discussion could not be opened.",
     "retry": "Retry",
     "loading": "Opening the discussion…"
+  },
+  "homeStatusOtherWork": "IN YOUR OTHER WORK",
+  "homeDecisions": {
+    "notNow": "Not now",
+    "setAside": "Set aside until Monday. It comes back then.",
+    "setAsideFailed": "Could not set this aside. Try again.",
+    "askDraft": "Ask agent to draft",
+    "askDraftMessage": "Draft what this needs: {{summary}}",
+    "askDraftFailed": "Could not reach your agent. Try again.",
+    "dismiss": "Dismiss",
+    "guardClear": "Will not go out if they reply first, even after you approve.",
+    "sourceFailedTitle": "Could not load what {{app}} has for you",
+    "sourceFailedBody": "{{app}} did not answer. Anything waiting there is safe and still waiting.",
+    "retry": "Retry",
+    "briefTitle": "Today's brief",
+    "briefNone": "No brief set up. Ask your agent for one each morning, and say what you want in it.",
+    "briefSetUp": "Set up a morning brief",
+    "briefOpen": "Open"
   }
 }

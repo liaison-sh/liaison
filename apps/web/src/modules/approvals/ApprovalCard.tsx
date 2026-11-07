@@ -62,6 +62,7 @@ import { emailBodyPreset } from "~/modules/approvals/email-body"
 import { createPayloadFileNames } from "~/modules/approvals/payload-file-names"
 import SkillApprovalView from "~/modules/approvals/SkillApprovalView"
 import { SummaryLineText } from "~/modules/approvals/SummaryLineText"
+import { sendGuardLine } from "~/modules/approvals/send-guard-line"
 import { useEditableDraft } from "~/modules/approvals/useEditableDraft"
 import { ComposerAssist } from "~/modules/assist/ComposerAssist"
 import { DictationMic, RecorderRow } from "~/modules/assist/RecorderBar"
@@ -1683,41 +1684,7 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
   const decidable = () => !editing() && !denying() && isPending() && canApprove()
   const showApprove = () => decidable() && !guardStopped() && !guardHeld()
   const showSendNow = () => decidable() && guardHeld()
-  const guardLine = (): string | null => {
-    const g = sendGuard()
-    if (!g) return null
-    const who = g.who ?? i18n.t("kernel.approvalsUi.sendGuard.theOtherSide")
-    switch (g.state) {
-      case "held":
-        return i18n.t("kernel.approvalsUi.sendGuard.held", {
-          who,
-          until: g.holdUntil
-            ? new Date(g.holdUntil).toLocaleDateString(i18n.locale(), {
-                day: "numeric",
-                month: "short",
-              })
-            : "",
-        })
-      case "replied":
-        return g.record || g.quote
-          ? i18n.t("kernel.approvalsUi.sendGuard.replied", { who })
-          : i18n.t("kernel.approvalsUi.sendGuard.repliedElsewhere")
-      case "bounced":
-        return i18n.t("kernel.approvalsUi.sendGuard.bounced")
-      case "opted_out":
-        return i18n.t("kernel.approvalsUi.sendGuard.optedOut", {
-          who: (g.optedOut ?? []).join(", ") || who,
-        })
-      case "ref_stop":
-        return g.label
-          ? i18n.t("kernel.approvalsUi.sendGuard.refStopLabel", { label: g.label })
-          : i18n.t("kernel.approvalsUi.sendGuard.refStop")
-      case "unavailable":
-        return i18n.t("kernel.approvalsUi.sendGuard.unavailable")
-      default:
-        return null
-    }
-  }
+  const guardLine = (): string | null => sendGuardLine(sendGuard(), i18n.t, i18n.locale())
 
   /**
    * Task 9.9. A sealed send that re-attaches stored files decrypts them HERE at

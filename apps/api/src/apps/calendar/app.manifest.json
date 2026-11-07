@@ -735,7 +735,7 @@
       "icon": "CalendarIcon",
       "label": "Calendar",
       "labelKey": "kernel.nav.calendar",
-      "order": 12,
+      "order": 13,
       "tabAction": {
         "type": "month",
         "entityId": "calendar",

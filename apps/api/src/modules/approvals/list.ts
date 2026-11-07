@@ -486,10 +486,15 @@ async function readStoppedGuards(
  * providers at a list read; the single read asks them too); a closed one shows what its send
  * recorded. The check at send stays the authority.
  */
+type GuardRow = Pick<
+  RawApprovalRow,
+  "id" | "status" | "tool_name" | "current_payload" | "requested_by"
+>
+
 async function readSendGuards(
   db: RlsClient,
   orgId: string,
-  rows: RawApprovalRow[],
+  rows: GuardRow[],
   at: "card" | "send",
 ): Promise<Map<string, ApprovalSendGuard>> {
   const out = new Map<string, ApprovalSendGuard>()
@@ -522,6 +527,23 @@ async function readSendGuards(
     if (verdict) out.set(r.id, await cardGuard(db, verdict))
   }
   return out
+}
+
+/**
+ * The send check on the agent mail drafts of Home's feed and badge, as a card reads it: a held
+ * draft is not on Home and not counted, one with a final state shows its reason uncounted.
+ */
+export function readFeedSendGuards(
+  db: RlsClient,
+  orgId: string,
+  rows: GuardRow[],
+): Promise<Map<string, ApprovalSendGuard>> {
+  return readSendGuards(db, orgId, rows, "card")
+}
+
+/** A guard state that ends a draft: nothing it says can still go out as written. */
+export function isFinalSendGuardState(state: ApprovalSendGuard["state"]): boolean {
+  return state === "replied" || state === "bounced" || state === "opted_out" || state === "ref_stop"
 }
 
 /** Compact pending-approval descriptor for agent-context injection. */

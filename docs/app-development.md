@@ -733,6 +733,8 @@ growth, and it is how your app should too.
 
 An app raises items in the attention feed from its own events, in `attention.translations` of the manifest. Each person's notification settings then decide the channels.
 
+An item raised this way is stored for each person, so on **Home** it offers **Not now** (`POST /api/attention-items/set-aside` with its `eventId`: it leaves the feed until next Monday at 00:00 in the person's time zone) and **Ask agent to draft**. A `sendGuardProviders` entry's `pill` (`{label, labelKey?}`) names Home's row for a mail about a record of that kind, over the tool's own `approvalCard.pill`.
+
 ```json
 {
   "event": "ticket:create",

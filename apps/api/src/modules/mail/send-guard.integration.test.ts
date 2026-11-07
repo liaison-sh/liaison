@@ -3,7 +3,7 @@
 // A staged send cannot leave when the state says it must not. These run the real
 // mail handlers in the sandbox, through the real gate and decision, on a stubbed
 // SMTP: a recorded send is the one thing that must not happen after a reply.
-import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
+import { afterAll, beforeAll, describe, expect, it, setSystemTime, spyOn } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { buildRefToken } from "@liaison/shared"
@@ -23,6 +23,10 @@ import * as jobsModule from "~/infra/jobs/jobs"
 import { env } from "~/lib/env"
 import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
+import {
+  computeApprovalAttentionItems,
+  computeApprovalBadgeItems,
+} from "~/modules/approvals/attention"
 import { ApprovalDecisionError, decideApproval } from "~/modules/approvals/decide"
 import { updatePayload } from "~/modules/approvals/edit"
 import { getApproval } from "~/modules/approvals/list"
@@ -453,7 +457,11 @@ beforeAll(async () => {
     name: "fixture",
     sendGuardProviders: {
       "fixture:deal": { tool: "deal_state" },
-      "fixture:invoice": { tool: "invoice_state", serviceMessage: true },
+      "fixture:invoice": {
+        tool: "invoice_state",
+        serviceMessage: true,
+        pill: { label: "Stripe: payment reminder" },
+      },
       "fixture:slow": { tool: "slow_state" },
       "fixture:broken": { tool: "broken_state" },
       "fixture:flaky": { tool: "flaky_state" },
@@ -1469,6 +1477,61 @@ describe("the card says what the check says, and Send now", () => {
     })
     return { to, id, back }
   }
+
+  /** Home's feed and badge as the viewer reads them, through their own access. */
+  const home = (viewer: UserContext = admin) =>
+    withRlsContext(viewer, async (tx) => ({
+      feed: await computeApprovalAttentionItems(tx as never, orgId, viewer.userId),
+      badge: await computeApprovalBadgeItems(tx as never, orgId, viewer.userId, 500),
+    }))
+
+  it("held not on Home and not counted", async () => {
+    const { id } = await heldDraft()
+    const { feed, badge } = await home()
+    expect(feed.some((i) => i.entityId === id)).toBe(false)
+    expect(badge.some((i) => i.entityId === id)).toBe(false)
+  }, 60_000)
+
+  it("when its hold ends it is on Home and counted, with no write", async () => {
+    const { id } = await heldDraft()
+    expect((await home()).feed.some((i) => i.entityId === id)).toBe(false)
+    const before = JSON.stringify(await requestRow(id))
+    // Past the stated return date: the check is read fresh, so nothing has to change.
+    setSystemTime(new Date(Date.now() + 15 * DAY))
+    try {
+      const { feed, badge } = await home()
+      expect(feed.find((i) => i.entityId === id)?.metadata?.sendGuard).toMatchObject({
+        state: "clear",
+      })
+      expect(badge.some((i) => i.entityId === id)).toBe(true)
+    } finally {
+      setSystemTime()
+    }
+    expect(JSON.stringify(await requestRow(id))).toBe(before)
+  }, 60_000)
+
+  it("stopped shows reason, uncounted", async () => {
+    const to = unique("answered")
+    const id = await stageCompose(to)
+    await seedInbound(to, { body: "Thanks, we are comparing two options." })
+    const { feed, badge } = await home()
+    const row = feed.find((i) => i.entityId === id)
+    expect(row?.metadata?.sendGuard).toMatchObject({ state: "replied" })
+    expect(row?.metadata?.uncounted).toBe(true)
+    expect(badge.some((i) => i.entityId === id)).toBe(false)
+  }, 60_000)
+
+  it("fixture pill Stripe: payment reminder names the row over the tool's", async () => {
+    const id = await stageCompose(unique("pill"), {
+      followUp: { refs: [{ kind: "fixture:invoice", id: "F-2026-0418" }] },
+    })
+    const plain = await stageCompose(unique("nopill"))
+    const { feed } = await home()
+    expect(feed.find((i) => i.entityId === id)?.metadata?.pill).toEqual({
+      label: "Stripe: payment reminder",
+    })
+    expect(feed.find((i) => i.entityId === plain)?.metadata?.pill).toBeUndefined()
+  }, 60_000)
 
   it("auto-reply after since: Held with the parsed date", async () => {
     const { id, back } = await heldDraft()

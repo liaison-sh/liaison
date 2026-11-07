@@ -5372,6 +5372,25 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.homeSidebar.sourceUnavailable": "{{source}} indisponible, nouvelle tentative",
   "kernel.homeSidebar.expiringSoon": "Expire bientôt",
   "kernel.homeSidebar.newMail": "Nouveaux mails",
+  "kernel.homeStatusOtherWork": "DANS VOS AUTRES TÂCHES",
+  "kernel.homeDecisions.notNow": "Plus tard",
+  "kernel.homeDecisions.setAside": "Mis de côté jusqu'à lundi. Il reviendra alors.",
+  "kernel.homeDecisions.setAsideFailed": "Impossible de mettre ceci de côté. Réessayez.",
+  "kernel.homeDecisions.askDraft": "Demander un brouillon à l'agent",
+  "kernel.homeDecisions.askDraftMessage": "Rédige ce qu'il faut pour ceci : {{summary}}",
+  "kernel.homeDecisions.askDraftFailed": "Impossible de joindre votre agent. Réessayez.",
+  "kernel.homeDecisions.dismiss": "Retirer",
+  "kernel.homeDecisions.guardClear":
+    "Ne partira pas si on vous répond d'abord, même après votre accord.",
+  "kernel.homeDecisions.sourceFailedTitle": "Impossible de charger ce que {{app}} a pour vous",
+  "kernel.homeDecisions.sourceFailedBody":
+    "{{app}} n'a pas répondu. Ce qui y attend est en sécurité et attend toujours.",
+  "kernel.homeDecisions.retry": "Réessayer",
+  "kernel.homeDecisions.briefTitle": "Le point du jour",
+  "kernel.homeDecisions.briefNone":
+    "Aucun point du matin. Demandez-en un à votre agent chaque matin, et dites ce que vous voulez y voir.",
+  "kernel.homeDecisions.briefSetUp": "Mettre en place un point du matin",
+  "kernel.homeDecisions.briefOpen": "Ouvrir",
   "kernel.homeReadAll.button": "Tout marquer comme lu",
   "kernel.homeReadAll.title":
     "Marquer comme lu tout ce que cette vue affiche. Les approbations et les demandes restent affichées.",

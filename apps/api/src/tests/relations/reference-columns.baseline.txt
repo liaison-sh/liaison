@@ -144,6 +144,14 @@ kernel.agent_turns.thread_id
 kernel.agent_turns.user_message_id
 kernel.agents.owner_user_id
 kernel.app_activation_events.actor_id
+kernel.app_build_artifacts.draft_id
+kernel.app_draft_versions.created_by
+kernel.app_draft_versions.draft_id
+kernel.app_drafts.created_by
+kernel.app_drafts.updated_by
+kernel.app_logs.actor_user_id
+kernel.app_logs.draft_id
+kernel.app_logs.run_id
 kernel.app_scope_grant_audit.target_user_id
 kernel.app_sequences.app_id
 kernel.approval_policies.created_by

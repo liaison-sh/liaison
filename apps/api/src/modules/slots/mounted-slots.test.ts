@@ -29,7 +29,7 @@ function registerExample(): void {
 }
 
 function exampleOn(features: string[] = ["slot_panels"]): void {
-  rememberOrgAppStates(ORG, [{ app: "example", status: "enabled" }], {
+  rememberOrgAppStates(ORG, [{ app: "example", status: "active" }], {
     features: { example: features },
   })
 }
@@ -115,8 +115,8 @@ describe("mounted slots", () => {
       ticketsManifest.contributions as Record<string, unknown>,
     )
     rememberOrgAppStates(ORG, [
-      { app: "api-connector", status: "enabled" },
-      { app: "tickets", status: "enabled" },
+      { app: "api-connector", status: "active" },
+      { app: "tickets", status: "active" },
     ])
     const at = (slot: string) =>
       listSlotPanels({ orgId: ORG, scopes: [], slot }).map((p) => `${p.app}:${p.id}`)
@@ -139,7 +139,7 @@ describe("mounted slots", () => {
         visibility_scope: "crm-fixture:customers:read",
       },
     })
-    rememberOrgAppStates(ORG, [{ app: "crm-fixture", status: "enabled" }])
+    rememberOrgAppStates(ORG, [{ app: "crm-fixture", status: "active" }])
     const slot = "ticket:detail:panel"
     expect(listSlotPanels({ orgId: ORG, scopes: [], slot })).toEqual([])
     expect(

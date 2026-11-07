@@ -122,7 +122,7 @@
       }
     ]
   },
-  "version": "1.10.6",
+  "version": "1.10.7",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -462,6 +462,7 @@
       }
     },
     "search": {
+      "focusCore": true,
       "description": "Search projects and tasks by text. Returns matching projects (with their ids) and tasks. A sales/dealer PIPELINE, a DEALS board, a roadmap, or any named tracking BOARD is modeled here as a project (e.g. a 'dealer-deals pipeline' is a projects board with one task per deal/stage) — so when asked for the state of a pipeline / deal board / named deals, search HERE for that project by name and read its tasks via tasks_byProject; this is the dealer-deals pipeline, NOT Shopify draft orders. Task hits carry `labels`: the task's effective value per label group (own, or inherited from the nearest parent, with `inherited` and `inheritedFromKey`).",
       "searchKeywords": ["tâche", "tâches", "task", "tasks", "chercher", "rechercher", "trouver", "retrouver", "find"],
       "readOnly": true,
@@ -495,6 +496,7 @@
       }
     },
     "get": {
+      "focusCore": true,
       "readOnly": true,
       "description": "Get a project or task by id (id comes from a search result). Pass `id` (auto-resolved as project-or-task), or the explicit `taskId` / `projectId` when you know which kind it is. The task record carries a `threadId` for its discussion, but that id is participant-gated and is NOT usable on its own — read the conversation with `comments` and write to it with `comment`. A task also carries `checklist`: its checklist status (per-level counts and the blocking items); read the items with `checklist_get`. A task record carries `labels`: its effective value per label group (own, or inherited from the nearest parent, with `inherited` and `inheritedFromKey`).",
       "searchKeywords": ["tâche", "task", "voir", "lire", "ouvrir", "read"],
@@ -521,6 +523,7 @@
       }
     },
     "createProject": {
+      "focusCore": true,
       "description": "Create a PROJECT (the container/board) TOGETHER WITH ITS TASKS: pass the tasks you plan (up to 20, each with a title, and optionally a description and an assignee) in `tasks`, in this ONE call. Never create the project first and its tasks afterwards when you already know them: if this call waits for approval, the tasks are approved and created with it, and a task created before the project exists has nowhere to go. More than 20 tasks: pass the first 20 here, then add the rest with `create` and the returned project id.",
       "searchKeywords": ["project", "projet", "nouveau", "créer", "new"],
       "requiredScopes": ["projects:projects:write"],
@@ -660,6 +663,7 @@
       }
     },
     "create": {
+      "focusCore": true,
       "description": "Create a TASK inside an existing project (NOT a project — use `createProject` for that). Requires the target projectId and a title. If this task captures a fact you found via web research (a competitor spec/price, a prospect detail, any external figure), pass that page's URL in `sourceUrl` so the task body always carries its citation — do this on EVERY web-derived task you create, not just the first one. OUTREACH / SHORTLIST TASKS (one task per researched entity — a creator, influencer, prospect, dealer, lead, or school): the `description` must carry, for THAT entity, ALL of: its identifying link (channel/profile/website URL), any contact (email/phone) you found, AND a one-line WHY-RELEVANT rationale grounded in what you researched (why this entity fits the goal — e.g. the gear/genre a creator covers, the segment a prospect serves). The rationale is a REQUIRED fact, not optional flavor — the research snippet you read already hands it to you, so carry it through verbatim/condensed. A task that only lists 'Channel: <url>\\nContact: <email>' with no 'why relevant' line is INCOMPLETE — write all three on EVERY such task (not just the first). Not gated: the task is created at once and the result is the task, so report it as created only when the call returned it.",
       "searchKeywords": ["tâche", "task", "todo", "nouvelle", "ajouter", "add", "créer", "new"],
       "requiredScopes": ["projects:tasks:write"],
@@ -769,6 +773,7 @@
       }
     },
     "update": {
+      "focusCore": true,
       "description": "Update a task. Not gated: the edit applies at once and the result is the updated task, so report it as applied only when the call returned it. Setting a terminal status (Done) is allowed even when the task's checklist is incomplete; when it is, the result carries `checklistWarning` listing the items not proven: read it and tell the user. `move` returns the same warning when you change only the status.",
       "searchKeywords": ["tâche", "task", "modifier", "edit", "échéance", "deadline", "due", "assigner", "responsable"],
       "requiredScopes": ["projects:tasks:write"],
@@ -854,6 +859,7 @@
       }
     },
     "move": {
+      "focusCore": true,
       "description": "Move a task: reposition / re-parent / restatus WITHIN its project, OR relocate it to ANOTHER project by passing the destination `projectId`. Passing a different `projectId` moves the task (and its whole subtree) into that project and remaps each task's status to one in the destination; each moved task also gets a new number there, so its key changes (e.g. ERB-35 becomes BUG-7, returned as `number`) — so to put a task in the right project you MOVE it; do NOT recreate it there and delete the original (that strands duplicates). Only a top-level task can change projects (its children move with it). Moving a task into a terminal status (Done) is allowed even when its checklist is incomplete; the result then carries `checklistWarning` listing the items not proven: read it and tell the user.",
       "searchKeywords": ["déplacer", "tâche", "task", "colonne", "column"],
       "requiredScopes": ["projects:tasks:write"],
@@ -902,6 +908,7 @@
       }
     },
     "tasks_byAssignee": {
+      "focusCore": true,
       "description": "List one person's tasks across ALL projects (not scoped to a single project), each carrying its project name AND its status label + whether that status is terminal/done (`statusTerminal`). This is THE tool to answer 'what is X working on', build a per-person workload view, or REASSIGN a departing teammate's work — resolve the person's user id first (via users_search), then pass it here. By default it returns ALL of the person's tasks (open AND done); to act on only their OPEN/unfinished tasks (e.g. 'reassign all her non-done tasks'), pass `terminal:false` (or read `statusTerminal` per item and SKIP the terminal/done ones) — never reassign or mutate a task whose `statusTerminal` is true when the ask is scoped to open work. Optionally also filter to overdue / due-this-week.",
       "searchKeywords": ["attribuées", "assignées", "assignee", "responsable", "charge", "workload"],
       "readOnly": true,
@@ -946,6 +953,7 @@
       }
     },
     "attentionItems": {
+      "focusCore": true,
       "description": "YOUR own work that needs attention right now — the calling user's OVERDUE, DUE-THIS-WEEK, and BLOCKED non-terminal tasks across ALL projects, each carrying its project name + due date. Self-scoped: it returns the CALLER's tasks, so it needs NO id and NO assignee param. This is THE tool for 'what's overdue or due this week assigned to me', a morning standup, or 'what needs my attention' — do NOT use `search` for that (search returns PROJECTS and matches task TITLES by text, it is not a per-person task list).",
       "searchKeywords": ["attention", "retard", "overdue", "bloquée", "urgent", "échéance"],
       "readOnly": true,
@@ -959,6 +967,7 @@
       }
     },
     "tasks_byProject": {
+      "focusCore": true,
       "description": "List the tasks IN a single project (by project id), each with its status label + whether that status is terminal/done (`statusTerminal`) + the assignee's display name (`assigneeName`, null when unassigned). Use this to enumerate or summarize a project's tasks — a backlog/roadmap/weekly digest, a per-status rollup (group by the terminal/done flag for a DONE-vs-REMAINING count), a per-PERSON workload tally (group by `assigneeName` to find the most-loaded person), 'what's in project X', or reading a source project's task list to copy it.",
       "searchKeywords": ["project", "projet", "avancement", "statut", "status", "kanban", "tableau", "board", "tâche", "tâches", "task", "tasks"],
       "readOnly": true,
@@ -1404,6 +1413,7 @@
       }
     },
     "comment": {
+      "focusCore": true,
       "description": "Write a comment on a task — the task's own discussion thread, the same one the task detail pane shows. Use it to record a finding, ask the assignee something, or hand work over WITHOUT changing the task's fields: a comment is the durable place for the reasoning, `update` is for the state. Identify the task by id or by display key (e.g. RAI-12). The comment is posted under the calling identity and is visible to everyone who can read the task. Returns the task's `threadId`, which you can then read back with `comments` (or kernel threads_read — reading the task enrols you as a participant of its thread, which is what makes that work).",
       "searchKeywords": ["commenter", "commentaire", "tâche", "task", "discussion", "écrire", "write", "add"],
       "requiredScopes": ["projects:tasks:write"],
@@ -1430,6 +1440,7 @@
       }
     },
     "comments": {
+      "focusCore": true,
       "readOnly": true,
       "description": "Read a task's discussion — the comments on its own thread, newest last. This is the ONLY way to reach a task's conversation without already being a participant: task threads are participant-gated, so a `threadId` taken from tasks_byProject and handed straight to kernel threads_read answers 'not a participant'. Reading the task through this tool enrols you, after which threads_read works too. Identify the task by id or display key (e.g. RAI-12).",
       "searchKeywords": ["commentaire", "commentaires", "tâche", "task", "discussion", "lire", "read"],

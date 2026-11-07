@@ -600,7 +600,8 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.18: a hidden tool names the visible one to use instead.
     // 0.23.19: both of the above, merged.
     // 0.23.20: the longest descriptions past 600 characters read from guide sections.
-    expect(m.version).toBe("0.23.20")
+    // 0.23.21: its core tools load on a hard focus of its entity, the others by name.
+    expect(m.version).toBe("0.23.21")
     expect(m.packageFormat).toBe(1)
   })
 

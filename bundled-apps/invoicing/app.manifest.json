@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.20.58",
+  "version": "0.20.59",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1970,6 +1970,7 @@
       }
     },
     "documents_search": {
+      "focusCore": true,
       "taintSource": true,
       "description": "Search invoices, quotes, credit notes, proformas and purchase orders issued here, by query, type, status, contact, date range, or tax treatment. The free-text `query` matches, word by word and in any case, the document NUMBER, the COUNTERPARTY NAME, ADDRESS and EMAIL (billing and shipping), the SHOPIFY ORDER (e.g. query='#1149'), the PO NUMBER, the notes and the line descriptions; best matches come first. To find a customer's invoices, search their name directly (e.g. query='Claudine Moreau'): a person named only in a company invoice's address is found too. `contact_id` also returns the documents made out to the contact's email or address. For a customer's earlier prices ('same price as last time') use customer_history.",
       "searchKeywords": ["facture", "factures", "invoice", "invoices", "devis", "quote", "quotes", "avoir", "proforma", "chercher", "rechercher", "trouver", "retrouver", "find", "numéro", "number", "impayé", "impayée", "impayées", "unpaid", "overdue", "retard", "list", "liste", "issued", "relance", "paiement", "payment", "due", "failed"],
@@ -2050,6 +2051,7 @@
       "readOnly": true
     },
     "customer_history": {
+      "focusCore": true,
       "taintSource": true,
       "description": "A customer's past sales with each line's unit price, the latest sale of a product (last_sale) and their Shopify orders. Use this to answer 'same price as last time'. Finds the customer by name, company, email, address or contact.",
       "searchKeywords": ["historique", "client"],
@@ -2083,6 +2085,7 @@
       "readOnly": true
     },
     "documents_get": {
+      "focusCore": true,
       "taintSource": true,
       "description": "Get one invoicing document by id, including lines.",
       "searchKeywords": ["invoice", "devis", "détail", "ouvrir", "voir", "lire", "open"],
@@ -2712,6 +2715,7 @@
       }
     },
     "drafts_update": {
+      "focusCore": "document",
       "summarizer": "summarizeDraftUpdate",
       "summarizerContext": { "tool": "documents_get", "params": { "id": "draft_id" } },
       "description": "LEGACY, internal: update an unnumbered draft row before it is issued. Issued documents are edited with documents_update. There is no user facing draft document category.",
@@ -2992,6 +2996,7 @@
       }
     },
     "invoice_issue": {
+      "focusCore": "document",
       "description": "Issue an invoice from a draft. GATED: an invoice is a legal tax document, so an agent/MCP call ALWAYS parks a pending approval and issues only on human sign-off (gated like quotes/proformas), never auto-issuing regardless of amount. (The system auto-paid-order flow keeps its own issuer.invoice_approval_threshold_minor gate on its direct in-process path; this always-gate is the agent surface.) The optional `due_at` (ISO date YYYY-MM-DD) sets the invoice payment due date / terms; when omitted, the draft's stored due_at is used. While the invoice sits PENDING APPROVAL, the due date / payment terms can still be CORRECTED on the pending request via approval_update_payload (the `due_at` field is editable + JSON-Schema-validated) — issuing then reflects the corrected terms.",
       "searchKeywords": ["émettre", "valider", "finaliser", "finalize"],
       "requiredScopes": ["invoicing:documents:write"],
@@ -3034,6 +3039,7 @@
       ]
     },
     "invoice_create_and_issue": {
+      "focusCore": true,
       "description": "Create a draft invoice and issue it in one call. GATED: an invoice is a legal tax document, so an agent/MCP call ALWAYS parks a pending approval and creates+issues only on human sign-off (gated like quotes/proformas), never auto-issuing regardless of amount. No draft is persisted until the approval is signed off. (The system auto-paid-order flow keeps its own issuer.invoice_approval_threshold_minor gate on its direct in-process path; this always-gate is the agent surface.)",
       "searchKeywords": ["facture", "facturer", "émettre", "bill", "nouvelle", "créer"],
       "requiredScopes": ["invoicing:documents:write"],
@@ -3308,6 +3314,7 @@
       ]
     },
     "quote_create_and_issue": {
+      "focusCore": true,
       "description": "Create a quote and issue it in one call. A quote IS a Shopify draft order when the issuer profile is mapped to a shop. Creating one here creates the draft order in Shopify (custom lines go over at the price given, which the shop treats as tax inclusive, so set prices_include_tax on the issuer profile to match the shop and a typed price then means the same thing on both sides; catalog lines with product_source 'shopify' and a variant gid external_id take the store price) and the quote comes back numbered with its PDF, linked by shopify_draft_order_id. Equivalent: shopify__draft_orders_create, after which the quote appears by itself, so NEVER create both for one offer. Editing the draft order in Shopify updates the quote, deleting it rejects the quote. To turn the quote into an invoice call documents_convert_to_invoice (it completes the draft order with payment pending, Shopify creates the order and the invoice is issued automatically). Without a shop mapping this is a local quote gated on the issuer's invoice approval threshold. Returns document_id, number, pdf_file_id (the issued PDF's file id, to attach to a reply; null with pdf_error saying what to do when the PDF did not render), pdf_status, grand_total_minor (tax included, discounts applied, minor units) and currency, plus shopify_draft_order_id and shopify_draft_order_name on a shop; or pending_approval when the Shopify draft order creation is waiting for a human. In a sequenced approval bundle a later step can cite @ref:<this approval id>:pdf_file_id, :number, :document_id, :grand_total_minor or :currency.",
       "searchKeywords": ["devis", "estimate", "offre", "créer", "client", "nouveau"],
       "requiredScopes": ["invoicing:documents:write"],
@@ -3977,6 +3984,7 @@
       ]
     },
     "documents_send_to_customer": {
+      "focusCore": true,
       "outboundTextParams": ["subject", "body"],
       "description": "Email a document PDF to the counterparty. GATED (two-eyes): calling this does NOT send the email — it files an approval card, and the email is dispatched ONLY AFTER a human approves it. So report the result as PENDING APPROVAL (e.g. 'I've queued the send to <recipient> — pending your approval'); NEVER tell the user the document 'has been sent' / 'was emailed' / 'is on its way' until the approval is actually approved. Claiming it was sent while it is still pending is a false completion claim.",
       "searchKeywords": ["envoyer", "send", "client", "customer", "invoice", "email", "mail", "transmettre"],
@@ -4029,6 +4037,7 @@
       ]
     },
     "documents_mark_paid": {
+      "focusCore": true,
       "description": "Mark a document as paid (full payment recorded).",
       "searchKeywords": ["payé", "payée", "paid", "payment", "paiement", "encaissé", "encaisser", "règlement", "régler", "marquer", "invoice"],
       "requiredScopes": ["invoicing:documents:write"],
@@ -4061,6 +4070,7 @@
       }
     },
     "documents_record_refund": {
+      "focusCore": true,
       "description": "Record a refund against a document (full or partial): records only, moves no money. PAYMENT STATUS ONLY: it does not issue a credit note, and a partial marks the document 'partial' while a full one marks it 'refunded'. A refund or cancellation taken in Shopify already auto issues the matching credit note, so check documents_for_orders before adding one by hand. On a split order (goods plus software) record the refund against the document that actually carries the refunded line.",
       "searchKeywords": ["remboursement", "rembourser", "refund", "enregistrer", "noter", "paiement"],
       "requiredScopes": ["invoicing:documents:write"],
@@ -4099,6 +4109,7 @@
       }
     },
     "documents_convert_to_invoice": {
+      "focusCore": true,
       "description": "Convert a quote or proforma into an invoice. For a quote linked to a Shopify draft order (shopify_draft_order_id set) this COMPLETES the draft order in Shopify with payment pending (the B2B customer pays by wire against the invoice, no Shopify email goes out), Shopify creates the real order, the quote becomes 'invoiced' with the order id and number, and the invoice is issued automatically by the order-created auto-flow moments later (threshold gated like any store invoice). Returns mode 'shopify_order_created' in that case: do NOT call invoice_create_and_issue afterwards, the invoice arrives on its own; find it with documents_for_orders or documents_search on the order number. A quote or proforma without a draft order is converted locally (mode 'local') and the new invoice is returned. Gated for agents (approval card); a human clicking Convert in the UI confirms a dialog and needs no approval. The quote's po_number is carried onto the invoice.",
       "searchKeywords": ["convertir", "transformer", "devis", "quote", "facturer", "facture"],
       "requiredScopes": ["invoicing:documents:write"],
@@ -4147,6 +4158,7 @@
       }
     },
     "credit_note_create_and_issue": {
+      "focusCore": true,
       "description": "Create a credit note, a legal document, and issue it in one call. A credit note is a first-class legal document — its own gap-free CN-{YYYY}- number series, issued straight to 'issued' status (never a payable document — no due date, no mark_paid). Lines carry NEGATIVE unit_price_minor mirroring what is reversed on the original invoice, and the total must come out negative.",
       "searchKeywords": ["avoir", "crédit", "annulation", "remboursement", "rectificative", "émettre", "émission", "nouveau"],
       "requiredScopes": ["invoicing:documents:write"],
@@ -4803,6 +4815,7 @@
       }
     },
     "documents_update": {
+      "focusCore": true,
       "description": "Edit a document. On a DRAFT, every field is editable: counterparty snapshot fields (name/address/VAT id/email/country/linked contact), incoterm, issued_at/due_at, po_number, notes, tax_treatment, and a full LINE REPLACEMENT (when `lines` is passed it REPLACES every line and totals, subtotal/tax/grand total, are recomputed exactly like issuance). Once an INVOICE or a CREDIT NOTE is ISSUED its FINANCIAL SUBSTANCE is FROZEN: `lines`, `tax_treatment`, `counterparty_name`, and `counterparty_vat_id` can no longer be changed in place (the call fails `issued_document_immutable`).",
       "searchKeywords": ["modifier", "corriger", "edit", "fix", "correct", "invoice"],
       "requiredScopes": ["invoicing:documents:write"],

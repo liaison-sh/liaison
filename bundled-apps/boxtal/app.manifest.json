@@ -222,7 +222,7 @@
       }
     ]
   },
-  "version": "0.23.20",
+  "version": "0.23.21",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {
@@ -1704,6 +1704,7 @@
       }
     },
     "quote": {
+      "focusCore": true,
       "description": "Get Boxtal carrier quotes for a route. SIMPLEST PATH (use it whenever you have a draft): pass ONLY `draft_id` — the destination route, parcels and content ALL default from the draft, so you do NOT pass `from`/`to`/`parcels`/`content_code` at all (none are required). `from` always defaults to the org origin; `content_code` is OPTIONAL and defaults from the draft, so NEVER re-quote in a loop thinking a required field is missing — if a quote returns no offers it is a real result, not a schema error.",
       "searchKeywords": ["tarif", "tarifs", "prix", "coût", "rate", "rates", "transporteur", "carrier", "price", "compare", "comparer", "shipping"],
       "requiredScopes": ["boxtal:quotes:read"],
@@ -1863,6 +1864,7 @@
       "timeoutMs": 45000
     },
     "shipment_draft_create": {
+      "focusCore": true,
       "description": "Start a new shipment draft from an invoicing document — pre-fills parcels + customs from the document snapshot (zero re-entry). document_ref accepts a document UUID, an invoice number, or a Shopify order reference. Works for OUTBOUND shipments (issued sale invoice) AND for RETURN labels: a warranty/RMA return opens its draft from the doc describing the item coming BACK — the ORIGINAL sale invoice for an intra-EU return, or the nominal-value RETURN-FOR-REPAIR proforma for a non-EU return (see the warranty-return-label skill) — then quote and create_shipment both take is_return:true. If some lines resolve to no shipping profile (unresolved), set the parcel explicitly with shipment_draft_set_package before quoting.",
       "searchKeywords": ["expédition", "brouillon", "colis", "préparer", "ship"],
       "requiredScopes": ["boxtal:shipments:read"],
@@ -2052,6 +2054,7 @@
       }
     },
     "create_shipment": {
+      "focusCore": true,
       "description": "Create a Boxtal shipment from a resolved draft + selected carrier offer. GATED (a human approves) → STAGE it and report it as PENDING APPROVAL, never as already shipped. Staging does NOT require the full structured address: the recipient NAME + COUNTRY come from the invoice, and the human confirms/completes the street/city/postalCode/phone on the approval card before the label is bought — so to stage, call this with just `draft_id` + `offer_code` (plus any address fields you already have).",
       "searchKeywords": ["expédier", "envoyer", "colis", "parcel", "étiquette", "label", "ship", "expédition", "envoi", "bordereau", "shipping", "créer"],
       "handler": "create_shipment",
@@ -2205,6 +2208,7 @@
       ]
     },
     "track": {
+      "focusCore": true,
       "description": "Where a parcel is now, for the person: live tracking for a Boxtal shipment (latest carrier status + checkpoint message + the carrier tracking_number + a pickup_deadline). Report a parcel with its recipient AND its carrier tracking_number — that number is the operative reference a carrier/customer uses to chase a parcel, so cite IT, never the internal shipment id/uuid. When a parcel is STUCK, don't just report the status — also propose the concrete next action that clears THAT exception so the operator can chase it: a customs hold / EXCEPTION needs the import paperwork submitted or the customs broker contacted; a FAILED_ATTEMPT needs a redelivery rescheduled or the address confirmed; a parcel REACHED_DELIVERY_PICKUP_POINT must be collected before it expires (else it RETURNS to sender) — flag the expiry; a RETURNED/LOST parcel needs the customer contacted and a reship or claim opened. PICKUP-POINT COLLECTION DEADLINE — for a parcel awaiting collection at a pickup/relay point (Mondial Relay / point-retrait, status REACHED_DELIVERY_PICKUP_POINT) the result carries `pickup_deadline`: the AUTHORITATIVE carrier-reported ISO date the recipient must collect it by before the parcel is returned to sender. This is the ONLY trustworthy source for WHETHER a relay parcel is 'about to expire' — to decide which pickup-point parcels are near their deadline, compare each parcel's `pickup_deadline` against today; do NOT estimate or fabricate a deadline from the arrival date or guess one (a deadline you did not read from `pickup_deadline` is fabrication). `pickup_deadline` is null for any parcel not at a pickup point.",
       "searchKeywords": ["suivi", "suivre", "colis", "parcel", "where", "tracking", "livraison", "delivery", "transporteur", "carrier"],
       "requiredScopes": ["boxtal:shipments:read"],
@@ -2278,6 +2282,7 @@
       "readOnly": true
     },
     "search": {
+      "focusCore": true,
       "description": "Find a shipment by name, order or number in the local Boxtal shipment index. A BLANK/empty query ENUMERATES every shipment (paged) — use it to sweep the whole active fleet. A non-blank query filters by recipient, order id, tracking number, external id, the lifecycle order_status (PENDING/CONFIRMED/CANCELLED) OR the live delivery tracking_status (e.g. IN_TRANSIT / OUT_FOR_DELIVERY / FAILED_ATTEMPT / REACHED_DELIVERY_PICKUP_POINT / EXCEPTION / RETURNED / DELIVERED) — they are different axes.",
       "searchKeywords": ["expédition", "expéditions", "colis", "chercher", "rechercher", "retrouver", "trouver", "find", "parcel", "shipment", "shipments"],
       "requiredScopes": ["boxtal:shipments:read"],
@@ -2323,6 +2328,7 @@
       "timeoutMs": 30000
     },
     "prep_list": {
+      "focusCore": true,
       "description": "The ORDER PREP DASHBOARD worklist people see, with offers and status: every to-prepare invoice (issued goods invoice, no live shipment yet) joined with its cached Shopify order name/tags, its auto-derived parcels + products summary, its cached shipping quote (cheapest offer + up to 2 alternates), and its editable category (sale/repair/gift/return) + exclusion state. SCAN: the unscoped list read scans the open Shopify orders live, bounded to the 250 most recent, and joins cached meta with cached quotes. It never calls the Boxtal API and never re-quotes, so it stays fast on a large worklist.",
       "searchKeywords": ["préparation", "préparer", "commandes", "worklist"],
       "requiredScopes": ["boxtal:shipments:read"],

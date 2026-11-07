@@ -114,7 +114,7 @@
       }
     ]
   },
-  "version": "1.2.9",
+  "version": "1.2.10",
   "description": "Customer-facing ticketing: local foundations (7.1)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -758,6 +758,7 @@
       }
     },
     "search": {
+      "focusCore": true,
       "description": "Search tickets. Filter by status (open/awaiting_customer/awaiting_followup/closed), priority, assignedTo, contactId, and free-text q. Returns a PAGED/truncated list — do NOT report a COUNT by tallying these results (that under-counts). inboxCounts is authoritative ONLY for the UNREAD count PER INBOX — it is NOT a status breakdown (open vs awaiting_customer vs awaiting_followup) and NOT a total-open count, so do NOT use an inbox's unread number as 'how many open tickets'.",
       "searchKeywords": ["chercher", "rechercher", "retrouver", "trouver", "find", "attente", "lister", "liste", "list", "pending", "waiting", "ouvert", "ouverts", "statut"],
       "readOnly": true,
@@ -963,6 +964,7 @@
       }
     },
     "get": {
+      "focusCore": true,
       "description": "Fetch a single ticket and its recent messages. The default view is SLIM: the 12 most recent messages, text-only, with each email's quoted reply-chain tail stripped (replaced by a '[quoted history trimmed]' note) — right for triage and replies, since quoted tails only duplicate the thread's own earlier messages. totalMessageCount reports the real thread size; page older messages with messagesCursor. To dig deeper ONLY when needed: page older messages with messagesCursor, fetch ONE message in full with messageId, pass stripQuoted:false for full quoted chains, includeHtml:true for HTML rendering. Each message carries its attachments (with any analysis summary); use kernel analyze_media / files_read on an attachment id to inspect linked media. Read the ticket ONCE per run and work from what you have — do not re-read it between steps. `pendingReplyDrafts` lists the reply drafts already waiting for approval on this ticket (approvalId, textBody, who drafted it): when one is there, do not draft another; tell the user it is waiting, or change its text with kernel__approval_update_payload on its approvalId.",
       "searchKeywords": ["lire", "voir", "ouvrir", "read", "open"],
       "readOnly": true,
@@ -1166,6 +1168,7 @@
       }
     },
     "addNote": {
+      "focusCore": true,
       "description": "Append an INTERNAL note to a Liaison ticket (seen by teammates on that ticket), never a note on a record in an external system such as a CRM company, contact or deal: that is api-connector connector_write. It is the durable place to record a finding, analysis, or hand-off that a teammate (the assignee, sales, finance, fulfillment) must SEE on the ticket. Reach for this whenever the user asked you to CAPTURE A LOOKED-UP DATA FINDING (a Shopify on-hand/inventory STOCK level, an order/payment STATUS, an amount) and ROUTE it to a colleague: gather the finding FIRST (run the lookup), then write a note that contains the ACTUAL figure you read AND the routing line together (e.g. 'RAL-44 on hand: 31 units read live from Shopify — routing the 25-unit volume quote to Theo/sales'). A figure stated only in your chat reply does NOT reach the teammate who reads the ticket, so it is not 'recorded' until it is in a note here (or passed via mail__convertToTicket's note param). If you converted a mail thread to a ticket before you had the figure, add it here afterward. Do NOT claim the stock/finding is recorded on the ticket unless this call (or the convert note) succeeded this turn.",
       "searchKeywords": ["note", "interne", "internal", "commentaire", "add", "ajouter"],
       "requiredScopes": ["tickets:tickets:write"],
@@ -1281,6 +1284,7 @@
       }
     },
     "assign": {
+      "focusCore": true,
       "description": "Assign a ticket to a user. To assign it to YOURSELF (the current user), pass assignedTo:'me' — you do NOT need to look up your own id. To assign to a TEAMMATE, resolve their name like 'Liam' to their UUID with users_search FIRST; this tool does not accept a teammate's name. Pass null to unassign. TRIAGE GATE: when you are claiming tickets by a CRITERION (e.g. only the French/German/Italian threads in a shared inbox), call this ONLY on tickets that PASS the criterion — do NOT assign a ticket that fails it (e.g. an English ticket in an FR/DE/IT-only claim).",
       "searchKeywords": ["attribuer", "assigner", "affecter", "responsable", "assignee"],
       "requiredScopes": ["tickets:tickets:write"],
@@ -2587,6 +2591,7 @@
       }
     },
     "reply": {
+      "focusCore": true,
       "outboundTextParams": ["textBody", "htmlBody"],
       "description": "Reply to a customer on a TICKET (pass the ticketId from tickets__search/tickets__get). Do NOT use this to answer an email/mail conversation — that lives in Mail; use mail__reply for it (a mail conversation id is not a ticketId and this tool fails with 'ticket not found'). GATED: calling this does NOT send — it creates a pending approval the human reviews and approves before it goes out. When asked to draft/propose a ticket reply, CALL this tool with the body; never paste the draft into chat and ask whether to send. Do NOT end the body with a sign-off, closing name, or signature: the team's configured reply signature is appended into your draft automatically (the approver sees and can edit it), and you must never sign as yourself or as the signed-in user (that 'Current user' identity is internal for resolving 'me'/'my', NOT a customer-facing sender name). Write the textBody as PLAIN TEXT (the support default): no markdown syntax (no **bold**, no # headings, no markdown bullets, no backticks, no [text](url) links) unless formatting genuinely helps the customer; markdown is sent as formatted email with a plain-text part. Write URLs bare and structure with blank-line paragraphs. This holds for REVISED drafts too: when reworking an existing draft, the new body stays plain text. ONE pending reply draft per ticket: when tickets__get lists a draft under pendingReplyDrafts, do NOT draft another; update that one with kernel__approval_update_payload (requestId = its approvalId), even when a colleague drafted it. A second call is refused with approval_already_pending when someone else drafted the waiting one, and replaces your own waiting draft otherwise.",
       "searchKeywords": ["répondre", "réponse", "answer", "respond", "client", "customer"],
@@ -2911,6 +2916,7 @@
       }
     },
     "close": {
+      "focusCore": true,
       "outboundTextParams": ["textBody", "htmlBody"],
       "description": "Close a ticket. Optionally send a final email. closedReason defaults to resolved. Gated.",
       "searchKeywords": ["fermer", "clôturer", "clore", "résoudre", "résolu", "terminer"],

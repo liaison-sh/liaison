@@ -22,7 +22,11 @@ import {
   systemPartsToText,
   TURN_SYSTEM_PROMPT_TOKEN_CAP,
 } from "~/modules/agent/context/context"
-import { staticFixedPromptTokens } from "~/modules/agent/context/ladder-budget"
+import {
+  loadLadderTools,
+  measureLadder,
+  staticFixedPromptTokens,
+} from "~/modules/agent/context/ladder-budget"
 import { providerInputSchemaOf } from "~/modules/agent/tools/tool-bridge"
 import {
   agentInstructionsRegistry,
@@ -165,7 +169,7 @@ describe("assembleContext - the fixed prompt parts with every app on", () => {
     expect(Math.abs(metered - wire)).toBeLessThanOrEqual(wire * 0.05)
   })
 
-  it("prints every app's schema total as the registry holds it", () => {
+  it("the ladder guard's schema total per app is the registry's, kernel included", async () => {
     const perApp: Record<string, number> = {}
     for (const [key, def] of toolRegistry.entriesOf(FP_ORG)) {
       const d = def as { description?: string; params?: unknown; agentVisible?: boolean }
@@ -180,5 +184,19 @@ describe("assembleContext - the fixed prompt parts with every app on", () => {
     }
     console.log("schema tokens per app on the wire", JSON.stringify(perApp))
     expect(Object.keys(perApp)).toContain("kernel")
+    const tools = await loadLadderTools()
+    const guard = measureLadder(tools, { name: "every app", scopes: ["*"] })
+    // The guard measures the catalog of an org with a search key; an org without
+    // one has no web_search entry. Every other tool is the same.
+    const webSearch = toolRegistry.get([FP_ORG, "kernel", "web_search"])
+      ? 0
+      : (tools.find((t) => t.sdkName === "kernel__web_search")?.wireTokens ?? 0)
+    // Apps this org runs that ship (the test org also runs test-only apps).
+    const shipped = Object.keys(perApp).filter((a) => a in guard.appSchemaTokens)
+    expect(shipped).toEqual(expect.arrayContaining(["kernel", "tickets", "projects", "mail"]))
+    for (const app of shipped) {
+      const expected = perApp[app] + (app === "kernel" ? webSearch : 0)
+      expect({ app, tokens: guard.appSchemaTokens[app] }).toEqual({ app, tokens: expected })
+    }
   })
 })

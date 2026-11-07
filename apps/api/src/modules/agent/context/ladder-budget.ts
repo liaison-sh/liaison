@@ -3,16 +3,16 @@
 // What the tool ladder costs, measured with no server, database or env: for a world (the apps that are on, the scopes held, the client surface)
 // the deferred-tool announcement the real builder writes, the tools listed, the
 // summary lines, and each app's schema total through the product's own meter.
-// App tools are read from their manifests; kernel tools are the registry
-// entries the kernel's own registration builds, so both are measured from what
-// the provider is sent.
+// App tools are read from their manifests; the tools the host adds (the
+// kernel's, bulk tools, host tools) are the registry entries the host's own
+// registrations build, so every tool is measured as the provider is sent it.
 // The numbers are TARGETS. A number over its target needs a line in
 // `ladder-budget.reasons.json` naming the capability that needs it; nothing here
 // forbids a tool, and nothing here edits a description.
 //
 // The guard test and the wrapper's world runner both call `measureLadder`.
-import { readFileSync } from "node:fs"
-import { join } from "node:path"
+import { existsSync, readFileSync } from "node:fs"
+import { dirname, join } from "node:path"
 import { checkToolScopes } from "~/modules/agent/scopes/required-scopes"
 import { isDeferredTool, providerInputSchemaOf } from "~/modules/agent/tools/tool-bridge"
 import { loadManifests } from "../../../../../../scripts/docs/gen-reference"
@@ -57,10 +57,10 @@ interface ManifestTool {
 
 const sdkNameOf = (app: string, tool: string) => `${app}__${tool.replace(/[^a-zA-Z0-9_-]/g, "_")}`
 
-/** The org segment the kernel's registration is built under to be measured: not a uuid. */
+/** The org segment the host's registrations are built under to be measured: not a uuid. */
 const MEASURE_ORG = "ladder-budget-measure"
 
-interface KernelRegistryTool {
+interface RegistryTool {
   description?: string
   params?: unknown
   requiredScopes?: string[]
@@ -69,38 +69,74 @@ interface KernelRegistryTool {
   routineOnly?: boolean
 }
 
+/** One tool as the provider is sent it, measured by the product's meter. */
+function ladderTool(app: string, name: string, def: RegistryTool, guide?: string): LadderTool {
+  const sdkName = sdkNameOf(app, name)
+  return {
+    app,
+    name,
+    sdkName,
+    description: def.description ?? "",
+    requiredScopes: def.requiredScopes ?? [],
+    deferred: isDeferredTool(app, def),
+    agentVisible: def.agentVisible !== false,
+    routineOnly: def.routineOnly === true,
+    wireTokens: estimateToolSchemaTokens(sdkName, {
+      description: def.description,
+      inputSchema: providerInputSchemaOf(def.params),
+    }),
+    ...(guide ? { guide } : {}),
+  }
+}
+
 /**
- * The kernel's tools as the registry holds them: the kernel's own registration
- * runs under a measuring org, its entries are read, then removed again.
+ * The tools the host registers beyond the app manifests' own: the kernel's
+ * tools and bulk tools, each app's bulk tools and its host tools. The host's
+ * own registrations run under a measuring org, their entries are read as the
+ * registry holds them, then removed again.
  */
-async function loadKernelRegistryTools(): Promise<LadderTool[]> {
+async function loadHostRegistryTools(
+  root: string,
+  manifests: ReturnType<typeof loadManifests>,
+  guides: ReadonlyMap<string, string>,
+): Promise<LadderTool[]> {
   // Imported here: the kernel's tools read the product's config when loaded, which
   // a caller may only settle (placeholder secrets) after this module is imported.
   const { KernelToolsTestAccess } = await import("~/modules/agent/tools/kernel-tools")
+  const { registerKernelBulkApp } = await import("~/modules/apps/kernel-bulk")
+  const { registerBulkAgentTools } = await import("~/modules/apps/bulk-agent-tools")
   const { toolRegistry } = await import("~/modules/apps/app-registries")
   const { deleteRegistryEntriesOfOrgs } = await import("~/modules/apps/registries")
   const out: LadderTool[] = []
   try {
     await KernelToolsTestAccess.buildWithoutTemplate(MEASURE_ORG)
+    registerKernelBulkApp(MEASURE_ORG)
+    for (const m of manifests) {
+      const tools = m.manifest.tools as Record<string, RegistryTool> | undefined
+      const bulk = m.manifest.bulk as Parameters<typeof registerBulkAgentTools>[0]["bulk"]
+      if (bulk && tools)
+        registerBulkAgentTools({
+          orgId: MEASURE_ORG,
+          appName: m.name,
+          bulk,
+          tools: tools as Parameters<typeof registerBulkAgentTools>[0]["tools"],
+        })
+      const descriptor = join(root, dirname(m.path), "manifest-descriptor.ts")
+      if (!existsSync(descriptor)) continue
+      for (const value of Object.values(await import(descriptor))) {
+        const register = (value as { _registerHostTools?: unknown } | null)?._registerHostTools
+        if (typeof register === "function") register(MEASURE_ORG)
+      }
+    }
     for (const [key, value] of toolRegistry.entriesOf(MEASURE_ORG)) {
-      if (key[1] !== "kernel") continue
-      const def = value as KernelRegistryTool
-      const name = String(key[2])
-      const sdkName = sdkNameOf("kernel", name)
-      out.push({
-        app: "kernel",
-        name,
-        sdkName,
-        description: def.description ?? "",
-        requiredScopes: def.requiredScopes ?? [],
-        deferred: isDeferredTool("kernel", def),
-        agentVisible: def.agentVisible !== false,
-        routineOnly: def.routineOnly === true,
-        wireTokens: estimateToolSchemaTokens(sdkName, {
-          description: def.description,
-          inputSchema: providerInputSchemaOf(def.params),
-        }),
-      })
+      const app = String(key[1])
+      const tools = manifests.find((m) => m.name === app)?.manifest.tools as
+        | Record<string, unknown>
+        | undefined
+      // A manifest tool is measured from its manifest, above.
+      if (tools && String(key[2]) in tools) continue
+      if (app !== "kernel" && !manifests.some((m) => m.name === app)) continue
+      out.push(ladderTool(app, String(key[2]), value as RegistryTool, guides.get(app)))
     }
   } finally {
     deleteRegistryEntriesOfOrgs(new Set([MEASURE_ORG]))
@@ -108,35 +144,22 @@ async function loadKernelRegistryTools(): Promise<LadderTool[]> {
   return out
 }
 
-/** Every tool of every shipped app (from its manifest) and of the kernel (from its registration). */
+/** Every tool of every shipped app and of the kernel, as the registry holds them. */
 export async function loadLadderTools(root: string = LADDER_REPO_ROOT): Promise<LadderTool[]> {
   const out: LadderTool[] = []
-  for (const m of loadManifests(root)) {
-    if (LEFT_OUT_APPS.has(m.name)) continue
+  const manifests = loadManifests(root).filter((m) => !LEFT_OUT_APPS.has(m.name))
+  const guides = new Map<string, string>()
+  for (const m of manifests) {
     const instructions = m.manifest.agentInstructions
     const guide = typeof instructions === "string" ? instructions : undefined
+    if (guide) guides.set(m.name, guide)
     const tools = (m.manifest.tools ?? {}) as Record<string, ManifestTool>
     for (const [name, def] of Object.entries(tools)) {
       if (def.contractOnly) continue
-      const sdkName = sdkNameOf(m.name, name)
-      out.push({
-        app: m.name,
-        name,
-        sdkName,
-        description: def.description ?? "",
-        requiredScopes: def.requiredScopes ?? [],
-        deferred: isDeferredTool(m.name, def),
-        agentVisible: def.agentVisible !== false,
-        routineOnly: def.routineOnly === true,
-        wireTokens: estimateToolSchemaTokens(sdkName, {
-          description: def.description,
-          inputSchema: providerInputSchemaOf(def.params),
-        }),
-        ...(guide ? { guide } : {}),
-      })
+      out.push(ladderTool(m.name, name, def, guide))
     }
   }
-  out.push(...(await loadKernelRegistryTools()))
+  out.push(...(await loadHostRegistryTools(root, manifests, guides)))
   return out.sort((a, b) => a.sdkName.localeCompare(b.sdkName))
 }
 

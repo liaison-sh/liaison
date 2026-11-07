@@ -55,6 +55,11 @@ const ALLOWLIST: Record<string, { reads: number; reason: string }> = {
     reads: 2,
     reason: "origin binding: the server's own hosts an app fetch must not reach, builds no link",
   },
+  "modules/apps/workers/config.ts": {
+    reads: 1,
+    reason:
+      "the instance's own address for the Workers executor's bridge calls, not a link shown to anyone",
+  },
   "modules/notifications/devices.ts": {
     reads: 2,
     reason: "origin binding: the server identity a device registers against, not a link",

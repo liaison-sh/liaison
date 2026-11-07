@@ -2570,6 +2570,13 @@ export interface HandlerApprovalInput {
    * handler that does not set it always parks for a person.
    */
   auto_approvable?: boolean
+  /**
+   * The scope that decides this request, when the tool's own deciding scope is not the right
+   * audience (a handler that parks a call only some of the app's approvers should see). It must
+   * be the calling app's own scope: the app's name, or a scope under `<app>:`. It decides an
+   * agent's request only; a person's own call is still decided by the tool's own required scopes.
+   */
+  approve_scope?: string
 }
 
 export interface HandlerApprovalResult {
@@ -2658,6 +2665,23 @@ export async function createHandlerApprovalRequest(args: {
       `ctx.requestApproval: '${input.tool_name}' is not a tool of '${args.defaultAppName}'; a handler may only request approval for its own app's tools`,
     )
   }
+  // The deciding scope a handler names must be its own app's: an app cannot route its approvals
+  // to another app's deciders, and a bare wildcard or malformed scope decides nothing sensible.
+  if (input.approve_scope !== undefined) {
+    const scope = input.approve_scope
+    const own =
+      typeof scope === "string" &&
+      /^[a-z0-9_-]+(:[A-Za-z0-9_.-]+)*$/.test(scope) &&
+      (scope === appName || scope.startsWith(`${appName}:`))
+    if (!own) {
+      throw Object.assign(
+        new Error(
+          `approve_scope_not_own: approve_scope ${JSON.stringify(scope)} is not a scope of '${appName}'; it must be '${appName}' or start with '${appName}:'. No approval was created. Omit approve_scope to use the tool's own deciding scope.`,
+        ),
+        { code: "approve_scope_not_own", status: 422 },
+      )
+    }
+  }
   // A tool whose approval binds pinned params gets them from its preflight only
   // (executeTool's stage path). A handler-built payload would put the
   // handler's own values in their place, unchecked: refused.
@@ -2700,12 +2724,14 @@ export async function createHandlerApprovalRequest(args: {
   // This path previously hardcoded `<app>:approve` and passed no
   // approveScope/dimensionConstraint at all, so rows it created LOST their
   // custom deciding scope and fanned out to the wrong approvers.
-  const { approveScope, dimensionConstraint } = await resolveToolApprovalAuthority({
+  const resolvedAuthority = await resolveToolApprovalAuthority({
     orgId: args.orgId,
     appName,
     toolShortName,
     params: input.current_payload,
   })
+  const { dimensionConstraint } = resolvedAuthority
+  const approveScope = input.approve_scope ?? resolvedAuthority.approveScope
   const requesterCanApprove =
     hasScope(approveScope, args.actorScopes) &&
     (dimensionConstraint === null ||

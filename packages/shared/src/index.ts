@@ -26,6 +26,7 @@ export type {
   RoutingWorld,
 } from "./approvals/authority"
 export {
+  awayRunEnd,
   canDecidePure,
   canEditPure,
   canSeeInFeed,

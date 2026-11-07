@@ -14,6 +14,7 @@
 import {
   type ApprovalRoute,
   type AwayRangeDays,
+  awayRunEnd,
   isAwayOn,
   personLocalDate,
   type RoutingWorld,
@@ -121,15 +122,6 @@ interface RangeRow {
   ended_early_on: string | null
 }
 
-function addDays(date: string, days: number): string {
-  const d = new Date(`${date}T00:00:00Z`)
-  d.setUTCDate(d.getUTCDate() + days)
-  return d.toISOString().slice(0, 10)
-}
-
-/** At most this many days ahead when finding the last day of a run of away days. */
-const UNTIL_HORIZON_DAYS = 400
-
 /**
  * Today's away ranges of the org, each person's own date, and the standing next in line of the
  * people away with no per-range one. A member reads active ranges under RLS; the standing
@@ -182,13 +174,8 @@ export async function readAwayWorld(
     for (const [userId, list] of byUser) {
       const today = personLocalDate(now, zoneOf.get(userId) ?? null, orgTz)
       const days = list.map(rangeDays)
-      if (!days.some((d) => isAwayOn(d, today))) continue
-      let until = today
-      for (let i = 1; i <= UNTIL_HORIZON_DAYS; i++) {
-        const next = addDays(today, i)
-        if (!days.some((d) => isAwayOn(d, next))) break
-        until = next
-      }
+      const until = awayRunEnd(days, today)
+      if (until === null) continue
       awayToday.set(userId, { until, ranges: list, today })
     }
     if (awayToday.size === 0) return NOBODY_AWAY
@@ -283,6 +270,18 @@ export async function readApprovalRoutes(
   now: Date = new Date(),
 ): Promise<RoutedRows> {
   return routesIn(tx, orgId, rows, await readAwayWorld(tx, orgId, now))
+}
+
+/**
+ * The kind of route of each row, read on any transaction, with nobody away. Away changes who
+ * stands in, never whether a row is the owner's, a person's or the usual deciders'.
+ */
+export async function readRoutesIgnoringAway(
+  tx: Reader,
+  orgId: string,
+  rows: readonly RoutableApprovalRow[],
+): Promise<RoutedRows> {
+  return routesIn(tx, orgId, rows, NOBODY_AWAY)
 }
 
 /** The routes of `rows` in a given away world, every other fact read on `tx`. */

@@ -301,6 +301,76 @@ describe("runStateMaterializeOnce", () => {
     ])
   })
 
+  it("going away raises no burst: rows already waiting reach the stand-in without a push, a new one does", async () => {
+    attentionItemsRegistry.set(["*", "kernel"], {
+      handler: "computeApprovalAttentionItems",
+      bundlePath: "/fake/approvals",
+      trusted: true,
+    })
+    const now = new Date("2026-09-28T10:00:00.000Z")
+    const standingIn = (id: string, ageMinutes: number) =>
+      item({
+        id: `kernel:approval_pending:${id}`,
+        entity: "approval_request",
+        entityId: id,
+        kind: "approval_pending",
+        urgency: 60,
+        occurredAt: new Date(now.getTime() - ageMinutes * 60_000).toISOString(),
+        action: { type: "decide_approval", approvalId: id },
+        metadata: { peerSelfApprovable: false, placement: "standing_in" },
+      })
+    const waiting = Array.from({ length: 12 }, (_, i) =>
+      standingIn(`00000000-0000-4000-8000-0000000001${String(i).padStart(2, "0")}`, 600 + i),
+    )
+    const proposed = standingIn("00000000-0000-4000-8000-000000000200", 1)
+    const { resolveChannels } = await import("~/modules/notifications/router")
+    const { effectiveGrid } = await import("@liaison/shared")
+    const upserted: any[] = []
+    const live: string[] = []
+    await mod.runStateMaterializeOnce(
+      { orgId: ORG },
+      {
+        listOrgsWithActiveUsers: async () => [ORG],
+        listActiveUsers: async () => [USER],
+        invokeProvider: (async () => [...waiting, proposed]) as never,
+        listKnownSourceKeys: async () => new Set<string>(),
+        upsertEmailOnlyRow: async (row: any) => {
+          upserted.push(row)
+          return true
+        },
+        route: (r, i, at) =>
+          resolveChannels(r, i, {
+            now: at,
+            loadContext: async () => ({
+              grid: effectiveGrid(null),
+              digestCadence: "immediate",
+              workHours: {
+                workHoursStart: "09:00",
+                workHoursEnd: "17:00",
+                workDays: [1, 2, 3, 4, 5],
+                timezone: "UTC",
+              },
+              workHoursExplicit: false,
+              appRules: [],
+              threadMuted: false,
+              hasPushDevice: true,
+            }),
+          }),
+        dispatchLive: async (_d, payload) => {
+          live.push(payload.entityId as string)
+        },
+        now: () => now,
+        ensureOrgApps: async () => {},
+      },
+    )
+    // Every row is on the stand-in's Home; only the one proposed a minute ago is news.
+    expect(upserted).toHaveLength(13)
+    expect(live).toEqual([proposed.entityId])
+    for (const row of upserted.filter((r) => r.entityId !== proposed.entityId)) {
+      expect(row.digestState).toBe("suppressed")
+    }
+  })
+
   // Etiquette rule 1: an approval the person's agent raised in the chat they
   // are reading is on their screen already. The router is asked with the
   // conversation as a viewing-only presence key, so it holds the interrupt

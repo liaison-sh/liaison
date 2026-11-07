@@ -18,7 +18,7 @@ import { z } from "zod"
 import { sql } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
-import { messages, routineRuns, routines as routinesTbl } from "~/db/schema/kernel"
+import { messages, routineRuns, routines as routinesTbl, threads } from "~/db/schema/kernel"
 import * as eventBusModule from "~/infra/events/event-bus"
 import * as jobsModule from "~/infra/jobs/jobs"
 import { getOrCreatePersonalAgentId } from "~/modules/agent/directory/personal-agent"
@@ -322,6 +322,48 @@ describe("a follow-up routine stages its drafts and ends", () => {
     expect((await runsOf(routine.id)).map((r) => r.status)).toEqual(["succeeded", "succeeded"])
     // The first run's drafts still wait, each on its own.
     expect(await statuses(first.approvalIds)).toEqual(["pending", "pending", "pending"])
+  })
+
+  it("a tick that first reads a client's tickets is marked as having read outside text, and still ends succeeded with its drafts waiting", async () => {
+    const routine = await makeRoutine({ followUp: true })
+    const approvalIds: string[] = []
+    let runThreadId = ""
+    const result = await runRoutineTick({
+      orgId,
+      routineId: routine.id,
+      scheduledAt: new Date().toISOString(),
+      loadOwnerScopes: async () => ["*"],
+      checkCredits: async () => null,
+      agentInvoker: async (input) => {
+        runThreadId = input.threadId
+        const read = await inTurn(() =>
+          executeTool({
+            toolName: "tickets:listForContact",
+            orgId,
+            actor: owner,
+            params: { contactId: crypto.randomUUID() },
+            threadId: input.threadId,
+            origin: "in-app-agent",
+          }),
+        )
+        expect(read.blocked).toBeUndefined()
+        expect(read.data).toEqual({ items: [] })
+        for (const to of ["a@client.test", "b@client.test"]) {
+          approvalIds.push(await draft(input.threadId, to))
+        }
+        await agentReply(input.threadId, `${approvalIds.length} follow-ups drafted.`)
+        return { turnsAdded: 1 }
+      },
+    })
+    const [thread] = await withSystemDb("followup-read-taint", (db) =>
+      db.select({ tainted: threads.tainted }).from(threads).where(eq(threads.id, runThreadId)),
+    )
+    expect(thread?.tainted).toBe(true)
+    expect(result.status).toBe("succeeded")
+    expect(await statuses(approvalIds)).toEqual(["pending", "pending"])
+    expect(await runLines(routine.reportThreadId)).toEqual([
+      { status: "succeeded", draftsWaiting: 2 },
+    ])
   })
 
   it("the same tick on a routine that is not a follow-up waits, and its next tick is skipped", async () => {

@@ -170,12 +170,16 @@ describe("tickets manifest", () => {
     const tools = ticketsManifest.tools as Record<string, { taintSource?: boolean }>
     expect(tools.search.taintSource).toBe(true)
     expect(tools.get.taintSource).toBe(true)
+    // The aggregates and per-contact list name their tickets by subject, which
+    // the customer wrote, so they mark the thread as the search does.
+    for (const id of ["backlogHealth", "slaReport", "listForContact", "csat.list"]) {
+      expect(tools[id]?.taintSource, `${id} must declare taintSource`).toBe(true)
+    }
     for (const id of [
       "reply",
       "create",
       "addNote",
       "setStatus",
-      "backlogHealth",
       // teams.list returns operator-authored routing labels and counts, never
       // customer-authored content — tainting a thread for reading it would
       // contain the agent for no gain.

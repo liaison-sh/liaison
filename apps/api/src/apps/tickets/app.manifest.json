@@ -106,7 +106,7 @@
       }
     ]
   },
-  "version": "1.2.6",
+  "version": "1.2.7",
   "description": "Customer-facing ticketing: local foundations (7.1)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -1678,6 +1678,7 @@
       }
     },
     "backlogHealth": {
+      "taintSource": true,
       "description": "AUTHORITATIVE backlog-health aggregate — the tool for 'how many open tickets / awaiting customer vs awaiting us / which are oldest / where are we bunching by category / are we drowning'. Computes EXACT server-side counts over the WHOLE open (non-closed, non-merged) backlog you can see, via a real GROUP BY (NOT a paged search sample): byStatus {open, awaitingCustomer (we're waiting on the customer), awaitingFollowup, totalOpen}, byCategory (open count per category — the bunching), byAge (0-7d / 7-14d / 14-30d / 30d+ buckets), oldest (the oldest open tickets, oldest first, with ageDays + category + assignee), unassignedOpen, and bySla {approaching, breached, approachingTop[], breachedTop[]} — the EXACT server-side counts of SLA-approaching vs already-breached tickets (same predicates as search slaApproaching/slaBreached) with up to 3 named exemplars each. So this single read DOES answer 'any SLA breaches / what's at risk': read bySla.breached and bySla.approaching — and NEVER claim zero breaches/at-risk from the ABSENCE of an SLA field (the field is bySla; 0 means a real 0, not 'not measured'). These totals are EXACT and authoritative — there is no pagination caveat and no need to sample or estimate. Use THIS instead of tallying search pages or reading inboxCounts when asked for a backlog/status/aging/category-distribution read. The result is the definitive answer to give even when the user demands 'a number I can trust' — it IS the trusted number, because it counts the entire backlog server-side. Note: awaitingCustomer = tickets where the customer owes us a reply; the live 'awaiting us / on our plate' set is open + awaitingFollowup.",
       "searchKeywords": ["backlog", "arriéré", "retard", "file", "charge"],
       "readOnly": true,
@@ -1697,6 +1698,7 @@
       }
     },
     "slaReport": {
+      "taintSource": true,
       "description": "AUTHORITATIVE weekly SLA-breach post-mortem aggregate — the tool for 'which tickets breached SLA in the last 7 days, by how much, per-agent breach counts, and our overall SLA-attainment rate this week'. Computes EXACT server-side counts over EVERY ticket you can see whose first-response SLA clock STARTED in the window (default last 7 days, override with windowDays), via a real aggregate (NOT a paged search sample, which has no 'breached' filter and no rate/margin/per-agent rollup): totalInWindow, breachedCount, metCount, attainmentRatePct (metCount/totalInWindow*100, 1 decimal — null ONLY when the window is empty, never fabricate a rate), perAgent[] (per-assignee breach counts with assigneeName, descending, including an unassigned bucket), and breachedTickets[] (every breached ticket, most-overdue first, each with assigneeName, slaDeadline, firstResponseAt, breachMarginSeconds + breachMarginHours = how LATE the first response was, and stillUnanswered). 'Breached' uses the SAME predicate as search slaBreached=true (an explicit slaBreachedAt OR a past slaDeadline on a non-paused SLA). These totals are EXACT and authoritative — there is no pagination caveat and no need to sample or estimate. Use THIS for any SLA post-mortem / attainment-rate / breach-margin / per-agent-breach question — NEVER tally search pages or invent a percentage. Report attainmentRatePct, breachedCount, and the perAgent split AS the definitive answer.",
       "searchKeywords": ["sla", "délai", "délais", "retard", "report", "rapport", "temps"],
       "readOnly": true,
@@ -1716,6 +1718,7 @@
       }
     },
     "listForContact": {
+      "taintSource": true,
       "description": "List recent tickets for a contact",
       "searchKeywords": ["contact", "client", "customer", "historique", "history"],
       "readOnly": true,
@@ -1971,6 +1974,7 @@
       }
     },
     "csat.list": {
+      "taintSource": true,
       "description": "List individual CSAT survey records (ticket handle/subject, status, score, sent/responded timestamps), optionally filtered by status (pending|responded|declined).",
       "searchKeywords": ["satisfaction", "csat", "avis", "réponses"],
       "readOnly": true,

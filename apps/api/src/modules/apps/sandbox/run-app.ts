@@ -16,9 +16,10 @@
 //   pool       everything else, on the out-of-process worker pool
 //
 // A listed app that cannot run on Workers (no bundle for its installed
-// version) runs on the pool with a warning per run. Every run of a listed app
-// writes one timing record tagged with the executor that ran it
-// (workers/timings.ts, kind "run").
+// version) runs on the pool with a warning per run. Every run raises one
+// run-settled event (workers/run-settled.ts) once it has settled, tagged with
+// the executor that ran it; the run timing records (workers/timings.ts, kind
+// "run", listed and custom apps) are one of its subscribers.
 //
 // A new executor is one more arm of `selectExecutor` and of the switch in
 // `runApp`; no call site changes. The sandboxes that do not run app handlers
@@ -30,7 +31,6 @@ import { dirname } from "node:path"
 import { and, eq, isNotNull, isNull, or } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
-import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
 import { flushRunLogs } from "~/modules/app-builder/logs"
 import { isCustomAppName } from "~/modules/apps/custom-app-name"
@@ -55,7 +55,9 @@ import {
   workersSelectsApp,
 } from "~/modules/apps/workers/config"
 import { executeOnWorkers, type WorkersRunInfo } from "~/modules/apps/workers/executor"
-import { recordRunTiming } from "~/modules/apps/workers/timings"
+import { emitRunSettled } from "~/modules/apps/workers/run-settled"
+// The run timing records subscribe to the run-settled event (timings.ts).
+import "~/modules/apps/workers/timings"
 
 const log = rootLogger.child({ module: "run-app" })
 
@@ -190,37 +192,10 @@ export async function appRunsOnWorkers(
   return (await resolveWorkersTarget(opts)) !== null
 }
 
-/**
- * Whether this app's runs write a timing record: listed in LIAISON_WORKERS_APPS
- * (whatever else is set), or a custom app while LIAISON_WORKERS_CUSTOM_APPS is on.
- */
-function isTimedApp(appName: string): boolean {
-  if (timedApps().has(appName)) return true
-  const flag = (env.LIAISON_WORKERS_CUSTOM_APPS ?? "").trim().toLowerCase()
-  return (flag === "1" || flag === "true") && isCustomAppName(appName)
-}
-
-/** The apps LIAISON_WORKERS_APPS lists. */
-function timedApps(): ReadonlySet<string> {
-  const raw = env.LIAISON_WORKERS_APPS ?? ""
-  if (raw === timedAppsRaw) return timedAppsSet
-  timedAppsRaw = raw
-  timedAppsSet = new Set(
-    raw
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean),
-  )
-  return timedAppsSet
-}
-let timedAppsRaw = ""
-let timedAppsSet: ReadonlySet<string> = new Set()
-
 /** Running executions by token -> app, so a nested run's record names its parent app. */
 const runningExecutions = new Map<string, string>()
 
 export async function runApp(opts: RunAppOptions): Promise<unknown> {
-  const timed = isTimedApp(opts.appName)
   const started = Date.now()
   if (opts.executionToken) runningExecutions.set(opts.executionToken, opts.appName)
   const workersTarget = await resolveWorkersTarget(opts)
@@ -241,28 +216,24 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
     // A custom app's (or draft preview's) log lines: written in the background,
     // never the run's failure (modules/app-builder/logs.ts).
     void flushRunLogs(opts.bridge)
-    if (timed) {
-      const parentApp =
-        opts.nested && opts.nestedParentKey
-          ? runningExecutions.get(opts.nestedParentKey)
-          : undefined
-      recordRunTiming({
-        kind: "run",
-        ...(info.runId ? { runId: info.runId } : {}),
-        app: opts.appName,
-        entry:
-          opts.entry ?? (opts.toolName ? `tool:${opts.toolName}` : `handler:${opts.exportName}`),
-        executor: executor === "pool" ? "quickjs" : executor,
-        nested: opts.nested === true,
-        ...(parentApp ? { parentApp } : {}),
-        ms: Date.now() - started,
-        ok,
-        at: started,
-        ...(info.loader ? { loader: info.loader } : {}),
-        ...(info.sleepMs !== undefined ? { sleepMs: info.sleepMs } : {}),
-        ...(info.sleepExact !== undefined ? { sleepExact: info.sleepExact } : {}),
-      })
-    }
+    const parentApp =
+      opts.nested && opts.nestedParentKey ? runningExecutions.get(opts.nestedParentKey) : undefined
+    emitRunSettled({
+      ...(info.runId ? { runId: info.runId } : {}),
+      app: opts.appName,
+      orgId: opts.orgId,
+      entry: opts.entry ?? (opts.toolName ? `tool:${opts.toolName}` : `handler:${opts.exportName}`),
+      executor: executor === "pool" ? "quickjs" : executor,
+      nested: opts.nested === true,
+      ...(parentApp ? { parentApp } : {}),
+      ms: Date.now() - started,
+      ok,
+      at: started,
+      ...(info.loader?.bridgeCalls !== undefined ? { bridgeCalls: info.loader.bridgeCalls } : {}),
+      ...(info.loader ? { loader: info.loader } : {}),
+      ...(info.sleepMs !== undefined ? { sleepMs: info.sleepMs } : {}),
+      ...(info.sleepExact !== undefined ? { sleepExact: info.sleepExact } : {}),
+    })
   }
 }
 

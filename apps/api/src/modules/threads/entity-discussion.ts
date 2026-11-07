@@ -191,13 +191,14 @@ export async function enrolInEntityDiscussion(params: {
   const { orgId, threadId, ref } = params
   const ids = [...new Set(params.userIds)].filter((id) => UUID_RE.test(id))
   if (ids.length === 0) return { enrolled: [], dropped: [...new Set(params.userIds)] }
-  // Only active people of this organization can be seated at all.
+  // Only active members of this organization can be seated at all: a client's portal
+  // account never joins an internal discussion, whatever it can see.
   const members = new Set(
     await withPrivilegedDb(orgId, "entity-discussion-members", async (tx) =>
       extractRows<{ id: string }>(
         await tx.execute(drizzleSql`
           SELECT id::text AS id FROM ${ks}.users
-           WHERE org_id = ${orgId}::uuid AND status = 'active'
+           WHERE org_id = ${orgId}::uuid AND status = 'active' AND user_type = 'member'
              AND id IN (${drizzleSql.join(
                ids.map((id) => drizzleSql`${id}::uuid`),
                drizzleSql`, `,

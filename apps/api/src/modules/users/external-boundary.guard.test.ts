@@ -191,6 +191,10 @@ const TREATED: Record<string, [Treatment, string]> = {
   "modules/scope-requests/service.ts": ["one-row", "the requester's name"],
   "modules/secret-requests/service.ts": ["stored-ids", "the requester's name"],
   "modules/security/security-events.ts": ["one-row", "the org of a signal's user"],
+  "modules/threads/entity-discussion.ts": [
+    "member-filter",
+    "seats active members only; a portal account is never enrolled",
+  ],
   "modules/threads/message.ts": ["stored-ids", "authors and participants"],
   "modules/threads/participant.ts": ["one-row", "the ids a caller adds"],
   "modules/threads/routes.ts": ["one-row", "the id a caller names"],

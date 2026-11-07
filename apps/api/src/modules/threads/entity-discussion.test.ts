@@ -17,9 +17,11 @@ import { schemaRef } from "~/db/schema-ref"
 import { assembleContext } from "~/modules/agent/context/context"
 import {
   DiscussionNotDeclaredError,
+  enrolInEntityDiscussion,
   openEntityDiscussion,
   pruneEntityDiscussion,
 } from "~/modules/threads/entity-discussion"
+import { createExternalUser } from "~/modules/users/external-user"
 import { insertAppRow } from "~/seed/factories/app-tables"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
@@ -177,6 +179,33 @@ describe("entity discussions", () => {
     expect(again?.threadId).toBe(first!.threadId)
     expect(await threadsWithHandle(`contact-primary:${contactId}`)).toEqual([first!.threadId])
     expect(await threadsWithHandle(`entity:kernel:contact:${contactId}`)).toEqual([])
+  })
+
+  test("a client's portal account is never seated", async () => {
+    const itemId = await item(orgId, "seat check")
+    const { threadId } = await open(as(aliceId, SEES_ITEMS), "items", itemId)
+    const email = `client-${crypto.randomUUID().slice(0, 8)}@client.example`
+    const ks = drizzleSql.raw(`"${schemaRef("kernel")}"`)
+    const clientId = await withPrivilegedDb(orgId, "test-portal-account", async (tx) => {
+      const created = await createExternalUser(tx, {
+        orgId,
+        companyId: crypto.randomUUID(),
+        email,
+        name: "Client Item",
+      })
+      if (!created.ok) throw new Error(created.code)
+      await tx.execute(drizzleSql`
+        UPDATE ${ks}.users SET status = 'active' WHERE id = ${created.userId}::uuid`)
+      return created.userId
+    })
+    const result = await enrolInEntityDiscussion({
+      orgId,
+      threadId,
+      ref: { app: "example", entityType: "items", entityId: itemId },
+      userIds: [bobId, clientId],
+    })
+    expect(result.enrolled).not.toContain(clientId)
+    expect(result.dropped).toContain(clientId)
   })
 
   test("after prune an enrolled person cannot open it", async () => {

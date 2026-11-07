@@ -29,6 +29,7 @@ const TAINT_SOURCES: Array<[string, string[]]> = [
     ],
   ],
   [join(API_APPS, "google-drive", "app.manifest.json"), ["search", "read"]],
+  [join(API_APPS, "database", "app.manifest.json"), ["db_read", "db_query"]],
   [
     join(BUNDLED, "shopify", "app.manifest.json"),
     ["orders_search", "orders_get", "customers_search", "customers_get", "draft_orders_get"],

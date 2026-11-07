@@ -26,7 +26,7 @@ import { hasScope } from "~/modules/permissions/permissions"
 
 const K = drizzleSql.raw(schemaRef("kernel"))
 
-/** Who may set or end another person's range (D50). */
+/** Who may set or end another person's range. */
 export const AWAY_OTHERS_SCOPES = ["kernel:users:admin", "projects:capacity:write"] as const
 
 /** Days after a range's last day before its row is deleted. */

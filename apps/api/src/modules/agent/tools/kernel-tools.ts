@@ -3647,7 +3647,7 @@ When to use: When an admin asks to set up a reusable role they will spawn repeat
   // Away days and next in line (one kernel record, modules/users/away.ts). It changes who sees
   // approvals, so outside text must not make it happen, and a person saying "I'm away" must not
   // pay a click for it: the person's own untainted turn runs it at once, and so does a holder of
-  // the scope for someone else (D50). Any other call (outside text read, a routine, an MCP
+  // the scope for someone else. Any other call (outside text read, a routine, an MCP
   // client) parks to the requester's own decision, never to the person named, and no
   // auto-approve policy answers it. Refusals (another's range without the scope, a next in line
   // who cannot be one) come before any gate.

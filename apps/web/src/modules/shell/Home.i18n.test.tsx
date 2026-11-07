@@ -38,7 +38,7 @@ vi.mock("~/modules/shell/ApiContext", () => ({
   }),
 }))
 
-import { resetRegistry } from "~/framework/app-registry"
+import { registerManifestAppData, resetRegistry } from "~/framework/app-registry"
 import { I18nProvider } from "~/modules/i18n/i18n-context"
 import { attentionStore } from "~/modules/shell/attention-store"
 import { resetHomeCardLayout } from "~/modules/shell/home-card-layout"
@@ -75,6 +75,12 @@ function renderHome(locale: "en" | "fr") {
 beforeEach(() => {
   attentionStore._setForTest({ items: [], errors: [], loading: false })
   resetRegistry()
+  registerManifestAppData("tickets", {
+    attention: { groupLabel: { label: "Support", labelKey: "kernel.homeGroupSupport" } },
+  })
+  registerManifestAppData("knowledge", {
+    attention: { groupLabel: { label: "Knowledge", labelKey: "kernel.homeGroupKnowledge" } },
+  })
   resetHomeCardLayout()
   resetThreadStore()
   apiGet.mockReset().mockResolvedValue([])

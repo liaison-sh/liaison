@@ -106,7 +106,7 @@
       }
     ]
   },
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "Customer-facing ticketing: local foundations (7.1)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -3294,6 +3294,7 @@
     }
   },
   "attention": {
+    "groupLabel": { "label": "Support", "labelKey": "kernel.homeGroupSupport" },
     "translations": [
       {
         "event": "inbox:close_silent_stopped",

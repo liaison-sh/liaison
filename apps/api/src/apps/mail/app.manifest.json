@@ -67,7 +67,7 @@
       }
     ]
   },
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "Email integration: Gmail and IMAP/SMTP",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -1867,5 +1867,9 @@
       "kind": "guide",
       "enabledByDefault": true
     }
+  },
+  "attention": {
+    "groupLabel": { "label": "Mail", "labelKey": "kernel.homeGroupMail" },
+    "translations": []
   }
 }

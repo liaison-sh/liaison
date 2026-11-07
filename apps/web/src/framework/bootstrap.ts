@@ -1348,6 +1348,7 @@ export function bootstrapKernelApps(): void {
   // runtime — register the bulk decl on the frontend so <BulkActionToolbar app="kernel">
   // can read it from the manifest cache.
   registerManifestAppData("kernel", {
+    attention: { groupLabel: { label: "Team", labelKey: "kernel.homeGroupTeam" } },
     bulk: {
       deactivateUsers: {
         label: "Deactivate users",

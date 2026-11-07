@@ -82,7 +82,7 @@
       }
     ]
   },
-  "version": "1.10.3",
+  "version": "1.10.4",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -2515,5 +2515,9 @@
       "kind": "playbook",
       "enabledByDefault": false
     }
+  },
+  "attention": {
+    "groupLabel": { "label": "Tasks", "labelKey": "kernel.homeGroupTasks" },
+    "translations": []
   }
 }

@@ -1193,20 +1193,48 @@ export interface ManifestSavedView {
   defaults?: ManifestSavedViewDefault[]
 }
 
+/** A label an app declares: its English words and the catalog key a reader's
+ *  language is looked up by. */
+export interface ManifestLabel {
+  label: string
+  labelKey?: string
+}
+
 export interface ManifestAppData {
+  /** The heading over the app's attention items on Home. */
+  attention?: { groupLabel?: ManifestLabel }
+  /** The pill an approval card of the app carries. */
+  approvalCard?: { pill?: ManifestLabel }
   bulk?: Record<string, ManifestBulkAction>
   savedViews?: Record<string, ManifestSavedView>
   entities?: Record<string, { handlePrefix?: string; readScope?: string }>
 }
 
 const manifestAppData = new Map<string, ManifestAppData>()
+// Read by Home while apps are still loading: a label read tracks this version,
+// so a heading re-renders when its app's manifest arrives.
+const [manifestAppDataVersion, setManifestAppDataVersion] = createSignal(0)
 
 export function registerManifestAppData(appId: string, data: ManifestAppData): void {
   manifestAppData.set(appId, data)
+  setManifestAppDataVersion((v) => v + 1)
 }
 
 export function unregisterManifestAppData(appId: string): void {
   manifestAppData.delete(appId)
+  setManifestAppDataVersion((v) => v + 1)
+}
+
+/** The heading an app declares over its attention items, if it declares one. */
+export function getAttentionGroupLabel(appId: string): ManifestLabel | undefined {
+  manifestAppDataVersion()
+  return manifestAppData.get(appId)?.attention?.groupLabel
+}
+
+/** The pill an app declares for its approval cards, if it declares one. */
+export function getApprovalCardPill(appId: string): ManifestLabel | undefined {
+  manifestAppDataVersion()
+  return manifestAppData.get(appId)?.approvalCard?.pill
 }
 
 export function getManifestBulkActions(

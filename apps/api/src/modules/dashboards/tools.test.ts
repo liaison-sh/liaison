@@ -11,6 +11,7 @@ import { z } from "zod"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { isThreadTainted } from "~/modules/agent/scopes/taint"
 import { toolRegistry } from "~/modules/apps/app-registries"
+import { generateApprovalSummary } from "~/modules/apps/approval-summarizers"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { createDashboard, getDashboard, listDashboards } from "~/modules/dashboards/service"
 import type { EligibleSource } from "~/modules/dashboards/sources"
@@ -239,6 +240,24 @@ describe("preview and sources", () => {
     )
     expect(store.data).toMatchObject({ ok: true })
     expect(await isThreadTainted(storeThread, orgId)).toBe(true)
+  })
+
+  it("a parked create's card says personal or org from the call's visibility", async () => {
+    // A personal create parks too when the turn's taint parks it (scope-taint rule 8b).
+    const card = (visibility: string) =>
+      generateApprovalSummary(
+        orgId,
+        "kernel",
+        "dashboards_create",
+        { title: "Leads", visibility, spec: { v: 1, blocks: [pieBlock()] } },
+        {} as never,
+        "kernel:dashboards_create",
+      )
+    const personal = await card("personal")
+    expect(personal.title).toBe('Save the personal dashboard "Leads"')
+    expect(personal.lines.join("\n")).not.toContain("Everyone in the organisation")
+    const org = await card("org")
+    expect(org.title).toBe('Share the dashboard "Leads" with the organisation')
   })
 
   it("preview runs as the caller: without the tool's scope it is no_access", async () => {

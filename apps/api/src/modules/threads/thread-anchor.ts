@@ -12,9 +12,13 @@
 // declared `labelField`, and the fact that tells two of the same name apart
 // from its declared `labelSecondaryFrom` (a task's project).
 import type { ThreadAnchor } from "@liaison/shared"
+import { sql as drizzleSql } from "drizzle-orm"
+import type { PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
+import { isAppActiveForOrgAsync } from "~/modules/apps/org-apps"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { attachMentionSecondaryLabels } from "~/modules/search/mention-secondary"
 import type { MentionHit } from "~/modules/search/service"
@@ -50,6 +54,29 @@ export function threadAnchorRef(createdFrom: unknown, orgId = ""): ThreadAnchorR
   const ids = threadAnchorIds(createdFrom)
   if (!ids || !resolveReferenceMetadataFromManifests(ids.app, ids.entityType, orgId)) return null
   return ids
+}
+
+/**
+ * Move every conversation made from one entity to another of the same kind: a record merged into
+ * another (a ticket into the ticket that survives), so the conversation names and opens the record
+ * its content now lives on. Runs on the caller's privileged transaction when it holds one.
+ */
+export async function repointThreadAnchors(
+  orgId: string,
+  move: { app: string; entityType: string; fromId: string; toId: string },
+  privilegedTx?: PrivilegedDb,
+): Promise<void> {
+  const run = (tx: PrivilegedDb) =>
+    tx.execute(drizzleSql`
+      UPDATE ${drizzleSql.raw(schemaRef("kernel"))}.threads
+         SET created_from = jsonb_set(created_from, '{entityId}', to_jsonb(${move.toId}::text))
+       WHERE org_id = ${orgId}
+         AND created_from->>'app' = ${move.app}
+         AND created_from->>'entityType' = ${move.entityType}
+         AND created_from->>'entityId' = ${move.fromId}
+    `)
+  if (privilegedTx) await run(privilegedTx)
+  else await withPrivilegedDb(orgId, "thread-anchor-repoint", run)
 }
 
 /** A thread asked to belong to an entity its creator may not see (403). */
@@ -90,7 +117,8 @@ export async function canReadThreadAnchorEntity(
 /**
  * The anchor with its words, read with `tx`'s visibility: a reader who may not
  * see the entity gets its kind and no name, and the fact that tells it apart
- * (a task's project) only when that reader may see it too. Never throws.
+ * (a task's project) only when that reader may see it too, and `state: "gone"` once the
+ * entity's app is switched off. Never throws.
  */
 export async function resolveThreadAnchor(
   tx: LabelTx,
@@ -126,7 +154,16 @@ export async function resolveThreadAnchor(
       log.warn({ err, app: ref.app, entityType: ref.entityType }, "thread anchor detail failed")
     }
   }
-  return { ...ref, kindLabel, label, secondaryLabel }
+  // An entity whose app is switched off cannot be opened: the conversation says so instead of
+  // offering a page that is no longer there (its name stays, for whoever could read it).
+  let gone = false
+  try {
+    gone = !(await isAppActiveForOrgAsync(orgId, ref.app))
+  } catch (err) {
+    log.warn({ err, app: ref.app }, "thread anchor app state failed")
+    gone = true
+  }
+  return { ...ref, kindLabel, label, secondaryLabel, ...(gone ? { state: "gone" as const } : {}) }
 }
 
 /** How many readers' RLS reads run at once for one event. */

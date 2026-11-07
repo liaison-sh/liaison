@@ -98,7 +98,7 @@ From a conversation's header menu you can:
 
 Use **Search threads...** at the top of the list to find a conversation by name.
 
-A task's discussion is a conversation too. Opened as a conversation (from an old link, for example), it shows the task it belongs to above the messages, with **Open task**.
+A task's discussion is a conversation too. Opened as a conversation (from an old link, for example), it shows the task it belongs to above the messages, with **Open task**. A conversation started from a ticket follows the ticket when it is merged into another: it then belongs to the ticket that remains. While the app of the record is switched off, the conversation keeps its name but shows **Its app is switched off, so it cannot be opened** instead of the button.
 
 ## Scopes
 

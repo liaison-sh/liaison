@@ -115,6 +115,28 @@ describe("ThreadView of an entity's thread", () => {
     )
   })
 
+  it("says the task cannot be opened while its app is switched off, and offers no way there", async () => {
+    installFetch("anchored-gone", {
+      hiddenFromList: true,
+      createdFrom: { app: "projects", entityType: "task", entityId: TASK },
+      anchor: {
+        app: "projects",
+        entityType: "task",
+        entityId: TASK,
+        kindLabel: "Task",
+        label: "Fix the login page",
+        secondaryLabel: "Website",
+        state: "gone",
+      },
+    })
+    renderView("anchored-gone")
+    await screen.findByTestId("thread-anchor-header")
+    expect(screen.getByTestId("thread-anchor-header.gone").textContent).toBe(
+      "Its app is switched off, so it cannot be opened",
+    )
+    expect(screen.queryByTestId("thread-anchor-header.open")).toBeNull()
+  })
+
   it("a plain conversation has no entity header", async () => {
     installFetch("plain-1", { title: "general" })
     renderView("plain-1")

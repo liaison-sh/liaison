@@ -108,7 +108,7 @@ The nudge and the close go through the same approvals as any other send: by defa
 
 The option acts through a routine, **Close silent tickets**, which belongs to the person who switched it on: it works with that person's permissions, but it never speaks as them. The approval cards name the routine as the requester, the nudge shows **Routine: Close silent tickets** as its author, and the history records the steps as the routine's. The routine appears in that person's routines, switched off: it has no schedule or agent of its own, and the inbox option is what turns it on and off. Only someone allowed to reply to and close tickets can switch it on. If that person's account is deactivated, or they lose those permissions, the option switches off on the inboxes they enabled it for, and everyone who manages inboxes gets a notice to switch it on again. The routine itself cannot be edited, handed to an agent or deleted: the inbox option is its only switch.
 
-To act on many tickets at once, click **Select** in the list. Bulk actions are **Close tickets…**, **Assign…**, **Change priority…**, **Set B2B / B2C…**, **Change team…**, **Merge…** (two or more tickets) and **Move to inbox…**.
+To act on many tickets at once, click **Select** in the list. Bulk actions are **Close tickets…**, **Assign…**, **Change priority…**, **Set B2B / B2C…**, **Change team…**, **Merge…** (two or more tickets) and **Move to inbox…**. A merge moves every conversation started from a merged ticket to the ticket that remains.
 
 ## Set up categories, response times and ticket ids
 

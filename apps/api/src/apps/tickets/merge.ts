@@ -8,6 +8,7 @@ import type { ClosedReason, CurrentTicketState, TicketStatus } from "~/apps/tick
 import { applyEffects, validateTransition } from "~/apps/tickets/state-machine"
 import { extractRows, type PrivilegedDb, type RlsClient, type RlsTx } from "~/db"
 import { cancelApprovalsForSourceTicket } from "~/modules/approvals/cancel"
+import { repointThreadAnchors } from "~/modules/threads/thread-anchor"
 
 type SqlClient = RlsClient | RlsTx | PrivilegedDb
 
@@ -231,6 +232,12 @@ export async function mergeTickets(
       sourceId,
       "ticket_merged",
       undefined,
+      opts.privilegedTx,
+    )
+    // A conversation made from the merged-away ticket now belongs to the one that survives.
+    await repointThreadAnchors(
+      orgId,
+      { app: "tickets", entityType: "ticket", fromId: sourceId, toId: params.targetTicketId },
       opts.privilegedTx,
     )
   }

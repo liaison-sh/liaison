@@ -112,6 +112,10 @@ const TREATED: Record<string, [Treatment, string]> = {
   "modules/agent/tools/kernel-tools.ts": ["one-row", "the merge tool's declared write table"],
   "modules/agent/tools/setup-guide-tools.ts": ["one-row", "the caller's locale"],
   "modules/agent/tools/skills-routines-tools.ts": ["one-row", "a routine's own actor"],
+  "modules/approvals/attention.ts": [
+    "stored-ids",
+    "the names of the people a routed approval names",
+  ],
   "modules/approvals/event-data.ts": ["stored-ids", "the decider's and requester's names"],
   "modules/approvals/list.ts": ["stored-ids", "the people an approval names"],
   "modules/approvals/prompt-materialize.ts": ["stored-ids", "an approval's notify list"],

@@ -358,7 +358,8 @@ Keys on a tool:
 | `focusCore` | `true` or an entity type | The tool is loaded when the app has the focus, or when that entity is in focus |
 | `taintSourceWhen` | `{field, equals}` | Narrows `taintSource` to the rows whose field has that value |
 | `useInstead` | string | On a hidden tool (`agentVisible: false`): the visible tool of the same app to use |
-| `sinkReadersSelf`, `contentParams` | boolean, string list | First-party apps only: what the tool writes is read only by the person writing it |
+| `sinkReadersSelf` | boolean | First-party apps only: what the tool writes (its `writesToTable`) is read only by the person writing it, so a turn that read other data may still write there when that person holds it. Any other app declaring it is not loaded |
+| `contentParams` | string list | First-party apps only: the only parameters through which a call carries what the turn read; a call with all of them blank is not held back by what the turn read. Each must be in `params.properties`. Any other app declaring it is not loaded |
 
 Keys on the app:
 

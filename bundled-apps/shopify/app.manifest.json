@@ -274,7 +274,7 @@
       }
     ]
   },
-  "version": "0.4.6",
+  "version": "0.4.7",
   "iconName": "shopping-cart",
   "description": "Shopify integration: orders, customers, products, markets, draft orders, refunds, fulfillments, returns",
   "listing": {
@@ -1139,6 +1139,7 @@
       "schedule": "*/15 * * * *"
     }
   },
+  "outsideTextFields": ["customer", "email", "note", "shipping_address", "billing_address", "po_number"],
   "tools": {
     "home_load": {
       "description": "Load the Shopify Home tab dashboard: connection, attention items (low-stock product variants, unfulfilled-past-SLA count, pending returns), and a recent-orders preview. This is a STORE DASHBOARD overview, not the order query — to ENUMERATE which orders need shipping use orders_search with query='fulfillment_status:unfulfilled' (it returns each order's line-item SKUs), and never read attention.lowInventory (a low-stock PRODUCT list) as if it were the order list.",

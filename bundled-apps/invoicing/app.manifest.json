@@ -224,7 +224,7 @@
       }
     ]
   },
-  "version": "0.20.52",
+  "version": "0.20.53",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1491,6 +1491,7 @@
       }
     }
   },
+  "outsideTextFields": ["buyer", "supplier", "counterparty_name"],
   "tools": {
     "einvoicing_settings_values": {
       "description": "The settings page's own read of the four e-invoicing fields (platform, cut-over date, send and booking switches), in the shape einvoicing_settings_set takes back. Not for agents (einvoicing_settings_get is).",

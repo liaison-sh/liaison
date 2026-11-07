@@ -438,6 +438,7 @@
           },
           "limit": {
             "type": "number",
+            "maximum": 200,
             "description": "Maximum number of results (default server-side; with involvedWithinDays default 50, max 200)."
           },
           "involvedWithinDays": {

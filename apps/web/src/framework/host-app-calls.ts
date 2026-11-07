@@ -235,7 +235,7 @@ export function buildAppHostCalls(deps: AppHostCallDeps) {
       if (decision !== "approve" && decision !== "deny") {
         throw new Error("decideApproval: decision must be approve or deny")
       }
-      const read = async (): Promise<ApprovalRow> => {
+      const read = async (): Promise<ApprovalRow & { toolName: string }> => {
         const row = await deps.fetch<ApprovalRow>(
           `/api/approvals/${encodeURIComponent(approvalId)}`,
         )

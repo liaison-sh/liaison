@@ -45,7 +45,8 @@ describe("caps version", () => {
   test("version 2 is this contract's and holds every kind; version 1 the original six", () => {
     expect(CAPS_CONTRACT_VERSION).toBe(2)
     expect(CAP_KINDS_BY_CAPS_VERSION[2]).toEqual(CLOUD_CAP_KINDS)
-    expect([...CAP_KINDS_BY_CAPS_VERSION[1]].sort()).toEqual(
+    const v1: string[] = [...CAP_KINDS_BY_CAPS_VERSION[1]].sort()
+    expect(v1).toEqual(
       ["auditDays", "customApps", "jobsPerHour", "mailboxes", "seats", "storageGb"].sort(),
     )
     for (const k of ["appRunsPerDay", "appBridgeCallsPerDay", "appCpuMsPerDay"]) {

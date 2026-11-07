@@ -383,7 +383,7 @@ describe("attention translator — thread mute (real DB)", () => {
   // defaults, no injected deps) -> kernel.attention_events. Proves
   // `defaultLoadMutedThreadUserIds` against a real `user_thread_state` row,
   // not a test double.
-  it("attention.mute.thread-reply-suppressed-for-muted-participant", async () => {
+  it("attention.mute.thread-reply-quiet-for-muted-participant", async () => {
     const { processTranslationEvent } = await import("~/modules/attention/translator")
     const suffix = randomUUID()
     const [otherUser] = extractRows<{ id: string }>(
@@ -442,16 +442,20 @@ describe("attention translator — thread mute (real DB)", () => {
       },
     } as never)
 
-    const rows = extractRows<{ user_id: string; kind: string }>(
+    // Mute means mute (notifications/router.ts): the muted participant keeps the
+    // in-app record, marked quiet so no badge, push or mail counts it; the other
+    // participant's row is not quiet.
+    const rows = extractRows<{ user_id: string; quiet: boolean | null }>(
       await db.execute(drizzleSql`
-        SELECT user_id, kind FROM kernel.attention_events
+        SELECT user_id, (metadata->>'quiet')::boolean AS quiet FROM kernel.attention_events
         WHERE org_id = ${orgId}::uuid AND entity_type = 'thread' AND entity_id = ${threadId}
           AND kind = 'thread_reply'
       `),
     )
-    const recipientIds = rows.map((r) => r.user_id).sort()
-    expect(recipientIds).toEqual([userId].sort())
-    expect(recipientIds.includes(mutedUserId)).toBe(false)
+    const quietOf = new Map(rows.map((r) => [r.user_id, r.quiet === true]))
+    expect([...quietOf.keys()].sort()).toEqual([userId, mutedUserId].sort())
+    expect(quietOf.get(mutedUserId)).toBe(true)
+    expect(quietOf.get(userId)).toBe(false)
   }, 15_000)
 })
 

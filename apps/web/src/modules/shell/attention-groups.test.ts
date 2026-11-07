@@ -205,7 +205,7 @@ describe("attention-groups.labels", () => {
     expect(groupLabelForApp("orbit")).toBe("Launches")
     expect(groupLabelKeyForApp("orbit")).toBe("orbit.groupLaunches")
     const [group] = splitFeed([
-      item({ app: "orbit", kind: "orbit:launch.late", urgency: 10 }),
+      item({ app: "orbit", kind: "task_due_this_week", urgency: 10 }),
     ]).groups
     expect(group?.label).toBe("Launches")
     expect(groupLabel((key) => (key === "orbit.groupLaunches" ? "Lancements" : key), group!)).toBe(
@@ -487,16 +487,18 @@ const MANIFEST_FILES: Record<string, string> = {
 }
 
 describe("attention-groups.seven-apps", () => {
-  const tIn = (catalog: Record<string, string>) => (key: string) =>
-    catalog[key.replace(/^kernel\./, "")] ?? key
+  const tIn = (catalog: Record<string, unknown>) => (key: string) => {
+    const word = catalog[key.replace(/^kernel\./, "")]
+    return typeof word === "string" ? word : key
+  }
   it("the seven read the same words, en and fr", () => {
     for (const [app, en, fr] of SEVEN_GROUP_WORDS) {
       const group = {
         label: groupLabelForApp(app),
         labelKey: groupLabelKeyForApp(app),
       } as AttentionGroup
-      expect(groupLabel(tIn(enKernel as Record<string, string>), group), app).toBe(en)
-      expect(groupLabel(tIn(frKernel as Record<string, string>), group), app).toBe(fr)
+      expect(groupLabel(tIn(enKernel), group), app).toBe(en)
+      expect(groupLabel(tIn(frKernel), group), app).toBe(fr)
     }
   })
 })

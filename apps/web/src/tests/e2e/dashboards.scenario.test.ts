@@ -2,9 +2,6 @@
 // Dashboards: a dashboard with one block read from the data store and one read
 // from a kernel tool opens in its tab from Home's Dashboards section, and both
 // blocks draw their data.
-//
-// PENDING until the dashboards REST routes and the `appDocument` seed factory
-// land: drop the `test.fixme` line then.
 import { api, login } from "@liaison/test-helpers"
 import { expect, test } from "./fixtures/test"
 import { seedFactory } from "./helpers/seed"
@@ -14,7 +11,6 @@ test("a seeded dashboard renders a store block and a tool block", async ({
   env,
   world,
 }) => {
-  test.fixme(true, "pending: dashboards routes + appDocument seed factory (P3-T4)")
   const page = authenticatedPage
   const { accessToken } = await login(env.serverUrl, "admin@test.com", "12345678")
 

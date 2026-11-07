@@ -113,7 +113,7 @@ dashboardsRoutes
     }
   })
   // One block's data, run as the viewer. A block's own refusal (no_access, not_allowed,
-  // a failed source, a refresh refused as `rate_limited`) is a 200 with `ok: false`,
+  // a failed source, a refresh refused as `rate_limited`) is a 200 with `{error, message}`,
   // so the other blocks render: a real 429 would pause every read of the web shell.
   .get("/:id/blocks/:blockId/data", zValidator("param", blockParam), async (c) => {
     const { id, blockId } = c.req.valid("param")
@@ -123,7 +123,13 @@ dashboardsRoutes
         refresh,
         signal: getRequestSignal(c),
       })
-      return success(c, out)
+      // The chart's data at the top level (`kind`, ...), or the block's refusal `{error, message}`.
+      return success(
+        c,
+        out.ok
+          ? { ...out.data, blockId, cached: out.cached, computedAt: out.computedAt }
+          : { blockId, error: out.error, message: out.message },
+      )
     } catch (err) {
       return failure(c, err)
     }

@@ -6397,5 +6397,26 @@
       }
     },
     "hiddenTitle": "New message in a thread"
+  },
+  "toolCard": {
+    "actionUnreachable": "Nothing ran: the server could not be reached.",
+    "answeredOnRetry": "It answered this time. Ask again to see the result here.",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "didNotAnswer": "{{app}} did not answer",
+    "errorTitle": "Could not run {{tool}}",
+    "howWorkedOut": "How this number is worked out",
+    "noReason": "The tool gave no reason.",
+    "notSaved": "Not saved: the server could not be reached. Your text is kept.",
+    "readApps": "Read {{count}} apps",
+    "readOneApp": "Read 1 app",
+    "readSomeApps": "Read {{count}} of {{total}} apps",
+    "reading": "Reading {{app}}",
+    "retry": "Retry",
+    "source": "Source: {{source}}",
+    "superseded": "Replaced by a newer card",
+    "unreachable": "Nothing ran: this card cannot reach the server here.",
+    "waitingApproval": "Waiting for approval. Nothing ran yet.",
+    "working": "Working…"
   }
 }

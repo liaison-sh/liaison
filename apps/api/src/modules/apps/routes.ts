@@ -127,6 +127,8 @@ function cardRefRefused(c: Context<AppEnv>, opened: OpenedToolCardRef & { ok: fa
         code: "card_changed",
         card: opened.card,
         cardRevision: opened.cardRevision,
+        // The web client's error reader keeps `details` only: the latest card rides there too.
+        details: { card: opened.card, cardRevision: opened.cardRevision },
       },
     },
     409,

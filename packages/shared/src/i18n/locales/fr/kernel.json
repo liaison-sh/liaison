@@ -6394,5 +6394,26 @@
       }
     },
     "hiddenTitle": "Nouveau message dans une discussion"
+  },
+  "toolCard": {
+    "actionUnreachable": "Rien n'a été exécuté : le serveur est injoignable.",
+    "answeredOnRetry": "Cette fois, la réponse est arrivée. Redemandez pour voir le résultat ici.",
+    "cancel": "Annuler",
+    "confirm": "Confirmer",
+    "didNotAnswer": "{{app}} n'a pas répondu",
+    "errorTitle": "Impossible d'exécuter {{tool}}",
+    "howWorkedOut": "Comment ce chiffre est calculé",
+    "noReason": "L'outil n'a donné aucune raison.",
+    "notSaved": "Non enregistré : le serveur est injoignable. Votre texte est conservé.",
+    "readApps": "{{count}} apps lues",
+    "readOneApp": "1 app lue",
+    "readSomeApps": "{{count}} apps lues sur {{total}}",
+    "reading": "Lecture de {{app}}",
+    "retry": "Réessayer",
+    "source": "Source : {{source}}",
+    "superseded": "Remplacée par une carte plus récente",
+    "unreachable": "Rien n'a été exécuté : cette carte ne peut pas joindre le serveur ici.",
+    "waitingApproval": "En attente d'approbation. Rien n'a encore été exécuté.",
+    "working": "En cours…"
   }
 }

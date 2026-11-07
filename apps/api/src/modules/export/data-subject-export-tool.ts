@@ -52,6 +52,9 @@ import { hasScope } from "~/modules/permissions/permissions"
  * l647/BL-264 lesson: an RLS-restricted txDb INSERT would 500 silently.
  * Authorization for the write is the contact-visibility SELECT under the
  * caller's RLS, performed first (the caller proved it can see the data subject).
+ * The file is of the uploader-only kind `data_subject_export`: only the member
+ * who requested it can read it back, so a call with no member behind it is
+ * refused before anything is read.
  */
 export interface DataSubjectExportToolCtx {
   orgId: string
@@ -469,25 +472,30 @@ export async function buildDataSubjectBundle(
   const tickets = (await listForContact(ctx.db, { contactId, limit: 100 })).items
 
   // (3) Invoicing leg — the subject's financial documents (app_invoicing.documents,
-  // read under the caller's RLS so an invoicing-blind caller gets an empty leg).
-  const invoiceRows = extractRows<InvoiceRow>(
-    await ctx.db.execute(drizzleSql`
-      SELECT id::text AS id, type, status, number, currency,
-             grand_total_minor::text AS grand_total_minor, issued_at, due_at
-      FROM ${drizzleSql.raw(schemaRef("app_invoicing"))}.documents
-      WHERE org_id = ${ctx.orgId} AND counterparty_contact_id = ${contactId}
-      ORDER BY issued_at DESC NULLS LAST
-      LIMIT 100
-    `),
-  )
-
-  // The legal identity held for the subject (SIREN, registry name, where it came from), read
-  // under the caller's RLS; absent on a database whose invoicing app predates the table.
+  // read under the caller's RLS so an invoicing-blind caller gets an empty leg) and
+  // the legal identity held for them (SIREN, registry name, where it came from). An
+  // org without the invoicing app has neither table, and a database whose invoicing
+  // app predates the identity table lacks that one: an absent table is an empty leg.
+  const documentsTable = `${schemaRef("app_invoicing")}.documents`
   const identityTable = `${schemaRef("app_invoicing")}.counterparty_identities`
-  const identityExists = extractRows<{ t: string | null }>(
-    await ctx.db.execute(drizzleSql`SELECT to_regclass(${identityTable}) AS t`),
-  )[0]?.t
-  const identityRow = identityExists
+  const present = extractRows<{ documents: string | null; identities: string | null }>(
+    await ctx.db.execute(
+      drizzleSql`SELECT to_regclass(${documentsTable}) AS documents, to_regclass(${identityTable}) AS identities`,
+    ),
+  )[0]
+  const invoiceRows = present?.documents
+    ? extractRows<InvoiceRow>(
+        await ctx.db.execute(drizzleSql`
+          SELECT id::text AS id, type, status, number, currency,
+                 grand_total_minor::text AS grand_total_minor, issued_at, due_at
+          FROM ${drizzleSql.raw(documentsTable)}
+          WHERE org_id = ${ctx.orgId} AND counterparty_contact_id = ${contactId}
+          ORDER BY issued_at DESC NULLS LAST
+          LIMIT 100
+        `),
+      )
+    : []
+  const identityRow = present?.identities
     ? extractRows<IdentityRow>(
         await ctx.db.execute(drizzleSql`
           SELECT customer_kind, siren, siret, vat_id, registry_name, source, source_url
@@ -674,7 +682,12 @@ interface SavedFile {
   sizeBytes: number
 }
 
-/** Writes the bundle as a kernel file attached to its subject. */
+/**
+ * Writes the bundle as a kernel file of the uploader-only kind
+ * `data_subject_export` (`UPLOADER_ONLY_FILE_KINDS`): the files SELECT policy
+ * lets exactly the requester read it, never the subject, another member or an
+ * admin. `entity_id` names the subject the bundle is about.
+ */
 async function saveBundle(
   bundle: unknown,
   base: string,
@@ -712,20 +725,20 @@ async function saveBundle(
 
   // kernel.files INSERT is kernel-privileged (no liaison_rls INSERT policy). The
   // subject-visibility SELECT (under the caller's RLS) and the authorization
-  // check before it are what allow it; the row write itself routes through
+  // check before it are what allow it; `uploaded_by` is the requester, the one
+  // reader the files SELECT policy admits for this kind; the row write itself routes through
   // withPrivilegedDb (l647/BL-264 — an RLS-restricted txDb INSERT would be
   // silently denied → 500).
   const K = drizzleSql.raw(schemaRef("kernel"))
-  const uploaderId = UUID_RE.test(ctx.userId) ? ctx.userId : null
   await withPrivilegedDb(ctx.orgId, "data_subject_export kernel.files insert", (pdb) =>
     pdb.execute(drizzleSql`
       INSERT INTO ${K}.files
         (id, org_id, app, entity_type, entity_id, filename, mime_type, size_bytes,
          storage_key, uploaded_by, disposition, ordinal)
       VALUES (
-        ${fileId}, ${ctx.orgId}, 'kernel', ${subject.kind}, ${subject.id},
+        ${fileId}, ${ctx.orgId}, 'kernel', 'data_subject_export', ${subject.id},
         ${safeBase}, ${mimeType}, ${bytes.byteLength},
-        ${storageKey}, ${uploaderId}, 'attachment', 0
+        ${storageKey}, ${ctx.userId}, 'attachment', 0
       )
     `),
   )
@@ -749,6 +762,17 @@ export async function handleDataSubjectExport(
     })
   | ExportError
 > {
+  // The requester is the only reader, so a bundle needs one: without a member
+  // behind the call nobody could ever open it.
+  if (!UUID_RE.test(ctx.userId)) {
+    return {
+      error: {
+        code: "REQUESTER_REQUIRED",
+        message:
+          "A data subject export is written for the member who asks for it; this call has no member behind it, so nothing was exported or saved",
+      },
+    }
+  }
   const subject = resolveDataSubject(params, ctx.userId)
   if ("error" in subject) return subject
   const may = mayExportSubject(subject, ctx)

@@ -35,3 +35,4 @@ Kept at the limit and counted: mail synced by Liaison (system, no agent) and leg
 Notification once past 80 % (upgrade or free space) and at 100 %, again only after use drops under 80 % -> apps/api/src/modules/org/caps.ts:406 ; apps/api/src/modules/org/caps.ts:471 ; apps/api/src/modules/org/caps.ts:405 ; apps/api/src/modules/files/service.ts:369
 Remove a file: write scope on the item, plus uploader or deleteScope holder where the item declares one -> apps/api/src/modules/files/service.ts:1667 ; apps/web/src/modules/files/file-service.ts:32
 mail_attachment_read -> apps/api/src/modules/agent/tools/kernel-tools.ts:1038
+A data-subject export belongs to no item; only the person who ran it can open it -> apps/api/src/modules/files/rls-builder.ts:49 ; apps/api/src/modules/files/rls-builder.ts:108 ; apps/api/src/modules/export/data-subject-export-tool.ts:739

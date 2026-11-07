@@ -7,6 +7,7 @@ import { getPoolDiagState, getPoolGauges, nestedPrivilegedAcquisitions } from "~
 import { withSystemDb } from "~/db/privileged"
 import { poolPlan } from "~/db/process-pool-plan"
 import { schemaRef } from "~/db/schema-ref"
+import { readEmailOutage } from "~/infra/email-outage"
 import { getWorkerHeartbeat } from "~/infra/events/outbox-worker"
 import { getBackpressureState } from "~/infra/jobs/backpressure"
 import {
@@ -20,9 +21,12 @@ import { readJobMetrics } from "~/infra/jobs/fanout-keys"
 import { getJobSchedulerTotal, getQueueHealth } from "~/infra/jobs/jobs"
 import { pinnedJobsGate } from "~/infra/jobs/pinned-jobs-gate"
 import type { QueueHealth } from "~/infra/jobs/queue-health"
+import { isManagedEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
 import { getDiagErrorState } from "~/lib/error-tracker"
+import { latencySnapshot } from "~/lib/latency-window"
 import { monitorLogger as log } from "~/lib/logger"
+import { creditPricingStatus } from "~/modules/agent/credits/credit-cost"
 import { orgRegistryGuardStats } from "~/modules/apps/org-registry-guard"
 import {
   type DepStatus,
@@ -562,9 +566,22 @@ monitorDiagRoutes.get("/", async (c) => {
     appVersion: env.LIAISON_VERSION,
     uptimeSec: Math.floor(process.uptime()),
     errorSignatures: getDiagErrorState().errorSignatures,
+    // Managed cells: whether the control plane's credit rate is held ("ok" |
+    // "missing"; metered usage is refused while missing; "unknown" when it
+    // cannot be read, the postgres dep says why). Null self-hosted.
+    creditPricing: isManagedEdition()
+      ? await creditPricingStatus().catch(() => "unknown" as const)
+      : null,
     // Security alert signals since boot (guess ceilings, lockouts, MCP client
     // registrations), per kind: modules/security/security-events.ts.
     securityEvents: getSecurityEventDiag(),
+    // The mail provider refusing this instance's mail as a whole (quota, credentials,
+    // unreachable): sign-in mail is off for everybody until it accepts one again. The
+    // watchdog's `mail` check pages on it. Null when all is well or not yet known.
+    systemEmail: { outage: await readEmailOutage().catch(() => null) },
+    // Managed only: API request latency over the last 15 minutes (the cell
+    // watchdog's "needs room" check). Absent self-hosted.
+    ...(isManagedEdition() ? { http: latencySnapshot() } : {}),
     outbox,
     worker: getWorkerHeartbeat(),
     // Job queues: backlog, oldest-runnable age and `stale` per queue, plus the

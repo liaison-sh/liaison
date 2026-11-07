@@ -10,8 +10,8 @@
 // agent calls kernel__agents_ask on a named role agent; the callee answers in
 // one step; the routine agent's next step is handed a NON-NULL answer
 // (synchronous: the callee runs in the cloud, so no "queued" receipt), and the
-// routine's output holds it. The callee is admitted to the owner's routine
-// thread to answer there.
+// routine's output holds it. The callee answers in the owner's routine thread
+// as a guest, seated for its turn only.
 //
 // Sub-run tokens counting toward the routine's hard limit is proven in
 // agent-service.hard-token-limit.test.ts and not repeated here.
@@ -284,13 +284,19 @@ describe("agents_ask from a routine tick (S27)", () => {
     expect(result.answer).toBe(ANSWER)
     expect(result.status).toBeUndefined() // synchronous: no "queued" receipt
 
-    // The callee was admitted to the owner's routine thread, and the routine's
-    // output there holds the answer.
+    // The callee answered in the owner's routine thread as a GUEST: seated for
+    // its turn and given the seat back when the turn settled, since an agent's
+    // ask never adds anyone to a room (agent-dispatch-guard.ts, isGuestSeat).
+    // The answer stays in the thread, and the routine's output there holds it.
     const [r] = await sql<{ output_thread_id: string }[]>`
       SELECT output_thread_id FROM kernel.routines WHERE id = ${routineId}`
+    const answered = await sql<{ content: string }[]>`
+      SELECT content FROM kernel.messages
+       WHERE thread_id = ${r.output_thread_id} AND author_agent_id = ${CALLEE}`
+    expect(answered.some((m) => m.content.includes(ANSWER))).toBe(true)
     const seats = await sql<{ agent_id: string | null }[]>`
       SELECT agent_id FROM kernel.thread_participants WHERE thread_id = ${r.output_thread_id}`
-    expect(seats.some((s) => s.agent_id === CALLEE)).toBe(true)
+    expect(seats.some((s) => s.agent_id === CALLEE)).toBe(false)
     const [last] = await sql<{ content: string }[]>`
       SELECT content FROM kernel.messages
        WHERE thread_id = ${r.output_thread_id} AND author_type = 'agent'

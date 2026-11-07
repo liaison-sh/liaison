@@ -421,6 +421,10 @@ services:
       # Minutes after which an org unused in a process has its in-memory setup
       # released (set up again at its next use). Empty: 60. 0: never.
       LIAISON_ORG_RUNTIME_IDLE_MINUTES: ${LIAISON_ORG_RUNTIME_IDLE_MINUTES:-}
+      # Most orgs set up in memory per process; past it the least recently used
+      # one with no live work is released (set up again at its next use).
+      # Empty: 2000. 0: no cap.
+      LIAISON_ORG_RUNTIME_MAX_ORGS: ${LIAISON_ORG_RUNTIME_MAX_ORGS:-}
       # One-time token the FIRST registration of a fresh instance must present.
       # Empty (the default): the app derives one from JWT_SECRET and prints it in
       # its log at boot ("Liaison setup token: ..."). Set it to choose your own.
@@ -590,6 +594,11 @@ services:
       SHOPIFY_APP_CLIENT_SECRET: ${SHOPIFY_APP_CLIENT_SECRET:-}
       # A Pub/Sub topic Gmail push publishes to for every workspace (optional).
       GMAIL_PUBSUB_TOPIC: ${GMAIL_PUBSUB_TOPIC:-}
+      # That topic's push subscription: the OIDC audience (the https URL it posts to)
+      # and the service account it signs as. Mail and Tickets verify push tokens with
+      # them when an org set none; required with a topic in the managed edition.
+      GMAIL_PUSH_AUDIENCE: ${GMAIL_PUSH_AUDIENCE:-}
+      GMAIL_PUSH_SERVICE_ACCOUNT: ${GMAIL_PUSH_SERVICE_ACCOUNT:-}
       # The Google Picker (optional): where a person chooses the Drive files Liaison
       # sees when Drive connects with drive.file only. An API key and the project
       # NUMBER of the Drive client's Google Cloud project (liaison guide google).
@@ -621,6 +630,26 @@ services:
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
       CONTROL_PLANE_URL: ${CONTROL_PLANE_URL:-}
       CONTROL_PLANE_API_KEY: ${CONTROL_PLANE_API_KEY:-}
+      # Managed edition and one host per org (docs/reference/env.md). Unset: a
+      # self-hosted server, every link on BASE_URL, provider redirects on BASE_URL.
+      LIAISON_EDITION: ${LIAISON_EDITION:-}
+      LIAISON_ORG_HOST_TEMPLATE: ${LIAISON_ORG_HOST_TEMPLATE:-}
+      LIAISON_OAUTH_REDIRECT_BASE: ${LIAISON_OAUTH_REDIRECT_BASE:-}
+      LIAISON_EDGE_MODE: ${LIAISON_EDGE_MODE:-}
+      LIAISON_EDGE_SECRET: ${LIAISON_EDGE_SECRET:-}
+      # Managed edition only: the https origin of the Billing page's payment frame.
+      LIAISON_PAY_FRAME_ORIGIN: ${LIAISON_PAY_FRAME_ORIGIN:-}
+      # Managed edition only: the shared Meta app's secret, which verifies the
+      # server-level Meta callback /webhooks/_cell/meta.
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      # Managed edition only: that Meta app's id, the OAuth client of every
+      # workspace's Facebook connection when it has no Meta app of its own.
+      META_APP_ID: ${META_APP_ID:-}
+      # Managed edition: this server's own public IPv4/IPv6 addresses, which an
+      # organization's custom app can never fetch.
+      LIAISON_CELL_PUBLIC_ADDRESSES: ${LIAISON_CELL_PUBLIC_ADDRESSES:-}
+      # Managed edition only: OpenRouter model ids a new org gets enabled (comma-separated, first is Auto).
+      LIAISON_MANAGED_DEFAULT_MODELS: ${LIAISON_MANAGED_DEFAULT_MODELS:-}
       # Sharing with the Liaison team (docs/self-hosting/liaison-team.md). Unset: the
       # team's endpoint (keep in step with DEFAULT_LIAISON_TEAM_ENDPOINT, env.ts); set it
       # empty to make sharing unavailable on this server. Nothing is sent until an admin

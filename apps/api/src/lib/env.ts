@@ -56,6 +56,27 @@ export const LIAISON_TEAM_DISABLED = ""
 export const DEFAULT_LIAISON_TEAM_ENDPOINT =
   "https://hq.liaison.sh/webhooks/8a934d70-a7ef-4f92-b09d-99c455eb3be7/control"
 
+/** OpenRouter model ids from a comma-separated list, deduplicated, in order; null when one is malformed. */
+export function parseManagedDefaultModels(value: string): string[] | null {
+  const ids = value
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) => id !== "")
+  if (ids.length === 0) return []
+  if (!ids.every((id) => /^[a-z0-9][\w.-]*\/[\w.:-]+$/i.test(id))) return null
+  return [...new Set(ids)]
+}
+
+/** True for `https://host[:port]` exactly: no path, query, fragment or trailing slash. */
+export function isBareHttpsOrigin(v: string): boolean {
+  try {
+    const url = new URL(v)
+    return url.protocol === "https:" && url.origin === v
+  } catch {
+    return false
+  }
+}
+
 /** Compose passes a variable nobody set as the empty string: read it as unset. */
 function unsetIfEmpty(v: unknown): unknown {
   return typeof v === "string" && v.trim() === "" ? undefined : v
@@ -103,6 +124,77 @@ export const envSchema = z
     LIAISON_CLI_LOG_LEVEL: z.string().optional(),
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
     BASE_URL: z.string().url().default("http://localhost:3000"),
+    // One host per org: an http(s) URL holding `{slug}` once, in its host, with no
+    // path and no trailing slash (`https://{slug}.example.com`). Set, every absolute
+    // link the server builds for an org (mails, connect links, guides, file links)
+    // uses the org's host (lib/org-public-url.ts). Unset, those links use BASE_URL.
+    LIAISON_ORG_HOST_TEMPLATE: z.preprocess(
+      unsetIfEmpty,
+      z
+        .string()
+        .refine((v) => {
+          if (v.split("{slug}").length !== 2) return false
+          try {
+            const url = new URL(v.replace("{slug}", "slug"))
+            return (
+              /^https?:$/.test(url.protocol) &&
+              url.hostname.includes("slug") &&
+              `${url.protocol}//${url.host}` === v.replace("{slug}", "slug")
+            )
+          } catch {
+            return false
+          }
+        }, "an http(s) origin with {slug} once in its host, no path or trailing slash")
+        .optional(),
+    ),
+    // The managed edition's payment frame: the https origin (no path, no
+    // trailing slash) of the page that takes card details for the Billing page,
+    // embedded in an iframe. It feeds the frame-src of the CSP and the origin a
+    // message from the frame must come from. Required when
+    // LIAISON_EDITION=managed (the server refuses to start without it,
+    // lib/managed-boot.ts); unused otherwise.
+    LIAISON_PAY_FRAME_ORIGIN: z.preprocess(
+      unsetIfEmpty,
+      z
+        .string()
+        .refine(isBareHttpsOrigin, "an https origin with no path or trailing slash")
+        .optional(),
+    ),
+    // The managed edition's default models: comma-separated OpenRouter model ids
+    // (`deepseek/deepseek-v4.1-flash`) that a new org gets enabled when its
+    // control plane creates it (POST /api/cloud/orgs), the first one as Auto, so
+    // the org's first chat has a model. Admins add or remove models afterwards.
+    // Required when LIAISON_EDITION=managed (lib/managed-boot.ts); unused
+    // otherwise.
+    LIAISON_MANAGED_DEFAULT_MODELS: z.preprocess(
+      unsetIfEmpty,
+      z
+        .string()
+        .refine((v) => parseManagedDefaultModels(v) !== null, "comma-separated vendor/model ids")
+        .optional(),
+    ),
+    // One host every OAuth provider redirects to: an http(s) origin with no path or
+    // trailing slash (`https://auth.example.com`). Set, the redirect_uri of sign-in
+    // and connector flows is `<this>/api/auth/oauth/callback` and
+    // `<this>/api/connections/callback` (one exact URI to register per provider),
+    // and the OAuth `state` starts with the org's slug and a dot, so whatever
+    // serves this host can send the browser on to the org's own host, where the
+    // flow completes. Setup guides show these URIs. Unset, both use BASE_URL and
+    // the state is a bare random token.
+    LIAISON_OAUTH_REDIRECT_BASE: z.preprocess(
+      unsetIfEmpty,
+      z
+        .string()
+        .refine((v) => {
+          try {
+            const url = new URL(v)
+            return /^https?:$/.test(url.protocol) && `${url.protocol}//${url.host}` === v
+          } catch {
+            return false
+          }
+        }, "an http(s) origin, no path or trailing slash")
+        .optional(),
+    ),
     ALLOWED_ORIGINS: z.string().default("http://localhost:5173"),
     // The wrapped desktop and mobile shells' own origins (lib/app-origins.ts).
     // Separate from ALLOWED_ORIGINS because these are the SHELLS' fixed
@@ -134,6 +226,18 @@ export const envSchema = z
     // trusted (lib/request-context.ts). Only needed when a proxy reaches the app
     // from a public address, e.g. a CDN connecting straight to the app port.
     TRUSTED_PROXY_CIDRS: z.string().default(""),
+    // How the request's host and client address are read when an edge proxy
+    // sits in front (lib/request-context.ts `effectiveRequest`). Unset: the Host
+    // header and X-Forwarded-For per TRUSTED_PROXY_HOPS, as always. `direct`: the
+    // edge preserves the Host, and the client address is CF-Connecting-IP when
+    // the connection comes from a tunnel connector on loopback. `signed`: the
+    // edge rewrites the host and passes the original host and client address in
+    // signed `x-liaison-*` headers (LIAISON_EDGE_SECRET); unsigned or stale ones
+    // are ignored.
+    LIAISON_EDGE_MODE: z.preprocess(unsetIfEmpty, z.enum(["direct", "signed"]).optional()),
+    // The secret the edge signs `x-liaison-host` / `x-liaison-client-ip` with
+    // (LIAISON_EDGE_MODE=signed). At least 32 characters.
+    LIAISON_EDGE_SECRET: z.preprocess(unsetIfEmpty, z.string().min(32).optional()),
     DEVICE_FLOW_CLIENTS: z
       .string()
       .default("")
@@ -913,7 +1017,43 @@ export const envSchema = z
     // (projects/<project>/topics/<topic>). Set: Tickets watches Gmail with it and
     // the setup guide drops its Pub/Sub step. Unset: poll-only.
     GMAIL_PUBSUB_TOPIC: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
-    // Control-plane integration (Phase 14, Track D). Both must be set or unset.
+    // The OIDC audience of the instance topic's push subscription: the https URL
+    // it posts to. The Mail and Tickets apps verify Gmail push tokens against it
+    // when a workspace set none of its own. In the managed edition the subscription
+    // posts to this server's /webhooks/_cell/gmail-push and the server refuses to
+    // start with GMAIL_PUBSUB_TOPIC but without this and GMAIL_PUSH_SERVICE_ACCOUNT.
+    GMAIL_PUSH_AUDIENCE: z.preprocess(unsetIfEmpty, z.string().url().optional()),
+    // The service account the push subscription signs its OIDC tokens as
+    // (--push-auth-service-account); checked with GMAIL_PUSH_AUDIENCE.
+    GMAIL_PUSH_SERVICE_ACCOUNT: z.preprocess(unsetIfEmpty, z.string().email().optional()),
+    // Managed edition: the app secret of the Meta app every workspace's Facebook
+    // connection uses. It verifies deliveries to this server's /webhooks/_cell/meta
+    // (X-Hub-Signature-256), which reach each workspace by Page id. Unset: no
+    // server-level Meta callback.
+    META_APP_SECRET: z.preprocess(unsetIfEmpty, z.string().optional()),
+    // Managed edition: the app id of that same Meta app. With META_APP_SECRET it
+    // is the OAuth client of every workspace's Facebook connection (and of
+    // Instagram through Facebook login) when the workspace has no Meta app of
+    // its own. Unset: each workspace brings its own.
+    META_APP_ID: z.preprocess(unsetIfEmpty, z.string().optional()),
+    // This server's own public IPv4/IPv6 addresses, comma-separated. An
+    // organization's custom app (managed edition) can never fetch them: traffic
+    // from the host to its own public address can reach any port published on
+    // all interfaces. Unset: only its host names
+    // (BASE_URL, ALLOWED_ORIGINS, the org host template) are refused that way.
+    LIAISON_CELL_PUBLIC_ADDRESSES: z.preprocess(unsetIfEmpty, z.string().optional()),
+    // A throwaway test server. Only then may an org transfer agent inject a
+    // fault (`liaison org transfer agent --fail-at`): elsewhere the CLI and the
+    // agent refuse it. Never set on a server that holds real organizations.
+    LIAISON_TEST_CELL: envBoolean(false),
+    // The instance edition (lib/edition.ts). `managed` turns on the managed
+    // edition and makes the server refuse to boot without the settings it needs
+    // (lib/managed-boot.ts). Unset = self-hosted (a server that sets the legacy
+    // control-plane pair below without it refuses to start).
+    LIAISON_EDITION: z.preprocess(unsetIfEmpty, z.enum(["self_hosted", "managed"]).optional()),
+    // Control-plane integration. Both must be set or unset.
+    // The pair no longer switches the managed edition on: set alone, without
+    // LIAISON_EDITION, the server refuses to start (lib/managed-boot.ts).
     // No kernel-enforced minimum on the key; operators are advised to use
     // `openssl rand -hex 32` (documented in deploy/.env.example).
     // Empty strings (compose ${VAR:-} defaults) are treated as unset.
@@ -989,6 +1129,15 @@ export const envSchema = z
     LIAISON_ORG_RUNTIME_IDLE_MINUTES: z.preprocess(
       (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
       z.coerce.number().int().min(0).default(60),
+    ),
+    // At most this many orgs set up in memory in one process. Past it, the
+    // least recently touched org with no live work in the process (no request,
+    // socket, job, event or agent turn, and not moving) is released as an idle
+    // one is, and set up again at its next touch. Default 2000 (about 0.35 MB
+    // per org, so about 700 MB at the cap); 0 sets no cap.
+    LIAISON_ORG_RUNTIME_MAX_ORGS: z.preprocess(
+      (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+      z.coerce.number().int().min(0).default(2000),
     ),
     // The shutdown budgets (lib/shutdown.ts), in ms from the SIGTERM. Keep the
     // container's stop grace period above the hard deadline below, or the
@@ -1117,8 +1266,9 @@ export const envSchema = z
     // management (install, upgrade, uninstall, interface approval) is confined to
     // the instance operator's org: this id when set, otherwise the instance's
     // first org (modules/apps/operator-org.ts). Unused on a single-org self-host.
+    // Org ids are compared as strings, so the id is kept in the database's own lowercase.
     LIAISON_OPERATOR_ORG_ID: z.preprocess(
-      (v) => (v === "" ? undefined : v),
+      (v) => (v === "" ? undefined : typeof v === "string" ? v.toLowerCase() : v),
       z.string().uuid().optional(),
     ),
     // BYOK encryption key — 32 bytes expressed as 64 hex chars
@@ -1192,6 +1342,13 @@ export const envSchema = z
       .transform((v) => v.replace(/\/+$/, "")),
   })
   .superRefine((env, ctx) => {
+    if (env.LIAISON_EDGE_MODE === "signed" && !env.LIAISON_EDGE_SECRET) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["LIAISON_EDGE_SECRET"],
+        message: "LIAISON_EDGE_SECRET is required with LIAISON_EDGE_MODE=signed",
+      })
+    }
     if (env.NODE_ENV === "production") {
       for (const name of ["JWT_SECRET", "ENCRYPTION_KEY", "BYOK_ENCRYPTION_KEY"] as const) {
         const value = env[name]
@@ -1443,7 +1600,8 @@ export const byokEncryptionKey =
  *
  * Modes:
  *   - both unset → self_hosted
- *   - both set   → managed (instance proxies billing state from a control plane)
+ *   - both set   → "managed" (kept for the env matrix check only: the edition
+ *                  comes from LIAISON_EDITION alone, lib/edition.ts)
  *   - exactly one set → half-configured: fatal in production, warning in dev/test
  *
  * Strings are normalised: whitespace-only is treated as unset.

@@ -2,7 +2,7 @@
 
 import { A } from "@solidjs/router"
 import { type Component, createSignal, Show } from "solid-js"
-import { anonApiClient } from "~/lib/api-client"
+import { ApiError, anonApiClient } from "~/lib/api-client"
 import { authApiPath } from "~/lib/env"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { Button } from "~/ui/Button"
@@ -12,6 +12,7 @@ const ResetPassword: Component = () => {
   const i18n = useI18n()
   const [email, setEmail] = createSignal("")
   const [submitted, setSubmitted] = createSignal(false)
+  const [mailUnavailable, setMailUnavailable] = createSignal(false)
   const [loading, setLoading] = createSignal(false)
 
   const api = anonApiClient
@@ -19,11 +20,18 @@ const ResetPassword: Component = () => {
   async function handleSubmit(e: Event) {
     e.preventDefault()
     setLoading(true)
+    setMailUnavailable(false)
 
     try {
       await api.post(authApiPath("/password-reset/request"), { email: email() })
-    } catch {
-      // Intentionally ignore — always show generic message to prevent email enumeration
+    } catch (err) {
+      // About the instance, the same for every address: the one refusal worth saying.
+      if (err instanceof ApiError && err.code === "EMAIL_PROVIDER_UNAVAILABLE") {
+        setMailUnavailable(true)
+        setLoading(false)
+        return
+      }
+      // Anything else is ignored: always the generic message, to prevent email enumeration.
     }
     setSubmitted(true)
     setLoading(false)
@@ -61,6 +69,11 @@ const ResetPassword: Component = () => {
               onInput={(e) => setEmail((e.currentTarget as HTMLInputElement).value)}
               autocomplete="email"
             />
+            <Show when={mailUnavailable()}>
+              <p data-testid="email-provider-unavailable" class="text-xs text-error">
+                {i18n.t("kernel.auth.emailProviderUnavailable")}
+              </p>
+            </Show>
             <Button fullWidth type="submit" loading={loading()}>
               {i18n.t("kernel.auth.sendResetLink")}
             </Button>

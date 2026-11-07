@@ -39,6 +39,23 @@ const APP_DDL =
  * fails until it has its own entry.
  */
 const REVIEWED: Record<string, Record<string, string>> = {
+  "apps/api/src/modules/cloud/storage-estimate.ts#measureSource": {
+    "relOf(s)": "schemaRef of a table in the module's literal SOURCES list",
+    's.columns.map((c) => `COALESCE(pg_column_size("${c}"), 0)`).join(" + ")':
+      "column names from the module's literal SOURCES list, quoted; no value from a request or a row",
+  },
+  "apps/api/src/modules/org/transfer/closure.ts#query": {
+    text: `the org transfer's one query helper: SQL its modules build from catalog names (rel / quoteIdent), every value bound as a $n parameter; ${CATALOG_IDENT}`,
+  },
+  "apps/api/src/modules/org/transfer/import.ts#stage": {
+    name: "xfer_stage_<n>, n the import's own section counter",
+  },
+  "apps/api/src/modules/org/transfer/purge.ts#deleteLinkedRows.unsafe": {
+    text: "the TransferSql adapter over the purge's own transaction: passes the DELETE built below unchanged",
+  },
+  "apps/api/src/modules/org/transfer/purge.ts#deleteLinkedRows": {
+    'orgPredicate(closure, t, "t", orgId)': `EXISTS joins on catalog FK columns (quoteIdent'd) down to the org row, the org id assertUuid'd into a literal (closure.ts orgPredicate); ${CATALOG_IDENT}`,
+  },
   "apps/api/src/modules/org/delete/legal-archive.ts#rowLines": {
     cols: `primary key column names (quoteIdent'd); ${CATALOG_IDENT}`,
     'pk.types[i] ?? "text"': `format_type of the primary key columns; ${CATALOG_IDENT}`,

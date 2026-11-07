@@ -49,7 +49,9 @@ import {
 } from "./reads"
 import {
   draftsCreateTool,
+  draftsCreatePreflight,
   draftsUpdateTool,
+  draftsUpdatePreflight,
   draftsDiscard,
   invoiceIssue,
   invoiceCreateAndIssue,
@@ -449,14 +451,23 @@ export const poCreateAndIssuePreflightHandler = (
   params: Parameters<typeof poCreateAndIssuePreflight>[1],
   ctx: Parameters<typeof poCreateAndIssuePreflight>[0],
 ) => poCreateAndIssuePreflight(ctx, fromWire(params))
-/** A draft's money is refused before anything parks, as it is on the create-and-issue tools. */
-export const draftsCreatePreflightHandler = (params: { items?: unknown }) => {
+/**
+ * A draft's money is refused before anything parks, as it is on the create-and-issue tools; then
+ * the same draft run, stopped before the write, validates its lines and notes.
+ */
+export const draftsCreatePreflightHandler = async (
+  params: Parameters<typeof draftsCreatePreflight>[1],
+  ctx: Parameters<typeof draftsCreatePreflight>[0],
+) => {
   const refused = lineAmountsError(params.items)
-  return refused ? { error: refused.error } : { ok: true }
+  return refused ? { error: refused.error } : draftsCreatePreflight(ctx, params)
 }
-export const draftsUpdatePreflightHandler = (params: { patch?: { lines?: unknown } }) => {
+export const draftsUpdatePreflightHandler = async (
+  params: Parameters<typeof draftsUpdatePreflight>[1],
+  ctx: Parameters<typeof draftsUpdatePreflight>[0],
+) => {
   const refused = lineAmountsError(params.patch?.lines, "patch.lines")
-  return refused ? { error: refused.error } : { ok: true }
+  return refused ? { error: refused.error } : draftsUpdatePreflight(ctx, params)
 }
 export const proformaCreateAndIssuePreflightHandler = (
   params: Parameters<typeof proformaCreateAndIssuePreflight>[1],

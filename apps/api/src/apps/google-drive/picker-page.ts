@@ -32,6 +32,7 @@ import { KnowledgeError } from "~/apps/knowledge/service"
 import { withSystemDb } from "~/db/privileged"
 import { env } from "~/lib/env"
 import { cspHash, escapeHtml, localeFromAcceptLanguage } from "~/lib/html-page"
+import { orgPublicBaseUrl } from "~/lib/org-public-url"
 import { redis } from "~/lib/redis"
 import { resolveConnectionAccount } from "~/modules/apps/connections/service"
 import { serverT } from "~/modules/i18n/server-i18n"
@@ -61,8 +62,8 @@ export async function createPickerTicket(ticket: PickerTicket): Promise<string> 
   return id
 }
 
-export function pickerPageUrl(ticket: string): string {
-  return `${env.BASE_URL.replace(/\/+$/, "")}/api/drive-picker/${ticket}`
+export async function pickerPageUrl(orgId: string, ticket: string): Promise<string> {
+  return `${(await orgPublicBaseUrl(orgId)).replace(/\/+$/, "")}/api/drive-picker/${ticket}`
 }
 
 function parseTicket(raw: string | null): PickerTicket | null {

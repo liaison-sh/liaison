@@ -106,7 +106,7 @@
       }
     ]
   },
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Customer-facing ticketing: local foundations (7.1)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -3413,6 +3413,7 @@
       "authorizationUrl": "https://accounts.google.com/o/oauth2/v2/auth",
       "tokenUrl": "https://oauth2.googleapis.com/token",
       "revocationUrl": "https://oauth2.googleapis.com/revoke",
+      "watchStopUrl": "https://gmail.googleapis.com/gmail/v1/users/me/stop",
       "userinfoUrl": "https://openidconnect.googleapis.com/v1/userinfo",
       "scopes": [
         "openid",
@@ -3440,7 +3441,7 @@
           {
             "who": "human",
             "minutes": 1,
-            "text": "Click **Connect via OAuth** here — you are redirected to Google's consent screen.",
+            "text": "Click **Connect** here — you are redirected to Google's consent screen.",
             "place": "liaison"
           },
           {

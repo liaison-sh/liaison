@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * Loads and transpiles TypeScript app handler bundles for QuickJS execution.
- * Bundles are cached after first transpilation since source doesn't change at runtime.
+ * A bundle's transform is cached per path and revalidated against the file:
+ * a cheap stat fingerprint (inode, size, mtime, ctime) on every load, and a
+ * content hash whenever the fingerprint moved. Reinstalling an app at the same
+ * version (same path, new bytes) therefore serves the new code at once, with
+ * no process restart.
  *
  * Bundled-app SIDE CHANNEL (dev/test): for first-party apps that live in-repo
  * under `bundled-apps/<name>/`, the handler bundle is built from SOURCE on
@@ -17,6 +21,28 @@ import { basename, dirname, join } from "node:path"
 
 const transpiler = new Bun.Transpiler({ loader: "ts", target: "browser" })
 const cache = new Map<string, string>()
+
+/** Installed-bundle cache: one entry per path, revalidated on every load. */
+interface FileEntry {
+  fingerprint: string
+  hash: string
+  code: string
+}
+const fileCache = new Map<string, FileEntry>()
+
+/** The file's identity and change stamp; null while the file does not exist. */
+function fileFingerprint(path: string): string | null {
+  try {
+    const st = statSync(path, { bigint: true })
+    return `${st.ino}:${st.size}:${st.mtimeNs}:${st.ctimeNs}`
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null
+    throw err
+  }
+}
+
+/** Reads of a file that keeps changing under us before we give up caching it. */
+const STABLE_READ_ATTEMPTS = 3
 
 // bundle-loader.ts → liaison repo root (apps/api/src/modules/apps/sandbox → up 6).
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..", "..")
@@ -70,6 +96,30 @@ const BUNDLE_LOAD_ERROR_PREFIXES = [
   "Bundle load error",
   "Export ",
 ]
+
+/**
+ * True when the sandbox itself failed the call (its worker crashed, was killed past the memory
+ * ceiling, the pool is going down or had no worker in time, the runtime ran out of memory): the code
+ * never answered, which says nothing about the request. The worker pool's own wording
+ * (worker-pool.test.ts pins it against this list).
+ */
+const SANDBOX_FAULT_PREFIXES = [
+  "Sandbox worker ",
+  "App execution exceeded the sandbox worker memory ceiling",
+  "App execution timed out",
+  "Queued sandbox request timed out",
+  "Worker pool ",
+  "Worker IPC deserialization error",
+  "Worker startup timeout",
+  "Worker exited during startup",
+  "Worker message handling failed",
+]
+
+export function isSandboxFault(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  if (SANDBOX_FAULT_PREFIXES.some((prefix) => err.message.startsWith(prefix))) return true
+  return err.message === "out of memory" || err.message.endsWith("InternalError: out of memory")
+}
 
 /** Thrown when a bundle file cannot be read or transpiled. */
 export class BundleLoadError extends Error {
@@ -126,24 +176,48 @@ async function loadBundleUnwrapped(bundlePath: string): Promise<string> {
     }
   }
 
-  const cached = cache.get(bundlePath)
-  if (cached) return cached
+  const cached = fileCache.get(bundlePath)
+  let fingerprint = fileFingerprint(bundlePath)
+  // Gone for a moment (an uninstall/reinstall replacing the version dir): the
+  // code that was there keeps serving until the new file lands.
+  if (fingerprint === null) {
+    if (cached) return cached.code
+    throw new BundleLoadError(bundlePath, new Error("bundle file not found"))
+  }
+  if (cached && cached.fingerprint === fingerprint) return cached.code
 
-  const source = await Bun.file(bundlePath).text()
+  // A read taken while the file is being written is partial: read until the
+  // file's stamp is the same before and after, and cache only such a read.
+  let source = ""
+  let stable = false
+  for (let attempt = 0; attempt < STABLE_READ_ATTEMPTS && !stable; attempt++) {
+    source = await Bun.file(bundlePath).text()
+    const after = fileFingerprint(bundlePath)
+    stable = after === fingerprint
+    if (!stable) {
+      if (after === null) {
+        if (cached) return cached.code
+        throw new BundleLoadError(bundlePath, new Error("bundle file removed while reading"))
+      }
+      fingerprint = after
+    }
+  }
+  const hash = Bun.hash(source).toString(16)
+  if (cached && cached.hash === hash) {
+    // Touched or copied but byte-identical: keep the transform.
+    if (stable) fileCache.set(bundlePath, { ...cached, fingerprint })
+    return cached.code
+  }
 
   // Plain JS bundles don't need transpilation, but we DO need to convert
   // the Bun.build ESM `export {...}` block into globalThis assignments so
   // the QuickJS sandbox's script-mode `evalCode` can resolve the named
   // exports as globals (the executor reads them via `ctx.getProp(ctx.global, exportName)`).
-  if (bundlePath.endsWith(".js")) {
-    const transformed = esmExportsToGlobalThis(source)
-    cache.set(bundlePath, transformed)
-    return transformed
-  }
-
-  const js = transpiler.transformSync(source)
-  cache.set(bundlePath, esmExportsToGlobalThis(js))
-  return cache.get(bundlePath) as string
+  const code = esmExportsToGlobalThis(
+    bundlePath.endsWith(".js") ? source : transpiler.transformSync(source),
+  )
+  if (stable) fileCache.set(bundlePath, { fingerprint, hash, code })
+  return code
 }
 
 /**
@@ -185,4 +259,5 @@ export function esmExportsToGlobalThis(source: string): string {
 /** Clear the bundle cache (for tests). */
 export function clearBundleCache(): void {
   cache.clear()
+  fileCache.clear()
 }

@@ -85,6 +85,12 @@ describe("openers for attention-only entity types", () => {
     expect(target).toMatchObject({ tabType: "mail:inbox", entityId: "inbox" })
   })
 
+  it("a failed auto top-up's attention item opens Billing", async () => {
+    boot()
+    const target = await getEntityOpener("kernel", "billing")!({} as never, "org-1")
+    expect(target).toMatchObject({ tabType: "kernel:settings", routePath: "/settings/billing" })
+  })
+
   it("a file shared in a thread opens that thread", async () => {
     boot()
     const opener = getEntityOpener("kernel", "file")

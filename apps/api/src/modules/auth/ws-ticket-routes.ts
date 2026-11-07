@@ -2,7 +2,9 @@
 import { randomBytes } from "node:crypto"
 import { Hono } from "hono"
 import type { AppEnv } from "~/app"
+import { hostBindingEnabled } from "~/lib/org-host"
 import { redis } from "~/lib/redis"
+import { effectiveRequest } from "~/lib/request-context"
 import { success } from "~/lib/response"
 import { assertUnrestrictedSession } from "~/modules/auth/session-ceiling"
 
@@ -38,6 +40,8 @@ wsTicket.post("/", async (c) => {
       permissionVersion,
       // The socket closes when this session ends (session-revocation.ts).
       ...(sid ? { sid } : {}),
+      // With org hosts the ticket opens a socket on this host only (ws-ticket.ts).
+      ...(hostBindingEnabled() ? { host: effectiveRequest(c).host ?? "" } : {}),
     }),
     "EX",
     30,

@@ -133,6 +133,16 @@ drive_picker tool call draws the Choose files card -> apps/web/src/modules/agent
 agents_ask answers without adding the agent; an agent's ask or mention seats it as a guest only -> apps/api/src/modules/threads/agent-dispatch-guard.ts:935-954 ; apps/api/src/modules/agent/tools/kernel-tools.ts:1063-1067
 agents_invite asks first (gated, never auto-approved): "X wants to add Y to this discussion", Add / Don't add, then "X added Y" -> apps/api/src/modules/agent/tools/kernel-tools.ts:1493-1521 ; apps/api/src/modules/agent/tools/coordination-tools.ts:938-967 ; packages/shared/src/i18n/locales/en/kernel.json:2318 ; packages/shared/src/i18n/locales/en/kernel.json:2335-2336
 Setup agent asks which features first, basics first (model key, mailbox and Google sign-in, support inbox, team, knowledge, imports), one human action per message with its time and skip, personal or shared per mailbox, a menu after the basics -> apps/api/src/modules/agent/prompts/kernel/setup-guide.md:11-26
+Turn refused payment_required while the renewal is unpaid -> apps/api/src/modules/agent/runtime/agent-service.ts:1701
+Platform key refused while unpaid -> apps/api/src/modules/agent/credits/credit-meter.ts:380
+Web search refused while unpaid -> apps/api/src/modules/agent/tools/web-tools.ts:476
+Proofreading carries the code -> apps/api/src/modules/assist/proofread-service.ts:56
+Dictation 402 payment_required -> apps/api/src/modules/assist/transcribe-service.ts:121
+Managed embeddings on OpenRouter, zero retention, metered -> apps/api/src/modules/search/message-indexer.ts:1161 ; apps/api/src/modules/agent/providers/openrouter-embeddings.ts:34 ; apps/api/src/modules/search/message-indexer.ts:1111
+Managed media analysis on OpenRouter with zero retention -> apps/api/src/modules/agent/media/media-analysis-client.ts:285
+Managed web search on OpenRouter only, fixed engine, zero retention on the call -> apps/api/src/modules/agent/tools/web-tools.ts:301 ; apps/api/src/modules/agent/tools/web-search-openrouter.ts:94 ; apps/api/src/modules/agent/providers/openrouter.ts:48
+Managed background calls (memory, summaries, titles, ticket summaries, extraction) use credits -> apps/api/src/modules/agent/credits/credit-meter.ts:1815 ; apps/api/src/modules/agent/context/compaction.ts:391 ; apps/api/src/modules/agent/context/checkpoint.ts:611 ; apps/api/src/modules/agent/runtime/auto-title.ts:126 ; apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1225 ; apps/api/src/modules/agent/tools/web-tools.ts:1152
+Keyword only while unpaid, embeddings backfilled once paid -> apps/api/src/modules/search/message-indexer.ts:1096 ; apps/api/src/modules/cloud/billing.ts:148
 Agent reminds the person of their own requests waiting more than a day -> apps/api/src/modules/agent/context/system-event-replay.ts:258
 Agent checks each request is still current before writing -> apps/api/src/modules/agent/context/system-event-replay.ts:132
 Reminder reply is unprompted so it reaches notifications -> apps/api/src/modules/agent/runtime/agent-service.ts:4144
@@ -140,6 +150,7 @@ Approval reminders frequency chosen in Settings, Notifications -> packages/share
 Team-only bug report card under report_bug, sent only by the reporter -> apps/web/src/modules/agent/ToolCallRow.tsx:128 ; apps/web/src/modules/bug-report/BugReportDraftCard.tsx
 Personal agent messages labelled "<Name>'s agent" after the owner -> packages/shared/src/agents/personal-agent-name.ts:42 ; apps/api/src/modules/threads/message.ts:389 ; apps/api/src/modules/agent/tools/chat-tools.ts:96
 Agent writes memory only when asked to remember, or corrected; never copies app data, never as part of a task -> apps/api/src/modules/agent/prompts/agent-charter.md:16 ; apps/api/src/modules/agent/tools/kernel-tools.ts:649
+New turns refused while the org moves; running turns finish -> apps/api/src/modules/org/transfer-state/gate.ts:55 ; apps/api/src/modules/agent/runtime/agent-service.ts:4460
 Quiet-conversation memory reads only messages people typed, saves nothing after a declined memory approval -> apps/api/src/modules/agent/memory/consolidation.ts:186 ; apps/api/src/modules/agent/memory/consolidation.ts:197
 Private mail read: any unlocked app of the user decrypts, wait 45 s for a few messages -> apps/web/src/modules/mailbox/mailbox-agent-runtime.ts:289 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:104
 Each message past five adds 3 s -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:111

@@ -15,11 +15,26 @@ connect links: hash stored, 30 min, single use, member only -> apps/api/src/modu
 disconnect by address: org admin scope, personal owner, --force audited -> apps/api/src/modules/apps/connections/disconnect-account.ts:1
 Standard or private mailbox trade-off, one sentence each -> packages/shared/src/setup-guides.ts:56 ; apps/api/src/cli/connect/index.ts:415 ; .claude/skills/setup-liaison/SKILL.md:488 ; apps/api/src/modules/agent/prompts/kernel/setup-guide.md:26 ; packages/shared/src/i18n/locales/en/mail.json:153
 setup_state left counts chosen features only, alternatives, menu -> apps/api/src/modules/connection-guides/setup-features.ts:198
-Mailbox limit: gmail/imap any app until disconnected, same address once, MAILBOX_LIMIT_REACHED, reconnect allowed, OAuth callback failure -> apps/api/src/modules/org/caps.ts:218 ; apps/api/src/modules/apps/connections/service.ts:3083 ; apps/api/src/app.ts:1054
-refused link connect: back to the link page with the reason, recorded for the CLI -> apps/api/src/app.ts:982 ; apps/web/src/modules/settings/ConnectLink.tsx:1 ; packages/shared/src/i18n/locales/en/kernel.json:5856
+Mailbox limit: gmail/imap any app until disconnected, same address once, MAILBOX_LIMIT_REACHED, reconnect allowed, OAuth callback failure -> apps/api/src/modules/org/caps.ts:218 ; apps/api/src/modules/apps/connections/service.ts:3083 ; apps/api/src/app.ts:1041
+refused link connect: back to the link page with the reason, recorded for the CLI -> apps/api/src/app.ts:969 ; apps/web/src/modules/settings/ConnectLink.tsx:1 ; packages/shared/src/i18n/locales/en/kernel.json:5856
 connect --for stops with the reason and exit 1 -> apps/api/src/cli/connect/index.ts:454
 org and personal rows of one account only where the connection declares it (Drive) -> apps/api/src/modules/apps/connections/service.ts:3077 ; apps/api/src/apps/google-drive/app.manifest.json:35
+LIAISON_OAUTH_REDIRECT_BASE env var, origin only -> apps/api/src/lib/env.ts:134
+Redirect base: LIAISON_OAUTH_REDIRECT_BASE else BASE_URL -> apps/api/src/lib/org-public-url.ts:87
+Connector redirect_uri on the redirect base (authorize and exchange) -> apps/api/src/modules/apps/connections/service.ts:2633
+Sign-in redirect_uri on the redirect base (authorize and exchange) -> apps/api/src/modules/auth/oauth-routes.ts:543
+State = <slug>.<random> when the redirect base is set -> apps/api/src/lib/oauth-state.ts:28
+Callback refuses a state of another org or without a slug -> apps/api/src/lib/oauth-state.ts:47
+Guides show the redirect base (Shopify, generic connection setup) -> apps/api/src/modules/connection-guides/plan.ts:191
+Server checklist shows the redirect base -> apps/api/src/modules/connection-guides/server-setup.ts:80
+MCP sign-ins keep the org's own host -> apps/api/src/apps/mcp-manager/oauth-registration.ts:45
+Connect dialog: one Connect + whose account when a client is configured, own client behind a disclosure, never on a managed instance with the instance client -> apps/web/src/modules/settings/ConnectAppDialog.tsx:305
+Mailbox limit, managed edition: plans do not limit mailboxes, connecting one is never refused -> apps/api/src/modules/org/caps.ts:296
+managed server: shared push topic only for workspaces on the server's client; own client keeps the Pub/Sub step -> apps/api/src/modules/connection-guides/google.ts:317
+Facebook and Instagram (Facebook login) instance client META_APP_ID/META_APP_SECRET, managed only -> apps/api/src/modules/apps/connections/oauth-client.ts (CELL_META_ENV, instanceOAuthClient)
+Managed: cell Gmail push values and Meta secret/callback win while on the cell's client; writes refused cell_config_locked -> apps/api/src/modules/apps/cell-locked-config.ts ; apps/api/src/modules/apps/app-config.ts (checkAppConfigWriteForOrg) ; apps/api/src/modules/apps/sandbox/bridge/identity.ts (config_get) ; apps/api/src/modules/webhooks/routes.ts (config_get)
 connect --for stops with exit 1 once the link expires unused (server-side status); a redeemed link keeps the wait -> apps/api/src/cli/connect/index.ts:471 ; apps/api/src/modules/apps/connections/connect-links.ts:127
+OAuth callback refused with 503 org_moving while the org moves -> apps/api/src/modules/apps/connections/service.ts:2831 ; apps/api/src/modules/org/transfer-state/gate.ts:91
 optionalScopes never written to a generated provider app configuration -> apps/api/src/modules/connection-guides/shopify-app-toml.ts:16
 protectedScopes listed in the generated file once the org turned setting on -> apps/api/src/modules/apps/connections/protected-scopes.ts:7
 scopesFromAppConfiguration manifest field -> apps/api/src/modules/apps/manifest-schema.ts:280

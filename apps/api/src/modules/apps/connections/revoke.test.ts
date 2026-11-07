@@ -15,10 +15,9 @@ import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { env } from "~/lib/env"
 import { connectionConfigRegistry, resetAppRegistries } from "~/modules/apps/app-registries"
 import {
-  RevokeTestAccess,
   revokeConnectionGrant,
   revokeOnDisconnectEvent,
-  revokeStagedGrant,
+  runConnectionTeardown,
 } from "~/modules/apps/connections/revoke"
 import { disconnectConnection } from "~/modules/apps/connections/service"
 
@@ -123,8 +122,8 @@ async function insertConnection(opts: {
 
 async function disconnect(id: string): Promise<void> {
   await withPrivilegedDb(orgId, "revoke-test", (tx) => disconnectConnection(tx, orgId, userId, id))
-  // Committed: the caller runs the staged revocation, as the disconnect route does.
-  await revokeStagedGrant(id)
+  // Committed: the caller runs what it staged, as the disconnect route does.
+  await runConnectionTeardown(id)
 }
 
 async function reload(id: string) {
@@ -291,7 +290,6 @@ describe("connections revoke on disconnect", () => {
     const row = await reload(id)
     expect(row.status).toBe("active")
     expect(row.refreshTokenEncrypted).not.toBeNull()
-    RevokeTestAccess.clearStaged()
   })
 
   it("the committed disconnect event runs a revocation its caller did not", async () => {
@@ -320,7 +318,7 @@ describe("connections revoke on disconnect", () => {
       action: "disconnect",
       entityId: id,
     })
-    expect(await revokeStagedGrant(id)).toBeNull()
+    expect(await runConnectionTeardown(id)).toEqual([])
     expect(received).toHaveLength(1)
   })
 

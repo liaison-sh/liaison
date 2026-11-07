@@ -12,6 +12,7 @@ import { deriveInstanceKey } from "@liaison/control-plane-contract/node"
 import { sql } from "~/db"
 import { getPoolGauges } from "~/db/pool-diag"
 import { withSystemDb } from "~/db/privileged"
+import { _setEdition } from "~/lib/edition"
 import { env, LIAISON_TEAM_DISABLED } from "~/lib/env"
 import {
   type FakeControlPlaneHandle,
@@ -21,6 +22,7 @@ import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { decryptInstanceKey, type LiaisonTeamIdentity, readIdentity } from "./identity"
 import { claimDue, type DrainOptions, drainOnce, enqueue } from "./outbox"
 import { heartbeatData } from "./payloads"
+import { installProvisionedKey, mintProvisionedIdentity } from "./provisioned-identity"
 import { LiaisonTeamError, readSharing, readStatus, setSharing } from "./settings"
 
 const MIN = 60_000
@@ -688,5 +690,66 @@ describe("liaison team outbox ordering and retention", () => {
     advance(90 * DAY)
     await drain()
     expect((await rows()).find((x) => x.id === h.id)).toBeUndefined()
+  })
+})
+
+describe("liaison team outbox in the managed edition", () => {
+  /** A provisioned identity (minted and installed with its derived key, as provisioning
+   *  does), and a heartbeat. The fake never saw it register: it answers unknown_instance. */
+  async function provisioned(): Promise<{ first: LiaisonTeamIdentity; h: { id: string } }> {
+    const minted = await mintProvisionedIdentity()
+    await installProvisionedKey(deriveInstanceKey(fake.control.masterSecret, minted.instanceId))
+    const first = await identity()
+    if (first?.state !== "registered") throw new Error(`not installed: ${first?.state}`)
+    return { first, h: await heartbeat() }
+  }
+  const registerRows = async () => (await rows()).filter((r) => r.type === "register")
+
+  beforeEach(() => _setEdition("managed"))
+  afterEach(() => _setEdition(null))
+
+  // Discriminator: re-registering on unknown_instance mints a new id and queues `register`.
+  it("403 unknown_instance never re-mints and never queues a register", async () => {
+    const { first, h } = await provisioned()
+    await drain()
+    const after = await identity()
+    expect(after?.instanceId).toBe(first.instanceId)
+    expect(after?.state).toBe("registered")
+    expect(await registerRows()).toHaveLength(0)
+    expect((await row(h.id)).status).toBe("pending")
+  })
+
+  // Discriminator: the 24 h re-registration of a self-hosted server.
+  it("401s for over 24 h never re-mint", async () => {
+    const { first, h } = await provisioned()
+    await fake.control.setMode("401")
+    const t0 = now.getTime()
+    for (let i = 0; i < 14; i++) {
+      await drain()
+      advance(2 * HOUR)
+    }
+    now = new Date(t0 + 30 * HOUR)
+    await drain()
+    expect((await identity())?.instanceId).toBe(first.instanceId)
+    expect(await registerRows()).toHaveLength(0)
+    // The 24 h check itself refused: the heartbeat backs off like any failure.
+    // Past that check, the row would be retried at once (a re-registration
+    // under way), whatever `reregister` then declines to do.
+    expect(new Date((await row(h.id)).next_attempt_at).getTime()).toBeGreaterThan(now.getTime())
+  })
+
+  // Discriminator: an unreadable key re-registers under a new id on a self-hosted server.
+  it("an unreadable key never re-mints", async () => {
+    const { first } = await provisioned()
+    await corruptKey()
+    await drain()
+    expect((await identity())?.instanceId).toBe(first.instanceId)
+    expect(await registerRows()).toHaveLength(0)
+  })
+
+  it("forced-on sharing queues no register for an installed identity", async () => {
+    await provisioned()
+    expect((await withSystemDb("t", (tx) => readSharing(tx))).register).toBe(true)
+    expect(await registerRows()).toHaveLength(0)
   })
 })

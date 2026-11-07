@@ -1,0 +1,44 @@
+{
+  "data": {
+    "autoModelKey": "shm-flash",
+    "autoResolvedKey": "shm-flash",
+    "autoReasoningLevel": "high",
+    "defaultReasoningLevel": null,
+    "models": [
+      {
+        "key": "shm-flash",
+        "modelId": "shm-flash",
+        "provider": "google",
+        "providerLabel": "Google",
+        "displayName": "Flash (money)",
+        "tierMinimum": "starter",
+        "autoEligible": true,
+        "contextWindow": 1048576,
+        "inputCostPerM": "0.10000000",
+        "outputCostPerM": "0.40000000",
+        "reasoning": {
+          "allowedLevels": ["low", "medium", "high"],
+          "defaultLevel": "low"
+        },
+        "tools": true
+      },
+      {
+        "key": "shm-pro",
+        "modelId": "shm-pro",
+        "provider": "google",
+        "providerLabel": "Google",
+        "displayName": "Pro (money)",
+        "tierMinimum": "starter",
+        "autoEligible": false,
+        "contextWindow": 1048576,
+        "inputCostPerM": "1.25000000",
+        "outputCostPerM": "10.00000000",
+        "reasoning": {
+          "allowedLevels": ["low", "medium", "high"],
+          "defaultLevel": "low"
+        },
+        "tools": true
+      }
+    ]
+  }
+}

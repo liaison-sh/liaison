@@ -351,7 +351,13 @@ describe("kernel workspace sections (settings overhaul S12)", () => {
 
     const { getSettingsSections } = await import("~/framework/app-registry")
     const labels = getSettingsSections()
-      .filter((section) => section.group === "admin" && !section.hidden)
+      // Self-hosted (no billing mode): the managed-only Billing row stays out.
+      .filter(
+        (section) =>
+          section.group === "admin" &&
+          !section.hidden &&
+          (section.visibleWhen ? section.visibleWhen() : true),
+      )
       .sort((a, b) => a.order - b.order)
       .map((section) => section.label)
 

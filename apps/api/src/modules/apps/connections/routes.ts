@@ -23,7 +23,7 @@ import {
   getConnectionOAuthClient,
   upsertConnectionOAuthClient,
 } from "~/modules/apps/connections/oauth-client-provisioning"
-import { revokeStagedGrant } from "~/modules/apps/connections/revoke"
+import { runConnectionTeardown } from "~/modules/apps/connections/revoke"
 import {
   CONNECT_BINDING_COOKIE,
   CONNECT_CALLBACK_PATH,
@@ -561,8 +561,9 @@ export const connectionRoutes = new Hono<AppEnv>()
     } else {
       await withRequestRls(c, async (tx) => disconnectConnection(tx, orgId, userId, id))
     }
-    // Committed: revoke the grant at the provider (best effort, never throws).
-    await revokeStagedGrant(id)
+    // Committed: stop the push watch and revoke the grant at the provider (never throws; what
+    // a provider outage prevents stays queued and is retried).
+    await runConnectionTeardown(id)
     return c.json({ data: { success: true } })
   })
   // Re-drive an active connection's post-connect initialization (re-emit

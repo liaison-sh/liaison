@@ -75,6 +75,11 @@ const RESTART =
 /** Every server surface, computed from the env. */
 export function serverSetup(e: ServerEnv): ServerSurface[] {
   const base = String(e.BASE_URL ?? "").replace(/\/+$/, "")
+  // Where OAuth providers send every grant back: the central redirect host when
+  // one is set (LIAISON_OAUTH_REDIRECT_BASE), else this server.
+  const redirectBase = e.LIAISON_OAUTH_REDIRECT_BASE
+    ? String(e.LIAISON_OAUTH_REDIRECT_BASE).replace(/\/+$/, "")
+    : base
   const host = (() => {
     try {
       return new URL(base).host
@@ -255,8 +260,8 @@ export function serverSetup(e: ServerEnv): ServerSurface[] {
           text: "Open Clients, click Create client, choose Web application, name it Liaison. Under Authorized redirect URIs click Add URI twice and paste both values below: one client serves Sign in with Google and every Google connection (Gmail, Calendar, Drive, Ads), since Google asks for each permission when an account connects, not per client. Click Create, then Download JSON and give the agent the downloaded file's path.",
           url: "https://console.cloud.google.com/auth/clients",
           values: [
-            `${base || "https://<your-domain>"}${SIGN_IN_CALLBACK_PATH}`,
-            `${base || "https://<your-domain>"}${CONNECTIONS_CALLBACK_PATH}`,
+            `${redirectBase || "https://<your-domain>"}${SIGN_IN_CALLBACK_PATH}`,
+            `${redirectBase || "https://<your-domain>"}${CONNECTIONS_CALLBACK_PATH}`,
           ],
         },
         {
@@ -296,7 +301,7 @@ export function serverSetup(e: ServerEnv): ServerSurface[] {
         {
           who: "agent",
           text: "Print the values each client needs: `liaison guide google` (redirect URI, scopes, APIs, Gmail push topic) and `liaison guide shopify` (app URL, redirect URL, scopes, API version). The redirect URI of every one of them is the value below.",
-          values: [`${base || "https://<your-domain>"}${CONNECTIONS_CALLBACK_PATH}`],
+          values: [`${redirectBase || "https://<your-domain>"}${CONNECTIONS_CALLBACK_PATH}`],
         },
         {
           who: "human",

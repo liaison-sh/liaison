@@ -69,4 +69,20 @@ regexes = [
   '''^bdc9abb4dedf071522ec79947c800481744976593804deb1a000a1742e337892$''',
   '''^d4a3c179d8ef449a948a561f0d4cdf17557899df7a078f65bba8c3803fb923fe$''',
   '''^f880d1be5286f89727d74dea5bd3ca25c573b565c6c05f696eb79766a26d2006$''',
+  '''^bdlNE7hoLgw-eHKX_GJE19OHUWhN-BuTjLMebflbXoo$''',
+  '''^c69940b4d291b8ed2cd06bd2ada249c93b62d99c6a74462f701838d7178dcd76$''',
+  '''^d8ad534f318b9b5ecb412ea0d44e07d3988fa17e6317f71e39a5b6cdc90de36d$''',
+]
+
+[[allowlists]]
+description = "Control plane contract signing vectors (JSON fixtures shared with the control plane)"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''(^|/)packages/control-plane-contract/vectors/[a-z0-9-]+\.json$''']
+regexTarget = "secret"
+regexes = [
+  '''^a3a546870cf3be25cc3262ca470ba13b052fb2c0025acd01aba7ccdb948ef10b$''',
+  '''^bdc9abb4dedf071522ec79947c800481744976593804deb1a000a1742e337892$''',
+  '''^c9a71b289d8de10b0a802eb6014c9396ce4a5b267c0766e25bdeaf2cad721387$''',
+  '''^fff74f2f31b9faf5b7308d523e3e06d99cfb7ce4d894f13457e3672734635bdc$''',
 ]

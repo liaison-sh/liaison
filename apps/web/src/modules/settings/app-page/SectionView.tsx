@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // One section of an app page: its heading with the "Just you" / "Organization"
-// badge (S13), then its blocks in schema order. A section whose fields share one
+// badge (S13; none on an org section that can hold a personal connection), then its blocks in schema order. A section whose fields share one
 // tool setter saves as one unit behind a Save bar (M1); every other field saves
 // on its own.
 import {
@@ -16,14 +16,16 @@ import {
 } from "solid-js"
 import { cn } from "~/lib/cn"
 import { useI18n } from "~/modules/i18n/i18n-context"
+import { appsStore } from "~/modules/settings/apps-store"
 import { addToast } from "~/modules/shell/toast-store"
 import { Button } from "~/ui/Button"
-import { ConnectionsBlock } from "./ConnectionsBlock"
+import { ConnectionsBlock, canAdministerConnection } from "./ConnectionsBlock"
 import { CustomBlock } from "./CustomBlock"
 import { FieldBlock } from "./fields"
 import { ListBlock } from "./ListBlock"
 import { useAppPage } from "./page-context"
 import { labelOf, unitSetTool } from "./page-model"
+import { settingsSectionElementId } from "./reveal-section"
 import type { SaveOutcome, UnitSaveOutcome } from "./settings-api"
 import { isSupportedSettingsBlock } from "./supported"
 import { TreeBlock } from "./TreeBlock"
@@ -57,6 +59,22 @@ export const SectionView: Component<SectionViewProps> = (props) => {
       : undefined
   const headingId = () => `settings-section-h-${props.app}-${props.section.id}`
   const fieldsOnly = () => props.section.blocks.every((b) => b.block === "field")
+  // A connect form offers Personal and Organization to whoever administers the
+  // connection, and only Personal to anyone else; a named-instance connection is
+  // always the org's. So an org section with a connection a person can hold says
+  // nothing, nor does an open section to an admin (Organization is on offer
+  // there); "Just you" stays true for a member. Unknown until they are listed.
+  const showScopeBadge = () => {
+    const blocks = props.section.blocks.flatMap((b) => (b.block === "connections" ? [b] : []))
+    if (blocks.length === 0) return true
+    const shown = appsStore
+      .connectionsFor(props.app)
+      .filter((c) => blocks.some((b) => !b.names || b.names.includes(c.name)))
+    if (shown.length === 0) return false
+    return props.section.scope === "user"
+      ? !shown.some((c) => canAdministerConnection(props.app, c))
+      : shown.every((c) => c.multiInstance)
+  }
 
   // A section whose fields share one tool setter saves as one unit (M1): edits
   // wait here, one Save bar sends them together.
@@ -154,6 +172,7 @@ export const SectionView: Component<SectionViewProps> = (props) => {
               block={c()}
               blockId={blockId}
               openConnection={props.openConnection}
+              personalSection={props.section.scope === "user"}
             />
           )}
         </Match>
@@ -166,6 +185,8 @@ export const SectionView: Component<SectionViewProps> = (props) => {
 
   return (
     <section
+      id={settingsSectionElementId(props.app, props.section.id)}
+      tabIndex={-1}
       aria-labelledby={headingId()}
       data-testid={`settings-section-${props.section.id}`}
       class={props.compact ? "mt-5 first:mt-0" : "mt-9 first:mt-0"}
@@ -180,19 +201,21 @@ export const SectionView: Component<SectionViewProps> = (props) => {
             )}
           >
             {title()}
-            <span
-              class="rounded-full border border-border px-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-text-tertiary"
-              title={
-                props.section.scope === "user"
-                  ? i18n.t(`${P}.justYouHint`)
-                  : i18n.t(`${P}.organizationHint`)
-              }
-              data-testid={`settings-section-scope-${props.section.id}`}
-            >
-              {props.section.scope === "user"
-                ? i18n.t(`${P}.justYou`)
-                : i18n.t(`${P}.organization`)}
-            </span>
+            <Show when={showScopeBadge()}>
+              <span
+                class="rounded-full border border-border px-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-text-tertiary"
+                title={
+                  props.section.scope === "user"
+                    ? i18n.t(`${P}.justYouHint`)
+                    : i18n.t(`${P}.organizationHint`)
+                }
+                data-testid={`settings-section-scope-${props.section.id}`}
+              >
+                {props.section.scope === "user"
+                  ? i18n.t(`${P}.justYou`)
+                  : i18n.t(`${P}.organization`)}
+              </span>
+            </Show>
           </h2>
           <Show when={description()}>
             <p class="mt-0.5 text-[12.5px] text-text-secondary">{description()}</p>

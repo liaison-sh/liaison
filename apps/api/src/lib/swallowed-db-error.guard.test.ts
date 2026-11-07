@@ -153,6 +153,12 @@ const ALLOWLIST: AllowlistEntry[] = [
     note: "withPrivilegedDb ended before the catch.",
   },
   {
+    file: "modules/agent/tools/skills-routines-tools.ts",
+    function: "handleCreateRoutine",
+    why: "own-tx-ends",
+    note: "withPrivilegedDb ended before the catch.",
+  },
+  {
     file: "modules/agent/credits/credit-service.ts",
     function: "addCredits",
     why: "own-tx-ends",

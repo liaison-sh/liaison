@@ -23,6 +23,7 @@ import {
 } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
+import { sweepSkippingMoving } from "~/modules/org/transfer-state/skip-moving"
 import { notificationIdFor, type RouterDecision } from "./router"
 
 const K = sql.raw(schemaRef("kernel"))
@@ -129,12 +130,15 @@ async function purgeOlderThanRetention(
   timeColumn: SQL,
 ): Promise<number> {
   let deleted = 0
+  // An org being moved keeps its rows as they are until the move ends.
   for (;;) {
-    const result = await withSystemDb(label, (db) =>
-      db.execute(sql`
+    const result = await sweepSkippingMoving((notMoving) =>
+      withSystemDb(label, (db) =>
+        db.execute(sql`
         WITH doomed AS (
           SELECT id FROM ${table}
           WHERE ${timeColumn} < NOW() - MAKE_INTERVAL(days => ${NOTIFICATION_LOG_RETENTION_DAYS})
+            AND ${notMoving(sql.raw("org_id"))}
           LIMIT ${RETENTION_BATCH_SIZE}
         )
         DELETE FROM ${table} t
@@ -142,6 +146,7 @@ async function purgeOlderThanRetention(
         WHERE t.id = doomed.id
         RETURNING t.id
       `),
+      ),
     )
     const rows = extractRows(result)
     deleted += rows.length

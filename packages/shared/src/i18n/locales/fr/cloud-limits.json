@@ -1,0 +1,87 @@
+{
+  "suspended": {
+    "title": "Espace de travail suspendu",
+    "sentence": "Cet espace de travail est suspendu car son abonnement a pris fin ou un paiement a échoué.",
+    "adminUntil": "En tant qu'administrateur, vous pouvez exporter les données et payer dans Facturation jusqu'au {{date}}.",
+    "contact": "Questions de facturation :",
+    "export": "Exporter vos données",
+    "billing": "Facturation",
+    "reload": "Recharger",
+    "signOut": "Se déconnecter"
+  },
+  "sender": {
+    "title": "Expéditeur des e-mails",
+    "help": "Les invitations, résumés et enquêtes partent de votre propre domaine dès qu'il est vérifié. Les e-mails de connexion viennent toujours de l'adresse du service.",
+    "fallback": "Tant qu'aucun domaine n'est vérifié, ces e-mails partent au nom de « {{org}} via Liaison ».",
+    "domainLabel": "Domaine",
+    "domainPlaceholder": "mail.exemple.fr",
+    "add": "Ajouter le domaine",
+    "recordsHelp": "Ajoutez ces enregistrements DNS chez votre hébergeur DNS, puis cliquez sur Vérifier. La prise en compte peut prendre de quelques minutes à une heure.",
+    "verifiedHelp": "Vérifié : les e-mails de votre organisation partent désormais de ce domaine.",
+    "recordType": "Type",
+    "recordName": "Nom",
+    "recordValue": "Valeur",
+    "recordPriority": "Priorité",
+    "copy": "Copier",
+    "copied": "Copié",
+    "verify": "Vérifier",
+    "remove": "Retirer le domaine",
+    "statusNotStarted": "Pas encore vérifié",
+    "statusPending": "En attente du DNS",
+    "statusVerified": "Vérifié",
+    "statusFailed": "Échec de la vérification",
+    "domainLimit": "Ce domaine ne peut pas être ajouté pour le moment ; nous avons été prévenus.",
+    "domainInvalid": "Ce n'est pas un domaine qui peut envoyer des e-mails.",
+    "domainTaken": "Ce domaine est déjà utilisé par une autre organisation.",
+    "unavailable": "Les réglages de l'expéditeur sont indisponibles pour le moment. Réessayez dans un instant."
+  },
+  "billing": {
+    "pastDue": "Le paiement a échoué : réglez la facture en attente pour continuer à utiliser les fonctions d'IA.",
+    "ended": "Votre abonnement est terminé : les fonctions d'IA sont arrêtées. Vous pouvez encore exporter vos données.",
+    "openInvoice": "Facture en attente : {{amount}}. Réglez-la avant le {{date}}.",
+    "payOpenInvoice": "Régler la facture en attente",
+    "paymentRequired": "Les fonctions d'IA sont suspendues jusqu'au paiement de la facture en attente. Un administrateur peut la régler dans Facturation.",
+    "outOfCredits": "Vous n'avez plus de crédits : l'assistant s'arrête jusqu'à la recharge. Tout le reste continue de fonctionner. Un administrateur peut acheter des crédits dans Facturation.",
+    "openBilling": "Ouvrir Facturation"
+  },
+  "caps": {
+    "seatLimitReached": "Cette organisation utilise toutes les places de son offre. Passez à une offre qui en compte davantage dans Facturation, ou un admin peut d'abord désactiver quelqu'un.",
+    "customAppLimitReached": "Cette organisation utilise toutes les applications personnalisées de son offre. Supprimez-en une d'abord, ou passez à une offre qui en compte davantage.",
+    "auditDaysLimitReached": "L'offre conserve le journal d'audit moins longtemps. Choisissez une durée plus courte.",
+    "storageLimitReached": "Cette organisation utilise tout le stockage de son offre. Passez à une offre qui en compte davantage dans Facturation, ou libérez d'abord de l'espace."
+  },
+  "planCaps": {
+    "seats": {
+      "preview": "L'offre Preview est limitée à {{limit}} personnes : elle sert seulement à découvrir Liaison.",
+      "base": "L'offre Base est limitée à {{limit}} personnes : elle est faite pour une petite entreprise qui gère son quotidien sur Liaison.",
+      "pro": "L'offre Pro est limitée à {{limit}} personnes : elle est faite pour les grandes équipes à l'usage soutenu.",
+      "next": "{{plan}} en permet {{limit}}. Passez-y dans Facturation, ou un admin peut d'abord désactiver quelqu'un.",
+      "nextUnlimited": "{{plan}} n'a pas de limite de personnes. Passez-y dans Facturation, ou un admin peut d'abord désactiver quelqu'un.",
+      "largest": "C'est la plus grande offre : un admin doit d'abord désactiver quelqu'un."
+    },
+    "storageGb": {
+      "preview": "L'offre Preview est limitée à {{limit}} Go de stockage : elle sert seulement à découvrir Liaison, pas à garder des années de fichiers.",
+      "base": "L'offre Base est limitée à {{limit}} Go de stockage : elle est faite pour les fichiers et pièces jointes du quotidien d'une petite entreprise.",
+      "pro": "L'offre Pro est limitée à {{limit}} Go de stockage : elle est faite pour les grandes équipes qui gardent un long historique de fichiers.",
+      "next": "{{plan}} offre {{limit}} Go. Passez-y dans Facturation, ou libérez d'abord de l'espace.",
+      "nextUnlimited": "{{plan}} n'a pas de limite de stockage. Passez-y dans Facturation, ou libérez d'abord de l'espace.",
+      "largest": "C'est la plus grande offre : il faut d'abord libérer de l'espace."
+    },
+    "customApps": {
+      "preview": "La limite d'applications personnalisées de l'offre Preview est de {{limit}} : elle sert seulement à en essayer une.",
+      "base": "La limite d'applications personnalisées de l'offre Base est de {{limit}} : elle est faite pour les quelques outils qu'une petite entreprise ajoute à son quotidien.",
+      "pro": "La limite d'applications personnalisées de l'offre Pro est de {{limit}} : elle est faite pour les équipes qui construisent beaucoup sur Liaison.",
+      "next": "{{plan}} en permet {{limit}}. Passez-y dans Facturation, ou supprimez-en d'abord une.",
+      "nextUnlimited": "{{plan}} n'a pas de limite d'applications personnalisées. Passez-y dans Facturation, ou supprimez-en d'abord une.",
+      "largest": "C'est la plus grande offre : il faut d'abord en supprimer une."
+    },
+    "auditDays": {
+      "preview": "L'offre Preview conserve le journal d'audit {{limit}} jours au plus : elle sert seulement à découvrir Liaison.",
+      "base": "L'offre Base conserve le journal d'audit {{limit}} jours au plus : elle est faite pour les contrôles courants d'une petite entreprise.",
+      "pro": "L'offre Pro conserve le journal d'audit {{limit}} jours au plus : elle est faite pour les équipes aux besoins de contrôle ou de conformité plus longs.",
+      "next": "{{plan}} le conserve {{limit}} jours. Choisissez une durée plus courte, ou passez-y dans Facturation.",
+      "nextUnlimited": "{{plan}} n'a pas de limite sur ce point. Choisissez une durée plus courte, ou passez-y dans Facturation.",
+      "largest": "C'est la plus grande offre : choisissez une durée plus courte."
+    }
+  }
+}

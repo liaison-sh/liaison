@@ -58,13 +58,19 @@ const demoOrgSurfaces = (): boolean => demoMode() && signedInOrgDemo() === true
 const [demoMode, setDemoMode] = createSignal(false)
 
 /**
+ * The server takes new accounts by invitation only (the managed edition): the
+ * login page offers no account creation. False until told otherwise.
+ */
+const [noAccountEntry, setNoAccountEntry] = createSignal(false)
+
+/**
  * The instance's privacy policy, when the operator configured one
  * (LIAISON_PRIVACY_URL). The demo signup notice links it; null shows the notice
  * without a link. Only an http(s) URL is accepted.
  */
 const [privacyUrl, setPrivacyUrl] = createSignal<string | null>(null)
 
-export { demoMode, demoOrgSurfaces, orgName, privacyUrl, signedInOrgDemo }
+export { demoMode, demoOrgSurfaces, noAccountEntry, orgName, privacyUrl, signedInOrgDemo }
 
 let inFlight: Promise<void> | null = null
 /**
@@ -91,6 +97,7 @@ export function ensureBrandingLoaded(fetchImpl: typeof fetch = fetch): Promise<v
       const flags = body?.data?.flags
       if (flags && typeof flags === "object") {
         setDemoMode((flags as Record<string, unknown>).demo === true)
+        setNoAccountEntry((flags as Record<string, unknown>).noAccountEntry === true)
       }
       const privacy = body?.data?.privacyUrl
       if (typeof privacy === "string" && /^https?:\/\//i.test(privacy)) setPrivacyUrl(privacy)
@@ -158,6 +165,7 @@ export function _resetBranding(): void {
   orgInFlight = null
   orgLoaded = false
   setDemoMode(false)
+  setNoAccountEntry(false)
   setPrivacyUrl(null)
   inFlight = null
   loaded = false

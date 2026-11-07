@@ -26,6 +26,7 @@
 
 import path from "node:path"
 import { api } from "@liaison/test-helpers"
+import { tokenAfterOrgAccessChange } from "./fixtures/org-access-change"
 import { expect, test } from "./fixtures/test"
 
 const SHOTS_DIR = path.resolve(__dirname, "../../../logs/playwright-diagnostics/mcp-policy")
@@ -62,6 +63,13 @@ test("admin flips policy to gate_all; next call returns gated structured respons
   ).toBeTruthy()
   if (!connectionId) throw new Error("create response missing id")
 
+  // Adding an org server makes every member's older token stale (the server's
+  // `mcp:<slug>` comes with the next one): continue with a fresh admin token.
+  const adminToken = await tokenAfterOrgAccessChange(env, qa.admin.token, {
+    email: "admin@test.com",
+    password: "12345678",
+  })
+
   // 2. Warm the connection (status → connected, no first-dial race per S2).
   // Assert BOTH status AND body.ok — the /test endpoint returns 200 with
   // ok:false on dial failure, which would silently let the next executeTool
@@ -70,7 +78,7 @@ test("admin flips policy to gate_all; next call returns gated structured respons
   const testRes = await api(
     env.serverUrl,
     `/api/apps/mcp-manager/connections/${connectionId}/test`,
-    { method: "POST", token: qa.admin.token },
+    { method: "POST", token: adminToken },
   )
   expect(testRes.status).toBe(200)
   const testBody = testRes.body as {
@@ -101,7 +109,7 @@ test("admin flips policy to gate_all; next call returns gated structured respons
   // exercised at the unit layer.
   const autoCall = await api(env.serverUrl, toolPath, {
     method: "POST",
-    token: qa.admin.token,
+    token: adminToken,
     body: { params: { message: "hello from auto" } },
   })
   expect(autoCall.status).toBe(200)
@@ -158,7 +166,7 @@ test("admin flips policy to gate_all; next call returns gated structured respons
   // in the call's audit row (verified at the unit layer by call.test.ts).
   const gatedCall = await api(env.serverUrl, toolPath, {
     method: "POST",
-    token: qa.admin.token,
+    token: adminToken,
     body: { params: { message: "hello from gate_all" } },
   })
   expect(gatedCall.status).toBe(500)

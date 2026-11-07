@@ -27,6 +27,7 @@ import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { env } from "~/lib/env"
 import { decideApproval } from "~/modules/approvals/decide"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
+import { CatalogDerivationsTestAccess } from "~/modules/apps/catalog-derivations"
 import { storeAppHeldSecret } from "~/modules/apps/connections/service"
 import { executeTool, executeToolCore } from "~/modules/apps/execute-tool"
 import { writeKernelContractBinding } from "~/modules/apps/provider-contracts/binding"
@@ -153,7 +154,9 @@ describe("received supplier e-invoices through the einvoicing-pa@1 contract (rea
       [bundledDescriptor("invoicing") as never, bundledDescriptor("pennylane") as never],
       ORG,
     )
-    await rebuildFilesSelectPolicy() // what boot does: the received_file parent's files become readable
+    // What boot does: the received_file parent's files become readable. Boot builds the policy
+    // from the installed catalog, which need not hold the apps registered from source here.
+    await rebuildFilesSelectPolicy({ parents: CatalogDerivationsTestAccess.registryFileParents() })
     await sql`INSERT INTO app_invoicing.einvoicing_settings
       (org_id, gate_mode, gate_mode_source, provider_app, cutover_date, send_enabled, book_enabled, changed_by)
       VALUES (${ORG}, 'enforce', 'config', 'pennylane', '2026-01-01', false, false, ${USER})`
@@ -211,6 +214,8 @@ describe("received supplier e-invoices through the einvoicing-pa@1 contract (rea
     await shutdownWorkerPool()
     await shutdownSandboxPool()
     resetAppRegistries()
+    // Back to the policy the catalog yields.
+    await rebuildFilesSelectPolicy()
     await releaseTestLock()
   })
 

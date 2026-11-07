@@ -9,8 +9,28 @@
 // in `./node.ts` (`@liaison/control-plane-contract/node`).
 import { z } from "zod"
 
-/** Contract version, sent as the envelope's `v` and in the registration reply. */
-export const CONTRACT_VERSION = 1 as const
+/**
+ * Contract version, sent as the envelope's `v` and in the registration reply.
+ * Version 2 adds the signed Control→cell API (`./c2c.ts`) and the router host
+ * lookup; every version-1 message is still a valid version-2 message, so the
+ * schemas accept any of `SUPPORTED_CONTRACT_VERSIONS`.
+ */
+export const CONTRACT_VERSION = 2 as const
+
+/**
+ * Envelope `v` an instance stamps on the instance→control messages that exist in
+ * version 1 (register, heartbeat, bug reports, leads, deregister). A control plane
+ * that predates version 2 rejects any other value, so these stay at 1 until every
+ * control plane accepts 2; only message types introduced in version 2 carry 2.
+ */
+export const INSTANCE_ENVELOPE_VERSION = 1 as const
+
+/** Versions a receiver accepts in an envelope's `v` and a registration reply's `contract`. */
+export const SUPPORTED_CONTRACT_VERSIONS = [1, CONTRACT_VERSION] as const
+
+export type ContractVersion = (typeof SUPPORTED_CONTRACT_VERSIONS)[number]
+
+const contractVersionSchema = z.union([z.literal(1), z.literal(CONTRACT_VERSION)])
 
 /** Request header carrying the sender's instance id. */
 export const INSTANCE_HEADER = "x-liaison-instance"
@@ -202,7 +222,7 @@ export type MessageData<T extends MessageType> = z.infer<(typeof messageDataSche
 export function envelopeSchema<T extends MessageType, D extends z.ZodType>(type: T, data: D) {
   return z
     .object({
-      v: z.literal(CONTRACT_VERSION),
+      v: contractVersionSchema,
       type: z.literal(type),
       messageId: z.uuid(),
       instanceId: z.uuid(),
@@ -233,7 +253,7 @@ export const registeredReply = z
   .object({
     type: z.literal("registered"),
     instanceKey: z.string().regex(HEX_64),
-    contract: z.literal(CONTRACT_VERSION),
+    contract: contractVersionSchema,
   })
   .strict()
 
@@ -304,4 +324,7 @@ function sortKeys(value: unknown): unknown {
   return value
 }
 
-export { contractVectors } from "./vectors"
+export * from "./c2c"
+export * from "./money"
+export * from "./moves"
+export { contractVectors, moneyVectors } from "./vectors"

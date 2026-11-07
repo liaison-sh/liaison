@@ -1473,6 +1473,11 @@ describe("invoicing manifest", () => {
     // 0.20.33: issue dates and number years in the issuer's time zone, through ctx.time.civil.
     // 0.20.31: the drafts tools that park an approval declare its summary.
     // 0.20.30: the document and editor actions sit at the top of the panel, clear of the chat dock.
+    // 0.20.33: drafts_create and drafts_update (conditionalGate) run a stage-time preflight (the
+    // same draft run, stopped before the write), so a draft's lines and notes are validated before
+    // any approval is parked. The app's own install resolves the control-plane contract through an
+    // override (the shared package depends on it by workspace protocol).
+    // 0.20.40: above 0.20.39, so an instance on either line of work upgrades; no change of its own.
     // 0.20.40: credit note and purchase order cards state the amount, lines and date when the host
     //   parks the call (an org policy, what the turn read), not only when the handler does.
     // 0.20.41: search words for credit note, refund and quote tools.
@@ -1484,7 +1489,8 @@ describe("invoicing manifest", () => {
     // 0.20.46: those notes reach a French reader in French.
     // 0.20.47: a minor-unit amount is a whole number, a credit note's total is negative, and the card
     //   states the total that issues.
-    expect(m.version).toBe("0.20.48")
+    // 0.20.49: above both lines of work, which each changed it under the number before; no change of its own.
+    expect(m.version).toBe("0.20.49")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

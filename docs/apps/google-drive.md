@@ -7,7 +7,7 @@ Google Drive lets your agents find and read files in a connected Drive account, 
 
 ## Connect Google Drive
 
-1. Open **Settings › Apps › Google Drive**, section **Connection**. Managing the connection needs `google-drive:accounts:admin`.
+1. Open **Settings › Apps › Google Drive**, section **Connection**. Anyone can connect their own Drive there; only holders of `google-drive:accounts:admin` see and manage the organization's connection.
 2. Click **Connect**. You are sent to Google's consent screen.
 3. Approve read access to Drive (`drive.readonly`) and per-file write access (`drive.file`). With a personal Google account on the server's Google client, Google asks only for per-file access: see [Choose the files Liaison sees](#choose-the-files-liaison-sees).
 

@@ -201,4 +201,13 @@ describe("route scope invariant (a scopeless member against every session route)
     const unreviewed = answered.filter((a) => !(a.split(" -> ")[0]! in ANY_MEMBER))
     expect(unreviewed).toEqual([])
   })
+
+  // The org's Drive connections and the shared drives each shares are behind
+  // google-drive:accounts:read, the scope of the app's other account reads.
+  it("GET /api/google-drive/shared-drives refuses a scopeless member with 403", async () => {
+    const res = await app.request("/api/google-drive/shared-drives", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    expect(res.status).toBe(403)
+  })
 })

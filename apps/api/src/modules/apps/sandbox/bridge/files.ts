@@ -7,8 +7,8 @@ import { fetchWithPinnedHost } from "~/lib/outbound-fetch"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import {
   SANDBOX_FETCH_MAX_REDIRECTS,
-  SANDBOX_PRIVATE_HOST_POLICY,
   sandboxEgressOverrides,
+  sandboxEgressPolicy,
   validateSandboxFetchUrl,
 } from "~/modules/apps/sandbox/bridge/shared"
 import { maybeDemoBoxtalResponse } from "~/modules/demo/boxtal/responder"
@@ -474,7 +474,7 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
         }
       }
       if (firstHopOnly) exactHost(p.url)
-      validateSandboxFetchUrl(p.url, allowedDomains, allowPrivateHostsInTest)
+      validateSandboxFetchUrl(p.url, allowedDomains, allowPrivateHostsInTest, appName)
       // Request headers are limited to credentials and content negotiation for
       // the allowlisted upstream (`ctx.fetch` sends the same bearer to the same
       // hosts). A credentialed request never follows a redirect, so the token
@@ -513,11 +513,11 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
             maxRedirects: credentialed && !firstHopOnly ? 0 : SANDBOX_FETCH_MAX_REDIRECTS,
             headersOnFirstHopOnly: firstHopOnly,
             fetchImpl: sandboxEgressOverrides.fetch ?? undefined,
-            ...SANDBOX_PRIVATE_HOST_POLICY,
+            ...sandboxEgressPolicy(appName),
             allowPrivateHostsInTest,
             onHopValidate: async (next) => {
               if (firstHopOnly) exactHost(next)
-              validateSandboxFetchUrl(next, allowedDomains, allowPrivateHostsInTest)
+              validateSandboxFetchUrl(next, allowedDomains, allowPrivateHostsInTest, appName)
             },
             onHopResponse: (h) => {
               hops.push({ host: h.url.hostname, status: h.status })

@@ -3,6 +3,7 @@ import { createSignal } from "solid-js"
 import { AuthRefreshError, isInvalidRefreshStatus } from "~/lib/auth-refresh"
 import { noteIfDemoWorkspaceExpired } from "~/lib/demo-expired"
 import { authApiUrl, serverAddressOverride } from "~/lib/env"
+import { noteIfOrgSuspended } from "~/lib/org-suspended"
 import { startSession, teardownSession } from "~/lib/session-lifecycle"
 
 interface TokenPayload {
@@ -359,6 +360,8 @@ async function requestSessionRestore(signal?: AbortSignal): Promise<void> {
     if (isInvalidRefreshStatus(res.status)) {
       // A workspace that ended leaves for the demo door (lib/demo-expired.ts).
       await noteIfDemoWorkspaceExpired(res)
+      // A suspended org's page is the suspended view (lib/org-suspended.ts).
+      await noteIfOrgSuspended(res)
       clearAuth()
       throw new AuthRefreshError("invalid_credentials", "Stored refresh token rejected")
     }

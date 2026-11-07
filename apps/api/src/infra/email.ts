@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { Transporter } from "nodemailer"
 import nodemailer from "nodemailer"
+import {
+  type EmailOutageKind,
+  noteEmailProviderAccepted,
+  noteEmailProviderRefused,
+} from "~/infra/email-outage"
 import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
 import { registerDemoAlertMailer } from "~/modules/demo/demo-alerts"
@@ -50,7 +55,11 @@ export interface EmailMessage {
 }
 
 export class EmailRateLimitError extends Error {
-  constructor(public readonly retryAfterMs: number) {
+  constructor(
+    public readonly retryAfterMs: number,
+    /** The provider's own reason, when it says one. */
+    public readonly reason?: string,
+  ) {
     super("RATE_LIMIT")
     this.name = "EmailRateLimitError"
   }
@@ -332,7 +341,14 @@ export class ResendEmailProvider implements EmailProvider {
       const retryAfter = res.headers.get("Retry-After") ?? ""
       const secs = Number.parseInt(retryAfter, 10)
       const retryAfterMs = Number.isFinite(secs) && secs > 0 ? secs * 1000 : 60_000
-      throw new EmailRateLimitError(retryAfterMs)
+      const reason = await res
+        .json()
+        .then((b: unknown) => {
+          const name = (b as { name?: unknown } | null)?.name
+          return typeof name === "string" ? name : undefined
+        })
+        .catch(() => undefined)
+      throw new EmailRateLimitError(retryAfterMs, reason)
     }
     if (!res.ok) {
       const text = await res.text().catch(() => "")
@@ -511,9 +527,105 @@ export function getSystemEmailProvider(): EmailProvider {
   return withSystemFrom(getEmailProvider())
 }
 
+/**
+ * What a failed send says about the provider as a whole, or null when it says
+ * nothing (this one address, this one sender, a moment's rate limit).
+ */
+export function emailFailureOutage(err: unknown): { kind: EmailOutageKind; detail: string } | null {
+  if (err instanceof EmailRateLimitError) {
+    return err.reason === "daily_quota_exceeded" || err.reason === "monthly_quota_exceeded"
+      ? { kind: "quota", detail: err.reason }
+      : null
+  }
+  if (err instanceof EmailProviderError) {
+    if (err.status === undefined || err.status >= 500) {
+      return { kind: "unreachable", detail: `resend ${err.status ?? "network"}` }
+    }
+    const key = /invalid_api_key|missing_api_key|restricted_api_key/.exec(err.message)
+    if (key) return { kind: "credentials", detail: key[0] }
+    // Resend answers a key it does not take with 401 and the generic `validation_error`.
+    return err.status === 401 ? { kind: "credentials", detail: "resend 401" } : null
+  }
+  // A nodemailer failure: `code` for the connection, `responseCode` and `response` for the server,
+  // `command` for the stage it answered.
+  const smtp = err as {
+    code?: unknown
+    command?: unknown
+    responseCode?: unknown
+    response?: unknown
+  } | null
+  if (!smtp || typeof smtp !== "object") return null
+  const code = typeof smtp.code === "string" ? smtp.code : ""
+  const reply = typeof smtp.responseCode === "number" ? smtp.responseCode : 0
+  const text = typeof smtp.response === "string" ? smtp.response : ""
+  if (code === "EAUTH" || reply === 535 || reply === 534) {
+    return { kind: "credentials", detail: `smtp ${code || reply}` }
+  }
+  if (["ECONNECTION", "ETIMEDOUT", "ESOCKET", "EDNS", "ETLS"].includes(code)) {
+    return { kind: "unreachable", detail: `smtp ${code}` }
+  }
+  if (reply === 421) return { kind: "unreachable", detail: "smtp 421" }
+  // One mailbox or address, at any stage (x.1 and x.2 of RFC 3463, or plainly worded):
+  // a server that checks its own users can say it after the data as well.
+  if (/\b[45]\.[12]\.\d{1,3}\b|mailbox|over quota/i.test(text)) return null
+  if (code === "EENVELOPE" && smtp.command === "RCPT TO") {
+    // The reply is about this recipient (a greylist, a limit of theirs), unless it names the sender.
+    if (/sending limit|sending paused|(daily|message|sending|send) quota/i.test(text)) {
+      return { kind: "quota", detail: `smtp ${reply}` }
+    }
+    return /\b4\.3\.1\b/.test(text) ? { kind: "unreachable", detail: "smtp 4.3.1" } : null
+  }
+  if (/quota|sending limit|limit exceeded|sending paused/i.test(text)) {
+    return { kind: "quota", detail: `smtp ${reply}` }
+  }
+  if (reply === 451 || reply === 452 || reply === 454) {
+    return { kind: "unreachable", detail: `smtp ${reply}` }
+  }
+  return null
+}
+
+/**
+ * A system mail a person is waiting on (a sign-in code, a reset link): sent as
+ * any other, and its outcome kept as the instance's mail state (email-outage.ts).
+ */
+export async function sendSystemEmailObserved(message: EmailMessage): Promise<void> {
+  try {
+    await getSystemEmailProvider().send(message)
+  } catch (err) {
+    const outage = emailFailureOutage(err)
+    if (outage) await noteEmailProviderRefused(outage.kind, outage.detail).catch(() => {})
+    throw err
+  }
+  await noteEmailProviderAccepted().catch(() => {})
+}
+
 /** Override the system provider — for tests only. Pass null to reset. */
 export function setSystemEmailProvider(provider: EmailProvider | null): void {
   _systemProvider = provider
+}
+
+// --- Org sender channel (managed edition) ---
+//
+// An org of the managed edition whose own sending domain is verified sends its
+// org-scoped mail (invitations, connect links, digests, CSAT) with a key
+// restricted to that domain, pushed by the control plane and stored encrypted
+// in the org's settings (modules/cloud/mail-sender.ts). Resolution and the
+// fallback sender live in `getOrgSenderTransport` (modules/org/email-from.ts);
+// this builds the transport for one key. Sign-in mail never uses it.
+
+export type OrgSenderProviderFactory = (config: { apiKey: string; from: string }) => EmailProvider
+
+let orgSenderFactory: OrgSenderProviderFactory | null = null
+
+/** A Resend transport on the org's own domain-restricted key. */
+export function orgSenderProvider(config: { apiKey: string; from: string }): EmailProvider {
+  if (orgSenderFactory) return orgSenderFactory(config)
+  return new ResendEmailProvider(config)
+}
+
+/** Override the org sender transport — for tests only. Pass null to reset. */
+export function setOrgSenderProviderFactory(factory: OrgSenderProviderFactory | null): void {
+  orgSenderFactory = factory
 }
 
 // --- Demo system mail channel ---

@@ -19,6 +19,7 @@ import { signAccessToken } from "~/modules/auth/jwt"
 import { registerDemoAlertMailer } from "~/modules/demo/demo-alerts"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { clearTestCreditPricing, setTestCreditPricing } from "~/tests/helpers/credit-pricing"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { defaultTranscribeDeps, transcribe } from "./transcribe-service"
 
@@ -415,6 +416,7 @@ describe("POST /api/assist/transcribe", () => {
     await sql`INSERT INTO kernel.credit_balances (org_id, included_balance, purchased_balance, currency)
       VALUES (${ORG_ID}, '0', '0', 'EUR') ON CONFLICT (org_id) DO UPDATE SET included_balance = '0', purchased_balance = '0'`
     _setEdition("managed")
+    await setTestCreditPricing()
     try {
       const { status, json } = await post("", clip())
       expect(status).toBe(402)
@@ -422,6 +424,23 @@ describe("POST /api/assist/transcribe", () => {
       expect(sttCalls()).toHaveLength(0)
     } finally {
       _setEdition(null)
+      await clearTestCreditPricing()
+    }
+  })
+
+  it("managed edition, platform key, no pushed credit rate: 503 credit_rate_missing, provider never called", async () => {
+    await sql`INSERT INTO kernel.credit_balances (org_id, included_balance, purchased_balance, currency)
+      VALUES (${ORG_ID}, '50', '0', 'EUR') ON CONFLICT (org_id) DO UPDATE SET included_balance = '50', purchased_balance = '0'`
+    await clearTestCreditPricing()
+    _setEdition("managed")
+    try {
+      const { status, json } = await post("", clip())
+      expect(status).toBe(503)
+      expect(json.error.code).toBe("credit_rate_missing")
+      expect(sttCalls()).toHaveLength(0)
+    } finally {
+      _setEdition(null)
+      await sql`UPDATE kernel.credit_balances SET included_balance = '0' WHERE org_id = ${ORG_ID}`
     }
   })
 

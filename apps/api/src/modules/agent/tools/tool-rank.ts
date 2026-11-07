@@ -233,7 +233,7 @@ export function rankDeferredTools<
   const ranked = all.slice(0, effectiveCap)
 
   // Words that name no capability ("what can you do") load nothing, however many
-  // descriptions happen to contain them.
+  // descriptions happen to contain them. They still list.
   const namesNothing = terms.every((term) => FILLER_WORDS.has(term))
   const strongNames = new Set(
     namesNothing ? [] : strongMatches(ranked, wholeAppQuery).map((s) => s.tool.sdkName),

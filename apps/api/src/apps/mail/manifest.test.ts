@@ -57,7 +57,7 @@ describe("mail app manifest validation", () => {
       "smtpPort",
       "username",
     ])
-    expect(mailManifest.version).toBe("1.8.4")
+    expect(mailManifest.version).toBe("1.8.5")
   })
 
   it("passes manifest validation", () => {

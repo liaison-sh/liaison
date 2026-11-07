@@ -17,6 +17,7 @@ import {
   databaseDomainNameSchema,
   databaseDomainTierSchema,
   googleOAuthClientIdSchema,
+  orgCapsSchema,
 } from "@liaison/shared"
 import { z } from "zod"
 import { MAIL_PROVIDER_IDS } from "~/modules/mail/provider-ids"
@@ -126,19 +127,24 @@ export const emailSchema = z
   .optional()
 
 /**
- * An IMAP connection is re-connect-replaces keyed on (org, app, connection,
- * owner), not on the address (`createCredentialConnection`), so a second IMAP
- * box for the same owner in the same app would silently overwrite the first.
+ * A person's IMAP connection is re-connect-replaces keyed on (org, app,
+ * connection, owner), not on the address (`createCredentialConnection`), so a
+ * second IMAP box for the same person in the same app would silently overwrite
+ * the first. An org mailbox is keyed on its address too: an org holds several.
  */
 export const IMAP_ONE_PER_OWNER_MESSAGE =
-  "at most one IMAP mailbox per owner is supported: a second IMAP connection for the same " +
-  "owner replaces the first one"
+  "at most one personal IMAP mailbox per owner is supported: a second IMAP connection for the " +
+  "same person replaces the first one"
 
+/** `ownerOf` names the person; an entry with no owner is the org's and is not limited here. */
 export function atMostOneImapPerOwner<T extends { provider: string }>(
   list: T[],
-  ownerOf: (entry: T) => string,
+  ownerOf: (entry: T) => string | undefined,
 ): boolean {
-  const owners = list.filter((m) => m.provider === "imap").map(ownerOf)
+  const owners = list
+    .filter((m) => m.provider === "imap")
+    .map(ownerOf)
+    .filter((owner) => owner !== undefined)
   return new Set(owners).size === owners.length
 }
 
@@ -193,7 +199,7 @@ const mailSchema = z
     mailboxes: z
       .array(mailMailboxSchema)
       .optional()
-      .refine((list) => atMostOneImapPerOwner(list ?? [], (m) => m.owner ?? ""), {
+      .refine((list) => atMostOneImapPerOwner(list ?? [], (m) => m.owner), {
         message: IMAP_ONE_PER_OWNER_MESSAGE,
       }),
   })
@@ -238,9 +244,6 @@ const ticketsSchema = z
     inboxes: z
       .array(ticketInboxSchema)
       .optional()
-      .refine((list) => atMostOneImapPerOwner(list ?? [], () => ""), {
-        message: IMAP_ONE_PER_OWNER_MESSAGE,
-      })
       .refine((list) => (list ?? []).filter((i) => i.default === true).length <= 1, {
         message: "at most one inbox can be the default",
       }),
@@ -611,16 +614,10 @@ const apiConnectorSchema = z
 /**
  * The org's caps (modules/org/caps.ts), operator only: no agent config tool
  * takes this section. A named cap is set, `null` makes it unlimited, a cap not
- * named is kept. A cap is a whole number of at least 1 (0 is refused).
+ * named is kept. A cap is a whole number of at least 1 (0 is refused) and at
+ * most its bound: the same schema as `organizations.caps` (one bounds table).
  */
-export const limitsSchema = z
-  .strictObject({
-    seats: z.number().int().min(1).nullable().optional(),
-    mailboxes: z.number().int().min(1).nullable().optional(),
-    storageGb: z.number().int().min(1).nullable().optional(),
-    jobsPerHour: z.number().int().min(1).nullable().optional(),
-  })
-  .optional()
+export const limitsSchema = orgCapsSchema.optional()
 
 /**
  * The two opt-ins to share with the Liaison team, instance-wide: register

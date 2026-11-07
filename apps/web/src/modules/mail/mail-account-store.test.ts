@@ -55,6 +55,39 @@ describe("mail-account-store", () => {
     expect(sharedAccounts()).toHaveLength(1)
   })
 
+  it("a refetch keeps each account's object identity and drops removed accounts", async () => {
+    const mod = await import("~/modules/mail/mail-account-store")
+    const row = (id: string, unreadCount: number) => ({
+      id,
+      connectedAccountId: `conn-${id}`,
+      provider: "gmail",
+      emailAddress: `${id}@gmail.com`,
+      displayName: id,
+      ownerType: "user",
+      ownerId: "user-1",
+      syncStatus: "idle",
+      lastSyncAt: null,
+      lastSyncError: null,
+      unreadCount,
+      allowedImageSenderDomains: [],
+    })
+    const api = {
+      get: vi
+        .fn()
+        .mockResolvedValueOnce([row("a", 1), row("b", 1)])
+        .mockResolvedValueOnce([row("a", 5)]),
+    }
+    await mod.loadAccounts(api as never)
+    const before = mod.getAccount("a")
+    await mod.loadAccounts(api as never)
+    // Same object: the account list keys its rows by identity, so a new object
+    // would re-create the row and lose what is open inside it.
+    expect(mod.getAccount("a")).toBe(before)
+    expect(mod.getAccount("a")?.unreadCount).toBe(5)
+    expect(mod.getAccount("b")).toBeUndefined()
+    expect(mod.accountsLoaded()).toBe(true)
+  })
+
   it("handleAccountEvent merges updates into an existing account", async () => {
     const api = {
       get: vi.fn().mockResolvedValue([

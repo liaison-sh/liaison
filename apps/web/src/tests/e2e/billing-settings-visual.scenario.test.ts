@@ -6,12 +6,13 @@
 // flag paths). Cropped per data-testid, never full-page.
 import path from "node:path"
 import { createProfiledE2ETest, expect } from "./fixtures/profiled-test"
+import { seedBillingState } from "./helpers/billing-state-seed"
 import {
   clearMaintenanceFlag,
   maintenanceFlagPaths,
   setMaintenanceFlag,
 } from "./helpers/maintenance-flag"
-import { type FakeControlPlaneHandle, startFakeControlPlane } from "./helpers/mock-control-plane"
+import { MANAGED_VITE_ENV, managedEditionAfterWorld } from "./helpers/managed-edition"
 import {
   type FakeGitHubReleasesHandle,
   startFakeGitHubReleases,
@@ -68,44 +69,27 @@ systemTest.describe("System settings golden", () => {
 
 // ─── W5.2 — Managed-mode Plan card cropped golden ────────────────────────
 
-let _cp: FakeControlPlaneHandle | undefined
 const planTest = createProfiledE2ETest({
   workerIdOffset: 120,
-  portCount: 4,
-  before: async (ports) => {
-    _cp = await startFakeControlPlane(ports[2], {
-      initialPayload: {
-        tier: "team",
-        status: "active",
-        billingPortalUrl: "https://fake-cp.local/portal",
-        checkoutUrl: "https://fake-cp.local/checkout",
-        includedCredits: "10000",
-        periodEnd: "2099-01-01T00:00:00.000Z",
-      },
-    })
-    return {
-      env: {
-        CONTROL_PLANE_URL: _cp.url,
-        CONTROL_PLANE_API_KEY: "w5-cp-key-32-chars-padded-padded-padded",
-      },
-      teardowns: [
-        async () => {
-          await _cp?.kill().catch(() => {})
-          _cp = undefined
-        },
-      ],
-    }
-  },
+  portCount: 3,
+  before: async () => ({
+    env: {},
+    teardowns: [],
+    // Managed after the world exists (helpers/managed-edition.ts): the managed edition has no web bootstrap.
+    viteEnv: MANAGED_VITE_ENV,
+    envAfterWorld: managedEditionAfterWorld,
+  }),
 })
 
 planTest.describe("Plan card (managed) golden", () => {
-  planTest("captures cropped plan card", async ({ authenticatedPage, env }) => {
+  planTest("captures cropped plan card", async ({ authenticatedPage, env, world }) => {
+    await seedBillingState(env, world.org.id, { plan: "base" })
     await authenticatedPage.goto(`http://localhost:${env.ports[1]}/settings/plan`)
     await expect(authenticatedPage.getByTestId("plan-card")).toBeVisible({
       timeout: 15000,
     })
-    // Make sure the tier + status text has hydrated before capturing.
-    await expect(authenticatedPage.getByTestId("plan-card")).toContainText(/team/i)
+    // Make sure the plan + status text has hydrated before capturing.
+    await expect(authenticatedPage.getByTestId("plan-card")).toContainText("Base")
     await expect(authenticatedPage.getByTestId("plan-card")).toHaveScreenshot(
       "plan-card-managed.png",
       SCREENSHOT_OPTS,

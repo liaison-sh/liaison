@@ -52,6 +52,8 @@ describe("magic-link code guessing is bounded per account, not only per challeng
     for (let i = 0; i < 20; i++) {
       const peer = `203.0.113.${10 + i}`
       const mailsBefore = capture.sent.length
+      // An attacker with an hour of patience: the cooldown between sends is not what bounds this.
+      await clearRedisPatterns(["magic:cooldown:*"])
       const req = await post("/api/auth/magic-link/request", { email }, peer)
       if (req.status !== 200) continue
       const { data } = (await req.json()) as { data: { challengeId: string } }
@@ -87,6 +89,8 @@ describe("magic-link code guessing is bounded per account, not only per challeng
     // wrong-code budget from the burst above is still spent.
     await clearRedisPatterns([
       "magic:issued:*",
+      "magic:cooldown:*",
+      "magic:email-hour:*",
       "magic-rate:*",
       "magic-verify-rate:*",
       "bruteforce:*",
@@ -103,7 +107,7 @@ describe("magic-link code guessing is bounded per account, not only per challeng
     )
     expect(byCode.status).toBe(429)
 
-    await clearRedisPatterns(["magic:issued:*"])
+    await clearRedisPatterns(["magic:issued:*", "magic:cooldown:*"])
     const again = await post("/api/auth/magic-link/request", { email }, "203.0.113.201")
     const { data: d2 } = (await again.json()) as { data: { challengeId: string } }
     const mail = capture.sent.at(-1)
@@ -117,12 +121,18 @@ describe("magic-link code guessing is bounded per account, not only per challeng
     expect(byLink.status).toBe(200)
   }, 60_000)
 
-  it("an account gets at most a handful of challenges an hour, whatever the requesting address", async () => {
-    await clearRedisPatterns(["magic:issued:*", "magic-rate:*", "bruteforce:*"])
+  it("an account gets at most 10 challenges an hour, whatever the requesting address", async () => {
+    await clearRedisPatterns([
+      "magic:issued:*",
+      "magic:email-hour:*",
+      "magic-rate:*",
+      "bruteforce:*",
+    ])
     const before = capture.sent.length
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < 15; i++) {
+      await clearRedisPatterns(["magic:cooldown:*"])
       await post("/api/auth/magic-link/request", { email }, `203.0.113.${100 + i}`)
     }
-    expect(capture.sent.length - before).toBeLessThanOrEqual(5)
+    expect(capture.sent.length - before).toBeLessThanOrEqual(10)
   }, 60_000)
 })

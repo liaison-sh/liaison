@@ -47,15 +47,18 @@ const CATALOG_DEMO_APPS = ["invoicing", "social", "pennylane", "boxtal", "shopif
  * any machine load. Re-measured 2026-11-03 once the commerce layer's dealers
  * and suppliers went through the contacts service like every other contact:
  * 281 outbox events (their nine contact create events, which the privileged
- * write never queued), 5 267 round trips in 513 transactions.
+ * write never queued), 5 267 round trips in 513 transactions. Re-measured
+ * 2026-11-04 on main 51c8ce2a9: 5 327 round trips in 519 transactions, 281
+ * outbox events, statement for statement the same on that main commit itself,
+ * so the growth came with the main features merged since the last measure.
  */
 const BASELINE = {
   outboxEvents: 281,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 5_267,
-  transactions: 513,
+  statements: 5_327,
+  transactions: 519,
 }
 /**
  * Round trips are deterministic up to a few cache reads (5 251-5 262 across

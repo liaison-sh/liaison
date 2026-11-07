@@ -805,6 +805,90 @@ describe("createApiClient: the server pause signals (lib/server-pause.ts)", () =
     expect(onError).not.toHaveBeenCalled()
   })
 
+  it("a 503 org_moving waits out the move: the same request goes again and succeeds, no toast", async () => {
+    const moving = () =>
+      new Response(JSON.stringify({ error: { message: "moving", code: "org_moving" } }), {
+        status: 503,
+        headers: { "Content-Type": "application/json", "Retry-After": "1" },
+      })
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(moving())
+      .mockResolvedValueOnce(json(201, { data: { id: "m1" } }))
+    vi.stubGlobal("fetch", fetchMock)
+    const onError = vi.fn()
+    const c = createApiClient({ getAccessToken: () => "t", onUnauthorized: vi.fn(), onError })
+    await expect(c.post("/threads/t/messages", { content: "hi" })).resolves.toMatchObject({
+      id: "m1",
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[1]![1].body).toBe(fetchMock.mock.calls[0]![1].body)
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it("the default wait outlasts a whole refusal: a 30 s drain, a 20 s gap", async () => {
+    vi.useFakeTimers()
+    try {
+      const start = Date.now()
+      const fetchMock = vi.fn(async () =>
+        Date.now() - start < 50_000
+          ? new Response(JSON.stringify({ error: { message: "moving", code: "org_moving" } }), {
+              status: 503,
+              headers: { "Content-Type": "application/json", "Retry-After": "2" },
+            })
+          : json(201, { data: { id: "m1" } }),
+      )
+      vi.stubGlobal("fetch", fetchMock)
+      const onError = vi.fn()
+      const c = createApiClient({ getAccessToken: () => "t", onUnauthorized: vi.fn(), onError })
+      const sent = c.post("/threads/t/messages", { content: "hi" })
+      await vi.advanceTimersByTimeAsync(55_000)
+      await expect(sent).resolves.toMatchObject({ id: "m1" })
+      expect(onError).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("leaving during the wait is the caller's own cancel, not a fault", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: { message: "moving", code: "org_moving" } }), {
+            status: 503,
+            headers: { "Content-Type": "application/json", "Retry-After": "5" },
+          }),
+      ),
+    )
+    const onError = vi.fn()
+    const c = createApiClient({ getAccessToken: () => "t", onUnauthorized: vi.fn(), onError })
+    const controller = new AbortController()
+    const sent = c.post("/x", {}, { signal: controller.signal })
+    setTimeout(() => controller.abort(), 20)
+    await expect(sent).rejects.toMatchObject({ name: "AbortError" })
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it("a move that outlasts the wait is the caller's answer", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: { message: "moving", code: "org_moving" } }), {
+          status: 503,
+          headers: { "Content-Type": "application/json", "Retry-After": "1" },
+        }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+    const c = createApiClient({
+      getAccessToken: () => "t",
+      onUnauthorized: vi.fn(),
+      onError: vi.fn(),
+      orgMoveWaitMs: 1500,
+    })
+    await expect(c.post("/x", {})).rejects.toMatchObject({ status: 503, code: "org_moving" })
+    expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2)
+  })
+
   it("any other 503 is a fault, not an update", async () => {
     vi.stubGlobal(
       "fetch",

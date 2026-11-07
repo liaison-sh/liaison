@@ -30,6 +30,8 @@ import { noAutofill } from "~/lib/no-autofill"
 import { refreshAvailableModels } from "~/modules/agent/credits/credits-store"
 import { REASONING_LABEL_KEY } from "~/modules/agent/ReasoningLevelRow"
 import { currentLocale, useI18n } from "~/modules/i18n/i18n-context"
+import { billingMode } from "~/modules/settings/BillingState"
+import { formatMultiplier } from "~/modules/settings/credits-format"
 import { useApi } from "~/modules/shell/ApiContext"
 import { addToast } from "~/modules/shell/toast-store"
 import { Button } from "~/ui/Button"
@@ -64,8 +66,10 @@ interface AdminModel {
   enabled: boolean
   native: boolean
   contextWindow: number | null
-  inputCostPerM: string | null
-  outputCostPerM: string | null
+  inputCostPerM?: string | null
+  outputCostPerM?: string | null
+  /** A managed cell's `≈ N×` against Auto, served instead of the prices (S18). */
+  multiplier?: number | null
   tools: boolean
   reasoning?: { allowedLevels?: string[]; defaultLevel?: string }
   /** Set by the price job when OpenRouter stopped listing the model. */
@@ -87,8 +91,10 @@ interface CatalogueRow {
   upstreamId: string
   displayName: string
   contextWindow: number | null
-  inputCostPerM: string | null
-  outputCostPerM: string | null
+  inputCostPerM?: string | null
+  outputCostPerM?: string | null
+  /** A managed cell's `≈ N×` against Auto (S18). */
+  multiplier?: number | null
   tools: boolean
   reasoningEfforts: string[]
   added: boolean
@@ -202,10 +208,20 @@ const AiModelsSettings: Component = () => {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         }).format(Number(value))
-  const priceCell = (input: string | null, output: string | null) =>
-    input === null || output === null
+  // A managed cell shows no money: each model's cost against Auto (S18).
+  const managed = () => billingMode() === "managed"
+  const priceCell = (row: {
+    inputCostPerM?: string | null
+    outputCostPerM?: string | null
+    multiplier?: number | null
+  }) => {
+    if (managed()) return formatMultiplier(row.multiplier)
+    const input = row.inputCostPerM ?? null
+    const output = row.outputCostPerM ?? null
+    return input === null || output === null
       ? t("kernel.aiModels.tokensOnly")
       : `${money(input)} / ${money(output)}`
+  }
   const contextCell = (tokens: number | null) => {
     if (!tokens) return ""
     if (tokens >= 1_000_000) return `${Number((tokens / 1_000_000).toFixed(1))}M`
@@ -243,7 +259,7 @@ const AiModelsSettings: Component = () => {
   const onCount = () => listedModels().filter((m) => m.enabled).length
   const usableProviders = () => state.data.providers.filter((p) => p.usable)
   /** Every provider without a usable key gets a row that takes one. */
-  const lockedProviders = () => state.data.providers.filter((p) => !p.usable)
+  const lockedProviders = () => (managed() ? [] : state.data.providers.filter((p) => !p.usable))
   const hiddenCount = (p: AdminProvider) =>
     state.data.models.filter((m) => m.provider === p.provider && !listed(m)).length
   const lockedLabel = (p: AdminProvider) => {
@@ -632,7 +648,11 @@ const AiModelsSettings: Component = () => {
               value={state.data.auto.modelKey ?? ""}
               onChange={(e) => void setAuto(e.currentTarget.value)}
             >
-              <option value="">{t("kernel.aiModels.autoDefaultOption")}</option>
+              <option value="">
+                {managed()
+                  ? t("kernel.aiModels.autoDefaultOptionManaged")
+                  : t("kernel.aiModels.autoDefaultOption")}
+              </option>
               <For each={autoChoices()}>
                 {(m) => (
                   <option value={m.key}>
@@ -654,10 +674,15 @@ const AiModelsSettings: Component = () => {
             <Show when={modelByKey(autoKey())}>
               {(m) => (
                 <span class="text-[12px] text-text-tertiary" data-testid="ai-models-auto-runs">
-                  {t("kernel.aiModels.autoRuns", {
-                    model: m().displayName,
-                    price: priceCell(m().inputCostPerM, m().outputCostPerM),
-                  })}
+                  {managed()
+                    ? t("kernel.aiModels.autoRunsCredits", {
+                        model: m().displayName,
+                        multiplier: priceCell(m()),
+                      })
+                    : t("kernel.aiModels.autoRuns", {
+                        model: m().displayName,
+                        price: priceCell(m()),
+                      })}
                 </span>
               )}
             </Show>
@@ -696,121 +721,125 @@ const AiModelsSettings: Component = () => {
           </div>
         </section>
 
-        {/* Providers */}
-        <section class="flex flex-col gap-2" data-testid="ai-models-providers">
-          <h2 class="text-sm font-semibold text-text">{t("kernel.aiModels.providersTitle")}</h2>
-          <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            <For each={usableProviders()}>
-              {(p) => (
-                <div
-                  data-testid={`provider-card-${p.provider}`}
-                  data-key-set={p.keySet ? "true" : "false"}
-                  class="flex flex-col gap-1.5 rounded-md border border-border-subtle px-3 py-2.5"
-                >
-                  <div class="flex items-center gap-2">
-                    <span
-                      aria-hidden="true"
-                      class={`h-1.5 w-1.5 rounded-full ${p.usable ? "bg-success" : "bg-border-strong"}`}
-                    />
-                    <span class="text-sm font-medium text-text">{p.label}</span>
-                  </div>
-                  <Show
-                    when={configuring() === p.provider}
-                    fallback={
-                      <div class="flex flex-wrap items-center gap-1.5">
-                        <span class="flex-1 font-mono text-xs text-text-secondary">
-                          {p.keySet
-                            ? t("kernel.usage.connectedHint", { hint: p.maskedHint ?? "" })
-                            : p.usable
-                              ? t("kernel.aiModels.deploymentKey")
-                              : t("kernel.usage.notConnected")}
-                        </span>
-                        <Show
-                          when={p.keySet}
-                          fallback={
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              data-testid={`provider-configure-${p.provider}`}
-                              onClick={() => openKeyForm(p)}
-                            >
-                              {t("kernel.usage.configure")}
-                            </Button>
-                          }
-                        >
+        {/* Providers: keys are the org's own (BYOK), refused on a managed cell */}
+        <Show when={!managed()}>
+          <section class="flex flex-col gap-2" data-testid="ai-models-providers">
+            <h2 class="text-sm font-semibold text-text">{t("kernel.aiModels.providersTitle")}</h2>
+            <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <For each={usableProviders()}>
+                {(p) => (
+                  <div
+                    data-testid={`provider-card-${p.provider}`}
+                    data-key-set={p.keySet ? "true" : "false"}
+                    class="flex flex-col gap-1.5 rounded-md border border-border-subtle px-3 py-2.5"
+                  >
+                    <div class="flex items-center gap-2">
+                      <span
+                        aria-hidden="true"
+                        class={`h-1.5 w-1.5 rounded-full ${p.usable ? "bg-success" : "bg-border-strong"}`}
+                      />
+                      <span class="text-sm font-medium text-text">{p.label}</span>
+                    </div>
+                    <Show
+                      when={configuring() === p.provider}
+                      fallback={
+                        <div class="flex flex-wrap items-center gap-1.5">
+                          <span class="flex-1 font-mono text-xs text-text-secondary">
+                            {p.keySet
+                              ? t("kernel.usage.connectedHint", { hint: p.maskedHint ?? "" })
+                              : p.usable
+                                ? t("kernel.aiModels.deploymentKey")
+                                : t("kernel.usage.notConnected")}
+                          </span>
                           <Show
-                            when={confirming() === `key:${p.provider}`}
+                            when={p.keySet}
                             fallback={
-                              <>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  data-testid={`provider-recheck-${p.provider}`}
-                                  loading={rechecking() === p.provider}
-                                  onClick={() => void recheckKey(p)}
-                                >
-                                  {t("kernel.usage.revalidate")}
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  data-testid={`provider-remove-${p.provider}`}
-                                  onClick={() => setConfirming(`key:${p.provider}`)}
-                                >
-                                  {t("kernel.usage.remove")}
-                                </Button>
-                              </>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                data-testid={`provider-configure-${p.provider}`}
+                                onClick={() => openKeyForm(p)}
+                              >
+                                {t("kernel.usage.configure")}
+                              </Button>
                             }
                           >
-                            <span class="text-xs text-text-secondary">
-                              {t("kernel.usage.removeConfirm")}
-                            </span>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              data-testid={`provider-remove-confirm-${p.provider}`}
-                              onClick={() => void removeKey(p)}
+                            <Show
+                              when={confirming() === `key:${p.provider}`}
+                              fallback={
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    data-testid={`provider-recheck-${p.provider}`}
+                                    loading={rechecking() === p.provider}
+                                    onClick={() => void recheckKey(p)}
+                                  >
+                                    {t("kernel.usage.revalidate")}
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    data-testid={`provider-remove-${p.provider}`}
+                                    onClick={() => setConfirming(`key:${p.provider}`)}
+                                  >
+                                    {t("kernel.usage.remove")}
+                                  </Button>
+                                </>
+                              }
                             >
-                              {t("kernel.usage.confirm")}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              data-testid={`provider-remove-cancel-${p.provider}`}
-                              onClick={() => setConfirming(null)}
-                            >
-                              {t("kernel.usage.cancel")}
-                            </Button>
+                              <span class="text-xs text-text-secondary">
+                                {t("kernel.usage.removeConfirm")}
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                data-testid={`provider-remove-confirm-${p.provider}`}
+                                onClick={() => void removeKey(p)}
+                              >
+                                {t("kernel.usage.confirm")}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                data-testid={`provider-remove-cancel-${p.provider}`}
+                                onClick={() => setConfirming(null)}
+                              >
+                                {t("kernel.usage.cancel")}
+                              </Button>
+                            </Show>
                           </Show>
-                        </Show>
-                      </div>
-                    }
-                  >
-                    {keyForm(p)}
-                  </Show>
+                        </div>
+                      }
+                    >
+                      {keyForm(p)}
+                    </Show>
+                  </div>
+                )}
+              </For>
+              <div
+                data-testid="provider-card-custom"
+                class="flex flex-col gap-1.5 rounded-md border border-border-subtle px-3 py-2.5"
+              >
+                <div class="flex items-center gap-2">
+                  <span
+                    aria-hidden="true"
+                    class={`h-1.5 w-1.5 rounded-full ${state.data.servers.length > 0 ? "bg-success" : "bg-border-strong"}`}
+                  />
+                  <span class="text-sm font-medium text-text">
+                    {t("kernel.aiModels.ownServer")}
+                  </span>
                 </div>
-              )}
-            </For>
-            <div
-              data-testid="provider-card-custom"
-              class="flex flex-col gap-1.5 rounded-md border border-border-subtle px-3 py-2.5"
-            >
-              <div class="flex items-center gap-2">
-                <span
-                  aria-hidden="true"
-                  class={`h-1.5 w-1.5 rounded-full ${state.data.servers.length > 0 ? "bg-success" : "bg-border-strong"}`}
-                />
-                <span class="text-sm font-medium text-text">{t("kernel.aiModels.ownServer")}</span>
+                <span class="truncate text-xs text-text-secondary">
+                  {state.data.servers.length > 0
+                    ? state.data.servers.map((s) => s.name).join(", ")
+                    : t("kernel.aiModels.ownServerNone")}
+                </span>
               </div>
-              <span class="truncate text-xs text-text-secondary">
-                {state.data.servers.length > 0
-                  ? state.data.servers.map((s) => s.name).join(", ")
-                  : t("kernel.aiModels.ownServerNone")}
-              </span>
             </div>
-          </div>
-          <p class="text-[12px] text-text-tertiary">{t("kernel.aiModels.openRouterPolicy")}</p>
-        </section>
+            <p class="text-[12px] text-text-tertiary">{t("kernel.aiModels.openRouterPolicy")}</p>
+          </section>
+        </Show>
 
         {/* OpenRouter hosts this organization's requests never reach */}
         <Show when={state.data.blockedHosts}>
@@ -847,15 +876,17 @@ const AiModelsSettings: Component = () => {
               >
                 {t("kernel.aiModels.addFromOpenRouter")}
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                data-testid="ai-models-open-server"
-                aria-expanded={panel() === "server"}
-                onClick={() => togglePanel("server")}
-              >
-                {t("kernel.aiModels.addOwnServer")}
-              </Button>
+              <Show when={!managed()}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  data-testid="ai-models-open-server"
+                  aria-expanded={panel() === "server"}
+                  onClick={() => togglePanel("server")}
+                >
+                  {t("kernel.aiModels.addOwnServer")}
+                </Button>
+              </Show>
             </div>
           </div>
 
@@ -913,7 +944,9 @@ const AiModelsSettings: Component = () => {
                     <thead>
                       <tr>
                         <th class={th}>{t("kernel.aiModels.colModel")}</th>
-                        <th class={th}>{t("kernel.aiModels.colPrice")}</th>
+                        <th class={th}>
+                          {managed() ? t("kernel.aiModels.colCost") : t("kernel.aiModels.colPrice")}
+                        </th>
                         <th class={th}>{t("kernel.aiModels.colContext")}</th>
                         <th class={th} />
                         <th class={th} />
@@ -936,9 +969,7 @@ const AiModelsSettings: Component = () => {
                               <div class="text-text">{r.displayName}</div>
                               <div class="text-[12px] text-text-tertiary">{r.upstreamId}</div>
                             </td>
-                            <td class={`${td} ${num}`}>
-                              {priceCell(r.inputCostPerM, r.outputCostPerM)}
-                            </td>
+                            <td class={`${td} ${num}`}>{priceCell(r)}</td>
                             <td class={`${td} ${num}`}>{contextCell(r.contextWindow)}</td>
                             <td class={td}>
                               {capabilityChips(r.tools, r.reasoningEfforts.length > 0)}
@@ -988,7 +1019,7 @@ const AiModelsSettings: Component = () => {
           </Show>
 
           {/* The organization's own OpenAI-compatible server */}
-          <Show when={panel() === "server"}>
+          <Show when={panel() === "server" && !managed()}>
             <div
               class="flex flex-col gap-2.5 rounded-md border border-border bg-surface p-3"
               data-testid="ai-models-server"
@@ -1133,7 +1164,9 @@ const AiModelsSettings: Component = () => {
                 <tr>
                   <th class={th}>{t("kernel.aiModels.colOn")}</th>
                   <th class={th}>{t("kernel.aiModels.colModel")}</th>
-                  <th class={th}>{t("kernel.aiModels.colPrice")}</th>
+                  <th class={th}>
+                    {managed() ? t("kernel.aiModels.colCost") : t("kernel.aiModels.colPrice")}
+                  </th>
                   <th class={th}>{t("kernel.aiModels.colContext")}</th>
                   <th class={th} />
                   <th class={th} />
@@ -1189,9 +1222,7 @@ const AiModelsSettings: Component = () => {
                           </div>
                           <div class="text-[12px] text-text-tertiary">{providerLabel(m)}</div>
                         </td>
-                        <td class={`${td} ${num}`}>
-                          {priceCell(m.inputCostPerM, m.outputCostPerM)}
-                        </td>
+                        <td class={`${td} ${num}`}>{priceCell(m)}</td>
                         <td class={`${td} ${num}`}>{contextCell(m.contextWindow)}</td>
                         <td class={td}>
                           {capabilityChips(m.tools, hasReasoning(m.reasoning?.allowedLevels))}

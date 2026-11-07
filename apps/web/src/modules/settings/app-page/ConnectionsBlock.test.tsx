@@ -79,6 +79,7 @@ function renderBlock(
     names?: string[]
     open?: string
     status?: { tool: string; params?: Record<string, string | number | boolean> }
+    personalSection?: boolean
   } = {},
 ) {
   return render(() => (
@@ -91,9 +92,43 @@ function renderBlock(
       }}
       blockId="accounts-0"
       openConnection={props.open}
+      personalSection={props.personalSection}
     />
   ))
 }
+
+describe("ConnectionsBlock in a section open to everyone", () => {
+  it("shows a non-admin their own accounts, no org connection and no status line", async () => {
+    state.scopes = []
+    renderBlock({ names: ["google"], personalSection: true, status: { tool: "search" } })
+    await screen.findByTestId("connections-account-acc1")
+    expect(screen.queryByTestId("connections-account-acc2")).toBeNull()
+    expect(screen.queryByTestId("connections-status")).toBeNull()
+    expect(screen.queryByTestId("connections-share-acc1")).toBeNull()
+  })
+
+  it("keeps the org connection for whoever administers it", async () => {
+    renderBlock({ names: ["google"], personalSection: true })
+    await screen.findByTestId("connections-account-acc1")
+    expect(screen.getByTestId("connections-account-acc2")).toBeInTheDocument()
+  })
+
+  it("a non-admin holding only the org's account sees the empty state, not the org's", async () => {
+    state.scopes = []
+    api.on("get", "/connections/fixture/google/accounts", () => [
+      account({ id: "acc2", ownerType: "org", isMine: false, label: "Support rota" }),
+    ])
+    renderBlock({ names: ["google"], personalSection: true })
+    expect(await screen.findByText("No account connected yet.")).toBeInTheDocument()
+    expect(screen.queryByText("Support rota")).toBeNull()
+  })
+
+  it("an org section keeps showing a holder of its scope the org account", async () => {
+    state.scopes = []
+    renderBlock({ names: ["google"] })
+    expect(await screen.findByTestId("connections-account-acc2")).toBeInTheDocument()
+  })
+})
 
 describe("ConnectionsBlock", () => {
   it("lists each account with its label and owner", async () => {

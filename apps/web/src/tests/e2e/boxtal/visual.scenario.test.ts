@@ -48,11 +48,35 @@ const SENDER = {
 }
 
 const CATALOG = {
-  profiles: [
-    { id: "p1", product_source: "shopify", product_id: "Kestrel 2 — controller", unit_weight: 0.8 },
-    { id: "p2", product_source: "shopify", product_id: "USB-C cable 2m", unit_weight: 0.12 },
-    { id: "p3", product_source: "manual", product_id: "SKU-NOWEIGHT", unit_weight: 0 },
+  // packages_list's shape since one profile serves several variants: shared
+  // profiles carry their variants, and variants with no profile are listed apart.
+  shared_profiles: [
+    {
+      id: "p1",
+      label: "Kestrel 2 — controller",
+      short_code: "KES2",
+      unit_weight: 0.8,
+      variants: [{ product_source: "shopify", product_id: "VARIANT-STAB" }],
+      short_code_sync: null,
+    },
+    {
+      id: "p2",
+      label: "USB-C cable 2m",
+      short_code: null,
+      unit_weight: 0.12,
+      variants: [{ product_source: "shopify", product_id: "VARIANT-USBC" }],
+      short_code_sync: null,
+    },
+    {
+      id: "p3",
+      label: null,
+      short_code: null,
+      unit_weight: 0,
+      variants: [{ product_source: "manual", product_id: "SKU-NOWEIGHT" }],
+      short_code_sync: null,
+    },
   ],
+  unprofiled_variants: [],
   packs: [
     {
       id: "k1",

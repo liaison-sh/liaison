@@ -83,7 +83,7 @@ connection (Mail, Tickets, Drive) still uses the same Google account.
 | Thing | Where it comes from |
 |---|---|
 | OAuth client id + secret | The **shared Google integration client**, picked by the one resolver (`modules/apps/connections/oauth-client.ts`): (1) the workspace's Google client saved in **Settings → Mail Setup** (org `settings.integrations.google.oauthClient`); else (2) a client stored for this connection, the DB row `kernel.oauth_providers` named `calendar:google-calendar` (`PUT /api/connections/calendar/google-calendar/oauth-client` or `config apply`); else (3) the instance's client, env **`GMAIL_OAUTH_CLIENT_ID` / `GMAIL_OAUTH_CLIENT_SECRET`** (both or neither; not `GOOGLE_OAUTH_*`). Mail, Calendar and Tickets share the workspace client — configure it once. Each connected account keeps the client that minted its tokens (recorded at connect): saving another client moves an account only when it is reconnected. |
-| The user's calendar access | Granted at consent time when the operator clicks **Connect via OAuth**. `access_type=offline` + `prompt=consent` are requested so a refresh token is always issued. Tokens are stored encrypted and refreshed automatically. |
+| The user's calendar access | Granted at consent time when the operator clicks **Connect**. `access_type=offline` + `prompt=consent` are requested so a refresh token is always issued. Tokens are stored encrypted and refreshed automatically. |
 
 > **Trap:** the env names are `GMAIL_OAUTH_*`, not `GOOGLE_CALENDAR_OAUTH_*` and
 > not the generic `GOOGLE_OAUTH_*`. Setting a `GOOGLE_CALENDAR_*` pair does
@@ -106,7 +106,7 @@ connection (Mail, Tickets, Drive) still uses the same Google account.
      **test users** pass consent. Going to *External + Production* with a
      sensitive scope requires Google verification.
 5. Save the client id/secret via **Settings → Mail Setup** (per-org) or the
-   `GMAIL_OAUTH_*` env, then click **Connect via OAuth** in Calendar settings.
+   `GMAIL_OAUTH_*` env, then click **Connect** in Calendar settings.
 
 **Ownership:** for a shared team calendar that agents must reach, connect it
 **org-owned** (`mode: "org"`, needs `calendar:accounts:admin`). A user-owned

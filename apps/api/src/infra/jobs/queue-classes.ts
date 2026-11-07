@@ -89,6 +89,7 @@ export const KERNEL_JOBS: Readonly<Record<string, KernelJobSpec>> = {
   "check-device-flow-expiry": { queueClass: "cron" },
   "approval-expiry": { queueClass: "cron" },
   "control-plane-heartbeat": { queueClass: "cron" },
+  "cloud-usage-report": { queueClass: "cron" },
   "approval-expiry-sweep": { queueClass: "cron" },
   "approval-reminder-sweep": { queueClass: "cron" },
   "approval-approving-reaper": { queueClass: "cron" },
@@ -169,6 +170,7 @@ export const KERNEL_JOBS: Readonly<Record<string, KernelJobSpec>> = {
   // bulk: background volume. The live search flusher has its own queue
   // (`app-search-index`); these are the per-entity names it superseded, which
   // only record a request now, plus the long-running search maintenance.
+  "org-storage-estimate": { queueClass: "bulk" },
   "search-index-upsert": { queueClass: "bulk" },
   "search-index-delete": { queueClass: "bulk" },
   "search-task-verify": { queueClass: "bulk" },

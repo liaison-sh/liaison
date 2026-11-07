@@ -1218,11 +1218,22 @@ function mayCarryKey(e: ts.Expression, key: string): boolean {
 function returnedObjects(fn: ts.SignatureDeclaration): ts.Expression[] {
   const body = (fn as ts.FunctionLikeDeclaration).body
   if (!body) return []
-  if (!ts.isBlock(body)) return [body]
   const out: ts.Expression[] = []
+  // `return c ? a : b` returns a or b: each branch is one of the objects.
+  const push = (e: ts.Expression) => {
+    const x = unwrapExpr(e)
+    if (ts.isConditionalExpression(x)) {
+      push(x.whenTrue)
+      push(x.whenFalse)
+    } else out.push(e)
+  }
+  if (!ts.isBlock(body)) {
+    push(body)
+    return out
+  }
   const visit = (n: ts.Node) => {
     if (n !== body && ts.isFunctionLike(n)) return
-    if (ts.isReturnStatement(n) && n.expression) out.push(n.expression)
+    if (ts.isReturnStatement(n) && n.expression) push(n.expression)
     ts.forEachChild(n, visit)
   }
   visit(body)
@@ -1508,6 +1519,14 @@ export function traceOrgIdParameter(
             const arg = e.arguments[inner.index]
             if (!arg) return untraced(`${name}() called without the argument it copies`)
             const t = traceValue(arg, [...inner.path, ...nav.path], depth + 1)
+            if (t.verdict === "untraced") return untraced(`${t.why} ← through ${name}()`)
+            via.push(...t.via)
+            continue
+          }
+          // return { ...shared, x }: the key is still to find in `shared` (a variable or
+          // a parameter of the enclosing function), which the trace follows on its own.
+          if (nav.path.length > 0 && ts.isIdentifier(unwrapExpr(nav.expr))) {
+            const t = traceValue(nav.expr, nav.path, depth + 1)
             if (t.verdict === "untraced") return untraced(`${t.why} ← through ${name}()`)
             via.push(...t.via)
             continue

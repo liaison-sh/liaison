@@ -42,6 +42,8 @@ import {
 } from "~/infra/jobs/jobs"
 import { jobsLogger as log } from "~/lib/logger"
 import { isDemoOrgId } from "~/modules/demo/demo-org"
+import { sweepSkippingMoving, writeUnlessMoving } from "~/modules/org/transfer-state/skip-moving"
+import { movingOrgIds } from "~/modules/org/transfer-state/state"
 
 export type SyncJobTrigger = "schedule" | "force-on-open"
 
@@ -214,11 +216,13 @@ export type EnqueueFn = (
 export async function tickEnqueueDueSources(enqueue: EnqueueFn): Promise<number> {
   const due = await fetchDueSyncedSourcesSystem()
   for (const s of due) {
-    await enqueue(
-      "knowledge",
-      "sync-source",
-      { sourceId: s.id, trigger: "schedule" },
-      { jobId: `sync:${s.id}` },
+    await writeUnlessMoving(s.orgId, () =>
+      enqueue(
+        "knowledge",
+        "sync-source",
+        { sourceId: s.id, trigger: "schedule" },
+        { jobId: `sync:${s.id}` },
+      ),
     )
   }
   return due.length
@@ -288,6 +292,12 @@ export async function runSyncWorker(
   // failing on the missing account and stamping the source as broken.
   if (await isDemoOrgId(source.orgId)) {
     log.debug({ sourceId: source.id }, "sync-source: demo workspace; nothing to sync")
+    return
+  }
+  // The job carries no org, so the transfer hold never sees it: a source of an
+  // org being moved is left alone (the next tick picks it up after the move).
+  if ((await movingOrgIds()).includes(source.orgId)) {
+    log.info({ sourceId: source.id }, "sync-source: org is being moved; skipping")
     return
   }
   // H-1 / C1 worker-side defense in depth: force-on-open jobs carry the
@@ -373,17 +383,21 @@ const STALE_RUNNING_THRESHOLD_MINUTES = 30
  * Exported for testing.
  */
 export async function reclaimStaleRunningSources(): Promise<number> {
-  const result = await withSystemDb("knowledge-stale-running-reclaim", (db) =>
-    db.execute(drizzleSql`
+  // An org being moved keeps its sources as they are until the move ends.
+  const result = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("knowledge-stale-running-reclaim", (db) =>
+      db.execute(drizzleSql`
       UPDATE ${knowledgeRel("synced_sources")}
       SET last_sync_status = 'error',
           last_error = 'Sync watchdog: process did not complete within the expected window',
           updated_at = now()
       WHERE archived_at IS NULL
+        AND ${notMoving(drizzleSql.raw("org_id"))}
         AND last_sync_status = 'running'
         AND updated_at < now() - interval '${drizzleSql.raw(String(STALE_RUNNING_THRESHOLD_MINUTES))} minutes'
       RETURNING id
     `),
+    ),
   )
   const count = extractRows<{ id: string }>(result).length
   if (count > 0) {
@@ -472,11 +486,14 @@ export async function loadSyncedSourceForOrgSystem(orgId: string, id: string) {
  * would the next tick pick up?" without driving the enqueue layer.
  */
 export async function fetchDueSyncedSourcesSystem() {
+  // An org being moved keeps its sources as they are until the move ends.
   const rows = extractRows<DueSourceRow>(
-    await withSystemDb("knowledge-sync-due", (db) =>
-      db.execute(drizzleSql`
+    await sweepSkippingMoving((notMoving) =>
+      withSystemDb("knowledge-sync-due", (db) =>
+        db.execute(drizzleSql`
         SELECT * FROM ${knowledgeRel("synced_sources")}
         WHERE archived_at IS NULL
+          AND ${notMoving(drizzleSql.raw("org_id"))}
           AND last_sync_status IN ('idle', 'ok', 'error')
           AND (
             last_sync_at IS NULL
@@ -484,6 +501,7 @@ export async function fetchDueSyncedSourcesSystem() {
           )
         ORDER BY last_sync_at NULLS FIRST
       `),
+      ),
     ),
   )
   return rows.map(rowToSyncedSource)

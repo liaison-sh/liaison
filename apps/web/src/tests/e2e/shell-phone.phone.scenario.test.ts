@@ -120,11 +120,10 @@ test.describe("phone shell", () => {
     await expect(chats.getByTestId("chats-title")).toBeVisible()
     const personalRow = chats.getByTestId("chats-personal-agent-row")
     await expect(personalRow).toBeVisible()
-    // The Chats list is grouped (Unread, Channels, Direct messages): the
-    // personal agent's row heads the group it is in, Direct messages unless
-    // it has unread messages.
+    // The Chats list leads with Agents (thread-list-model.ts chatSections):
+    // the member's own agent heads it, unread or not (its count shows there).
     const personalSection = personalRow.locator("xpath=ancestor::section[1]")
-    await expect(personalSection).toHaveAttribute("data-section", /^(directMessages|unread)$/)
+    await expect(personalSection).toHaveAttribute("data-section", "agents")
     const firstRowTestId = await personalSection
       .locator('[role="listitem"]')
       .first()

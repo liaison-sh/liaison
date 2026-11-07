@@ -63,6 +63,7 @@ const HOST_SETTINGS: Record<string, string> = {
   LOAD_HARNESS_KEY: "demo box load harness request signing; the new host sets its own",
   AGENT_HISTORY_BUDGET_TOKENS: "a conversation history size, a number",
   OPENROUTER_HOST_MIN_TOKENS_PER_SECOND: "a model routing threshold, a number",
+  LIAISON_EDGE_SECRET: "shared with this host's edge proxy; the new host's edge sets its own",
 }
 
 /** Read by test, QA or developer tooling only: never deployment configuration. */
@@ -76,6 +77,8 @@ const KEYED_NOT_STORED: Record<string, string> = {
   MONITOR_TOKEN: "compared to a request's bearer token; the new host sets its own",
   MEILISEARCH_API_KEY: "authenticates to this host's search service, rebuilt on restore",
   LOAD_HARNESS_KEY: "verifies the load harness's signed requests; nothing stored is signed with it",
+  LIAISON_EDGE_SECRET:
+    "verifies the edge's signed host headers per request; nothing stored is signed with it",
   QA_DRIVE_REFRESH_TOKEN:
     "the seed encrypts it as data under ENCRYPTION_KEY; it keys nothing, a dev-only token",
 }

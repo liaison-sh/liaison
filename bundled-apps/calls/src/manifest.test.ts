@@ -40,7 +40,10 @@ describe("calls app.manifest.json", () => {
     // 0.2.12: the manifest declares its host API range (`host: "^1"`) instead of sdkVersion.
     // 0.2.13: the icon as data (`iconName`), drawn when the UI runs framed.
     // 0.2.15: every HUMAN setup step says its own minutes.
-    expect((MANIFEST as unknown as { version: string }).version).toBe("0.2.17")
+    // 0.2.17: the app's own install resolves the control-plane contract through an override
+    // (the shared package depends on it by workspace protocol); no change to what it does.
+    // 0.2.18: the same number (0.2.17) carried different content on two lines of work; this one has both.
+    expect((MANIFEST as unknown as { version: string }).version).toBe("0.2.18")
   })
 
   // Settings overhaul P2: a connector without a UI bundle; the kernel renders

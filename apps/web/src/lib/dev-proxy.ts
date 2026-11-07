@@ -7,11 +7,16 @@
  * dev checkout `BASE_URL` is this web server, so each of those prefixes must
  * be proxied here or the printed URL answers 404.
  */
-export function devProxyFor(apiTarget: string) {
+export function devProxyFor(apiTarget: string, opts: { preserveHost?: boolean } = {}) {
+  // `preserveHost` forwards the page's own Host, so this web server is the
+  // host the API sees, as one origin serving both is in production: a server
+  // with org hosts (LIAISON_ORG_HOST_TEMPLATE) binds each session to it. The
+  // managed-edition browser tests set it (VITE_PROXY_PRESERVE_HOST=1).
+  const changeOrigin = !opts.preserveHost
   return {
-    "/api": { target: apiTarget, changeOrigin: true },
-    "/healthz": { target: apiTarget, changeOrigin: true },
-    "/webhooks": { target: apiTarget, changeOrigin: true },
+    "/api": { target: apiTarget, changeOrigin },
+    "/healthz": { target: apiTarget, changeOrigin },
+    "/webhooks": { target: apiTarget, changeOrigin },
     "/ws": { target: apiTarget, ws: true },
   }
 }

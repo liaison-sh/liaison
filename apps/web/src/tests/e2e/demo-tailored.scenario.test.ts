@@ -228,7 +228,10 @@ async function playProjects(
         )
       }
     }
-    const beatId = await panel.getAttribute("data-beat-id").catch(() => null)
+    // Short: once the run completes the panel is gone, and a read that waited
+    // the default action timeout outlived the completion card (it hides
+    // after a few seconds), so the loop never saw it.
+    const beatId = await panel.getAttribute("data-beat-id", { timeout: 500 }).catch(() => null)
     if (beatId && seen.at(-1) !== beatId) seen.push(beatId)
     // The task is on screen at its own address, not the projects home.
     if (beatId === "my-task" || beatId === "reply") {
@@ -372,9 +375,12 @@ test("chat, started twice: both runs ask the agent in the person's one DM with i
       )
     )[0]?.n ?? 0
   const panel = page.getByTestId("tour-panel")
-  /** "Do it for me" on the ask beat: it lands in the run's conversation, and the beat moves on. */
-  const ask = async (conversation: string, sent: number) => {
+  /** "Do it for me" on the ask beat: it lands in the run's conversation, and the beat moves on.
+   *  The person's one DM with their agent also holds what earlier specs of this
+   *  worker asked there, so the count is taken from just before the ask. */
+  const ask = async (conversation: string) => {
     await expect(panel).toHaveAttribute("data-beat-id", "ask-agent", { timeout: 30_000 })
+    const sent = (await messagesIn(conversation)) + 1
     await page.getByTestId("tour-do-for-me").click()
     await expect(panel).toHaveAttribute("data-beat-id", "searching", { timeout: 60_000 })
     await expect(
@@ -400,15 +406,13 @@ test("chat, started twice: both runs ask the agent in the person's one DM with i
   await page.goto(`${base}/chats`)
   await expect(panel).toHaveAttribute("data-tour-id", CHAT, { timeout: 30_000 })
   expect(first).toBe(dm)
-  // The person's one DM: it may already hold what they asked in other scenarios.
-  const asked = await messagesIn(first)
-  await ask(first, asked + 1)
+  await ask(first)
 
   // Started again: the same DM, holding the first run's turn.
   const second = await startRun()
   expect(second).toBe(dm)
   await page.reload()
-  await ask(second, asked + 2)
+  await ask(second)
   // Neither run opened another conversation with an agent.
   expect(await agentChats()).toBe(chatsBefore)
 })

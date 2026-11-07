@@ -18,7 +18,9 @@ import { and, sql as drizzleSql, eq } from "drizzle-orm"
 import type { PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { apps as appsTable } from "~/db/schema/kernel/apps"
+import { appsLogger as log } from "~/lib/logger"
 import { connectionConfigRegistry, manifestRegistry } from "~/modules/apps/app-registries"
+import { CELL_CONFIG_LOCKED_CODE, isCellLockedConfigKey } from "~/modules/apps/cell-locked-config"
 import { resolveConnectionSecretConfigKeys } from "~/modules/apps/connections/service"
 import { writeAuditLog } from "~/modules/audit/service"
 
@@ -39,7 +41,18 @@ export function checkAppConfigWriteForOrg(
   appName: string,
   key: string,
   value: unknown,
-): AppConfigWriteCheck | { ok: false; code: "unknown_app"; message: string } {
+):
+  | AppConfigWriteCheck
+  | { ok: false; code: "unknown_app" | typeof CELL_CONFIG_LOCKED_CODE; message: string } {
+  // A key the managed cell owns is never a workspace's to set (cell-locked-config.ts).
+  if (isCellLockedConfigKey(appName, key)) {
+    log.warn({ orgId, app: appName, key }, "app config write refused: the cell owns this key")
+    return {
+      ok: false,
+      code: CELL_CONFIG_LOCKED_CODE,
+      message: `"${key}" is set by this server for every workspace and cannot be changed here.`,
+    }
+  }
   const configKeys = declaredAppConfigKeys(orgId, appName)
   if (configKeys === null) {
     return { ok: false, code: "unknown_app", message: `App "${appName}" is not installed` }

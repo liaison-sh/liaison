@@ -6,8 +6,9 @@
  * drives it off the manifest `type`:
  *
  *  - `type:'credentials'`: validate supplied `credentials` against the manifest
- *    `credentialFields` (required by `name`); derive `identifier` (the manifest
- *    explicit config `connection.identifier` if given, else the manifest `identifierVar` field value);
+ *    `credentialFields` (required by `name`); derive `identifier` (`resolveIdentifier`:
+ *    the explicit config `connection.identifier`, else the manifest `identifierVar`
+ *    field value, else the settings form's default);
  *    4-key precheck on the active partial-unique index. Absent → create inside
  *    `ctx.rls` (branded RlsClient) `createCredentialConnection` (ownerType:'org').
  *    Present → every declared field is compared with the stored (decrypted)
@@ -31,6 +32,7 @@
 import { sql as drizzleSql } from "drizzle-orm"
 import { kernelRel } from "~/apps/tickets/schema-refs"
 import { ConfigError } from "~/cli/config/parse"
+import { requireActor } from "~/cli/provisioners/admin"
 import {
   connectingPersonOrFail,
   type PendingItem,
@@ -149,6 +151,7 @@ interface CredentialConnectionDecl {
   type: "oauth2" | "credentials"
   credentialFields?: CredentialFieldDecl[]
   identifierVar?: string
+  multiInstance?: boolean
 }
 
 /**
@@ -157,13 +160,21 @@ interface CredentialConnectionDecl {
  * so that a manifest which starts deriving its identifier (ads/google-config: the
  * customer id) keeps updating the account an existing config file stored under its
  * own identifier, instead of creating a second one beside it (`config verify` reads
- * the same explicit identifier). Throws a `ConfigError` when neither yields a value.
+ * the same explicit identifier).
+ *
+ * Neither: the same default the settings form's connect route uses
+ * (`connections/routes.ts`): an `email` or `identifier` credential field, else
+ * the owner (the org for an org-owned connection, the acting person for a
+ * personal one). A connection made in the UI and one applied from a config file
+ * therefore land on the same account. A `multiInstance` connection has no
+ * default (each account is an admin-chosen slug): a `ConfigError` names the field.
  */
 function resolveIdentifier(
   manifest: CredentialConnectionDecl,
   spec: ConnectionSpec,
   credentials: Record<string, string>,
   appName: string,
+  owner: { orgId: string; userId: string },
 ): string {
   const connName = spec.name
   if (spec.identifier !== undefined && spec.identifier.length > 0) return spec.identifier
@@ -176,9 +187,14 @@ function resolveIdentifier(
     }
     return fromField
   }
-  throw new ConfigError(
-    `apps: connection '${appName}/${connName}' needs an 'identifier' (no manifest identifierVar to derive one)`,
-  )
+  if (manifest.multiInstance) {
+    throw new ConfigError(
+      `apps: connection '${appName}/${connName}' needs an 'identifier' (a multi-instance connection names each account by a slug)`,
+    )
+  }
+  const fromCredentials = credentials.email || credentials.identifier
+  if (fromCredentials) return fromCredentials
+  return (spec.ownerType ?? "org") === "org" ? owner.orgId : owner.userId
 }
 
 /** Runs `fn` in a privileged transaction scoped to the connection's org. */
@@ -234,6 +250,7 @@ function parseConnectionDecl(value: unknown): CredentialConnectionDecl | null {
     type,
     credentialFields,
     ...(typeof value.identifierVar === "string" ? { identifierVar: value.identifierVar } : {}),
+    ...(value.multiInstance === true ? { multiInstance: true } : {}),
   }
 }
 
@@ -275,7 +292,17 @@ export async function planConnection(
   if (Object.values(credentials).every((v) => v.length === 0)) return []
   const manifest = await planConnectionDecl(orgId, appName, connName)
   if (manifest?.type !== "credentials") return []
-  const identifier = resolveIdentifier(manifest, spec, credentials, appName)
+  // A personal connection is keyed on its person, unknown before the admin applies.
+  if (
+    (spec.ownerType ?? "org") === "user" &&
+    spec.identifier === undefined &&
+    ctx.actor.userId === ""
+  )
+    return []
+  const identifier = resolveIdentifier(manifest, spec, credentials, appName, {
+    orgId,
+    userId: ctx.actor.userId,
+  })
   // The plan runs before the org provisioner sets `ctx.orgId`, so the read
   // goes through the org-less seam; every query names the org explicitly.
   const existing = await readActiveConnection(ctx.sys, orgId, "", appName, connName, identifier)
@@ -424,7 +451,15 @@ export async function provisionConnection(
     }
   }
 
-  const resolvedIdentifier = resolveIdentifier(manifest, spec, credentials, appName)
+  // A user-owned connection is keyed by its person; an org-owned one needs an
+  // actor only to write (connectingPersonOrFail below), not to compare.
+  if ((spec.ownerType ?? "org") !== "org") {
+    requireActor(ctx, `apps: connection '${appName}/${connName}'`)
+  }
+  const resolvedIdentifier = resolveIdentifier(manifest, spec, credentials, appName, {
+    orgId: ctx.orgId,
+    userId: ctx.actor.userId,
+  })
 
   const ownerType = spec.ownerType ?? "org"
 

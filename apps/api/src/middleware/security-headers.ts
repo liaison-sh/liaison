@@ -2,6 +2,7 @@
 import { createHash } from "node:crypto"
 import type { MiddlewareHandler } from "hono"
 import { browserStorageOrigin } from "~/infra/storage/delivery"
+import { isManagedEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
 import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 
@@ -37,6 +38,16 @@ export interface ContentSecurityPolicyOptions extends SecurityHeadersOptions {
    * everywhere else, so no other deployment's policy names a third party.
    */
   turnstile?: boolean
+  /**
+   * The payment frame's origin on the web shell. Defaults to
+   * LIAISON_PAY_FRAME_ORIGIN in the managed edition (read per call), else none.
+   */
+  payFrameOrigin?: string | null
+}
+
+function payFrameOrigin(explicit: string | null | undefined): string | null {
+  if (explicit !== undefined) return explicit
+  return isManagedEdition() ? (env.LIAISON_PAY_FRAME_ORIGIN ?? null) : null
 }
 
 export function contentSecurityPolicy(options: ContentSecurityPolicyOptions = {}): string {
@@ -48,6 +59,8 @@ export function contentSecurityPolicy(options: ContentSecurityPolicyOptions = {}
   const turnstile =
     shell && (options.turnstile ?? (isDemoModeEnabled() && Boolean(env.TURNSTILE_SITE_KEY)))
   const turnstileSource = turnstile ? ` ${TURNSTILE_ORIGIN}` : ""
+  const payFrame = shell ? payFrameOrigin(options.payFrameOrigin) : null
+  const frameSources = `${turnstileSource}${payFrame ? ` ${payFrame}` : ""}`
   return [
     "default-src 'self'",
     // The web shell compiles one WebAssembly module: the Argon2id that opens a
@@ -73,7 +86,9 @@ export function contentSecurityPolicy(options: ContentSecurityPolicyOptions = {}
     // 'self' is here because frame-src replaces default-src for frames, as it
     // did before. The demo door's invisible Turnstile challenge also runs in a
     // frame from its own origin: only a demo deployment with a site key names it.
-    ...(shell ? [`frame-src 'self' blob:${turnstileSource}`] : []),
+    // The managed edition's Billing page embeds its payment frame
+    // (LIAISON_PAY_FRAME_ORIGIN); no other edition names it.
+    ...(shell ? [`frame-src 'self' blob:${frameSources}`] : []),
     // The blob frame above inherits this directive too, and WebKit applies it to the blob
     // itself: under 'none' the frame stayed empty there. So the web shell says 'self': another
     // origin still cannot frame it, an app's frame is a sandbox with an opaque origin, and the

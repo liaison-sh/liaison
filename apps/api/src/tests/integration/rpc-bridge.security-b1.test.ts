@@ -50,7 +50,12 @@ const BRIDGE_ORG = "00000000-0000-0000-0000-0000000b1001"
 const VICTIM_ORG = "00000000-0000-0000-0000-0000000b1666"
 const TEST_USER = "00000000-0000-0000-0000-0000000b1002"
 
-const mockTx = { execute: async () => [], queueEvent: async () => {} } as any
+const mockTx: any = {
+  execute: async () => [],
+  queueEvent: async () => {},
+  // The sandbox bridge runs each call in a savepoint of the same transaction.
+  transaction: (fn: (sp: unknown) => Promise<unknown>) => fn(mockTx),
+}
 
 beforeEach(() => {
   enqueued.length = 0

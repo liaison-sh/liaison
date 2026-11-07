@@ -29,30 +29,30 @@ import { createWriteStream } from "node:fs"
 import { access, rename, rm } from "node:fs/promises"
 import os from "node:os"
 import { createInterface } from "node:readline/promises"
-import { and, desc, eq, gt, inArray, isNotNull } from "drizzle-orm"
+import { and, desc, eq, gt, isNotNull } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import type { OrgDeletionExport, OrgDeletionRow, OrgDeletionWaiver } from "~/db/schema/kernel"
 import { organizations, orgExports } from "~/db/schema/kernel"
 import { getObjectStream } from "~/infra/storage/object-storage"
 import { env } from "~/lib/env"
 import { resolveOperatorOrgId } from "~/modules/apps/operator-org"
-import { enqueueOrgDelete, MARK_STEP, type OrgDeleteJobPayload } from "~/modules/org/delete/job"
+import { enqueueOrgDelete, type OrgDeleteJobPayload } from "~/modules/org/delete/job"
 import {
   abortOrgDeletion,
-  createOrgDeletion,
-  failOrgDeletion,
   findOpenOrgDeletion,
   findOpenOrgDeletionBySlug,
   getOrgDeletion,
   ledgerLine,
-  markOrgDeletionQueued,
-  ORG_DELETION_STALE_MS,
   OrgDeletionOpenError,
   PURGE_STARTED_STEP,
-  recordOrgDeletionStep,
 } from "~/modules/org/delete/ledger"
 import { assertLegalArchiveRecipient, deleteLegalArchive } from "~/modules/org/delete/legal-archive"
-import { announceOrgDeleting, markOrgDeleting } from "~/modules/org/purge/deleting"
+import {
+  beginOrgDeletion,
+  handOrgDeletionToWorker,
+  runningOrgExport,
+} from "~/modules/org/delete/start"
+import { announceOrgDeleting } from "~/modules/org/purge/deleting"
 import { residueScan } from "~/modules/org/purge/residue"
 
 export const ORG_DELETE_USAGE =
@@ -206,17 +206,12 @@ async function checkGates(org: OrgRow, args: Args, deps: OrgDeleteCliDeps): Prom
         }
       : { ok: true, detail: "not the operator organization" }
 
-  const running = await withSystemDb("cli-org-delete-running-export", (tx) =>
-    tx
-      .select({ id: orgExports.id, status: orgExports.status })
-      .from(orgExports)
-      .where(and(eq(orgExports.orgId, org.id), inArray(orgExports.status, ["queued", "running"]))),
-  )
+  const running = await runningOrgExport(org.id)
   const runningExport: GateState =
-    running.length > 0
+    running !== null
       ? {
           ok: false,
-          detail: `export ${running[0]?.id} is ${running[0]?.status}`,
+          detail: `export ${running.id} is ${running.status}`,
           fix: "wait for the running export to finish, then run the deletion again",
         }
       : { ok: true, detail: "no export running" }
@@ -429,21 +424,15 @@ async function handOff(
   args: Args,
   deps: OrgDeleteCliDeps,
 ): Promise<OrgDeleteCliResult> {
-  const live =
-    row.status === "running" && Date.now() - row.updatedAt.getTime() < ORG_DELETION_STALE_MS
-  if (!live) {
-    await markOrgDeletionQueued(row.id)
-    const enqueue = deps.enqueue ?? ((p) => enqueueOrgDelete(p, { forServer: true }))
-    try {
-      await enqueue({ deletionId: row.id, targetOrgId: row.deletedOrgId })
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err)
-      await failOrgDeletion(row.id, `QUEUE_FAILED: ${detail}`)
-      return {
-        exitCode: 1,
-        report: { deletionId: row.id, orgId: row.deletedOrgId, status: "failed" },
-        message: `the deletion job could not be queued: ${detail}. Run the command again to resume.`,
-      }
+  const handed = await handOrgDeletionToWorker(
+    row,
+    deps.enqueue ?? ((p) => enqueueOrgDelete(p, { forServer: true })),
+  )
+  if (!handed.ok) {
+    return {
+      exitCode: 1,
+      report: { deletionId: row.id, orgId: row.deletedOrgId, status: "failed" },
+      message: `the deletion job could not be queued: ${handed.detail}. Run the command again to resume.`,
     }
   }
   return follow(row.id, args, deps)
@@ -569,7 +558,9 @@ export async function runOrgDeleteCli(
 
   let row: OrgDeletionRow
   try {
-    row = await createOrgDeletion({
+    // Step 1 with the ledger row: from here every request for the org gets
+    // 410 and its jobs are dropped.
+    row = await beginOrgDeletion({
       orgId: target.id,
       slug: target.slug,
       name: target.name,
@@ -584,8 +575,5 @@ export async function runOrgDeleteCli(
     }
     throw err
   }
-  // Step 1: from here every request for the org gets 410 and its jobs are dropped.
-  await markOrgDeleting(target.id)
-  await recordOrgDeletionStep(row.id, MARK_STEP)
   return handOff(row, args, deps)
 }

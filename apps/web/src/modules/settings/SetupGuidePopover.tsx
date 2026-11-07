@@ -34,7 +34,9 @@ export const SetupGuidePopover: Component<{ guide?: AppSetupGuide; label?: strin
             <p class="text-text">{props.guide?.summary}</p>
           </Show>
           <Show when={(props.guide?.steps?.length ?? 0) > 0}>
-            <ol class="list-decimal space-y-1 pl-4 text-text-secondary">
+            {/* A step's "Open: <url>" line is one long word: wrap it inside
+                the popover instead of clipping it at the edge. */}
+            <ol class="list-decimal space-y-1 pl-4 text-text-secondary [overflow-wrap:anywhere]">
               <For each={props.guide?.steps}>
                 {(step) => (
                   // setupGuide steps are author-controlled markdown; renderMarkdown

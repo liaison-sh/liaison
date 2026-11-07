@@ -109,6 +109,18 @@ function stripComments(text: string): string {
   return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1")
 }
 
+/**
+ * Code with the TEXT of its string literals removed (a template literal keeps
+ * its \${...} expressions): "not onboarded as a dealer" in seeded prose is a
+ * word, not a flag. Used for the identifier check only; a settings key is
+ * matched on the full code.
+ */
+function stripStringText(code: string): string {
+  return code
+    .replace(/`(?:[^`\\]|\\.)*`/g, (m) => (m.match(/\$\{[^}]*\}/g) ?? []).join(" "))
+    .replace(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/g, '""')
+}
+
 const FLAG_IDENTIFIER = /\b(onboarded|onboardedAt|setupComplete[A-Za-z]*)\b/
 const SETTINGS_FLAG_WRITE = /["'`]setupState["'`]|\bsetupState\s*:/
 
@@ -117,7 +129,9 @@ function flagSites(files: string[]): string[] {
   const hits: string[] = []
   for (const file of files) {
     const code = stripComments(readFileSync(file, "utf8"))
-    if (FLAG_IDENTIFIER.test(code) || SETTINGS_FLAG_WRITE.test(code)) hits.push(file)
+    if (FLAG_IDENTIFIER.test(stripStringText(code)) || SETTINGS_FLAG_WRITE.test(code)) {
+      hits.push(file)
+    }
   }
   return hits
 }

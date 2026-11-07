@@ -9,7 +9,7 @@ import { withSystemDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { mcpConnections, mcpOAuthState } from "~/db/schema/app_mcp_manager"
 import { CryptoContext, decryptSecret } from "~/lib/crypto"
-import { encryptionKey } from "~/lib/env"
+import { encryptionKey, env } from "~/lib/env"
 import { errorHandler } from "~/middleware/error-handler"
 import {
   type OAuthFixtureHandle,
@@ -986,7 +986,7 @@ describe("mcp-manager OAuth routes — MCP authorization spec", () => {
         clientId: "pre-1",
         clientSecret: "s3cret",
         authMethod: "client_secret_post",
-        redirectUris: [callbackUrl()],
+        redirectUris: [callbackUrl(env.BASE_URL.replace(/\/$/, ""))],
       })
       const connId = await withSystemDb("oauth-spec-seed-static", async (db) => {
         const { encryptSecretsBlob } = await import("~/modules/mcp-client/secrets")

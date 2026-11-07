@@ -14,3 +14,4 @@ Who can use it: everyone (default) or selected roles and people; admins always -
 Env connections written by one process (the leader) -> apps/api/src/modules/mcp-client/index.ts:455
 An existing env connection is updated, not duplicated -> apps/api/src/modules/mcp-client/env-bootstrapper.ts:166
 A workspace's servers load the first time a process serves it -> apps/api/src/modules/mcp-client/index.ts:478
+Callback on the org's own address with org hosts; not the central redirect host -> apps/api/src/apps/mcp-manager/oauth-registration.ts:45

@@ -1,0 +1,24 @@
+Commands keys, export, import, estimate, purge-source -> apps/api/src/cli/org-transfer.ts:31
+Both sides connect with MIGRATION_DATABASE_URL -> apps/api/src/cli/org-transfer.ts:174
+Transfer keys on the first input line -> apps/api/src/cli/org-transfer.ts:151
+One snapshot -> apps/api/src/modules/org/transfer/export.ts:214
+Rows owned through another row (foreign keys) -> apps/api/src/modules/org/transfer/closure.ts:1
+Search documents with vectors, embedder compared -> apps/api/src/modules/org/transfer/search.ts:1 ; apps/api/src/modules/org/transfer/import.ts:360
+Secrets re-encrypted with keys-rotate's functions -> apps/api/src/modules/org/transfer/rekey.ts:1 ; apps/api/src/modules/org/transfer/import.ts:526
+Webhook delivery marks carried -> apps/api/src/modules/org/transfer/export.ts:108
+Two-factor setup in progress not moved -> apps/api/src/cli/keys-rotate.ts:192
+File links expire, MCP reconnect -> apps/api/src/modules/org/transfer/rekey.test.ts:128 ; apps/api/src/modules/org/transfer/rekey.test.ts:133
+Refusals: skew, collision, existing copy -> apps/api/src/modules/org/transfer/import.ts:376 ; apps/api/src/modules/org/transfer/import.ts:456 ; apps/api/src/modules/org/transfer/import.ts:332
+Arrives incoming -> apps/api/src/modules/org/transfer/import.ts:430
+Estimate -> apps/api/src/modules/org/transfer/estimate.ts:14
+Purge of a moved copy only -> apps/api/src/modules/org/transfer/purge.ts:59
+Demo and deleting orgs refused -> apps/api/src/modules/org/transfer/export.ts:184
+session_replication_role, compose owner role -> apps/api/src/modules/org/transfer/import.ts:374 ; deploy/docker-compose.yml:389
+Custom apps installed on the target by the agents -> apps/api/src/modules/org/transfer/custom-apps.ts:1 ; apps/api/src/modules/org/transfer/agent-source.ts:1
+Agent commands, operator line, exit codes -> apps/api/src/cli/org-transfer.ts:1 ; apps/api/src/cli/org-transfer.ts:277
+Target agent over stdin/stdout -> apps/api/src/modules/org/transfer/agent-target.ts:1
+Two copies live, drain 30 s, freeze -> apps/api/src/modules/org/transfer/agent-source.ts:1
+Step limits table -> apps/api/src/modules/org/transfer/ceilings.ts:31
+After the commit: jobs, Gmail, MCP, search, files -> apps/api/src/modules/org/transfer/after-commit.ts:1 ; apps/api/src/modules/org/transfer/agent-source.ts:1
+One notification for MCP reconnect -> apps/api/src/modules/attention/kernel-translations.ts:338
+Lease 2 s / 15 s, resolver asks from 5 s (commit served at once, purge and alert at 45 s), stays frozen when unreachable -> apps/api/src/modules/org/transfer/agent-source.ts:1 ; apps/api/src/modules/org/transfer-state/resolver.ts:1

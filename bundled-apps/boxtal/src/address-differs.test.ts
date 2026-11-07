@@ -140,6 +140,25 @@ describe("address differs: the label is held until a person picks", () => {
     })
   })
 
+  it("the stage-time preflight refuses what the pick would refuse, and writes nothing", async () => {
+    const same = differsCase({ book: [verifiedRow({ street1: "Werkstrasse 6" })] })
+    const a = goldenCtx(same)
+    expect(await prepSetAddressChoicePreflight(a.ctx, { document_ref: docId(same), choice: "order" })).toMatchObject({
+      error: { code: "address_choice_not_needed" },
+    })
+    expect(
+      await prepSetAddressChoicePreflight(a.ctx, { document_ref: docId(same), choice: "nope" as "order" }),
+    ).toMatchObject({ error: { code: "invalid_choice" } })
+    const c = differsCase()
+    const b = goldenCtx(c)
+    expect(
+      await prepSetAddressChoicePreflight(b.ctx, { document_ref: docId(c), choice: "verified", address_id: "stale-id" }),
+    ).toMatchObject({ error: { code: "address_choice_stale" } })
+    expect(await prepSetAddressChoicePreflight(b.ctx, { document_ref: docId(c), choice: "verified" })).toMatchObject({ ok: true })
+    // Read-only: the label is still held after an accepted preflight (no pick was stored).
+    expect(await createShipmentPreflight(b.ctx, stageParams(c))).toMatchObject({ error: { code: "address_differs" } })
+  })
+
   it("the prep row carries the comparison only when there is a verified address", async () => {
     const c = differsCase({ cachedShipTo: true })
     const { ctx } = goldenCtx(c)

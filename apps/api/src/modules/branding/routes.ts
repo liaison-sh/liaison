@@ -47,6 +47,7 @@ import { Hono } from "hono"
 import type { AppEnv } from "~/app"
 import { withSystemDb } from "~/db/privileged"
 import { organizations } from "~/db/schema/kernel"
+import { isManagedEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
 import { success } from "~/lib/response"
 import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
@@ -77,6 +78,10 @@ export interface PublicBranding {
    * nothing the deployment is not already advertising by answering
    * `POST /api/demo/orgs` at all, and on every other deployment the object is
    * absent-keyed exactly as it was: `{}`.
+   *
+   * `noAccountEntry`, present and true on every host of a managed server: its
+   * /register takes invitations only, and an invite link goes straight to it, so
+   * the login page offers no "Create an account". Absent on a self-hosted one.
    */
   flags: Record<string, boolean>
   /**
@@ -158,7 +163,10 @@ brandingRoutes.get("/branding", async (c) => {
     logoUrl: null,
     // Keyed absent rather than `demo: false` off a demo box, so a normal
     // deployment's body is byte identical to what it has always been.
-    flags: isDemoModeEnabled() ? { demo: true } : {},
+    flags: {
+      ...(isDemoModeEnabled() ? { demo: true } : {}),
+      ...(isManagedEdition() ? { noAccountEntry: true } : {}),
+    },
     byokModelIds: [],
     ...(env.LIAISON_PRIVACY_URL ? { privacyUrl: env.LIAISON_PRIVACY_URL } : {}),
     ...(isDemoModeEnabled()

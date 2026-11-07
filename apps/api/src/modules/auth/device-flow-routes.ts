@@ -9,6 +9,8 @@ import type { AppEnv } from "~/app"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { deviceFlowRequests } from "~/db/schema/kernel"
 import { env } from "~/lib/env"
+import { assertHostAllowsOrg } from "~/lib/org-host"
+import { requestPublicBaseUrl } from "~/lib/org-public-url"
 import { redis } from "~/lib/redis"
 import { getClientIp } from "~/lib/request-context"
 import { setRefreshTokenCookie, success } from "~/lib/response"
@@ -20,6 +22,7 @@ import {
   MCP_DEVICE_CLIENT_PREFIX,
   normalizeDeviceLabel,
 } from "~/modules/auth/device-flow-request"
+import { generateDeviceUserCode } from "~/modules/auth/device-user-code"
 import {
   assertUnrestrictedSession,
   DECLARED_SCOPE_PATTERN,
@@ -87,14 +90,6 @@ deviceFlow.post("/initiate", zValidator("json", initiateSchema), async (c) => {
   const label = normalizeDeviceLabel(deviceLabel)
   const requestIp = getClientIp(c)
 
-  // Safe alphabet — no ambiguous characters (0/O, 1/I/l)
-  // 32 characters: 256 / 32 = 8, so modulo is unbiased
-  const SAFE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
-  const generateUserCode = (): string =>
-    Array.from(randomBytes(8))
-      .map((b) => SAFE_ALPHABET[b % SAFE_ALPHABET.length])
-      .join("")
-
   const expiresAt = new Date(Date.now() + DEVICE_CODE_EXPIRY_SECONDS * 1000)
 
   // user_code is unique among PENDING requests (partial UNIQUE index). A
@@ -106,7 +101,7 @@ deviceFlow.post("/initiate", zValidator("json", initiateSchema), async (c) => {
   let inserted = false
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const deviceCode = randomBytes(32).toString("hex")
-    userCode = generateUserCode()
+    userCode = generateDeviceUserCode()
     try {
       await withSystemDb("device-flow-initiate", (db) =>
         db.insert(deviceFlowRequests).values({
@@ -125,7 +120,7 @@ deviceFlow.post("/initiate", zValidator("json", initiateSchema), async (c) => {
       return success(c, {
         deviceCode,
         userCode,
-        verificationUri: `${env.BASE_URL}/auth/device?code=${userCode}`,
+        verificationUri: `${requestPublicBaseUrl(c)}/auth/device?code=${userCode}`,
         expiresIn: DEVICE_CODE_EXPIRY_SECONDS,
       })
     } catch (err) {
@@ -186,6 +181,9 @@ deviceFlow.get("/poll/:deviceCode", async (c) => {
     return success(c, { status: "denied" })
   }
   if (request.state === "approved" && request.userId) {
+    // Host binding (lib/org-host.ts): a grant approved for org A is redeemed on
+    // A's host only (the approval itself ran on A's host, authMiddleware).
+    await assertHostAllowsOrg(c, request.orgId)
     // Atomic consumption: DELETE WHERE state = 'approved' prevents double-spend
     const [consumed] = await withSystemDb("device-flow-consume", (db) =>
       db

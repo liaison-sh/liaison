@@ -39,8 +39,24 @@ import { onSessionTeardown } from "~/lib/session-lifecycle"
 export interface CreditsBalance {
   included: string
   purchased: string
-  currency: string
+  /** Self-hosted only: a managed cell's balance is credits, with no currency (S18). */
+  currency?: string
   tier?: string
+}
+
+/** A managed cell's `/credits/balance`, read as the pickers' balance (included, purchased). */
+export function toCreditsBalance(raw: unknown): CreditsBalance | null {
+  if (!raw || typeof raw !== "object") return null
+  const r = raw as Record<string, unknown>
+  if (r.mode === "managed" && r.credits && typeof r.credits === "object") {
+    const c = r.credits as { included?: unknown; purchased?: unknown }
+    return {
+      included: String(c.included ?? "0"),
+      purchased: String(c.purchased ?? "0"),
+      ...(typeof r.tier === "string" ? { tier: r.tier } : {}),
+    }
+  }
+  return raw as CreditsBalance
 }
 
 /** The balance is worth re-asking at most this often. */
@@ -160,11 +176,8 @@ export function ensureCreditsBalance(
   const run = (async () => {
     try {
       const res = await api.get<CreditsBalance | { data?: CreditsBalance }>("/credits/balance")
-      const value = (res && typeof res === "object" && "data" in res ? res.data : res) as
-        | CreditsBalance
-        | null
-        | undefined
-      setBalance(value ?? null)
+      const value = res && typeof res === "object" && "data" in res ? res.data : res
+      setBalance(toCreditsBalance(value))
       noteSuccess(balanceGate)
     } catch (err) {
       // The last known balance stays on screen: a rate limited read is not

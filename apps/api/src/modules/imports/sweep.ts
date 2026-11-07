@@ -16,6 +16,7 @@ import { rootLogger } from "~/lib/logger"
 import { recoverLedger } from "~/modules/imports/recover"
 import { FINAL_STATUSES, importRunEvent } from "~/modules/imports/runs"
 import { deleteRunStaging } from "~/modules/imports/staging"
+import { movingOrgIds } from "~/modules/org/transfer-state/state"
 
 const log = rootLogger.child({ module: "imports-sweep" })
 
@@ -102,7 +103,11 @@ export async function sweepStaleImportRuns(
   staleMs: number = STALE_RUN_MS,
 ): Promise<{ swept: number }> {
   let swept = 0
+  // An org being moved keeps its rows as they are; the sweep takes it up again
+  // when the move ends. An unreadable state fails the sweep (it retries).
+  const moving = new Set(await movingOrgIds())
   for (const row of await staleRuns(staleMs)) {
+    if (moving.has(row.org_id)) continue
     try {
       if (await failStalledRun(row, staleMs)) swept++
     } catch (err) {

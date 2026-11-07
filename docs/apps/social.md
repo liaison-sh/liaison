@@ -15,8 +15,8 @@ Social has three independent connections: **Facebook Page**, **Instagram account
    - YouTube: a Google Cloud OAuth client of type Web application (`liaison guide google`).
 2. Add `https://<your-liaison-host>/api/connections/callback` as a redirect URI ("Valid OAuth Redirect URIs" at Meta, "Authorized redirect URIs" at Google). It must match your instance's `BASE_URL` exactly.
 3. In Liaison, open **Settings › Social › Connections** and click **Connect** on the platform.
-4. If the app has no OAuth client yet, fill in **Client ID** and **Client secret** from step 1.
-5. Click **Connect via OAuth** and approve the consent screen.
+4. If the app has no OAuth client yet, fill in **Client ID** and **Client secret** from step 1 and click **Connect via OAuth**. When a client is already configured, the dialog shows one **Connect** button instead.
+5. Approve the consent screen.
 
 Connecting needs `social:admin:connection`. Connect the brand accounts for the whole organization: the agent and the background jobs run as the organization, and a personal connection returns `not_connected` to them. See [Connect apps](../connecting-apps.md).
 
@@ -31,6 +31,8 @@ Settings names each account after the provider: Facebook by its Pages (or your n
 ### Turn on real-time Facebook updates
 
 After connecting Facebook, and again after adding a Page, ask an agent to run `webhooks_setup` (from a terminal: `liaison agent ask --as <your email> "Run the Social app's webhooks_setup"`, then approve it in Liaison). It points the Meta app's Page webhooks (comments and messages) at your instance and subscribes each Page. The call waits for approval. Without it, Page comments and messages arrive only when the app polls.
+
+On a managed server, every workspace connects Facebook through the server's own Meta app, which has a single callback. `webhooks_setup` then points it at the server's callback (`/webhooks/_cell/meta`), which hands each delivery only to the workspaces holding that Page, and records the Pages it subscribed: run it again after adding a Page. Before a delivery is read, Social checks those Pages against the ones the Facebook account still manages on Meta (at most once a minute, and again on every discovery sync): a Page the account no longer manages, for example one handed to another workspace, leaves the list and its comments and messages are not stored. Disconnecting Facebook, or a token Meta refuses, empties the list. If the Meta app's callback already belongs to another server, the call is refused and nothing changes.
 
 Instagram tokens renew themselves. If Instagram stops updating after some weeks, reconnect it.
 

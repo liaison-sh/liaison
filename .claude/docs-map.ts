@@ -24,6 +24,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/api/src/cli/api-connector/**", pages: ["api-connector", "reference/cli"] },
   // `liaison seed`: its tiers and flags (provisioning-cli), how tests seed (testing).
   { glob: "apps/api/src/cli/seed/**", pages: ["provisioning-cli", "reference/cli", "testing"] },
+  { glob: "apps/api/src/cli/org-transfer.ts", pages: ["runbooks/org-transfer", "reference/cli"] },
   { glob: "apps/api/src/cli/**", pages: ["reference/cli", "provisioning-cli"] },
   { glob: "apps/api/src/modules/permissions/scope-catalog.ts", pages: ["reference/scopes", "agents/permissions"] },
 
@@ -116,6 +117,11 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/web/src/modules/auth/**", pages: ["admin/users"] },
   { glob: "apps/web/src/modules/members/**", pages: ["admin/users", "admin/roles"] },
   { glob: "apps/api/src/modules/settings/**", pages: ["admin/settings"] },
+  { glob: "apps/api/src/modules/billing-managed/**", pages: ["admin/settings"] },
+  // An org moving to another server: the 503 `org_moving` answer of the API and webhooks.
+  { glob: "apps/api/src/modules/org/transfer-state/**", pages: ["developers/rest-api", "app-webhooks"] },
+  // Moving an org between servers (the core: export, import, re-keying, purge).
+  { glob: "apps/api/src/modules/org/transfer/**", pages: ["runbooks/org-transfer"] },
   // Document templates (org admin settings); the settings page that edits them documents them.
   { glob: "apps/api/src/modules/documents/**", pages: ["admin/settings"] },
   { glob: "apps/api/src/modules/org/**", pages: ["admin/settings"] },
@@ -237,6 +243,7 @@ export const DOCS_EXEMPT: { glob: string; reason: string }[] = [
   { glob: "apps/api/src/lib/[!e]*.ts", reason: "internal helpers" },
   { glob: "apps/api/src/lib/{edition,env-boolean,error-tracker,external-content}.ts", reason: "internal helpers" },
   { glob: "apps/api/src/*.ts", reason: "server entry points" },
+  { glob: "apps/api/src/modules/cloud/**", reason: "signed operator API of the managed edition, no user-facing setting (its handoff page is documented under admin/users via apps/web auth)" },
   { glob: "apps/api/src/modules/{admin,attention,audit,billing-admin,billing-state,bug-reports,i18n,loadtest,maintenance,monitor,pdf,provisioning,push,saved-views,search,security,sequences,slots}/**", reason: "internal modules with no user-facing setting" },
   {
     glob: "apps/api/src/modules/documents/pdf-form*.ts",

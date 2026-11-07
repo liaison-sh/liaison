@@ -377,7 +377,7 @@ export function createGuide(deps: GuideDeps = defaultDeps) {
       return { exitCode: 2 }
     }
     await deps.ensureAppsForOrg(resolved.orgId)
-    const setup = appConnectionSetup(resolved.orgId, app, connection)
+    const setup = await appConnectionSetup(resolved.orgId, app, connection)
     if (!setup) {
       const known = orgConnections(resolved.orgId).map(([a, c]) => `${a}/${c}`)
       deps.err(

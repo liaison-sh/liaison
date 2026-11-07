@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
 import type { ActorContext } from "~/db/rls"
+import { env } from "~/lib/env"
 import { UnsafeOutboundUrlError, validateOutboundUrlNoDns } from "~/lib/outbound-fetch"
+import { sandboxTenantKey } from "~/modules/apps/custom-app-name"
 
 /** The id a create_routine running-doc binding directive names in the authored prompt ("MAINTAIN THIS
  *  EXISTING RUNNING DOC … id <UUID>"). Extracted to redirect a routine-tick knowledge_create onto the
@@ -206,26 +208,108 @@ export function isOperatorPrivateAppHost(url: URL): boolean {
   return false
 }
 
-/** Spread into every sandbox `fetchWithPinnedHost` call: the operator's private hosts, per hop. */
-export const SANDBOX_PRIVATE_HOST_POLICY = {
-  privateAllowedFor: isOperatorPrivateAppHost,
-} as const
+/** An IP literal as compared: lowercased, no brackets, IPv4-mapped IPv6 unwrapped. */
+function normalizeAddress(address: string): string {
+  const a = address
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(a)
+  return mapped ? mapped[1]! : a
+}
+
+/**
+ * LIAISON_CELL_PUBLIC_ADDRESSES: this server's own public IPv4/IPv6 addresses
+ * (comma-separated). Traffic from the host to its own public address can reach
+ * any port a container publishes on all interfaces, so an org's custom app may
+ * never fetch them.
+ */
+export function cellOwnAddresses(): Set<string> {
+  const raw = env.LIAISON_CELL_PUBLIC_ADDRESSES ?? ""
+  return new Set(
+    raw
+      .split(",")
+      .map((a) => normalizeAddress(a))
+      .filter((a) => a.length > 0),
+  )
+}
+
+/** The host names of this server itself: its base URL, its web origins, its org hosts. */
+function cellOwnHostSuffixes(): { exact: Set<string>; suffixes: string[] } {
+  const exact = new Set<string>()
+  const suffixes: string[] = []
+  const add = (u: string | undefined) => {
+    if (!u) return
+    try {
+      exact.add(new URL(u).hostname.toLowerCase())
+    } catch {
+      // not a URL: ignored
+    }
+  }
+  add(env.BASE_URL)
+  for (const o of (env.ALLOWED_ORIGINS ?? "").split(",")) add(o.trim())
+  const template = env.LIAISON_ORG_HOST_TEMPLATE
+  if (template) {
+    const host = /^[a-z]+:\/\/([^/:]+)/i.exec(template)?.[1]?.toLowerCase() ?? ""
+    const suffix = host.startsWith("{slug}.") ? host.slice("{slug}.".length) : ""
+    if (suffix) {
+      exact.add(suffix)
+      suffixes.push(`.${suffix}`)
+    }
+  }
+  return { exact, suffixes }
+}
+
+/** Whether `hostname` names this server (its own origins or an org host on it). */
+export function isCellOwnHost(hostname: string): boolean {
+  const h = hostname.toLowerCase().replace(/\.$/, "")
+  const { exact, suffixes } = cellOwnHostSuffixes()
+  if (exact.has(h) || suffixes.some((s) => h.endsWith(s))) return true
+  return cellOwnAddresses().has(normalizeAddress(h))
+}
+
+const CELL_SELF_REFUSAL = "Outbound URL must not point to this server's own address"
+
+/**
+ * The per-hop policy every sandbox `fetchWithPinnedHost` call spreads in. An
+ * instance app reaches the operator's private hosts (LIAISON_APP_PRIVATE_HOSTS);
+ * an org's custom app never does, and never reaches this server's own public
+ * addresses (LIAISON_CELL_PUBLIC_ADDRESSES), even through DNS or a redirect.
+ */
+export function sandboxEgressPolicy(appName: string): {
+  privateAllowedFor: (url: URL) => boolean
+  refuseAddress?: (address: string, url: URL) => string | null
+} {
+  if (!sandboxTenantKey(appName)) return { privateAllowedFor: isOperatorPrivateAppHost }
+  return {
+    privateAllowedFor: () => false,
+    refuseAddress: (address, url) =>
+      cellOwnAddresses().has(normalizeAddress(address)) || isCellOwnHost(url.hostname)
+        ? CELL_SELF_REFUSAL
+        : null,
+  }
+}
 
 export function validateSandboxFetchUrl(
   url: string | URL,
   allowedDomains: string[],
   allowPrivateHostsInTest: boolean,
+  appName: string,
 ): URL {
   const parsed = new URL(url)
   if (!matchesDomain(parsed, allowedDomains)) {
     throw new Error(`Domain not in allowlist: ${parsed.hostname}`)
   }
+  const custom = sandboxTenantKey(appName) !== undefined
+  // An org's custom app: never this server itself, by name or literal address.
+  if (custom && isCellOwnHost(parsed.hostname)) throw new Error(CELL_SELF_REFUSAL)
 
   try {
     // DNS resolution + private-net check happens inside fetchWithPinnedHost
     // (single lookup, pinned at connect time). This call only validates
-    // scheme + literal-IP private ranges.
-    if (isOperatorPrivateAppHost(parsed)) {
+    // scheme + literal-IP private ranges. The operator's private hosts are
+    // for instance apps only, never an org's custom app.
+    if (!custom && isOperatorPrivateAppHost(parsed)) {
       return validateOutboundUrlNoDns(parsed, { requireHttps: false, allowPrivate: true })
     }
     return validateOutboundUrlNoDns(parsed, { requireHttps: true, allowPrivateHostsInTest })

@@ -53,7 +53,7 @@ export const defaultProofreadDeps: ProofreadDeps = {
     }),
   complete: async ({ system, prompt, orgId, userId, signal, maxRetries }) => {
     const cc = await preCheck(orgId, null) // null → cheapest auto-eligible model
-    if (!cc.allowed) throw new ProofreadError(cc.reason, cc.status, cc.code)
+    if (!cc.allowed) throw new ProofreadError(cc.reason, cc.status, cc.code ?? cc.billingCode)
     let result: Awaited<ReturnType<typeof generateText>>
     try {
       const model = await resolveSideCallModel(cc)

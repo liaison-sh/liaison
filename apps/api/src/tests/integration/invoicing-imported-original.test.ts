@@ -22,6 +22,7 @@ import { putObject } from "~/infra/storage/object-storage"
 import { getObjectBytes } from "~/lib/storage/get-object-bytes"
 import { decideApproval } from "~/modules/approvals/decide"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
+import { CatalogDerivationsTestAccess } from "~/modules/apps/catalog-derivations"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
@@ -190,8 +191,9 @@ describe("imported legacy originals (real Postgres + storage, issuer scopes)", (
     await initWorkerPool()
     await registerApps([bundledDescriptor("invoicing") as never], ORG)
     // The production kernel.files SELECT policy from the registered fileParents (boot does this):
-    // a file is readable only through the parent row that references it.
-    await rebuildFilesSelectPolicy()
+    // a file is readable only through the parent row that references it. Boot builds it from the
+    // installed catalog, which need not hold the invoicing app registered from source here.
+    await rebuildFilesSelectPolicy({ parents: CatalogDerivationsTestAccess.registryFileParents() })
     await removeTestOrgRows()
 
     const issuerId = randomUUID()

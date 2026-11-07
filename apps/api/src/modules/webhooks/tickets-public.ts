@@ -25,6 +25,7 @@ import { RequestBodyTooLargeError, readRequestTextWithLimit } from "~/lib/reques
 import { getClientIp } from "~/lib/request-context"
 import { checkRateLimit } from "~/middleware/rate-limiter"
 import { APP_STATE_UNAVAILABLE_CODE, pathOrgAppState } from "~/modules/apps/org-apps"
+import { assertOrgTakesPublicWrites } from "~/modules/cloud/suspension"
 import { resolveContact } from "~/modules/contacts/service"
 import { ORG_DELETED_CODE, OrgDeletedError } from "~/modules/org/purge/deleting"
 
@@ -44,7 +45,8 @@ const log = rootLogger.child({ module: "tickets-public-webhook" })
 
 export const ticketsPublicRoutes = new Hono<AppEnv>()
 
-// Tickets turned Off (or removed) for the org (S19, D24): its first-party
+// Tickets turned Off (or removed) for the org (S19), or the managed org
+// suspended or closed (403, below): its first-party
 // public endpoints (ticket create, attachments, CSAT) answer 503 app_disabled,
 // so a form embedding them shows a clear failure instead of a silent drop.
 // Fail-closed: an unreadable state answers 503 as well.
@@ -70,6 +72,13 @@ async function refuseWhenTicketsOff(c: Context<AppEnv>, next: () => Promise<void
       410,
     )
   }
+  // A managed org suspended or closed for billing (cloud/suspension.ts) takes
+  // no new tickets, attachments or survey answers from the public: 403
+  // `org_suspended`, the shape the authenticated routes answer. Provider
+  // webhooks keep their 200-and-drop (webhooks/routes.ts); these are a form's
+  // own calls, and a form can show the refusal. A no-op, without a query, on a
+  // self-hosted instance.
+  await assertOrgTakesPublicWrites(c.req.param("orgId") ?? "")
   if (state === "off") {
     return c.json({ error: { message: APP_DISABLED_MESSAGE, code: APP_DISABLED_CODE } }, 503)
   }

@@ -35,6 +35,8 @@ import { seedDefaultRoles } from "~/modules/permissions/default-roles"
 import { seedManifestDefaults } from "~/modules/saved-views/seed"
 
 export interface EnsureOrgInput {
+  /** The id a CREATED org gets (a caller that names its orgs up front); ignored on update. */
+  id?: string
   slug: string
   name: string
   timezone?: string
@@ -55,7 +57,7 @@ const DEFAULT_CREDITS_INITIAL = "0"
  * the org id and whether this call created it.
  */
 export async function ensureOrg(input: EnsureOrgInput): Promise<EnsureOrgResult> {
-  const { slug, name, timezone, locale, credits } = input
+  const { id, slug, name, timezone, locale, credits } = input
 
   const result = await withSystemDb("cli-ensure-org", async (tx) => {
     const [existing] = await tx
@@ -85,6 +87,7 @@ export async function ensureOrg(input: EnsureOrgInput): Promise<EnsureOrgResult>
     const [org] = await tx
       .insert(organizations)
       .values({
+        ...(id !== undefined ? { id } : {}),
         name,
         slug,
         ...(timezone !== undefined ? { timezone } : {}),

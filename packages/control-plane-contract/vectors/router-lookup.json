@@ -1,0 +1,244 @@
+{
+  "$comment": "Contract v2 router host-lookup signing vectors (Worker -> Control). Generated once by an independent HMAC implementation; literals on purpose.",
+  "windowSeconds": 60,
+  "headers": {
+    "signature": "x-router-signature",
+    "ts": "x-router-ts"
+  },
+  "sign": [
+    {
+      "routerSecret": "r0uter-secret-for-vectors-only-3f9c1a7e",
+      "slug": "acme-audio",
+      "ts": 1793577600,
+      "canonical": "1793577600.POST.acme-audio",
+      "signature": "XngI9MRj9Gq0/mdxpwH3EkoG6cRMCd8228ZGWYp5p8M="
+    },
+    {
+      "routerSecret": "r0uter-secret-for-vectors-only-3f9c1a7e",
+      "slug": "abc",
+      "ts": 1793577601,
+      "canonical": "1793577601.POST.abc",
+      "signature": "2VdT4HdRP1Ieb0kkIsmewbvwiPyoaRcqniNAry5smQ4="
+    },
+    {
+      "routerSecret": "r0uter-secret-for-vectors-only-3f9c1a7e",
+      "slug": "a1-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxz",
+      "ts": 1793577602,
+      "canonical": "1793577602.POST.a1-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxz",
+      "signature": "3jOaKIvvC1IJCdKdQbV7Sw0bWqr/t88xCCvvhl58Rbo="
+    }
+  ],
+  "verify": [
+    {
+      "name": "valid at ts",
+      "routerSecret": "r0uter-secret-for-vectors-only-3f9c1a7e",
+      "slug": "acme-audio",
+      "headers": {
+        "x-router-signature": "XngI9MRj9Gq0/mdxpwH3EkoG6cRMCd8228ZGWYp5p8M=",
+        "x-router-ts": "1793577600"
+      },
+      "now": 1793577600,
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "name": "valid at ts+60 (window edge)",
+      "routerSecret": "r0uter-secret-for-vectors-only-3f9c1a7e",
+      "slug": "acme-audio",
+      "headers": {
+        "x-router-signature": "XngI9MRj9Gq0/mdxpwH3EkoG6cRMCd8228ZGWYp5p8M=",
+        "x-router-ts": "1793577600"
+      },
+      "now": 1793577660,
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "name": "valid at ts-60 (window edge)",
+      "routerSecret": "r0uter-secret-for-vectors-only-3f9c1a7e",
+      "slug": "acme-audio",
+      "headers": {
+        "x-router-signature": "XngI9MRj9Gq0/mdxpwH3EkoG6cRMCd8228ZGWYp5p8M=",
+        "x-router-ts": "1793577600"
+      },
+      "now": 1793577540,
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "name": "stale at ts+61",
+      "routerSecret": "r0uter-secret-for-vectors-only-3f9c1a7e",
+      "slug": "acme-audio",
+      "headers": {
+        "x-router-signature": "XngI9MRj9Gq0/mdxpwH3EkoG6cRMCd8228ZGWYp5p8M=",
+        "x-router-ts": "1793577600"
+      },
+      "now": 1793577661,
+      "expect": {
+        "ok": false,
+        "reason": "stale"
+      }
+    },
+    {
+      "name": "future at ts-61",
+      "routerSecret": "r0uter-secret-for-vectors-only-3f9c1a7e",
+      "slug": "acme-audio",
+      "headers": {
+        "x-router-signature": "XngI9MRj9Gq0/mdxpwH3EkoG6cRMCd8228ZGWYp5p8M=",
+        "x-router-ts": "1793577600"
+      },
+      "now": 1793577539,
+      "expect": {
+        "ok": false,
+        "reason": "stale"
+      }
+    },
+    {
+      "name": "tampered slug",
+      "routerSecret": "r0uter-secret-for-vectors-only-3f9c1a7e",
+      "slug": "acme-audios",
+      "headers": {
+        "x-router-signature": "XngI9MRj9Gq0/mdxpwH3EkoG6cRMCd8228ZGWYp5p8M=",
+        "x-router-ts": "1793577600"
+      },
+      "now": 1793577600,
+      "expect": {
+        "ok": false,
+        "reason": "bad_signature"
+      }
+    },
+    {
+      "name": "tampered ts header",
+      "routerSecret": "r0uter-secret-for-vectors-only-3f9c1a7e",
+      "slug": "acme-audio",
+      "headers": {
+        "x-router-signature": "XngI9MRj9Gq0/mdxpwH3EkoG6cRMCd8228ZGWYp5p8M=",
+        "x-router-ts": "1793577601"
+      },
+      "now": 1793577600,
+      "expect": {
+        "ok": false,
+        "reason": "bad_signature"
+      }
+    },
+    {
+      "name": "wrong secret",
+      "routerSecret": "another-router-secret",
+      "slug": "acme-audio",
+      "headers": {
+        "x-router-signature": "XngI9MRj9Gq0/mdxpwH3EkoG6cRMCd8228ZGWYp5p8M=",
+        "x-router-ts": "1793577600"
+      },
+      "now": 1793577600,
+      "expect": {
+        "ok": false,
+        "reason": "bad_signature"
+      }
+    },
+    {
+      "name": "missing signature",
+      "routerSecret": "r0uter-secret-for-vectors-only-3f9c1a7e",
+      "slug": "acme-audio",
+      "headers": {
+        "x-router-ts": "1793577600"
+      },
+      "now": 1793577600,
+      "expect": {
+        "ok": false,
+        "reason": "missing_header"
+      }
+    },
+    {
+      "name": "missing ts",
+      "routerSecret": "r0uter-secret-for-vectors-only-3f9c1a7e",
+      "slug": "acme-audio",
+      "headers": {
+        "x-router-signature": "XngI9MRj9Gq0/mdxpwH3EkoG6cRMCd8228ZGWYp5p8M="
+      },
+      "now": 1793577600,
+      "expect": {
+        "ok": false,
+        "reason": "missing_header"
+      }
+    },
+    {
+      "name": "ts not unix seconds",
+      "routerSecret": "r0uter-secret-for-vectors-only-3f9c1a7e",
+      "slug": "acme-audio",
+      "headers": {
+        "x-router-signature": "XngI9MRj9Gq0/mdxpwH3EkoG6cRMCd8228ZGWYp5p8M=",
+        "x-router-ts": "1793577600.5"
+      },
+      "now": 1793577600,
+      "expect": {
+        "ok": false,
+        "reason": "malformed_header"
+      }
+    },
+    {
+      "name": "slug with a dot",
+      "routerSecret": "r0uter-secret-for-vectors-only-3f9c1a7e",
+      "slug": "acme.audio",
+      "headers": {
+        "x-router-signature": "f4p9blnkM+988xuaEWozjv43sLaQ8r3op1boDM/hODA=",
+        "x-router-ts": "1793577600"
+      },
+      "now": 1793577600,
+      "expect": {
+        "ok": false,
+        "reason": "invalid_slug"
+      }
+    },
+    {
+      "name": "slug with a leading hyphen",
+      "routerSecret": "r0uter-secret-for-vectors-only-3f9c1a7e",
+      "slug": "-acme",
+      "headers": {
+        "x-router-signature": "tot8GGXkC6/tT/qVZd+y4DNPNmOQRpQevGW5Ffn7g8U=",
+        "x-router-ts": "1793577600"
+      },
+      "now": 1793577600,
+      "expect": {
+        "ok": false,
+        "reason": "invalid_slug"
+      }
+    },
+    {
+      "name": "slug too short",
+      "routerSecret": "r0uter-secret-for-vectors-only-3f9c1a7e",
+      "slug": "ab",
+      "headers": {
+        "x-router-signature": "HYMJqceuYLHa22vL88wQjba7K/CGyA4XNuyigKuNlJo=",
+        "x-router-ts": "1793577600"
+      },
+      "now": 1793577600,
+      "expect": {
+        "ok": false,
+        "reason": "invalid_slug"
+      }
+    }
+  ],
+  "replies": {
+    "valid": [
+      {
+        "cellOrigin": "https://cell-1-origin.example.com"
+      },
+      {
+        "cellOrigin": null
+      }
+    ],
+    "invalid": [
+      {},
+      {
+        "cellOrigin": "http://cell-1-origin.example.com"
+      },
+      {
+        "cellOrigin": "not a url"
+      },
+      null
+    ]
+  }
+}

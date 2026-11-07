@@ -30,6 +30,7 @@ import { createHash } from "node:crypto"
 import { APICallError } from "ai"
 import { rootLogger } from "~/lib/logger"
 import { redis } from "~/lib/redis"
+import { RUNTIME_TAIL_OPEN } from "~/modules/agent/context/context"
 import { SCRIPTED_FALLBACK_REPLY } from "~/modules/agent/providers/load-script-catalog"
 
 // The `LanguageModelV3` shapes are declared structurally rather than imported:
@@ -309,6 +310,22 @@ function isScriptedStep(message: PromptMessage): boolean {
   )
 }
 
+/** The turn's ephemeral runtime-context tail (context.ts RUNTIME_TAIL_OPEN). */
+function isRuntimeTail(message: PromptMessage): boolean {
+  if (message.role !== "user") return false
+  const content = message.content as unknown
+  const text =
+    typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? (content.find(
+            (p): p is { type: "text"; text: string } =>
+              typeof p === "object" && p !== null && (p as { type?: unknown }).type === "text",
+          )?.text ?? "")
+        : ""
+  return text.startsWith(RUNTIME_TAIL_OPEN)
+}
+
 /**
  * Where a call stands in its turn, read off the prompt it received.
  *
@@ -322,8 +339,8 @@ function isScriptedStep(message: PromptMessage): boolean {
  * step with no tool call ends a turn, so the count stops at the turn's start.
  *
  * `turn` identifies the turn: how many history assistant messages precede it,
- * and the first user message after them (the person's message). Exported for
- * its unit test.
+ * how many user messages open it (a follow-up sent during an earlier turn adds
+ * one), and the first of them (the person's message). Exported for its unit test.
  */
 export function scriptedStepPosition(options: unknown): { stepsSoFar: number; turn: string } {
   const prompt = promptOf(options)
@@ -347,7 +364,20 @@ export function scriptedStepPosition(options: unknown): { stepsSoFar: number; tu
   } catch {
     content = String(boundary)
   }
-  const turn = createHash("sha256").update(`${history}:${content}`).digest("hex").slice(0, 24)
+  // The user messages that open the turn, up to its first step or its runtime
+  // tail (on a first call the tail and the per-step notes after it sit before
+  // any step; later calls move them after the steps): a follow-up sent while
+  // an earlier turn still answers shares that turn's history and first
+  // message, and only this count tells the two apart.
+  let leading = 0
+  for (const m of prompt.slice(boundary + 1)) {
+    if (m.role === "assistant" || isRuntimeTail(m)) break
+    if (m.role === "user") leading++
+  }
+  const turn = createHash("sha256")
+    .update(`${history}:${leading}:${content}`)
+    .digest("hex")
+    .slice(0, 24)
   return { stepsSoFar, turn }
 }
 

@@ -32,6 +32,12 @@ export const SKILL_NAME_UNIQUE_INDEX = [
   "skills_owner_agent_id_name_idx",
 ] as const
 
+/** kernel.routines (org_id, owner_user_id, name): migrated name, then the LIKE-clone name. */
+export const ROUTINE_NAME_UNIQUE_INDEX = [
+  "routines_unique_owner_name_idx",
+  "routines_org_id_owner_user_id_name_idx",
+] as const
+
 /**
  * True iff `err` is a unique violation raised by one of `indexNames`.
  * Prefers postgres.js's STRUCTURED `constraint_name` and falls back to a

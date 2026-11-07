@@ -8,8 +8,8 @@ provider registrations Meta Pages app / Instagram business app / Google web clie
 callback redirect URI, Valid OAuth Redirect URIs / Authorized redirect URIs -> bundled-apps/social/README.md:55
 Connections settings section, social:admin:connection -> bundled-apps/social/app.manifest.json:595
 Connect button -> apps/web/src/modules/settings/app-page/ConnectionsBlock.tsx:416
-Client ID / Client secret fields -> apps/web/src/modules/settings/ConnectAppDialog.tsx:296
-Connect via OAuth -> apps/web/src/modules/settings/ConnectAppDialog.tsx:327
+Client ID / Client secret fields -> apps/web/src/modules/settings/ConnectAppDialog.tsx:321
+Connect via OAuth, or Connect when a client is configured -> apps/web/src/modules/settings/ConnectAppDialog.tsx:357
 org-owned; jobs run as org; not_connected otherwise -> bundled-apps/social/README.md:78
 instagram scopes -> bundled-apps/social/app.manifest.json:35
 facebook scopes -> bundled-apps/social/app.manifest.json:60
@@ -67,6 +67,14 @@ app setting instagramLoginConfigurationId -> bundled-apps/social/app.manifest.js
 no revoke call: remove the app from the business portfolio -> bundled-apps/social/app.manifest.json:115
 Facebook token reminder 14 days before expiry -> apps/api/src/modules/apps/connections/attention.ts:198
 Graph API v26.0 -> bundled-apps/social/src/adapters/facebook.ts:56
+managed server: webhooks_setup uses the server callback /webhooks/_cell/meta -> bundled-apps/social/src/webhooks-setup.ts:117
+deliveries routed by Page id to the workspaces holding it -> apps/api/src/modules/cloud/cell-webhooks.ts:178
+webhooks_setup records the subscribed Page ids (run again after adding a Page) -> bundled-apps/social/src/webhooks-setup.ts:333
+callback of another server: refused, nothing changes -> bundled-apps/social/src/webhooks-setup.ts:242
+Pages checked against Meta before a delivery is read, at most once a minute; unmanaged Page dropped and pruned -> bundled-apps/social/src/meta-pages.ts:28 ; bundled-apps/social/src/meta-pages.ts:156 ; bundled-apps/social/src/ingest.ts:456
+Re-checked on every discovery sync -> bundled-apps/social/src/sync.ts:289
+Disconnect or a refused token empties the list -> bundled-apps/social/src/connection.ts:197 ; bundled-apps/social/src/meta-pages.ts:31
+Only orgs whose Facebook connection is still active receive a Page -> apps/api/src/modules/cloud/cell-webhooks.ts:295
 reply card shows the comment, the post excerpt and a link -> bundled-apps/social/src/summarizers.ts:136
 link falls back to the post, then to one built from the ids -> bundled-apps/social/src/summarizers.ts:104
 Facebook comment link built when Graph omits it -> bundled-apps/social/src/adapters/facebook.ts:222

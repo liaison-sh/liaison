@@ -34,6 +34,7 @@ import {
 } from "~/db/schema/kernel"
 import { INSTANCE_ID } from "~/infra/instance-id"
 import { rootLogger } from "~/lib/logger"
+import { sweepSkippingMoving } from "~/modules/org/transfer-state/skip-moving"
 
 const log = rootLogger.child({ module: "turn-ledger" })
 
@@ -377,36 +378,40 @@ export async function reopenForRetry(input: {
  */
 export async function expireStaleTurns(maxAgeMs: number = TURN_MAX_AGE_MS): Promise<string[]> {
   const maxAgeS = maxAgeMs / 1000
-  return withSystemDb("turn-ledger:expire", async (tx) => {
-    const rows = await tx
-      .update(agentTurns)
-      .set({
-        state: "interrupted",
-        errorCode: "turn_expired",
-        // Nothing carried it on: its process stopped or died, or hung past
-        // every budget.
-        failureReason: "process",
-        finishedAt: sql`now()`,
-        updatedAt: sql`now()`,
-      })
-      .where(
-        and(
-          inArray(agentTurns.state, ["running", "handoff"]),
-          lt(agentTurns.createdAt, sql`now() - make_interval(secs => ${maxAgeS})`),
-        ),
-      )
-      .returning({ id: agentTurns.id, orgId: agentTurns.orgId })
-    if (rows.length === 0) return []
-    const ids = rows.map((r) => r.id)
-    await tx.delete(agentTurnEvents).where(inArray(agentTurnEvents.turnId, ids))
-    for (const row of rows) {
-      await tx
-        .delete(effectLedger)
-        .where(and(eq(effectLedger.orgId, row.orgId), turnEffectKeys(row.id)))
-    }
-    log.warn({ turns: ids }, "turn_expired")
-    return ids
-  })
+  // An org being moved keeps its turns as they are until the move ends.
+  return sweepSkippingMoving((notMoving) =>
+    withSystemDb("turn-ledger:expire", async (tx) => {
+      const rows = await tx
+        .update(agentTurns)
+        .set({
+          state: "interrupted",
+          errorCode: "turn_expired",
+          // Nothing carried it on: its process stopped or died, or hung past
+          // every budget.
+          failureReason: "process",
+          finishedAt: sql`now()`,
+          updatedAt: sql`now()`,
+        })
+        .where(
+          and(
+            inArray(agentTurns.state, ["running", "handoff"]),
+            lt(agentTurns.createdAt, sql`now() - make_interval(secs => ${maxAgeS})`),
+            notMoving(agentTurns.orgId),
+          ),
+        )
+        .returning({ id: agentTurns.id, orgId: agentTurns.orgId })
+      if (rows.length === 0) return []
+      const ids = rows.map((r) => r.id)
+      await tx.delete(agentTurnEvents).where(inArray(agentTurnEvents.turnId, ids))
+      for (const row of rows) {
+        await tx
+          .delete(effectLedger)
+          .where(and(eq(effectLedger.orgId, row.orgId), turnEffectKeys(row.id)))
+      }
+      log.warn({ turns: ids }, "turn_expired")
+      return ids
+    }),
+  )
 }
 
 /** The turn a durable origin (a job) already opened in the org, or null. */
@@ -499,39 +504,44 @@ export async function pruneTerminalTurns(
 ): Promise<{ turns: number; events: number; effects: number }> {
   const terminal = ["done", "failed", "interrupted"] as const
   const olderThanS = olderThanMs / 1000
-  return withSystemDb("turn-ledger:retention", async (tx) => {
-    const turns = await tx
-      .delete(agentTurns)
-      .where(
-        and(
-          inArray(agentTurns.state, terminal),
-          lt(
-            sql`coalesce(${agentTurns.finishedAt}, ${agentTurns.updatedAt})`,
-            sql`now() - make_interval(secs => ${olderThanS})`,
+  // An org being moved keeps its rows as they are until the move ends.
+  return sweepSkippingMoving((notMoving) =>
+    withSystemDb("turn-ledger:retention", async (tx) => {
+      const turns = await tx
+        .delete(agentTurns)
+        .where(
+          and(
+            notMoving(agentTurns.orgId),
+            inArray(agentTurns.state, terminal),
+            lt(
+              sql`coalesce(${agentTurns.finishedAt}, ${agentTurns.updatedAt})`,
+              sql`now() - make_interval(secs => ${olderThanS})`,
+            ),
           ),
-        ),
-      )
-      .returning({ id: agentTurns.id })
-    const terminalIds = tx
-      .select({ id: agentTurns.id })
-      .from(agentTurns)
-      .where(inArray(agentTurns.state, terminal))
-    const events = await tx
-      .delete(agentTurnEvents)
-      .where(inArray(agentTurnEvents.turnId, terminalIds))
-      .returning({ turnId: agentTurnEvents.turnId })
-    // Turn write results left behind (a turn whose finish never ran): every
-    // `tool:` row older than the longest a turn may stay open (M4).
-    const maxAgeS = TURN_MAX_AGE_MS / 1000
-    const effects = await tx
-      .delete(effectLedger)
-      .where(
-        and(
-          sql`${effectLedger.key} LIKE 'tool:%'`,
-          lt(effectLedger.createdAt, sql`now() - make_interval(secs => ${maxAgeS})`),
-        ),
-      )
-      .returning({ key: effectLedger.key })
-    return { turns: turns.length, events: events.length, effects: effects.length }
-  })
+        )
+        .returning({ id: agentTurns.id })
+      const terminalIds = tx
+        .select({ id: agentTurns.id })
+        .from(agentTurns)
+        .where(inArray(agentTurns.state, terminal))
+      const events = await tx
+        .delete(agentTurnEvents)
+        .where(and(inArray(agentTurnEvents.turnId, terminalIds), notMoving(agentTurnEvents.orgId)))
+        .returning({ turnId: agentTurnEvents.turnId })
+      // Turn write results left behind (a turn whose finish never ran): every
+      // `tool:` row older than the longest a turn may stay open.
+      const maxAgeS = TURN_MAX_AGE_MS / 1000
+      const effects = await tx
+        .delete(effectLedger)
+        .where(
+          and(
+            notMoving(effectLedger.orgId),
+            sql`${effectLedger.key} LIKE 'tool:%'`,
+            lt(effectLedger.createdAt, sql`now() - make_interval(secs => ${maxAgeS})`),
+          ),
+        )
+        .returning({ key: effectLedger.key })
+      return { turns: turns.length, events: events.length, effects: effects.length }
+    }),
+  )
 }

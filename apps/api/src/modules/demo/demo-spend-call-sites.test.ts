@@ -18,20 +18,26 @@ const ENTRY_POINTS =
 const REVIEWED: Record<string, string> = {
   "infra/jobs/kernel-jobs.ts":
     "routine credit gate: reserve then finish at once (the run is a turn)",
-  "modules/agent/context/checkpoint.ts": "reservation + settle (settleReservedDemoSideCall)",
+  "modules/agent/context/checkpoint.ts": "reservation + settle (meterSideCall)",
   "modules/agent/context/compaction.ts":
     "reservation + settle (finalizeUsage demo, finally finish)",
   "modules/agent/context/warm-compaction.ts":
-    "idle brief: preCheck reservation, settleReservedDemoSideCall in finally",
+    "idle brief: preCheck reservation, meterSideCall in finally",
   "modules/agent/credits/credit-meter.ts":
     "the gate itself: resolveKey capability, visitor preCheck",
+  "modules/agent/credits/managed-side-call.ts":
+    "managed edition only (the demo runs self-hosted); resolveKey applies the visitor gate anyway",
   "modules/agent/credits/openrouter-catalogue.ts": "GET /models with no key: no spend",
   "modules/agent/credits/unreported-generations.ts":
     "GET /generation (a stopped step's record): no spend, the step meter already billed it",
+  "modules/agent/media/media-analysis-client.ts":
+    "OpenRouter call on a key managedSideCallGate returned: managed edition only, never a demo",
   "modules/agent/media/media-analysis-tool.ts":
     "refused (demoMediaAnalysisRefusal) before preCheck",
   "modules/agent/memory/consolidation.ts": "off for every demo org",
   "modules/agent/memory/memory-search.ts": "embedder: Google only, never the box key for a visitor",
+  "modules/agent/providers/openrouter-embeddings.ts":
+    "embeddings on a key managedSideCallGate returned: managed edition only, never a demo",
   "modules/agent/providers/openrouter-host-ranking.ts":
     "GET /models/:id/endpoints with no key: no spend",
   "modules/agent/providers/openrouter.ts":

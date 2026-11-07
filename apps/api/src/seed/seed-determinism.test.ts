@@ -22,6 +22,12 @@ const ALLOWED: Record<string, number> = {
   "tiers/lively/seed-lively.ts": 1,
   "tiers/load/seed-load.ts": 1,
   "tiers/standard/seed-standard.ts": 1,
+  // A test factory's follow-up: the snooze service refuses a past time, so a
+  // follow-up already due is moved an hour past the wall clock.
+  "factories/support/ticket.ts": 2,
+  // A test factory's default billing period end, 20 days past the wall clock
+  // as a fresh billing push would set it; tiers pass their own.
+  "factories/billing/billing.ts": 1,
 }
 
 const FORBIDDEN = /\bDate\.now\(\)|\bnew Date\(\s*\)|\bMath\.random\b/g

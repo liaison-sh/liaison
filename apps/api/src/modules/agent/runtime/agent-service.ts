@@ -7,6 +7,8 @@ import {
   type ClientSurface,
   classifyProviderError,
   getReasoningCapability,
+  OUT_OF_CREDITS_CODE,
+  PAYMENT_REQUIRED_CODE,
   type ProviderNoticeCode,
   redactSecretShapes,
 } from "@liaison/shared"
@@ -293,10 +295,13 @@ import {
 import { agentInstructionsRegistry } from "~/modules/apps/app-registries"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { primeOrgApps } from "~/modules/apps/org-apps"
+import { PaymentRequiredError } from "~/modules/cloud/suspension"
 import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 import { isVisitorDemoOrgId, loadDemoOrg } from "~/modules/demo/demo-org"
 import { type DemoSpendCode, DemoSpendHttpError, demoSpendMessage } from "~/modules/demo/demo-spend"
 import { serverT } from "~/modules/i18n/server-i18n"
+import { assertOrgStartsTurns } from "~/modules/org/transfer-state/gate"
+import { beginOrgActivity } from "~/modules/org/transfer-state/state"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { listBlockingNonDisclosableScopes } from "~/modules/permissions/scope-disclosure-policy"
 import { sendMessage } from "~/modules/threads/message"
@@ -1902,10 +1907,17 @@ async function runAgentChatTurn(
           // draws it once as the conversation's system line and keeps the
           // failed turn's live block and state line quiet (turn-refusal.ts).
           // A demo spend refusal also carries its code, so the client can act
-          // on it (the email-code prompt, the next-steps dialog).
+          // on it (the email-code prompt, the next-steps dialog); an unpaid
+          // renewal or a spent balance carries its code (the Billing link). Any
+          // other refusal shows its own reason: paying would not cure it.
           metadata: {
             turnRefusal: true,
-            ...(creditCheck.code ? { demoRefusal: creditCheck.code } : {}),
+            ...(creditCheck.code
+              ? { demoRefusal: creditCheck.code }
+              : creditCheck.billingCode === PAYMENT_REQUIRED_CODE ||
+                  creditCheck.billingCode === OUT_OF_CREDITS_CODE
+                ? { billingRefusal: creditCheck.billingCode }
+                : {}),
           },
         })
       })
@@ -1913,6 +1925,8 @@ async function runAgentChatTurn(
     if (creditCheck.code) {
       throw new DemoSpendHttpError(creditCheck.code, creditCheck.reason)
     }
+    // An unpaid renewal: 402 `payment_required`, so the client offers Billing.
+    if (creditCheck.billingCode === PAYMENT_REQUIRED_CODE) throw new PaymentRequiredError()
     // Every coded (demo) refusal left above; the rest are 400, 402 or 500.
     const status =
       creditCheck.status === 402 || creditCheck.status === 500 ? creditCheck.status : 400
@@ -4647,7 +4661,19 @@ function asReasoningLevel(value: string | null | undefined): ReasoningLevel | nu
 export function invokeAgentForThread(
   ...args: Parameters<typeof runThreadTurn>
 ): ReturnType<typeof runThreadTurn> {
-  return trackTurn(`thread:${args[0]}:${args[1]}`, () => runThreadTurn(...args))
+  return trackTurn(`thread:${args[0]}:${args[1]}`, async () => {
+    // An org moving to another instance starts no turn once frozen (a
+    // draining org still does: its drain waits for it, counted below).
+    const orgId = args[3]
+    // Counted first, then checked: a freeze landing in between is seen.
+    const end = beginOrgActivity(orgId, "turns")
+    try {
+      await assertOrgStartsTurns(orgId)
+      return await runThreadTurn(...args)
+    } finally {
+      end()
+    }
+  })
 }
 
 async function runThreadTurn(

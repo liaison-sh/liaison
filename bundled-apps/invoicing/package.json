@@ -23,6 +23,7 @@
     "vitest": "^4.1.11"
   },
   "overrides": {
+    "@liaison/control-plane-contract": "file:../../packages/control-plane-contract",
     "@liaison/shared": "file:../../packages/shared"
   }
 }

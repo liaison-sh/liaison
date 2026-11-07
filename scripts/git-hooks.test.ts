@@ -406,6 +406,15 @@ describe.skipIf(!realGitleaks)("the control plane vector allowlist", () => {
     expect(scan(path.join(ROOT, VECTORS))).toEqual([])
   })
 
+  it.each(["c2c", "router-lookup"])(
+    "holds on the %s JSON vectors, relative and absolute",
+    (name) => {
+      const file = `packages/control-plane-contract/vectors/${name}.json`
+      expect(scan(file, ROOT)).toEqual([])
+      expect(scan(path.join(ROOT, file))).toEqual([])
+    },
+  )
+
   it("still reports another value in that file", () => {
     plantInVectors(`const apiKey = "${randomBytes(32).toString("hex")}"`)
     expect(scan(VECTORS)).toEqual(["generic-api-key"])

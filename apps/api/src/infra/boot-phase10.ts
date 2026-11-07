@@ -46,6 +46,9 @@ import {
 import { warnOnImportUploadCors } from "~/modules/imports/uploads/cors-check"
 import { registerImportUploadReaper } from "~/modules/imports/uploads/reaper"
 import { registerMailProducerConsumer } from "~/modules/notifications/mail-producer"
+import { wireAfterCommitResume } from "~/modules/org/transfer/after-commit"
+import { wireIncomingOrgPurge } from "~/modules/org/transfer/purge"
+import { registerOrgTransferResolver } from "~/modules/org/transfer-state/resolver"
 import {
   primeSearchSettings,
   registerReindexWorker,
@@ -542,6 +545,12 @@ export async function runPhase10Boot(): Promise<void> {
   // The leader re-checks the files SELECT policy against the catalog: the
   // fallback when the setup step could not apply it.
   registerFilesSelectPolicyCheck()
+  // The leader resolves an org move whose freeze outlived its deadline, from
+  // the control plane's decision (modules/org/transfer-state/resolver.ts); an
+  // aborted move's incoming copy is purged (modules/org/transfer/purge.ts).
+  wireIncomingOrgPurge()
+  wireAfterCommitResume()
+  registerOrgTransferResolver()
   log.info("Phase 10 boot: search readiness probed, drift check armed on the leader")
 
   await registerStateMaterializerScheduledJob()

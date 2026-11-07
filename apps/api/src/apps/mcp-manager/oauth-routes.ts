@@ -34,7 +34,6 @@ import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
 import { mcpConnectionHealth, mcpConnections, mcpOAuthState } from "~/db/schema/app_mcp_manager"
-import { env } from "~/lib/env"
 import { localeFromAcceptLanguage } from "~/lib/html-page"
 import { rootLogger } from "~/lib/logger"
 import {
@@ -42,6 +41,8 @@ import {
   connectBindingMatches,
   setConnectBindingCookie,
 } from "~/lib/oauth-browser-binding"
+import { hostAllowsOrg } from "~/lib/org-host"
+import { orgPublicBaseUrl } from "~/lib/org-public-url"
 import { UnsafeOutboundUrlError, validateOutboundUrlNoDns } from "~/lib/outbound-fetch"
 import { redis } from "~/lib/redis"
 import { isAppOriginRequest } from "~/lib/response"
@@ -88,6 +89,7 @@ import {
   cimdDocumentUrl,
   clientMetadataDocument,
   MCP_OAUTH_CALLBACK_PATH,
+  mcpOAuthBaseUrl,
   OAuthRegistrationError,
 } from "./oauth-registration"
 import {
@@ -312,6 +314,8 @@ async function planAuthorization(
   conn: { authFlavor: string; httpUrl: string },
   meta: McpOAuthMetadata,
   secrets: McpSecretsBlob,
+  /** The client's base (mcpOAuthBaseUrl). */
+  base: string,
 ): Promise<AuthorizationPlan> {
   if (isManualStatic(conn.authFlavor, meta)) return manualPlan(conn.httpUrl, meta, secrets)
 
@@ -320,6 +324,7 @@ async function planAuthorization(
   const extra = [...(meta.scopes ?? []), ...(meta.requiredScope ?? "").split(/\s+/).filter(Boolean)]
   const scope = selectScope(ctx, extra)
   const client = await chooseClient({
+    base,
     authFlavor: conn.authFlavor,
     existing: {
       clientId: meta.clientId ?? secrets.oauthClientId,
@@ -375,9 +380,11 @@ export interface McpProbeResult {
 
 async function probeServer(
   url: string,
+  /** The client's base (mcpOAuthBaseUrl). */
+  clientBase: string,
 ): Promise<McpProbeResult | { error: { message: string; code: string } }> {
   const base = {
-    callbackUrl: callbackUrl(),
+    callbackUrl: callbackUrl(clientBase),
     resource: canonicalServerUri(url),
     scopes: [] as string[],
     requiresClientSecret: false,
@@ -406,14 +413,14 @@ async function probeServer(
     }
     const metadata = ctx.metadata
     const cimd =
-      cimdDocumentUrl() !== null &&
+      cimdDocumentUrl(clientBase) !== null &&
       (metadata as Record<string, unknown>).client_id_metadata_document_supported === true
     const mode = cimd ? "cimd" : metadata.registration_endpoint ? "dcr" : "preregistered"
     // RFC 8414: no list means client_secret_basic only, which needs a secret.
     const methods = metadata.token_endpoint_auth_methods_supported ?? ["client_secret_basic"]
     return {
       mode,
-      callbackUrl: callbackUrl(),
+      callbackUrl: callbackUrl(clientBase),
       resource: ctx.resource,
       scopes: (selectScope(ctx) ?? "").split(" ").filter(Boolean),
       requiresClientSecret: mode === "preregistered" && !methods.includes("none"),
@@ -428,7 +435,7 @@ async function probeServer(
 }
 
 type FinalizeOutcome =
-  | { ok: true; connectionId: string; displayName: string }
+  | { ok: true; connectionId: string; orgId: string; displayName: string }
   | {
       ok: false
       status: 400 | 409 | 410 | 502
@@ -482,6 +489,8 @@ async function finalizeOAuth(
   stateRow: typeof mcpOAuthState.$inferSelect,
   code: string,
   actorId: string,
+  /** The client's base (mcpOAuthBaseUrl): the redirect_uri the start sent. */
+  base: string,
 ): Promise<FinalizeOutcome> {
   const who = actorId || stateRow.initiatorUserId || null
   const [conn] = await withSystemDb("mcp-oauth-callback-conn", (db) =>
@@ -556,7 +565,7 @@ async function finalizeOAuth(
       clientInformation: clientInformationFor(meta, existingSecrets),
       authorizationCode: code,
       codeVerifier: stateRow.pkceVerifier,
-      redirectUri: callbackUrl(),
+      redirectUri: callbackUrl(base),
       ...(resource ? { resource } : {}),
       fetchFn: recording.fetchFn,
     })
@@ -638,7 +647,7 @@ async function finalizeOAuth(
   // The live transport and cached credentials hold the previous token.
   await invalidateMcpConnection(conn.id, { healthStatus: "idle" })
 
-  return { ok: true, connectionId: conn.id, displayName: conn.displayName }
+  return { ok: true, connectionId: conn.id, orgId: conn.orgId, displayName: conn.displayName }
 }
 
 export const mcpManagerOAuthRoutes = new Hono<AppEnv>()
@@ -696,6 +705,7 @@ export const mcpManagerOAuthRoutes = new Hono<AppEnv>()
         { authFlavor: conn.authFlavor, httpUrl: conn.httpUrl },
         existingMeta,
         existingSecrets,
+        mcpOAuthBaseUrl(c),
       )
     } catch (err) {
       const refusal = startRefusal(err)
@@ -713,7 +723,7 @@ export const mcpManagerOAuthRoutes = new Hono<AppEnv>()
       started = await startAuthorization(plan.authorizationServerUrl, {
         metadata: plan.metadata,
         clientInformation: { client_id: plan.client.clientId },
-        redirectUrl: callbackUrl(),
+        redirectUrl: callbackUrl(mcpOAuthBaseUrl(c)),
         state,
         // Verbatim: a re-serialised URL would gain a trailing slash.
         resource: plan.resource,
@@ -837,6 +847,12 @@ export const mcpManagerOAuthRoutes = new Hono<AppEnv>()
       log.warn({ state }, "oauth callback rejected — state not found / mismatch")
       return callbackError(c, 400, { message: "Invalid or expired state", code: "state_mismatch" })
     }
+    // Host binding: the callback lands on the org host the flow started on (its
+    // redirect_uri); another org's host leaves the state for its own browser.
+    if (stateRow.initiatorOrgId && !(await hostAllowsOrg(c, stateRow.initiatorOrgId))) {
+      log.warn({ stateId: stateRow.id }, "oauth callback rejected — another org's host")
+      return callbackError(c, 400, { message: "Invalid or expired state", code: "state_mismatch" })
+    }
     if (stateRow.expiresAt < new Date()) {
       await withSystemDb("mcp-oauth-callback-stale", (db) =>
         db.delete(mcpOAuthState).where(eq(mcpOAuthState.id, stateRow.id)),
@@ -917,10 +933,10 @@ export const mcpManagerOAuthRoutes = new Hono<AppEnv>()
       })
     }
 
-    const done = await finalizeOAuth(stateRow, code, actor.userId)
+    const done = await finalizeOAuth(stateRow, code, actor.userId, mcpOAuthBaseUrl(c))
     if (!done.ok) return callbackError(c, done.status, done.error)
     const nameKey = await rememberDonePageName(done.displayName)
-    const returnUrl = `${env.BASE_URL.replace(/\/$/, "")}/api/apps/mcp-manager/oauth/done?connection=${done.connectionId}${nameKey ? `&done=${nameKey}` : ""}&oauth=ok`
+    const returnUrl = `${(await orgPublicBaseUrl(done.orgId)).replace(/\/$/, "")}/api/apps/mcp-manager/oauth/done?connection=${done.connectionId}${nameKey ? `&done=${nameKey}` : ""}&oauth=ok`
     return c.redirect(returnUrl, 302)
   })
   // The add flow's first step: what signing in to this server will take,
@@ -944,7 +960,7 @@ export const mcpManagerOAuthRoutes = new Hono<AppEnv>()
         400,
       )
     }
-    const result = await probeServer(url)
+    const result = await probeServer(url, mcpOAuthBaseUrl(c))
     if ("error" in result) return c.json({ error: result.error }, 422)
     return c.json({ data: result })
   })
@@ -992,7 +1008,12 @@ export const mcpManagerOAuthRoutes = new Hono<AppEnv>()
     // again so the redemption stands on its own.
     const issRefusal = issProblem(stateRow, handoff.callbackParams.iss)
     if (issRefusal) return c.json({ error: issRefusal }, 400)
-    const done = await finalizeOAuth(stateRow, handoff.providerCode, actor.userId)
+    const done = await finalizeOAuth(
+      stateRow,
+      handoff.providerCode,
+      actor.userId,
+      mcpOAuthBaseUrl(c),
+    )
     if (!done.ok) return c.json({ error: done.error }, done.status)
     return c.json({ data: { connectionId: done.connectionId } })
   })
@@ -1024,8 +1045,9 @@ mcpManagerOAuthRoutes.get("/oauth/done", async (c) => {
 // past the bearer chain). Served only when BASE_URL is public HTTPS: a
 // localhost instance could not be fetched, and advertises nothing.
 mcpManagerOAuthRoutes.get("/oauth/client-metadata.json", (c) => {
-  if (!cimdDocumentUrl()) {
+  const base = mcpOAuthBaseUrl(c)
+  if (!cimdDocumentUrl(base)) {
     return c.json({ error: { message: "Not found", code: "not_found" } }, 404)
   }
-  return c.json(clientMetadataDocument(), 200, { "Cache-Control": "public, max-age=300" })
+  return c.json(clientMetadataDocument(base), 200, { "Cache-Control": "public, max-age=300" })
 })

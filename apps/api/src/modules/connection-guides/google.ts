@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * The values a Google setup needs, computed, never guessed: the redirect URIs
- * built from BASE_URL exactly as the connection and sign-in code build them, the
+ * built from the OAuth redirect base (oauthRedirectBaseUrl) exactly as the
+ * connection and sign-in code build them, the
  * union of the Google scopes of the apps that are on in this workspace, and the
  * Google APIs those scopes need turned on. The guide copy lives in
  * `@liaison/shared` (setup-guides.ts); this file only feeds it.
@@ -17,7 +18,9 @@ import {
 import { and, eq } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
 import { connectedAccounts } from "~/db/schema/kernel"
+import { isManagedEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
+import { oauthRedirectBaseUrl } from "~/lib/org-public-url"
 import { connectionConfigRegistry } from "~/modules/apps/app-registries"
 import {
   GOOGLE_WORKSPACE_CLIENT_CONNECTIONS,
@@ -259,6 +262,22 @@ export async function resolveGoogleClients(
   return { workspace: await one(FAMILY_KEYS.workspace), drive: await one(FAMILY_KEYS.drive) }
 }
 
+/**
+ * Whether the server's Gmail push topic (GMAIL_PUBSUB_TOPIC) covers the workspace,
+ * so the guide drops its Pub/Sub step. Gmail's `watch` publishes only to a topic in
+ * the calling client's own Google Cloud project: in the managed edition the topic is
+ * in the project of the server's client, so a workspace on its own client needs a
+ * topic in its own project and keeps the step. Self-hosted: the topic alone decides.
+ */
+export function instancePushTopicFor(input: {
+  topic: string | undefined
+  managed: boolean
+  workspaceSource: GoogleClientInfo["source"] | undefined
+}): boolean {
+  if (!input.topic) return false
+  return !(input.managed && input.workspaceSource === "org")
+}
+
 /** The Google connections registered for one workspace (its apps that are on). */
 export function googleConnectionsOf(
   orgId: string,
@@ -287,7 +306,7 @@ export function computeGoogleSetupValues(
   focus: { projectId?: string; feature?: string; supportEmail?: string } = {},
 ): GoogleSetupValues {
   return googleSetupValuesFrom({
-    baseUrl: env.BASE_URL,
+    baseUrl: oauthRedirectBaseUrl(),
     signInEnabled: Boolean(env.GOOGLE_OAUTH_CLIENT_ID && env.GOOGLE_OAUTH_CLIENT_SECRET),
     orgId,
     connections: googleConnectionsOf(orgId).map((c) => ({
@@ -295,7 +314,11 @@ export function computeGoogleSetupValues(
       clientSource: clientSources.get(oauthConnectionKey(c.app, c.connection)) ?? "none",
       clientProven: provenConnections.has(oauthConnectionKey(c.app, c.connection)),
     })),
-    instancePushTopic: Boolean(env.GMAIL_PUBSUB_TOPIC),
+    instancePushTopic: instancePushTopicFor({
+      topic: env.GMAIL_PUBSUB_TOPIC,
+      managed: isManagedEdition(),
+      workspaceSource: clients?.workspace.source,
+    }),
     ...(clients ? { clients } : {}),
     ...(focus.projectId ? { projectId: focus.projectId } : {}),
     ...(focus.supportEmail ? { supportEmail: focus.supportEmail } : {}),

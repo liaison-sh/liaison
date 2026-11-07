@@ -20,6 +20,8 @@ import { ticketsAppManifest } from "~/apps/tickets/manifest-descriptor"
 import { sql } from "~/db/connection"
 import * as jobsModule from "~/infra/jobs/jobs"
 import { createAppQueue } from "~/infra/jobs/jobs"
+import { pinnedJobsGate, withPinnedJobSlot } from "~/infra/jobs/pinned-jobs-gate"
+import { env } from "~/lib/env"
 import { webhooksLogger } from "~/lib/logger"
 import { redis } from "~/lib/redis"
 import {
@@ -31,6 +33,7 @@ import * as appsInitModule from "~/modules/apps/init"
 import type { AppDescriptor } from "~/modules/apps/runtime"
 import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
+import * as googleOidcModule from "~/modules/webhooks/google-oidc"
 
 const REPLAY_PREFIX = "webhook:replay:"
 const TEST_ORG = "00000000-0000-0000-0000-000000000311"
@@ -296,6 +299,71 @@ describe("webhook routes", () => {
     expect(wrongToken.status).toBe(401)
   })
 
+  // S30: one push subscription per cell; each org's Mail or Tickets verifier
+  // checks the OIDC token against the instance's audience and push service
+  // account when the org set none of its own.
+  it("the instance Gmail push audience and service account reach the Mail and Tickets verifiers", async () => {
+    await registerApps(
+      [mailAppManifest as unknown as AppDescriptor, ticketsAppManifest as unknown as AppDescriptor],
+      TEST_ORG,
+    )
+    const audience = "https://cell-a.example.test/webhooks/_cell/gmail-push"
+    const serviceAccount = "gmail-push-cell-a@example.iam.gserviceaccount.com"
+    const saved = {
+      audience: env.GMAIL_PUSH_AUDIENCE,
+      serviceAccount: env.GMAIL_PUSH_SERVICE_ACCOUNT,
+    }
+    env.GMAIL_PUSH_AUDIENCE = audience
+    env.GMAIL_PUSH_SERVICE_ACCOUNT = serviceAccount
+    const seen: Array<{ audience: string; serviceAccount: string }> = []
+    const spy = spyOn(googleOidcModule, "verifyGoogleOidcJwt").mockImplementation(
+      async (_token, opts) => {
+        seen.push({ audience: opts.expectedAudience, serviceAccount: opts.expectedServiceAccount })
+        return { valid: false, reason: "test_stop" }
+      },
+    )
+    try {
+      for (const appName of ["mail", "tickets"]) {
+        const res = await app.request(`/webhooks/${TEST_ORG}/${appName}/gmail-push`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer a-token" },
+          body: JSON.stringify({
+            message: {
+              data: Buffer.from(JSON.stringify({ emailAddress: "x@example.test" })).toString(
+                "base64",
+              ),
+              messageId: `instance-default-${appName}-${Date.now()}`,
+            },
+          }),
+        })
+        expect(res.status).toBe(401)
+      }
+      expect(seen).toEqual([
+        { audience, serviceAccount },
+        { audience, serviceAccount },
+      ])
+    } finally {
+      spy.mockRestore()
+      env.GMAIL_PUSH_AUDIENCE = saved.audience
+      env.GMAIL_PUSH_SERVICE_ACCOUNT = saved.serviceAccount
+    }
+  })
+
+  it("/webhooks/_cell/* is not served by a self-hosted server", async () => {
+    for (const path of ["/webhooks/_cell/gmail-push", "/webhooks/_cell/meta"]) {
+      const res = await app.request(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      })
+      expect(res.status).toBe(404)
+    }
+    const challenge = await app.request(
+      "/webhooks/_cell/meta?hub.mode=subscribe&hub.verify_token=x&hub.challenge=1",
+    )
+    expect(challenge.status).toBe(404)
+  })
+
   // ── Subscription handshake: Meta-style GET ?hub.mode=subscribe ──
   it("answers the hub.challenge handshake only against the configured verify token", async () => {
     await registerApps(
@@ -452,6 +520,121 @@ describe("webhook routes", () => {
       expect(await redis.exists(key)).toBe(0)
     })
 
+    describe("a handler's declared budget, through the real sandbox", () => {
+      let bundleDir: string
+      let bundlePath: string
+      const savedBase = process.env.LIAISON_SANDBOX_TIMEOUT_MS
+      const savedMax = process.env.LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS
+      const post = () =>
+        app.request(`/webhooks/${TEST_ORG}/${APP}/${ENDPOINT}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ hello: "world" }),
+        })
+      const registerSpinner = (timeoutMs?: number) => {
+        webhookHandlers.set([TEST_ORG, APP, ENDPOINT], {
+          appName: APP,
+          orgId: TEST_ORG,
+          verify: async () => ({ valid: true as const, replayKey: crypto.randomUUID() }),
+          handler: { bundlePath, exportName: "spin", trusted: true },
+          _manifest: { name: APP, schema: {}, events: {}, connections: {}, network: {} },
+          ...(timeoutMs ? { timeoutMs } : {}),
+        } as never)
+      }
+
+      beforeAll(() => {
+        bundleDir = mkdtempSync(join(tmpdir(), "webhook-budget-"))
+        bundlePath = join(bundleDir, "bundle.js")
+        writeFileSync(bundlePath, "globalThis.spin = async () => { while (true) {} }\n")
+      })
+      afterAll(() => rmSync(bundleDir, { recursive: true, force: true }))
+      beforeEach(() => {
+        // The resolver's floor at call time, far below the declared budgets here.
+        process.env.LIAISON_SANDBOX_TIMEOUT_MS = "200"
+      })
+      afterEach(() => {
+        if (savedBase === undefined) delete process.env.LIAISON_SANDBOX_TIMEOUT_MS
+        else process.env.LIAISON_SANDBOX_TIMEOUT_MS = savedBase
+        if (savedMax === undefined) delete process.env.LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS
+        else process.env.LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS = savedMax
+      })
+
+      it("stops a spinning handler at its budget, in a pinned slot", async () => {
+        await seedAppRow()
+        registerSpinner(1_500)
+        const peakBefore = pinnedJobsGate.state().held
+        let heldDuring = 0
+        const watch = setInterval(() => {
+          heldDuring = Math.max(heldDuring, pinnedJobsGate.state().held)
+        }, 50)
+        const started = Date.now()
+        const res = await post()
+        clearInterval(watch)
+        expect(res.status).toBe(500)
+        const took = Date.now() - started
+        expect(took).toBeGreaterThanOrEqual(1_400)
+        expect(took).toBeLessThan(10_000)
+        expect(heldDuring).toBe(peakBefore + 1)
+      }, 20_000)
+
+      it("honours the instance's ceiling on declared budgets", async () => {
+        await seedAppRow()
+        process.env.LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS = "1000"
+        registerSpinner(20_000)
+        const started = Date.now()
+        const res = await post()
+        expect(res.status).toBe(500)
+        expect(Date.now() - started).toBeLessThan(10_000)
+      }, 20_000)
+
+      it("a delivery that cannot get a slot in time is handed to the retry job, unrun", async () => {
+        await seedAppRow()
+        const savedCeiling = env.REQUEST_TIMEOUT_MS
+        ;(env as { REQUEST_TIMEOUT_MS: number }).REQUEST_TIMEOUT_MS = 30_000
+        const { max } = pinnedJobsGate.state()
+        let free: () => void = () => {}
+        const hold = new Promise<void>((r) => {
+          free = r
+        })
+        const holders = Array.from({ length: max }, () => withPinnedJobSlot("test", () => hold))
+        const enqueue = spyOn(jobsModule, "enqueueAppJob").mockResolvedValue(undefined as never)
+        const handlerRan = mock(async () => ({ status: 200 }))
+        webhookHandlers.set([TEST_ORG, APP, ENDPOINT], {
+          appName: APP,
+          orgId: TEST_ORG,
+          verify: async () => ({ valid: true as const, replayKey: crypto.randomUUID() }),
+          handler: handlerRan,
+          // The longest allowed budget leaves a second of the request ceiling to wait.
+          timeoutMs: 29_000,
+        } as never)
+        try {
+          const started = Date.now()
+          const res = await post()
+          expect(res.status).toBe(500)
+          expect(Date.now() - started).toBeLessThan(10_000)
+          expect(handlerRan).not.toHaveBeenCalled()
+          expect(enqueue.mock.calls.some((c) => c[1] === "retry-webhook")).toBe(true)
+        } finally {
+          ;(env as { REQUEST_TIMEOUT_MS: number }).REQUEST_TIMEOUT_MS = savedCeiling
+          free()
+          await Promise.all(holders)
+        }
+      }, 20_000)
+
+      it("a handler that declares no budget takes no slot", async () => {
+        await seedAppRow()
+        let held = -1
+        registerHostHandler(async () => {
+          held = pinnedJobsGate.state().held
+          return { status: 200 }
+        })
+        const before = pinnedJobsGate.state().held
+        const res = await post()
+        expect(res.status).toBe(200)
+        expect(held).toBe(before)
+      })
+    })
+
     it("returns 200 and KEEPS the replay claim when the handler succeeds", async () => {
       await seedAppRow()
       const key = replayKeyFor("fixed-replay-key")
@@ -490,6 +673,24 @@ describe("webhook routes", () => {
       })
 
       expect(res.status).toBe(401)
+    })
+
+    it("answers 503, not a bad signature, when the verifier loses its sandbox worker", async () => {
+      await seedAppRow()
+      webhookHandlers.set([TEST_ORG, APP, ENDPOINT], {
+        appName: APP,
+        orgId: TEST_ORG,
+        verify: async () => {
+          throw new Error("Sandbox worker crashed (exit 1)")
+        },
+        handler: async () => ({ status: 200 }),
+      })
+      const res = await app.request(`/webhooks/${TEST_ORG}/${APP}/${ENDPOINT}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hello: "world" }),
+      })
+      expect(res.status).toBe(503)
     })
 
     it("answers 503 and logs the cause when the verifier bundle throws at load", async () => {

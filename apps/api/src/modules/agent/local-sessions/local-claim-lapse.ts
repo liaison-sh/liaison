@@ -25,6 +25,7 @@ import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
 import { writeAuditLog } from "~/modules/audit/service"
+import { sweepSkippingMoving, writeUnlessMoving } from "~/modules/org/transfer-state/skip-moving"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import {
   DISPATCH_SKIPPED_FOR_LOCAL,
@@ -81,17 +82,21 @@ export async function sweepLapsedLocalClaims(now: Date = new Date()): Promise<La
   const log = rootLogger.child({ module: "local-claim-lapse" })
   const k = drizzleSql.raw(schemaRef("kernel"))
   const floor = new Date(now.getTime() - LAPSE_SWEEP_WINDOW_MS)
-
-  const lapsed = await withSystemDb("local-claim-lapse-scan", async (db) =>
-    extractRows<LapsedClaim>(
-      await db.execute(drizzleSql`
+  // An org being moved keeps its claims as they are until the move ends; each claim is then its own
+  // org's write.
+  const lapsed = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("local-claim-lapse-scan", async (db) =>
+      extractRows<LapsedClaim>(
+        await db.execute(drizzleSql`
         SELECT id::text AS id, org_id::text AS org_id, thread_id::text AS thread_id,
                agent_id::text AS agent_id, holder_key, expires_at::text AS expires_at
           FROM ${k}.agent_local_claims
          WHERE expires_at <= ${now.toISOString()}::timestamptz
            AND expires_at > ${floor.toISOString()}::timestamptz
+           AND ${notMoving(drizzleSql.raw("org_id"))}
          ORDER BY expires_at ASC
          LIMIT 100`),
+      ),
     ),
   )
 
@@ -103,40 +108,42 @@ export async function sweepLapsedLocalClaims(now: Date = new Date()): Promise<La
     // on the next tick. Only the row as the scan read it (batch-2 F9): a
     // renewal or a takeover since rewrote it on the same id, and that live
     // claim and its turn credential stay.
-    const removed = await withSystemDb("local-claim-lapse-remove", async (db) =>
-      extractRows<{ id: string }>(
-        await db.execute(drizzleSql`
-          DELETE FROM ${k}.agent_local_claims
-           WHERE id = ${claim.id}::uuid
-             AND holder_key = ${claim.holder_key}
-             AND expires_at = ${claim.expires_at}::timestamptz
-             AND expires_at <= ${now.toISOString()}::timestamptz
-          RETURNING id::text AS id`),
-      ),
-    )
-    if (removed.length === 0) continue
-    result.swept += 1
-    // S59 (D43 F6): the turn that holder was running loses its credential with
-    // the claim, never later.
-    try {
-      await revokeTurnCredentials({
-        orgId: claim.org_id,
-        agentId: claim.agent_id,
-        threadId: claim.thread_id,
-        holderKey: claim.holder_key,
-      })
-    } catch (err) {
-      log.warn(
-        { err, threadId: claim.thread_id },
-        "Revoking a lapsed claim's turn credential failed",
+    await writeUnlessMoving(claim.org_id, async () => {
+      const removed = await withSystemDb("local-claim-lapse-remove", async (db) =>
+        extractRows<{ id: string }>(
+          await db.execute(drizzleSql`
+            DELETE FROM ${k}.agent_local_claims
+             WHERE id = ${claim.id}::uuid
+               AND holder_key = ${claim.holder_key}
+               AND expires_at = ${claim.expires_at}::timestamptz
+               AND expires_at <= ${now.toISOString()}::timestamptz
+            RETURNING id::text AS id`),
+        ),
       )
-    }
+      if (removed.length === 0) return
+      result.swept += 1
+      // S59: the turn that holder was running loses its credential with
+      // the claim, never later.
+      try {
+        await revokeTurnCredentials({
+          orgId: claim.org_id,
+          agentId: claim.agent_id,
+          threadId: claim.thread_id,
+          holderKey: claim.holder_key,
+        })
+      } catch (err) {
+        log.warn(
+          { err, threadId: claim.thread_id },
+          "Revoking a lapsed claim's turn credential failed",
+        )
+      }
 
-    try {
-      if (await dispatchSkippedMessage(claim, log)) result.dispatched += 1
-    } catch (err) {
-      log.warn({ err, threadId: claim.thread_id }, "Dispatching after a lapsed claim failed")
-    }
+      try {
+        if (await dispatchSkippedMessage(claim, log)) result.dispatched += 1
+      } catch (err) {
+        log.warn({ err, threadId: claim.thread_id }, "Dispatching after a lapsed claim failed")
+      }
+    })
   }
   return result
 }

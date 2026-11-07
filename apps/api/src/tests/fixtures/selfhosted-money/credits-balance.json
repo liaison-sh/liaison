@@ -1,0 +1,10 @@
+{
+  "data": {
+    "included": "12.50000000",
+    "purchased": "3.25000000",
+    "currency": "EUR",
+    "tier": "team",
+    "includedAllowance": "500",
+    "resetDate": null
+  }
+}

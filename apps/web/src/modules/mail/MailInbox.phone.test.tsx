@@ -51,6 +51,7 @@ vi.mock("~/modules/shell/phone-navigator-store", () => ({
 }))
 vi.mock("~/modules/mail/mail-draft-store", () => ({ loadDrafts: vi.fn(), drafts: () => ({}) }))
 vi.mock("~/modules/mail/mail-account-store", () => ({
+  accountsLoaded: () => true,
   allAccounts: () => state.accounts,
   getAccount: (id: string) => state.accounts.find((a) => a.id === id),
   loadAccounts: vi.fn(),

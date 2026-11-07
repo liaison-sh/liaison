@@ -31,6 +31,7 @@ import { knowledgeRel } from "~/apps/knowledge/schema-refs"
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { connectedAccounts, importRuns, invitations, roles, users } from "~/db/schema/kernel"
+import { isManagedEdition } from "~/lib/edition"
 import { rootLogger } from "~/lib/logger"
 import { getOrgKernelSettings } from "~/lib/settings"
 import { hasUsableModelKey } from "~/modules/agent/credits/credit-meter"
@@ -419,7 +420,11 @@ export async function computeSetupState(orgId: string): Promise<SetupState> {
     },
   }
 
-  const items: SetupItem[] = SETUP_ITEM_KEYS.map((key) => ({
+  // The managed edition runs models on the server's own key: nothing to set up.
+  const itemKeys = isManagedEdition()
+    ? SETUP_ITEM_KEYS.filter((k) => k !== "aiKey")
+    : SETUP_ITEM_KEYS
+  const items: SetupItem[] = itemKeys.map((key) => ({
     key,
     done: itemFacts[key].done,
     optional: OPTIONAL.has(key),

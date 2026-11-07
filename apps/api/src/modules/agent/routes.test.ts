@@ -9,6 +9,7 @@ import { beginShutdown, ShutdownTestAccess } from "~/lib/shutdown"
 import { AgentServiceTestAccess } from "~/modules/agent/runtime/agent-service"
 import { signAccessToken } from "~/modules/auth/jwt"
 import { LIVE_LLM } from "~/tests/e2e/helpers/live-llm"
+import { clearTestCreditPricing, setTestCreditPricing } from "~/tests/helpers/credit-pricing"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const ORIG_ANTHROPIC_KEY = process.env.LIAISON_ANTHROPIC_API_KEY
@@ -50,6 +51,8 @@ describe("agent routes", () => {
     await acquireTestLock()
     // Agent billing (402 on zero balance) is managed-edition behaviour.
     _setEdition("managed")
+    // A managed cell meters nothing without the control plane's pushed rate.
+    await setTestCreditPricing()
     AgentServiceTestAccess.setStreamText(fakeAgentStreamText as never)
     await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${ORG_ID}, 'RouteOrg', 'route-org')`
     await sql`INSERT INTO kernel.users (id, org_id, email, name) VALUES (${USER_ID}, ${ORG_ID}, 'route@test.com', 'Route User')`
@@ -82,6 +85,7 @@ describe("agent routes", () => {
   afterAll(async () => {
     _setEdition(null)
     AgentServiceTestAccess.setStreamText()
+    await clearTestCreditPricing()
     await releaseTestLock()
   })
 
@@ -635,9 +639,12 @@ describe("agent routes", () => {
         expect(typeof captured.analyze?.summary).toBe("string")
         expect(captured.analyze?.summary.length).toBeGreaterThan(0)
       } else {
-        // The default run carries a placeholder Gemini key (scripts/test-run.ts): the call
-        // reached the provider, which is what this proves, and the provider refused it.
-        expect(String(captured.analyze?.error ?? captured.analyze)).toContain("API key")
+        // This file runs managed, so media analysis goes to OpenRouter on the cell's key
+        // (S31), a placeholder here: the call reached the provider, which is what this
+        // proves, and the provider refused it.
+        expect(String(captured.analyze?.error ?? captured.analyze)).toMatch(
+          /API key|OpenRouter answered HTTP 401/,
+        )
       }
       // Success or failure, a briefed call leaves the row as it was.
       const [analysedRow] = await sql`

@@ -773,6 +773,52 @@ describe("gmailInitialSync handler", () => {
     expect(write?.data.syncStatus).toBeUndefined()
   })
 
+  describe("the once-a-minute limit on incremental sync", () => {
+    const run = async (params: Record<string, unknown>) => {
+      const fetches: string[] = []
+      const account = {
+        id: "acc-1",
+        provider: "gmail",
+        email_address: "test@gmail.com",
+        sync_status: "active",
+        sync_state: { historyId: "500" },
+        disconnected_at: null,
+        updated_at: new Date().toISOString(),
+        last_sync_at: new Date(Date.now() - 10_000).toISOString(),
+      }
+      const mock = createMockBridge({
+        db_findOne: async () => JSON.stringify(account),
+        db_findMany: async (entity: string) =>
+          JSON.stringify(entity === "accounts" ? [account] : []),
+        hasOnlineUsers: async () => JSON.stringify(true),
+        fetch: async (url: string) => {
+          fetches.push(url)
+          return JSON.stringify({
+            status: 200,
+            headers: {},
+            body: JSON.stringify({ historyId: "600", history: [] }),
+          })
+        },
+      })
+      await executeInSandbox({
+        pool: getSandboxPool(),
+        bundleSource,
+        exportName: "gmailIncrementalSync",
+        params: { orgId: "org-1", accountId: "acc-1", ...params },
+        bridge: mock.bridge,
+      })
+      return fetches.filter((u) => u.includes("/history"))
+    }
+
+    it("a push syncs at once even when the mailbox synced seconds ago", async () => {
+      expect((await run({ push: true })).length).toBe(1)
+    })
+
+    it("a scheduled tick still skips a mailbox synced under a minute ago", async () => {
+      expect((await run({ tick: true })).length).toBe(0)
+    })
+  })
+
   it("seeds historyId from users.getProfile when no push topic is configured", async () => {
     // Poll-only deployment (gmailPushTopic unset). The old code hardcoded a
     // wrong-project topic, watch failed, and the account finalized WITHOUT a

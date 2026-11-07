@@ -35,7 +35,7 @@ import { connectionConfigRegistry } from "~/modules/apps/app-registries"
 import { connectionAdminScope } from "~/modules/apps/connections/admin-scope"
 import { getFrontendRedirectUrl } from "~/modules/apps/connections/service"
 import { writeAuditLog } from "~/modules/audit/service"
-import { getOrgEmailConfig } from "~/modules/org/email-from"
+import { getOrgEmailConfig, getOrgSenderTransport } from "~/modules/org/email-from"
 import { hasScope } from "~/modules/permissions/permissions"
 
 const log = appsLogger.child({ module: "connect-links" })
@@ -136,8 +136,12 @@ export async function readConnectLinkStatus(token: string): Promise<ConnectLinkS
 }
 
 /** Where a refused link connect sends the browser: the link's page, saying why. */
-export function connectLinkRefusedUrl(refusal: ConnectLinkRefusal): string {
+export async function connectLinkRefusedUrl(
+  orgId: string,
+  refusal: ConnectLinkRefusal,
+): Promise<string> {
   return getFrontendRedirectUrl(
+    orgId,
     CONNECT_LINK_PATH,
     new URLSearchParams({
       oauth_error: refusal.reason,
@@ -286,7 +290,7 @@ export async function mintConnectLink(input: {
       metadata: { appName, connectionName, expiresAt: new Date(expiresAt).toISOString() },
     }),
   )
-  const url = getFrontendRedirectUrl(CONNECT_LINK_PATH, new URLSearchParams({ token }))
+  const url = await getFrontendRedirectUrl(orgId, CONNECT_LINK_PATH, new URLSearchParams({ token }))
   return { url, token, expiresAt: new Date(expiresAt), user }
 }
 
@@ -441,9 +445,12 @@ export async function emailConnectLink(input: {
     ],
   })
   const emailConfig = await getOrgEmailConfig(input.orgId)
-  await getSystemEmailProvider().send({
+  // Managed edition: the org's own verified sender, else "<Org> via Liaison",
+  // as invitations (modules/users/invites.ts). Null elsewhere: unchanged.
+  const orgSender = await getOrgSenderTransport(input.orgId)
+  await (orgSender?.provider ?? getSystemEmailProvider()).send({
     to: link.user.email,
-    from: emailConfig.from,
+    from: orgSender?.from ?? emailConfig.from,
     replyTo: emailConfig.replyTo,
     subject,
     html,

@@ -232,6 +232,23 @@ describe("MessageRow — a node routing line is a system line, not the asker's m
     expect(container.querySelector(".rounded-full")).toBeNull()
   })
 
+  it("a turn refused at zero credits says so and offers Billing", () => {
+    const { getByTestId } = renderRow(
+      makeMessage({
+        authorType: "system",
+        content: "Out of agent usage",
+        metadata: { turnRefusal: true, billingRefusal: "out_of_credits" },
+      }),
+    )
+    expect(getByTestId("message-row-system-line").getAttribute("data-system-line")).toBe(
+      "turn-refusal",
+    )
+    expect(getByTestId("payment-required-billing-link").getAttribute("href")).toBe(
+      "/settings/billing",
+    )
+    expect(getByTestId("payment-required-notice").textContent).not.toContain("Out of agent usage")
+  })
+
   it("renders a refusal line the same way", () => {
     const { getByTestId } = renderRow(routed({ nodeRefusal: "node_daily_cap" }))
     expect(getByTestId("message-row-system-line").getAttribute("data-system-line")).toBe(

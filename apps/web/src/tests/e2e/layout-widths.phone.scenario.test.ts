@@ -203,10 +203,10 @@ async function runWidths(page: Page) {
 
     await page.getByTestId("phone-tab-you").click()
     await expect(page.getByTestId("you-screen")).toBeVisible(SEE)
-    await expect(page.getByTestId("you-row-notifications-settings")).toBeVisible(SEE)
+    await expect(page.getByTestId("you-row-you-notifications")).toBeVisible(SEE)
     await check(page, size, "you", failures)
 
-    await page.getByTestId("you-row-notifications-settings").click()
+    await page.getByTestId("you-row-you-notifications").click()
     await expect(page.getByTestId("notification-settings")).toBeVisible(SEE)
     await expect(page.getByTestId("notification-settings-loading")).toHaveCount(0, SEE)
     await check(page, size, "notifications", failures)

@@ -43,6 +43,11 @@ Every OAuth flow returns to:
 `BASE_URL` is your deployment's public URL, for example `https://liaison.example.com`. When a
 vendor asks for a redirect URL, give exactly this one.
 
+On a server where each organization has its own address (`LIAISON_ORG_HOST_TEMPLATE`), the
+callback is on the organization's own address instead, for example
+`https://acme.example.com/api/apps/mcp-manager/oauth/callback`; the central redirect host of
+`LIAISON_OAUTH_REDIRECT_BASE` is not used for MCP servers.
+
 Automatic registration by Client ID Metadata Document needs a public `https` `BASE_URL`: the
 vendor fetches the document from it. On a local or private deployment (`http://localhost:3000`),
 Liaison falls back to Dynamic Client Registration when the vendor offers it.

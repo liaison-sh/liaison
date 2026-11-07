@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import {
+  atMostOneImapPerOwner,
   imapCredentialFieldNames,
   LEGACY_MAILBOXES_MESSAGE,
   validateConfig,
@@ -135,7 +136,17 @@ describe("validateConfig", () => {
     expect(res.ok).toBe(false)
   })
 
-  test("two IMAP entries for the same owner are refused (the second would replace the first)", () => {
+  test("two personal IMAP entries for one person are refused (the second would replace the first); an org holds several", () => {
+    const twice = validateConfig({
+      org: { slug: "o", name: "O" },
+      mail: {
+        mailboxes: [
+          { address: "a@x.com", provider: "imap", imap: IMAP, owner: "p@x.com" },
+          { address: "b@x.com", provider: "imap", imap: IMAP, owner: "p@x.com" },
+        ],
+      },
+    })
+    expect(twice.ok).toBe(false)
     const tickets = validateConfig({
       org: { slug: "o", name: "O" },
       tickets: {
@@ -145,7 +156,17 @@ describe("validateConfig", () => {
         ],
       },
     })
-    expect(tickets.ok).toBe(false)
+    expect(tickets.ok).toBe(true)
+    const shared = validateConfig({
+      org: { slug: "o", name: "O" },
+      mail: {
+        mailboxes: [
+          { address: "a@x.com", provider: "imap", imap: IMAP },
+          { address: "b@x.com", provider: "imap", imap: IMAP },
+        ],
+      },
+    })
+    expect(shared.ok).toBe(true)
     const mail = validateConfig({
       org: { slug: "o", name: "O" },
       mail: {
@@ -604,5 +625,28 @@ describe("manifest parity (correction #17)", () => {
         expect(manifestFieldNames).toContain(name)
       }
     }
+  })
+})
+
+describe("IMAP mailboxes in config (one personal box per person, several for the org)", () => {
+  const box = (address: string, owner?: string) => ({
+    address,
+    provider: "imap",
+    ...(owner ? { owner } : {}),
+  })
+  test("the org may hold several; a person only one", () => {
+    expect(atMostOneImapPerOwner([box("a@x.test"), box("b@x.test")], (m) => m.owner)).toBe(true)
+    expect(
+      atMostOneImapPerOwner(
+        [box("a@x.test", "p@x.test"), box("b@x.test", "q@x.test")],
+        (m) => m.owner,
+      ),
+    ).toBe(true)
+    expect(
+      atMostOneImapPerOwner(
+        [box("a@x.test", "p@x.test"), box("b@x.test", "p@x.test")],
+        (m) => m.owner,
+      ),
+    ).toBe(false)
   })
 })

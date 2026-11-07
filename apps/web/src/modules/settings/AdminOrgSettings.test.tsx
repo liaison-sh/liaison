@@ -59,6 +59,14 @@ function renderPage(Component: any) {
 afterEach(() => vi.unstubAllGlobals())
 
 describe("AdminOrgSettings", () => {
+  it("outside the managed edition there is no Email sender section, and no call for it", async () => {
+    const fetchMock = mockOrg()
+    renderPage(AdminOrgSettings as any)
+    await screen.findByTestId("admin-org-timezone-select")
+    expect(screen.queryByTestId("email-sender-section")).toBeNull()
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/mail-sender"))).toBe(false)
+  })
+
   it("ContextualSaveBar appears only on dirty edits", async () => {
     mockOrg()
     renderPage(AdminOrgSettings as any)

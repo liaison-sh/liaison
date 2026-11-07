@@ -170,6 +170,22 @@ describe("GET /api/apps/:name/:version/ui.js", () => {
     expect(res.status).toBe(404)
   })
 
+  it("never lets a cache keep a refusal: every 404 and 400 is no-store", async () => {
+    for (const path of [
+      "/api/apps/fixture-app/1.2.3/ui.js",
+      "/api/apps/fixture-app/1.2.3/ui.js?t=garbage",
+      "/api/apps/no-such-app/1.0.0/ui.js",
+      "/api/apps/fixture-app/9.9.9/ui.js",
+    ]) {
+      const res = await app.request(path)
+      expect(res.status).toBeGreaterThanOrEqual(400)
+      expect(res.headers.get("cache-control")).toBe("no-store")
+    }
+    const ok = await app.request(await tokenedUrl("fixture-app", "1.2.3"))
+    expect(ok.status).toBe(200)
+    expect(ok.headers.get("cache-control")).not.toBe("no-store")
+  })
+
   it("rejects path-traversal in :name (URL-encoded slash)", async () => {
     const res = await authed("/api/apps/..%2F..%2Fetc/1.0.0/ui.js")
     expect([400, 404]).toContain(res.status)

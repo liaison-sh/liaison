@@ -123,6 +123,7 @@ export async function invokeAppExport(
           params: { format, dateRange: filters?.dateRange },
           bridge,
           priority: "background",
+          appId: appName,
         })
       }
       return executeInSandbox({

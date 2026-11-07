@@ -50,6 +50,12 @@ const PRIVILEGED_GLOBAL_TABLES = new Set<string>([
   // active-version pointer. Its `org_id` (migration 0212) is reserved for
   // per-org installs and always NULL; written only by activation.ts.
   "kernel.apps_active_version",
+  // REVOKE ALL ... FROM liaison_rls in 0000_initial.sql — the instance's
+  // installed app versions. Its `org_id` (migration 0267) marks an org-private
+  // custom app (managed edition) and is NULL for every instance app; read
+  // through modules/apps/app-org-scope.ts and written by the install service,
+  // privileged pool only.
+  "kernel.apps_installed",
   // Server-held mailbox keys (migration 0229): FORCE RLS with no policy, read
   // and written only by the mailbox-crypto modules through the privileged pool.
   "kernel.mailbox_server_keys",
@@ -97,6 +103,15 @@ const DENY_ALL_LEDGERS = new Set<string>([
   // What this instance sends to the Liaison team (migration 0244):
   // instance-wide, no org column, privileged pool only.
   "kernel.control_plane_outbox",
+  // Outcomes of the signed Control→cell requests (migration 0247):
+  // instance-wide, no org column, privileged pool only.
+  "kernel.cloud_request_outcomes",
+  // Restore drill markers (migration 0269): instance-wide, no org column,
+  // privileged pool only.
+  "kernel.restore_drill_markers",
+  // The moves an org took part in, per instance (migration 0270): privileged
+  // pool only, never read by a person.
+  "kernel.org_transfer_ledger",
   "kernel.demo_leads",
   "kernel.durable_consumer_marks",
   // Demo visitors' model spend (migration 0180): instance-level, an email's

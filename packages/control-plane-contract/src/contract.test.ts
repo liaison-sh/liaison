@@ -6,6 +6,7 @@ import {
   ackReply,
   billingStateReplySchema,
   canonicalJson,
+  cellBillingMessageSchemas,
   contractVectors,
   duplicateReply,
   ENDPOINTS,
@@ -32,7 +33,7 @@ function webhookNamePattern(): RegExp {
 
 describe("signing vectors", () => {
   test("every vector triple reproduces with node helpers", () => {
-    expect(contractVectors.signing.length).toBe(3)
+    expect(contractVectors.signing.length).toBe(4)
     for (const v of contractVectors.signing) {
       expect(deriveInstanceKey(v.masterSecret, v.instanceId)).toBe(v.instanceKey)
       expect(signBody(v.instanceKey, v.rawBody)).toBe(v.signature)
@@ -40,10 +41,26 @@ describe("signing vectors", () => {
     }
   })
 
+  test("the same body (same ts) under another instance key does not reproduce the signature", () => {
+    const [a, b] = contractVectors.signing
+    expect(signBody(b.instanceKey, a.rawBody)).not.toBe(a.signature)
+    expect(signBody(a.instanceKey, b.rawBody)).not.toBe(b.signature)
+    // A key one character off is a wrong secret too.
+    const flipped = `${a.instanceKey.slice(0, -1)}${a.instanceKey.endsWith("0") ? "1" : "0"}`
+    expect(signBody(flipped, a.rawBody)).not.toBe(a.signature)
+  })
+
   test("each signed body is a valid envelope of its type", () => {
     for (const v of contractVectors.signing) {
-      const body = JSON.parse(v.rawBody) as { type: keyof typeof messageSchemas }
-      expect(messageSchemas[body.type].safeParse(body).success).toBe(true)
+      const body = JSON.parse(v.rawBody) as { type: string }
+      const schema =
+        body.type in messageSchemas
+          ? messageSchemas[body.type as keyof typeof messageSchemas]
+          : cellBillingMessageSchemas[body.type as keyof typeof cellBillingMessageSchemas]
+      expect({ type: body.type, ok: schema?.safeParse(body).success }).toEqual({
+        type: body.type,
+        ok: true,
+      })
     }
   })
 })

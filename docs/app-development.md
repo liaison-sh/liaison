@@ -478,8 +478,65 @@ self-host any admin with `kernel:apps:admin` manages apps. On a multi-tenant
 instance (demo mode or the managed edition) the routes that change the installs
 (install, upgrade, rollback, uninstall, interface approval) are also confined to the
 instance operator's org: `LIAISON_OPERATOR_ORG_ID`, or the instance's first org
-when it is unset. Per-org app installs are the planned design for the hosted
-offering.
+when it is unset. The one exception is a custom app in the managed edition,
+below.
+
+**Custom apps (managed edition).** An org admin with `kernel:apps:admin`
+installs their own app for their own organization only, with
+`POST /api/apps/custom/install` (same body as `/install`: `url` and the grants).
+No other organization on the server sees or runs it. The rules:
+
+- The app's `name` ends with your organization's key: `<name>-o<key>`, where the
+  key is the first 8 hex characters of the SHA-256 of the organization id.
+  `GET /api/apps/custom/namespace` returns the key and an example name. A
+  package without it is refused (422 `custom_app_name`) with the name it should
+  have. `<name>` cannot be the name of an app the server provides. Users see
+  the manifest's `displayName`.
+- It may declare only the capabilities an ordinary org app holds: `agent.run`,
+  `realtime.publish`, `bulk.fetch`, `messages.post`, `pdf.render`,
+  `sequences.allocate`, `contacts.addToOrganisation`. Anything else
+  (`agent.spawn`, `grants.setUserScopes`), `trusted`, `rlsManagedBy`, `routes`,
+  `network.allowPrivateHostsInTest`, or a `timeoutMs` / `bodyLimitBytes` above
+  the defaults (tool and search 5 s, job 60 s, webhook body 1 MB) is refused
+  (422 `custom_app_capability`, naming it).
+- Its tables stay in its own schema: a foreign key (`references`) may name
+  only one of its own tables (no `schema`), and it may not declare database
+  triggers (422 `custom_app_capability`, naming
+  `schema.<table>.fields.<field>.references` or `schema.<table>.triggers`).
+- Each one counts toward the plan's custom apps (409 `CUSTOM_APP_LIMIT_REACHED`
+  with `{limit, used}` at the limit). Installing a newer version of the same
+  app takes no extra one.
+- Its `ctx.fetch` goes through the same guard as every app: private, loopback,
+  link-local and metadata addresses are refused. On top of that it never
+  reaches the server itself: its own addresses and host names (the server's
+  base URL, web origins and organization hosts) are refused, and the
+  operator's private hosts (`LIAISON_APP_PRIVATE_HOSTS`) do not apply to it.
+- It shares the server's app sandbox with every other organization: your
+  organization's custom apps run at most 2 handlers at once (tools, webhooks,
+  events, jobs together). Up to 8 more wait their turn for up to 5 s; past
+  that the call is refused with 429 `custom_app_busy` and `Retry-After`. Its
+  webhooks accept 120 deliveries a minute each; past that they answer 429
+  `custom_app_rate_limited` with `Retry-After` before any of its code runs.
+- `ctx.bulk.fetchToBlob` keeps its downloads apart from your organization's
+  other apps: 256 MiB per custom app, a shared limit for all custom apps on the
+  server, and a download not used for an hour is deleted.
+- Its interface (`ui.js`) loads only on your organization's own address, after
+  an admin of your organization approved it at install, and always in a
+  sandboxed frame: its code never runs in Liaison's page and never holds a
+  member's session.
+- The operator of the server can disable it during an incident. A disabled app
+  stays installed with its data, but nothing of it runs and it cannot be
+  upgraded or uninstalled (409 `custom_app_disabled`) until the operator
+  enables it again. Both are recorded in your organization's audit log.
+- Upgrade, rollback, interface approval and uninstall work on the usual routes,
+  for your organization only; any other organization gets 404. No signature is
+  needed.
+- Its scheduled jobs and event subscriptions run for your organization only.
+  While the organization is suspended, the app is refused like the rest.
+  Deleting the organization removes the app with its data.
+
+On a self-hosted server none of this applies: there is no custom install route,
+and installs follow the rule above.
 
 **Admin UI** (the primary path): Settings -> Apps -> "Install app...". Enter the
 URL, click Preflight, review the requested scopes (each is a checkbox you can

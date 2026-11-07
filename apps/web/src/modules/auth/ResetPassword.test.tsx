@@ -46,4 +46,23 @@ describe("ResetPassword", () => {
       expect(screen.getByText(/reset link has been sent/i)).toBeInTheDocument()
     })
   })
+
+  it("says mail can't go out when the provider refuses, and does not claim a link was sent", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ error: { message: "no mail", code: "EMAIL_PROVIDER_UNAVAILABLE" } }),
+        { status: 403, headers: { "Content-Type": "application/json" } },
+      ),
+    )
+    renderWithRouter()
+    fireEvent.input(screen.getByPlaceholderText("you@company.com"), {
+      target: { value: "test@test.com" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: /send reset link/i }))
+    await waitFor(() => {
+      expect(screen.getByTestId("email-provider-unavailable")).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/reset link has been sent/i)).toBeNull()
+    expect(screen.getByPlaceholderText("you@company.com")).toBeInTheDocument()
+  })
 })

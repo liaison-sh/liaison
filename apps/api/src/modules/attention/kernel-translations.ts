@@ -346,6 +346,19 @@ export const kernelTranslations: Translation[] = [
     metadataFromData: ["settingsRoute", "cap", "threshold"],
   },
   {
+    // The org moved to another server (modules/org/transfer/after-commit.ts):
+    // its MCP connections were signed by the old server and must be connected
+    // again. Told once per move to the org's admins; calm, nothing is lost.
+    event: "org_move:reconnect",
+    app: "kernel",
+    kind: "system_alert",
+    urgency: 40,
+    isUrgent: false,
+    summary: "{{payload.data.summary}}",
+    recipients: { kind: "scope_holders", scope: "kernel:org:admin" },
+    metadataFromData: ["settingsRoute", "connections"],
+  },
+  {
     // A bug report sent only to the Liaison team never arrived (refused,
     // expired or cancelled; modules/liaison-team/team-only.ts). No local ticket
     // holds it, so the org admins are told once, with the report text, and can

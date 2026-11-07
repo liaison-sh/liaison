@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+import {
+  CLOUD_CAP_BOUNDS,
+  CLOUD_CAP_KINDS,
+  type CloudCapKind,
+  cloudCapsSchema,
+} from "@liaison/control-plane-contract"
 import { z } from "zod"
 
 const orgSettingsSchema = z.strictObject({
@@ -61,22 +67,25 @@ export const updateOrgSchema = z.object({
   caps: z.never().optional(),
 })
 
-/** The cap kinds, in the order the usage block lists them. */
-export const ORG_CAP_KINDS = ["seats", "mailboxes", "storageGb", "jobsPerHour"] as const
-export type OrgCapKind = (typeof ORG_CAP_KINDS)[number]
+/**
+ * The cap kinds and their bounds: ONE table, `CLOUD_CAP_BOUNDS` in the control
+ * plane contract (the control plane, which cannot import this package, reads
+ * the same table there). `orgCapsSchema` is the contract's caps schema itself,
+ * so the operator CLI, the `limits` section, the billing push and the control
+ * plane's plan caps accept exactly the same values.
+ */
+export const ORG_CAP_BOUNDS = CLOUD_CAP_BOUNDS
+export const ORG_CAP_KINDS = CLOUD_CAP_KINDS
+export type OrgCapKind = CloudCapKind
 
 /**
  * Per-org caps (`organizations.caps`). A missing (or null) key is unlimited.
  * Set only by the operator: `liaison org caps` or the `limits` section of
- * `liaison config apply`. Every cap is a whole number of at least 1:
- * 0 is refused, here and by the column's check (migration 0237).
+ * `liaison config apply` (or, in the managed edition, the plan pushed by the
+ * control plane). Every cap is a whole number of at least 1 and at most its
+ * bound: 0 is refused, here and by the column's check (migration 0237).
  */
-export const orgCapsSchema = z.strictObject({
-  seats: z.number().int().min(1).max(1_000_000).nullable().optional(),
-  mailboxes: z.number().int().min(1).max(1_000_000).nullable().optional(),
-  storageGb: z.number().int().min(1).max(1_000_000).nullable().optional(),
-  jobsPerHour: z.number().int().min(1).max(100_000_000).nullable().optional(),
-})
+export const orgCapsSchema = cloudCapsSchema
 export type OrgCaps = z.infer<typeof orgCapsSchema>
 
 /** One cap as `GET /api/org/usage` reports it: `limit` null = unlimited. */
@@ -94,4 +103,16 @@ export interface OrgUsage {
   mailboxes: OrgUsageEntry
   storageGb: OrgUsageEntry
   jobsThisHour: OrgUsageEntry
+  /**
+   * The nightly estimate of everything the org occupies (managed edition),
+   * null before its first measure and on a self-hosted server. Warns, never blocks.
+   */
+  storageEstimate?: {
+    usedGb: number
+    limitGb: number | null
+    measuredAt: string
+    /** A part could not be measured: the figure is a floor. */
+    partial: boolean
+    overCap: boolean
+  } | null
 }

@@ -351,6 +351,11 @@ describe("the org-id caller trace on fixture files", () => {
     expect(traceOf(reviewed, "fromQuery")).toBe(`traced: callers pass reviewed origin ${origin}`)
   })
 
+  it("follows a factory's conditional return and a spread of a parameter to its callers", () => {
+    const spreadRows = enumeratePrivilegedSites([`${dir}/db.ts`, `${dir}/spread-factory.ts`])
+    expect(traceOf(spreadRows, "spreadSite")).toBe("traced: callers pass auth-context")
+  })
+
   describe("job dispatch with run options, and forwarding wrappers", () => {
     const dispatchRows = enumeratePrivilegedSites([`${dir}/db.ts`, `${dir}/dispatch.ts`])
 

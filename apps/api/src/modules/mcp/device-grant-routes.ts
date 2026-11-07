@@ -8,6 +8,7 @@ import type { AppEnv } from "~/app"
 import { withSystemDb } from "~/db/privileged"
 import { deviceFlowRequests } from "~/db/schema/kernel"
 import { env } from "~/lib/env"
+import { requestPublicBaseUrl } from "~/lib/org-public-url"
 import { redis } from "~/lib/redis"
 import { getClientIp } from "~/lib/request-context"
 import { success } from "~/lib/response"
@@ -17,6 +18,7 @@ import {
   MCP_DEVICE_CLIENT_PREFIX,
   normalizeDeviceLabel,
 } from "~/modules/auth/device-flow-request"
+import { generateDeviceUserCode } from "~/modules/auth/device-user-code"
 import {
   createMcpConnection,
   loadBindableAgent,
@@ -81,11 +83,7 @@ mcpDeviceGrant.post("/initiate", zValidator("json", initiateSchema), async (c) =
   }
 
   const deviceCode = randomBytes(32).toString("hex")
-  const SAFE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
-  const codeBytes = randomBytes(8)
-  const userCode = Array.from(codeBytes)
-    .map((b) => SAFE_ALPHABET[b % SAFE_ALPHABET.length])
-    .join("")
+  const userCode = generateDeviceUserCode()
   const expiresAt = new Date(Date.now() + DEVICE_CODE_EXPIRY_SECONDS * 1000)
   const storedClientId = `${MCP_DEVICE_CLIENT_PREFIX}${clientId}`
 
@@ -111,7 +109,7 @@ mcpDeviceGrant.post("/initiate", zValidator("json", initiateSchema), async (c) =
   return success(c, {
     deviceCode,
     userCode,
-    verificationUri: `${env.BASE_URL}/auth/device?code=${userCode}`,
+    verificationUri: `${requestPublicBaseUrl(c)}/auth/device?code=${userCode}`,
     expiresIn: DEVICE_CODE_EXPIRY_SECONDS,
     interval: DEVICE_POLL_INTERVAL_SECONDS,
   })

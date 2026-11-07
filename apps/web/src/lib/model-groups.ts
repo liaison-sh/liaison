@@ -21,6 +21,8 @@ export interface ServedModel {
   contextWindow: number | null
   inputCostPerM: string | null
   outputCostPerM: string | null
+  /** A managed cell's `≈ N×` against Auto (S18), served instead of the prices; null elsewhere. */
+  multiplier: number | null
   reasoning: { allowedLevels: ReasoningLevel[]; defaultLevel: ReasoningLevel }
   tools: boolean
 }
@@ -42,6 +44,8 @@ export interface ModelEntry {
   id: string | null
   label: string
   tierMinimum: string
+  /** `≈ N×` against Auto on a managed cell (S18). */
+  multiplier?: number | null
 }
 
 export interface ModelGroup {
@@ -102,6 +106,7 @@ function parseServedModel(raw: unknown): ServedModel | null {
     contextWindow: typeof m.contextWindow === "number" ? m.contextWindow : null,
     inputCostPerM: typeof m.inputCostPerM === "string" ? m.inputCostPerM : null,
     outputCostPerM: typeof m.outputCostPerM === "string" ? m.outputCostPerM : null,
+    multiplier: typeof m.multiplier === "number" ? m.multiplier : null,
     reasoning: allowed
       ? { allowedLevels: allowed, defaultLevel }
       : { allowedLevels: fallback.allowedLevels, defaultLevel: fallback.defaultLevel },
@@ -176,7 +181,12 @@ export function modelGroups(): ModelGroup[] {
       }
       byLabel.set(m.providerLabel, slot)
     }
-    slot.group.models.push({ id: m.key, label: m.displayName, tierMinimum: m.tierMinimum })
+    slot.group.models.push({
+      id: m.key,
+      label: m.displayName,
+      tierMinimum: m.tierMinimum,
+      ...(m.multiplier !== null ? { multiplier: m.multiplier } : {}),
+    })
   })
   const ordered = [...byLabel.values()].sort((a, b) => a.rank - b.rank || a.first - b.first)
   return [...groups, ...ordered.map((s) => s.group)]

@@ -15,12 +15,14 @@ import { ApiError } from "~/lib/api-error"
 import { fileIsImage, formatBytes, iconFor, iconTone } from "~/modules/files/file-icons"
 import {
   cancelUpload,
+  FileQuotaExceededError,
   type FileRow,
   getCachedPreviewObjectUrl,
   type InFlightUpload,
   inFlightUploadsFor,
 } from "~/modules/files/file-service"
 import { tNow, useI18n } from "~/modules/i18n/i18n-context"
+import { capLimitMessage } from "~/modules/settings/cap-limit-message"
 import { useApi } from "~/modules/shell/ApiContext"
 import { settledValue } from "~/primitives/settledValue"
 
@@ -311,6 +313,9 @@ const UploadingTile: ParentComponent<{ upload: InFlightUpload; label: string }> 
 
 /** Human-readable message for a failed staging upload. */
 export function attachmentErrorMessage(err: unknown): string {
+  // The org's storage cap reads as the plan's refusal, in the reader's language.
+  const capped = err instanceof FileQuotaExceededError ? capLimitMessage(tNow, err.code) : null
+  if (capped) return capped
   if (err instanceof Error && err.message)
     return tNow("kernel.filesUi.attachmentFailed", { reason: err.message })
   return tNow("kernel.filesUi.attachmentFailedGeneric")

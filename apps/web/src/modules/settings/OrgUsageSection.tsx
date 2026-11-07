@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // Settings → Organization → Usage and limits: four read-only rows (seats,
-// mailboxes, storage, background jobs this hour), each "used of limit" or
+// mailboxes, storage, background jobs this hour; plans do not limit mailboxes,
+// so no mailbox row in the managed edition), each "used of limit" or
 // "used · unlimited" (`GET /api/org/usage`), and one line saying the limits are
 // set by whoever runs the server. Calm on purpose: no edit control and no alarm
 // colour; a cap at or past its limit gets one neutral emphasis (stronger text
@@ -10,6 +11,7 @@ import type { OrgUsage, OrgUsageEntry } from "@liaison/shared"
 import { type Component, createResource, For, Show } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
+import { billingMode } from "./BillingState"
 
 type Row = {
   id: "seats" | "mailboxes" | "storage" | "jobs"
@@ -80,7 +82,9 @@ const OrgUsageSection: Component = () => {
   return (
     <div data-testid="org-usage" class="flex flex-col gap-3">
       <p data-testid="org-usage-help" class="text-sm text-text-secondary">
-        {i18n.t("kernel.orgUsage.help")}
+        {i18n.t(
+          billingMode() === "managed" ? "kernel.orgUsage.helpManaged" : "kernel.orgUsage.help",
+        )}
       </p>
       <Show when={usage.error}>
         <p data-testid="org-usage-load-failed" class="text-sm text-text-secondary">
@@ -90,7 +94,7 @@ const OrgUsageSection: Component = () => {
       <Show when={!usage.error && usage()}>
         {(u) => (
           <ul data-testid="org-usage-list" class="flex flex-col divide-y divide-border-subtle">
-            <For each={ROWS}>
+            <For each={ROWS.filter((r) => billingMode() !== "managed" || r.id !== "mailboxes")}>
               {(row) => {
                 const e = () => row.entry(u())
                 const reached = () => atLimit(e())
@@ -124,6 +128,61 @@ const OrgUsageSection: Component = () => {
                 )
               }}
             </For>
+            <Show when={u().storageEstimate}>
+              {(est) => (
+                <li
+                  data-testid="org-usage-storage-estimate"
+                  data-state={est().overCap ? "over" : "under"}
+                  class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2 text-sm"
+                >
+                  <span class="flex flex-col">
+                    <span class="text-text">{i18n.t("kernel.orgUsage.storageEstimate")}</span>
+                    <span class="text-xs text-text-secondary">
+                      {i18n.t("kernel.orgUsage.storageEstimateHelp")}
+                    </span>
+                    <span
+                      class="text-xs text-text-secondary"
+                      data-testid="org-usage-storage-estimate-measured"
+                    >
+                      {i18n.t(
+                        est().partial
+                          ? "kernel.orgUsage.storageEstimatePartial"
+                          : "kernel.orgUsage.storageEstimateMeasured",
+                        {
+                          date: new Date(est().measuredAt).toLocaleDateString(i18n.locale()),
+                        },
+                      )}
+                    </span>
+                  </span>
+                  <span class="flex items-baseline gap-2">
+                    <Show when={est().overCap}>
+                      <span
+                        class="text-xs text-text-secondary"
+                        data-testid="org-usage-storage-estimate-over"
+                      >
+                        {i18n.t("kernel.orgUsage.storageEstimateOver")}
+                      </span>
+                    </Show>
+                    <span
+                      data-testid="org-usage-storage-estimate-value"
+                      class={est().overCap ? "font-medium text-text" : "text-text-secondary"}
+                    >
+                      {(() => {
+                        const limit = est().limitGb
+                        return limit === null
+                          ? i18n.t("kernel.orgUsage.storageEstimateValueUnlimited", {
+                              used: num(est().usedGb),
+                            })
+                          : i18n.t("kernel.orgUsage.storageEstimateValue", {
+                              used: num(est().usedGb),
+                              limit: num(limit),
+                            })
+                      })()}
+                    </span>
+                  </span>
+                </li>
+              )}
+            </Show>
           </ul>
         )}
       </Show>

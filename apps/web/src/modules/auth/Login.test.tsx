@@ -81,6 +81,69 @@ describe("Login", () => {
     })
   })
 
+  describe("asking for a new code", () => {
+    const sentOk = (id: string) => jsonResponse({ data: { challengeId: id, message: "sent" } })
+    const ask = async () => {
+      fireEvent.input(screen.getByPlaceholderText("you@company.com"), {
+        target: { value: "test@test.com" },
+      })
+      fireEvent.click(screen.getByRole("button", { name: /continue with email/i }))
+      await waitFor(() => expect(screen.getByPlaceholderText("000000")).toBeInTheDocument())
+    }
+    beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }))
+    afterEach(() => vi.useRealTimers())
+
+    it("counts down on the button, then sends a new code and starts again", async () => {
+      fetchMock.mockResolvedValueOnce(sentOk("chal-1"))
+      renderWithRouter()
+      await ask()
+      const resend = screen.getByTestId("code-step-resend") as HTMLButtonElement
+      expect(resend).toBeDisabled()
+      expect(resend).toHaveTextContent("Send a new code in 60 s")
+      await vi.advanceTimersByTimeAsync(18_000)
+      expect(resend).toHaveTextContent("Send a new code in 42 s")
+      await vi.advanceTimersByTimeAsync(42_000)
+      expect(resend).toBeEnabled()
+      expect(resend).toHaveTextContent(/^Send a new code$/)
+
+      fetchMock.mockResolvedValueOnce(sentOk("chal-2"))
+      fireEvent.click(resend)
+      await waitFor(() =>
+        expect(screen.getByText(/we sent a new 6-digit code/i)).toBeInTheDocument(),
+      )
+      expect(resend).toHaveTextContent("Send a new code in 60 s")
+    })
+
+    it("back to the same address inside the minute: no new request, the code mailed still holds", async () => {
+      fetchMock.mockResolvedValueOnce(sentOk("chal-1"))
+      renderWithRouter()
+      await ask()
+      const requests = () =>
+        fetchMock.mock.calls.filter(([u]) => String(u).includes("/magic-link/request")).length
+      expect(requests()).toBe(1)
+      fireEvent.click(screen.getByRole("button", { name: /use a different email/i }))
+      await waitFor(() =>
+        expect(screen.getByPlaceholderText("you@company.com")).toBeInTheDocument(),
+      )
+      fireEvent.click(screen.getByRole("button", { name: /continue with email/i }))
+      await waitFor(() => expect(screen.getByPlaceholderText("000000")).toBeInTheDocument())
+      expect(requests()).toBe(1)
+    })
+
+    it("a throttled request starts the countdown from what the server said", async () => {
+      fetchMock.mockResolvedValueOnce(sentOk("chal-1"))
+      renderWithRouter()
+      await ask()
+      await vi.advanceTimersByTimeAsync(60_000)
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ error: { message: "Too many requests" } }, 429, { "Retry-After": "1800" }),
+      )
+      fireEvent.click(screen.getByTestId("code-step-resend"))
+      await waitFor(() => expect(screen.getByText(/too many attempts/i)).toBeInTheDocument())
+      expect(screen.getByTestId("code-step-resend")).toBeDisabled()
+    })
+  })
+
   it("reveals the retained password form (with forgot-password) via the toggle", async () => {
     renderWithRouter()
     fireEvent.click(screen.getByRole("button", { name: /sign in with a password/i }))
@@ -288,6 +351,26 @@ describe("Login on a demo deployment", () => {
     expect(screen.queryByTestId("auth-card")).toBeNull()
   })
 
+  it("offers no account creation where the server says accounts come by invitation", async () => {
+    _resetBranding()
+    await ensureBrandingLoaded(
+      (async () =>
+        ({
+          ok: true,
+          json: async () => ({ data: { orgName: "Managed", flags: { noAccountEntry: true } } }),
+        }) as unknown as Response) as unknown as typeof fetch,
+    )
+    renderWithRouter()
+    expect(screen.getByTestId("auth-card")).toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: /create an account/i })).toBeNull()
+  })
+
+  it("offers it everywhere else", async () => {
+    await serverSays(false)
+    renderWithRouter()
+    expect(screen.getByRole("link", { name: /create an account/i })).toBeInTheDocument()
+  })
+
   it("keeps an ordinary sign in one click away", async () => {
     await serverSays(true)
     renderWithRouter()
@@ -306,6 +389,33 @@ describe("Login on a demo deployment", () => {
     await waitFor(() => expect(screen.getByPlaceholderText("••••••••")).toBeInTheDocument())
     expect(screen.queryByRole("button", { name: /continue with email/i })).toBeNull()
     expect(screen.queryByRole("button", { name: /email code/i })).toBeNull()
+  })
+
+  it("says mail can't go out, stays on the email step, and never claims a code was sent", async () => {
+    await serverSays(false)
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) =>
+      String(input).includes("/magic-link/request")
+        ? jsonResponse(
+            {
+              error: {
+                message: "We can't send email right now.",
+                code: "EMAIL_PROVIDER_UNAVAILABLE",
+              },
+            },
+            403,
+          )
+        : emptyProviders(),
+    )
+    renderWithRouter()
+    fireEvent.input(screen.getByPlaceholderText("you@company.com"), {
+      target: { value: "owner@test.com" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: /continue with email/i }))
+    await waitFor(() =>
+      expect(screen.getByTestId("email-provider-unavailable")).toBeInTheDocument(),
+    )
+    expect(screen.getByPlaceholderText("you@company.com")).toBeInTheDocument()
+    expect(screen.queryByText(/code/i)).toBeNull()
   })
 
   it("opens the password form with the reason when the server refuses to send a code", async () => {

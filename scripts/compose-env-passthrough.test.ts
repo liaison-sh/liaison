@@ -74,6 +74,32 @@ describe("compose passes every documented variable to the app", () => {
     expect(names.has("EXA_API_KEY")).toBe(true)
   })
 
+  it("a variable compose passes brings the variables its boot check requires with it", () => {
+    // LIAISON_EDGE_MODE=signed refuses to boot without LIAISON_EDGE_SECRET (env.ts); the
+    // managed edition refuses to boot without its operator org, pay frame origin,
+    // default models and a mail transport (managed-boot.ts).
+    const PAIRS: Array<[string, string]> = [
+      ["LIAISON_EDGE_MODE", "LIAISON_EDGE_SECRET"],
+      ["LIAISON_EDITION", "LIAISON_OPERATOR_ORG_ID"],
+      ["LIAISON_EDITION", "LIAISON_PAY_FRAME_ORIGIN"],
+      ["LIAISON_EDITION", "LIAISON_MANAGED_DEFAULT_MODELS"],
+      ["LIAISON_EDITION", "RESEND_API_KEY"],
+      ["LIAISON_EDITION", "SMTP_HOST"],
+      // A managed server with a Gmail push topic refuses to boot without the push
+      // subscription's OIDC audience and service account (managed-boot.ts).
+      ["GMAIL_PUBSUB_TOPIC", "GMAIL_PUSH_AUDIENCE"],
+      ["GMAIL_PUBSUB_TOPIC", "GMAIL_PUSH_SERVICE_ACCOUNT"],
+      // The server-level Meta callback of the managed edition verifies with it.
+      ["LIAISON_EDITION", "META_APP_SECRET"],
+      // ... and its OAuth client id (the workspaces' Facebook connection).
+      ["META_APP_SECRET", "META_APP_ID"],
+    ]
+    const missing = PAIRS.filter(([a, b]) => passed.has(a) && !passed.has(b)).map(
+      ([a, b]) => `${b} (needed by ${a})`,
+    )
+    expect(missing).toEqual([])
+  })
+
   it("compose's unset default for LIAISON_TEAM_ENDPOINT is the app's default endpoint", () => {
     // `${NAME-default}` (no colon): unset gives the default, set-but-empty disables sharing.
     // Read from the source: importing env.ts would parse the process environment.

@@ -1,5 +1,5 @@
 Set up an org on first use: per-process registries filled per org -> apps/api/src/modules/apps/init.ts:681
-Boot sets up no org -> apps/api/src/index.ts:294
+Boot sets up no org -> apps/api/src/index.ts:309
 An org not set up is set up now and awaited -> apps/api/src/modules/apps/init.ts:780
 Half the privileged pool in orgs in memory at once (at most 8), stale-stamp writes serialized -> apps/api/src/db/pool-plan.ts:51 ; apps/api/src/modules/apps/registration-lane.ts:101
 Outbox leaves a not-ready org's events unprocessed and retries after a growing delay -> apps/api/src/infra/events/outbox-worker.ts:297 ; apps/api/src/infra/events/outbox-worker.ts:246
@@ -8,12 +8,12 @@ OAuth callback sets its org up -> apps/api/src/modules/apps/connections/service.
 Unknown or deleted org id skipped -> apps/api/src/modules/apps/init.ts:695
 Authenticated request ensures the org -> apps/api/src/middleware/auth.ts:117
 MCP request ensures the org -> apps/api/src/modules/mcp/mcp-auth-middleware.ts:48
-WebSocket connection ensures the org -> apps/api/src/index.ts:174
+WebSocket connection ensures the org -> apps/api/src/index.ts:189
 Background job, outbox, state materializer, webhooks go through the ensure entry -> apps/api/src/modules/apps/init.ts:681
 Outbox ensures the org -> apps/api/src/infra/events/outbox-worker.ts:166
 Attention state refresh ensures the org -> apps/api/src/modules/attention/state-materializer.ts:354
 Search reindex ensures each org -> apps/api/src/modules/search/reindex.ts:554
-Inbound webhook sets up an existing org first; failure logged, route continues -> apps/api/src/app.ts:1262
+Inbound webhook sets up an existing org first; failure logged, route continues -> apps/api/src/app.ts:1249
 Two halves: in-memory registries vs org rows + setup hooks -> apps/api/src/modules/apps/init.ts:571
 Setup hook on a stale stamp: default saved views -> apps/api/src/modules/apps/init.ts:557
 Google login provider reconciled on every first touch, whatever the stamp -> apps/api/src/modules/apps/init.ts:609
@@ -46,6 +46,13 @@ target app copies a handed-over file onto its own record under its own write acc
 a file copied by a webhook or job records no uploader -> apps/api/src/modules/files/attach.ts:370
 One host dispatcher per call, bound to that call's bridge; __ctx built from a constant shim and the method names as data -> apps/api/src/modules/apps/sandbox/executor.ts:454 ; apps/api/src/modules/apps/sandbox/executor.ts:355
 A trusted attention provider evaluates its tree-shaken bundle, built once per bundle version -> apps/api/src/modules/apps/attention-aggregator.ts:168 ; apps/api/src/modules/apps/sandbox/bundle-shake.ts:104
+Bundle text revalidated against the file on every load (stat fingerprint, content hash) -> apps/api/src/modules/apps/sandbox/bundle-loader.ts:148
+Custom app egress: no operator private hosts; never the server's own names or LIAISON_CELL_PUBLIC_ADDRESSES, checked on the pinned address of every hop -> apps/api/src/modules/apps/sandbox/bridge/shared.ts (sandboxEgressPolicy, isCellOwnHost, cellOwnAddresses) ; apps/api/src/lib/outbound-fetch.ts (refuseAddress)
+Per-org share 2 in flight, 8 waiting 5 s, 429 custom_app_busy Retry-After 5; nested not counted; tenantStats -> apps/api/src/modules/apps/sandbox/worker-pool.ts (CUSTOM_APP_MAX_CONCURRENT_PER_ORG, CUSTOM_APP_MAX_QUEUED_PER_ORG, CUSTOM_APP_QUEUE_WAIT_MS, execute, tenantStats) ; apps/api/src/modules/apps/custom-app-name.ts (sandboxTenantKey)
+Custom app webhooks 120 per minute per org and app, before verify -> apps/api/src/modules/webhooks/custom-app-webhook-limit.ts ; apps/api/src/modules/webhooks/routes.ts (assertCustomAppWebhookRate)
+Custom app bulk blobs: own scope, 256 MiB, 4 GiB server, 1 h idle sweep, purge -> apps/api/src/modules/apps/sandbox/bulk-blob.ts ; apps/api/src/modules/org/purge/purge-org.ts (deleteOrgCustomBulkBlobs)
+Kill switch PUT /api/cloud/orgs/:id/custom-apps/:name/state, disabled_at, 409 custom_app_disabled, audit -> apps/api/src/modules/cloud/custom-app-disable.ts ; apps/api/src/modules/cloud/routes.ts ; apps/api/src/db/migrations/0268_apps_installed_disabled.sql ; apps/api/src/modules/apps/app-org-scope.ts (appVisibleToOrg)
+Custom app interface framed only -> apps/api/src/modules/apps/install-trust.ts (firstParty) ; apps/web/src/framework/bootstrap.ts (inPage) ; apps/api/src/tests/integration/custom-apps-tenant-boundary.test.ts (S5-3)
 files_importAttachment and pdf.render refused at the storage limit for a person or agent; system calls and immutable-with-retention parents exempt, decided by the host -> apps/api/src/modules/apps/sandbox/bridge/files.ts:210 ; apps/api/src/modules/pdf/render.ts:267 ; apps/api/src/modules/apps/sandbox/bridge/platform.ts:246 ; apps/api/src/modules/files/service.ts:353 ; apps/api/src/modules/apps/app-registries.ts:859
 files_analyzeDocument: declared capability, own files only, PDF or image, apps media surface, credits -> apps/api/src/modules/apps/sandbox/bridge/files.ts:901 ; apps/api/src/modules/apps/manifest-schema.ts:80 ; apps/api/src/modules/agent/media/media-analysis-constants.ts:123
 setOpenRecord: a frame names its own app's record for its own tab -> apps/web/src/framework/isolated-app.tsx:256

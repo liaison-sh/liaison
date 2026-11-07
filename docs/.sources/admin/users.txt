@@ -11,7 +11,7 @@ Invite posts email and roleId only -> apps/web/src/modules/settings/AdminUsers.t
 Invite email Accept invitation, expires in 7 days -> apps/api/src/modules/users/invites.ts:146
 Invite expiry 7 days -> apps/api/src/modules/users/invites.ts:107
 Existing user: view existing user link -> apps/web/src/modules/settings/AdminUsers.tsx:421
-Invite routes require kernel:users:admin -> apps/api/src/app.ts:691
+Invite routes require kernel:users:admin -> apps/api/src/app.ts:678
 Console email bodies on local trial -> .claude/skills/setup-liaison/SKILL.md:144
 config apply report users[].inviteUrl -> .claude/skills/setup-liaison/SKILL.md:282
 Click a user opens detail -> apps/web/src/modules/settings/AdminUsers.tsx:268
@@ -67,7 +67,19 @@ reused old renewal token ends only that sign-in (its family); other sign-ins sta
 Seat limit: agents/deactivated take no seat; invite, accept, SSO first sign-in, reactivate refused SEAT_LIMIT_REACHED with limit and used -> apps/api/src/modules/org/caps.ts:180 ; apps/api/src/modules/users/invites.ts:108 ; apps/api/src/modules/auth/auth.ts:242 ; apps/api/src/modules/auth/oauth-routes.ts:959 ; apps/api/src/modules/users/service.ts:430
 deactivation revokes the sessions' access tokens -> apps/api/src/modules/users/service.ts:395
 open real-time connections of an ended session close -> apps/api/src/lib/server.ts:558
+Handoff link shows workspace and account, signs in on Continue -> apps/web/src/modules/auth/MagicLinkVerify.tsx:117
+Sign in to {{workspace}} / Continue labels -> packages/shared/src/i18n/locales/en/kernel.json:3170
+Handoff challenge preview until confirm -> apps/api/src/modules/auth/magic-link.ts:350
+Handoff link single use, 10 minutes, bound to the org host -> apps/api/src/modules/cloud/handoff.ts:73
+Sign-in redirect URI on BASE_URL or LIAISON_OAUTH_REDIRECT_BASE -> apps/api/src/modules/auth/oauth-routes.ts:543
 step-up: password or emailed code per action, code bound to its purpose, 10 minutes, account deletion code only -> apps/api/src/modules/auth/step-up.ts:28 ; apps/api/src/modules/auth/step-up.ts:85 ; apps/api/src/modules/auth/routes.ts:601
+password change or reset ends sessions and MCP connections -> apps/api/src/modules/auth/auth.ts:885 ; apps/api/src/modules/auth/routes.ts:1203
+Sign-in while suspended: admins only, nobody once closed -> apps/api/src/modules/cloud/suspension.ts:159
+Sign-in gate in createSession -> apps/api/src/modules/auth/auth.ts:508
+Refusal carries accessUntil and contact -> apps/api/src/modules/cloud/suspension.ts:69
+Live updates refused while suspended -> apps/api/src/modules/auth/auth-state.ts:180
+Suspended org: every screen shows Workspace suspended with the contact (REST, refresh, sign-in restore, websocket) -> apps/web/src/lib/org-suspended.ts:1 ; apps/web/src/modules/auth/createAuthManager.ts:78 ; apps/web/src/modules/auth/auth-store.ts:364 ; apps/web/src/primitives/createWebSocket.ts:295
+Suspended org page: export and Billing for admins with access, Sign out -> apps/web/src/modules/shell/OrgSuspendedPage.tsx:45 ; apps/web/src/modules/shell/OrgSuspendedPage.tsx:107
 password change or reset ends sessions and MCP connections -> apps/api/src/modules/auth/auth.ts:886 ; apps/api/src/modules/auth/routes.ts:1204
 password change or reset stops push to registered phones and browsers -> apps/api/src/modules/auth/auth.ts:889 ; apps/api/src/modules/auth/routes.ts:1206 ; apps/api/src/modules/push/end-user-push.ts:30
 deactivation stops push to registered phones and browsers -> apps/api/src/modules/users/service.ts:386

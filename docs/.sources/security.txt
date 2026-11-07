@@ -31,7 +31,7 @@ ALLOW_MANAGED=false locks zero-access; DEFAULT=private is only a default -> apps
 ended session's access tokens refused -> apps/api/src/middleware/auth.ts:49
 sign out ends the session -> apps/api/src/modules/auth/auth.ts:839
 password change ends sessions -> apps/api/src/modules/auth/auth.ts:909
-password reset ends sessions -> apps/api/src/modules/auth/routes.ts:1213
+password reset ends sessions -> apps/api/src/modules/auth/routes.ts:1217
 deactivation ends sessions -> apps/api/src/modules/users/service.ts:395
 erasure ends sessions -> apps/api/src/modules/erasure/erase-user.ts:1371
 every server process hears it -> apps/api/src/modules/auth/session-revocation.ts:190

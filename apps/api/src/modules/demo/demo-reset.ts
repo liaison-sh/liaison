@@ -294,6 +294,16 @@ export const KERNEL_RESET_RULES: Record<string, KernelResetRule> = {
   // The instance-wide active app version (org_id is reserved for per-org
   // installs and always NULL today): a demo reset must never move it.
   apps_active_version: "keep",
+  // The installed app versions (org_id marks an org-private custom app, which
+  // the demo never installs): a demo reset must never uninstall code.
+  apps_installed: "keep",
+  // The billing status the control plane pushes (managed edition only; a
+  // demo server has none): not content a reset rewrites.
+  org_billing_state: "keep",
+  // The org moves this instance took part in (0270): transfer ids and
+  // directions only, written by the transfer import/export, never by a visitor.
+  // The reverse-move rule reads them, so a reset must not forget a move.
+  org_transfer_ledger: "keep",
 
   // Everything else is content.
   sessions: "clear",

@@ -310,9 +310,17 @@ test.describe("projects visual", () => {
     const sidebar = page.getByTestId("projects-sidebar")
     await expect(sidebar).toBeVisible({ timeout: 10_000 })
     await expect
-      .poll(async () => await sidebar.locator('[data-testid^="projects-sidebar.row-"]').count(), {
-        timeout: 10_000,
-      })
+      .poll(
+        async () =>
+          await sidebar
+            .locator(
+              '[data-testid^="projects-sidebar.row-"]:not([data-testid^="projects-sidebar.row-key-"])',
+            )
+            .count(),
+        {
+          timeout: 10_000,
+        },
+      )
       .toBe(5)
 
     await settle(page)
@@ -566,9 +574,17 @@ test.describe("projects visual", () => {
     const sidebar = page.getByTestId("projects-sidebar")
     await expect(sidebar).toBeVisible({ timeout: 15_000 })
     await expect
-      .poll(async () => await sidebar.locator('[data-testid^="projects-sidebar.row-"]').count(), {
-        timeout: 10_000,
-      })
+      .poll(
+        async () =>
+          await sidebar
+            .locator(
+              '[data-testid^="projects-sidebar.row-"]:not([data-testid^="projects-sidebar.row-key-"])',
+            )
+            .count(),
+        {
+          timeout: 10_000,
+        },
+      )
       .toBe(5)
 
     // Light up two filters so the active-state styling is captured.
@@ -712,10 +728,13 @@ test.describe("projects visual", () => {
     await assertCalmVisualSemantics(page.locator("[data-shell]"))
     await expect(page.locator("[data-shell]")).toHaveScreenshot("shell-task-detail-populated.png", {
       maxDiffPixelRatio: 0.02,
-      // Mask the provenance line ("Created Xm ago, last updated Ym ago"): it
-      // carries timing that varies across runs. The agent panel it also used
-      // to mask is retired (P4c-T17).
-      mask: [page.getByTestId("task-detail.provenance")],
+      // Mask the provenance line ("Created Xm ago, last updated Ym ago") and the
+      // created-by line (the run's date): they carry timing that varies across
+      // runs. The agent panel it also used to mask is retired .
+      mask: [
+        page.getByTestId("task-detail.provenance"),
+        page.getByTestId("task-detail.created-by"),
+      ],
     })
   })
 

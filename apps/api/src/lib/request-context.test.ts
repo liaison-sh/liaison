@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { describe, expect, it } from "bun:test"
-import { buildTrustedProxyList, getClientIp, isTrustedProxyAddress } from "~/lib/request-context"
+import { afterEach, describe, expect, it } from "bun:test"
+import type { Context } from "hono"
+import { env } from "~/lib/env"
+import {
+  buildTrustedProxyList,
+  effectiveRequestFromRaw,
+  getClientIp,
+  isTrustedProxyAddress,
+  signEdgeHeaders,
+} from "~/lib/request-context"
 
 // Minimal mock of Hono Context
 function mockContext(headers: Record<string, string>) {
@@ -113,5 +121,117 @@ describe("getClientIp — only a trusted proxy peer may forward", () => {
     expect(isTrustedProxyAddress(list, "198.51.101.7")).toBe(false)
     expect(isTrustedProxyAddress(list, "10.0.0.1")).toBe(true)
     expect(isTrustedProxyAddress(list, "garbage")).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// effectiveRequest: the edge seam (LIAISON_EDGE_MODE). Each mode is exercised
+// on raw requests, as both the Hono path and the WebSocket upgrade read it.
+// ---------------------------------------------------------------------------
+
+describe("effectiveRequestFromRaw", () => {
+  const SECRET = "edge-secret-for-tests-0123456789abcdef"
+  const saved = { mode: env.LIAISON_EDGE_MODE, secret: env.LIAISON_EDGE_SECRET }
+  afterEach(() => {
+    env.LIAISON_EDGE_MODE = saved.mode
+    env.LIAISON_EDGE_SECRET = saved.secret
+  })
+  const req = (headers: Record<string, string>, path = "/api/x?q=1", method = "GET") =>
+    new Request(`http://cell-1-origin.example.com${path}`, { method, headers })
+
+  it("unset: the Host header, and CF-Connecting-IP is never read", () => {
+    env.LIAISON_EDGE_MODE = undefined
+    const r = effectiveRequestFromRaw(
+      req({ host: "acme.example.com", "cf-connecting-ip": "203.0.113.9" }),
+      "127.0.0.1",
+    )
+    expect(r.host).toBe("acme.example.com")
+    expect(r.clientIp).not.toBe("203.0.113.9")
+  })
+
+  it("direct: Host header; CF-Connecting-IP only from a loopback peer", () => {
+    env.LIAISON_EDGE_MODE = "direct"
+    const headers = { host: "Acme.Example.com", "cf-connecting-ip": "203.0.113.9" }
+    const viaTunnel = effectiveRequestFromRaw(req(headers), "127.0.0.1")
+    expect(viaTunnel).toEqual({ host: "acme.example.com", clientIp: "203.0.113.9" })
+    expect(effectiveRequestFromRaw(req(headers), "::1").clientIp).toBe("203.0.113.9")
+    // From anywhere else the header is the client's own claim.
+    expect(effectiveRequestFromRaw(req(headers), "198.51.100.7").clientIp).toBe("198.51.100.7")
+    // Junk in the header is not an address.
+    expect(
+      effectiveRequestFromRaw(
+        req({ host: "a.example.com", "cf-connecting-ip": "nope" }),
+        "127.0.0.1",
+      ).clientIp,
+    ).not.toBe("nope")
+  })
+
+  function signed(
+    over: Partial<{ host: string; ip: string; ts: number; sigHost: string; method: string }> = {},
+  ) {
+    const host = over.host ?? "acme.example.com"
+    const ip = over.ip ?? "203.0.113.9"
+    const ts = over.ts ?? Math.floor(Date.now() / 1000)
+    const sig = signEdgeHeaders(SECRET, {
+      host: over.sigHost ?? host,
+      ts,
+      method: over.method ?? "GET",
+      path: "/api/x",
+      clientIp: ip,
+    })
+    return {
+      host: "cell-1-origin.example.com",
+      "x-liaison-host": host,
+      "x-liaison-client-ip": ip,
+      "x-liaison-ts": String(ts),
+      "x-liaison-host-sig": sig,
+    }
+  }
+
+  it("signed: a valid, fresh signature gives the edge's host and client address", () => {
+    env.LIAISON_EDGE_MODE = "signed"
+    env.LIAISON_EDGE_SECRET = SECRET
+    expect(effectiveRequestFromRaw(req(signed()), "127.0.0.1")).toEqual({
+      host: "acme.example.com",
+      clientIp: "203.0.113.9",
+    })
+  })
+
+  it("signed: a forged, stale or replayed-elsewhere signature gives no host", () => {
+    env.LIAISON_EDGE_MODE = "signed"
+    env.LIAISON_EDGE_SECRET = SECRET
+    const peer = "127.0.0.1"
+    // Signed for another host.
+    expect(effectiveRequestFromRaw(req(signed({ sigHost: "evil.example.com" })), peer)).toEqual({
+      host: null,
+      clientIp: peer,
+    })
+    // Outside the ±60 s window.
+    const stale = signed({ ts: Math.floor(Date.now() / 1000) - 120 })
+    expect(effectiveRequestFromRaw(req(stale), peer).host).toBeNull()
+    // Signed for another method.
+    expect(effectiveRequestFromRaw(req(signed({ method: "POST" })), peer).host).toBeNull()
+    // Signed for another path.
+    expect(effectiveRequestFromRaw(req(signed(), "/api/other"), peer).host).toBeNull()
+    // Missing headers: the raw Host is never trusted in this mode.
+    expect(effectiveRequestFromRaw(req({ host: "acme.example.com" }), peer).host).toBeNull()
+    // Wrong secret.
+    env.LIAISON_EDGE_SECRET = "another-secret-entirely-0123456789abcd"
+    expect(effectiveRequestFromRaw(req(signed()), peer).host).toBeNull()
+  })
+
+  it("getClientIp reads the seam when an edge mode is set", () => {
+    env.LIAISON_EDGE_MODE = "direct"
+    const raw = req({ host: "a.example.com", "cf-connecting-ip": "203.0.113.9" })
+    const c = {
+      req: {
+        raw,
+        header: (name: string) =>
+          name.toLowerCase() === "x-bun-socket-ip"
+            ? "127.0.0.1"
+            : (raw.headers.get(name) ?? undefined),
+      },
+    } as unknown as Context
+    expect(getClientIp(c)).toBe("203.0.113.9")
   })
 })

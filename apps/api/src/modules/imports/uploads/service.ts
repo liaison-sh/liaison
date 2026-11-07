@@ -48,6 +48,11 @@ import {
   signFileToken,
   wouldExceedOrgQuota,
 } from "~/modules/files/service"
+import {
+  SKIPPED_MOVING,
+  sweepSkippingMoving,
+  writeUnlessMoving,
+} from "~/modules/org/transfer-state/skip-moving"
 
 /** Default import cap, in MB, when the org sets no `importFileSizeLimitMb`. */
 export const IMPORT_FILE_SIZE_LIMIT_MB_DEFAULT = 5120
@@ -552,26 +557,38 @@ export async function reapExpiredImportUploads(
   opts: { now?: Date; limit?: number; storage?: ObjectStorageDeps } = {},
 ): Promise<{ aborted: number; failed: number }> {
   const now = opts.now ?? new Date()
-  const rows = await withSystemDb("imports:upload-reaper:list", (tx) =>
-    tx
-      .select()
-      .from(importUploads)
-      .where(and(eq(importUploads.status, "uploading"), lt(importUploads.expiresAt, now)))
-      .limit(opts.limit ?? 500),
+  // An org being moved keeps its uploads as they are until the move ends.
+  const rows = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("imports:upload-reaper:list", (tx) =>
+      tx
+        .select()
+        .from(importUploads)
+        .where(
+          and(
+            eq(importUploads.status, "uploading"),
+            lt(importUploads.expiresAt, now),
+            notMoving(importUploads.orgId),
+          ),
+        )
+        .limit(opts.limit ?? 500),
+    ),
   )
   let aborted = 0
   let failed = 0
   for (const row of rows) {
     try {
-      if (row.mode === "multipart" && row.uploadId) {
-        await abortMultipartUpload({ key: row.storageKey, uploadId: row.uploadId }, opts.storage)
-      }
-      await withSystemDb("imports:upload-reaper:mark", (tx) =>
-        tx
-          .update(importUploads)
-          .set({ status: "aborted" })
-          .where(and(eq(importUploads.id, row.id), eq(importUploads.status, "uploading"))),
-      )
+      const marked = await writeUnlessMoving(row.orgId, async () => {
+        if (row.mode === "multipart" && row.uploadId) {
+          await abortMultipartUpload({ key: row.storageKey, uploadId: row.uploadId }, opts.storage)
+        }
+        await withSystemDb("imports:upload-reaper:mark", (tx) =>
+          tx
+            .update(importUploads)
+            .set({ status: "aborted" })
+            .where(and(eq(importUploads.id, row.id), eq(importUploads.status, "uploading"))),
+        )
+      })
+      if (marked === SKIPPED_MOVING) continue
       aborted++
     } catch (err) {
       failed++

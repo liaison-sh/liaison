@@ -50,7 +50,7 @@
           {
             "who": "human",
             "minutes": 1,
-            "text": "Click **Connect via OAuth** — you are redirected to Google's consent screen.",
+            "text": "Click **Connect** — you are redirected to Google's consent screen.",
             "place": "liaison"
           },
           {
@@ -164,8 +164,7 @@
         "titleKey": "google-drive.connectionTitle",
         "description": "Read-only connector for searching and importing files from the connected Google Drive account.",
         "descriptionKey": "google-drive.settingsDescription",
-        "scope": "org",
-        "adminScope": "google-drive:accounts:admin",
+        "scope": "user",
         "blocks": [
           {
             "block": "connections",

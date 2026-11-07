@@ -55,9 +55,9 @@ import {
 import { readGuideNotes } from "~/modules/agent/context/guide-notes"
 import { orgHistoryBudgetCap } from "~/modules/agent/context/history-settings"
 import {
+  meterSideCall,
   preCheck,
   selectSideCallModelForOrg,
-  settleReservedDemoSideCall,
 } from "~/modules/agent/credits/credit-meter"
 import { resolveSideCallModel } from "~/modules/agent/providers/side-call-model"
 import { truncateReplayedToolResult } from "~/modules/agent/runtime/result-truncation"
@@ -608,7 +608,7 @@ async function defaultCheckpointSummarizer(
     log.error({ err, orgId: input.orgId }, "Checkpoint brief writing failed, advance skipped")
     return null
   } finally {
-    await settleReservedDemoSideCall(input.orgId, creditCheck, usage, providerMetadata)
+    await meterSideCall(input.orgId, creditCheck, usage, providerMetadata)
   }
 }
 
@@ -788,7 +788,7 @@ async function defaultBriefRowExtractor(input: {
   region: HistoryMessageRow[]
 }): Promise<BriefRowInput[]> {
   // Settled into the reserved demo org's ledger in `finally`; a no-op otherwise.
-  let settle: Parameters<typeof settleReservedDemoSideCall>[1] | null = null
+  let settle: Parameters<typeof meterSideCall>[1] | null = null
   let usage: { inputTokens?: number; outputTokens?: number } | null = null
   let providerMetadata: unknown
   try {
@@ -829,7 +829,7 @@ async function defaultBriefRowExtractor(input: {
     log.error({ err, threadId: input.threadId }, "Brief row extraction failed, rows skipped")
     return []
   } finally {
-    if (settle) await settleReservedDemoSideCall(input.orgId, settle, usage, providerMetadata)
+    if (settle) await meterSideCall(input.orgId, settle, usage, providerMetadata)
   }
 }
 

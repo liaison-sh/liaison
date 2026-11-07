@@ -82,7 +82,7 @@ import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
 import { executeInSandbox, resolveToolTimeoutMs } from "~/modules/apps/sandbox/executor"
 import { getSandboxPool } from "~/modules/apps/sandbox/pool"
 import {
-  createRpcBridge,
+  createSandboxRpcBridge,
   createSessionRpcBridge,
   inlinePgCauseOnBridge,
 } from "~/modules/apps/sandbox/rpc-bridge"
@@ -96,6 +96,9 @@ import {
   type ExecPriority,
   getWorkerPool,
   initWorkerPool,
+  SANDBOX_TENANT_BUSY_CODE,
+  SANDBOX_TENANT_RETRY_AFTER_SECONDS,
+  SandboxTenantBusyError,
 } from "~/modules/apps/sandbox/worker-pool"
 import { APP_TOOL_ERROR_STATUS } from "~/modules/apps/tool-error-status"
 import {
@@ -238,6 +241,7 @@ import {
   rowTaintMustHold,
   type TaintNarrowRow,
 } from "~/modules/approvals/taint-narrow"
+import { appVisibleToOrg } from "~/modules/apps/app-org-scope"
 import {
   approvalDedupeKeyRegistry,
   approvalDedupeSameRequesterRegistry,
@@ -3144,7 +3148,7 @@ export async function executeToolHandler(
       return session.run((liveTx) =>
         runManifest(
           inlinePgCauseOnBridge(
-            createRpcBridge(
+            createSandboxRpcBridge(
               tool.appName,
               userId,
               orgId,
@@ -3161,7 +3165,7 @@ export async function executeToolHandler(
     }
     return runManifest(
       inlinePgCauseOnBridge(
-        createRpcBridge(
+        createSandboxRpcBridge(
           tool.appName,
           userId,
           orgId,
@@ -3512,6 +3516,18 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   }
   const appName = opts.toolName.slice(0, colonIdx)
   const name = opts.toolName.slice(colonIdx + 1)
+
+  // Another org's custom app does not exist for this org (app-org-scope.ts):
+  // the same answer as an unknown tool, before any registry is read.
+  if (!(await appVisibleToOrg(appName, opts.orgId))) {
+    return {
+      error: {
+        code: "tool_not_found",
+        message: `tool ${opts.toolName} not registered`,
+        retryable: false,
+      },
+    }
+  }
 
   let tool = toolRegistry.get([opts.orgId, appName, name])
   if (!tool) {
@@ -5796,6 +5812,19 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       { err, toolName: opts.toolName, status: typedStatus, code: te?.code, innerMessage: message },
       "Tool handler threw",
     )
+    // The pool refused the call before the handler ran (the org's custom apps
+    // used their sandbox share, worker-pool.ts): a host refusal, not handler
+    // text, so it keeps its code and message even for an untrusted app.
+    if (err instanceof SandboxTenantBusyError) {
+      return {
+        error: {
+          code: SANDBOX_TENANT_BUSY_CODE,
+          message: err.message,
+          retryable: true,
+          status: 429,
+        },
+      }
+    }
     if (typedStatus !== undefined && !isUntrustedProd) {
       return {
         error: {
@@ -6012,6 +6041,11 @@ export async function executeTool<TData = unknown>(
     err.code = envelope.error.code
     if (envelope.error.body !== undefined) err.body = envelope.error.body
     err.details = { retryable: envelope.error.retryable }
+    // A tenant's sandbox share is full (worker-pool.ts): the client retries after one wait.
+    if (envelope.error.code === SANDBOX_TENANT_BUSY_CODE) {
+      ;(err as Error & { retryAfterSeconds?: number }).retryAfterSeconds =
+        SANDBOX_TENANT_RETRY_AFTER_SECONDS
+    }
     if (isPlatformTaintRefusal(envelope.error)) markPlatformTaintRefusal(err)
     if (wasRefusedBeforeRun(envelope.error, params.toolName)) {
       markRefusedBeforeRun(err, params.toolName)

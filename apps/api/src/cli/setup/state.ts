@@ -79,7 +79,7 @@ export async function buildSetupState(orgId: string): Promise<SetupStateReport> 
   const connections: SetupStateReport["connections"] = []
   for (const [app, connection] of orgConnections(orgId)) {
     const decl = connectionConfigRegistry.get([orgId, app, connection])
-    const setup = appConnectionSetup(orgId, app, connection)
+    const setup = await appConnectionSetup(orgId, app, connection)
     if (!decl || !setup) continue
     const key = `${app}/${connection}`
     const state = oauthNext.get(key)

@@ -2,11 +2,13 @@
 import { GoogleGenAI, ThinkingLevel } from "@google/genai"
 import { filesLogger as log } from "~/lib/logger"
 import {
+  MANAGED_MEDIA_ANALYSIS_UPSTREAM_ID,
   MAX_OUTPUT_TOKENS,
   MEDIA_ANALYSIS_MODEL_ID,
   MODEL_CALL_BACKOFF_BASE_MS,
   MODEL_CALL_MAX_ATTEMPTS,
 } from "~/modules/agent/media/media-analysis-constants"
+import { managedZdrRouting, openRouterFetch } from "~/modules/agent/providers/openrouter"
 
 /**
  * Thin wrapper around `@google/genai`. Owns: client construction from the
@@ -234,6 +236,122 @@ export async function analyzeWithGemini(
   const summary = (response.text ?? "").trim()
   const usage = mapUsageToTokens(response.usageMetadata)
   return { summary, usage }
+}
+
+// ── The managed edition: the same analysis on OpenRouter (S31) ─────────────
+
+/** One OpenRouter chat content part. */
+type OpenRouterContentPart = Record<string, unknown>
+
+/**
+ * A Gemini `inlineData` part as an OpenRouter content part: an image as
+ * `image_url`, a PDF as a `file`, a video as `video_url`, audio as
+ * `input_audio`, each a base64 data URL (the shapes the 2026-11-03 probe sent).
+ * Gemini's `videoMetadata` (frame rate, end offset) has no OpenRouter field and
+ * is dropped: the provider samples at its default rate.
+ */
+export function toOpenRouterContentPart(part: MediaPart): OpenRouterContentPart {
+  const inline = (part as { inlineData?: { mimeType?: unknown; data?: unknown } }).inlineData
+  if (!inline || typeof inline.mimeType !== "string" || typeof inline.data !== "string") {
+    throw toClientError(new Error("media-analysis: unsupported content part"), "model_error")
+  }
+  const { mimeType, data } = inline
+  const url = `data:${mimeType};base64,${data}`
+  if (mimeType.startsWith("image/")) return { type: "image_url", image_url: { url } }
+  if (mimeType === "application/pdf") {
+    return { type: "file", file: { filename: "document.pdf", file_data: url } }
+  }
+  if (mimeType.startsWith("video/")) return { type: "video_url", video_url: { url } }
+  if (mimeType.startsWith("audio/")) {
+    return { type: "input_audio", input_audio: { data, format: mimeType.slice("audio/".length) } }
+  }
+  throw toClientError(
+    new Error(`media-analysis: unsupported media type ${mimeType}`),
+    "model_error",
+  )
+}
+
+/** The request body: the same prompt and output cap as the Gemini path, ZDR routing. */
+export function buildOpenRouterMediaRequest(parts: MediaPart[], systemInstruction: string) {
+  return {
+    model: MANAGED_MEDIA_ANALYSIS_UPSTREAM_ID,
+    messages: [
+      { role: "system", content: systemInstruction },
+      { role: "user", content: parts.map(toOpenRouterContentPart) },
+    ],
+    max_tokens: MAX_OUTPUT_TOKENS,
+    // The closest-to-zero thinking setting, as `ThinkingLevel.MINIMAL` on the Gemini path.
+    reasoning: { effort: "minimal" },
+    provider: managedZdrRouting(),
+    usage: { include: true },
+  }
+}
+
+export interface AnalyzeWithOpenRouterArgs {
+  providerKey: string
+  parts: MediaPart[]
+  systemInstruction: string
+  signal: AbortSignal
+  orgId: string
+}
+
+class OpenRouterHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message)
+  }
+}
+
+/**
+ * One media analysis on OpenRouter, with the same bounded retry on a transient
+ * upstream error as `analyzeWithGemini`. Returns OpenRouter's reported cost
+ * (USD), which is what the call is metered at.
+ */
+export async function analyzeWithOpenRouter(
+  args: AnalyzeWithOpenRouterArgs,
+): Promise<{ summary: string; usage: MappedTokens; costUsd: number | undefined }> {
+  const body = buildOpenRouterMediaRequest(args.parts, args.systemInstruction)
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const res = await openRouterFetch("/chat/completions", {
+        apiKey: args.providerKey,
+        body,
+        signal: args.signal,
+        orgId: args.orgId,
+      })
+      const json = (await res.json().catch(() => null)) as {
+        choices?: Array<{ message?: { content?: unknown } }>
+        usage?: { prompt_tokens?: unknown; completion_tokens?: unknown; cost?: unknown }
+        error?: { message?: unknown }
+      } | null
+      if (!res.ok) {
+        const detail = typeof json?.error?.message === "string" ? `: ${json.error.message}` : ""
+        throw new OpenRouterHttpError(`OpenRouter answered HTTP ${res.status}${detail}`, res.status)
+      }
+      const content = json?.choices?.[0]?.message?.content
+      const usage = json?.usage ?? {}
+      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined)
+      return {
+        summary: (typeof content === "string" ? content : "").trim(),
+        usage: {
+          inputTokens: num(usage.prompt_tokens) ?? 0,
+          outputTokens: Math.max(0, num(usage.completion_tokens) ?? 0),
+        },
+        costUsd: num(usage.cost),
+      }
+    } catch (err) {
+      const aborted = args.signal.aborted
+      const retryable = !aborted && attempt < MODEL_CALL_MAX_ATTEMPTS && isTransient(err)
+      if (!retryable) {
+        const clientErr = toClientError(err, aborted ? "timeout" : "model_error")
+        log.error({ media: "openrouter", code: clientErr.error.code }, clientErr.error.message)
+        throw clientErr
+      }
+      await sleepWithAbort(MODEL_CALL_BACKOFF_BASE_MS * 2 ** (attempt - 1), args.signal)
+    }
+  }
 }
 
 /**

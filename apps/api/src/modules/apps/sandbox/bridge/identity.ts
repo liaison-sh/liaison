@@ -147,6 +147,10 @@ export function createIdentityMethods(ctx: BridgeContext): Record<string, any> {
           ? (JSON.parse(rawConfig) as Record<string, unknown>)
           : (rawConfig as Record<string, unknown> | null | undefined)
       const value = config?.[key]
+      // A key the managed cell owns answers the cell's value (cell-locked-config.ts).
+      const { cellConfigOverride } = await import("~/modules/apps/cell-locked-config")
+      const cell = await cellConfigOverride(orgId, appName, String(key), value)
+      if (cell !== undefined) return cell
       if (value === undefined || value === null) {
         // The instance may answer for every workspace (Mail's shared Gmail push topic).
         const { instanceConfigDefault } = await import("~/modules/apps/instance-config-defaults")

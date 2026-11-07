@@ -22,6 +22,10 @@
 //   bugReportsTeamOnly on while forwarding is off -> 400 FORWARDING_REQUIRED
 //   register or forwardBugReports off           -> bugReportsTeamOnly off too
 //
+// In the managed edition both switches read as on whatever is stored, and no
+// one changes them (403 MANAGED_EDITION): the identity is installed by
+// `liaison team identity install`, never registered from here.
+//
 // One privileged transaction under the advisory lock (`lockLiaisonTeam`), which
 // the outbox also takes before it applies a reply, so two admins (or an admin
 // and the outbox) never interleave.
@@ -31,6 +35,7 @@ import { extractRows, type PrivilegedDb } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import { instanceSettings } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
+import { isManagedEdition } from "~/lib/edition"
 import { appsLogger as log } from "~/lib/logger"
 import { writeAuditLog } from "~/modules/audit/service"
 import {
@@ -62,12 +67,13 @@ export interface LiaisonTeamSharing {
 export class LiaisonTeamError extends Error {
   constructor(
     message: string,
-    readonly status: 400 | 409,
+    readonly status: 400 | 403 | 409,
     readonly code:
       | "REGISTRATION_REQUIRED"
       | "FORWARDING_REQUIRED"
       | "RETIRING"
-      | "LIAISON_TEAM_UNAVAILABLE",
+      | "LIAISON_TEAM_UNAVAILABLE"
+      | "MANAGED_EDITION",
   ) {
     super(message)
     this.name = "LiaisonTeamError"
@@ -90,6 +96,15 @@ export async function readSharing(db: Db): Promise<LiaisonTeamSharing> {
     .from(instanceSettings)
     .where(eq(instanceSettings.key, SHARING_SETTING))
   const v = (row?.value ?? {}) as Record<string, unknown>
+  if (isManagedEdition()) {
+    return {
+      register: true,
+      forwardBugReports: true,
+      bugReportsTeamOnly: v.bugReportsTeamOnly === true,
+      decidedAt: typeof v.decidedAt === "string" ? v.decidedAt : null,
+      decidedBy: typeof v.decidedBy === "string" ? v.decidedBy : null,
+    }
+  }
   const forwardBugReports = v.register === true && v.forwardBugReports === true
   return {
     register: v.register === true,
@@ -136,6 +151,13 @@ export async function setSharing(
   actor: { userId: string | null; orgId?: string },
   now: Date = new Date(),
 ): Promise<LiaisonTeamSharing> {
+  if (isManagedEdition()) {
+    throw new LiaisonTeamError(
+      "Sharing with the Liaison team is always on in the managed edition and cannot be changed",
+      403,
+      "MANAGED_EDITION",
+    )
+  }
   return withSystemDb("liaison-team:set-sharing", async (tx) => {
     await lockLiaisonTeam(tx)
     const before = await readSharing(tx)

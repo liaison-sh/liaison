@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { PrivilegedDb } from "~/db"
 import { memoryRegistrationConcurrency } from "~/db/pool-plan"
+import { env } from "~/lib/env"
 import { appsLogger as log } from "~/lib/logger"
 import {
   initializedOrgRuntimes,
@@ -581,6 +582,12 @@ export async function initAppsForOrg(
     handler: "computeMailboxEnrollmentAttentionItems",
     bundlePath: new URL("../mailbox-keys/attention.ts", import.meta.url).pathname,
   })
+  registerKernelAttentionProvider({
+    appName: "kernel.cloud_billing",
+    handler: "computeCloudBillingAttentionItems",
+    scope: "kernel:org:admin",
+    bundlePath: new URL("../cloud/attention.ts", import.meta.url).pathname,
+  })
 
   const allApps = [...apps, ...(opts?.extraApps ?? [])]
   const { failedApps } = await registerApps(allApps, orgId, {
@@ -594,6 +601,13 @@ export async function initAppsForOrg(
   // registered must find its MCP tools projected too.
   await setUpOrgInMemoryExtras(orgId)
   initializedOrgRuntimes.add(orgId)
+  // One more org set up: past the cap, the least recently used idle ones go.
+  const cap = env.LIAISON_ORG_RUNTIME_MAX_ORGS
+  if (cap > 0 && initializedOrgRuntimes.size > cap) {
+    void import("~/modules/apps/org-runtime-release")
+      .then((m) => m.enforceOrgRuntimeCap(cap))
+      .catch((err: unknown) => log.warn({ err }, "org runtime cap enforcement failed"))
+  }
   // No search settings work here: the settings cover the whole catalog (the
   // setup step applies them), whichever orgs register.
 

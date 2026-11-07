@@ -6,6 +6,7 @@ import type { Context } from "hono"
 import { Hono } from "hono"
 import { HTTPException } from "hono/http-exception"
 import type { JSONWebKeySet } from "jose"
+import { decodeJwt } from "jose"
 import { z } from "zod"
 import type { AppEnv } from "~/app"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
@@ -16,12 +17,26 @@ import { encryptionKey, env } from "~/lib/env"
 import { isPrivateIp } from "~/lib/ip-classify"
 import { authLogger as log } from "~/lib/logger"
 import {
+  oauthStateFor,
+  oauthStatePrefixed,
+  oauthStateSlug,
+  stateSlugFitsHost,
+} from "~/lib/oauth-state"
+import {
+  assertHostAllowsOrg,
+  hostBindingEnabled,
+  requestHostBinding,
+  signInOrgSlug,
+} from "~/lib/org-host"
+import { oauthRedirectBaseUrl } from "~/lib/org-public-url"
+import {
   fetchWithRedirectValidation,
   UnsafeOutboundUrlError,
   validateOutboundUrl,
 } from "~/lib/outbound-fetch"
 import { redis } from "~/lib/redis"
 import {
+  hostOnlyCookies,
   readCookie,
   requestRefreshTokenDelivery,
   setRefreshTokenCookie,
@@ -42,6 +57,7 @@ import {
 } from "~/modules/auth/desktop-oauth"
 import { isFirstPartyGoogleProvider, jwksUriForIssuer } from "~/modules/auth/google-login-provider"
 import { autoProvisionUser, OAuthEmailTakenError } from "~/modules/auth/oauth"
+import { orgAccess } from "~/modules/cloud/suspension"
 import { isDemoOrgId } from "~/modules/demo/demo-org"
 import { CapLimitError } from "~/modules/org/caps"
 import { actorCoversRole } from "~/modules/permissions/roles"
@@ -148,6 +164,8 @@ async function signInWithOAuth(
   returnState: string | undefined,
   desktop: DesktopFlow | null,
 ): Promise<Response> {
+  // Host binding (lib/org-host.ts): a sign-in into org A completes only on A's host.
+  await assertHostAllowsOrg(c, orgId)
   const [user] = await withSystemDb("oauth-callback-totp-check", (db) =>
     db.select({ totpEnabled: users.totpEnabled }).from(users).where(eq(users.id, userId)).limit(1),
   )
@@ -338,7 +356,8 @@ export const oauth = new Hono<AppEnv>()
 // Public endpoint: list available OAuth providers (for login page).
 // Requires orgSlug query param to scope to a single org — prevents cross-org enumeration.
 oauth.get("/providers", async (c) => {
-  const orgSlug = c.req.query("orgSlug")
+  // With org hosts the host names the org; a query slug that disagrees is a 400.
+  const orgSlug = signInOrgSlug(c, c.req.query("orgSlug"))
   let org: { id: string } | undefined
   if (orgSlug) {
     ;[org] = await withSystemDb("oauth-providers-org-lookup", (db) =>
@@ -355,6 +374,8 @@ oauth.get("/providers", async (c) => {
     if (orgs.length === 1) org = orgs[0]
   }
   if (!org) return success(c, [])
+  // Nobody signs in to a closed org, so its login page offers no provider. Self-hosted: no query.
+  if ((await orgAccess(org.id)) === "refused") return success(c, [])
 
   const providers = await withSystemDb("oauth-providers-list", (db) =>
     db
@@ -521,10 +542,27 @@ oauthAdmin.delete(
   },
 )
 
+/** The redirect_uri of every sign-in flow: the authorize URL and the code exchange send the same. */
+function signInRedirectUri(): string {
+  return `${oauthRedirectBaseUrl()}/api/auth/oauth/callback`
+}
+
+/** The slug of the org a sign-in provider belongs to. */
+async function orgSlugOf(orgId: string): Promise<string | undefined> {
+  const [org] = await withSystemDb("oauth-authorize-org-slug", (db) =>
+    db
+      .select({ slug: organizations.slug })
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .limit(1),
+  )
+  return org?.slug
+}
+
 // GET /api/auth/oauth/:providerId/authorize
 oauth.get("/:providerId/authorize", async (c) => {
   const providerId = c.req.param("providerId")
-  const orgSlug = c.req.query("orgSlug")
+  const orgSlug = signInOrgSlug(c, c.req.query("orgSlug"))
   // The desktop app's system-browser flow (desktop-oauth.ts). Checked before
   // anything is looked up or stored: a malformed desktop request is refused
   // outright rather than run as a web flow without the PKCE binding.
@@ -564,7 +602,11 @@ oauth.get("/:providerId/authorize", async (c) => {
   // Use stored authorization endpoint (validated at provider registration — DNS rebinding protection)
   const authorizationEndpoint = provider.authorizationEndpoint ?? `${provider.issuerUrl}/authorize`
 
-  const state = generateToken(16)
+  // With a central redirect host the state names the org, so that host can
+  // send the browser back to the org's own host (lib/oauth-state.ts); the
+  // record keeps the slug for the callback to check the prefix against.
+  const stateSlug = oauthStatePrefixed() ? (orgSlug ?? (await orgSlugOf(provider.orgId))) : orgSlug
+  const state = oauthStateFor(stateSlug, generateToken(16))
   const codeVerifier = randomBytes(32).toString("base64url")
   const codeChallenge = nodeCreateHash("sha256").update(codeVerifier).digest("base64url")
   const nonce = randomBytes(16).toString("base64url")
@@ -575,14 +617,14 @@ oauth.get("/:providerId/authorize", async (c) => {
   const returnState = (c.req.query("state") ?? "").slice(0, 128) || undefined
   await redis.set(
     loginStateKey(state),
-    JSON.stringify({ providerId, codeVerifier, nonce, returnState, desktop }),
+    JSON.stringify({ providerId, codeVerifier, nonce, returnState, desktop, orgSlug: stateSlug }),
     "EX",
     600,
   )
 
   const params = new URLSearchParams({
     client_id: provider.clientId,
-    redirect_uri: `${env.BASE_URL}/api/auth/oauth/callback`,
+    redirect_uri: signInRedirectUri(),
     response_type: "code",
     scope: provider.scopes ?? "openid email profile",
     state,
@@ -596,10 +638,10 @@ oauth.get("/:providerId/authorize", async (c) => {
   const stateHash = nodeCreateHash("sha256").update(state).digest("hex")
   // In production a __Host- cookie: a sibling subdomain cannot plant one, so it
   // cannot bind this browser to a flow the sibling started (oauthStateCookieSpec).
-  const stateCookie = oauthStateCookieSpec(env.NODE_ENV === "production")
+  const stateCookie = oauthStateCookieSpec(hostOnlyCookies())
   c.header(
     "Set-Cookie",
-    `${stateCookie.name}=${stateHash}; HttpOnly; SameSite=Lax; Path=${stateCookie.path}; Max-Age=600${env.NODE_ENV === "production" ? "; Secure" : ""}`,
+    `${stateCookie.name}=${stateHash}; HttpOnly; SameSite=Lax; Path=${stateCookie.path}; Max-Age=600${hostOnlyCookies() ? "; Secure" : ""}`,
   )
 
   return c.redirect(`${authorizationEndpoint}?${params}`)
@@ -616,17 +658,35 @@ oauth.get("/callback", async (c) => {
     // than left on a "continue in your browser" card with nothing coming. The
     // state is PEEKED first so a web flow's record is left exactly as it was.
     const desktopCancel = state ? await desktopFlowFor(state) : null
-    if (state && desktopCancel && c.req.query("error")) {
+    if (
+      state &&
+      desktopCancel &&
+      c.req.query("error") &&
+      stateSlugFitsHost(state, requestHostBinding(c))
+    ) {
       await redis.del(loginStateKey(state))
       return desktopHandoffResponse(c, { error: OAUTH_FAILED_ERROR }, desktopCancel.returnState)
     }
     throw new HTTPException(400, { message: "Missing code or state" })
   }
 
+  // A state of another org's flow (or one missing its org prefix) is refused
+  // before it is spent: its own browser can still finish on its own host.
+  if (!stateSlugFitsHost(state, requestHostBinding(c))) {
+    throw new HTTPException(400, { message: "Invalid state" })
+  }
+
   // Atomic claim: getdel retrieves and deletes in one operation to prevent TOCTOU races
   const stateData = await redis.getdel(loginStateKey(state))
   if (!stateData) throw new HTTPException(400, { message: "Invalid state" })
-  const claimed = JSON.parse(stateData) as { desktop?: unknown; returnState?: string }
+  const claimed = JSON.parse(stateData) as {
+    desktop?: unknown
+    returnState?: string
+    orgSlug?: string
+  }
+  if (oauthStatePrefixed() && claimed.orgSlug !== oauthStateSlug(state)) {
+    throw new HTTPException(400, { message: "Invalid state" })
+  }
   const desktop = desktopFlowOf(claimed.desktop)
   if (!desktop) return completeCallback(c, code, state, stateData, null)
   // A DESKTOP FLOW ALWAYS ENDS IN THE APP. Past this point every failure the
@@ -672,10 +732,7 @@ async function completeCallback(
   // original error. Cookie binding prevents a login CSRF where an attacker tricks
   // a victim's browser into completing an OAuth flow they didn't initiate.
   const cookieHeader = c.req.header("cookie") ?? ""
-  const oauthStateCookie = readCookie(
-    cookieHeader,
-    oauthStateCookieSpec(env.NODE_ENV === "production").name,
-  )
+  const oauthStateCookie = readCookie(cookieHeader, oauthStateCookieSpec(hostOnlyCookies()).name)
   const expectedStateHash = nodeCreateHash("sha256").update(state).digest("hex")
   if (
     !oauthStateCookie ||
@@ -721,7 +778,7 @@ async function completeCallback(
       code,
       client_id: provider.clientId,
       client_secret: clientSecret,
-      redirect_uri: `${env.BASE_URL}/api/auth/oauth/callback`,
+      redirect_uri: signInRedirectUri(),
       code_verifier: codeVerifier,
     }),
   })
@@ -1005,6 +1062,17 @@ oauth.post("/exchange", zValidator("json", exchangeBody), async (c) => {
   // answers the challenge at /totp/verify, as after a password or a magic link.
   if ("challengeToken" in session) {
     return success(c, { totpRequired: true, challengeToken: session.challengeToken })
+  }
+  // Host binding: the session is redeemed on its own org's host only.
+  if (hostBindingEnabled()) {
+    let orgId: unknown
+    try {
+      orgId = decodeJwt(session.accessToken).orgId
+    } catch {
+      orgId = undefined
+    }
+    if (typeof orgId !== "string") throw new HTTPException(401, { message: "Unauthorized" })
+    await assertHostAllowsOrg(c, orgId)
   }
   const delivery = requestRefreshTokenDelivery(c)
   if (delivery.body && session.refreshToken !== undefined) {

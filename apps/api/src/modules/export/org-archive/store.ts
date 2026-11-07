@@ -24,6 +24,11 @@ import { schemaRef } from "~/db/schema-ref"
 import { deleteObject } from "~/infra/storage/object-storage"
 import { rootLogger } from "~/lib/logger"
 import { writeAuditLog } from "~/modules/audit/service"
+import {
+  SKIPPED_MOVING,
+  sweepSkippingMoving,
+  writeUnlessMoving,
+} from "~/modules/org/transfer-state/skip-moving"
 
 const log = rootLogger.child({ module: "org-export-store" })
 
@@ -381,79 +386,92 @@ export async function sweepOrgExports(
   const K = drizzleSql.raw(schemaRef("kernel"))
   const staleBefore = new Date(now.getTime() - ORG_EXPORT_STALE_MS)
   const lostBefore = new Date(now.getTime() - ORG_EXPORT_QUEUE_LOST_MS)
-  const stale = await withSystemDb("org-export-stale-list", async (tx) =>
-    extractRows<{ id: string; org_id: string; status: "queued" | "running" }>(
-      await tx.execute(drizzleSql`
+  // An org being moved keeps its export rows as they are until the move ends.
+  const stale = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("org-export-stale-list", async (tx) =>
+      extractRows<{ id: string; org_id: string; status: "queued" | "running" }>(
+        await tx.execute(drizzleSql`
         SELECT id::text AS id, org_id::text AS org_id, status FROM ${K}.org_exports
-        WHERE (status = 'running' AND updated_at < ${staleBefore.toISOString()}::timestamptz)
-           OR (status = 'queued' AND created_at < ${lostBefore.toISOString()}::timestamptz)
+        WHERE ((status = 'running' AND updated_at < ${staleBefore.toISOString()}::timestamptz)
+           OR (status = 'queued' AND created_at < ${lostBefore.toISOString()}::timestamptz))
+          AND ${notMoving(drizzleSql.raw("org_id"))}
         LIMIT 500
       `),
+      ),
     ),
   )
   let failed = 0
   for (const r of stale) {
-    const moved = await withPrivilegedDb(r.org_id, "org-export-stale-fail", (tx) =>
-      tx
-        .update(orgExports)
-        .set({
-          status: "failed",
-          error: storedError({ code: r.status === "queued" ? "QUEUE_LOST" : "STALLED" }),
-          completedAt: drizzleSql`now()`,
-          updatedAt: drizzleSql`now()`,
-        })
-        .where(
-          r.status === "queued"
-            ? and(
-                eq(orgExports.orgId, r.org_id),
-                eq(orgExports.id, r.id),
-                eq(orgExports.status, "queued"),
-                lt(orgExports.createdAt, lostBefore),
-              )
-            : and(
-                eq(orgExports.orgId, r.org_id),
-                eq(orgExports.id, r.id),
-                eq(orgExports.status, "running"),
-                lt(orgExports.updatedAt, staleBefore),
-              ),
-        )
-        .returning({ id: orgExports.id }),
+    const moved = await writeUnlessMoving(r.org_id, () =>
+      withPrivilegedDb(r.org_id, "org-export-stale-fail", (tx) =>
+        tx
+          .update(orgExports)
+          .set({
+            status: "failed",
+            error: storedError({ code: r.status === "queued" ? "QUEUE_LOST" : "STALLED" }),
+            completedAt: drizzleSql`now()`,
+            updatedAt: drizzleSql`now()`,
+          })
+          .where(
+            r.status === "queued"
+              ? and(
+                  eq(orgExports.orgId, r.org_id),
+                  eq(orgExports.id, r.id),
+                  eq(orgExports.status, "queued"),
+                  lt(orgExports.createdAt, lostBefore),
+                )
+              : and(
+                  eq(orgExports.orgId, r.org_id),
+                  eq(orgExports.id, r.id),
+                  eq(orgExports.status, "running"),
+                  lt(orgExports.updatedAt, staleBefore),
+                ),
+          )
+          .returning({ id: orgExports.id }),
+      ),
     )
-    if (moved.length > 0) failed++
+    if (moved !== SKIPPED_MOVING && moved.length > 0) failed++
   }
 
-  const due = await withSystemDb("org-export-expiry-list", async (tx) =>
-    extractRows<{ id: string; org_id: string; object_key: string | null }>(
-      await tx.execute(drizzleSql`
+  const due = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("org-export-expiry-list", async (tx) =>
+      extractRows<{ id: string; org_id: string; object_key: string | null }>(
+        await tx.execute(drizzleSql`
         SELECT id::text AS id, org_id::text AS org_id, object_key FROM ${K}.org_exports
         WHERE status = 'completed' AND expires_at < ${now.toISOString()}::timestamptz
+          AND ${notMoving(drizzleSql.raw("org_id"))}
         ORDER BY expires_at
         LIMIT 500
       `),
+      ),
     ),
   )
   let expired = 0
   for (const r of due) {
-    try {
-      if (r.object_key) await deleteObject(r.object_key)
-    } catch (err) {
-      // Left `completed` so the next sweep tries again; the GC keeps the object
-      // until then only while it is unexpired, so it goes either way.
-      log.error({ err, orgId: r.org_id, exportId: r.id }, "org export object delete failed")
-      continue
-    }
-    await withPrivilegedDb(r.org_id, "org-export-expire", (tx) =>
-      tx
-        .update(orgExports)
-        .set({ status: "expired", objectKey: null, updatedAt: drizzleSql`now()` })
-        .where(
-          and(
-            eq(orgExports.orgId, r.org_id),
-            eq(orgExports.id, r.id),
-            eq(orgExports.status, "completed"),
+    const done = await writeUnlessMoving(r.org_id, async () => {
+      try {
+        if (r.object_key) await deleteObject(r.object_key)
+      } catch (err) {
+        // Left `completed` so the next sweep tries again; the GC keeps the object
+        // until then only while it is unexpired, so it goes either way.
+        log.error({ err, orgId: r.org_id, exportId: r.id }, "org export object delete failed")
+        return false
+      }
+      await withPrivilegedDb(r.org_id, "org-export-expire", (tx) =>
+        tx
+          .update(orgExports)
+          .set({ status: "expired", objectKey: null, updatedAt: drizzleSql`now()` })
+          .where(
+            and(
+              eq(orgExports.orgId, r.org_id),
+              eq(orgExports.id, r.id),
+              eq(orgExports.status, "completed"),
+            ),
           ),
-        ),
-    )
+      )
+      return true
+    })
+    if (done !== true) continue
     expired++
   }
   if (failed > 0 || expired > 0) log.info({ failed, expired }, "org export sweep")

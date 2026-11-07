@@ -232,6 +232,11 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     exempt: "system",
     reason: "instance-wide app version state (org_id reserved, always NULL)",
   },
+  "kernel.apps_installed": {
+    exempt: "system",
+    reason:
+      "installed app versions; org_id marks an org-private custom app, installed, not imported",
+  },
   "kernel.attention_events": { exempt: "system", reason: "per-user and per-device state" },
   "kernel.audit_log": { exempt: "system", reason: "audit, credits, demo and search bookkeeping" },
   "kernel.auto_approve_policies": {
@@ -308,7 +313,15 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
   "kernel.oauth_accounts": { exempt: "system", reason: "credentials and secrets" },
   "kernel.oauth_providers": { exempt: "system", reason: "credentials and secrets" },
   "kernel.org_app_access": { exempt: "config", reason: "org and app configuration" },
+  "kernel.org_billing_state": {
+    exempt: "system",
+    reason: "billing status pushed by the control plane (managed edition), never imported",
+  },
   "kernel.org_exports": { exempt: "system", reason: "export archive bookkeeping" },
+  "kernel.org_transfer_ledger": {
+    exempt: "system",
+    reason: "this instance's record of org moves, written by the transfer itself, never imported",
+  },
   "kernel.password_resets": { exempt: "system", reason: "credentials and secrets" },
   "kernel.pending_events": { exempt: "system", reason: "per-user and per-device state" },
   "kernel.product_attributes": {

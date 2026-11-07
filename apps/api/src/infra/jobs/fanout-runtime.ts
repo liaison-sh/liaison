@@ -13,6 +13,7 @@ import { jobsLogger as log } from "~/lib/logger"
 import { bullPrefix, redis, redisBullMQ } from "~/lib/redis"
 import { isShuttingDown } from "~/lib/shutdown"
 import { quoteIdent } from "~/lib/sql-utils"
+import { appOwnerOrg, appVisibleToOrg, customAppNameKey } from "~/modules/apps/app-org-scope"
 import {
   APP_CRON_FANOUT_JOB,
   fanoutJobId,
@@ -79,12 +80,19 @@ const NOT_STARTED = new Set(["delayed", "waiting", "prioritized", "waiting-child
  */
 export async function enumerateFanoutOrgs(app: string): Promise<FanoutOrg[]> {
   if (fanoutTestState.listOrgs) return fanoutTestState.listOrgs(app)
-  return withSystemDb("app-cron-fanout:enumerate", (db) =>
+  // An org's custom app runs its schedules for that org alone (app-org-scope.ts).
+  const owner = await appOwnerOrg(app)
+  const orgs = await withSystemDb("app-cron-fanout:enumerate", (db) =>
     db
       .select({ orgId: organizations.id, status: apps.status })
       .from(organizations)
-      .leftJoin(apps, and(eq(apps.orgId, organizations.id), eq(apps.name, app))),
+      .leftJoin(apps, and(eq(apps.orgId, organizations.id), eq(apps.name, app)))
+      .where(owner === null ? undefined : eq(organizations.id, owner)),
   )
+  if (owner === null && customAppNameKey(app) === null) return orgs
+  const visible: FanoutOrg[] = []
+  for (const o of orgs) if (await appVisibleToOrg(app, o.orgId)) visible.push(o)
+  return visible
 }
 
 /** A `where` value as SQL on `col`. Assumes a validated manifest (runsForErrors). */

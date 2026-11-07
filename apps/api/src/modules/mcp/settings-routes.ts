@@ -2,7 +2,7 @@
 import { Hono } from "hono"
 import { HTTPException } from "hono/http-exception"
 import type { AppEnv } from "~/app"
-import { env } from "~/lib/env"
+import { orgPublicBaseUrl } from "~/lib/org-public-url"
 import { success } from "~/lib/response"
 import { listConnectionsForUser, revokeConnection } from "~/modules/mcp/connection-service"
 
@@ -39,5 +39,5 @@ mcpSettings.delete("/connections/:id", async (c) => {
 // The single deterministic instance-URL source the frontend connect snippets
 // read — first-class deliverable, not a response-meta alternative.
 mcpSettings.get("/connect-info", async (c) => {
-  return success(c, { baseUrl: env.BASE_URL })
+  return success(c, { baseUrl: await orgPublicBaseUrl(c.get("orgId")) })
 })

@@ -12,6 +12,7 @@ import { sql } from "~/db"
 import {
   AGENT_HANDLE_UNIQUE_INDEX,
   isUniqueViolationOn,
+  ROUTINE_NAME_UNIQUE_INDEX,
   SKILL_NAME_UNIQUE_INDEX,
 } from "~/lib/unique-violation"
 
@@ -57,6 +58,9 @@ describe("unique-violation: matching an index under every name it really carries
     await sql.unsafe(
       `CREATE TABLE ${PROBE_SCHEMA}.skills (LIKE kernel.skills INCLUDING ALL EXCLUDING CONSTRAINTS)`,
     )
+    await sql.unsafe(
+      `CREATE TABLE ${PROBE_SCHEMA}.routines (LIKE kernel.routines INCLUDING ALL EXCLUDING CONSTRAINTS)`,
+    )
   })
 
   afterAll(async () => {
@@ -83,6 +87,24 @@ describe("unique-violation: matching an index under every name it really carries
     expect(cloned[0]).not.toBe(migrated[0])
     for (const name of [...migrated, ...cloned]) {
       expect(isUniqueViolationOn(pgUniqueViolation(name), SKILL_NAME_UNIQUE_INDEX)).toBe(true)
+    }
+  })
+
+  it("kernel.routines (org_id, owner_user_id, name): both names report a routine name_conflict", async () => {
+    const migrated = await uniqueIndexNamesOn("kernel", "routines", [
+      "org_id",
+      "owner_user_id",
+      "name",
+    ])
+    const cloned = await uniqueIndexNamesOn(PROBE_SCHEMA, "routines", [
+      "org_id",
+      "owner_user_id",
+      "name",
+    ])
+    expect(migrated.length).toBe(1)
+    expect(cloned.length).toBe(1)
+    for (const name of [...migrated, ...cloned]) {
+      expect(isUniqueViolationOn(pgUniqueViolation(name), ROUTINE_NAME_UNIQUE_INDEX)).toBe(true)
     }
   })
 

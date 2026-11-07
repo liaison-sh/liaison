@@ -95,6 +95,16 @@ const READERS: Record<string, string> = {
   "modules/secret-requests/targets.ts": REQUEST,
   "modules/threads/reference-display.ts": REQUEST,
   "modules/webhooks/routes.ts": WEBHOOK,
+  "modules/agent/context/context-providers.ts": AGENT,
+  "modules/agent/runtime/tool-card-store.ts":
+    "agent turn (agent-service) or HTTP request (agent and apps routes): each sets the org up at its entry",
+  "modules/agent/tools/tool-name-resolve.ts": AGENT,
+  "modules/approvals/route-world.ts":
+    "approval routing: reached from a tool call, a decision or a Home read, each set up at its entry",
+  "modules/mail/send-guard.ts":
+    "send check: reached from the mail bridge (tool call) or the approval list and cascade (request)",
+  "modules/users/away.ts":
+    "away days: reached from set_away (tool call) and the preferences and Home routes (request)",
 }
 
 function sourceFiles(dir: string): string[] {

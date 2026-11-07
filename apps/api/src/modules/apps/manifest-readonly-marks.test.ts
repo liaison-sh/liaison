@@ -69,7 +69,7 @@ const READ_ONLY: Record<string, string[]> = {
   "mcp-manager": ["list_connections"],
   // items_list is one findMany; external_fetch is a fixed GET to the example API with no
   // caller data in it (2026-09-25).
-  example: ["items_list", "external_fetch", "item_notes_count"], // count: one findMany
+  example: ["items_list", "external_fetch", "item_notes_count", "item_context"], // count: one findMany; item_context: two findMany
   gitlab: [
     "gitlab_list_projects",
     "gitlab_list_commits",

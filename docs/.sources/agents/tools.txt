@@ -328,3 +328,4 @@ ai_models_get tool: scope and approval flag -> apps/api/src/modules/agent/tools/
 ai_models_set tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2876
 tool_search: no match names the apps and loads nothing -> apps/api/src/modules/agent/tools/tool-search.ts:597
 tool_search: select: of a bare name two apps share loads neither -> apps/api/src/modules/agent/tools/tool-search.ts:493
+set_away tool: scope, conditional park, other person's scopes -> apps/api/src/modules/agent/tools/kernel-tools.ts:3651 ; apps/api/src/modules/users/away.ts:749

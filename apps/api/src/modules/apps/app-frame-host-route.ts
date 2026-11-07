@@ -48,6 +48,7 @@ import { instanceAppOrigin, orgPublicBaseUrlForSlug, orgSlugById } from "~/lib/o
 import { appFrameRuntime } from "~/modules/apps/app-frame"
 import { appVisibleToOrg } from "~/modules/apps/app-org-scope"
 import { getInstallRoot } from "~/modules/apps/discover-apps"
+import { grantedSubset } from "~/modules/apps/egress-grants"
 import { getInstallTrust } from "~/modules/apps/install-trust"
 import { orgPrivateBundleRefusedFor } from "~/modules/apps/ui-bundle-routes"
 
@@ -199,6 +200,26 @@ export function manifestDeclaredHosts(app: string, version: string): DeclaredHos
   return hosts
 }
 
+/**
+ * The declared hosts of `app@version` narrowed to the running install's domain
+ * grant (egress-grants.ts): an image or link host nobody consented to is neither
+ * an img-src of the frame nor a host `openExternal` opens. The catalog and
+ * trusted publishers are granted every declared domain, so nothing changes for them.
+ */
+export async function grantedDeclaredHosts(app: string, version: string): Promise<DeclaredHosts> {
+  const declared = manifestDeclaredHosts(app, version)
+  const { grantedDomains } = await getInstallTrust(app)
+  if (grantedDomains === null) return declared
+  const images = grantedSubset(
+    declared.imageSources.map((s) => s.slice("https://".length)),
+    grantedDomains,
+  )
+  return {
+    imageSources: images.map((h) => `https://${h}`),
+    linkHosts: grantedSubset(declared.linkHosts, grantedDomains),
+  }
+}
+
 const notFound = () =>
   new Response(JSON.stringify({ error: { message: "Not found", code: "APP_FRAME_HOST" } }), {
     status: 404,
@@ -246,7 +267,7 @@ export async function serveAppFrameHost(
   }
   return appFrameHostResponse(runtime, {
     parentOrigin: claims.parent,
-    imgSources: manifestDeclaredHosts(binding.app, version).imageSources,
+    imgSources: (await grantedDeclaredHosts(binding.app, version)).imageSources,
   })
 }
 

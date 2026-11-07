@@ -168,6 +168,25 @@ describe("the grant rules", () => {
     ])
   })
 
+  it("the framed screens' image and link hosts are declared domains: consent, newDomains, the pin", () => {
+    const framed = {
+      network: { allowedDomains: ["api.example.com"], imageHosts: ["IMG.example"], linkHosts: ["admin.example"] },
+    }
+    expect(declaredDomains(framed)).toEqual(["admin.example", "api.example.com", "img.example"])
+    // An upgrade that only adds an image host asks for it.
+    expect(pendingDomains(framed, ["api.example.com", "admin.example"])).toEqual(["img.example"])
+    expect(() =>
+      resolveGrantedDomains({ manifest: framed, granted: ["api.example.com"], vouched: false, what: "Install" }),
+    ).toThrow(DomainConsentError)
+    expect(() =>
+      resolveGrantedDomains({ manifest: framed, granted: ["api.example.com"], vouched: false, exact: true, what: "Install" }),
+    ).toThrow(DomainPinMismatchError)
+    // The catalog and trusted publishers still get every one of them.
+    expect(
+      resolveGrantedDomains({ manifest: framed, granted: [], vouched: true, what: "Install" }),
+    ).toEqual(["admin.example", "api.example.com", "img.example"])
+  })
+
   it("an unvouched install needs consent for every domain; vouched and programmatic get all", () => {
     expect(() =>
       resolveGrantedDomains({

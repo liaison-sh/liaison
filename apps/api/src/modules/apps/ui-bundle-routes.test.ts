@@ -14,7 +14,11 @@ import { withSystemDb } from "~/db/privileged"
 import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
 import { env } from "~/lib/env"
 import { resetAppFrameRuntime } from "~/modules/apps/app-frame"
-import { mintAppFrameUrl, signAppFrameToken } from "~/modules/apps/app-frame-host-route"
+import {
+  grantedDeclaredHosts,
+  mintAppFrameUrl,
+  signAppFrameToken,
+} from "~/modules/apps/app-frame-host-route"
 import { manifestRegistry } from "~/modules/apps/app-registries"
 import { resetCatalogCache } from "~/modules/apps/catalog"
 import { resetInstallTrustCache } from "~/modules/apps/install-trust"
@@ -416,6 +420,67 @@ describe("GET /api/apps/:name/:version/ui.js", () => {
         (await app.request(`https://${FRAME_HOST}/frame/1.2.3?t=${encodeURIComponent(bundle)}`))
           .status,
       ).toBe(404)
+    })
+
+    it("refuses a forged token naming another host, app, org or version", async () => {
+      const good = {
+        app: "fixture-app",
+        version: "1.2.3",
+        host: FRAME_HOST,
+        parent: "https://ui-bundle-org.liaison.test",
+        org: ORG,
+      }
+      const at = async (claims: typeof good) =>
+        (
+          await app.request(
+            `https://${FRAME_HOST}/frame/1.2.3?t=${encodeURIComponent(await signAppFrameToken(claims))}`,
+          )
+        ).status
+      // The genuine claims pass, so each refusal below is the one claim that differs.
+      expect(await at(good)).toBe(200)
+      expect(await at({ ...good, host: "other-app--ui-bundle-org.usercontent.test" })).toBe(404)
+      expect(await at({ ...good, app: "other-app" })).toBe(404)
+      expect(await at({ ...good, org: "00000000-0000-4000-8000-0000000ab0ff" })).toBe(404)
+      expect(await at({ ...good, version: "9.9.9" })).toBe(404)
+    })
+
+    it("shows images from and links to only the hosts the install's grant covers", async () => {
+      // An admin-approved custom app (not vouched by the catalog or a publisher)
+      // whose grant names one image host and one link host of the two it declares.
+      const dir = join(installRoot, "fixture-app", "3.0.0")
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, "ui.js"), "export const x = 1")
+      writeFileSync(
+        join(dir, "app.manifest.json"),
+        JSON.stringify({
+          name: "fixture-app",
+          network: {
+            imageHosts: ["img.granted.test", "img.collector.test"],
+            linkHosts: ["link.granted.test", "link.collector.test"],
+          },
+        }),
+      )
+      await withSystemDb("frame-host-test:grant", async (db) => {
+        await db
+          .update(appsActiveVersion)
+          .set({ version: "3.0.0" })
+          .where(eq(appsActiveVersion.name, "fixture-app"))
+        await db
+          .update(appsInstalled)
+          .set({ version: "3.0.0", grantedDomains: ["img.granted.test", "link.granted.test"] })
+          .where(eq(appsInstalled.name, "fixture-app"))
+      })
+      resetInstallTrustCache("fixture-app")
+      const res = await app.request((await mintAppFrameUrl(ORG, "fixture-app", "3.0.0")) as string)
+      expect(res.status).toBe(200)
+      const csp = res.headers.get("content-security-policy") ?? ""
+      expect(csp).toContain("https://img.granted.test")
+      expect(csp).not.toContain("img.collector.test")
+      // The app list's externalHosts, the only hosts the page's openExternal opens.
+      const hosts = await grantedDeclaredHosts("fixture-app", "3.0.0")
+      expect(hosts.linkHosts).toContain("link.granted.test")
+      expect(hosts.linkHosts).not.toContain("link.collector.test")
+      expect(hosts.linkHosts).not.toContain("img.collector.test")
     })
 
     it("keeps the legacy frame opaque: never allow-same-origin outside the frame host", async () => {

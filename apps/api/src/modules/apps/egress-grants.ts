@@ -2,8 +2,9 @@
 //
 // Outbound domains are part of an app's grant (0281).
 //
-// A manifest declares the hosts its code may reach: `network.allowedDomains` and
-// each connection's `allowedDomains`. Declaring a host is not enough: the install
+// A manifest declares the hosts its code may reach: `network.allowedDomains`,
+// each connection's `allowedDomains`, and the hosts its framed screens show
+// images from or link to (`network.imageHosts`, `network.linkHosts`). Declaring a host is not enough: the install
 // row records the domains somebody accountable consented to
 // (`apps_installed.granted_domains`), and the sandbox reaches a host only when it
 // is both declared and granted.
@@ -42,10 +43,23 @@ export function normalizeDomain(domain: string): string {
   return domain.trim().toLowerCase()
 }
 
-/** Every outbound domain a manifest declares (network and connections), once each, sorted. */
+/**
+ * Every outbound domain a manifest declares, once each, sorted: the fetch
+ * domains (`network.allowedDomains`, each connection's `allowedDomains`) and the
+ * hosts its framed screens reach (`network.imageHosts`, an image request carries
+ * whatever its URL says; `network.linkHosts`, opened by `openExternal`). All of
+ * them need the same consent, and the frame narrows them to the grant.
+ */
 export function declaredDomains(manifest: unknown): string[] {
   const m = record(manifest)
-  const out = new Set(strings(record(m.network).allowedDomains).map(normalizeDomain))
+  const network = record(m.network)
+  const out = new Set(
+    [
+      ...strings(network.allowedDomains),
+      ...strings(network.imageHosts),
+      ...strings(network.linkHosts),
+    ].map(normalizeDomain),
+  )
   for (const conn of Object.values(record(m.connections))) {
     for (const d of strings(record(conn).allowedDomains)) out.add(normalizeDomain(d))
   }

@@ -21,7 +21,7 @@ import {
 } from "~/modules/apps/app-config"
 import {
   framesOnOwnOrigin,
-  manifestDeclaredHosts,
+  grantedDeclaredHosts,
   mintAppFrameUrl,
 } from "~/modules/apps/app-frame-host-route"
 import { appVisibleToOrg } from "~/modules/apps/app-org-scope"
@@ -366,7 +366,7 @@ appRoutes.get("/manifests", async (c) => {
       uiBundleUrl,
       ...(frameUrl ? { frameUrl } : {}),
       ...(uiBundleUrl && servedVersion
-        ? { externalHosts: manifestDeclaredHosts(entry.name, servedVersion).linkHosts }
+        ? { externalHosts: (await grantedDeclaredHosts(entry.name, servedVersion)).linkHosts }
         : {}),
     })
   }

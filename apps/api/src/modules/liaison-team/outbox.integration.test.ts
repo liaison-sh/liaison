@@ -109,6 +109,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   ;(env as { LIAISON_TEAM_ENDPOINT: string }).LIAISON_TEAM_ENDPOINT = savedEndpoint
+  // The switches and the outbox are instance-wide: a later file in the same
+  // database would otherwise find this file's last registration still on.
+  await sql`DELETE FROM kernel.control_plane_outbox`
+  await sql`DELETE FROM kernel.instance_settings WHERE key LIKE 'liaison_team.%'`
   await releaseTestLock()
 })
 

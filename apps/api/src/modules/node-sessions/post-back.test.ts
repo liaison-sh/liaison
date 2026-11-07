@@ -11,7 +11,7 @@ import { createNodeJob, type NodeJobSessionInput } from "~/modules/nodes/jobs"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
-import { postBackContent, postBackSessionResult } from "./post-back"
+import { postBackContent, postBackSessionResult, registerNodeSessionPostBack } from "./post-back"
 import type { NodeSessionRow } from "./store"
 import { onSessionStatus } from "./waiting-hook"
 
@@ -148,6 +148,11 @@ describe("S60: the finished session posts back into its thread (P2-T04)", () => 
     // English for the owner, so the fixed lines are known.
     await sql`INSERT INTO kernel.user_preferences (user_id, language) VALUES (${owner.userId}, 'en')
       ON CONFLICT (user_id) DO UPDATE SET language = 'en'`
+    // An earlier file in this process may have run registerEventSubscribers,
+    // which subscribes the boot post-back too. Its promise is not in `pending`,
+    // so it would claim the end and post after `settled()` returned. Drop it:
+    // the listener below is the only post-back while this file runs.
+    registerNodeSessionPostBack()()
     off = onSessionStatus((row, change) => {
       pending.push(postBackSessionResult(row, change))
     })

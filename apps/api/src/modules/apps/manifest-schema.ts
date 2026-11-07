@@ -2,7 +2,6 @@
 // JSON Schema definition for app.manifest.json
 // Validated server-side by Ajv in validateAppManifest()
 
-const NAME_PATTERN = "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
 // An app's name never holds `--`: an app frame host is the one label
 // `<app>--<org slug>`, split on its last `--` (lib/app-frame-host.ts).
 const APP_NAME_PATTERN = "^(?!.*--)[a-z0-9]([a-z0-9-]*[a-z0-9])?$"

@@ -80,7 +80,7 @@ function iso(v: unknown): string | null {
 }
 
 /** Dates as ISO strings, JSON through `withoutSecrets`. */
-function clean(row: Record<string, unknown>): Record<string, unknown> {
+function exportableRow(row: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(row)) {
     out[k] = v instanceof Date ? iso(v) : withoutSecrets(v)
@@ -89,7 +89,7 @@ function clean(row: Record<string, unknown>): Record<string, unknown> {
 }
 
 async function rows(db: RlsClient | PrivilegedDb, query: SQL): Promise<Record<string, unknown>[]> {
-  return extractRows<Record<string, unknown>>(await db.execute(query)).map(clean)
+  return extractRows<Record<string, unknown>>(await db.execute(query)).map((r) => exportableRow(r))
 }
 
 const K = () => drizzleSql.raw(schemaRef("kernel"))

@@ -8,8 +8,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
+import { env } from "~/lib/env"
 import { isDeferredTool } from "~/modules/agent/tools/tool-bridge"
 import { rankDeferredTools } from "~/modules/agent/tools/tool-rank"
+import { registerAppBuilderTools } from "~/modules/app-builder/tools"
 import {
   agentInstructionsRegistry,
   skillRegistry,
@@ -22,6 +24,7 @@ import corpus from "./tool-bench/corpus.json"
 
 const BUNDLED_APPS = join(import.meta.dir, "../../../../../../bundled-apps")
 const LEFT_OUT_APPS = new Set(["example", "contacts"])
+const customApps = env.LIAISON_CUSTOM_APPS
 const ACCENT = /[àâäéèêëîïôöùûüçœæ]/i
 
 interface CatalogTool {
@@ -100,12 +103,17 @@ describe("a tool is found by what people say", () => {
     await ensureAppsForOrg(ORG_ID)
     const { registerKernelAgentTools } = await import("./kernel-tools")
     await registerKernelAgentTools(ORG_ID)
+    // The catalog read from source holds every kernel tool, the app builder's included: the org
+    // gets them as an instance offering custom apps does, whatever this process registered first.
+    env.LIAISON_CUSTOM_APPS = "on"
+    registerAppBuilderTools(ORG_ID)
     catalog = [...registeredTools(), ...bundledTools()]
     appNames = new Set(catalog.map((t) => t.appName))
     appNames.delete("kernel")
   })
 
   afterAll(() => {
+    env.LIAISON_CUSTOM_APPS = customApps
     toolRegistry.deleteByPrefix([ORG_ID])
     skillRegistry.deleteByPrefix([ORG_ID])
     agentInstructionsRegistry.deleteByPrefix([ORG_ID])

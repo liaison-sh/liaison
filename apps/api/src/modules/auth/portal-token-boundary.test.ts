@@ -235,6 +235,10 @@ const NO_SESSION_ROUTES = new Set([
   // token (modules/apps/workers/bridge-route.ts), never a session, and it
   // answers 404 while no Workers executor is configured.
   "POST /api/app-bridge/:runId",
+  // The app loader's fetch of a published custom app's module: its only credential is the
+  // loader's signature (modules/apps/workers/bundle-route.ts), never a session, and it answers
+  // 404 while custom apps on Workers are off.
+  "GET /api/app-bridge/bundles/:sha256",
   // Mounted, answering 404 unless a flag or a managed edition is on.
   "GET /api/qa/notifications/log",
   "POST /api/qa/notifications/inject",

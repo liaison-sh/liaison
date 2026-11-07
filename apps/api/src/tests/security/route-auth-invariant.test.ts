@@ -253,6 +253,18 @@ const PUBLIC_ROUTES: Record<string, PublicRoute> = {
     credential: "flag-gated",
     reason: "LIAISON_QA_ROUTES, then session",
   },
+  // The Workers executor's remote isolates and app loader; every path answers 404 while
+  // the executor is not configured (modules/apps/workers/config.ts).
+  "GET /api/app-bridge/bundles/:sha256": {
+    credential: "control-signature",
+    reason:
+      "the app loader's signature, direction loader->cell (modules/apps/workers/bundle-route.ts)",
+  },
+  "POST /api/app-bridge/:runId": {
+    credential: "own-bearer",
+    reason:
+      "the run's bearer token, bound to one run, org and app (modules/apps/workers/run-registry.ts)",
+  },
   "POST /api/cloud/orgs": {
     credential: "control-signature",
     reason: "managed edition only; signed by the control plane (modules/cloud/verify.ts)",

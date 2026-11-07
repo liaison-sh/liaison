@@ -48,6 +48,11 @@ import { hasScope } from "~/modules/permissions/permissions"
 const BUILD = "kernel:apps:build"
 const ADMIN = "kernel:apps:admin"
 const LOGS = "kernel:apps:logs"
+// Drafts are read back only through BUILD (these tools and the builder routes), so
+// every ungated write declares BUILD as its readers (`sinkReadScope`): on a tainted
+// turn it runs when every holder of BUILD holds what the turn read, and parks for a
+// disclosure decision otherwise (scope-taint.ts, rules 6a and 8b). Undeclared, every
+// draft step parked, since a table without declared readers is judged by nobody.
 const SINK = "kernel.app_drafts"
 const KEYWORDS = ["app builder", "build an app", "custom app", "créer une app", "application"]
 
@@ -207,6 +212,7 @@ export function registerAppBuilderTools(orgId: string): void {
     searchKeywords: KEYWORDS,
     requiredScopes: [BUILD],
     writesToTable: SINK,
+    sinkReadScope: BUILD,
     params: z.object({
       base_name: z
         .string()
@@ -254,6 +260,7 @@ export function registerAppBuilderTools(orgId: string): void {
     searchKeywords: KEYWORDS,
     requiredScopes: [BUILD],
     writesToTable: SINK,
+    sinkReadScope: BUILD,
     params: z.object({
       draftId,
       files: filesParam,
@@ -358,6 +365,7 @@ export function registerAppBuilderTools(orgId: string): void {
     searchKeywords: KEYWORDS,
     requiredScopes: [BUILD],
     writesToTable: SINK,
+    sinkReadScope: BUILD,
     params: z.object({ draftId, n: versionN }),
     handler: (async (params: unknown, ctx: AppContext) => {
       const p = params as { draftId: string; n: number }
@@ -377,6 +385,7 @@ export function registerAppBuilderTools(orgId: string): void {
     searchKeywords: KEYWORDS,
     requiredScopes: [BUILD],
     writesToTable: SINK,
+    sinkReadScope: BUILD,
     ownsTransactions: true,
     params: z.object({ draftId, n: versionN.optional() }),
     handler: (async (params: unknown, ctx: AppContext) => {
@@ -545,6 +554,7 @@ export function registerAppBuilderTools(orgId: string): void {
     searchKeywords: KEYWORDS,
     requiredScopes: [BUILD],
     writesToTable: SINK,
+    sinkReadScope: BUILD,
     params: z.object({ draftId }),
     handler: (async (params: unknown, ctx: AppContext) =>
       guarded(async () => {

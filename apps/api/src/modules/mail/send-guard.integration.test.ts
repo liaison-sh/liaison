@@ -895,12 +895,43 @@ describe("classification and marketing", () => {
     }
   }, 60_000)
 
+  it("a follow-up a routine staged with its refs gets the footer at send, and its record says so", async () => {
+    const to = unique("routine-footer")
+    const staged = await runContextStore.run(followUpFrame(), () =>
+      agentCall(
+        "mail:compose",
+        composeParams(to, { followUp: { refs: [{ kind: "fixture:deal", id: "open" }] } }),
+      ),
+    )
+    const id = blockedId(staged)
+    expect(
+      ((await requestRow(id)).current_payload.sendGuard as PinnedSendGuard).classification,
+    ).toBe("marketing")
+    const footer = spyOn(footerModule, "applyCommercialFooter").mockImplementation(
+      async (_org, body) => ({ body: `${body}\n\nUnsubscribe here`, headers: {} }),
+    )
+    try {
+      const before = sent.length
+      await approve(id)
+      expect(sent.length).toBe(before + 1)
+      expect(footer).toHaveBeenCalled()
+      expect(String(sent.at(-1)?.textBody)).toEndWith("Unsubscribe here")
+      expect((await executionRow(id))?.external_ref?.guard).toMatchObject({
+        classification: "marketing",
+        footer: "commercial",
+      })
+    } finally {
+      footer.mockRestore()
+    }
+  }, 60_000)
+
   it("no footer on a plain send", async () => {
     const id = await stageCompose(unique("plain-no-footer"))
     const footer = spyOn(footerModule, "applyCommercialFooter")
     try {
       await approve(id)
       expect(footer).not.toHaveBeenCalled()
+      expect((await executionRow(id))?.external_ref?.guard).not.toHaveProperty("footer")
     } finally {
       footer.mockRestore()
     }
@@ -1038,6 +1069,7 @@ describe("classification and marketing", () => {
       state: "clear",
       mode: "followup",
       classification: "marketing",
+      footer: "commercial",
     })
     const request = await requestRow(id)
     expect(request.current_payload.textBody).toBe("The final text.")
@@ -1168,6 +1200,107 @@ describe("history is not a reply", () => {
     const since = new Date(Date.now() - 60_000).toISOString()
     await seedInbound(to, { sentAt: ago(HOUR), syncedAt: ago(HOUR) })
     expect((await check(to, since)).state).toBe("clear")
+  }, 60_000)
+})
+
+/** A delivery failure as a mail server sends it: from its daemon, in a thread of its own. */
+const REPORT_HEADERS = {
+  "content-type": 'multipart/report; report-type=delivery-status; boundary="b1"',
+  "auto-submitted": "auto-replied",
+}
+function deliveryReport(recipient: string): string {
+  return [
+    "This is the mail system at host mx.client.test.",
+    "",
+    "I'm sorry to have to inform you that your message could not be delivered.",
+    "",
+    `<${recipient}>: host mx.client.test said: 550 5.1.1 User unknown`,
+    "",
+    "Reporting-MTA: dns; mx.client.test",
+    `Final-Recipient: rfc822; ${recipient}`,
+    `Original-Recipient: rfc822;${recipient}`,
+    "Action: failed",
+    "Status: 5.1.1",
+  ].join("\n")
+}
+
+describe("a delivery failure stops a staged send", () => {
+  it("a mailer-daemon report naming the recipient, in a thread of its own: no provider call, bounced, closed", async () => {
+    const to = unique("gone")
+    const staged = await runContextStore.run(followUpFrame(), () =>
+      agentCall("mail:compose", composeParams(to)),
+    )
+    const id = blockedId(staged)
+    await seedInbound("mailer-daemon@mx.client.test", {
+      subject: "Undelivered Mail Returned to Sender",
+      body: deliveryReport(to),
+      rawHeaders: REPORT_HEADERS,
+    })
+    const before = sent.length
+
+    await approveSettled(id)
+
+    expect(sent.length).toBe(before)
+    const execution = await executionRow(id)
+    expect(execution?.status).toBe("failed_no_effect")
+    expect(execution?.error?.code).toBe("send_guard_bounced")
+    expect(execution?.error?.final).toBe(true)
+    expect((await requestRow(id)).status).toBe("cancelled")
+  }, 60_000)
+
+  it("the card reads bounced before anyone approves", async () => {
+    const to = unique("gone-card")
+    const since = new Date(Date.now() - 60_000).toISOString()
+    await seedInbound("postmaster@mx.client.test", {
+      subject: "Delivery Status Notification (Failure)",
+      body: deliveryReport(to.toUpperCase()),
+      rawHeaders: REPORT_HEADERS,
+    })
+    expect((await check(to, since)).state).toBe("bounced")
+  }, 60_000)
+
+  it("a report naming another address does not stop this one", async () => {
+    const to = unique("still-here")
+    const since = new Date(Date.now() - 60_000).toISOString()
+    await seedInbound("mailer-daemon@mx.client.test", {
+      subject: "Undelivered Mail Returned to Sender",
+      body: deliveryReport(`x${to}`),
+      rawHeaders: REPORT_HEADERS,
+    })
+    expect((await check(to, since)).state).toBe("clear")
+  }, 60_000)
+
+  it("a delay notice naming the recipient does not stop", async () => {
+    const to = unique("delayed")
+    const since = new Date(Date.now() - 60_000).toISOString()
+    await seedInbound("mailer-daemon@mx.client.test", {
+      subject: "Delayed Mail (still being retried)",
+      body: deliveryReport(to).replace("Action: failed", "Action: delayed"),
+      rawHeaders: REPORT_HEADERS,
+    })
+    expect((await check(to, since)).state).toBe("clear")
+  }, 60_000)
+
+  it("a report with no readable text that answers our mail to the recipient stops", async () => {
+    const to = unique("gone-threaded")
+    const since = new Date(Date.now() - 60_000).toISOString()
+    await seedOutbound(to)
+    const { id } = await seedInbound("mailer-daemon@mx.client.test", {
+      subject: "Undelivered Mail Returned to Sender",
+      body: "",
+      rawHeaders: REPORT_HEADERS,
+    })
+    await privileged.withSystemDb("send-guard-test-report-thread", async (tx) => {
+      await tx.execute(drizzleSql`
+        UPDATE ${MAIL}.messages m
+           SET text_body = NULL, html_body = NULL,
+               in_reply_to = (SELECT o.external_message_id FROM ${MAIL}.messages o
+                               WHERE o.direction = 'outbound' AND o.org_id = m.org_id
+                                 AND o.to_addresses @> ${JSON.stringify([{ email: to }])}::jsonb
+                               LIMIT 1)
+         WHERE m.id = ${id}::uuid`)
+    })
+    expect((await check(to, since)).state).toBe("bounced")
   }, 60_000)
 })
 

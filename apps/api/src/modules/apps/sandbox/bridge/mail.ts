@@ -602,15 +602,24 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
       })
       if (checked.state === "clear") {
         const first = recipients[0]
+        // A commercial mail gets its footer here, and the send's record says so, so
+        // what left can be checked against the classification it was sent under.
+        const footer =
+          guard.classification === "marketing" && first
+            ? await commercialFooterFor(orgId, first, params.textBody, params.htmlBody)
+            : null
         return JSON.stringify({
           applies: true,
           state: "clear",
           record: {
-            guard: { state: "clear", mode: guard.mode, classification: guard.classification },
+            guard: {
+              state: "clear",
+              mode: guard.mode,
+              classification: guard.classification,
+              ...(footer ? { footer: "commercial" } : {}),
+            },
           },
-          ...(guard.classification === "marketing" && first
-            ? { footer: await commercialFooterFor(orgId, first, params.textBody, params.htmlBody) }
-            : {}),
+          ...(footer ? { footer } : {}),
         })
       }
       const verdict = await withReadableRecord(checked)

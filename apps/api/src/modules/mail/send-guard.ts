@@ -307,6 +307,7 @@ function openDrafts(
       conv: q.conversationId ?? null,
       contacts: q.contactIds,
       addrs: q.addresses,
+      addr_res: q.addresses.map(addressInText),
       cur_ord: cursor?.ord ?? null,
       cur_id: cursor?.id ?? null,
     }
@@ -315,9 +316,16 @@ function openDrafts(
     SELECT x.k, x.since::timestamptz AS since, x.conv::uuid AS conv,
            ARRAY(SELECT jsonb_array_elements_text(x.contacts)::uuid) AS contacts,
            ARRAY(SELECT jsonb_array_elements_text(x.addrs)) AS addrs,
+           ARRAY(SELECT jsonb_array_elements_text(x.addr_res)) AS addr_res,
            x.cur_ord::timestamptz AS cur_ord, x.cur_id::uuid AS cur_id
       FROM jsonb_to_recordset(${JSON.stringify(spec)}::jsonb)
-        AS x(k text, since text, conv text, contacts jsonb, addrs jsonb, cur_ord text, cur_id text)`
+        AS x(k text, since text, conv text, contacts jsonb, addrs jsonb, addr_res jsonb, cur_ord text, cur_id text)`
+}
+
+/** A pattern that finds an address as a whole word in a delivery report's text, any case. */
+function addressInText(address: string): string {
+  const escaped = address.toLowerCase().replace(/[^a-z0-9]/g, (c) => `\\${c}`)
+  return `(^|[^a-z0-9._%+-])${escaped}($|[^a-z0-9._%+-])`
 }
 
 async function readMailInbound(
@@ -358,7 +366,22 @@ async function readMailInbound(
                  WHERE m.org_id = ${orgId}::uuid AND m.direction = 'inbound'
                    AND (c.contact_id = ANY(d.contacts)
                         OR c.id = d.conv
-                        OR lower(m.from_address->>'email') = ANY(d.addrs))
+                        OR lower(m.from_address->>'email') = ANY(d.addrs)
+                        -- A delivery report comes from the server, in a thread of its own:
+                        -- it is about the address its text names, or the mail it answers.
+                        OR ((split_part(lower(m.from_address->>'email'), '@', 1)
+                               IN ('mailer-daemon', 'postmaster')
+                             OR m.raw_headers->>'content-type' ILIKE 'multipart/report%')
+                            AND (EXISTS (SELECT 1 FROM unnest(d.addr_res) AS re
+                                          WHERE lower(COALESCE(m.text_body, '')) ~ re
+                                             OR lower(COALESCE(m.html_body, '')) ~ re)
+                                 OR EXISTS (SELECT 1 FROM ${table("app_mail", "messages")} o
+                                             WHERE o.org_id = m.org_id AND o.direction = 'outbound'
+                                               AND (o.external_message_id = m.in_reply_to
+                                                    OR m.message_references ? o.external_message_id)
+                                               AND EXISTS (SELECT 1 FROM jsonb_array_elements(o.to_addresses
+                                                                || o.cc_addresses || o.bcc_addresses) AS t
+                                                            WHERE lower(t->>'email') = ANY(d.addrs))))))
                    AND lower(m.from_address->>'email') <> ALL(${textSet(own)})
                    AND (COALESCE(m.sent_at, m.synced_at) > d.since
                         OR (m.synced_at > d.since

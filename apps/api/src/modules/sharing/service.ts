@@ -70,6 +70,8 @@ export const SHAREABLE_RESOURCES: Record<string, ShareableResource> = {
     aclUserColumns: ["owner_user_id", "created_by"],
   },
   "kernel.contact": { schema: "kernel", table: "contacts", aclUserColumns: ["owner_user_id"] },
+  // A company's sharing follows its creator, never its account manager (0290).
+  "kernel.company": { schema: "kernel", table: "companies", aclUserColumns: ["created_by"] },
 }
 
 function resourceFor(type: string): ShareableResource {

@@ -579,6 +579,7 @@ export async function listContacts(
       name: contacts.name,
       phone: contacts.phone,
       company: contacts.company,
+      companyId: contacts.companyId,
       externalIds: contacts.externalIds,
       metadata: contacts.metadata,
       tags: contacts.tags,

@@ -236,6 +236,10 @@ describe("db import enforcement", () => {
     // its non-password fields leave.
     "modules/apps/connections/settings.ts",
     "modules/contacts/service.ts",
+    // A company rename rewrites the company name every linked person carries,
+    // and a delete clears the company from deals and pipelines: both run
+    // elevated in the caller's transaction (withElevatableRlsFrom + asAdmin).
+    "modules/contacts/companies.ts",
     // A contact's team references are counted privileged (privilegedFrom): the
     // actor cannot read every referencing table, and the answer is a count.
     "modules/contacts/references.ts",

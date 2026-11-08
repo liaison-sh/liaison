@@ -831,6 +831,8 @@ export const KERNEL_DECLARED_EMITS: ReadonlySet<string> = new Set([
   "company:update",
   "company:merge",
   "company:closed",
+  // A company was deleted: its search document and open rows go.
+  "company:delete",
   "presence:update",
   "org:update",
   // One field of an app's declarative settings page written (modules/apps/settings-routes.ts).

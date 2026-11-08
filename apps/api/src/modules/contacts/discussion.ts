@@ -20,13 +20,14 @@
 import { and, sql as drizzleSql, eq } from "drizzle-orm"
 import type { RlsClient } from "~/db"
 import { extractRows, type PrivilegedDb } from "~/db"
-import { contacts } from "~/db/schema/kernel"
+import { companies, contacts } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import { quoteIdent } from "~/lib/sql-utils"
 import { getOrCreateContactPrimaryThread } from "~/modules/threads/contact-primary"
 import {
   deleteEntityDiscussions,
   entityDiscussionThreads,
+  getOrCreateEntityDiscussionThread,
   pruneEntityDiscussion,
   unindexDiscussionThreads,
 } from "~/modules/threads/entity-discussion"
@@ -63,6 +64,29 @@ export async function openContactDiscussion(
     params.userId,
   )
   return { threadId: id, created }
+}
+
+/**
+ * Open a company's discussion for `userId`: the thread id, created on first
+ * use (`createdFrom` names the company), with the caller enrolled. Null when
+ * the company does not exist or the caller may not see it under their RLS
+ * (nothing is created then), or when the caller is not an active member.
+ */
+export async function openCompanyDiscussion(
+  tx: RlsClient,
+  params: { orgId: string; companyId: string; userId: string },
+): Promise<{ threadId: string; created: boolean } | null> {
+  const [row] = await tx
+    .select({ id: companies.id })
+    .from(companies)
+    .where(and(eq(companies.id, params.companyId), eq(companies.orgId, params.orgId)))
+    .limit(1)
+  if (!row) return null
+  return getOrCreateEntityDiscussionThread(
+    params.orgId,
+    { app: "kernel", entityType: "company", entityId: params.companyId },
+    params.userId,
+  )
 }
 
 /**

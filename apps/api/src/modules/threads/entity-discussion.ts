@@ -131,7 +131,7 @@ export async function openEntityDiscussion(
  * of the organization is seated, the rule `enrolInEntityDiscussion` applies to
  * others: anyone else gets null and nothing is created.
  */
-async function getOrCreateEntityDiscussionThread(
+export async function getOrCreateEntityDiscussionThread(
   orgId: string,
   ref: ThreadAnchorRef,
   userId: string,

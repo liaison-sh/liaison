@@ -906,6 +906,13 @@ export async function registerKernelJobs(): Promise<void> {
     await pruneAppLogs()
   })
 
+  // Opt-out links of commercial mails, daily at 4:50 AM: a link older than three
+  // years goes (modules/mail/commercial-footer.ts); the opt-outs themselves stay.
+  await registerScheduledJob("kernel", "suppression-links-prune", "50 4 * * *", async () => {
+    const { pruneOptOutLinks } = await import("~/modules/mail/commercial-footer")
+    await pruneOptOutLinks()
+  })
+
   // App builder preview namespaces of the data store (`draft:<id>`), hourly at :17:
   // a namespace whose last write is a day old goes (modules/app-builder/installed.ts).
   await registerScheduledJob("kernel", "app-draft-store-retention", "17 * * * *", async () => {

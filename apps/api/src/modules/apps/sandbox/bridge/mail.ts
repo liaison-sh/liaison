@@ -12,7 +12,9 @@ import { snakeCase } from "~/modules/apps/sandbox/bridge/shared"
 import {
   type BuildSendGuardInput,
   buildSendGuard,
+  COMMERCIAL_IDENTITY_MISSING_MESSAGE,
   commercialFooterFor,
+  commercialRecipient,
   describeStop,
   evaluateSendGuard,
   isPinnedSendGuard,
@@ -532,16 +534,23 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
         recipients,
         contactIds: await contactIdsFor(recipients),
         ...(params.conversationId ? { conversationId: params.conversationId } : {}),
+        // Only a person's own click is not staged by an agent (and it has no guard at all).
+        agentStaged: bridgeOptions?.origin !== "human-ui",
       })
       if ("commercialIdentityMissing" in built) {
         return JSON.stringify({
           applies: true,
           refusal: {
             code: "commercial_identity_missing",
-            message:
-              "Nothing was sent and no draft was staged. This organization has not set the identity a commercial mail must state. Next: an admin fills it in, then stage this again.",
+            message: `Nothing was sent and no draft was staged. ${COMMERCIAL_IDENTITY_MISSING_MESSAGE}`,
             retryable: false,
           },
+        })
+      }
+      if ("refused" in built) {
+        return JSON.stringify({
+          applies: true,
+          refusal: { ...built.refused, retryable: false },
         })
       }
       const { state } = built.verdict
@@ -602,13 +611,31 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
         at: "send",
       })
       if (checked.state === "clear") {
-        const first = recipients[0]
         // A commercial mail gets its footer here, and the send's record says so, so
         // what left can be checked against the classification it was sent under.
-        const footer =
-          guard.classification === "marketing" && first
-            ? await commercialFooterFor(orgId, first, params.textBody, params.htmlBody)
-            : null
+        const commercial = guard.classification === "marketing"
+        const first = commercial ? await commercialRecipient(orgId, recipients) : null
+        const footer = first
+          ? await commercialFooterFor(orgId, first, params.textBody, params.htmlBody)
+          : null
+        if (commercial && !footer) {
+          // The identity was cleared after staging: the mail cannot leave without it.
+          const message = `The mail was not sent. ${COMMERCIAL_IDENTITY_MISSING_MESSAGE}`
+          return JSON.stringify({
+            applies: true,
+            state: "unavailable",
+            final: false,
+            code: "commercial_identity_missing",
+            message,
+            approved: approvalContext !== undefined,
+            guard: {
+              state: "unavailable",
+              reason: message,
+              mode: guard.mode,
+              classification: guard.classification,
+            },
+          })
+        }
         return JSON.stringify({
           applies: true,
           state: "clear",

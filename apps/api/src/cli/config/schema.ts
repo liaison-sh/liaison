@@ -14,6 +14,7 @@
  * env interpolation is `parse.ts`.
  */
 import {
+  commercialIdentitySchema,
   databaseDomainNameSchema,
   databaseDomainTierSchema,
   googleOAuthClientIdSchema,
@@ -123,6 +124,8 @@ export const emailSchema = z
   .object({
     from: z.string().optional(),
     replyTo: z.string().optional(),
+    // The legal name and postal address every commercial mail states (its footer).
+    commercialIdentity: commercialIdentitySchema.optional(),
   })
   .optional()
 

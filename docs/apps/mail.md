@@ -162,6 +162,18 @@ An agent can check up to 50 addresses at a time (`mail:suppression_check`). With
 
 Lifting an opt-out (`mail:suppression_remove`) waits for a mail admin's approval. The card says who opted out, when and how.
 
+### Commercial mail: identity, opt-out link and one recipient
+
+A commercial mail is a follow-up, or a new message to someone the data marks as a prospect: a contact on an open deal (directly or through their company), recorded under professional interest, or added from a third party or an enrichment. The agent does not decide it; the recipient's record does. A reply in the person's own conversation is never commercial this way.
+
+Before any commercial mail can go, set the organization's legal name and postal address in **Settings > Organization > Commercial identity** (or `email.commercialIdentity` in `liaison config apply`, the agent tool `kernel:config_email`). Until both are set, the agent is told that nothing was staged and where to set them.
+
+Every commercial mail ends with that legal name and address, a link to stop commercial messages, and "or reply stop". The same link goes in the `List-Unsubscribe` header with `List-Unsubscribe-Post: List-Unsubscribe=One-Click`, so a mail client's unsubscribe button works too, on Gmail and on IMAP/SMTP mailboxes. Liaison adds all of it as the mail leaves, so an approver's edit cannot remove it. No tracking image is ever added.
+
+A commercial mail goes to one person outside the organization, so each one gets their own link; colleagues may stay on copy. An agent's new message to someone who opted out is refused, commercial or not: it can still reply in that person's own conversation.
+
+The link opens a page that asks once and records the opt-out with one button. Opening the page changes nothing (mail scanners open links), and pressing again changes nothing more. The page shows the organization's legal name and address, never the recipient's address, in English or French. Links older than three years stop working.
+
 ## Scopes
 
 | Scope | What it allows |

@@ -252,5 +252,13 @@
     "tls": "The secure connection to the mail server failed. Check the port and the security setting."
   },
   "personalMailboxTransparentNotice": "Mail from your personal mailbox is encrypted at rest. Only you and your agent can read it; your organization's admins cannot. There is no mailbox password to set.",
-  "suppressions": {}
+  "suppressions": {},
+  "commercialIdentity": {
+    "title": "Commercial identity",
+    "help": "Every commercial mail (a follow-up or offer to a prospect) ends with this legal name and postal address, an opt-out link and \"or reply stop\". Until both are set, Liaison sends no commercial mail.",
+    "legalName": "Legal name",
+    "postalAddress": "Postal address",
+    "saved": "Commercial identity saved.",
+    "saveFailed": "The commercial identity could not be saved."
+  }
 }

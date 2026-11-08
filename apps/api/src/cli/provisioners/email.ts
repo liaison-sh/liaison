@@ -36,7 +36,7 @@ export const emailProvisioner: Provisioner<ProvisioningConfig> = {
 
   async plan(ctx, config): Promise<ProvisionPlan> {
     const email = config.email
-    if (!email || (email.from === undefined && email.replyTo === undefined)) {
+    if (!email || nothingToSet(email)) {
       return { actions: [] }
     }
     // The driver plans before any apply → `ctx.orgId` is unset here (org is
@@ -48,20 +48,27 @@ export const emailProvisioner: Provisioner<ProvisioningConfig> = {
         : await ctx.priv("cli-plan-email", (tx) =>
             getOrgKernelSettings(tx, ctx.orgId, orgKernelSettingsSchema),
           )
-    const unchanged = stored !== null && isUnchanged(stored.email, email)
+    const unchanged =
+      stored !== null &&
+      isUnchanged(stored.email, email) &&
+      identityUnchanged(stored.commercialIdentity, email.commercialIdentity)
     return {
       ...(ctx.toolPath ? { changes: unchanged ? 0 : 1 } : {}),
       actions: [
         unchanged
           ? `email identity unchanged (from=${email.from ?? "—"})`
-          : `set email identity (from=${email.from ?? "—"}, replyTo=${email.replyTo ?? "—"})`,
+          : `set email identity (from=${email.from ?? "—"}, replyTo=${email.replyTo ?? "—"}${
+              email.commercialIdentity
+                ? `, commercial identity ${email.commercialIdentity.legalName}`
+                : ""
+            })`,
       ],
     }
   },
 
   async apply(ctx, _plan, config): Promise<ProvisionResult> {
     const email = config.email
-    if (!email || (email.from === undefined && email.replyTo === undefined)) {
+    if (!email || nothingToSet(email)) {
       return {}
     }
 
@@ -69,7 +76,10 @@ export const emailProvisioner: Provisioner<ProvisioningConfig> = {
       getOrgKernelSettings(tx, ctx.orgId, orgKernelSettingsSchema),
     )
 
-    if (isUnchanged(stored.email, email)) {
+    if (
+      isUnchanged(stored.email, email) &&
+      identityUnchanged(stored.commercialIdentity, email.commercialIdentity)
+    ) {
       const section: EmailSection = {
         ...(stored.email?.from !== undefined ? { from: stored.email.from } : {}),
         ...(stored.email?.replyTo !== undefined ? { replyTo: stored.email.replyTo } : {}),
@@ -85,6 +95,8 @@ export const emailProvisioner: Provisioner<ProvisioningConfig> = {
     if (email.from !== undefined) merge.from = email.from
     if (email.replyTo !== undefined) merge.replyTo = email.replyTo
     const mergeJson = JSON.stringify(merge)
+    // The commercial identity is one value, replaced whole (settings.commercialIdentity).
+    const identityJson = email.commercialIdentity ? JSON.stringify(email.commercialIdentity) : null
 
     const k = drizzleSql.raw(schemaRef("kernel"))
     await ctx.priv("cli-email-write", async (tx) => {
@@ -93,7 +105,9 @@ export const emailProvisioner: Provisioner<ProvisioningConfig> = {
         SET settings = COALESCE(settings, '{}'::jsonb) ||
           jsonb_build_object('email',
             COALESCE(settings->'email', '{}'::jsonb) || ${mergeJson}::jsonb
-          ),
+          ) ||
+          CASE WHEN ${identityJson}::jsonb IS NULL THEN '{}'::jsonb
+               ELSE jsonb_build_object('commercialIdentity', ${identityJson}::jsonb) END,
           updated_at = now()
         WHERE id = ${ctx.orgId}::uuid
       `)
@@ -105,6 +119,9 @@ export const emailProvisioner: Provisioner<ProvisioningConfig> = {
       ...(resolvedFrom !== undefined ? { from: resolvedFrom } : {}),
       ...(resolvedReplyTo !== undefined ? { replyTo: resolvedReplyTo } : {}),
       set: true,
+    }
+    if (email.commercialIdentity) {
+      ctx.log(`commercial identity set (${email.commercialIdentity.legalName})`)
     }
     ctx.log(`email identity set (from=${section.from ?? "—"}, replyTo=${section.replyTo ?? "—"})`)
     return { section, changed: ["email"] }
@@ -123,4 +140,18 @@ function isUnchanged(
   if (config.from !== undefined && stored?.from !== config.from) return false
   if (config.replyTo !== undefined && stored?.replyTo !== config.replyTo) return false
   return true
+}
+
+function nothingToSet(email: { from?: string; replyTo?: string; commercialIdentity?: unknown }) {
+  return (
+    email.from === undefined &&
+    email.replyTo === undefined &&
+    email.commercialIdentity === undefined
+  )
+}
+
+/** A commercial identity the config does not set is never compared. */
+function identityUnchanged(stored: unknown, config: unknown): boolean {
+  if (config === undefined) return true
+  return JSON.stringify(stored ?? null) === JSON.stringify(config)
 }

@@ -45,6 +45,7 @@ import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/poo
 import { seedContext } from "~/seed/context"
 import * as minimal from "~/seed/tiers/minimal"
 import { bootstrapAdminCtx } from "~/tests/helpers/agent-ctx"
+import { setTestCommercialIdentity } from "~/tests/helpers/commercial-identity"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 import { ensureMailAccount } from "../../../../test-support/seed/mail"
 
@@ -253,6 +254,8 @@ beforeAll(async () => {
     getOrCreatePersonalAgentId(tx, { orgId, userId }),
   )
   await ensureAppsForOrg(orgId)
+  // The mail case stages commercial follow-ups, which state the org's identity.
+  await setTestCommercialIdentity(orgId)
   toolRegistry.set([orgId, APP, "draft"], {
     appName: APP,
     name: "draft",

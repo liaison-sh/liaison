@@ -67,7 +67,7 @@ async function setCompanyAndAmount(taskId: string, companyId: string | null, amo
 describe("closing and reopening", () => {
   it("a move to a closing stage sets outcome, closed at and closed by with the move, and a failure leaves all unchanged", async () => {
     const p = await makePipeline(w, "Close by move")
-    const taskId = await makeTask(w, p.projectId, "Atelier Nord", { statusId: p.stage.Demo })
+    const taskId = await makeTask(w, p.projectId, "Verrerie Nord", { statusId: p.stage.Demo })
 
     const disarm = armAfterDealOutcomeFailpoint(() => {
       throw new Error("fault after the outcome write")

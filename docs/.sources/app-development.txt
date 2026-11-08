@@ -52,6 +52,8 @@ Predicate operators for when -> apps/api/src/modules/attention/predicates.ts:2
 resolveWhen ends an item -> apps/api/src/modules/apps/manifest-schema.ts:1238
 searchKeywords on a tool, single words -> apps/api/src/modules/apps/manifest-schema.ts:517
 Keywords are read only by the search, folded for accents -> apps/api/src/modules/agent/tools/tool-rank.ts:72
+Other forms (stems), misspellings of 5+ letters and French words of name parts are found without a keyword -> apps/api/src/modules/agent/tools/tool-rank.ts:104-235 ; apps/api/src/modules/agent/tools/tool-lexicon.ts:1-15
+searchKeywords on a bulk action reach its agent tool, grouped tools take every action's words -> apps/api/src/modules/apps/manifest-schema.ts:1874-1880 ; apps/api/src/modules/apps/bulk-agent-tools.ts:20-30
 A page tells the host which record is open with app.trackOpenRecord -> packages/host-sdk/src/index.ts:438
 A turn sent from the tab names that record -> apps/web/src/modules/threads/thread-send.ts:42
 An external entity is named by the id the page reported -> apps/api/src/modules/threads/reference-display.ts:141

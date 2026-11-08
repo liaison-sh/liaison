@@ -6,6 +6,8 @@
  * no server.
  */
 
+import { NAME_WORD_SYNONYMS } from "./tool-lexicon"
+
 /** The app whose tools connect any outside system (see creditOutsideSystemNames). */
 export const CONNECTOR_APP = "api-connector"
 
@@ -46,6 +48,13 @@ function substringOk(term: string): boolean {
 const DESCRIPTION_SCORE = 2
 
 interface ScoringWords {
+  /** Stems of the name parts, single-word keywords and description words (see wordStem). */
+  nameStems: Set<string>
+  keywordStems: Set<string>
+  descStems: Set<string>
+  /** Name parts and keywords with their stems, which a misspelling is compared to ("refnud", "refund"). */
+  typoNames: string[]
+  typoKeywords: string[]
   nameParts: string[]
   /** The name with its separators and case dropped: `internalCallback` is "internalcallback". */
   nameJoined: string
@@ -71,16 +80,165 @@ function scoringWords(t: ScorableDeferredTool): ScoringWords {
     .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
     .toLowerCase()
     .split(/[^a-z0-9]+/)
+  const keywords = t.keywords?.map(foldSearchText)
+  const appParts = appLower.split(/[^a-z0-9]+/)
+  const descWords = foldSearchText(t.description).split(/[^\p{L}\p{N}]+/u)
+  const single = (keywords ?? []).filter((k) => !/\s/.test(k))
   const words: ScoringWords = {
+    nameStems: new Set(nameParts.map(wordStem)),
+    keywordStems: new Set(single.map(wordStem)),
+    descStems: new Set(descWords.map(wordStem)),
+    typoNames: [...new Set([...nameParts, ...nameParts.map(wordStem)])],
+    typoKeywords: [...new Set([...single, ...single.map(wordStem)])],
     nameParts,
     nameJoined: nameParts.join(""),
-    keywords: t.keywords?.map(foldSearchText),
+    keywords,
     appLower,
-    appParts: appLower.split(/[^a-z0-9]+/),
-    descWords: foldSearchText(t.description).split(/[^\p{L}\p{N}]+/u),
+    appParts,
+    descWords,
   }
   scoringWordsCache.set(t, words)
   return words
+}
+
+// ── Beyond the exact word ────────────────────────────────────────────────
+// A word that is another form of a name part ("invoicing", "factures"), a
+// misspelling of one ("refnud"), or its translation or plain synonym
+// ("rembourser", "money"), scores under the exact word and above a word found
+// only in a description.
+const STEM_NAME_SCORE = 7
+const STEM_KEYWORD_SCORE = 6
+const SYNONYM_NAME_SCORE = 7
+const SYNONYM_KEYWORD_SCORE = 6
+const TYPO_NAME_SCORE = 6
+const TYPO_KEYWORD_SCORE = 5
+const TYPO_APP_SCORE = 4
+const MIN_STEM = 4
+/**
+ * In a query of several words, each word's score is weighed by how few tools
+ * answer to it: from 1 for a word one tool answers to, down to this floor for a
+ * word every tool does. A sentence's common words ("send", "list") then rank
+ * tools less than its one rare word.
+ */
+const RARE_WORD_FLOOR = 0.5
+
+/**
+ * Inflection endings, English and French, longest first, compared on folded
+ * text. A word and its stem must keep MIN_STEM letters.
+ */
+const SUFFIXES = [
+  "issements",
+  "issement",
+  "ements",
+  "ations",
+  "ateurs",
+  "atrices",
+  "ement",
+  "ation",
+  "ateur",
+  "atrice",
+  "ments",
+  "ment",
+  "ings",
+  "ing",
+  "ies",
+  "ied",
+  "euses",
+  "euse",
+  "eurs",
+  "eur",
+  "ees",
+  "ee",
+  "ers",
+  "er",
+  "ez",
+  "es",
+  "ed",
+  "ons",
+  "ent",
+  "ant",
+  "ais",
+  "ait",
+  "s",
+  "x",
+  "e",
+  "y",
+]
+
+/** The stem two forms of one word share: "factures", "facturer", "facturé" are "factur". */
+export function wordStem(word: string): string {
+  for (const suffix of SUFFIXES) {
+    if (word.endsWith(suffix) && word.length - suffix.length >= MIN_STEM)
+      return word.slice(0, -suffix.length)
+  }
+  return word
+}
+
+/** The name words a query word stands for, by stem (tool-lexicon.ts). */
+const SYNONYMS_BY_STEM = (() => {
+  const out = new Map<string, string[]>()
+  for (const [word, names] of Object.entries(NAME_WORD_SYNONYMS)) {
+    const stem = wordStem(word)
+    out.set(stem, [...new Set([...(out.get(stem) ?? []), ...names])])
+  }
+  return out
+})()
+
+/** Every word the catalog holds: name parts, keywords, app parts, description words. */
+const vocabularyCache = new WeakMap<readonly ScorableDeferredTool[], Set<string>>()
+function vocabularyOf(tools: readonly ScorableDeferredTool[]): Set<string> {
+  const cached = vocabularyCache.get(tools)
+  if (cached) return cached
+  const vocab = new Set<string>()
+  for (const t of tools) {
+    const w = scoringWords(t)
+    for (const list of [w.nameParts, w.keywords ?? [], w.appParts, w.descWords])
+      for (const word of list) vocab.add(word)
+  }
+  vocabularyCache.set(tools, vocab)
+  return vocab
+}
+
+/** Shortest word read as a typo of another, and the edits allowed by length. */
+const MIN_TYPO_TERM = 5
+function typoEdits(length: number): number {
+  return length >= 9 ? 2 : 1
+}
+
+/** True when `term` is within its allowed edits (a swap of two letters is one) of a word. */
+function typoOf(term: string, words: readonly string[]): boolean {
+  if (term.length < MIN_TYPO_TERM) return false
+  const max = typoEdits(term.length)
+  return words.some(
+    (w) =>
+      w.length >= MIN_TYPO_TERM - 1 &&
+      Math.abs(w.length - term.length) <= max &&
+      editDistance(term, w, max) <= max,
+  )
+}
+
+/** Optimal string alignment distance, cut off past `max`. */
+function editDistance(a: string, b: string, max: number): number {
+  const m = a.length
+  const n = b.length
+  let prev2: number[] = []
+  let prev = Array.from({ length: n + 1 }, (_, j) => j)
+  for (let i = 1; i <= m; i++) {
+    const cur = [i]
+    let rowMin = i
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      let v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost)
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1])
+        v = Math.min(v, prev2[j - 2] + 1)
+      cur.push(v)
+      if (v < rowMin) rowMin = v
+    }
+    if (rowMin > max) return max + 1
+    prev2 = prev
+    prev = cur
+  }
+  return prev[n]
 }
 
 /** The minimal shape the keyword scorer needs from a deferred-tool row. */
@@ -108,7 +266,11 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
   tools: readonly T[],
   query: string,
   /** The org's app names, so a kernel tool is not held to match the app it acts on. */
-  opts?: { appNames?: Iterable<string> },
+  opts?: {
+    appNames?: Iterable<string>
+    /** The catalog whose words count as known (typos), when `tools` is a part of it. */
+    vocabularyOf?: readonly ScorableDeferredTool[]
+  },
 ): Array<{ tool: T; score: number; termsMatched: number; termCount: number }> {
   let terms = query
     .toLowerCase()
@@ -120,14 +282,26 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
   // them, unless the query is nothing but filler.
   const named = terms.filter((term) => !FILLER_WORDS.has(term))
   if (named.length > 0) terms = named
-  return tools.map((t) => {
+  const vocab = vocabularyOf(opts?.vocabularyOf ?? tools)
+  // A word no tool's name, keyword, app or description holds is read as a typo
+  // of the closest such word; a word the catalog knows is never "corrected".
+  const unknown = new Set(terms.filter((term) => !vocab.has(term)))
+  const termStems = terms.map(wordStem)
+  // A stem too short to tell words apart ("cre") is not compared.
+  const stemOk = termStems.map((stem) => stem.length >= MIN_STEM)
+  const termSynonyms = terms.map(
+    (term, i) => SYNONYMS_BY_STEM.get(termStems[i]) ?? SYNONYMS_BY_STEM.get(term) ?? [],
+  )
+  const rows = tools.map((t) => {
     let score = 0
     let termsMatched = 0
     let termCount = 0
-    const { nameParts, nameJoined, keywords, appLower, appParts, descWords } = scoringWords(t)
+    const words = scoringWords(t)
+    const { nameParts, nameJoined, keywords, appLower, appParts, descWords } = words
     const isKernel = t.appName === "kernel"
 
-    for (const term of terms) {
+    const per: number[] = []
+    for (const [i, term] of terms.entries()) {
       const before = score
       // Exact name part match (high weight); a singular term also names its
       // plural part ("app" names `apps_set_enabled`).
@@ -140,6 +314,15 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
         score += 10
       // A keyword the tool declares for this org (singular or plural either way)
       else if (keywords?.some((k) => k === term || k === `${term}s` || `${k}s` === term)) score += 8
+      // The tool's app named exactly: every tool of the app answers alike, so
+      // another form of a name part does not set one of them apart.
+      else if (appLower === term) score += 6
+      // Another form of a name part or keyword ("invoicing", "facturer").
+      else if (stemOk[i] && words.nameStems.has(termStems[i])) score += STEM_NAME_SCORE
+      // A translation or plain synonym of a name part (tool-lexicon.ts).
+      else if (termSynonyms[i].some((x) => nameParts.some((p) => p === x || p === `${x}s`)))
+        score += SYNONYM_NAME_SCORE
+      else if (stemOk[i] && words.keywordStems.has(termStems[i])) score += STEM_KEYWORD_SCORE
       // Partial name match: the start of a name part ("invoice" in `invoices`),
       // never the middle of one ("done" is not in `abandoned`). The whole name's
       // start counts too ("internalcall" in `internalCallback`).
@@ -151,9 +334,17 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
       // App name match
       else if (appLower === term || (substringOk(term) && appParts.some((p) => p.startsWith(term))))
         score += 6
+      // A translation or plain synonym of a keyword.
+      else if (termSynonyms[i].some((x) => keywords?.includes(x))) score += SYNONYM_KEYWORD_SCORE
+      // A misspelt name part, keyword or app name, for a word the catalog does not hold.
+      else if (unknown.has(term) && typoOf(term, words.typoNames)) score += TYPO_NAME_SCORE
+      else if (unknown.has(term) && typoOf(term, words.typoKeywords)) score += TYPO_KEYWORD_SCORE
+      else if (unknown.has(term) && typoOf(term, appParts)) score += TYPO_APP_SCORE
       // Description match (lower weight), at the start of a word
       else if (substringOk(term) && descWords.some((w) => w.startsWith(term)))
         score += DESCRIPTION_SCORE
+      else if (stemOk[i] && words.descStems.has(termStems[i])) score += DESCRIPTION_SCORE
+      per[i] = score - before
       if (score > before) termsMatched++
       // Another app's name is the ARGUMENT of a kernel tool, which acts on
       // apps ("turn the social app off"), not a term the tool must match.
@@ -161,8 +352,22 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
       termCount++
     }
 
-    return { tool: t, score, termsMatched, termCount }
+    return { tool: t, score, termsMatched, termCount, per }
   })
+  if (terms.length < 2) return rows.map(({ per: _, ...r }) => r)
+  // A word many tools answer to tells them apart less than a rare one.
+  const n = Math.max(2, tools.length)
+  const weight = terms.map((_, i) => {
+    const answering = rows.filter((r) => r.per[i] > 0).length
+    return (
+      RARE_WORD_FLOOR +
+      (1 - RARE_WORD_FLOOR) * (Math.log((n + 1) / (answering + 1)) / Math.log(n + 1))
+    )
+  })
+  return rows.map(({ per, ...r }) => ({
+    ...r,
+    score: Math.round(per.reduce((sum, v, i) => sum + v * weight[i], 0) * 100) / 100,
+  }))
 }
 
 /**
@@ -249,12 +454,18 @@ function creditOutsideSystemNames<T extends ScorableDeferredTool>(
 ): Array<{ tool: T; score: number; termsMatched: number; termCount: number }> {
   if (loading.outside.length === 0) return scored
   const query = [loading.query, ...loading.outside].join(" ")
-  return scored.map((s) => {
-    if (s.tool.appName !== CONNECTOR_APP) return s
-    const credited = { ...s.tool, keywords: [...(s.tool.keywords ?? []), ...loading.outside] }
-    const [rescored] = scoreDeferredTools([credited], query, { appNames })
-    return { ...rescored, tool: s.tool }
-  })
+  // The whole catalog is scored again, so each word is weighed by how many
+  // tools answer to it there (RARE_WORD_FLOOR), the credited ones included.
+  // Only a connector tool the rest of the query already asks for ("connect"):
+  // in "book a call with Lumen", the name is a person's or a customer's, not a
+  // system to connect.
+  const credit = (s: (typeof scored)[number]) => s.tool.appName === CONNECTOR_APP && s.score > 0
+  if (!scored.some(credit)) return scored
+  const credited = scored.map((s) =>
+    credit(s) ? { ...s.tool, keywords: [...(s.tool.keywords ?? []), ...loading.outside] } : s.tool,
+  )
+  const rescored = scoreDeferredTools(credited, query, { appNames })
+  return scored.map((s, i) => (credit(s) ? { ...rescored[i], tool: s.tool } : s))
 }
 
 /**

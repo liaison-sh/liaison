@@ -48,6 +48,7 @@ interface BulkDecl {
   label?: string
   agentTool?: string
   deferLoading?: boolean
+  searchKeywords?: string[]
 }
 
 /**
@@ -64,11 +65,13 @@ function bulkTools(appName: string, bulk: Record<string, BulkDecl>): BenchTool[]
   return [...groups].map(([name, decls]) => {
     const single = decls.length === 1 ? decls[0] : undefined
     const deferLoading = single?.deferLoading === true ? true : undefined
+    const keywords = [...new Set(decls.flatMap((d) => d.searchKeywords ?? []))]
     return {
       sdkName: sdkNameOf(appName, name),
       toolName: name,
       appName,
       description: single ? `Bulk ${single.label ?? ""}` : `Bulk operations on ${appName}`,
+      ...(keywords.length ? { keywords } : {}),
       ...(deferLoading ? { declaredDeferLoading: true } : {}),
       deferred: deferLoading ?? appName !== "kernel",
       agentVisible: true,

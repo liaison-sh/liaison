@@ -331,6 +331,10 @@ tool does, when its name and description do not carry them, in
 `searchKeywords`: single words, in any language, the words on your screens
 included. They are read only by the search, never sent to a model, so they cost
 no tokens. Accents do not matter: `clôturer` also answers to `cloturer`.
+Other forms of a word, a misspelling of five letters or more, and common French
+words for the English words of tool names are found without a keyword:
+`factures` finds `facturer`, `refnud` finds `refunds_create`, `rembourser`
+finds it too. Add a keyword for a word that is none of these.
 
 ```json
 "close": {
@@ -338,6 +342,10 @@ no tokens. Accents do not matter: `clôturer` also answers to `cloturer`.
   "searchKeywords": ["fermer", "clôturer", "résoudre"]
 }
 ```
+
+A `bulk` action with an `agentTool` takes `searchKeywords` too. They go to that
+agent tool; one agent tool shared by several actions answers to the words of
+each.
 
 ---
 

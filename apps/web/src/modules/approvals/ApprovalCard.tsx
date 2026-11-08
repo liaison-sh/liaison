@@ -122,15 +122,15 @@ interface ApprovalCardProps {
   /** The person's message that turn answers; `data-turn-id` is `askId ?? turnId`. */
   askId?: string | null
   /** Opened from a Home row by Details. The row above already names the request, so the card
-   *  leaves out its handle and id, and its decision stays in view at the bottom of the screen
+   *  leaves out its handle and id, and its decision leads the card, sticky to the top of the Home
    *  while the person reads a long card (cold walk, 2026-11-08). */
   inFeed?: boolean
 }
 
 const TIMEOUT_MS = 30_000
 /** A card opened from a Home row keeps its decision on screen while it is read: the action row
- *  sticks to the bottom of the scrolling Home, on the card's own background. */
-const STICKY_DECISION = "sticky bottom-0 z-10 bg-elevated pt-2"
+ *  leads the card and sticks to the top of the scrolling Home, on the card's own background. */
+const STICKY_DECISION = "sticky top-0 z-10 mb-2 bg-elevated py-2"
 /** The reasons the server writes on a request it cancelled itself, each with its words in the
  *  viewer's language. A reason not listed here (an older row) shows as stored. */
 const CANCEL_REASON_KEYS: Record<string, string> = {
@@ -1931,6 +1931,134 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
     return null
   }
 
+  /** The decision (Approve, Reject, Edit) and, next to it, the notice that the payload changed.
+   *  A card opened from a Home row (`inFeed`) carries it at its top, sticky to the top of the
+   *  scrolling Home while the details scroll under it; the chat dock owns the bottom of the
+   *  screen, so a decision row never sits there. Elsewhere it closes the card as before. */
+  const decisionBlock = (atTop: boolean) => (
+    <>
+      {/* Next to the decide row: Approve stays bound to the version the person saw until they
+        read the new one, so the way to read it sits where they press Approve. */}
+      <Show when={isPending() && changedSinceReview().length > 0}>
+        <div
+          class="mt-2 rounded border border-border bg-bg-subtle p-2 text-[12px] text-text"
+          data-testid="approval-card-changed-notice"
+          role="status"
+        >
+          <div>{i18n.t("kernel.approvalsUi.changedSinceOpened")}</div>
+          <button
+            type="button"
+            class="mt-1 text-[12px] font-medium text-accent hover:underline"
+            data-testid="approval-card-changed-ack"
+            onClick={() => acknowledgePayloadChanges(changedSinceReview())}
+          >
+            {i18n.t("kernel.approvalsUi.readTheNewVersion")}
+          </button>
+        </div>
+      </Show>
+
+      <Show when={!editing() && !denying() && isPending()}>
+        <Show
+          when={phone()}
+          fallback={
+            <BottomSheetActions
+              class={atTop ? STICKY_DECISION : "mt-3"}
+              actions={pendingActions()}
+              moreLabel={i18n.t("kernel.actions")}
+              closeLabel={i18n.t("kernel.close")}
+            />
+          }
+        >
+          {/* A decision is the whole point of the card, so at phone
+            width all three verbs are on screen at 44px rather than
+            one tap deep behind a "more" trigger. */}
+          <div
+            class={`flex items-center gap-2 ${atTop ? STICKY_DECISION : "mt-3"}`}
+            data-testid="approval-card-actions"
+            // The bottom tab bar is drawn OVER the scrolling card, so
+            // the decide row ended up underneath it: the one control
+            // the card exists for was the one a thumb could not
+            // reach. It clears the bar off the shell's own variable
+            // (`--shell-bottom-bar`, 0 above phone width) plus the
+            // device safe area, so nothing here is a guessed number.
+            style={
+              atTop
+                ? undefined
+                : {
+                    "padding-bottom":
+                      "calc(env(safe-area-inset-bottom, 0px) + var(--shell-bottom-bar, 0px))",
+                  }
+            }
+          >
+            <For each={guardActions() ?? []}>
+              {(action, i) => (
+                <button
+                  type="button"
+                  data-testid={action.testid}
+                  data-entity-id={action.entityId}
+                  class={
+                    i() === 0
+                      ? "min-h-11 flex-[1.4] rounded-lg bg-accent px-2 text-[15px] font-medium text-accent-foreground"
+                      : "min-h-11 flex-1 rounded-lg border border-border px-2 text-[15px] text-text"
+                  }
+                  onClick={() => action.onClick()}
+                >
+                  {action.label}
+                </button>
+              )}
+            </For>
+            <Show when={showDeny()}>
+              <button
+                type="button"
+                data-testid="approval-card-action-deny"
+                class="min-h-11 flex-1 rounded-lg border border-border text-[15px] text-text"
+                onClick={() => setDenying(true)}
+              >
+                {denyLabel()}
+              </button>
+            </Show>
+            <Show when={showEdit()}>
+              <button
+                type="button"
+                data-testid="approval-card-action-edit"
+                class="min-h-11 flex-1 rounded-lg border border-border text-[15px] text-text"
+                onClick={() => enterEdit()}
+              >
+                {i18n.t("kernel.approvalEdit")}
+              </button>
+            </Show>
+            <Show when={showSendNow() && guardActions() === null}>
+              <button
+                type="button"
+                data-testid="approval-card-action-send-now"
+                data-entity-id={props.requestId}
+                class="min-h-11 flex-[1.4] rounded-lg bg-accent text-[15px] font-medium text-accent-foreground"
+                onClick={() => void onApprove("auto_reply")}
+              >
+                {i18n.t("kernel.approvalsUi.sendGuard.sendNow")}
+              </button>
+            </Show>
+            <Show when={showApprove()}>
+              <button
+                type="button"
+                data-testid="approval-card-action-approve"
+                data-entity-id={props.requestId}
+                data-tool-name={current()?.toolName}
+                class="min-h-11 flex-[1.4] rounded-lg bg-accent text-[15px] font-medium text-accent-foreground"
+                onClick={() => {
+                  nativeHaptic("success")
+                  void onApprove()
+                }}
+              >
+                {approveLabel(i18n.t("kernel.approvalApprove"))}
+              </button>
+            </Show>
+          </div>
+        </Show>
+      </Show>
+    </>
+  )
+
   return (
     // A decision waiting out its Undo window hides the card; Undo brings it back.
     <Show when={!isDecisionQueued("approval", props.requestId)}>
@@ -1951,6 +2079,7 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
             <Show when={current()} fallback={<SkeletonRows />}>
               {(c) => (
                 <div>
+                  <Show when={props.inFeed}>{decisionBlock(true)}</Show>
                   {/* G2: at phone width this line used to ALSO carry the
                     request id (handle + uuid segment) ahead of the deadline,
                     which packed icon + kind + id + separator + deadline onto
@@ -2727,121 +2856,7 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
                     )}
                   </Show>
 
-                  {/* Next to the decide row: Approve stays bound to the version the person saw until they
-                    read the new one, so the way to read it sits where they press Approve. */}
-                  <Show when={isPending() && changedSinceReview().length > 0}>
-                    <div
-                      class="mt-2 rounded border border-border bg-bg-subtle p-2 text-[12px] text-text"
-                      data-testid="approval-card-changed-notice"
-                      role="status"
-                    >
-                      <div>{i18n.t("kernel.approvalsUi.changedSinceOpened")}</div>
-                      <button
-                        type="button"
-                        class="mt-1 text-[12px] font-medium text-accent hover:underline"
-                        data-testid="approval-card-changed-ack"
-                        onClick={() => acknowledgePayloadChanges(changedSinceReview())}
-                      >
-                        {i18n.t("kernel.approvalsUi.readTheNewVersion")}
-                      </button>
-                    </div>
-                  </Show>
-
-                  <Show when={!editing() && !denying() && isPending()}>
-                    <Show
-                      when={phone()}
-                      fallback={
-                        <BottomSheetActions
-                          class={props.inFeed ? `mt-3 ${STICKY_DECISION}` : "mt-3"}
-                          actions={pendingActions()}
-                          moreLabel={i18n.t("kernel.actions")}
-                          closeLabel={i18n.t("kernel.close")}
-                        />
-                      }
-                    >
-                      {/* A decision is the whole point of the card, so at phone
-                        width all three verbs are on screen at 44px rather than
-                        one tap deep behind a "more" trigger. */}
-                      <div
-                        class={`mt-3 flex items-center gap-2 ${props.inFeed ? STICKY_DECISION : ""}`}
-                        data-testid="approval-card-actions"
-                        // The bottom tab bar is drawn OVER the scrolling card, so
-                        // the decide row ended up underneath it: the one control
-                        // the card exists for was the one a thumb could not
-                        // reach. It clears the bar off the shell's own variable
-                        // (`--shell-bottom-bar`, 0 above phone width) plus the
-                        // device safe area, so nothing here is a guessed number.
-                        style={{
-                          "padding-bottom":
-                            "calc(env(safe-area-inset-bottom, 0px) + var(--shell-bottom-bar, 0px))",
-                        }}
-                      >
-                        <For each={guardActions() ?? []}>
-                          {(action, i) => (
-                            <button
-                              type="button"
-                              data-testid={action.testid}
-                              data-entity-id={action.entityId}
-                              class={
-                                i() === 0
-                                  ? "min-h-11 flex-[1.4] rounded-lg bg-accent px-2 text-[15px] font-medium text-accent-foreground"
-                                  : "min-h-11 flex-1 rounded-lg border border-border px-2 text-[15px] text-text"
-                              }
-                              onClick={() => action.onClick()}
-                            >
-                              {action.label}
-                            </button>
-                          )}
-                        </For>
-                        <Show when={showDeny()}>
-                          <button
-                            type="button"
-                            data-testid="approval-card-action-deny"
-                            class="min-h-11 flex-1 rounded-lg border border-border text-[15px] text-text"
-                            onClick={() => setDenying(true)}
-                          >
-                            {denyLabel()}
-                          </button>
-                        </Show>
-                        <Show when={showEdit()}>
-                          <button
-                            type="button"
-                            data-testid="approval-card-action-edit"
-                            class="min-h-11 flex-1 rounded-lg border border-border text-[15px] text-text"
-                            onClick={() => enterEdit()}
-                          >
-                            {i18n.t("kernel.approvalEdit")}
-                          </button>
-                        </Show>
-                        <Show when={showSendNow() && guardActions() === null}>
-                          <button
-                            type="button"
-                            data-testid="approval-card-action-send-now"
-                            data-entity-id={props.requestId}
-                            class="min-h-11 flex-[1.4] rounded-lg bg-accent text-[15px] font-medium text-accent-foreground"
-                            onClick={() => void onApprove("auto_reply")}
-                          >
-                            {i18n.t("kernel.approvalsUi.sendGuard.sendNow")}
-                          </button>
-                        </Show>
-                        <Show when={showApprove()}>
-                          <button
-                            type="button"
-                            data-testid="approval-card-action-approve"
-                            data-entity-id={props.requestId}
-                            data-tool-name={current()?.toolName}
-                            class="min-h-11 flex-[1.4] rounded-lg bg-accent text-[15px] font-medium text-accent-foreground"
-                            onClick={() => {
-                              nativeHaptic("success")
-                              void onApprove()
-                            }}
-                          >
-                            {approveLabel(i18n.t("kernel.approvalApprove"))}
-                          </button>
-                        </Show>
-                      </div>
-                    </Show>
-                  </Show>
+                  <Show when={!props.inFeed}>{decisionBlock(false)}</Show>
                 </div>
               )}
             </Show>

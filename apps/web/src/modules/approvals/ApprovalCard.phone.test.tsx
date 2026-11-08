@@ -227,12 +227,17 @@ describe("ApprovalCard at phone tier", () => {
     )
   })
 
-  it("opened from a Home row, the phone decide row sticks above the tab bar", async () => {
+  it("opened from a Home row, the phone decide row leads the card, sticky at the top", async () => {
     handleWsCreate(row({ id: "ar-9" }), "u-approver")
     render(() => <ApprovalCard requestId="ar-9" inFeed />)
     const actions = await screen.findByTestId("approval-card-actions")
     expect(actions.className).toContain("sticky")
-    expect(actions.className).toContain("bottom-0")
+    expect(actions.className).toContain("top-0")
+    expect(actions.className).not.toContain("bottom-0")
+    // At the top it needs no clearance for the bottom tab bar.
+    expect(actions.style.paddingBottom).toBe("")
+    const title = screen.getByTestId("approval-card-title")
+    expect(actions.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.getByTestId("approval-card-action-approve")).toBeTruthy()
   })
 

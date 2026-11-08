@@ -71,7 +71,7 @@ function doc(extra: Doc): Doc {
     number: `F-2026-${String(n).padStart(4, "0")}`,
     number_int: n,
     counterparty_contact_id: ALICE,
-    counterparty_name: "Atelier Nord",
+    counterparty_name: "Nordlicht Studio",
     grand_total_minor: 174000,
     currency: "EUR",
     issued_at: "2026-03-02 00:00:00+00",

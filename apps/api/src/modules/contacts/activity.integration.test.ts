@@ -308,7 +308,7 @@ describe("a company's timeline", () => {
       terminal: false,
     })
 
-    main = await company("Atelier Nord")
+    main = await company("Nordlicht Studio")
     alice = await contact(main, "Alice Martin")
     bob = await contact(main, "Bob Durand")
     outsider = await contact(null, "Olga Elsewhere")

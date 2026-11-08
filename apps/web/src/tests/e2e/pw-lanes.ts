@@ -84,6 +84,11 @@ export function pwServerEnv(ports: number[]): Record<string, string> {
     // (a development setting): the api-connector scenario runs the fixture CRM
     // on 127.0.0.1. Link-local and metadata addresses stay refused.
     LIAISON_ALLOW_PRIVATE_API_CONNECTOR_HOSTS: "true",
+    // Organisations' own apps (the app builder, "Apps in the making", install
+    // by URL) are off on a self-hosted server unless set (lib/edition.ts
+    // customAppsEnabled), and lanes boot self-hosted: the app-builder
+    // scenario drives them, so the lanes turn them on.
+    LIAISON_CUSTOM_APPS: "on",
     // Every OAuth connection authorizes and exchanges against the lane's mock
     // OAuth server (read only under NODE_ENV test): the connect card scenario
     // runs a real consent round trip without reaching Google.

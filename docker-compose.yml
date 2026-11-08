@@ -5,6 +5,11 @@
 # never run this file on a host other than your own machine, and never expose
 # its ports. Every published port is therefore bound to 127.0.0.1. A deployment
 # uses deploy/docker-compose.yml, which has no defaults and publishes nothing.
+#
+# One substrate per machine, whichever checkout or worktree starts or recovers
+# it: without a fixed name, compose takes the directory's name, so a worktree's
+# test-infra recovery made a second stack whose ports were already taken.
+name: liaison
 services:
   postgres:
     image: postgres:17-alpine

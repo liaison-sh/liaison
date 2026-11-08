@@ -144,6 +144,11 @@ describe("resolveTestCoordinates", () => {
     expect(compose).toContain(`MEILI_MASTER_KEY: ${TEST_SUBSTRATE_MEILI_KEY}`)
   })
 
+  it("names one compose project, so every checkout and worktree starts and recovers the same substrate", () => {
+    const compose = readFileSync(path.join(import.meta.dir, "../../../docker-compose.yml"), "utf8")
+    expect(compose).toMatch(/^name: liaison$/m)
+  })
+
   it("points children at the substrate's Meilisearch key, whatever the checkout's .env says", () => {
     const c = resolveTestCoordinates({ LIAISON_TEST_NS: "a" })
     expect(namespaceEnv(c, { MEILISEARCH_API_KEY: "a-stale-dev-key" }).MEILISEARCH_API_KEY).toBe(

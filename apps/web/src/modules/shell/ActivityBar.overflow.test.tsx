@@ -351,6 +351,29 @@ describe("ActivityBar overflow", () => {
     expect(track().getAttribute("data-columns")).toBe("2")
   })
 
+  it("a drop over the rail folds it on the first move outside, with no pointerleave", () => {
+    vi.useFakeTimers()
+    registerApps()
+    renderRail()
+    setColumnHeight(FIVE_SLOTS)
+    fireEvent.click(screen.getByTestId("activity-bar-more"))
+    // The drop lands with the pointer over the rail.
+    const rail = screen.getByTestId("activity-bar")
+    const matches = rail.matches.bind(rail)
+    rail.matches = (selector: string) => selector === ":hover" || matches(selector)
+    fireEvent.dragStart(screen.getByTestId("activity-hotel"))
+    fireEvent.dragOver(screen.getByTestId("activity-bravo"))
+    fireEvent.drop(screen.getByTestId("activity-bravo"))
+    fireEvent.dragEnd(screen.getByTestId("activity-hotel"))
+    vi.advanceTimersByTime(RAIL_FOLD_DELAY_MS * 2)
+    expect(track().getAttribute("data-columns")).toBe("2")
+    // The drag cancelled the pointer, so its next move out is a plain move
+    // elsewhere: no pointerleave reaches the rail.
+    fireEvent.pointerMove(document.body, { pointerType: "mouse" })
+    vi.advanceTimersByTime(RAIL_FOLD_DELAY_MS * 2)
+    expect(track().getAttribute("data-columns")).toBe("1")
+  })
+
   it("reorders across columns and persists the order", () => {
     registerApps()
     renderRail()

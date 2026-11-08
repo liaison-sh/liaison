@@ -365,7 +365,7 @@ describe("home.cards", () => {
     // from the client's thread-store (outside the 50-thread cap, or before
     // hydration), the Messages card renders nothing for it either. `total()`
     // still counts this item, so a total()-based hasAnyContent gate rendered
-    // a blank home-feed container under "NOTHING URGENT" instead of the
+    // a blank home-feed container under "NOTHING NEEDS YOU NOW" instead of the
     // empty state.
     attentionStore._setForTest({
       items: [

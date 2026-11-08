@@ -109,14 +109,14 @@ describe("the attention feed chrome follows the reader's language", () => {
     }
   })
 
-  it("says nothing is urgent, in French, when only grouped work is left", () => {
+  it("says nothing needs you, in French, when only grouped work is left", () => {
     attentionStore._setForTest({
       items: [item({ id: "g1" }), item({ id: "g2", entityId: "T2" })],
       errors: [],
     })
     renderHome("fr")
     const status = screen.getByTestId("home-status").textContent ?? ""
-    expect(status).toContain("RIEN D'URGENT")
+    expect(status).toContain("RIEN NE VOUS ATTEND")
     expect(status).toContain("DANS VOS AUTRES TÂCHES")
   })
 

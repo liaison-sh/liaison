@@ -265,7 +265,7 @@ const AttentionFeedView: Component<AttentionFeedViewProps> = (props) => {
   // outside the client's 50-thread cap, or before hydration) -- if those
   // were the user's ONLY items, the old `total() > 0` gate suppressed
   // the empty state while zero cards and zero strip rows actually rendered,
-  // producing a blank Home body under a "NOTHING URGENT" header.
+  // producing a blank Home body under a "NOTHING NEEDS YOU NOW" header.
   const hasAnyContent = createMemo(
     () => urgentStrip().length > 0 || CARD_IDS.some((id) => cardHasContent(id)),
   )

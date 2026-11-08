@@ -11,9 +11,10 @@ import { type RlsClient, sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { invalidateAuthCache, isUserAuthCurrent } from "~/modules/auth/auth-state"
 import { setUserScopes } from "~/modules/permissions/app-grants"
+import { person, secondOrg } from "~/seed/tiers/minimal"
 
-const ORG = "00000000-0000-0000-0000-0000000c0a01"
-const USER = "00000000-0000-0000-0000-0000000c0a02"
+let ORG = ""
+let USER = ""
 
 async function storedPermissionVersion(): Promise<number> {
   const [row] = await sql`SELECT permission_version FROM kernel.users WHERE id = ${USER}`
@@ -29,8 +30,8 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 }
 
 beforeAll(async () => {
-  await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${ORG}, 'AuthCacheOrderOrg', 'auth-cache-order-org') ON CONFLICT DO NOTHING`
-  await sql`INSERT INTO kernel.users (id, org_id, email, name) VALUES (${USER}, ${ORG}, 'auth-cache-order@t.com', 'Cache Order') ON CONFLICT DO NOTHING`
+  ORG = (await secondOrg({ name: "Auth Cache Order" })).orgId
+  USER = (await person(ORG)).id
 })
 
 beforeEach(async () => {
@@ -40,10 +41,6 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await sql`DELETE FROM kernel.user_scope_grants WHERE user_id = ${USER} AND org_id = ${ORG}`
-  await sql`DELETE FROM kernel.app_scope_grant_audit WHERE target_user_id = ${USER} AND org_id = ${ORG}`
-  await sql`DELETE FROM kernel.pending_events WHERE org_id = ${ORG}`
-  await sql`DELETE FROM kernel.users WHERE id = ${USER}`
-  await sql`DELETE FROM kernel.organizations WHERE id = ${ORG}`
 })
 
 describe("auth cache: invalidation follows the commit of a permission change", () => {

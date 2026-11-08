@@ -20,7 +20,7 @@ const ORG = crypto.randomUUID()
 const tag = ORG.slice(0, 8)
 const RECIPIENT = `lena-${tag}@prospect.example`
 const IDENTITY = {
-  legalName: "Atelier Nord SARL",
+  legalName: "Brume Nord SARL",
   postalAddress: "12 quai des Brumes, 59000 Lille",
 }
 
@@ -52,7 +52,7 @@ beforeAll(async () => {
   await sql.unsafe(
     insertSql("kernel.organizations", {
       id: ORG,
-      name: "Atelier Nord",
+      name: "Brume Nord",
       slug: `opt-out-${tag}`,
       settings: { raw: `'${JSON.stringify({ commercialIdentity: IDENTITY })}'::jsonb` },
     }),

@@ -5,6 +5,7 @@
 // stages.
 import { sql as drizzleSql } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
+import { schemaRef } from "~/db/schema-ref"
 
 export const TEST_COMMERCIAL_IDENTITY = {
   legalName: "Org Test SAS",
@@ -16,7 +17,7 @@ export async function setTestCommercialIdentity(
   identity: unknown = TEST_COMMERCIAL_IDENTITY,
 ): Promise<void> {
   await withSystemDb("test-commercial-identity", (tx) =>
-    tx.execute(drizzleSql`UPDATE kernel.organizations
+    tx.execute(drizzleSql`UPDATE ${drizzleSql.raw(schemaRef("kernel"))}.organizations
       SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{commercialIdentity}',
                                ${JSON.stringify(identity)}::jsonb, true)
       WHERE id = ${orgId}::uuid`),

@@ -203,6 +203,29 @@ describe("ApprovalCard", () => {
     vi.unstubAllGlobals()
   })
 
+  // Cold walk 2026-11-08: Details on a Home row opened the card and the decision went out of
+  // view under a long diff, and the card's header led with "request-42 · 97f1b404".
+  it("opened from a Home row: no handle or id in the header, the decision sticks in view", async () => {
+    const id = "3f2a9c1e-7b1d-4c2a-9e0f-1234567890ab"
+    handleWsCreate(baseRow({ id, handle: "request-42" }), "u-approver")
+    render(() => <ApprovalCard requestId={id} inFeed />)
+    await screen.findByTestId("approval-card-title")
+    expect(screen.queryByTestId("approval-card-handle")).toBeNull()
+    expect(screen.queryByTestId("approval-card-short-id")).toBeNull()
+    const row = screen.getByTestId("actions-inline-row")
+    expect(row.className).toContain("sticky")
+    expect(row.className).toContain("bottom-0")
+    expect(row.className).toContain("bg-elevated")
+  })
+
+  it("outside Home the card keeps its handle and its decision where it was", async () => {
+    const id = "3f2a9c1e-7b1d-4c2a-9e0f-1234567890ac"
+    handleWsCreate(baseRow({ id, handle: "request-43" }), "u-approver")
+    render(() => <ApprovalCard requestId={id} />)
+    expect(await screen.findByTestId("approval-card-handle")).toBeInTheDocument()
+    expect(screen.getByTestId("actions-inline-row").className).not.toContain("sticky")
+  })
+
   it("renders skeleton while ensureLoaded is in flight", async () => {
     apiMocks.get.mockImplementation(() => new Promise(() => {}))
     render(() => <ApprovalCard requestId="ar-pending" />)

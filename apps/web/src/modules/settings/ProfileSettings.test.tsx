@@ -511,6 +511,28 @@ describe("ProfileSettings", () => {
       )
     })
 
+    // Cold walk 2026-11-08: "Next in line" and "Standing next in line" read as two ideas, and
+    // what a stand-in gets was unsaid. One idea, the board's words (P-06).
+    it("names both pickers as next in line, and says what the stand-in gets", async () => {
+      mountAway([])
+      const next = (await screen.findByTestId("settings-away-next")) as HTMLSelectElement
+      expect(next.closest("label")?.textContent).toContain("Next in line")
+      const standing = screen.getByTestId("settings-away-standing") as HTMLSelectElement
+      expect(standing.closest("label")?.textContent).toContain("Next in line by default")
+      expect(standing.closest("label")?.textContent).toContain("Saved as soon as you pick.")
+      // Nobody picked for these dates: the default's name, as the empty option says.
+      expect(screen.getByTestId("settings-away-stand-in-gets").textContent).toBe(
+        "While you are away, what needs you also shows on Léa Fontaine's Home. Léa Fontaine gets no new rights. Your personal mail, direct conversations and personal agent stay private.",
+      )
+      fireEvent.change(next, { target: { value: "u-sara" } })
+      await waitFor(() =>
+        expect(screen.getByTestId("settings-away-stand-in-gets").textContent).toContain(
+          "also shows on Sara Benali's Home. Sara Benali gets no new rights.",
+        ),
+      )
+      expect(screen.getByTestId("settings-away-save").textContent).toContain("Set away")
+    })
+
     it("says the chosen next in line is away too before saving", async () => {
       mountAway([])
       const next = (await screen.findByTestId("settings-away-next")) as HTMLSelectElement

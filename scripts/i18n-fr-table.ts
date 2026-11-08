@@ -8,6 +8,23 @@
  * by the generator and intentionally absent here.
  */
 export const FR: Record<string, string> = {
+  "If nobody decides by then, it lapses and nothing is done.":
+    "Si personne ne décide d'ici là, la demande expire et rien n'est fait.",
+  "Expires in {{count}} second": "Expire dans {{count}} seconde",
+  "Expires in {{count}} seconds": "Expire dans {{count}} secondes",
+  "Expires in {{count}} minute": "Expire dans {{count}} minute",
+  "Expires in {{count}} minutes": "Expire dans {{count}} minutes",
+  "Expires in {{count}} hour": "Expire dans {{count}} heure",
+  "Expires in {{count}} hours": "Expire dans {{count}} heures",
+  "Expires in {{count}} day": "Expire dans {{count}} jour",
+  "Expires in {{count}} days": "Expire dans {{count}} jours",
+  "Could not load what needs you": "Impossible de charger ce qui vous attend",
+  "Home did not answer. Anything waiting is safe and still waiting.":
+    "L'accueil n'a pas répondu. Tout ce qui attend est en sécurité et attend toujours.",
+  "{{name}} is away until {{date}}. You are next in line.":
+    "{{name}} est absent jusqu'au {{date}}. Vous êtes son remplaçant.",
+  "While you are away, what needs you also shows on {{name}}'s Home. {{name}} gets no new rights. Your personal mail, direct conversations and personal agent stay private.":
+    "Pendant votre absence, ce qui vous attend apparaît aussi sur l'accueil de {{name}}. {{name}} ne reçoit aucun nouveau droit. Votre messagerie personnelle, vos conversations directes et votre agent personnel restent privés.",
   "Routine {{name}} finished: 1 draft waits for a person":
     "La routine {{name}} est terminée : 1 brouillon attend une personne",
   "Routine {{name}} finished: {{count}} drafts wait for a person":
@@ -7703,8 +7720,9 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.settings.profile.away.nextInLine": "Relais",
   "kernel.settings.profile.away.nobody": "Personne",
   "kernel.settings.profile.away.standing": "Relais par défaut",
-  "kernel.settings.profile.away.standingHint": "Utilisé quand une absence ne nomme personne.",
-  "kernel.settings.profile.away.save": "M'indiquer absent",
+  "kernel.settings.profile.away.standingHint":
+    "Enregistré dès que vous choisissez. Utilisé pour toute absence qui ne nomme personne.",
+  "kernel.settings.profile.away.save": "Me déclarer absent",
   "kernel.settings.profile.away.question":
     "Votre agenda contient un événement {{dates}} qui ressemble à une absence. Le compter comme absence ?",
   "kernel.settings.profile.away.yes": "Oui",
@@ -7744,11 +7762,12 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.homeRouting.someone": "un collègue",
   "kernel.homeRouting.standingIn":
     "Pour {{name}}, absent jusqu'au {{date}}. Vous êtes son remplaçant.",
-  "kernel.homeRouting.othersAsked": "Pour {{name}}, qui l'a demandé. Vous pouvez aussi approuver",
+  "kernel.homeRouting.othersAsked":
+    "Pour {{name}}, qui l'a demandé et peut l'approuver. Vous aussi : vous avez le droit d'approuver.",
   "kernel.homeRouting.othersOnItem":
-    "Pour {{name}}, à qui c'est attribué. Vous pouvez aussi approuver",
+    "Pour {{name}}, à qui c'est attribué. Vous pouvez aussi l'approuver : vous avez le droit d'approuver.",
   "kernel.homeRouting.othersManager":
-    "Pour {{name}}, qui gère ce compte. Vous pouvez aussi approuver",
+    "Pour {{name}}, qui gère ce compte. Vous pouvez aussi l'approuver : vous avez le droit d'approuver.",
   "kernel.homeRouting.blocked":
     "Pour vous : {{blocked}} ne peut pas approuver ceci pendant l'absence de {{name}}",
   "kernel.homeRouting.mineAsked": "Vous l'avez demandé",

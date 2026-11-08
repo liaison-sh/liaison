@@ -170,8 +170,9 @@ describe("attention row format — metric chip follows the reader's language", (
     [
       "approval_pending",
       item("approval_pending", { expiresInSeconds: 1500 }),
-      "25m left",
-      "25 min restant",
+      // What runs out, said (cold walk 2026-11-08): never "25m left".
+      "Expires in 25 minutes",
+      "Expire dans 25 minutes",
     ],
     ["admin_action", item("admin_action"), "admin", "admin"],
     [

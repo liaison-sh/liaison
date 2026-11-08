@@ -105,7 +105,7 @@ describe("ApprovalCard at phone tier", () => {
     handleWsCreate(row(), "u-approver")
     render(() => <ApprovalCard requestId="ar-1" />)
     const chip = await screen.findByTestId("approval-card-deadline")
-    expect(chip.textContent).toContain("40m left")
+    expect(chip.textContent).toContain("Expires in 40 minutes")
     expect(chip.getAttribute("data-urgent")).toBe("false")
 
     cleanup()
@@ -116,7 +116,7 @@ describe("ApprovalCard at phone tier", () => {
     )
     render(() => <ApprovalCard requestId="ar-2" />)
     const urgent = await screen.findByTestId("approval-card-deadline")
-    expect(urgent.textContent).toContain("5m left")
+    expect(urgent.textContent).toContain("Expires in 5 minutes")
     expect(urgent.getAttribute("data-urgent")).toBe("true")
   })
 
@@ -219,8 +219,21 @@ describe("ApprovalCard at phone tier", () => {
     )
     render(() => <ApprovalCard requestId="ar-3" />)
     const chip = await screen.findByTestId("approval-card-deadline")
-    expect(chip.textContent).toContain("3d left")
+    expect(chip.textContent).toContain("Expires in 3 days")
     expect(chip.textContent).not.toContain("min left")
+    // What happens when it runs out, on the chip itself.
+    expect(chip.getAttribute("title")).toBe(
+      "If nobody decides by then, it lapses and nothing is done.",
+    )
+  })
+
+  it("opened from a Home row, the phone decide row sticks above the tab bar", async () => {
+    handleWsCreate(row({ id: "ar-9" }), "u-approver")
+    render(() => <ApprovalCard requestId="ar-9" inFeed />)
+    const actions = await screen.findByTestId("approval-card-actions")
+    expect(actions.className).toContain("sticky")
+    expect(actions.className).toContain("bottom-0")
+    expect(screen.getByTestId("approval-card-action-approve")).toBeTruthy()
   })
 
   // The payload wrapped mid-word on a phone: `break-all` cuts wherever the

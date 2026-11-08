@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "vitest"
-import { awayLabel, awayRecapLineText } from "~/modules/shell/route-line"
+import { awayLabel, awayRecapLineText, standingInText } from "~/modules/shell/route-line"
 
 const t = (key: string, vars: Record<string, string | number> = {}) =>
   `${key.split(".").pop()}:${Object.values(vars).join(",")}`
@@ -60,5 +60,18 @@ describe("While you were away", () => {
     expect(awayRecapLineText(line, "Henrik Berg", tr, "en", "2026-11-14")).toBe(
       "recapApproved|Sara Benali|Henrik Berg|Refund a duplicate charge, 12 Nov",
     )
+  })
+})
+
+describe("Home's line for a stand-in", () => {
+  it("names who is away, until when, and that the reader is next in line", () => {
+    expect(
+      standingInText(
+        { id: "u-a", name: "Amina Cherif", until: "2026-11-20" },
+        t,
+        "en-GB",
+        "2026-11-08",
+      ),
+    ).toBe("standingInFor:Amina Cherif,20 Nov")
   })
 })

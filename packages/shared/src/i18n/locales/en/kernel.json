@@ -501,6 +501,7 @@
   "approvalDenySubmit": "Reject",
   "approvalDenyTitle": "Why are you rejecting this?",
   "approvalEdit": "Edit",
+  "approvalExpiryHint": "If nobody decides by then, it lapses and nothing is done.",
   "approvalExpired": "Expired",
   "approvalExpiredLine": "{{handle}} expired without decision.",
   "approvalMessageShowLess": "Show less",
@@ -1609,6 +1610,24 @@
   "homeMarkingRead": "Clearing…",
   "homeMetric": {
     "dueToday": "due today",
+    "expiresIn": {
+      "seconds": {
+        "one": "Expires in {{count}} second",
+        "other": "Expires in {{count}} seconds"
+      },
+      "minutes": {
+        "one": "Expires in {{count}} minute",
+        "other": "Expires in {{count}} minutes"
+      },
+      "hours": {
+        "one": "Expires in {{count}} hour",
+        "other": "Expires in {{count}} hours"
+      },
+      "days": {
+        "one": "Expires in {{count}} day",
+        "other": "Expires in {{count}} days"
+      }
+    },
     "daysOver": {
       "one": "{{count}}d over",
       "other": "{{count}}d over"
@@ -2093,9 +2112,10 @@
         "to": "Last day",
         "nextInLine": "Next in line",
         "nobody": "Nobody",
-        "standing": "Standing next in line",
-        "standingHint": "Used whenever an away range names nobody.",
-        "save": "Mark me away",
+        "standing": "Next in line by default",
+        "standingHint": "Saved as soon as you pick. Used for any away dates that name nobody.",
+        "standInGets": "While you are away, what needs you also shows on {{name}}'s Home. {{name}} gets no new rights. Your personal mail, direct conversations and personal agent stay private.",
+        "save": "Set away",
         "question": "Your calendar has an event {{dates}} that looks like time off. Count it as away?",
         "yes": "Yes",
         "no": "No",
@@ -6536,6 +6556,8 @@
     "everythingForNow": "That is everything for now. Your agents will bring the next one here.",
     "sourceFailedTitle": "Could not load what {{app}} has for you",
     "sourceFailedBody": "{{app}} did not answer. Anything waiting there is safe and still waiting.",
+    "feedFailedTitle": "Could not load what needs you",
+    "feedFailedBody": "Home did not answer. Anything waiting is safe and still waiting.",
     "retry": "Retry",
     "briefTitle": "Today's brief",
     "briefNone": "No brief set up. Ask your agent for one each morning, and say what you want in it.",
@@ -6546,9 +6568,9 @@
     "othersGroup": "For others, you can also approve",
     "someone": "a colleague",
     "standingIn": "For {{name}}, away until {{date}}. You are next in line.",
-    "othersAsked": "For {{name}}, who asked for this. You can also approve",
-    "othersOnItem": "For {{name}}, assigned to them. You can also approve",
-    "othersManager": "For {{name}}, who manages this account. You can also approve",
+    "othersAsked": "For {{name}}, who asked for it and can approve it. You can too: you hold the approval right.",
+    "othersOnItem": "For {{name}}, who it is assigned to. You can approve it too: you hold the approval right.",
+    "othersManager": "For {{name}}, who manages this account. You can approve it too: you hold the approval right.",
     "blocked": "For you: {{blocked}} cannot approve this while {{name}} is away",
     "mineAsked": "You asked for this",
     "mineOnItem": "For you: assigned to you",
@@ -6563,7 +6585,8 @@
     "awayUntil": "away until {{date}}",
     "awayToday": "away today",
     "awayTodayBack": "away today, back {{day}}",
-    "recapTitle": "While you were away"
+    "recapTitle": "While you were away",
+    "standingInFor": "{{name}} is away until {{date}}. You are next in line."
   },
   "dashboards": {
     "sectionTitle": "Dashboards",

@@ -177,7 +177,9 @@ Muted conversations, Unmute, Channels that notify you of every message, Mentions
 On call edited by admins, admins by default -> apps/web/src/modules/settings/notification-settings/OnCallSection.tsx:70 ; apps/api/src/modules/notifications/on-call.ts:25
 Channel on System -> apps/web/src/modules/settings/SystemSettings.tsx:78
 Managed Everything stored (estimate): nightly, warns once per crossing, never blocks, not on self-hosted -> apps/api/src/modules/cloud/storage-estimate.ts ; apps/web/src/modules/settings/OrgUsageSection.tsx
-Profile Away section: dates, next in line, Mark me away, Undo, End early, standing next in line -> apps/web/src/modules/settings/ProfileSettings.tsx:522 ; apps/api/src/modules/users/away.ts:749
+Profile Away section: dates, next in line, Set away, Undo, End early, next in line by default, saved on pick -> apps/web/src/modules/settings/ProfileSettings.tsx:522 ; apps/api/src/modules/users/away.ts:749
+Profile Away: what the next in line gets, no new rights, private mail and conversations -> packages/shared/src/i18n/locales/en/kernel.json:2117 ; apps/web/src/modules/settings/ProfileSettings.tsx
+Next in line's Home says who is away and until when -> apps/web/src/modules/shell/route-line.tsx ; apps/api/src/modules/users/away.ts standingInForNames
 Profile Away: From your calendar, Yes and No questions -> apps/web/src/modules/settings/ProfileSettings.tsx ; apps/api/src/modules/users/away.ts
 Outbound access on an installed app's App store page: Allowed, Waiting for approval, Revoke, Allow, Every host it declares -> apps/web/src/modules/settings/app-store/OutboundAccessSection.tsx:68 ; packages/shared/src/i18n/locales/en/kernel.json
 Install from a URL lists the hosts; an upgrade its new ones -> apps/web/src/modules/settings/InstallAppDialog.tsx ; apps/api/src/modules/apps/install-routes.ts:418

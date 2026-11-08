@@ -548,6 +548,9 @@ const AwaySection: Component = () => {
   const [saved, setSaved] = createSignal<AwaySaved | null>(null)
 
   const person = (id: string) => state()?.people.find((p) => p.id === id)
+  /** Who stands in for the dates being set: the one picked, else the default. */
+  const chosenName = (): string | null =>
+    (nextInLine() ? person(nextInLine())?.name : state()?.standingNextInLine?.name) ?? null
   const chosenAwayToo = () => {
     const p = nextInLine() ? person(nextInLine()) : undefined
     return p?.awayUntil ? p : null
@@ -792,6 +795,17 @@ const AwaySection: Component = () => {
                   </For>
                 </select>
               </label>
+              {/* What a stand-in gets, said where they are picked (P-06). */}
+              <Show when={chosenName()}>
+                {(name) => (
+                  <p
+                    data-testid="settings-away-stand-in-gets"
+                    class="text-[12px] text-text-tertiary"
+                  >
+                    {t("kernel.settings.profile.away.standInGets", { name: name() })}
+                  </p>
+                )}
+              </Show>
               <Show when={chosenAwayToo()}>
                 {(p) => (
                   <p data-testid="settings-away-too" class="text-[12px] text-text-secondary">

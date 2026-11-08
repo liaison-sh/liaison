@@ -25,6 +25,7 @@ import {
   listCalendarQuestions,
   nextInLineChoices,
   setAway,
+  standingInForNames,
   undoAway,
 } from "./away"
 import {
@@ -198,6 +199,11 @@ preferencesRoutes.get("/away", async (c) => {
     listCalendarQuestions(orgId, userId),
   ])
   return success(c, { ...list, people, questions })
+})
+
+// Home's line for a stand-in: who is away today with the viewer next in line, and until when.
+preferencesRoutes.get("/away/standing-in", async (c) => {
+  return success(c, await standingInForNames(c.get("orgId"), c.get("userId")))
 })
 
 preferencesRoutes.post(

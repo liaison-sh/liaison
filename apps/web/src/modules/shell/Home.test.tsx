@@ -918,7 +918,9 @@ describe("home decisions", () => {
       )
       // A row for others sits in the closed group; open it to read its line.
       fireEvent.click(screen.getByTestId("home-approvals-others-summary"))
-      expect(why(rows[4]!)).toBe("For Élodie Renard, assigned to them. You can also approve")
+      expect(why(rows[4]!)).toBe(
+        "For Élodie Renard, who it is assigned to. You can approve it too: you hold the approval right.",
+      )
       // The usual deciders and an owner-routed row: no route line.
       expect(why(rows[5]!)).toBeUndefined()
       expect(why(rows[6]!)).toBeUndefined()
@@ -950,7 +952,7 @@ describe("home decisions", () => {
       expect(screen.queryByTestId("home-approval-peer-toggle")).toBeNull()
       fireEvent.click(screen.getByTestId("home-approvals-others-summary"))
       expect(screen.getByTestId(`${row(peer)}-why`).textContent).toBe(
-        "For Tom Reyes, who asked for this. You can also approve",
+        "For Tom Reyes, who asked for it and can approve it. You can too: you hold the approval right.",
       )
     })
 
@@ -1045,6 +1047,42 @@ describe("home decisions", () => {
     apiGetEnvelope.mockClear()
     fireEvent.click(screen.getByTestId("home-source-failed-billing-retry"))
     expect(apiGetEnvelope).toHaveBeenCalledWith("/attention-items")
+  })
+
+  // Cold walk 2026-11-08: a whole-feed failure read "Could not load what _aggregator has".
+  it("the whole feed failing says Home could not load, never an internal name", () => {
+    attentionStore._setForTest({
+      items: [],
+      errors: [{ app: "_aggregator", reason: "error", message: "fetch failed" }],
+    })
+    render(() => <Home entityId="home" />)
+    const card = screen.getByTestId("home-source-failed-_aggregator")
+    expect(card.textContent).toContain("Could not load what needs you")
+    expect(card.textContent).not.toContain("_aggregator")
+    expect(card.textContent).not.toContain("Aggregator")
+  })
+
+  // Cold walk 2026-11-08: the stand-in's Home showed nobody away when none of the absent
+  // colleague's items was one they could decide.
+  it("says who is away with the reader next in line, even with no item of theirs", async () => {
+    apiGet.mockImplementation(async (path: string) =>
+      path === "/user/preferences/away/standing-in"
+        ? [{ id: "u-amina", name: "Amina Cherif", until: "2026-11-20" }]
+        : [],
+    )
+    attentionStore._setForTest({ items: [], errors: [] })
+    render(() => <Home entityId="home" />)
+    const line = await screen.findByTestId("home-standing-in-line")
+    expect(line.textContent).toMatch(
+      /^Amina Cherif is away until (20 Nov|Nov 20)\. You are next in line\.$/,
+    )
+  })
+
+  it("no stand-in line when nobody away names the reader", async () => {
+    attentionStore._setForTest({ items: [], errors: [] })
+    render(() => <Home entityId="home" />)
+    await Promise.resolve()
+    expect(screen.queryByTestId("home-standing-in")).toBeNull()
   })
 
   it("brief with a time", async () => {

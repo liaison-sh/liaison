@@ -99,6 +99,13 @@ const TONE_TEXT: Record<MetricTone, string> = {
   secondary: "text-text-secondary",
 }
 
+/** The app part of an action label ("Workspace: update skill" → "Workspace"), for the phone
+ *  row's pill. A label with no app part is kept whole. */
+export function shortActionLabel(label: string): string {
+  const i = label.indexOf(": ")
+  return i > 0 ? label.slice(0, i) : label
+}
+
 function isHttpUrl(value: string): boolean {
   try {
     const { protocol } = new URL(value)
@@ -628,8 +635,8 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
   const compactSecondary = (): string => {
     const parts: string[] = []
     if (isApproval()) {
-      const ref = approvalRef()
-      if (ref) parts.push(ref)
+      // No request handle here: on a phone it led the line ("demo-reply-kestrel-10-…") where the
+      // reader looks for who asked. It stays citable on the desktop row and in the card's chip.
       const by = requesterName()
       if (by) parts.push(i18n.t("kernel.shellUi.byName", { name: by }))
       parts.push(formatRelativeTime(props.item.occurredAt, { i18n: rowLocale() }))
@@ -695,8 +702,12 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
                   testid={`${testId()}-action-chip`}
                   data-impact={approvalImpact()}
                   class="shrink-0 px-1.5 py-px text-[11px] font-semibold leading-tight"
+                  title={label()}
                 >
-                  {label()}
+                  {/* The app alone ("Workspace"), so the title leads the phone row; the
+                      action itself is the title's own words (P-05). A title that only
+                      repeats the badge is not shown, so the badge then stays whole. */}
+                  {titleRepeatsBadge() ? label() : shortActionLabel(label())}
                 </AppPill>
               )}
             </Show>
@@ -850,6 +861,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
                 requestId={approvalId()!}
                 compact={false}
                 approveOnOpen={approveOnOpen()}
+                inFeed
               />
             </div>
           </Show>
@@ -986,29 +998,31 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
               >
                 {/* The reference an agent or a colleague cites ("approve
                 request-42"), citable from the collapsed row. */}
-                <Show when={approvalRef()}>
-                  {(ref) => (
-                    <span
-                      data-testid={`${testId()}-ref`}
-                      class="font-mono"
-                      title={props.item.entityId}
-                    >
-                      {ref()}
-                    </span>
-                  )}
-                </Show>
+                {/* Who asked and when lead; the handle comes last, a reference to cite and
+                    never the line's main text (cold walk: "demo-…" slugs read as the summary). */}
                 <Show when={requesterName()}>
                   {(name) => (
                     <span data-testid={`${testId()}-requester`}>
-                      <span aria-hidden="true">· </span>
                       {i18n.t("kernel.shellUi.by")} {name()}
+                      <span aria-hidden="true"> ·</span>
                     </span>
                   )}
                 </Show>
-                <span>
-                  <span aria-hidden="true">· </span>
-                  {formatRelativeTime(props.item.occurredAt, { i18n: rowLocale() })}
-                </span>
+                <span>{formatRelativeTime(props.item.occurredAt, { i18n: rowLocale() })}</span>
+                <Show when={approvalRef()}>
+                  {(ref) => (
+                    <span>
+                      <span aria-hidden="true">· </span>
+                      <span
+                        data-testid={`${testId()}-ref`}
+                        class="font-mono"
+                        title={props.item.entityId}
+                      >
+                        {ref()}
+                      </span>
+                    </span>
+                  )}
+                </Show>
               </Show>
             </span>
           </div>
@@ -1157,6 +1171,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
                 requestId={approvalId()!}
                 compact={false}
                 approveOnOpen={approveOnOpen()}
+                inFeed
               />
             </div>
           </Show>

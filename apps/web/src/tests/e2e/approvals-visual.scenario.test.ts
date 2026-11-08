@@ -161,6 +161,55 @@ test.describe("Approval Card", () => {
 })
 
 test.describe("Home", () => {
+  // Cold walk 2026-11-08: Details on a Home row opened a long diff and Approve / Reject went
+  // out of view, so a reader could not see how to decide after reading. The card's decision
+  // row now sticks to the bottom of the scrolling Home: a layout claim only a browser proves.
+  test("details on a long approval keeps approve and reject in view", async ({
+    page,
+    env,
+    world,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 760 })
+    const actor = await createApprovalActor(world, {
+      name: "Visual Details Reader",
+      scopes: ["test:gated:write", "test:approve"],
+    })
+    // Someone else asks, so the row is the reader's own decision (not folded as peer noise).
+    const requester = await createApprovalActor(world, {
+      name: "Visual Details Requester",
+      scopes: ["test:gated:write"],
+    })
+    // A message long enough that the opened card is taller than the screen.
+    const message = Array.from({ length: 60 }, (_, i) => `Paragraph ${i + 1} of the reply.`).join(
+      "\n\n",
+    )
+    const seeded = await seedGatedApproval(env, world.org.id, {
+      requesterUserId: requester.id,
+      participantUserIds: [actor.id, requester.id],
+      approverUserIds: [actor.id],
+      title: "Long approval details",
+      toolCallMessage: true,
+      params: { message },
+    })
+    await loginAs(page, env, actor.email, actor.password)
+    await page.getByTestId("activity-home").click()
+    const rowId = `attention-row-kernel-approval_request-${seeded.approvalRequestId}`
+    await expect(page.getByTestId(rowId)).toBeVisible({ timeout: 15000 })
+    await page.getByTestId(`${rowId}-details`).click()
+    const card = page.getByTestId(`${rowId}-expanded`).getByTestId("approval-card")
+    await expect(card.getByTestId("approval-card-title")).toBeVisible({ timeout: 10000 })
+    // The card is taller than the screen: its end is below the fold.
+    const cardBox = await card.boundingBox()
+    expect((cardBox?.y ?? 0) + (cardBox?.height ?? 0)).toBeGreaterThan(760)
+    // Yet Approve and Reject are on screen, without scrolling.
+    for (const id of ["approval-card-action-approve", "approval-card-action-deny"]) {
+      const box = await card.getByTestId(id).first().boundingBox()
+      expect(box, id).not.toBeNull()
+      expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(760)
+      expect(box?.y ?? -1).toBeGreaterThanOrEqual(0)
+    }
+  })
+
   test("approval card visual home empty state", async ({ page, env, world }) => {
     const actor = await createApprovalActor(world, {
       name: "Visual Empty Home",

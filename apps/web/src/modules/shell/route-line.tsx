@@ -7,7 +7,7 @@
 // were away" row's lines, and "away until" for people in pickers.
 
 import type { AttentionItem } from "@liaison/shared"
-import { type Component, For, Show } from "solid-js"
+import { type Component, createResource, For, Show } from "solid-js"
 import { awayDay } from "~/lib/away-dates"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
@@ -84,7 +84,7 @@ export const RouteWhyLine: Component<{ item: AttentionItem; testId: string }> = 
       {(text) => (
         <span
           data-testid={`${props.testId}-why`}
-          class="truncate text-[12px] leading-snug text-text-secondary"
+          class="text-[12px] leading-snug text-text-secondary"
         >
           {text()}
         </span>
@@ -218,4 +218,50 @@ export function awayLabel(
   while (back.getUTCDay() === 0 || back.getUTCDay() === 6)
   const day = new Intl.DateTimeFormat(locale, { weekday: "long", timeZone: "UTC" }).format(back)
   return t("kernel.homeRouting.awayTodayBack", { day })
+}
+
+// --- Next in line --------------------------------------------------------------
+
+export interface StandingInFor {
+  id: string
+  name: string
+  until: string
+}
+
+/** "Amina Cherif is away until 20 Nov. You are next in line." for each colleague away today who
+ *  names the viewer next in line: said once on Home, even when none of their items is one the
+ *  viewer can decide (cold walk, 2026-11-08: the stand-in's Home showed nobody away). */
+export function standingInText(p: StandingInFor, t: T, locale: string, today?: string): string {
+  return t("kernel.homeRouting.standingInFor", {
+    name: p.name,
+    date: shortDate(p.until, locale, today),
+  })
+}
+
+export const StandingInLine: Component = () => {
+  const i18n = useI18n()
+  const api = useApi()
+  // Unreadable means no line: Home never waits on it, nor shows an error for it.
+  const [people] = createResource(() =>
+    api
+      .get<StandingInFor[]>("/user/preferences/away/standing-in")
+      .then((r) => (Array.isArray(r) ? r : []))
+      .catch(() => [] as StandingInFor[]),
+  )
+  return (
+    <Show when={(people() ?? []).length > 0}>
+      <ul data-testid="home-standing-in" class="mt-1.5 flex flex-col gap-0.5">
+        <For each={people()}>
+          {(p) => (
+            <li
+              data-testid="home-standing-in-line"
+              class="text-[12.5px] leading-snug text-text-secondary"
+            >
+              {standingInText(p, i18n.t, i18n.locale())}
+            </li>
+          )}
+        </For>
+      </ul>
+    </Show>
+  )
 }

@@ -1475,3 +1475,114 @@ describe("AttentionRow: Open on an approval whose item has its own page", () => 
     expect(queryByTestId("attention-row-invoicing-approval_request-ol3-open-link")).toBeNull()
   })
 })
+
+// Cold walk P0 (2026-11-08): a newcomer read the Home rows and lost the decision, the deadline and
+// the title to internal ids.
+describe("AttentionRow: cold walk P0", () => {
+  const ID = "cw-1"
+  const tid = `attention-row-kernel-approval_request-${ID}`
+  const item = (metadata: Record<string, unknown> = {}): AttentionItem => ({
+    id: `kernel:approval_pending:${ID}`,
+    app: "kernel",
+    entity: "approval_request",
+    entityId: ID,
+    kind: "approval_pending",
+    summary: "Update skill: shipment-exception",
+    urgency: 60,
+    occurredAt: "2026-11-08T00:00:00Z",
+    action: { type: "decide_approval", approvalId: ID },
+    metadata: {
+      toolName: "kernel:update_skill",
+      actionLabel: "Workspace: update skill",
+      requestHandle: "demo-skill-shipment-exception-customs",
+      requesterName: "Margot Dufour",
+      expiresInSeconds: 7 * 86_400,
+      ...metadata,
+    },
+  })
+  const asPhone = (fn: () => void) => {
+    const realMatchMedia = window.matchMedia
+    window.matchMedia = ((query: string) =>
+      ({
+        matches: query === PHONE_QUERY,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }) as unknown as MediaQueryList) as typeof window.matchMedia
+    syncShellTier()
+    try {
+      fn()
+    } finally {
+      window.matchMedia = realMatchMedia
+      syncShellTier()
+    }
+  }
+  const renderRow = (it: AttentionItem) =>
+    render(() => (
+      <ApiContext.Provider value={makeApi(vi.fn())}>
+        <AttentionRow item={it} />
+      </ApiContext.Provider>
+    ))
+
+  it("says what runs out: Expires in 7 days, not 7d left", () => {
+    const { getByTestId } = renderRow(item())
+    expect(getByTestId(`${tid}-metric`).textContent).toBe("Expires in 7 days")
+  })
+
+  it("desktop meta line: who asked and when lead, the handle comes last", () => {
+    const { getByTestId } = renderRow(item())
+    const requester = getByTestId(`${tid}-requester`)
+    const ref = getByTestId(`${tid}-ref`)
+    expect(ref.textContent).toBe("demo-skill-shipment-exception-customs")
+    // DOCUMENT_POSITION_FOLLOWING: the ref comes after the requester.
+    expect(requester.compareDocumentPosition(ref) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it("phone: the pill names the app only, the title leads, the handle is not the byline", () => {
+    asPhone(() => {
+      const { getByTestId } = renderRow(item())
+      expect(getByTestId(`${tid}-action-chip`).textContent).toBe("Workspace")
+      expect(getByTestId(`${tid}-title`).textContent).toBe("Update skill: shipment-exception")
+      const secondary = getByTestId(`${tid}-secondary`).textContent ?? ""
+      expect(secondary).not.toContain("demo-skill")
+      expect(secondary).toContain("Margot Dufour")
+      expect(getByTestId(`${tid}-deadline`).textContent).toBe("Expires in 7 days")
+    })
+  })
+
+  it("Details keeps Approve and Reject in view: the card's decision row sticks, no id header", async () => {
+    handleWsCreate(
+      {
+        id: ID,
+        handle: "request-0102",
+        status: "pending",
+        createdAt: "2026-11-08T00:00:00.000Z",
+        expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+        toolName: "test:gated_write",
+        summary: { kind: "generic", title: "Update skill: shipment-exception", lines: [] },
+        editableFields: [],
+        currentPayload: { a: 1 },
+        requestedBy: { id: "u-agent" },
+        requester: { kind: "agent", id: "u-agent", name: "Support agent" },
+        notifyUserIds: [],
+        lastEdit: null,
+        lastFailure: null,
+      } as never,
+      "u-approver",
+    )
+    const api = makeApi(vi.fn().mockResolvedValue({}))
+    api.get.mockResolvedValue(undefined)
+    const { getByTestId, findByTestId, queryByTestId } = render(() => (
+      <ApiContext.Provider value={api}>
+        <AttentionRow item={item()} />
+      </ApiContext.Provider>
+    ))
+    fireEvent.click(getByTestId(`${tid}-details`))
+    const expanded = getByTestId(`${tid}-expanded`)
+    await findByTestId("approval-card-title")
+    const actions = expanded.querySelector('[data-testid="actions-inline-row"]')
+    expect(actions).not.toBeNull()
+    expect(actions?.className).toContain("sticky")
+    expect(queryByTestId("approval-card-handle")).toBeNull()
+  })
+})

@@ -98,7 +98,7 @@ import { mailboxCryptoClient, mailboxStore } from "~/modules/mailbox/mailbox-sto
 import { requestMailboxUnlock } from "~/modules/mailbox/mailbox-unlock-bus"
 import { useOptionalApi } from "~/modules/shell/ApiContext"
 import { AppPill, appIdOfTool } from "~/modules/shell/AppPill"
-import { formatTimeLeft, rowLocaleFrom } from "~/modules/shell/attention-row-format"
+import { formatExpiresIn, rowLocaleFrom } from "~/modules/shell/attention-row-format"
 import { attentionStore, getAttentionApi } from "~/modules/shell/attention-store"
 import { openEntity } from "~/modules/shell/entity-opener"
 import { MarkdownContent } from "~/modules/shell/markdown-content"
@@ -121,9 +121,16 @@ interface ApprovalCardProps {
   turnId?: string | null
   /** The person's message that turn answers; `data-turn-id` is `askId ?? turnId`. */
   askId?: string | null
+  /** Opened from a Home row by Details. The row above already names the request, so the card
+   *  leaves out its handle and id, and its decision stays in view at the bottom of the screen
+   *  while the person reads a long card (cold walk, 2026-11-08). */
+  inFeed?: boolean
 }
 
 const TIMEOUT_MS = 30_000
+/** A card opened from a Home row keeps its decision on screen while it is read: the action row
+ *  sticks to the bottom of the scrolling Home, on the card's own background. */
+const STICKY_DECISION = "sticky bottom-0 z-10 bg-elevated pt-2"
 /** The reasons the server writes on a request it cancelled itself, each with its words in the
  *  viewer's language. A reason not listed here (an older row) shows as stored. */
 const CANCEL_REASON_KEYS: Record<string, string> = {
@@ -1995,25 +2002,27 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
                             behind a hover meant "approve 3f2a9c1e-..." could not
                             be matched to any card by eye. Click copies the full
                             uuid, hover shows it. */}
-                          <button
-                            type="button"
-                            data-testid="approval-card-handle"
-                            class="flex items-center gap-1 rounded bg-bg-subtle px-1.5 py-0.5 font-mono text-[10px] text-text-tertiary hover:text-text-secondary"
-                            title={`${c().id}\n${i18n.t("kernel.approvalsUi.copyIdHint")}`}
-                            onClick={() => {
-                              void navigator.clipboard?.writeText(c().id)
-                              addToast({
-                                message: i18n.t("kernel.approvalsUi.copiedId", { id: c().id }),
-                                type: "info",
-                              })
-                            }}
-                          >
-                            <span>{c().handle}</span>
-                            <span aria-hidden="true">·</span>
-                            <span data-testid="approval-card-short-id">
-                              {shortApprovalId(c().id)}
-                            </span>
-                          </button>
+                          <Show when={!props.inFeed}>
+                            <button
+                              type="button"
+                              data-testid="approval-card-handle"
+                              class="flex items-center gap-1 rounded bg-bg-subtle px-1.5 py-0.5 font-mono text-[10px] text-text-tertiary hover:text-text-secondary"
+                              title={`${c().id}\n${i18n.t("kernel.approvalsUi.copyIdHint")}`}
+                              onClick={() => {
+                                void navigator.clipboard?.writeText(c().id)
+                                addToast({
+                                  message: i18n.t("kernel.approvalsUi.copiedId", { id: c().id }),
+                                  type: "info",
+                                })
+                              }}
+                            >
+                              <span>{c().handle}</span>
+                              <span aria-hidden="true">·</span>
+                              <span data-testid="approval-card-short-id">
+                                {shortApprovalId(c().id)}
+                              </span>
+                            </button>
+                          </Show>
                           <Show when={statusBadge()}>
                             <span
                               data-testid="approval-card-status-badge"
@@ -2043,13 +2052,14 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
                         <span
                           data-testid="approval-card-deadline"
                           data-urgent={deadlineIsUrgent(deadlineMinutes()) ? "true" : "false"}
+                          title={i18n.t("kernel.approvalExpiryHint")}
                           class={`font-mono text-[11px] tabular-nums ${
                             deadlineIsUrgent(deadlineMinutes())
                               ? "text-amber-300"
                               : "text-text-tertiary"
                           }`}
                         >
-                          {formatTimeLeft((deadlineMinutes() ?? 0) * 60, rowLocale())}
+                          {formatExpiresIn((deadlineMinutes() ?? 0) * 60, rowLocale())}
                         </span>
                       </Show>
                     </Show>
@@ -2742,7 +2752,7 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
                       when={phone()}
                       fallback={
                         <BottomSheetActions
-                          class="mt-3"
+                          class={props.inFeed ? `mt-3 ${STICKY_DECISION}` : "mt-3"}
                           actions={pendingActions()}
                           moreLabel={i18n.t("kernel.actions")}
                           closeLabel={i18n.t("kernel.close")}
@@ -2753,7 +2763,7 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
                         width all three verbs are on screen at 44px rather than
                         one tap deep behind a "more" trigger. */}
                       <div
-                        class="mt-3 flex items-center gap-2"
+                        class={`mt-3 flex items-center gap-2 ${props.inFeed ? STICKY_DECISION : ""}`}
                         data-testid="approval-card-actions"
                         // The bottom tab bar is drawn OVER the scrolling card, so
                         // the decide row ended up underneath it: the one control

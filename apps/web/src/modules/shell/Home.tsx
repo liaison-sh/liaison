@@ -89,6 +89,7 @@ import {
   OVERVIEW,
   queueOf,
 } from "~/modules/shell/home-sections"
+import { StandingInLine } from "~/modules/shell/route-line"
 import { shellTier } from "~/modules/shell/shell-tier"
 import { useTabIsActive } from "~/modules/shell/TabVisibilityContext"
 import { openTab } from "~/modules/shell/tab-store"
@@ -382,6 +383,7 @@ const AttentionFeedView: Component<AttentionFeedViewProps> = (props) => {
             </span>
           </Show>
         </p>
+        <StandingInLine />
         <Show when={isPhone()}>
           <HomeSectionChips sections={sections()} />
         </Show>
@@ -555,6 +557,9 @@ const HomeNeedsNone: Component<{ complete: boolean }> = (props) => {
  */
 const HomeSourceFailed: Component<{ app: string; onRetry: () => void }> = (props) => {
   const i18n = useI18n()
+  // The whole feed failed (attention-store's `_aggregator`): no app to name, so the card says
+  // Home could not load rather than "what _aggregator has".
+  const feedWide = (): boolean => props.app === "_aggregator"
   const name = (): string => {
     const t = i18n.t(`kernel.nav.${props.app}`)
     return t === `kernel.nav.${props.app}`
@@ -568,10 +573,14 @@ const HomeSourceFailed: Component<{ app: string; onRetry: () => void }> = (props
     >
       <div class="min-w-0 flex-1">
         <p class="text-[13px] font-medium text-text">
-          {i18n.t("kernel.homeDecisions.sourceFailedTitle", { app: name() })}
+          {feedWide()
+            ? i18n.t("kernel.homeDecisions.feedFailedTitle")
+            : i18n.t("kernel.homeDecisions.sourceFailedTitle", { app: name() })}
         </p>
         <p class="mt-0.5 text-[12px] leading-snug text-text-secondary">
-          {i18n.t("kernel.homeDecisions.sourceFailedBody", { app: name() })}
+          {feedWide()
+            ? i18n.t("kernel.homeDecisions.feedFailedBody")
+            : i18n.t("kernel.homeDecisions.sourceFailedBody", { app: name() })}
         </p>
       </div>
       <button
@@ -1098,7 +1107,7 @@ const HomeSlice: Component<{ filter: HomeFilter; sections: HomeSections; phone: 
           ← {t("kernel.homeSidebar.overview")}
         </button>
       </div>
-      <div class="overflow-hidden rounded-lg border border-border-subtle bg-surface">
+      <div class="overflow-clip rounded-lg border border-border-subtle bg-surface">
         <Show
           when={count() > 0}
           fallback={

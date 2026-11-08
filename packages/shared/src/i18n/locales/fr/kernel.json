@@ -501,6 +501,7 @@
   "approvalDenySubmit": "Refuser",
   "approvalDenyTitle": "Pourquoi refusez-vous cette demande ?",
   "approvalEdit": "Modifier",
+  "approvalExpiryHint": "Si personne ne décide d'ici là, la demande expire et rien n'est fait.",
   "approvalExpired": "Expirée",
   "approvalExpiredLine": "{{handle}} a expiré sans décision.",
   "approvalMessageShowLess": "Afficher moins",
@@ -1606,6 +1607,24 @@
   "homeMarkingRead": "Marquage comme lu…",
   "homeMetric": {
     "dueToday": "échéance aujourd'hui",
+    "expiresIn": {
+      "seconds": {
+        "one": "Expire dans {{count}} seconde",
+        "other": "Expire dans {{count}} secondes"
+      },
+      "minutes": {
+        "one": "Expire dans {{count}} minute",
+        "other": "Expire dans {{count}} minutes"
+      },
+      "hours": {
+        "one": "Expire dans {{count}} heure",
+        "other": "Expire dans {{count}} heures"
+      },
+      "days": {
+        "one": "Expire dans {{count}} jour",
+        "other": "Expire dans {{count}} jours"
+      }
+    },
     "daysOver": {
       "one": "{{count}} j de retard",
       "other": "{{count}} j de retard"
@@ -2091,8 +2110,9 @@
         "nextInLine": "Relais",
         "nobody": "Personne",
         "standing": "Relais par défaut",
-        "standingHint": "Utilisé quand une absence ne nomme personne.",
-        "save": "M'indiquer absent",
+        "standingHint": "Enregistré dès que vous choisissez. Utilisé pour toute absence qui ne nomme personne.",
+        "standInGets": "Pendant votre absence, ce qui vous attend apparaît aussi sur l'accueil de {{name}}. {{name}} ne reçoit aucun nouveau droit. Votre messagerie personnelle, vos conversations directes et votre agent personnel restent privés.",
+        "save": "Me déclarer absent",
         "question": "Votre agenda contient un événement {{dates}} qui ressemble à une absence. Le compter comme absence ?",
         "yes": "Oui",
         "no": "Non",
@@ -6533,6 +6553,8 @@
     "everythingForNow": "C'est tout pour l'instant. Vos agents apporteront ici la prochaine demande.",
     "sourceFailedTitle": "Impossible de charger ce que {{app}} a pour vous",
     "sourceFailedBody": "{{app}} n'a pas répondu. Ce qui y attend est en sécurité et attend toujours.",
+    "feedFailedTitle": "Impossible de charger ce qui vous attend",
+    "feedFailedBody": "L'accueil n'a pas répondu. Tout ce qui attend est en sécurité et attend toujours.",
     "retry": "Réessayer",
     "briefTitle": "Le point du jour",
     "briefNone": "Aucun point du matin. Demandez-en un à votre agent chaque matin, et dites ce que vous voulez y voir.",
@@ -6543,9 +6565,9 @@
     "othersGroup": "Pour d'autres, vous pouvez aussi approuver",
     "someone": "un collègue",
     "standingIn": "Pour {{name}}, absent jusqu'au {{date}}. Vous êtes son remplaçant.",
-    "othersAsked": "Pour {{name}}, qui l'a demandé. Vous pouvez aussi approuver",
-    "othersOnItem": "Pour {{name}}, à qui c'est attribué. Vous pouvez aussi approuver",
-    "othersManager": "Pour {{name}}, qui gère ce compte. Vous pouvez aussi approuver",
+    "othersAsked": "Pour {{name}}, qui l'a demandé et peut l'approuver. Vous aussi : vous avez le droit d'approuver.",
+    "othersOnItem": "Pour {{name}}, à qui c'est attribué. Vous pouvez aussi l'approuver : vous avez le droit d'approuver.",
+    "othersManager": "Pour {{name}}, qui gère ce compte. Vous pouvez aussi l'approuver : vous avez le droit d'approuver.",
     "blocked": "Pour vous : {{blocked}} ne peut pas approuver ceci pendant l'absence de {{name}}",
     "mineAsked": "Vous l'avez demandé",
     "mineOnItem": "Pour vous : attribué à vous",
@@ -6560,7 +6582,8 @@
     "awayUntil": "absent jusqu'au {{date}}",
     "awayToday": "absent aujourd'hui",
     "awayTodayBack": "absent aujourd'hui, de retour {{day}}",
-    "recapTitle": "Pendant votre absence"
+    "recapTitle": "Pendant votre absence",
+    "standingInFor": "{{name}} est absent jusqu'au {{date}}. Vous êtes son remplaçant."
   },
   "dashboards": {
     "sectionTitle": "Tableaux de bord",

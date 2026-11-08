@@ -236,7 +236,7 @@ export function getMetric(item: AttentionItem, i18n?: RowLocale): AttentionMetri
       }
       const left = typeof m.expiresInSeconds === "number" ? m.expiresInSeconds : 3600
       const tone: MetricTone = left <= 3600 ? "warning" : "tertiary"
-      return { text: t("left", { value: duration(left) }), tone }
+      return { text: formatExpiresIn(left, l), tone }
     }
     case "admin_action":
       return { text: t("admin"), tone: "tertiary" }
@@ -351,6 +351,25 @@ export function formatTimeLeft(seconds: number, i18n?: RowLocale): string {
   return localeOr(i18n).t("kernel.homeMetric.left", {
     value: formatShortDuration(seconds, i18n),
   })
+}
+
+/**
+ * When a pending approval lapses, in words: "Expires in 7 days". "7d left" did not say what
+ * runs out (cold walk, 2026-11-08), so every approval deadline says it expires, the row as the
+ * card. Rounded to the largest unit, as `formatShortDuration`.
+ */
+export function formatExpiresIn(seconds: number, i18n?: RowLocale): string {
+  const l = localeOr(i18n)
+  const s = Math.max(0, Math.round(seconds))
+  const [unit, count] =
+    s < 60
+      ? (["seconds", s] as const)
+      : s < 3600
+        ? (["minutes", Math.round(s / 60)] as const)
+        : s < 86_400
+          ? (["hours", Math.round(s / 3600)] as const)
+          : (["days", Math.round(s / 86_400)] as const)
+  return l.t(`kernel.homeMetric.expiresIn.${unit}.${pluralFormFor(l.locale, count)}`, { count })
 }
 
 function secondsSince(iso: string): number {

@@ -24,6 +24,7 @@ import {
   readAwayToday,
   resolveAwayDates,
   setAway,
+  standingInForNames,
   undoAway,
 } from "~/modules/users/away"
 import { deactivateUser } from "~/modules/users/service"
@@ -299,6 +300,23 @@ describe("set_away", () => {
       set_by: elodie.userId,
     })
     expect(await approvals()).toHaveLength(0)
+  })
+
+  // Cold walk 2026-11-08: the stand-in's Home could not say who was away when none of their
+  // items was one the stand-in could decide. Home reads this list for its one line.
+  it("standing in: the stand-in reads who is away with them next in line, until when", async () => {
+    const from = futureMonday()
+    const to = addDays(from, 4)
+    await setAwayAs(elodie, OWN_SCOPES, { from, to, nextInLineId: tom.userId })
+    const during = new Date(`${addDays(from, 1)}T12:00:00Z`)
+    expect(await standingInForNames(orgId, tom.userId, during)).toEqual([
+      { id: elodie.userId, name: "Élodie Renard", until: to },
+    ])
+    // Not the stand-in: nothing; before the range: nothing.
+    expect(await standingInForNames(orgId, sara.userId, during)).toEqual([])
+    expect(
+      await standingInForNames(orgId, tom.userId, new Date(`${addDays(from, -3)}T12:00:00Z`)),
+    ).toEqual([])
   })
 
   it("tainted own parks to the requester", async () => {

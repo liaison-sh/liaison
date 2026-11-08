@@ -1110,12 +1110,12 @@ export async function handleSetAwayTool(
  * the person, each with `awayUntil` when they are away today, so "Tom is away too" shows before
  * saving.
  */
-export async function nextInLineChoices(
+/** The org's active internal members other than `personId`, by name. */
+function nextInLineMembers(
   orgId: string,
   personId: string,
-  now: Date = new Date(),
-): Promise<Array<{ id: string; name: string; awayUntil: string | null }>> {
-  const members = await withPrivilegedDb(orgId, "away-choices", async (tx) =>
+): Promise<Array<{ id: string; name: string }>> {
+  return withPrivilegedDb(orgId, "away-choices", async (tx) =>
     extractRows<{ id: string; name: string }>(
       await tx.execute(drizzleSql`
         SELECT id, name FROM ${K}.users
@@ -1124,12 +1124,42 @@ export async function nextInLineChoices(
         ORDER BY name LIMIT 500`),
     ),
   )
+}
+
+export async function nextInLineChoices(
+  orgId: string,
+  personId: string,
+  now: Date = new Date(),
+): Promise<Array<{ id: string; name: string; awayUntil: string | null }>> {
+  const members = await nextInLineMembers(orgId, personId)
   const away = await readAwayToday(
     orgId,
     members.map((m) => m.id),
     now,
   )
   return members.map((m) => ({ ...m, awayUntil: away.get(m.id)?.until ?? null }))
+}
+
+/**
+ * The colleagues away today who name `viewerId` next in line (their range's, or their default),
+ * with until when: Home says it in one line even when none of their items is one the viewer
+ * can decide.
+ */
+export async function standingInForNames(
+  orgId: string,
+  viewerId: string,
+  now: Date = new Date(),
+): Promise<Array<{ id: string; name: string; until: string }>> {
+  const members = await nextInLineMembers(orgId, viewerId)
+  const away = await readAwayToday(
+    orgId,
+    members.map((m) => m.id),
+    now,
+  )
+  return members.flatMap((m) => {
+    const a = away.get(m.id)
+    return a && a.nextInLineId === viewerId ? [{ id: m.id, name: m.name, until: a.until }] : []
+  })
 }
 
 /** Clears the person's standing next in line. */

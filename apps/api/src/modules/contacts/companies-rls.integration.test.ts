@@ -94,12 +94,13 @@ beforeAll(async () => {
       { ...person(OUTSIDER, "Outsider"), org_id: OTHER_ORG_ID },
     ]),
   )
-  // Written by the privileged login, which the trigger leaves alone.
+  // Written by the privileged login, which the trigger leaves alone. Every row
+  // names the same columns: a multi-row insert takes them from the first.
   await sql.unsafe(
     insertSql("kernel.companies", [
-      company(OPEN, { created_by: ANNA, org_access: "editor" }),
+      company(OPEN, { created_by: ANNA, owner_user_id: null, org_access: "editor" }),
       company(PRIVATE, { created_by: ANNA, owner_user_id: CARL, org_access: "none" }),
-      company(ORPHAN, { created_by: GONE, org_access: "none" }),
+      company(ORPHAN, { created_by: GONE, owner_user_id: null, org_access: "none" }),
     ]),
   )
   await sql.unsafe(
@@ -257,6 +258,9 @@ describe("who reads a company", () => {
 
 describe("the account manager routes and never grants", () => {
   it("the account manager of a company shared with nobody reads no row", async () => {
+    const [label] = await sql<{ owner_user_id: string }[]>`
+      SELECT owner_user_id FROM kernel.companies WHERE id = ${PRIVATE}`
+    expect(label?.owner_user_id).toBe(CARL)
     expect(await visibleIds(ctx(CARL))).not.toContain(PRIVATE)
     const write = await withRlsContext(ctx(CARL), async (tx) => ({
       update: extractRows<{ id: string }>(

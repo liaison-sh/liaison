@@ -137,7 +137,7 @@ export function homeActionItems(
   for (const item of [...homeApprovalItems(now, othersShown, viewer), ...urgentStripItems(now)]) {
     if (seen.has(item.id)) continue
     if (isUncountedItem(item)) continue
-    // Held by an auto-reply: on Home, counted only once its hold ends (S164).
+    // Held by an auto-reply: on Home, counted only once its hold ends.
     if (isHeldItem(item)) continue
     // Decided, waiting out its Undo window or being carried out: the row is gone, so is its count.
     if (isApprovalDecisionInFlight(item)) continue

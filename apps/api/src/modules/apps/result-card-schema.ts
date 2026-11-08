@@ -188,6 +188,17 @@ class CardCheck {
     }
   }
 
+  /** Plain text with no {{ }}: nothing in it comes from the result. */
+  private fixedText(v: unknown, at: string): void {
+    if (typeof v !== "string" || v.trim().length === 0) {
+      this.err(at, "must be a non-empty string")
+    } else if (v.includes("{{") || v.includes("}}")) {
+      this.err(at, "must be fixed text, with no {{ }}: it is posted as the person's own words")
+    } else if (MARKUP.test(v)) {
+      this.err(at, "must be plain text, with no HTML")
+    }
+  }
+
   format(v: unknown, at: string): void {
     if (!TOOL_CARD_FORMATS.includes(v as (typeof TOOL_CARD_FORMATS)[number])) {
       this.err(at, `must be one of ${TOOL_CARD_FORMATS.join(", ")}`)
@@ -280,8 +291,11 @@ class CardCheck {
         break
       }
       case "ask":
-        this.keys(v, [...common, "prompt", ...(rowAct ? ["labelPath"] : [])], at)
-        this.tpl(v.prompt, roots, `${at}.prompt`)
+        // The click posts the prompt as the person's own message, so it is the app's fixed
+        // words: a value of the result may be text someone outside the org wrote (a subject,
+        // a mail body), and neither the prompt nor the button's label is drawn from it.
+        this.keys(v, [...common, "prompt"], at)
+        this.fixedText(v.prompt, `${at}.prompt`)
         break
       case "external":
         this.keys(v, [...common, "urlTemplate", ...(rowAct ? ["labelPath"] : [])], at)

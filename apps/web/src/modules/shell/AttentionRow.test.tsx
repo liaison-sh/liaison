@@ -275,6 +275,32 @@ describe("AttentionRow", () => {
     expect(getByTestId(`${id}-last-failure`).textContent).toContain("App execution timed out")
   })
 
+  it("a decision dropped at boot as too old says on its row that it was not sent", () => {
+    const item: AttentionItem = {
+      id: "kernel:approval_pending:old1",
+      app: "kernel",
+      entity: "approval_request",
+      entityId: "old1",
+      kind: "approval_pending",
+      summary: "Reply to the customer",
+      urgency: 50,
+      occurredAt: "2026-07-07T10:00:00Z",
+      action: { type: "decide_approval", approvalId: "old1" },
+      metadata: { subtitle: "Pending approval", actionLabel: "Reply to the customer" },
+    }
+    const { queryByTestId, getByTestId } = render(() => (
+      <ApiContext.Provider value={makeApi(vi.fn())}>
+        <AttentionRow item={item} />
+      </ApiContext.Provider>
+    ))
+    const id = "attention-row-kernel-approval_request-old1"
+    expect(queryByTestId(`${id}-not-sent`)).toBeNull()
+    DecisionQueueTestAccess.markNotSent("approval", "old1")
+    expect(getByTestId(`${id}-not-sent`).textContent).toBe(
+      "Not sent: this decision was more than 15 minutes old. Decide again.",
+    )
+  })
+
   it("a notification about this approval opens its card and scrolls it into view (LIF-18)", async () => {
     const { focusApproval, focusedApproval } = await import("~/modules/shell/approval-focus")
     const item: AttentionItem = {
@@ -1476,9 +1502,8 @@ describe("AttentionRow: Open on an approval whose item has its own page", () => 
   })
 })
 
-// Cold walk P0 (2026-11-08): a newcomer read the Home rows and lost the decision, the deadline and
-// the title to internal ids.
-describe("AttentionRow: cold walk P0", () => {
+// A newcomer reading the Home rows lost the decision, the deadline and the title to internal ids.
+describe("AttentionRow: what a newcomer reads on a Home row", () => {
   const ID = "cw-1"
   const tid = `attention-row-kernel-approval_request-${ID}`
   const item = (metadata: Record<string, unknown> = {}): AttentionItem => ({

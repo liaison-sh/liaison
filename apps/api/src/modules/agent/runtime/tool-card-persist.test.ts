@@ -695,6 +695,30 @@ describe("replacing a stored card", () => {
     expect(strictReceived).toEqual({ id: "a" })
   })
 
+  it("a card action naming a thread other than the card's is 422 and nothing runs", async () => {
+    const seeded = await seedCard({})
+    const other = await minimal.thread(orgId, userId)
+    for (const body of [
+      { id: "item-1", threadId: other, cardRef: seeded },
+      { params: { id: "item-1" }, threadId: other, cardRef: seeded },
+    ]) {
+      const res = await post("cardy/tools/update", body)
+      expect(res.status).toBe(422)
+      expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+        "card_action_unknown",
+      )
+    }
+    expect(updateRuns).toBe(0)
+    expect((await storedCall(seeded.messageId, seeded.toolCallId))?.card?.title).toBe("Before")
+  })
+
+  it("a card action naming the card's own thread gets exactly the offered params", async () => {
+    const seeded = await seedCard({})
+    const res = await post("cardy/tools/strict", { id: "a", threadId, cardRef: seeded })
+    expect(res.status).toBe(200)
+    expect(strictReceived).toEqual({ id: "a" })
+  })
+
   it("cardRef in an unreadable thread 404 and unchanged", async () => {
     const seeded = await seedCard({})
     const res = await post("cardy/tools/update", { id: "x", cardRef: seeded }, strangerToken)

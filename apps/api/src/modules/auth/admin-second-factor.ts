@@ -21,23 +21,7 @@ import type { PrivilegedDb } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
 import { hasScope } from "~/modules/permissions/permissions"
 import { getScopeCatalog } from "~/modules/permissions/scope-catalog"
-
-/** Kernel administrative scopes, checked even when the catalog is cold. */
-export const KERNEL_ADMIN_SCOPES = [
-  "kernel:org:admin",
-  "kernel:users:admin",
-  "kernel:portal:admin",
-  "kernel:dashboards:admin",
-  "kernel:roles:admin",
-  "kernel:apps:admin",
-  "kernel:agents:admin",
-  "kernel:policies:admin",
-  "kernel:threads:admin",
-  "kernel:approvals:admin",
-  "kernel:scope_requests:admin",
-  "kernel:contacts:admin",
-  "kernel:saved_views:admin",
-]
+import { isKernelAdminEntry, KERNEL_ADMIN_SCOPES } from "./admin-scopes"
 
 /**
  * Whether these granted scopes include an administrative one: `*`, any scope
@@ -47,7 +31,7 @@ export const KERNEL_ADMIN_SCOPES = [
 export function holdsAdminScope(orgId: string, scopes: readonly string[]): boolean {
   if (scopes.length === 0) return false
   const granted = [...scopes]
-  if (granted.some((s) => s === "*" || s.split(":").at(-1) === "admin")) return true
+  if (granted.some(isKernelAdminEntry)) return true
   const catalogAdmin = getScopeCatalog(orgId)
     .map((e) => e.scope)
     .filter((s) => s.endsWith(":admin"))

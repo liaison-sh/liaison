@@ -1351,6 +1351,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
         ? fileArg
         : [
             "src/mutations.test.ts",
+            // Timeline rows (issued, paid, credited), paged past the app database's page size (pure store).
+            "src/activity.test.ts",
             // The invoicing.document import kind (bundle export, create-only).
             "src/import-kind.test.ts",
             // Pinned export set of the mutations index over src/mutations/ (pure, no I/O).

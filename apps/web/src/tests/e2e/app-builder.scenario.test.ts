@@ -2,19 +2,8 @@
 // App builder: a draft made from the store-crud template is listed on the App
 // store page, opens in its builder tab, checks clean and runs a read-only
 // preview of its list tool from the inline form.
-//
-// The builder exists only where organisations may have their own apps
-// (LIAISON_CUSTOM_APPS, off by default on a self-hosted server like the shared
-// test stack), so this file runs on a worker of its own with the switch on.
-import { createProfiledE2ETest } from "./fixtures/profiled-test"
-import { expect } from "./fixtures/test"
+import { expect, test } from "./fixtures/test"
 import { seedFactory } from "./helpers/seed"
-
-const test = createProfiledE2ETest({
-  workerIdOffset: 300,
-  portCount: 2,
-  before: async () => ({ env: { LIAISON_CUSTOM_APPS: "on" }, teardowns: [] }),
-})
 
 test("a draft checks and previews in the builder tab", async ({
   authenticatedPage,

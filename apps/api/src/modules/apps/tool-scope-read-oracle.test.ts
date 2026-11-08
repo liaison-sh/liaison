@@ -134,6 +134,8 @@ const REASONS = {
   BULK: "a manifest bulk action declaration",
   PROVIDER:
     "a context provider declaration, whose scope is checked against its tool's requiredScopes",
+  ACTIVITY:
+    "an activity source declaration, whose scope is checked against its tool's requiredScopes",
   RECIP: "an attention scope_holders recipient spec",
   EXPORT: "an export handler registration",
   ROUTE: "a route parameter naming the scope being granted",
@@ -247,6 +249,12 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
     "apps/api/src/modules/apps/contract.ts",
     "errors.push(`${at}.scope: '${p.scope}' is not in the requiredScopes of '${p.tool}'`)",
     REASONS.PROVIDER,
+  ],
+  ["apps/api/src/modules/apps/contract.ts", "if (!required.includes(s.scope)) {", REASONS.ACTIVITY],
+  [
+    "apps/api/src/modules/apps/contract.ts",
+    "errors.push(`${at}.scope: '${s.scope}' is not in the requiredScopes of '${s.tool}'`)",
+    REASONS.ACTIVITY,
   ],
   [
     "apps/api/src/modules/apps/app-visibility.ts",

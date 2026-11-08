@@ -1871,6 +1871,13 @@ export const appManifestJsonSchema = {
           selectionParam: { type: "string" },
           sharedFields: { type: "array", items: { type: "string" } },
           agentTool: { type: "string" },
+          // The derived agent tool's search words, as a tool's own `searchKeywords`;
+          // a grouped agent tool answers to the words of each of its actions.
+          searchKeywords: {
+            type: "array",
+            items: { type: "string", minLength: 1, maxLength: 40, pattern: "^\\S+$" },
+            maxItems: 30,
+          },
           icon: { type: "string" },
           customForm: { type: "string" },
           minSelection: { type: "integer", minimum: 1 },

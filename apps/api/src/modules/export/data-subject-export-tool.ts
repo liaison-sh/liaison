@@ -200,6 +200,14 @@ interface ContactRow {
   tags: string[] | null
   created_at: string | Date | null
   updated_at: string | Date | null
+  company_id: string | null
+  lawful_basis: string | null
+  lawful_basis_source: string | null
+  lawful_basis_at: string | Date | null
+  is_consumer: boolean | null
+  recipient_country: string | null
+  data_source: string | null
+  art14_notice_at: string | Date | null
 }
 
 interface InvoiceRow {
@@ -248,6 +256,18 @@ export interface DataSubjectExportBundle {
     tags: string[]
     createdAt: string | null
     updatedAt: string | null
+    /** The company the person is linked to (its name is `company`). */
+    companyId: string | null
+    /** What is recorded about writing to the person; null fields are not recorded. */
+    lawfulBasis: {
+      basis: string | null
+      source: string | null
+      recordedAt: string | null
+      isConsumer: boolean | null
+      recipientCountry: string | null
+      dataSource: string | null
+      art14NoticeAt: string | null
+    }
   }
   records: {
     tickets: Array<{
@@ -454,7 +474,9 @@ export async function buildDataSubjectBundle(
   const contactRows = extractRows<ContactRow>(
     await ctx.db.execute(drizzleSql`
       SELECT id::text AS id, handle, name, email, phone, company,
-             external_ids, metadata, tags, created_at, updated_at
+             external_ids, metadata, tags, created_at, updated_at,
+             company_id::text AS company_id, lawful_basis, lawful_basis_source, lawful_basis_at,
+             is_consumer, recipient_country, data_source, art14_notice_at
       FROM ${drizzleSql.raw(schemaRef("kernel"))}.contacts
       WHERE org_id = ${ctx.orgId} AND id = ${contactId}
       LIMIT 1
@@ -524,6 +546,16 @@ export async function buildDataSubjectBundle(
       tags: contact.tags ?? [],
       createdAt: toIso(contact.created_at),
       updatedAt: toIso(contact.updated_at),
+      companyId: contact.company_id,
+      lawfulBasis: {
+        basis: contact.lawful_basis,
+        source: contact.lawful_basis_source,
+        recordedAt: toIso(contact.lawful_basis_at),
+        isConsumer: contact.is_consumer,
+        recipientCountry: contact.recipient_country,
+        dataSource: contact.data_source,
+        art14NoticeAt: toIso(contact.art14_notice_at),
+      },
     },
     records: {
       memory,

@@ -112,6 +112,7 @@ import {
   handleThreadsSearch,
   readsAnsweringThread,
 } from "~/modules/agent/tools/chat-tools"
+import { registerCompanyTools } from "~/modules/agent/tools/company-tools"
 import { registerConfigTools } from "~/modules/agent/tools/config-tools"
 import { registerConnectionTools } from "~/modules/agent/tools/connection-tools"
 import {
@@ -1861,7 +1862,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     name: "contacts_write",
     deferLoading: true,
     description:
-      "Create or update a contact in Liaison's own contact list; omit contactId to create. This is not the org's CRM or ERP: a change the user asks for in an external system (\"add a note in the CRM\") goes through that system's API connection (api-connector connector_write), and a write here must never be described as a CRM write. Search with kernel__contacts_search before creating, so you update the existing record instead of making a duplicate. The only first class columns are name, email, phone, company, externalIds and tags: every other field (city, role, postal address, profile links, VAT id, source URL) goes in metadata, and a note about the person goes in the contact's discussion (kernel__threads_reply with contactId), while phone and email each have their own top level parameter. An email collision returns EMAIL_IN_USE, and the fix is kernel__contacts_merge. GATED: a person approves the edit (or the new contact) before it is saved, unless the organisation's auto-approve policy covers this tool, so report a pending result as waiting for approval, never as done, and a field you leave out is simply not saved.",
+      "Create or update a person in Liaison's contacts; omit contactId to create, and search with kernel__contacts_search first so you update instead of making a duplicate. Link them to a company with companyId (from kernel__companies_search); deals live in projects. Other facts (city, role, address, VAT id) go in metadata, a note in the contact's discussion (kernel__threads_reply). A record in an outside CRM or ERP is a connector_write. EMAIL_IN_USE: merge with kernel__contacts_merge. GATED unless an auto-approve policy covers it: report a pending result as waiting for approval, never as done.",
     searchKeywords: [
       "contact",
       "modifier",
@@ -1890,6 +1891,14 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
       externalIds: z.record(z.string(), z.string()).optional(),
       metadata: z.record(z.string(), z.unknown()).optional(),
       tags: z.array(z.string()).optional(),
+      companyId: z.string().uuid().nullable().optional(),
+      lawfulBasis: z
+        .enum(["consent", "customer", "professional_interest", "generic_address"])
+        .optional(),
+      lawfulBasisSource: z.string().optional().describe("Where the basis comes from."),
+      isConsumer: z.boolean().optional(),
+      recipientCountry: z.string().length(2).optional(),
+      dataSource: z.enum(["direct", "third_party", "enrichment"]).optional(),
     }),
     handler: handleContactsWrite as (params: unknown, ctx: any) => Promise<unknown>,
     preflight: contactsWritePreflight as unknown as (p: unknown, c: any) => Promise<unknown>,
@@ -1897,6 +1906,8 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
   })
 
   registerApprovalSummarizer(orgId, "kernel", "contacts_write", summarizeContactsWrite)
+
+  registerCompanyTools(orgId)
 
   toolRegistry.set([orgId, "kernel", "contacts_export"], {
     appName: "kernel",
@@ -1977,6 +1988,10 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
           email: z.string().email().optional(),
           phone: z.string().optional(),
           company: z.string().optional(),
+          companyId: z.string().uuid().optional(),
+          lawfulBasis: z
+            .enum(["consent", "customer", "professional_interest", "generic_address"])
+            .optional(),
         })
         .optional(),
     }),

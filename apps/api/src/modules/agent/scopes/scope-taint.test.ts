@@ -309,6 +309,10 @@ describe("writesToTable annotations on kernel tools", () => {
       memory_delete: "kernel.agent_memory",
       memory_rename: "kernel.agent_memory",
       capture_business_knowledge: "app_knowledge.documents",
+      companies_link_batch: "kernel.companies",
+      companies_link_contacts: "kernel.contacts",
+      companies_mark_not_same: "kernel.companies",
+      companies_write: "kernel.companies",
       // The person's own computer sessions: a command lands in the session's own
       // queue, read back only by its owner and the session on their computer.
       computer_session_answer: "kernel.node_session_commands",
@@ -518,6 +522,11 @@ describe("writesToTable annotations on kernel tools", () => {
         // Config as code: the plan and the export read the org's configuration, never write it.
         "config_export",
         "config_plan",
+        // Company reads: search, one company, the duplicate scan and the proposals write nothing.
+        "companies_find_duplicates",
+        "companies_propose_from_contacts",
+        "companies_read",
+        "companies_search",
         "contacts_addresses_list",
         "contacts_find_duplicates",
         "contacts_group_members",

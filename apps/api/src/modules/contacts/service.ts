@@ -19,6 +19,7 @@ import { contactsLogger as log } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import { UUID_RE } from "~/lib/uuid"
 import { deleteContactDiscussions, mergeContactDiscussion } from "~/modules/contacts/discussion"
+import { clearContactSoftReferences } from "~/modules/contacts/erasure"
 import { memberOfGroupCondition } from "~/modules/contacts/groups"
 import { runAfterContactMergeFailpoint } from "~/modules/contacts/merge-failpoint"
 import { buildStorageKey, loadOrgSettings, wouldExceedOrgQuota } from "~/modules/files/service"
@@ -1041,10 +1042,95 @@ interface MergeContactsParams {
     company?: string
     externalIds?: Record<string, string>
     metadata?: Record<string, unknown>
+    /** Which of the two companies the survivor keeps, when both have one. */
+    companyId?: string
+    /** Which of the two recorded lawful bases the survivor keeps, when they differ. */
+    lawfulBasis?: string
   }
   mergedConversationCount?: number
   /** The source's discussion messages moved into the target's (mergeContactDiscussion). */
   discussionMoved?: boolean
+}
+
+type LegalRecord = Pick<
+  typeof contacts.$inferSelect,
+  | "companyId"
+  | "company"
+  | "lawfulBasis"
+  | "lawfulBasisSource"
+  | "lawfulBasisAt"
+  | "isConsumer"
+  | "dataSource"
+  | "art14NoticeAt"
+>
+
+const DATA_SOURCE_RANK: Record<string, number> = { third_party: 2, enrichment: 2, direct: 1 }
+
+/**
+ * The company and legal record the survivor of a contact merge keeps. The
+ * merge never picks a legal record by itself: the stricter value wins where
+ * there is an order (a consumer over unknown over a business; the earliest
+ * Art. 14 notice; a third-party or enrichment source over a direct one over
+ * unknown; a recorded basis over none), and two different recorded bases, or
+ * two different companies, need the person's choice in `resolvedFields`.
+ */
+export function mergeLegalRecord(
+  source: LegalRecord,
+  target: LegalRecord,
+  resolved: { companyId?: string; lawfulBasis?: string } = {},
+): Partial<LegalRecord> {
+  const out: Partial<LegalRecord> = {}
+  // Company: one side's, or the chosen one when both differ.
+  if (source.companyId && target.companyId && source.companyId !== target.companyId) {
+    const pick = resolved.companyId
+    if (pick !== source.companyId && pick !== target.companyId) {
+      throw new HTTPException(422, {
+        message:
+          "The two contacts belong to different companies: pass resolvedFields.companyId with the one to keep.",
+      })
+    }
+    if (pick === source.companyId) {
+      out.companyId = source.companyId
+      out.company = source.company
+    }
+  } else if (!target.companyId && source.companyId) {
+    out.companyId = source.companyId
+    out.company = source.company
+  }
+  // Lawful basis: kept whole (basis, its source, its date) from one side.
+  if (source.lawfulBasis && target.lawfulBasis && source.lawfulBasis !== target.lawfulBasis) {
+    const pick = resolved.lawfulBasis
+    if (pick !== source.lawfulBasis && pick !== target.lawfulBasis) {
+      throw new HTTPException(422, {
+        message: `The two contacts record different lawful bases (${target.lawfulBasis} and ${source.lawfulBasis}): pass resolvedFields.lawfulBasis with the one to keep.`,
+      })
+    }
+    if (pick === source.lawfulBasis) {
+      out.lawfulBasis = source.lawfulBasis
+      out.lawfulBasisSource = source.lawfulBasisSource
+      out.lawfulBasisAt = source.lawfulBasisAt
+    }
+  } else if (!target.lawfulBasis && source.lawfulBasis) {
+    out.lawfulBasis = source.lawfulBasis
+    out.lawfulBasisSource = source.lawfulBasisSource
+    out.lawfulBasisAt = source.lawfulBasisAt
+  }
+  // Consumer: true over unknown over false.
+  const consumerRank = (v: boolean | null) => (v === true ? 2 : v === null ? 1 : 0)
+  if (consumerRank(source.isConsumer) > consumerRank(target.isConsumer)) {
+    out.isConsumer = source.isConsumer
+  }
+  // Data source: an outside source over a direct one over unknown.
+  const rank = (v: string | null) => (v ? (DATA_SOURCE_RANK[v] ?? 0) : 0)
+  if (rank(source.dataSource) > rank(target.dataSource)) out.dataSource = source.dataSource
+  // Art. 14 notice: the earliest one sent.
+  if (
+    source.art14NoticeAt &&
+    (!target.art14NoticeAt || source.art14NoticeAt.getTime() < target.art14NoticeAt.getTime())
+  ) {
+    out.art14NoticeAt = source.art14NoticeAt
+  }
+  return out
 }
 
 async function mergeContactsInTx(db: RlsClient | RlsTx, params: MergeContactsParams) {
@@ -1089,6 +1175,10 @@ async function mergeContactsInTx(db: RlsClient | RlsTx, params: MergeContactsPar
   const updateValues: Record<string, unknown> = {
     externalIds: mergedExternalIds,
     metadata: mergedMetadata,
+    ...mergeLegalRecord(source, target, {
+      companyId: resolvedFields?.companyId,
+      lawfulBasis: resolvedFields?.lawfulBasis,
+    }),
     updatedAt: new Date(),
   }
   if (resolvedFields?.name !== undefined) updateValues.name = resolvedFields.name
@@ -1532,9 +1622,10 @@ export async function deleteContact(
   // Its discussion goes with it: a contact has no bin to restore it from. On the privileged
   // transaction the caller holds, else on the caller's own one when it may elevate, so a caller
   // already holding a privileged slot never takes a second one.
-  await privilegedFrom(privileged ?? db, orgId, "contact-discussion-delete", (ptx) =>
-    deleteContactDiscussions({ orgId, contactIds: [contactId] }, ptx),
-  )
+  await privilegedFrom(privileged ?? db, orgId, "contact-discussion-delete", async (ptx) => {
+    await deleteContactDiscussions({ orgId, contactIds: [contactId] }, ptx)
+    await clearContactSoftReferences(ptx, orgId, [contactId])
+  })
 
   await db.queueEvent({
     app: "kernel",
@@ -1559,6 +1650,14 @@ interface UpdateContactParams {
   externalIds?: Record<string, string>
   metadata?: Record<string, unknown>
   tags?: string[]
+  /** Written with `company` (the company's name) by the caller, which resolved it. */
+  companyId?: string | null
+  /** Setting a basis records when (`lawful_basis_at`). */
+  lawfulBasis?: "consent" | "customer" | "professional_interest" | "generic_address"
+  lawfulBasisSource?: string
+  isConsumer?: boolean
+  recipientCountry?: string
+  dataSource?: "direct" | "third_party" | "enrichment"
 }
 
 export async function updateContact(
@@ -1577,6 +1676,17 @@ export async function updateContact(
   if (params.updates.externalIds !== undefined) setValues.externalIds = params.updates.externalIds
   if (params.updates.metadata !== undefined) setValues.metadata = params.updates.metadata
   if (params.updates.tags !== undefined) setValues.tags = params.updates.tags
+  const u = params.updates
+  if (u.companyId !== undefined) setValues.companyId = u.companyId
+  if (u.lawfulBasis !== undefined) {
+    setValues.lawfulBasis = u.lawfulBasis
+    setValues.lawfulBasisAt = new Date()
+  }
+  if (u.lawfulBasisSource !== undefined) setValues.lawfulBasisSource = u.lawfulBasisSource
+  if (u.isConsumer !== undefined) setValues.isConsumer = u.isConsumer
+  if (u.recipientCountry !== undefined)
+    setValues.recipientCountry = u.recipientCountry.toUpperCase()
+  if (u.dataSource !== undefined) setValues.dataSource = u.dataSource
 
   const [updated] = await db
     .update(contacts)

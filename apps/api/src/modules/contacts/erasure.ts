@@ -59,6 +59,40 @@ export async function firstOrgAdmin(
   return row?.id ?? null
 }
 
+/**
+ * A deleted or erased contact stops being a company's main contact and a
+ * deal's contact (both soft references), in the transaction that removes it.
+ * Privileged: the remover may not see every company or deal naming the
+ * person. The deal half is skipped where the projects app has no tables.
+ */
+export async function clearContactSoftReferences(
+  tx: Pick<PrivilegedDb, "execute">,
+  orgId: string,
+  contactIds: string[],
+): Promise<{ companies: number; deals: number }> {
+  if (contactIds.length === 0) return { companies: 0, deals: 0 }
+  const ids = `{${contactIds.join(",")}}`
+  const companies = extractRows(
+    await tx.execute(drizzleSql`
+      UPDATE ${drizzleSql.raw(rel("kernel", "companies"))} SET main_contact_id = NULL, updated_at = now()
+       WHERE org_id = ${orgId}::uuid AND main_contact_id = ANY(${ids}::uuid[])
+      RETURNING id`),
+  ).length
+  const dealsTable = rel("app_projects", "deals")
+  const [present] = extractRows<{ t: string | null }>(
+    await tx.execute(drizzleSql`SELECT to_regclass(${dealsTable})::text AS t`),
+  )
+  const deals = present?.t
+    ? extractRows(
+        await tx.execute(drizzleSql`
+          UPDATE ${drizzleSql.raw(dealsTable)} SET contact_id = NULL, updated_at = now()
+           WHERE org_id = ${orgId}::uuid AND contact_id = ANY(${ids}::uuid[])
+          RETURNING task_id`),
+      ).length
+    : 0
+  return { companies, deals }
+}
+
 export async function releaseErasedUserContacts(
   tx: PrivilegedDb,
   params: { orgId: string; userId: string; sentinelUserId: string },
@@ -137,6 +171,7 @@ async function release(
          WHERE org_id = ${orgId}::uuid AND contact_id IN (${ids})`)
     }
     await deleteContactDiscussions({ orgId, contactIds: unused }, tx)
+    await clearContactSoftReferences(tx, orgId, unused)
     await tx.execute(
       drizzleSql`DELETE FROM ${contacts} WHERE org_id = ${orgId}::uuid AND id IN (${ids})`,
     )

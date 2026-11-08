@@ -328,6 +328,25 @@ export const MEMBER_SECTIONS: MemberSection[] = [
         LIMIT ${limit}`,
       ),
   },
+  {
+    key: "companiesManaged",
+    note: "Companies the member is account manager of, or created: name, domain and which of the two.",
+    via: "subject",
+    read: (db, ctx, limit) =>
+      rows(
+        db,
+        drizzleSql`
+        SELECT id::text AS id, name, domain,
+               (owner_user_id = ${ctx.subjectUserId}::uuid) AS account_manager,
+               (created_by = ${ctx.subjectUserId}::uuid) AS created_by_member,
+               created_at
+        FROM ${K()}.companies
+        WHERE org_id = ${ctx.orgId}
+          AND (owner_user_id = ${ctx.subjectUserId}::uuid OR created_by = ${ctx.subjectUserId}::uuid)
+        ORDER BY created_at
+        LIMIT ${limit}`,
+      ),
+  },
 ]
 
 /** Reads every section: the `caller` ones on `callerDb`, the `subject` ones in one privileged transaction. */

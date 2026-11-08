@@ -8,6 +8,7 @@ import { withPrivilegedDb } from "~/db/privileged"
 import {
   type ContactAddressRole,
   type ContactAddressSource,
+  companies as companiesTable,
   contactSegments,
   contacts as contactsTable,
   users as usersTable,
@@ -327,19 +328,52 @@ export function liftMisplacedPhone(
   }
 }
 
-export async function handleContactsWrite(
-  params: {
-    contactId?: string
-    name?: string
-    email?: string
-    phone?: string
-    company?: string
-    externalIds?: Record<string, string>
-    metadata?: Record<string, unknown>
-    tags?: string[]
-  },
+/** The company and legal-record fields of a contacts_write, resolved for `updateContact`. */
+async function contactCompanyAndBasis(
+  params: ContactsWriteParams,
   ctx: ContactToolContext,
-) {
+): Promise<
+  | { fields: Parameters<typeof updateContact>[1]["updates"] }
+  | { error: { code: string; message: string } }
+> {
+  const fields: Parameters<typeof updateContact>[1]["updates"] = {}
+  if (params.companyId !== undefined) {
+    if (params.companyId === null) {
+      fields.companyId = null
+    } else {
+      const [company] = UUID_RE.test(params.companyId)
+        ? await ctx.db
+            .select({ id: companiesTable.id, name: companiesTable.name })
+            .from(companiesTable)
+            .where(
+              and(eq(companiesTable.id, params.companyId), eq(companiesTable.orgId, ctx.orgId)),
+            )
+            .limit(1)
+        : []
+      if (!company) {
+        return {
+          error: {
+            code: "NOT_FOUND",
+            message: `Company not found: ${params.companyId}. Only pass an id you saw in a kernel__companies_search result.`,
+          },
+        }
+      }
+      fields.companyId = company.id
+      // The person carries the company's name as their company text.
+      fields.company = company.name
+    }
+  }
+  if (params.lawfulBasis !== undefined) fields.lawfulBasis = params.lawfulBasis
+  if (params.lawfulBasisSource !== undefined) fields.lawfulBasisSource = params.lawfulBasisSource
+  if (params.isConsumer !== undefined) fields.isConsumer = params.isConsumer
+  if (params.recipientCountry !== undefined) fields.recipientCountry = params.recipientCountry
+  if (params.dataSource !== undefined) fields.dataSource = params.dataSource
+  return { fields }
+}
+
+export async function handleContactsWrite(params: ContactsWriteParams, ctx: ContactToolContext) {
+  const extra = await contactCompanyAndBasis(params, ctx)
+  if ("error" in extra) return extra
   // BL-25: route a VAT the agent put in `metadata` onto the field of record `externalIds.vat_id`.
   const { externalIds, metadata: metadataAfterVat } = liftMisplacedVatId(
     params.externalIds,
@@ -388,6 +422,7 @@ export async function handleContactsWrite(
         externalIds,
         metadata,
         tags: params.tags,
+        ...extra.fields,
       },
     })
     if (!updated) return { error: { code: "NOT_FOUND", message: "Contact not found" } }
@@ -443,6 +478,15 @@ export async function handleContactsWrite(
     },
     { audience: "owner", ownerUserId: ctx.userId },
   )
+  if (Object.keys(extra.fields).length > 0) {
+    const withExtra = await updateContact(ctx.db, {
+      orgId: ctx.orgId,
+      userId: ctx.userId,
+      contactId: contact.id,
+      updates: extra.fields,
+    })
+    return { contact: withExtra ?? contact }
+  }
   return { contact }
 }
 
@@ -484,7 +528,14 @@ export async function handleContactsMerge(
   params: {
     sourceId: string
     targetId: string
-    resolvedFields?: { name?: string; email?: string; phone?: string; company?: string }
+    resolvedFields?: {
+      name?: string
+      email?: string
+      phone?: string
+      company?: string
+      companyId?: string
+      lawfulBasis?: string
+    }
   },
   ctx: ContactToolContext,
 ) {
@@ -1072,6 +1123,12 @@ export interface ContactsWriteParams {
   externalIds?: Record<string, string>
   metadata?: Record<string, unknown>
   tags?: string[]
+  companyId?: string | null
+  lawfulBasis?: "consent" | "customer" | "professional_interest" | "generic_address"
+  lawfulBasisSource?: string
+  isConsumer?: boolean
+  recipientCountry?: string
+  dataSource?: "direct" | "third_party" | "enrichment"
 }
 
 function summaryValue(v: unknown): string {
@@ -1096,6 +1153,17 @@ export function contactsWriteChanges(params: ContactsWriteParams): string[] {
   if (params.tags !== undefined) {
     lines.push(`Tags → ${params.tags.length > 0 ? params.tags.join(", ") : "(none)"}`)
   }
+  if (params.companyId !== undefined) lines.push(`Company id → ${params.companyId ?? "(none)"}`)
+  if (params.lawfulBasis !== undefined) {
+    lines.push(
+      `Lawful basis → ${params.lawfulBasis}${params.lawfulBasisSource ? ` (${params.lawfulBasisSource})` : ""}`,
+    )
+  } else if (params.lawfulBasisSource !== undefined) {
+    lines.push(`Lawful basis source → ${params.lawfulBasisSource}`)
+  }
+  if (params.isConsumer !== undefined) lines.push(`Consumer → ${params.isConsumer ? "yes" : "no"}`)
+  if (params.recipientCountry !== undefined) lines.push(`Country → ${params.recipientCountry}`)
+  if (params.dataSource !== undefined) lines.push(`Data source → ${params.dataSource}`)
   for (const [k, v] of Object.entries(externalIds ?? {})) lines.push(`${k} → ${v}`)
   for (const [k, v] of Object.entries(metadata ?? {})) lines.push(`${k} → ${summaryValue(v)}`)
   return lines

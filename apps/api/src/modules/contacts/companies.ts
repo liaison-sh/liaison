@@ -26,13 +26,14 @@ import { HTTPException } from "hono/http-exception"
 import { isConsumerMailDomain } from "~/apps/api-connector/consumer-domains"
 import type { RlsClient } from "~/db"
 import { extractRows } from "~/db"
-import { withElevatableRlsFrom } from "~/db/privileged"
-import { type Company, companies, contacts } from "~/db/schema/kernel"
+import { withElevatableRlsFrom, withPrivilegedDb } from "~/db/privileged"
+import { type Company, companies, contacts, userRoles, users } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import { contactsLogger as log } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import { UUID_RE } from "~/lib/uuid"
 import {
+  actorGrantRole,
   asAdmin,
   canManageSharing,
   listGrants,
@@ -193,6 +194,9 @@ export interface CompanyPatch {
   domain?: string | null
   description?: string | null
   tags?: string[]
+  metadata?: Record<string, unknown> | null
+  /** One of the company's people, or null to clear. */
+  mainContactId?: string | null
   /** True ends the relationship (closed_at now), false reopens it. */
   closed?: boolean
 }
@@ -359,10 +363,33 @@ export async function getCompany(
  */
 export async function listCompanies(
   tx: RlsClient,
-  params: { orgId: string; page: number; limit: number; query?: string },
+  params: {
+    orgId: string
+    page: number
+    limit: number
+    query?: string
+    tag?: string
+    /** Only the companies this person manages. */
+    ownerUserId?: string
+    /** Only companies with (true) or without (false) an open deal the caller sees. */
+    hasOpenDeal?: boolean
+  },
 ): Promise<{ rows: CompanyRow[]; total: number }> {
   const { orgId, page, limit } = params
   const conditions = [eq(companies.orgId, orgId)]
+  if (params.tag?.trim()) conditions.push(drizzleSql`${params.tag.trim()} = ANY(${companies.tags})`)
+  if (params.ownerUserId !== undefined) {
+    if (!UUID_RE.test(params.ownerUserId)) return { rows: [], total: 0 }
+    conditions.push(eq(companies.ownerUserId, params.ownerUserId))
+  }
+  if (params.hasOpenDeal !== undefined) {
+    const open = (await dealTablesExist(tx))
+      ? drizzleSql`EXISTS (
+          SELECT 1 FROM ${ps()}.deals d JOIN ${ps()}.tasks t ON t.id = d.task_id AND t.archived_at IS NULL
+           WHERE d.org_id = ${orgId}::uuid AND d.company_id = ${drizzleSql.raw(`${quoteIdent(schemaRef("kernel"))}.companies.id`)} AND d.outcome = 'open')`
+      : drizzleSql`false`
+    conditions.push(params.hasOpenDeal ? open : drizzleSql`NOT ${open}`)
+  }
   const q = params.query?.trim()
   if (q) {
     const asDomain = q
@@ -523,6 +550,30 @@ export async function updateCompany(
     }
     if (patch.description !== undefined) set.description = patch.description?.trim() || null
     if (patch.tags !== undefined) set.tags = cleanTags(patch.tags) ?? []
+    if (patch.metadata !== undefined) set.metadata = patch.metadata
+    if (patch.mainContactId !== undefined) {
+      if (patch.mainContactId !== null) {
+        const [person] = await tx
+          .select({ id: contacts.id })
+          .from(contacts)
+          .where(
+            and(
+              eq(contacts.orgId, orgId),
+              eq(contacts.companyId, companyId),
+              drizzleSql`${contacts.id} = ${UUID_RE.test(patch.mainContactId) ? patch.mainContactId : null}::uuid`,
+            ),
+          )
+          .limit(1)
+        if (!person) {
+          throw new CompanyRequestError(
+            422,
+            "main_contact_not_linked",
+            `The main contact must be one of ${before.name}'s people. Link the person to the company first.`,
+          )
+        }
+      }
+      set.mainContactId = patch.mainContactId
+    }
     const closing = patch.closed === true && before.closedAt === null
     if (patch.closed === true && before.closedAt === null) set.closedAt = new Date()
     if (patch.closed === false) set.closedAt = null
@@ -741,6 +792,585 @@ export async function unlinkContactsFromCompany(
   }
   const done = new Set(updated.map((r) => r.id))
   return { companyId, unlinked: [...done], skipped: params.contactIds.filter((i) => !done.has(i)) }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Account manager                                                            */
+/* -------------------------------------------------------------------------- */
+
+export type ManagerRefusalCode =
+  | "manager_not_found"
+  | "manager_inactive"
+  | "manager_external"
+  | "manager_cannot_see_company"
+
+export interface CompanyRef {
+  id: string
+  name: string
+}
+
+export interface ManagerSkip extends CompanyRef {
+  code: ManagerRefusalCode | "not_found" | "not_editable"
+  reason: string
+}
+
+export interface ManagerChange extends CompanyRef {
+  previousOwnerUserId: string | null
+}
+
+export interface SetManagerResult {
+  manager: { id: string; name: string } | null
+  moved: ManagerChange[]
+  skipped: ManagerSkip[]
+}
+
+/** Company ids among `ids` that `personId` may read: org-visible, created by them, or granted. */
+async function companiesPersonCanRead(
+  orgId: string,
+  personId: string,
+  ids: string[],
+): Promise<Set<string>> {
+  if (ids.length === 0) return new Set()
+  return withPrivilegedDb(orgId, "company-manager-visibility", async (tx) => {
+    const rows = extractRows<{ id: string; org_access: string; created_by: string | null }>(
+      await tx.execute(drizzleSql`
+        SELECT id::text AS id, org_access, created_by::text AS created_by
+          FROM ${ks()}.companies
+         WHERE org_id = ${orgId}::uuid AND id = ANY(${`{${ids.join(",")}}`}::uuid[])`),
+    )
+    const roles = (
+      await tx
+        .select({ roleId: userRoles.roleId })
+        .from(userRoles)
+        .where(and(eq(userRoles.orgId, orgId), eq(userRoles.userId, personId)))
+    ).map((r) => r.roleId)
+    const out = new Set<string>()
+    for (const r of rows) {
+      if (r.org_access !== "none" || r.created_by === personId) out.add(r.id)
+      else if (await actorGrantRole(tx, COMPANY_RESOURCE, r.id, { userId: personId, roles })) {
+        out.add(r.id)
+      }
+    }
+    return out
+  })
+}
+
+/** The person named as account manager, or why they cannot be one. */
+async function managerCandidate(
+  orgId: string,
+  personId: string,
+): Promise<{ id: string; name: string } | { code: ManagerRefusalCode; reason: string }> {
+  const [row] = UUID_RE.test(personId)
+    ? await withPrivilegedDb(orgId, "company-manager-person", (tx) =>
+        tx
+          .select({ id: users.id, name: users.name, status: users.status, type: users.userType })
+          .from(users)
+          .where(and(eq(users.id, personId), eq(users.orgId, orgId)))
+          .limit(1),
+      )
+    : []
+  if (!row) {
+    return {
+      code: "manager_not_found",
+      reason: `No member of this organisation has the id ${personId}. Find them with kernel__users_search.`,
+    }
+  }
+  const name = row.name ?? "This person"
+  if (row.type !== "member") {
+    return {
+      code: "manager_external",
+      reason: `${name} is an outside account, and an account manager is a member of the organisation.`,
+    }
+  }
+  if (row.status !== "active") {
+    return {
+      code: "manager_inactive",
+      reason: `${name} is not an active member, so cannot manage accounts.`,
+    }
+  }
+  return { id: row.id, name: row.name ?? row.id }
+}
+
+/** Why `personId` cannot be an account manager at all, or null when they can. */
+export async function managerRefusal(
+  orgId: string,
+  personId: string,
+): Promise<{ code: ManagerRefusalCode; reason: string } | null> {
+  const who = await managerCandidate(orgId, personId)
+  return "code" in who ? who : null
+}
+
+/**
+ * The ids among `ids` that name no company the requester may know (stage-time
+ * checks of a gated call): org-visible, created by them, or granted. Existence
+ * only: visibility at execution stays the approver's RLS decision.
+ */
+export async function companyIdsUnknownTo(
+  requester: {
+    orgId: string
+    userId?: string
+    roles?: string[]
+    dimensionGrants?: Record<string, string[]>
+  },
+  ids: string[],
+): Promise<string[]> {
+  const valid = [...new Set(ids)].filter((i) => UUID_RE.test(i))
+  if (valid.length === 0) return ids.filter((i) => !UUID_RE.test(i))
+  const known = await withPrivilegedDb(requester.orgId, "company-preflight", async (tx) => {
+    const rows = extractRows<{ id: string; org_access: string; created_by: string | null }>(
+      await tx.execute(drizzleSql`
+        SELECT id::text AS id, org_access, created_by::text AS created_by
+          FROM ${ks()}.companies
+         WHERE org_id = ${requester.orgId}::uuid AND id = ANY(${`{${valid.join(",")}}`}::uuid[])`),
+    )
+    const out = new Set<string>()
+    for (const r of rows) {
+      if (r.org_access !== "none" || (requester.userId && r.created_by === requester.userId)) {
+        out.add(r.id)
+      } else if (
+        requester.userId &&
+        (await actorGrantRole(tx, COMPANY_RESOURCE, r.id, {
+          userId: requester.userId,
+          roles: requester.roles,
+          dimensionGrants: requester.dimensionGrants,
+        }))
+      ) {
+        out.add(r.id)
+      }
+    }
+    return out
+  })
+  return ids.filter((i) => !known.has(i))
+}
+
+/**
+ * Give companies to one account manager (or clear it with null), in one
+ * transaction. The manager must be an active member of the organisation who
+ * can already read each company: nothing is shared as a side effect, and a
+ * company they cannot read is skipped with "Share the company with them
+ * first". Companies the caller cannot see or change are skipped too; the rest
+ * apply. Each change announces `company:update` with the old and the new
+ * manager.
+ */
+export async function setCompanyManager(
+  db: RlsClient,
+  params: { orgId: string; userId: string; companyIds: string[]; ownerUserId: string | null },
+): Promise<SetManagerResult> {
+  const { orgId, userId, ownerUserId } = params
+  const ids = [...new Set(params.companyIds)].filter((i) => UUID_RE.test(i))
+  if (ids.length > COMPANY_LINK_BATCH_MAX) {
+    throw new CompanyRequestError(
+      422,
+      "too_many_companies",
+      `Give at most ${COMPANY_LINK_BATCH_MAX} companies at once.`,
+    )
+  }
+  // The tool call or request runs in one transaction: every change below commits together.
+  const tx = db
+  const visible = await tx
+    .select({ id: companies.id, name: companies.name, ownerUserId: companies.ownerUserId })
+    .from(companies)
+    .where(
+      and(
+        eq(companies.orgId, orgId),
+        drizzleSql`${companies.id} = ANY(${`{${ids.join(",")}}`}::uuid[])`,
+      ),
+    )
+  const byId = new Map(visible.map((c) => [c.id, c]))
+  const skipped: ManagerSkip[] = params.companyIds
+    .filter((id) => !byId.has(id))
+    .map((id) => ({
+      id,
+      name: id,
+      code: "not_found",
+      reason: "No company you can see has this id.",
+    }))
+
+  let manager: { id: string; name: string } | null = null
+  let readable = new Set(visible.map((c) => c.id))
+  if (ownerUserId !== null) {
+    const who = await managerCandidate(orgId, ownerUserId)
+    if ("code" in who) {
+      return {
+        manager: null,
+        moved: [],
+        skipped: [...visible.map((c) => ({ id: c.id, name: c.name, ...who })), ...skipped],
+      }
+    }
+    manager = who
+    readable = await companiesPersonCanRead(
+      orgId,
+      who.id,
+      visible.map((c) => c.id),
+    )
+  }
+
+  const moved: ManagerChange[] = []
+  for (const c of visible) {
+    if (!readable.has(c.id)) {
+      skipped.push({
+        id: c.id,
+        name: c.name,
+        code: "manager_cannot_see_company",
+        reason: `${manager?.name ?? "They"} cannot see ${c.name}. Share the company with them first.`,
+      })
+      continue
+    }
+    if (c.ownerUserId === ownerUserId) {
+      moved.push({ id: c.id, name: c.name, previousOwnerUserId: c.ownerUserId })
+      continue
+    }
+    const [row] = await tx
+      .update(companies)
+      .set({ ownerUserId, updatedAt: new Date() })
+      .where(and(eq(companies.id, c.id), eq(companies.orgId, orgId)))
+      .returning({ id: companies.id })
+    if (!row) {
+      skipped.push({
+        id: c.id,
+        name: c.name,
+        code: "not_editable",
+        reason: `You can see ${c.name} but not change it.`,
+      })
+      continue
+    }
+    moved.push({ id: c.id, name: c.name, previousOwnerUserId: c.ownerUserId })
+    await tx.queueEvent({
+      app: "kernel",
+      entity: "company",
+      action: "update",
+      orgId,
+      actorId: userId,
+      entityId: c.id,
+      data: {
+        id: c.id,
+        name: c.name,
+        ownerUserId,
+        previousOwnerUserId: c.ownerUserId,
+      },
+    })
+  }
+  return { manager, moved, skipped }
+}
+
+/** The account manager of a company with their away state, for a reader of the company. */
+export async function companyAccountManager(
+  orgId: string,
+  ownerUserId: string | null,
+  now: Date = new Date(),
+): Promise<{
+  id: string
+  name: string
+  away: { until: string; nextInLine: { id: string; name: string } | null } | null
+} | null> {
+  if (!ownerUserId) return null
+  const { readAwayToday } = await import("~/modules/users/away")
+  const away = (await readAwayToday(orgId, [ownerUserId], now)).get(ownerUserId)
+  const ids = [ownerUserId, ...(away?.nextInLineId ? [away.nextInLineId] : [])]
+  const people = await withPrivilegedDb(orgId, "company-manager-names", (tx) =>
+    tx
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(
+        and(eq(users.orgId, orgId), drizzleSql`${users.id} = ANY(${`{${ids.join(",")}}`}::uuid[])`),
+      ),
+  )
+  const name = (id: string) => people.find((p) => p.id === id)?.name ?? id
+  return {
+    id: ownerUserId,
+    name: name(ownerUserId),
+    away: away
+      ? {
+          until: away.until,
+          nextInLine: away.nextInLineId
+            ? { id: away.nextInLineId, name: name(away.nextInLineId) }
+            : null,
+        }
+      : null,
+  }
+}
+
+/** Display names of members by id (account managers on a list). */
+export async function memberNames(orgId: string, ids: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids)].filter((i) => UUID_RE.test(i))
+  if (unique.length === 0) return new Map()
+  const rows = await withPrivilegedDb(orgId, "company-manager-names", (tx) =>
+    tx
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(
+        and(
+          eq(users.orgId, orgId),
+          drizzleSql`${users.id} = ANY(${`{${unique.join(",")}}`}::uuid[])`,
+        ),
+      ),
+  )
+  return new Map(rows.map((r) => [r.id, r.name ?? r.id]))
+}
+
+/* -------------------------------------------------------------------------- */
+/* Duplicates and "not the same"                                              */
+/* -------------------------------------------------------------------------- */
+
+export const COMPANY_DUPLICATE_SCAN_CAP = 2000
+
+export interface CompanyCluster {
+  ids: string[]
+  names: string[]
+  signal: "same_domain" | "same_name" | "same_name_and_domain"
+  confidence: "high" | "needs_confirmation"
+}
+
+/**
+ * Pairs of companies the caller sees that look like one: the same business
+ * domain, the same name once case, accents and legal forms are set aside, or
+ * both. A pair marked "not the same" is never returned.
+ */
+export async function findCompanyDuplicates(
+  tx: RlsClient,
+  params: { orgId: string },
+): Promise<{ clusters: CompanyCluster[]; scannedCount: number; coveragePartial: boolean }> {
+  const rows = await tx
+    .select({
+      id: companies.id,
+      name: companies.name,
+      domain: companies.domain,
+      notSameAs: companies.notSameAs,
+    })
+    .from(companies)
+    .where(eq(companies.orgId, params.orgId))
+    .orderBy(companies.createdAt, companies.id)
+    .limit(COMPANY_DUPLICATE_SCAN_CAP + 1)
+  const scanned = rows.slice(0, COMPANY_DUPLICATE_SCAN_CAP)
+  const pairs = new Map<string, CompanyCluster>()
+  const group = (
+    key: (r: (typeof scanned)[number]) => string | null,
+    signal: "domain" | "name",
+  ) => {
+    const by = new Map<string, typeof scanned>()
+    for (const r of scanned) {
+      const k = key(r)
+      if (!k) continue
+      by.set(k, [...(by.get(k) ?? []), r])
+    }
+    for (const members of by.values()) {
+      for (let i = 0; i < members.length; i++) {
+        for (let j = i + 1; j < members.length; j++) {
+          const a = members[i]!
+          const b = members[j]!
+          if (a.notSameAs.includes(b.id) || b.notSameAs.includes(a.id)) continue
+          const [x, y] = a.id < b.id ? [a, b] : [b, a]
+          const pairKey = `${x.id}:${y.id}`
+          const prev = pairs.get(pairKey)
+          const sig = signal === "domain" ? "same_domain" : "same_name"
+          pairs.set(pairKey, {
+            ids: [x.id, y.id],
+            names: [x.name, y.name],
+            signal: prev && prev.signal !== sig ? "same_name_and_domain" : sig,
+            confidence: prev && prev.signal !== sig ? "high" : "needs_confirmation",
+          })
+        }
+      }
+    }
+  }
+  group((r) => r.domain?.toLowerCase() ?? null, "domain")
+  group((r) => companyNameKey(r.name) || null, "name")
+  const clusters = [...pairs.values()].sort((a, b) =>
+    a.confidence === b.confidence ? 0 : a.confidence === "high" ? -1 : 1,
+  )
+  return {
+    clusters,
+    scannedCount: scanned.length,
+    coveragePartial: rows.length > COMPANY_DUPLICATE_SCAN_CAP,
+  }
+}
+
+/**
+ * Record that two companies are not the same (each id goes into the other's
+ * `not_same_as`), or undo it. Both must be companies the caller sees.
+ */
+export async function markCompaniesNotSame(
+  db: RlsClient,
+  params: { orgId: string; userId: string; aId: string; bId: string; undo?: boolean },
+): Promise<{ a: CompanyRef; b: CompanyRef; notSame: boolean }> {
+  const { orgId, aId, bId } = params
+  if (aId === bId) {
+    throw new CompanyRequestError(422, "same_company", "A company is always the same as itself.")
+  }
+  // The tool call or request runs in one transaction: every change below commits together.
+  const tx = db
+  const a = await loadVisible(tx, orgId, aId)
+  const b = await loadVisible(tx, orgId, bId)
+  for (const [self, other] of [
+    [a, b],
+    [b, a],
+  ] as const) {
+    const next = params.undo
+      ? self.notSameAs.filter((id) => id !== other.id)
+      : [...new Set([...self.notSameAs, other.id])]
+    const [row] = await tx
+      .update(companies)
+      .set({ notSameAs: next, updatedAt: new Date() })
+      .where(and(eq(companies.id, self.id), eq(companies.orgId, orgId)))
+      .returning({ id: companies.id })
+    if (!row) {
+      throw new HTTPException(403, { message: `You can see ${self.name} but not change it.` })
+    }
+  }
+  return {
+    a: { id: a.id, name: a.name },
+    b: { id: b.id, name: b.name },
+    notSame: !params.undo,
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Proposals from contacts, and the batch link                                */
+/* -------------------------------------------------------------------------- */
+
+export const COMPANY_PROPOSAL_SCAN_CAP = 5000
+
+export interface CompanyProposal {
+  name: string
+  domain: string | null
+  contactIds: string[]
+  count: number
+  existingCompanyId: string | null
+}
+
+function emailDomain(email: string | null): string | null {
+  const at = email?.lastIndexOf("@") ?? -1
+  if (!email || at < 0) return null
+  const host = email
+    .slice(at + 1)
+    .trim()
+    .toLowerCase()
+  return host && !isConsumerMailDomain(host) ? host : null
+}
+
+/**
+ * Groups of the caller's people who have no company yet, by their company
+ * text (normalised) and, without one, by their business mail domain. Writes
+ * nothing. Each group names an existing company it matches by name or domain.
+ */
+export async function proposeCompaniesFromContacts(
+  tx: RlsClient,
+  params: { orgId: string; limit?: number },
+): Promise<{ groups: CompanyProposal[]; unmatched: number; coveragePartial: boolean }> {
+  const limit = Math.min(Math.max(params.limit ?? 50, 1), 200)
+  const people = await tx
+    .select({ id: contacts.id, company: contacts.company, email: contacts.email })
+    .from(contacts)
+    .where(and(eq(contacts.orgId, params.orgId), drizzleSql`${contacts.companyId} IS NULL`))
+    .orderBy(contacts.createdAt, contacts.id)
+    .limit(COMPANY_PROPOSAL_SCAN_CAP + 1)
+  const scanned = people.slice(0, COMPANY_PROPOSAL_SCAN_CAP)
+  type Acc = { names: Map<string, number>; domains: Map<string, number>; ids: string[] }
+  const groups = new Map<string, Acc>()
+  const domainOnly = new Map<string, string>()
+  let unmatched = 0
+  const bump = (m: Map<string, number>, k: string | null) => {
+    if (k) m.set(k, (m.get(k) ?? 0) + 1)
+  }
+  for (const p of scanned) {
+    const key = companyNameKey(p.company)
+    const domain = emailDomain(p.email)
+    const groupKey = key ? `n:${key}` : domain ? `d:${domain}` : null
+    if (!groupKey) {
+      unmatched += 1
+      continue
+    }
+    const acc = groups.get(groupKey) ?? { names: new Map(), domains: new Map(), ids: [] }
+    bump(acc.names, p.company?.trim().replace(/\s+/g, " ") || null)
+    bump(acc.domains, domain)
+    acc.ids.push(p.id)
+    groups.set(groupKey, acc)
+    if (!key && domain) domainOnly.set(groupKey, domain)
+  }
+  const top = (m: Map<string, number>) =>
+    [...m.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
+
+  const existing = await tx
+    .select({ id: companies.id, name: companies.name, domain: companies.domain })
+    .from(companies)
+    .where(eq(companies.orgId, params.orgId))
+    .limit(COMPANY_DUPLICATE_SCAN_CAP)
+  const byKey = new Map(existing.map((c) => [companyNameKey(c.name), c.id]))
+  const byDomain = new Map(
+    existing.filter((c) => c.domain).map((c) => [c.domain!.toLowerCase(), c.id]),
+  )
+
+  const out: CompanyProposal[] = [...groups.entries()].map(([groupKey, acc]) => {
+    const domain = top(acc.domains)
+    const name = top(acc.names) ?? domainOnly.get(groupKey) ?? groupKey.slice(2)
+    return {
+      name,
+      domain,
+      contactIds: acc.ids,
+      count: acc.ids.length,
+      existingCompanyId:
+        byKey.get(companyNameKey(name)) ?? (domain ? byDomain.get(domain) : undefined) ?? null,
+    }
+  })
+  out.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+  return {
+    groups: out.slice(0, limit),
+    unmatched,
+    coveragePartial: people.length > COMPANY_PROPOSAL_SCAN_CAP || out.length > limit,
+  }
+}
+
+export interface CompanyBatchItem {
+  name: string
+  domain?: string | null
+  contactIds: string[]
+}
+
+/**
+ * Create each named company and link its people, in one transaction. People
+ * the caller cannot change are skipped and named per company.
+ */
+export async function createAndLinkCompanies(
+  db: RlsClient,
+  params: { orgId: string; userId: string; items: CompanyBatchItem[] },
+): Promise<{
+  created: Array<CompanyRef & { linked: number; skipped: string[]; notice?: string }>
+  linked: number
+}> {
+  const { orgId, userId, items } = params
+  if (items.length > COMPANY_LINK_BATCH_MAX) {
+    throw new CompanyRequestError(
+      422,
+      "too_many_companies",
+      `A batch holds at most ${COMPANY_LINK_BATCH_MAX} companies.`,
+    )
+  }
+  // The tool call or request runs in one transaction: every change below commits together.
+  const tx = db
+  const created: Array<CompanyRef & { linked: number; skipped: string[]; notice?: string }> = []
+  let linked = 0
+  for (const item of items) {
+    const made = await createCompany(tx, {
+      orgId,
+      userId,
+      input: { name: item.name, domain: item.domain ?? null },
+    })
+    const link = await linkContactsToCompany(tx, {
+      orgId,
+      userId,
+      companyId: made.company.id,
+      contactIds: item.contactIds,
+    })
+    linked += link.linked.length
+    created.push({
+      id: made.company.id,
+      name: made.company.name,
+      linked: link.linked.length,
+      skipped: link.skipped,
+      ...(made.notice ? { notice: made.notice } : {}),
+    })
+  }
+  return { created, linked }
 }
 
 /* -------------------------------------------------------------------------- */

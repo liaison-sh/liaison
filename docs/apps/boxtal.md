@@ -16,6 +16,8 @@ Boxtal has two API generations and the app needs a key pair for each.
 
 The four keys stay with the server: Liaison adds them to each Boxtal request itself, so the app's code never reads them. Only **Environment** is readable by the app, to pick the sandbox or production API.
 
+Labels are fetched from Boxtal's document host, `document.boxtal.com` in production and `document.boxtal.build` in the sandbox. Both are among the outbound domains an admin approves when installing or upgrading the app.
+
 Connecting needs `boxtal:admin:connection`. Connect a shared company account as an organization connection, or other people and agents get `not_connected`. See [Connect apps](../connecting-apps.md).
 
 Boxtal posts tracking and document events back to Liaison through two webhooks, signed with a secret Liaison generates (`boxtalWebhookSecret`). If tracking stops updating, an agent can re-register them with `webhooks_repair`.

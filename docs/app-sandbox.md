@@ -710,6 +710,11 @@ as, for example, "Tool execution failed after the connection 'erp/erp' (main)
 called erp.example.com, which answered HTTP 404". A warn log line names the
 same in both cases (`apps/api/src/modules/apps/sandbox/upstream-trace.ts`).
 
+A `ctx.fetch` that runs past its timeout ("Fetch timed out after <n>ms") is not
+hidden either: the caller gets `upstream_timeout` (HTTP 504, retryable) with a
+message that the upstream service was slow, that a read can be retried, and that
+a change may already have been applied, so it is checked before a retry.
+
 ### Tiering model (Phase 14+)
 
 With process-level workers, hard resource limits can be enforced per trust tier:

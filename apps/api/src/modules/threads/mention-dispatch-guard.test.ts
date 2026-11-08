@@ -16,6 +16,7 @@ import { type UserContext, withRlsContext } from "~/db/rls"
 import { env } from "~/lib/env"
 import * as agentServiceModule from "~/modules/agent/runtime/agent-service"
 import { AgentServiceTestAccess } from "~/modules/agent/runtime/agent-service"
+import { awaitOrgApps } from "~/modules/apps/init"
 import { signAccessToken } from "~/modules/auth/jwt"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -148,13 +149,19 @@ beforeAll(async () => {
   THREAD = t.id
   await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id) VALUES (${THREAD}, ${USER}, ${ORG})`
   await sql`INSERT INTO kernel.user_thread_state (user_id, thread_id, org_id) VALUES (${USER}, ${THREAD}, ${ORG})`
+  // The org's app setup grants the `member` preset its apps' member scopes and
+  // bumps the members' permission version: finish it first, then mint the
+  // token with the version it left, as a sign-in after setup would.
+  await awaitOrgApps(ORG)
+  const [{ permission_version: permissionVersion }] = await sql<{ permission_version: number }[]>`
+    SELECT permission_version FROM kernel.users WHERE id = ${USER}`
   token = await signAccessToken(
     {
       userId: USER,
       orgId: ORG,
       name: "Guard User",
       authVersion: 1,
-      permissionVersion: 1,
+      permissionVersion,
       scopes: ["kernel"],
     },
     env.JWT_SECRET,

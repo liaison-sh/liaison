@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
 import type { InboundKind } from "~/modules/mail/classify-inbound"
-import { decideSendGuard, type GuardInbound } from "~/modules/mail/send-guard"
+import { decideSendGuard, describeStop, type GuardInbound } from "~/modules/mail/send-guard"
 
 const NOW = new Date("2026-11-06T12:00:00.000Z")
 
@@ -141,5 +141,28 @@ describe("decideSendGuard", () => {
       inbound("new", "auto_reply", "2026-10-20T09:00:00.000Z"),
     ]
     expect(decideSendGuard({ inbound: items, now: NOW })).toEqual({ state: "clear" })
+  })
+})
+
+describe("describeStop: where a stopping reply came in", () => {
+  const at = "2026-11-06T11:00:00.000Z"
+
+  it("a reply on a ticket the caller cannot open names a ticket, not a mailbox", () => {
+    const text = describeStop(
+      { state: "replied", final: true, who: "tomas@example.com", at, source: "ticket" },
+      "approved",
+    )
+    expect(text).toContain("tomas@example.com replied on 2026-11-06 11:00 UTC.")
+    expect(text).toContain("It came in on a ticket you cannot open.")
+    expect(text).toContain("Next: ask whoever handles that ticket")
+    expect(text).not.toContain("mailbox")
+  })
+
+  it("a reply in a mailbox the caller cannot read still says a mailbox", () => {
+    const text = describeStop(
+      { state: "replied", final: true, who: "ann@example.com", at, source: "conversation" },
+      "approved",
+    )
+    expect(text).toContain("It came in to a mailbox you cannot read.")
   })
 })

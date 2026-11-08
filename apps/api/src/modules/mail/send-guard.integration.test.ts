@@ -1184,6 +1184,36 @@ describe("a reply through a ticket inbox", () => {
     expect(String(error?.message)).toContain(`ticket ${ticketId}`)
   }, 60_000)
 
+  it("a stop on a ticket the caller cannot open names a ticket, not a mailbox", async () => {
+    const to = unique("ticket-unreadable")
+    await seedOutbound(to)
+    const { ticketId } = await seedTicketInbound(to)
+    const staged = await executeToolCore({
+      toolName: "mail:compose",
+      orgId,
+      actor: {
+        ...admin,
+        // Every mail scope, none of the tickets app's.
+        scopes: [
+          ...admin.scopes.filter((s: string) => s !== "*"),
+          "mail:accounts:admin",
+          "mail:accounts:read",
+          "mail:accounts:write",
+          "mail:drafts:read",
+          "mail:drafts:write",
+        ],
+      },
+      params: composeParams(to, { followUp: {} }),
+      threadId,
+      origin: "in-app-agent",
+    })
+    if (!("error" in staged)) throw new Error(`not refused: ${JSON.stringify(staged)}`)
+    expect(staged.error.code).toBe("SEND_GUARD_REPLIED")
+    expect(staged.error.message).toContain("It came in on a ticket you cannot open.")
+    expect(staged.error.message).not.toContain(ticketId)
+    expect(staged.error.message).not.toContain("mailbox")
+  }, 60_000)
+
   it("the same when only the ticket's contact is in the set", async () => {
     const to = unique("ticket-contact")
     const contactId = await minimal.contact(orgId, to)

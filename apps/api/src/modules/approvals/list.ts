@@ -449,6 +449,10 @@ async function cardGuard(db: RlsClient, verdict: SendGuardVerdict): Promise<Appr
     ...(verdict.optedOut ? { optedOut: verdict.optedOut } : {}),
     ...(quote ? { quote } : {}),
     ...(readable && verdict.record ? { record: verdict.record } : {}),
+    // Unnamed, the kind still says where it came in: "a reply came in on a ticket".
+    ...(!readable && (verdict.record?.kind ?? verdict.source)
+      ? { source: verdict.record?.kind ?? verdict.source }
+      : {}),
   }
 }
 

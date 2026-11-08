@@ -2544,7 +2544,20 @@
       "refStop": "Non envoyé : la fiche concernée par ce message indique de ne pas l'envoyer.",
       "refStopLabel": "Non envoyé : {{label}}",
       "unavailable": "Le contrôle avant envoi n'a pas pu s'exécuter. Réessayez dans un instant.",
-      "sendNow": "Envoyer maintenant"
+      "sendNow": "Envoyer maintenant",
+      "repliedOnTicket": "Non envoyé : une réponse est arrivée sur un ticket.",
+      "badgeStopped": "Non envoyé",
+      "badgeOptedOut": "Envoi impossible",
+      "badgeHeld": "Retenu",
+      "redraft": "Rédiger une nouvelle réponse à son message",
+      "redraftMessage": "Rédige une nouvelle réponse au message que {{who}} a envoyé après ce brouillon : {{title}}",
+      "redraftFailed": "Impossible de joindre votre agent. Réessayez.",
+      "openConversation": "Ouvrir la conversation",
+      "openTicket": "Ouvrir le ticket",
+      "dismiss": "Retirer",
+      "keepHolding": "Retenir jusqu'au {{until}}",
+      "heldFolded": "Retenu jusqu'au {{until}}. Il revient sur l'accueil ce matin-là.",
+      "discard": "Supprimer"
     }
   },
   "agentUi": {

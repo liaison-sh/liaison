@@ -798,6 +798,48 @@ describe("home decisions", () => {
     expect(screen.getByTestId("home-status").textContent).not.toMatch(/\d+\s*NEED/)
   })
 
+  it("a stopped draft's row offers what its card offers: a new reply, the conversation, Dismiss", () => {
+    const stoppedDraft = approval("ap-stop", {
+      toolName: "mail:compose",
+      actionLabel: "Mail: compose",
+      sendGuard: {
+        state: "replied",
+        who: "Marc Sauvan",
+        quote: "Thanks",
+        record: { kind: "conversation", id: "c-9" },
+      },
+      uncounted: true,
+    })
+    attentionStore._setForTest({ items: [stoppedDraft], errors: [] })
+    render(() => <Home entityId="home" />)
+    const id = row(stoppedDraft)
+    expect(screen.getByTestId(`${id}-redraft`).textContent).toContain(
+      "Draft a new reply from their message",
+    )
+    expect(screen.getByTestId(`${id}-open-record`).textContent).toContain("Open conversation")
+    expect(screen.getByTestId(`${id}-dismiss`)).toBeTruthy()
+    // The bare Open only toggled the card, beside Details: gone on a stopped draft.
+    expect(screen.queryByTestId(`${id}-open`)).toBeNull()
+    expect(screen.queryByTestId(`${id}-approve`)).toBeNull()
+  })
+
+  it("a stop by a reply on a ticket the viewer cannot open names a ticket", () => {
+    const stoppedDraft = approval("ap-stop", {
+      toolName: "mail:compose",
+      actionLabel: "Mail: compose",
+      sendGuard: { state: "replied", who: "tomas@example.test", source: "ticket" },
+      uncounted: true,
+    })
+    attentionStore._setForTest({ items: [stoppedDraft], errors: [] })
+    render(() => <Home entityId="home" />)
+    const id = row(stoppedDraft)
+    expect(screen.getByTestId(`${id}-guard`).textContent).toBe(
+      "Not sent: a reply came in on a ticket.",
+    )
+    expect(screen.queryByTestId(`${id}-redraft`)).toBeNull()
+    expect(screen.queryByTestId(`${id}-open-record`)).toBeNull()
+  })
+
   it("a computed row has no Not now", () => {
     const computed = attention("c-1", { persisted: undefined, kind: "sla_risk", summary: "SLA" })
     const persisted = attention("p-1")

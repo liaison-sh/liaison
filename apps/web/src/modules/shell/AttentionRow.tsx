@@ -69,6 +69,7 @@ import {
   NotNowButton,
   offersAskDraft,
   offersNotNow,
+  StoppedDraftActions,
 } from "~/modules/shell/AttentionRowExtras"
 import { clearApprovalFocus, focusedApproval } from "~/modules/shell/approval-focus"
 import {
@@ -217,8 +218,10 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
   // (the scope-request inbox is admin-only), so it's informational-only:
   // not clickable, no Open button, and no approve/deny.
   const isScopeRequestDecided = (): boolean => props.item.kind === "scope_request_decided"
+  // A stopped draft's Open only toggled its card, beside Details: its row offers the card's own
+  // ways forward instead (StoppedDraftActions).
   const isNavigable = (): boolean =>
-    (!hasInlineActions() && !isScopeRequestDecided() && !wedged()) ||
+    (!hasInlineActions() && !isScopeRequestDecided() && !wedged() && !stoppedDraft()) ||
     (isApproval() && decideInContext())
 
   // Gated-action chip data (approval rows). `actionLabel` is the humanized
@@ -809,6 +812,9 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
               <Show when={offersNotNow(props.item)}>
                 <NotNowButton item={props.item} testId={testId()} compact />
               </Show>
+              <Show when={stoppedDraft()}>
+                <StoppedDraftActions item={props.item} testId={testId()} compact />
+              </Show>
               <Show when={stoppedDraft() || isStoppedSendNotice(props.item)}>
                 <DismissButton
                   item={props.item}
@@ -1048,6 +1054,9 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
             </Show>
             <Show when={offersNotNow(props.item)}>
               <NotNowButton item={props.item} testId={testId()} compact={false} />
+            </Show>
+            <Show when={stoppedDraft()}>
+              <StoppedDraftActions item={props.item} testId={testId()} compact={false} />
             </Show>
             <Show when={stoppedDraft() || isStoppedSendNotice(props.item)}>
               <DismissButton

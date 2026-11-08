@@ -3,6 +3,16 @@ import type { ApprovalSendGuard } from "@liaison/shared"
 
 type T = (key: string, params?: Record<string, string>) => string
 
+/** A hold's day as "17 Nov": day first, no weekday, no year, in the viewer's language. */
+export function guardDay(iso: string, locale: string): string {
+  const parts = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).formatToParts(
+    new Date(iso),
+  )
+  const day = parts.find((p) => p.type === "day")?.value ?? ""
+  const month = parts.find((p) => p.type === "month")?.value ?? ""
+  return `${day} ${month}`.trim()
+}
+
 /**
  * What the send check says about a mail draft, in one line: the same words on the card and on
  * its Home row. Null when there is nothing to say (a clear check, or none).
@@ -18,13 +28,12 @@ export function sendGuardLine(
     case "held":
       return t("kernel.approvalsUi.sendGuard.held", {
         who,
-        until: g.holdUntil
-          ? new Date(g.holdUntil).toLocaleDateString(locale, { day: "numeric", month: "short" })
-          : "",
+        until: g.holdUntil ? guardDay(g.holdUntil, locale) : "",
       })
     case "replied":
-      return g.record || g.quote
-        ? t("kernel.approvalsUi.sendGuard.replied", { who })
+      if (g.record || g.quote) return t("kernel.approvalsUi.sendGuard.replied", { who })
+      return g.source === "ticket"
+        ? t("kernel.approvalsUi.sendGuard.repliedOnTicket")
         : t("kernel.approvalsUi.sendGuard.repliedElsewhere")
     case "bounced":
       return t("kernel.approvalsUi.sendGuard.bounced")

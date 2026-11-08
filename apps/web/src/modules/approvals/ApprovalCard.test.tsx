@@ -49,6 +49,18 @@ vi.mock("~/modules/shell/tab-store", () => ({
   openTab: vi.fn(),
 }))
 
+const redraftMocks = vi.hoisted(() => ({
+  ensureDm: vi.fn(async () => "dm-1"),
+  send: vi.fn(async () => {}),
+}))
+vi.mock("~/modules/threads/personal-dm-store", () => ({
+  ensurePersonalAgentDm: redraftMocks.ensureDm,
+}))
+vi.mock("~/modules/threads/message-store", async (orig) => ({
+  ...(await orig<object>()),
+  sendMessage: redraftMocks.send,
+}))
+
 const baseRow = (over: Partial<any> = {}): any => ({
   id: "ar-1",
   handle: "request-0001",
@@ -1633,8 +1645,135 @@ describe("ApprovalCard: the send check on an agent's mail draft", () => {
     )
     expect(screen.queryByTestId("approval-card-action-approve")).toBeNull()
     expect(screen.queryByTestId("approval-card-action-send-now")).toBeNull()
-    // Reject stays, so the person can close it.
-    expect(screen.getByTestId("approval-card-action-deny")).toBeInTheDocument()
+    // Dismiss closes it; Reject and Edit have nothing left to act on.
+    expect(screen.getAllByTestId("approval-card-action-dismiss").length).toBeGreaterThan(0)
+    expect(screen.queryByTestId("approval-card-action-deny")).toBeNull()
+    expect(screen.queryByTestId("approval-card-action-edit")).toBeNull()
+  })
+
+  it("a stopped card reads Not sent and offers a new reply, the conversation and Dismiss only", async () => {
+    apiMocks.post.mockResolvedValue({ id: "ar-1", status: "denied" })
+    handleWsCreate(
+      guarded({
+        state: "replied",
+        who: "client@example.test",
+        at: "2026-11-06T10:00:00.000Z",
+        record: { kind: "conversation", id: "c-1" },
+      }),
+      "u-approver",
+    )
+    render(() => <ApprovalCard requestId="ar-1" />)
+    expect(await screen.findByTestId("approval-card-status-badge")).toHaveTextContent("Not sent")
+    const actions = screen
+      .getAllByTestId(/^approval-card-action-/)
+      .map((b) => b.getAttribute("data-testid"))
+    expect([...new Set(actions)]).toEqual([
+      "approval-card-action-redraft",
+      "approval-card-action-open-record",
+      "approval-card-action-dismiss",
+    ])
+    expect(screen.getAllByTestId("approval-card-action-redraft")[0]).toHaveTextContent(
+      "Draft a new reply from their message",
+    )
+    expect(screen.getAllByTestId("approval-card-action-open-record")[0]).toHaveTextContent(
+      "Open conversation",
+    )
+    // Dismiss puts the draft away through its own decision, with no reason asked.
+    fireEvent.click(screen.getAllByTestId("approval-card-action-dismiss")[0] as HTMLElement)
+    await waitFor(() => expect(apiMocks.post).toHaveBeenCalled())
+    expect(apiMocks.post.mock.calls[0]?.[1]).toMatchObject({ decision: "deny" })
+    expect(screen.queryByTestId("approval-card-deny-reason")).toBeNull()
+  })
+
+  it("Draft a new reply starts a turn in the Personal agent conversation on the message", async () => {
+    const { openTab } = await import("~/modules/shell/tab-store")
+    redraftMocks.send.mockClear()
+    handleWsCreate(
+      guarded({
+        state: "replied",
+        who: "client@example.test",
+        record: { kind: "ticket", id: "tk-1" },
+      }),
+      "u-approver",
+    )
+    render(() => <ApprovalCard requestId="ar-1" />)
+    expect(await screen.findAllByTestId("approval-card-action-open-record")).not.toHaveLength(0)
+    expect(screen.getAllByTestId("approval-card-action-open-record")[0]).toHaveTextContent(
+      "Open ticket",
+    )
+    fireEvent.click(screen.getAllByTestId("approval-card-action-redraft")[0] as HTMLElement)
+    await waitFor(() => expect(redraftMocks.send).toHaveBeenCalled())
+    const call = redraftMocks.send.mock.calls[0] as unknown[]
+    expect(call[1]).toBe("dm-1")
+    expect(call[2]).toContain("client@example.test")
+    expect(call[4]).toMatchObject({ currentView: { tabType: "tickets:ticket", entityId: "tk-1" } })
+    expect(vi.mocked(openTab)).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "thread", entityId: "dm-1" }),
+    )
+    expect(apiMocks.post).not.toHaveBeenCalled()
+  })
+
+  it("a stop the viewer cannot open offers Dismiss alone", async () => {
+    handleWsCreate(guarded({ state: "replied", who: "client@example.test" }), "u-approver")
+    render(() => <ApprovalCard requestId="ar-1" />)
+    expect(await screen.findAllByTestId("approval-card-action-dismiss")).not.toHaveLength(0)
+    expect(screen.queryByTestId("approval-card-action-redraft")).toBeNull()
+    expect(screen.queryByTestId("approval-card-action-open-record")).toBeNull()
+    expect(screen.queryByTestId("approval-card-action-edit")).toBeNull()
+    expect(screen.queryByTestId("approval-card-action-deny")).toBeNull()
+  })
+
+  it("a reply on a ticket the viewer cannot open names a ticket", async () => {
+    handleWsCreate(
+      guarded({ state: "replied", who: "client@example.test", source: "ticket" }),
+      "u-approver",
+    )
+    render(() => <ApprovalCard requestId="ar-1" />)
+    expect(await screen.findByTestId("approval-card-send-guard")).toHaveTextContent(
+      "Not sent: a reply came in on a ticket.",
+    )
+  })
+
+  it("Held: badge Held, Keep holding first, and it folds to one line with no call", async () => {
+    handleWsCreate(
+      guarded({
+        state: "held",
+        who: "client@example.test",
+        at: "2026-11-06T10:00:00.000Z",
+        holdUntil: "2026-11-17T08:00:00.000Z",
+      }),
+      "u-approver",
+    )
+    render(() => <ApprovalCard requestId="ar-1" />)
+    expect(await screen.findByTestId("approval-card-status-badge")).toHaveTextContent("Held")
+    const actions = screen
+      .getAllByTestId(/^approval-card-action-/)
+      .map((b) => b.getAttribute("data-testid"))
+    expect([...new Set(actions)]).toEqual([
+      "approval-card-action-keep-holding",
+      "approval-card-action-send-now",
+      "approval-card-action-discard",
+    ])
+    const keep = screen.getAllByTestId("approval-card-action-keep-holding")[0] as HTMLElement
+    expect(keep).toHaveTextContent("Keep holding until 17 Nov")
+    apiMocks.get.mockClear()
+    fireEvent.click(keep)
+    expect(await screen.findByTestId("approval-card-held-folded")).toHaveTextContent(
+      "Held until 17 Nov. It comes back to Home that morning.",
+    )
+    expect(screen.queryByTestId("approval-card-send-guard")).toBeNull()
+    expect(screen.queryByTestId("approval-card-action-send-now")).toBeNull()
+    expect(apiMocks.post).not.toHaveBeenCalled()
+    expect(apiMocks.get).not.toHaveBeenCalled()
+  })
+
+  it("Held: Discard is the reject", async () => {
+    handleWsCreate(guarded({ state: "held", holdUntil: "2026-11-17T08:00:00.000Z" }), "u-approver")
+    render(() => <ApprovalCard requestId="ar-1" />)
+    fireEvent.click(
+      (await screen.findAllByTestId("approval-card-action-discard"))[0] as HTMLElement,
+    )
+    expect(await screen.findByTestId("approval-card-deny-reason")).toBeInTheDocument()
   })
 
   it("a reply in a mailbox the viewer cannot read says so, with no quote", async () => {

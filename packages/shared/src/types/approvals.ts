@@ -156,6 +156,8 @@ export interface ApprovalSendGuard {
   optedOut?: string[]
   /** Where the message sits, when the viewer can open it. */
   record?: { kind: "conversation" | "ticket"; id: string }
+  /** Where the message came in, without naming it: set when the viewer cannot open it. */
+  source?: "conversation" | "ticket"
 }
 
 /** Who asked for an approval (see `ApprovalRequestSummary.requester`). */

@@ -2547,7 +2547,20 @@
       "refStop": "Not sent: the record this mail is about says not to send it.",
       "refStopLabel": "Not sent: {{label}}",
       "unavailable": "The check before sending could not run. Try again shortly.",
-      "sendNow": "Send now"
+      "sendNow": "Send now",
+      "repliedOnTicket": "Not sent: a reply came in on a ticket.",
+      "badgeStopped": "Not sent",
+      "badgeOptedOut": "Cannot send",
+      "badgeHeld": "Held",
+      "redraft": "Draft a new reply from their message",
+      "redraftMessage": "Draft a new reply to the message {{who}} sent after this draft: {{title}}",
+      "redraftFailed": "Could not reach your agent. Try again.",
+      "openConversation": "Open conversation",
+      "openTicket": "Open ticket",
+      "dismiss": "Dismiss",
+      "keepHolding": "Keep holding until {{until}}",
+      "heldFolded": "Held until {{until}}. It comes back to Home that morning.",
+      "discard": "Discard"
     }
   },
   "agentUi": {

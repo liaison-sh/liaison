@@ -153,6 +153,8 @@ export interface SendGuardVerdict {
   /** Why the check could not run, in plain words. Never message text. */
   reason?: string
   record?: GuardRecord
+  /** Where the message came in when the caller cannot open it: a ticket is named as one. */
+  source?: GuardRecord["kind"]
 }
 
 // ── Recipients ──────────────────────────────────────────────────────────────
@@ -1056,7 +1058,10 @@ function day(iso: string): string {
 
 function whereItCameIn(verdict: SendGuardVerdict): string {
   const record = verdict.record
-  if (!record) return "It came in to a mailbox you cannot read."
+  if (!record)
+    return verdict.source === "ticket"
+      ? "It came in on a ticket you cannot open."
+      : "It came in to a mailbox you cannot read."
   return record.kind === "ticket"
     ? `It is on ticket ${record.id}.`
     : `It is in conversation ${record.id}.`
@@ -1065,7 +1070,9 @@ function whereItCameIn(verdict: SendGuardVerdict): string {
 function nextAfterReply(verdict: SendGuardVerdict): string {
   const record = verdict.record
   if (!record)
-    return "Next: ask whoever holds that mailbox, or tell the person who wanted this mail."
+    return verdict.source === "ticket"
+      ? "Next: ask whoever handles that ticket, or tell the person who wanted this mail."
+      : "Next: ask whoever holds that mailbox, or tell the person who wanted this mail."
   return record.kind === "ticket"
     ? `Next: read ticket ${record.id} and answer there if it still needs an answer.`
     : `Next: read conversation ${record.id} and write a new reply if one is still needed.`

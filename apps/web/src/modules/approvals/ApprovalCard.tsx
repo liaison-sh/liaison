@@ -62,7 +62,15 @@ import { emailBodyPreset } from "~/modules/approvals/email-body"
 import { createPayloadFileNames } from "~/modules/approvals/payload-file-names"
 import SkillApprovalView from "~/modules/approvals/SkillApprovalView"
 import { SummaryLineText } from "~/modules/approvals/SummaryLineText"
-import { sendGuardLine } from "~/modules/approvals/send-guard-line"
+import {
+  isFinalStop,
+  openRecordLabel,
+  openStopRecord,
+  redraftRecord,
+  startRedraft,
+  stopRecord,
+} from "~/modules/approvals/send-guard-actions"
+import { guardDay, sendGuardLine } from "~/modules/approvals/send-guard-line"
 import { useEditableDraft } from "~/modules/approvals/useEditableDraft"
 import { ComposerAssist } from "~/modules/assist/ComposerAssist"
 import { DictationMic, RecorderRow } from "~/modules/assist/RecorderBar"
@@ -1365,6 +1373,8 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
 
   // deny state
   const [denying, setDenying] = createSignal(false)
+  // "Keep holding" is the computed hold left as it is: the card folds to one line, no call.
+  const [heldFolded, setHeldFolded] = createSignal(false)
   const [denyReason, setDenyReason] = createSignal("")
 
   function startExecuting() {
@@ -1692,6 +1702,13 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
     )
   }
   const guardHeld = () => sendGuard()?.state === "held"
+  // A reply, a bounce or the record's own stop: the draft as written is done. The card offers
+  // a new reply, where the message sits, and Dismiss, never Edit, Reject or Approve.
+  const guardFinal = () => isFinalStop(sendGuard())
+  const heldDay = (): string => {
+    const until = sendGuard()?.holdUntil
+    return until ? guardDay(until, i18n.locale()) : ""
+  }
   const decidable = () => !editing() && !denying() && isPending() && canApprove()
   const showApprove = () => decidable() && !guardStopped() && !guardHeld()
   const showSendNow = () => decidable() && guardHeld()
@@ -1713,10 +1730,17 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
   // backend decide authz (decide.ts: deny allowed for in-audience approver OR
   // requester). Previously gated on isRequester() only, so an approver could
   // approve but never deny.
-  const showDeny = () => !editing() && !denying() && isPending() && (canApprove() || isRequester())
+  const showDeny = () =>
+    !editing() &&
+    !denying() &&
+    isPending() &&
+    !guardFinal() &&
+    !guardHeld() &&
+    (canApprove() || isRequester())
   const showEdit = () => {
     const c = current()
     if (!c) return false
+    if (guardFinal() || guardHeld()) return false
     if (!isPending() || editing() || denying()) return false
     if (c.editableFields.length === 0) return false
     // A sealed draft is edited only once this browser has opened it: until then
@@ -1726,9 +1750,90 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
     return canApprove() || isRequester()
   }
 
+  /** Put a stopped draft away through its own decision. Nothing is sent. */
+  async function onDismissStopped() {
+    if (!apiCtx) return
+    announceApprovalDecided(cardEl)
+    startExecuting()
+    try {
+      await decide(apiCtx, props.requestId, "deny", {})
+      setOptimistic("decided")
+    } catch (err) {
+      handleDecideError(err)
+    }
+  }
+
+  // A stopped or held mail draft's own row of actions, primary first; null for any other card.
+  const guardActions = (): SheetAction[] | null => {
+    if (!isPending() || editing() || denying()) return null
+    const g = sendGuard()
+    const may = canApprove() || isRequester()
+    if (guardFinal()) {
+      const actions: SheetAction[] = []
+      const api = apiCtx
+      if (redraftRecord(g) && g && api) {
+        actions.push({
+          label: i18n.t("kernel.approvalsUi.sendGuard.redraft"),
+          testid: "approval-card-action-redraft",
+          onClick: () => {
+            const c = current()
+            void startRedraft(api, g, c ? summaryTitleOf(c) : "", i18n.t)
+          },
+        })
+      }
+      const record = stopRecord(g)
+      if (record && api) {
+        const label = openRecordLabel(record, i18n.t)
+        actions.push({
+          label,
+          testid: "approval-card-action-open-record",
+          onClick: () => openStopRecord(api, record, label),
+        })
+      }
+      if (may) {
+        actions.push({
+          label: i18n.t("kernel.approvalsUi.sendGuard.dismiss"),
+          testid: "approval-card-action-dismiss",
+          entityId: props.requestId,
+          onClick: () => void onDismissStopped(),
+        })
+      }
+      return actions
+    }
+    if (guardHeld() && !heldFolded()) {
+      const actions: SheetAction[] = [
+        {
+          label: i18n.t("kernel.approvalsUi.sendGuard.keepHolding", { until: heldDay() }),
+          testid: "approval-card-action-keep-holding",
+          onClick: () => setHeldFolded(true),
+        },
+      ]
+      if (canApprove()) {
+        actions.push({
+          label: i18n.t("kernel.approvalsUi.sendGuard.sendNow"),
+          testid: "approval-card-action-send-now",
+          entityId: props.requestId,
+          onClick: () => void onApprove("auto_reply"),
+        })
+      }
+      if (may) {
+        actions.push({
+          label: i18n.t("kernel.approvalsUi.sendGuard.discard"),
+          testid: "approval-card-action-discard",
+          onClick: () => setDenying(true),
+        })
+      }
+      return actions
+    }
+    if (guardHeld()) return []
+    return null
+  }
+
   // The card's decide row, as data: the same actions feed the inline desktop
   // row and the phone bottom sheet.
   const pendingActions = (): SheetAction[] => {
+    const guarded = guardActions()
+    if (guarded) return guarded
     const actions: SheetAction[] = []
     if (showEdit()) {
       actions.push({
@@ -1810,6 +1915,12 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
     if (c.status === "denied") return i18n.t("kernel.approvalsUi.denied")
     if (c.status === "expired") return i18n.t("kernel.approvalsUi.expired")
     if (c.status === "withdrawn") return i18n.t("kernel.approvalsUi.withdrawn")
+    if (isPending()) {
+      if (guardFinal()) return i18n.t("kernel.approvalsUi.sendGuard.badgeStopped")
+      if (sendGuard()?.state === "opted_out")
+        return i18n.t("kernel.approvalsUi.sendGuard.badgeOptedOut")
+      if (guardHeld()) return i18n.t("kernel.approvalsUi.sendGuard.badgeHeld")
+    }
     return null
   }
 
@@ -2003,7 +2114,15 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
                   </Show>
 
                   {/* What the send check says now, read for this card. Calm: a line, not an alarm. */}
-                  <Show when={guardLine()}>
+                  <Show when={guardHeld() && heldFolded()}>
+                    <div
+                      class="mt-2 text-[12px] text-text-secondary"
+                      data-testid="approval-card-held-folded"
+                    >
+                      {i18n.t("kernel.approvalsUi.sendGuard.heldFolded", { until: heldDay() })}
+                    </div>
+                  </Show>
+                  <Show when={!(guardHeld() && heldFolded()) && guardLine()}>
                     {(line) => (
                       <div
                         class="mt-2 rounded border border-border px-2 py-1.5 text-[12px] text-text-secondary"
@@ -2647,6 +2766,23 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
                             "calc(env(safe-area-inset-bottom, 0px) + var(--shell-bottom-bar, 0px))",
                         }}
                       >
+                        <For each={guardActions() ?? []}>
+                          {(action, i) => (
+                            <button
+                              type="button"
+                              data-testid={action.testid}
+                              data-entity-id={action.entityId}
+                              class={
+                                i() === 0
+                                  ? "min-h-11 flex-[1.4] rounded-lg bg-accent px-2 text-[15px] font-medium text-accent-foreground"
+                                  : "min-h-11 flex-1 rounded-lg border border-border px-2 text-[15px] text-text"
+                              }
+                              onClick={() => action.onClick()}
+                            >
+                              {action.label}
+                            </button>
+                          )}
+                        </For>
                         <Show when={showDeny()}>
                           <button
                             type="button"
@@ -2667,7 +2803,7 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
                             {i18n.t("kernel.approvalEdit")}
                           </button>
                         </Show>
-                        <Show when={showSendNow()}>
+                        <Show when={showSendNow() && guardActions() === null}>
                           <button
                             type="button"
                             data-testid="approval-card-action-send-now"

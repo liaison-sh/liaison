@@ -112,8 +112,13 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
     return rows.map((row) => row.id)
   }
 
-  /** A stop names the record only if the caller can open it: a colleague's mailbox stays unnamed. */
-  const withReadableRecord = async <T extends { record?: { kind: string; id: string } }>(
+  /**
+   * A stop names the record only if the caller can open it: a colleague's mailbox stays unnamed.
+   * Its kind stays as `source`, so a reply on a ticket still reads as a ticket.
+   */
+  const withReadableRecord = async <
+    T extends { record?: { kind: "conversation" | "ticket"; id: string }; source?: string },
+  >(
     verdict: T,
   ): Promise<T> => {
     const record = verdict.record
@@ -131,7 +136,7 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
       // Not readable by this caller, by any means: the stop stays, unnamed.
     }
     const { record: _unnamed, ...rest } = verdict
-    return rest as T
+    return { ...rest, source: record.kind } as T
   }
 
   return {

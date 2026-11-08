@@ -5,6 +5,13 @@
 import type { ApprovalSendGuard, AttentionItem } from "@liaison/shared"
 import { type Component, createSignal, Show } from "solid-js"
 import { cn } from "~/lib/cn"
+import {
+  openRecordLabel,
+  openStopRecord,
+  redraftRecord,
+  startRedraft,
+  stopRecord,
+} from "~/modules/approvals/send-guard-actions"
 import { sendGuardLine } from "~/modules/approvals/send-guard-line"
 import { userFromToken } from "~/modules/auth/auth-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
@@ -208,5 +215,59 @@ export const DismissButton: Component<{
     >
       {i18n.t("kernel.homeDecisions.dismiss")}
     </button>
+  )
+}
+
+/**
+ * A stopped draft's ways forward, the same as on its card: a new reply from the message that
+ * stopped it (primary) and where that message sits. Shown only when the viewer can open it.
+ */
+export const StoppedDraftActions: Component<{
+  item: AttentionItem
+  testId: string
+  compact: boolean
+}> = (props) => {
+  const api = useApi()
+  const i18n = useI18n()
+  const [busy, setBusy] = createSignal(false)
+  const guard = () => rowSendGuard(props.item)
+  return (
+    <>
+      <Show when={redraftRecord(guard())}>
+        <button
+          type="button"
+          data-testid={`${props.testId}-redraft`}
+          disabled={busy()}
+          onClick={(e) => {
+            e.stopPropagation()
+            const g = guard()
+            if (!g || busy()) return
+            setBusy(true)
+            void startRedraft(api, g, props.item.summary, i18n.t).finally(() => setBusy(false))
+          }}
+          class={cn(
+            "flex shrink-0 items-center justify-center rounded-md border border-accent-border bg-accent-glow font-medium text-accent transition-colors hover:bg-accent-wash disabled:opacity-50",
+            props.compact ? "min-h-11 px-3 text-[13px]" : "px-2 py-1 text-[12px]",
+          )}
+        >
+          {i18n.t("kernel.approvalsUi.sendGuard.redraft")}
+        </button>
+      </Show>
+      <Show when={stopRecord(guard())}>
+        {(record) => (
+          <button
+            type="button"
+            data-testid={`${props.testId}-open-record`}
+            onClick={(e) => {
+              e.stopPropagation()
+              openStopRecord(api, record(), openRecordLabel(record(), i18n.t))
+            }}
+            class={buttonClass(props.compact)}
+          >
+            {openRecordLabel(record(), i18n.t)}
+          </button>
+        )}
+      </Show>
+    </>
   )
 }

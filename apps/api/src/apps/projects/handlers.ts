@@ -89,16 +89,29 @@ async function get(
   return JSON.parse(await ctx.projects_get(JSON.stringify(params ?? {})))
 }
 
-/** Who a pending approval about a task is for: the task's assignee. */
+/**
+ * Who a pending approval about a task is for: the task's assignee. A deal's task also names the
+ * deal's company, whose account manager comes next when the owner cannot decide.
+ */
 async function approvalRouteRead(
   params: Record<string, unknown> | undefined,
   ctx: ProjectsSandboxCtx,
 ): Promise<unknown> {
   if (params?.entityType !== "task" || typeof params.entityId !== "string")
-    return { personId: null }
+    return { personId: null, companyId: null }
   const data = JSON.parse(await ctx.projects_get(JSON.stringify({ taskId: params.entityId })))
   const assignee = data?.task?.assigneeId ?? data?.assigneeId
-  return { personId: typeof assignee === "string" ? assignee : null }
+  let companyId: string | null = null
+  try {
+    const deals = JSON.parse(
+      await ctx.projects_dealsSearch(JSON.stringify({ taskId: params.entityId, limit: 1 })),
+    )
+    const found = deals?.items?.[0]?.deal?.companyId
+    companyId = typeof found === "string" ? found : null
+  } catch {
+    // Not a deal the asker can see: no company, the assignee alone.
+  }
+  return { personId: typeof assignee === "string" ? assignee : null, companyId }
 }
 
 // task label taxonomy: pass-throughs to the projects_labels* bridge methods.

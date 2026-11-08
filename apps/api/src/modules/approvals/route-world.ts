@@ -23,6 +23,7 @@ import {
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
+import { withRlsContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
 import { appsLogger as log } from "~/lib/logger"
 import { authorityFacts, decidingScope } from "~/modules/approvals/authority"
@@ -46,6 +47,8 @@ export interface RoutableApprovalRow {
   approve_scope: string | null
   resource_owner_id: string | null
   route_person_id?: string | null
+  /** The company the request is about; absent when the caller did not select it. */
+  route_company_id?: string | null
 }
 
 /** The app a request's tool belongs to: it decides a restriction, as the select policy does. */
@@ -263,9 +266,10 @@ export interface RoutedRows {
 }
 
 /**
- * The route of every row of one feed. Owner-routed rows never read the world. A company's
- * manager is not read yet: no company table carries one at this release, so `managerId` is
- * null and a row with no person on it goes to the usual deciders, as before.
+ * The route of every row of one feed. Owner-routed rows never read the world. A row about a
+ * company (`route_company_id`) names that company's account manager, read now, so a hand-over
+ * moves every waiting row on the next read without writing one. No company, or a company with
+ * no manager: the row goes on as before.
  */
 export async function readApprovalRoutes(
   tx: RlsClient,
@@ -288,6 +292,57 @@ export async function readRoutesIgnoringAway(
   return routesIn(tx, orgId, rows, NOBODY_AWAY)
 }
 
+/**
+ * The account manager of each row's company, by row id. The company column is read on `tx`
+ * when the caller did not select it; the manager is read privileged, and only for rows that
+ * name a company: who looks after a company is not a question of who may read it, so a viewer
+ * who cannot see a private company places its row as everyone else does. A feed with no row
+ * about a company makes no privileged read.
+ */
+async function readRowManagers(
+  tx: Reader,
+  orgId: string,
+  rows: readonly RoutableApprovalRow[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  const companyOf = new Map<string, string>()
+  const unread = rows.filter((r) => r.resource_owner_id == null && r.route_company_id === undefined)
+  for (const r of rows) {
+    if (r.resource_owner_id == null && r.route_company_id) companyOf.set(r.id, r.route_company_id)
+  }
+  if (unread.length > 0) {
+    const found = extractRows<{ id: string; route_company_id: string }>(
+      await tx.execute(drizzleSql`
+        SELECT id, route_company_id FROM ${K}.approval_requests
+        WHERE org_id = ${orgId}::uuid AND route_company_id IS NOT NULL
+          AND id IN (${drizzleSql.join(
+            unread.map((r) => drizzleSql`${r.id}::uuid`),
+            drizzleSql`, `,
+          )})`),
+    )
+    for (const f of found) companyOf.set(f.id, f.route_company_id)
+  }
+  if (companyOf.size === 0) return out
+  const companyIds = [...new Set(companyOf.values())]
+  const managers = await withPrivilegedDb(orgId, "approval-route-manager", async (ptx) =>
+    extractRows<{ id: string; owner_user_id: string }>(
+      await ptx.execute(drizzleSql`
+        SELECT id, owner_user_id FROM ${K}.companies
+        WHERE org_id = ${orgId}::uuid AND owner_user_id IS NOT NULL
+          AND id IN (${drizzleSql.join(
+            companyIds.map((id) => drizzleSql`${id}::uuid`),
+            drizzleSql`, `,
+          )})`),
+    ),
+  )
+  const managerOf = new Map(managers.map((m) => [m.id, m.owner_user_id]))
+  for (const [rowId, companyId] of companyOf) {
+    const managerId = managerOf.get(companyId)
+    if (managerId) out.set(rowId, managerId)
+  }
+  return out
+}
+
 /** The routes of `rows` in a given away world, every other fact read on `tx`. */
 async function routesIn(
   tx: Reader,
@@ -295,20 +350,25 @@ async function routesIn(
   rows: readonly RoutableApprovalRow[],
   awayWorld: AwayWorld,
 ): Promise<RoutedRows> {
-  // Everyone a route may name, per row: requester, person on the item, and the away chain.
+  // Everyone a route may name, per row: requester, person on the item, the company's manager,
+  // and the away chain.
+  const managers = await readRowManagers(tx, orgId, rows)
   const pairs = new Map<string, { userId: string; scope: string; app: string }>()
   const chainPeople = new Set<string>(awayWorld.people)
   for (const r of rows) {
     const scope = decidingScope(authorityFacts(r))
     const app = toolApp(r.tool_name)
     const people = new Set([r.requested_by, ...awayWorld.people])
+    const managerId = managers.get(r.id)
     if (r.route_person_id) people.add(r.route_person_id)
+    if (managerId) people.add(managerId)
     for (const userId of people) {
       if (userId === r.requested_by || (r.notify_user_ids ?? []).includes(userId)) {
         pairs.set(pairKey(userId, scope, app), { userId, scope, app })
       }
     }
     if (r.route_person_id) chainPeople.add(r.route_person_id)
+    if (managerId) chainPeople.add(managerId)
   }
   const decides = await readPeopleDecide(tx, orgId, pairs)
   for (const r of rows) chainPeople.add(r.requested_by)
@@ -343,7 +403,7 @@ async function routesIn(
         authorityFacts(r),
         {
           routePersonId: r.route_person_id ?? null,
-          managerId: null,
+          managerId: managers.get(r.id) ?? null,
           minApprovers: r.metadata?.minApprovers ?? 1,
           stalled: r.status === "approving",
           peer: {
@@ -368,18 +428,27 @@ async function routesIn(
 export async function readLockedApprovalRoute(
   tx: Reader,
   orgId: string,
-  row: Omit<RoutableApprovalRow, "route_person_id">,
+  row: Omit<RoutableApprovalRow, "route_person_id" | "route_company_id">,
   awayWorld: AwayWorld,
 ): Promise<ApprovalRoute> {
-  const [current] = extractRows<{ route_person_id: string | null }>(
+  const [current] = extractRows<{
+    route_person_id: string | null
+    route_company_id: string | null
+  }>(
     await tx.execute(
-      drizzleSql`SELECT route_person_id FROM ${K}.approval_requests WHERE id = ${row.id}::uuid`,
+      drizzleSql`SELECT route_person_id, route_company_id FROM ${K}.approval_requests WHERE id = ${row.id}::uuid`,
     ),
   )
   const routes = await routesIn(
     tx,
     orgId,
-    [{ ...row, route_person_id: current?.route_person_id ?? null }],
+    [
+      {
+        ...row,
+        route_person_id: current?.route_person_id ?? null,
+        route_company_id: current?.route_company_id ?? null,
+      },
+    ],
     awayWorld,
   )
   return routes.route(row.id)
@@ -455,46 +524,133 @@ interface SummaryLink {
   entityType?: unknown
   entityId?: unknown
 }
+/** What a proposal's route reads from the records it links to. */
+export interface ProposeRoute {
+  routePersonId?: string
+  routeCompanyId?: string
+}
 
-/**
- * The route columns of a request being proposed, from the records its summary links to: the
- * first link whose app declares `approvalRoute` for its entity type asks that read-only tool
- * who the record is with. A missing, slow or failing answer leaves the columns unset (logged):
- * the request then reaches the usual deciders, and the proposal itself never waits longer.
- */
-export async function resolveProposeRoute(args: {
+interface RequesterArgs {
   orgId: string
   toolName: string
-  summary: unknown
   /** Asked as the requester: a record they cannot read says nobody. */
   requestedBy: string
   budgetMs?: number
-}): Promise<{ routePersonId?: string }> {
+}
+
+/**
+ * The route columns of a request being proposed, from the records its summary links to.
+ *
+ * - The person: the first link whose app declares `approvalRoute` for its entity type asks that
+ *   read-only tool who the record is with.
+ * - The company: a kernel company link is that company, a kernel contact link is the contact's
+ *   company, and any other routed link's tool may name its record's company too. Links that name
+ *   more than one company give none: a batch across companies is never split by routing.
+ *
+ * Every read runs as the requester. A missing, slow or failing answer leaves its column unset
+ * (logged): the request then reaches the usual deciders, and the proposal never waits longer
+ * than the budget.
+ */
+export async function resolveProposeRoute(
+  args: RequesterArgs & { summary: unknown },
+): Promise<ProposeRoute> {
   const links = (args.summary as { links?: unknown } | null)?.links
   if (!Array.isArray(links)) return {}
+  const kernelCompanyIds = new Set<string>()
+  const kernelContactIds = new Set<string>()
+  const routed: Array<{ app: string; tool: string; entityType: string; entityId: string }> = []
   for (const raw of links.slice(0, 10) as SummaryLink[]) {
     if (typeof raw?.app !== "string" || typeof raw.entityType !== "string") continue
     if (typeof raw.entityId !== "string" || raw.entityId.length === 0) continue
+    if (raw.app === "kernel" && UUID_RE.test(raw.entityId)) {
+      if (raw.entityType === "company") kernelCompanyIds.add(raw.entityId.toLowerCase())
+      if (raw.entityType === "contact") kernelContactIds.add(raw.entityId.toLowerCase())
+      continue
+    }
     const tool = appBridgeManifest(args.orgId, raw.app)?.approvalRoute?.[raw.entityType]
     if (!tool) continue
-    const personId = await askRouteTool(args, raw.app, tool, raw.entityType, raw.entityId)
-    return personId ? { routePersonId: personId } : {}
+    routed.push({ app: raw.app, tool, entityType: raw.entityType, entityId: raw.entityId })
   }
-  return {}
+  if (routed.length === 0 && kernelCompanyIds.size === 0 && kernelContactIds.size === 0) return {}
+
+  const perms = withPrivilegedDb(args.orgId, "approval-route-requester-perms", (ptx) =>
+    loadEffectivePermissions(ptx, args.requestedBy, args.orgId),
+  )
+  const [kernelCompanies, answers] = await Promise.all([
+    readLinkedCompanies(args, perms, kernelCompanyIds, kernelContactIds),
+    Promise.all(
+      routed.map((l) => askRouteTool(args, perms, l.app, l.tool, l.entityType, l.entityId)),
+    ),
+  ])
+  const companies = new Set(kernelCompanies)
+  for (const a of answers) if (a.companyId) companies.add(a.companyId.toLowerCase())
+  const personId = answers[0]?.personId ?? null
+  const [onlyCompany] = companies
+  return {
+    ...(personId ? { routePersonId: personId } : {}),
+    ...(companies.size === 1 && onlyCompany ? { routeCompanyId: onlyCompany } : {}),
+  }
+}
+
+/** The companies the kernel links name, as the requester reads them (a contact gives its company). */
+async function readLinkedCompanies(
+  args: RequesterArgs,
+  perms: ReturnType<typeof loadEffectivePermissions>,
+  companyIds: Set<string>,
+  contactIds: Set<string>,
+): Promise<string[]> {
+  if (companyIds.size === 0 && contactIds.size === 0) return []
+  const ids = (s: Set<string>) =>
+    s.size === 0
+      ? drizzleSql`NULL::uuid`
+      : drizzleSql.join(
+          [...s].map((id) => drizzleSql`${id}::uuid`),
+          drizzleSql`, `,
+        )
+  try {
+    const p = await perms
+    const rows = await withRlsContext(
+      {
+        actorType: "user",
+        userId: args.requestedBy,
+        orgId: args.orgId,
+        scopes: p.scopes,
+        dimensionGrants: p.dimensionGrants,
+      },
+      async (tx) =>
+        extractRows<{ id: string }>(
+          await tx.execute(drizzleSql`
+            SELECT c.id::text AS id FROM ${K}.companies c
+            WHERE c.org_id = ${args.orgId}::uuid
+              AND (c.id IN (${ids(companyIds)})
+                OR c.id IN (SELECT ct.company_id FROM ${K}.contacts ct
+                             WHERE ct.org_id = ${args.orgId}::uuid AND ct.id IN (${ids(contactIds)})))`),
+        ),
+    )
+    return rows.map((r) => r.id.toLowerCase())
+  } catch (err) {
+    log.warn(
+      { err, orgId: args.orgId, request: args.toolName },
+      "could not read the company a request is about; no company route",
+    )
+    return []
+  }
 }
 
 async function askRouteTool(
-  args: { orgId: string; toolName: string; requestedBy: string; budgetMs?: number },
+  args: RequesterArgs,
+  perms: ReturnType<typeof loadEffectivePermissions>,
   app: string,
   tool: string,
   entityType: string,
   entityId: string,
-): Promise<string | null> {
+): Promise<{ personId: string | null; companyId: string | null }> {
+  const nobody = { personId: null, companyId: null }
   const toolName = `${app}:${tool}`
   const fields = { orgId: args.orgId, request: args.toolName, routeTool: toolName, entityId }
   if (toolRegistry.get([args.orgId, app, tool])?.readOnly !== true) {
     log.warn(fields, "approval route tool is missing or not read-only; usual deciders")
-    return null
+    return nobody
   }
   const controller = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -506,9 +662,7 @@ async function askRouteTool(
   })
   try {
     const { executeToolCore } = await import("~/modules/apps/execute-tool")
-    const asked = withPrivilegedDb(args.orgId, "approval-route-requester-perms", (ptx) =>
-      loadEffectivePermissions(ptx, args.requestedBy, args.orgId),
-    ).then((perms) =>
+    const asked = perms.then((p) =>
       executeToolCore({
         toolName,
         orgId: args.orgId,
@@ -516,8 +670,8 @@ async function askRouteTool(
           actorType: "user",
           userId: args.requestedBy,
           orgId: args.orgId,
-          scopes: perms.scopes,
-          dimensionGrants: perms.dimensionGrants,
+          scopes: p.scopes,
+          dimensionGrants: p.dimensionGrants,
         },
         params: { entityType, entityId },
         origin: "system",
@@ -527,17 +681,18 @@ async function askRouteTool(
     const answer = await Promise.race([asked, timedOut])
     if (answer === "timeout") {
       log.warn(fields, "approval route tool did not answer in time; usual deciders")
-      return null
+      return nobody
     }
     if (!("data" in answer)) {
       log.warn({ ...fields, answer }, "approval route tool refused; usual deciders")
-      return null
+      return nobody
     }
-    const personId = (answer.data as { personId?: unknown } | null)?.personId
-    return typeof personId === "string" && UUID_RE.test(personId) ? personId : null
+    const data = answer.data as { personId?: unknown; companyId?: unknown } | null
+    const uuidOrNull = (v: unknown) => (typeof v === "string" && UUID_RE.test(v) ? v : null)
+    return { personId: uuidOrNull(data?.personId), companyId: uuidOrNull(data?.companyId) }
   } catch (err) {
     log.warn({ ...fields, err }, "approval route tool failed; usual deciders")
-    return null
+    return nobody
   } finally {
     clearTimeout(timer)
   }

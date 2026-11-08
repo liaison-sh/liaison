@@ -31,6 +31,7 @@ import { releaseErasedUserContacts } from "~/modules/contacts/erasure"
 import { deleteContact, mergeContacts } from "~/modules/contacts/service"
 import { buildDataSubjectBundle } from "~/modules/export/data-subject-export-tool"
 import { MEMBER_SECTIONS, readMemberSections } from "~/modules/export/member-data-subject-bundle"
+import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { resolveReferenceDisplay } from "~/modules/threads/reference-display"
 import { insertSql, type RowValue } from "~/seed/factories/org/test-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -257,6 +258,39 @@ describe("company tools", () => {
     expect(withScope).not.toContain("kernel__companies_write")
   })
 
+  it("in a freshly created org a member gets the company tools and a viewer only the reads, through the default roles", async () => {
+    const { orgId, created } = await ensureOrg({
+      slug: `fresh-companies-${tag}`,
+      name: "Fresh companies",
+    })
+    expect(created).toBe(true)
+    const grants = await sql<{ name: string; scope: string }[]>`
+      SELECT r.name, g.scope FROM kernel.roles r
+        JOIN kernel.role_scope_grants g ON g.role_id = r.id
+       WHERE r.org_id = ${orgId}`
+    const toolsOf = (role: string) =>
+      Object.keys(
+        buildToolSet(
+          orgId,
+          {
+            actorType: "user",
+            userId: crypto.randomUUID(),
+            orgId,
+            scopes: grants.filter((g) => g.name === role).map((g) => g.scope),
+            dimensionGrants: {},
+          },
+          DM,
+          ALL_DEFERRED_TOOLS_UNLOCKED,
+        ),
+      )
+    const member = toolsOf("member")
+    expect(member).toContain("kernel__companies_search")
+    expect(member).toContain("kernel__companies_write")
+    const viewer = toolsOf("viewer")
+    expect(viewer).toContain("kernel__companies_read")
+    expect(viewer).not.toContain("kernel__companies_write")
+  })
+
   it("an agent's company write parks and writes nothing; a person's own call runs", async () => {
     const before = await companyCount()
     const parked = await agentCall("kernel__companies_write", { name: "Maison Arlon" })
@@ -310,6 +344,20 @@ describe("company tools", () => {
     })
     expect(cleared.message).toBe("Hotel Calme now has no account manager.")
     expect(await ownerOf(c)).toBeNull()
+  })
+
+  it("every company read that returns names typed outside the org marks the turn, like the contact search", () => {
+    for (const name of [
+      "companies_search",
+      "companies_read",
+      "companies_find_duplicates",
+      "companies_propose_from_contacts",
+    ]) {
+      expect({ name, taint: toolRegistry.get([ORG, "kernel", name])?.taintSource }).toEqual({
+        name,
+        taint: true,
+      })
+    }
   })
 
   it("a manager change from an agent turn parks whatever the turn read", async () => {
@@ -757,6 +805,21 @@ describe("company tools", () => {
     expect(out.companiesManaged?.rows).toEqual([
       expect.objectContaining({ id: managed, name: "Managed by Nadia", account_manager: true }),
     ])
+  })
+
+  it("a member's bundle names a company they manage only if they can read it", async () => {
+    const hidden = await company("Arlon Private", {
+      owner_user_id: NADIA,
+      org_access: "none",
+      domain: "arlon-private.example",
+    })
+    const sections = MEMBER_SECTIONS.filter((s) => s.key === "companiesManaged")
+    const out = await withRlsContext(person(NADIA, COMPANY_READ), (tx) =>
+      readMemberSections(tx, { orgId: ORG, subjectUserId: NADIA }, sections),
+    )
+    const row = (out.companiesManaged?.rows ?? []).find((r) => (r as { id: string }).id === hidden)
+    expect(row).toMatchObject({ id: hidden, account_manager: true, name: null, domain: null })
+    expect(JSON.stringify(out)).not.toContain("Arlon Private")
   })
 
   it("a contact's export carries its lawful basis, notice date and company", async () => {

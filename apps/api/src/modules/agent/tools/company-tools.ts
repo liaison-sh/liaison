@@ -691,6 +691,9 @@ export function registerCompanyTools(orgId: string): void {
     appName: "kernel",
     name: "companies_search",
     readOnly: true,
+    // Company names and domains, often created in bulk from the company text
+    // people carry (senders, shop customers): the turn that read them is marked.
+    taintSource: true,
     deferLoading: true,
     description:
       "Search companies by name or domain, with each one's account manager and people count. ownerUserId filters to one account manager's companies (a person id, or me).",
@@ -834,6 +837,8 @@ export function registerCompanyTools(orgId: string): void {
     appName: "kernel",
     name: "companies_find_duplicates",
     readOnly: true,
+    // Returns company names and domains, as companies_search does.
+    taintSource: true,
     deferLoading: true,
     description:
       "Find pairs of companies that look like one (same domain, same name, or both), skipping pairs marked not the same.",

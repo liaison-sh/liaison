@@ -15,7 +15,7 @@ import { kernel, organizations } from "./organizations"
 import { users } from "./users"
 
 /**
- * kernel.companies (migration 0290): the organisations an org's contacts work
+ * kernel.companies (migration 0291): the organisations an org's contacts work
  * for. Sharing has contacts' shape on `createdBy`, never on `ownerUserId`: the
  * account manager routes approvals and grants nothing. The trigger
  * `companies_sharing_guard` keeps `createdBy` immutable and the search ACL

@@ -72,7 +72,7 @@ Scopes are hierarchical capability strings, `app:resource:action`. Granting `app
 | `kernel:users:admin` | Manage users, roles, and invitations |
 | `kernel:users:read` | Read user list |
 | `mail:suppressions:read` | See which addresses opted out of mail |
-| `mail:suppressions:write` | Record or remove an address's opt-out from mail |
+| `mail:suppressions:write` | Remove an address's opt-out from mail |
 
 ## ads
 
@@ -286,13 +286,13 @@ Projects and tasks with owners, statuses, due dates and discussions.
 | --- | --- | --- |
 | `projects:approve` | approver scope | Decide (approve, edit, or deny) projects approvals raised by its gated tools |
 | `projects:deals:read` | roles lead, sales; tool deals_rollup |  |
-| `projects:deals:write` | roles lead, sales; tool deals_update |  |
+| `projects:deals:write` | roles lead, sales |  |
 | `projects:labels:admin` | role admin; settings section labels; tools labels.archive, labels.create, labels.reorder, labels.update |  |
 | `projects:projects:read` | entities project, task; role member; tools deal_send_state, deals_followup_candidates, deals_search, get, labels.list, labels.tree and 1 more |  |
 | `projects:projects:write` | role lead; tools createProject, deals_pipeline_create, instantiate_template, status_add, status_delete, status_update and 1 more |  |
 | `projects:settings:admin` | role admin; settings section ci; tool webhook_info |  |
 | `projects:tasks:read` | role member; tools approval_route_read, attentionItems, checklist_get, comments, portfolio_rollup, tasks_byAssignee and 1 more |  |
-| `projects:tasks:write` | role member; tools add_dependency, checklist_add_items, checklist_remove_item, checklist_set_validation, checklist_update_item, comment and 5 more |  |
+| `projects:tasks:write` | role member; tools add_dependency, checklist_add_items, checklist_remove_item, checklist_set_validation, checklist_update_item, comment and 6 more |  |
 
 ## shopify
 

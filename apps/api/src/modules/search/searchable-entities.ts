@@ -84,7 +84,7 @@ const KERNEL_BUILTINS: Array<{
     readScope: "kernel:companies:read",
     labelField: "name",
     indexFields: { title: "name", handle: "handle", labelSecondary: "domain" },
-    // Shareable like contacts (migration 0290): a company shared with nobody is
+    // Shareable like contacts (migration 0291): a company shared with nobody is
     // found only by its creator and its grantees, never by its account manager.
     permissionFields: {
       aclFields: {

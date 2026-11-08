@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // Suppressions under the real liaison_rls role: an opt-out is read with
-// mail:suppressions:read (or by a system actor, the send path), added and
-// removed with mail:suppressions:write, never edited. Their links are out of
-// the request role's reach. Neither table can hold an address.
+// mail:suppressions:read (or by a system actor, the send path), added by
+// anyone who writes mail (mail:conversations:write) or holds
+// mail:suppressions:write, removed only with mail:suppressions:write, never
+// edited. Their links are out of the request role's reach. Neither table can hold an address.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { createHash } from "node:crypto"
@@ -151,6 +152,31 @@ describe("kernel.suppressions", () => {
       ),
     }))
     expect(readerOnly).toEqual({ add: "42501", remove: "no row" })
+  })
+
+  it("anyone who writes mail records an opt-out, and only the suppressions write scope removes one", async () => {
+    const fresh = hash(ORG_ID, "ines@example.com")
+    const add = insertSql("kernel.suppressions", {
+      org_id: ORG_ID,
+      email_hash: fresh,
+      reason: "person",
+    })
+    const writer = await withRlsContext(
+      person(["mail:conversations:read", "mail:conversations:write", "mail:suppressions:read"]),
+      async (tx) => ({
+        add: await attempt(tx, add),
+        remove: await attempt(
+          tx,
+          `DELETE FROM kernel.suppressions WHERE email_hash = '${OPTED_OUT}'`,
+        ),
+      }),
+    )
+    expect(writer).toEqual({ add: "allowed", remove: "no row" })
+    const [kept] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM kernel.suppressions
+       WHERE org_id = ${ORG_ID} AND email_hash IN (${fresh}, ${OPTED_OUT})`
+    expect(kept?.n).toBe(2)
+    await sql`DELETE FROM kernel.suppressions WHERE email_hash = ${fresh}`
   })
 
   it("the request role cannot read or write opt-out links at all", async () => {

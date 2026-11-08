@@ -330,20 +330,40 @@ export const MEMBER_SECTIONS: MemberSection[] = [
   },
   {
     key: "companiesManaged",
-    note: "Companies the member is account manager of, or created: name, domain and which of the two.",
+    note: "Companies the member is account manager of, or created: name, domain and which of the two. A company they manage but cannot read shows its id only.",
     via: "subject",
+    // Being account manager grants nothing: a company the member cannot read
+    // (shared with nobody, not created by them, no grant to them or their
+    // roles) keeps its name, domain and date out of their bundle.
     read: (db, ctx, limit) =>
       rows(
         db,
         drizzleSql`
-        SELECT id::text AS id, name, domain,
-               (owner_user_id = ${ctx.subjectUserId}::uuid) AS account_manager,
-               (created_by = ${ctx.subjectUserId}::uuid) AS created_by_member,
-               created_at
-        FROM ${K()}.companies
-        WHERE org_id = ${ctx.orgId}
-          AND (owner_user_id = ${ctx.subjectUserId}::uuid OR created_by = ${ctx.subjectUserId}::uuid)
-        ORDER BY created_at
+        SELECT c.id::text AS id,
+               CASE WHEN r.readable THEN c.name END AS name,
+               CASE WHEN r.readable THEN c.domain END AS domain,
+               (c.owner_user_id = ${ctx.subjectUserId}::uuid) AS account_manager,
+               (c.created_by = ${ctx.subjectUserId}::uuid) AS created_by_member,
+               CASE WHEN r.readable THEN c.created_at END AS created_at
+        FROM ${K()}.companies c
+        CROSS JOIN LATERAL (
+          SELECT (
+            c.org_access <> 'none'
+            OR c.created_by = ${ctx.subjectUserId}::uuid
+            OR EXISTS (
+              SELECT 1 FROM ${K()}.resource_grants g
+               WHERE g.org_id = c.org_id AND g.resource_type = 'kernel.company'
+                 AND g.resource_id = c.id
+                 AND ((g.grantee_kind = 'user' AND g.grantee = ${ctx.subjectUserId}::text)
+                   OR (g.grantee_kind = 'role' AND g.grantee IN (
+                         SELECT ur.role_id::text FROM ${K()}.user_roles ur
+                          WHERE ur.org_id = c.org_id AND ur.user_id = ${ctx.subjectUserId}::uuid)))
+            )
+          ) AS readable
+        ) r
+        WHERE c.org_id = ${ctx.orgId}
+          AND (c.owner_user_id = ${ctx.subjectUserId}::uuid OR c.created_by = ${ctx.subjectUserId}::uuid)
+        ORDER BY c.created_at, c.id
         LIMIT ${limit}`,
       ),
   },
@@ -369,7 +389,7 @@ export const MEMBER_SECTIONS: MemberSection[] = [
         FROM ${P}.deals d
         JOIN ${P}.tasks t ON t.id = d.task_id AND t.org_id = d.org_id
         JOIN ${P}.projects p ON p.id = t.project_id AND p.org_id = t.org_id
-        WHERE d.org_id = ${ctx.orgId}
+        WHERE d.org_id = ${ctx.orgId} AND t.parent_task_id IS NULL
           AND (t.assignee_id = ${ctx.subjectUserId}::uuid OR d.closed_by = ${ctx.subjectUserId}::uuid)
         ORDER BY d.created_at
         LIMIT ${limit}`,

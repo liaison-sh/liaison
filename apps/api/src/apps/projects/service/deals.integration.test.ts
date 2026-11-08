@@ -203,6 +203,36 @@ describe("deal rows", () => {
     expect(await dealState(sub)).toMatchObject({ outcome: "open", has_value: true })
   })
 
+  it("a deal cannot be moved under another task, and nothing changes", async () => {
+    const p = await makePipeline(w, "No nested deals")
+    const a = await makeTask(w, p.projectId, "Deal A", { statusId: p.stage.Demo })
+    const b = await makeTask(w, p.projectId, "Deal B", { statusId: p.stage.Proposal })
+    await setCompanyAndAmount(a, null, 1_000_000)
+    await setCompanyAndAmount(b, null, 1_000_000)
+    const err = await errorOf(
+      run((tx) => moveTask({ tx, orgId: w.orgId, actor: w.actor, taskId: b, parentTaskId: a })),
+    )
+    expect(err).toMatchObject({ code: "deal_cannot_be_subtask", status: 409 })
+    const parent = extractRows<{ parent_task_id: string | null }>(
+      await db.execute(
+        drizzleSql`SELECT parent_task_id FROM app_projects.tasks WHERE id = ${b}::uuid`,
+      ),
+    )
+    expect(parent[0]?.parent_task_id).toBeNull()
+    expect(await dealState(b)).toMatchObject({ outcome: "open", status_id: p.stage.Proposal })
+  })
+
+  it("a deal row left on a subtask is not counted by the deal reads", async () => {
+    const p = await makePipeline(w, "Root deals only")
+    const a = await makeTask(w, p.projectId, "Top deal")
+    const sub = await makeTask(w, p.projectId, "Old nested deal", { parentTaskId: a })
+    // A row from before nesting was refused.
+    await db.execute(drizzleSql`
+      INSERT INTO app_projects.deals (task_id, org_id) VALUES (${sub}::uuid, ${w.orgId}::uuid)`)
+    const deals = await run((tx) => listDeals(tx, w.orgId, { projectId: p.projectId }))
+    expect(deals.map((d) => d.taskId)).toEqual([a])
+  })
+
   it("a deal cannot move into a work project", async () => {
     const p = await makePipeline(w, "Stays a deal")
     const work = await makeWorkProject(w, "Work board")
@@ -273,6 +303,29 @@ describe("deal rows", () => {
       amount_minor: "900000",
       outcome: "open",
     })
+  })
+
+  it("a deal is not merged into a task that is not a deal, and a deal with no company takes the merged one's", async () => {
+    const p = await makePipeline(w, "Merge into a chore")
+    const work = await makeWorkProject(w, "Chores for merging")
+    const deal = await makeTask(w, p.projectId, "Deal with an amount")
+    const chore = await makeTask(w, work.projectId, "A plain task")
+    const company = crypto.randomUUID()
+    await setCompanyAndAmount(deal, company, 250_000)
+    const err = await errorOf(
+      run((tx) =>
+        mergeTasks({ tx, orgId: w.orgId, actor: w.actor, sourceId: deal, targetId: chore }),
+      ),
+    )
+    expect(err).toMatchObject({ code: "deal_merge_target_not_deal", status: 409 })
+    expect(await dealState(deal)).toMatchObject({ company_id: company, amount_minor: "250000" })
+
+    const bare = await makeTask(w, p.projectId, "Deal with no company")
+    await run((tx) =>
+      mergeTasks({ tx, orgId: w.orgId, actor: w.actor, sourceId: deal, targetId: bare }),
+    )
+    expect(await dealState(deal)).toBeNull()
+    expect(await dealState(bare)).toMatchObject({ company_id: company })
   })
 
   it("a deleted deal leaves the deal reads, and a restore brings back its amount, company and outcome", async () => {
@@ -557,6 +610,32 @@ describe("creating a deal", () => {
     )
     expect(noAccess.error?.code).toBe("deal_access_needed")
     expect(await taskCount(p.projectId)).toBe(before)
+  })
+})
+
+describe("closing a deal", () => {
+  it("closing a deal through the deal update needs the same right as moving it to a closing stage, and an amount still needs deal access", async () => {
+    expect(projectsManifest.tools.deals_update.requiredScopes).toEqual(
+      projectsManifest.tools.move.requiredScopes,
+    )
+    const p = await makePipeline(w, "Close without deal access")
+    const taskId = await makeTask(w, p.projectId, "Harbour renewal", {
+      statusId: p.stage.Proposal,
+    })
+    const won = await call<{ error?: { code: string } }>(
+      "projects_dealsUpdate",
+      { taskId, outcome: "won" },
+      NO_DEAL_ACCESS,
+    )
+    expect(won.error).toBeUndefined()
+    expect(await dealState(taskId)).toMatchObject({ outcome: "won", status_id: p.stage.Won })
+    const amount = await call<{ error?: { code: string } }>(
+      "projects_dealsUpdate",
+      { taskId, amountMinor: 500_000, currency: "EUR" },
+      NO_DEAL_ACCESS,
+    )
+    expect(amount.error?.code).toBe("deal_access_needed")
+    expect(await dealState(taskId)).toMatchObject({ amount_minor: null })
   })
 })
 

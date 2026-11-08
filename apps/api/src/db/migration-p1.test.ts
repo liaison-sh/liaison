@@ -263,8 +263,9 @@ describe("the company, suppression, deal and lawful-basis migrations on a live d
         .sort()
     expect(by(READERS)).toEqual(["kernel:companies:read", "mail:suppressions:read"])
     expect(by(WRITERS)).toEqual(["kernel:companies:read", "kernel:companies:write"])
-    expect(by(WILDCARD)).toEqual(["kernel:companies:*", "mail:suppressions:*"])
-    expect(by(MAILERS)).toEqual(["mail:suppressions:write"])
+    expect(by(WILDCARD)).toEqual(["kernel:companies:*", "mail:suppressions:read"])
+    // Writing mail already records an opt-out; removing one is for mail admins.
+    expect(by(MAILERS)).toEqual([])
     expect(by(MAIL_ADMINS)).toEqual(["mail:suppressions:write"])
     expect(by(NOTHING)).toEqual([])
     const direct = await fresh<{ scope: string }[]>`

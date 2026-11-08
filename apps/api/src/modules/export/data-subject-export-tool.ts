@@ -563,6 +563,7 @@ export async function buildDataSubjectBundle(
           LEFT JOIN ${drizzleSql.raw(schemaRef("app_projects"))}.project_statuses s ON s.id = t.status_id
           LEFT JOIN ${drizzleSql.raw(schemaRef("app_projects"))}.deal_values v ON v.task_id = d.task_id
           WHERE d.org_id = ${ctx.orgId} AND d.contact_id = ${contactId} AND t.archived_at IS NULL
+            AND t.parent_task_id IS NULL
           ORDER BY d.created_at
           LIMIT 100
         `),

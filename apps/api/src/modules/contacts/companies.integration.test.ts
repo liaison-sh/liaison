@@ -218,6 +218,14 @@ describe("company people and names", () => {
     for (const id of [...shared, hidden]) {
       expect(await contactRow(id)).toEqual({ company_id: company.id, company: "Lumen Hotels" })
     }
+    // The event counts only the people Anna can see, and names who may get it.
+    const [event] = await sql<{ data: Record<string, unknown> }[]>`
+      SELECT payload->'data' AS data FROM kernel.pending_events
+       WHERE org_id = ${ORG_ID} AND payload->>'entity' = 'company'
+         AND payload->>'action' = 'update' AND payload->>'entityId' = ${company.id}
+       ORDER BY seq DESC LIMIT 1`
+    expect(event?.data.renamedPeople).toBe(2)
+    expect(event?.data.audience).toEqual({ orgWide: true, userIds: [] })
   })
 })
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 /**
- * Companies (kernel.companies, migration 0290): the organisations an org's
+ * Companies (kernel.companies, migration 0291): the organisations an org's
  * people work for, and the hub their deals, money, support and work hang off.
  *
  * Every read and write runs under the caller's RLS: a company shared with
@@ -260,6 +260,20 @@ async function dealTablesExist(tx: Pick<RlsClient, "execute">): Promise<boolean>
 /* Reads                                                                      */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Who may get a company's event over the socket (`infra/websocket.ts`):
+ * everyone for an org-wide company, else its creator and the people it is
+ * shared with. Read from the row the event is about.
+ */
+export function companyEventAudience(
+  row: Pick<Company, "orgAccess" | "createdBy" | "aclUserIds">,
+): { orgWide: boolean; userIds: string[] } {
+  if (row.orgAccess !== "none") return { orgWide: true, userIds: [] }
+  const ids = new Set<string>(row.aclUserIds ?? [])
+  if (row.createdBy) ids.add(row.createdBy)
+  return { orgWide: false, userIds: [...ids] }
+}
+
 async function loadVisible(tx: RlsClient, orgId: string, companyId: string): Promise<Company> {
   if (!UUID_RE.test(companyId)) throw notFound()
   const [row] = await tx
@@ -311,7 +325,7 @@ async function openDeals(
              d.company_id::text AS company_id, d.task_id::text AS task_id,
              s.label AS stage, v.amount_minor, v.currency
         FROM ${ps()}.deals d
-        JOIN ${ps()}.tasks t ON t.id = d.task_id AND t.archived_at IS NULL
+        JOIN ${ps()}.tasks t ON t.id = d.task_id AND t.archived_at IS NULL AND t.parent_task_id IS NULL
         LEFT JOIN ${ps()}.project_statuses s ON s.id = t.status_id
         LEFT JOIN ${ps()}.deal_values v ON v.task_id = d.task_id
        WHERE d.org_id = ${orgId}::uuid AND d.outcome = 'open'
@@ -385,7 +399,7 @@ export async function listCompanies(
   if (params.hasOpenDeal !== undefined) {
     const open = (await dealTablesExist(tx))
       ? drizzleSql`EXISTS (
-          SELECT 1 FROM ${ps()}.deals d JOIN ${ps()}.tasks t ON t.id = d.task_id AND t.archived_at IS NULL
+          SELECT 1 FROM ${ps()}.deals d JOIN ${ps()}.tasks t ON t.id = d.task_id AND t.archived_at IS NULL AND t.parent_task_id IS NULL
            WHERE d.org_id = ${orgId}::uuid AND d.company_id = ${drizzleSql.raw(`${quoteIdent(schemaRef("kernel"))}.companies.id`)} AND d.outcome = 'open')`
       : drizzleSql`false`
     conditions.push(params.hasOpenDeal ? open : drizzleSql`NOT ${open}`)
@@ -519,7 +533,13 @@ export async function createCompany(
     orgId,
     actorId: userId,
     entityId: created.id,
-    data: { id: created.id, name: created.name, handle: created.handle, domain: created.domain },
+    data: {
+      id: created.id,
+      name: created.name,
+      handle: created.handle,
+      domain: created.domain,
+      audience: companyEventAudience(created),
+    },
   })
   return {
     company: created,
@@ -590,18 +610,22 @@ export async function updateCompany(
 
     let renamed = 0
     if (updated.name !== before.name) {
-      renamed = await tx.transaction((sp) =>
+      await tx.transaction((sp) =>
         asAdmin(sp, async () => {
-          const rows = extractRows<{ id: string }>(
-            await sp.execute(drizzleSql`
-              UPDATE ${ks()}.contacts SET company = ${updated.name}, updated_at = now()
-               WHERE org_id = ${orgId}::uuid AND company_id = ${companyId}::uuid
-               RETURNING id::text AS id`),
-          )
+          await sp.execute(drizzleSql`
+            UPDATE ${ks()}.contacts SET company = ${updated.name}, updated_at = now()
+             WHERE org_id = ${orgId}::uuid AND company_id = ${companyId}::uuid`)
           await runAfterCompanyRenameFailpoint()
-          return rows.length
         }),
       )
+      // The event says how many people the renamer can see were renamed, never
+      // the people hidden from them.
+      const [visible] = extractRows<{ n: number }>(
+        await tx.execute(drizzleSql`
+          SELECT count(*)::int AS n FROM ${ks()}.contacts
+           WHERE org_id = ${orgId}::uuid AND company_id = ${companyId}::uuid`),
+      )
+      renamed = visible?.n ?? 0
     }
 
     await tx.queueEvent({
@@ -611,7 +635,7 @@ export async function updateCompany(
       orgId,
       actorId: userId,
       entityId: companyId,
-      data: { ...updated, renamedPeople: renamed },
+      data: { ...updated, renamedPeople: renamed, audience: companyEventAudience(updated) },
     })
     if (closing) {
       await tx.queueEvent({
@@ -621,7 +645,7 @@ export async function updateCompany(
         orgId,
         actorId: userId,
         entityId: companyId,
-        data: { id: companyId, name: updated.name },
+        data: { id: companyId, name: updated.name, audience: companyEventAudience(updated) },
       })
     }
     return { company: updated, ...(notice ? { notice } : {}) }
@@ -700,7 +724,7 @@ export async function deleteCompany(
       actorId: userId,
       entityId: companyId,
       // The page's handler reads `data.id` to drop the row.
-      data: { id: companyId },
+      data: { id: companyId, audience: companyEventAudience(company) },
     })
     return { id: companyId, dealsCleared: cleared.deals, projectsCleared: cleared.projects }
   })
@@ -968,7 +992,14 @@ export async function setCompanyManager(
   // The tool call or request runs in one transaction: every change below commits together.
   const tx = db
   const visible = await tx
-    .select({ id: companies.id, name: companies.name, ownerUserId: companies.ownerUserId })
+    .select({
+      id: companies.id,
+      name: companies.name,
+      ownerUserId: companies.ownerUserId,
+      orgAccess: companies.orgAccess,
+      createdBy: companies.createdBy,
+      aclUserIds: companies.aclUserIds,
+    })
     .from(companies)
     .where(
       and(
@@ -1047,6 +1078,7 @@ export async function setCompanyManager(
         name: c.name,
         ownerUserId,
         previousOwnerUserId: c.ownerUserId,
+        audience: companyEventAudience(c),
       },
     })
   }

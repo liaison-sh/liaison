@@ -171,7 +171,7 @@ export const approvalRequests = kernel.table(
     // The one person this approval is routed to. NULL = the usual deciders.
     routePersonId: uuid("route_person_id").references(() => users.id, { onDelete: "set null" }),
     // The company it is routed for; no foreign key until that table exists.
-    // FK -> kernel.companies ON DELETE SET NULL (0290); a merge re-points it first.
+    // FK -> kernel.companies ON DELETE SET NULL (0291); a merge re-points it first.
     routeCompanyId: uuid("route_company_id"),
     // Custom decision scope for this approval (dimension-constrained approvals,
     // migration 0029). Overrides the derived `<app>:approve`. Null = derived.

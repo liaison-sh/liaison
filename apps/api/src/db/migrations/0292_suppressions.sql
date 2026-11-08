@@ -6,8 +6,11 @@
 -- suppression is used for, so it is all that is kept.
 --
 --   kernel.suppressions       read with mail:suppressions:read (or by a system
---                             actor: the send path), added or removed with
---                             mail:suppressions:write. Never updated.
+--                             actor: the send path), added by anyone who
+--                             writes mail (mail:conversations:write) or holds
+--                             mail:suppressions:write, removed only with
+--                             mail:suppressions:write (mail admins). Never
+--                             updated.
 --   kernel.suppression_links  the opt-out links' tokens, hashed. No policy for
 --                             liaison_rls and no grant to it: only the send path
 --                             and the public opt-out route touch them, through
@@ -68,10 +71,16 @@ CREATE POLICY suppressions_select ON kernel.suppressions FOR SELECT TO liaison_r
     )
   );
 --> statement-breakpoint
+-- An opt-out must be honoured by whoever receives it, so the right to write
+-- to people is enough to record one. Removing one lifts a person's refusal
+-- and needs the suppressions write scope.
 CREATE POLICY suppressions_insert ON kernel.suppressions FOR INSERT TO liaison_rls
   WITH CHECK (
     org_id = (SELECT rls_ctx.org_id())::uuid
-    AND (SELECT kernel.has_scope('mail:suppressions:write'))
+    AND (
+      (SELECT kernel.has_scope('mail:suppressions:write'))
+      OR (SELECT kernel.has_scope('mail:conversations:write'))
+    )
   );
 --> statement-breakpoint
 CREATE POLICY suppressions_delete ON kernel.suppressions FOR DELETE TO liaison_rls
@@ -81,18 +90,17 @@ CREATE POLICY suppressions_delete ON kernel.suppressions FOR DELETE TO liaison_r
   );
 --> statement-breakpoint
 
--- Scope seed: whoever reads mail sees who opted out; whoever writes mail or
--- administers mailboxes may record an opt-out (adding one only stops mail;
--- removing one stays a gated action).
+-- Scope seed: whoever reads mail sees who opted out (new orgs get the same
+-- through mail's member tier); mail admins may remove an opt-out. Writing
+-- mail needs no seed to record one (the insert policy above).
 -- Run as liaison_admin (BYPASSRLS): the grant tables force row security, so a
 -- migration login that is no superuser would read no row and seed nothing.
 SET LOCAL ROLE liaison_admin;
 --> statement-breakpoint
 WITH pairs (old_scope, new_scope) AS (
   VALUES ('mail:conversations:read', 'mail:suppressions:read'),
-         ('mail:conversations:write', 'mail:suppressions:write'),
          ('mail:accounts:admin', 'mail:suppressions:write'),
-         ('mail:conversations:*', 'mail:suppressions:*')
+         ('mail:conversations:*', 'mail:suppressions:read')
 )
 INSERT INTO kernel.role_scope_grants (id, role_id, scope)
 SELECT gen_random_uuid(), g.role_id, p.new_scope
@@ -102,9 +110,8 @@ ON CONFLICT (role_id, scope) DO NOTHING;
 --> statement-breakpoint
 WITH pairs (old_scope, new_scope) AS (
   VALUES ('mail:conversations:read', 'mail:suppressions:read'),
-         ('mail:conversations:write', 'mail:suppressions:write'),
          ('mail:accounts:admin', 'mail:suppressions:write'),
-         ('mail:conversations:*', 'mail:suppressions:*')
+         ('mail:conversations:*', 'mail:suppressions:read')
 )
 INSERT INTO kernel.user_scope_grants (id, user_id, org_id, scope)
 SELECT gen_random_uuid(), g.user_id, g.org_id, p.new_scope

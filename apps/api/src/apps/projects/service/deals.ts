@@ -263,6 +263,24 @@ async function hasDealRow(tx: SqlClient, orgId: string, taskId: string): Promise
 }
 
 /**
+ * Only a top-level task of a pipeline is a deal, so a deal cannot be put
+ * under another task: it would be counted twice on the board and in every
+ * sum. Refused before anything is written.
+ */
+export async function refuseDealAsSubtask(
+  tx: SqlClient,
+  orgId: string,
+  taskId: string,
+): Promise<void> {
+  if (!(await hasDealRow(tx, orgId, taskId))) return
+  throw new ProjectsServiceError(
+    409,
+    "deal_cannot_be_subtask",
+    "This task is a deal, and a deal stays a top-level task of its pipeline. Nothing was moved. To group it with another deal, link the two or merge them.",
+  )
+}
+
+/**
  * A cross-project move of a deal: refused into a work project (a deal needs a
  * pipeline), and into another pipeline the stage it lands on follows its
  * outcome (a won deal lands on the won stage), then the first open stage.
@@ -368,8 +386,11 @@ export async function assertKeepsClosingStages(
 
 /**
  * Before two tasks merge: two deals naming different companies are refused
- * (`deals_different_company`). The survivor keeps its own deal rows; the
- * source's rows are removed (its value row goes with it).
+ * (`deals_different_company`), and so is a deal merged into a task that is
+ * not a deal (`deal_merge_target_not_deal`: its company and amount would be
+ * lost). The survivor keeps its own deal rows, taking the source's company and
+ * contact when it names none; the source's rows are removed (its value row
+ * goes with it).
  */
 export async function mergeDealRows(
   tx: SqlClient,
@@ -377,21 +398,41 @@ export async function mergeDealRows(
   sourceId: string,
   targetId: string,
 ): Promise<void> {
-  const rows = extractRows<{ task_id: string; company_id: string | null }>(
+  const rows = extractRows<{
+    task_id: string
+    company_id: string | null
+    contact_id: string | null
+  }>(
     await tx.execute(drizzleSql`
-      SELECT task_id, company_id FROM ${projectsRel("deals")}
+      SELECT task_id, company_id, contact_id FROM ${projectsRel("deals")}
       WHERE task_id IN (${sourceId}::uuid, ${targetId}::uuid) AND org_id = ${orgId}::uuid
     `),
   )
   const source = rows.find((r) => r.task_id === sourceId)
   const target = rows.find((r) => r.task_id === targetId)
   if (!source) return
-  if (target && source.company_id && target.company_id && source.company_id !== target.company_id) {
+  if (!target) {
+    throw new ProjectsServiceError(
+      409,
+      "deal_merge_target_not_deal",
+      "This task is a deal and the task it would merge into is not, so its company and amount would be lost. Nothing was changed. Merge it into another deal of the pipeline instead.",
+    )
+  }
+  if (source.company_id && target.company_id && source.company_id !== target.company_id) {
     throw new ProjectsServiceError(
       409,
       "deals_different_company",
       "These two deals name different companies, so they are not merged. Nothing was changed.",
     )
+  }
+  if ((!target.company_id && source.company_id) || (!target.contact_id && source.contact_id)) {
+    await tx.execute(drizzleSql`
+      UPDATE ${projectsRel("deals")}
+      SET company_id = COALESCE(company_id, ${source.company_id}::uuid),
+          contact_id = COALESCE(contact_id, ${source.contact_id}::uuid),
+          updated_at = now()
+      WHERE task_id = ${targetId}::uuid AND org_id = ${orgId}::uuid
+    `)
   }
   await tx.execute(drizzleSql`
     DELETE FROM ${projectsRel("deals")}
@@ -453,8 +494,8 @@ function iso(value: Date | string | null): string | null {
 }
 
 /**
- * The deals the reader can see, live tasks only: a deleted (archived) deal is
- * left out until it is restored. The value is read under the reader's own
+ * The deals the reader can see, live top-level tasks only: a deleted
+ * (archived) deal is left out until it is restored. The value is read under the reader's own
  * access and is null without it.
  */
 export async function listDeals(
@@ -462,7 +503,12 @@ export async function listDeals(
   orgId: string,
   filter: ListDealsFilter = {},
 ): Promise<DealRow[]> {
-  const conds: SQL[] = [drizzleSql`d.org_id = ${orgId}::uuid`, drizzleSql`t.archived_at IS NULL`]
+  const conds: SQL[] = [
+    drizzleSql`d.org_id = ${orgId}::uuid`,
+    drizzleSql`t.archived_at IS NULL`,
+    // Only a top-level task is a deal: a row left on a subtask is not counted.
+    drizzleSql`t.parent_task_id IS NULL`,
+  ]
   if (filter.taskId) conds.push(drizzleSql`d.task_id = ${filter.taskId}::uuid`)
   if (filter.projectId) conds.push(drizzleSql`t.project_id = ${filter.projectId}::uuid`)
   if (filter.companyId) conds.push(drizzleSql`d.company_id = ${filter.companyId}::uuid`)

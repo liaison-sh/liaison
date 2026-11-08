@@ -43,10 +43,10 @@ export const contacts = kernel.table(
      *  "tickets:team=<team>"); contacts are kept apart per audience. */
     audienceKey: text("audience_key"),
     orgWide: boolean("org_wide").generatedAlwaysAs(sql`org_access IN ('viewer', 'editor')`),
-    /** The company the contact works for (0293), kernel.companies; set NULL
+    /** The company the contact works for (0294), kernel.companies; set NULL
      *  when the company is deleted. `company` (free text) stays beside it. */
     companyId: uuid("company_id"),
-    /** What is recorded about writing to this person (0293). NULL everywhere
+    /** What is recorded about writing to this person (0294). NULL everywhere
      *  means unknown: nothing is claimed until someone who knows records it. */
     lawfulBasis: text("lawful_basis", {
       enum: ["consent", "customer", "professional_interest", "generic_address"],

@@ -43,7 +43,7 @@ export const KERNEL_SCOPES: ScopeCatalogEntry[] = [
   {
     scope: "mail:suppressions:write",
     app: "mail",
-    description: "Record or remove an address's opt-out from mail",
+    description: "Remove an address's opt-out from mail",
   },
   {
     scope: "kernel:products:read",

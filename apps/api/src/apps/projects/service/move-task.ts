@@ -4,7 +4,7 @@ import { projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient, type RlsTx } from "~/db"
 import type { UserContext } from "~/db/rls"
 import { readProjectLevels, remapChecklistValidations } from "./checklist"
-import { dealTargetStatusForMove, syncDealOutcome } from "./deals"
+import { dealTargetStatusForMove, refuseDealAsSubtask, syncDealOutcome } from "./deals"
 import { resolveStatusRef } from "./resolve"
 import { ProjectsServiceError } from "./statuses"
 import { MAX_TASK_DEPTH } from "./task-depth"
@@ -420,6 +420,7 @@ export async function moveTask(args: MoveTaskArgs): Promise<MoveTaskResult> {
     }
 
     if (nextParentId !== null) {
+      if (task.parent_task_id === null) await refuseDealAsSubtask(innerTx, orgId, taskId)
       const parent = await fetchTask(innerTx, orgId, nextParentId)
       if (!parent) {
         throw new ProjectsServiceError(404, "parent_not_found", "parent task not found")

@@ -1236,7 +1236,7 @@
         "montant"
       ],
       "requiredScopes": [
-        "projects:deals:write"
+        "projects:tasks:write"
       ],
       "trustBoundary": "user",
       "handler": "dealsUpdate",

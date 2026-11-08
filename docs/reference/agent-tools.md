@@ -648,7 +648,7 @@ Projects and tasks with owners, statuses, due dates and discussions.
 | `deals_pipeline_create` | Create a sales pipeline: a board whose tasks are deals, with stages Lead, Qualified, Demo, Proposal, then Won and Lost. |  | `projects:projects:write` |
 | `deals_rollup` | Deal counts and amounts per stage, owner or month, one sum per currency; weighted multiplies by probability. |  | `projects:deals:read` |
 | `deals_search` | Find deals by pipeline, company, contact, outcome or close date; taskId gives one deal. |  | `projects:projects:read` |
-| `deals_update` | Change a deal: company, contact, amount, probability, next step, or its outcome (won, lost, open moves it to that stage). |  | `projects:deals:write` |
+| `deals_update` | Change a deal: company, contact, amount, probability, next step, or its outcome (won, lost, open moves it to that stage). |  | `projects:tasks:write` |
 | `delete` | Delete a task and all of its subtasks. | yes | `projects:tasks:write` |
 | `get` | Get a project or task by id (id comes from a search result). |  | `projects:projects:read` |
 | `instantiate_template` | Create a new project from a stored project template, materializing the template's full task tree. |  | `projects:projects:write` |

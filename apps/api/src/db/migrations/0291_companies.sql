@@ -18,7 +18,7 @@
 --   * a deleted company takes its grants with it.
 --
 -- kernel.contacts, kernel.users and kernel.approval_requests are touched last
--- in the batch (0293 and the end of this file), so their locks are the
+-- in the batch (0294 and the end of this file), so their locks are the
 -- shortest the one-transaction migrator allows.
 SET LOCAL lock_timeout = '5s';
 --> statement-breakpoint

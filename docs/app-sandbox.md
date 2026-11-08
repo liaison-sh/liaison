@@ -518,6 +518,13 @@ lookup finds that the org exists. The first webhook for an org a process has
 not set up yet therefore waits for that setup. If the setup fails, the error is
 logged and the webhook route answers as it would anyway.
 
+When an app connects, the server tells it the address to register its
+provider webhooks on (`kernelPublicBaseUrl` in the `connected_account:create`
+event, and again on a reconnect, a reconcile and before a disconnect). On a
+server where each organization has its own host (`LIAISON_ORG_HOST_TEMPLATE`)
+it is that organization's host, so deliveries keep reaching the organization
+when it moves to another server. Otherwise it is `BASE_URL`.
+
 ### Skip setup writes when nothing changed
 
 An org's setup has two halves:

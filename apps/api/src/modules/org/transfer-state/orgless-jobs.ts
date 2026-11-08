@@ -45,6 +45,7 @@ export const ORGLESS_JOB_AUDIT: Readonly<Record<string, OrglessJobEntry>> = {
   "kernel:notification-deliveries-retention": skips("modules/notifications/delivery-log.ts"),
   "kernel:effect-ledger-retention": skips("lib/effect-once.ts"),
   "kernel:away-ranges-prune": skips("modules/users/away.ts"),
+  "kernel:suppression-links-prune": skips("modules/mail/commercial-footer.ts"),
   "kernel:calendar-away-refresh": skips("apps/calendar/away-from-calendar.ts"),
   "kernel:agent-turn-retention": skips("modules/agent/runtime/turn-ledger.ts"),
   "kernel:approval-expiry-sweep": skips("modules/approvals/expiry.ts"),

@@ -30,6 +30,7 @@ import { escapeHtml } from "~/lib/html-page"
 import { orgPublicBaseUrl } from "~/lib/org-public-url"
 import { serverT } from "~/modules/i18n/server-i18n"
 import { hashEmail } from "~/modules/mail/suppressions"
+import { sweepSkippingMoving } from "~/modules/org/transfer-state/skip-moving"
 
 const K = () => drizzleSql.raw(schemaRef("kernel"))
 
@@ -120,11 +121,15 @@ export async function resolveOptOutToken(
 /** Deletes links older than the retention; returns how many went. */
 export async function pruneOptOutLinks(now: Date = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - OPT_OUT_LINK_RETENTION_DAYS * 86_400_000)
-  const rows = await withSystemDb("opt-out-link-prune", async (tx) =>
-    extractRows<{ token_hash: string }>(
-      await tx.execute(drizzleSql`
-        DELETE FROM ${K()}.suppression_links WHERE created_at < ${cutoff.toISOString()}::timestamptz
-        RETURNING token_hash`),
+  // An org being moved keeps its links as they are until the move ends.
+  const rows = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("opt-out-link-prune", async (tx) =>
+      extractRows<{ token_hash: string }>(
+        await tx.execute(drizzleSql`
+          DELETE FROM ${K()}.suppression_links WHERE created_at < ${cutoff.toISOString()}::timestamptz
+            AND ${notMoving(drizzleSql.raw("org_id"))}
+          RETURNING token_hash`),
+      ),
     ),
   )
   return rows.length

@@ -1805,6 +1805,18 @@ export async function sendDraft(
   // customer's actual email arrives attachment-less.
   const attachments = await loadDraftAttachmentParts(db, params.orgId, params.draftId)
 
+  // A new message's bodies as they leave: a prospect's mail gains its footer here.
+  const outgoing: { htmlBody: string; textBody: string; headers?: Record<string, string> } =
+    draft.conversation_id
+      ? { htmlBody: params.htmlBody, textBody: params.textBody }
+      : await personComposeBodies(params.orgId, {
+          to: toAddresses,
+          cc: ccAddresses,
+          bcc: bccAddresses,
+          htmlBody: params.htmlBody,
+          textBody: params.textBody,
+        })
+
   const result = draft.conversation_id
     ? {
         conversationId: draft.conversation_id,
@@ -1829,13 +1841,9 @@ export async function sendDraft(
         cc: ccAddresses.map((a: any) => a.email),
         bcc: bccAddresses.map((a: any) => a.email),
         subject,
-        ...(await personComposeBodies(params.orgId, {
-          to: toAddresses,
-          cc: ccAddresses,
-          bcc: bccAddresses,
-          htmlBody: params.htmlBody,
-          textBody: params.textBody,
-        })),
+        htmlBody: outgoing.htmlBody,
+        textBody: outgoing.textBody,
+        headers: outgoing.headers,
         attachments,
       })
 

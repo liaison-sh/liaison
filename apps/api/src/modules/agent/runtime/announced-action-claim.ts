@@ -34,7 +34,10 @@ const EN_VERBS =
   "process|run|start|launch|move|change|edit|modify|log|record|contact|refund|ship|order|find|write|" +
   "configure|connect|archive|close|tag|label|invoice|apply|mark|forward|upload|import|export|sync|" +
   "retrieve|grab|go ahead|proceed|handle|take care of|arrange|register|enter|reschedule|notify|message|" +
-  "compose|make|build|calculate|compute|review|verify|confirm|get (?:started|that|this|it|the|you)"
+  "compose|make|build|calculate|compute|review|verify|confirm|get (?:started|that|this|it|the|you)|" +
+  // The verbs of a tool call: a plan that ends "Let me call routine_tool_scopes." or
+  // "Let's call it." announces a call the turn never made.
+  "call|invoke|use|query"
 
 const EN_ING =
   "booking|creating|sending|setting up|scheduling|drafting|updating|adding|filing|submitting|staging|" +
@@ -49,7 +52,7 @@ const FR_VERBS =
   "ouvrir|configurer|transmettre|transferer|recuperer|consulter|editer|modifier|publier|soumettre|" +
   "commander|expedier|rembourser|facturer|etablir|saisir|importer|exporter|synchroniser|traiter|" +
   "m'occuper|m'en occuper|proceder|passer|organiser|relancer|notifier|ecrire|calculer|construire|" +
-  "booker|caler|fixer|valider|cloturer|fermer|archiver|deplacer|changer|mettre a jour"
+  "booker|caler|fixer|valider|cloturer|fermer|archiver|deplacer|changer|mettre a jour|appeler|utiliser|interroger"
 
 const OBJ_FR = "(?:(?:vous|te|lui|leur|l'|le|la|les|en|y|me|m'|t'|ca|cela)\\s*)*"
 const ADV_EN = "(?:(?:now|right now|just|quickly|go ahead and|then|first|also|immediately)\\s+)*"
@@ -87,6 +90,9 @@ const DEFERRED =
 const ASKS_PERSON_FIRST =
   /^(?:[-*>#\s]*)(?:(?:just|please|simply|then|so)\s+)*(?:give|tell|send|share|paste|provide|forward|show|enter|type|confirm)\s+(?:me|us)\b[^.!?]*?,?\s+and\s+(?:then\s+)?(?:i'll|i will|i can)\b|^(?:[-*>#\s]*)(?:donnez|dites|envoyez|indiquez|transmettez|communiquez|precisez|confirmez|montrez|collez|donne|dis|envoie|indique)-(?:moi|nous)\b[^.!?]*?,?\s+et\s+(?:ensuite\s+)?je\b/
 
+/** "I'll call it \"Monday digest\"": naming something, not a tool call. */
+const NAMING = /\bcall (?:it|this|that|them|the \w+)\s+["'\u201c\u00ab]/
+
 /** Negation shortly before the announcement ("I won't", "je ne vais pas"). */
 const NEGATED = /\b(?:not|never|won't|can't|cannot|pas|jamais|ne|n')\b/
 
@@ -112,7 +118,7 @@ export function announcesImminentAction(text: string): boolean {
     for (const pattern of ANNOUNCEMENT_PATTERNS) {
       const m = pattern.exec(raw)
       if (!m) continue
-      if (DEFERRED.test(raw)) continue
+      if (DEFERRED.test(raw) || NAMING.test(raw)) continue
       const before = raw.slice(Math.max(0, m.index - 20), m.index + m[0].length)
       if (NEGATED.test(before)) continue
       return true

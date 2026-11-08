@@ -24,6 +24,15 @@ const ANNOUNCEMENTS: Array<[string, string]> = [
   ["fr", "Je vais l'envoyer au client tout de suite."],
   ["fr", "Je lance la synchronisation maintenant."],
   ["fr", "D'accord. Je vais mettre à jour le ticket. Un instant."],
+  // A plan written out as the answer, ending on the tool call it never made (a
+  // weak model setting up a weekly digest): "call" is the verb of a tool call.
+  ["en", "Scopes: tickets:tickets:read.\n\nLet me call routine_tool_scopes and then create."],
+  ["en", "Scopes: tickets:tickets:read for both.\n\nLet me call routine_tool_scopes."],
+  ["en", "I'll keep it simple and let the prompt handle it.\n\nLet's call scope lookup."],
+  ["en", "Also I need the tool name for search: tickets__search. Let's call."],
+  ["en", "Keep the prompt generic: use the analytics query for revenue.\n\nLet's call it."],
+  ["en", "I'll use tickets__search with a status filter."],
+  ["fr", "Je vais appeler l'outil de recherche des tickets."],
 ]
 
 const NOT_ANNOUNCEMENTS: Array<[string, string]> = [
@@ -58,6 +67,9 @@ const NOT_ANNOUNCEMENTS: Array<[string, string]> = [
     "It is not working: the host could not be resolved. Give me the correct IMAP and SMTP hosts and I'll update the mailbox.",
   ],
   ["en", "Tell me which carrier you prefer and I'll book the shipment."],
+  // Naming something is not a tool call.
+  ["en", 'Here is the plan. I\'ll call it "Monday digest".'],
+  ["en", "You can call me any time."],
   ["en", "Send me the export file, and I will import it."],
   ["en", "Share the API token on the card and then I'll test the connection."],
   ["en", "Just paste the order number and I'll look it up."],

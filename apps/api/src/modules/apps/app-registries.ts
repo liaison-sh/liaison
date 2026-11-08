@@ -90,6 +90,14 @@ export interface BridgeManifest {
   approvalRoute?: Record<string, string>
   /** Read-only tools that add a few lines about the entity a turn is about (context-providers.ts). */
   contextProviders?: Array<{ on: string[]; tool: string; scope: string; loadTools?: string[] }>
+  /** Read-only tools that give a company's or a contact's timeline its rows (one per source). */
+  activitySources?: Array<{
+    tool: string
+    scope: string
+    label: string
+    labelKey?: string
+    filterKey: string
+  }>
 }
 
 // Track registered orgId:appName to prevent duplicate registration

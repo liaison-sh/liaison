@@ -1022,6 +1022,37 @@ function contextProviderErrors(manifest: any): string[] {
   return errors
 }
 
+/**
+ * An activity source names a read-only, ungated tool of its own app that writes
+ * nothing, and a scope that tool requires, so the scope is one the tool checks.
+ * Two sources of one app never share a filter key.
+ */
+function activitySourceErrors(manifest: any): string[] {
+  const sources = manifest?.activitySources
+  if (!Array.isArray(sources)) return []
+  const tools = (manifest.tools ?? {}) as Record<string, any>
+  const errors: string[] = []
+  const keys = new Set<string>()
+  sources.forEach((s: { tool: string; scope: string; filterKey: string }, i: number) => {
+    const at = `activitySources[${i}]`
+    if (keys.has(s.filterKey)) errors.push(`${at}.filterKey: '${s.filterKey}' is declared twice`)
+    keys.add(s.filterKey)
+    const tool = tools[s.tool]
+    if (!tool) {
+      errors.push(`${at}.tool: '${s.tool}' is not a tool of this app`)
+      return
+    }
+    if (tool.readOnly !== true || typeof tool.writesToTable === "string" || tool.gated === true) {
+      errors.push(`${at}.tool: '${s.tool}' must be declared readOnly, ungated and write no table`)
+    }
+    const required: unknown[] = Array.isArray(tool.requiredScopes) ? tool.requiredScopes : []
+    if (!required.includes(s.scope)) {
+      errors.push(`${at}.scope: '${s.scope}' is not in the requiredScopes of '${s.tool}'`)
+    }
+  })
+  return errors
+}
+
 export function validateAppManifest(manifest: any): ValidationResult {
   const retired = retiredToolScopeErrors(manifest?.tools)
   if (retired.length > 0) return { success: false, error: retired.join("; ") }
@@ -1055,6 +1086,7 @@ export function validateAppManifest(manifest: any): ValidationResult {
   errors.push(...appIconErrors(manifest))
   errors.push(...resultCardErrors(manifest))
   errors.push(...contextProviderErrors(manifest))
+  errors.push(...activitySourceErrors(manifest))
   errors.push(
     ...importDeclarationErrors(
       manifest.import,

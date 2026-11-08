@@ -30,6 +30,8 @@ Scopes are hierarchical capability strings, `app:resource:action`. Granting `app
 | `kernel:audit:write` | Write to audit log |
 | `kernel:billing:read` | Read AI credit usage: the Usage settings page, usage chart and credit transactions (own transactions only unless also an org admin) |
 | `kernel:bug_reports:file` | Report a bug about Liaison under your own name (every active member holds it) |
+| `kernel:companies:read` | Read companies |
+| `kernel:companies:write` | Create and edit companies |
 | `kernel:contacts:admin` | Change who can see contacts nobody owns (shared-mailbox and imported contacts) |
 | `kernel:contacts:export` | Export the contact registry |
 | `kernel:contacts:read` | Read contacts |
@@ -69,6 +71,8 @@ Scopes are hierarchical capability strings, `app:resource:action`. Granting `app
 | `kernel:threads:write` | Write threads |
 | `kernel:users:admin` | Manage users, roles, and invitations |
 | `kernel:users:read` | Read user list |
+| `mail:suppressions:read` | See which addresses opted out of mail |
+| `mail:suppressions:write` | Record or remove an address's opt-out from mail |
 
 ## ads
 
@@ -280,6 +284,8 @@ Projects and tasks with owners, statuses, due dates and discussions.
 | Scope | Declared by | Description |
 | --- | --- | --- |
 | `projects:approve` | approver scope | Decide (approve, edit, or deny) projects approvals raised by its gated tools |
+| `projects:deals:read` | roles lead, sales |  |
+| `projects:deals:write` | roles lead, sales |  |
 | `projects:labels:admin` | role admin; settings section labels; tools labels.archive, labels.create, labels.reorder, labels.update |  |
 | `projects:projects:read` | entities project, task; role member; tools get, labels.list, labels.tree, search |  |
 | `projects:projects:write` | role lead; tools createProject, instantiate_template, status_add, status_delete, status_update, update_project |  |

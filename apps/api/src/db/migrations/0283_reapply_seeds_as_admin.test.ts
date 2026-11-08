@@ -20,6 +20,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import postgres from "postgres"
 import { runMigrations } from "~/db/migrate"
+import { insertSql, type RowValue } from "~/seed/factories/org/test-rows"
 
 const MIGRATIONS = import.meta.dir
 const FIRST_LOGIN_TAG = "0254_product_attributes"
@@ -80,34 +81,64 @@ beforeAll(async () => {
   await runMigrations(freshAsSuperuser.toString(), { migrationsFolder: before })
 
   fresh = postgres(freshAsSuperuser.toString(), { max: 1, onnotice: () => {} })
-  await fresh.unsafe(`
-    INSERT INTO kernel.organizations (id, name, slug) VALUES ('${ORG}', 'Existing', 'existing');
-    INSERT INTO kernel.users (id, org_id, email, name) VALUES ('${USER}', '${ORG}', 'a@example.com', 'A');
-    INSERT INTO kernel.apps (org_id, name, version) VALUES ('${ORG}', 'mcp-manager', '1.0.0');
-    INSERT INTO kernel.roles (id, org_id, name) VALUES
-      ('${MEMBER_ROLE}', '${ORG}', 'Member'),
-      ('${REVOKED_ROLE}', '${ORG}', 'Reader'),
-      ('${APP_ROLE}', '${ORG}', 'mcp-manager.user');
-    INSERT INTO kernel.role_scope_grants (role_id, scope) VALUES
-      ('${MEMBER_ROLE}', 'kernel:contacts:read'),
-      ('${MEMBER_ROLE}', 'kernel:contacts:write'),
-      ('${MEMBER_ROLE}', 'kernel:threads:write'),
-      ('${REVOKED_ROLE}', 'kernel:contacts:read'),
-      ('${APP_ROLE}', 'kernel:contacts:read');
-    INSERT INTO kernel.user_roles (org_id, user_id, role_id) VALUES ('${ORG}', '${USER}', '${MEMBER_ROLE}');
-    INSERT INTO kernel.role_dimension_grants (role_id, dimension_key, dimension_values)
-      VALUES ('${MEMBER_ROLE}', 'mail:sensitivity', '["*"]');
-    INSERT INTO kernel.audit_log (org_id, actor_type, entity_type, entity_id, action, changes)
-      VALUES ('${ORG}', 'user', 'role_scope', '${REVOKED_ROLE}', 'role_scope.revoke',
-              '{"roleId": "${REVOKED_ROLE}", "scope": "kernel:products:read"}');
-    INSERT INTO kernel.threads (id, org_id, handle, created_by) VALUES ('${THREAD}', '${ORG}', 'seeds', '${USER}');
-    INSERT INTO kernel.agents (id, org_id, kind, handle, display_name)
-      VALUES ('${AGENT}', '${ORG}', 'role', 'support', 'Support');
-    INSERT INTO kernel.messages
-      (id, org_id, thread_id, author_id, author_type, author_agent_id, content, required_scopes)
-      VALUES ('${AGENT_REPLY}', '${ORG}', '${THREAD}', '${USER}', 'agent', '${AGENT}', 'reply',
-              ARRAY['*', 'kernel:threads:read']);
-  `)
+  const rows: [string, Record<string, RowValue> | Record<string, RowValue>[]][] = [
+    ["kernel.organizations", { id: ORG, name: "Existing", slug: "existing" }],
+    ["kernel.users", { id: USER, org_id: ORG, email: "a@example.com", name: "A" }],
+    ["kernel.apps", { org_id: ORG, name: "mcp-manager", version: "1.0.0" }],
+    [
+      "kernel.roles",
+      [
+        { id: MEMBER_ROLE, org_id: ORG, name: "Member" },
+        { id: REVOKED_ROLE, org_id: ORG, name: "Reader" },
+        { id: APP_ROLE, org_id: ORG, name: "mcp-manager.user" },
+      ],
+    ],
+    [
+      "kernel.role_scope_grants",
+      [
+        { role_id: MEMBER_ROLE, scope: "kernel:contacts:read" },
+        { role_id: MEMBER_ROLE, scope: "kernel:contacts:write" },
+        { role_id: MEMBER_ROLE, scope: "kernel:threads:write" },
+        { role_id: REVOKED_ROLE, scope: "kernel:contacts:read" },
+        { role_id: APP_ROLE, scope: "kernel:contacts:read" },
+      ],
+    ],
+    ["kernel.user_roles", { org_id: ORG, user_id: USER, role_id: MEMBER_ROLE }],
+    [
+      "kernel.role_dimension_grants",
+      { role_id: MEMBER_ROLE, dimension_key: "mail:sensitivity", dimension_values: '["*"]' },
+    ],
+    [
+      "kernel.audit_log",
+      {
+        org_id: ORG,
+        actor_type: "user",
+        entity_type: "role_scope",
+        entity_id: REVOKED_ROLE,
+        action: "role_scope.revoke",
+        changes: JSON.stringify({ roleId: REVOKED_ROLE, scope: "kernel:products:read" }),
+      },
+    ],
+    ["kernel.threads", { id: THREAD, org_id: ORG, handle: "seeds", created_by: USER }],
+    [
+      "kernel.agents",
+      { id: AGENT, org_id: ORG, kind: "role", handle: "support", display_name: "Support" },
+    ],
+    [
+      "kernel.messages",
+      {
+        id: AGENT_REPLY,
+        org_id: ORG,
+        thread_id: THREAD,
+        author_id: USER,
+        author_type: "agent",
+        author_agent_id: AGENT,
+        content: "reply",
+        required_scopes: { raw: "ARRAY['*', 'kernel:threads:read']" },
+      },
+    ],
+  ]
+  for (const [table, row] of rows) await fresh.unsafe(insertSql(table, row))
   const [v] = await fresh<{ v: number }[]>`
     SELECT permission_version AS v FROM kernel.users WHERE id = ${USER}`
   versionBefore = v?.v ?? -1

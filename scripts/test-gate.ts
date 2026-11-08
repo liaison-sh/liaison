@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// `bun run test:gate [--base origin/main] [--dry-run]`
+// `bun run test:gate [--base origin/main] [--dry-run] [--matrix-json <file>]`
 //
 // The tests a change needs, and only those. The changed paths (committed since
 // the merge base with --base, plus the working tree and untracked files) go
@@ -20,6 +20,10 @@
 //     its port block and one test slot for all of them.
 //
 // It prints what ran, what was skipped and why, and each suite's wall clock.
+//
+// `--matrix-json <file>` (with --dry-run) also writes the plan's heavy lanes
+// ({@link GATE_LANES}) as a GitHub Actions matrix, one entry per shard: what the
+// hand-started `gate` workflow runs on hosted runners.
 
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs"
 import path from "node:path"
@@ -53,6 +57,50 @@ export const BROAD_SUITES = [
   "guards",
   "root",
 ]
+
+/**
+ * The heavy lanes the `gate` workflow runs on hosted runners, with the number
+ * of runners each is split over (`scripts/test-run.ts --shard`). None needs a
+ * model provider key. The light suites are the per-PR `ci` workflow's.
+ */
+export const GATE_LANES: Record<string, number> = {
+  integration: 4,
+  "integration-extra": 2,
+  "integration-mocked": 1,
+  security: 1,
+  "e2e-parallel": 2,
+  "demo-seed": 1,
+  playwright: 6,
+}
+
+export interface GateShard {
+  suite: string
+  shard: number
+  of: number
+  /** `--file` values for the suite (cwd-relative), empty for the whole suite. */
+  files: string[]
+}
+
+/** The file arguments test-run.ts takes for a planned suite. */
+export function fileArgsFor(r: SuitePlan, info: SuiteInfo | undefined): string[] {
+  // e2e-parallel resolves repo-relative paths itself; bun suites want cwd-relative ones.
+  return r.files.map((f) =>
+    r.suite === "e2e-parallel" || !info ? f : path.posix.relative(info.cwd, f),
+  )
+}
+
+/** The plan's heavy lanes, one matrix entry per shard; a narrowed lane gets at most one shard per file. */
+export function gateMatrix(plan: GatePlan, infos: Record<string, SuiteInfo>): GateShard[] {
+  const out: GateShard[] = []
+  for (const r of plan.run) {
+    const lane = GATE_LANES[r.suite]
+    if (!lane) continue
+    const files = fileArgsFor(r, infos[r.suite])
+    const of = files.length > 0 ? Math.min(lane, files.length) : lane
+    for (let shard = 1; shard <= of; shard++) out.push({ suite: r.suite, shard, of, files })
+  }
+  return out
+}
 
 /** Suites that read or write the namespace database (or its Redis/Meili/ports). */
 export const DB_SUITES = new Set([
@@ -291,6 +339,8 @@ async function main(): Promise<number> {
   const baseAt = argv.indexOf("--base")
   const base = baseAt === -1 ? "origin/main" : (argv[baseAt + 1] ?? "origin/main")
   const dryRun = argv.includes("--dry-run")
+  const matrixAt = argv.indexOf("--matrix-json")
+  const matrixFile = matrixAt === -1 ? undefined : argv[matrixAt + 1]
 
   const changed = changedPaths(base)
   const mapped = new Set<string>(BROAD_SUITES)
@@ -321,6 +371,12 @@ async function main(): Promise<number> {
     const scope = r.files.length > 0 ? `${r.files.length} file(s)` : "whole suite"
     console.log(`  run  ${r.suite} (${scope}${DB_SUITES.has(r.suite) ? ", db lane" : ""})`)
     for (const w of r.why) console.log(`         ${w}`)
+  }
+  if (matrixFile) {
+    const include = gateMatrix(plan, infos)
+    writeFileSync(matrixFile, `${JSON.stringify({ include })}\n`)
+    const lanes = [...new Set(include.map((m) => `${m.suite} x${m.of}`))]
+    console.log(`  gate lanes: ${lanes.length > 0 ? lanes.join(", ") : "none"}`)
   }
   if (plan.run.length === 0) {
     console.log("nothing to run.")
@@ -367,11 +423,7 @@ async function main(): Promise<number> {
   const results: Array<{ suite: string; code: number; ms: number; log: string }> = []
   async function runSuite(r: SuitePlan): Promise<void> {
     const info = infos[r.suite]
-    const fileArgs = r.files.flatMap((f) => {
-      // e2e-parallel resolves repo-relative paths itself; bun suites want cwd-relative ones.
-      const rel = r.suite === "e2e-parallel" || !info ? f : path.relative(info.cwd, f)
-      return ["--file", rel]
-    })
+    const fileArgs = fileArgsFor(r, info).flatMap((f) => ["--file", f])
     const log = path.join(logDir, `${r.suite}.log`)
     const t0 = Date.now()
     const proc = Bun.spawn({

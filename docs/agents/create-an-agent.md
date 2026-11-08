@@ -22,7 +22,7 @@ A handle is `@` followed by letters, digits, dashes and underscores, up to 31 ch
 
 The ceiling cannot be wider than the permissions you hold yourself. If you try, the server refuses with `scope_ceiling_exceeded`.
 
-Keep organization-administration scopes (`kernel:roles:admin`, `kernel:scope_requests:admin`, `kernel:policies:admin`, `kernel:users:admin`) out of a role agent's ceiling. Administration happens through a person's own agent, with that person's permissions. `liaison config apply` refuses a role agent that lists one, and approving an access request never adds one to a role agent.
+Keep administration scopes (`*`, any scope ending in `:admin` such as `kernel:org:admin` or `kernel:agents:admin`, and wildcards over them such as `kernel:*`) out of a role agent's ceiling. Administration happens through a person's own agent, with that person's permissions. `liaison config apply` refuses a role agent that lists one, and approving an access request never adds one to a role agent.
 
 ### Include the basics in the ceiling
 

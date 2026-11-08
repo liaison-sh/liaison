@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
+import { KERNEL_ADMIN_SCOPES } from "~/modules/auth/admin-scopes"
 import { hasScope } from "~/modules/permissions/permissions"
 import {
   assertNoAdminScopesInRoleCeiling,
@@ -55,6 +56,26 @@ describe("CEILING GUARD", () => {
         "kernel:users:read",
         "kernel:policies:read",
       ]),
+    ).not.toThrow()
+  })
+
+  for (const adminScope of KERNEL_ADMIN_SCOPES) {
+    it(`CEILING GUARD: ${adminScope} needs a second factor for a person, so a role agent may not hold it`, () => {
+      expect(() =>
+        assertNoAdminScopesInRoleCeiling("role", ["kernel:contacts:read", adminScope]),
+      ).toThrow(RoleAgentAdminScopeError)
+    })
+  }
+
+  it("CEILING GUARD: an app's own admin scope is refused for a role agent too", () => {
+    expect(() =>
+      assertNoAdminScopesInRoleCeiling("role", ["tickets:read", "tickets:settings:admin"]),
+    ).toThrow(RoleAgentAdminScopeError)
+  })
+
+  it("CEILING GUARD: a personal agent may still hold its owner's admin scopes", () => {
+    expect(() =>
+      assertNoAdminScopesInRoleCeiling("personal", ["kernel:org:admin", "kernel:apps:admin"]),
     ).not.toThrow()
   })
 

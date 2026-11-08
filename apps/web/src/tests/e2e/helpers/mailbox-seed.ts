@@ -839,22 +839,70 @@ export async function unlockMailboxThroughUi(
   method: "passphrase",
   secret: string,
 ): Promise<void> {
-  await page.getByTestId("mailbox-unlock").waitFor({ state: "visible", timeout: 60_000 })
-  await page.getByTestId(`mailbox-unlock.method-${method}`).click()
-  await page.getByTestId("mailbox-unlock.secret").fill(secret)
-  await page.getByTestId("mailbox-unlock.submit").click()
-  // A browser with WebAuthn is offered this computer's passkey after a
-  // password unlock, and the modal stays open until that is answered. The run
-  // has no authenticator, so it answers "not now". Whichever comes first ends
-  // the wait: the offer, the modal closing, or a refusal.
-  const offer = page.getByTestId("mailbox-unlock.offer-passkey")
-  await Promise.race([
-    offer
-      .waitFor({ state: "visible", timeout: 120_000 })
-      .then(() => page.getByTestId("mailbox-unlock.decline-passkey").click()),
-    page.getByTestId("mailbox-unlock-host").waitFor({ state: "hidden", timeout: 120_000 }),
-    page.getByTestId("mailbox-unlock.refusal").waitFor({ state: "visible", timeout: 120_000 }),
-  ]).catch(() => {})
+  // The page's own account of the attempt, kept for the failure message: the
+  // unlock runs in the crypto worker, and a stall leaves nothing else behind.
+  const consoleLines: string[] = []
+  const onConsole = (message: { type(): string; text(): string }) => {
+    if (message.type() === "error" || message.type() === "warning") {
+      consoleLines.push(`[${message.type()}] ${message.text().slice(0, 300)}`)
+    }
+  }
+  page.on("console", onConsole)
+  try {
+    await page.getByTestId("mailbox-unlock").waitFor({ state: "visible", timeout: 60_000 })
+    await page.getByTestId(`mailbox-unlock.method-${method}`).click()
+    await page.getByTestId("mailbox-unlock.secret").fill(secret)
+    await page.getByTestId("mailbox-unlock.submit").click()
+    // A browser with WebAuthn is offered this computer's passkey after a
+    // password unlock, and the modal stays open until that is answered. The run
+    // has no authenticator, so it answers "not now". Whichever comes first ends
+    // the wait: the offer, the modal closing, or a refusal (callers that expect
+    // one assert on it). None of them within the budget is a stalled unlock, and
+    // it fails HERE, with what the screen showed, instead of running the test
+    // into its own timeout with nothing to say.
+    const offer = page.getByTestId("mailbox-unlock.offer-passkey")
+    const settled = await Promise.race([
+      offer
+        .waitFor({ state: "visible", timeout: 120_000 })
+        .then(() => page.getByTestId("mailbox-unlock.decline-passkey").click())
+        .then(() => true),
+      page
+        .getByTestId("mailbox-unlock-host")
+        .waitFor({ state: "hidden", timeout: 120_000 })
+        .then(() => true),
+      page
+        .getByTestId("mailbox-unlock.refusal")
+        .waitFor({ state: "visible", timeout: 120_000 })
+        .then(() => true),
+    ]).catch(() => false)
+    if (!settled) {
+      throw new Error(
+        `the mailbox unlock did not settle within 120 s\n${await describeUnlock(page)}\nconsole:\n${consoleLines.join("\n") || "(none)"}`,
+      )
+    }
+  } finally {
+    page.off("console", onConsole)
+  }
+}
+
+/** What the unlock surface shows right now, for a failure message. */
+async function describeUnlock(page: Page): Promise<string> {
+  const visible = (testId: string) =>
+    page
+      .getByTestId(testId)
+      .isVisible()
+      .catch(() => false)
+  const field = await page
+    .getByTestId("mailbox-unlock.secret")
+    .inputValue({ timeout: 1_000 })
+    .catch(() => null)
+  return [
+    `host visible: ${await visible("mailbox-unlock-host")}`,
+    `password field: ${field === null ? "absent" : field === "" ? "EMPTY" : `${field.length} chars`}`,
+    `still working: ${await visible("mailbox-unlock.still-working")}`,
+    `refusal: ${await visible("mailbox-unlock.refusal")}`,
+    `passkey offer: ${await visible("mailbox-unlock.offer-passkey")}`,
+  ].join("\n")
 }
 
 // ── Pre-cutover control-plane residue (plan L10 step 6) ──────────────────────

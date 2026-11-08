@@ -779,6 +779,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/test-db-target.test.ts",
             // The lane attach handle (TestWorld) against a worker server.
             "src/test-world.test.ts",
+            // How a seeded lane waits for the minute scheduler before its snapshot.
+            "src/e2e-lane.test.ts",
           ]),
     ],
     cwd: path.join(ROOT, "packages/test-helpers"),

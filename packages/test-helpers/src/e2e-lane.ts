@@ -477,11 +477,13 @@ const SETTLING_JOBS: ReadonlySet<string> = new Set([
 /**
  * Waits until the job scheduler `schedulerId` has fired once from now on: a
  * BullMQ scheduler keeps its next fire time as its score in `<queue>:repeat`
- * and moves it forward when that fire's job is taken. Gives up after
- * `timeoutMs` (more than one period of a minute cron) with a warning.
+ * and moves it forward when that fire's job is taken. A scheduler that is not
+ * registered (no score) never fires, so the lane goes on at once, with a note.
+ * Gives up after `timeoutMs` (more than one period of a minute cron) with a
+ * warning.
  */
-async function waitForSchedulerTick(
-  redis: Redis,
+export async function waitForSchedulerTick(
+  redis: Pick<Redis, "zscore">,
   bullPrefix: string,
   queue: string,
   schedulerId: string,
@@ -493,7 +495,13 @@ async function waitForSchedulerTick(
   const first = await next()
   while (Date.now() < deadline) {
     const now = await next()
-    if (Number.isFinite(first) && Number.isFinite(now) && now > first) return
+    if (!Number.isFinite(first) || !Number.isFinite(now)) {
+      process.stderr.write(
+        `[e2e-lane] scheduler ${schedulerId} is not registered in ${key}; not waiting\n`,
+      )
+      return
+    }
+    if (now > first) return
     await Bun.sleep(250)
   }
   process.stderr.write(

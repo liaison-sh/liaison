@@ -10,6 +10,11 @@ import { createTask } from "~/apps/projects/service/tasks"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { type UserContext, withRlsContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
+import { quoteIdent } from "~/lib/sql-utils"
+
+/** The kernel schema as this deployment names it. */
+const K = drizzleSql.raw(quoteIdent(schemaRef("kernel")))
 
 const SCOPES = [
   "projects:projects:read",
@@ -31,7 +36,7 @@ export interface DealWorld {
 export async function makeDealWorld(label: string): Promise<DealWorld> {
   const [org] = extractRows<{ id: string }>(
     await db.execute(drizzleSql`
-      INSERT INTO kernel.organizations (id, name, slug)
+      INSERT INTO ${K}.organizations (id, name, slug)
       VALUES (gen_random_uuid(), ${label}, ${`${label}-${crypto.randomUUID().slice(0, 8)}`})
       RETURNING id
     `),
@@ -39,7 +44,7 @@ export async function makeDealWorld(label: string): Promise<DealWorld> {
   const orgId = org!.id
   const [user] = extractRows<{ id: string }>(
     await db.execute(drizzleSql`
-      INSERT INTO kernel.users (id, org_id, email, name, status, password_hash, auth_version, permission_version)
+      INSERT INTO ${K}.users (id, org_id, email, name, status, password_hash, auth_version, permission_version)
       VALUES (gen_random_uuid(), ${orgId}::uuid, ${`seller-${crypto.randomUUID().slice(0, 8)}@deals.test`}, 'Seller', 'active', 'h', 1, 1)
       RETURNING id
     `),
@@ -130,7 +135,7 @@ export async function dealEvents(w: DealWorld, taskId: string): Promise<string[]
   const rows = extractRows<{ action: string; outcome: string | null }>(
     await db.execute(drizzleSql`
       SELECT payload->>'action' AS action, payload->'data'->>'outcome' AS outcome
-      FROM kernel.pending_events
+      FROM ${K}.pending_events
       WHERE org_id = ${w.orgId}::uuid
         AND payload->>'app' = 'projects'
         AND payload->>'entity' = 'deal'

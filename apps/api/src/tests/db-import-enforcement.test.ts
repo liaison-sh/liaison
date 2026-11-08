@@ -35,6 +35,8 @@ describe("db import enforcement", () => {
     "tests/bench/mail-sync-throughput.ts",
     // The relation suite's worlds: they read rows as the database holds them to check that an
     // event took, outside any request context. Loaded by that suite only.
+    // The deal tests' world: reads rows as the database holds them, loaded by those tests only.
+    "apps/projects/service/__tests__/deal-world.ts",
     "tests/relations/approval-world.ts",
     "tests/relations/calendar-world.ts",
     "tests/relations/dashboard-world.ts",

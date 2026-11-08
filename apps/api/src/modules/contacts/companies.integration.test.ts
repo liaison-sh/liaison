@@ -258,10 +258,10 @@ describe("company domains and names", () => {
       }),
     )
     expect(patched.company.domain).toBeNull()
-    const [{ n }] = (await sql<{ n: number }[]>`
+    const [stored] = await sql<{ n: number }[]>`
       SELECT count(*)::int AS n FROM kernel.companies
-       WHERE org_id = ${ORG_ID} AND lower(domain) = 'gmail.com'`) as [{ n: number }]
-    expect(n).toBe(0)
+       WHERE org_id = ${ORG_ID} AND lower(domain) = 'gmail.com'`
+    expect(stored?.n).toBe(0)
     const found = await asAnna((tx) =>
       listCompanies(tx, { orgId: ORG_ID, page: 1, limit: 50, query: "gmail.com" }),
     )

@@ -52,7 +52,7 @@ let crm: FixtureCrm
 const CRM_KEY = "fixture-crm-tour-key"
 
 const test = createProfiledE2ETest({
-  workerIdOffset: 200,
+  workerIdOffset: 80,
   portCount: 2,
   before: async () => {
     gmail = await startGmailHttpFixture()

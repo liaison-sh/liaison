@@ -24,7 +24,7 @@ import { expect, loginAs } from "./fixtures/test"
 import { seedModelPricingAndCredits } from "./helpers/agent-seed"
 
 const test = createProfiledE2ETest({
-  workerIdOffset: 240,
+  workerIdOffset: 55,
   portCount: 2,
   before: async () => ({ env: {}, teardowns: [] }),
 })

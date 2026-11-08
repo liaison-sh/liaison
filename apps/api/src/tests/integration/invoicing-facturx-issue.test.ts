@@ -218,6 +218,8 @@ describe("Factur-X legal original at issue (real Postgres, sandbox, kernel rende
     const id = await issue()
     const d = await doc(id)
     expect(d.regime).toBe("e_invoice")
+    // A failed render names its code here before the status check hides it.
+    expect((d.lifecycle_log as Array<{ event: string }>).filter((e) => e.event === "pdf_render_failed")).toEqual([])
     expect(d.pdf_status).toBe("ready")
     const [lo] = await sql<
       Array<Record<string, unknown>>

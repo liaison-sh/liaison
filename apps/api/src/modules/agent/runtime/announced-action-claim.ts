@@ -11,8 +11,11 @@
  * This module is the text half: the LAST two sentences of the answer are read
  * for a first-person announcement of an imminent action in English or French
  * ("I'll create the invoice now", "Let me set that up", "Je vais créer la
- * facture", "Je m'en occupe"). The verb must be an action verb, so "I'll be
- * glad to help" or "Let me know" never match. Not an announcement:
+ * facture", "Je m'en occupe"). There the verb must be an action verb, so "I'll
+ * be glad to help" never matches. The FINAL sentence counts whatever its verb
+ * when it opens on the agent's own next step ("Let's do the scope lookup
+ * first."), unless the words address or wait on the person ("Let me know",
+ * "I'll wait for your go-ahead"). Not an announcement:
  *   - a final sentence that asks or offers ("Shall I book it?", "Want me
  *     to…?", "Voulez-vous que je…");
  *   - an announcement tied to the person or to later ("I'll book it once you
@@ -74,6 +77,33 @@ const ANNOUNCEMENT_PATTERNS: readonly RegExp[] = [
   /\bje (?:lance|procede a|prepare|cree|reserve|envoie|programme)\b[^.!?\n]{0,60}\b(?:maintenant|tout de suite|immediatement|de ce pas)\b/,
 ]
 
+/**
+ * The final sentence opens on a first-person announcement of the agent's own
+ * next step, whatever the verb: "Let's do the scope lookup first.", "Now let
+ * me think about the prompt.", "Je vais m'atteler à la consigne." A turn that
+ * stops there stops on a step it never takes. Group 1 is the word after it.
+ */
+const NEXT_STEP_OPENING = new RegExp(
+  "^(?:[-*>#\\s]*)(?:(?:ok|okay|alright|all right|right|so|now|next|first|then|good|great|perfect|sure|" +
+    "bon|alors|d'accord|parfait|maintenant|ensuite|d'abord|tres bien)[,\\s]+)*" +
+    `(?:let me|let's|let us|i'll|i will|i'm going to|i am going to|i'm about to|i am about to|` +
+    `je vais|je m'en vais|on va|nous allons|laisse-moi|laissez-moi)\\s+${ADV_EN}${ADV_FR}` +
+    "(?:(?:vous|te|lui|leur|le|la|les|en|y|me|se|nous)\\s+|[lmts]'\\s*)*([a-z][a-z'-]*)",
+)
+
+/**
+ * Words after such an opening that address the person or wait on them, not a
+ * step the agent takes: "let me know", "let us know", "laissez-moi savoir",
+ * "I'll wait for your go-ahead", "I'll be here", "let's talk".
+ */
+const NOT_A_STEP =
+  /^(?:know|hear|be|wait|await|stay|remain|keep|hope|leave|stop|thank|talk|discuss|chat|meet|need|say|note|mention|remind|savoir|attendre|patienter|rester|etre|tenir|esperer|laisser)$/
+
+function announcesNextStep(sentence: string): boolean {
+  const m = NEXT_STEP_OPENING.exec(sentence)
+  return m !== null && !NOT_A_STEP.test(m[1] ?? "")
+}
+
 /** A sentence that asks, offers or makes the action wait for the person. */
 const OFFER_OPENING =
   /^(?:[-*>#\s]*)(?:shall|should|would|want|do you|can i|could i|i can|i could|may i|if you|si vous|si tu|voulez|veux|souhaitez|dois-je|je peux|je pourrais|puis-je)\b/
@@ -113,6 +143,15 @@ export function announcesImminentAction(text: string): boolean {
   if (all.length === 0) return false
   const last = all[all.length - 1]
   if (last.endsWith("?") || OFFER_OPENING.test(last)) return false
+  if (
+    !ASKS_PERSON_FIRST.test(last) &&
+    announcesNextStep(last) &&
+    !DEFERRED.test(last) &&
+    !NAMING.test(last) &&
+    !NEGATED.test(last.slice(0, 40))
+  ) {
+    return true
+  }
   for (const raw of all.slice(-2)) {
     if (raw.endsWith("?") || OFFER_OPENING.test(raw) || ASKS_PERSON_FIRST.test(raw)) continue
     for (const pattern of ANNOUNCEMENT_PATTERNS) {

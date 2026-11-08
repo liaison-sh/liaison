@@ -50,7 +50,7 @@ if (import.meta.main) {
     const v = run[f] ?? table[f]
     if (v !== undefined) next[f] = Math.max(1, Math.round(v))
   }
-  writeFileSync(TABLE, `${JSON.stringify(next, null, 1)}\n`)
+  writeFileSync(TABLE, `${JSON.stringify(next, null, 2)}\n`)
   const total = Object.values(next).reduce((a, b) => a + b, 0)
   console.log(
     `${TABLE}: ${Object.keys(next).length} files (${Object.keys(run).length} from these reports), ${(total / 60).toFixed(1)} worker-min`,

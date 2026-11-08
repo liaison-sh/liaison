@@ -85,11 +85,7 @@ jobs:
         with:
           bun-version: "1.4.x"
       - name: Install dependencies
-        # A package postinstall that cannot reach its CDN (ffmpeg-static fetches its
-        # binary from a GitHub release) must not fail the job: no CI test spawns a
-        # real ffmpeg, only the live, keyed media scenario. Same fallback as
-        # apps/api/Dockerfile.
-        run: bun install --frozen-lockfile || { echo "install scripts failed (CDN outage?), retrying with --ignore-scripts"; bun install --frozen-lockfile --ignore-scripts; }
+        run: bun install --frozen-lockfile
       - name: Biome check
         if: env.LIAISON_RELEASE_DRY_RUN != '1'
         run: bun run check
@@ -137,11 +133,7 @@ jobs:
         with:
           bun-version: "1.4.x"
       - name: Install dependencies
-        # A package postinstall that cannot reach its CDN (ffmpeg-static fetches its
-        # binary from a GitHub release) must not fail the job: no CI test spawns a
-        # real ffmpeg, only the live, keyed media scenario. Same fallback as
-        # apps/api/Dockerfile.
-        run: bun install --frozen-lockfile || { echo "install scripts failed (CDN outage?), retrying with --ignore-scripts"; bun install --frozen-lockfile --ignore-scripts; }
+        run: bun install --frozen-lockfile
       - name: Install postgres/redis CLIs
         if: env.LIAISON_RELEASE_DRY_RUN != '1'
         # The client's major matches docker-compose's postgres: pg_dump refuses a

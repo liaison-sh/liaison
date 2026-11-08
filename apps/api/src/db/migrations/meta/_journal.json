@@ -2038,6 +2038,13 @@
       "when": 1900003373000,
       "tag": "0289_portal_role_and_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 291,
+      "version": "7",
+      "when": 1900003374000,
+      "tag": "0290_companies",
+      "breakpoints": true
     }
   ]
 }

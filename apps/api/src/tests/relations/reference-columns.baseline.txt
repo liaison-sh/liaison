@@ -178,6 +178,8 @@ kernel.auto_approve_policies.created_by
 kernel.away_ranges.set_by
 kernel.browser_push_subscriptions.device_id
 kernel.browser_push_subscriptions.user_id
+kernel.companies.main_contact_id
+kernel.companies.owner_user_id
 kernel.connected_accounts.created_by
 kernel.connected_accounts.oauth_client_id
 kernel.connected_accounts.owner_id

@@ -26,6 +26,7 @@ import {
   verifyAddress,
   verifyAddressSchema,
 } from "~/modules/contacts/addresses"
+import { companyRoutes } from "~/modules/contacts/company-routes"
 import { openContactDiscussion } from "~/modules/contacts/discussion"
 import {
   addGroupMembers,
@@ -51,6 +52,10 @@ import { getContactSharing, setContactSharing } from "~/modules/contacts/sharing
 import { hasScope } from "~/modules/permissions/permissions"
 
 export const contacts = new Hono<AppEnv>()
+
+// Companies (company-routes.ts), before every "/:id" route below so
+// "companies" is never read as a contact id.
+contacts.route("/companies", companyRoutes)
 
 contacts.post("/resolve", zValidator("json", resolveContactSchema), async (c) => {
   const params = c.req.valid("json")

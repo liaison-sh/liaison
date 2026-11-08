@@ -94,7 +94,13 @@ interface Clock {
   seedStart: number
 }
 
-function normalise(value: unknown, column: string, clock: Clock): unknown {
+/** A value naming a lane schema (`w57_app_knowledge.documents`) names it without the lane's
+ *  prefix, which is the lane's worker id: the snapshot is the same whichever lane ran it. */
+function stripLanePrefix(value: string, prefix: string): string {
+  return prefix === "" ? value : value.split(prefix).join("")
+}
+
+function normalise(value: unknown, column: string, clock: Clock, prefix = ""): unknown {
   if (value === null || value === undefined) return value
   if (VOLATILE_COLUMN.test(column)) return "<volatile>"
   if (ARRIVAL_ORDER_COLUMN.test(column)) return "<counter>"
@@ -110,7 +116,7 @@ function normalise(value: unknown, column: string, clock: Clock): unknown {
       return `now${steps >= 0 ? "+" : ""}${steps * 5}m`
     }
     if (QA_ROLE_NAME.test(value)) return "e2e-role-<n>"
-    return value
+    return stripLanePrefix(value, prefix)
       .replace(UUID, "<uuid>")
       .replace(ID_PREFIX_IN_ADDRESS, "+<id>@")
       .replace(EPOCH_MS_IN_ID, (ms) => {
@@ -120,7 +126,7 @@ function normalise(value: unknown, column: string, clock: Clock): unknown {
   }
   if (Array.isArray(value)) {
     return value
-      .map((v) => normalise(v, column, clock))
+      .map((v) => normalise(v, column, clock, prefix))
       .map((v) => JSON.stringify(v))
       .sort()
       .map((v) => JSON.parse(v) as unknown)
@@ -132,6 +138,7 @@ function normalise(value: unknown, column: string, clock: Clock): unknown {
         (value as Record<string, unknown>)[key],
         key,
         clock,
+        prefix,
       )
     }
     return out
@@ -163,7 +170,8 @@ async function snapshotLane(
         .filter(({ r }) => !isSignIn(name, r))
         .map(({ r }) => {
           const out: Record<string, unknown> = {}
-          for (const col of Object.keys(r).sort()) out[col] = normalise(r[col], col, clock)
+          for (const col of Object.keys(r).sort())
+            out[col] = normalise(r[col], col, clock, schemaPrefix)
           return JSON.stringify(out)
         })
         .sort()

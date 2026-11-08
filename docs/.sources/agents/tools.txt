@@ -349,3 +349,4 @@ dashboards_create tool: gated for org, decided by kernel:dashboards:admin -> app
 dashboards_update tool: gated for an org dashboard or a switch to org -> apps/api/src/modules/dashboards/tools.ts:317
 dashboards_delete tool: gated for an org dashboard -> apps/api/src/modules/dashboards/tools.ts:356
 build-dashboard kernel skill -> apps/api/src/modules/agent/prompts/kernel/build-dashboard.md:2
+The search reads other forms of a word, misspellings of 5+ letters, French words and plain synonyms of name words; a rare word counts more in a query of several words -> apps/api/src/modules/agent/tools/tool-rank.ts:104-235 ; apps/api/src/modules/agent/tools/tool-lexicon.ts:1-15

@@ -187,8 +187,25 @@ export async function openAgentConversation(page: Page): Promise<Locator> {
   // nothing and the wait burns its whole budget on a shell that never got the
   // gesture. Three presses with a short budget each beat one long wait, and a
   // conversation already in front of the user is still never toggled away.
+  //
+  // The shortcut is a TOGGLE: on a dock surface it puts the personal agent's
+  // window away when that window is already open. After a reload the dock
+  // restores an expanded window from its saved state, and its conversation
+  // chunk can still be loading when the first check runs, so a press then
+  // folds the window the reload just restored (it stays "visible" through the
+  // fold, and the scenario then acts on a closing window). So: wait for the
+  // shell to bind its keymap, and press only while no dock window is open.
+  const openDockWindow = page.locator('[data-dock-tab][data-expanded="true"]')
   for (let attempt = 0; attempt < 3; attempt++) {
     if (await conversation.isVisible().catch(() => false)) break
+    await page
+      .locator("[data-shell][data-shell-ready='true']")
+      .waitFor({ state: "attached", timeout: NAV_TIMEOUT })
+    const restored = (await readDockState(page))?.tabs.some((t) => t.expanded) ?? false
+    if (restored || (await openDockWindow.count()) > 0) {
+      await conversation.waitFor({ state: "visible", timeout: NAV_TIMEOUT })
+      break
+    }
     await page.keyboard.press("ControlOrMeta+Period")
     const appeared = await conversation
       .waitFor({ state: "visible", timeout: NAV_TIMEOUT / 3 })

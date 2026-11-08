@@ -27,13 +27,14 @@ import {
   namespaceMeiliIndexes,
   resolveTestCoordinates,
 } from "../packages/test-helpers/src/test-namespace"
-import { apiE2eTestFiles } from "./lib/api-e2e-files"
+import { apiE2eScenarioFiles, apiE2eTestFiles } from "./lib/api-e2e-files"
 import { computeMemBudget, formatMemBudget } from "./lib/mem-budget"
 import { formatMemGuard, killProcessTreeNow, startMemGuard } from "./lib/mem-guard"
 import { namedTestFiles, pendingSuiteReason } from "./lib/pending-suites"
 import { installRunDeathLogging, shouldContinueFullRun } from "./lib/run-death"
 import { acquireNamespaceLock, acquireTestLock, leasePortBlock, slotCount } from "./lib/test-lock"
 import { sweepRedisPrefix } from "./lib/test-redis-flush"
+import { parseShard, pickShard, type Shard, shardBunTestCmd } from "./lib/test-shard"
 import {
   CLEAN_SUBSTRATE_SUITES,
   collectOldTemplates,
@@ -71,6 +72,8 @@ let testNameFilter: string | undefined
 // --file may repeat: test:gate hands a suite every file a change touches.
 const fileFilters: string[] = []
 let modeArg: string | undefined
+// --shard <i>/<n>: this machine's share of the suite (scripts/lib/test-shard.ts).
+let shardArg: Shard | null = null
 // An argument this loop does not recognise is refused: it used to be dropped,
 // so `--file=x`, a bare path, or several paths in one quoted string left the
 // file list empty and silently ran the whole suite.
@@ -93,7 +96,12 @@ for (let i = 1; i < argv.length; i++) {
     }
     fileFilters.push(value)
   } else if (a === "--mode") modeArg = argv[++i]
-  else refuseArgs(`Unrecognised argument ${JSON.stringify(a)}`)
+  else if (a === "--shard") {
+    const value = argv[++i]
+    shardArg = parseShard(value)
+    if (!shardArg)
+      refuseArgs(`--shard takes <i>/<n> with 1 <= i <= n (got ${JSON.stringify(value)})`)
+  } else refuseArgs(`Unrecognised argument ${JSON.stringify(a)}`)
 }
 const fileFilter: string | undefined = fileFilters[0]
 
@@ -953,6 +961,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "scripts/lib/test-lock.test.ts",
             // The template key that decides when a run reuses the migrated template.
             "scripts/lib/test-template.test.ts",
+            "scripts/lib/test-shard.test.ts",
             // Which failed unit files the sharded runner retries (never one whose
             // failure already reproduced alone) and its wall-clock split.
             "scripts/lib/unit-retry.test.ts",
@@ -2217,6 +2226,32 @@ const config = SUITES[suite]
 if (!config) {
   console.error(`Unknown suite: ${suite}. Available: ${Object.keys(SUITES).join(", ")}, full`)
   process.exit(1)
+}
+
+// --shard: playwright and vitest split natively; a `bun test` suite and the
+// e2e-parallel lane get their share of the files. Nothing else splits.
+if (shardArg) {
+  const spec = `${shardArg.index}/${shardArg.total}`
+  if (suite === "playwright" || suite === "web-unit") {
+    config.cmd.push(`--shard=${spec}`)
+  } else if (suite === "e2e-parallel") {
+    const named =
+      fileArg.length > 0 ? fileArg : apiE2eScenarioFiles(path.join(ROOT, "apps/api/src/tests/e2e"))
+    const mine = pickShard(named, shardArg)
+    config.cmd = [...config.cmd.filter((a) => !named.includes(a)), ...mine]
+    if (mine.length === 0) config.cmd = []
+  } else if (config.cmd[0] === "bun" && config.cmd[1] === "test") {
+    const sharded = shardBunTestCmd(config.cmd, config.cwd, shardArg)
+    config.cmd = sharded.files.length > 0 ? sharded.cmd : []
+  } else {
+    console.error(`--shard is not supported for suite ${suite}`)
+    process.exit(2)
+  }
+  if (config.cmd.length === 0) {
+    console.log(`▸ ${suite} shard ${spec}: no files in this shard, nothing to run`)
+    process.exit(0)
+  }
+  console.log(`▸ ${suite} shard ${spec}`)
 }
 
 // A suite whose every test file is declared pending is SKIPPED, not failed:

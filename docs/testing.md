@@ -8,7 +8,7 @@ Run suites from the repo root through `bun run <script>`, single files with `bun
 
 | Script | Scope |
 |--------|-------|
-| `test:gate [--base origin/main] [--dry-run]` | The suites and files the current change affects (see below) |
+| `test:gate [--base origin/main] [--dry-run] [--matrix-json <file>]` | The suites and files the current change affects (see below) |
 | `test:unit` | Backend unit, sharded over template clones, batches of 8 files per bun process (also runs `test:guards` and `test:root`, the repo-root script tests); see Unit runner below |
 | `test:integration` | Backend integration |
 | `test:e2e:parallel` | Backend E2E (4 parallel workers) |
@@ -44,6 +44,10 @@ Route tests take `acquireTestLock` / `releaseTestLock` from `src/tests/route-tes
 ### `test:gate`
 
 `bun run test:gate [--base origin/main]` takes the paths changed since the merge base (plus the working tree and untracked files) through `.claude/test-map.ts`. A changed test file runs alone in the suite that lists it, a unit source file runs its co-located `<name>.test.ts` / `<name>.*.test.ts`, a changed scenario runs alone in e2e-parallel; any other mapped change runs that suite whole, and a path the map does not cover (docs aside) runs the broad set. Database suites run one after another in the namespace, the others in a small pool beside them. It prints what ran, what it skipped and why, and each suite's wall clock; `--dry-run` prints only the plan.
+
+### The `gate` workflow: heavy lanes on hosted runners
+
+`.github/workflows/gate.yml` runs the heavy lanes of a change on GitHub-hosted runners, started by hand: `gh workflow run gate.yml --ref main -f ref=<commit> -f base=<base>`. Its `plan` job takes the paths changed between the merge base of `base` and `ref` through the same planner as `test:gate` (`--dry-run --matrix-json <file>`) and keeps the lanes in `GATE_LANES` (`scripts/test-gate.ts`): integration, integration-extra, integration-mocked, security, e2e-parallel, demo-seed and Playwright. Each lane is split over runners with `scripts/test-run.ts <suite> --shard <i>/<n>`, which deals the suite's files round robin over their sorted list (Playwright and vitest split natively). No lane needs a provider key. The job timeouts add up to 60 minutes; the `report` job writes one table (lane, shard, result, minutes) as the run's summary, and a failing shard keeps its logs and Playwright reports as an artifact.
 
 ### Soak tests (`*.soak.test.ts`)
 

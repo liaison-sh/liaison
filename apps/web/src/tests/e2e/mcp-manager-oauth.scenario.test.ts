@@ -25,7 +25,8 @@
 // POST.
 
 import path from "node:path"
-import { api, login } from "@liaison/test-helpers"
+import { api } from "@liaison/test-helpers"
+import { tokenAfterOrgAccessChange } from "./fixtures/org-access-change"
 import { expect, test } from "./fixtures/test"
 
 const SHOTS_DIR = path.resolve(__dirname, "../../../logs/playwright-diagnostics/mcp-oauth")
@@ -68,11 +69,13 @@ test("admin completes the OAuth (DCR) handshake for an MCP connection", async ({
   const createdBody = createRes.body as { id?: string; data?: { id?: string } }
   const connectionId = createdBody.id ?? createdBody.data?.id
   expect(connectionId).toBeTruthy()
-  // Creating the connection grants its owner the connection's tool namespace
-  // and moves their permission version (service/connections.ts), so a token
-  // minted before it is refused from here on, as a real client's would be
-  // until it refreshes. The rest of the test signs in again for a current one.
-  const { accessToken: adminToken } = await login(env.serverUrl, "admin@test.com", "12345678")
+
+  // Adding an org server makes every member's older token stale (the server's
+  // `mcp:<slug>` comes with the next one): continue with a fresh admin token.
+  const adminToken = await tokenAfterOrgAccessChange(env, qa.admin.token, {
+    email: "admin@test.com",
+    password: "12345678",
+  })
 
   // 3. Kick off the OAuth flow. The route returns the authorization URL
   //    constructed against the fixture issuer (per discovery in step 1).

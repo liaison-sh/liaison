@@ -306,7 +306,7 @@ describe("decision queue", () => {
     }
   })
 
-  // S166, the walk's case: Dismiss, then the tab closes 2.5 s into the window without pagehide.
+  // Dismiss, then the tab closes 2.5 s into the window without pagehide.
   it("stored decision sent at next boot: a tab closed inside the window loses nothing", async () => {
     ;(globalThis as Record<string, unknown>)[SERVER_GLOBAL] = "https://a.test"
     const first = makeApi()

@@ -1502,9 +1502,8 @@ describe("AttentionRow: Open on an approval whose item has its own page", () => 
   })
 })
 
-// Cold walk P0 (2026-11-08): a newcomer read the Home rows and lost the decision, the deadline and
-// the title to internal ids.
-describe("AttentionRow: cold walk P0", () => {
+// A newcomer reading the Home rows lost the decision, the deadline and the title to internal ids.
+describe("AttentionRow: what a newcomer reads on a Home row", () => {
   const ID = "cw-1"
   const tid = `attention-row-kernel-approval_request-${ID}`
   const item = (metadata: Record<string, unknown> = {}): AttentionItem => ({

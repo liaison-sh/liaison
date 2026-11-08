@@ -109,6 +109,9 @@ const DENY_ALL_LEDGERS = new Set<string>([
   // Restore drill markers (migration 0269): instance-wide, no org column,
   // privileged pool only.
   "kernel.restore_drill_markers",
+  // Opt-out link tokens (migration 0291): org-scoped, but read and written
+  // only by the send path and the public opt-out route, on the privileged pool.
+  "kernel.suppression_links",
   // The moves an org took part in, per instance (migration 0270): privileged
   // pool only, never read by a person.
   "kernel.org_transfer_ledger",

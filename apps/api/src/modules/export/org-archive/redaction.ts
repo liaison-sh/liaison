@@ -40,6 +40,7 @@ export const REDACTED_COLUMNS: Readonly<Record<string, string>> = {
   "kernel.mcp_connections.refresh_token_hash": "MCP client token hash",
   "kernel.nodes.credential_hash": "node credential hash",
   "kernel.notification_device_credentials.token_hash": "device credential hash",
+  "kernel.suppression_links.token_hash": "opt-out link token hash",
   "kernel.push_tokens.token": "push notification token",
   "kernel.browser_push_subscriptions.auth": "web push subscription secret",
   "kernel.browser_push_subscriptions.p256dh": "web push subscription key",
@@ -87,6 +88,10 @@ const STATUS = "a status label, not an OAuth state value"
 
 /** Reviewed: sensitive-looking names that are kept, with why. */
 export const KEPT_COLUMNS: Readonly<Record<string, string>> = {
+  "kernel.suppression_links.email_hash":
+    "fingerprint of an address that opted out, not a credential (the token hash is redacted)",
+  "kernel.suppressions.email_hash":
+    "fingerprint of an address that opted out: the org keeps honouring it after a restore",
   "app_knowledge.documents.verified_at": "a timestamp",
   "app_knowledge.documents.verified_by": "who checked the document, not a verifier",
   "app_knowledge.source_links.verified_at": "a timestamp",

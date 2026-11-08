@@ -45,6 +45,7 @@ export const users = kernel.table(
     // restrictive policy hides external rows under liaison_rls (users_members_only).
     userType: text("user_type").notNull().default("member"),
     // The client company of an external user, set exactly when user_type is external.
+    // FK users_company_fk -> kernel.companies ON DELETE RESTRICT (0290).
     companyId: uuid("company_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

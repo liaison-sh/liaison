@@ -38,6 +38,13 @@ export const projects = appProjects.table(
     checklistOnCards: boolean("checklist_on_cards").notNull().default(true),
     // Sidebar group heading (0250): trimmed free text, NULL = ungrouped.
     group: text("group"),
+    // A work project or a sales pipeline (0292). Migration-owned: written by
+    // the projects service only.
+    kind: text("kind", { enum: ["work", "pipeline"] })
+      .notNull()
+      .default("work"),
+    // The client of this project (0292): a soft reference to kernel.companies.
+    companyId: uuid("company_id"),
     ownerId: uuid("owner_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),

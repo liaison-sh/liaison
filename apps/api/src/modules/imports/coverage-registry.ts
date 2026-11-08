@@ -163,6 +163,14 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     exempt: "sync",
     reason: "accounting sync state and configuration",
   },
+  "app_projects.deal_values": {
+    exempt: "deferred",
+    reason: "no deal import kind yet; amounts are entered by hand or by the agent",
+  },
+  "app_projects.deals": {
+    exempt: "deferred",
+    reason: "no deal import kind yet; deals are entered by hand or by the agent",
+  },
   "app_projects.labels": {
     exempt: "config",
     reason: "projects configuration: label groups and values are defined per org in the app",
@@ -279,6 +287,10 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
   },
   "kernel.config_applied_fields": { exempt: "config", reason: "org and app configuration" },
   "kernel.connected_accounts": { exempt: "system", reason: "credentials and secrets" },
+  "kernel.companies": {
+    exempt: "deferred",
+    reason: "no company import kind yet; companies are entered by hand or by the agent",
+  },
   "kernel.contact_addresses": {
     exempt: "deferred",
     reason: "no import kind yet; addresses come from the shipping sync or are entered by hand",
@@ -383,6 +395,11 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     reason: "audit, credits, demo and search bookkeeping",
   },
   "kernel.sessions": { exempt: "system", reason: "credentials and secrets" },
+  "kernel.suppression_links": {
+    exempt: "system",
+    reason: "opt-out link tokens of sent mail, never imported",
+  },
+  "kernel.suppressions": { exempt: "system", reason: "compliance list, never imported" },
   "kernel.sub_agent_definitions": {
     exempt: "config",
     reason: "agent configuration, defined in the app or by agents (not business records)",

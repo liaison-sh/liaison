@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { eq } from "drizzle-orm"
+import { afterCurrentCommit } from "~/db/commit-hooks"
 import { withPrivilegedDb } from "~/db/privileged"
 import { users } from "~/db/schema/kernel"
 import { rootLogger } from "~/lib/logger"
@@ -51,8 +52,17 @@ const authCacheSweep = setInterval(() => {
 }, 60_000)
 authCacheSweep.unref()
 
+/**
+ * Counts the drops this process has applied. A read records it before its
+ * query and caches its answer only if no drop happened meanwhile: a read that
+ * overlapped a drop may have seen the version the drop is about, so it answers
+ * its own request but never refills the cache with it.
+ */
+let invalidationGeneration = 0
+
 /** Drop the local cache entry (this process only) without re-broadcasting. */
 function invalidateAuthCacheLocal(userId?: string): void {
+  invalidationGeneration++
   if (userId) {
     authCache.delete(userId)
   } else {
@@ -70,6 +80,15 @@ function invalidateAuthCacheLocal(userId?: string): void {
  * backstop (peers re-fetch from the DB once their TTL expires regardless).
  */
 export function invalidateAuthCache(userId?: string): void {
+  dropAndBroadcast(userId)
+  // Called inside a transaction, the version bump is not committed yet: a
+  // request read between here and the commit sees the old version and caches
+  // it, here or on a peer, and a token minted before the change would pass
+  // until the TTL lapses. Drop again, everywhere, once the transaction ends.
+  afterCurrentCommit(() => dropAndBroadcast(userId))
+}
+
+function dropAndBroadcast(userId: string | undefined): void {
   invalidateAuthCacheLocal(userId)
   void publishRedis(
     AUTH_CACHE_INVALIDATE_CHANNEL,
@@ -103,6 +122,7 @@ export async function initAuthCacheInvalidation(): Promise<void> {
 }
 
 async function fetchUserAuthState(userId: string, orgId: string): Promise<UserAuthState | null> {
+  const generation = invalidationGeneration
   const [user] = await withPrivilegedDb(orgId, "auth-check", (tx) =>
     tx
       .select({
@@ -120,7 +140,9 @@ async function fetchUserAuthState(userId: string, orgId: string): Promise<UserAu
     return null
   }
 
-  authCache.set(userId, { ...user, expiresAt: Date.now() + AUTH_CACHE_TTL_MS })
+  if (generation === invalidationGeneration) {
+    authCache.set(userId, { ...user, expiresAt: Date.now() + AUTH_CACHE_TTL_MS })
+  }
   return user
 }
 

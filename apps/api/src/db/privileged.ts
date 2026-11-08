@@ -3,6 +3,7 @@ import { AsyncLocalStorage } from "node:async_hooks"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { DbAcquireTimeoutError, withAcquireTimeout } from "~/db/acquire-timeout"
+import { openCommitScope, runCommitHooksAfter, withinCommitScope } from "~/db/commit-hooks"
 import {
   getPoolGauges,
   PoolDiagTestAccess,
@@ -136,6 +137,7 @@ export async function withPrivilegedDb<T>(
   const jobsSlot: PoolSlot | null =
     !opts?.db && opts?.pool === "jobs" ? poolSlot("privilegedJobs") : null
   const queued: QueuedEventsMark = { queued: false }
+  const commitScope = openCommitScope()
   const txPromise = onPrivilegedPool
     ? runOnPrivilegedPool(poolDb, reason, orgId, opts?.actor, fn, signalAcquired)
     : poolDb.transaction(async (tx) => {
@@ -146,13 +148,16 @@ export async function withPrivilegedDb<T>(
           await setPrivilegedContext(tx, orgId, opts?.actor)
           const branded = tx as unknown as PrivilegedDb
           attachQueueEvent(branded, orgId, queued)
-          return await fn(branded)
+          return await withinCommitScope(commitScope, () => fn(branded))
         } finally {
           jobsSlot?.released()
         }
       })
   if (jobsSlot) void txPromise.then(jobsSlot.settled, jobsSlot.settled)
-  if (!onPrivilegedPool) wakeOutboxAfterCommit(txPromise, queued)
+  if (!onPrivilegedPool) {
+    runCommitHooksAfter(txPromise, commitScope)
+    wakeOutboxAfterCommit(txPromise, queued)
+  }
   await withAcquireTimeout(
     opts?.pool === "jobs" ? `${reason}:jobs` : reason,
     opts?.acquireTimeoutMs ??
@@ -211,6 +216,7 @@ function runOnPrivilegedPool<T>(
   const askedAt = performance.now()
   const slot = poolSlot("privileged")
   const queued: QueuedEventsMark = { queued: false }
+  const commitScope = openCommitScope()
   const txPromise = poolDb.transaction(async (tx) => {
     onAcquired()
     const acquiredAt = performance.now()
@@ -222,7 +228,7 @@ function runOnPrivilegedPool<T>(
         await tx.execute(drizzleSql.raw("SET LOCAL ROLE liaison_admin"))
         await setPrivilegedContext(tx, orgId, actor)
         attachQueueEvent(branded, queueOrgId, queued)
-        return await fn(branded)
+        return await withinCommitScope(commitScope, () => fn(branded))
       })
     } finally {
       marker.held = false
@@ -236,6 +242,7 @@ function runOnPrivilegedPool<T>(
     }
   })
   void txPromise.then(slot.settled, slot.settled)
+  runCommitHooksAfter(txPromise, commitScope)
   wakeOutboxAfterCommit(txPromise, queued)
   return txPromise
 }

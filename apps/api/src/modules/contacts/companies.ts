@@ -24,7 +24,7 @@
 import { and, sql as drizzleSql, eq } from "drizzle-orm"
 import { HTTPException } from "hono/http-exception"
 import { isConsumerMailDomain } from "~/apps/api-connector/consumer-domains"
-import type { RlsClient } from "~/db"
+import type { RlsClient, RlsTx } from "~/db"
 import { extractRows } from "~/db"
 import { withElevatableRlsFrom, withPrivilegedDb } from "~/db/privileged"
 import { type Company, companies, contacts, userRoles, users } from "~/db/schema/kernel"
@@ -1528,7 +1528,7 @@ const COMPANY_DISCUSSION = { app: "kernel", entityType: "company" } as const
  * messages changed thread.
  */
 async function mergeCompanyDiscussion(
-  h: RlsClient,
+  h: RlsClient | RlsTx,
   params: { orgId: string; sourceId: string; targetId: string; keepUserId: string | null },
 ): Promise<boolean> {
   const { orgId, sourceId, targetId, keepUserId } = params

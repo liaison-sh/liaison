@@ -20,7 +20,7 @@
 // deleteEntityDiscussions (the bridge's `threads_deleteEntityDiscussion`).
 import { randomUUID } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
-import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
+import { extractRows, type PrivilegedDb, type RlsClient, type RlsTx } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
@@ -32,7 +32,7 @@ import { canReadThreadAnchorEntity, type ThreadAnchorRef } from "./thread-anchor
 const log = rootLogger.child({ module: "entity-discussion" })
 const ks = drizzleSql.raw(`"${schemaRef("kernel")}"`)
 
-type Handle = PrivilegedDb | RlsClient
+type Handle = PrivilegedDb | RlsClient | RlsTx
 
 /** The entity names no kind that holds a discussion (422). */
 export class DiscussionNotDeclaredError extends Error {

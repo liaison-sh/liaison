@@ -112,10 +112,10 @@ describe("company merge atomicity", () => {
       })
       const before = await world(source, target)
 
-      let reached: CompanyMergeStage | null = null
+      const seen: { at: CompanyMergeStage | null } = { at: null }
       const disarm = armCompanyMergeFailpoint((at) => {
         if (at === stage) {
-          reached = at
+          seen.at = at
           throw new Error(`fault ${at}`)
         }
       })
@@ -128,7 +128,7 @@ describe("company merge atomicity", () => {
       } finally {
         disarm()
       }
-      expect(reached).toBe(stage)
+      expect(seen.at).toBe(stage)
       expect(await world(source, target)).toEqual(before)
     }
   })

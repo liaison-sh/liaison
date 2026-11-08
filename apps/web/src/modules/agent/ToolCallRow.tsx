@@ -202,6 +202,20 @@ export function drawsCard(toolCall: ToolCallState): boolean {
 }
 
 /**
+ * A turn's calls for a layout that folds them under one "Used N tools" line: the calls that
+ * drew a result card stand under the message, as they do live, and only the rest fold.
+ */
+export function splitCardCalls(toolCalls: ToolCallState[]): {
+  cards: ToolCallState[]
+  folded: ToolCallState[]
+} {
+  const cards: ToolCallState[] = []
+  const folded: ToolCallState[] = []
+  for (const tc of toolCalls) (hasToolCard(tc) ? cards : folded).push(tc)
+  return { cards, folded }
+}
+
+/**
  * Stack a turn's calls: at least 2 consecutive reads of apps with no card become one roll-up
  * group ("Read 3 apps"); otherwise consecutive calls of one tool stack as before.
  */

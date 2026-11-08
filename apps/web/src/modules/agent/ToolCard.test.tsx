@@ -171,6 +171,70 @@ describe("ToolCard", () => {
     }
   })
 
+  it("an entity card's label and value stack until the card is wide enough", () => {
+    render(() => (
+      <ToolCard
+        toolCall={call({
+          card: entity({
+            rows: [
+              { label: { label: "Plan" }, value: "Pro" },
+              { label: { label: "Owner" }, value: "Claire" },
+            ],
+          }),
+        })}
+      />
+    ))
+    const card = screen.getByTestId("card-entity")
+    // The card's own width decides, not the window's: the article is the container.
+    expect(card.className).toContain("@container")
+    const list = card.querySelector("dl")
+    // One column (label above value) by default, label and value side by side once wide.
+    expect(list?.className).toContain("grid-cols-1")
+    expect(list?.className).toContain("@sm:grid-cols-[auto_1fr]")
+    expect(list?.className).not.toMatch(/(^|\s)grid-cols-\[auto_1fr\]/)
+  })
+
+  it("every card carries the touch-target marker, and the number's method is a disclosure inside it", () => {
+    render(() => (
+      <ToolCard
+        toolCall={call({
+          card: {
+            kind: "number",
+            pill: { label: "Billing" },
+            title: "Monthly revenue",
+            value: { t: "number", n: 3 },
+            how: { label: "Sum of active subscriptions" },
+            source: "Billing",
+          },
+        })}
+      />
+    ))
+    const card = screen.getByTestId("card-number")
+    // index.css gives a card's summaries and links the 44px floor at the compact tiers.
+    expect(card.hasAttribute("data-tool-card")).toBe(true)
+    const summary = card.querySelector("summary")
+    expect(summary).not.toBeNull()
+    expect(summary?.closest("[data-tool-card]")).toBe(card)
+  })
+
+  it("every kind of card carries the touch-target marker", () => {
+    render(() => (
+      <>
+        <ToolCard toolCall={call()} />
+        <ToolCard
+          toolCall={call({
+            toolCallId: "tc-2",
+            card: { kind: "list", pill: { label: "L" }, title: "T", items: [{ label: "a" }] },
+          })}
+        />
+        <ToolCard toolCall={call({ toolCallId: "tc-3", card: groups([groupRow(1)]) })} />
+      </>
+    ))
+    for (const id of ["card-entity", "card-list", "card-groups"]) {
+      expect(screen.getByTestId(id).hasAttribute("data-tool-card")).toBe(true)
+    }
+  })
+
   it("http: and javascript: urlPath render as text", () => {
     const { container } = render(() => (
       <ToolCard

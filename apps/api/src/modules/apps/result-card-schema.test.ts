@@ -196,6 +196,24 @@ describe("a card template is checked when the manifest is registered", () => {
     expect(judge(list(20))).toBe("")
     expect(judge(list(21))).toContain("must be a whole number from 1 to 20")
   })
+
+  it("a placeholder may name alternatives, and each one is checked as a path", () => {
+    const list = (label: string) => ({
+      kind: "list",
+      pill: { label: "Deals" },
+      title: "Deals",
+      items: { path: "result.deals", label },
+    })
+    expect(judge(list("{{item.name|item.title}}"))).toBe("")
+    expect(judge(list("{{item.name | item.title}}"))).toBe("")
+    expect(judge(list("{{item.name|row.title}}"))).toContain("starts with row")
+    expect(judge(list("{{item.name|}}"))).toContain("is not a path")
+    // On a result path, each alternative must be one the tool returns.
+    expect(judge({ ...ENTITY, title: "{{result.name|result.status}}" })).toBe("")
+    expect(judge({ ...ENTITY, title: "{{result.name|result.nope}}" })).toContain(
+      "'result.nope' is not in the tool's returns.schema",
+    )
+  })
 })
 
 describe("what a card action can reach", () => {

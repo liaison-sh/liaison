@@ -175,7 +175,8 @@ class CardCheck {
       const inner = /^\{\{([^{}]*)\}\}$/.exec(part)
       if (inner) {
         placeholders += 1
-        this.path((inner[1] ?? "").trim(), roots, at)
+        // `{{a.b|a.c}}`: alternatives, the first the result has is shown. Each is a path.
+        for (const alt of (inner[1] ?? "").split("|")) this.path(alt.trim(), roots, at)
       } else if (part.includes("{{") || part.includes("}}")) {
         this.err(at, "has an unclosed or nested {{ }}")
       } else if (MARKUP.test(part)) {

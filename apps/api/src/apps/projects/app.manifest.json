@@ -486,7 +486,7 @@
         "items": {
           "path": "result.items",
           "label": "{{item.key}}",
-          "meta": "{{item.title}}",
+          "meta": "{{item.name|item.title}}",
           "limit": 10
         },
         "more": {

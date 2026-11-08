@@ -55,6 +55,19 @@ function lookup(scope: Scope, path: string): unknown {
   return cur
 }
 
+/**
+ * A placeholder's value. A placeholder may name alternatives, `{{item.name|item.title}}`: the
+ * first one the result has (neither absent nor null) is taken, so one template reads a list
+ * whose elements name the same thing by different fields.
+ */
+function pick(scope: Scope, placeholder: string): unknown {
+  for (const path of placeholder.split("|")) {
+    const v = lookup(scope, path.trim())
+    if (v !== undefined && v !== null) return v
+  }
+  return undefined
+}
+
 /** A string, number or boolean as the text a person reads; anything else is absent. */
 function scalar(v: unknown): string | undefined {
   if (typeof v === "string") return v
@@ -73,7 +86,7 @@ function tpl(text: string | undefined, scope: Scope): string | undefined {
   if (typeof text !== "string") return undefined
   let missing = false
   const out = text.replace(PLACEHOLDER, (_all, path: string) => {
-    const v = scalar(lookup(scope, path.trim()))
+    const v = scalar(pick(scope, path))
     if (v === undefined) {
       missing = true
       return ""
@@ -129,7 +142,7 @@ function formatted(
   if (format === undefined) return tpl(text, scope)
   const match = SINGLE_PLACEHOLDER.exec(text)
   if (!match?.[1]) return undefined
-  return typedValue(lookup(scope, match[1].trim()), format)
+  return typedValue(pick(scope, match[1]), format)
 }
 
 function formattedPath(
@@ -165,7 +178,7 @@ function externalUrl(template: string, scope: Scope): string | undefined {
   if (!match?.[1]) return undefined
   let missing = false
   const rest = (match[2] ?? "").replace(PLACEHOLDER, (_all, path: string) => {
-    const v = scalar(lookup(scope, path.trim()))
+    const v = scalar(pick(scope, path))
     if (v === undefined) {
       missing = true
       return ""

@@ -146,6 +146,46 @@ describe("resolveToolCard", () => {
     })
   })
 
+  it("a placeholder with alternatives takes the first one the element has", () => {
+    const list: CardTemplate = {
+      kind: "list",
+      pill: { label: "Found" },
+      title: "Found",
+      items: { path: "result.items", label: "{{item.key}}", meta: "{{item.name|item.title}}" },
+    }
+    const result = {
+      items: [
+        { key: "WEB", name: "Website" },
+        { key: "WEB-12", title: "Fix the footer" },
+        { key: "WEB-13", name: "", title: "Both" },
+        { key: "BARE" },
+      ],
+    }
+    expect(plain(resolved(list, result)).items).toEqual([
+      { label: "WEB", meta: "Website" },
+      { label: "WEB-12", meta: "Fix the footer" },
+      // An empty string is a value the element has: it is taken, not skipped.
+      { label: "WEB-13", meta: "" },
+      { label: "BARE" },
+    ])
+  })
+
+  it("a formatted value with alternatives keeps its type", () => {
+    const number: CardTemplate = {
+      kind: "number",
+      pill: { label: "Revenue" },
+      value: "{{result.mrr|result.arr}}",
+      valueFormat: "money",
+      how: { label: "Active subscriptions" },
+      source: "Ledger",
+    }
+    expect(plain(resolved(number, { arr: { minor: 100, currency: "eur" } })).value).toEqual({
+      t: "money",
+      minor: 100,
+      currency: "EUR",
+    })
+  })
+
   it("resolves a number card to the exact JSON", () => {
     const number: CardTemplate = {
       kind: "number",

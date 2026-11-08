@@ -27,7 +27,12 @@ import { TurnEndApprovals } from "~/modules/threads/NodeDispatchApprovalCard"
 import { AgentGlyph } from "~/ui/AgentGlyph"
 import AgentActivity from "./AgentActivity"
 import { SuggestionChips } from "./SuggestionChips"
-import { groupToolCalls, SingleToolCallRow, StackedToolCallGroup } from "./ToolCallRow"
+import {
+  groupToolCalls,
+  SingleToolCallRow,
+  StackedToolCallGroup,
+  splitCardCalls,
+} from "./ToolCallRow"
 
 /**
  * Wrap the default renderer's set_attr to block dangerous href values.
@@ -425,7 +430,10 @@ function ExpandedTurn(props: AgentTurnBlockProps) {
 function CollapsedTurn(props: AgentTurnBlockProps) {
   const i18n = useI18n()
   const [expanded, setExpanded] = createSignal(false)
-  const toolCount = () => props.toolCalls.length
+  // A call that drew a result card stands under the turn; only the others fold.
+  const cardCalls = () => splitCardCalls(props.toolCalls).cards
+  const foldedCalls = () => splitCardCalls(props.toolCalls).folded
+  const toolCount = () => foldedCalls().length
 
   return (
     <div class="rounded-lg border border-border-subtle bg-surface-secondary p-3">
@@ -455,13 +463,18 @@ function CollapsedTurn(props: AgentTurnBlockProps) {
         <Show when={expanded()}>
           <div class="ml-2 mt-1">
             <ToolCallList
-              toolCalls={props.toolCalls}
+              toolCalls={foldedCalls()}
               turnId={props.turnId ?? props.metadata?.turnId}
               askId={props.askId ?? props.metadata?.askId}
             />
           </div>
         </Show>
       </Show>
+      <ToolCallList
+        toolCalls={cardCalls()}
+        turnId={props.turnId ?? props.metadata?.turnId}
+        askId={props.askId ?? props.metadata?.askId}
+      />
       <Show when={props.content}>
         <div class="mt-2 text-[13px] text-text-primary">{props.content}</div>
       </Show>

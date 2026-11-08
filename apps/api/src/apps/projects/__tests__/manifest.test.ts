@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
+import type { CardTemplate } from "@liaison/shared"
 import { validateAppManifest } from "~/modules/apps/contract"
+import { resolveToolCard } from "~/modules/apps/result-card"
 import projectsManifest from "../app.manifest.json"
 import { projectsAppManifest } from "../manifest-descriptor"
 
@@ -101,6 +103,23 @@ describe("projects.manifest", () => {
     expect(search.runningLabelKey).toBe("projects.card.runningSearch")
     // The manifest as a whole still passes the deep card rules.
     expect(validateAppManifest(projectsManifest).success).toBe(true)
+  })
+
+  it("projects.manifest.search-card-names-projects-and-tasks", () => {
+    // search returns projects (`name`) and matching tasks (`title`) in one list: each item's
+    // line names it, whichever it is.
+    const template = (projectsManifest.tools.search as { resultCard: unknown })
+      .resultCard as CardTemplate
+    const card = resolveToolCard(template, {
+      items: [
+        { type: "project", id: "p1", key: "WEB", name: "Website" },
+        { type: "task", id: "t1", key: "WEB-12", title: "Fix the footer" },
+      ],
+    })
+    expect(card?.items).toEqual([
+      { label: "WEB", meta: "Website" },
+      { label: "WEB-12", meta: "Fix the footer" },
+    ])
   })
 
   it("projects.manifest.task-labels", () => {

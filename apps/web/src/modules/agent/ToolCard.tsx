@@ -135,6 +135,9 @@ const TONE_CLASS: Record<string, string> = {
   accent: "bg-accent-glow text-accent",
 }
 
+// Each card is its own container: its cells stack or sit side by side by the card's width, not
+// the window's. `data-tool-card` on the article gives its disclosures and links the 44px touch
+// floor at the compact tiers (index.css), as buttons and fields already have.
 const ARTICLE = "mt-1 rounded-md border border-border bg-surface text-[13px] @container"
 const PILL =
   "rounded-full bg-surface-hover px-1.5 py-px text-[10.5px] font-medium text-text-secondary"
@@ -502,7 +505,7 @@ export const ToolCard: Component<ToolCardProps> = (props) => {
   )
 
   const Entity = (p: { c: ResolvedCard }) => (
-    <article class={ARTICLE} data-testid="card-entity">
+    <article class={ARTICLE} data-tool-card data-testid="card-entity">
       <div class="px-3 py-2.5">
         <Top c={p.c} />
         <OpenLink
@@ -514,14 +517,14 @@ export const ToolCard: Component<ToolCardProps> = (props) => {
           {(sub) => <p class="mt-0.5 text-xs text-text-secondary">{sub()}</p>}
         </Show>
         <Show when={p.c.rows?.length}>
-          <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+          <dl class="mt-2 grid grid-cols-1 gap-x-3 gap-y-0.5 text-xs @sm:grid-cols-[auto_1fr]">
             <For each={p.c.rows}>
               {(row) => (
                 <>
                   <dt class="text-text-tertiary">{cardLabel(row.label, i18n.t)}</dt>
                   <dd
                     data-testid="card-row-value"
-                    class={`min-w-0 break-words ${row.mono ? "font-mono" : ""} ${row.warn ? "text-amber-600" : "text-text-secondary"}`}
+                    class={`mb-1 min-w-0 break-words last:mb-0 @sm:mb-0 ${row.mono ? "font-mono" : ""} ${row.warn ? "text-amber-600" : "text-text-secondary"}`}
                   >
                     <OpenLink open={row.open} label={formatCardValue(row.value, locale())} />
                   </dd>
@@ -542,7 +545,7 @@ export const ToolCard: Component<ToolCardProps> = (props) => {
   )
 
   const List = (p: { c: ResolvedCard }) => (
-    <article class={ARTICLE} data-testid="card-list">
+    <article class={ARTICLE} data-tool-card data-testid="card-list">
       <div class="px-3 py-2.5">
         <Top c={p.c}>
           <span class="font-medium text-text">{p.c.title}</span>
@@ -583,7 +586,7 @@ export const ToolCard: Component<ToolCardProps> = (props) => {
   )
 
   const NumberCard = (p: { c: ResolvedCard }) => (
-    <article class={ARTICLE} data-testid="card-number">
+    <article class={ARTICLE} data-tool-card data-testid="card-number">
       <div class="px-3 py-2.5">
         <Top c={p.c}>
           <span class="text-text-secondary">{p.c.title}</span>
@@ -721,7 +724,7 @@ export const ToolCard: Component<ToolCardProps> = (props) => {
   }
 
   const Groups = (p: { c: ResolvedCard }) => (
-    <article class={ARTICLE} data-testid="card-groups">
+    <article class={ARTICLE} data-tool-card data-testid="card-groups">
       <div class="px-3 py-2.5">
         <Top c={p.c}>
           <span class="font-medium text-text">{p.c.title}</span>
@@ -809,7 +812,7 @@ export const ToolCard: Component<ToolCardProps> = (props) => {
   )
 
   const ErrorCard = () => (
-    <article class={ARTICLE} data-testid="card-error" role="alert">
+    <article class={ARTICLE} data-tool-card data-testid="card-error" role="alert">
       <div class="px-3 py-2.5">
         <div class="flex flex-wrap items-center gap-1.5 text-xs text-text-tertiary">
           <span class={PILL} data-testid="card-pill">
@@ -841,7 +844,7 @@ export const ToolCard: Component<ToolCardProps> = (props) => {
   )
 
   const Loading = () => (
-    <article class={ARTICLE} data-testid="card-loading" aria-busy="true">
+    <article class={ARTICLE} data-tool-card data-testid="card-loading" aria-busy="true">
       <div class="flex items-center gap-1.5 px-3 py-2.5 text-xs text-text-tertiary">
         <span class={PILL}>{cardLabel(props.toolCall.cardError?.pill, i18n.t)}</span>
         <span>{t("kernel.toolCard.working")}</span>

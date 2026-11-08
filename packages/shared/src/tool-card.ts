@@ -35,7 +35,10 @@ export interface CardLabel {
 
 /** `result.a.b`; inside lists `item.a`; inside a `groups` card `group.a` or `row.a` as well. */
 export type CardPath = string
-/** Literal text with `{{path}}` placeholders and nothing else: no expression, helper or HTML. */
+/**
+ * Literal text with `{{path}}` placeholders and nothing else: no expression, helper or HTML. A
+ * placeholder may list alternatives, `{{item.name|item.title}}`: the first the result has is shown.
+ */
 export type CardTpl = string
 
 export interface CardCond {

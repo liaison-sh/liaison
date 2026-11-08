@@ -26,11 +26,18 @@ async function until(ok: () => boolean, ms = 3000): Promise<boolean> {
 }
 
 describe("session revocation cache", () => {
+  // A test that revokes hears its own publish back on the channel a moment
+  // later. Each reset first waits for those echoes (and for what a file run
+  // before this one in the same process left in flight), or a late echo
+  // refills the cache in the middle of the next test.
   beforeAll(async () => {
     await redis.del(T.key)
     await initSessionRevocation()
+    await T.settle()
+    T.reset()
   })
   afterEach(async () => {
+    await T.settle()
     T.reset()
     await redis.del(T.key)
   })
@@ -85,6 +92,15 @@ describe("session revocation cache", () => {
     } finally {
       listener.disconnect()
     }
+  })
+
+  it("hears its own revocation back on the channel after the call returns, and settle waits for it", async () => {
+    const a = sid()
+    revokeSessions([a], "test")
+    T.reset()
+    expect(T.size()).toBe(0)
+    await T.settle()
+    expect(isSessionRevoked(a)).toBe(true)
   })
 
   it("learns a revocation a peer process published on the channel", async () => {

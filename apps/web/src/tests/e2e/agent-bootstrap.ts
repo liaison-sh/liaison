@@ -187,8 +187,23 @@ export async function openAgentConversation(page: Page): Promise<Locator> {
   // nothing and the wait burns its whole budget on a shell that never got the
   // gesture. Three presses with a short budget each beat one long wait, and a
   // conversation already in front of the user is still never toggled away.
+  //
+  // A window already open counts as in front of the user even while its
+  // conversation is still loading. After a reload the dock restores an
+  // expanded window at once and its composer mounts a moment later; pressing
+  // the toggle in that gap closes the window the user is looking at (seen:
+  // window expanded at 66 ms, press at 75 ms, composer at 101 ms, the toggle
+  // collapsing it at 187 ms). So the shell is waited for first (its
+  // shortcuts live, the dock restored with it), and an expanded window is
+  // waited on, never toggled.
+  await page
+    .locator('[data-shell-ready="true"]')
+    .first()
+    .waitFor({ state: "attached", timeout: NAV_TIMEOUT })
+  const openWindow = page.locator('[data-dock-tab][data-expanded="true"]')
   for (let attempt = 0; attempt < 3; attempt++) {
     if (await conversation.isVisible().catch(() => false)) break
+    if ((await openWindow.count().catch(() => 0)) > 0) break
     await page.keyboard.press("ControlOrMeta+Period")
     const appeared = await conversation
       .waitFor({ state: "visible", timeout: NAV_TIMEOUT / 3 })
@@ -226,6 +241,22 @@ export async function readDockState(page: Page): Promise<PersistedDockState | nu
   })
 }
 
+/** A point (relative to the element) where the element itself is the topmost
+ *  hit target, scanning its vertical middle from the centre outwards; null
+ *  when every sampled point is covered by something else. */
+async function visiblePointOf(target: Locator): Promise<{ x: number; y: number } | null> {
+  return target.evaluate((el) => {
+    const rect = el.getBoundingClientRect()
+    const y = rect.height / 2
+    for (const f of [0.5, 0.4, 0.3, 0.2, 0.1, 0.6, 0.7, 0.8, 0.9]) {
+      const x = rect.width * f
+      const hit = document.elementFromPoint(rect.left + x, rect.top + y)
+      if (hit && (hit === el || el.contains(hit))) return { x, y }
+    }
+    return null
+  })
+}
+
 /** Type one message into a conversation surface (dock tab or main-panel tab)
  *  and send it, exactly as a person does: click the composer, type, Enter. */
 export async function sendInConversation(
@@ -235,7 +266,13 @@ export async function sendInConversation(
 ): Promise<void> {
   const editor = conversation.getByTestId("compose-editor")
   await editor.waitFor({ state: "visible", timeout: NAV_TIMEOUT })
-  await editor.click(NAV_CLICK)
+  await editor.scrollIntoViewIfNeeded(NAV_CLICK)
+  // The chat dock may partly cover a main-panel composer (intended): a person
+  // clicks the part they can see, so click a point of the editor that is on
+  // top. Only an editor with no visible point at all is a failure.
+  const point = await visiblePointOf(editor)
+  if (!point) throw new Error("compose-editor is fully covered: no point of it can be clicked")
+  await editor.click({ ...NAV_CLICK, position: point })
   await page.keyboard.type(text)
   await page.keyboard.press("Enter")
 }

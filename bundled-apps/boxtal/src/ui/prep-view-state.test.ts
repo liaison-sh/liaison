@@ -11,6 +11,7 @@ import {
   planPrepListOpen,
   reconcileExitingRows,
   rowIsInteractive,
+  toggleRowKey,
 } from "./prep-view-state"
 import type { PrepListResult, PrepRow } from "./prep-row-logic"
 
@@ -191,5 +192,26 @@ describe("a row removed by a refresh is held for the exit transition and is not 
 
   it("EXIT_TRANSITION_MS mirrors TicketsInbox's own window", () => {
     expect(EXIT_TRANSITION_MS).toBe(220)
+  })
+})
+
+describe("toggleRowKey: a row's folds live by order key, outside the row", () => {
+  it("opens, closes and force-sets one key without touching the others or the input", () => {
+    const start = new Set(["so:2"])
+    const opened = toggleRowKey(start, "so:1")
+    expect([...opened].sort()).toEqual(["so:1", "so:2"])
+    expect([...start]).toEqual(["so:2"])
+    expect([...toggleRowKey(opened, "so:1")]).toEqual(["so:2"])
+    expect([...toggleRowKey(opened, "so:1", true)].sort()).toEqual(["so:1", "so:2"])
+    expect([...toggleRowKey(opened, "so:9", false)].sort()).toEqual(["so:1", "so:2"])
+  })
+
+  it("an open fold stays open when a re-read hands back a new object for the same row", () => {
+    // <For> rebuilds a row whose object changed; the fold is read by key, so it survives that.
+    const before = makeRow({ order_key: "so:7" })
+    const open = toggleRowKey(new Set(), before.order_key)
+    const after = makeRow({ order_key: "so:7", customer: "re-read" })
+    expect(after).not.toBe(before)
+    expect(open.has(after.order_key)).toBe(true)
   })
 })

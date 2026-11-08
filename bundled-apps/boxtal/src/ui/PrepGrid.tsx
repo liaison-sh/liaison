@@ -56,6 +56,7 @@ import {
   planPrepListOpen,
   reconcileExitingRows,
   rowIsInteractive,
+  toggleRowKey,
 } from "./prep-view-state"
 import {
   addressDiffers,
@@ -1138,11 +1139,15 @@ const ShipCell: Component<{
   /** The pending label purchase for this row, from the boxtal approvals feed. */
   approval: ApprovalRow | null
   note: string | null
+  /** Whether the card of what is bought is unfolded. Held by the grid, keyed by order key, so a
+   *  re-read of the row (a new row object, so a rebuilt cell) does not fold it again. */
+  open: boolean
+  onToggle: () => void
   onShip: () => void
   onDecide: (decision: "approve" | "deny") => void
 }> = (props) => {
   const blocked = () => shipDisabledReason(props.row)
-  const [open, setOpen] = createSignal(false)
+  const open = () => props.open
   const card = () => (props.approval ? approvalCardText(props.approval) : null)
   return (
     <div class="flex flex-col items-end gap-1">
@@ -1182,7 +1187,7 @@ const ShipCell: Component<{
             class="text-[11px] font-medium text-warning underline-offset-2 hover:underline"
             aria-expanded={open()}
             data-testid={`boxtal-prep-ship-approval-toggle-${props.row.order_key}`}
-            onClick={() => setOpen(!open())}
+            onClick={() => props.onToggle()}
           >
             {open() ? "Hide what is bought" : "Label waiting for approval"}
           </button>
@@ -1306,6 +1311,9 @@ export const PrepGrid: Component = () => {
   // feed, so a purchase waiting for a decision is decided on its own row.
   const [shipApprovals, setShipApprovals] = createSignal<Map<string, ApprovalRow>>(new Map())
   const [shipNotes, setShipNotes] = createSignal<Record<string, string>>({})
+  // Row folds (the approval card, the phone's extra columns) by order key: see toggleRowKey.
+  const [openApprovalCards, setOpenApprovalCards] = createSignal<Set<string>>(new Set())
+  const [phoneExpandedRows, setPhoneExpandedRows] = createSignal<Set<string>>(new Set())
   const setShipNote = (orderKey: string, note: string | null): void => {
     setShipNotes((prev) => {
       const next = { ...prev }
@@ -1823,6 +1831,7 @@ export const PrepGrid: Component = () => {
   const decideShip = (row: PrepRow, approval: ApprovalRow, decision: "approve" | "deny"): Promise<void> =>
     runMutation("ship", row.order_key, async () => {
       setShipNote(row.order_key, null)
+      setOpenApprovalCards((prev) => toggleRowKey(prev, row.order_key, false))
       try {
         // Bound to the purchase version the row showed; in a frame the host asks the person first.
         const body = decideBody(approval, decision)
@@ -2228,7 +2237,7 @@ export const PrepGrid: Component = () => {
                     // on nothing. The header padding was tightened to match (Th pad="tight"), so
                     // no column is set wider than its own content by its label's padding.
                     const cellClass = "border-b border-border-subtle px-1.5 py-1 align-middle"
-                    const [phoneExpanded, setPhoneExpanded] = createSignal(false)
+                    const phoneExpanded = () => phoneExpandedRows().has(row.order_key)
                     // A column the phone drops stays in the row and paints as a
                     // stacked block once the operator expands it, so the cell is
                     // written once and read at both widths.
@@ -2535,7 +2544,7 @@ export const PrepGrid: Component = () => {
                               data-testid={`boxtal-prep-row-phone-expand-${row.order_key}`}
                               aria-expanded={phoneExpanded()}
                               aria-label={phoneExpanded() ? "Hide columns" : "Show columns"}
-                              onClick={() => setPhoneExpanded(!phoneExpanded())}
+                              onClick={() => setPhoneExpandedRows((prev) => toggleRowKey(prev, row.order_key))}
                             >
                               {phoneExpanded() ? "\u2212" : "+"}
                             </button>
@@ -2547,6 +2556,8 @@ export const PrepGrid: Component = () => {
                               pending={pendingShips().has(row.order_key)}
                               approval={shipApprovalForRow(row, shipApprovals())}
                               note={shipNotes()[row.order_key] ?? null}
+                              open={openApprovalCards().has(row.order_key)}
+                              onToggle={() => setOpenApprovalCards((prev) => toggleRowKey(prev, row.order_key))}
                               onShip={() => void shipRow(row)}
                               onDecide={(decision) => {
                                 const approval = shipApprovalForRow(row, shipApprovals())

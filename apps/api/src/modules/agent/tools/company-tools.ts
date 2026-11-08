@@ -2,7 +2,7 @@
 /**
  * The company tools: read and search companies, give them to an account
  * manager, link people to them, propose companies from people's company text
- * and mail domains, and find or set aside duplicates.
+ * and mail domains, find or set aside duplicates, and merge them.
  *
  * Every call runs under the caller's RLS through `modules/contacts/companies.ts`.
  * The writes that change who handles an account or which people belong to a
@@ -24,6 +24,7 @@ import { toolRegistry } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
 import {
   COMPANY_LINK_BATCH_MAX,
+  CompanyMergedError,
   type CompanyPatch,
   companyAccountManager,
   companyIdsUnknownTo,
@@ -37,6 +38,7 @@ import {
   managerRefusal,
   markCompaniesNotSame,
   memberNames,
+  mergeCompanies,
   proposeCompaniesFromContacts,
   type SetManagerResult,
   setCompanyManager,
@@ -75,6 +77,11 @@ function fail(code: string, message: string, extra: Record<string, unknown> = {}
 /** A refusal from the service as a tool error; anything else is rethrown. */
 function asToolError(err: unknown): ToolError {
   if (isCompanyRequestError(err)) return fail(err.code, err.message)
+  if (err instanceof CompanyMergedError) {
+    return fail("NOT_FOUND", `${err.message} Use ${err.mergedInto.id} instead.`, {
+      mergedInto: err.mergedInto,
+    })
+  }
   if (err instanceof HTTPException && err.status === 404) {
     return fail(
       "NOT_FOUND",
@@ -485,6 +492,41 @@ export async function handleCompaniesMarkNotSame(
   }
 }
 
+export async function handleCompaniesMerge(
+  params: { sourceId: string; targetId: string },
+  ctx: CompanyToolContext,
+) {
+  try {
+    const r = await mergeCompanies(ctx.db, {
+      orgId: ctx.orgId,
+      userId: ctx.userId,
+      sourceId: params.sourceId,
+      targetId: params.targetId,
+    })
+    const m = r.moved
+    const parts = [
+      `${m.contacts} people`,
+      ...(m.accounts ? [`${m.accounts} portal accounts`] : []),
+      `${m.deals} deals`,
+      `${m.projects} pipelines`,
+      `${m.waitingApprovals} waiting approvals`,
+    ]
+    const manager =
+      r.managerId === null
+        ? `${r.target.name} has no account manager.`
+        : `${(await memberNames(ctx.orgId, [r.managerId])).get(r.managerId) ?? r.managerId} stays its account manager${r.managerFrom === "source" ? `, taken from ${r.source.name}` : ""}.`
+    return {
+      targetId: r.target.id,
+      deletedId: r.source.id,
+      moved: m,
+      managerId: r.managerId,
+      message: `${r.source.name} was merged into ${r.target.name} and deleted: ${parts.join(", ")} now name ${r.target.name}${r.discussionMoved ? ", and its discussion joined" : ""}. ${manager} Sharing of ${r.target.name} did not change.`,
+    }
+  } catch (err) {
+    return asToolError(err)
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /* Stage-time checks and approval cards                                       */
 /* -------------------------------------------------------------------------- */
@@ -640,6 +682,81 @@ export async function summarizeCompaniesLinkBatch(params: unknown): Promise<Appr
     title: `Create ${items.length} companies and link ${people} people`,
     subtitle: "In Liaison's companies",
     lines: capLines(items.map((i) => `${i.name}: ${i.contactIds?.length ?? 0} people`)),
+  }
+}
+
+export async function companiesMergePreflight(
+  params: { sourceId: string; targetId: string },
+  ctx: Requester,
+) {
+  if (params.sourceId === params.targetId) {
+    return fail("same_company", "sourceId and targetId are the same company: pass two companies.")
+  }
+  const unknown = await companyIdsUnknownTo(ctx, [params.sourceId, params.targetId])
+  if (unknown.length > 0)
+    return fail("NOT_FOUND", `Company not found: ${unknown.join(", ")}. ${UNKNOWN_IDS}`)
+  return { ok: true }
+}
+
+/**
+ * The merge card: which company goes and which stays, both managers and which
+ * one stays, and that the survivor's sharing (portal accounts included) does
+ * not widen.
+ */
+export async function summarizeCompaniesMerge(
+  params: unknown,
+  ctx: { tx: RlsClient; orgId: string; userId: string },
+): Promise<ApprovalSummary> {
+  const p = (params ?? {}) as { sourceId?: string; targetId?: string }
+  const ids = [p.sourceId, p.targetId].filter((i): i is string => !!i && UUID_RE.test(i))
+  const rows =
+    ids.length === 0
+      ? []
+      : await ctx.tx
+          .select({
+            id: companiesTable.id,
+            name: companiesTable.name,
+            ownerUserId: companiesTable.ownerUserId,
+          })
+          .from(companiesTable)
+          .where(
+            and(
+              eq(companiesTable.orgId, ctx.orgId),
+              drizzleSql`${companiesTable.id} = ANY(${`{${ids.join(",")}}`}::uuid[])`,
+            ),
+          )
+  const source = rows.find((r) => r.id === p.sourceId)
+  const target = rows.find((r) => r.id === p.targetId)
+  const sourceName = source?.name ?? p.sourceId ?? "(unknown)"
+  const targetName = target?.name ?? p.targetId ?? "(unknown)"
+  const managerIds = [source?.ownerUserId, target?.ownerUserId].filter((i): i is string => !!i)
+  const who = await memberNames(ctx.orgId, managerIds)
+  const nameOf = (id: string | null | undefined) => (id ? (who.get(id) ?? id) : "nobody")
+  const lines = [
+    `${sourceName} is deleted; its people, deals, pipelines and waiting approvals move to ${targetName}.`,
+  ]
+  const sm = source?.ownerUserId ?? null
+  const tm = target?.ownerUserId ?? null
+  if (sm && tm && sm !== tm) {
+    lines.push(
+      `Account managers: ${nameOf(tm)} (${targetName}) stays; ${nameOf(sm)} (${sourceName}) no longer manages it.`,
+    )
+  } else if (tm || sm) {
+    lines.push(`Account manager: ${nameOf(tm ?? sm)} stays.`)
+  }
+  lines.push(
+    `Sharing stays as ${targetName}'s: nobody, a portal account included, sees more than before.`,
+  )
+  lines.push("This cannot be undone.")
+  return {
+    kind: "companies_merge",
+    title: `Merge ${sourceName} into ${targetName}`.slice(0, 200),
+    subtitle: "In Liaison's companies",
+    lines,
+    links: [
+      ...(target ? [companyLink(target.id, target.name)] : []),
+      ...(source ? [companyLink(source.id, source.name)] : []),
+    ],
   }
 }
 
@@ -867,4 +984,26 @@ export function registerCompanyTools(orgId: string): void {
     writesToTable: "kernel.companies",
     targetRowParam: "aId",
   })
+
+  toolRegistry.set([orgId, "kernel", "companies_merge"], {
+    appName: "kernel",
+    name: "companies_merge",
+    deferLoading: true,
+    description:
+      "Merge a duplicate company into another: sourceId is deleted, targetId is kept and receives its people, deals and waiting items. GATED, cannot be undone.",
+    searchKeywords: ["fusionner", "doublon", "merge"],
+    requiredScopes: ["kernel:companies:write"],
+    trustBoundary: "user",
+    gated: true,
+    approvalImpact: "internal",
+    params: z.object({
+      sourceId: z.string().uuid(),
+      targetId: z.string().uuid(),
+    }),
+    handler: anyHandler(handleCompaniesMerge),
+    preflight: anyPreflight(companiesMergePreflight),
+    writesToTable: "kernel.companies",
+    targetRowParam: "targetId",
+  })
+  registerApprovalSummarizer(orgId, "kernel", "companies_merge", summarizeCompaniesMerge)
 }

@@ -43,6 +43,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `companies_link_batch` | Create several companies and link their people in one approval, from kernel__companies_propose_from_contacts groups. | yes | `kernel:companies:write` |
 | `companies_link_contacts` | Link people to a company (their company name becomes the company's), or unlink them with unlink: true. | yes | `kernel:companies:write` |
 | `companies_mark_not_same` | Mark two companies as not the same, so they are no longer suggested as duplicates; undo: true reverts it. |  | `kernel:companies:write` |
+| `companies_merge` | Merge a duplicate company into another: sourceId is deleted, targetId is kept and receives its people, deals and waiting items. | yes | `kernel:companies:write` |
 | `companies_propose_from_contacts` | Propose companies from people who have none, grouped by their company text and business mail domain. |  | `kernel:companies:read` |
 | `companies_read` | Read a company: its account manager (with away until and who is next in line), its people with the main contact and their last mail, and its newest open deal. |  | `kernel:companies:read` |
 | `companies_search` | Search companies by name or domain, with each one's account manager and people count. |  | `kernel:companies:read` |

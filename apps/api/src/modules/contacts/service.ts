@@ -1528,6 +1528,31 @@ export async function mergeContactsAsKernel(
   return applyContactMerge(tx as never, params, locked)
 }
 
+/**
+ * A deal's contact and a company's main contact name a contact softly (no
+ * foreign key): in the merge's transaction, elevated, the ones naming the
+ * source name the survivor. The deal half is skipped where the projects app
+ * has no tables.
+ */
+async function repointContactSoftReferences(
+  tx: RlsClient,
+  params: MergeContactsParams,
+): Promise<void> {
+  const { orgId, sourceId, targetId } = params
+  await tx.execute(drizzleSql`
+    UPDATE ${drizzleSql.raw(quoteIdent(schemaRef("kernel")))}.companies
+       SET main_contact_id = ${targetId}::uuid, updated_at = now()
+     WHERE org_id = ${orgId}::uuid AND main_contact_id = ${sourceId}::uuid`)
+  const deals = `${quoteIdent(schemaRef("app_projects"))}.deals`
+  const [present] = extractRows<{ t: string | null }>(
+    await tx.execute(drizzleSql`SELECT to_regclass(${deals})::text AS t`),
+  )
+  if (!present?.t) return
+  await tx.execute(drizzleSql`
+    UPDATE ${drizzleSql.raw(deals)} SET contact_id = ${targetId}::uuid, updated_at = now()
+     WHERE org_id = ${orgId}::uuid AND contact_id = ${sourceId}::uuid`)
+}
+
 async function applyContactMerge(
   tx: RlsClient,
   params: MergeContactsParams,
@@ -1568,6 +1593,7 @@ async function applyContactMerge(
     }
   }
 
+  await repointContactSoftReferences(tx, params)
   // The source's discussion joins the survivor's before the source row goes.
   const discussionMoved = await mergeContactDiscussion(tx, {
     orgId: params.orgId,

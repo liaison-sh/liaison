@@ -40,7 +40,12 @@ import {
   type OrgAccess,
   type ResourceGrants,
 } from "~/modules/sharing/service"
-import { deleteEntityDiscussions } from "~/modules/threads/entity-discussion"
+import {
+  deleteEntityDiscussions,
+  entityDiscussionHandle,
+  entityDiscussionThreads,
+  unindexDiscussionThreads,
+} from "~/modules/threads/entity-discussion"
 
 export const COMPANY_RESOURCE = "kernel.company"
 export const COMPANY_NAME_MAX = 200
@@ -283,6 +288,24 @@ async function loadVisible(tx: RlsClient, orgId: string, companyId: string): Pro
     .limit(1)
   if (!row) throw notFound()
   return row
+}
+
+/**
+ * As loadVisible, but a company merged into one the caller sees answers 404
+ * naming the survivor (a colleague's tab still open on the merged company).
+ */
+async function loadVisibleOrMerged(
+  tx: RlsClient,
+  orgId: string,
+  companyId: string,
+): Promise<Company> {
+  try {
+    return await loadVisible(tx, orgId, companyId)
+  } catch (err) {
+    if (!(err instanceof HTTPException) || err.status !== 404) throw err
+    const survivor = await companyMergedInto(tx, orgId, companyId)
+    throw survivor ? new CompanyMergedError(survivor) : err
+  }
 }
 
 /** People the caller sees per company, by company id. */
@@ -559,7 +582,7 @@ export async function updateCompany(
 ): Promise<CompanyWrite> {
   const { orgId, userId, companyId, patch } = params
   return withElevatableRlsFrom(db, "company-update", async (tx) => {
-    const before = await loadVisible(tx, orgId, companyId)
+    const before = await loadVisibleOrMerged(tx, orgId, companyId)
     const set: Record<string, unknown> = { updatedAt: new Date() }
     let notice: string | undefined
     if (patch.name !== undefined) set.name = cleanName(patch.name)
@@ -1254,6 +1277,364 @@ export async function markCompaniesNotSame(
     b: { id: b.id, name: b.name },
     notSame: !params.undo,
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Merge                                                                      */
+/* -------------------------------------------------------------------------- */
+
+/** Where a merge can be made to fail in a test: after the waiting items moved, or at the end. */
+export type CompanyMergeStage = "after-routes" | "after-references"
+
+export interface CompanyMergeResult {
+  source: CompanyRef
+  target: CompanyRef
+  /** The survivor's account manager after the merge. */
+  managerId: string | null
+  /** Whose manager the survivor keeps. */
+  managerFrom: "target" | "source" | "none"
+  moved: {
+    contacts: number
+    accounts: number
+    waitingApprovals: number
+    deals: number
+    projects: number
+  }
+  discussionMoved: boolean
+}
+
+/** A request about a company that was merged away: 404, naming the survivor. */
+export class CompanyMergedError extends HTTPException {
+  readonly code = "company_merged"
+  readonly errorFields: { mergedInto: CompanyRef }
+  constructor(readonly mergedInto: CompanyRef) {
+    super(404, { message: `This company was merged into ${mergedInto.name}.` })
+    this.errorFields = { mergedInto }
+  }
+}
+
+/**
+ * The company `companyId` was merged into, when the caller can see it, else
+ * null. Read from the audit row of the source's deletion, which names the
+ * survivor (`mergedInto`), and the survivor under the caller's RLS.
+ */
+export async function companyMergedInto(
+  tx: RlsClient,
+  orgId: string,
+  companyId: string,
+): Promise<CompanyRef | null> {
+  if (!UUID_RE.test(companyId)) return null
+  const survivorId = await withPrivilegedDb(orgId, "company-merged-into", async (ptx) => {
+    const [row] = extractRows<{ id: string | null }>(
+      await ptx.execute(drizzleSql`
+        SELECT changes->>'mergedInto' AS id FROM ${ks()}.audit_log
+         WHERE org_id = ${orgId}::uuid AND entity_type = 'company' AND entity_id = ${companyId}
+           AND action = 'company.delete' AND changes ? 'mergedInto'
+         ORDER BY timestamp DESC LIMIT 1`),
+    )
+    return row?.id ?? null
+  })
+  if (!survivorId || !UUID_RE.test(survivorId)) return null
+  const [survivor] = await tx
+    .select({ id: companies.id, name: companies.name })
+    .from(companies)
+    .where(and(eq(companies.id, survivorId), eq(companies.orgId, orgId)))
+    .limit(1)
+  return survivor ?? null
+}
+
+/**
+ * Fold `sourceId` into `targetId`, in one transaction, and delete the source.
+ *
+ * Under the caller's RLS: both must be visible, the target editable and the
+ * source deletable, and a company the organisation sees is never folded into a
+ * restricted one (its people and history would vanish for everyone else). The
+ * survivor keeps its own manager, or takes the source's when it has none; its
+ * sharing does not change, so nobody, a portal account included, sees more
+ * than before.
+ *
+ * Elevated, in the same transaction, every row naming the source names the
+ * target, first the waiting items' company route (so the foreign key's
+ * ON DELETE SET NULL never fires on one), then people with their company
+ * text, portal accounts, other companies' not-the-same lists, deals and
+ * pipelines (skipped where the projects app has no tables) and the
+ * discussion. Only then is the source deleted.
+ */
+export async function mergeCompanies(
+  db: RlsClient,
+  params: { orgId: string; userId: string; sourceId: string; targetId: string },
+): Promise<CompanyMergeResult> {
+  const { orgId, userId, sourceId, targetId } = params
+  if (sourceId === targetId) {
+    throw new CompanyRequestError(422, "same_company", "A company cannot be merged into itself.")
+  }
+  return withElevatableRlsFrom(db, "company-merge", async (tx) => {
+    const source = await loadVisible(tx, orgId, sourceId)
+    const target = await loadVisible(tx, orgId, targetId)
+    if (source.orgAccess !== "none" && target.orgAccess === "none") {
+      throw new CompanyRequestError(
+        422,
+        "merge_narrows_access",
+        `${target.name} is restricted and ${source.name} is seen by the organisation: merging would hide ${source.name}'s people and history from everyone else. Merge ${target.name} into ${source.name} instead.`,
+      )
+    }
+    // The survivor keeps its manager; with none it takes the source's, when that
+    // person can still manage accounts (active, a member, not blind to companies).
+    const inherited =
+      !target.ownerUserId &&
+      !!source.ownerUserId &&
+      (await managerRefusal(orgId, source.ownerUserId)) === null
+    const managerId = target.ownerUserId ?? (inherited ? source.ownerUserId : null)
+    const managerFrom: CompanyMergeResult["managerFrom"] = target.ownerUserId
+      ? "target"
+      : inherited
+        ? "source"
+        : "none"
+    const [kept] = await tx
+      .update(companies)
+      .set({
+        ownerUserId: managerId,
+        mainContactId: target.mainContactId ?? source.mainContactId ?? null,
+        notSameAs: [...new Set([...target.notSameAs, ...source.notSameAs])].filter(
+          (id) => id !== sourceId && id !== targetId,
+        ),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(companies.id, targetId), eq(companies.orgId, orgId)))
+      .returning()
+    if (!kept) {
+      throw new HTTPException(403, { message: `You can see ${target.name} but not change it.` })
+    }
+
+    const moved = await tx.transaction((sp) =>
+      asAdmin(sp, async () => {
+        const repoint = async (statement: ReturnType<typeof drizzleSql>) =>
+          extractRows(await sp.execute(statement)).length
+        // Waiting items first: they keep their company, now the survivor's manager's.
+        const waitingApprovals = extractRows<{ status: string }>(
+          await sp.execute(drizzleSql`
+            UPDATE ${ks()}.approval_requests SET route_company_id = ${targetId}::uuid
+             WHERE org_id = ${orgId}::uuid AND route_company_id = ${sourceId}::uuid
+            RETURNING status`),
+        ).filter((r) => r.status === "pending" || r.status === "approving").length
+        await runCompanyMergeFailpoint("after-routes")
+        const contactsMoved = await repoint(drizzleSql`
+          UPDATE ${ks()}.contacts SET company_id = ${targetId}::uuid, company = ${kept.name}, updated_at = now()
+           WHERE org_id = ${orgId}::uuid AND company_id = ${sourceId}::uuid
+          RETURNING id`)
+        const accounts = await repoint(drizzleSql`
+          UPDATE ${ks()}.users SET company_id = ${targetId}::uuid
+           WHERE org_id = ${orgId}::uuid AND company_id = ${sourceId}::uuid
+          RETURNING id`)
+        await sp.execute(drizzleSql`
+          UPDATE ${ks()}.companies c
+             SET not_same_as = ARRAY(
+                   SELECT DISTINCT x FROM unnest(array_replace(c.not_same_as, ${sourceId}::uuid, ${targetId}::uuid)) AS x
+                    WHERE x <> c.id)
+           WHERE c.org_id = ${orgId}::uuid AND ${sourceId}::uuid = ANY(c.not_same_as)
+             AND c.id NOT IN (${sourceId}::uuid, ${targetId}::uuid)`)
+        let deals = 0
+        let projects = 0
+        if (await dealTablesExist(sp)) {
+          deals = await repoint(drizzleSql`
+            UPDATE ${ps()}.deals SET company_id = ${targetId}::uuid, updated_at = now()
+             WHERE org_id = ${orgId}::uuid AND company_id = ${sourceId}::uuid
+            RETURNING task_id`)
+          projects = await repoint(drizzleSql`
+            UPDATE ${ps()}.projects SET company_id = ${targetId}::uuid
+             WHERE org_id = ${orgId}::uuid AND company_id = ${sourceId}::uuid
+            RETURNING id`)
+        }
+        const discussionMoved = await mergeCompanyDiscussion(sp, {
+          orgId,
+          sourceId,
+          targetId,
+          keepUserId: actorUuid(userId),
+        })
+        await runCompanyMergeFailpoint("after-references")
+        return {
+          moved: { contacts: contactsMoved, accounts, waitingApprovals, deals, projects },
+          discussionMoved,
+        }
+      }),
+    )
+
+    // The source goes under the caller's RLS: whoever may not delete it merges nothing.
+    const [deleted] = await tx
+      .delete(companies)
+      .where(and(eq(companies.id, sourceId), eq(companies.orgId, orgId)))
+      .returning({ id: companies.id })
+    if (!deleted) {
+      throw new HTTPException(403, { message: `You can see ${source.name} but not delete it.` })
+    }
+
+    const sourceRef = { id: source.id, name: source.name }
+    const targetRef = { id: kept.id, name: kept.name }
+    await tx.queueEvent({
+      app: "kernel",
+      entity: "company",
+      action: "merge",
+      orgId,
+      actorId: userId,
+      entityId: targetId,
+      data: {
+        sourceId,
+        targetId,
+        sourceName: source.name,
+        moved: moved.moved,
+        discussionMoved: moved.discussionMoved,
+        audience: companyEventAudience(kept),
+      },
+    })
+    await tx.queueEvent({
+      app: "kernel",
+      entity: "company",
+      action: "update",
+      orgId,
+      actorId: userId,
+      entityId: targetId,
+      data: { ...kept, renamedPeople: 0, audience: companyEventAudience(kept) },
+    })
+    await tx.queueEvent({
+      app: "kernel",
+      entity: "company",
+      action: "delete",
+      orgId,
+      actorId: userId,
+      entityId: sourceId,
+      // `mergedInto` lets a stale tab, and a late PATCH, name the survivor.
+      data: { id: sourceId, mergedInto: targetId, audience: companyEventAudience(source) },
+    })
+    return {
+      source: sourceRef,
+      target: targetRef,
+      managerId,
+      managerFrom,
+      moved: moved.moved,
+      discussionMoved: moved.discussionMoved,
+    }
+  })
+}
+
+const COMPANY_DISCUSSION = { app: "kernel", entityType: "company" } as const
+
+/**
+ * The source's discussion joins the survivor's, in the merge transaction
+ * (elevated), as a contact merge does (contacts/discussion.ts): references to
+ * the source name the survivor; a lone source thread becomes the survivor's;
+ * when both have one, the source's messages, reply followers, agent seats and
+ * the approvals asked in it move, and the source thread goes. People seated in
+ * it are not carried (the survivor's sharing decides who reads it). True when
+ * messages changed thread.
+ */
+async function mergeCompanyDiscussion(
+  h: RlsClient,
+  params: { orgId: string; sourceId: string; targetId: string; keepUserId: string | null },
+): Promise<boolean> {
+  const { orgId, sourceId, targetId, keepUserId } = params
+  const found = await entityDiscussionThreads(h, orgId, COMPANY_DISCUSSION, [sourceId, targetId])
+  const source = found.get(sourceId)
+  const target = found.get(targetId)
+
+  await h.execute(drizzleSql`
+    UPDATE ${ks()}.thread_references r SET entity_id = ${targetId}
+     WHERE r.org_id = ${orgId}::uuid AND r.app = 'kernel' AND r.entity_type = 'company'
+       AND r.entity_id = ${sourceId}
+       AND NOT EXISTS (
+         SELECT 1 FROM ${ks()}.thread_references t
+          WHERE t.thread_id = r.thread_id AND t.app = 'kernel' AND t.entity_type = 'company'
+            AND t.entity_id = ${targetId})`)
+  await h.execute(drizzleSql`
+    DELETE FROM ${ks()}.thread_references
+     WHERE org_id = ${orgId}::uuid AND app = 'kernel' AND entity_type = 'company'
+       AND entity_id = ${sourceId}`)
+  if (!source) return false
+
+  const dropPeople = (threadId: string) =>
+    h.execute(drizzleSql`
+      DELETE FROM ${ks()}.thread_participants
+       WHERE org_id = ${orgId}::uuid AND thread_id = ${threadId}::uuid AND user_id IS NOT NULL
+         AND (${keepUserId}::uuid IS NULL OR user_id <> ${keepUserId}::uuid)`)
+
+  if (!target) {
+    await h.execute(drizzleSql`
+      UPDATE ${ks()}.threads
+         SET handle = ${entityDiscussionHandle({ ...COMPANY_DISCUSSION, entityId: targetId })},
+             created_from = jsonb_set(COALESCE(created_from, '{}'::jsonb), '{entityId}', to_jsonb(${targetId}::text))
+       WHERE org_id = ${orgId}::uuid AND id = ${source}::uuid`)
+    await dropPeople(source)
+    return false
+  }
+
+  const followers = extractRows<{
+    root_message_id: string
+    user_id: string
+    last_read_at: string | null
+    created_at: string
+  }>(
+    await h.execute(drizzleSql`
+      DELETE FROM ${ks()}.reply_thread_followers
+       WHERE org_id = ${orgId}::uuid AND thread_id = ${source}::uuid
+      RETURNING root_message_id::text AS root_message_id, user_id::text AS user_id,
+                last_read_at::text AS last_read_at, created_at::text AS created_at`),
+  )
+  await h.execute(drizzleSql`
+    INSERT INTO ${ks()}.thread_participants (thread_id, org_id, role, participant_type, agent_id, seat_origin)
+    SELECT ${target}::uuid, org_id, role, participant_type, agent_id, seat_origin
+      FROM ${ks()}.thread_participants
+     WHERE org_id = ${orgId}::uuid AND thread_id = ${source}::uuid AND agent_id IS NOT NULL
+    ON CONFLICT DO NOTHING`)
+  await h.execute(drizzleSql`
+    UPDATE ${ks()}.messages m
+       SET thread_id = ${target}::uuid,
+           external_ref = CASE WHEN m.external_ref IS NOT NULL AND EXISTS (
+               SELECT 1 FROM ${ks()}.messages t
+                WHERE t.org_id = m.org_id AND t.thread_id = ${target}::uuid
+                  AND t.external_ref = m.external_ref)
+             THEN NULL ELSE m.external_ref END
+     WHERE m.org_id = ${orgId}::uuid AND m.thread_id = ${source}::uuid`)
+  for (const f of followers) {
+    await h.execute(drizzleSql`
+      INSERT INTO ${ks()}.reply_thread_followers (root_message_id, thread_id, user_id, org_id, last_read_at, created_at)
+      VALUES (${f.root_message_id}::uuid, ${target}::uuid, ${f.user_id}::uuid, ${orgId}::uuid,
+              ${f.last_read_at}::timestamptz, ${f.created_at}::timestamptz)
+      ON CONFLICT DO NOTHING`)
+  }
+  for (const column of ["thread_id", "originating_thread_id"]) {
+    await h.execute(drizzleSql`
+      UPDATE ${ks()}.approval_requests SET ${drizzleSql.raw(quoteIdent(column))} = ${target}::uuid
+       WHERE org_id = ${orgId}::uuid AND ${drizzleSql.raw(quoteIdent(column))} = ${source}::uuid`)
+  }
+  await h.execute(drizzleSql`
+    UPDATE ${ks()}.scope_requests SET originating_thread_id = ${target}::uuid
+     WHERE org_id = ${orgId}::uuid AND originating_thread_id = ${source}::uuid`)
+  await h.execute(drizzleSql`
+    DELETE FROM ${ks()}.threads WHERE org_id = ${orgId}::uuid AND id = ${source}::uuid`)
+  await unindexDiscussionThreads(orgId, [source])
+  return true
+}
+
+let companyMergeFailpoint: ((stage: CompanyMergeStage) => Promise<void> | void) | null = null
+
+/**
+ * Arm a fault inside a company merge, at `stage` and after, to prove the merge
+ * commits or rolls back whole. Refused in production; returns the disarm
+ * function.
+ */
+export function armCompanyMergeFailpoint(
+  fn: (stage: CompanyMergeStage) => Promise<void> | void,
+): () => void {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("The company merge failpoint cannot be armed in production")
+  }
+  companyMergeFailpoint = fn
+  return () => {
+    companyMergeFailpoint = null
+  }
+}
+
+async function runCompanyMergeFailpoint(stage: CompanyMergeStage): Promise<void> {
+  if (companyMergeFailpoint) await companyMergeFailpoint(stage)
 }
 
 /* -------------------------------------------------------------------------- */

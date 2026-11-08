@@ -165,6 +165,10 @@ The check applies to drafts written by agents only. A message you write yourself
 | `mail:conversations:write` | Reply, forward, compose, archive, label and convert to ticket |
 | `mail:drafts:read` | Read mail drafts |
 | `mail:approve` | Approve, edit or deny the mail drafts agents propose |
+| `mail:suppressions:read` | See who has opted out of mail |
+| `mail:suppressions:write` | Add or remove an opt-out by hand |
+
+Mail's `member` role holds `mail:suppressions:read`, so everyone with the Full Member role sees who has opted out before writing to them. Adding or removing an opt-out by hand stays with mail admins.
 
 See the [scope reference](../reference/scopes.md) and [roles](../admin/roles.md).
 

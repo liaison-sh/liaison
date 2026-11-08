@@ -75,6 +75,9 @@ setLabels add or replace -> apps/api/src/apps/mail/app.manifest.json:1160
 convertToTicket -> apps/api/src/apps/mail/app.manifest.json:1094
 mail:drafts:read reads drafts -> apps/api/src/apps/mail/app.manifest.json:566
 mail:approve derived approver scope for gated tools -> apps/api/src/modules/permissions/scope-catalog.ts:239
+mail:suppressions:read and :write -> apps/api/src/modules/permissions/scope-catalog.ts:39-44
+Role member holds mail:suppressions:read, Full Member inherits it -> apps/api/src/apps/mail/app.manifest.json:1767
+mail:suppressions:write for mail admins -> apps/api/src/db/migrations/0291_suppressions.sql:94
 mail:accounts:admin, mail admin connects org mailboxes -> apps/web/src/modules/mail/MailAccounts.tsx:573
 A failed sync shows its error on the row -> apps/api/src/apps/mail/handlers.ts:3641
 Retry after 15 min, doubling, capped at 6 h -> apps/api/src/apps/mail/handlers.ts:3617

@@ -67,7 +67,7 @@
       }
     ]
   },
-  "version": "1.10.2",
+  "version": "1.11.0",
   "description": "Email integration: Gmail and IMAP/SMTP",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -1762,6 +1762,12 @@
       "runsFor": {"connection": "imap"},
       "schedule": "0/2 * * * *",
       "timeoutMs": 120000
+    }
+  },
+  "roles": {
+    "member": {
+      "description": "Mail member: sees who has opted out of mail, so nothing is written to them",
+      "scopes": ["mail:suppressions:read"]
     }
   },
   "kind": "app",

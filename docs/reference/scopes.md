@@ -235,6 +235,7 @@ Read, write and reply to email from Gmail or any IMAP/SMTP mailbox.
 | `mail:conversations:read` | entities conversation, message; tools export_conversations, read, search |  |
 | `mail:conversations:write` | tools appendInboundMessage, archive, compose, composeForApp, convertToTicket, createFromTicket and 3 more |  |
 | `mail:drafts:read` | entity draft |  |
+| `mail:suppressions:read` | role member |  |
 
 ## mcp-manager
 

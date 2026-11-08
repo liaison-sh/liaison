@@ -28,7 +28,7 @@ import { dispatchAppJobWithContext, type JobTxMode } from "~/infra/jobs/job-cont
 import { env, isTestEnv } from "~/lib/env"
 import { JobRetryLaterError } from "~/lib/failure-severity"
 import { jobsLogger as log } from "~/lib/logger"
-import { bullPrefix, redisBullMQ as redis } from "~/lib/redis"
+import { redis as appRedis, bullPrefix, redisBullMQ as redis } from "~/lib/redis"
 import {
   isShuttingDown,
   msSinceShutdownBegan,
@@ -1161,12 +1161,35 @@ function processJob(
   ).finally(() => end?.())
 }
 
+/**
+ * Test servers only: while this key is set (under the server's REDIS_PREFIX), a
+ * scheduler's tick does nothing. A test lane sets it while it builds and
+ * snapshots its world (packages/test-helpers/src/e2e-lane.ts), so the world it
+ * resets every file to is what the bootstrap and the seed wrote, never also
+ * whichever minute sweeps happened to fire before the snapshot (an expiry, the
+ * attention materializer, a digest). Every scheduler is a periodic sweep: its
+ * next tick does the skipped one's work. Per-request delayed jobs still run.
+ */
+export const SCHEDULED_TICKS_HELD_KEY = "test:scheduled-ticks-held"
+
+async function scheduledTickHeld(job: DispatchedJob): Promise<boolean> {
+  if (!job.repeatJobKey || !isTestEnv()) return false
+  return (await appRedis.exists(SCHEDULED_TICKS_HELD_KEY)) === 1
+}
+
 async function processJobInOrigin(
   queueName: string,
   appName: string,
   job: DispatchedJob,
   signal: AbortSignal,
 ): Promise<void> {
+  if (await scheduledTickHeld(job)) {
+    log.debug(
+      { queue: queueName, job: job.name, schedulerId: job.repeatJobKey },
+      "scheduled tick held by the test lane",
+    )
+    return
+  }
   // A job without an org looks its handler up now. An org's job looks it up
   // only once the org is set up below (A3): the org's setup registers its app
   // handlers, so a job for an org this process has not registered yet runs.

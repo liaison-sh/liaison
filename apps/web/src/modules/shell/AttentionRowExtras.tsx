@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // The Home row's decision extras: the send check's line on a mail draft, "Not now" on a
-// persisted item, "Ask agent to draft" on an item that needs a reply, and Dismiss on a send
-// the check stopped. Urgency orders the rows; nothing here adds colour.
+// persisted item, "Ask agent to draft" on an item that needs a reply, "Ask agent to reassign"
+// on companies a departure left without an account manager, and Dismiss on a send the check
+// stopped. Urgency orders the rows; nothing here adds colour.
 import type { ApprovalSendGuard, AttentionItem } from "@liaison/shared"
 import { type Component, createSignal, Show } from "solid-js"
 import { cn } from "~/lib/cn"
@@ -64,8 +65,21 @@ export function offersAskDraft(item: AttentionItem): boolean {
   return (
     item.action?.type === "open_entity" &&
     !isStoppedSendNotice(item) &&
-    kind !== "kernel:away.recap"
+    kind !== "kernel:away.recap" &&
+    kind !== UNOWNED_COMPANIES_KIND
   )
+}
+
+/** The row of companies left without an account manager when someone was deactivated. */
+export const UNOWNED_COMPANIES_KIND = "kernel:companies.unowned"
+
+/** The companies such a row lists, or null for any other row. */
+export function unownedCompanyIds(item: AttentionItem): string[] | null {
+  const kind: string = item.kind
+  const ids = item.metadata?.companyIds
+  if (kind !== UNOWNED_COMPANIES_KIND || !Array.isArray(ids)) return null
+  const valid = ids.filter((i): i is string => typeof i === "string")
+  return valid.length > 0 ? valid : null
 }
 
 /** The send check's line on a mail draft row, the same words the card uses. */
@@ -140,13 +154,15 @@ export const NotNowButton: Component<{ item: AttentionItem; testId: string; comp
 }
 
 /**
- * Ask agent to draft: a normal turn in the viewer's Personal agent conversation, about this
- * item (the turn reads it as the current view), then that conversation opens.
+ * Ask the agent about a row: a normal turn in the viewer's Personal agent conversation, about
+ * this item (the turn reads it as the current view), then that conversation opens.
  */
-export const AskDraftButton: Component<{
+const AskAgentButton: Component<{
   item: AttentionItem
   testId: string
   compact: boolean
+  label: string
+  message: string
 }> = (props) => {
   const api = useApi()
   const i18n = useI18n()
@@ -162,15 +178,11 @@ export const AskDraftButton: Component<{
       await sendMessage(
         api,
         threadId,
-        i18n.t("kernel.homeDecisions.askDraftMessage", { summary: props.item.summary }),
+        props.message,
         { id: me.userId, name: me.name ?? "" },
         { currentView: { tabType: action.tabType, entityId: action.entityId } },
       )
-      openTab({
-        type: "thread",
-        entityId: threadId,
-        label: i18n.t("kernel.homeDecisions.askDraft"),
-      })
+      openTab({ type: "thread", entityId: threadId, label: props.label })
     } catch {
       addToast({ message: i18n.t("kernel.homeDecisions.askDraftFailed"), type: "error" })
     } finally {
@@ -180,13 +192,59 @@ export const AskDraftButton: Component<{
   return (
     <button
       type="button"
-      data-testid={`${props.testId}-ask-draft`}
+      data-testid={props.testId}
       disabled={busy()}
       onClick={(e) => void run(e)}
       class={buttonClass(props.compact)}
     >
-      {i18n.t("kernel.homeDecisions.askDraft")}
+      {props.label}
     </button>
+  )
+}
+
+/** Ask agent to draft what an item that waits on a reply or a next step needs. */
+export const AskDraftButton: Component<{
+  item: AttentionItem
+  testId: string
+  compact: boolean
+}> = (props) => {
+  const i18n = useI18n()
+  return (
+    <AskAgentButton
+      item={props.item}
+      testId={`${props.testId}-ask-draft`}
+      compact={props.compact}
+      label={i18n.t("kernel.homeDecisions.askDraft")}
+      message={i18n.t("kernel.homeDecisions.askDraftMessage", { summary: props.item.summary })}
+    />
+  )
+}
+
+/**
+ * Ask agent to reassign the companies a departure left without an account manager: the turn
+ * gets the row's line and the companies' ids, which the agent gives to someone in one call.
+ */
+export const AskReassignButton: Component<{
+  item: AttentionItem
+  testId: string
+  compact: boolean
+}> = (props) => {
+  const i18n = useI18n()
+  return (
+    <Show when={unownedCompanyIds(props.item)}>
+      {(ids) => (
+        <AskAgentButton
+          item={props.item}
+          testId={`${props.testId}-ask-reassign`}
+          compact={props.compact}
+          label={i18n.t("kernel.homeDecisions.askReassign")}
+          message={i18n.t("kernel.homeDecisions.askReassignMessage", {
+            summary: props.item.summary,
+            companyIds: ids().join(", "),
+          })}
+        />
+      )}
+    </Show>
   )
 }
 

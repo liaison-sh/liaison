@@ -87,7 +87,8 @@ step-up for a full-access MCP connection (OAuth consent or device approval, no a
 Deactivation deletes the person's away ranges -> apps/api/src/modules/users/away.ts:1052 ; apps/api/src/modules/users/service.ts
 Deactivation deletes calendar-derived away ranges too (one table, every source) -> apps/api/src/modules/users/away.ts:1057
 Deactivate asks who takes over a manager's companies -> apps/web/src/modules/settings/AdminUsers.tsx:488 ; packages/shared/src/i18n/locales/en/kernel.json:2760-2763
-Without accountsTo the tool refuses with the count and changes nothing -> apps/api/src/modules/apps/kernel-bulk.ts:157
+Without accountsTo the tool and the admin route refuse with the count and change nothing -> apps/api/src/modules/apps/kernel-bulk.ts:157 ; apps/api/src/modules/users/routes.ts:214
 A company the new manager cannot see stays without one -> apps/api/src/modules/contacts/company-unowned.ts:144-160
 One unowned row per person left, for kernel:users:admin and kernel:companies:write holders -> apps/api/src/modules/contacts/company-unowned.ts:42 ; apps/api/src/modules/contacts/company-unowned.ts:233
 The row goes at zero or on reactivation -> apps/api/src/modules/contacts/company-unowned.ts:307
+Ask agent to reassign on the unowned row asks the Personal agent, with the row's companies; giving them is the gated companies_write -> apps/web/src/modules/shell/AttentionRowExtras.tsx:227 ; packages/shared/src/i18n/locales/en/kernel.json:6562-6563 ; apps/api/src/modules/agent/tools/company-tools.ts:744

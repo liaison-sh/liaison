@@ -377,6 +377,11 @@ export async function tellPreviousManagers(
   let told = 0
   for (const [previousId, refs] of byPrevious) {
     if (!active.has(previousId)) continue
+    // Hand-overs of several companies publish one event each, handled side by side: one at a
+    // time per previous manager, so each widens the row the one before it wrote.
+    await tx.execute(
+      drizzleSql`SELECT pg_advisory_xact_lock(hashtext(${`company-hand-over:${previousId}`}))`,
+    )
     const [existing] = extractRows<{ metadata: { companies?: unknown } | null }>(
       await tx.execute(drizzleSql`
         SELECT metadata FROM ${K}.attention_events

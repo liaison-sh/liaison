@@ -202,7 +202,7 @@ describe("deactivating someone who manages companies", () => {
 
   it("deactivating someone who manages companies without saying to whom is refused with the count", async () => {
     const a = await company("Maison Arlon", people.leaver)
-    const b = await company("Atelier Brume", people.leaver)
+    const b = await company("Studio Brume", people.leaver)
     const res = await deactivate({ userId: people.leaver })
     expect(res.status).toBeGreaterThanOrEqual(400)
     expect(res.body.error.code).toBe("accounts_to_required")
@@ -225,7 +225,7 @@ describe("deactivating someone who manages companies", () => {
     expect(res.status).toBe(200)
     expect(await statusOf(people.leaver)).toBe("deactivated")
     const moved = res.body.data.companies.moved.map((c: { name: string }) => c.name).sort()
-    expect(moved).toEqual(["Atelier Brume", "Maison Arlon"])
+    expect(moved).toEqual(["Maison Arlon", "Studio Brume"])
     expect(res.body.data.companies.skipped.map((c: { id: string }) => c.id)).toEqual([hidden])
     expect(await ownerOf(hidden)).toBeNull()
     expect(res.body.data.message).toContain("moved to Person taker")

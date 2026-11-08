@@ -6559,6 +6559,8 @@
     "askDraft": "Ask agent to draft",
     "askDraftMessage": "Draft what this needs: {{summary}}",
     "askDraftFailed": "Could not reach your agent. Try again.",
+    "askReassign": "Ask agent to reassign",
+    "askReassignMessage": "Help me give these companies a new account manager. {{summary}}. Companies: {{companyIds}}",
     "dismiss": "Dismiss",
     "guardClear": "Will not go out if they reply first, even after you approve.",
     "needsYouTitle": "Needs you",

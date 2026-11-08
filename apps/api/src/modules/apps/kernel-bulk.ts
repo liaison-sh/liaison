@@ -182,7 +182,8 @@ export async function deactivateWithCompanies(args: {
     })
   } catch (err) {
     if (err instanceof UserAuthorityError) {
-      return { error: { code: "forbidden", message: err.message } }
+      const code = err.code === "LAST_ADMIN" ? "last_admin" : "forbidden"
+      return { error: { code, message: err.message } }
     }
     throw err
   }

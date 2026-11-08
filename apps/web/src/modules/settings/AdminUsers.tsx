@@ -175,7 +175,7 @@ const AdminUsers: Component = () => {
   }
 
   /**
-   * Deactivate through the kernel tool, which refuses with `accounts_to_required` when the
+   * Deactivate through the admin route, which refuses with `accounts_to_required` when the
    * person manages companies and nobody was named: the dialog then asks the one question.
    * Returns whether the dialog can close.
    */
@@ -183,10 +183,10 @@ const AdminUsers: Component = () => {
     const question = accountsQuestion()
     const choice = accountsTo()
     if (question && choice === "") return false
-    const params: Record<string, unknown> = { userId }
-    if (question) params.accountsTo = choice === NOBODY ? null : choice
+    const body: Record<string, unknown> = {}
+    if (question) body.accountsTo = choice === NOBODY ? null : choice
     try {
-      await api.post("/apps/kernel/tools/deactivateUser", params)
+      await api.post(`/admin/users/${userId}/deactivate`, body)
       addToast({ message: i18n.t("kernel.settingsUi.userDeactivated"), type: "success" })
       await refetchUsers()
       return true

@@ -38,7 +38,7 @@ interface FetchMockOptions {
   imported?: any[]
   roles?: any[]
   inviteResponse?: { status: number; body: any }
-  /** Answers of the kernel deactivate tool, one per call (the last repeats). */
+  /** Answers of the admin deactivate route, one per call (the last repeats). */
   deactivate?: Array<{ status: number; body?: any }>
   reactivate?: { status: number; body?: any }
 }
@@ -51,7 +51,7 @@ function mockFetch(opts: FetchMockOptions = {}): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET"
     if (typeof url === "string") {
-      if (url.includes("/apps/kernel/tools/deactivateUser") && method === "POST") {
+      if (url.match(/\/admin\/users\/[^/]+\/deactivate/) && method === "POST") {
         const answers = opts.deactivate ?? [{ status: 200, body: { data: { id: USER_A } } }]
         const r = answers[Math.min(deactivateCalls++, answers.length - 1)]!
         return jsonResp(r.body ?? {}, r.status)
@@ -212,10 +212,13 @@ describe("AdminUsers", () => {
   const BOB = "22222222-2222-4222-8222-222222222222"
   const bob = { id: BOB, email: "bob@test.com", name: "Bob", status: "active", roles: [] }
 
+  /** Each deactivate call as the person in its path plus its body. */
   function deactivateBodies(fetchMock: ReturnType<typeof vi.fn>): Array<Record<string, unknown>> {
-    return fetchMock.mock.calls
-      .filter((c) => String(c[0]).includes("/apps/kernel/tools/deactivateUser"))
-      .map((c) => JSON.parse(String((c[1] as RequestInit).body)))
+    return fetchMock.mock.calls.flatMap((c) => {
+      const m = /\/admin\/users\/([^/]+)\/deactivate/.exec(String(c[0]))
+      if (!m) return []
+      return [{ userId: m[1], ...JSON.parse(String((c[1] as RequestInit).body ?? "{}")) }]
+    })
   }
 
   it("deactivating someone who manages no company asks nothing and deactivates them", async () => {
@@ -232,7 +235,7 @@ describe("AdminUsers", () => {
       users: [alice, bob],
       deactivate: [
         {
-          status: 422,
+          status: 409,
           body: {
             error: {
               code: "accounts_to_required",
@@ -268,7 +271,7 @@ describe("AdminUsers", () => {
       users: [alice, bob],
       deactivate: [
         {
-          status: 422,
+          status: 409,
           body: { error: { code: "accounts_to_required", message: "Alice manages 1 company." } },
         },
         { status: 200, body: { data: { id: USER_A } } },

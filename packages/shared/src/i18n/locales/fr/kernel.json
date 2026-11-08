@@ -6556,6 +6556,8 @@
     "askDraft": "Demander un brouillon à l'agent",
     "askDraftMessage": "Rédige ce qu'il faut pour ceci : {{summary}}",
     "askDraftFailed": "Impossible de joindre votre agent. Réessayez.",
+    "askReassign": "Demander à l'agent de les confier",
+    "askReassignMessage": "Aide-moi à confier ces entreprises à un nouveau responsable de compte. {{summary}}. Entreprises : {{companyIds}}",
     "dismiss": "Retirer",
     "guardClear": "Ne partira pas si on vous répond d'abord, même après votre accord.",
     "needsYouTitle": "Vous attend",

@@ -5421,6 +5421,9 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.homeDecisions.askDraft": "Demander un brouillon à l'agent",
   "kernel.homeDecisions.askDraftMessage": "Rédige ce qu'il faut pour ceci : {{summary}}",
   "kernel.homeDecisions.askDraftFailed": "Impossible de joindre votre agent. Réessayez.",
+  "kernel.homeDecisions.askReassign": "Demander à l'agent de les confier",
+  "kernel.homeDecisions.askReassignMessage":
+    "Aide-moi à confier ces entreprises à un nouveau responsable de compte. {{summary}}. Entreprises : {{companyIds}}",
   "kernel.homeDecisions.dismiss": "Retirer",
   "kernel.homeDecisions.guardClear":
     "Ne partira pas si on vous répond d'abord, même après votre accord.",

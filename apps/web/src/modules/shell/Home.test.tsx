@@ -1056,6 +1056,24 @@ describe("home decisions", () => {
       })
       await vi.waitFor(() => expect(screen.queryByTestId(id)).toBeNull())
     })
+
+    it("companies left without an account manager offer Ask agent to reassign, not a draft", () => {
+      const unowned = attention("ev-unowned", {
+        entity: "user",
+        entityId: "u-lea",
+        kind: "kernel:companies.unowned" as AttentionItem["kind"],
+        summary: "2 companies have no account manager since Léa Fontaine left",
+        urgency: 40,
+        action: { type: "open_entity", tabType: "kernel:user", entityId: "u-lea" },
+        metadata: { leftUserId: "u-lea", companyIds: ["c-1", "c-2"], count: 2 },
+      })
+      attentionStore._setForTest({ items: [unowned], errors: [] })
+      render(() => <Home entityId="home" />)
+      const id = row(unowned)
+      expect(screen.getByTestId(`${id}-ask-reassign`).textContent).toBe("Ask agent to reassign")
+      expect(screen.queryByTestId(`${id}-ask-draft`)).toBeNull()
+      expect(screen.getByTestId(`${id}-not-now`)).toBeTruthy()
+    })
   })
 
   it("Not now sets the event aside and the row leaves", async () => {

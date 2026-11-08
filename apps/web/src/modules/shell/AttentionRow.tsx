@@ -63,6 +63,7 @@ import { useApi } from "~/modules/shell/ApiContext"
 import { AppPill, appIdOfTool } from "~/modules/shell/AppPill"
 import {
   AskDraftButton,
+  AskReassignButton,
   DismissButton,
   GuardLine,
   isStoppedDraft,
@@ -843,6 +844,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
               <Show when={offersAskDraft(props.item)}>
                 <AskDraftButton item={props.item} testId={testId()} compact />
               </Show>
+              <AskReassignButton item={props.item} testId={testId()} compact />
               <Show when={offersNotNow(props.item)}>
                 <NotNowButton item={props.item} testId={testId()} compact />
               </Show>
@@ -1097,6 +1099,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
             <Show when={offersAskDraft(props.item)}>
               <AskDraftButton item={props.item} testId={testId()} compact={false} />
             </Show>
+            <AskReassignButton item={props.item} testId={testId()} compact={false} />
             <Show when={offersNotNow(props.item)}>
               <NotNowButton item={props.item} testId={testId()} compact={false} />
             </Show>

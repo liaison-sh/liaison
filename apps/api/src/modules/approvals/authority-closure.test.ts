@@ -136,6 +136,10 @@ const ROUTE_NON_READERS: Record<string, string> = {
   "apps/api/src/db/schema/kernel/agent-memory.ts": "the column's definition",
   "apps/api/src/modules/users/merge-references.ts": "repoints the column when two accounts merge",
   "apps/api/src/modules/erasure/erase-user.ts": "clears the column when a person is erased",
+  "apps/api/src/modules/contacts/companies.ts":
+    "repoints the column when two companies merge, and names the kept company's manager",
+  "apps/api/src/modules/agent/tools/company-tools.ts":
+    "the merge result names the kept company's manager",
 }
 const ROUTE_INPUT = /\b(route_person_id|routePersonId|route_company_id|routeCompanyId|managerId)\b/
 

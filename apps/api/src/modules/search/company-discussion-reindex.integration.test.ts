@@ -17,6 +17,9 @@ import {
   messageLiveIndexItem,
   registerMessageIndexerConsumer,
 } from "~/modules/search/message-indexer"
+import { insertSql, type RowValue } from "~/seed/factories/org/test-rows"
+
+const insert = (table: string, row: Record<string, RowValue>) => sql.unsafe(insertSql(table, row))
 
 const ORG = crypto.randomUUID()
 const ANNA = crypto.randomUUID()
@@ -47,23 +50,42 @@ async function company(name: string): Promise<string> {
 /** The company's discussion thread with one message; returns the message id. */
 async function discussionWithMessage(companyId: string, text: string): Promise<string> {
   const thread = crypto.randomUUID()
-  await sql`INSERT INTO kernel.threads (id, org_id, handle, type, hidden_from_list, created_by)
-    VALUES (${thread}, ${ORG}, ${`entity:kernel:company:${companyId}`}, 'thread', true, ${ANNA})`
-  const [row] = await sql<{ id: string }[]>`
-    INSERT INTO kernel.messages (thread_id, org_id, author_id, content, required_scopes)
-    VALUES (${thread}, ${ORG}, ${ANNA}, ${text}, '{}'::text[])
-    RETURNING id::text`
-  return String(row?.id)
+  await insert("kernel.threads", {
+    id: thread,
+    org_id: ORG,
+    handle: `entity:kernel:company:${companyId}`,
+    type: "thread",
+    hidden_from_list: true,
+    created_by: ANNA,
+  })
+  const id = crypto.randomUUID()
+  await insert("kernel.messages", {
+    id,
+    thread_id: thread,
+    org_id: ORG,
+    author_id: ANNA,
+    content: text,
+    required_scopes: { raw: "'{}'::text[]" },
+  })
+  return id
 }
 
 beforeAll(async () => {
   spies.push(spyOn(jobsModule, "enqueueAppJob").mockImplementation((async () => "job") as never))
   spies.push(spyOn(jobsModule, "registerJobWorker").mockImplementation((() => {}) as never))
   await LiveIndexTestAccess.clear()
-  await sql`INSERT INTO kernel.organizations (id, name, slug)
-    VALUES (${ORG}, 'CompanyDiscussionReindex', ${`company-discussion-reindex-${tag}`})`
-  await sql`INSERT INTO kernel.users (id, org_id, email, name, password_hash)
-    VALUES (${ANNA}, ${ORG}, ${`cdr-anna-${tag}@test.com`}, 'Anna', 'x')`
+  await insert("kernel.organizations", {
+    id: ORG,
+    name: "CompanyDiscussionReindex",
+    slug: `company-discussion-reindex-${tag}`,
+  })
+  await insert("kernel.users", {
+    id: ANNA,
+    org_id: ORG,
+    email: `cdr-anna-${tag}@test.com`,
+    name: "Anna",
+    password_hash: "x",
+  })
 })
 
 afterAll(async () => {

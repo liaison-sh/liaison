@@ -312,6 +312,7 @@ describe("writesToTable annotations on kernel tools", () => {
       companies_link_batch: "kernel.companies",
       companies_link_contacts: "kernel.contacts",
       companies_mark_not_same: "kernel.companies",
+      companies_merge: "kernel.companies",
       companies_write: "kernel.companies",
       // The person's own computer sessions: a command lands in the session's own
       // queue, read back only by its owner and the session on their computer.

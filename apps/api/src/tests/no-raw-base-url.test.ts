@@ -24,8 +24,6 @@ const HELPER = "lib/org-public-url.ts"
 
 const DEMO_DOOR =
   "demo door page: served by the demo deployment, which has no org hosts; the visitor has no org yet"
-const SUBSCRIPTION_BASE =
-  "inbound webhook subscription base: one URL per shared provider app; webhooks are served on every host"
 
 /**
  * file → { reads, reason }. `reads` is the exact number of `.BASE_URL` reads the
@@ -50,8 +48,6 @@ const ALLOWLIST: Record<string, { reads: number; reason: string }> = {
   },
   "modules/demo/demo-verification.ts": { reads: 1, reason: DEMO_DOOR },
   "modules/demo/demo-leads.ts": { reads: 1, reason: DEMO_DOOR },
-  "modules/apps/connections/service.ts": { reads: 4, reason: SUBSCRIPTION_BASE },
-  "modules/apps/connections/before-disconnect.ts": { reads: 1, reason: SUBSCRIPTION_BASE },
   "modules/apps/instance-config-defaults.ts": {
     reads: 1,
     reason: "the server's own Meta callback: one subscription URL for the shared Meta app",

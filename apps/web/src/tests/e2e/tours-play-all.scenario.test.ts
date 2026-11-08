@@ -483,6 +483,29 @@ async function playTour(ctx: Ctx, tour: Tour, plan: TourPlan) {
   const { page, base, env, orgId, adminId } = ctx
   ctx.since = new Date()
   const startPath = await plan.start(ctx)
+  // What a tour that did not complete is reported with: the page's warnings and
+  // errors, the tour reads and moves with the status and step each returned,
+  // the page's own visibility, and where the panel was last seen.
+  const trail: string[] = []
+  const at = () => new Date().toISOString().slice(11, 23)
+  page.on("console", (m) => {
+    if (m.type() === "error" || m.type() === "warning")
+      trail.push(`${at()} console ${m.type()}: ${m.text().slice(0, 300)}`)
+  })
+  page.on("pageerror", (err) => trail.push(`${at()} pageerror: ${String(err).slice(0, 300)}`))
+  page.on("framenavigated", (f) => {
+    if (f === page.mainFrame()) trail.push(`${at()} navigated: ${f.url()}`)
+  })
+  page.on("response", async (res) => {
+    if (!res.url().includes(`/api/tours/${tour.id}`)) return
+    const body = (await res.json().catch(() => null)) as {
+      data?: { progress?: { status?: string; beatId?: string | null } | null }
+    } | null
+    const p = body?.data?.progress
+    trail.push(
+      `${at()} ${res.request().method()} ${new URL(res.url()).pathname} ${res.status()} -> ${p ? `${p.status} ${p.beatId ?? "-"}` : "no progress"}`,
+    )
+  })
   // A failing request is named in the log (the server exposes its detail in e2e).
   page.on("response", async (res) => {
     const tourMove = res.url().includes("/api/tours/") && res.request().method() === "PATCH"
@@ -526,7 +549,10 @@ async function playTour(ctx: Ctx, tour: Tour, plan: TourPlan) {
       )
     }
     const beatId = await panel.getAttribute("data-beat-id").catch(() => null)
-    if (beatId && seen.at(-1) !== beatId) seen.push(beatId)
+    if (beatId && seen.at(-1) !== beatId) {
+      seen.push(beatId)
+      trail.push(`${at()} panel on beat ${beatId}`)
+    }
     const skip = beatId ? plan.skip?.[beatId] : undefined
     if (beatId && skip && !handled.has(`skip:${beatId}`)) {
       handled.add(`skip:${beatId}`)
@@ -559,9 +585,13 @@ async function playTour(ctx: Ctx, tour: Tour, plan: TourPlan) {
     }
     await page.waitForTimeout(400)
   }
+  if (!(await page.getByTestId("tour-completed").isVisible())) {
+    const visibility = await page.evaluate(() => document.visibilityState).catch(() => "unknown")
+    trail.push(`${at()} gave up: panel ${await panel.isVisible()}, page ${visibility}`)
+  }
   await expect(
     page.getByTestId("tour-completed"),
-    `${tour.id} did not complete (beats ${seen.join(" > ")}, at ${page.url()})`,
+    `${tour.id} did not complete (beats ${seen.join(" > ")}, at ${page.url()})\n${trail.join("\n")}`,
   ).toBeVisible({ timeout: 5_000 })
   const [row] = await env.db.sql.unsafe<
     { status: string; beat_states: Record<string, TourBeatState> }[]

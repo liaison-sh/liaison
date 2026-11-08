@@ -98,6 +98,15 @@ export async function createE2eLane(
   const redis = env.redis.redis
   const coords = resolveTestCoordinates()
   const bullPrefix = `${env.redisPrefix}bull:`
+  // The lane holds its server's scheduled ticks while it builds the world it
+  // snapshots (SCHEDULED_TICKS_HELD_KEY, apps/api/src/infra/jobs/jobs.ts): the
+  // snapshot is what the bootstrap and the seed wrote, never also whichever
+  // minute sweeps fired before it (the expiry of a seeded request already past
+  // its deadline, the attention materializer's rows, a digest). It is let go
+  // after the snapshot, before the lane's Redis keys are read back, so a reset
+  // never puts it back.
+  const ticksHeldKey = `${env.redisPrefix}test:scheduled-ticks-held`
+  await redis.set(ticksHeldKey, "1")
 
   // The org + admin every file gets (what TestWorld.create's bootstrap made).
   await bootstrap(env.serverUrl, options.admin)
@@ -109,21 +118,6 @@ export async function createE2eLane(
   // before the snapshot, or the first file would find them half processed and
   // the rest never.
   await waitForOutboxDrained(sql, env.schemaPrefix)
-  // What the seed left pending (approvals, connected accounts) reaches its
-  // people's attention through the state materializer, a once-a-minute job,
-  // and a burst of posts is summarized by a job delayed past the burst. A
-  // snapshot taken before them held none of their rows, one taken after held
-  // them all, so the lane's world depended on the minute it was built in and
-  // on how long it took. The lane waits for the tick and for every such job,
-  // twice over the outbox (what one sends can queue the other).
-  if (options.seed) {
-    const cron = `${bullPrefix}kernel-cron`
-    await waitForSchedulerTick(redis, bullPrefix, "kernel-cron", STATE_MATERIALIZER_SCHEDULER)
-    for (let round = 0; round < 2; round++) {
-      await waitForJobsDone(redis, cron, SETTLING_JOBS)
-      await waitForOutboxDrained(sql, env.schemaPrefix)
-    }
-  }
   // The drained outbox has only QUEUED the search work: the flusher's jobs (a
   // second's debounce) and the boot rebuild (kernel-bulk, started when the
   // index was missing) still have to run. A snapshot taken before them held a
@@ -132,6 +126,10 @@ export async function createE2eLane(
   // on a lane a restart had re-indexed.
   const tOutbox = performance.now()
   await waitForSearchJobsIdle(redis, bullPrefix)
+  // A per-request timer the bootstrap or the seed armed and that is due soon
+  // (a notification burst flushes 10 s after its last message) runs before
+  // the snapshot, not on whichever side of it the build's speed puts it.
+  await waitForDueJobsIdle(redis, bullPrefix)
   const tSearch = performance.now()
   const s1 = (ms: number) => `${(ms / 1000).toFixed(1)}s`
   process.stderr.write(
@@ -141,6 +139,7 @@ export async function createE2eLane(
   // ── snapshot ──────────────────────────────────────────────────────────────
   await snapshotWorkerData(sql, workerId)
   const appsAtSnapshot = await installedAppsFingerprint(sql, workerId)
+  await redis.del(ticksHeldKey)
 
   async function scanLaneKeys(): Promise<string[]> {
     const keys: string[] = []
@@ -456,86 +455,38 @@ async function waitForSearchIdle(
   }
 }
 
-/**
- * The state materializer's minute tick (`STATE_MATERIALIZER_JOB` in
- * apps/api/src/modules/attention/state-materializer.ts, scheduled as
- * `<job>-scheduler` by `registerScheduledJob`).
- */
-const STATE_MATERIALIZER_SCHEDULER = "attention-state-email-materialize-scheduler"
-/**
- * The kernel-cron jobs a seeded world sets going and the lane waits out: the
- * materializer's tick and its per-org run (`STATE_MATERIALIZER_ORG_JOB`), and a
- * notification burst's summary, sent by a job delayed until the burst has been
- * quiet for ten seconds (`BURST_FLUSH_JOB`, apps/api/src/modules/notifications/burst.ts).
- */
-const SETTLING_JOBS: ReadonlySet<string> = new Set([
-  "attention-state-email-materialize",
-  "attention-state-email-materialize-org",
-  "notify-burst-flush",
-])
+/** The kernel queue of sweeps and short per-request timers (queue-classes.ts). */
+const TIMER_QUEUES = ["kernel-cron"]
+/** A delayed job due later than this is no part of the world being built (an approval's expiry, hours out). */
+const DUE_HORIZON_MS = 90_000
 
 /**
- * Waits until the job scheduler `schedulerId` has fired once from now on: a
- * BullMQ scheduler keeps its next fire time as its score in `<queue>:repeat`
- * and moves it forward when that fire's job is taken. A scheduler that is not
- * registered (no score) never fires, so the lane goes on at once, with a note.
- * Gives up after `timeoutMs` (more than one period of a minute cron) with a
- * warning.
+ * Waits until the timer queue has no job waiting or running and no delayed job
+ * due within DUE_HORIZON_MS, scheduler ticks (`repeat:` ids, held while the
+ * lane builds) aside. BullMQ scores a delayed job `timestamp * 0x1000 + n`.
+ * Gives up after `timeoutMs` with a warning rather than failing the lane.
  */
-export async function waitForSchedulerTick(
-  redis: Pick<Redis, "zscore">,
-  bullPrefix: string,
-  queue: string,
-  schedulerId: string,
-  timeoutMs = 90_000,
-): Promise<void> {
-  const key = `${bullPrefix}${queue}:repeat`
-  const next = async () => Number((await redis.zscore(key, schedulerId)) ?? Number.NaN)
-  const deadline = Date.now() + timeoutMs
-  const first = await next()
-  while (Date.now() < deadline) {
-    const now = await next()
-    if (!Number.isFinite(first) || !Number.isFinite(now)) {
-      process.stderr.write(
-        `[e2e-lane] scheduler ${schedulerId} is not registered in ${key}; not waiting\n`,
-      )
-      return
-    }
-    if (now > first) return
-    await Bun.sleep(250)
-  }
-  process.stderr.write(
-    `[e2e-lane] scheduler ${schedulerId} did not fire within ${timeoutMs / 1000}s; snapshotting anyway\n`,
-  )
-}
-
-/**
- * Waits until no job named in `names` is waiting, running or due in the BullMQ
- * queue `queueKey` (a job's name is the `name` field of its hash). The
- * schedulers' own next fires (`repeat:` ids in the delayed set) are not work.
- */
-async function waitForJobsDone(
+async function waitForDueJobsIdle(
   redis: Redis,
-  queueKey: string,
-  names: ReadonlySet<string>,
-  timeoutMs = 90_000,
+  bullPrefix: string,
+  timeoutMs = 120_000,
 ): Promise<void> {
+  const deadline = Date.now() + timeoutMs
   const busy = async (): Promise<boolean> => {
-    const ids = [
-      ...(await redis.lrange(`${queueKey}:wait`, 0, -1)),
-      ...(await redis.lrange(`${queueKey}:active`, 0, -1)),
-      ...(await redis.zrange(`${queueKey}:prioritized`, 0, "-1")),
-      ...(await redis.zrange(`${queueKey}:delayed`, 0, "-1")).filter(
-        (id) => !id.startsWith("repeat:"),
-      ),
-    ]
-    for (const id of ids) {
-      const name = await redis.hget(`${queueKey}:${id}`, "name")
-      if (name !== null && names.has(name)) return true
+    for (const q of TIMER_QUEUES) {
+      const key = `${bullPrefix}${q}`
+      const waiting = await redis.lrange(`${key}:wait`, 0, -1)
+      if (waiting.some((id) => !id.startsWith("repeat:"))) return true
+      if ((await redis.llen(`${key}:active`)) > 0) return true
+      const due = await redis.zrangebyscore(
+        `${key}:delayed`,
+        0,
+        (Date.now() + DUE_HORIZON_MS) * 0x1000 + 0xfff,
+      )
+      if (due.some((id) => !id.startsWith("repeat:"))) return true
     }
     return false
   }
-  const deadline = Date.now() + timeoutMs
   let idleReads = 0
   while (Date.now() < deadline) {
     idleReads = (await busy()) ? 0 : idleReads + 1
@@ -543,7 +494,7 @@ async function waitForJobsDone(
     await Bun.sleep(200)
   }
   process.stderr.write(
-    `[e2e-lane] ${[...names].join(", ")} still busy after ${timeoutMs / 1000}s; snapshotting anyway\n`,
+    `[e2e-lane] timer jobs still due after ${timeoutMs / 1000}s; snapshotting anyway\n`,
   )
 }
 

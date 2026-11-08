@@ -49,14 +49,18 @@ export async function orgPublicBaseUrl(org: string | { slug: string }): Promise<
   return orgPublicBaseUrlForSlug(slug)
 }
 
-/** The slug of the org with this id (one system read, before any actor exists); null when none. */
+/**
+ * The slug of the org with this id; null when none. One system read, before any
+ * actor exists; from inside a privileged transaction it reads on that one rather
+ * than taking a second privileged slot.
+ */
 export async function orgSlugById(orgId: string): Promise<string | null> {
-  const [{ withSystemDb }, { organizations }, { eq }] = await Promise.all([
+  const [{ withSystemReadReusingHeld }, { organizations }, { eq }] = await Promise.all([
     import("~/db/privileged"),
     import("~/db/schema/kernel"),
     import("drizzle-orm"),
   ])
-  const [row] = await withSystemDb("org-slug-by-id", (db) =>
+  const [row] = await withSystemReadReusingHeld("org-slug-by-id", (db) =>
     db
       .select({ slug: organizations.slug })
       .from(organizations)

@@ -3,14 +3,18 @@
  * A large customer for the timeline's speed test, written by SQL in one org
  * (deleted with it): one company of 50 people with three years of history.
  * Mail 20 000 messages, tickets 500 with 1 500 notes, 40 deals with 600
- * subtasks, one weekly meeting over three years plus 300 single meetings.
+ * subtasks (all open), one weekly meeting over three years plus 300 single meetings.
  * Invoicing is a catalog app this database does not carry, so its documents
  * are not written here.
  */
 import { sql as drizzleSql } from "drizzle-orm"
+import { syncDealOutcome } from "~/apps/projects/service/deals"
 import { extractRows, type PrivilegedDb } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
+import { seedContext } from "~/seed/context"
+import { asUser } from "~/seed/factories/people/actors"
+import { resolveContacts } from "~/seed/factories/people/contacts"
 
 const K = drizzleSql.raw(schemaRef("kernel"))
 
@@ -38,20 +42,43 @@ export interface ScaleWorldInput {
 }
 
 export async function seedActivityScaleWorld(input: ScaleWorldInput): Promise<string[]> {
-  return withSystemDb("activity-scale-seed", (tx) => seedIn(tx, input))
+  // The people through the contact factory, the rest set-based in one transaction.
+  const actor = {
+    actorType: "user" as const,
+    userId: input.userId,
+    orgId: input.orgId,
+    scopes: ["*"],
+    dimensionGrants: {},
+  }
+  const resolved = await resolveContacts(
+    seedContext({ orgId: input.orgId, now: new Date() }),
+    actor,
+    Array.from({ length: SCALE.people }, (_, i) => ({
+      key: `p${i + 1}`,
+      email: `scale${i + 1}-${input.tag}@dealer.example`,
+      name: `Person ${i + 1}`,
+      externalId: {},
+      tags: [],
+    })),
+  )
+  const people = resolved.map(([, c]) => ({ id: c.id, email: c.email ?? "" }))
+  await withSystemDb("activity-scale-seed", (tx) => seedIn(tx, input, people))
+  await insertDealTasks(input, actor)
+  await withSystemDb("activity-scale-seed-deal-people", (tx) => setDealPeople(tx, input, people))
+  await insertDealSubtasks(input, actor)
+  return withSystemDb("activity-scale-seed-rest", (tx) => seedAfterDeals(tx, input, people))
 }
 
-async function seedIn(tx: PrivilegedDb, input: ScaleWorldInput): Promise<string[]> {
+async function seedIn(
+  tx: PrivilegedDb,
+  input: ScaleWorldInput,
+  people: ReadonlyArray<{ id: string; email: string }>,
+): Promise<void> {
   const { orgId, userId, companyId, tag } = input
   const span = `${SCALE.years * 365} days`
-  const people = extractRows<{ id: string; email: string }>(
-    await tx.execute(drizzleSql`
-    INSERT INTO ${K}.contacts (org_id, handle, name, email, company_id, org_access, created_by)
-    SELECT ${orgId}, '@scale-' || ${tag} || '-' || g, 'Person ' || g,
-           'scale' || g || '-' || ${tag} || '@dealer.example', ${companyId}, 'editor', ${userId}
-      FROM generate_series(1, ${SCALE.people}) g
-    RETURNING id::text AS id, email`),
-  )
+  await tx.execute(drizzleSql`
+    UPDATE ${K}.contacts SET company_id = ${companyId}::uuid
+     WHERE org_id = ${orgId}::uuid AND id = ANY(${`{${people.map((p) => p.id).join(",")}}`}::uuid[])`)
   const ids = people.map((p) => p.id)
   // One conversation per person, and the messages spread over three years.
   await tx.execute(drizzleSql`
@@ -85,35 +112,17 @@ async function seedIn(tx: PrivilegedDb, input: ScaleWorldInput): Promise<string[
     INSERT INTO ${K}.threads (id, org_id, handle, created_by)
     SELECT gen_random_uuid(), ${orgId}, 'scale-deal-' || ${tag} || '-' || g, ${userId}
       FROM generate_series(1, ${SCALE.deals}) g`)
-  await tx.execute(drizzleSql`
-    INSERT INTO app_projects.tasks (org_id, project_id, status_id, title, number, thread_id, created_by,
-                                    created_at, updated_at)
-    SELECT ${orgId}, ${input.pipelineId}, ${input.stageId}, 'Deal ' || row_number() OVER (),
-           1000 + row_number() OVER (), th.id, ${userId},
-           now() - (random() * ${span}::interval), now()
-      FROM ${K}.threads th WHERE th.org_id = ${orgId} AND th.handle LIKE ${`scale-deal-${tag}-%`}`)
-  await tx.execute(drizzleSql`
-    INSERT INTO app_projects.deals (task_id, org_id, company_id, contact_id, outcome, closed_at)
-    SELECT t.id, ${orgId}, ${companyId}, (${`{${ids.join(",")}}`}::uuid[])[1 + (t.number % ${SCALE.people})],
-           CASE WHEN t.number % 4 = 0 THEN 'won' ELSE 'open' END,
-           CASE WHEN t.number % 4 = 0 THEN t.created_at + interval '30 days' END
-      FROM app_projects.tasks t WHERE t.org_id = ${orgId} AND t.project_id = ${input.pipelineId}`)
-  await tx.execute(drizzleSql`
-    WITH parents AS (
-      SELECT d.task_id, g FROM app_projects.deals d, generate_series(1, ${SCALE.dealSubtasks / SCALE.deals}) g
-       WHERE d.org_id = ${orgId}
-    ), th AS (
-      INSERT INTO ${K}.threads (id, org_id, handle, created_by)
-      SELECT gen_random_uuid(), ${orgId}, 'scale-sub-' || ${tag} || '-' || p.task_id || '-' || p.g, ${userId}
-        FROM parents p
-      RETURNING id, handle
-    )
-    INSERT INTO app_projects.tasks (org_id, project_id, parent_task_id, status_id, title, number, thread_id,
-                                    created_by, created_at, updated_at)
-    SELECT ${orgId}, ${input.pipelineId}, p.task_id, ${input.stageId}, 'Step ' || p.g,
-           5000 + row_number() OVER (), th.id, ${userId},
-           now() - (random() * ${span}::interval), now()
-      FROM parents p JOIN th ON th.handle = 'scale-sub-' || ${tag} || '-' || p.task_id || '-' || p.g`)
+}
+
+/** The meetings, once the deals and their subtasks exist. */
+async function seedAfterDeals(
+  tx: PrivilegedDb,
+  input: ScaleWorldInput,
+  people: ReadonlyArray<{ id: string; email: string }>,
+): Promise<string[]> {
+  const ids = people.map((p) => p.id)
+  const { orgId, tag } = input
+  const span = `${SCALE.years * 365} days`
   // Meetings: a weekly one with the first person over three years, and single ones.
   const first = people[0]?.email ?? ""
   await tx.execute(drizzleSql`
@@ -136,4 +145,81 @@ async function seedIn(tx: PrivilegedDb, input: ScaleWorldInput): Promise<string[
            LATERAL (SELECT now() - (random() * ${span}::interval) AS s) t`)
   await tx.execute(drizzleSql`ANALYZE app_mail.messages`)
   return ids
+}
+
+type Actor = {
+  actorType: "user"
+  userId: string
+  orgId: string
+  scopes: string[]
+  dimensionGrants: Record<string, never>
+}
+
+/** One task per deal in the pipeline, then the outcome writer over them as the person: it adds the deal rows. */
+async function insertDealTasks(input: ScaleWorldInput, actor: Actor): Promise<void> {
+  const { orgId, userId, tag } = input
+  const span = `${SCALE.years * 365} days`
+  const roots = await withSystemDb("activity-scale-seed-deals", async (tx) => {
+    await tx.execute(drizzleSql`
+      INSERT INTO app_projects.tasks (org_id, project_id, status_id, title, number, thread_id, created_by,
+                                      created_at, updated_at)
+      SELECT ${orgId}, ${input.pipelineId}, ${input.stageId}, 'Deal ' || row_number() OVER (),
+             1000 + row_number() OVER (), th.id, ${userId},
+             now() - (random() * ${span}::interval), now()
+        FROM ${K}.threads th WHERE th.org_id = ${orgId} AND th.handle LIKE ${`scale-deal-${tag}-%`}`)
+    return extractRows<{ id: string }>(
+      await tx.execute(drizzleSql`
+        SELECT id::text AS id FROM app_projects.tasks
+         WHERE org_id = ${orgId}::uuid AND project_id = ${input.pipelineId}::uuid
+           AND parent_task_id IS NULL`),
+    ).map((r) => r.id)
+  })
+  await asUser(actor, (tx) => syncDealOutcome(tx, orgId, actor, roots))
+}
+
+/** Each deal's company and contact (never its outcome). */
+async function setDealPeople(
+  tx: PrivilegedDb,
+  input: ScaleWorldInput,
+  people: ReadonlyArray<{ id: string; email: string }>,
+): Promise<void> {
+  const { orgId, companyId } = input
+  const ids = people.map((p) => p.id)
+  await tx.execute(drizzleSql`
+    UPDATE app_projects.deals d
+       SET company_id = ${companyId}::uuid,
+           contact_id = (${`{${ids.join(",")}}`}::uuid[])[1 + (t.number % ${SCALE.people})]
+      FROM app_projects.tasks t
+     WHERE t.id = d.task_id AND d.org_id = ${orgId}::uuid`)
+}
+
+/** Subtasks under the deals, then the outcome writer over them as the person (no deal row for a subtask). */
+async function insertDealSubtasks(input: ScaleWorldInput, actor: Actor): Promise<void> {
+  const { orgId, userId, tag } = input
+  const span = `${SCALE.years * 365} days`
+  const subtasks = await withSystemDb("activity-scale-seed-subtasks", async (tx) => {
+    await tx.execute(drizzleSql`
+      WITH parents AS (
+        SELECT d.task_id, g FROM app_projects.deals d, generate_series(1, ${SCALE.dealSubtasks / SCALE.deals}) g
+         WHERE d.org_id = ${orgId}
+      ), th AS (
+        INSERT INTO ${K}.threads (id, org_id, handle, created_by)
+        SELECT gen_random_uuid(), ${orgId}, 'scale-sub-' || ${tag} || '-' || p.task_id || '-' || p.g, ${userId}
+          FROM parents p
+        RETURNING id, handle
+      )
+      INSERT INTO app_projects.tasks (org_id, project_id, parent_task_id, status_id, title, number, thread_id,
+                                      created_by, created_at, updated_at)
+      SELECT ${orgId}, ${input.pipelineId}, p.task_id, ${input.stageId}, 'Step ' || p.g,
+             5000 + row_number() OVER (), th.id, ${userId},
+             now() - (random() * ${span}::interval), now()
+        FROM parents p JOIN th ON th.handle = 'scale-sub-' || ${tag} || '-' || p.task_id || '-' || p.g`)
+    return extractRows<{ id: string }>(
+      await tx.execute(drizzleSql`
+        SELECT id::text AS id FROM app_projects.tasks
+         WHERE org_id = ${orgId}::uuid AND project_id = ${input.pipelineId}::uuid
+           AND parent_task_id IS NOT NULL`),
+    ).map((r) => r.id)
+  })
+  await asUser(actor, (tx) => syncDealOutcome(tx, orgId, actor, subtasks))
 }

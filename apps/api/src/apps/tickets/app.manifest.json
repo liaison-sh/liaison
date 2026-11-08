@@ -114,7 +114,7 @@
       }
     ]
   },
-  "version": "1.2.11",
+  "version": "1.3.0",
   "description": "Customer-facing ticketing: local foundations (7.1)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -739,7 +739,9 @@
   },
   "approvalRoute": { "ticket": "approval_route_read" },
   "outsideTextFields": ["subject", "messages", "customer_name", "customer_email"],
+  "activitySources": [{"tool": "activity_read", "scope": "tickets:tickets:read", "label": "Tickets", "filterKey": "tickets"}],
   "tools": {
+    "activity_read": {"description": "A company's or a contact's tickets opened, notes and closings, newest first, for their timeline. Read by the kernel.", "readOnly": true, "agentVisible": false, "timeoutMs": 2000, "requiredScopes": ["tickets:tickets:read"], "trustBoundary": "user", "handler": "activityRead", "params": {"type": "object", "properties": {"contactIds": {"type": "array", "items": {"type": "string"}}, "companyId": {"type": ["string", "null"]}, "dealIds": {"type": "array", "items": {"type": "string"}}, "before": {"type": ["object", "null"]}, "limit": {"type": "integer"}, "prefix": {"type": "string"}}}},
     "approval_route_read": {
       "description": "Who a pending approval about a ticket is for: its assignee, as personId (null when nobody holds it). Read by the kernel when an approval is proposed.",
       "readOnly": true,

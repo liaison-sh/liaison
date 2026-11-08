@@ -15,6 +15,7 @@ import { and, sql as drizzleSql, eq } from "drizzle-orm"
 import { HTTPException } from "hono/http-exception"
 import { z } from "zod"
 import type { RlsClient } from "~/db"
+import type { UserContext } from "~/db/rls"
 import { companies as companiesTable, contacts as contactsTable } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import { quoteIdent } from "~/lib/sql-utils"
@@ -22,6 +23,7 @@ import { UUID_RE } from "~/lib/uuid"
 import { safeEnrichmentRows } from "~/modules/agent/tools/contact-tools"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
+import { readActivity } from "~/modules/contacts/activity"
 import {
   COMPANY_LINK_BATCH_MAX,
   CompanyMergedError,
@@ -760,6 +762,64 @@ export async function summarizeCompaniesMerge(
   }
 }
 
+/**
+ * A company's or a contact's timeline, as the page shows it, under the caller's
+ * own scopes: each app answers only what the caller may read there.
+ */
+export async function handleCompanyTimeline(
+  params: {
+    companyId?: string
+    contactId?: string
+    before?: string
+    limit?: number
+    source?: string
+  },
+  ctx: CompanyToolContext & {
+    actorType?: UserContext["actorType"]
+    dimensionGrants?: UserContext["dimensionGrants"]
+    roles?: UserContext["roles"]
+    actingAgentId?: string
+  },
+) {
+  const target = params.companyId
+    ? { companyId: params.companyId }
+    : params.contactId
+      ? { contactId: params.contactId }
+      : null
+  if (!target) {
+    return fail("invalid_params", "Nothing was read. Pass companyId or contactId.")
+  }
+  const actor = {
+    actorType: ctx.actorType ?? "user",
+    userId: ctx.userId,
+    orgId: ctx.orgId,
+    scopes: ctx.scopes ?? [],
+    dimensionGrants: ctx.dimensionGrants,
+    roles: ctx.roles,
+    ...(ctx.actingAgentId ? { actingAgentId: ctx.actingAgentId } : {}),
+  } as UserContext
+  const result = await readActivity({
+    orgId: ctx.orgId,
+    actor,
+    target,
+    before: params.before,
+    limit: params.limit,
+    source: params.source,
+  })
+  if (!result) {
+    return fail(
+      "NOT_FOUND",
+      params.companyId
+        ? `Nothing was read: company ${params.companyId} is not one you can see. Only pass an id you saw in a kernel__companies_search result.`
+        : `Nothing was read: contact ${params.contactId} is not one you can see. Only pass an id you saw in a kernel__contacts_search result.`,
+    )
+  }
+  return {
+    ...result,
+    ...(result.nextBefore ? { next: "Pass nextBefore as before for older rows." } : {}),
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /* Registration                                                               */
 /* -------------------------------------------------------------------------- */
@@ -948,6 +1008,34 @@ export function registerCompanyTools(orgId: string): void {
     handler: anyHandler(handleCompaniesProposeFromContacts),
     returns: { schema: { groups: "object" } },
     resultCard: PROPOSAL_CARD,
+  })
+
+  toolRegistry.set([orgId, "kernel", "company_timeline"], {
+    appName: "kernel",
+    name: "company_timeline",
+    readOnly: true,
+    // Mail subjects and meeting titles are text people outside the org chose.
+    taintSource: true,
+    deferLoading: true,
+    description:
+      "A company's or a contact's timeline, newest first: mail, tickets, invoices, meetings and deals, from each app you can read. unavailable names an app that did not answer.",
+    searchKeywords: ["historique", "activité", "chronologie", "timeline", "history"],
+    requiredScopes: ["kernel:companies:read"],
+    params: z.object({
+      companyId: z.string().uuid().optional(),
+      contactId: z.string().uuid().optional(),
+      before: z.string().max(512).optional(),
+      limit: z.number().int().min(1).max(100).optional(),
+      source: z.string().max(64).optional(),
+    }),
+    handler: anyHandler(handleCompanyTimeline),
+    returns: { schema: { items: "object", unavailable: "object" } },
+    resultCard: {
+      kind: "list",
+      pill: { label: "Timeline" },
+      title: "Timeline",
+      items: { path: "result.items", label: "{{item.title}}", meta: "{{item.at}}", limit: 10 },
+    },
   })
 
   toolRegistry.set([orgId, "kernel", "companies_find_duplicates"], {

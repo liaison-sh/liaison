@@ -13,6 +13,7 @@
 import type {} from "node:buffer"
 
 interface TicketsSandboxCtx {
+  tickets_activityRead(paramsJson: string): Promise<string>
   tickets_validateAndApply: (ticketId: string, inputJson: string) => Promise<string>
   tickets_setPriority: (ticketId: string, priority: string) => Promise<string>
   tickets_search: (paramsJson: string) => Promise<string>
@@ -1189,4 +1190,9 @@ async function ticketsOnGmailPush(
   }
   await ctx.tickets_onGmailPushService(inner.emailAddress, String(inner.historyId))
   return { received: true }
+}
+
+/** Timeline rows for the kernel's activity read (activitySources), host-side. */
+async function activityRead(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+  return JSON.parse(await ctx.tickets_activityRead(JSON.stringify(params ?? {})))
 }

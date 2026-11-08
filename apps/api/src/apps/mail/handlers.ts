@@ -5,6 +5,7 @@
 // biome-ignore-all lint/correctness/noUnusedVariables: handlers resolved by manifest export name
 
 interface MailCtx {
+  mail_activityRead(paramsJson: string): Promise<string>
   getUserId(): string
   getOrgId(): string
   db_findMany(entity: string, optsJson: string): Promise<string>
@@ -7671,3 +7672,8 @@ async function exportMail(params: unknown, ctx: MailCtx): Promise<unknown> {
   return projected
 }
 void exportMail
+
+/** Timeline rows for the kernel's activity read (activitySources), host-side. */
+async function activityRead(params: unknown, ctx: MailCtx): Promise<unknown> {
+  return JSON.parse(await ctx.mail_activityRead(JSON.stringify(params ?? {})))
+}

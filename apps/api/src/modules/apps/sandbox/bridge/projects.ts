@@ -207,6 +207,23 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
     return typedCall(() => txDb.transaction(async (stepTx) => run(stepTx as never)))
   }
   return {
+    /** Rows for a company's or a contact's timeline, read under the caller's row security. */
+    projects_activityRead: async (paramsJson: string): Promise<string> => {
+      if (ctx.appName !== "projects")
+        throw new Error("projects_activityRead is only available to the projects app")
+      const { hasScope } = await import("~/modules/permissions/permissions")
+      if (!hasScope("projects:tasks:read", ctx.callerScopes ?? [])) {
+        throw new Error("forbidden: missing scope projects:tasks:read")
+      }
+      const { projectActivityRows } = await import("~/apps/projects/service/activity")
+      const { withReadOnlySource } = await import("~/modules/contacts/activity")
+      const params = JSON.parse(paramsJson)
+      return JSON.stringify(
+        await withReadOnlySource(ctx.txDb as never, (tx) =>
+          projectActivityRows(tx, ctx.orgId, params),
+        ),
+      )
+    },
     // --- Projects tool bridges ---
     projects_search: async (paramsJson: string): Promise<string> => {
       if (appName !== "projects") {

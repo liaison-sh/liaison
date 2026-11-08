@@ -11,6 +11,7 @@
 import type {} from "node:buffer"
 
 interface ProjectsSandboxCtx {
+  projects_activityRead(paramsJson: string): Promise<string>
   projects_search: (paramsJson: string) => Promise<string>
   projects_get: (paramsJson: string) => Promise<string>
   projects_createProject: (paramsJson: string) => Promise<string>
@@ -1105,3 +1106,8 @@ void [
   checklistRemoveItem,
   checklistRemoveItemPreflight,
 ]
+
+/** Timeline rows for the kernel's activity read (activitySources), host-side. */
+async function activityRead(params: unknown, ctx: ProjectsSandboxCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_activityRead(JSON.stringify(params ?? {})))
+}

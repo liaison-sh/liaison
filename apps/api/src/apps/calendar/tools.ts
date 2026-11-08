@@ -180,7 +180,7 @@ export function toAttendeeDtos(raw: unknown): CalendarAttendeeDto[] {
   return out
 }
 
-interface RawEventRow {
+export interface RawEventRow {
   id: string
   calendar_id: string
   google_event_id?: string | null

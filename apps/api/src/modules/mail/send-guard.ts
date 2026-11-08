@@ -649,7 +649,7 @@ export async function evaluateSendGuard(input: EvaluateSendGuardInput): Promise<
   if (guard.classification === "marketing") {
     let optedOut: string[]
     try {
-      optedOut = await suppressedAmong(orgId, [...recipients])
+      optedOut = await suppressedAmong(orgId, [...recipients], input.db)
     } catch (err) {
       rootLogger.error({ err, orgId }, "send guard: suppression check failed")
       return unavailable("the opt-out list could not be read", "suppression_check_unavailable")

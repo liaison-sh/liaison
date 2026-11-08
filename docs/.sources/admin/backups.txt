@@ -88,3 +88,5 @@ member export lists dashboards owned or made and store documents written, withou
 every member may export themself, another member needs kernel:data_subject:export -> apps/api/src/modules/export/data-subject-export-tool.ts:125
 data_subject_export file counts toward the storage limit, STORAGE_QUOTA_EXCEEDED and nothing saved at the limit -> apps/api/src/modules/export/data-subject-export-tool.ts:705
 data_subject_export file: only the requester can open it, never the subject, another member or an admin -> apps/api/src/modules/files/rls-builder.ts:108 ; apps/api/src/modules/export/data-subject-export-tool.ts:739
+Contact export says when and how they opted out -> apps/api/src/modules/export/data-subject-export-tool.ts:581
+Member export lists the opt-outs they recorded, never an address -> apps/api/src/modules/export/member-data-subject-bundle.ts:400

@@ -617,7 +617,9 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.18 (main): the webhook secret may go only into the subscription body's webhookSecret, on Boxtal's API hosts (secrets).
     // 0.23.24: both of the above, merged.
     // 0.23.25: above the 0.23.19 main took meanwhile; no change of its own.
-    expect(m.version).toBe("0.23.25")
+    // 0.23.20 (main): the sandbox's label documents (document.boxtal.build) may be imported, like production's.
+    // 0.23.26: both of the above, merged.
+    expect(m.version).toBe("0.23.26")
     expect(m.packageFormat).toBe(1)
   })
 
@@ -631,6 +633,13 @@ describe("Boxtal app.manifest.json", () => {
     // would otherwise see a tab whose first request is refused.
     expect(tab?.visibility_scope).toBe("boxtal:shipments:read")
     expect(m.tools.search?.requiredScopes).toContain(tab?.visibility_scope as string)
+  })
+
+  it("labels are importable from both environments' document hosts", () => {
+    // The sandbox serves its label PDFs from document.boxtal.build: without it every sandbox
+    // shipment's label import failed with "Domain not in allowlist".
+    const m = load() as { network: { allowedDomains: string[] } }
+    expect(m.network.allowedDomains).toEqual(expect.arrayContaining(["document.boxtal.com", "document.boxtal.build"]))
   })
 
   it("backfill-queue-facts reaches only workspaces with a shipment missing its snapshot", () => {

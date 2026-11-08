@@ -736,17 +736,24 @@ for (const [tourId, { approveBeat, tool }] of Object.entries(APPROVE_AFTER_RELOA
     while (Date.now() < deadline) {
       const beatId = await panel.getAttribute("data-beat-id").catch(() => null)
       if (beatId === approveBeat) break
-      const next = page.getByTestId("tour-next")
+      if (!beatId) {
+        await page.waitForTimeout(400)
+        continue
+      }
+      // Every click is scoped to the beat just read. A do step moves on by
+      // itself when its event lands (the agent's draft is ready), and an
+      // unscoped Next or Do it for me read on the step before then acted on
+      // the step after: the approve step itself, which this test must reach
+      // untouched (a faster page made it the usual outcome, not a rare one).
+      const here = page.locator(`[data-testid="tour-panel"][data-beat-id="${beatId}"]`)
+      const next = here.getByTestId("tour-next")
+      const doForMe = here.getByTestId("tour-do-for-me")
       // Next is held while a show step waits for what it points at.
       if ((await next.isVisible()) && (await next.isEnabled())) {
         await next.click({ timeout: 2_000 }).catch(() => {})
-      } else if (
-        beatId &&
-        !pressed.has(beatId) &&
-        (await page.getByTestId("tour-do-for-me").isVisible())
-      ) {
+      } else if (!pressed.has(beatId) && (await doForMe.isVisible())) {
         pressed.add(beatId)
-        await page.getByTestId("tour-do-for-me").click()
+        await doForMe.click({ timeout: 2_000 }).catch(() => {})
       }
       await page.waitForTimeout(400)
     }

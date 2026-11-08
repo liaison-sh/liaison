@@ -964,7 +964,7 @@ describe("home decisions", () => {
       const id = row(recap)
       expect(screen.getAllByTestId(`${id}-recap-line`)).toHaveLength(3)
       expect(screen.getAllByTestId(`${id}-recap-line`)[0]?.textContent).toBe(
-        "Refund 1: approved by Tom Reyes",
+        "Approved by Tom Reyes, next in line for Tester: Refund 1, 10 Nov",
       )
       expect(screen.getByTestId(`${id}-recap-more`).textContent).toBe("and 2 more")
       expect(screen.getByTestId(id).textContent).toContain("While you were away")
@@ -996,8 +996,11 @@ describe("home decisions", () => {
     const card = screen.getByTestId("home-source-failed-billing")
     expect(card.textContent).toContain("Could not load what Billing has for you")
     expect(card.textContent).toContain("Anything waiting there is safe and still waiting.")
+              decidedAs: "next_in_line",
+              decidedOn: `${new Date().getFullYear()}-11-10`,
     expect(screen.getByTestId(row(approval("ap-1")))).toBeTruthy()
     apiGetEnvelope.mockClear()
+            forName: "Tester",
     fireEvent.click(screen.getByTestId("home-source-failed-billing-retry"))
     expect(apiGetEnvelope).toHaveBeenCalledWith("/attention-items")
   })

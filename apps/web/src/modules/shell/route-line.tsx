@@ -8,6 +8,7 @@
 
 import type { AttentionItem } from "@liaison/shared"
 import { type Component, For, Show } from "solid-js"
+import { awayDay } from "~/lib/away-dates"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { DismissButton } from "~/modules/shell/AttentionRowExtras"
@@ -39,15 +40,9 @@ function names(item: AttentionItem): {
   return n && typeof n === "object" ? (n as Record<string, string>) : {}
 }
 
-/** "20 Dec" in the reader's language, from a `YYYY-MM-DD` date. */
-export function shortDate(date: string, locale: string): string {
-  const d = new Date(`${date}T12:00:00Z`)
-  if (Number.isNaN(d.getTime())) return date
-  return new Intl.DateTimeFormat(locale, {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  }).format(d)
+/** "20 Dec" in the reader's language, from a `YYYY-MM-DD` date (lib/away-dates.ts). */
+export function shortDate(date: string, locale: string, today?: string): string {
+  return awayDay(date, locale, today)
 }
 
 /**
@@ -114,8 +109,39 @@ interface AwayRecap {
     title: string
     outcome: "approved" | "denied"
     decidedByName: string | null
+    /** "next_in_line": the decider stood in for the person; otherwise they could also decide. */
+    decidedAs?: "next_in_line" | "also_could" | null
+    /** The day it was decided, in the person's own time zone. */
+    decidedOn?: string | null
   }>
   more: number
+  /** The person the decisions were taken for: the reader. */
+  forName?: string | null
+}
+
+/** One line of the recap: who decided, standing in or not, what, and when. */
+export function awayRecapLineText(
+  line: AwayRecap["lines"][number],
+  forName: string | null | undefined,
+  t: T,
+  locale: string,
+  today?: string,
+): string {
+  const denied = line.outcome === "denied"
+  const key =
+    line.decidedAs === "next_in_line"
+      ? denied
+        ? "kernel.homeRouting.recapDeniedStandIn"
+        : "kernel.homeRouting.recapApprovedStandIn"
+      : denied
+        ? "kernel.homeRouting.recapDenied"
+        : "kernel.homeRouting.recapApproved"
+  const text = t(key, {
+    title: line.title,
+    name: line.decidedByName ?? t("kernel.homeRouting.someone"),
+    forName: forName ?? t("kernel.homeRouting.you"),
+  })
+  return line.decidedOn ? `${text}, ${awayDay(line.decidedOn, locale, today)}` : text
 }
 
 export function awayRecapOf(item: AttentionItem): AwayRecap | null {
@@ -147,15 +173,7 @@ export const AwayRecapLines: Component<{ item: AttentionItem; testId: string }> 
             <For each={r().lines}>
               {(line) => (
                 <li class="truncate" data-testid={`${props.testId}-recap-line`}>
-                  {i18n.t(
-                    line.outcome === "denied"
-                      ? "kernel.homeRouting.recapDenied"
-                      : "kernel.homeRouting.recapApproved",
-                    {
-                      title: line.title,
-                      name: line.decidedByName ?? i18n.t("kernel.homeRouting.someone"),
-                    },
-                  )}
+                  {awayRecapLineText(line, r().forName, i18n.t, i18n.locale())}
                 </li>
               )}
             </For>
@@ -191,7 +209,7 @@ export function awayLabel(
   if (!away) return null
   if (!away.until || away.until !== today) {
     return away.until
-      ? t("kernel.homeRouting.awayUntil", { date: shortDate(away.until, locale) })
+      ? t("kernel.homeRouting.awayUntil", { date: shortDate(away.until, locale, today) })
       : t("kernel.homeRouting.awayToday")
   }
   // Away today only (a recurring day): name the day they are back, a weekend skipped.

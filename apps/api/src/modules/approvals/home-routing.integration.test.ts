@@ -977,8 +977,35 @@ describe("home routing: back from away, and who is away in lists of people", () 
     ).awayRecap
     expect(recap.lines.map((l) => l.title)).toEqual(["Readable refund"])
     expect(recap.more).toBe(0)
+    // The line says the next in line stood in, and on which day; the row names whom it was for.
+    const [line] = (
+      items[0]!.metadata as {
+        awayRecap: { lines: { decidedAs: string; decidedOn: string; decidedByName: string }[] }
+      }
+    ).awayRecap.lines
+    expect(line?.decidedAs).toBe("next_in_line")
+    expect(line?.decidedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(line?.decidedByName).toBeTruthy()
+    expect(
+      (items[0]!.metadata as { awayRecap: { forName: string } }).awayRecap.forName,
+    ).toBeTruthy()
     expect(JSON.stringify(items)).not.toContain("Restricted refund")
     expect(JSON.stringify(items)).not.toContain("Owner refund")
+  })
+
+  it("a decision by someone who could also decide is not said to be the next in line's", async () => {
+    // Élodie again (her first recap was read above): one more decision, by someone who could also decide.
+    const elodie = p.elodie as string
+    const id = await decidedFor(elodie, p.tom as string, { title: "Also-could refund" })
+    await sql`
+      UPDATE kernel.approval_requests
+      SET metadata = jsonb_build_object('decidedFor', jsonb_build_object('userId', ${elodie}::text, 'as', 'also_could'))
+      WHERE id = ${id}::uuid`
+    const [item] = await recapOf(elodie)
+    const lines = (
+      item!.metadata as { awayRecap: { lines: { title: string; decidedAs: string }[] } }
+    ).awayRecap.lines
+    expect(lines.find((l) => l.title === "Also-could refund")?.decidedAs).toBe("also_could")
   })
 
   it("no decision: no row", async () => {

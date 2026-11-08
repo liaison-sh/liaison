@@ -17,6 +17,7 @@ import {
   Show,
   Suspense,
 } from "solid-js"
+import { awayDay, awayRangeEnds, awayWeekdays } from "~/lib/away-dates"
 import { getTimezones } from "~/lib/timezones"
 import { noteDictationAutoClean } from "~/modules/assist/dictation-capabilities"
 import DesktopClaudeAccount from "~/modules/desktop/DesktopClaudeAccount"
@@ -524,7 +525,7 @@ const SELECT_CLASS =
  */
 const AwaySection: Component = () => {
   const api = useApi()
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   // A failed read leaves the section out rather than the whole profile page.
   const [state, { refetch }] = createResource(() =>
     api
@@ -551,18 +552,18 @@ const AwaySection: Component = () => {
     const p = nextInLine() ? person(nextInLine()) : undefined
     return p?.awayUntil ? p : null
   }
+  // Dates as dates: one formatter for every away date shown (lib/away-dates.ts).
+  const today = () => state()?.today || undefined
+  const day = (date: string) => awayDay(date, locale(), today())
   const label = (r: AwayRangeView) =>
     r.everyWeekday
       ? t("kernel.settings.profile.away.weekly", {
-          days: r.days.map((d) => d.split(" ")[0]).join(", "),
-          from: r.from,
+          days: awayWeekdays(r.everyWeekday, locale()).join(", "),
+          from: day(r.from),
         })
       : r.to === null || r.to === r.from
-        ? t("kernel.settings.profile.away.oneDay", { day: r.days[0] ?? r.from })
-        : t("kernel.settings.profile.away.range", {
-            from: r.days[0] ?? r.from,
-            to: r.to,
-          })
+        ? t("kernel.settings.profile.away.oneDay", { day: day(r.from) })
+        : t("kernel.settings.profile.away.range", awayRangeEnds(r.from, r.to, locale(), today()))
 
   async function save(e: Event) {
     e.preventDefault()
@@ -647,7 +648,7 @@ const AwaySection: Component = () => {
 
   const optionLabel = (p: { name: string; awayUntil: string | null }) =>
     p.awayUntil
-      ? t("kernel.settings.profile.away.awayUntilOption", { name: p.name, until: p.awayUntil })
+      ? t("kernel.settings.profile.away.awayUntilOption", { name: p.name, until: day(p.awayUntil) })
       : p.name
 
   return (
@@ -796,7 +797,7 @@ const AwaySection: Component = () => {
                   <p data-testid="settings-away-too" class="text-[12px] text-text-secondary">
                     {t("kernel.settings.profile.away.awayToo", {
                       name: p().name,
-                      until: p().awayUntil ?? "",
+                      until: day(p().awayUntil ?? ""),
                     })}
                   </p>
                 )}

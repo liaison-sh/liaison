@@ -481,7 +481,9 @@ describe("ProfileSettings", () => {
       const calls: Array<{ url: string; method: string; body?: unknown }> = []
       mountAway(calls)
       const row = await screen.findByTestId("settings-away-range")
-      expect(row.textContent).toContain("Mon 23 Nov 2026 to 2026-11-27")
+      // Both ends read as dates, the same way, the year left out in this year.
+      expect(row.textContent).toContain("23 to 27 Nov")
+      expect(row.textContent).not.toContain("2026-11-27")
       expect(row.textContent).toContain("Next in line: Sara Benali")
       expect(row.textContent).toContain("Set by Nadia Lead")
       // A standing next in line who left is named, with what to do.
@@ -512,10 +514,11 @@ describe("ProfileSettings", () => {
     it("says the chosen next in line is away too before saving", async () => {
       mountAway([])
       const next = (await screen.findByTestId("settings-away-next")) as HTMLSelectElement
+      expect([...next.options].map((o) => o.textContent)).toContain("Tom Reyes (away until 20 Nov)")
       expect(screen.queryByTestId("settings-away-too")).toBeNull()
       fireEvent.change(next, { target: { value: "u-tom" } })
       expect((await screen.findByTestId("settings-away-too")).textContent).toBe(
-        "Tom Reyes is away too, until 2026-11-20.",
+        "Tom Reyes is away too, until 20 Nov.",
       )
       fireEvent.change(next, { target: { value: "u-sara" } })
       await waitFor(() => expect(screen.queryByTestId("settings-away-too")).toBeNull())

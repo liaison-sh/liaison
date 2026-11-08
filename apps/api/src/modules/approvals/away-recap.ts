@@ -33,6 +33,10 @@ export interface AwayRecapLine {
   title: string
   outcome: "approved" | "denied"
   decidedByName: string | null
+  /** `next_in_line`: the decider stood in for the person while away; else they could also decide. */
+  decidedAs: "next_in_line" | "also_could" | null
+  /** The day it was decided, in the person's own time zone. */
+  decidedOn: string
 }
 
 interface EndedRange {
@@ -51,6 +55,8 @@ interface DecidedRow {
   notify_user_ids: string[] | null
   requested_by: string
   decided_by_name: string | null
+  decided_as: string | null
+  decided_at: string
 }
 
 function addDays(date: string, days: number): string {
@@ -103,9 +109,9 @@ export async function getAwayRecapAttentionItems(
   userId: string,
 ): Promise<AttentionItem[]> {
   try {
-    const [me] = extractRows<{ timezone: string | null }>(
+    const [me] = extractRows<{ timezone: string | null; name: string | null }>(
       await tx.execute(drizzleSql`
-        SELECT timezone FROM ${K}.users WHERE id = ${userId}::uuid AND org_id = ${orgId}::uuid`),
+        SELECT timezone, name FROM ${K}.users WHERE id = ${userId}::uuid AND org_id = ${orgId}::uuid`),
     )
     const today = personLocalDate(new Date(), me?.timezone ?? null, null)
     const range = await readEndedRange(tx, orgId, userId, today)
@@ -126,7 +132,9 @@ export async function getAwayRecapAttentionItems(
       await tx.execute(drizzleSql`
         SELECT ar.id, ar.tool_name, ar.status, ar.summary, ar.approve_scope,
                ar.resource_owner_id, ar.notify_user_ids, ar.requested_by,
-               u.name AS decided_by_name
+               u.name AS decided_by_name,
+               ar.metadata -> 'decidedFor' ->> 'as' AS decided_as,
+               to_char(ar.decided_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS decided_at
         FROM ${K}.approval_requests ar
         LEFT JOIN ${K}.users u ON u.id = ar.decided_by
         WHERE ar.org_id = ${orgId}::uuid
@@ -151,6 +159,9 @@ export async function getAwayRecapAttentionItems(
           : humanizeToolName(r.tool_name),
       outcome: r.status === "denied" ? "denied" : "approved",
       decidedByName: r.decided_by_name,
+      decidedAs:
+        r.decided_as === "next_in_line" || r.decided_as === "also_could" ? r.decided_as : null,
+      decidedOn: personLocalDate(new Date(r.decided_at), me?.timezone ?? null, null),
     }))
     return [
       {
@@ -170,6 +181,7 @@ export async function getAwayRecapAttentionItems(
             to: range.last_day,
             lines,
             more: readable.length - lines.length,
+            forName: me?.name ?? null,
           },
         },
       },

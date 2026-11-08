@@ -43,7 +43,6 @@ import NotificationBanner from "~/modules/notifications/NotificationBanner"
 import { pluralFormFor } from "~/modules/projects/plural"
 import AlertClusterRow from "~/modules/shell/AlertClusterRow"
 import { useApi } from "~/modules/shell/ApiContext"
-import AttentionEmpty from "~/modules/shell/AttentionEmpty"
 import AttentionRow from "~/modules/shell/AttentionRow"
 import {
   approvalActionKey,
@@ -265,13 +264,17 @@ const AttentionFeedView: Component<AttentionFeedViewProps> = (props) => {
   // but currently unrenderable (e.g. a `thread_reply` row for a thread
   // outside the client's 50-thread cap, or before hydration) -- if those
   // were the user's ONLY items, the old `total() > 0` gate suppressed
-  // AttentionEmpty while zero cards and zero strip rows actually rendered,
+  // the empty state while zero cards and zero strip rows actually rendered,
   // producing a blank Home body under a "NOTHING URGENT" header.
   const hasAnyContent = createMemo(
     () => urgentStrip().length > 0 || CARD_IDS.some((id) => cardHasContent(id)),
   )
   // A source that did not answer is named in the section, with Retry; the rest still shows.
   const failedSources = createMemo(() => [...new Set(attentionStore.errors.map((e) => e.app))])
+  const nothingNeedsYou = createMemo(
+    () =>
+      sections().needs.total === 0 && approvalItems().length === 0 && urgentStrip().length === 0,
+  )
 
   // "MIS À JOUR JUST NOW" was the tell: the label translated and the figure
   // beside it did not. Both come from the catalog-backed formatter now.
@@ -393,14 +396,14 @@ const AttentionFeedView: Component<AttentionFeedViewProps> = (props) => {
         <Show when={!isOverview()}>
           <HomeSlice filter={homeFilter()} sections={sections()} phone={isPhone()} />
         </Show>
-        <Show
-          when={isOverview() && hasAnyContent()}
-          fallback={
-            <Show when={isOverview()}>
-              <AttentionEmpty />
-            </Show>
-          }
-        >
+        {/* Nothing of the viewer's own waits: "Needs you" at 0, and the line that says this is
+            all, unless a source did not answer or the feed has not loaded yet. */}
+        <Show when={isOverview() && nothingNeedsYou()}>
+          <div data-testid={hasAnyContent() ? undefined : "home-empty-state"}>
+            <HomeNeedsNone complete={!attentionStore.loading && failedSources().length === 0} />
+          </div>
+        </Show>
+        <Show when={isOverview() && hasAnyContent()}>
           {/* Reorderable, collapsible cards. Exactly one home-feed container
               exists whenever there is any content -- the pre-redesign testid
               contract that existing e2e gates on. */}
@@ -512,6 +515,37 @@ const AttentionFeedView: Component<AttentionFeedViewProps> = (props) => {
         </Show>
       </div>
     </div>
+  )
+}
+
+/** "Needs you" at 0. `complete`: every source answered, so this is everything for now. */
+const HomeNeedsNone: Component<{ complete: boolean }> = (props) => {
+  const i18n = useI18n()
+  return (
+    <section
+      data-testid="home-needs-none"
+      class="mb-5 rounded-md border border-border-subtle bg-surface"
+    >
+      <header class="flex items-center gap-2 px-4 py-2.5">
+        <span class="flex-1 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-text-tertiary">
+          {i18n.t("kernel.homeDecisions.needsYouTitle")}
+        </span>
+        <span
+          data-testid="home-needs-none-count"
+          class="shrink-0 font-mono text-[11px] tabular-nums text-text-tertiary"
+        >
+          0
+        </span>
+      </header>
+      <Show when={props.complete}>
+        <p
+          data-testid="home-needs-none-closing"
+          class="border-t border-border-subtle px-4 py-5 text-[13px] text-text-secondary"
+        >
+          {i18n.t("kernel.homeDecisions.everythingForNow")}
+        </p>
+      </Show>
+    </section>
   )
 }
 

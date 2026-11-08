@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "vitest"
-import { awayLabel } from "~/modules/shell/route-line"
+import { awayLabel, awayRecapLineText } from "~/modules/shell/route-line"
 
 const t = (key: string, vars: Record<string, string | number> = {}) =>
   `${key.split(".").pop()}:${Object.values(vars).join(",")}`
@@ -24,5 +24,41 @@ describe("away in a list of people", () => {
   it("not away: nothing", () => {
     expect(awayLabel(null, t, "en-GB")).toBeNull()
     expect(awayLabel(undefined, t, "en-GB")).toBeNull()
+  })
+})
+
+describe("While you were away", () => {
+  const tr = (key: string, vars: Record<string, string | number> = {}) =>
+    `${key.split(".").pop()}|${vars.name}|${vars.forName}|${vars.title}`
+
+  it("a decision by the next in line says they stood in, with its day", () => {
+    const line = {
+      approvalId: "a-1",
+      title: "Record a partial refund",
+      outcome: "approved" as const,
+      decidedByName: "Elodie Vasseur",
+      decidedAs: "next_in_line" as const,
+      decidedOn: "2026-11-10",
+    }
+    expect(awayRecapLineText(line, "Henrik Berg", tr, "en", "2026-11-14")).toBe(
+      "recapApprovedStandIn|Elodie Vasseur|Henrik Berg|Record a partial refund, 10 Nov",
+    )
+    expect(
+      awayRecapLineText({ ...line, outcome: "denied" }, "Henrik Berg", tr, "en", "2026-11-14"),
+    ).toBe("recapDeniedStandIn|Elodie Vasseur|Henrik Berg|Record a partial refund, 10 Nov")
+  })
+
+  it("a decision by someone who could also decide says only whom it was for", () => {
+    const line = {
+      approvalId: "a-2",
+      title: "Refund a duplicate charge",
+      outcome: "approved" as const,
+      decidedByName: "Sara Benali",
+      decidedAs: "also_could" as const,
+      decidedOn: "2026-11-12",
+    }
+    expect(awayRecapLineText(line, "Henrik Berg", tr, "en", "2026-11-14")).toBe(
+      "recapApproved|Sara Benali|Henrik Berg|Refund a duplicate charge, 12 Nov",
+    )
   })
 })

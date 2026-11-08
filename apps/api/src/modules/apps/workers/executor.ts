@@ -169,7 +169,7 @@ export function errorFromLoader(error: LoaderError | undefined, httpStatus: numb
   // never the app's own error (no status, so it is not mistaken for one).
   const e = new WorkersRunError(
     `App loader could not run the app (${kind}, HTTP ${httpStatus}): ${message}`,
-    classifyLoaderAnswer(httpStatus, error?.kind),
+    classifyLoaderAnswer(httpStatus, error?.kind, error?.code),
   )
   return e
 }
@@ -427,7 +427,7 @@ async function attemptOnWorkers(
     const fault =
       err instanceof WorkersRunError
         ? err.fault
-        : classifyLoaderAnswer(res.status, answer?.error?.kind)
+        : classifyLoaderAnswer(res.status, answer?.error?.kind, answer?.error?.code)
     if (err instanceof WorkersRunError) {
       log.error(
         {

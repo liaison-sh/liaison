@@ -331,8 +331,8 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `SANDBOX_POOL_REPORT_INTERVAL_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:92` |
 | `SANDBOX_QUEUE_WAIT_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:89` |
 | `SANDBOX_WORKER_HOLD_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:90` |
-| `TICKETS_GMAIL_PUSH_ISSUER` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1296`, `apps/api/src/modules/webhooks/routes.ts:181`, `apps/api/src/modules/webhooks/verify-bridge.ts:150` |
-| `TICKETS_GMAIL_PUSH_JWKS_URL` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1297`, `apps/api/src/modules/webhooks/routes.ts:182`, `apps/api/src/modules/webhooks/verify-bridge.ts:149` |
+| `TICKETS_GMAIL_PUSH_ISSUER` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1296`, `apps/api/src/modules/webhooks/routes.ts:180`, `apps/api/src/modules/webhooks/verify-bridge.ts:150` |
+| `TICKETS_GMAIL_PUSH_JWKS_URL` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1297`, `apps/api/src/modules/webhooks/routes.ts:181`, `apps/api/src/modules/webhooks/verify-bridge.ts:149` |
 | `TICKETS_GMAIL_SYNC_SINCE` | `apps/api/src/apps/tickets/sync.ts:310` |
 | `VITE_API_BASE` | `apps/web/src/lib/env.ts:10` |
 | `VITE_API_TARGET` | `apps/web/src/lib/env.ts:68` |

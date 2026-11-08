@@ -152,6 +152,29 @@ describe("Workers retry: app-level and final outcomes are not retried", () => {
     })
   }
 
+  it("a module without the export it was asked for (worker-core's code): app-level load", async () => {
+    const h = harness([
+      {
+        status: 200,
+        body: {
+          ok: false,
+          error: {
+            message: 'Export "go" not found (got undefined)',
+            code: "export_missing",
+            kind: "handler",
+          },
+        },
+      },
+      ok,
+    ])
+    const r = await run(h)
+    expect(h.calls()).toBe(1)
+    expect(r.error?.message).toBe('Export "go" not found (got undefined)')
+    expect(r.info.fault).toEqual({ class: "app", kind: "load" })
+    expect(h.fallbacks.active(AppFallbacks.key(ORG, "rt", "1.0.0"))).toBe(true)
+    expect(h.breaker.state()).toBe("closed")
+  })
+
   for (const k of ["limit", "handler", "timeout"]) {
     it(`${k}: the run's own outcome, nothing else changes`, async () => {
       const h = harness([kind(200, k), ok])

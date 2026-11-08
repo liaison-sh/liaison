@@ -16,7 +16,13 @@
 //   pool       everything else, on the out-of-process worker pool
 //
 // A listed app that cannot run on Workers (no bundle for its installed
-// version) runs on the pool with a warning per run. Every run raises one
+// version) runs on the pool with a warning per run. A run is decided, then
+// its bridge is built for that executor, then it runs: a Workers run gets a
+// secret-free bridge (the site's `workersBridge`, or a marked copy of
+// `bridge`), a QuickJS run `bridge` itself, which runApp never changes. A
+// Workers run whose attempts end on a loader-level fault before any bridge
+// call runs once more on QuickJS, on `bridge` (`fallback: "loader_fault"`,
+// workers/fallback.ts); never after a bridge call. Every run raises one
 // run-settled event (workers/run-settled.ts) once it has settled, tagged with
 // the executor that ran it; the run timing records (workers/timings.ts, kind
 // "run", listed and custom apps) are one of its subscribers.
@@ -54,7 +60,11 @@ import {
   workersBundleSha,
   workersSelectsApp,
 } from "~/modules/apps/workers/config"
-import { executeOnWorkers, type WorkersRunInfo } from "~/modules/apps/workers/executor"
+import {
+  defaultWorkersTimeoutMs,
+  executeOnWorkers,
+  type WorkersRunInfo,
+} from "~/modules/apps/workers/executor"
 import { AppFallbacks, appFallbacks, loaderBreaker } from "~/modules/apps/workers/fallback"
 import { emitRunSettled, type WorkersFallback } from "~/modules/apps/workers/run-settled"
 import { deliverRunLogs } from "~/modules/apps/workers/worker-logs"
@@ -94,7 +104,18 @@ export interface RunAppOptions {
   params: unknown
   /** Positional args after `(params, ctx)`, e.g. a webhook's headers. */
   extraArgs?: unknown[]
-  bridge: Record<string, (...args: any[]) => any>
+  /**
+   * The run's bridge on QuickJS. runApp never changes it (a custom app's is
+   * secret-free on every executor already): a Workers run gets
+   * `workersBridge`, or a secret-free copy of it.
+   */
+  bridge: AppBridge
+  /**
+   * Builds the bridge of a Workers run, when the site knows its secret
+   * refusals better than runApp's marking (a webhook verifier's fixed secret
+   * keys). Called only once the run is decided for Workers.
+   */
+  workersBridge?: () => AppBridge
   timeoutMs?: number
   signal?: AbortSignal
   priority?: ExecPriority
@@ -118,18 +139,14 @@ export interface RunAppOptions {
    */
   executionToken?: string
   /**
-   * The executor decision a site took before building its bridge
-   * (`planWorkersRun`): passed on so the run goes where its bridge was built
-   * for. Omitted: runApp plans itself.
-   */
-  workersPlan?: WorkersPlan
-  /**
    * The bridge holds an ambient database transaction open across the whole run
    * (atomic tools, primary webhook delivery, ambient jobs, event handlers, polls).
    * An executor whose bridge calls cannot reach that transaction must not take it.
    */
   holdsTx: boolean
 }
+
+export type AppBridge = Record<string, (...args: any[]) => any>
 
 /** Which executor runs this call. */
 export type AppExecutor = "inprocess" | "pool" | "workers"
@@ -199,8 +216,6 @@ export async function resolveWorkersTarget(
  * `app` while this org's app@version is under an app-level fallback,
  * `breaker` while the loader breaker is open (or another run holds the
  * half-open probe). `probe` marks the run the half-open breaker lets through.
- * A site that builds a bridge per executor passes the plan to runApp
- * (`workersPlan`), so the decision is not taken twice.
  */
 export interface WorkersPlan {
   target: WorkersTarget | null
@@ -230,13 +245,43 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
   let info: WorkersRunInfo = {}
   let ok = false
   let executor: AppExecutor = opts.trusted ? "inprocess" : "pool"
-  let plan: WorkersPlan = { target: null }
+  let fallback: WorkersFallback | undefined
   try {
-    plan = opts.workersPlan ?? (await planWorkersRun(opts))
+    // Decide, then build the bridge for that executor (runOnExecutor), then run.
+    const plan = await planWorkersRun(opts)
+    fallback = plan.fallback
     executor = selectExecutor({ trusted: opts.trusted, workersBundleSha: plan.target?.sha256 })
-    const result = await runOnExecutor(opts, executor, plan, (i) => {
-      info = i
-    })
+    let result: unknown
+    try {
+      result = await runOnExecutor(opts, executor, plan, (i) => {
+        info = i
+      })
+    } catch (err) {
+      if (executor !== "workers" || !fallsBackAfterLoaderFault(info, opts.signal)) throw err
+      // Nothing the app did can have happened (no bridge call): the run goes to
+      // QuickJS once, on the bridge built for it, within what is left of its budget.
+      const budget = opts.timeoutMs ?? defaultWorkersTimeoutMs()
+      const remaining = Math.max(MIN_FALLBACK_BUDGET_MS, budget - (Date.now() - started))
+      log.warn(
+        {
+          err,
+          app: opts.appName,
+          orgId: opts.orgId,
+          kind: info.fault?.kind,
+          attempts: info.attempts,
+          remainingMs: remaining,
+        },
+        "App loader fault before any bridge call; running this run on QuickJS",
+      )
+      fallback = "loader_fault"
+      executor = selectExecutor({ trusted: opts.trusted })
+      result = await runOnExecutor(
+        { ...opts, timeoutMs: remaining },
+        executor,
+        { target: null },
+        () => undefined,
+      )
+    }
     ok = true
     return result
   } finally {
@@ -271,11 +316,33 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
       ...(info.loader ? { loader: info.loader } : {}),
       ...(info.sleepMs !== undefined ? { sleepMs: info.sleepMs } : {}),
       ...(info.sleepExact !== undefined ? { sleepExact: info.sleepExact } : {}),
-      ...(plan.fallback ? { fallback: plan.fallback } : {}),
+      ...(fallback ? { fallback } : {}),
       ...(info.attempts !== undefined ? { attempts: info.attempts } : {}),
       ...(info.fault ? { errorKind: info.fault.kind, faultClass: info.fault.class } : {}),
     })
   }
+}
+
+/** A QuickJS run after a loader fault never gets less than this, whatever the budget left. */
+const MIN_FALLBACK_BUDGET_MS = 1_000
+
+/**
+ * A failed Workers run that runs again on QuickJS: its last attempt met a
+ * loader-level fault (the retry already made or skipped, executor.ts) and no
+ * attempt made a bridge call, and the caller is still waiting.
+ */
+function fallsBackAfterLoaderFault(info: WorkersRunInfo, signal?: AbortSignal): boolean {
+  return info.fault?.class === "loader" && (info.bridgeCalls ?? 0) === 0 && !signal?.aborted
+}
+
+/**
+ * A secret-free copy of a QuickJS bridge for a Workers run: the same methods
+ * and markers (its own properties, symbols included), refusals on the copy
+ * only, so the original stays the QuickJS bridge.
+ */
+function workersCopyOf(bridge: AppBridge): AppBridge {
+  const copy = Object.defineProperties({}, Object.getOwnPropertyDescriptors(bridge)) as AppBridge
+  return forWorkersRun(copy, { secretConfigKeys: secretConfigKeysOf(bridge) })
 }
 
 async function runOnExecutor(
@@ -296,14 +363,20 @@ async function runOnExecutor(
   }
   if (executor === "workers" && workersTarget) {
     // The isolate lives off this server: no method may hand it a secret. The
-    // dispatching site may have built the bridge so already (workersRun);
-    // otherwise it is marked here, before any call, in the caller's frame. The
-    // refused config keys are the ones the bridge's own config_get decrypts
-    // (recorded on it when it was built); a bridge that records none refuses
-    // every config_get (fail closed).
-    const bridge = isWorkersRunBridge(opts.bridge)
-      ? opts.bridge
-      : forWorkersRun(opts.bridge, { secretConfigKeys: secretConfigKeysOf(opts.bridge) })
+    // site may build that bridge itself (workersBridge), or have built a
+    // secret-free one already (a custom app's); otherwise a copy is marked
+    // here, before any call, in the caller's frame. The refused config keys
+    // are the ones the bridge's own config_get decrypts (recorded on it when
+    // it was built); a bridge that records none refuses every config_get
+    // (fail closed).
+    const bridge = opts.workersBridge
+      ? opts.workersBridge()
+      : isWorkersRunBridge(opts.bridge)
+        ? opts.bridge
+        : workersCopyOf(opts.bridge)
+    if (!isWorkersRunBridge(bridge)) {
+      throw new Error(`runApp(${opts.appName}): the Workers bridge is not secret-free`)
+    }
     return executeOnWorkers(
       {
         config: workersTarget.config,

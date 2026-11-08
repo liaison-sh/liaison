@@ -4,8 +4,11 @@
 // lines) for every app, the app logs (source "console") for a run with a log
 // sink, never a shared line under one run's tags.
 
-import { afterEach, describe, expect, it } from "bun:test"
+import { afterEach, describe, expect, it, mock, spyOn } from "bun:test"
 import { attachRunLogSink, type RunLogSink } from "~/modules/app-builder/logs"
+import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
+import { createIdentityMethods } from "~/modules/apps/sandbox/bridge/identity"
+import * as workerLogs from "./worker-logs"
 import {
   cutConsoleLine,
   deliverRunLogs,
@@ -29,7 +32,10 @@ function fakeSink(): RunLogSink & { got: Array<[string, unknown, unknown]> } {
   }
 }
 
-afterEach(() => WorkerLogsTestAccess.resetProcessCap())
+afterEach(() => {
+  WorkerLogsTestAccess.resetProcessCap()
+  mock.restore()
+})
 
 describe("parseWorkerLogs", () => {
   it("keeps well-formed lines, skips the rest, defaults the level", () => {
@@ -125,6 +131,31 @@ describe("deliverRunLogs", () => {
     expect(got.map(([l, m, d]) => [l, m, (d as { source: string }).source])).toEqual([
       ["info", "mine", "console"],
       ["warn", expect.stringContaining("1 console line(s)"), "console"],
+    ])
+  })
+
+  it("the bridge's process-log copy names the run's executor and run id", () => {
+    const written = spyOn(workerLogs, "writeConsoleToProcessLog").mockImplementation(() => {})
+    const identity = createIdentityMethods({
+      appName: "custom-z",
+      manifest: { name: "custom-z" },
+      orgId: "o",
+      userId: "u",
+      logger: { info() {}, warn() {}, error() {}, debug() {} },
+    } as unknown as BridgeContext) as Record<string, (msg: string, data?: string) => unknown>
+    const bridge = { log_info: identity.log_info, log_warn: identity.log_warn }
+    deliverRunLogs({
+      bridge,
+      app: "custom-z",
+      orgId: "o",
+      runId: "inst:run-7",
+      logs: [{ level: "info", msg: "from workers", at: 0 }],
+    })
+    // A QuickJS run's own console line.
+    identity.log_info?.("from quickjs", JSON.stringify({ source: "console" }))
+    expect(written.mock.calls.map(([ctx, , msg]) => [ctx, msg])).toEqual([
+      [{ app: "custom-z", orgId: "o", executor: "workers", runId: "inst:run-7" }, "from workers"],
+      [{ app: "custom-z", orgId: "o", executor: "quickjs" }, "from quickjs"],
     ])
   })
 })

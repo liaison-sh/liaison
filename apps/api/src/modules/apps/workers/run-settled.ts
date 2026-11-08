@@ -16,8 +16,13 @@ import type { LoaderTimings } from "./timings"
 
 const log = rootLogger.child({ module: "app-run-settled" })
 
-/** Why a run that would have gone to Workers ran on QuickJS instead. */
-export type WorkersFallback = "breaker" | "app"
+/**
+ * Why a run that would have gone to Workers ran on QuickJS instead: the
+ * breaker was open, this org's app@version is under an app fallback, or this
+ * run's Workers attempts met a loader-level fault before any bridge call
+ * (`loader_fault`: the run then ran once more, on QuickJS).
+ */
+export type WorkersFallback = "breaker" | "app" | "loader_fault"
 
 /** How a failed Workers attempt is classified (workers/faults.ts). */
 export type WorkersFaultClass = "loader" | "app" | "final"

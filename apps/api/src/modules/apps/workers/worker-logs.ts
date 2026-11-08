@@ -165,6 +165,12 @@ export function deliverRunLogs(input: {
       source: "console",
       ...(at !== undefined ? { at: new Date(at).toISOString() } : {}),
     }
+    // What the bridge's log method needs for its process-log copy (bridge/identity.ts).
+    const bridgeFields = {
+      ...fields,
+      executor: ctx.executor,
+      ...(ctx.runId ? { runId: ctx.runId } : {}),
+    }
     if (sink) {
       sink.append(level, msg, fields)
       return false
@@ -172,7 +178,7 @@ export function deliverRunLogs(input: {
     const fn = bridgeLog(level)
     if (!fn) return false
     try {
-      void Promise.resolve(fn(msg, JSON.stringify(fields))).catch(() => undefined)
+      void Promise.resolve(fn(msg, JSON.stringify(bridgeFields))).catch(() => undefined)
       return true
     } catch (err) {
       log.debug({ err, app: input.app }, "app console line refused by the bridge")

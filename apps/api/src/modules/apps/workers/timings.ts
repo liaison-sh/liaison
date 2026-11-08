@@ -13,7 +13,7 @@
 //                `loader` is the loader's own timings (Workers only); `sleepMs`
 //                the time the app's code waited in its own timers inside the
 //                isolate (worker-core.ts; Workers only, QuickJS has no timers).
-//                `fallback` ("breaker" | "app") marks a run meant for Workers that ran
+//                `fallback` ("breaker" | "app" | "loader_fault") marks a run meant for Workers that ran
 //                on QuickJS (workers/fallback.ts); `attempts` is 2 when it was retried.
 //
 // The run records are one subscriber of runApp's run-settled event

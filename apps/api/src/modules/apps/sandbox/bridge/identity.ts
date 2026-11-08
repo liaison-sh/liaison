@@ -11,7 +11,9 @@ import { writeConsoleToProcessLog } from "~/modules/apps/workers/worker-logs"
 import { setUserScopes as setUserScopesService } from "~/modules/permissions/app-grants"
 import { hasScope } from "~/modules/permissions/permissions"
 
-function isConsoleLine(data: unknown): boolean {
+function isConsoleLine(
+  data: unknown,
+): data is { source: "console"; executor?: unknown; runId?: unknown } {
   return (
     !!data &&
     typeof data === "object" &&
@@ -43,7 +45,19 @@ export function createIdentityMethods(ctx: BridgeContext): Record<string, any> {
     appLogSink?.append(level, msg, dataJson)
     const data = dataJson ? JSON.parse(dataJson) : {}
     if (isConsoleLine(data)) {
-      writeConsoleToProcessLog({ app: appName, orgId, executor: "quickjs" }, level, String(msg))
+      // A Workers run's lines arrive after the run, tagged with its executor
+      // and run id (workers/worker-logs.ts deliverRunLogs); a QuickJS line
+      // comes from the run itself.
+      writeConsoleToProcessLog(
+        {
+          app: appName,
+          orgId,
+          executor: data.executor === "workers" ? "workers" : "quickjs",
+          ...(typeof data.runId === "string" ? { runId: data.runId } : {}),
+        },
+        level,
+        String(msg),
+      )
       return
     }
     logger[level](data, msg)

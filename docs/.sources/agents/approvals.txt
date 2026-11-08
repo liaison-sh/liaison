@@ -240,3 +240,4 @@ Not now lasts until next Monday 00:00 in the person's zone -> apps/api/src/modul
 A set-aside item comes back when the moment passes -> apps/api/src/modules/attention/event-provider.ts:48
 Ask agent to draft posts to the Personal agent conversation -> apps/web/src/modules/shell/AttentionRowExtras.tsx:145
 A failed source is named with Retry -> packages/shared/src/i18n/locales/en/kernel.json:6482
+Decision older than 15 minutes is dropped at the next start, row says not sent -> apps/web/src/modules/approvals/decision-queue.ts:51 ; packages/shared/src/i18n/locales/en/kernel.json:5737

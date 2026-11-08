@@ -25,7 +25,10 @@
  *
  * What is stored belongs to one account on one server: each entry carries the
  * user id and the server origin, and the boot resend sends only those of the
- * session it boots into (any other is discarded). A sign-out sends what is
+ * session it boots into (any other is discarded). A stored decision lives
+ * STORED_DECISION_MAX_AGE_MS (15 minutes) from when it was made: an older one
+ * is dropped at boot, never sent, and its row says "not sent, decide again"
+ * (isDecisionNotSent), so a week-old Approve cannot land silently. A sign-out sends what is
  * queued first, while the session still authenticates it, and the key lives
  * in the `liaison:` namespace every sign-out (browser and phone) clears.
  * Fetch keepalive caps a body at 64 KB, so a larger one is sent without it;
@@ -44,6 +47,8 @@ export const UNDO_WINDOW_MS = 8_000
 let undoWindowMs = UNDO_WINDOW_MS
 
 const STORAGE_KEY = "liaison:pendingDecisions.v1"
+/** How long a stored decision may wait for the next boot before it is dropped unsent. */
+export const STORED_DECISION_MAX_AGE_MS = 15 * 60_000
 /** Under fetch keepalive's 64 KB body cap, with room for the headers. */
 const KEEPALIVE_BODY_LIMIT = 60_000
 
@@ -124,6 +129,26 @@ const doneItems = new Map<string, DecisionToastItem>()
 const doneTimers = new Map<string, ReturnType<typeof setTimeout>>()
 /** Stored decisions a boot is sending again: their rows stay hidden until the server answers. */
 const resendingKeys = new Set<string>()
+/** Stored decisions a boot dropped as too old: their rows say they were not sent. */
+const [notSentKeys, setNotSentKeys] = createSignal<ReadonlySet<string>>(new Set())
+
+function markNotSent(key: string, notSent: boolean): void {
+  const next = new Set(notSentKeys())
+  if (notSent) next.add(key)
+  else next.delete(key)
+  setNotSentKeys(next)
+}
+
+/** A decision on this row was stored too long ago and dropped at boot: decide again. */
+export function isDecisionNotSent(kind: DecisionKind, id: string): boolean {
+  return notSentKeys().has(keyOf(kind, id))
+}
+
+/** Made within the last STORED_DECISION_MAX_AGE_MS, by this device's clock. */
+function freshEnough(item: StoredDecision): boolean {
+  const age = Date.now() - item.queuedAt
+  return Number.isFinite(age) && age >= 0 && age <= STORED_DECISION_MAX_AGE_MS
+}
 const [toastItems, setToastItems] = createSignal<readonly DecisionToastItem[]>([])
 
 function syncQueued(): void {
@@ -315,6 +340,7 @@ export function queueDecision<T>(
     }
     // A decision on an item that was just done replaces its done line.
     doneItems.delete(key)
+    if (notSentKeys().has(key)) markNotSent(key, false)
     entries.set(key, entry)
     syncQueued()
     store(item)
@@ -407,6 +433,11 @@ export async function resendStoredDecisions(api: ApiClient): Promise<void> {
         unstore(item.kind, item.id)
         continue
       }
+      if (!freshEnough(item)) {
+        unstore(item.kind, item.id)
+        markNotSent(keyOf(item.kind, item.id), true)
+        continue
+      }
       // The row it decided stays hidden while it is sent: the person already decided it.
       const key = keyOf(item.kind, item.id)
       resendingKeys.add(key)
@@ -435,6 +466,7 @@ onBeforeSignOut(() => flushDecisions())
 // And leaves nothing stored for whoever signs in next on this device.
 onSessionTeardown(() => {
   void flushDecisions()
+  setNotSentKeys(new Set<string>())
   writeStored([])
 })
 
@@ -446,6 +478,10 @@ export const DecisionQueueTestAccess = {
    */
   setUndoWindow(ms: number): void {
     undoWindowMs = ms
+  },
+  /** A boot dropped this stored decision as too old (resendStoredDecisions does it for real). */
+  markNotSent(kind: DecisionKind, id: string): void {
+    markNotSent(keyOf(kind, id), true)
   },
   /** The page died: what it held in memory is gone, what it stored stays. */
   forgetInMemory(): void {
@@ -462,6 +498,7 @@ export const DecisionQueueTestAccess = {
     doneTimers.clear()
     doneItems.clear()
     resendingKeys.clear()
+    setNotSentKeys(new Set<string>())
     writeStored([])
     syncQueued()
   },

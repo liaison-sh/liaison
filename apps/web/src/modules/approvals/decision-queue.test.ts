@@ -12,9 +12,11 @@ import {
   flushDecisions,
   installDecisionFlush,
   isDecisionInFlight,
+  isDecisionNotSent,
   isDecisionQueued,
   queueDecision,
   resendStoredDecisions,
+  STORED_DECISION_MAX_AGE_MS,
   UNDO_WINDOW_MS,
   undoDecision,
 } from "~/modules/approvals/decision-queue"
@@ -382,6 +384,33 @@ describe("decision queue", () => {
     ])
   })
 
+  it("a stored decision lives 15 minutes: a fresh one is sent at boot, an older one is dropped and its row says it was not sent", async () => {
+    expect(STORED_DECISION_MAX_AGE_MS).toBe(15 * 60_000)
+    ;(globalThis as Record<string, unknown>)[SERVER_GLOBAL] = "https://a.test"
+    const now = Date.now()
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify([
+        stored("fresh", { queuedAt: now - STORED_DECISION_MAX_AGE_MS + 1_000 }),
+        stored("old", { queuedAt: now - STORED_DECISION_MAX_AGE_MS - 1_000 }),
+        stored("future", { queuedAt: now + 60 * 60_000 }),
+        stored("undated", { queuedAt: undefined }),
+      ]),
+    )
+    const { api, post } = makeApi()
+    await resendStoredDecisions(api)
+    expect(post.mock.calls.map((c) => c[0])).toEqual(["/approvals/fresh/decide"])
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
+    expect(isDecisionNotSent("approval", "fresh")).toBe(false)
+    for (const id of ["old", "future", "undated"]) {
+      expect(isDecisionNotSent("approval", id)).toBe(true)
+    }
+    // Deciding again clears the line.
+    DecisionQueueTestAccess.setUndoWindow(0)
+    await queueDecision(api, "approval", "old", { decision: "approve" })
+    expect(isDecisionNotSent("approval", "old")).toBe(false)
+  })
+
   it("discards at boot a decision another account or another server left, sending only this session's", async () => {
     ;(globalThis as Record<string, unknown>)[SERVER_GLOBAL] = "https://a.test"
     localStorage.setItem(
@@ -471,7 +500,7 @@ function stored(id: string, over: Record<string, unknown> = {}) {
     id,
     decision: "approve",
     body: { decision: "approve" },
-    queuedAt: 1,
+    queuedAt: Date.now(),
     userId: "u-1",
     origin: "https://a.test",
     ...over,

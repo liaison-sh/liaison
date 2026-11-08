@@ -5734,6 +5734,7 @@
     "saveFailed": "Couldn't save the agent safety setting. Please try again."
   },
   "decisionToast": {
+    "notSent": "Not sent: this decision was more than 15 minutes old. Decide again.",
     "approvingIn": "Approving in {{seconds}}s",
     "rejectingIn": "Rejecting in {{seconds}}s",
     "approving": "Approving…",

@@ -7939,4 +7939,6 @@ export const FR_BY_KEY: Record<string, string> = {
     "Approuvé par {{name}}, remplaçant de {{forName}} : {{title}}",
   "kernel.homeRouting.recapDeniedStandIn":
     "Refusé par {{name}}, remplaçant de {{forName}} : {{title}}",
+  "kernel.decisionToast.notSent":
+    "Non envoyée : cette décision datait de plus de 15 minutes. Décidez à nouveau.",
 }

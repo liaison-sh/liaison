@@ -49,6 +49,7 @@ import {
 } from "~/modules/approvals/decide-error"
 import {
   isDecisionInFlight,
+  isDecisionNotSent,
   isDecisionUndone,
   queueDecision,
 } from "~/modules/approvals/decision-queue"
@@ -213,6 +214,14 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
     const f = props.item.metadata?.lastFailure as { message?: unknown } | undefined
     return f && typeof f.message === "string" && f.message.length > 0 ? f.message : null
   }
+  // A decision this device stored too long ago was dropped at boot, unsent (decision-queue.ts).
+  const NotSentLine = (): ReturnType<Component> => (
+    <Show when={approvalId() !== null && isDecisionNotSent("approval", approvalId() as string)}>
+      <div data-testid={`${testId()}-not-sent`} class="text-[12px] text-text-secondary">
+        {i18n.t("kernel.decisionToast.notSent")}
+      </div>
+    </Show>
+  )
   const LastFailureBanner = (): ReturnType<Component> => (
     <Show when={!expanded() ? lastFailureMessage() : null}>
       {(message) => (
@@ -772,6 +781,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
             </Show>
           </span>
           <LastFailureBanner />
+          <NotSentLine />
           <GuardLine item={props.item} testId={testId()} />
           <RouteWhyLine item={props.item} testId={testId()} />
           <AwayRecapLines item={props.item} testId={testId()} />
@@ -1008,6 +1018,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
               </span>
             </Show>
             <LastFailureBanner />
+            <NotSentLine />
             <GuardLine item={props.item} testId={testId()} />
             <RouteWhyLine item={props.item} testId={testId()} />
             <AwayRecapLines item={props.item} testId={testId()} />

@@ -140,6 +140,12 @@ export const ApprovalsScreen: Component = () => {
     setDisplayed(merged)
   })
 
+  // Keyed by id, not by row: a refresh (the screen's own load, a socket
+  // update) replaces each row object in the store, and a list keyed by the
+  // object remounted every card, so an open deny sheet or a draft being edited
+  // vanished under the person's thumb. The card reads its row by id itself.
+  const displayedIds = createMemo(() => displayed().map((r) => r.id))
+
   // The header reads its deadline with the SAME humanised formatter the rows
   // use. Raw minutes turned a three day deadline into "3913 min", a figure
   // nobody can price against a row that says "3d" right underneath it.
@@ -199,16 +205,16 @@ export const ApprovalsScreen: Component = () => {
         }
       >
         <div class="flex flex-col px-3">
-          <For each={displayed()}>
-            {(row) => (
+          <For each={displayedIds()}>
+            {(id) => (
               <div
-                data-testid={`approvals-item-${row.id}`}
-                data-collapsing={collapsing[row.id] ? "true" : "false"}
+                data-testid={`approvals-item-${id}`}
+                data-collapsing={collapsing[id] ? "true" : "false"}
                 class={`overflow-hidden transition-[max-height,opacity] duration-200 ease-in motion-reduce:transition-none ${
-                  collapsing[row.id] ? "max-h-0 opacity-0" : "max-h-[1200px] opacity-100"
+                  collapsing[id] ? "max-h-0 opacity-0" : "max-h-[1200px] opacity-100"
                 }`}
               >
-                <ApprovalCard requestId={row.id} />
+                <ApprovalCard requestId={id} />
               </div>
             )}
           </For>

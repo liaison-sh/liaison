@@ -423,6 +423,8 @@ export type OpenedToolCardRef =
 export interface ToolCardRequest {
   toolName: string
   params: unknown
+  /** The thread the request names, if any: only the card's own thread is one the card offers. */
+  threadId?: unknown
 }
 
 function sameValue(a: unknown, b: string | number): boolean {
@@ -617,6 +619,9 @@ async function openStoredCard(
       card: stored.card ?? null,
       cardRevision: storedCardRevision(stored),
     }
+  }
+  if (request && request.threadId !== undefined && request.threadId !== row.threadId) {
+    return { ok: false, refusal: "not_an_action" }
   }
   if (request && !(stored.card && cardOffersRequest(stored.card, request))) {
     return { ok: false, refusal: "not_an_action" }

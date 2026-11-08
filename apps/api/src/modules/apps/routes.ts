@@ -180,11 +180,15 @@ appRoutes.post("/:appName/tools/:toolName", async (c) => {
   }
   const orgId = c.get("orgId")
   const actor = extractRlsContext(c)
-  const params = toolBody.params ?? toolBody
-  // What the card is asked to do: the flat form carries the thread beside the params.
-  const { threadId: _thread, ...flatParams } = toolBody
-  const request = { toolName, params: toolBody.params ?? flatParams }
-  if (!cardRef) return runAppTool(c, { appName, toolName, params, threadId: toolBody.threadId })
+  if (!cardRef) {
+    const params = toolBody.params ?? toolBody
+    return runAppTool(c, { appName, toolName, params, threadId: toolBody.threadId })
+  }
+  // What the card is asked to do: the flat form carries the thread beside the params. The tool
+  // gets exactly the params the card check matched, and runs in the card's own thread: a thread
+  // the request names must be that one.
+  const { threadId: requestThread, ...flatParams } = toolBody
+  const request = { toolName, params: toolBody.params ?? flatParams, threadId: requestThread }
 
   const first = await openToolCardRef(actor, orgId, appName, cardRef, request)
   if (!first.ok) return cardRefRefused(c, first)
@@ -204,8 +208,8 @@ appRoutes.post("/:appName/tools/:toolName", async (c) => {
     return await runAppTool(c, {
       appName,
       toolName,
-      params,
-      threadId: toolBody.threadId ?? opened.threadId,
+      params: request.params,
+      threadId: opened.threadId,
       cardRef,
     })
   } finally {

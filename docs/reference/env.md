@@ -322,7 +322,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `OPENROUTER_HOST_SPEED_MIN_SAMPLES` | `apps/api/src/modules/agent/providers/openrouter-host-speed.ts:68` |
 | `ORG_MAINTENANCE_FLAG_PATH` | `apps/api/src/middleware/org-maintenance.ts:25` |
 | `QA_DRIVE_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/knowledge.ts:79` |
-| `QA_GMAIL_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/rows.ts:462` |
+| `QA_GMAIL_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/rows.ts:473` |
 | `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:568`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
 | `RECHECK_SYNC_BACKEND` | `apps/api/src/lib/manifest-regex.ts:33` |
 | `ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:62` |

@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { classifyInbound } from "~/modules/mail/classify-inbound"
+import {
+  classifyInbound,
+  failedRecipients,
+  reportConcerns,
+  reportText,
+} from "~/modules/mail/classify-inbound"
 
 const DELIVERY_REPORT = 'multipart/report; report-type=delivery-status; boundary="b1"'
 const READ_RECEIPT = 'multipart/report; report-type=disposition-notification; boundary="b1"'
@@ -389,5 +394,121 @@ describe("classifyInbound: header values", () => {
     expect(classifyInbound({ "auto-submitted": ["no", "auto-replied"] }, "Re: x", "y")).toBe(
       "auto_reply",
     )
+  })
+})
+
+describe("classifyInbound: delay notices", () => {
+  it("a report with Action: delayed and no Action: failed is not a bounce", () => {
+    expect(
+      classifyInbound({ "content-type": DELIVERY_REPORT }, "Report", dsnBody("delayed", "relayed")),
+    ).toBe("ignored")
+  })
+
+  it("an action other than failed is not a bounce", () => {
+    expect(
+      classifyInbound({ "content-type": DELIVERY_REPORT }, "Report", dsnBody("deferred")),
+    ).toBe("ignored")
+  })
+
+  it("an HTML-only delay notice reads by its HTML", () => {
+    const html =
+      "<p>This is a warning only.</p><p>Final-Recipient: rfc822; a@b.example<br>Action: delayed</p>"
+    expect(
+      classifyInbound({ "content-type": DELIVERY_REPORT }, "Report", reportText(null, html)),
+    ).toBe("ignored")
+    expect(
+      classifyInbound({}, "Undelivered", reportText("", html), "mailer-daemon@mx.example.com"),
+    ).toBe("ignored")
+  })
+})
+
+const GROUP_REPORT = [
+  "Your message wasn't delivered to alice@x.example because the address couldn't be found.",
+  "",
+  "----- Original message -----",
+  "",
+  "From: us@org.example",
+  "To: alice@x.example, bob@x.example",
+  "Cc: carol@x.example",
+  "Subject: Our offer",
+].join("\n")
+
+describe("failedRecipients: which address a report says failed", () => {
+  it("the machine part names the failed recipient, not the others the original went to", () => {
+    const text = [
+      "Delivery to the following recipient failed permanently.",
+      "",
+      "Reporting-MTA: dns; mx.x.example",
+      "",
+      "Final-Recipient: rfc822; alice@x.example",
+      "Action: failed",
+      "",
+      "Final-Recipient: rfc822; bob@x.example",
+      "Action: delayed",
+      "",
+      "To: alice@x.example, bob@x.example",
+    ].join("\n")
+    expect(failedRecipients(text, null)).toEqual(["alice@x.example"])
+  })
+
+  it("without a machine part, the addresses before the quoted original", () => {
+    expect(failedRecipients(GROUP_REPORT, null)).toEqual(["alice@x.example"])
+  })
+
+  it("quoted headers alone name no failed address", () => {
+    expect(failedRecipients(GROUP_REPORT.slice(GROUP_REPORT.indexOf("-----")), null)).toEqual([])
+  })
+
+  it("a full stop after the address is punctuation", () => {
+    expect(failedRecipients("Could not be delivered to bob@x.example.", null)).toEqual([
+      "bob@x.example",
+    ])
+  })
+
+  it("a longer domain is another address", () => {
+    expect(failedRecipients("Could not be delivered to bob@x.example.evil.test", null)).toEqual([
+      "bob@x.example.evil.test",
+    ])
+  })
+
+  it("an HTML-only report reads by its HTML", () => {
+    expect(failedRecipients(null, "<p>Delivery to <b>alice@x.example</b> failed.</p>")).toEqual([
+      "alice@x.example",
+    ])
+  })
+})
+
+describe("reportConcerns: whether a failure is about a draft's recipient", () => {
+  const facts = (addresses: string[], textBody: string | null, answered: string[] | null) => ({
+    textBody,
+    htmlBody: null,
+    answered,
+    addresses,
+  })
+
+  it("a failure for alice on a mail to alice and bob concerns alice only", () => {
+    const answered = ["alice@x.example", "bob@x.example", "carol@x.example"]
+    expect(reportConcerns(facts(["bob@x.example"], GROUP_REPORT, answered))).toBe(false)
+    expect(reportConcerns(facts(["carol@x.example"], GROUP_REPORT, answered))).toBe(false)
+    expect(reportConcerns(facts(["ALICE@x.example"], GROUP_REPORT, answered))).toBe(true)
+  })
+
+  it("a report naming no address concerns the one recipient of the mail it answers", () => {
+    expect(reportConcerns(facts(["alice@x.example"], null, ["alice@x.example"]))).toBe(true)
+  })
+
+  it("a report naming no address on a group mail concerns nobody", () => {
+    const answered = ["alice@x.example", "bob@x.example"]
+    expect(reportConcerns(facts(["alice@x.example"], null, answered))).toBe(false)
+    expect(reportConcerns(facts(["bob@x.example"], null, answered))).toBe(false)
+  })
+
+  it("a report naming no address and answering none of our mail concerns nobody", () => {
+    expect(reportConcerns(facts(["alice@x.example"], "Delivery failed.", null))).toBe(false)
+  })
+
+  it("a sub-domain address is not the draft's", () => {
+    const text = "Could not be delivered to bob@x.example.evil.test."
+    expect(reportConcerns(facts(["bob@x.example"], text, null))).toBe(false)
   })
 })

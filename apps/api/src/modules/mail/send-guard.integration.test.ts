@@ -303,7 +303,10 @@ function followUpFrame(): RunContext {
 }
 
 /** Our earlier mail to them: what a follow-up's `since` reads. */
-async function seedOutbound(to: string, sentAt: string = ago(2 * HOUR)) {
+async function seedOutbound(
+  to: string | string[],
+  sentAt: string = ago(2 * HOUR),
+): Promise<string> {
   const ctx = seedContext({ orgId, now: new Date() })
   const { conversationId } = await seedMailConversation(ctx, {
     accountId: oldAccount,
@@ -315,13 +318,13 @@ async function seedOutbound(to: string, sentAt: string = ago(2 * HOUR)) {
     messageCount: 1,
     messages: [],
   })
-  await appendMailMessages(ctx, {
+  const { messageIds } = await appendMailMessages(ctx, {
     conversationId,
     messages: [
       {
         direction: "outbound",
         from: { email: "sales@org.test" },
-        to: [{ email: to }],
+        to: (Array.isArray(to) ? to : [to]).map((email) => ({ email })),
         textBody: "Here is our offer.",
         sentAt,
       },
@@ -329,6 +332,10 @@ async function seedOutbound(to: string, sentAt: string = ago(2 * HOUR)) {
     updateConversation: false,
     announce: false,
   })
+  const [row] = await sql<Array<{ id: string }>>`SELECT external_message_id AS id
+     FROM ${sql(schemaRef("app_mail"))}.messages WHERE id = ${messageIds[0] as string}`
+  if (!row) throw new Error("seedOutbound: no row")
+  return row.id
 }
 
 /** The check alone, on a value as a stage would pin it. */
@@ -1304,6 +1311,115 @@ describe("a delivery failure stops a staged send", () => {
   }, 60_000)
 })
 
+describe("a delivery failure for one recipient of a group mail", () => {
+  /** A report as Gmail writes one: the failed address first, then the original's headers. */
+  function groupReport(failed: string, all: string[], machine: boolean): string {
+    return [
+      `Your message wasn't delivered to ${failed} because the address couldn't be found.`,
+      "",
+      ...(machine
+        ? [
+            "Reporting-MTA: dns; mx.client.test",
+            "",
+            `Final-Recipient: rfc822; ${failed}`,
+            "Action: failed",
+            "",
+          ]
+        : []),
+      "----- Original message -----",
+      "",
+      "From: sales@org.test",
+      `To: ${all.join(", ")}`,
+      "Subject: Our offer",
+    ].join("\n")
+  }
+
+  async function answering(reportId: string, outboundId: string | null, sealed = false) {
+    await privileged.withSystemDb("send-guard-test-report-answers", async (tx) => {
+      await tx.execute(drizzleSql`
+        UPDATE ${MAIL}.messages
+           SET in_reply_to = ${outboundId},
+               text_body = CASE WHEN ${sealed} THEN NULL ELSE text_body END,
+               html_body = CASE WHEN ${sealed} THEN NULL ELSE html_body END
+         WHERE id = ${reportId}::uuid`)
+    })
+  }
+
+  it("alice bounces on a mail to alice and bob: a draft to bob goes, a draft to alice stops", async () => {
+    const alice = unique("alice")
+    const bob = unique("bob")
+    const since = new Date(Date.now() - 60_000).toISOString()
+    const outbound = await seedOutbound([alice, bob])
+    for (const machine of [true, false]) {
+      const { id } = await seedInbound("mailer-daemon@mx.client.test", {
+        subject: "Delivery Status Notification (Failure)",
+        body: groupReport(alice, [alice, bob], machine),
+        rawHeaders: REPORT_HEADERS,
+      })
+      await answering(id, outbound)
+    }
+    expect((await check(bob, since)).state).toBe("clear")
+    expect((await check(alice, since)).state).toBe("bounced")
+  }, 60_000)
+
+  it("a sealed report on a mail to two addresses stops neither; on a mail to one it stops", async () => {
+    const alice = unique("sealed-alice")
+    const bob = unique("sealed-bob")
+    const solo = unique("sealed-solo")
+    const since = new Date(Date.now() - 60_000).toISOString()
+    for (const [to, outbound] of [
+      [[alice, bob], await seedOutbound([alice, bob])],
+      [[solo], await seedOutbound(solo)],
+    ] as const) {
+      const { id } = await seedInbound("mailer-daemon@mx.client.test", {
+        subject: "Undelivered Mail Returned to Sender",
+        body: groupReport(to[0] as string, [...to], true),
+        rawHeaders: REPORT_HEADERS,
+      })
+      await answering(id, outbound, true)
+    }
+    expect((await check(alice, since)).state).toBe("clear")
+    expect((await check(bob, since)).state).toBe("clear")
+    expect((await check(solo, since)).state).toBe("bounced")
+  }, 60_000)
+
+  it("an address ending a sentence stops; a longer domain does not", async () => {
+    const to = unique("full-stop")
+    const other = unique("sub-domain")
+    const since = new Date(Date.now() - 60_000).toISOString()
+    await seedInbound("mailer-daemon@mx.client.test", {
+      subject: "Undelivered Mail Returned to Sender",
+      body: `Your message could not be delivered to ${to}.`,
+      rawHeaders: REPORT_HEADERS,
+    })
+    await seedInbound("mailer-daemon@mx.client.test", {
+      subject: "Undelivered Mail Returned to Sender",
+      body: `Your message could not be delivered to ${other}.evil.example.`,
+      rawHeaders: REPORT_HEADERS,
+    })
+    expect((await check(to, since)).state).toBe("bounced")
+    expect((await check(other, since)).state).toBe("clear")
+  }, 60_000)
+
+  it("an HTML-only delay notice does not stop", async () => {
+    const to = unique("html-delay")
+    const since = new Date(Date.now() - 60_000).toISOString()
+    const { id } = await seedInbound("mailer-daemon@mx.client.test", {
+      subject: "Mail delivery notice",
+      body: "",
+      rawHeaders: REPORT_HEADERS,
+    })
+    await privileged.withSystemDb("send-guard-test-html-delay", async (tx) => {
+      await tx.execute(drizzleSql`
+        UPDATE ${MAIL}.messages
+           SET text_body = NULL,
+               html_body = ${`<p>This is a warning only.</p><p>Final-Recipient: rfc822; ${to}<br>Action: delayed</p>`}
+         WHERE id = ${id}::uuid`)
+    })
+    expect((await check(to, since)).state).toBe("clear")
+  }, 60_000)
+})
+
 describe("a reply through a ticket inbox", () => {
   it("stage a follow-up, ingest an inbound on a ticket inbox from that address, approve: no provider call", async () => {
     const to = unique("ticket")
@@ -1537,7 +1653,7 @@ describe("what a mailbox's headers say", () => {
     const to = `mailer-daemon-${++counter}@client.test`
     const daemon = "mailer-daemon@client.test"
     const since = new Date(Date.now() - 60_000).toISOString()
-    await seedInbound(daemon, { body: "Your message could not be delivered." })
+    await seedInbound(daemon, { body: `Your message to ${to} could not be delivered.` })
     const verdict = await evaluateSendGuard({
       orgId,
       guard: plainGuardSince([to, daemon], [], new Date(since)),

@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
 import type { InboundKind } from "~/modules/mail/classify-inbound"
-import { decideSendGuard, describeStop, type GuardInbound } from "~/modules/mail/send-guard"
+import {
+  addressInText,
+  decideSendGuard,
+  describeStop,
+  type GuardInbound,
+} from "~/modules/mail/send-guard"
 
 const NOW = new Date("2026-11-06T12:00:00.000Z")
 
@@ -164,5 +169,20 @@ describe("describeStop: where a stopping reply came in", () => {
       "approved",
     )
     expect(text).toContain("It came in to a mailbox you cannot read.")
+  })
+})
+
+describe("addressInText: a report's text names the address", () => {
+  const finds = (address: string, text: string) => new RegExp(addressInText(address)).test(text)
+
+  it("an address that ends a sentence is found", () => {
+    expect(finds("bob@x.example", "could not be delivered to bob@x.example.")).toBe(true)
+    expect(finds("bob@x.example", "<bob@x.example>: 550 user unknown")).toBe(true)
+  })
+
+  it("a longer domain or local part is another address", () => {
+    expect(finds("bob@x.example", "delivered to bob@x.example.evil.test")).toBe(false)
+    expect(finds("bob@x.example", "delivered to xbob@x.example")).toBe(false)
+    expect(finds("bob@x.example", "delivered to a.bob@x.example")).toBe(false)
   })
 })

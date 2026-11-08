@@ -24,9 +24,6 @@ const BOUNCE_SENDERS = new Set(["mailer-daemon", "postmaster"])
 
 const ACTION_FIELD = /^[ \t]*action[ \t]*:[ \t]*([a-z-]+)/gim
 
-/** The delivery report actions that do not say the mail failed (RFC 3464). */
-const NOT_A_FAILURE = new Set(["delayed", "delivered", "relayed", "expanded"])
-
 /**
  * Gmail mail stores only the text and HTML parts, so a delivery report arrives
  * here without its `Action:` field. Only the wording of the common mail servers
@@ -67,10 +64,13 @@ function senderLocalPart(sender: string): string {
   return (address.split("@")[0] ?? "").trim().replace(/^"|"$/g, "").toLowerCase()
 }
 
-/** A delivery report that says nothing failed yet: delayed, delivered or relayed. */
+/**
+ * A delivery report that says nothing failed yet: only `Action: failed` (RFC 3464) is a
+ * failure, so delayed, delivered, relayed and any other action are not.
+ */
 function isNoFailureNotice(subject: string | null, textBody: string | null): boolean {
   const actions = [...(textBody ?? "").matchAll(ACTION_FIELD)].map((m) => m[1]?.toLowerCase())
-  if (actions.length > 0) return actions.every((action) => NOT_A_FAILURE.has(action ?? ""))
+  if (actions.length > 0) return !actions.includes("failed")
   return DELAY_SUBJECT.test(subject ?? "") || DELAY_BODY.test(textBody ?? "")
 }
 
@@ -128,4 +128,84 @@ export function classifyInbound(
   }
 
   return "reply"
+}
+
+/** An address as it appears in a report's text: a trailing full stop is punctuation. */
+const ADDRESS = /[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+/gi
+
+/** Where a report starts quoting the mail it is about. Nothing past it names a failed address. */
+const ORIGINAL_MESSAGE =
+  /^[ \t>*-]*(?:original message|message d'origine|message original|forwarded message|(?:below this line is |this is )?a copy of the (?:original )?message|original headers|en-têtes? du message)\b|^[ \t>]*(?:to|cc|bcc|from|de|à|subject|objet|date|received|return-path|message-id|dkim-signature|content-type)[ \t]*:/im
+
+const RECIPIENT_FIELD = /^[ \t]*(?:final|original)-recipient[ \t]*:(.*)$/gim
+
+/** A report's HTML as plain text, for a report that has no text part. */
+export function htmlAsText(html: string | null): string | null {
+  if (html === null) return null
+  return html
+    .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, "")
+    .replace(/<br\s*\/?>|<\/(?:p|div|tr|li|h[1-6]|pre|blockquote)>/gi, "\n")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#64;|&commat;/gi, "@")
+    .replace(/&quot;/gi, '"')
+    .replace(/&amp;/gi, "&")
+}
+
+/** The text a report reads by: its text part, or its HTML part when it has no text. */
+export function reportText(textBody: string | null, htmlBody: string | null): string | null {
+  if (textBody !== null && textBody.trim() !== "") return textBody
+  return htmlAsText(htmlBody) ?? textBody
+}
+
+function addressesIn(text: string): string[] {
+  return [...text.matchAll(ADDRESS)].map((m) => m[0].toLowerCase())
+}
+
+/**
+ * The addresses a delivery report says failed. The machine part (`Final-Recipient` or
+ * `Original-Recipient`, one group per recipient) wins when the text carries it, and a group
+ * whose `Action` is not `failed` is left out. Without it, the addresses the report names
+ * before it starts quoting the original mail. Quoted headers never name a failed address:
+ * they list everyone the original went to. Empty when the report names none.
+ */
+export function failedRecipients(textBody: string | null, htmlBody: string | null): string[] {
+  const text = reportText(textBody, htmlBody) ?? ""
+  const failed = new Set<string>()
+  let machine = false
+  for (const group of text.split(/\r?\n[ \t]*\r?\n/)) {
+    const fields = [...group.matchAll(RECIPIENT_FIELD)]
+    if (fields.length === 0) continue
+    machine = true
+    const action = [...group.matchAll(ACTION_FIELD)][0]?.[1]?.toLowerCase()
+    if (action !== undefined && action !== "failed") continue
+    for (const field of fields) for (const a of addressesIn(field[1] ?? "")) failed.add(a)
+  }
+  if (machine) return [...failed]
+  const marker = ORIGINAL_MESSAGE.exec(text)
+  return [...new Set(addressesIn(marker ? text.slice(0, marker.index) : text))]
+}
+
+/**
+ * Whether a delivery failure is about a draft to these addresses. The failed address must
+ * be one of them. A report that names none (a sealed one, or one with no readable text) is
+ * about them only when the mail it answers went to exactly one address, and that address
+ * is one of them: a failure for one recipient of a group mail says nothing of the others.
+ *
+ * @param answered everyone the mail the report answers went to, or null when it answers
+ *   none of ours
+ */
+export function reportConcerns(input: {
+  textBody: string | null
+  htmlBody: string | null
+  answered: readonly string[] | null
+  addresses: readonly string[]
+}): boolean {
+  const mine = new Set(input.addresses.map((a) => a.toLowerCase()))
+  const failed = failedRecipients(input.textBody, input.htmlBody)
+  if (failed.length > 0) return failed.some((a) => mine.has(a))
+  const answered = [...new Set((input.answered ?? []).map((a) => a.toLowerCase()))]
+  return answered.length === 1 && mine.has(answered[0] as string)
 }

@@ -14,7 +14,12 @@ import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import { appBridgeManifestRegistry, toolRegistry } from "~/modules/apps/app-registries"
-import { classifyInbound, type InboundKind } from "~/modules/mail/classify-inbound"
+import {
+  classifyInbound,
+  type InboundKind,
+  reportConcerns,
+  reportText,
+} from "~/modules/mail/classify-inbound"
 import { applyCommercialFooter, commercialIdentityMissing } from "~/modules/mail/commercial-footer"
 import { parseReturnDate } from "~/modules/mail/parse-return-date"
 import { lawfulBasisProblem, suppressedAmong } from "~/modules/mail/suppressions"
@@ -322,10 +327,26 @@ function openDrafts(
         AS x(k text, since text, conv text, contacts jsonb, addrs jsonb, addr_res jsonb, cur_ord text, cur_id text)`
 }
 
-/** A pattern that finds an address as a whole word in a delivery report's text, any case. */
-function addressInText(address: string): string {
+/**
+ * A pattern that finds an address as a whole word in a delivery report's text, any case. A
+ * full stop after it ends a sentence; one followed by more of a domain makes another address.
+ */
+export function addressInText(address: string): string {
   const escaped = address.toLowerCase().replace(/[^a-z0-9]/g, (c) => `\\${c}`)
-  return `(^|[^a-z0-9._%+-])${escaped}($|[^a-z0-9._%+-])`
+  return `(^|[^a-z0-9._%+-])${escaped}($|[^a-z0-9._%+-]|\\.($|[^a-z0-9]))`
+}
+
+/**
+ * Whether a mail row is a delivery report: from a mail server's daemon, or a
+ * `multipart/report`. Only these carry their HTML and the mail they answer.
+ */
+const IS_REPORT = drizzleSql`(split_part(lower(m.from_address->>'email'), '@', 1)
+                               IN ('mailer-daemon', 'postmaster')
+                             OR m.raw_headers->>'content-type' ILIKE 'multipart/report%')`
+
+/** A bounce about another address, such as another recipient of a group mail, is nothing here. */
+function reportAbout(kind: InboundKind, facts: Parameters<typeof reportConcerns>[0]): InboundKind {
+  return kind === "bounce" && !reportConcerns(facts) ? "ignored" : kind
 }
 
 async function readMailInbound(
@@ -343,6 +364,8 @@ async function readMailInbound(
     at: string | Date
     raw_headers: unknown
     text_body: string | null
+    html_body: string | null
+    answered: string[] | null
     subject: string | null
   }
   return onPrivileged(db, orgId, "send-guard-mail-inbound", (tx) =>
@@ -353,13 +376,26 @@ async function readMailInbound(
           await tx.execute(drizzleSql`
             WITH d AS (${openDrafts(queries, open)})
             SELECT d.k, r.id, r.ord, r.conversation_id, r.sender, r.at,
-                   r.raw_headers, r.text_body, r.subject
+                   r.raw_headers, r.text_body, r.html_body, r.answered, r.subject
               FROM d CROSS JOIN LATERAL (
                 SELECT m.id, GREATEST(m.sent_at, m.synced_at) AS ord_at,
                        GREATEST(m.sent_at, m.synced_at)::text AS ord,
                        m.conversation_id, m.from_address->>'email' AS sender,
                        COALESCE(m.sent_at, m.synced_at) AS at,
-                       m.raw_headers, m.text_body, m.subject
+                       m.raw_headers, m.text_body, m.subject,
+                       CASE WHEN ${IS_REPORT} THEN m.html_body END AS html_body,
+                       -- Everyone the mail a report answers went to: who it can be about.
+                       CASE WHEN ${IS_REPORT} THEN (
+                         SELECT jsonb_agg(DISTINCT lower(t->>'email'))
+                           FROM (SELECT o.to_addresses || o.cc_addresses || o.bcc_addresses AS rcpts
+                                   FROM ${table("app_mail", "messages")} o
+                                  WHERE o.org_id = m.org_id AND o.direction = 'outbound'
+                                    AND (o.external_message_id = m.in_reply_to
+                                         OR m.message_references ? o.external_message_id)
+                                  ORDER BY (o.external_message_id = m.in_reply_to) DESC NULLS LAST
+                                  LIMIT 1) ans,
+                                jsonb_array_elements(ans.rcpts) AS t
+                          WHERE t->>'email' IS NOT NULL) END AS answered
                   FROM ${table("app_mail", "messages")} m
                   JOIN ${table("app_mail", "conversations")} c ON c.id = m.conversation_id
                   JOIN ${table("app_mail", "accounts")} a ON a.id = m.account_id
@@ -368,10 +404,9 @@ async function readMailInbound(
                         OR c.id = d.conv
                         OR lower(m.from_address->>'email') = ANY(d.addrs)
                         -- A delivery report comes from the server, in a thread of its own:
-                        -- it is about the address its text names, or the mail it answers.
-                        OR ((split_part(lower(m.from_address->>'email'), '@', 1)
-                               IN ('mailer-daemon', 'postmaster')
-                             OR m.raw_headers->>'content-type' ILIKE 'multipart/report%')
+                        -- it may be about an address its text names, or the mail it answers.
+                        -- Which address failed is read in code (reportConcerns).
+                        OR (${IS_REPORT}
                             AND (EXISTS (SELECT 1 FROM unnest(d.addr_res) AS re
                                           WHERE lower(COALESCE(m.text_body, '')) ~ re
                                              OR lower(COALESCE(m.html_body, '')) ~ re)
@@ -396,7 +431,20 @@ async function readMailInbound(
         ),
       (row) => ({
         id: row.id,
-        kind: classifyInbound(row.raw_headers, row.subject, row.text_body, row.sender),
+        kind: reportAbout(
+          classifyInbound(
+            row.raw_headers,
+            row.subject,
+            reportText(row.text_body, row.html_body),
+            row.sender,
+          ),
+          {
+            textBody: row.text_body,
+            htmlBody: row.html_body,
+            answered: row.answered,
+            addresses: queries.get(row.k)?.addresses ?? [],
+          },
+        ),
         sender: row.sender,
         at: new Date(row.at),
         textBody: row.text_body,
@@ -469,7 +517,12 @@ async function readTicketInbound(
         ),
       (row) => ({
         id: row.id,
-        kind: classifyInbound({}, row.subject, row.text_body, row.sender),
+        kind: reportAbout(classifyInbound({}, row.subject, row.text_body, row.sender), {
+          textBody: row.text_body,
+          htmlBody: null,
+          answered: null,
+          addresses: queries.get(row.k)?.addresses ?? [],
+        }),
         sender: row.sender,
         at: new Date(row.at),
         textBody: row.text_body,

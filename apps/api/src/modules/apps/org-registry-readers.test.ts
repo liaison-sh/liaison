@@ -87,6 +87,7 @@ const READERS: Record<string, string> = {
   // Called by the CLI (ensureAppsForOrg first), agent tools and the secret-request routes.
   "modules/connection-guides/plan.ts":
     "CLI, agent turn or request: each caller sets the org up first",
+  "modules/contacts/activity.ts": AGENT,
   "modules/demo/world/commerce-order.ts": ENSURES,
   // A source lookup fills the org's registries on a miss (ensureAppsForOrg); the source
   // listing runs from the dashboards routes and tools, each set up first.

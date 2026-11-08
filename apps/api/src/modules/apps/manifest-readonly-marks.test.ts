@@ -29,6 +29,7 @@ const IN_TREE_DIR = join(REPO, "apps", "api", "src", "apps")
 const READ_ONLY: Record<string, string[]> = {
   // In-tree first-party apps.
   tickets: [
+    "activity_read", // a timeline read the kernel makes, in a read-only savepoint
     "search",
     "get",
     "inboxCounts",
@@ -48,6 +49,7 @@ const READ_ONLY: Record<string, string[]> = {
     "approveFromHome.get",
   ],
   projects: [
+    "activity_read", // a timeline read the kernel makes, in a read-only savepoint
     "approval_route_read", // the task's assignee, through get, for who an approval is for
     "search",
     // Enrols the caller on the task's discussion thread, exactly as opening the task does.
@@ -70,6 +72,7 @@ const READ_ONLY: Record<string, string[]> = {
   ],
   knowledge: ["search", "review_queue", "get", "find_by_title", "synced_sources.list"],
   mail: [
+    "activity_read", // a timeline read the kernel makes, in a read-only savepoint
     "listAccounts",
     "getAccount",
     "getSyncStatus",
@@ -78,7 +81,13 @@ const READ_ONLY: Record<string, string[]> = {
     "providers.get",
     "suppression_check", // two privileged reads of kernel.suppressions, by fingerprint
   ],
-  calendar: ["list_calendars", "list_events", "search_events", "list_accounts"],
+  calendar: [
+    "list_calendars",
+    "list_events",
+    "search_events",
+    "list_accounts",
+    "activity_read", // a timeline read the kernel makes, in a read-only savepoint
+  ],
   "mcp-manager": ["list_connections"],
   // items_list is one findMany; external_fetch is a fixed GET to the example API with no
   // caller data in it (2026-09-25).
@@ -191,6 +200,7 @@ const READ_ONLY: Record<string, string[]> = {
   ],
   calls: ["calls_segments_since", "calls_list", "webhook_info"],
   invoicing: [
+    "activity_read", // a timeline read the kernel makes, in a read-only savepoint
     "documents_search",
     "documents_get",
     "documents_for_orders",

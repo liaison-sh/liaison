@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The timeline's speed at a real customer's size (test-support/seed/activity-scale-world.ts):
+// The timeline's speed at a real customer's size (seed/factories/timeline/activity-scale-world.ts):
 // 50 people, 20 000 mails, 500 tickets with 1 500 notes, 40 deals with 600
 // subtasks, a weekly meeting over three years and 300 single ones. Each
 // source's time and the route's time are recorded cold (the first call) and
@@ -21,8 +21,8 @@ import { ensureAppsForOrg } from "~/modules/apps/init"
 import { ACTIVITY_DEADLINE_MS, readActivity } from "~/modules/contacts/activity"
 import { seedContext } from "~/seed/context"
 import { insertSql, type RowValue } from "~/seed/factories/org/test-rows"
+import { SCALE, seedActivityScaleWorld } from "~/seed/factories/timeline/activity-scale-world"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
-import { SCALE, seedActivityScaleWorld } from "../../../test-support/seed/activity-scale-world"
 import { seedCalendarAccount } from "../../../test-support/seed/calendar"
 import { ensureMailAccount } from "../../../test-support/seed/mail"
 

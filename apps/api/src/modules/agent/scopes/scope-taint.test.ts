@@ -528,6 +528,8 @@ describe("writesToTable annotations on kernel tools", () => {
         "companies_propose_from_contacts",
         "companies_read",
         "companies_search",
+        // A company's timeline reads each app as the caller and stores nothing.
+        "company_timeline",
         "contacts_addresses_list",
         "contacts_find_duplicates",
         "contacts_group_members",

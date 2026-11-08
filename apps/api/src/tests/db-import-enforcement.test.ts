@@ -1088,6 +1088,9 @@ describe("db import enforcement", () => {
     "seed/factories/attention/events.ts",
     "seed/factories/threads/history.ts",
     "seed/factories/timeline/entries.ts",
+    // The timeline's speed test: three years of a large customer's history in
+    // one org, set-based, which only time produces.
+    "seed/factories/timeline/activity-scale-world.ts",
     "seed/tiers/lively/seed-lively.ts",
     // The standard tier (the test-lane world) seeds its fixed QA people,
     // knowledge and resting rows into the org it created or adopted: named

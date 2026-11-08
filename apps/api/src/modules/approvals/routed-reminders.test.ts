@@ -5,10 +5,11 @@
 // The sweep reads the same route and the same deciders as Home, so it names nobody who cannot
 // already see the row.
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { randomUUID } from "node:crypto"
 import { sql } from "~/db/connection"
 import { toolRegistry } from "~/modules/apps/app-registries"
+import * as appsInit from "~/modules/apps/init"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
@@ -329,4 +330,78 @@ describe("routed reminders: a sweep's page limit starves no row", () => {
     await runRoutedReminderSweep({ orgId: org })
     expect(await remindedFor(routed)).toBe(1)
   }, 300_000)
+})
+
+describe("routed reminders: an org whose reminders fail starves no other", () => {
+  let org = ""
+  let row = ""
+
+  beforeAll(async () => {
+    await acquireTestLock()
+    org = (await createTestOrg()).id
+    const asker = (await minimal.person(org, { name: "Fixture asker" })).id
+    const decider = (await minimal.person(org, { name: "Fixture decider" })).id
+    await minimal.grantScope(decider, "projects:approve")
+    const thread = await minimal.thread(org, asker, { title: "A failing org" })
+    row = randomUUID()
+    await sql.unsafe(
+      insertSql("kernel.approval_requests", {
+        id: row,
+        org_id: org,
+        handle: `APR-${row.slice(0, 8)}`,
+        thread_id: thread,
+        originating_thread_id: thread,
+        tool_name: "projects:createTask",
+        tool_params: "{}",
+        current_payload: JSON.stringify({ title: "Waits in a failing org" }),
+        expires_at: { raw: "now() + INTERVAL '3 days'" },
+        created_at: { raw: AGE["24h01"] },
+        notify_user_ids: `{${asker},${decider}}`,
+        requested_by: asker,
+        status: "pending",
+        summary: JSON.stringify({ title: "Waits in a failing org" }),
+        metadata: JSON.stringify({ originRoutineId: randomUUID() }),
+        resource_owner_id: null,
+        route_person_id: decider,
+      }),
+    )
+  }, 60_000)
+
+  afterAll(async () => {
+    await releaseTestLock()
+  })
+
+  async function stamp() {
+    const [r] = await sql<{ checked: string | null; failures: string | null; ahead: boolean }[]>`
+      SELECT metadata->>'routedReminderCheckedAt' AS checked,
+             metadata->>'routedReminderFailures' AS failures,
+             (metadata->>'routedReminderCheckedAt')::timestamptz > now() + INTERVAL '50 minutes' AS ahead
+        FROM kernel.approval_requests WHERE id = ${row}::uuid`
+    return r as { checked: string | null; failures: string | null; ahead: boolean }
+  }
+
+  it("a failure checks the rows anyway, each failure in a row waits longer, a success clears it", async () => {
+    const failing = spyOn(appsInit, "awaitOrgApps").mockRejectedValue(new Error("org unreadable"))
+    try {
+      expect((await runRoutedReminderSweep({ orgId: org })).notified).toBe(0)
+      const first = await stamp()
+      expect(first.checked).not.toBeNull()
+      expect(first.failures).toBe("1")
+      expect(first.ahead).toBe(false)
+
+      await runRoutedReminderSweep({ orgId: org })
+      const second = await stamp()
+      expect(second.failures).toBe("2")
+      expect(second.ahead).toBe(true)
+    } finally {
+      failing.mockRestore()
+    }
+    // Backed off: the next sweep does not read the row at all.
+    expect((await runRoutedReminderSweep({ orgId: org })).candidates).toBe(0)
+
+    await sql`UPDATE kernel.approval_requests
+                 SET metadata = metadata - 'routedReminderCheckedAt' WHERE id = ${row}::uuid`
+    expect((await runRoutedReminderSweep({ orgId: org })).notified).toBe(1)
+    expect((await stamp()).failures).toBeNull()
+  }, 120_000)
 })

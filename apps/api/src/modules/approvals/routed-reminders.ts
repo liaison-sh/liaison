@@ -133,7 +133,7 @@ async function remindOrg(orgId: string, rows: readonly WaitingRow[]): Promise<nu
     // Every row read is checked now; one reminded below also gets its marker and leaves the scan.
     await tx.execute(drizzleSql`
       UPDATE ${K}.approval_requests
-         SET metadata = COALESCE(metadata, '{}'::jsonb)
+         SET metadata = (COALESCE(metadata, '{}'::jsonb) - 'routedReminderFailures')
                         || jsonb_build_object('routedReminderCheckedAt', to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))
        WHERE org_id = ${orgId}::uuid AND status = 'pending'
          AND id IN (${drizzleSql.join(
@@ -219,6 +219,29 @@ async function remindOrg(orgId: string, rows: readonly WaitingRow[]): Promise<nu
 }
 
 /**
+ * An org whose reminders failed: its rows are checked anyway, so they go to the back of the line
+ * instead of leading every sweep, and each failure in a row waits longer before the next try
+ * (none after the first, then 1, 3, 7, 15 and at most 24 hours). A success clears the count.
+ */
+async function backOff(orgId: string, rows: readonly WaitingRow[]): Promise<void> {
+  const failures = drizzleSql.raw("COALESCE((metadata->>'routedReminderFailures')::int, 0)")
+  await withPrivilegedDb(orgId, "approval-routed-reminder-backoff", (tx) =>
+    tx.execute(drizzleSql`
+      UPDATE ${K}.approval_requests
+         SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+               'routedReminderFailures', ${failures} + 1,
+               'routedReminderCheckedAt', to_char(
+                 (clock_timestamp() + make_interval(hours => LEAST(power(2, ${failures}) - 1, 24)::int))
+                   AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))
+       WHERE org_id = ${orgId}::uuid AND status = 'pending'
+         AND id IN (${drizzleSql.join(
+           rows.map((r) => drizzleSql`${r.id}::uuid`),
+           drizzleSql`, `,
+         )})`),
+  )
+}
+
+/**
  * The scheduled pass: every pending request that is routed to a person, or that only a person
  * may sign, and has waited 24 hours, tells its deciders once. `orgId` limits it to one org.
  */
@@ -243,7 +266,12 @@ export async function runRoutedReminderSweep(
         const n = await writeUnlessMoving(orgId, () => remindOrg(orgId, rows))
         if (n !== SKIPPED_MOVING) notified += n
       } catch (err) {
-        log.warn({ err, orgId }, "routed reminders failed for an org; the next sweep tries again")
+        log.warn({ err, orgId }, "routed reminders failed for an org; a later sweep tries again")
+        try {
+          await writeUnlessMoving(orgId, () => backOff(orgId, rows))
+        } catch (stampErr) {
+          log.warn({ err: stampErr, orgId }, "routed reminders: could not record the failure")
+        }
       }
     }
     const last = batch[batch.length - 1]

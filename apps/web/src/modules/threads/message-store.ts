@@ -1112,6 +1112,32 @@ let _messageApi: { get: (path: string) => Promise<any> } | null = null
 // guard in MailMessageRenderer's blob-url fix).
 const _threadEpoch: Record<string, number> = {}
 
+/**
+ * A fetched row over the stored one. The page answers for the moment its
+ * request left: an edit or a delete whose socket frame landed while it was on
+ * the wire is newer than the page, and copying the page over it put the old
+ * text back on screen (the edit gone until the next reload). The stored edit
+ * stays when it is newer than the page's, the stored delete when the page
+ * still has the row alive; everything else is the page's.
+ */
+function assignFetched(prev: Message, fetched: Message): void {
+  const editedAt = (m: Message) => (m.editedAt ? Date.parse(m.editedAt) : Number.NaN)
+  const keepEdit = !!prev.editedAt && (!fetched.editedAt || editedAt(prev) > editedAt(fetched))
+  const keepDelete = !!prev.deletedAt && !fetched.deletedAt
+  const { content, mentions, editedAt: prevEditedAt, deletedAt, reactions } = prev
+  Object.assign(prev, fetched)
+  if (keepEdit) {
+    prev.content = content
+    prev.mentions = mentions
+    prev.editedAt = prevEditedAt
+  }
+  if (keepDelete) {
+    prev.content = content
+    prev.reactions = reactions
+    prev.deletedAt = deletedAt
+  }
+}
+
 function currentEpoch(threadId: string): number {
   return _threadEpoch[threadId] ?? 0
 }
@@ -1186,7 +1212,7 @@ export async function loadMessages(
         const seen = new Set<string>()
         for (const m of ordered) {
           const prev = existing.byId[m.id]
-          if (prev) Object.assign(prev, m)
+          if (prev) assignFetched(prev, m)
           else existing.byId[m.id] = m
           // A sub_run card a fetch brings in takes the update that beat it here.
           if (m.metadata?.subRun) applyPendingSubRunUpdateIfMatch(existing.byId[m.id]!)

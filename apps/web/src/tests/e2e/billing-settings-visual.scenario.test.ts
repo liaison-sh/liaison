@@ -24,7 +24,7 @@ const SCREENSHOT_OPTS = { maxDiffPixelRatio: 0.05 }
 
 let _gh: FakeGitHubReleasesHandle | undefined
 const systemTest = createProfiledE2ETest({
-  workerIdOffset: 100,
+  workerIdOffset: 20,
   portCount: 4,
   before: async (ports) => {
     _gh = await startFakeGitHubReleases(ports[2], {
@@ -70,7 +70,7 @@ systemTest.describe("System settings golden", () => {
 // ─── W5.2 — Managed-mode Plan card cropped golden ────────────────────────
 
 const planTest = createProfiledE2ETest({
-  workerIdOffset: 120,
+  workerIdOffset: 25,
   portCount: 3,
   before: async () => ({
     env: {},
@@ -101,7 +101,7 @@ planTest.describe("Plan card (managed) golden", () => {
 
 const W5_MAINT_WORKER_KEY = "w5-maintenance"
 const maintenanceTest = createProfiledE2ETest({
-  workerIdOffset: 140,
+  workerIdOffset: 35,
   portCount: 4,
   before: async () => {
     const paths = maintenanceFlagPaths(W5_MAINT_WORKER_KEY)

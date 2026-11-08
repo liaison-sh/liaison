@@ -20,7 +20,7 @@ import { seedTicket } from "./helpers/seed"
 let gmail: GmailHttpFixture
 
 const test = createProfiledE2ETest({
-  workerIdOffset: 160,
+  workerIdOffset: 70,
   portCount: 2,
   before: async () => {
     gmail = await startGmailHttpFixture()

@@ -167,6 +167,25 @@ describe("ApprovalsScreen", () => {
     expect(screen.getByTestId("approvals-item-ar-2")).toBeTruthy()
   })
 
+  // A refresh replaces the row objects in the store. Keyed by the object, the
+  // list remounted every card on each refresh (the phone queue's deadline chip
+  // came back detached between two reads, and an open deny sheet closed).
+  it("keeps each card mounted when a refresh replaces its row", async () => {
+    handleWsCreate(row({ id: "ar-1" }), "u-approver")
+    render(() => <ApprovalsScreen />)
+    await waitFor(() => expect(screen.getByTestId("approvals-item-ar-1")).toBeTruthy())
+    const before = screen.getByTestId("approvals-item-ar-1")
+
+    handleWsUpdate(
+      row({ id: "ar-1", summary: { kind: "mail.reply", title: "Re: Test", lines: ["edited"] } }),
+    )
+
+    await waitFor(() =>
+      expect(screen.getByTestId("approvals-item-ar-1").textContent).toContain("edited"),
+    )
+    expect(screen.getByTestId("approvals-item-ar-1")).toBe(before)
+  })
+
   // F6. The header said "Soonest expires in 3913 min" over rows that read
   // "3d": one figure nobody can price against the other.
   it("humanises a multi-day deadline instead of printing thousands of minutes", async () => {

@@ -1444,3 +1444,80 @@ describe("two agents streaming into one room", () => {
     expect(getAgentStream(THREAD, BETA).state).toBe("streaming")
   })
 })
+
+// A page read before a socket edit or delete landed answers for the moment its
+// request left. Copying it over the stored row put the old text back on screen
+// (the realtime edit scenario saw "Edited by Lucas", then the original again).
+describe("loadMessages — a page in flight does not undo a socket edit or delete", () => {
+  beforeEach(() => {
+    resetMessageStore()
+  })
+
+  function deferredPage() {
+    let resolve!: (v: any) => void
+    const api = {
+      get: vi.fn(
+        () =>
+          new Promise((r) => {
+            resolve = r
+          }),
+      ),
+    }
+    return { api, resolve: (data: any[]) => resolve({ data }) }
+  }
+
+  it("keeps an edit that landed while the page was on the wire", async () => {
+    await loadMessages(
+      { get: vi.fn().mockResolvedValue({ data: [makeMessage()] }) } as any,
+      threadId,
+    )
+    const page = deferredPage()
+    const reload = loadMessages(page.api as any, threadId)
+    handleWsMessageEvent("update", {
+      threadId,
+      id: "m1",
+      content: "Hello, edited",
+      mentions: null,
+      editedAt: "2026-01-01T00:05:00Z",
+    })
+    page.resolve([makeMessage()])
+    await reload
+    expect(getMessage(threadId, "m1")?.content).toBe("Hello, edited")
+    expect(getMessage(threadId, "m1")?.editedAt).toBe("2026-01-01T00:05:00Z")
+  })
+
+  it("takes a page that carries a newer edit", async () => {
+    await loadMessages(
+      {
+        get: vi.fn().mockResolvedValue({
+          data: [makeMessage({ content: "first edit", editedAt: "2026-01-01T00:05:00Z" })],
+        }),
+      } as any,
+      threadId,
+    )
+    await loadMessages(
+      {
+        get: vi.fn().mockResolvedValue({
+          data: [makeMessage({ content: "second edit", editedAt: "2026-01-01T00:09:00Z" })],
+        }),
+      } as any,
+      threadId,
+    )
+    expect(getMessage(threadId, "m1")?.content).toBe("second edit")
+    expect(getMessage(threadId, "m1")?.editedAt).toBe("2026-01-01T00:09:00Z")
+  })
+
+  it("keeps a delete that landed while the page was on the wire", async () => {
+    await loadMessages(
+      { get: vi.fn().mockResolvedValue({ data: [makeMessage()] }) } as any,
+      threadId,
+    )
+    const page = deferredPage()
+    const reload = loadMessages(page.api as any, threadId)
+    handleWsMessageEvent("delete", { threadId, id: "m1", deletedAt: "2026-01-01T00:06:00Z" })
+    page.resolve([makeMessage()])
+    await reload
+    expect(getMessage(threadId, "m1")?.content).toBeNull()
+    expect(getMessage(threadId, "m1")?.deletedAt).toBe("2026-01-01T00:06:00Z")
+  })
+})

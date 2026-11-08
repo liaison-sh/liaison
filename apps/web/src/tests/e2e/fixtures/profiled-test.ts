@@ -13,6 +13,7 @@ import {
 } from "@liaison/test-helpers"
 import { test as base, type Page } from "@playwright/test"
 import { loginAs } from "./test"
+import { PROFILE_WORKER_SLOTS } from "./worker-slots"
 
 /**
  * Profiled Playwright fixture factory for Phase 14 E2E (W1/W2b/W3/W5).
@@ -36,7 +37,7 @@ import { loginAs } from "./test"
  */
 
 export interface ProfiledFixtureProfile {
-  /** Added to `workerInfo.workerIndex` for deterministic-port allocation. */
+  /** The first of this profile's worker ids (see PROFILE_WORKER_SLOTS). */
   workerIdOffset: number
   /** Reserve N ports per worker: [0]=API, [1]=Vite, [2…]=available to `before`. */
   portCount: number
@@ -173,6 +174,11 @@ export function createProfiledE2ETest(profile: ProfiledFixtureProfile) {
         // which grows with every worker Playwright replaces: ports wrap at
         // 100 ids, so a growing index eventually landed on the ports of the
         // shared lanes (pw-lanes.ts, ids 10..13) while they were serving.
+        if (workerInfo.parallelIndex >= PROFILE_WORKER_SLOTS) {
+          throw new Error(
+            `profiled fixture: worker slot ${workerInfo.parallelIndex} is past the ${PROFILE_WORKER_SLOTS} ids a profile owns; run with fewer workers`,
+          )
+        }
         const workerId =
           workerInfo.parallelIndex +
           profile.workerIdOffset +

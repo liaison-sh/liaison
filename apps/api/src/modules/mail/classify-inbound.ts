@@ -139,16 +139,19 @@ const ORIGINAL_MESSAGE =
 
 const RECIPIENT_FIELD = /^[ \t]*(?:final|original)-recipient[ \t]*:(.*)$/gim
 
-/** A report's HTML as plain text, for a report that has no text part. */
+/**
+ * A report's HTML as plain text, for a report that has no text part. The result is only read
+ * by these rules, never shown, and holds no `<` or `>` at all: tags go, and any bracket left
+ * over (or written as an entity) becomes a space.
+ */
 export function htmlAsText(html: string | null): string | null {
   if (html === null) return null
   return html
-    .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, "")
+    .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, " ")
     .replace(/<br\s*\/?>|<\/(?:p|div|tr|li|h[1-6]|pre|blockquote)>/gi, "\n")
     .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;|&#160;/gi, " ")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
+    .replace(/[<>]/g, " ")
+    .replace(/&nbsp;|&#160;|&lt;|&gt;/gi, " ")
     .replace(/&#64;|&commat;/gi, "@")
     .replace(/&quot;/gi, '"')
     .replace(/&amp;/gi, "&")

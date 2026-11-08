@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test"
 import {
   classifyInbound,
   failedRecipients,
+  htmlAsText,
   reportConcerns,
   reportText,
 } from "~/modules/mail/classify-inbound"
@@ -510,5 +511,13 @@ describe("reportConcerns: whether a failure is about a draft's recipient", () =>
   it("a sub-domain address is not the draft's", () => {
     const text = "Could not be delivered to bob@x.example.evil.test."
     expect(reportConcerns(facts(["bob@x.example"], text, null))).toBe(false)
+  })
+})
+
+describe("htmlAsText", () => {
+  it("leaves no angle bracket, whatever the markup or its entities", () => {
+    const out = htmlAsText("<scr<script>ipt>x</script> &lt;b&gt; <p>a@b.example</p>") ?? ""
+    expect(out).not.toMatch(/[<>]/)
+    expect(out).toContain("a@b.example")
   })
 })

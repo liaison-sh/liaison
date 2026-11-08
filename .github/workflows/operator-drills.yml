@@ -34,7 +34,11 @@ jobs:
         with:
           bun-version: "1.4.x"
       - name: Install
-        run: bun install --frozen-lockfile
+        # A package postinstall that cannot reach its CDN (ffmpeg-static fetches its
+        # binary from a GitHub release) must not fail the job: no CI test spawns a
+        # real ffmpeg, only the live, keyed media scenario. Same fallback as
+        # apps/api/Dockerfile.
+        run: bun install --frozen-lockfile || { echo "install scripts failed (CDN outage?), retrying with --ignore-scripts"; bun install --frozen-lockfile --ignore-scripts; }
       - name: Generate throwaway deploy env
         # deploy/.env is gitignored (operator-supplied secrets); CI needs one to
         # exist to drive docker compose, so seed it from the committed example

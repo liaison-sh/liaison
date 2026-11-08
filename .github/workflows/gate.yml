@@ -58,7 +58,11 @@ jobs:
         with:
           bun-version: "1.4.x"
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        # A package postinstall that cannot reach its CDN (ffmpeg-static fetches its
+        # binary from a GitHub release) must not fail the job: no CI test spawns a
+        # real ffmpeg, only the live, keyed media scenario. Same fallback as
+        # apps/api/Dockerfile.
+        run: bun install --frozen-lockfile || { echo "install scripts failed (CDN outage?), retrying with --ignore-scripts"; bun install --frozen-lockfile --ignore-scripts; }
       - name: Plan the lanes from the diff
         id: plan
         env:
@@ -107,7 +111,11 @@ jobs:
         with:
           bun-version: "1.4.x"
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        # A package postinstall that cannot reach its CDN (ffmpeg-static fetches its
+        # binary from a GitHub release) must not fail the job: no CI test spawns a
+        # real ffmpeg, only the live, keyed media scenario. Same fallback as
+        # apps/api/Dockerfile.
+        run: bun install --frozen-lockfile || { echo "install scripts failed (CDN outage?), retrying with --ignore-scripts"; bun install --frozen-lockfile --ignore-scripts; }
       - name: Install postgres/redis CLIs and xmllint
         # The client's major matches docker-compose's postgres: pg_dump refuses a
         # newer server, and the security suite's export test runs it.

@@ -225,10 +225,11 @@ describe("deal rows", () => {
   it("a deal row left on a subtask is not counted by the deal reads", async () => {
     const p = await makePipeline(w, "Root deals only")
     const a = await makeTask(w, p.projectId, "Top deal")
-    const sub = await makeTask(w, p.projectId, "Old nested deal", { parentTaskId: a })
-    // A row from before nesting was refused.
+    const sub = await makeTask(w, p.projectId, "Old nested deal")
+    // A deal nested before nesting was refused keeps its deal rows.
     await db.execute(drizzleSql`
-      INSERT INTO app_projects.deals (task_id, org_id) VALUES (${sub}::uuid, ${w.orgId}::uuid)`)
+      UPDATE app_projects.tasks SET parent_task_id = ${a}::uuid WHERE id = ${sub}::uuid`)
+    expect(await dealState(sub)).not.toBeNull()
     const deals = await run((tx) => listDeals(tx, w.orgId, { projectId: p.projectId }))
     expect(deals.map((d) => d.taskId)).toEqual([a])
   })

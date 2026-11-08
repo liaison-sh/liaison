@@ -7943,10 +7943,7 @@ export const FR_BY_KEY: Record<string, string> = {
     "Non envoyée : cette décision datait de plus de 15 minutes. Décidez à nouveau.",
   "kernel.settingsUi.accountsToQuestion":
     "{{name}} est responsable de compte de {{count}} entreprises. Qui les reprend ?",
-  "kernel.settingsUi.accountsToGiveTo":
-    "Les confier à",
-  "kernel.settingsUi.accountsToChoose":
-    "Choisir une personne",
-  "kernel.settingsUi.accountsToNobody":
-    "Les laisser sans responsable de compte",
+  "kernel.settingsUi.accountsToGiveTo": "Les confier à",
+  "kernel.settingsUi.accountsToChoose": "Choisir une personne",
+  "kernel.settingsUi.accountsToNobody": "Les laisser sans responsable de compte",
 }

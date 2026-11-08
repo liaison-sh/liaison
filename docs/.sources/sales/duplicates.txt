@@ -29,3 +29,9 @@ Trusted sender label and Remove trust -> apps/web/src/modules/contacts/TrustedSe
 Labels -> packages/shared/src/i18n/locales/en/contacts.json:113-121
 Same control on a ticket conversation -> apps/web/src/modules/tickets/TicketConversationStream.tsx:580
 Admin and read scopes -> apps/api/src/modules/contacts/trusted-senders.ts:25-27
+companies_merge sourceId deleted, targetId kept, gated, scope kernel:companies:write -> apps/api/src/modules/agent/tools/company-tools.ts:988-1008
+Card names both managers, which stays, sharing does not widen, cannot be undone -> apps/api/src/modules/agent/tools/company-tools.ts:735-750
+Waiting approvals, people with company text, portal accounts, deals, pipelines re-pointed; discussion joins -> apps/api/src/modules/contacts/companies.ts:1363-1480
+Kept company keeps its manager, else takes the source's -> apps/api/src/modules/contacts/companies.ts:1383-1393
+Org-wide company not merged into a restricted one -> apps/api/src/modules/contacts/companies.ts:1374-1380
+Change to a merged company answers "This company was merged into" -> apps/api/src/modules/contacts/companies.ts:297-310

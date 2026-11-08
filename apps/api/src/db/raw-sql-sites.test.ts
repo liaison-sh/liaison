@@ -263,6 +263,9 @@ const REVIEWED: Record<string, Record<string, string>> = {
     "target.table": MANIFEST_IDENT,
     "target.joinOn": MANIFEST_IDENT,
   },
+  "apps/api/src/modules/contacts/service.ts#repointContactSoftReferences": {
+    deals: "quoteIdent(schemaRef()) over code constants (service.ts, repointContactSoftReferences)",
+  },
   "apps/api/src/modules/contacts/erasure.ts#clearContactSoftReferences": {
     dealsTable: "rel() over code constants (erasure.ts:81)",
   },

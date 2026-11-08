@@ -2452,5 +2452,21 @@
     "say": "she asked to get our offers again",
     "typed": ["resubscribe", "opt back in", "remove opt-out"],
     "any": ["mail__suppression_remove"]
+  },
+  {
+    "id": "K08",
+    "set": "seed",
+    "lang": "en",
+    "say": "Arlon Studio and Maison Arlon are the same client, keep Maison Arlon",
+    "typed": ["merge companies", "duplicate company", "combine companies"],
+    "any": ["kernel__companies_merge"]
+  },
+  {
+    "id": "K09",
+    "set": "seed",
+    "lang": "fr",
+    "say": "fusionne ces deux sociétés, c'est le même client",
+    "typed": ["fusionner sociétés", "doublon société", "même entreprise"],
+    "any": ["kernel__companies_merge"]
   }
 ]

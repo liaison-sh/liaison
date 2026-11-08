@@ -226,8 +226,26 @@ export async function readDockState(page: Page): Promise<PersistedDockState | nu
   })
 }
 
+/** A spot inside `target`, relative to its box, where a real pointer reaches
+ *  the element itself, or null when something covers all of it. The chat
+ *  dock's open window may partly cover a main-panel composer (intended: the
+ *  layout never moves for it), so a person clicks the part they can see. */
+async function uncoveredSpot(target: Locator): Promise<{ x: number; y: number } | null> {
+  return target.evaluate((el) => {
+    const r = el.getBoundingClientRect()
+    for (const fy of [0.5, 0.25, 0.75]) {
+      for (const fx of [0.5, 0.25, 0.1, 0.75, 0.9]) {
+        const hit = document.elementFromPoint(r.left + r.width * fx, r.top + r.height * fy)
+        if (hit && el.contains(hit)) return { x: r.width * fx, y: r.height * fy }
+      }
+    }
+    return null
+  })
+}
+
 /** Type one message into a conversation surface (dock tab or main-panel tab)
- *  and send it, exactly as a person does: click the composer, type, Enter. */
+ *  and send it, exactly as a person does: click the composer where it can be
+ *  seen, type, Enter. */
 export async function sendInConversation(
   page: Page,
   conversation: Locator,
@@ -235,7 +253,9 @@ export async function sendInConversation(
 ): Promise<void> {
   const editor = conversation.getByTestId("compose-editor")
   await editor.waitFor({ state: "visible", timeout: NAV_TIMEOUT })
-  await editor.click(NAV_CLICK)
+  const spot = await uncoveredSpot(editor)
+  if (!spot) throw new Error("The composer is fully covered: nothing a person could click")
+  await editor.click({ ...NAV_CLICK, position: spot })
   await page.keyboard.type(text)
   await page.keyboard.press("Enter")
 }

@@ -411,6 +411,30 @@ describe("merging a placeholder that owns contacts", () => {
   })
 })
 
+describe("merging a placeholder that created a company", () => {
+  it("the person becomes the creator of a private company the placeholder created", async () => {
+    const ph3 = await placeholder("company-creator")
+    const [company] = await sql<Array<{ id: string }>>`
+      INSERT INTO kernel.companies (org_id, handle, name, org_access, created_by)
+      VALUES (${orgId}, ${`@co-${crypto.randomUUID().slice(0, 6)}`}, 'Placeholder Works', 'none', ${ph3})
+      RETURNING id`
+
+    await mergePlaceholderIntoUser({
+      orgId,
+      actorId: admin.userId,
+      placeholderId: ph3,
+      targetId: realId,
+    })
+
+    const [after] = await sql<Array<{ created_by: string }>>`
+      SELECT created_by::text FROM kernel.companies WHERE id = ${company!.id}`
+    expect(after!.created_by).toBe(realId)
+    const [gone] = await sql<Array<{ n: number }>>`
+      SELECT count(*)::int AS n FROM kernel.users WHERE id = ${ph3}`
+    expect(gone!.n).toBe(0)
+  })
+})
+
 describe("merging a placeholder whose private contact the person also has", () => {
   it("merges the two contacts (fields, ids, links kept) instead of dropping one", async () => {
     const ph3 = await placeholder("twin-owner")

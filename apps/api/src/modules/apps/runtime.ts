@@ -3209,8 +3209,17 @@ async function registerSingleApp(
             if (typeof tool.useInstead === "string") entry.useInstead = tool.useInstead
             // The manifest's row condition. It lands beside, not on, the host-only
             // `taintSourceWhen` function that taint.ts calls.
+            // The app's `outsideTextFields` travel with it: they say which text beside the
+            // rows a person outside the org can set.
             if (tool.taintSourceWhen !== null && typeof tool.taintSourceWhen === "object") {
-              entry.taintSourceWhenRow = tool.taintSourceWhen
+              const declared: unknown = (desc as { outsideTextFields?: unknown }).outsideTextFields
+              const outsideFields = Array.isArray(declared)
+                ? declared.filter((f): f is string => typeof f === "string")
+                : []
+              entry.taintSourceWhenRow = {
+                ...tool.taintSourceWhen,
+                ...(outsideFields.length > 0 ? { outsideFields } : {}),
+              }
             }
             // What a tool writes is read only by the person writing it: it narrows a scope-taint
             // refusal, so it counts for a first-party app alone (registration refuses any other).

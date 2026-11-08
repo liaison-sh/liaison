@@ -170,6 +170,16 @@ describe("manifest keys carried onto the registry", () => {
     expect(missing).toEqual([])
   })
 
+  it("a row condition carries the app's outside text fields, which say where text beside the rows comes from", async () => {
+    const manifest = appWith(
+      { reads: { taintSource: true, taintSourceWhen: WHEN } },
+      { outsideTextFields: ["title"] },
+    )
+    await registerApps([manifest], TEST_ORG)
+    const entry = toolRegistry.get([TEST_ORG, APP, "reads"]) as Record<string, unknown> | undefined
+    expect(entry?.taintSourceWhenRow).toEqual({ ...WHEN, outsideFields: ["title"] })
+  })
+
   it("a sink-reader declaration refuses an app nobody vouched for, so nothing is carried", async () => {
     const manifest = appWith(
       {

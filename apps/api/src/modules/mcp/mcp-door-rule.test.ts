@@ -287,6 +287,32 @@ describe("a taintSourceWhen row condition", () => {
     ).toBe(true)
   })
 
+  it("a paginated clean read with a cursor and counts beside the rows stays clean", () => {
+    const page = {
+      items: [{ origin: "member", title: "Ours" }],
+      nextCursor: "eyJpZCI6IjEyMyJ9",
+      hasMore: true,
+      total: 40,
+      status: "ok",
+    }
+    expect(rowsMatchTaintCondition(page, cond)).toBe(false)
+    expect(rowsMatchTaintCondition(page, { ...cond, outsideFields: ["body"] })).toBe(false)
+  })
+
+  it("outside text in a sibling string field taints, by the system list or the app's outside fields", () => {
+    const page = { items: [{ origin: "member" }], nextCursor: "c2", preview: "outside text" }
+    expect(rowsMatchTaintCondition(page, cond)).toBe(true)
+    // An app that names where outside text lives: only those keys beside the rows taint.
+    expect(rowsMatchTaintCondition(page, { ...cond, outsideFields: ["preview"] })).toBe(true)
+    expect(rowsMatchTaintCondition(page, { ...cond, outsideFields: ["body"] })).toBe(false)
+    expect(
+      rowsMatchTaintCondition(
+        { items: [{ origin: "member" }], related: { note: { text: "outside" } } },
+        { ...cond, outsideFields: ["related"] },
+      ),
+    ).toBe(true)
+  })
+
   it("what sits inside a clean row, and counts beside the rows, leave it clean", () => {
     expect(
       rowsMatchTaintCondition(

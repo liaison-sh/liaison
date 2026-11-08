@@ -463,7 +463,55 @@ export async function taintThreadForTriggerEvent(
 export interface TaintSourceRowCondition {
   field: string
   equals: string | number | boolean
+  /**
+   * The app's `outsideTextFields`. When given, text beside the rows taints only under one of
+   * these keys (anything else there is the system's: a cursor, a status). When not, only the
+   * keys in `SYSTEM_FIELDS` are the system's, and any other text beside the rows taints.
+   */
+  outsideFields?: readonly string[]
 }
+
+/**
+ * Keys of a list result that the system fills, never a person: paging, counts and status.
+ * Text under one of them beside the rows is not outside text.
+ */
+export const SYSTEM_FIELDS: ReadonlySet<string> = new Set(
+  [
+    "cursor",
+    "nextCursor",
+    "prevCursor",
+    "previousCursor",
+    "endCursor",
+    "startCursor",
+    "next",
+    "prev",
+    "previous",
+    "nextPageToken",
+    "pageToken",
+    "nextPage",
+    "page",
+    "pageSize",
+    "pages",
+    "offset",
+    "limit",
+    "count",
+    "total",
+    "totalCount",
+    "hasMore",
+    "hasNextPage",
+    "hasPreviousPage",
+    "truncated",
+    "status",
+    "state",
+    "kind",
+    "type",
+    "id",
+    "updatedAt",
+    "asOf",
+    "syncedAt",
+    "source",
+  ].map((key) => key.toLowerCase()),
+)
 
 /** How deep the row walk looks into a result: a row sits in a list, a list in an object or two. */
 const ROW_WALK_DEPTH = 6
@@ -474,29 +522,50 @@ const ROW_WALK_DEPTH = 6
  * taints the turn; rows that all carry another value leave it clean. Anything the condition
  * cannot judge taints (fail closed): a result with no row carrying the field (a projection that
  * dropped it), an entry of a list outside every row that does not carry it (a `related` list
- * beside the judged `items`), text outside every row (a `summary` beside them, or a `related`
- * object holding a body), or a part nested deeper than the walk reads. Numbers, flags and nulls
- * outside the rows (a `total`) leave it clean.
+ * beside the judged `items`), outside text beside the rows (a `summary`, or a `related`
+ * object holding a body), or a part nested deeper than the walk reads. Beside the rows, text is
+ * outside text under a key the app's `outsideTextFields` name, or, when the app names none,
+ * under any key but the system's (`SYSTEM_FIELDS`: a cursor, a total). Numbers, flags and
+ * nulls there leave it clean.
  */
 export function rowsMatchTaintCondition(result: unknown, cond: TaintSourceRowCondition): boolean {
   type Verdict = "match" | "unjudged" | "clean" | "none"
   const RANK: Record<Verdict, number> = { none: 0, clean: 1, unjudged: 2, match: 3 }
   const worst = (verdicts: Verdict[]): Verdict =>
     verdicts.reduce<Verdict>((a, b) => (RANK[b] > RANK[a] ? b : a), "none")
-  const judge = (value: unknown, depth: number, inList: boolean): Verdict => {
+  const declared = cond.outsideFields?.length ? new Set(cond.outsideFields) : null
+  /** Whether text under `key`, outside every row, is outside text. */
+  const outsideKey = (key: string | null): boolean => {
+    if (declared) return key !== null && declared.has(key)
+    return key === null || !SYSTEM_FIELDS.has(key.toLowerCase())
+  }
+  const judge = (
+    value: unknown,
+    depth: number,
+    inList: boolean,
+    key: string | null,
+    outside: boolean,
+  ): Verdict => {
     if (value === null || value === undefined) return "none"
     if (depth > ROW_WALK_DEPTH) return "unjudged"
-    // Text outside every row says nothing of where it came from; a count or a flag is no text.
-    if (typeof value === "string") return "unjudged"
+    // Text outside every row is outside text unless the system wrote it; a count or a flag
+    // is no text.
+    if (typeof value === "string") return outside || outsideKey(key) ? "unjudged" : "none"
     if (typeof value !== "object") return inList ? "unjudged" : "none"
-    if (Array.isArray(value)) return worst(value.map((item) => judge(item, depth + 1, true)))
+    if (Array.isArray(value)) {
+      return worst(value.map((item) => judge(item, depth + 1, true, key, outside)))
+    }
     const row = value as Record<string, unknown>
     if (Object.hasOwn(row, cond.field)) return row[cond.field] === cond.equals ? "match" : "clean"
-    const inside = worst(Object.values(row).map((child) => judge(child, depth + 1, false)))
+    // Under a declared outside field, everything inside is outside text too.
+    const within = outside || (declared !== null && key !== null && declared.has(key))
+    const inside = worst(
+      Object.entries(row).map(([k, child]) => judge(child, depth + 1, false, k, within)),
+    )
     // An entry of a list with no row of its own is a row that does not say where it came from.
     return inList && inside === "none" ? "unjudged" : inside
   }
-  return judge(result, 0, false) !== "clean"
+  return judge(result, 0, false, null, false) !== "clean"
 }
 
 /**

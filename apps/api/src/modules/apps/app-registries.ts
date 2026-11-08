@@ -387,7 +387,12 @@ export const toolRegistry = createTypedRegistry<
     taintSourceWhen?: (params: unknown, ctx: { orgId: string }) => Promise<boolean>
     /** The manifest's `taintSourceWhen`: a field of a row the tool read and the value that makes
      *  that row outside text. Carried here; the function above stays host-only. */
-    taintSourceWhenRow?: { field: string; equals: string | number | boolean }
+    taintSourceWhenRow?: {
+      field: string
+      equals: string | number | boolean
+      /** The app's `outsideTextFields`: where text beside the rows comes from outside. */
+      outsideFields?: readonly string[]
+    }
     /** Manifest `approvalCard`: the summary template and the `pill` shown on the card. */
     approvalCard?: { summary?: string; pill?: { label: string; labelKey?: string } }
     /** Manifest `resultCard`: how the tool's result is drawn as a card. */

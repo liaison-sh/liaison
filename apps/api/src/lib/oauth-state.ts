@@ -47,7 +47,7 @@ export function oauthStateSlug(state: string): string | null {
 export function stateSlugFitsHost(state: string, binding: HostBinding): boolean {
   if (!oauthStatePrefixed()) return true
   const slug = oauthStateSlug(state)
-  if (slug === null || binding.kind === "non-org") return false
+  if (slug === null || binding.kind === "non-org" || binding.kind === "app-frame") return false
   return binding.kind === "unbound" || binding.slug === slug
 }
 

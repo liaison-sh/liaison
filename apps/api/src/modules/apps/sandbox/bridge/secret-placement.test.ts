@@ -91,7 +91,7 @@ function egress(m: AppManifestForBridge = manifest()): Record<string, any> {
     userId: USER,
     appName: m.name,
     actorType: "user",
-    allowedDomains: ALLOWED,
+    egress: async () => ({ allowedDomains: ALLOWED, manifest: m }),
     callerScopes: [],
     inheritedActor: { actorType: "user" as const },
     manifest: m,

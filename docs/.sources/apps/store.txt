@@ -179,3 +179,4 @@ every fulfilment path (agent, Boxtal tick, carrier scan) decided in the create h
 one email per fulfillment with its first tracking number; no tracking, or a later change, never emails -> bundled-apps/shopify/src/lib/b2b.ts:193
 the result says whether Shopify emailed the customer (customerNotification) -> bundled-apps/shopify/src/mutations/fulfillments.ts:345
 approval card wording (retail order, B2B order, no tracking yet, already tracked, decided at execution) -> bundled-apps/shopify/src/summarizers.ts:650
+Shopify admin links open in a new tab through the host; invoice number opens the Invoicing tab -> bundled-apps/shopify/src/ui/panels/index.tsx:97 ; bundled-apps/shopify/src/ui/lists.tsx:586

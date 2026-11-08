@@ -45,6 +45,7 @@ import {
   stateLabel,
   useStoreActions,
 } from "./AppStorePage"
+import { OutboundAccessSection } from "./OutboundAccessSection"
 import { StoreInstallDialog } from "./StoreInstallDialog"
 import { loadStoreData, settingsPathFor, storeItems } from "./store-data"
 import { isInWorkspace, type StoreItem } from "./store-model"
@@ -509,6 +510,10 @@ export const AppStoreDetail: Component = () => {
                 </ul>
               </Show>
             </section>
+
+            <Show when={it().registry?.source === "installed"}>
+              <OutboundAccessSection appId={appId()} />
+            </Show>
 
             <section class="mb-6">
               <div class="mb-2 flex items-center justify-between gap-2">

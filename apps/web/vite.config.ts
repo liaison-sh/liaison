@@ -70,10 +70,14 @@ export default defineConfig(({ mode }) => ({
   build: mode === NATIVE_MODE ? { outDir: NATIVE_OUT_DIR } : {},
   preview: {
     proxy: devProxy,
+    allowedHosts: [".localhost"],
   },
   server: {
     port: 5173,
     proxy: devProxy,
+    // `<org>.localhost` and `<app>--<org>.localhost` hosts (org hosts and app frame hosts
+    // in development and browser tests; Chromium resolves *.localhost to loopback).
+    allowedHosts: [".localhost"],
     watch: {
       ignored: ["**/logs/**", "**/test-results/**", "**/playwright-report/**"],
     },

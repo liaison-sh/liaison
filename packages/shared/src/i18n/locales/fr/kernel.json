@@ -2908,7 +2908,9 @@
     "mergeImportedDone": "{{placeholder}} est maintenant relié à {{name}}",
     "mergeImportedFailed": "Impossible de relier cet utilisateur importé",
     "connectionsIntro": "Les clients d'IA connectés à Liaison, et les serveurs MCP que vous connectez pour vous-même.",
-    "connectionsClients": "Clients connectés à Liaison"
+    "connectionsClients": "Clients connectés à Liaison",
+    "requestedOutboundDomains": "Hôtes que cette application peut joindre (accordés par l'installation)",
+    "newOutboundDomains": "Nouveaux hôtes que cette version peut joindre (accordés par la mise à jour)"
   },
   "settingsPage": {
     "unsupported": "Ce réglage nécessite une version plus récente de Liaison. Mettez Liaison à jour pour le modifier.",
@@ -5960,6 +5962,12 @@
     "storageHelp": "Fichiers stockés",
     "jobs": "Tâches de fond cette heure-ci",
     "jobsHelp": "Au-delà de la limite, le travail attend l'heure suivante",
+    "appRuns": "Exécutions d'applications aujourd'hui",
+    "appRunsHelp": "Exécutions des applications de l'organisation depuis minuit UTC",
+    "appBridgeCalls": "Appels des applications aujourd'hui",
+    "appBridgeCallsHelp": "Appels que les applications ont faits à Liaison depuis minuit UTC",
+    "appCpuMs": "Processeur des applications aujourd'hui (ms)",
+    "appCpuMsHelp": "Temps processeur des applications depuis minuit UTC, mesuré environ toutes les heures",
     "customApps": "Applications personnalisées",
     "auditDays": "Jours de journal d'audit",
     "unlimited": "{{used}} · illimité",
@@ -5972,6 +5980,7 @@
     "noticeReached": "{{label}} : la limite est atteinte ({{shown}}).",
     "noticeNear": "{{label}} : {{shown}} utilisés, 80 % de la limite.",
     "noticeTailJobs": "Les tâches de fond au-delà de la limite attendent l'heure suivante.",
+    "noticeTailAppDay": "Au-delà de la limite, les nouvelles exécutions d'applications attendent minuit UTC : les outils répondent que la limite est atteinte, et les webhooks, événements et tâches de fond s'exécutent après minuit.",
     "noticeTailStorageFull": "Les nouveaux fichiers des personnes et des agents sont refusés jusqu'à ce que vous passiez à une offre supérieure ou libériez de l'espace (demandez à la personne qui gère le serveur de relever la limite).",
     "noticeTailStorageNear": "Passez à une offre supérieure ou libérez de l'espace (demandez à la personne qui gère le serveur de relever la limite), sinon les nouveaux fichiers seront refusés une fois le stockage plein.",
     "noticeTailOther": "Les limites sont fixées par la personne qui gère le serveur.",
@@ -6077,7 +6086,16 @@
     "failedManifestInvalid": "Son manifeste n'est pas valide.",
     "failedRegistration": "Le serveur n'a pas pu la charger.",
     "loadFailed": "Les applications de l'espace de travail n'ont pas pu être chargées.",
-    "retry": "Réessayer"
+    "retry": "Réessayer",
+    "outboundAccess": "Accès sortant",
+    "outboundAccessHint": "Les hôtes que le code de cette application peut joindre. Un hôte en attente d'approbation reste bloqué jusqu'à ce qu'un administrateur l'autorise.",
+    "outboundAllHosts": "Tous les hôtes qu'elle déclare (installée avant l'approbation hôte par hôte).",
+    "outboundNone": "Cette application ne joint aucun hôte extérieur.",
+    "outboundGranted": "Autorisés",
+    "outboundPending": "En attente d'approbation",
+    "outboundRevoke": "Retirer",
+    "outboundAllow": "Autoriser",
+    "outboundChangeFailed": "La modification n'a pas été enregistrée : {{message}}"
   },
   "appManagement": {
     "management": "Gestion de {{name}}",

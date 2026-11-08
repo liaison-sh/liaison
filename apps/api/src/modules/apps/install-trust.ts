@@ -17,7 +17,7 @@
 // not installed apps; they report `installed: false`.
 import { join } from "node:path"
 import { eq } from "drizzle-orm"
-import { withSystemDb } from "~/db/privileged"
+import { withSystemReadReusingHeld } from "~/db/privileged"
 import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
 import { isCatalogArtifact, isCatalogInstall } from "~/modules/apps/catalog"
 import { getInstallRoot } from "~/modules/apps/discover-apps"
@@ -36,6 +36,8 @@ export interface InstallTrust {
   grantedScopes: string[]
   /** null = grandfathered install (pre-dates capability grants): all declared. */
   grantedCapabilities: string[] | null
+  /** The outbound domains granted (egress-grants.ts); null = grandfathered (all declared). */
+  grantedDomains: string[] | null
 }
 
 const TTL_MS = 5_000
@@ -60,6 +62,7 @@ const IN_TREE: InstallTrust = {
   uiTrust: "first-party",
   grantedScopes: [],
   grantedCapabilities: null,
+  grantedDomains: null,
 }
 
 export async function getInstallTrust(name: string): Promise<InstallTrust> {
@@ -71,7 +74,9 @@ export async function getInstallTrust(name: string): Promise<InstallTrust> {
 }
 
 async function loadInstallTrust(name: string): Promise<InstallTrust> {
-  const found = await withSystemDb("install-trust", async (db) => {
+  // Reached from an app's bridge (its egress grant) inside a job's privileged
+  // transaction too: a read of instance-wide rows, so it reuses that one.
+  const found = await withSystemReadReusingHeld("install-trust", async (db) => {
     const [active] = await db
       .select()
       .from(appsActiveVersion)
@@ -98,6 +103,7 @@ async function loadInstallTrust(name: string): Promise<InstallTrust> {
       uiTrust: null,
       grantedScopes: [],
       grantedCapabilities: [],
+      grantedDomains: [],
     }
   }
   const row = found.row
@@ -127,5 +133,6 @@ async function loadInstallTrust(name: string): Promise<InstallTrust> {
     uiTrust,
     grantedScopes: row.grantedScopes,
     grantedCapabilities: row.grantedCapabilities ?? null,
+    grantedDomains: row.grantedDomains ?? null,
   }
 }

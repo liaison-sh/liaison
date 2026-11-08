@@ -18,7 +18,11 @@ import { z } from "zod"
  * order the kinds are listed in.
  *  - `mailboxes`: the self-hosted operator's cap; a managed plan never sets it;
  *  - `customApps`: org-private custom apps installed;
- *  - `auditDays`: the most days of audit log the org keeps.
+ *  - `auditDays`: the most days of audit log the org keeps;
+ *  - `appRunsPerDay`, `appBridgeCallsPerDay`, `appCpuMsPerDay`: the org's app
+ *    runs, their bridge calls and their CPU milliseconds per UTC day (caps
+ *    version 2, `CAPS_CONTRACT_VERSION`). A cell of caps version 1 refuses them,
+ *    so Control sends them only to a cell that reported version 2.
  */
 export const CLOUD_CAP_BOUNDS = {
   seats: 1_000_000,
@@ -27,12 +31,49 @@ export const CLOUD_CAP_BOUNDS = {
   jobsPerHour: 100_000_000,
   customApps: 10_000,
   auditDays: 3650,
+  appRunsPerDay: 1_000_000_000,
+  appBridgeCallsPerDay: 100_000_000_000,
+  appCpuMsPerDay: 86_400_000_000,
 } as const
 
 export type CloudCapKind = keyof typeof CLOUD_CAP_BOUNDS
 
 /** The cap kinds, in the order the table lists them. */
 export const CLOUD_CAP_KINDS = Object.keys(CLOUD_CAP_BOUNDS) as readonly CloudCapKind[]
+
+/**
+ * The caps version this contract describes. A cell reports the version it
+ * accepts (`apps.usage`'s `capsVersion`); a cell that never reported one is
+ * version 1. Control sends a cell only the kinds of the version it reported
+ * (`capsForCapsVersion`), because `cloudCapsSchema` is strict: a kind an older
+ * cell does not know makes it refuse the whole billing push.
+ */
+export const CAPS_CONTRACT_VERSION = 2 as const
+
+/** The kinds each caps version accepts (a later version is a superset). */
+export const CAP_KINDS_BY_CAPS_VERSION: Readonly<Record<1 | 2, readonly CloudCapKind[]>> = {
+  1: ["seats", "mailboxes", "storageGb", "jobsPerHour", "customApps", "auditDays"],
+  2: CLOUD_CAP_KINDS,
+}
+
+/** The cap kinds a cell of `capsVersion` accepts (unknown, absent or below 1: version 1). */
+export function capKindsForCapsVersion(
+  capsVersion: number | null | undefined,
+): readonly CloudCapKind[] {
+  const v = typeof capsVersion === "number" && Number.isInteger(capsVersion) ? capsVersion : 1
+  return v >= 2 ? CAP_KINDS_BY_CAPS_VERSION[2] : CAP_KINDS_BY_CAPS_VERSION[1]
+}
+
+/** `caps` without the kinds a cell of `capsVersion` would refuse. */
+export function capsForCapsVersion<T extends Record<string, unknown>>(
+  caps: T,
+  capsVersion: number | null | undefined,
+): Partial<T> {
+  const allowed = new Set<string>(capKindsForCapsVersion(capsVersion))
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(caps)) if (allowed.has(k)) out[k] = v
+  return out as Partial<T>
+}
 
 const capValue = (max: number) => z.number().int().min(1).max(max).nullable().optional()
 type CapValueSchema = ReturnType<typeof capValue>

@@ -282,7 +282,11 @@
       }
     ]
   },
-  "version": "0.4.12",
+  "version": "0.4.13",
+  "network": {
+    "imageHosts": ["cdn.shopify.com"],
+    "linkHosts": ["admin.shopify.com"]
+  },
   "iconName": "shopping-cart",
   "description": "Shopify integration: orders, customers, products, markets, draft orders, refunds, fulfillments, returns",
   "listing": {

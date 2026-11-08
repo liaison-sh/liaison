@@ -5,14 +5,18 @@
 // read-only mark, RLS actor, signal), and the bearer token that alone may drive
 // it over /api/app-bridge/:runId. The route never builds a bridge.
 //
-// One process: Workers is selected only under role "all" (config.ts), so the
-// process that registered a run is the one its isolate calls back.
+// The registry is per process. A run id is `<instanceId>:<uuid>`
+// (infra/instance-id.ts), so a bridge call that reaches another process of the
+// cell is forwarded to the owner named in the id (bridge-forward.ts).
 //
-// A token is 32 random bytes (base64url); only its sha256 is kept. It is bound
-// to one run, hence to one org and one app; it dies when the run settles (its
-// handler returned, its caller aborted, or its deadline passed).
+// A token is `random32 || HMAC(runId | random32)` (run-token.ts), base64url;
+// only its sha256 is kept. It is bound to one run, hence to one org and one
+// app; it dies when the run settles (its handler returned, its caller aborted,
+// or its deadline passed).
 
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto"
+import { createHash, timingSafeEqual } from "node:crypto"
+import { INSTANCE_ID, mintInstanceScopedId } from "~/infra/instance-id"
+import { mintRunToken, runTokenKey } from "./run-token"
 
 /** Extra time past the run's own timeout before its token expires. */
 export const RUN_DEADLINE_GRACE_MS = 10_000
@@ -98,6 +102,8 @@ export interface RunRegistryOptions {
   now?: () => number
   /** Overrides RUN_DEADLINE_GRACE_MS (tests). */
   graceMs?: number
+  /** The instance whose runs these are. Default: this process (tests stand in for another). */
+  instanceId?: string
 }
 
 export class RunRegistry {
@@ -108,15 +114,18 @@ export class RunRegistry {
   /** The registry's clock; deadlines are in its time. */
   readonly now: () => number
   private readonly graceMs: number
+  /** The instance named in every run id this registry mints. */
+  readonly instanceId: string
 
   constructor(opts: RunRegistryOptions = {}) {
     this.now = opts.now ?? Date.now
     this.graceMs = opts.graceMs ?? RUN_DEADLINE_GRACE_MS
+    this.instanceId = opts.instanceId ?? INSTANCE_ID
   }
 
   registerRun(opts: RegisterRunOptions): RegisteredRun {
-    const runId = randomUUID()
-    const runToken = randomBytes(32).toString("base64url")
+    const runId = mintInstanceScopedId(this.instanceId)
+    const runToken = mintRunToken(runId, runTokenKey())
     const tokenHash = sha256(runToken)
     const deadline =
       this.now() + Math.max(0, opts.timeoutMs) + Math.max(0, opts.graceMs ?? this.graceMs)

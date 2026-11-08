@@ -12,7 +12,11 @@
 //   - the bundle route refuses unsigned, v1, a /run signature replayed, another
 //     path, a stale timestamp, an unknown sha and a draft's unpublished sha; it
 //     serves an installed custom app of ANY org of the cell (cell-wide: the
-//     loader holds one key per cell).
+//     loader holds one key per cell);
+//   - reliability: one org's broken module falls back to QuickJS for that
+//     org's app only, another org stays on Workers, and the run line says so;
+//   - logs: the app's console lines reach its app logs (source "console") on
+//     Workers and on QuickJS alike.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { createHash } from "node:crypto"
 import { mkdtempSync, rmSync } from "node:fs"
@@ -34,6 +38,7 @@ import { ensureAppsForOrg } from "~/modules/apps/init"
 import { clearInstalledIdentityCache, resolveWorkersTarget } from "~/modules/apps/sandbox/run-app"
 import { shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { type FakeLoader, startFakeLoader } from "~/modules/apps/workers/__fixtures__/fake-loader"
+import { WorkersFallbackTestAccess } from "~/modules/apps/workers/fallback"
 import {
   CELL_SIGNATURE_VERSION_HEADER,
   signCellRequestV1,
@@ -125,10 +130,11 @@ async function publish(
   org: Org,
   base: string,
   extraHandlers = "",
+  editHandlers: (source: string) => string = (source) => source,
 ): Promise<{ appName: string; draftId: string }> {
   const appName = draftAppName(org.orgId, base)
   const files = templateFiles("store-crud", appName, `Draft ${base}`)
-  files["handlers.ts"] = `${files["handlers.ts"]}${extraHandlers}`
+  files["handlers.ts"] = editHandlers(`${files["handlers.ts"]}${extraHandlers}`)
   const { draft } = await withRlsContext(org.admin, (tx) =>
     createDraft(
       tx,
@@ -419,4 +425,134 @@ describe("GET /api/app-bridge/bundles/:sha256", () => {
     expect(disabled.length).toBe(1)
     expect((await bundleGet(sha, signedGet(sha))).status).toBe(404)
   }, 180_000)
+})
+
+describe("custom apps on Workers: fallback and console logs", () => {
+  // A distinct line per app: identical sources would build one identical Worker module.
+  const addLine = (tag: string) => (source: string) =>
+    source.replace(
+      'ctx.logger.info("added an item", { id: doc.id })',
+      `ctx.logger.info("added an item", { id: doc.id })\n  console.log("console says added (${tag})", params.title)`,
+    )
+  const add = (org: Org, appName: string, title: string) =>
+    executeTool({
+      toolName: `${appName}:items_add`,
+      orgId: org.orgId,
+      actor: org.admin,
+      params: { title },
+      origin: "human-ui",
+    })
+  const lastRun = (appName: string) =>
+    recentRunTimings()
+      .filter((r) => r.app === appName)
+      .at(-1)
+  const consoleRows = (orgId: string, appName: string) =>
+    sql<{ message: string; source: string | null; run_id: string }[]>`
+      SELECT message, fields->>'source' AS source, run_id::text FROM kernel.app_logs
+      WHERE org_id = ${orgId} AND app = ${appName} AND fields->>'source' = 'console'
+      ORDER BY at`
+
+  it("org A's broken module falls back to QuickJS for org A's app only; org B stays on Workers", async () => {
+    workersOff()
+    const broken = await publish(a, "wk-broken", "", addLine("broken"))
+    const healthy = await publish(b, "wk-healthy", "", addLine("healthy"))
+    // Org A's installed module no longer hashes to its sha: the cell cannot serve it.
+    await withSystemDb("test-break-module", (db) =>
+      db
+        .update(appsInstalled)
+        .set({ workerModule: Buffer.from("not the module") })
+        .where(eq(appsInstalled.name, broken.appName)),
+    )
+    WorkersFallbackTestAccess.reset()
+    workers()
+
+    const first = await add(a, broken.appName, "a-first").then(
+      () => null,
+      (e: Error) => e,
+    )
+    expect(first).toBeInstanceOf(Error)
+    expect(lastRun(broken.appName)).toMatchObject({
+      executor: "workers",
+      ok: false,
+      faultClass: "app",
+      errorKind: "bundle_missing",
+    })
+    expect(loader.bundleFetches.at(-1)?.status).toBe(404)
+
+    const second = await add(a, broken.appName, "a-second")
+    expect(JSON.stringify(second)).not.toContain("error")
+    expect(lastRun(broken.appName)).toMatchObject({
+      executor: "quickjs",
+      ok: true,
+      fallback: "app",
+    })
+
+    const other = await add(b, healthy.appName, "b-first")
+    expect(JSON.stringify(other)).not.toContain("error")
+    const bRun = lastRun(healthy.appName)
+    expect(bRun?.executor).toBe("workers")
+    expect(bRun?.fallback).toBeUndefined()
+
+    // Console lines: on Workers (org B) and on QuickJS (org A's fallback run), both in the
+    // app logs (a session bridge's sink flushes on its own timer, 2 s after its first line).
+    const messages = async (orgId: string, appName: string) =>
+      (await consoleRows(orgId, appName)).map((r) => r.message)
+    const until = Date.now() + 8_000
+    while (
+      Date.now() < until &&
+      (!(await messages(b.orgId, healthy.appName)).length ||
+        !(await messages(a.orgId, broken.appName)).length)
+    ) {
+      await Bun.sleep(200)
+    }
+    expect(await messages(b.orgId, healthy.appName)).toContain(
+      "console says added (healthy) b-first",
+    )
+    expect(await messages(a.orgId, broken.appName)).toContain(
+      "console says added (broken) a-second",
+    )
+    WorkersFallbackTestAccess.reset()
+    workersOff()
+  }, 240_000)
+
+  it("a module that throws while loading is the module's fault: kind load, then QuickJS", async () => {
+    workersOff()
+    // Throws on the loader's host only (the fake loader runs the module in this
+    // process); QuickJS has no such global, so the app's own build runs there.
+    const throwsOnLoad = await publish(
+      a,
+      "wk-loadthrow",
+      [
+        "",
+        "const loaderHost = globalThis as unknown as { Bun?: unknown }",
+        'if (loaderHost.Bun !== undefined) throw new Error("module init failed on this host")',
+        "",
+      ].join("\n"),
+      addLine("loadthrow"),
+    )
+    WorkersFallbackTestAccess.reset()
+    workers()
+
+    const first = await add(a, throwsOnLoad.appName, "lt-first").then(
+      () => null,
+      (e: Error) => e,
+    )
+    expect(first).toBeInstanceOf(Error)
+    expect(lastRun(throwsOnLoad.appName)).toMatchObject({
+      executor: "workers",
+      ok: false,
+      faultClass: "app",
+      errorKind: "load",
+    })
+
+    const second = await add(a, throwsOnLoad.appName, "lt-second")
+    expect(JSON.stringify(second)).not.toContain("error")
+    expect(lastRun(throwsOnLoad.appName)).toMatchObject({
+      executor: "quickjs",
+      ok: true,
+      fallback: "app",
+    })
+    WorkersFallbackTestAccess.reset()
+    workersOff()
+  }, 240_000)
 })

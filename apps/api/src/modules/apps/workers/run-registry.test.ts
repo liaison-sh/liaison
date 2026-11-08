@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
+import { INSTANCE_ID } from "~/infra/instance-id"
+import { ownerInstanceOf } from "~/modules/agent/mailbox-plaintext/mailbox-forward"
 import { RUN_DEADLINE_GRACE_MS, RunRegistry } from "./run-registry"
+import { runTokenMintedFor } from "./run-token"
 
 function reg(now = () => 0) {
   return new RunRegistry({ now })
@@ -13,10 +16,26 @@ const base = {
 }
 
 describe("run registry", () => {
-  it("mints a 32-byte base64url token and keeps only its hash", () => {
+  it("mints an instance-scoped run id and a self-verifying token, and keeps only its hash", () => {
     const r = reg()
     const run = r.registerRun({ ...base, bridge: { m: async () => 1 }, bridgeMethods: ["m"] })
-    expect(Buffer.from(run.runToken, "base64url")).toHaveLength(32)
+    // `<instanceId>:<uuid>`, this process's instance: the bridge forward reads the owner from it.
+    expect(ownerInstanceOf(run.runId)).toBe(INSTANCE_ID)
+    expect(r.instanceId).toBe(INSTANCE_ID)
+    // random32 || HMAC(runId | random32): any process of the cell can check it, for this run only.
+    expect(Buffer.from(run.runToken, "base64url")).toHaveLength(64)
+    expect(runTokenMintedFor(run.runId, run.runToken)).toBe(true)
+    const other = r.registerRun({ ...base, bridge: { m: async () => 1 }, bridgeMethods: ["m"] })
+    expect(runTokenMintedFor(other.runId, run.runToken)).toBe(false)
+    other.settle()
+    const flip = (t: string, i: number) =>
+      `${t.slice(0, i)}${t[i] === "A" ? "B" : "A"}${t.slice(i + 1)}`
+    // A changed byte of the random part, of the MAC, and a second spelling of the last character.
+    expect(runTokenMintedFor(run.runId, flip(run.runToken, 10))).toBe(false)
+    expect(runTokenMintedFor(run.runId, flip(run.runToken, 60))).toBe(false)
+    expect(runTokenMintedFor(run.runId, flip(run.runToken, 85))).toBe(false)
+    expect(runTokenMintedFor(run.runId, "x".repeat(86))).toBe(false)
+    expect(runTokenMintedFor(run.runId, undefined)).toBe(false)
     const auth = r.authenticate(run.runId, run.runToken, "n")
     expect(auth.kind).toBe("ok")
     if (auth.kind !== "ok") return

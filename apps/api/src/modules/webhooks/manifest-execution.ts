@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { ManifestHandlerRef } from "~/modules/apps/app-registries"
 import { resolveToolTimeoutMs } from "~/modules/apps/sandbox/executor"
-import { runApp } from "~/modules/apps/sandbox/run-app"
+import { type AppBridge, runApp } from "~/modules/apps/sandbox/run-app"
 
 /**
  * What a declared budget leaves for waiting on a pinned slot and answering. The
@@ -39,7 +39,9 @@ interface ExecuteManifestWebhookOptions {
   handlerRef: ManifestHandlerRef
   bundleSource: string
   params: unknown
-  bridge: Record<string, (...args: any[]) => any>
+  bridge: AppBridge
+  /** The bridge of a Workers run, when the site builds its own (run-app.ts). */
+  workersBridge?: () => AppBridge
   /**
    * Extra positional args appended after `(params, ctx)` when invoking
    * the handler. Manifest webhook handlers declare a 3-arg signature
@@ -63,6 +65,7 @@ export async function executeManifestWebhook({
   extraArgs,
   timeoutMs,
   entryKind,
+  workersBridge,
 }: ExecuteManifestWebhookOptions): Promise<unknown> {
   return runApp({
     trusted: handlerRef.trusted === true,
@@ -77,6 +80,7 @@ export async function executeManifestWebhook({
     extraArgs,
     holdsTx,
     ...(timeoutMs ? { timeoutMs } : {}),
+    ...(workersBridge ? { workersBridge } : {}),
     // Webhook handlers are external-triggered background
     // work; they must not starve foreground (user/agent) tool calls under load
     // (worker-pool reserves capacity for interactive execs).

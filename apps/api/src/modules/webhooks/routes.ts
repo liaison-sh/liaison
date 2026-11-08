@@ -34,7 +34,7 @@ import { getInstallTrust } from "~/modules/apps/install-trust"
 import { APP_STATE_UNAVAILABLE_CODE, pathOrgAppState } from "~/modules/apps/org-apps"
 import { isBundleLoadError, isSandboxFault, loadBundle } from "~/modules/apps/sandbox/bundle-loader"
 import { createSandboxRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
-import { appRunsOnWorkers } from "~/modules/apps/sandbox/run-app"
+import { appRunHoldMs } from "~/modules/apps/usage/app-day-cap"
 import { writeAuditLog } from "~/modules/audit/service"
 import { orgSuspendedOrClosed } from "~/modules/cloud/billing-status"
 import {
@@ -313,13 +313,16 @@ webhookRoutes.post("/:orgId/:appName/:endpointName", async (c) => {
         query: Object.fromEntries(new URL(c.req.url).searchParams.entries()),
       }
       const source = await loadBundle(handlerRef.bundlePath)
-      // A verifier on Workers gets a bridge that hands back no secret.
-      const workersRun = await appRunsOnWorkers({
-        trusted: handlerRef.trusted === true,
+      // A verifier on Workers gets a bridge that hands back no secret (its
+      // declared keys refused), built only once runApp has decided on Workers.
+      const verifyBridgeInput = {
+        appOrgId,
         appName,
-        orgId: appOrgId,
-        bundlePath: handlerRef.bundlePath,
-      })
+        appConfig: appRecord.config,
+        manifestConnections: registration._manifest?.connections as
+          | Record<string, ConnectionSecretKeySource>
+          | undefined,
+      }
       verificationResult = await executeManifestWebhook({
         appName,
         orgId: appOrgId,
@@ -329,15 +332,8 @@ webhookRoutes.post("/:orgId/:appName/:endpointName", async (c) => {
         bundleSource: source,
         params: requestData,
         entryKind: "webhook-verify",
-        bridge: createWebhookVerifyBridge({
-          appOrgId,
-          appName,
-          appConfig: appRecord.config,
-          manifestConnections: registration._manifest?.connections as
-            | Record<string, ConnectionSecretKeySource>
-            | undefined,
-          ...(workersRun ? { workersRun: true } : {}),
-        }),
+        bridge: createWebhookVerifyBridge(verifyBridgeInput),
+        workersBridge: () => createWebhookVerifyBridge({ ...verifyBridgeInput, workersRun: true }),
       })
     } else {
       verificationResult = await (registration.verify as (request: Request) => Promise<unknown>)(
@@ -561,6 +557,44 @@ async function dispatchVerifiedWebhook(
       await redis.del(dedupeKey)
     } catch (delErr) {
       log.error({ delErr, appName, endpointName }, "Failed to release webhook replay claim")
+    }
+  }
+
+  // The org reached an app day cap (modules/apps/usage/app-day-cap.ts): the
+  // app's verify has run (above), the handler waits for the next UTC day as
+  // the kernel retry job holding the payload and headers, and the provider
+  // gets a 2xx so it neither retries nor drops the subscription.
+  if (isManifestHandler(registration.handler)) {
+    const holdMs = await appRunHoldMs({
+      orgId: appOrgId,
+      trusted: (registration.handler as ManifestHandlerRef).trusted === true,
+    })
+    if (holdMs !== null) {
+      try {
+        await enqueueAppJob(
+          "kernel",
+          "retry-webhook",
+          {
+            orgId: appOrgId,
+            appName,
+            endpointName,
+            payload,
+            headers: headerDict,
+            deliveryId: crypto.randomUUID(),
+          },
+          { delay: holdMs },
+        )
+      } catch (enqErr) {
+        // Not held: release the claim and ask the provider to deliver again.
+        log.error({ enqErr, appName, endpointName }, "Failed to hold a capped webhook delivery")
+        await releaseReplayClaim()
+        return c.json({ error: { message: "Webhook processing failed" } }, 503)
+      }
+      log.info(
+        { appName, endpointName, payloadHash },
+        "Webhook held until the next UTC day: the org reached an app day cap",
+      )
+      return success(c, { received: true, held: true })
     }
   }
 

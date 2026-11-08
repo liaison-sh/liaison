@@ -22,6 +22,8 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `NODE_ENV` | `"development" \| "production" \| "test"` | `"development"` | no |  |
 | `BASE_URL` | `string (URL)` | `"http://localhost:3000"` | no |  |
 | `LIAISON_ORG_HOST_TEMPLATE` | `string` |  | no | One host per org: an http(s) URL holding `{slug}` once, in its host, with no path and no trailing slash (`https://{slug}.example.com`). Set, every absolute link the server builds for an org (mails, connect links, guides, file links) uses the org's host (lib/org-public-url.ts). Unset, those links use BASE_URL. |
+| `LIAISON_APP_FRAME_ORIGIN_TEMPLATE` | `string` |  | no | Each app's screens on an origin of their own: an http(s) URL whose host holds the one label `{app}--{org}` (`https://{app}--{org}.example-usercontent.com`), no path, no trailing slash. Set, a browser tab frames an outside app's interface (and each app named in LIAISON_FRAMED_APPS) from `<app>--<org slug>` on that domain, with storage of its own; that host serves the frame document and nothing else (lib/app-frame-host.ts). Use a registrable domain of its own (the managed edition refuses BASE_URL's or the org template's). Unset, outside apps run in the opaque frame as before. |
+| `LIAISON_FRAMED_APPS` | `string` |  | no | First-party apps whose interface a browser tab frames on its own origin (comma-separated app names, e.g. `shopify,boxtal`) when LIAISON_APP_FRAME_ORIGIN_TEMPLATE is set. Unset or without the template, first-party apps run in the page as before. |
 | `LIAISON_PAY_FRAME_ORIGIN` | `string` |  | no | The managed edition's payment frame: the https origin (no path, no trailing slash) of the page that takes card details for the Billing page, embedded in an iframe. It feeds the frame-src of the CSP and the origin a message from the frame must come from. Required when LIAISON_EDITION=managed (the server refuses to start without it, lib/managed-boot.ts); unused otherwise. |
 | `LIAISON_MANAGED_DEFAULT_MODELS` | `string` |  | no | The managed edition's default models: comma-separated OpenRouter model ids (`deepseek/deepseek-v4.1-flash`) that a new org gets enabled when its control plane creates it (POST /api/cloud/orgs), the first one as Auto, so the org's first chat has a model. Admins add or remove models afterwards. Required when LIAISON_EDITION=managed (lib/managed-boot.ts); unused otherwise. |
 | `LIAISON_OAUTH_REDIRECT_BASE` | `string` |  | no | One host every OAuth provider redirects to: an http(s) origin with no path or trailing slash (`https://auth.example.com`). Set, the redirect_uri of sign-in and connector flows is `<this>/api/auth/oauth/callback` and `<this>/api/connections/callback` (one exact URI to register per provider), and the OAuth `state` starts with the org's slug and a dot, so whatever serves this host can send the browser on to the org's own host, where the flow completes. Setup guides show these URIs. Unset, both use BASE_URL and the state is a bare random token. |
@@ -160,7 +162,7 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `LIAISON_TEAM_OUTBOX_INTERVAL_MS` | `number` |  | no | Test only (honoured only under NODE_ENV=test): drain the Liaison team outbox every this many ms instead of every minute, for process-level e2e. |
 | `SINGLETON_LEADER_URL` | `string (URL)` |  | no | Patroni leader gate (HA active/standby). URL of the LOCAL node's Patroni REST /leader (e.g. http://host.docker.internal:8008/leader). When set, the jobs (BullMQ workers) of this node run ONLY while this node is the Patroni leader, so a warm standby that comes up during a failover doesn't double-fire customer emails/webhooks. Singletons (outbox drain and other once-per-cluster loops) run only in the process that holds the Redis leader lease AND sits on the Patroni leader. UNSET (default) = gate off, this node counts as the Patroni leader. See infra/leadership.ts. Empty strings (compose ${VAR:-} defaults) = unset. |
 | `LIAISON_ROLE` | `"all" \| "api" \| "worker"` | `"all"` | no | What this process serves. `all` (default) = one container does everything: HTTP + WebSocket API, BullMQ job workers and the singletons (outbox drain), as a single-container self-host runs. `api` = HTTP + WebSocket only, no job workers, never the singleton leader. `worker` = BullMQ job workers and the singletons (behind the leader lease), with a health-only HTTP server. Any other value refuses boot. The CLI ignores it. |
-| `LIAISON_WORKERS_APPS` | `string` |  | no | Running listed apps on a remote V8 isolate loader instead of the local QuickJS sandbox (modules/apps/workers/config.ts). Used only when LIAISON_APP_LOADER_URL, LIAISON_APP_LOADER_CELL_ID and LIAISON_APP_LOADER_KEY are set, LIAISON_ROLE is `all`, and either LIAISON_WORKERS_APPS with LIAISON_WORKERS_BUNDLES or LIAISON_WORKERS_CUSTOM_APPS=1 is set; otherwise every app runs on QuickJS and /api/app-bridge answers 404. Unset by default. The app names to run there, comma separated. |
+| `LIAISON_WORKERS_APPS` | `string` |  | no | Running listed apps on a remote V8 isolate loader instead of the local QuickJS sandbox (modules/apps/workers/config.ts). Used only when LIAISON_APP_LOADER_URL, LIAISON_APP_LOADER_CELL_ID and LIAISON_APP_LOADER_KEY are set, and either LIAISON_WORKERS_APPS with LIAISON_WORKERS_BUNDLES or LIAISON_WORKERS_CUSTOM_APPS=1 is set (any LIAISON_ROLE: a bridge call on another process is forwarded to the run's own); otherwise every app runs on QuickJS and /api/app-bridge answers 404. Unset by default. The app names, comma separated. |
 | `LIAISON_WORKERS_CUSTOM_APPS` | `string` |  | no | `1`: every organisation's custom app built with the app builder runs on the loader too (with the loader variables below). Its Worker module is the one its publish built, recorded with the install, and the loader fetches it from this server (`GET /api/app-bridge/bundles/<sha256>`, signed with LIAISON_APP_LOADER_KEY) when it has no copy. With it, LIAISON_WORKERS_APPS and LIAISON_WORKERS_BUNDLES are optional. |
 | `LIAISON_APP_LOADER_URL` | `string (URL)` |  | no | The loader's base URL (it is called at `<url>/run`). |
 | `LIAISON_APP_LOADER_CELL_ID` | `string` |  | no | This instance's id at the loader; it picks the signing key and the bridge origin the loader accepts. |
@@ -284,7 +286,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_ALLOW_PRIVATE_API_CONNECTOR_HOSTS` | `apps/api/src/apps/api-connector/adapter-policy.ts:25` |
 | `LIAISON_ALLOW_PRIVATE_MODEL_SERVERS` | `apps/api/src/modules/agent/providers/model-server.ts:33` |
 | `LIAISON_APP_CATALOG_DIR` | `apps/api/src/modules/apps/catalog.ts:75`, `apps/api/src/modules/permissions/scope-registry.ts:81` |
-| `LIAISON_APP_PRIVATE_HOSTS` | `apps/api/src/modules/apps/sandbox/bridge/shared.ts:203` |
+| `LIAISON_APP_PRIVATE_HOSTS` | `apps/api/src/modules/apps/sandbox/bridge/shared.ts:209` |
 | `LIAISON_BUNDLED_APPS_FROM_SOURCE` | `apps/api/src/modules/apps/sandbox/bundle-loader.ts:51` |
 | `LIAISON_CLI_OPERATOR` | `apps/api/src/cli/agent/ask.ts:172` |
 | `LIAISON_DATABASE_ADAPTER` | `apps/api/src/apps/database/bridge.ts:1198` |
@@ -294,7 +296,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/apps/database/bridge.ts:374`, `apps/api/src/apps/database/bridge.ts:394` |
 | `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/apps/database/bridge.ts:383` |
 | `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:154` |
-| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1630` |
+| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1669` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:504`, `apps/api/src/modules/apps/app-frame.ts:35` |
 | `LIAISON_SANDBOX_FETCH_TIMEOUT_MS` | `apps/api/src/modules/apps/sandbox/bridge/egress.ts:63` |
@@ -321,13 +323,13 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `ORG_MAINTENANCE_FLAG_PATH` | `apps/api/src/middleware/org-maintenance.ts:25` |
 | `QA_DRIVE_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/knowledge.ts:79` |
 | `QA_GMAIL_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/rows.ts:462` |
-| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:566`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
+| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:568`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
 | `RECHECK_SYNC_BACKEND` | `apps/api/src/lib/manifest-regex.ts:33` |
 | `ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:62` |
 | `ROUTINE_EVENT_RECONCILE_MAX_RETRIES` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:65` |
 | `ROUTINE_OVERLAP_DEFER_DELAY_MS` | `apps/api/src/infra/jobs/kernel-jobs.ts:70` |
 | `ROUTINE_OVERLAP_MAX_DEFERRALS` | `apps/api/src/infra/jobs/kernel-jobs.ts:74` |
-| `SANDBOX_BOOT_RAMP_MS` | `apps/api/src/index.ts:390` |
+| `SANDBOX_BOOT_RAMP_MS` | `apps/api/src/index.ts:422` |
 | `SANDBOX_POOL_REPORT_INTERVAL_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:92` |
 | `SANDBOX_QUEUE_WAIT_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:89` |
 | `SANDBOX_WORKER_HOLD_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:90` |

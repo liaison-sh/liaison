@@ -73,6 +73,12 @@ vi.mock("@liaison/host", () => ({
   openFile: () => {},
   app: {
     createResource: (fetcher: () => Promise<unknown>) => createResource(fetcher),
+    // The page's path of the typed calls (no frame): straight to the kernel route.
+    listDocumentTemplates: (entity: string) =>
+      hostFetch(`/api/documents/templates?app=boxtal&entity=${entity}`),
+    printDocuments: () => Promise.reject(new Error("no print")),
+    opensFiles: () => false,
+    openFile: async () => false,
     invokeTool: (name: string) => {
       if (name === "ready_list") return Promise.resolve({ rows: ROWS })
       return Promise.reject(new Error(`no ${name}`))

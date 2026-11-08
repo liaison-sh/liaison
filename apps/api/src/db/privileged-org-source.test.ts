@@ -98,6 +98,8 @@ const REVIEWED_SYSTEM_ROUTES: Record<string, string> = {
     "global catalog tables (apps_installed, apps_active_version)",
   "apps/api/src/modules/apps/install-routes.ts#POST /:name/ui-approval":
     "global catalog table apps_installed; the route requires the apps admin scope",
+  "apps/api/src/modules/apps/install-routes.ts#POST /:name/outbound":
+    "global catalog table apps_installed; the route requires the apps admin scope and requireAppManager (the owner org of an org-private app, an instance-app manager otherwise); the audit row is the caller's org",
   "apps/api/src/modules/apps/install-routes.ts#POST /:name/upgrade/apply":
     "global catalog table apps_active_version; the route requires the apps admin scope",
   "apps/api/src/modules/apps/install-routes.ts#POST /:name/upgrade/preview":

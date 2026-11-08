@@ -197,6 +197,7 @@ All optional. Compose passes each of them to the app from `deploy/.env`.
 | `LIAISON_REQUIRE_APP_SIGNATURE`, `LIAISON_TRUSTED_APP_PUBLISHERS` | Runtime app installs: signatures are required by default, and the trusted publisher is one cosign certificate-identity regex matched against the whole identity. The image ships cosign; verifying needs outbound HTTPS to Sigstore (`tuf-repo-cdn.sigstore.dev`) |
 | `LIAISON_CUSTOM_APPS` | `on`: organisations may install their own app by URL and build one with the agent ([Build an app with your agent](../agents/build-an-app.md)). Unset: off on a self-hosted server (on in the managed edition). Apps you install for the whole server, and apps already installed, are not affected |
 | `LIAISON_WORKERS_APPS`, `LIAISON_WORKERS_BUNDLES`, `LIAISON_WORKERS_CUSTOM_APPS`, `LIAISON_APP_LOADER_URL`, `LIAISON_APP_LOADER_CELL_ID`, `LIAISON_APP_LOADER_KEY`, `LIAISON_APP_BRIDGE_BASE_URL`, `LIAISON_APP_BRIDGE_TIMINGS_FILE` | Run the listed apps (and, with `LIAISON_WORKERS_CUSTOM_APPS=1`, every organisation's app built with the app builder) on a remote V8 isolate loader instead of the local sandbox; their `ctx.*` calls come back over HTTPS to `/api/app-bridge`, and the loader fetches a custom app's Worker module from `/api/app-bridge/bundles/<sha256>` with a signed request. All empty by default: every app runs on the local sandbox |
+| `LIAISON_APP_FRAME_ORIGIN_TEMPLATE`, `LIAISON_FRAMED_APPS` | In a browser tab, frame each outside app's screens (and the first-party apps listed in `LIAISON_FRAMED_APPS`, for example `shopify,boxtal`) on an origin of their own, `https://{app}--{org}.<a domain of its own>`, instead of the opaque frame. Point a wildcard DNS name and certificate for that domain at the server. Empty by default: outside apps run in the opaque frame ([App screens on an origin of their own](../app-sandbox.md#app-screens-on-an-origin-of-their-own)) |
 
 For every variable, see the [environment reference](../reference/env.md).
 
@@ -302,7 +303,9 @@ When the live turn registry does not answer, a page that opens mid-turn shows no
 
 An agent that reads a personal mailbox asks the browser to decrypt the mail. The answer can reach any process, but only the process that asked can use it. The process that receives it forwards it to that process over a direct HTTP call. Decrypted mail never goes through Redis.
 
-The call goes to an internal listener that every process starts, separate from `PORT`. It serves this one route, signed with a key derived from `JWT_SECRET`, so every process needs the same `JWT_SECRET`.
+The same holds for an app run on the Workers executor: its `ctx.*` calls come back to the public address and can reach any API process, but only the process that started the run (an `api` or a `worker`) holds it. A process that receives such a call forwards it to that process.
+
+The call goes to an internal listener that every process starts, separate from `PORT`. It serves these two routes, signed with a key derived from `JWT_SECRET`, so every process needs the same `JWT_SECRET`.
 
 | Variable | Default | What it sets |
 |---|---|---|
@@ -310,7 +313,7 @@ The call goes to an internal listener that every process starts, separate from `
 | `LIAISON_INTERNAL_HOST` | the hostname | The name other processes reach this one by. Unset, it is the container's hostname. If that name does not resolve, `127.0.0.1` is used. |
 | `LIAISON_INTERNAL_BIND` | the address of `LIAISON_INTERNAL_HOST` | The address the listener binds. Unset, it is the address the advertised name resolves to on this machine, never every interface. |
 
-The listener reads at most 2 MiB per call and checks the signature before it reads the content.
+The listener reads at most 2 MiB per mailbox answer and 8 MiB plus 64 KiB per app call, and checks the signature before it reads the content. An app call is forwarded only with a valid run token, and each process forwards at most 2,000 app calls per client address every 10 seconds.
 
 Every app container must reach every other app container on its internal port:
 

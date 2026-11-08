@@ -91,7 +91,9 @@ describe("ads app.manifest.json", () => {
     // comments, the queries searchers typed), so a turn that read them is marked.
     // 0.1.58 (main): the package carries the app SDK's manifest `secrets` field; no change of its own.
     // 0.1.60: both of the above, merged.
-    expect(m.version).toBe("0.1.60")
+    // 0.1.60 (main): its bundle carries host SDK 1.3.
+    // 0.1.61: both of the above, merged.
+    expect(m.version).toBe("0.1.61")
     for (const name of ["insights_query", "metrics_list", "metrics_run"]) {
       expect(m.tools[name]?.readOnly).toBe(true)
       expect(m.tools[name]?.writesToTable).toBeUndefined()

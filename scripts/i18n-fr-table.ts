@@ -7871,4 +7871,27 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.appLogs.failed": "Les journaux n'ont pas pu être lus. Réessayez dans un instant.",
   "kernel.appLogs.empty": "Rien n'a été journalisé ces 7 derniers jours.",
   "kernel.nav.appBuilder": "Créateur d'apps",
+  "kernel.settingsUi.requestedOutboundDomains":
+    "Hôtes que cette application peut joindre (accordés par l'installation)",
+  "kernel.settingsUi.newOutboundDomains":
+    "Nouveaux hôtes que cette version peut joindre (accordés par la mise à jour)",
+  "kernel.orgUsage.appRuns": "Exécutions d'applications aujourd'hui",
+  "kernel.orgUsage.appRunsHelp": "Exécutions des applications de l'organisation depuis minuit UTC",
+  "kernel.orgUsage.appBridgeCalls": "Appels des applications aujourd'hui",
+  "kernel.orgUsage.appBridgeCallsHelp":
+    "Appels que les applications ont faits à Liaison depuis minuit UTC",
+  "kernel.orgUsage.appCpuMs": "Processeur des applications aujourd'hui (ms)",
+  "kernel.orgUsage.appCpuMsHelp":
+    "Temps processeur des applications depuis minuit UTC, mesuré environ toutes les heures",
+  "kernel.orgUsage.noticeTailAppDay":
+    "Au-delà de la limite, les nouvelles exécutions d'applications attendent minuit UTC : les outils répondent que la limite est atteinte, et les webhooks, événements et tâches de fond s'exécutent après minuit.",
+  "kernel.appStore.outboundAccess": "Accès sortant",
+  "kernel.appStore.outboundAccessHint":
+    "Les hôtes que le code de cette application peut joindre. Un hôte en attente d'approbation reste bloqué jusqu'à ce qu'un administrateur l'autorise.",
+  "kernel.appStore.outboundAllHosts":
+    "Tous les hôtes qu'elle déclare (installée avant l'approbation hôte par hôte).",
+  "kernel.appStore.outboundNone": "Cette application ne joint aucun hôte extérieur.",
+  "kernel.appStore.outboundGranted": "Autorisés",
+  "kernel.appStore.outboundRevoke": "Retirer",
+  "kernel.appStore.outboundChangeFailed": "La modification n'a pas été enregistrée : {{message}}",
 }

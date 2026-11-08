@@ -3237,6 +3237,12 @@ async function registerSingleApp(
                 pollCtx: { orgId: string; userId: string; tx: unknown },
                 externalRef: unknown,
               ): Promise<{ ready: boolean; result?: Record<string, unknown> }> => {
+                // At an app day cap the output is "not ready": the poll job asks
+                // again on its schedule (modules/apps/usage/app-day-cap.ts).
+                const { appRunHoldMs } = await import("~/modules/apps/usage/app-day-cap")
+                if ((await appRunHoldMs({ orgId: pollCtx.orgId, trusted: false })) !== null) {
+                  return { ready: false }
+                }
                 const { runApp } = await import("~/modules/apps/sandbox/run-app")
                 const { createSandboxRpcBridge } = await import("~/modules/apps/sandbox/rpc-bridge")
                 const source = await loadBundle(pollBundlePath)
@@ -3700,8 +3706,22 @@ async function registerSingleApp(
               const { createEventHandlerBridge } = await import(
                 "~/modules/apps/sandbox/event-handler-bridge"
               )
-              const source = await loadBundle(bundlePath)
               const eventOrgId: string = event.orgId ?? orgId
+              // At an app day cap the event waits for the next UTC day as a
+              // job holding it (modules/apps/usage/deferred-event.ts).
+              const { deferEventIfCapped } = await import("~/modules/apps/usage/deferred-event")
+              if (
+                await deferEventIfCapped({
+                  orgId: eventOrgId,
+                  appName,
+                  eventType,
+                  exportName,
+                  event,
+                })
+              ) {
+                return
+              }
+              const source = await loadBundle(bundlePath)
               const actorId: string = event.actorId ?? `system:${appName}`
 
               const runHandler = async (txDb: any) => {
@@ -3813,6 +3833,19 @@ async function registerSingleApp(
                 )
               }
             }
+            {
+              const { registerDeferrableEventHandler } = await import(
+                "~/modules/apps/usage/deferred-event"
+              )
+              const unregister = registerDeferrableEventHandler(
+                orgId,
+                appName,
+                eventType,
+                exportName,
+                gateEventOnAppState(desc.name, orgId, handler),
+              )
+              subscriptionDisposers.push(async () => unregister())
+            }
             subscriptionDisposers.push(
               await subscribeToEvent(
                 sourceApp,
@@ -3878,6 +3911,17 @@ async function registerSingleApp(
                   )
                   return
                 }
+                // At an app day cap a scheduled tick is skipped: the job is
+                // periodic, the first tick after midnight UTC runs it
+                // (modules/apps/usage/app-day-cap.ts).
+                const { appRunHoldMs } = await import("~/modules/apps/usage/app-day-cap")
+                if ((await appRunHoldMs({ orgId: jobOrgId, trusted: false })) !== null) {
+                  log.info(
+                    { app: appName, job: jobName, orgId: jobOrgId },
+                    "scheduled job skipped: the org reached an app day cap",
+                  )
+                  return
+                }
                 const actorId: string = payload._userId ?? `system:${appName}:${jobName}`
                 const bridge = buildJobBridge(
                   appName,
@@ -3940,6 +3984,10 @@ async function registerSingleApp(
                     `Refusing to run job "${appName}:${jobName}" for org "${jobOrgId}": app not installed for that org`,
                   )
                 }
+                // At an app day cap the job is put back as delayed until the
+                // next UTC day (modules/apps/usage/app-day-cap.ts, jobs.ts).
+                const { holdAppJobIfCapped } = await import("~/modules/apps/usage/app-day-cap")
+                await holdAppJobIfCapped({ orgId: jobOrgId, trusted: false })
                 const actorId: string = payload._userId ?? `system:${appName}:${jobName}`
                 const bridge = buildJobBridge(
                   appName,
@@ -4078,6 +4126,10 @@ async function registerSingleApp(
             // An app the platform does not vouch for gets an RLS session as the
             // app itself instead, and runs in the isolated worker pool.
             const vouched = hasPrivilegedBridge(desc)
+            // At an app day cap the search is refused: no hits and a typed
+            // reason (modules/search/external-bridge.ts).
+            const { assertAppRunRoom } = await import("~/modules/apps/usage/app-day-cap")
+            await assertAppRunRoom({ orgId: searchOrgId, trusted: vouched })
             const searchSession = vouched
               ? ({
                   ctx: { actorType: "system", orgId: searchOrgId, purpose: "job" },

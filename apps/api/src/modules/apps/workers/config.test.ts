@@ -55,7 +55,7 @@ describe("workers config", () => {
     expect(readWorkersConfig()).toBeNull()
   })
 
-  it("is used when everything is set and the role is all", () => {
+  it("is used when everything is set", () => {
     setAll()
     const cfg = readWorkersConfig()
     expect(cfg).not.toBeNull()
@@ -69,10 +69,21 @@ describe("workers config", () => {
     expect(bridgeUrlFor(cfg, "r1")).toBe(`${cfg.bridgeBaseUrl}/api/app-bridge/r1`)
   })
 
-  it("is refused under another role", () => {
+  it("is used under every role: a worker process runs apps on Workers too", () => {
+    for (const role of ["worker", "api", "all"] as const) {
+      setAll()
+      env.LIAISON_ROLE = role
+      const sel = readWorkersSelection()
+      expect(sel.kind).toBe("workers")
+      // Its isolates still call back on the public API's address.
+      if (sel.kind === "workers") {
+        expect(sel.config.bridgeBaseUrl).toBe(env.BASE_URL.replace(/\/+$/, ""))
+      }
+    }
     setAll()
     env.LIAISON_ROLE = "worker"
-    expect(readWorkersSelection().kind).toBe("invalid")
+    env.LIAISON_APP_BRIDGE_BASE_URL = "https://api.example.com/"
+    expect(readWorkersConfig()?.bridgeBaseUrl).toBe("https://api.example.com")
   })
 
   it("is refused when partly set or with a bad bundle map", () => {
@@ -129,7 +140,7 @@ describe("workers config", () => {
     expect(readWorkersConfig()?.apps.has("shopify")).toBe(true)
   })
 
-  it("still needs the loader variables, a valid switch and role all with custom apps on", () => {
+  it("still needs the loader variables and a valid switch with custom apps on", () => {
     setLoaderOnly()
     env.LIAISON_WORKERS_CUSTOM_APPS = "1"
     env.LIAISON_APP_LOADER_KEY = undefined
@@ -142,8 +153,8 @@ describe("workers config", () => {
     expect(readWorkersSelection().kind).toBe("invalid")
     setLoaderOnly()
     env.LIAISON_WORKERS_CUSTOM_APPS = "1"
-    env.LIAISON_ROLE = "api"
-    expect(readWorkersSelection().kind).toBe("invalid")
+    env.LIAISON_ROLE = "worker"
+    expect(readWorkersSelection().kind).toBe("workers")
     // The switch alone (no loader) is a misconfiguration worth the warning, not unset.
     for (const k of KEYS) (env as Record<string, unknown>)[k] = undefined
     env.LIAISON_ROLE = "all"

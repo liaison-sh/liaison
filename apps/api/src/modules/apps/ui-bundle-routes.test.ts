@@ -14,6 +14,11 @@ import { withSystemDb } from "~/db/privileged"
 import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
 import { env } from "~/lib/env"
 import { resetAppFrameRuntime } from "~/modules/apps/app-frame"
+import {
+  grantedDeclaredHosts,
+  mintAppFrameUrl,
+  signAppFrameToken,
+} from "~/modules/apps/app-frame-host-route"
 import { manifestRegistry } from "~/modules/apps/app-registries"
 import { resetCatalogCache } from "~/modules/apps/catalog"
 import { resetInstallTrustCache } from "~/modules/apps/install-trust"
@@ -299,6 +304,200 @@ describe("GET /api/apps/:name/:version/ui.js", () => {
       } finally {
         ;(env as { NODE_ENV: string }).NODE_ENV = prior
       }
+    })
+  })
+
+  // App screens on an origin of their own (LIAISON_APP_FRAME_ORIGIN_TEMPLATE,
+  // app-frame-host-route.ts): the host serves the frame document of its app for
+  // its org, and nothing else.
+  describe("an app frame host (<app>--<org>)", () => {
+    const RUNTIME = "window.frameRuntime = 1"
+    const FRAME_HOST = "fixture-app--ui-bundle-org.usercontent.test"
+    let publicDir: string
+    let priorPublicDir: string | undefined
+    const saved = {
+      frame: env.LIAISON_APP_FRAME_ORIGIN_TEMPLATE,
+      org: env.LIAISON_ORG_HOST_TEMPLATE,
+    }
+
+    beforeEach(() => {
+      publicDir = mkdtempSync(join(tmpdir(), "frame-host-public-"))
+      writeFileSync(join(publicDir, "app-frame-runtime.js"), RUNTIME)
+      priorPublicDir = process.env.LIAISON_PUBLIC_DIR
+      process.env.LIAISON_PUBLIC_DIR = publicDir
+      resetAppFrameRuntime()
+      env.LIAISON_APP_FRAME_ORIGIN_TEMPLATE = "https://{app}--{org}.usercontent.test"
+      env.LIAISON_ORG_HOST_TEMPLATE = undefined
+    })
+
+    afterEach(() => {
+      rmSync(publicDir, { recursive: true, force: true })
+      if (priorPublicDir === undefined) delete process.env.LIAISON_PUBLIC_DIR
+      else process.env.LIAISON_PUBLIC_DIR = priorPublicDir
+      resetAppFrameRuntime()
+      env.LIAISON_APP_FRAME_ORIGIN_TEMPLATE = saved.frame
+      env.LIAISON_ORG_HOST_TEMPLATE = saved.org
+    })
+
+    it("serves the minted frame: frame-ancestors the org's page, its own origin, no XFO, no cookie", async () => {
+      env.LIAISON_ORG_HOST_TEMPLATE = "https://{slug}.liaison.test"
+      const url = await mintAppFrameUrl(ORG, "fixture-app", "1.2.3")
+      expect(url?.startsWith(`https://${FRAME_HOST}/frame/1.2.3?t=`)).toBe(true)
+      const res = await app.request(url as string, {
+        headers: { Cookie: "__Host-liaison_rt=stolen; liaison_session=x" },
+      })
+      expect(res.status).toBe(200)
+      const html = await res.text()
+      const nonce = /<script nonce="([0-9a-f]{36})">/.exec(html)?.[1] as string
+      const csp = res.headers.get("content-security-policy") ?? ""
+      expect(csp).toBe(
+        `${appFramePolicy(nonce)}; frame-ancestors https://ui-bundle-org.liaison.test; sandbox allow-scripts allow-forms allow-same-origin`,
+      )
+      // The frame keeps no network, no frame and no form of its own.
+      expect(csp).toContain("connect-src 'none'")
+      expect(csp).toContain("frame-src 'none'")
+      expect(csp).toContain("form-action 'none'")
+      expect(res.headers.get("x-frame-options")).toBeNull()
+      expect(res.headers.get("set-cookie")).toBeNull()
+      expect(html).toContain(
+        '<meta name="liaison-parent-origin" content="https://ui-bundle-org.liaison.test" />',
+      )
+    })
+
+    it("404s everything else on the frame host, and sets no cookie doing it", async () => {
+      const t = new URL((await mintAppFrameUrl(ORG, "fixture-app", "1.2.3")) as string).search
+      for (const path of [
+        "/",
+        "/index.html",
+        "/assets/index.js",
+        "/api/apps/manifests",
+        `/api/apps/fixture-app/1.2.3/ui.js${t}`,
+        `/api/apps/fixture-app/1.2.3/frame${t}`,
+        "/api/auth/refresh",
+        "/api/auth/login",
+        "/api/app-bridge/x",
+        "/webhooks/shopify/x",
+        "/healthz",
+        "/ws",
+        "/frame/1.2.3",
+        `/frame/9.9.9${t}`,
+      ]) {
+        const res = await app.request(`https://${FRAME_HOST}${path}`, {
+          headers: { Cookie: "__Host-liaison_rt=stolen" },
+        })
+        expect({ path, status: res.status }).toEqual({ path, status: 404 })
+        expect(res.headers.get("set-cookie")).toBeNull()
+      }
+      const post = await app.request(`https://${FRAME_HOST}/frame/1.2.3${t}`, { method: "POST" })
+      expect(post.status).toBe(404)
+    })
+
+    it("refuses a token minted for another host, app or org", async () => {
+      const url = new URL((await mintAppFrameUrl(ORG, "fixture-app", "1.2.3")) as string)
+      // The same token on another app's frame host of the same org.
+      expect(
+        (
+          await app.request(
+            `https://other-app--ui-bundle-org.usercontent.test${url.pathname}${url.search}`,
+          )
+        ).status,
+      ).toBe(404)
+      // A token naming this host but another org (signed, so only the org check stops it).
+      const foreign = await signAppFrameToken({
+        app: "fixture-app",
+        version: "1.2.3",
+        host: FRAME_HOST,
+        parent: "https://evil.test",
+        org: "00000000-0000-4000-8000-0000000ab0ff",
+      })
+      expect(
+        (await app.request(`https://${FRAME_HOST}/frame/1.2.3?t=${encodeURIComponent(foreign)}`))
+          .status,
+      ).toBe(404)
+      // A bundle token is not a frame token.
+      const bundle = await signUiBundleToken("fixture-app", "1.2.3")
+      expect(
+        (await app.request(`https://${FRAME_HOST}/frame/1.2.3?t=${encodeURIComponent(bundle)}`))
+          .status,
+      ).toBe(404)
+    })
+
+    it("refuses a forged token naming another host, app, org or version", async () => {
+      const good = {
+        app: "fixture-app",
+        version: "1.2.3",
+        host: FRAME_HOST,
+        parent: "https://ui-bundle-org.liaison.test",
+        org: ORG,
+      }
+      const at = async (claims: typeof good) =>
+        (
+          await app.request(
+            `https://${FRAME_HOST}/frame/1.2.3?t=${encodeURIComponent(await signAppFrameToken(claims))}`,
+          )
+        ).status
+      // The genuine claims pass, so each refusal below is the one claim that differs.
+      expect(await at(good)).toBe(200)
+      expect(await at({ ...good, host: "other-app--ui-bundle-org.usercontent.test" })).toBe(404)
+      expect(await at({ ...good, app: "other-app" })).toBe(404)
+      expect(await at({ ...good, org: "00000000-0000-4000-8000-0000000ab0ff" })).toBe(404)
+      expect(await at({ ...good, version: "9.9.9" })).toBe(404)
+    })
+
+    it("shows images from and links to only the hosts the install's grant covers", async () => {
+      // An admin-approved custom app (not vouched by the catalog or a publisher)
+      // whose grant names one image host and one link host of the two it declares.
+      const dir = join(installRoot, "fixture-app", "3.0.0")
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, "ui.js"), "export const x = 1")
+      writeFileSync(
+        join(dir, "app.manifest.json"),
+        JSON.stringify({
+          name: "fixture-app",
+          network: {
+            imageHosts: ["img.granted.test", "img.collector.test"],
+            linkHosts: ["link.granted.test", "link.collector.test"],
+          },
+        }),
+      )
+      await withSystemDb("frame-host-test:grant", async (db) => {
+        await db
+          .update(appsActiveVersion)
+          .set({ version: "3.0.0" })
+          .where(eq(appsActiveVersion.name, "fixture-app"))
+        await db
+          .update(appsInstalled)
+          .set({ version: "3.0.0", grantedDomains: ["img.granted.test", "link.granted.test"] })
+          .where(eq(appsInstalled.name, "fixture-app"))
+      })
+      resetInstallTrustCache("fixture-app")
+      const res = await app.request((await mintAppFrameUrl(ORG, "fixture-app", "3.0.0")) as string)
+      expect(res.status).toBe(200)
+      const csp = res.headers.get("content-security-policy") ?? ""
+      expect(csp).toContain("https://img.granted.test")
+      expect(csp).not.toContain("img.collector.test")
+      // The app list's externalHosts, the only hosts the page's openExternal opens.
+      const hosts = await grantedDeclaredHosts("fixture-app", "3.0.0")
+      expect(hosts.linkHosts).toContain("link.granted.test")
+      expect(hosts.linkHosts).not.toContain("link.collector.test")
+      expect(hosts.linkHosts).not.toContain("img.collector.test")
+    })
+
+    it("keeps the legacy frame opaque: never allow-same-origin outside the frame host", async () => {
+      const res = await app.request(
+        `/api/apps/fixture-app/1.2.3/frame?t=${encodeURIComponent(await signUiBundleToken("fixture-app", "1.2.3"))}`,
+      )
+      expect(res.status).toBe(200)
+      expect(res.headers.get("content-security-policy")).not.toContain("allow-same-origin")
+      expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'self'")
+      expect(await res.text()).not.toContain("liaison-parent-origin")
+    })
+
+    it("mints nothing without the template", async () => {
+      env.LIAISON_APP_FRAME_ORIGIN_TEMPLATE = undefined
+      expect(await mintAppFrameUrl(ORG, "fixture-app", "1.2.3")).toBeNull()
+      // And a host shaped like a frame host is an ordinary host again (no frame route).
+      expect((await app.request(`https://${FRAME_HOST}/frame/1.2.3`)).status).toBe(404)
     })
   })
 

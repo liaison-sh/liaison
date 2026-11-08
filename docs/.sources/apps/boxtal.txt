@@ -179,3 +179,4 @@ print pack renders an issued invoice's missing PDF on demand -> bundled-apps/box
 print pack refuses a draft invoice: issue it first -> bundled-apps/boxtal/src/print-pack.ts:143
 failed render names the retry action -> bundled-apps/boxtal/src/print-pack.ts:172
 an order_key naming nothing, or two keys naming different rows, is refused -> bundled-apps/boxtal/src/order-state.ts:434
+Unticking a fulfilled row asks first (Untick this order?); Boxtal tab Label opens the label PDF -> bundled-apps/boxtal/src/ui/Queues.tsx:425 ; bundled-apps/boxtal/src/ui/BoxtalShipmentTab.tsx:147

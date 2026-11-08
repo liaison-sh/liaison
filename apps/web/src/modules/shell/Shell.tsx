@@ -84,6 +84,7 @@ import { ConnectDialogHost } from "~/modules/settings/connect-dialog-host"
 import { ActivityBar } from "~/modules/shell/ActivityBar"
 import { ApiProvider, useApi } from "~/modules/shell/ApiContext"
 import { agentReferenceStore } from "~/modules/shell/agent-reference-store"
+import { AppApprovalConfirmHost } from "~/modules/shell/app-approval-confirm"
 import { attentionStore, getAttentionApi, setAttentionApi } from "~/modules/shell/attention-store"
 import { ChatDock } from "~/modules/shell/ChatDock"
 import { ChatsSheet } from "~/modules/shell/ChatsSheet"
@@ -1198,6 +1199,7 @@ export const Shell: Component = () => {
               same reason, it belongs over whichever tab asked for it.
             */}
             <ConnectDialogHost />
+            <AppApprovalConfirmHost />
             {/*
               P6d-FX5 (W5): a device grant raised while the user is signed in.
               At the SHELL for the same reason the unlock modal is: the grant

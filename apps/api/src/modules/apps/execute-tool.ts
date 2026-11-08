@@ -99,6 +99,7 @@ import {
   SandboxTenantBusyError,
 } from "~/modules/apps/sandbox/worker-pool"
 import { APP_TOOL_ERROR_STATUS } from "~/modules/apps/tool-error-status"
+import { assertAppRunRoom } from "~/modules/apps/usage/app-day-cap"
 import {
   addressGroundingRefusal,
   legalIdentityRefusal,
@@ -260,6 +261,7 @@ import {
 } from "~/modules/apps/org-apps"
 import { featureOffAnswer } from "~/modules/apps/org-features"
 import { sealMailApprovalPayload } from "~/modules/mailbox-crypto/approval-payload"
+import { CapLimitError } from "~/modules/org/caps"
 import {
   bypassesDimensionConstraint,
   dimensionGrantCovers,
@@ -452,6 +454,8 @@ type ExecuteToolError = {
   retryable: boolean
   status?: number
   body?: unknown
+  /** A typed refusal's own fields (a cap's `{limit, used}`), passed on as `error.details`. */
+  details?: Record<string, unknown>
 }
 
 // BL-180: bounded side-effect-safe auto-retry for tools that opt in via the
@@ -3107,6 +3111,14 @@ export async function executeToolHandler(
           : {}),
         ...(originRun !== undefined ? { originRun } : {}),
       })
+    // A top-level run of an org at an app day cap is refused, typed (429,
+    // APP_*_LIMIT_REACHED, modules/apps/usage/app-day-cap.ts); a nested run (a
+    // hop of a run already admitted) is counted, never refused.
+    await assertAppRunRoom({
+      orgId,
+      trusted: handlerRef.trusted === true,
+      nested: bridgeOptions?.nested === true || (bridgeOptions?.callChain?.length ?? 0) > 1,
+    })
     const bundleSource = await loadBundle(handlerRef.bundlePath)
     // This execution's own identity, handed to the bridge so every cross-app
     // hop it opens is keyed on THIS execution and not on the tool names that
@@ -5660,6 +5672,24 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   } catch (err) {
     if (idemKey) await invalidateIdempotency(opts.orgId, opts.toolName, idemKey)
     const message = err instanceof Error ? err.message : "Tool handler error"
+    // The org reached a cap (an app day cap refuses the run before its
+    // handler, modules/apps/usage/app-day-cap.ts): a host refusal, typed with
+    // its status, code and {limit, used}, for an untrusted app too.
+    if (err instanceof CapLimitError) {
+      log.warn(
+        { toolName: opts.toolName, orgId: opts.orgId, code: err.code, ...err.details },
+        "Tool refused at an organization cap",
+      )
+      return {
+        error: {
+          code: err.code,
+          message: err.message,
+          retryable: false,
+          status: err.status,
+          details: { ...err.details },
+        },
+      }
+    }
     // A connection with no stored credentials (a send from a mailbox added
     // without its password): the person reconnects it. Typed, whichever handler
     // (host or sandboxed, where only the message crossed back) hit it.
@@ -6191,12 +6221,12 @@ export async function executeTool<TData = unknown>(
       status: number
       code: string
       body?: unknown
-      details?: { retryable: boolean }
+      details?: Record<string, unknown> & { retryable: boolean }
     }
     err.status = status
     err.code = envelope.error.code
     if (envelope.error.body !== undefined) err.body = envelope.error.body
-    err.details = { retryable: envelope.error.retryable }
+    err.details = { ...envelope.error.details, retryable: envelope.error.retryable }
     // A tenant's sandbox share is full (worker-pool.ts): the client retries after one wait.
     if (envelope.error.code === SANDBOX_TENANT_BUSY_CODE) {
       ;(err as Error & { retryAfterSeconds?: number }).retryAfterSeconds =

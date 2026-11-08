@@ -239,6 +239,10 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     exempt: "system",
     reason: "lines custom apps and draft previews logged, kept 7 days",
   },
+  "kernel.app_usage_daily": {
+    exempt: "derived",
+    reason: "per-day app run counters the instance records as runs settle, never imported",
+  },
   "kernel.app_scope_grant_audit": { exempt: "derived", reason: "grant audit trail" },
   "kernel.app_seeded_assets": { exempt: "config", reason: "org and app configuration" },
   "kernel.app_sequences": { exempt: "config", reason: "org and app configuration" },

@@ -90,6 +90,8 @@ export const KERNEL_JOBS: Readonly<Record<string, KernelJobSpec>> = {
   "approval-expiry": { queueClass: "cron" },
   "control-plane-heartbeat": { queueClass: "cron" },
   "cloud-usage-report": { queueClass: "cron" },
+  "app-usage-loader-pull": { queueClass: "cron" },
+  "app-deferred-event": { queueClass: "cron" },
   "approval-expiry-sweep": { queueClass: "cron" },
   "approval-reminder-sweep": { queueClass: "cron" },
   "approval-routed-reminder-sweep": { queueClass: "cron" },

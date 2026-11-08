@@ -381,6 +381,9 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/custom-apps-switch.test.ts",
             "src/tests/integration/app-builder.test.ts",
             "src/tests/integration/app-builder-workers.test.ts",
+            // Outbound domains need consent: the install's granted domains,
+            // enforced in the bridge, framed image and link hosts included.
+            "src/tests/integration/app-egress-grants.test.ts",
             "src/tests/oauth-redirect-base.test.ts",
             // Repo-wide grep: no agent-specific node templates or features.
             "src/tests/no-agent-specific-node.test.ts",
@@ -1247,6 +1250,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/ui/home.test.ts",
             "src/ui/settings.test.ts",
             "src/ui/panels/url-template.test.ts",
+            // Outside links and cross-app records go through the host (framed screens).
+            "src/ui/external-link.test.ts",
             // Pure query-shape oracle: Home's unfulfilled-past-SLA query must keep
             // status:open (refunded/archived orders stay UNFULFILLED forever).
             "src/handlers/home.query.test.ts",

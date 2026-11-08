@@ -411,6 +411,19 @@ Your app's UI may run in a sandboxed frame (in the desktop and phone apps, and
 in a browser for an app that is not first-party), where each view is its own
 frame. Write it so that it works there too:
 
+- In a frame, `fetch` reaches only your own `/api/apps/<app>/...` routes, and the
+  frame has no popups, no token and no network of its own. Use the host calls
+  instead (host API 1.3): `getContext()` for the org and the person (never the
+  token), `app.openFile(fileId, filename)` to show a file your own tool returned,
+  `app.listDocumentTemplates` and `app.printDocuments` for templates and prints,
+  `app.listMyApprovals` and `app.decideApproval` for your tools' approvals (the
+  host asks the person in its own dialog), `app.openExternal(url)` for an https
+  page on a host your manifest declares (list outside pages you only link to in
+  `network.linkHosts`, image hosts in `network.imageHosts`), and
+  `app.openRecord(app, entity, id)` or `app.openApprovals()` for another app's
+  record or the approvals queue. Each one also works in the page. Ask in your own
+  dialog (the `ConfirmDialog` of `@liaison/app-ui`), never `window.confirm`. The
+  limits are in [Sandboxing](app-sandbox.md#host-calls-a-framed-screen-makes).
 - Read the page's path with `currentPath()` from `@liaison/host`, never
   `window.location` (a frame's location is its own document's), and read it
   again on `popstate`, which the host fires on every route change. A sidebar

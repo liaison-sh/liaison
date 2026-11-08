@@ -75,6 +75,7 @@ describe("cell-billing endpoint and message types", () => {
         "billing.auto_topup_settings",
         "billing.auto_topup_request",
         "usage.report",
+        "apps.usage",
         "storage.estimate",
         "mail.domain_add",
         "mail.domain_status",

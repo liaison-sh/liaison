@@ -15,8 +15,13 @@
 // the host's bearer-authenticated `fetchBlob`; under the desktop shell the host
 // opens the file itself (`openFile`) and the pre-opened tab is closed.
 //
+// In a frame (no network, no popup) the templates, the print and the file all go
+// through the host's typed calls (`app.listDocumentTemplates`, `app.printDocuments`,
+// `app.openFile`), bound to the app that bundles this component; the host opens
+// the file, no bytes reach the frame.
+//
 // Bundling rule: explicit props only, no `{...rest}` spread.
-import { fetchBlob, fetch as hostFetch, hostLocale, openFile } from "@liaison/host"
+import { app, fetchBlob, hostLocale, openFile } from "@liaison/host"
 import { type Component, createSignal, For, Show } from "solid-js"
 import { Badge, Button } from "./kit"
 
@@ -91,6 +96,8 @@ export interface PrintDocumentsProps {
 
 /** Pre-open a tab inside the click gesture so a popup blocker lets it through. */
 function openPreparingTab(): Window | null {
+  // Framed: the host opens the file itself.
+  if (app.opensFiles()) return null
   try {
     return window.open("", "_blank")
   } catch {
@@ -99,6 +106,10 @@ function openPreparingTab(): Window | null {
 }
 
 async function loadFileInto(fileId: string, win: Window | null, name: string): Promise<void> {
+  if (await app.openFile(fileId, name)) {
+    win?.close()
+    return
+  }
   let blob: Blob
   try {
     blob = await fetchBlob(`/api/files/${fileId}/inline`)
@@ -143,9 +154,7 @@ export const PrintDocuments: Component<PrintDocumentsProps> = (props) => {
   async function loadTemplates(): Promise<void> {
     setError(null)
     try {
-      const rows = await hostFetch<TemplateSummary[]>(
-        `/api/documents/templates?app=${encodeURIComponent(props.app)}&entity=${encodeURIComponent(props.entity)}`,
-      )
+      const rows = await app.listDocumentTemplates<TemplateSummary>(props.entity)
       setTemplates(rows)
       const needed = new Set(props.neededTemplateIds ?? [])
       setTicked(new Set(rows.filter((r) => needed.has(r.id)).map((r) => r.id)))
@@ -176,15 +185,11 @@ export const PrintDocuments: Component<PrintDocumentsProps> = (props) => {
     setError(null)
     setResult(null)
     try {
-      const out = await hostFetch<PrintResult>("/api/documents/print", {
-        method: "POST",
-        body: JSON.stringify({
-          app: props.app,
-          entity: props.entity,
-          recordId: props.recordId,
-          templateIds: ids,
-          ...(merge ? { merge: true } : {}),
-        }),
+      const out = await app.printDocuments<PrintResult>({
+        entity: props.entity,
+        id: props.recordId,
+        templateIds: ids,
+        ...(merge ? { merge: true } : {}),
       })
       setResult(out)
       const first = merge && out.merged ? out.merged : out.files[0]

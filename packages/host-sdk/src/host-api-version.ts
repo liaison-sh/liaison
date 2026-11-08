@@ -13,9 +13,13 @@
 // own location), the frame's `path` message and in-app links that move the page.
 // 1.2: `app.trackOpenRecord()` (the record a page has open in a pane, which a turn
 // sent from its tab names) and the frame's `setOpenRecord` call.
+// 1.3: typed host calls a screen framed on an origin of its own needs: `getContext()`,
+// `app.openFile(fileId)`, `app.listDocumentTemplates`/`printDocuments`,
+// `app.listMyApprovals`/`decideApproval` (confirmed by the host), `app.openExternal`,
+// `app.openRecord`, `app.openApprovals`.
 
 /** The host API version this build of Liaison provides. */
-export const HOST_API_VERSION = "1.2.0"
+export const HOST_API_VERSION = "1.3.0"
 
 /** The host API majors this build of Liaison answers. */
 export const SUPPORTED_HOST_API_MAJORS: readonly number[] = [1]

@@ -154,7 +154,13 @@ import {
   handleTicketApprovalCreate,
   handleTicketApprovalUpdate,
 } from "~/modules/tickets/ticket-message-store"
-import { browserAppFrameUrl, isolatedAppExports, isolatedFrameUrl } from "./isolated-app"
+import { setAppExternalHosts } from "./host-app-calls"
+import {
+  browserAppFrameUrl,
+  isolatedAppExports,
+  isolatedFrameUrl,
+  originBoundFrameOrigin,
+} from "./isolated-app"
 import { importAppModule, verifiedFirstPartyApp } from "./verified-app"
 
 // --- Chat dock surfacing ---
@@ -1539,6 +1545,10 @@ type ManifestEntry = {
   signed?: boolean
   /** The image's own catalog artifact: a browser tab runs it in the page, every other app framed. */
   firstParty?: boolean
+  /** The app's frame on an origin of its own (the server's LIAISON_APP_FRAME_ORIGIN_TEMPLATE). */
+  frameUrl?: string
+  /** Hosts the app's manifest declares, the only ones `openExternal` opens. */
+  externalHosts?: string[]
 }
 
 /** Fetch the per-user manifest list (already scope-filtered server-side). */
@@ -1651,12 +1661,21 @@ async function registerManifestAppEntry(
       // a first-party app is imported into the page from that origin, and every
       // other app runs in the same sandboxed frame, whose document the server
       // serves beside its bundle. An outside app's code never runs in the page.
-      const inPage = !boundServerOrigin && entry.firstParty === true
+      setAppExternalHosts(name, entry.externalHosts)
+      // A browser tab frames the app on its own origin when the server gives it one
+      // (app screens on origins of their own); a shell keeps its own frame.
+      const ownOriginFrame =
+        !boundServerOrigin && typeof entry.frameUrl === "string"
+          ? originBoundFrameOrigin(entry.frameUrl, window.location.origin) !== null
+            ? entry.frameUrl
+            : null
+          : null
+      const inPage = !boundServerOrigin && entry.firstParty === true && !ownOriginFrame
       const frameUrl = inPage
         ? null
         : boundServerOrigin
           ? isolatedFrameUrl()
-          : browserAppFrameUrl(bundleUrl)
+          : (ownOriginFrame ?? browserAppFrameUrl(bundleUrl))
       const servedVersion = /\/([^/]+)\/ui\.js$/.exec(bundleUrl.pathname)?.[1] ?? null
       const verified =
         boundServerOrigin && signed && servedVersion
@@ -1671,7 +1690,8 @@ async function registerManifestAppEntry(
       // The URLs carry a short-lived token fixed now; a frame mounted after it
       // has nearly run out asks the app list again for this app's fresh ones.
       const freshUrls = async (): Promise<{ bundleUrl: string; frameUrl: string } | null> => {
-        const fresh = (await freshManifestEntries())?.find((e) => e.name === name)?.uiBundleUrl
+        const freshEntry = (await freshManifestEntries())?.find((e) => e.name === name)
+        const fresh = freshEntry?.uiBundleUrl
         if (!fresh) return null
         let url: URL
         try {
@@ -1681,7 +1701,15 @@ async function registerManifestAppEntry(
         }
         // The same origin and the same app version, or nothing.
         if (url.origin !== permittedOrigin || url.pathname !== bundleUrl.pathname) return null
-        const nextFrame = boundServerOrigin ? frameUrl : browserAppFrameUrl(url)
+        const nextFrame = boundServerOrigin
+          ? frameUrl
+          : ownOriginFrame
+            ? freshEntry?.frameUrl &&
+              originBoundFrameOrigin(freshEntry.frameUrl, window.location.origin) ===
+                originBoundFrameOrigin(ownOriginFrame, window.location.origin)
+              ? freshEntry.frameUrl
+              : null
+            : browserAppFrameUrl(url)
         return nextFrame ? { bundleUrl: url.href, frameUrl: nextFrame } : null
       }
       const framed = (): Record<string, unknown> =>
@@ -1690,6 +1718,8 @@ async function registerManifestAppEntry(
           bundleUrl: bundleHref,
           frameUrl: frameUrl ?? "",
           freshUrls,
+          originBound: ownOriginFrame !== null,
+          entities: Object.keys(manifest?.entities ?? {}),
         })
       try {
         if (verified) {

@@ -61,6 +61,7 @@ Both go through approval: the campaign changes state only once someone with `ads
 - Google campaigns, ad groups and ads are always created paused.
 - Budgets are given in major units (for example `50.00`) and the agent reads the account currency first.
 - Bulk negative keywords can suppress delivery, so check every keyword on the approval card.
+- `graph_get` and `google_search_terms` count as reading outside text: a Graph read can return page and post comments, and the search-terms report holds the queries people typed. After either one, a later call in the same turn whose effect leaves the organization waits for a person's approval.
 
 ## Roles and scopes
 

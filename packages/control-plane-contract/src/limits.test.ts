@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import c2c from "../vectors/c2c.json"
 import {
+  CAP_KINDS_BY_CAPS_VERSION,
   CELL_BILLING_ERROR_CODES,
   CELL_BILLING_MESSAGE_TYPES,
   CLOUD_API_BASE,
@@ -41,9 +42,19 @@ import {
 const ORG = "7d1f3a52-9c4e-4b8a-8f61-2b0e5c9d4a17"
 
 describe("cap kinds and bounds: one table", () => {
-  test("six kinds, jobsPerHour among them, no sharedMailboxes key", () => {
+  test("nine kinds, jobsPerHour and the app day caps among them, no sharedMailboxes key", () => {
     expect<string[]>([...CLOUD_CAP_KINDS].sort()).toEqual(
-      ["seats", "mailboxes", "storageGb", "jobsPerHour", "customApps", "auditDays"].sort(),
+      [
+        "seats",
+        "mailboxes",
+        "storageGb",
+        "jobsPerHour",
+        "customApps",
+        "auditDays",
+        "appRunsPerDay",
+        "appBridgeCallsPerDay",
+        "appCpuMsPerDay",
+      ].sort(),
     )
     expect(CLOUD_CAP_KINDS).toContain("jobsPerHour")
     expect(CLOUD_CAP_KINDS as readonly string[]).not.toContain("sharedMailboxes")
@@ -81,11 +92,15 @@ describe("cap kinds and bounds: one table", () => {
     expect(cloudCapsSchema.safeParse({ sharedMailboxes: 1 }).success).toBe(false)
   })
 
-  test("the vectors exercise all six kinds the schema takes", () => {
+  test("the vectors exercise every kind: version 1's in the billing push, all in the app caps push", () => {
     const push = moneyVectors.controlToCell["billing push"].body
-    expect(Object.keys(push.caps).sort()).toEqual([...CLOUD_CAP_KINDS].sort())
+    expect(Object.keys(push.caps).sort()).toEqual([...CAP_KINDS_BY_CAPS_VERSION[1]].sort())
     const signed = c2c.sign.find((s) => s.name === "billing push")
     expect(Object.keys(JSON.parse(signed?.body ?? "{}").caps).sort()).toEqual(
+      [...CAP_KINDS_BY_CAPS_VERSION[1]].sort(),
+    )
+    const app = c2c.sign.find((s) => s.name.startsWith("billing push with app caps"))
+    expect(Object.keys(JSON.parse(app?.body ?? "{}").caps).sort()).toEqual(
       [...CLOUD_CAP_KINDS].sort(),
     )
   })

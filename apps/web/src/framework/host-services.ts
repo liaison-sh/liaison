@@ -11,6 +11,7 @@ import { createComponent, createRoot, getOwner, runWithOwner } from "solid-js"
 import { insert, render } from "solid-js/web"
 import { getContributions } from "~/framework/app-registry"
 import { onEntityChange } from "~/framework/entity-changes"
+import { buildAppHostCalls } from "~/framework/host-app-calls"
 import {
   assertNotPersonOnly,
   PersonOnlyActionError,
@@ -21,6 +22,7 @@ import { type ApiClient, assertKernelRelativePath, createApiClient } from "~/lib
 import type { EnsureFreshToken, PendingRefresh } from "~/lib/auth-refresh"
 import { env, serverAddressOverride } from "~/lib/env"
 import { socketReconnecting } from "~/lib/socket-state"
+import { queueDecision } from "~/modules/approvals/decision-queue"
 import { canOpenDownloadedFile, openDownloadedFile } from "~/modules/desktop/desktop-store"
 import { currentLocale } from "~/modules/i18n/i18n-context"
 import { openConnectDialog } from "~/modules/settings/connect-dialog-host"
@@ -119,7 +121,7 @@ export function buildHostServices(opts: BuildHostServicesOptions): HostServices 
   // at a route that never existed — every plugin-initiated connect 404'd).
   const resolveAuthorizeRoute = opts.resolveAuthorizeRoute
 
-  return {
+  const services: HostServices = {
     accessToken: () => opts.getAccessToken(),
 
     // The reader's language, reactive, so app UIs translate their own copy.
@@ -350,6 +352,15 @@ export function buildHostServices(opts: BuildHostServicesOptions): HostServices 
       }
     },
   }
+  // Host API 1.3: the typed calls a framed screen needs (framework/host-app-calls.ts).
+  const typed = buildAppHostCalls({
+    fetch: services.fetch,
+    fetchBlob: services.fetchBlob as (path: string) => Promise<Blob>,
+    navigate: services.navigate as (path: string) => void,
+    decide: (approvalId, body, label) =>
+      queueDecision(kernelClient, "approval", approvalId, body, { label }),
+  })
+  return Object.assign(services, typed)
 }
 
 /** Keys an app may watch: `<callerApp>:…` or `kernel:…`; the rest is dropped

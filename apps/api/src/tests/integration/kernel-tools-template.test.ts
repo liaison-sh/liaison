@@ -9,6 +9,7 @@ import { describe, expect, it } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
+import { env } from "~/lib/env"
 import {
   KernelToolsTestAccess,
   refreshWebSearchToolRegistration,
@@ -57,5 +58,34 @@ describe("kernel tools template", () => {
     dimensionDefRegistry.delete(["*", "kernel", "skills_domain"])
     await registerKernelAgentTools(org)
     expect(dimensionDefRegistry.get(["*", "kernel", "skills_domain"])).toBeDefined()
+  })
+
+  // The template is built once per process; the custom apps switch is read at each
+  // org's registration, so a template built under one setting never decides for an
+  // org registered under the other.
+  it("gives an org the app builder tools by the custom apps switch at its registration, not at the template's build", async () => {
+    const saved = env.LIAISON_CUSTOM_APPS
+    const has = (org: string) => toolRegistry.has([org, "kernel", "apps_build_publish"])
+    const orgs: string[] = []
+    const register = async (tag: string, setting: "on" | "off") => {
+      env.LIAISON_CUSTOM_APPS = setting
+      const org = await newOrg(tag)
+      orgs.push(org)
+      await registerKernelAgentTools(org)
+      return org
+    }
+    try {
+      KernelToolsTestAccess.resetTemplate()
+      expect(has(await register("switch-off-first", "off"))).toBe(false)
+      expect(has(await register("switch-on-after", "on"))).toBe(true)
+
+      KernelToolsTestAccess.resetTemplate()
+      expect(has(await register("switch-on-first", "on"))).toBe(true)
+      expect(has(await register("switch-off-after", "off"))).toBe(false)
+    } finally {
+      env.LIAISON_CUSTOM_APPS = saved
+      KernelToolsTestAccess.resetTemplate()
+      for (const org of orgs) toolRegistry.deleteByPrefix([org])
+    }
   })
 })

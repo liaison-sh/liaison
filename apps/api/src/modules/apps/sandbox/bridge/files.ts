@@ -20,7 +20,6 @@ const IMPORT_HEADER_ALLOWLIST = new Set(["authorization", "accept"])
 export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
   const {
     assertMailboxNotResetMidRun,
-    allowedDomains,
     appName,
     auditActorType,
     bridgeActingAgentId,
@@ -466,6 +465,8 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
       // pinned-host fetch (single resolution, private-IP reject, per-hop
       // allowlist re-check) for the actual download.
       const allowPrivateHostsInTest = manifest.network?.allowPrivateHostsInTest ?? false
+      // The declared hosts the install row granted (context.ts collectAllowedDomains).
+      const { allowedDomains } = await ctx.egress()
       // first-hop-only: each hop host must be listed exactly (no wildcard reach).
       const exactHost = (u: string | URL) => {
         const host = new URL(u).hostname
@@ -474,7 +475,7 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
         }
       }
       if (firstHopOnly) exactHost(p.url)
-      validateSandboxFetchUrl(p.url, allowedDomains, allowPrivateHostsInTest, appName)
+      await validateSandboxFetchUrl(p.url, allowedDomains, allowPrivateHostsInTest, appName)
       // Request headers are limited to credentials and content negotiation for
       // the allowlisted upstream (`ctx.fetch` sends the same bearer to the same
       // hosts). A credentialed request never follows a redirect, so the token

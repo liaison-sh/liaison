@@ -828,6 +828,18 @@ describe("db import enforcement", () => {
     "modules/cloud/storage-estimate.ts",
     "modules/cloud/usage-report.ts",
     "modules/cloud/auto-topup-trigger.ts",
+    // Per-org app usage and daily app caps, no actor: runs are counted as they
+    // settle and written in batches (app_usage_daily is written through the
+    // privileged pool only), the Workers loader's CPU is stored per org at its
+    // pull, the daily apps.usage report reads every org's rows from a job, the
+    // cap check reads the run's own org caps, and the app frame host (no
+    // session at all) reads the global apps_active_version after its token
+    // named that org.
+    "modules/apps/usage/app-usage.ts",
+    "modules/apps/usage/loader-usage.ts",
+    "modules/apps/usage/app-day-cap.ts",
+    "modules/cloud/apps-usage-report.ts",
+    "modules/apps/app-frame-host-route.ts",
     // The billing status the control plane pushed (kernel.org_billing_state,
     // privileged only), read by id on every request, job and paid call before
     // or outside any actor; the side-call gate's attribution user (a job has no

@@ -81,3 +81,4 @@ A line only to a reader covering its run's scope tags; a preview's lines only to
 The logs route answers an admin while the app is off -> apps/api/src/middleware/app-state-gate.ts:50-51
 With LIAISON_WORKERS_CUSTOM_APPS=1 a builder app runs on the loader as the Worker module its publish built -> apps/api/src/modules/apps/workers/config.ts:170 ; apps/api/src/modules/apps/sandbox/run-app.ts:156 ; apps/api/src/modules/app-builder/publish.ts:250
 The loader fetches the module from the server with a signed request; an app installed from a package file has none -> apps/api/src/modules/apps/workers/bundle-route.ts:1-24 ; apps/api/src/db/migrations/0278_apps_installed_worker_module.sql
+Framed apps: host calls getContext, openFile, print, approvals, openExternal, openRecord; linkHosts/imageHosts -> packages/host-sdk/src/index.ts:482 ; packages/host-sdk/src/index.ts:549 ; apps/api/src/modules/apps/manifest-schema.ts:1608

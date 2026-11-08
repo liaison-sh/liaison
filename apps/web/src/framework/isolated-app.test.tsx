@@ -12,9 +12,11 @@ import { parseFrameMessage } from "../app-frame/protocol"
 import {
   answerFrameCall,
   browserAppFrameUrl,
+  frameCallState,
   ISOLATED_APP_SANDBOX,
   type IsolatedHost,
   isolatedAppExports,
+  ORIGIN_BOUND_APP_SANDBOX,
 } from "./isolated-app"
 
 vi.mock("~/modules/auth/auth-store", async (importOriginal) => {
@@ -597,10 +599,10 @@ describe("the calls a frame may make", () => {
       id: 1,
       method: "invoke",
     })
-    expect(parseFrameMessage({ kind: "call", id: 2, method: "openFile", args: [] })).toEqual({
+    expect(parseFrameMessage({ kind: "call", id: 2, method: "readCookies", args: [] })).toEqual({
       kind: "unsupported",
       id: 2,
-      method: "openFile",
+      method: "readCookies",
     })
     // Without an id there is no one to answer.
     expect(parseFrameMessage({ kind: "call", method: "invoke", args: [] })).toBeNull()
@@ -746,5 +748,181 @@ describe("a stale bundle token at mount", () => {
     )
     await vi.waitFor(() => expect(loadSource).toHaveBeenCalledWith(`${BASE}/ui.js?t=${live}`))
     expect(freshUrls).not.toHaveBeenCalled()
+  })
+})
+
+// App screens on an origin of their own (LIAISON_APP_FRAME_ORIGIN_TEMPLATE).
+describe("a frame on the app's own origin", () => {
+  const OWN = "https://acme--org.usercontent.test"
+
+  function mountBound(host: IsolatedHost) {
+    const exports = isolatedAppExports(manifest, {
+      app: "acme",
+      bundleUrl: `${window.location.origin}/api/apps/acme/1.0.0/ui.js`,
+      frameUrl: `${OWN}/frame/1.0.0?t=x`,
+      originBound: true,
+      host: () => host,
+      loadSource: async () => "export const AcmeHome = () => null",
+    })
+    const View = exports.AcmeHome as (props: Record<string, unknown>) => unknown
+    const result = render(() => View({}) as never)
+    return result.getByTestId("isolated-app-frame") as HTMLIFrameElement
+  }
+
+  it("keeps its origin (allow-same-origin) only there; every other frame stays opaque", () => {
+    const bound = mountBound(fakeHost())
+    expect(bound.getAttribute("sandbox")).toBe(ORIGIN_BOUND_APP_SANDBOX)
+    expect(ORIGIN_BOUND_APP_SANDBOX).toBe("allow-scripts allow-forms allow-same-origin")
+    const { frame } = mountView(fakeHost())
+    expect(frame.getAttribute("sandbox")).toBe(ISOLATED_APP_SANDBOX)
+    expect(frame.getAttribute("sandbox")).not.toContain("allow-same-origin")
+    // A frame URL on the page's own origin is never treated as an own-origin frame.
+    const exports = isolatedAppExports(manifest, {
+      app: "acme",
+      bundleUrl: `${window.location.origin}/api/apps/acme/1.0.0/ui.js`,
+      frameUrl: `${window.location.origin}/api/apps/acme/1.0.0/frame?t=x`,
+      originBound: true,
+      host: () => fakeHost(),
+      loadSource: async () => "",
+    })
+    const View = exports.AcmeHome as (props: Record<string, unknown>) => unknown
+    const same = render(() => View({}) as never)
+      .getAllByTestId("isolated-app-frame")
+      .at(-1)
+    expect(same?.getAttribute("sandbox")).toBe(ISOLATED_APP_SANDBOX)
+  })
+
+  it("posts to the frame's exact origin and ignores a message from any other origin", async () => {
+    const host = fakeHost()
+    const frame = mountBound(host)
+    const posted = vi.spyOn(frame.contentWindow as Window, "postMessage")
+    const call = { kind: "call", id: 5, method: "invokeTool", args: ["list", {}] }
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: call,
+        source: frame.contentWindow,
+        origin: "https://evil.test",
+      }),
+    )
+    await new Promise((r) => setTimeout(r, 20))
+    expect(host.invokeTool).not.toHaveBeenCalled()
+    window.dispatchEvent(
+      new MessageEvent("message", { data: call, source: frame.contentWindow, origin: OWN }),
+    )
+    await vi.waitFor(() =>
+      expect(posted).toHaveBeenCalledWith(expect.objectContaining({ id: 5 }), OWN),
+    )
+    expect(host.invokeTool).toHaveBeenCalledWith("acme", "list", {})
+  })
+})
+
+describe("the typed host calls a frame may make (host API 1.3)", () => {
+  function typedHost() {
+    return {
+      ...fakeHost(),
+      openFileById: vi.fn(async () => {}),
+      listDocumentTemplates: vi.fn(async () => [{ id: "tpl-1", name: "Label" }]),
+      printDocuments: vi.fn(async () => ({
+        files: [{ fileId: "printed-file-0001", filename: "a.pdf" }],
+      })),
+      listMyApprovals: vi.fn(async () => [
+        { id: "a1", toolName: "acme:ship" },
+        { id: "a2", toolName: "other:refund" },
+      ]),
+      decideApproval: vi.fn(async () => ({ status: "approved" })),
+      openExternal: vi.fn(async () => {}),
+      openRecord: vi.fn(),
+      openApprovals: vi.fn(),
+    }
+  }
+
+  it("openFile: a file this frame's own results showed, or one attached to its records, never another", async () => {
+    const host = typedHost()
+    host.invokeTool = vi.fn(async () => ({ rows: [{ label_file_id: "seen-file-0001" }] }))
+    const state = frameCallState(["shipment"])
+    state.fileApp = vi.fn(async (id: string) => (id === "own-record-file1" ? "acme" : "other"))
+    await answerFrameCall("acme", "invokeTool", ["list", {}], host, undefined, state)
+    await answerFrameCall(
+      "acme",
+      "openFile",
+      ["seen-file-0001", "label.pdf"],
+      host,
+      undefined,
+      state,
+    )
+    expect(host.openFileById).toHaveBeenCalledWith("acme", "seen-file-0001", "label.pdf")
+    await answerFrameCall("acme", "openFile", ["own-record-file1", "x.pdf"], host, undefined, state)
+    await expect(
+      answerFrameCall("acme", "openFile", ["foreign-file-001", "x.pdf"], host, undefined, state),
+    ).rejects.toThrow(/not a file of this app/)
+    await expect(
+      answerFrameCall("acme", "openFile", ["../../etc", "x"], host, undefined, state),
+    ).rejects.toThrow(/file id/)
+    expect(host.openFileById).toHaveBeenCalledTimes(2)
+  })
+
+  it("print and templates: only the app's own record types; printed files become its to open", async () => {
+    const host = typedHost()
+    const state = frameCallState(["shipment"])
+    state.fileApp = vi.fn(async () => null)
+    await expect(
+      answerFrameCall("acme", "listDocumentTemplates", ["invoice"], host, undefined, state),
+    ).rejects.toThrow(/record types/)
+    await expect(
+      answerFrameCall(
+        "acme",
+        "printDocuments",
+        [{ entity: "document", id: "d1", templateIds: ["t"] }],
+        host,
+        undefined,
+        state,
+      ),
+    ).rejects.toThrow(/records/)
+    expect(host.printDocuments).not.toHaveBeenCalled()
+    await answerFrameCall("acme", "listDocumentTemplates", ["shipment"], host, undefined, state)
+    expect(host.listDocumentTemplates).toHaveBeenCalledWith("acme", "shipment")
+    await answerFrameCall(
+      "acme",
+      "printDocuments",
+      [{ entity: "shipment", id: "s1", templateIds: ["tpl-1"], merge: true }],
+      host,
+      undefined,
+      state,
+    )
+    expect(host.printDocuments).toHaveBeenCalledWith("acme", {
+      entity: "shipment",
+      id: "s1",
+      templateIds: ["tpl-1"],
+      merge: true,
+    })
+    await answerFrameCall(
+      "acme",
+      "openFile",
+      ["printed-file-0001", "a.pdf"],
+      host,
+      undefined,
+      state,
+    )
+    expect(host.openFileById).toHaveBeenCalledTimes(1)
+  })
+
+  it("approvals: only the app's own, and a decision always goes through the host (its own confirm)", async () => {
+    const host = typedHost()
+    expect(await answerFrameCall("acme", "listMyApprovals", [], host)).toEqual([
+      { id: "a1", toolName: "acme:ship" },
+    ])
+    await answerFrameCall("acme", "decideApproval", ["a1", "approve", "hash-1"], host)
+    expect(host.decideApproval).toHaveBeenCalledWith("acme", "a1", "approve", "hash-1")
+    await expect(answerFrameCall("acme", "decideApproval", ["a1", "yes"], host)).rejects.toThrow()
+  })
+
+  it("openExternal, openRecord and openApprovals are bound to the calling app", async () => {
+    const host = typedHost()
+    await answerFrameCall("acme", "openExternal", ["https://admin.acme.test/x"], host)
+    expect(host.openExternal).toHaveBeenCalledWith("acme", "https://admin.acme.test/x")
+    await answerFrameCall("acme", "openRecord", ["invoicing", "document", "d1"], host)
+    expect(host.openRecord).toHaveBeenCalledWith("acme", "invoicing", "document", "d1")
+    await answerFrameCall("acme", "openApprovals", [], host)
+    expect(host.openApprovals).toHaveBeenCalled()
   })
 })

@@ -279,6 +279,11 @@ export const KERNEL_RESET_RULES: Record<string, KernelResetRule> = {
   // key) and are PURGED rather than reset when they expire, so no visitor ever
   // sees another visitor's ledger.
   credit_transactions: "keep",
+  // Per-org app usage per UTC day (0282): the record Usage in Settings and the
+  // daily report read, bookkeeping like the token ledger above. The app day
+  // caps are enforced from Redis counters, never from these rows, so keeping
+  // them changes no limit, and a reset has no business rewriting the history.
+  app_usage_daily: "keep",
   // A device's push address, registered once when App Review signs in on the
   // phone. Clearing it every night left the reviewer's device unreachable the
   // morning after, so "ask the agent to message you in one minute" (the push

@@ -7,8 +7,20 @@ import {
   createConfigSecretMethods,
   manifestSecretConfigKeys,
 } from "~/modules/apps/sandbox/bridge/secret-free"
+import { writeConsoleToProcessLog } from "~/modules/apps/workers/worker-logs"
 import { setUserScopes as setUserScopesService } from "~/modules/permissions/app-grants"
 import { hasScope } from "~/modules/permissions/permissions"
+
+function isConsoleLine(
+  data: unknown,
+): data is { source: "console"; executor?: unknown; runId?: unknown } {
+  return (
+    !!data &&
+    typeof data === "object" &&
+    !Array.isArray(data) &&
+    (data as { source?: unknown }).source === "console"
+  )
+}
 
 /** Caller identity, settings, scopes, app config, grants and logging. */
 export function createIdentityMethods(ctx: BridgeContext): Record<string, any> {
@@ -29,6 +41,27 @@ export function createIdentityMethods(ctx: BridgeContext): Record<string, any> {
     txDb,
     userId,
   } = ctx
+  const logLine = (level: "info" | "warn" | "error" | "debug", msg: string, dataJson?: string) => {
+    appLogSink?.append(level, msg, dataJson)
+    const data = dataJson ? JSON.parse(dataJson) : {}
+    if (isConsoleLine(data)) {
+      // A Workers run's lines arrive after the run, tagged with its executor
+      // and run id (workers/worker-logs.ts deliverRunLogs); a QuickJS line
+      // comes from the run itself.
+      writeConsoleToProcessLog(
+        {
+          app: appName,
+          orgId,
+          executor: data.executor === "workers" ? "workers" : "quickjs",
+          ...(typeof data.runId === "string" ? { runId: data.runId } : {}),
+        },
+        level,
+        String(msg),
+      )
+      return
+    }
+    logger[level](data, msg)
+  }
   return {
     getUserId: () => userId,
     getOrgId: () => orgId,
@@ -109,22 +142,13 @@ export function createIdentityMethods(ctx: BridgeContext): Record<string, any> {
     },
 
     // --- Logger ---
-    log_info: (msg: string, dataJson?: string) => {
-      appLogSink?.append("info", msg, dataJson)
-      logger.info(dataJson ? JSON.parse(dataJson) : {}, msg)
-    },
-    log_warn: (msg: string, dataJson?: string) => {
-      appLogSink?.append("warn", msg, dataJson)
-      logger.warn(dataJson ? JSON.parse(dataJson) : {}, msg)
-    },
-    log_error: (msg: string, dataJson?: string) => {
-      appLogSink?.append("error", msg, dataJson)
-      logger.error(dataJson ? JSON.parse(dataJson) : {}, msg)
-    },
-    log_debug: (msg: string, dataJson?: string) => {
-      appLogSink?.append("debug", msg, dataJson)
-      logger.debug(dataJson ? JSON.parse(dataJson) : {}, msg)
-    },
+    // `ctx.logger.*`, and on QuickJS the app's `console.*` (the ctx shim sends
+    // those marked {source:"console"}): app text, so a console line takes the
+    // capped, truncated process-log path (workers/worker-logs.ts).
+    log_info: (msg: string, dataJson?: string) => logLine("info", msg, dataJson),
+    log_warn: (msg: string, dataJson?: string) => logLine("warn", msg, dataJson),
+    log_error: (msg: string, dataJson?: string) => logLine("error", msg, dataJson),
+    log_debug: (msg: string, dataJson?: string) => logLine("debug", msg, dataJson),
 
     // Read-only accessor over the app's `kernel.apps.config` jsonb store, exposed
     // to tool/event handlers as `ctx.config.get(key)`. Mirrors the webhook

@@ -87,7 +87,7 @@ Open **Shopify** in the activity bar.
 - **Tags** shows each order's Shopify tags.
 - **Customers**, **Products** and **Markets** are searchable lists.
 
-Click a row to open its detail. Each detail has **Open in Shopify ↗** to jump to the same record in the Shopify admin.
+Click a row to open its detail. Each detail has **Open in Shopify ↗** to jump to the same record in the Shopify admin. Links to the Shopify admin open in a new tab, and an invoice number opens the invoice in its own Invoicing tab.
 
 To change anything in the store (a refund, a fulfillment, a stock count, a discount), ask an agent. Its change waits for your approval, see below.
 

@@ -18,6 +18,7 @@
 // react to programmatic navigation as well as browser back/forward.
 import { currentPath } from "@liaison/host"
 import { createSignal, onCleanup, onMount, type Component, type JSX } from "solid-js"
+import { onOutsideLinkClick } from "./external-link"
 
 // ─────────────────────────────────────────────────────────────────────────
 // URL reactivity. Bundled plugins can't import `@solidjs/router` (the kernel
@@ -266,6 +267,7 @@ export const ShopifySidebar: Component = () => {
           href="https://admin.shopify.com"
           target="_blank"
           rel="noopener noreferrer"
+          onClick={(e) => onOutsideLinkClick(e, "https://admin.shopify.com")}
           data-testid="shopify-sidebar-external"
           class="flex items-center justify-between text-[11px] text-text-tertiary transition-colors hover:text-text-secondary"
         >

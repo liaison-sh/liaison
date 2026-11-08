@@ -16,9 +16,16 @@
 //   pool       everything else, on the out-of-process worker pool
 //
 // A listed app that cannot run on Workers (no bundle for its installed
-// version) runs on the pool with a warning per run. Every run of a listed app
-// writes one timing record tagged with the executor that ran it
-// (workers/timings.ts, kind "run").
+// version) runs on the pool with a warning per run. A run is decided, then
+// its bridge is built for that executor, then it runs: a Workers run gets a
+// secret-free bridge (the site's `workersBridge`, or a marked copy of
+// `bridge`), a QuickJS run `bridge` itself, which runApp never changes. A
+// Workers run whose attempts end on a loader-level fault before any bridge
+// call runs once more on QuickJS, on `bridge` (`fallback: "loader_fault"`,
+// workers/fallback.ts); never after a bridge call. Every run raises one
+// run-settled event (workers/run-settled.ts) once it has settled, tagged with
+// the executor that ran it; the run timing records (workers/timings.ts, kind
+// "run", listed and custom apps) are one of its subscribers.
 //
 // A new executor is one more arm of `selectExecutor` and of the switch in
 // `runApp`; no call site changes. The sandboxes that do not run app handlers
@@ -30,7 +37,6 @@ import { dirname } from "node:path"
 import { and, eq, isNotNull, isNull, or } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
-import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
 import { flushRunLogs } from "~/modules/app-builder/logs"
 import { isCustomAppName } from "~/modules/apps/custom-app-name"
@@ -54,8 +60,16 @@ import {
   workersBundleSha,
   workersSelectsApp,
 } from "~/modules/apps/workers/config"
-import { executeOnWorkers, type WorkersRunInfo } from "~/modules/apps/workers/executor"
-import { recordRunTiming } from "~/modules/apps/workers/timings"
+import {
+  defaultWorkersTimeoutMs,
+  executeOnWorkers,
+  type WorkersRunInfo,
+} from "~/modules/apps/workers/executor"
+import { AppFallbacks, appFallbacks, loaderBreaker } from "~/modules/apps/workers/fallback"
+import { emitRunSettled, type WorkersFallback } from "~/modules/apps/workers/run-settled"
+import { deliverRunLogs } from "~/modules/apps/workers/worker-logs"
+// The run timing records subscribe to the run-settled event (timings.ts).
+import "~/modules/apps/workers/timings"
 
 const log = rootLogger.child({ module: "run-app" })
 
@@ -90,7 +104,18 @@ export interface RunAppOptions {
   params: unknown
   /** Positional args after `(params, ctx)`, e.g. a webhook's headers. */
   extraArgs?: unknown[]
-  bridge: Record<string, (...args: any[]) => any>
+  /**
+   * The run's bridge on QuickJS. runApp never changes it (a custom app's is
+   * secret-free on every executor already): a Workers run gets
+   * `workersBridge`, or a secret-free copy of it.
+   */
+  bridge: AppBridge
+  /**
+   * Builds the bridge of a Workers run, when the site knows its secret
+   * refusals better than runApp's marking (a webhook verifier's fixed secret
+   * keys). Called only once the run is decided for Workers.
+   */
+  workersBridge?: () => AppBridge
   timeoutMs?: number
   signal?: AbortSignal
   priority?: ExecPriority
@@ -120,6 +145,8 @@ export interface RunAppOptions {
    */
   holdsTx: boolean
 }
+
+export type AppBridge = Record<string, (...args: any[]) => any>
 
 /** Which executor runs this call. */
 export type AppExecutor = "inprocess" | "pool" | "workers"
@@ -183,95 +210,148 @@ export async function resolveWorkersTarget(
   return { config, version: identity.version, sha256: sha }
 }
 
-/** Whether this run would go to Workers (a site that builds a bridge per executor asks). */
-export async function appRunsOnWorkers(
-  opts: Pick<RunAppOptions, "trusted" | "appName" | "orgId" | "installed" | "bundlePath">,
-): Promise<boolean> {
-  return (await resolveWorkersTarget(opts)) !== null
-}
-
 /**
- * Whether this app's runs write a timing record: listed in LIAISON_WORKERS_APPS
- * (whatever else is set), or a custom app while LIAISON_WORKERS_CUSTOM_APPS is on.
+ * Where this run goes, decided once, before the run's bridge is built: the
+ * Workers target, or none with the reason it falls back (workers/fallback.ts):
+ * `app` while this org's app@version is under an app-level fallback,
+ * `breaker` while the loader breaker is open (or another run holds the
+ * half-open probe). `probe` marks the run the half-open breaker lets through.
  */
-function isTimedApp(appName: string): boolean {
-  if (timedApps().has(appName)) return true
-  const flag = (env.LIAISON_WORKERS_CUSTOM_APPS ?? "").trim().toLowerCase()
-  return (flag === "1" || flag === "true") && isCustomAppName(appName)
+export interface WorkersPlan {
+  target: WorkersTarget | null
+  fallback?: WorkersFallback
+  probe?: boolean
 }
 
-/** The apps LIAISON_WORKERS_APPS lists. */
-function timedApps(): ReadonlySet<string> {
-  const raw = env.LIAISON_WORKERS_APPS ?? ""
-  if (raw === timedAppsRaw) return timedAppsSet
-  timedAppsRaw = raw
-  timedAppsSet = new Set(
-    raw
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean),
-  )
-  return timedAppsSet
+export async function planWorkersRun(
+  opts: Pick<RunAppOptions, "trusted" | "appName" | "orgId" | "installed" | "bundlePath">,
+): Promise<WorkersPlan> {
+  const target = await resolveWorkersTarget(opts)
+  if (!target) return { target: null }
+  if (appFallbacks.active(AppFallbacks.key(opts.orgId, opts.appName, target.version))) {
+    return { target: null, fallback: "app" }
+  }
+  const admission = loaderBreaker.admit()
+  if (!admission.allow) return { target: null, fallback: "breaker" }
+  return admission.probe ? { target, probe: true } : { target }
 }
-let timedAppsRaw = ""
-let timedAppsSet: ReadonlySet<string> = new Set()
 
 /** Running executions by token -> app, so a nested run's record names its parent app. */
 const runningExecutions = new Map<string, string>()
 
 export async function runApp(opts: RunAppOptions): Promise<unknown> {
-  const timed = isTimedApp(opts.appName)
   const started = Date.now()
   if (opts.executionToken) runningExecutions.set(opts.executionToken, opts.appName)
-  const workersTarget = await resolveWorkersTarget(opts)
-  const executor = selectExecutor({
-    trusted: opts.trusted,
-    workersBundleSha: workersTarget?.sha256,
-  })
   let info: WorkersRunInfo = {}
   let ok = false
+  let executor: AppExecutor = opts.trusted ? "inprocess" : "pool"
+  let fallback: WorkersFallback | undefined
   try {
-    const result = await runOnExecutor(opts, executor, workersTarget, (i) => {
-      info = i
-    })
+    // Decide, then build the bridge for that executor (runOnExecutor), then run.
+    const plan = await planWorkersRun(opts)
+    fallback = plan.fallback
+    executor = selectExecutor({ trusted: opts.trusted, workersBundleSha: plan.target?.sha256 })
+    let result: unknown
+    try {
+      result = await runOnExecutor(opts, executor, plan, (i) => {
+        info = i
+      })
+    } catch (err) {
+      if (executor !== "workers" || !fallsBackAfterLoaderFault(info, opts.signal)) throw err
+      // Nothing the app did can have happened (no bridge call): the run goes to
+      // QuickJS once, on the bridge built for it, within what is left of its budget.
+      const budget = opts.timeoutMs ?? defaultWorkersTimeoutMs()
+      const remaining = Math.max(MIN_FALLBACK_BUDGET_MS, budget - (Date.now() - started))
+      log.warn(
+        {
+          err,
+          app: opts.appName,
+          orgId: opts.orgId,
+          kind: info.fault?.kind,
+          attempts: info.attempts,
+          remainingMs: remaining,
+        },
+        "App loader fault before any bridge call; running this run on QuickJS",
+      )
+      fallback = "loader_fault"
+      executor = selectExecutor({ trusted: opts.trusted })
+      result = await runOnExecutor(
+        { ...opts, timeoutMs: remaining },
+        executor,
+        { target: null },
+        () => undefined,
+      )
+    }
     ok = true
     return result
   } finally {
     if (opts.executionToken) runningExecutions.delete(opts.executionToken)
+    if (info.logs || info.logsDropped) {
+      deliverRunLogs({
+        bridge: opts.bridge,
+        app: opts.appName,
+        orgId: opts.orgId,
+        ...(info.runId ? { runId: info.runId } : {}),
+        logs: info.logs ?? [],
+        ...(info.logsDropped ? { dropped: info.logsDropped } : {}),
+      })
+    }
     // A custom app's (or draft preview's) log lines: written in the background,
     // never the run's failure (modules/app-builder/logs.ts).
     void flushRunLogs(opts.bridge)
-    if (timed) {
-      const parentApp =
-        opts.nested && opts.nestedParentKey
-          ? runningExecutions.get(opts.nestedParentKey)
-          : undefined
-      recordRunTiming({
-        kind: "run",
-        ...(info.runId ? { runId: info.runId } : {}),
-        app: opts.appName,
-        entry:
-          opts.entry ?? (opts.toolName ? `tool:${opts.toolName}` : `handler:${opts.exportName}`),
-        executor: executor === "pool" ? "quickjs" : executor,
-        nested: opts.nested === true,
-        ...(parentApp ? { parentApp } : {}),
-        ms: Date.now() - started,
-        ok,
-        at: started,
-        ...(info.loader ? { loader: info.loader } : {}),
-        ...(info.sleepMs !== undefined ? { sleepMs: info.sleepMs } : {}),
-        ...(info.sleepExact !== undefined ? { sleepExact: info.sleepExact } : {}),
-      })
-    }
+    const parentApp =
+      opts.nested && opts.nestedParentKey ? runningExecutions.get(opts.nestedParentKey) : undefined
+    emitRunSettled({
+      ...(info.runId ? { runId: info.runId } : {}),
+      app: opts.appName,
+      orgId: opts.orgId,
+      entry: opts.entry ?? (opts.toolName ? `tool:${opts.toolName}` : `handler:${opts.exportName}`),
+      executor: executor === "pool" ? "quickjs" : executor,
+      nested: opts.nested === true,
+      ...(parentApp ? { parentApp } : {}),
+      ms: Date.now() - started,
+      ok,
+      at: started,
+      ...(info.bridgeCalls !== undefined ? { bridgeCalls: info.bridgeCalls } : {}),
+      ...(info.loader ? { loader: info.loader } : {}),
+      ...(info.sleepMs !== undefined ? { sleepMs: info.sleepMs } : {}),
+      ...(info.sleepExact !== undefined ? { sleepExact: info.sleepExact } : {}),
+      ...(fallback ? { fallback } : {}),
+      ...(info.attempts !== undefined ? { attempts: info.attempts } : {}),
+      ...(info.fault ? { errorKind: info.fault.kind, faultClass: info.fault.class } : {}),
+    })
   }
+}
+
+/** A QuickJS run after a loader fault never gets less than this, whatever the budget left. */
+const MIN_FALLBACK_BUDGET_MS = 1_000
+
+/**
+ * A failed Workers run that runs again on QuickJS: its last attempt met a
+ * loader-level fault (the retry already made or skipped, executor.ts) and no
+ * attempt made a bridge call, and the caller is still waiting.
+ */
+function fallsBackAfterLoaderFault(info: WorkersRunInfo, signal?: AbortSignal): boolean {
+  return info.fault?.class === "loader" && (info.bridgeCalls ?? 0) === 0 && !signal?.aborted
+}
+
+/**
+ * A secret-free copy of a QuickJS bridge for a Workers run: the same methods
+ * and markers (its own properties, symbols included), refusals on the copy
+ * only, so the original stays the QuickJS bridge.
+ */
+function workersCopyOf(bridge: AppBridge): AppBridge {
+  const copy = Object.defineProperties({}, Object.getOwnPropertyDescriptors(bridge)) as AppBridge
+  return forWorkersRun(copy, { secretConfigKeys: secretConfigKeysOf(bridge) })
 }
 
 async function runOnExecutor(
   opts: RunAppOptions,
   executor: AppExecutor,
-  workersTarget: WorkersTarget | null,
+  plan: WorkersPlan,
   onInfo: (info: WorkersRunInfo) => void,
 ): Promise<unknown> {
+  const workersTarget = plan.target
   // A custom app's code never holds a secret, on any executor. Its bridge
   // is built secret-free (rpc-bridge.ts); one built elsewhere is marked here,
   // before any call.
@@ -283,14 +363,20 @@ async function runOnExecutor(
   }
   if (executor === "workers" && workersTarget) {
     // The isolate lives off this server: no method may hand it a secret. The
-    // dispatching site may have built the bridge so already (workersRun);
-    // otherwise it is marked here, before any call, in the caller's frame. The
-    // refused config keys are the ones the bridge's own config_get decrypts
-    // (recorded on it when it was built); a bridge that records none refuses
-    // every config_get (fail closed).
-    const bridge = isWorkersRunBridge(opts.bridge)
-      ? opts.bridge
-      : forWorkersRun(opts.bridge, { secretConfigKeys: secretConfigKeysOf(opts.bridge) })
+    // site may build that bridge itself (workersBridge), or have built a
+    // secret-free one already (a custom app's); otherwise a copy is marked
+    // here, before any call, in the caller's frame. The refused config keys
+    // are the ones the bridge's own config_get decrypts (recorded on it when
+    // it was built); a bridge that records none refuses every config_get
+    // (fail closed).
+    const bridge = opts.workersBridge
+      ? opts.workersBridge()
+      : isWorkersRunBridge(opts.bridge)
+        ? opts.bridge
+        : workersCopyOf(opts.bridge)
+    if (!isWorkersRunBridge(bridge)) {
+      throw new Error(`runApp(${opts.appName}): the Workers bridge is not secret-free`)
+    }
     return executeOnWorkers(
       {
         config: workersTarget.config,
@@ -308,6 +394,7 @@ async function runOnExecutor(
         holdsTx: opts.holdsTx,
         nested: opts.nested === true,
         ...(opts.nestedParentKey !== undefined ? { nestedParentKey: opts.nestedParentKey } : {}),
+        ...(plan.probe ? { probe: true } : {}),
       },
       onInfo,
     )

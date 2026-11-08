@@ -706,6 +706,9 @@ describe("usage API", () => {
       mailboxes: { used: 0, limit: null },
       storageGb: { used: 0, limit: null },
       jobsThisHour: { used: 0, limit: null },
+      appRunsToday: { used: 0, limit: null },
+      appBridgeCallsToday: { used: 0, limit: null },
+      appCpuMsToday: { used: 0, limit: null },
     })
   })
 

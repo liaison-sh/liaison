@@ -91,6 +91,8 @@ The **Country** column, its **Country** sort and the **All countries** filter wo
 
 You can also attach the label to a ticket reply from the row.
 
+Unticking a fulfilled row asks first (**Untick this order?**): it cancels the Shopify fulfillment. On an invoice's **Boxtal** tab, the **Label** document opens the label PDF; other documents are listed only.
+
 ### Print your own documents for a parcel
 
 Each row also has **Print documents**: the organisation's document templates for shipments (a customs declaration, a certificate, a thank-you letter). Open it, tick the templates and click **Print**. A field the shipment does not hold prints as a grey blank for a person to fill.

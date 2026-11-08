@@ -921,7 +921,11 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.7 (main): backfill-customers and scope-seed are onDemand (a job with neither schedule nor onDemand never registers).
     // 0.4.8 (main): declares that it places no config secret in any request (secrets: {}); the token goes by ctx.fetch auth.
     // 0.4.12: both of the above, merged.
-    expect(m.version).toBe("0.4.12")
+    // 0.4.9 (main): screens work framed on their own origin (outside links through the host).
+    // 0.4.10 (main): the home's attention rows open the admin through the host too; framed, a
+    // Cmd/Ctrl-click opens a row in place.
+    // 0.4.13: both of the above, merged.
+    expect(m.version).toBe("0.4.13")
   })
 
   it("read_all_orders is a protected scope behind the org's full-order-history toggle", () => {

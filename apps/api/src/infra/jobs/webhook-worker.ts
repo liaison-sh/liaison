@@ -14,6 +14,7 @@ import { isAppOffForPathOrg } from "~/modules/apps/org-apps"
 import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
 import { resolveToolTimeoutMs } from "~/modules/apps/sandbox/executor"
 import { createSandboxRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { holdAppJobIfCapped } from "~/modules/apps/usage/app-day-cap"
 import { executeManifestWebhook } from "~/modules/webhooks/manifest-execution"
 
 const log = rootLogger.child({ module: "webhook-worker" })
@@ -89,6 +90,15 @@ export async function processWebhookRetry(
   if (!reg) {
     log.warn({ orgId, appName, endpointName }, "Webhook handler not found for retry")
     return
+  }
+
+  // The org reached an app day cap (modules/apps/usage/app-day-cap.ts): the
+  // retry waits for the next UTC day, put back as delayed with its data.
+  if (isManifestHandler(reg.handler)) {
+    await holdAppJobIfCapped({
+      orgId,
+      trusted: (reg.handler as ManifestHandlerRef).trusted === true,
+    })
   }
 
   const run = () => runRetryHandler(data, orgId, appName, reg, signal)

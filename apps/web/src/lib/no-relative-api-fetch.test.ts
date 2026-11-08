@@ -17,6 +17,19 @@ const RELATIVE_API_FETCH = /fetch\(\s*[`"']\/api\b/
 /** An attribute or a file route written as a bare path. */
 const RELATIVE_API_SRC = /src="\/api\/|[`"']\/api\/files\//
 /**
+ * Files whose `/api/files/...` strings are paths handed to the plugin host's
+ * api client (framework/host-services.ts), which puts them on the bound server
+ * like every other `host.fetch`: the plugin contract is full kernel routes.
+ * They are still held to the raw `fetch("/api` and `src="/api/` rules.
+ */
+const HOST_CLIENT_PATH_FILES = new Set([
+  path.join("framework", "host-app-calls.ts"),
+  path.join("framework", "isolated-app.tsx"),
+])
+const BARE_SRC = /src="\/api\//
+/** In those files `host.fetch("/api/...")` is the host client; a bare `fetch(` is not. */
+const BARE_RELATIVE_API_FETCH = /(?<![.\w])fetch\(\s*[`"']\/api\b/
+/**
  * An avatar the server stored as "/api/avatars/<key>" fed straight into an
  * <img>. Under a shell that resolves inside the bundle: every uploaded picture
  * broke while initials kept working. It goes through serverResourceUrl().
@@ -46,8 +59,12 @@ describe("no request is built on the page's own origin", () => {
         .split(/\r?\n/)
         .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
         .join("\n")
-      if (RELATIVE_API_FETCH.test(text) || RELATIVE_API_SRC.test(text)) {
-        offenders.push(path.relative(SRC, file))
+      const rel = path.relative(SRC, file)
+      const hostClient = HOST_CLIENT_PATH_FILES.has(rel)
+      const fetchRule = hostClient ? BARE_RELATIVE_API_FETCH : RELATIVE_API_FETCH
+      const srcRule = hostClient ? BARE_SRC : RELATIVE_API_SRC
+      if (fetchRule.test(text) || srcRule.test(text)) {
+        offenders.push(rel)
       }
     }
     expect(offenders).toEqual([])

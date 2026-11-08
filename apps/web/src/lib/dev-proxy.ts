@@ -13,6 +13,9 @@ export function devProxyFor(apiTarget: string, opts: { preserveHost?: boolean } 
   // with org hosts (LIAISON_ORG_HOST_TEMPLATE) binds each session to it. The
   // managed-edition browser tests set it (VITE_PROXY_PRESERVE_HOST=1).
   const changeOrigin = !opts.preserveHost
+  // A frame host (`<app>--<org>.localhost:<port>`, LIAISON_APP_FRAME_ORIGIN_TEMPLATE) is
+  // served by the API itself on its own port in development, never through this proxy:
+  // its one path is `/frame/<version>`, which the API answers only on that host.
   return {
     "/api": { target: apiTarget, changeOrigin },
     "/healthz": { target: apiTarget, changeOrigin },

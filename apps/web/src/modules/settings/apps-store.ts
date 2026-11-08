@@ -117,6 +117,18 @@ export interface OAuthClientStatus {
   appManaged?: boolean
 }
 
+/** GET /api/apps/:name/outbound: the hosts an installed app may reach. */
+export interface OutboundAccess {
+  name: string
+  version: string
+  declared: string[]
+  /** null = installed before domains were granted: every declared one. */
+  granted: string[] | null
+  pending: string[]
+  /** Whether this admin may grant and revoke (POST answers without it). */
+  canManage?: boolean
+}
+
 export type ConnectionState = "connected" | "attention" | "missing"
 
 export function connectionState(conn: AppConnectionConfig): ConnectionState {
@@ -150,6 +162,7 @@ export type UpgradePreviewResponse =
       newScopes: string[]
       newCapabilities?: string[]
       newCrossAppCalls?: string[]
+      newDomains?: string[]
       removedScopes: string[]
       previouslyGranted: string[]
     }
@@ -279,6 +292,7 @@ export const appsStore = {
       grantedScopes: string[]
       grantedCapabilities: string[]
       grantedCrossAppCalls: string[]
+      grantedDomains: string[]
       approveUiFullAccess: boolean
     },
   ): Promise<void> {
@@ -326,6 +340,7 @@ export const appsStore = {
       grantedScopes: string[]
       grantedCapabilities: string[]
       grantedCrossAppCalls: string[]
+      grantedDomains: string[]
       approveUiFullAccess: boolean
     },
   ): Promise<void> {
@@ -338,6 +353,20 @@ export const appsStore = {
     const res = await api.post<{ version: string }>(`/apps/${encodeURIComponent(name)}/rollback`)
     await appsStore.load(api)
     return res
+  },
+
+  /** The hosts an installed app may reach: declared, granted (null = all) and pending. */
+  async outboundAccess(api: ApiClient, name: string): Promise<OutboundAccess> {
+    return api.get<OutboundAccess>(`/apps/${encodeURIComponent(name)}/outbound`)
+  },
+
+  /** Grant pending domains or revoke granted ones; takes effect on the app's next run. */
+  async setOutboundAccess(
+    api: ApiClient,
+    name: string,
+    change: { grant?: string[]; revoke?: string[] },
+  ): Promise<OutboundAccess> {
+    return api.post<OutboundAccess>(`/apps/${encodeURIComponent(name)}/outbound`, change)
   },
 
   /** Approve or withdraw "this app's interface runs with full access to your session". */
@@ -356,6 +385,7 @@ export function toUpgradePreview(
     newScopes: res.newScopes,
     newCapabilities: res.newCapabilities,
     newCrossAppCalls: res.newCrossAppCalls,
+    newDomains: res.newDomains,
     removedScopes: res.removedScopes,
     previouslyGranted: res.previouslyGranted,
   }

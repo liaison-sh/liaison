@@ -130,6 +130,12 @@ const JWT_SECRET_USES: Record<string, string> = {
   "modules/export/org-archive/routes.ts":
     "archive download token: short-lived, the export is asked again on the target",
   "modules/apps/ui-bundle-token.ts": "UI bundle tokens: re-minted on the next page load",
+  "modules/apps/app-frame-host-route.ts":
+    "framed app document tokens: at most an hour, re-minted on the next page load",
+  "modules/apps/workers/run-token.ts":
+    "per-run bridge credentials of a Workers app run: nothing persisted, none in flight after the drain",
+  "modules/apps/workers/bridge-forward.ts":
+    "a comment: the cell's internal forward key, as mailbox-forward.ts",
   "modules/mcp/connection-service.ts":
     "MCP connection tokens: after the commit the org's MCP clients reconnect (accepted; the after-commit step marks them)",
   "modules/agent/mailbox-plaintext/mailbox-forward.ts":

@@ -311,7 +311,7 @@ ON CONFLICT (user_id, org_id, scope) DO NOTHING;
 RESET ROLE;
 --> statement-breakpoint
 
--- The two P0 columns that name a company get their foreign keys. No row
+-- The two earlier columns that name a company get their foreign keys. No row
 -- names a company yet, so neither check can fail.
 -- expand-safe: no previous-release row has a company_id (only external users carry one, and none exists before this release)
 ALTER TABLE kernel.users

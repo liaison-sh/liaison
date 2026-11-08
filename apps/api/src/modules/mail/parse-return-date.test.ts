@@ -113,49 +113,50 @@ describe("parseReturnDate: what it refuses", () => {
 })
 
 describe("parseReturnDate: holdUntil", () => {
-  it("holdUntil is the day after the date at 00:00 in the requester's zone, before a clock change", () => {
-    const parsed = parseReturnDate(
-      "Back on 2026-10-24",
-      new Date("2026-10-20T10:00:00.000Z"),
-      undefined,
-      "Europe/Paris",
-    )
-    expect(parsed.holdUntil.toISOString()).toBe("2026-10-24T22:00:00.000Z")
+  const PARIS = "Europe/Paris"
+  const hold = (text: string, sent: Date, zone?: string) =>
+    parseReturnDate(text, sent, undefined, zone).holdUntil.toISOString()
+
+  it("back on a day: the hold ends that morning, 00:00 in the requester's zone", () => {
+    // The walk's auto-reply: the board reads "Keep holding until 17 Nov".
+    expect(hold("I will be back on 17 November 2026", SENT, PARIS)).toBe("2026-11-16T23:00:00.000Z")
+    expect(hold("Je serai de retour le 17 novembre", SENT, PARIS)).toBe("2026-11-16T23:00:00.000Z")
+    expect(hold("Returning on 20 November", SENT, PARIS)).toBe("2026-11-19T23:00:00.000Z")
   })
 
-  it("holdUntil is the day after the date at 00:00 in the requester's zone, after a clock change", () => {
-    const parsed = parseReturnDate(
-      "Back on 2026-10-25",
-      new Date("2026-10-20T10:00:00.000Z"),
-      undefined,
-      "Europe/Paris",
-    )
-    expect(parsed.holdUntil.toISOString()).toBe("2026-10-25T23:00:00.000Z")
+  it("away until a day: that is the last day away, so the hold ends the next morning", () => {
+    // Board P-04: "out of office until 16 Nov ... waits until 17 Nov".
+    expect(hold("I am away until Monday 16 November", SENT, PARIS)).toBe("2026-11-16T23:00:00.000Z")
+    expect(hold("Absent jusqu'au 16 novembre", SENT, PARIS)).toBe("2026-11-16T23:00:00.000Z")
   })
 
-  it("holdUntil holds across the spring clock change too", () => {
+  it("an ISO range with no lead word ends the morning after its last day", () => {
+    expect(hold("Out of office 2026-11-09 to 2026-11-16", SENT, PARIS)).toBe(
+      "2026-11-16T23:00:00.000Z",
+    )
+  })
+
+  it("back on a day before and after the autumn clock change", () => {
+    const sent = new Date("2026-10-20T10:00:00.000Z")
+    // 25 Oct 2026 03:00 CEST becomes 02:00 CET.
+    expect(hold("Back on 2026-10-25", sent, PARIS)).toBe("2026-10-24T22:00:00.000Z")
+    expect(hold("Back on 2026-10-26", sent, PARIS)).toBe("2026-10-25T23:00:00.000Z")
+    expect(hold("Away until 2026-10-25", sent, PARIS)).toBe("2026-10-25T23:00:00.000Z")
+  })
+
+  it("back on a day across the spring clock change too", () => {
     const sent = new Date("2026-03-20T10:00:00.000Z")
-    const before = parseReturnDate("Back on 2026-03-28", sent, undefined, "Europe/Paris")
-    const after = parseReturnDate("Back on 2026-03-29", sent, undefined, "Europe/Paris")
-    expect(before.holdUntil.toISOString()).toBe("2026-03-28T23:00:00.000Z")
-    expect(after.holdUntil.toISOString()).toBe("2026-03-29T22:00:00.000Z")
+    expect(hold("Back on 2026-03-29", sent, PARIS)).toBe("2026-03-28T23:00:00.000Z")
+    expect(hold("Back on 2026-03-30", sent, PARIS)).toBe("2026-03-29T22:00:00.000Z")
   })
 
   it("no zone gives UTC", () => {
-    expect(parseReturnDate("Back on 2026-11-16", SENT).holdUntil.toISOString()).toBe(
-      "2026-11-17T00:00:00.000Z",
-    )
+    expect(hold("Back on 2026-11-16", SENT)).toBe("2026-11-16T00:00:00.000Z")
+    expect(hold("Away until 2026-11-16", SENT)).toBe("2026-11-17T00:00:00.000Z")
   })
 
   it("an unreadable zone gives UTC", () => {
-    expect(
-      parseReturnDate(
-        "Back on 2026-11-16",
-        SENT,
-        undefined,
-        "Mars/Olympus",
-      ).holdUntil.toISOString(),
-    ).toBe("2026-11-17T00:00:00.000Z")
+    expect(hold("Back on 2026-11-16", SENT, "Mars/Olympus")).toBe("2026-11-16T00:00:00.000Z")
   })
 
   it("the window is counted in the requester's zone", () => {

@@ -94,7 +94,7 @@ describe("decideSendGuard", () => {
       who: "ooo@example.com",
       at: new Date("2026-11-06T11:00:00.000Z"),
       returnDate: "2026-11-16",
-      holdUntil: new Date("2026-11-16T23:00:00.000Z"),
+      holdUntil: new Date("2026-11-15T23:00:00.000Z"),
     })
   })
 

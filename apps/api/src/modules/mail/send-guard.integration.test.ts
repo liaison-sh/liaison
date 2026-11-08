@@ -143,6 +143,13 @@ async function requestRow(requestId: string) {
   return row
 }
 
+/** What the send handler returned, as the execution stored it. */
+async function executionResult(requestId: string): Promise<Record<string, unknown> | null> {
+  const [row] = await sql<Array<{ result: Record<string, unknown> | null }>>`
+    SELECT result FROM kernel.approved_handler_executions WHERE approval_request_id = ${requestId}`
+  return row?.result ?? null
+}
+
 async function executionRow(requestId: string) {
   const [row] = await sql<
     Array<{
@@ -223,7 +230,12 @@ async function seedInbound(from: string, options: InboundOptions = {}) {
 
 async function seedTicketInbound(
   from: string,
-  options: { contactId?: string; sentAt?: string; imported?: boolean; subject?: string } = {},
+  options: {
+    contactId?: string
+    sentAt?: string | null
+    imported?: boolean
+    subject?: string
+  } = {},
 ) {
   return privileged.withPrivilegedDb(orgId, "send-guard-test-ticket", async (tx) => {
     const slug = `t${++counter}`
@@ -264,6 +276,14 @@ async function seedTicketInbound(
         }),
       ),
     )
+    if (options.sentAt === null) {
+      // As a ticket inbox ingests it: times with microseconds, which a JS date cannot hold.
+      await tx.execute(
+        drizzleSql`UPDATE app_tickets.messages
+                      SET sent_at = clock_timestamp(), received_at = clock_timestamp()
+                    WHERE id = ${messageId}::uuid`,
+      )
+    }
     if (options.imported) {
       const runId = crypto.randomUUID()
       await tx.execute(
@@ -927,6 +947,36 @@ describe("classification and marketing", () => {
         classification: "marketing",
         footer: "commercial",
       })
+      expect((await executionResult(id))?.guard).toMatchObject({ footer: "commercial" })
+    } finally {
+      footer.mockRestore()
+    }
+  }, 60_000)
+
+  it("an MCP-staged marketing follow-up sent clear calls the footer, and its result and ref say so", async () => {
+    const to = unique("mcp-footer")
+    const id = blockedId(
+      await executeToolCore({
+        toolName: "mail:compose",
+        orgId,
+        actor: admin,
+        params: composeParams(to, { followUp: {} }),
+        threadId,
+        origin: "mcp",
+      }),
+    )
+    expect(((await requestRow(id)).current_payload.sendGuard as PinnedSendGuard).classification).toBe(
+      "marketing",
+    )
+    const footer = spyOn(footerModule, "applyCommercialFooter")
+    try {
+      const before = sent.length
+      await approve(id)
+      expect(sent.length).toBe(before + 1)
+      expect(footer).toHaveBeenCalledTimes(1)
+      const record = { state: "clear", classification: "marketing", footer: "commercial" }
+      expect((await executionRow(id))?.external_ref?.guard).toMatchObject(record)
+      expect((await executionResult(id))?.guard).toMatchObject(record)
     } finally {
       footer.mockRestore()
     }
@@ -1433,6 +1483,21 @@ describe("a reply through a ticket inbox", () => {
     expect(String(error?.message)).toContain(`ticket ${ticketId}`)
   }, 60_000)
 
+  it("a draft stopped by a ticket reply: the card names that ticket, so it offers Open ticket", async () => {
+    const to = unique("ticket-card")
+    const id = await stageCompose(to, { followUp: {} })
+    const { ticketId } = await seedTicketInbound(to, { sentAt: null })
+    await approveSettled(id)
+    const guard = (
+      await withRlsContext(admin, (tx) =>
+        getApproval(tx as never, { orgId, userId: admin.userId, requestId: id, sendGuards: true }),
+      )
+    )?.sendGuard
+    expect(guard?.state).toBe("replied")
+    expect(guard?.record).toEqual({ kind: "ticket", id: ticketId })
+    expect(guard?.quote).toContain("I already answered this.")
+  }, 60_000)
+
   it("a stop on a ticket the caller cannot open names a ticket, not a mailbox", async () => {
     const to = unique("ticket-unreadable")
     await seedOutbound(to)
@@ -1759,9 +1824,9 @@ describe("the card says what the check says, and Send now", () => {
     throw new Error("the decision went through")
   }
 
-  async function heldDraft() {
+  async function heldDraft(extra: Record<string, unknown> = {}) {
     const to = unique("away")
-    const id = await stageCompose(to)
+    const id = await stageCompose(to, extra)
     const back = new Date(Date.now() + 10 * DAY)
     await seedInbound(to, {
       rawHeaders: away,
@@ -1930,6 +1995,27 @@ describe("the card says what the check says, and Send now", () => {
     expect(until).toBeGreaterThanOrEqual(day)
     expect(until).toBeLessThanOrEqual(day + 2 * DAY)
     expect(guard?.quote).toContain("out of the office")
+  }, 60_000)
+
+  it("a held marketing follow-up sent by Send now calls the footer, and its record says so", async () => {
+    const { id } = await heldDraft({ followUp: {} })
+    expect(((await requestRow(id)).current_payload.sendGuard as PinnedSendGuard).classification).toBe(
+      "marketing",
+    )
+    const footer = spyOn(footerModule, "applyCommercialFooter")
+    try {
+      const before = sent.length
+      await sendNow(id)
+      expect(sent.length).toBe(before + 1)
+      expect(footer).toHaveBeenCalledTimes(1)
+      expect((await executionRow(id))?.external_ref?.guard).toMatchObject({ footer: "commercial" })
+      expect((await executionResult(id))?.guard).toMatchObject({
+        classification: "marketing",
+        footer: "commercial",
+      })
+    } finally {
+      footer.mockRestore()
+    }
   }, 60_000)
 
   it("Send now sends and audits the override", async () => {

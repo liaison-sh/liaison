@@ -66,11 +66,14 @@ const MONTH = Object.keys(MONTHS)
   .join("|")
 const WEEKDAY =
   "monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tues|tue|wed|thurs|thur|thu|fri|sat|sun|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche"
-const LEAD =
-  "until|till|back(?: at work| in the office)?(?: on)?|return(?:ing)?(?: to (?:work|the office))?(?: on)?|jusqu'(?:au|à)|de retour(?: au bureau)?(?: le)?|retour(?: au bureau)?(?: le)?"
+/** Leads that name the last day away: the person is back the day after. */
+const UNTIL_LEAD = "until|till|jusqu'(?:au|à)"
+/** Leads that name the day the person is back. */
+const BACK_LEAD =
+  "back(?: at work| in the office)?(?: on)?|return(?:ing)?(?: to (?:work|the office))?(?: on)?|de retour(?: au bureau)?(?: le)?|retour(?: au bureau)?(?: le)?"
 
 const LED_DATE = new RegExp(
-  `\\b(?:${LEAD})(?: ?:)? (?:(?:the|le) )?(?:(?:${WEEKDAY}),? )?(?:(?:the|le) )?(?:` +
+  `\\b(?:(?<until>${UNTIL_LEAD})|${BACK_LEAD})(?: ?:)? (?:(?:the|le) )?(?:(?:${WEEKDAY}),? )?(?:(?:the|le) )?(?:` +
     "(?<isoY>\\d{4})-(?<isoM>\\d{2})-(?<isoD>\\d{2})" +
     "|(?<slashA>\\d{1,2})/(?<slashB>\\d{1,2})(?:/(?<slashY>\\d{4}|\\d{2}))?" +
     `|(?<nameD>\\d{1,2})(?:st|nd|rd|th|er|e|ème|eme)? (?:of )?(?<nameM>${MONTH})\\b\\.?,?(?: (?<nameY>\\d{4}))?` +
@@ -179,18 +182,23 @@ export function parseReturnDate(
   const body = readableText(text)
   const monthFirst = /^en[-_]us\b/i.test(locale ?? "")
   let accepted: number | null = null
+  // "Until 16 Nov" names the last day away, so the hold runs to the next morning;
+  // "back on 17 Nov" names the day itself, so the hold ends that morning.
+  let lastDayAway = true
   for (const match of body.matchAll(LED_DATE)) {
     for (const candidate of candidatesOf(match.groups ?? {}, monthFirst)) {
       // A real date outside the window is refused as it stands: reading `01/11`
       // the other way round would invent a date the sender did not mean.
       if (calendarDay(candidate.year ?? 2000, candidate.month, candidate.day) === null) continue
       accepted = accept(candidate)
+      lastDayAway = match.groups?.until !== undefined
       break
     }
     if (accepted !== null) break
   }
-  // An ISO date with no lead word: for a range, the end of it.
+  // An ISO date with no lead word: for a range, the end of it, the last day away.
   if (accepted === null) {
+    lastDayAway = true
     for (const [, y, m, d] of body.matchAll(BARE_ISO)) {
       const ms = accept({ year: Number(y), month: Number(m), day: Number(d) })
       if (ms !== null && (accepted === null || ms > accepted)) accepted = ms
@@ -203,7 +211,7 @@ export function parseReturnDate(
     { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: date.getUTCDate() },
     { zone },
   )
-    .plus({ days: 1 })
+    .plus({ days: lastDayAway ? 1 : 0 })
     .startOf("day")
   return {
     returnDate: date.toISOString().slice(0, 10),

@@ -6699,8 +6699,11 @@ async function agentMailReply(params: any, ctx: MailCtx): Promise<any> {
       "mail:reply",
       JSON.stringify({ ...sentRef, ...(guardCheck.record ?? {}) }),
     )
+    // The send's own result carries the check it passed, footer included, beside the
+    // execution's external_ref: what left can be read against the class it went under.
     return {
       ...result,
+      ...(guardCheck.record ?? {}),
       note: `Sent to ${sendParams.to.map(sentToLabel).join(", ")} from ${account.email_address}, in conversation ${params.conversationId}.`,
     }
   } catch (err: any) {
@@ -7086,6 +7089,7 @@ async function _doCompose(
     )
     return {
       ...result,
+      ...(guardRecord ?? {}),
       note: `Sent to ${(Array.isArray(params.to) ? params.to : [params.to]).map(sentToLabel).join(", ")} from ${account.email_address}.`,
     }
   } catch (err: any) {

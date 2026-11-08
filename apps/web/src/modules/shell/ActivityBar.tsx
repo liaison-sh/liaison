@@ -267,12 +267,36 @@ export const ActivityBar: Component<ActivityBarProps> = (props) => {
       document.removeEventListener("keydown", onDocumentKeyDown)
     })
   })
+  // After a drag the browser may not send the rail a pointerleave at all: the
+  // drag's start cancelled the pointer (pointercancel, with its own leave,
+  // ignored mid-drag), so the pointer's next move out of the rail can come as
+  // a plain move elsewhere. The first move after a drop that ended over the
+  // rail decides instead: outside the rail, it folds as if the pointer had
+  // just left; inside, the rail's own enter and leave take over again.
+  let afterDragMove: ((e: PointerEvent) => void) | undefined
+  const stopAfterDragWatch = () => {
+    if (afterDragMove) document.removeEventListener("pointermove", afterDragMove, true)
+    afterDragMove = undefined
+  }
+  onCleanup(stopAfterDragWatch)
   const endDrag = () => {
     setDraggedId(null)
     setDropTargetId(null)
+    stopAfterDragWatch()
+    if (!expanded()) return
     // The open rail stayed open through the drag; once it ends with the
     // pointer elsewhere, it folds as if the pointer had just left.
-    if (expanded() && !railRef?.matches(":hover")) scheduleClose()
+    if (!railRef?.matches(":hover")) {
+      scheduleClose()
+      return
+    }
+    afterDragMove = (e: PointerEvent) => {
+      stopAfterDragWatch()
+      const target = e.target
+      if (e.pointerType !== "touch" && !(target instanceof Node && railRef?.contains(target)))
+        scheduleClose()
+    }
+    document.addEventListener("pointermove", afterDragMove, true)
   }
 
   return (

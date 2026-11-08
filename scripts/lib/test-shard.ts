@@ -40,7 +40,8 @@ export function pickShard(files: string[], shard: Shard): string[] {
 
 /**
  * The files of shard `index` of `total`, dealt by measured duration rather than
- * by count, for a runner that runs `workers` files at once and each file on
+ * by count, for a runner that keeps `workers` files going at once (it may be
+ * fractional: the share of its workers a shard keeps busy) and each file on
  * one worker (Playwright without fullyParallel). Longest first, each file goes
  * to the shard where it ends soonest: a shard ends at the larger of its time
  * spread over its workers and its longest file, which no worker count shortens
@@ -65,7 +66,7 @@ export function pickShardByTime(
     return v !== undefined && Number.isFinite(v) && v > 0 ? v : fallback
   }
   const byCost = [...unique].sort((a, b) => cost(b) - cost(a) || (a < b ? -1 : a > b ? 1 : 0))
-  const per = Math.max(1, Math.floor(workers))
+  const per = Math.max(1, workers)
   const sum = Array.from({ length: shard.total }, () => 0)
   const longest = Array.from({ length: shard.total }, () => 0)
   const end = (i: number, add: number) =>

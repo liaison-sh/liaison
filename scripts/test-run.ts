@@ -2217,10 +2217,13 @@ if (shardArg) {
       ]
       if (v !== undefined) seconds[f] = v
     }
-    // Files at once on this runner: the worker count Playwright is handed. The
-    // gate's runners are alike, so every shard of a run computes the same plan.
+    // Files at once on this runner: the worker count Playwright is handed, at
+    // the share of it a shard actually keeps busy (the hosted runners' four
+    // workers did about 2.9 files' worth at once over a shard: lane starts,
+    // worker restarts after a failure, the tail). The gate's runners are
+    // alike, so every shard of a run computes the same plan.
     const workers = Number(process.env.PLAYWRIGHT_WORKERS) || MEM_BUDGET.playwrightWorkers
-    const mine = pickShardByTime(named, shardArg, seconds, workers)
+    const mine = pickShardByTime(named, shardArg, seconds, workers * 0.7)
     config.cmd = [...config.cmd.filter((a) => !named.includes(a)), ...mine]
     if (mine.length === 0) config.cmd = []
   } else if (suite === "playwright" || suite === "web-unit") {

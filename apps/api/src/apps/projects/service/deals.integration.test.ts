@@ -4,8 +4,9 @@
 // pipeline task gets, and what moves, merges, deletes and stage edits do to
 // them. Real database, real liaison_rls role.
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
+import projectsManifest from "~/apps/projects/app.manifest.json"
 import {
   armAfterDealOutcomeFailpoint,
   listDeals,
@@ -15,11 +16,26 @@ import { moveTask } from "~/apps/projects/service/move-task"
 import { deleteStatus, updateStatus } from "~/apps/projects/service/statuses"
 import { deriveProjectKey } from "~/apps/projects/service/task-key"
 import { deleteTask, mergeTasks, restoreTask } from "~/apps/projects/service/tasks"
-import { extractRows } from "~/db"
+import { extractRows, sql } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { withRlsContext } from "~/db/rls"
-import { insertSql } from "~/seed/factories/org/test-rows"
+import { appBridgeManifestRegistry } from "~/modules/apps/app-registries"
+import { executeToolCore } from "~/modules/apps/execute-tool"
+import { ensureAppsForOrg } from "~/modules/apps/init"
+import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { buildDataSubjectBundle } from "~/modules/export/data-subject-export-tool"
+import { MEMBER_SECTIONS, readMemberSections } from "~/modules/export/member-data-subject-bundle"
+import * as suppressionsModule from "~/modules/mail/suppressions"
+import { seedContext } from "~/seed/context"
+import { seedApprovalRequests } from "~/seed/factories/approvals/requests"
+import { insertSql, type RowValue } from "~/seed/factories/org/test-rows"
+import * as minimal from "~/seed/tiers/minimal"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import {
+  appendMailMessages,
+  ensureMailAccount,
+  seedMailConversation,
+} from "../../../../test-support/seed/mail"
 import {
   type DealWorld,
   dealEvents,
@@ -384,5 +400,392 @@ describe("pipelines and their stages", () => {
     expect(stage?.deal_outcome).toBeNull()
     expect((await dealState(taskId))?.outcome).toBe("open")
     expect(await dealEvents(w, taskId)).toEqual(["closed:won", "reopened"])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The deal tools, through the projects bridge as an agent's call reaches it
+// ---------------------------------------------------------------------------
+
+const DEAL_SCOPES = [
+  "projects:projects:read",
+  "projects:projects:write",
+  "projects:tasks:read",
+  "projects:tasks:write",
+  "projects:deals:read",
+  "projects:deals:write",
+  "mail:conversations:read",
+]
+const NO_DEAL_ACCESS = DEAL_SCOPES.filter((s) => !s.startsWith("projects:deals"))
+const DAY_MS = 86_400_000
+let rowSeq = 0
+
+async function call<T = Record<string, unknown>>(
+  method: string,
+  input: Record<string, unknown>,
+  scopes: string[] = DEAL_SCOPES,
+): Promise<T> {
+  const actor = { ...w.actor, scopes }
+  return withRlsContext(actor, async (tx) => {
+    const bridge = createRpcBridge("projects", w.userId, w.orgId, tx, { name: "projects" }, scopes)
+    return JSON.parse(await bridge[method](JSON.stringify(input))) as T
+  })
+}
+
+async function newCompany(name: string, extra: Record<string, RowValue> = {}): Promise<string> {
+  const id = crypto.randomUUID()
+  rowSeq += 1
+  await sql.unsafe(
+    insertSql("kernel.companies", {
+      id,
+      org_id: w.orgId,
+      handle: `@deal-co-${rowSeq}-${id.slice(0, 6)}`,
+      name,
+      created_by: w.userId,
+      org_access: "editor",
+      ...extra,
+    }),
+  )
+  return id
+}
+
+async function newContact(companyId: string | null): Promise<{ id: string; email: string }> {
+  const id = crypto.randomUUID()
+  rowSeq += 1
+  const email = `deal-person${rowSeq}-${id.slice(0, 6)}@client.example`
+  await sql.unsafe(
+    insertSql("kernel.contacts", {
+      id,
+      org_id: w.orgId,
+      handle: `@deal-person-${rowSeq}-${id.slice(0, 6)}`,
+      name: `Person ${rowSeq}`,
+      email,
+      created_by: w.userId,
+      org_access: "editor",
+      company_id: companyId,
+    }),
+  )
+  return { id, email }
+}
+
+let mailAccount = ""
+async function inboundFrom(email: string, daysAgo: number) {
+  const ctx = seedContext({ orgId: w.orgId, now: new Date() })
+  if (!mailAccount) {
+    mailAccount = (
+      await ensureMailAccount(ctx, {
+        ownerType: "user",
+        userId: w.userId,
+        email: `deals-${crypto.randomUUID().slice(0, 6)}@seller.example`,
+        provider: "imap",
+      })
+    ).accountId
+  }
+  const { conversationId } = await seedMailConversation(ctx, {
+    accountId: mailAccount,
+    subject: "Our proposal",
+    status: "open",
+    labels: [],
+    isRead: false,
+    isStarred: false,
+    messageCount: 1,
+    messages: [],
+  })
+  await appendMailMessages(ctx, {
+    conversationId,
+    messages: [
+      {
+        direction: "inbound",
+        from: { email },
+        to: [{ email: "sales@seller.example" }],
+        textBody: "We are reading it.",
+        sentAt: new Date(Date.now() - daysAgo * DAY_MS).toISOString(),
+      },
+    ],
+    updateConversation: false,
+    announce: false,
+  })
+}
+
+const taskCount = async (projectId: string) =>
+  Number(
+    extractRows<{ n: string }>(
+      await db.execute(drizzleSql`
+        SELECT COUNT(*)::text AS n FROM app_projects.tasks WHERE project_id = ${projectId}::uuid`),
+    )[0]?.n ?? 0,
+  )
+
+describe("creating a deal", () => {
+  it("creating a task in a pipeline with a company and an amount makes the task and both rows at once; deal fields on a work project are refused", async () => {
+    const p = await makePipeline(w, "Create with fields")
+    const co = await newCompany("Lumen")
+    const person = await newContact(co)
+    const created = await call<{ id: string; deal: Record<string, unknown> }>(
+      "projects_createTask",
+      {
+        projectId: p.projectId,
+        title: "Team annual",
+        companyId: co,
+        contactId: person.id,
+        amountMinor: 480_000,
+        currency: "eur",
+      },
+    )
+    expect(await dealState(created.id)).toMatchObject({
+      outcome: "open",
+      company_id: co,
+      has_value: true,
+      amount_minor: "480000",
+      currency: "EUR",
+    })
+
+    const work = await makeWorkProject(w, "Plain work")
+    const refused = await call<{ error?: { code: string; message: string } }>(
+      "projects_createTask",
+      { projectId: work.projectId, title: "Not a deal", companyId: co },
+    )
+    expect(refused.error?.code).toBe("not_a_pipeline")
+    expect(refused.error?.message).toContain("Nothing was created")
+    expect(await taskCount(work.projectId)).toBe(0)
+
+    // An amount without deal access leaves no task behind either.
+    const before = await taskCount(p.projectId)
+    const noAccess = await call<{ error?: { code: string } }>(
+      "projects_createTask",
+      { projectId: p.projectId, title: "Priced", amountMinor: 1_000, currency: "EUR" },
+      NO_DEAL_ACCESS,
+    )
+    expect(noAccess.error?.code).toBe("deal_access_needed")
+    expect(await taskCount(p.projectId)).toBe(before)
+  })
+})
+
+describe("deal rollup", () => {
+  it("the rollup sums per currency and is absent without deal access", async () => {
+    const p = await makePipeline(w, "Rollup")
+    const mk = async (
+      title: string,
+      stage: string,
+      amount: number,
+      currency: string,
+      prob: number,
+    ) => {
+      const id = await makeTask(w, p.projectId, title, { statusId: p.stage[stage] })
+      await db.execute(drizzleSql`
+        UPDATE app_projects.deal_values SET amount_minor = ${amount}, currency = ${currency},
+               probability = ${prob}
+        WHERE task_id = ${id}::uuid`)
+      return id
+    }
+    await mk("Lumen", "Proposal", 100_000, "EUR", 50)
+    await mk("Basalt", "Proposal", 40_000, "EUR", 25)
+    await mk("Harbour", "Proposal", 70_000, "USD", 100)
+    await mk("Kestrel", "Lead", 10_000, "EUR", 10)
+
+    const r = await call<{
+      groups: Array<{
+        label: string
+        count: number
+        sumByCurrency: unknown
+        weightedByCurrency: unknown
+      }>
+    }>("projects_dealsRollup", { projectId: p.projectId, groupBy: "stage", weighted: true })
+    const proposal = r.groups.find((g) => g.label === "Proposal")!
+    expect(proposal.count).toBe(3)
+    expect(proposal.sumByCurrency).toEqual([
+      { currency: "EUR", sum_minor: 140_000 },
+      { currency: "USD", sum_minor: 70_000 },
+    ])
+    expect(proposal.weightedByCurrency).toEqual([
+      { currency: "EUR", sum_minor: 60_000 },
+      { currency: "USD", sum_minor: 70_000 },
+    ])
+
+    expect(projectsManifest.tools.deals_rollup.requiredScopes).toEqual(["projects:deals:read"])
+    const blind = await call<{ error?: { code: string } }>(
+      "projects_dealsRollup",
+      { projectId: p.projectId, groupBy: "stage" },
+      NO_DEAL_ACCESS,
+    )
+    expect(blind.error?.code).toBe("forbidden")
+  })
+})
+
+describe("follow-up candidates", () => {
+  it("follow-up candidates give the exact skip reason for each case without calling a model", async () => {
+    const p = await makePipeline(w, "Follow-ups")
+    const deal = async (title: string, inboundDaysAgo: number | null, withPerson = true) => {
+      const id = await makeTask(w, p.projectId, title, { statusId: p.stage.Proposal })
+      await db.execute(drizzleSql`
+        UPDATE app_projects.tasks SET created_at = now() - interval '60 days' WHERE id = ${id}::uuid`)
+      if (!withPerson) return { id, email: "" }
+      const co = await newCompany(`Company ${title}`)
+      const person = await newContact(co)
+      await db.execute(drizzleSql`
+        UPDATE app_projects.deals SET company_id = ${co}::uuid WHERE task_id = ${id}::uuid`)
+      if (inboundDaysAgo !== null) await inboundFrom(person.email, inboundDaysAgo)
+      return { id, email: person.email, contactId: person.id }
+    }
+    const ready = await deal("Ready", 10)
+    const notQuiet = await deal("Answered two days ago", 2)
+    const noContact = await deal("Nobody named", null, false)
+    const optedOut = await deal("Opted out", 12)
+    const drafted = await deal("Draft waiting", 15)
+    const basis: Record<string, string> = {}
+    for (const code of ["no_basis", "consumer", "consumer_unknown", "country_needs_consent"]) {
+      const d = await deal(`Basis ${code}`, 20)
+      basis[d.contactId!] = code
+      basis[d.id] = code
+    }
+
+    const threadId = await minimal.thread(w.orgId, w.userId)
+    await seedApprovalRequests(seedContext({ orgId: w.orgId, now: new Date() }), [
+      {
+        id: crypto.randomUUID(),
+        handle: `followup-${crypto.randomUUID().slice(0, 8)}`,
+        threadId,
+        toolName: "mail:compose",
+        payload: {
+          to: [drafted.email],
+          subject: "Checking in",
+          body: "Any news on the proposal?",
+          sendGuard: { refs: [{ kind: "projects:deal", id: drafted.id }] },
+        },
+        requestedBy: w.userId,
+        agentId: null,
+        notifyUserIds: [],
+        status: "pending",
+        createdAt: new Date(),
+      },
+    ])
+
+    const optedSpy = spyOn(suppressionsModule, "suppressedAmong").mockImplementation(
+      async (_org, emails) => emails.filter((e) => e === optedOut.email),
+    )
+    const basisSpy = spyOn(suppressionsModule, "lawfulBasisProblem").mockImplementation(
+      async (_org, contactIds) => {
+        const code = basis[contactIds[0] ?? ""]
+        return code ? { code, label: code, who: "someone" } : null
+      },
+    )
+    try {
+      const r = await call<{
+        items: Array<{ taskId: string; skip: string | null; quietDays: number | null }>
+      }>("projects_dealsFollowupCandidates", { quietDays: 7, projectId: p.projectId })
+      const skip = (id: string) => r.items.find((i) => i.taskId === id)?.skip
+      expect(skip(ready.id)).toBeNull()
+      expect(r.items.find((i) => i.taskId === ready.id)?.quietDays).toBe(10)
+      expect(skip(notQuiet.id)).toBe("not_quiet")
+      expect(skip(noContact.id)).toBe("no_contact")
+      expect(skip(optedOut.id)).toBe("opted_out")
+      expect(skip(drafted.id)).toBe("draft_waiting")
+      for (const [id, code] of Object.entries(basis)) {
+        if (r.items.some((i) => i.taskId === id)) expect(skip(id)).toBe(code)
+      }
+
+      // A caller who cannot read mail gets no quiet, so nothing is drafted.
+      const blind = await call<{ items: Array<{ taskId: string; skip: string | null }> }>(
+        "projects_dealsFollowupCandidates",
+        { quietDays: 7, projectId: p.projectId },
+        DEAL_SCOPES.filter((s) => !s.startsWith("mail:")),
+      )
+      expect(blind.items.find((i) => i.taskId === ready.id)?.skip).toBe("mail_not_visible")
+      expect(blind.items.find((i) => i.taskId === noContact.id)?.skip).toBe("no_contact")
+    } finally {
+      optedSpy.mockRestore()
+      basisSpy.mockRestore()
+    }
+  })
+})
+
+describe("deal send state", () => {
+  it("the deal send state stops a closed or deleted deal and passes an open one", async () => {
+    await ensureAppsForOrg(w.orgId, {})
+    expect(
+      appBridgeManifestRegistry.get([w.orgId, "projects"])?.sendGuardProviders?.["projects:deal"],
+    ).toMatchObject({ tool: "deal_send_state" })
+
+    const ask = async (id: string) => {
+      const envelope = await executeToolCore({
+        toolName: "projects:deal_send_state",
+        orgId: w.orgId,
+        actor: { actorType: "system", orgId: w.orgId, purpose: "job", scopes: ["projects:*"] },
+        params: { ref: { kind: "projects:deal", id } },
+        origin: "system",
+      })
+      return "data" in envelope ? envelope.data : envelope
+    }
+    const p = await makePipeline(w, "Send state")
+    const open = await makeTask(w, p.projectId, "Still open", { statusId: p.stage.Demo })
+    const won = await makeTask(w, p.projectId, "Signed", { statusId: p.stage.Demo })
+    const gone = await makeTask(w, p.projectId, "Deleted", { statusId: p.stage.Demo })
+    await move(won, p.stage.Won!)
+    await run((tx) => deleteTask({ tx, orgId: w.orgId, actor: w.actor, taskId: gone }))
+
+    expect(await ask(open)).toEqual({ stop: false })
+    expect(await ask(won)).toEqual({ stop: true, code: "deal_closed", label: "Signed is closed" })
+    expect(await ask(gone)).toMatchObject({ stop: true, code: "deal_deleted" })
+    expect(await ask(crypto.randomUUID())).toMatchObject({ stop: true, code: "deal_deleted" })
+  })
+})
+
+describe("exports", () => {
+  it("a member's bundle lists the deals they own or closed", async () => {
+    const p = await makePipeline(w, "Member deals")
+    const owned = await makeTask(w, p.projectId, "Owned by the member", { statusId: p.stage.Lead })
+    const closed = await makeTask(w, p.projectId, "Closed by the member", {
+      statusId: p.stage.Demo,
+    })
+    const other = await makeTask(w, p.projectId, "Someone else's", { statusId: p.stage.Lead })
+    await db.execute(drizzleSql`
+      UPDATE app_projects.tasks SET assignee_id = ${w.userId}::uuid WHERE id = ${owned}::uuid`)
+    await move(closed, p.stage.Lost!)
+    const section = MEMBER_SECTIONS.find((s) => s.key === "deals")!
+    const out = await run((tx) =>
+      readMemberSections(tx, { orgId: w.orgId, subjectUserId: w.userId }, [section]),
+    )
+    const rows = out.deals!.rows as Array<{
+      task_id: string
+      owner: boolean
+      closed_by_member: boolean
+    }>
+    const mine = rows.filter((r) => [owned, closed, other].includes(r.task_id))
+    expect(mine.map((r) => [r.task_id, r.owner, r.closed_by_member]).sort()).toEqual(
+      [
+        [owned, true, false],
+        [closed, false, true],
+      ].sort(),
+    )
+  })
+
+  it("a contact's export lists the deals naming them, with no amount without deal access", async () => {
+    const p = await makePipeline(w, "Contact deals")
+    const person = await newContact(null)
+    const id = await makeTask(w, p.projectId, "Named deal", { statusId: p.stage.Proposal })
+    await db.execute(drizzleSql`
+      UPDATE app_projects.deals SET contact_id = ${person.id}::uuid WHERE task_id = ${id}::uuid`)
+    await db.execute(drizzleSql`
+      UPDATE app_projects.deal_values SET amount_minor = 9900, currency = 'EUR' WHERE task_id = ${id}::uuid`)
+    const exportAs = (scopes: string[]) =>
+      withRlsContext({ ...w.actor, scopes }, async (tx) =>
+        buildDataSubjectBundle(person.id, { orgId: w.orgId, userId: w.userId, db: tx, scopes }),
+      )
+    const full = await exportAs(DEAL_SCOPES)
+    if ("error" in full) throw new Error(full.error.message)
+    expect(full.records.deals).toEqual([
+      {
+        taskId: id,
+        title: "Named deal",
+        stage: "Proposal",
+        outcome: "open",
+        closedAt: null,
+        amount: { amountMinor: 9900, currency: "EUR" },
+      },
+    ])
+    const blind = await exportAs(NO_DEAL_ACCESS)
+    if ("error" in blind) throw new Error(blind.error.message)
+    expect(blind.records.deals).toEqual([
+      { taskId: id, title: "Named deal", stage: "Proposal", outcome: "open", closedAt: null },
+    ])
   })
 })

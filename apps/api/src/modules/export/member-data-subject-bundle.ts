@@ -347,6 +347,35 @@ export const MEMBER_SECTIONS: MemberSection[] = [
         LIMIT ${limit}`,
       ),
   },
+  {
+    key: "deals",
+    note: "Deals the member owns (as the task's assignee) or closed: title, pipeline, outcome, when it closed and which of the two.",
+    via: "subject",
+    read: async (db, ctx, limit) => {
+      const P = (t: string) => drizzleSql.raw(`${schemaRef("app_projects")}.${t}`)
+      // An org database without the projects tables has no deals to list.
+      const present = extractRows<{ ok: boolean }>(
+        await db.execute(
+          drizzleSql`SELECT to_regclass(${`${schemaRef("app_projects")}.deals`}) IS NOT NULL AS ok`,
+        ),
+      )
+      if (present[0]?.ok !== true) return []
+      return rows(
+        db,
+        drizzleSql`
+        SELECT d.task_id::text AS task_id, t.title, p.name AS pipeline, d.outcome, d.closed_at,
+               (t.assignee_id IS NOT DISTINCT FROM ${ctx.subjectUserId}::uuid) AS owner,
+               (d.closed_by IS NOT DISTINCT FROM ${ctx.subjectUserId}::uuid) AS closed_by_member
+        FROM ${P("deals")} d
+        JOIN ${P("tasks")} t ON t.id = d.task_id AND t.org_id = d.org_id
+        JOIN ${P("projects")} p ON p.id = t.project_id AND p.org_id = t.org_id
+        WHERE d.org_id = ${ctx.orgId}
+          AND (t.assignee_id = ${ctx.subjectUserId}::uuid OR d.closed_by = ${ctx.subjectUserId}::uuid)
+        ORDER BY d.created_at
+        LIMIT ${limit}`,
+      )
+    },
+  },
 ]
 
 /** Reads every section: the `caller` ones on `callerDb`, the `subject` ones in one privileged transaction. */

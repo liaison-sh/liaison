@@ -331,6 +331,15 @@ export interface DataSubjectExportBundle {
         createdAt: string | null
       }>
     }
+    /** Deals naming the person as their contact; amounts only for an exporter with deal access. */
+    deals: Array<{
+      taskId: string
+      title: string
+      stage: string | null
+      outcome: string
+      closedAt: string | null
+      amount?: { amountMinor: number | null; currency: string | null }
+    }>
     shopify:
       | {
           includedInBundle: false
@@ -528,6 +537,38 @@ export async function buildDataSubjectBundle(
       )[0]
     : undefined
 
+  // Deals leg: the deals naming the person as their contact, read under the
+  // caller's RLS (a projects-blind caller gets none); amounts only when the
+  // caller holds deal access. An org database without the projects tables has none.
+  const dealsTable = `${schemaRef("app_projects")}.deals`
+  const hasDeals = extractRows<{ ok: boolean }>(
+    await ctx.db.execute(drizzleSql`SELECT to_regclass(${dealsTable}) IS NOT NULL AS ok`),
+  )[0]?.ok
+  const dealAccess = hasScope("projects:deals:read", [...(ctx.scopes ?? [])])
+  const dealRows = hasDeals
+    ? extractRows<{
+        task_id: string
+        title: string
+        stage: string | null
+        outcome: string
+        closed_at: string | Date | null
+        amount_minor: string | null
+        currency: string | null
+      }>(
+        await ctx.db.execute(drizzleSql`
+          SELECT d.task_id::text AS task_id, t.title, s.label AS stage, d.outcome, d.closed_at,
+                 v.amount_minor::text AS amount_minor, v.currency
+          FROM ${drizzleSql.raw(dealsTable)} d
+          JOIN ${drizzleSql.raw(schemaRef("app_projects"))}.tasks t ON t.id = d.task_id AND t.org_id = d.org_id
+          LEFT JOIN ${drizzleSql.raw(schemaRef("app_projects"))}.project_statuses s ON s.id = t.status_id
+          LEFT JOIN ${drizzleSql.raw(schemaRef("app_projects"))}.deal_values v ON v.task_id = d.task_id
+          WHERE d.org_id = ${ctx.orgId} AND d.contact_id = ${contactId} AND t.archived_at IS NULL
+          ORDER BY d.created_at
+          LIMIT 100
+        `),
+      )
+    : []
+
   // (4) Memory leg — what this subject's own agent remembers (P4m-T32).
   const memory = await buildMemorySection({ email: contact.email }, ctx)
 
@@ -586,6 +627,21 @@ export async function buildDataSubjectBundle(
         grandTotalMinor: Number(r.grand_total_minor ?? 0),
         issuedAt: toIso(r.issued_at),
         dueAt: toIso(r.due_at),
+      })),
+      deals: dealRows.map((r) => ({
+        taskId: r.task_id,
+        title: r.title,
+        stage: r.stage,
+        outcome: r.outcome,
+        closedAt: toIso(r.closed_at),
+        ...(dealAccess
+          ? {
+              amount: {
+                amountMinor: r.amount_minor === null ? null : Number(r.amount_minor),
+                currency: r.currency,
+              },
+            }
+          : {}),
       })),
       shopify:
         shopifyOrders && shopifyOrders.length > 0

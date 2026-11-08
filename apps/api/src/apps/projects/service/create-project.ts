@@ -52,6 +52,10 @@ export interface ProjectRow {
 }
 
 export interface ProjectDetail extends ProjectRow {
+  /** Present on a pipeline only, so a work project reads as it always did. */
+  kind?: "pipeline"
+  /** The project's client company, present only when one is set. */
+  companyId?: string
   statuses: ProjectStatusRow[]
   /** S2 levels in order; [] is plain mode (a checkbox per item). */
   validationLevels: ValidationLevel[]
@@ -397,12 +401,14 @@ export async function loadProjectDetail(
       checklist_on_cards: boolean | null
       owner_name: string | null
       owner_avatar_url: string | null
+      kind: "work" | "pipeline"
+      company_id: string | null
     }
   >(
     await tx.execute(drizzleSql`
       SELECT p.id, p.org_id, p.name, p.description, p.color, p.icon, p.key, p."group", p.owner_id,
              p.archived_at, p.created_at, p.updated_at, p.validation_levels,
-             p.checklist_on_cards,
+             p.checklist_on_cards, p.kind, p.company_id::text AS company_id,
              COALESCE((SELECT COUNT(*) FROM ${projectsRel("tasks")} t WHERE t.project_id = p.id AND t.archived_at IS NULL), 0) AS task_count,
              EXISTS (SELECT 1 FROM ${projectsRel("tasks")} t2 WHERE t2.project_id = p.id) AS has_tasks,
              u.name AS owner_name,
@@ -427,6 +433,8 @@ export async function loadProjectDetail(
   const r = projectRows[0]!
   return {
     ...projectFromRow(r),
+    ...(r.kind === "pipeline" ? { kind: "pipeline" as const } : {}),
+    ...(r.company_id ? { companyId: r.company_id } : {}),
     taskCount: typeof r.task_count === "string" ? Number(r.task_count) : r.task_count,
     keyLocked: r.has_tasks === true,
     owner: {

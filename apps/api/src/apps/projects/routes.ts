@@ -20,6 +20,7 @@ import {
   listProjects,
   loadProjectDetail,
 } from "~/apps/projects/service/create-project"
+import { dealBoard } from "~/apps/projects/service/deals"
 import { moveTask } from "~/apps/projects/service/move-task"
 import {
   listRecentlyInvolvedTasks,
@@ -249,6 +250,8 @@ const patchProjectSchema = z.object({
   // (checked in update-project.ts, code invalid_group).
   group: z.string().nullable().optional(),
   checklistOnCards: z.boolean().optional(),
+  // The project's client: a company the caller can read, or null to clear.
+  companyId: z.string().uuid().nullable().optional(),
 })
 
 // Every `:projectId` / `:taskId` / `:statusId` below is interpolated with a
@@ -402,6 +405,15 @@ export const projectsRoutes = new Hono<AppEnv>()
       }
       throw err
     }
+  })
+  // A pipeline's board: stages with their deals, each stage's sum per currency
+  // for a reader with deal access, and quiet for a reader who can read mail.
+  .get("/:projectId/deals/board", scopeProjectsRead, async (c) => {
+    const projectId = c.req.param("projectId")
+    const orgId = c.get("orgId")
+    const scopes = [...(c.get("scopes") ?? [])]
+    const result = await withRequestRls(c, (tx) => dealBoard(tx, orgId, scopes, projectId))
+    return success(c, result)
   })
   .patch("/:projectId", scopeProjectsWrite, zValidator("json", patchProjectSchema), async (c) => {
     const projectId = c.req.param("projectId")

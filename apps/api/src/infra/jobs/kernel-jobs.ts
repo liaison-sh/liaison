@@ -913,6 +913,13 @@ export async function registerKernelJobs(): Promise<void> {
     await pruneOptOutLinks()
   })
 
+  // Prospects silent for three years, daily at 5:10 AM: one Home row per org for
+  // whoever can review them (modules/contacts/prospect-retention.ts). Deletes nothing.
+  await registerScheduledJob("kernel", "prospect-retention", "10 5 * * *", async () => {
+    const { runProspectRetention } = await import("~/modules/contacts/prospect-retention")
+    await runProspectRetention()
+  })
+
   // App builder preview namespaces of the data store (`draft:<id>`), hourly at :17:
   // a namespace whose last write is a day old goes (modules/app-builder/installed.ts).
   await registerScheduledJob("kernel", "app-draft-store-retention", "17 * * * *", async () => {

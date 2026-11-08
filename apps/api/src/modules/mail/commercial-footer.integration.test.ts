@@ -26,6 +26,7 @@ import { buildRawSentMessage, type SmtpSendParams } from "~/modules/apps/sandbox
 import { seedContext } from "~/seed/context"
 import * as minimal from "~/seed/tiers/minimal"
 import { bootstrapAdminCtx } from "~/tests/helpers/agent-ctx"
+import { ensureRecordedBasis } from "~/tests/helpers/prospect"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { ensureMailAccount } from "../../../test-support/seed/mail"
 
@@ -59,8 +60,14 @@ function blockedId(envelope: Envelope): string {
   return envelope.blocked.approvalRequestId as string
 }
 
-const stage = (params: Record<string, unknown>) =>
-  executeToolCore({
+const stage = async (params: Record<string, unknown>) => {
+  // Commercial mail needs a recorded basis; these tests are about what it carries.
+  await ensureRecordedBasis(orgId, [
+    ...((params.to as unknown[]) ?? []),
+    ...((params.cc as unknown[]) ?? []),
+    ...((params.bcc as unknown[]) ?? []),
+  ])
+  return executeToolCore({
     toolName: "mail:compose",
     orgId,
     actor: admin,
@@ -68,6 +75,7 @@ const stage = (params: Record<string, unknown>) =>
     threadId,
     origin: "in-app-agent",
   })
+}
 
 const followUp = (to: string[], extra: Record<string, unknown> = {}) => ({
   accountId: smtpAccount,

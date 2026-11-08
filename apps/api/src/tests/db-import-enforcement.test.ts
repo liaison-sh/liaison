@@ -248,6 +248,9 @@ describe("db import enforcement", () => {
     // After a company's manager changed or its manager came back (an event, no request
     // context): the previous manager's Home row and the admins' unowned rows, by org id.
     "modules/contacts/company-unowned.ts",
+    // The daily review of prospects silent for three years: one Home row per org for
+    // whoever can act on it, written across orgs by the job, never by a request.
+    "modules/contacts/prospect-retention.ts",
     // A contact's team references are counted privileged (privilegedFrom): the
     // actor cannot read every referencing table, and the answer is a count.
     "modules/contacts/references.ts",
@@ -608,6 +611,8 @@ describe("db import enforcement", () => {
     "tests/helpers/agent-ctx.ts",
     // The identity a test org's commercial mail states (one settings key).
     "tests/helpers/commercial-identity.ts",
+    // Records the lawful basis a commercial test mail needs on its recipient's contact.
+    "tests/helpers/prospect.ts",
     "tests/helpers/import-files.ts",
     // The relation suite's worlds: an admin's deactivation, a permission read, as the product does.
     "tests/relations/approval-world.ts",

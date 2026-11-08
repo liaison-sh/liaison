@@ -22,7 +22,11 @@ import { registerEventSubscribers } from "~/infra/events/event-subscribers"
 import { processOutboxBatch } from "~/infra/events/outbox-worker"
 import * as jobsModule from "~/infra/jobs/jobs"
 import { env } from "~/lib/env"
-import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
+import {
+  currentRunContext,
+  type RunContext,
+  runContextStore,
+} from "~/modules/agent/runtime/run-context"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import {
   computeApprovalAttentionItems,
@@ -64,6 +68,7 @@ import * as minimal from "~/seed/tiers/minimal"
 import { bootstrapAdminCtx } from "~/tests/helpers/agent-ctx"
 import { setTestCommercialIdentity } from "~/tests/helpers/commercial-identity"
 import { createTestCompany } from "~/tests/helpers/company"
+import { ensureRecordedBasis } from "~/tests/helpers/prospect"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
   appendMailMessages,
@@ -105,7 +110,18 @@ const blockedId = (envelope: Envelope): string => {
   return envelope.blocked.approvalRequestId as string
 }
 
-function agentCall(toolName: string, params: Record<string, unknown>): Promise<Envelope> {
+async function agentCall(toolName: string, params: Record<string, unknown>): Promise<Envelope> {
+  // Commercial mail needs a recorded basis; these tests are about the other checks.
+  if (
+    toolName === "mail:compose" &&
+    (params.followUp !== undefined || currentRunContext()?.routineFollowUp)
+  ) {
+    await ensureRecordedBasis(orgId, [
+      ...((params.to as unknown[]) ?? []),
+      ...((params.cc as unknown[]) ?? []),
+      ...((params.bcc as unknown[]) ?? []),
+    ])
+  }
   return executeToolCore({
     toolName,
     orgId,
@@ -962,6 +978,7 @@ describe("classification and marketing", () => {
 
   it("an MCP-staged marketing follow-up sent clear calls the footer, and its result and ref say so", async () => {
     const to = unique("mcp-footer")
+    await ensureRecordedBasis(orgId, [to])
     const id = blockedId(
       await executeToolCore({
         toolName: "mail:compose",
@@ -1064,6 +1081,7 @@ describe("classification and marketing", () => {
     const bcc = unique("edit-bcc")
     const marketing = await stageCompose(to, { followUp: {} })
     const plain = await stageCompose(unique("edit-plain"))
+    await ensureRecordedBasis(orgId, [added, bcc])
     await updatePayload({
       orgId,
       requestId: marketing,
@@ -1516,6 +1534,7 @@ describe("a reply through a ticket inbox", () => {
 
   it("a stop on a ticket the caller cannot open names a ticket, not a mailbox", async () => {
     const to = unique("ticket-unreadable")
+    await ensureRecordedBasis(orgId, [to])
     await seedOutbound(to)
     const { ticketId } = await seedTicketInbound(to)
     const staged = await executeToolCore({
@@ -2244,6 +2263,10 @@ describe("a new message is commercial by its recipient's data", () => {
       name: "Prospect",
       org_access: "editor",
       created_by: userId,
+      // What a commercial mail to them needs: a recorded basis, a business, a country.
+      lawful_basis: "professional_interest",
+      is_consumer: false,
+      recipient_country: "FR",
     })
     await insert("kernel.threads", {
       id: thread,

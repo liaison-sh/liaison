@@ -265,6 +265,9 @@
     "optOut": "To stop commercial messages from {{name}}: {{url}} or reply stop.",
     "linkLabel": "(opt-out link)",
     "composerNote": "This mail goes to a prospect, so these lines are added when it is sent, in their language. They cannot be removed.",
-    "checkFailed": "Could not check whether this mail is commercial. It is checked again when you send."
+    "checkFailed": "Could not check whether this mail is commercial. It is checked again when you send.",
+    "noticeThirdParty": "{{name}} received your address from a third party and uses it only for professional messages like this one. You can object at any time with the link below.",
+    "noticeEnrichment": "{{name}} found your address in a public business source and uses it only for professional messages like this one. You can object at any time with the link below.",
+    "noticeUnknown": "If you did not give us your address yourself, {{name}} obtained it from another source and uses it only for professional messages like this one. You can object at any time with the link below."
   }
 }

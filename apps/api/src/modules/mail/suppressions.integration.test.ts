@@ -3,9 +3,12 @@
 // Opt-outs end to end: the mail tools record, check and lift them; waiting commercial drafts are
 // withdrawn; the send check refuses commercial mail to them at send; the list keeps no address;
 // the person's and the member's data exports say what it holds.
+
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
+import { createHash } from "node:crypto"
 import { z } from "zod"
 import { sql } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { DurableConsumersTestAccess } from "~/infra/events/durable-consumers"
 import * as eventBusModule from "~/infra/events/event-bus"
@@ -20,19 +23,28 @@ import { executeToolCore } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
+import {
+  PROSPECT_RETENTION_KIND,
+  refreshProspectRetention,
+} from "~/modules/contacts/prospect-retention"
 import { deleteContact } from "~/modules/contacts/service"
 import { buildDataSubjectBundle } from "~/modules/export/data-subject-export-tool"
 import { readMemberSections } from "~/modules/export/member-data-subject-bundle"
+import { footerLines } from "~/modules/mail/commercial-footer"
 import { hashEmail, suppressedAmong } from "~/modules/mail/suppressions"
 import { seedContext } from "~/seed/context"
 import { seedApprovalRequests } from "~/seed/factories/approvals/requests"
 import { resolveContacts } from "~/seed/factories/people/contacts"
 import * as minimal from "~/seed/tiers/minimal"
 import { bootstrapAdminCtx } from "~/tests/helpers/agent-ctx"
-import { setTestCommercialIdentity } from "~/tests/helpers/commercial-identity"
+import {
+  setTestCommercialIdentity,
+  TEST_COMMERCIAL_IDENTITY,
+} from "~/tests/helpers/commercial-identity"
 import { drainOutbox } from "~/tests/helpers/outbox"
+import { recordProspect } from "~/tests/helpers/prospect"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
-import { ensureMailAccount } from "../../../test-support/seed/mail"
+import { ensureMailAccount, seedMailConversation } from "../../../test-support/seed/mail"
 
 const broadcastSpy = spyOn(eventBusModule, "broadcastEphemeral").mockImplementation(async () => {})
 const jobSpy = spyOn(jobsModule, "enqueueAppJob").mockImplementation(async () => "job-id" as never)
@@ -70,6 +82,12 @@ const blockedId = (envelope: Envelope): string => {
 
 /** A commercial follow-up, or a service message about an invoice when `service` is set. */
 async function stageCompose(to: string, service = false): Promise<string> {
+  // Commercial mail goes only to someone with a recorded basis: one is recorded unless the test set its own.
+  if (!service) {
+    const [recorded] = await sql`SELECT 1 FROM kernel.contacts
+      WHERE org_id = ${orgId} AND lower(email) = ${to.toLowerCase()} AND lawful_basis IS NOT NULL LIMIT 1`
+    if (!recorded) await recordProspect(orgId, to)
+  }
   const followUp = service
     ? { classification: "service", refs: [{ kind: "fixture:invoice", id: "1" }] }
     : {}
@@ -405,4 +423,151 @@ describe("opt-outs", () => {
     }
     expect(added?.note).toContain("not kept")
   }, 90_000)
+})
+
+describe("lawful basis, notice, record and retention", () => {
+  const sha = (v: string) => createHash("sha256").update(v).digest("hex")
+
+  async function sendFollowUp(to: string): Promise<Record<string, unknown>> {
+    const before = sent.length
+    await approve(await stageCompose(to))
+    expect(sent.length).toBe(before + 1)
+    return sent[sent.length - 1] as Record<string, unknown>
+  }
+
+  it("a new message to a contact with an enrichment source and no basis is refused for no basis", async () => {
+    const to = unique("enriched")
+    await recordProspect(orgId, to, { lawfulBasis: null, dataSource: "enrichment" })
+    const refusal = refusalOf(
+      await call("mail:compose", {
+        accountId: account,
+        to: [to],
+        subject: "Hello",
+        textBody: "We make studio monitors you may like.",
+      }),
+    )
+    expect(refusal.message).toContain(`No lawful basis is recorded for ${to}`)
+    expect(refusal.message).toContain("Nothing was sent")
+  })
+
+  it("every commercial send records approver, text hash, basis, classification and check", async () => {
+    const to = unique("recorded")
+    const contactId = await recordProspect(orgId, to)
+    const message = await sendFollowUp(to)
+    const rows = await sql<
+      Array<{ actor_id: string | null; entity_id: string | null; metadata: any }>
+    >`
+      SELECT actor_id::text AS actor_id, entity_id::text AS entity_id, metadata FROM kernel.audit_log
+       WHERE org_id = ${orgId} AND action = 'mail.commercial_send'
+         AND metadata ->> 'recipientHash' = ${hashEmail(orgId, to)}`
+    expect(rows).toHaveLength(1)
+    const meta = rows[0]?.metadata
+    expect(rows[0]?.entity_id).toBe(contactId)
+    expect(meta.approvedBy).toBe("approver")
+    expect(meta.approverId).toBe(userId)
+    // The hash is of the approved text with its footer, as it leaves the check (before the
+    // mail's own rendering of that text).
+    const url = String(message.textBody).match(
+      /https?:\/\/[^\s"<>]+\/public\/opt-out\/[A-Za-z0-9_-]{43}/,
+    )?.[0]
+    expect(url).toBeDefined()
+    const final = `Any news on the order?\n\n--\n${footerLines(TEST_COMMERCIAL_IDENTITY, url as string).join("\n")}\n`
+    expect(meta.textSha256).toBe(sha(final))
+    expect(meta.lawfulBasis).toBe("professional_interest")
+    expect(meta.classification).toBe("marketing")
+    expect(meta.suppressionCheck).toBe("not_opted_out")
+    expect(JSON.stringify(rows)).not.toContain(to)
+  })
+
+  it("the first commercial message to a third-party contact carries the notice and the second does not", async () => {
+    const to = unique("third-party")
+    await recordProspect(orgId, to, { dataSource: "third_party" })
+    const first = await sendFollowUp(to)
+    expect(String(first.textBody)).toContain("received your address from a third party")
+    const [row] = await sql<Array<{ at: string | null }>>`
+      SELECT art14_notice_at::text AS at FROM kernel.contacts WHERE org_id = ${orgId} AND lower(email) = ${to}`
+    expect(row?.at).not.toBeNull()
+    const second = await sendFollowUp(to)
+    expect(String(second.textBody)).not.toContain("your address")
+    // A contact whose address they gave themselves gets no notice at all.
+    const direct = unique("direct")
+    await recordProspect(orgId, direct, { dataSource: "direct" })
+    expect(String((await sendFollowUp(direct)).textBody)).not.toContain("your address")
+  })
+
+  it("a contact with no recorded source gets the notice", async () => {
+    const to = unique("no-source")
+    await recordProspect(orgId, to, { dataSource: null })
+    const message = await sendFollowUp(to)
+    expect(String(message.textBody)).toContain("If you did not give us your address yourself")
+    expect(String(message.htmlBody)).toContain("If you did not give us your address yourself")
+  })
+
+  it("one retention item per org lists prospects silent for three years", async () => {
+    const now = new Date()
+    const ago = (days: number, years = 0) => {
+      const d = new Date(now)
+      d.setUTCFullYear(d.getUTCFullYear() - years)
+      d.setUTCDate(d.getUTCDate() - days)
+      return d.toISOString()
+    }
+    const recent = unique("wrote-recently")
+    const silent = unique("silent")
+    const never = unique("never-wrote")
+    const fresh = unique("just-added")
+    const ids: Record<string, string> = {}
+    for (const email of [recent, silent, never, fresh])
+      ids[email] = await recordProspect(orgId, email)
+    for (const email of [recent, silent, never]) {
+      await sql`UPDATE kernel.contacts SET created_at = ${ago(0, 5)} WHERE id = ${ids[email] as string}`
+    }
+    const ctx = seedContext({ orgId, now })
+    // Two years and 364 days ago: still within the three years.
+    const lastWrote = { [recent]: ago(-1, 3), [silent]: ago(1, 3) }
+    for (const [email, sentAt] of Object.entries(lastWrote)) {
+      await seedMailConversation(ctx, {
+        accountId: account,
+        subject: "Order",
+        status: "open",
+        labels: [],
+        isRead: true,
+        isStarred: false,
+        contactId: ids[email] as string,
+        messages: [
+          {
+            direction: "inbound",
+            from: { email },
+            to: [{ email: "sales@org.test" }],
+            textBody: "Thanks",
+            sentAt,
+          },
+        ],
+      })
+    }
+    const refresh = () =>
+      withPrivilegedDb(orgId, "test-prospect-retention", (tx) =>
+        refreshProspectRetention(tx, orgId, now),
+      )
+    await refresh()
+    await refresh()
+    const rows = await sql<Array<{ summary: string; metadata: any }>>`
+      SELECT summary, metadata FROM kernel.attention_events
+       WHERE org_id = ${orgId} AND user_id = ${userId} AND kind = ${PROSPECT_RETENTION_KIND}
+         AND read_at IS NULL`
+    expect(rows).toHaveLength(1)
+    const listed: string[] = rows[0]?.metadata.contactIds
+    expect(listed).toContain(ids[silent])
+    expect(listed).toContain(ids[never])
+    expect(listed).not.toContain(ids[recent])
+    expect(listed).not.toContain(ids[fresh])
+    expect(rows[0]?.summary).toContain("3 years")
+    // Nobody left silent: the row goes.
+    await sql`UPDATE kernel.contacts SET lawful_basis = 'consent'
+               WHERE org_id = ${orgId} AND lawful_basis = 'professional_interest'`
+    await refresh()
+    const [left] = await sql<Array<{ n: number }>>`
+      SELECT count(*)::int AS n FROM kernel.attention_events
+       WHERE org_id = ${orgId} AND kind = ${PROSPECT_RETENTION_KIND} AND read_at IS NULL`
+    expect(left?.n).toBe(0)
+  })
 })

@@ -24,12 +24,12 @@ import {
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type PrivilegedDb } from "~/db"
-import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
+import { withPrivilegedDb, withSystemDb, withSystemReadReusingHeld } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { escapeHtml } from "~/lib/html-page"
 import { orgPublicBaseUrl } from "~/lib/org-public-url"
 import { serverT } from "~/modules/i18n/server-i18n"
-import { hashEmail } from "~/modules/mail/suppressions"
+import { type DataSource, DEFAULT_COUNTRY_POLICY, hashEmail } from "~/modules/mail/suppressions"
 import { sweepSkippingMoving } from "~/modules/org/transfer-state/skip-moving"
 
 const K = () => drizzleSql.raw(schemaRef("kernel"))
@@ -38,11 +38,7 @@ const K = () => drizzleSql.raw(schemaRef("kernel"))
 export const COMMERCIAL_IDENTITY_SETTING =
   "Settings > Organization > Commercial identity (or config_email, key commercialIdentity)"
 
-/** The country policy when the org has set none: France allows professional interest, elsewhere consent. */
-export const DEFAULT_COUNTRY_POLICY: Record<string, "optout" | "consent"> = {
-  FR: "optout",
-  default: "consent",
-}
+export { DEFAULT_COUNTRY_POLICY }
 
 /** How long an opt-out link keeps working. */
 export const OPT_OUT_LINK_RETENTION_DAYS = 3 * 365
@@ -54,6 +50,8 @@ export interface CommercialFooter {
 
 export interface OptOutLink {
   url: string
+  /** Who the link was made for: the footer reads whether they are owed the notice. */
+  recipient?: string
 }
 
 /** The org's commercial identity, or null when it is unset or no longer valid. */
@@ -99,7 +97,62 @@ export async function mintOptOutLink(orgId: string, recipient: string): Promise<
       VALUES (${tokenHash(token)}, ${orgId}::uuid, ${hashEmail(orgId, recipient)})`),
   )
   const base = (await orgPublicBaseUrl(orgId)).replace(/\/$/, "")
-  return { url: `${base}/public/opt-out/${token}` }
+  return { url: `${base}/public/opt-out/${token}`, recipient }
+}
+
+/**
+ * Whether the person at `recipient` is owed the notice of where their address
+ * came from (GDPR Art. 14) in this commercial mail, and from what source: their
+ * first commercial mail, when no contact at that address records its source as
+ * given by them (`direct`) and none was sent the notice yet. An unknown source
+ * counts as someone else's, so the notice goes. Null when nothing is owed.
+ */
+export async function art14NoticeDue(
+  orgId: string,
+  recipient: string,
+  db?: PrivilegedDb,
+): Promise<{ source: DataSource | null } | null> {
+  const read = async (tx: PrivilegedDb) =>
+    extractRows<{ data_source: DataSource | null; art14_notice_at: string | null }>(
+      await tx.execute(drizzleSql`
+        SELECT data_source, art14_notice_at::text AS art14_notice_at FROM ${K()}.contacts
+         WHERE org_id = ${orgId}::uuid AND lower(email) = ${recipient.trim().toLowerCase()}`),
+    )
+  const rows = db ? await read(db) : await withSystemReadReusingHeld("art14-notice-read", read)
+  if (rows.some((r) => r.art14_notice_at !== null)) return null
+  if (rows.length > 0 && rows.every((r) => r.data_source === "direct")) return null
+  const known = rows.find((r) => r.data_source === "third_party" || r.data_source === "enrichment")
+  return { source: known?.data_source ?? null }
+}
+
+/** Records that the notice went out to `recipient`, on every contact at that address. */
+export async function markArt14NoticeSent(
+  orgId: string,
+  recipient: string,
+  db?: PrivilegedDb,
+): Promise<void> {
+  const write = (tx: PrivilegedDb) =>
+    tx.execute(drizzleSql`
+      UPDATE ${K()}.contacts SET art14_notice_at = now()
+       WHERE org_id = ${orgId}::uuid AND lower(email) = ${recipient.trim().toLowerCase()}
+         AND art14_notice_at IS NULL`)
+  if (db) await write(db)
+  else await withPrivilegedDb(orgId, "art14-notice-mark", write)
+}
+
+/** The notice line, in the recipient's language. */
+export function art14NoticeLine(
+  identity: CommercialIdentity,
+  source: DataSource | null,
+  locale: ShippedLocale = "en",
+): string {
+  const key =
+    source === "enrichment"
+      ? "mail.commercialFooter.noticeEnrichment"
+      : source === "third_party"
+        ? "mail.commercialFooter.noticeThirdParty"
+        : "mail.commercialFooter.noticeUnknown"
+  return serverT(locale, key, { name: identity.legalName })
 }
 
 /** The org and address fingerprint a link was made for; null for an unknown token. */
@@ -183,8 +236,10 @@ export function footerLines(
 /**
  * The body with the commercial footer: plain lines after a text body, an
  * escaped block before `</body>` of an HTML body (or at its end). `notice` is
- * an extra line (where the recipient's address came from) when one applies;
- * `locale` is the recipient's language (`recipientLocale`).
+ * an extra line (where the recipient's address came from); when it is not
+ * given and the link names its recipient, the line is added when that person
+ * is owed it (`art14NoticeDue`). `locale` is the recipient's language
+ * (`recipientLocale`).
  * Throws when the identity is unset: a commercial mail never leaves without it.
  */
 export async function applyCommercialFooter(
@@ -195,7 +250,13 @@ export async function applyCommercialFooter(
 ): Promise<CommercialFooter> {
   const id = identity ?? (await readCommercialIdentity(orgId))
   if (!id) throw new Error("commercial_identity_missing")
-  const lines = footerLines(id, opts.link.url, opts.locale ?? "en", opts.notice)
+  const locale = opts.locale ?? "en"
+  let notice = opts.notice
+  if (notice === undefined && opts.link.recipient) {
+    const due = await art14NoticeDue(orgId, opts.link.recipient)
+    if (due) notice = art14NoticeLine(id, due.source, locale)
+  }
+  const lines = footerLines(id, opts.link.url, locale, notice)
   const headers = optOutHeaders(opts.link)
   if (opts.kind === "text") {
     return { body: `${body.replace(/\s+$/, "")}\n\n--\n${lines.join("\n")}\n`, headers }

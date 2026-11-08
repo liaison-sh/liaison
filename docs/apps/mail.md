@@ -176,6 +176,23 @@ The same rules hold for a mail you write yourself. When a recipient of your new 
 
 The footer is written in the recipient's language: the language recorded on their contact (`language` in its details), else the organization's language. English and French are available.
 
+### Who commercial mail may go to
+
+An agent's commercial mail goes only to someone whose contact records a lawful basis: consent, existing customer, professional interest, or a generic company address. The check refuses it, and names the person, when:
+
+- no basis is recorded (contacts that existed before these fields have none until someone records one);
+- the person is recorded as a consumer, or nobody recorded whether they are one, and the basis is not consent;
+- their country's rule asks for consent and the basis is something else. The default rule is opt-out for France and consent everywhere else; a contact with no recorded country takes the rule for everywhere else;
+- two contacts at the same address record different bases. A person keeps one, by merging the contacts or correcting one.
+
+A generic company address passes in France without a consumer status. A service message skips this check.
+
+The first commercial mail to someone whose address did not come from them (recorded as from a third party, an enrichment, or with no recorded source) also says where the address came from and that they can object. Their contact then records that this notice went out, and later mails do not repeat it.
+
+Every commercial mail is recorded in the audit log as it leaves: who approved it, a fingerprint of its text with the footer, the basis, its class and the opt-out check. The record holds no address.
+
+Once a day, contacts recorded under professional interest that have sent no mail or ticket and had no deal for three years are listed on one Home item for each person who is both an admin and allowed to edit contacts. Nothing is deleted: you decide whether to keep them. Not now hides the item until next week; once read, it comes back only when the list changes.
+
 The link opens a page that asks once and records the opt-out with one button. Opening the page changes nothing (mail scanners open links), and pressing again changes nothing more. The page shows the organization's legal name and address, never the recipient's address, in English or French. Links older than three years stop working.
 
 ## Scopes

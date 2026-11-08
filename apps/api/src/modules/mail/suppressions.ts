@@ -15,7 +15,7 @@
 import { createHash } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
-import { withPrivilegedDb } from "~/db/privileged"
+import { withPrivilegedDb, withSystemReadReusingHeld } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { withdrawCommercialDraftsTo } from "~/modules/approvals/withdraw-on-events"
 
@@ -480,11 +480,202 @@ export async function suppressionRemoveCard(
   }
 }
 
-/** Why the org may not write to these people, or null when it may. */
+/** The recorded grounds for writing commercial mail to someone (`kernel.contacts.lawful_basis`). */
+export type LawfulBasis = "consent" | "customer" | "professional_interest" | "generic_address"
+
+/** Where a contact's address came from (`kernel.contacts.data_source`); null is unknown. */
+export type DataSource = "direct" | "third_party" | "enrichment"
+
+/** The country policy when the org has set none: France allows professional interest, elsewhere consent. */
+export const DEFAULT_COUNTRY_POLICY: Record<string, "optout" | "consent"> = {
+  FR: "optout",
+  default: "consent",
+}
+
+/** What the contacts at one address record, every contact at it taken together. */
+export interface RecipientBasis {
+  email: string
+  contactIds: string[]
+  /** The one recorded basis; null when none is recorded or two differ (`conflict`). */
+  basis: LawfulBasis | null
+  /** Two contacts at this address record different bases: a person chooses, nothing here does. */
+  conflict: LawfulBasis[] | null
+  /** True when any says consumer, else null when any is unknown, else false. */
+  isConsumer: boolean | null
+  /** Every recorded country, upper case; empty when none is recorded. */
+  countries: string[]
+}
+
+/** The org's own domains: an address there is a colleague, never a recipient of the rules. */
+async function ownDomains(tx: PrivilegedDb, orgId: string): Promise<Set<string>> {
+  const rows = extractRows<{ domain: string }>(
+    await tx.execute(drizzleSql`
+      SELECT DISTINCT lower(split_part(email, '@', 2)) AS domain FROM ${K()}.users
+       WHERE org_id = ${orgId}::uuid AND user_type <> 'external' AND email LIKE '%@%'`),
+  )
+  return new Set(rows.map((r) => r.domain))
+}
+
+/**
+ * What is recorded about each outside address among `addresses` (colleagues are
+ * left out), read on the privileged path so a caller who cannot see a contact is
+ * still bound by what it records. Nothing is inferred: an unknown stays unknown.
+ */
+export async function lawfulBasisFacts(
+  orgId: string,
+  addresses: readonly string[],
+  db?: PrivilegedDb,
+): Promise<{ recipients: RecipientBasis[]; countryPolicy: Record<string, "optout" | "consent"> }> {
+  const read = async (tx: PrivilegedDb) => {
+    const own = await ownDomains(tx, orgId)
+    const outside = [
+      ...new Set(
+        addresses
+          .filter((a) => typeof a === "string" && a.includes("@"))
+          .map((a) => a.trim().toLowerCase())
+          .filter((a) => !own.has(a.split("@")[1] ?? "")),
+      ),
+    ]
+    const contacts =
+      outside.length === 0
+        ? []
+        : extractRows<{
+            id: string
+            email: string
+            lawful_basis: LawfulBasis | null
+            is_consumer: boolean | null
+            recipient_country: string | null
+          }>(
+            await tx.execute(drizzleSql`
+              SELECT id::text AS id, lower(email) AS email, lawful_basis, is_consumer, recipient_country
+                FROM ${K()}.contacts
+               WHERE org_id = ${orgId}::uuid
+                 AND lower(email) = ANY(ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(outside)}::jsonb)))
+               ORDER BY id`),
+          )
+    const settings = extractRows<{ v: unknown }>(
+      await tx.execute(drizzleSql`
+        SELECT settings -> 'commercialIdentity' -> 'countryPolicy' AS v
+          FROM ${K()}.organizations WHERE id = ${orgId}::uuid`),
+    )[0]?.v
+    return { outside, contacts, settings }
+  }
+  // A read only, so inside a privileged transaction (a claim) it reuses that one.
+  const { outside, contacts, settings } = db
+    ? await read(db)
+    : await withSystemReadReusingHeld("lawful-basis-read", read)
+  const recipients = outside.map((email): RecipientBasis => {
+    const mine = contacts.filter((c) => c.email === email)
+    const bases = [...new Set(mine.flatMap((c) => (c.lawful_basis ? [c.lawful_basis] : [])))].sort()
+    const consumer = mine.some((c) => c.is_consumer === true)
+      ? true
+      : mine.length === 0 || mine.some((c) => c.is_consumer === null)
+        ? null
+        : false
+    return {
+      email,
+      contactIds: mine.map((c) => c.id),
+      basis: bases.length === 1 ? (bases[0] as LawfulBasis) : null,
+      conflict: bases.length > 1 ? bases : null,
+      isConsumer: consumer,
+      countries: [
+        ...new Set(
+          mine.flatMap((c) =>
+            c.recipient_country ? [c.recipient_country.trim().toUpperCase()] : [],
+          ),
+        ),
+      ].sort(),
+    }
+  })
+  return { recipients, countryPolicy: countryPolicyOf(settings) }
+}
+
+function countryPolicyOf(value: unknown): Record<string, "optout" | "consent"> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return DEFAULT_COUNTRY_POLICY
+  const out: Record<string, "optout" | "consent"> = {}
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (v === "optout" || v === "consent") out[k === "default" ? k : k.toUpperCase()] = v
+  }
+  return Object.keys(out).length > 0 ? out : DEFAULT_COUNTRY_POLICY
+}
+
+const BASIS_WORDS: Record<LawfulBasis, string> = {
+  consent: "consent",
+  customer: "existing customer",
+  professional_interest: "professional interest",
+  generic_address: "generic company address",
+}
+
+/** The first rule one recipient breaks, or null. */
+export function basisProblemFor(
+  r: RecipientBasis,
+  policy: Record<string, "optout" | "consent">,
+): LawfulBasisProblem | null {
+  const who = r.email
+  if (r.conflict) {
+    return {
+      code: "basis_conflict",
+      who,
+      label: `Two contacts at ${who} record different lawful bases (${r.conflict.map((b) => BASIS_WORDS[b]).join(" and ")}), so no commercial mail goes to them until a person keeps one, by merging the contacts or correcting one.`,
+    }
+  }
+  if (!r.basis) {
+    return {
+      code: "no_basis",
+      who,
+      label: `No lawful basis is recorded for ${who}, so no commercial mail goes to them until a person records one on their contact.`,
+    }
+  }
+  // A generic company address is no person's own unless someone recorded a consumer there.
+  const consumer = r.basis === "generic_address" && r.isConsumer !== true ? false : r.isConsumer
+  if (consumer !== false && r.basis !== "consent") {
+    return consumer === true
+      ? {
+          code: "consumer",
+          who,
+          label: `${who} is recorded as a consumer, and commercial mail to a consumer needs their recorded consent.`,
+        }
+      : {
+          code: "consumer_unknown",
+          who,
+          label: `Whether ${who} is a consumer is not recorded, so they count as one: commercial mail needs their recorded consent, or a person records on their contact that they are a business.`,
+        }
+  }
+  const countries = r.countries.length > 0 ? r.countries : ["default"]
+  for (const country of countries) {
+    const rule = policy[country] ?? policy.default ?? "consent"
+    if (rule === "consent" && r.basis !== "consent") {
+      const where =
+        country === "default"
+          ? "Their country is not recorded, and the rule for an unknown country"
+          : `The rule for ${country}`
+      return {
+        code: "country_needs_consent",
+        who,
+        label: `${where} needs recorded consent for commercial mail, and ${who} is recorded under ${BASIS_WORDS[r.basis]}.`,
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Why the org may not write commercial mail to these people, or null when it may:
+ * the first outside recipient with no recorded basis, two contacts that disagree,
+ * a consumer (or someone not known to be a business) without consent, or a
+ * country whose rule needs consent. `contactIds` is accepted for the guard's
+ * call; the addresses decide, since they are who receives the mail.
+ */
 export async function lawfulBasisProblem(
-  _orgId: string,
+  orgId: string,
   _contactIds: string[],
-  _addresses: string[],
+  addresses: string[],
+  db?: PrivilegedDb,
 ): Promise<LawfulBasisProblem | null> {
+  const { recipients, countryPolicy } = await lawfulBasisFacts(orgId, addresses, db)
+  for (const r of recipients) {
+    const problem = basisProblemFor(r, countryPolicy)
+    if (problem) return problem
+  }
   return null
 }

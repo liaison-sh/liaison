@@ -2580,7 +2580,8 @@
       "dismiss": "Dismiss",
       "keepHolding": "Keep holding until {{until}}",
       "heldFolded": "Held until {{until}}. It comes back to Home that morning.",
-      "discard": "Discard"
+      "discard": "Discard",
+      "holdDate": "Until {{until}}"
     }
   },
   "agentUi": {
@@ -5755,7 +5756,10 @@
     "show": "Show decisions",
     "approvalFallback": "Approval request",
     "scopeRequestFallback": "Access request",
-    "sequenceSteps": "{{count}} steps"
+    "sequenceSteps": "{{count}} steps",
+    "dismissingIn": "Dismissing in {{seconds}}s",
+    "dismissing": "Dismissing…",
+    "dismissed": "Dismissed"
   },
   "aiModels": {
     "title": "AI models",
@@ -6586,7 +6590,9 @@
     "awayToday": "away today",
     "awayTodayBack": "away today, back {{day}}",
     "recapTitle": "While you were away",
-    "standingInFor": "{{name}} is away until {{date}}. You are next in line."
+    "standingInFor": "{{name}} is away until {{date}}. You are next in line.",
+    "showCovering": "Show what you cover",
+    "coveringTitle": "What you cover"
   },
   "dashboards": {
     "sectionTitle": "Dashboards",

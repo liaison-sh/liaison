@@ -70,6 +70,8 @@ export interface DecisionLabel {
    * every step: nothing has run while the Undo window is open.
    */
   steps?: string[] | null
+  /** A stopped draft is put away, not rejected: its deny reads "Dismissing". */
+  verb?: "dismiss" | null
 }
 
 /** One decision as the toast shows it: waiting out its window, being sent, or done. */
@@ -120,13 +122,15 @@ const [inFlightKeys, setInFlightKeys] = createSignal<ReadonlySet<string>>(new Se
 /** Decisions done and still shown in the toast for a moment, by key. */
 const doneItems = new Map<string, DecisionToastItem>()
 const doneTimers = new Map<string, ReturnType<typeof setTimeout>>()
+/** Stored decisions a boot is sending again: their rows stay hidden until the server answers. */
+const resendingKeys = new Set<string>()
 const [toastItems, setToastItems] = createSignal<readonly DecisionToastItem[]>([])
 
 function syncQueued(): void {
   setQueuedKeys(new Set([...entries].filter(([, e]) => !e.sending).map(([k]) => k)))
   // A done decision still counts: the row must not flash back between the
   // server's answer and the feed dropping it.
-  setInFlightKeys(new Set([...entries.keys(), ...doneItems.keys()]))
+  setInFlightKeys(new Set([...entries.keys(), ...doneItems.keys(), ...resendingKeys]))
   const live: DecisionToastItem[] = [...entries].map(([key, e]) => ({
     key,
     kind: e.item.kind,
@@ -403,12 +407,19 @@ export async function resendStoredDecisions(api: ApiClient): Promise<void> {
         unstore(item.kind, item.id)
         continue
       }
+      // The row it decided stays hidden while it is sent: the person already decided it.
+      const key = keyOf(item.kind, item.id)
+      resendingKeys.add(key)
+      syncQueued()
       try {
         await postDecision(api, pathOf(item), item.body)
         unstore(item.kind, item.id)
       } catch (err) {
         if (serverAnswered(err)) unstore(item.kind, item.id)
         // A network failure or a server fault keeps it stored for the next boot.
+      } finally {
+        resendingKeys.delete(key)
+        syncQueued()
       }
     }
   } finally {
@@ -436,6 +447,12 @@ export const DecisionQueueTestAccess = {
   setUndoWindow(ms: number): void {
     undoWindowMs = ms
   },
+  /** The page died: what it held in memory is gone, what it stored stays. */
+  forgetInMemory(): void {
+    for (const entry of entries.values()) if (entry.timer) clearTimeout(entry.timer)
+    entries.clear()
+    syncQueued()
+  },
   /** Forget every queued decision without sending. */
   reset(): void {
     undoWindowMs = UNDO_WINDOW_MS
@@ -444,6 +461,7 @@ export const DecisionQueueTestAccess = {
     for (const timer of doneTimers.values()) clearTimeout(timer)
     doneTimers.clear()
     doneItems.clear()
+    resendingKeys.clear()
     writeStored([])
     syncQueued()
   },

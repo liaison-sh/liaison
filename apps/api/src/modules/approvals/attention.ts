@@ -655,9 +655,10 @@ export async function computeApprovalAttentionItems(
     }
   }
 
-  // A held draft (an out-of-office until a date) is not on Home until its hold ends; that is
-  // read fresh each time, so the row comes back with no write. A draft whose check says it can
-  // no longer go out as written shows why, and is not counted.
+  // A held draft (an out-of-office until a date) is the viewer's own decision: it is on Home
+  // with its hold (metadata.sendGuard, state held, holdUntil), and the badge does not count it
+  // until the hold ends, read fresh each time with no write. A draft whose check says it can no
+  // longer go out as written shows why, and is not counted.
   const guards = await readGuardsQuietly(tx, orgId, rows)
   const routeNames = await readRouteNames(tx, orgId, callerUserId, rows, routes)
 
@@ -668,7 +669,6 @@ export async function computeApprovalAttentionItems(
     // signed off waits for someone else and leaves it; a stalled one stays).
     if (!isCallersDecision(r, callerUserId, callerScopes)) continue
     const guard = guards.get(r.id)
-    if (guard?.state === "held") continue
 
     // A wedged row is NOT a fresh decision: it was already approved and its
     // execution died. It outranks any pending item (the work is half-done and

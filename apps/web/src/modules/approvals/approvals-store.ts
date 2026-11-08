@@ -357,6 +357,8 @@ export async function decide(
     /** What the decision toast names, when the surface knows better than the
      *  row alone (a sequence's outcome and its steps). */
     label?: DecisionLabel | null
+    /** Put a stopped draft away: a deny whose toast says Dismissing, not Rejecting. */
+    dismiss?: boolean
   },
 ) {
   inFlightDecideById.add(id)
@@ -374,7 +376,11 @@ export async function decide(
     // The decision toast names what is decided: the surface's label (a
     // sequence's outcome and steps), else the approval's own title.
     const row = approvalsStore.byId[id]
-    const label = opts?.label ?? (row ? decisionLabel(row) : null)
+    const baseLabel = opts?.label ?? (row ? decisionLabel(row) : null)
+    const label =
+      opts?.dismiss && decision === "deny"
+        ? { ...(baseLabel ?? { title: "" }), verb: "dismiss" as const }
+        : baseLabel
     const result =
       decision === "approve"
         ? await decideApi(

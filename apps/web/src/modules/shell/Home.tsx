@@ -36,6 +36,7 @@ import {
   Switch,
 } from "solid-js"
 import { cn } from "~/lib/cn"
+import { isHeldKept } from "~/modules/approvals/held-kept"
 import { userFromToken } from "~/modules/auth/auth-store"
 import { setFocusedDate } from "~/modules/calendar/calendar-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
@@ -65,8 +66,10 @@ import HomeBriefCard from "~/modules/shell/HomeBriefCard"
 import HomeCard from "~/modules/shell/HomeCard"
 import {
   currentHomeViewer,
+  heldUntilOf,
   homeApprovalItems,
   isApprovalDecisionInFlight,
+  isHeldItem,
   isUncountedItem,
 } from "~/modules/shell/home-action-count"
 import { homeAgents, type TodayEvent, waitingOnOthers } from "~/modules/shell/home-agents-store"
@@ -89,7 +92,7 @@ import {
   OVERVIEW,
   queueOf,
 } from "~/modules/shell/home-sections"
-import { StandingInLine } from "~/modules/shell/route-line"
+import { coveringOf, coversFor, StandingInLine } from "~/modules/shell/route-line"
 import { shellTier } from "~/modules/shell/shell-tier"
 import { useTabIsActive } from "~/modules/shell/TabVisibilityContext"
 import { openTab } from "~/modules/shell/tab-store"
@@ -196,9 +199,14 @@ const AttentionFeedView: Component<AttentionFeedViewProps> = (props) => {
 
   // --- Approvals card ---
   // A draft the send check stopped is not a decision: it shows with the alerts, uncounted.
+  // A held draft is the viewer's own decision and sits here with its Held card, uncounted; once
+  // they chose Keep holding it leaves Home until its hold ends, that morning (held-kept.ts).
   const allApprovalItems = createMemo(() =>
     homeApprovalItems(feed().now, true, currentHomeViewer()).filter(
-      (i) => !isUncountedItem(i) && !isApprovalDecisionInFlight(i),
+      (i) =>
+        !isUncountedItem(i) &&
+        !isApprovalDecisionInFlight(i) &&
+        !(isHeldItem(i) && isHeldKept(i.entityId, heldUntilOf(i))),
     ),
   )
   // WHOSE THE ROW IS. A row for someone else the viewer can also approve (the server's
@@ -418,7 +426,7 @@ const AttentionFeedView: Component<AttentionFeedViewProps> = (props) => {
                       <HomeCard
                         id="approvals"
                         title={cardTitles().approvals}
-                        count={approvalItems().length}
+                        count={approvalItems().filter((i) => !isHeldItem(i)).length}
                       >
                         <ul class="divide-y divide-border-subtle">
                           <For each={visibleApprovalRows()}>
@@ -1017,6 +1025,15 @@ const HomeSlice: Component<{ filter: HomeFilter; sections: HomeSections; phone: 
       : s().needs.approvals.filter((i) => approvalActionKey(i) === f)
   }
   const waiting = waitingOnOthers
+  // Covering for a colleague who is away: what the viewer now decides for them, nothing else.
+  const coveringId = () => coveringOf(props.filter)
+  const covering = (): AttentionItem[] => {
+    const id = coveringId()
+    if (!id) return []
+    return [...s().needs.approvals, ...s().needs.others, ...s().needs.alerts].filter((i) =>
+      coversFor(i, id),
+    )
+  }
 
   const title = (): string => {
     const f = props.filter
@@ -1024,6 +1041,7 @@ const HomeSlice: Component<{ filter: HomeFilter; sections: HomeSections; phone: 
     if (f === "needs:time") return t("kernel.homeSidebar.expiringSoon")
     if (f.startsWith("needs:approvals")) return t("kernel.homeCardApprovals")
     if (f === "needs:others") return t("kernel.homeRouting.othersGroup")
+    if (coveringId()) return t("kernel.homeRouting.coveringTitle")
     if (f.startsWith("needs:alerts")) return t("kernel.homeSectionAlerts")
     if (f === "queues") return t("kernel.homeSidebar.yourQueues")
     if (f.startsWith("queue:")) {
@@ -1049,6 +1067,7 @@ const HomeSlice: Component<{ filter: HomeFilter; sections: HomeSections; phone: 
     if (f === "needs:time") return s().needs.timeLimited.length
     if (f.startsWith("needs:approvals")) return approvals().length
     if (f === "needs:others") return s().needs.others.length
+    if (coveringId()) return covering().length
     if (f.startsWith("needs:alerts")) return alertItemsFor(s(), cluster()).length
     if (f === "queues") return s().queueTotal
     if (f.startsWith("queue:")) return queueItems().length
@@ -1131,6 +1150,7 @@ const HomeSlice: Component<{ filter: HomeFilter; sections: HomeSections; phone: 
             <Match when={props.filter === "needs:time"}>{rows(s().needs.timeLimited)}</Match>
             <Match when={props.filter.startsWith("needs:approvals")}>{rows(approvals())}</Match>
             <Match when={props.filter === "needs:others"}>{rows(s().needs.others)}</Match>
+            <Match when={coveringId()}>{rows(covering())}</Match>
             <Match when={props.filter.startsWith("needs:alerts")}>{alerts()}</Match>
             <Match when={props.filter === "queues"}>
               <For each={s().queues}>{(group) => <AttentionGroupSection group={group} />}</For>

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { AttentionItem } from "@liaison/shared"
-import { fireEvent, render, screen } from "@solidjs/testing-library"
+import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("~/modules/auth/auth-store", () => ({
@@ -33,8 +33,11 @@ vi.mock("~/modules/shell/ApiContext", () => ({
 
 import { createSignal } from "solid-js"
 import { registerEntityOpener, resetRegistry } from "~/framework/app-registry"
+import { keepHolding } from "~/modules/approvals/held-kept"
 import { attentionStore } from "~/modules/shell/attention-store"
 import { resetHomeCardLayout } from "~/modules/shell/home-card-layout"
+import { setHomeFilter } from "~/modules/shell/home-filter"
+import { OVERVIEW } from "~/modules/shell/home-sections"
 import { TabVisibilityProvider } from "~/modules/shell/TabVisibilityContext"
 import { tabStore } from "~/modules/shell/tab-store"
 import { addThread, handleMessageEvent, resetThreadStore } from "~/modules/threads/thread-store"
@@ -761,6 +764,36 @@ describe("home decisions", () => {
     )
   })
 
+  it("held is in Approvals as the viewer's own decision, uncounted, opened as its card; kept leaves Home", () => {
+    const held = approval("ap-held", {
+      toolName: "mail:compose",
+      actionLabel: "Mail: compose",
+      requestHandle: "request-5",
+      expiresInSeconds: 7 * 24 * 3600,
+      sendGuard: {
+        state: "held",
+        who: "omar@example.test",
+        holdUntil: "2026-11-17T08:00:00.000Z",
+      },
+    })
+    attentionStore._setForTest({ items: [held], errors: [] })
+    render(() => <Home entityId="home" />)
+    const card = screen.getByTestId("home-card-approvals")
+    expect(card.textContent).toContain("It waits until 17 Nov")
+    // Its hold, not an expiry, and no request handle to cite.
+    expect(card.textContent).toContain("Until 17 Nov")
+    expect(card.textContent).not.toContain("Expires in")
+    expect(card.textContent).not.toContain("request-5")
+    // Decided on its card, never by an inline Approve; and in no count.
+    expect(screen.queryByTestId(`${row(held)}-approve`)).toBeNull()
+    expect(screen.getByTestId("home-status").textContent).not.toMatch(/\d+\s*NEED/)
+    cleanup()
+    keepHolding("ap-held", "2026-11-17T08:00:00.000Z")
+    render(() => <Home entityId="home" />)
+    expect(screen.queryByTestId(row(held))).toBeNull()
+    localStorage.removeItem("liaison:heldKept.v1")
+  })
+
   it("stopped shows reason, Dismiss only, uncounted", () => {
     const notice = attention("ev-stop", {
       app: "mail",
@@ -1074,8 +1107,41 @@ describe("home decisions", () => {
     render(() => <Home entityId="home" />)
     const line = await screen.findByTestId("home-standing-in-line")
     expect(line.textContent).toMatch(
-      /^Amina Cherif is away until (20 Nov|Nov 20)\. You are next in line\.$/,
+      /^Amina Cherif is away until (20 Nov|Nov 20)\. You are next in line\. Show what you cover$/,
     )
+  })
+
+  it("the stand-in line's link narrows Home to what the reader covers for that colleague", async () => {
+    apiGet.mockImplementation(async (path: string) =>
+      path === "/user/preferences/away/standing-in"
+        ? [{ id: "u-amina", name: "Amina Cherif", until: "2026-11-20" }]
+        : [],
+    )
+    const route = {
+      to: "person",
+      userId: "u-amina",
+      why: "on_item",
+      awayUntil: "2026-11-20",
+      standIn: "u-1",
+      blockedStandIn: null,
+    }
+    const covered = approval("cov-1", {
+      placement: "standing_in",
+      route,
+      routeLine: { forName: "Amina Cherif" },
+    })
+    const mine = approval("own-1")
+    attentionStore._setForTest({ items: [covered, mine], errors: [] })
+    render(() => <Home entityId="home" />)
+    fireEvent.click(await screen.findByTestId("home-standing-in-show"))
+    try {
+      const slice = await screen.findByTestId("home-slice")
+      expect(screen.getByTestId("home-slice-title").textContent).toBe("What you cover 1")
+      expect(slice.querySelector(`[data-testid="${row(covered)}"]`)).not.toBeNull()
+      expect(slice.querySelector(`[data-testid="${row(mine)}"]`)).toBeNull()
+    } finally {
+      setHomeFilter(OVERVIEW)
+    }
   })
 
   it("no stand-in line when nobody away names the reader", async () => {

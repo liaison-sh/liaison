@@ -69,6 +69,7 @@ import {
   NotNowButton,
   offersAskDraft,
   offersNotNow,
+  rowSendGuard,
   StoppedDraftActions,
 } from "~/modules/shell/AttentionRowExtras"
 import { clearApprovalFocus, focusedApproval } from "~/modules/shell/approval-focus"
@@ -189,8 +190,11 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
   const wedged = (): boolean => isApproval() && props.item.metadata?.wedged === true
   // A draft the send check stopped can no longer go out as written: Dismiss only.
   const stoppedDraft = (): boolean => isApproval() && isStoppedDraft(props.item)
+  // A draft held by an auto-reply: the viewer's decision, made on its card (Keep holding, Send
+  // now, Discard), never by an inline Approve. The row opens that card in place.
+  const heldDraft = (): boolean => isApproval() && rowSendGuard(props.item)?.state === "held"
   const hasInlineActions = (): boolean =>
-    isApproval() && !decideInContext() && !wedged() && !stoppedDraft()
+    isApproval() && !decideInContext() && !wedged() && !stoppedDraft() && !heldDraft()
   // The cause of the last approve that ran and failed with no effect (the
   // request is back at pending). Set from this row's own failed decide so the
   // banner shows at once, and read from the feed item (`metadata.lastFailure`,
@@ -228,7 +232,11 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
   // A stopped draft's Open only toggled its card, beside Details: its row offers the card's own
   // ways forward instead (StoppedDraftActions).
   const isNavigable = (): boolean =>
-    (!hasInlineActions() && !isScopeRequestDecided() && !wedged() && !stoppedDraft()) ||
+    (!hasInlineActions() &&
+      !isScopeRequestDecided() &&
+      !wedged() &&
+      !stoppedDraft() &&
+      !heldDraft()) ||
     (isApproval() && decideInContext())
 
   // Gated-action chip data (approval rows). `actionLabel` is the humanized
@@ -279,6 +287,9 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
   // fall back to the prefix so the row still has a citable reference.
   const approvalRef = (): string | null => {
     if (!isApproval()) return null
+    // A held or stopped draft is the viewer's to read, not to cite: no request handle on it.
+    const guardState = rowSendGuard(props.item)?.state
+    if (guardState === "held" || stoppedDraft()) return null
     const h = props.item.metadata?.requestHandle
     return typeof h === "string" && h.length > 0 ? h : shortApprovalId(props.item.entityId)
   }
@@ -487,6 +498,8 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
               bundleSequence().length > 1
                 ? bundleSequence().map((t) => humanizeRefTokens(t))
                 : null,
+            // A stopped draft's Dismiss is a deny that reads as Dismissing.
+            ...(decision === "deny" && stoppedDraft() ? { verb: "dismiss" as const } : {}),
           },
         },
       )
@@ -856,7 +869,14 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
             </div>
           </Show>
           <Show when={expanded() && approvalId()}>
-            <div data-testid={`${testId()}-expanded`} onClick={(e) => e.stopPropagation()}>
+            <div
+              data-testid={`${testId()}-expanded`}
+              onClick={(e) => e.stopPropagation()}
+              // A held draft's row opens its own card: brought into view, not left below the fold.
+              ref={(el) => {
+                if (heldDraft()) queueMicrotask(() => el.scrollIntoView?.({ block: "nearest" }))
+              }}
+            >
               <ApprovalCard
                 requestId={approvalId()!}
                 compact={false}

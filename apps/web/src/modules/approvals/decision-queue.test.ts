@@ -282,6 +282,54 @@ describe("decision queue", () => {
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
   })
 
+  it("pagehide flushes with keepalive: a Dismiss 2.5 s into its window is sent as the tab closes", async () => {
+    const teardown = installDecisionFlush()
+    try {
+      const { api, post } = makeApi()
+      void queueDecision(api, "approval", "d1", { decision: "deny", reason: "" })
+      await vi.advanceTimersByTimeAsync(2_500)
+      expect(post).not.toHaveBeenCalled()
+      window.dispatchEvent(new Event("pagehide"))
+      // Issued in the pagehide task itself: nothing awaits before the fetch leaves.
+      expect(post).toHaveBeenCalledTimes(1)
+      expect(post).toHaveBeenLastCalledWith(
+        "/approvals/d1/decide",
+        { decision: "deny", reason: "" },
+        { suppressGlobalError: true, keepalive: true },
+      )
+      await vi.advanceTimersByTimeAsync(UNDO_WINDOW_MS)
+      expect(post).toHaveBeenCalledTimes(1)
+    } finally {
+      teardown()
+    }
+  })
+
+  // S166, the walk's case: Dismiss, then the tab closes 2.5 s into the window without pagehide.
+  it("stored decision sent at next boot: a tab closed inside the window loses nothing", async () => {
+    ;(globalThis as Record<string, unknown>)[SERVER_GLOBAL] = "https://a.test"
+    const first = makeApi()
+    void queueDecision(first.api, "approval", "s1", { decision: "deny", reason: "" }).catch(
+      () => {},
+    )
+    await vi.advanceTimersByTimeAsync(2_500)
+    expect(first.post).not.toHaveBeenCalled()
+    DecisionQueueTestAccess.forgetInMemory()
+    await vi.advanceTimersByTimeAsync(UNDO_WINDOW_MS)
+    expect(first.post).not.toHaveBeenCalled()
+    // The next boot: the row stays hidden while the stored decision goes out, then it is sent once.
+    let answer: (v: unknown) => void = () => {}
+    const next = makeApi(() => new Promise((r) => (answer = r)))
+    const resent = resendStoredDecisions(next.api)
+    expect(isDecisionInFlight("approval", "s1")).toBe(true)
+    expect(next.post).toHaveBeenCalledTimes(1)
+    expect(next.post.mock.calls[0]?.[0]).toBe("/approvals/s1/decide")
+    expect(next.post.mock.calls[0]?.[1]).toEqual({ decision: "deny", reason: "" })
+    answer({ status: "denied" })
+    await resent
+    expect(isDecisionInFlight("approval", "s1")).toBe(false)
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
+  })
+
   it("keeps a decision stored when the boot resend cannot reach the server", async () => {
     ;(globalThis as Record<string, unknown>)[SERVER_GLOBAL] = "https://a.test"
     localStorage.setItem(STORAGE_KEY, JSON.stringify([stored("n1")]))

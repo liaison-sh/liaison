@@ -5,6 +5,7 @@ import { createSignal } from "solid-js"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { formatDateTime } from "~/lib/relative-time"
 import { DecisionQueueTestAccess } from "~/modules/approvals/decision-queue"
+import { HeldKeptTestAccess, keepHolding } from "~/modules/approvals/held-kept"
 import { setMarkdown } from "~/modules/editor/test-helpers"
 import { I18nProvider } from "~/modules/i18n/i18n-context"
 import { appHue } from "~/modules/shell/app-color"
@@ -17,6 +18,8 @@ import { getById, handleWsCreate, handleWsUpdate, resetApprovalsStore } from "./
 beforeEach(() => {
   DecisionQueueTestAccess.reset()
   DecisionQueueTestAccess.setUndoWindow(0)
+  localStorage.removeItem("liaison:heldKept.v1")
+  HeldKeptTestAccess.reload()
 })
 
 let currentScope: string[] = ["mail:approve"]
@@ -1795,8 +1798,45 @@ describe("ApprovalCard: the send check on an agent's mail draft", () => {
     )
     expect(screen.queryByTestId("approval-card-send-guard")).toBeNull()
     expect(screen.queryByTestId("approval-card-action-send-now")).toBeNull()
+    // The WHOLE card is the one line: no title, no recipients, no message, no details.
+    expect(screen.getByTestId("approval-card").textContent?.trim()).toBe(
+      "Held until 17 Nov. It comes back to Home that morning.",
+    )
     expect(apiMocks.post).not.toHaveBeenCalled()
     expect(apiMocks.get).not.toHaveBeenCalled()
+    // A reload keeps it folded, in this browser, for this hold.
+    cleanup()
+    HeldKeptTestAccess.reload()
+    render(() => <ApprovalCard requestId="ar-1" />)
+    expect(await screen.findByTestId("approval-card-held-folded")).toBeInTheDocument()
+    expect(screen.queryByTestId("approval-card-action-keep-holding")).toBeNull()
+  })
+
+  it("Held: a new hold date unfolds a kept card", async () => {
+    keepHolding("ar-1", "2026-11-17T08:00:00.000Z")
+    handleWsCreate(guarded({ state: "held", holdUntil: "2026-11-20T08:00:00.000Z" }), "u-approver")
+    render(() => <ApprovalCard requestId="ar-1" />)
+    expect(await screen.findAllByTestId("approval-card-action-keep-holding")).not.toHaveLength(0)
+    expect(screen.queryByTestId("approval-card-held-folded")).toBeNull()
+  })
+
+  it("a held or stopped card shows no request handle and no expiry", async () => {
+    handleWsCreate(
+      guarded({ state: "replied", who: "client@example.test", source: "ticket" }),
+      "u-approver",
+    )
+    render(() => <ApprovalCard requestId="ar-1" />)
+    await screen.findByTestId("approval-card-send-guard")
+    expect(screen.queryByTestId("approval-card-handle")).toBeNull()
+    expect(screen.getByTestId("approval-card").textContent).not.toContain("request-")
+    expect(screen.getByTestId("approval-card").textContent).not.toMatch(/Expires in/)
+    cleanup()
+    resetApprovalsStore()
+    handleWsCreate(guarded({ state: "held", holdUntil: "2026-11-17T08:00:00.000Z" }), "u-approver")
+    render(() => <ApprovalCard requestId="ar-1" />)
+    await screen.findByTestId("approval-card-send-guard")
+    expect(screen.queryByTestId("approval-card-handle")).toBeNull()
+    expect(screen.getByTestId("approval-card").textContent).not.toMatch(/Expires in/)
   })
 
   it("Held: Discard is the reject", async () => {

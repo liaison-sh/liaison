@@ -59,6 +59,7 @@ import {
   isDecisionUndone,
 } from "~/modules/approvals/decision-queue"
 import { emailBodyPreset } from "~/modules/approvals/email-body"
+import { isHeldKept, keepHolding } from "~/modules/approvals/held-kept"
 import { createPayloadFileNames } from "~/modules/approvals/payload-file-names"
 import SkillApprovalView from "~/modules/approvals/SkillApprovalView"
 import { SummaryLineText } from "~/modules/approvals/SummaryLineText"
@@ -1380,8 +1381,13 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
 
   // deny state
   const [denying, setDenying] = createSignal(false)
-  // "Keep holding" is the computed hold left as it is: the card folds to one line, no call.
-  const [heldFolded, setHeldFolded] = createSignal(false)
+  // "Keep holding" is the computed hold left as it is: the whole card folds to one line, no
+  // call, and stays folded on reload until the hold ends (held-kept.ts, this viewer only).
+  const heldFolded = () => isHeldKept(props.requestId, current()?.sendGuard?.holdUntil)
+  const setHeldFolded = (fold: boolean) => {
+    const until = current()?.sendGuard?.holdUntil
+    if (fold && until) keepHolding(props.requestId, until)
+  }
   const [denyReason, setDenyReason] = createSignal("")
 
   function startExecuting() {
@@ -1763,7 +1769,7 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
     announceApprovalDecided(cardEl)
     startExecuting()
     try {
-      await decide(apiCtx, props.requestId, "deny", {})
+      await decide(apiCtx, props.requestId, "deny", { dismiss: true })
       setOptimistic("decided")
     } catch (err) {
       handleDecideError(err)
@@ -2078,9 +2084,20 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
           fallback={
             <Show when={current()} fallback={<SkeletonRows />}>
               {(c) => (
-                <div>
-                  <Show when={props.inFeed}>{decisionBlock(true)}</Show>
-                  {/* G2: at phone width this line used to ALSO carry the
+                <Show
+                  when={!(guardHeld() && heldFolded())}
+                  fallback={
+                    <div
+                      class="text-[12px] text-text-secondary"
+                      data-testid="approval-card-held-folded"
+                    >
+                      {i18n.t("kernel.approvalsUi.sendGuard.heldFolded", { until: heldDay() })}
+                    </div>
+                  }
+                >
+                  <div>
+                    <Show when={props.inFeed}>{decisionBlock(true)}</Show>
+                    {/* G2: at phone width this line used to ALSO carry the
                     request id (handle + uuid segment) ahead of the deadline,
                     which packed icon + kind + id + separator + deadline onto
                     one line that wrapped at 390px. The id is a desktop-only
@@ -2088,415 +2105,407 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
                     chat/tickets — a phone reader has neither use); the phone
                     line is just the kind, left, and the deadline (or, once
                     decided, the status badge), right, nothing else. */}
-                  <div class="flex items-center justify-between gap-2">
-                    <div class="flex min-w-0 items-center gap-2 text-text-secondary">
-                      {/* WHICH record first (`ticket-B2B-123`), as a monospace chip
+                    <div class="flex items-center justify-between gap-2">
+                      <div class="flex min-w-0 items-center gap-2 text-text-secondary">
+                        {/* WHICH record first (`ticket-B2B-123`), as a monospace chip
                         leading the card, before the kind label, as on the Home
                         row: the reviewer knows what they act on before reading
                         more. */}
-                      <Show when={c().summary?.ref}>
-                        {(ref) => (
-                          <span
-                            data-testid="approval-card-ref"
-                            class="shrink-0 rounded border border-border-subtle bg-bg-subtle px-1.5 py-0.5 font-mono text-[12px] text-text-secondary"
-                          >
-                            {ref()}
-                          </span>
-                        )}
-                      </Show>
-                      <Show
-                        when={c().summary?.kind?.startsWith?.("mail.")}
-                        fallback={<Hourglass size={14} />}
-                      >
-                        <Mail size={14} />
-                      </Show>
-                      {/* The action, in its app's colour: the same pill as the
+                        <Show when={c().summary?.ref}>
+                          {(ref) => (
+                            <span
+                              data-testid="approval-card-ref"
+                              class="shrink-0 rounded border border-border-subtle bg-bg-subtle px-1.5 py-0.5 font-mono text-[12px] text-text-secondary"
+                            >
+                              {ref()}
+                            </span>
+                          )}
+                        </Show>
+                        <Show
+                          when={c().summary?.kind?.startsWith?.("mail.")}
+                          fallback={<Hourglass size={14} />}
+                        >
+                          <Mail size={14} />
+                        </Show>
+                        {/* The action, in its app's colour: the same pill as the
                         Home row this card expands from (AppPill). */}
-                      <AppPill
-                        appId={appIdOfTool(c().toolName)}
-                        testid="approval-card-kind"
-                        class="min-w-0 truncate px-1.5 py-px text-[11px] font-semibold leading-tight"
-                      >
-                        {approvalKindLabel(c().toolName, c().summary?.kind, readerCopy())}
-                      </AppPill>
-                    </div>
-                    <Show
-                      when={phone()}
-                      fallback={
-                        <div class="flex items-center gap-2">
-                          {/* Stable human identifiers for this approval: the handle
+                        <AppPill
+                          appId={appIdOfTool(c().toolName)}
+                          testid="approval-card-kind"
+                          class="min-w-0 truncate px-1.5 py-px text-[11px] font-semibold leading-tight"
+                        >
+                          {approvalKindLabel(c().toolName, c().summary?.kind, readerCopy())}
+                        </AppPill>
+                      </div>
+                      <Show
+                        when={phone()}
+                        fallback={
+                          <div class="flex items-center gap-2">
+                            {/* Stable human identifiers for this approval: the handle
                             (request-N) AND the uuid's first segment, both always
                             visible. Agents cite approvals by uuid in chat and
                             reviewers by handle in tickets/notes; hiding the uuid
                             behind a hover meant "approve 3f2a9c1e-..." could not
                             be matched to any card by eye. Click copies the full
                             uuid, hover shows it. */}
-                          <Show when={!props.inFeed}>
-                            <button
-                              type="button"
-                              data-testid="approval-card-handle"
-                              class="flex items-center gap-1 rounded bg-bg-subtle px-1.5 py-0.5 font-mono text-[10px] text-text-tertiary hover:text-text-secondary"
-                              title={`${c().id}\n${i18n.t("kernel.approvalsUi.copyIdHint")}`}
-                              onClick={() => {
-                                void navigator.clipboard?.writeText(c().id)
-                                addToast({
-                                  message: i18n.t("kernel.approvalsUi.copiedId", { id: c().id }),
-                                  type: "info",
-                                })
-                              }}
-                            >
-                              <span>{c().handle}</span>
-                              <span aria-hidden="true">·</span>
-                              <span data-testid="approval-card-short-id">
-                                {shortApprovalId(c().id)}
+                            {/* Not on a held or stopped draft: the person reads it, nobody cites it. */}
+                            <Show when={!props.inFeed && !guardStopped() && !guardHeld()}>
+                              <button
+                                type="button"
+                                data-testid="approval-card-handle"
+                                class="flex items-center gap-1 rounded bg-bg-subtle px-1.5 py-0.5 font-mono text-[10px] text-text-tertiary hover:text-text-secondary"
+                                title={`${c().id}\n${i18n.t("kernel.approvalsUi.copyIdHint")}`}
+                                onClick={() => {
+                                  void navigator.clipboard?.writeText(c().id)
+                                  addToast({
+                                    message: i18n.t("kernel.approvalsUi.copiedId", { id: c().id }),
+                                    type: "info",
+                                  })
+                                }}
+                              >
+                                <span>{c().handle}</span>
+                                <span aria-hidden="true">·</span>
+                                <span data-testid="approval-card-short-id">
+                                  {shortApprovalId(c().id)}
+                                </span>
+                              </button>
+                            </Show>
+                            <Show when={statusBadge()}>
+                              <span
+                                data-testid="approval-card-status-badge"
+                                class="rounded bg-bg-subtle px-2 py-0.5 text-[11px] text-text-secondary"
+                              >
+                                {statusBadge()}
                               </span>
-                            </button>
-                          </Show>
-                          <Show when={statusBadge()}>
-                            <span
-                              data-testid="approval-card-status-badge"
-                              class="rounded bg-bg-subtle px-2 py-0.5 text-[11px] text-text-secondary"
-                            >
-                              {statusBadge()}
-                            </span>
-                          </Show>
-                        </div>
-                      }
-                    >
-                      {/* Direct children of the row (no wrapping div), so the
+                            </Show>
+                          </div>
+                        }
+                      >
+                        {/* Direct children of the row (no wrapping div), so the
                         deadline chip — when it renders — is the LAST CHILD of
                         the first line, not nested a level deeper. */}
-                      <Show when={statusBadge()}>
-                        <span
-                          data-testid="approval-card-status-badge"
-                          class="rounded bg-bg-subtle px-2 py-0.5 text-[11px] text-text-secondary"
-                        >
-                          {statusBadge()}
-                        </span>
-                      </Show>
-                      {/* How long is left, where a phone reader looks first. Only
+                        <Show when={statusBadge()}>
+                          <span
+                            data-testid="approval-card-status-badge"
+                            class="rounded bg-bg-subtle px-2 py-0.5 text-[11px] text-text-secondary"
+                          >
+                            {statusBadge()}
+                          </span>
+                        </Show>
+                        {/* How long is left, where a phone reader looks first. Only
                         while the request is still live (an approved row's
                         countdown is noise). */}
-                      <Show when={isPending() && deadlineMinutes() !== null}>
-                        <span
-                          data-testid="approval-card-deadline"
-                          data-urgent={deadlineIsUrgent(deadlineMinutes()) ? "true" : "false"}
-                          title={i18n.t("kernel.approvalExpiryHint")}
-                          class={`font-mono text-[11px] tabular-nums ${
-                            deadlineIsUrgent(deadlineMinutes())
-                              ? "text-amber-300"
-                              : "text-text-tertiary"
-                          }`}
+                        {/* Nothing runs out on a stopped draft, and a held one waits for its hold
+                        (its line gives the date), so neither shows the expiry. */}
+                        <Show
+                          when={
+                            isPending() &&
+                            deadlineMinutes() !== null &&
+                            !guardStopped() &&
+                            !guardHeld()
+                          }
                         >
-                          {formatExpiresIn((deadlineMinutes() ?? 0) * 60, rowLocale())}
-                        </span>
+                          <span
+                            data-testid="approval-card-deadline"
+                            data-urgent={deadlineIsUrgent(deadlineMinutes()) ? "true" : "false"}
+                            title={i18n.t("kernel.approvalExpiryHint")}
+                            class={`font-mono text-[11px] tabular-nums ${
+                              deadlineIsUrgent(deadlineMinutes())
+                                ? "text-amber-300"
+                                : "text-text-tertiary"
+                            }`}
+                          >
+                            {formatExpiresIn((deadlineMinutes() ?? 0) * 60, rowLocale())}
+                          </span>
+                        </Show>
                       </Show>
-                    </Show>
-                  </div>
+                    </div>
 
-                  <div class="mt-2 flex min-w-0 items-baseline gap-2">
-                    <div class="min-w-0 font-medium text-text" data-testid="approval-card-title">
-                      {/* A bundle reads as its outcome (its last step), as the
+                    <div class="mt-2 flex min-w-0 items-baseline gap-2">
+                      <div class="min-w-0 font-medium text-text" data-testid="approval-card-title">
+                        {/* A bundle reads as its outcome (its last step), as the
                         Home row does; this request's own title becomes step 1. */}
-                      <Show when={bundleOutcome()} fallback={summaryTitleOf(c())}>
-                        {(last) => (
-                          <>
-                            {refText(summaryTitleOf(last()))}
-                            <span
-                              class="ml-1.5 font-mono text-[11px] font-normal text-text-tertiary"
-                              data-testid="approval-card-bundle-steps"
-                            >
-                              {bundleSteps().length + 1} {i18n.t("kernel.shellUi.steps")}
-                            </span>
-                          </>
-                        )}
-                      </Show>
-                    </div>
-                  </div>
-                  <Show when={bundleOutcome()}>
-                    <div
-                      class="mt-1 text-[12px] text-text-secondary"
-                      data-testid="approval-card-head-step"
-                    >
-                      {i18n.t("kernel.approvalsUi.step")} 1{i18n.t("kernel.capabilities.separator")}
-                      {summaryTitleOf(c())}
-                    </div>
-                  </Show>
-
-                  {/* Persistent inline failure: when a previous approve executed
-                    the handler but it failed with no effect and the card reverted
-                    to pending, show WHY right here (single source: the approval's
-                    lastFailure) instead of a silent drop-back + a missed toast. */}
-                  <Show when={c().lastFailure}>
-                    {(f) => (
-                      <div
-                        class="mt-2 rounded border border-error-border/60 bg-error-glow px-2 py-1.5 text-[12px] text-error"
-                        data-testid="approval-card-last-failure"
-                      >
-                        {i18n.t("kernel.approvalsUi.lastAttemptFailed")} {f().message}
-                      </div>
-                    )}
-                  </Show>
-
-                  {/* Why the server cancelled this request: a calm line, in the viewer's language. */}
-                  <Show when={c().status === "cancelled" && c().reason}>
-                    <div
-                      class="mt-2 text-[12px] text-text-secondary"
-                      data-testid="approval-card-cancelled-reason"
-                    >
-                      {(() => {
-                        const r = c().reason as string
-                        const key = CANCEL_REASON_KEYS[r]
-                        return key ? i18n.t(key) : r
-                      })()}
-                    </div>
-                  </Show>
-
-                  {/* What the send check says now, read for this card. Calm: a line, not an alarm. */}
-                  <Show when={guardHeld() && heldFolded()}>
-                    <div
-                      class="mt-2 text-[12px] text-text-secondary"
-                      data-testid="approval-card-held-folded"
-                    >
-                      {i18n.t("kernel.approvalsUi.sendGuard.heldFolded", { until: heldDay() })}
-                    </div>
-                  </Show>
-                  <Show when={!(guardHeld() && heldFolded()) && guardLine()}>
-                    {(line) => (
-                      <div
-                        class="mt-2 rounded border border-border px-2 py-1.5 text-[12px] text-text-secondary"
-                        data-testid="approval-card-send-guard"
-                        data-state={sendGuard()?.state}
-                      >
-                        <div>{line()}</div>
-                        <Show when={sendGuard()?.quote}>
-                          {(quote) => (
-                            <blockquote
-                              class="mt-1 border-l-2 border-border pl-2 italic"
-                              data-testid="approval-card-send-guard-quote"
-                            >
-                              {quote()}
-                            </blockquote>
+                        <Show when={bundleOutcome()} fallback={summaryTitleOf(c())}>
+                          {(last) => (
+                            <>
+                              {refText(summaryTitleOf(last()))}
+                              <span
+                                class="ml-1.5 font-mono text-[11px] font-normal text-text-tertiary"
+                                data-testid="approval-card-bundle-steps"
+                              >
+                                {bundleSteps().length + 1} {i18n.t("kernel.shellUi.steps")}
+                              </span>
+                            </>
                           )}
                         </Show>
                       </div>
-                    )}
-                  </Show>
-
-                  <Show
-                    when={
-                      c().summary?.subtitle &&
-                      !(c().status !== "pending" && isPendingSubtitle(c().summary?.subtitle))
-                    }
-                  >
-                    <div class="mt-0.5 break-words text-text-secondary">
-                      <PayloadValue
-                        path="summary-subtitle"
-                        value={localizeApprovalText(
-                          localizedApprovalSubtitle(c().summary?.subtitle ?? "", i18n.t),
-                          readerCopy(),
-                        )}
-                      />
                     </div>
-                  </Show>
+                    <Show when={bundleOutcome()}>
+                      <div
+                        class="mt-1 text-[12px] text-text-secondary"
+                        data-testid="approval-card-head-step"
+                      >
+                        {i18n.t("kernel.approvalsUi.step")} 1
+                        {i18n.t("kernel.capabilities.separator")}
+                        {summaryTitleOf(c())}
+                      </div>
+                    </Show>
 
-                  {/* Skill create/update render a dedicated readable view (the full
-                    skill, or a git-style body diff) in place of the raw payload. */}
-                  <Show when={!editing() && skillApprovalKind()}>
-                    {(kind) => (
-                      <SkillApprovalView api={apiCtx} kind={kind()} payload={c().currentPayload} />
-                    )}
-                  </Show>
-
-                  <Show
-                    when={visibleSummaryLines().length > 0 && !editing() && !skillApprovalKind()}
-                  >
-                    <ul class="mt-2 space-y-1 text-text-secondary">
-                      <For each={visibleSummaryLines()}>
-                        {(line) => (
-                          <li>
-                            <SummaryLineText line={line} format={refText} />
-                          </li>
-                        )}
-                      </For>
-                    </ul>
-                  </Show>
-
-                  <Show when={!editing() && sealedDraft() && !openedDraft()}>
-                    {/* The draft is readable once the mailbox unlocks (the effect
-                      above re-runs on the status change), so the way to unlock
-                      sits right here rather than in the mail tab. Unreadable
-                      and still opening keep their one quiet line. */}
-                    <Show
-                      when={!draftUnreadable() && mailboxStore.status !== "unlocked"}
-                      fallback={
+                    {/* Persistent inline failure: when a previous approve executed
+                    the handler but it failed with no effect and the card reverted
+                    to pending, show WHY right here (single source: the approval's
+                    lastFailure) instead of a silent drop-back + a missed toast. */}
+                    <Show when={c().lastFailure}>
+                      {(f) => (
                         <div
-                          class="mt-2 text-[12px] text-text-tertiary"
-                          data-testid="approval-card-sealed-draft-notice"
+                          class="mt-2 rounded border border-error-border/60 bg-error-glow px-2 py-1.5 text-[12px] text-error"
+                          data-testid="approval-card-last-failure"
                         >
-                          {draftUnreadable()
-                            ? i18n.t("kernel.approvalsUi.err.sealedDraftUnreadable")
-                            : i18n.t("kernel.approvalsUi.err.sealedDraftOpening")}
+                          {i18n.t("kernel.approvalsUi.lastAttemptFailed")} {f().message}
                         </div>
+                      )}
+                    </Show>
+
+                    {/* Why the server cancelled this request: a calm line, in the viewer's language. */}
+                    <Show when={c().status === "cancelled" && c().reason}>
+                      <div
+                        class="mt-2 text-[12px] text-text-secondary"
+                        data-testid="approval-card-cancelled-reason"
+                      >
+                        {(() => {
+                          const r = c().reason as string
+                          const key = CANCEL_REASON_KEYS[r]
+                          return key ? i18n.t(key) : r
+                        })()}
+                      </div>
+                    </Show>
+
+                    {/* What the send check says now, read for this card. Calm: a line, not an alarm. */}
+                    <Show when={!(guardHeld() && heldFolded()) && guardLine()}>
+                      {(line) => (
+                        <div
+                          class="mt-2 rounded border border-border px-2 py-1.5 text-[12px] text-text-secondary"
+                          data-testid="approval-card-send-guard"
+                          data-state={sendGuard()?.state}
+                        >
+                          <div>{line()}</div>
+                          <Show when={sendGuard()?.quote}>
+                            {(quote) => (
+                              <blockquote
+                                class="mt-1 border-l-2 border-border pl-2 italic"
+                                data-testid="approval-card-send-guard-quote"
+                              >
+                                {quote()}
+                              </blockquote>
+                            )}
+                          </Show>
+                        </div>
+                      )}
+                    </Show>
+
+                    <Show
+                      when={
+                        c().summary?.subtitle &&
+                        !(c().status !== "pending" && isPendingSubtitle(c().summary?.subtitle))
                       }
                     >
-                      <div class="mt-2" data-testid="approval-card-sealed-draft-notice">
-                        <MailboxLockedPanel
-                          variant="card"
-                          body={i18n.t("kernel.approvalsUi.err.sealedDraftLocked")}
-                          devicePrfMismatch={
-                            mailboxStore.lastErrorCode === "MAILBOX_DEVICE_PRF_MISMATCH"
-                          }
-                          unlockTestId="approval-card-sealed-draft-unlock"
+                      <div class="mt-0.5 break-words text-text-secondary">
+                        <PayloadValue
+                          path="summary-subtitle"
+                          value={localizeApprovalText(
+                            localizedApprovalSubtitle(c().summary?.subtitle ?? "", i18n.t),
+                            readerCopy(),
+                          )}
                         />
                       </div>
                     </Show>
-                  </Show>
 
-                  {/* Full outgoing message — the summary lines above are capped at
+                    {/* Skill create/update render a dedicated readable view (the full
+                    skill, or a git-style body diff) in place of the raw payload. */}
+                    <Show when={!editing() && skillApprovalKind()}>
+                      {(kind) => (
+                        <SkillApprovalView
+                          api={apiCtx}
+                          kind={kind()}
+                          payload={c().currentPayload}
+                        />
+                      )}
+                    </Show>
+
+                    <Show
+                      when={visibleSummaryLines().length > 0 && !editing() && !skillApprovalKind()}
+                    >
+                      <ul class="mt-2 space-y-1 text-text-secondary">
+                        <For each={visibleSummaryLines()}>
+                          {(line) => (
+                            <li>
+                              <SummaryLineText line={line} format={refText} />
+                            </li>
+                          )}
+                        </For>
+                      </ul>
+                    </Show>
+
+                    <Show when={!editing() && sealedDraft() && !openedDraft()}>
+                      {/* The draft is readable once the mailbox unlocks (the effect
+                      above re-runs on the status change), so the way to unlock
+                      sits right here rather than in the mail tab. Unreadable
+                      and still opening keep their one quiet line. */}
+                      <Show
+                        when={!draftUnreadable() && mailboxStore.status !== "unlocked"}
+                        fallback={
+                          <div
+                            class="mt-2 text-[12px] text-text-tertiary"
+                            data-testid="approval-card-sealed-draft-notice"
+                          >
+                            {draftUnreadable()
+                              ? i18n.t("kernel.approvalsUi.err.sealedDraftUnreadable")
+                              : i18n.t("kernel.approvalsUi.err.sealedDraftOpening")}
+                          </div>
+                        }
+                      >
+                        <div class="mt-2" data-testid="approval-card-sealed-draft-notice">
+                          <MailboxLockedPanel
+                            variant="card"
+                            body={i18n.t("kernel.approvalsUi.err.sealedDraftLocked")}
+                            devicePrfMismatch={
+                              mailboxStore.lastErrorCode === "MAILBOX_DEVICE_PRF_MISMATCH"
+                            }
+                            unlockTestId="approval-card-sealed-draft-unlock"
+                          />
+                        </div>
+                      </Show>
+                    </Show>
+
+                    {/* Full outgoing message — the summary lines above are capped at
                     500 chars by the approval-summary schema (a skim preview), so
                     a reviewer approving a customer-facing send needs the COMPLETE
                     message here, expandable, sourced untruncated from the payload.
                     Skipped for skill kinds: the SkillApprovalView above already
                     renders the body (a skill payload's `body` would otherwise
                     double up here as a redundant "Message" block). */}
-                  <Show
-                    when={
-                      !editing() && !skillApprovalKind()
-                        ? primaryMessageField(displayPayload(), current()?.editableFields)
-                        : null
-                    }
-                  >
-                    {(field) => (
-                      <ApprovalMessageBlock
-                        api={apiCtx}
-                        body={refText(field().body)}
-                        testid="approval-card-message"
-                      />
-                    )}
-                  </Show>
-                  {/* Exact payload — always rendered while the request is still
+                    <Show
+                      when={
+                        !editing() && !skillApprovalKind()
+                          ? primaryMessageField(displayPayload(), current()?.editableFields)
+                          : null
+                      }
+                    >
+                      {(field) => (
+                        <ApprovalMessageBlock
+                          api={apiCtx}
+                          body={refText(field().body)}
+                          testid="approval-card-message"
+                        />
+                      )}
+                    </Show>
+                    {/* Exact payload — always rendered while the request is still
                     decidable. Complete field list of what will execute; the
                     curated lines above never substitute for it. */}
-                  <Show
-                    when={
-                      !editing() &&
-                      !TERMINAL_STATUSES.has(c().status) &&
-                      !skillApprovalKind() &&
-                      Object.keys(c().currentPayload ?? {}).length > 0
-                    }
-                  >
-                    <details
-                      class="mt-3"
-                      data-testid="approval-card-payload"
-                      open={!hasCuratedSummary(c())}
+                    <Show
+                      when={
+                        !editing() &&
+                        !TERMINAL_STATUSES.has(c().status) &&
+                        !skillApprovalKind() &&
+                        Object.keys(c().currentPayload ?? {}).length > 0
+                      }
                     >
-                      <summary class="cursor-pointer text-[11px] uppercase tracking-wide text-text-tertiary">
-                        {hasCuratedSummary(c())
-                          ? i18n.t("kernel.approvalsUi.technicalDetails")
-                          : i18n.t("kernel.approvalsUi.exactPayload")}
-                      </summary>
-                      <ul class="mt-1 space-y-0.5 font-mono text-[11px] leading-snug text-text-secondary">
-                        <For each={payloadRows()}>
-                          {([path, val]) => (
-                            <li class="flex gap-2">
-                              <span class="shrink-0 text-text-tertiary">{path}:</span>
-                              <PayloadFileValue
-                                path={path}
-                                value={val}
-                                names={payloadFileNames()}
-                              />
-                              <Show when={defaultedPaths(c()).has(path)}>
-                                <span
-                                  class="shrink-0 text-text-tertiary"
-                                  data-testid={`approval-payload-default-${path}`}
-                                >
-                                  {i18n.t("kernel.approvalsUi.default")}
-                                </span>
-                              </Show>
-                            </li>
-                          )}
-                        </For>
-                      </ul>
-                    </details>
-                  </Show>
-
-                  <Show when={bundleSteps().length > 0}>
-                    <div class="mt-3 flex flex-col gap-2" data-testid="approval-bundle-steps">
-                      <For each={bundleStepIds()}>
-                        {(stepId, i) => (
-                          <Show when={getById(stepId)}>
-                            {(step) => (
-                              <BundleStepRow
-                                api={apiCtx}
-                                step={step()}
-                                index={i()}
-                                dependsOnPosition={positionInBundle(step().dependsOnId)}
-                                refText={refText}
-                              />
-                            )}
-                          </Show>
-                        )}
-                      </For>
-                    </div>
-                  </Show>
-
-                  <Show when={c().summary?.links?.length}>
-                    <ApprovalLinks api={apiCtx} links={c().summary?.links ?? []} />
-                  </Show>
-
-                  <Show when={editing()}>
-                    <div class="mt-3 flex flex-col gap-2">
-                      <For each={c().editableFields}>
-                        {(field) => {
-                          const value = () => String(draft()[field.field] ?? "")
-                          const onInput = (e: InputEvent) => {
-                            const target = e.currentTarget as HTMLInputElement | HTMLTextAreaElement
-                            setDraft({ ...draft(), [field.field]: target.value })
-                          }
-                          const inputId = `approval-card-field-${field.field}`
-                          let richField: RichEditorHandle | undefined
-                          let plainField: HTMLTextAreaElement | undefined
-                          return (
-                            <div
-                              class="flex flex-col gap-1"
-                              onFocusIn={() => draftDictation.focused(richField ?? plainField)}
-                            >
-                              <div class="flex items-center justify-between gap-2">
-                                <label
-                                  for={inputId}
-                                  class="text-[11px] uppercase tracking-wide text-text-tertiary"
-                                >
-                                  {field.label}
-                                </label>
-                                <Show when={field.widget === "richtext"}>
-                                  <span class="flex min-w-0 flex-1 items-center justify-end gap-0.5">
-                                    <ComposerAssist target={() => richField ?? plainField} />
+                      <details
+                        class="mt-3"
+                        data-testid="approval-card-payload"
+                        open={!hasCuratedSummary(c())}
+                      >
+                        <summary class="cursor-pointer text-[11px] uppercase tracking-wide text-text-tertiary">
+                          {hasCuratedSummary(c())
+                            ? i18n.t("kernel.approvalsUi.technicalDetails")
+                            : i18n.t("kernel.approvalsUi.exactPayload")}
+                        </summary>
+                        <ul class="mt-1 space-y-0.5 font-mono text-[11px] leading-snug text-text-secondary">
+                          <For each={payloadRows()}>
+                            {([path, val]) => (
+                              <li class="flex gap-2">
+                                <span class="shrink-0 text-text-tertiary">{path}:</span>
+                                <PayloadFileValue
+                                  path={path}
+                                  value={val}
+                                  names={payloadFileNames()}
+                                />
+                                <Show when={defaultedPaths(c()).has(path)}>
+                                  <span
+                                    class="shrink-0 text-text-tertiary"
+                                    data-testid={`approval-payload-default-${path}`}
+                                  >
+                                    {i18n.t("kernel.approvalsUi.default")}
                                   </span>
                                 </Show>
-                              </div>
-                              <Show
-                                when={field.widget === "richtext"}
-                                fallback={
-                                  <input
-                                    type="text"
-                                    id={inputId}
-                                    data-testid={inputId}
-                                    class="rounded border border-border bg-bg px-2 py-1 text-text"
-                                    value={value()}
-                                    onInput={onInput}
-                                  />
-                                }
+                              </li>
+                            )}
+                          </For>
+                        </ul>
+                      </details>
+                    </Show>
+
+                    <Show when={bundleSteps().length > 0}>
+                      <div class="mt-3 flex flex-col gap-2" data-testid="approval-bundle-steps">
+                        <For each={bundleStepIds()}>
+                          {(stepId, i) => (
+                            <Show when={getById(stepId)}>
+                              {(step) => (
+                                <BundleStepRow
+                                  api={apiCtx}
+                                  step={step()}
+                                  index={i()}
+                                  dependsOnPosition={positionInBundle(step().dependsOnId)}
+                                  refText={refText}
+                                />
+                              )}
+                            </Show>
+                          )}
+                        </For>
+                      </div>
+                    </Show>
+
+                    <Show when={c().summary?.links?.length}>
+                      <ApprovalLinks api={apiCtx} links={c().summary?.links ?? []} />
+                    </Show>
+
+                    <Show when={editing()}>
+                      <div class="mt-3 flex flex-col gap-2">
+                        <For each={c().editableFields}>
+                          {(field) => {
+                            const value = () => String(draft()[field.field] ?? "")
+                            const onInput = (e: InputEvent) => {
+                              const target = e.currentTarget as
+                                | HTMLInputElement
+                                | HTMLTextAreaElement
+                              setDraft({ ...draft(), [field.field]: target.value })
+                            }
+                            const inputId = `approval-card-field-${field.field}`
+                            let richField: RichEditorHandle | undefined
+                            let plainField: HTMLTextAreaElement | undefined
+                            return (
+                              <div
+                                class="flex flex-col gap-1"
+                                onFocusIn={() => draftDictation.focused(richField ?? plainField)}
                               >
+                                <div class="flex items-center justify-between gap-2">
+                                  <label
+                                    for={inputId}
+                                    class="text-[11px] uppercase tracking-wide text-text-tertiary"
+                                  >
+                                    {field.label}
+                                  </label>
+                                  <Show when={field.widget === "richtext"}>
+                                    <span class="flex min-w-0 flex-1 items-center justify-end gap-0.5">
+                                      <ComposerAssist target={() => richField ?? plainField} />
+                                    </span>
+                                  </Show>
+                                </div>
                                 <Show
-                                  when={emailBodyPreset(c().toolName, field.field)}
+                                  when={field.widget === "richtext"}
                                   fallback={
-                                    <textarea
-                                      ref={(el) => {
-                                        plainField = el
-                                        draftDictation.field(el)
-                                      }}
-                                      rows={6}
+                                    <input
+                                      type="text"
                                       id={inputId}
                                       data-testid={inputId}
                                       class="rounded border border-border bg-bg px-2 py-1 text-text"
@@ -2505,57 +2514,130 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
                                     />
                                   }
                                 >
-                                  {(preset) => (
-                                    <RichEditor
-                                      preset={preset()}
-                                      ref={(handle) => {
-                                        richField = handle
-                                        draftDictation.field(handle)
-                                      }}
-                                      value={value()}
-                                      onChange={(md) => setDraft({ ...draft(), [field.field]: md })}
-                                      class={EMAIL_BODY_EDITOR_CLASS}
-                                      editorClass="min-h-[7.5rem] text-text"
-                                      aria-label={field.label}
-                                      data-testid={inputId}
-                                    />
-                                  )}
+                                  <Show
+                                    when={emailBodyPreset(c().toolName, field.field)}
+                                    fallback={
+                                      <textarea
+                                        ref={(el) => {
+                                          plainField = el
+                                          draftDictation.field(el)
+                                        }}
+                                        rows={6}
+                                        id={inputId}
+                                        data-testid={inputId}
+                                        class="rounded border border-border bg-bg px-2 py-1 text-text"
+                                        value={value()}
+                                        onInput={onInput}
+                                      />
+                                    }
+                                  >
+                                    {(preset) => (
+                                      <RichEditor
+                                        preset={preset()}
+                                        ref={(handle) => {
+                                          richField = handle
+                                          draftDictation.field(handle)
+                                        }}
+                                        value={value()}
+                                        onChange={(md) =>
+                                          setDraft({ ...draft(), [field.field]: md })
+                                        }
+                                        class={EMAIL_BODY_EDITOR_CLASS}
+                                        editorClass="min-h-[7.5rem] text-text"
+                                        aria-label={field.label}
+                                        data-testid={inputId}
+                                      />
+                                    )}
+                                  </Show>
                                 </Show>
-                              </Show>
-                            </div>
-                          )
-                        }}
-                      </For>
-                    </div>
-                  </Show>
+                              </div>
+                            )
+                          }}
+                        </For>
+                      </div>
+                    </Show>
 
-                  <Show when={inlineError()}>
-                    <div
-                      data-testid="approval-card-error"
-                      class="mt-3 rounded border border-danger/40 bg-danger/5 p-2 text-[12px] text-danger"
-                    >
-                      {inlineError()}
-                    </div>
-                  </Show>
+                    <Show when={inlineError()}>
+                      <div
+                        data-testid="approval-card-error"
+                        class="mt-3 rounded border border-danger/40 bg-danger/5 p-2 text-[12px] text-danger"
+                      >
+                        {inlineError()}
+                      </div>
+                    </Show>
 
-                  {/* G2: at phone width the requester line stands alone, and
+                    {/* G2: at phone width the requester line stands alone, and
                     everything else that used to share its row (the governing
                     scope / private-owner badge, sign-off count, decided-by)
                     moves under it as ONE muted row, freeing the requester line
                     from competing for space at 390px. Desktop keeps the
                     original single row. */}
-                  <Show
-                    when={phone()}
-                    fallback={
-                      <div class="mt-3 flex items-center justify-between gap-2 text-[11px] text-text-tertiary">
-                        <div
-                          class="flex flex-wrap items-center gap-x-2 gap-y-1"
-                          data-testid="approval-card-provenance"
-                        >
-                          <span>
-                            {i18n.t("kernel.approvalsUi.requestedBy")} {requesterName()} ·{" "}
-                            {relativeFromNow(c().createdAt, i18n.locale())}
-                          </span>
+                    <Show
+                      when={phone()}
+                      fallback={
+                        <div class="mt-3 flex items-center justify-between gap-2 text-[11px] text-text-tertiary">
+                          <div
+                            class="flex flex-wrap items-center gap-x-2 gap-y-1"
+                            data-testid="approval-card-provenance"
+                          >
+                            <span>
+                              {i18n.t("kernel.approvalsUi.requestedBy")} {requesterName()} ·{" "}
+                              {relativeFromNow(c().createdAt, i18n.locale())}
+                            </span>
+                            <Show
+                              when={!c().resourceOwnerId && governingScope()}
+                              fallback={
+                                <Show when={c().resourceOwnerId}>
+                                  <span
+                                    data-testid="approval-card-private-badge"
+                                    class="rounded bg-bg-subtle px-1.5 py-0.5 text-[10px]"
+                                    title={i18n.t(
+                                      "kernel.approvalsUi.routedPrivatelyToTheResourceOwner",
+                                    )}
+                                  >
+                                    {i18n.t("kernel.approvalsUi.privateOwnerDecides")}
+                                  </span>
+                                </Show>
+                              }
+                            >
+                              {(scope) => (
+                                <span
+                                  data-testid="approval-card-scope"
+                                  class="rounded bg-bg-subtle px-1.5 py-0.5 text-[10px]"
+                                  title={`${i18n.t("kernel.approvalsUi.onlyHoldersOfThisScopeCan")}: ${scope()}`}
+                                  data-scope={scope()}
+                                >
+                                  {approvalScopeLabel(scope(), readerCopy())}
+                                </span>
+                              )}
+                            </Show>
+                            <Show when={nEyes()}>
+                              {(n) => (
+                                <span
+                                  data-testid="approval-card-neyes"
+                                  class="rounded bg-bg-subtle px-1.5 py-0.5 text-[10px]"
+                                  title={i18n.t(
+                                    "kernel.approvalsUi.orgPolicyRequiresMultipleDistinctApprovers",
+                                  )}
+                                >
+                                  {n().done} {i18n.t("kernel.approvalsUi.of")} {n().need}{" "}
+                                  {i18n.t("kernel.approvalsUi.signOffs")}
+                                </span>
+                              )}
+                            </Show>
+                            <Show when={decidedLine()}>
+                              <span data-testid="approval-card-decided-by">{decidedLine()}</span>
+                            </Show>
+                          </div>
+                        </div>
+                      }
+                    >
+                      <div class="mt-3 flex flex-col gap-1 text-[11px] text-text-tertiary">
+                        <span data-testid="approval-card-provenance">
+                          {i18n.t("kernel.approvalsUi.requestedBy")} {requesterName()} ·{" "}
+                          {relativeFromNow(c().createdAt, i18n.locale())}
+                        </span>
+                        <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
                           <Show
                             when={!c().resourceOwnerId && governingScope()}
                             fallback={
@@ -2602,262 +2684,209 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
                           </Show>
                         </div>
                       </div>
-                    }
-                  >
-                    <div class="mt-3 flex flex-col gap-1 text-[11px] text-text-tertiary">
-                      <span data-testid="approval-card-provenance">
-                        {i18n.t("kernel.approvalsUi.requestedBy")} {requesterName()} ·{" "}
-                        {relativeFromNow(c().createdAt, i18n.locale())}
-                      </span>
-                      <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    </Show>
+
+                    <Show
+                      when={
+                        c().metadata &&
+                        typeof c().metadata?.runId === "string" &&
+                        // A sub-run a chat turn spawned has no parent run, only its role.
+                        (typeof c().metadata?.parentRunId === "string" ||
+                          typeof c().metadata?.subagentType === "string")
+                      }
+                    >
+                      <div
+                        data-testid="approval-card-subrun-breadcrumb"
+                        class="mt-2 text-[11px] text-text-secondary"
+                      >
+                        {i18n.t("kernel.approvalsUi.triggeredBySubRun")}{" "}
+                        <strong>{String(c().metadata?.subagentType ?? "(unknown)")}</strong>
+                        <Show when={c().metadata?.label}> ({String(c().metadata?.label)})</Show>
                         <Show
-                          when={!c().resourceOwnerId && governingScope()}
+                          when={c().metadata?.hiddenThreadId}
                           fallback={
-                            <Show when={c().resourceOwnerId}>
-                              <span
-                                data-testid="approval-card-private-badge"
-                                class="rounded bg-bg-subtle px-1.5 py-0.5 text-[10px]"
-                                title={i18n.t(
-                                  "kernel.approvalsUi.routedPrivatelyToTheResourceOwner",
-                                )}
-                              >
-                                {i18n.t("kernel.approvalsUi.privateOwnerDecides")}
-                              </span>
-                            </Show>
+                            <span
+                              data-testid="approval-card-subrun-link-missing"
+                              class="ml-2 text-text-tertiary"
+                            >
+                              {i18n.t("kernel.approvalsUi.transcriptUnavailable")}
+                            </span>
                           }
                         >
-                          {(scope) => (
-                            <span
-                              data-testid="approval-card-scope"
-                              class="rounded bg-bg-subtle px-1.5 py-0.5 text-[10px]"
-                              title={`${i18n.t("kernel.approvalsUi.onlyHoldersOfThisScopeCan")}: ${scope()}`}
-                              data-scope={scope()}
-                            >
-                              {approvalScopeLabel(scope(), readerCopy())}
-                            </span>
-                          )}
-                        </Show>
-                        <Show when={nEyes()}>
-                          {(n) => (
-                            <span
-                              data-testid="approval-card-neyes"
-                              class="rounded bg-bg-subtle px-1.5 py-0.5 text-[10px]"
-                              title={i18n.t(
-                                "kernel.approvalsUi.orgPolicyRequiresMultipleDistinctApprovers",
-                              )}
-                            >
-                              {n().done} {i18n.t("kernel.approvalsUi.of")} {n().need}{" "}
-                              {i18n.t("kernel.approvalsUi.signOffs")}
-                            </span>
-                          )}
-                        </Show>
-                        <Show when={decidedLine()}>
-                          <span data-testid="approval-card-decided-by">{decidedLine()}</span>
+                          <a
+                            data-testid="approval-card-subrun-link"
+                            class="ml-2 underline"
+                            href={`#/threads/${String(c().metadata?.hiddenThreadId)}`}
+                            onClick={(e) => {
+                              e.preventDefault()
+                              const threadId = String(c().metadata?.hiddenThreadId)
+                              openTab({
+                                type: "thread",
+                                entityId: threadId,
+                                label: i18n.t("kernel.approvalsUi.subRun"),
+                              })
+                            }}
+                          >
+                            {i18n.t("kernel.approvalsUi.seeSubRunReasoning")}
+                          </a>
                         </Show>
                       </div>
-                    </div>
-                  </Show>
+                    </Show>
 
-                  <Show
-                    when={
-                      c().metadata &&
-                      typeof c().metadata?.runId === "string" &&
-                      // A sub-run a chat turn spawned has no parent run, only its role.
-                      (typeof c().metadata?.parentRunId === "string" ||
-                        typeof c().metadata?.subagentType === "string")
-                    }
-                  >
-                    <div
-                      data-testid="approval-card-subrun-breadcrumb"
-                      class="mt-2 text-[11px] text-text-secondary"
-                    >
-                      {i18n.t("kernel.approvalsUi.triggeredBySubRun")}{" "}
-                      <strong>{String(c().metadata?.subagentType ?? "(unknown)")}</strong>
-                      <Show when={c().metadata?.label}> ({String(c().metadata?.label)})</Show>
-                      <Show
-                        when={c().metadata?.hiddenThreadId}
-                        fallback={
-                          <span
-                            data-testid="approval-card-subrun-link-missing"
-                            class="ml-2 text-text-tertiary"
-                          >
-                            {i18n.t("kernel.approvalsUi.transcriptUnavailable")}
-                          </span>
-                        }
+                    <Show when={isApproving() && !staleApproving()}>
+                      <div
+                        data-testid="approval-card-executing"
+                        class="mt-3 flex items-center gap-2 text-text-secondary"
                       >
-                        <a
-                          data-testid="approval-card-subrun-link"
-                          class="ml-2 underline"
-                          href={`#/threads/${String(c().metadata?.hiddenThreadId)}`}
-                          onClick={(e) => {
-                            e.preventDefault()
-                            const threadId = String(c().metadata?.hiddenThreadId)
-                            openTab({
-                              type: "thread",
-                              entityId: threadId,
-                              label: i18n.t("kernel.approvalsUi.subRun"),
-                            })
-                          }}
-                        >
-                          {i18n.t("kernel.approvalsUi.seeSubRunReasoning")}
-                        </a>
-                      </Show>
-                    </div>
-                  </Show>
-
-                  <Show when={isApproving() && !staleApproving()}>
-                    <div
-                      data-testid="approval-card-executing"
-                      class="mt-3 flex items-center gap-2 text-text-secondary"
-                    >
-                      <Hourglass size={14} />
-                      <span>{i18n.t("kernel.executing")}</span>
-                    </div>
-                  </Show>
-                  <Show when={staleApproving()}>
-                    {/* Approved but the run never confirmed its outcome (the
+                        <Hourglass size={14} />
+                        <span>{i18n.t("kernel.executing")}</span>
+                      </div>
+                    </Show>
+                    <Show when={staleApproving()}>
+                      {/* Approved but the run never confirmed its outcome (the
                       backend strands such rows at `approving` for operator
                       review rather than guessing). An eternal hourglass here
                       reads as "still working" — say what actually happened. */}
-                    <div
-                      data-testid="approval-card-stale-approving"
-                      class="mt-3 rounded border border-warning/40 bg-warning/5 p-2 text-warning"
-                    >
-                      {i18n.t("kernel.approvalsUi.approvedButTheToolRunHas")}
-                      {/* The server's own way out for a wedged row (decide.ts:
+                      <div
+                        data-testid="approval-card-stale-approving"
+                        class="mt-3 rounded border border-warning/40 bg-warning/5 p-2 text-warning"
+                      >
+                        {i18n.t("kernel.approvalsUi.approvedButTheToolRunHas")}
+                        {/* The server's own way out for a wedged row (decide.ts:
                         a deny on a row wedged past the grace window terminates
                         it and records deniedWhileWedged, so nobody later reads
                         the denial as proof the action never ran). Approve is
                         never offered again: it would re-run a side effect that
                         may already have landed. */}
-                      <Show when={canApprove() || isRequester()}>
-                        <div class="mt-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            data-testid="approval-card-stale-close"
-                            disabled={optimistic() !== "idle"}
-                            onClick={() => void onCloseStale()}
-                          >
-                            {i18n.t("kernel.approvalsUi.closeStaleRequest")}
-                          </Button>
-                        </div>
-                      </Show>
-                    </div>
-                  </Show>
+                        <Show when={canApprove() || isRequester()}>
+                          <div class="mt-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              data-testid="approval-card-stale-close"
+                              disabled={optimistic() !== "idle"}
+                              onClick={() => void onCloseStale()}
+                            >
+                              {i18n.t("kernel.approvalsUi.closeStaleRequest")}
+                            </Button>
+                          </div>
+                        </Show>
+                      </div>
+                    </Show>
 
-                  <Show when={denying() && !isApproving() && phone()}>
-                    {/* At phone width the reason is asked in a sheet: the row of
+                    <Show when={denying() && !isApproving() && phone()}>
+                      {/* At phone width the reason is asked in a sheet: the row of
                       three buttons stays where the thumb left it. */}
-                    <OverlaySheet
-                      open={true}
-                      onClose={() => {
-                        setDenying(false)
-                        setDenyReason("")
-                      }}
-                      variant="bottom"
-                      title={i18n.t("kernel.approvalDenyTitle")}
-                      closeLabel={i18n.t("kernel.close")}
-                    >
-                      <div class="flex flex-col gap-3 p-4" data-testid="approval-deny-sheet">
+                      <OverlaySheet
+                        open={true}
+                        onClose={() => {
+                          setDenying(false)
+                          setDenyReason("")
+                        }}
+                        variant="bottom"
+                        title={i18n.t("kernel.approvalDenyTitle")}
+                        closeLabel={i18n.t("kernel.close")}
+                      >
+                        <div class="flex flex-col gap-3 p-4" data-testid="approval-deny-sheet">
+                          <input
+                            type="text"
+                            data-testid="approval-card-deny-reason"
+                            placeholder={i18n.t("kernel.reasonOptional")}
+                            class="min-h-11 rounded border border-border bg-bg px-3 text-text"
+                            value={denyReason()}
+                            onInput={(e) => setDenyReason(e.currentTarget.value)}
+                          />
+                          <button
+                            type="button"
+                            data-testid="approval-card-action-deny-submit"
+                            class="min-h-11 w-full rounded-lg bg-danger text-[15px] font-medium text-white"
+                            onClick={() => {
+                              nativeHaptic("warning")
+                              void onDenySubmit()
+                            }}
+                          >
+                            {i18n.t("kernel.approvalDenySubmit")}
+                          </button>
+                        </div>
+                      </OverlaySheet>
+                    </Show>
+
+                    <Show when={denying() && !isApproving() && !phone()}>
+                      <div class="mt-3 flex flex-col gap-2">
                         <input
                           type="text"
                           data-testid="approval-card-deny-reason"
                           placeholder={i18n.t("kernel.reasonOptional")}
-                          class="min-h-11 rounded border border-border bg-bg px-3 text-text"
+                          class="rounded border border-border bg-bg px-2 py-1 text-text"
                           value={denyReason()}
                           onInput={(e) => setDenyReason(e.currentTarget.value)}
                         />
-                        <button
-                          type="button"
-                          data-testid="approval-card-action-deny-submit"
-                          class="min-h-11 w-full rounded-lg bg-danger text-[15px] font-medium text-white"
-                          onClick={() => {
-                            nativeHaptic("warning")
-                            void onDenySubmit()
-                          }}
-                        >
-                          {i18n.t("kernel.approvalDenySubmit")}
-                        </button>
+                        <div class="flex gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            data-testid="approval-card-action-deny-submit"
+                            onClick={() => void onDenySubmit()}
+                          >
+                            {i18n.t("kernel.common.submit")}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setDenying(false)
+                              setDenyReason("")
+                            }}
+                          >
+                            {i18n.t("kernel.common.cancel")}
+                          </Button>
+                        </div>
                       </div>
-                    </OverlaySheet>
-                  </Show>
+                    </Show>
 
-                  <Show when={denying() && !isApproving() && !phone()}>
-                    <div class="mt-3 flex flex-col gap-2">
-                      <input
-                        type="text"
-                        data-testid="approval-card-deny-reason"
-                        placeholder={i18n.t("kernel.reasonOptional")}
-                        class="rounded border border-border bg-bg px-2 py-1 text-text"
-                        value={denyReason()}
-                        onInput={(e) => setDenyReason(e.currentTarget.value)}
-                      />
-                      <div class="flex gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          data-testid="approval-card-action-deny-submit"
-                          onClick={() => void onDenySubmit()}
-                        >
-                          {i18n.t("kernel.common.submit")}
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setDenying(false)
-                            setDenyReason("")
-                          }}
-                        >
-                          {i18n.t("kernel.common.cancel")}
-                        </Button>
+                    <Show when={editing()}>
+                      {/* The mic left of Save; a take turns this row into the recorder line. */}
+                      <div class="mt-3 flex items-center gap-2">
+                        <RecorderRow dictation={draftDictation.dictation}>
+                          <DictationMic dictation={draftDictation.dictation} />
+                          <Button
+                            type="button"
+                            size="sm"
+                            data-testid="approval-card-action-save"
+                            disabled={!isDirty()}
+                            onClick={() => void onSave()}
+                          >
+                            {i18n.t("kernel.common.save")}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            data-testid="approval-card-action-cancel"
+                            onClick={cancelEdit}
+                          >
+                            {i18n.t("kernel.common.cancel")}
+                          </Button>
+                        </RecorderRow>
                       </div>
-                    </div>
-                  </Show>
+                    </Show>
 
-                  <Show when={editing()}>
-                    {/* The mic left of Save; a take turns this row into the recorder line. */}
-                    <div class="mt-3 flex items-center gap-2">
-                      <RecorderRow dictation={draftDictation.dictation}>
-                        <DictationMic dictation={draftDictation.dictation} />
-                        <Button
-                          type="button"
-                          size="sm"
-                          data-testid="approval-card-action-save"
-                          disabled={!isDirty()}
-                          onClick={() => void onSave()}
+                    <Show when={mailboxAttachmentNotice()}>
+                      {(notice) => (
+                        <p
+                          class="mt-3 text-xs text-muted-foreground"
+                          data-testid="approval-card-mailbox-attachment-notice"
                         >
-                          {i18n.t("kernel.common.save")}
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          data-testid="approval-card-action-cancel"
-                          onClick={cancelEdit}
-                        >
-                          {i18n.t("kernel.common.cancel")}
-                        </Button>
-                      </RecorderRow>
-                    </div>
-                  </Show>
+                          {notice()}
+                        </p>
+                      )}
+                    </Show>
 
-                  <Show when={mailboxAttachmentNotice()}>
-                    {(notice) => (
-                      <p
-                        class="mt-3 text-xs text-muted-foreground"
-                        data-testid="approval-card-mailbox-attachment-notice"
-                      >
-                        {notice()}
-                      </p>
-                    )}
-                  </Show>
-
-                  <Show when={!props.inFeed}>{decisionBlock(false)}</Show>
-                </div>
+                    <Show when={!props.inFeed}>{decisionBlock(false)}</Show>
+                  </div>
+                </Show>
               )}
             </Show>
           }

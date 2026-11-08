@@ -492,7 +492,7 @@ async function readStoppedGuards(
  * providers at a list read; the single read asks them too); a closed one shows what its send
  * recorded. The check at send stays the authority.
  */
-type GuardRow = Pick<
+export type GuardRow = Pick<
   RawApprovalRow,
   "id" | "status" | "tool_name" | "current_payload" | "requested_by"
 >
@@ -508,6 +508,18 @@ async function readSendGuards(
     out.set(id, await cardGuard(db, verdict))
   }
   return out
+}
+
+/**
+ * When a pending mail draft's hold ends, if the send check reads it held now (an out-of-office
+ * until a date); null for any other row. The expiry reads it so a held draft never lapses
+ * before its hold is over.
+ */
+export async function readHeldUntil(orgId: string, row: GuardRow): Promise<Date | null> {
+  const verdict = (await readSendGuardVerdicts(orgId, [row], "card")).get(row.id)
+  if (verdict?.state !== "held" || !verdict.holdUntil) return null
+  const until = new Date(verdict.holdUntil)
+  return Number.isNaN(until.getTime()) ? null : until
 }
 
 async function readSendGuardVerdicts(

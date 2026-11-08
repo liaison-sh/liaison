@@ -24,6 +24,7 @@ import {
   UserMinus,
 } from "lucide-solid"
 import type { Component } from "solid-js"
+import { guardDay } from "~/modules/approvals/send-guard-line"
 import { catalogHasKey, englishT, type Translate } from "~/modules/i18n/i18n-context"
 import { pluralFormFor } from "~/modules/projects/plural"
 import { kindShortLabel } from "~/modules/shell/attention-groups"
@@ -231,6 +232,20 @@ export function getMetric(item: AttentionItem, i18n?: RowLocale): AttentionMetri
       // expiry means nothing) nor on one whose deadline has passed and the
       // expiry job has not swept yet. Both printed a confident "0s left".
       if (m.wedged === true) return { text: "", tone: "warning" }
+      // A draft the send check stopped is not waiting on anyone: nothing runs out on it. A held
+      // one waits for its hold, so its date is the one the row gives, never the expiry.
+      if (m.uncounted === true) return { text: "", tone: "tertiary" }
+      const guard = m.sendGuard as { state?: unknown; holdUntil?: unknown } | undefined
+      if (guard?.state === "held") {
+        return typeof guard.holdUntil === "string"
+          ? {
+              text: l.t("kernel.approvalsUi.sendGuard.holdDate", {
+                until: guardDay(guard.holdUntil, l.locale),
+              }),
+              tone: "tertiary",
+            }
+          : { text: "", tone: "tertiary" }
+      }
       if (typeof m.expiresInSeconds === "number" && m.expiresInSeconds <= 0) {
         return { text: "", tone: "warning" }
       }

@@ -104,6 +104,18 @@ export function isUncountedItem(item: AttentionItem): boolean {
   return kind === SEND_STOPPED_KIND || item.metadata?.uncounted === true
 }
 
+/** A mail draft held by an auto-reply until a date: on Home, in no count. */
+export function isHeldItem(item: AttentionItem): boolean {
+  const g = item.metadata?.sendGuard as { state?: unknown } | undefined
+  return item.kind === "approval_pending" && g?.state === "held"
+}
+
+/** The end of a held draft's hold, as the feed carries it. */
+export function heldUntilOf(item: AttentionItem): string | null {
+  const g = item.metadata?.sendGuard as { holdUntil?: unknown } | undefined
+  return typeof g?.holdUntil === "string" ? g.holdUntil : null
+}
+
 /** An approval whose decision is queued or being sent (decision-queue.ts). */
 export function isApprovalDecisionInFlight(item: AttentionItem): boolean {
   return (
@@ -125,6 +137,8 @@ export function homeActionItems(
   for (const item of [...homeApprovalItems(now, othersShown, viewer), ...urgentStripItems(now)]) {
     if (seen.has(item.id)) continue
     if (isUncountedItem(item)) continue
+    // Held by an auto-reply: on Home, counted only once its hold ends (S164).
+    if (isHeldItem(item)) continue
     // Decided, waiting out its Undo window or being carried out: the row is gone, so is its count.
     if (isApprovalDecisionInFlight(item)) continue
     if (isQueueVolumeItem(item, viewer)) continue
@@ -161,5 +175,7 @@ export function homeActionCount(): number {
  * shows this, so the one queue never carries two counts.
  */
 export function homeApprovalCount(items: AttentionItem[]): number {
-  return homeApprovalItems(splitFeed(items).now, false, currentHomeViewer()).length
+  return homeApprovalItems(splitFeed(items).now, false, currentHomeViewer()).filter(
+    (item) => !isHeldItem(item),
+  ).length
 }

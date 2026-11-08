@@ -72,6 +72,27 @@ describe("DecisionToasts", () => {
     expect(post).not.toHaveBeenCalled()
   })
 
+  it("Dismiss on a stopped draft says Dismissing, then Dismissed, never Rejecting", async () => {
+    const { api, post, answer } = makeApi()
+    render(() => <DecisionToasts />)
+    const done = queueDecision(
+      api,
+      "approval",
+      "a1",
+      { decision: "deny", reason: "" },
+      { label: { ...label(5), verb: "dismiss" } },
+    )
+    expect((await screen.findByTestId("decision-toast-status")).textContent).toBe(
+      "Dismissing in 8s",
+    )
+    await vi.advanceTimersByTimeAsync(UNDO_WINDOW_MS)
+    expect(screen.getByTestId("decision-toast-status").textContent).toBe("Dismissing…")
+    expect(post).toHaveBeenCalledTimes(1)
+    answer({ status: "denied" })
+    await done
+    expect(screen.getByTestId("decision-toast-status").textContent).toBe("Dismissed")
+  })
+
   it("a sequence is ONE toast, titled by its outcome and marked as N steps, whose Undo takes back every step", async () => {
     const { api, post } = makeApi()
     render(() => <DecisionToasts />)

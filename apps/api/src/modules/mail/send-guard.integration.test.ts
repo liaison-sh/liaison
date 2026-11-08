@@ -30,6 +30,7 @@ import {
 } from "~/modules/approvals/attention"
 import { ApprovalDecisionError, decideApproval } from "~/modules/approvals/decide"
 import { updatePayload } from "~/modules/approvals/edit"
+import { runApprovalExpiry } from "~/modules/approvals/expiry"
 import { getApproval } from "~/modules/approvals/list"
 import { approvalPayloadHash } from "~/modules/approvals/payload-hash"
 import { appBridgeManifestRegistry, toolRegistry } from "~/modules/apps/app-registries"
@@ -965,9 +966,9 @@ describe("classification and marketing", () => {
         origin: "mcp",
       }),
     )
-    expect(((await requestRow(id)).current_payload.sendGuard as PinnedSendGuard).classification).toBe(
-      "marketing",
-    )
+    expect(
+      ((await requestRow(id)).current_payload.sendGuard as PinnedSendGuard).classification,
+    ).toBe("marketing")
     const footer = spyOn(footerModule, "applyCommercialFooter")
     try {
       const before = sent.length
@@ -1843,16 +1844,20 @@ describe("the card says what the check says, and Send now", () => {
       badge: await computeApprovalBadgeItems(tx as never, orgId, viewer.userId, 500),
     }))
 
-  it("held not on Home and not counted", async () => {
+  it("held is on Home as the viewer's own decision, with its hold, and not counted", async () => {
     const { id } = await heldDraft()
     const { feed, badge } = await home()
-    expect(feed.some((i) => i.entityId === id)).toBe(false)
+    const row = feed.find((i) => i.entityId === id)
+    expect(row?.kind).toBe("approval_pending")
+    expect(row?.metadata?.sendGuard).toMatchObject({ state: "held" })
+    expect(typeof (row?.metadata?.sendGuard as { holdUntil?: unknown })?.holdUntil).toBe("string")
+    expect(row?.metadata?.uncounted).toBeUndefined()
     expect(badge.some((i) => i.entityId === id)).toBe(false)
   }, 60_000)
 
   it("when its hold ends it is on Home and counted, with no write", async () => {
     const { id } = await heldDraft()
-    expect((await home()).feed.some((i) => i.entityId === id)).toBe(false)
+    expect((await home()).badge.some((i) => i.entityId === id)).toBe(false)
     const before = JSON.stringify(await requestRow(id))
     // Past the stated return date: the check is read fresh, so nothing has to change.
     setSystemTime(new Date(Date.now() + 15 * DAY))
@@ -1964,7 +1969,10 @@ describe("the card says what the check says, and Send now", () => {
       expect(ids.has(held.id)).toBe(false)
       expect(ids.has(answered)).toBe(false)
       const { feed } = await home()
-      expect(feed.some((i) => i.entityId === held.id)).toBe(false)
+      // On Home as the viewer's own decision, never in the badge.
+      expect(feed.find((i) => i.entityId === held.id)?.metadata?.sendGuard).toMatchObject({
+        state: "held",
+      })
       const stopped = feed.find((i) => i.entityId === answered)
       expect(stopped?.metadata?.sendGuard).toMatchObject({ state: "replied" })
       expect(stopped?.metadata?.uncounted).toBe(true)
@@ -1999,9 +2007,9 @@ describe("the card says what the check says, and Send now", () => {
 
   it("a held marketing follow-up sent by Send now calls the footer, and its record says so", async () => {
     const { id } = await heldDraft({ followUp: {} })
-    expect(((await requestRow(id)).current_payload.sendGuard as PinnedSendGuard).classification).toBe(
-      "marketing",
-    )
+    expect(
+      ((await requestRow(id)).current_payload.sendGuard as PinnedSendGuard).classification,
+    ).toBe("marketing")
     const footer = spyOn(footerModule, "applyCommercialFooter")
     try {
       const before = sent.length
@@ -2016,6 +2024,25 @@ describe("the card says what the check says, and Send now", () => {
     } finally {
       footer.mockRestore()
     }
+  }, 60_000)
+
+  it("a held draft does not expire before its hold ends: its deadline moves past the hold", async () => {
+    const { id } = await heldDraft()
+    const until = new Date((await card(id))?.sendGuard?.holdUntil ?? 0).getTime()
+    await sql`UPDATE kernel.approval_requests
+                 SET created_at = now() - interval '7 days', expires_at = now() - interval '1 minute'
+               WHERE id = ${id}`
+    await runApprovalExpiry({ orgId, requestId: id })
+    const [row] = await sql<Array<{ status: string; expires_at: Date }>>`
+      SELECT status, expires_at FROM kernel.approval_requests WHERE id = ${id}`
+    expect(row?.status).toBe("pending")
+    // The hold's end plus the window it was given (7 days less a minute here).
+    expect(new Date(row?.expires_at ?? 0).getTime()).toBeGreaterThan(until + 6 * DAY)
+    // A plain draft past its deadline still expires.
+    const plain = await stageCompose(unique("plain-expiry"))
+    await sql`UPDATE kernel.approval_requests SET expires_at = now() - interval '1 minute' WHERE id = ${plain}`
+    await runApprovalExpiry({ orgId, requestId: plain })
+    expect((await requestRow(plain)).status).toBe("expired")
   }, 60_000)
 
   it("Send now sends and audits the override", async () => {

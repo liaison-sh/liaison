@@ -13,6 +13,7 @@ import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { DismissButton } from "~/modules/shell/AttentionRowExtras"
 import { attentionStore } from "~/modules/shell/attention-store"
+import { setHomeFilter } from "~/modules/shell/home-filter"
 import { addToast } from "~/modules/shell/toast-store"
 
 type T = (key: string, vars?: Record<string, string | number>) => string
@@ -91,6 +92,20 @@ export const RouteWhyLine: Component<{ item: AttentionItem; testId: string }> = 
       )}
     </Show>
   )
+}
+
+/** The Home filter that shows only what the viewer covers for one colleague who is away. */
+export const COVERING_PREFIX = "needs:covering:"
+
+/** The colleague a covering filter names, or null for any other filter. */
+export function coveringOf(filter: string): string | null {
+  return filter.startsWith(COVERING_PREFIX) ? filter.slice(COVERING_PREFIX.length) || null : null
+}
+
+/** A row the viewer has because `userId` is away and named them next in line. */
+export function coversFor(item: AttentionItem, userId: string): boolean {
+  if (item.metadata?.placement !== "standing_in") return false
+  return item.metadata?.forUserId === userId || personRoute(item)?.userId === userId
 }
 
 /** A row passed on from someone away (`metadata.forUserId`): never set aside by the stand-in. */
@@ -257,7 +272,16 @@ export const StandingInLine: Component = () => {
               data-testid="home-standing-in-line"
               class="text-[12.5px] leading-snug text-text-secondary"
             >
-              {standingInText(p, i18n.t, i18n.locale())}
+              {standingInText(p, i18n.t, i18n.locale())}{" "}
+              {/* What the viewer now decides for them: Home narrowed to those rows. */}
+              <button
+                type="button"
+                data-testid="home-standing-in-show"
+                class="text-accent hover:underline"
+                onClick={() => setHomeFilter(`${COVERING_PREFIX}${p.id}`)}
+              >
+                {i18n.t("kernel.homeRouting.showCovering")}
+              </button>
             </li>
           )}
         </For>

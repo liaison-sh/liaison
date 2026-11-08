@@ -2577,7 +2577,8 @@
       "dismiss": "Ignorer",
       "keepHolding": "Retenir jusqu'au {{until}}",
       "heldFolded": "Retenu jusqu'au {{until}}. Il revient sur l'accueil ce matin-là.",
-      "discard": "Abandonner"
+      "discard": "Abandonner",
+      "holdDate": "Jusqu'au {{until}}"
     }
   },
   "agentUi": {
@@ -5752,7 +5753,10 @@
     "show": "Afficher les décisions",
     "approvalFallback": "Demande d'approbation",
     "scopeRequestFallback": "Demande d'accès",
-    "sequenceSteps": "{{count}} étapes"
+    "sequenceSteps": "{{count}} étapes",
+    "dismissingIn": "Ignoré dans {{seconds}} s",
+    "dismissing": "En cours…",
+    "dismissed": "Ignoré"
   },
   "aiModels": {
     "title": "Modèles d'IA",
@@ -6583,7 +6587,9 @@
     "awayToday": "absent aujourd'hui",
     "awayTodayBack": "absent aujourd'hui, de retour {{day}}",
     "recapTitle": "Pendant votre absence",
-    "standingInFor": "{{name}} est absent jusqu'au {{date}}. Vous êtes son remplaçant."
+    "standingInFor": "{{name}} est absent jusqu'au {{date}}. Vous êtes son remplaçant.",
+    "showCovering": "Voir ce que vous couvrez",
+    "coveringTitle": "Ce que vous couvrez"
   },
   "dashboards": {
     "sectionTitle": "Tableaux de bord",

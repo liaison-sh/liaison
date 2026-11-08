@@ -11,10 +11,11 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { env } from "~/lib/env"
 import { connectionConfigRegistry } from "~/modules/apps/app-registries"
 import { createCredentialConnection, reconcileConnection } from "~/modules/apps/connections/service"
+import { createTestOrg } from "~/tests/helpers/org"
 
-const ORG = "00000000-0000-0000-0000-000000720001"
-const USER = "00000000-0000-0000-0000-000000720002"
-const SLUG = "webhook-base-org"
+let ORG = ""
+let USER = ""
+let SLUG = ""
 const APP = "webhook-base-app"
 const mutableEnv = env as { LIAISON_ORG_HOST_TEMPLATE?: string }
 const savedTemplate = mutableEnv.LIAISON_ORG_HOST_TEMPLATE
@@ -44,12 +45,13 @@ async function connectAndReconcile(): Promise<string[]> {
 
 describe("connect event webhook base", () => {
   beforeAll(async () => {
-    await sql`INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (${ORG}, 'Webhook Base Org', ${SLUG})
-      ON CONFLICT (id) DO NOTHING`
-    await sql`INSERT INTO kernel.users (id, org_id, email, password_hash, name, status)
-      VALUES (${USER}, ${ORG}, 'webhook-base@test.com', 'hash', 'Webhook', 'active')
-      ON CONFLICT (id) DO NOTHING`
+    ORG = (await createTestOrg()).id
+    const [row] = await sql<{ slug: string; user_id: string }[]>`
+      SELECT o.slug, u.id AS user_id FROM kernel.organizations o
+      JOIN kernel.users u ON u.org_id = o.id WHERE o.id = ${ORG} LIMIT 1`
+    if (!row) throw new Error("test org has no user")
+    SLUG = row.slug
+    USER = row.user_id
     connectionConfigRegistry.set([ORG, APP, "api"], {
       type: "credentials",
       allowedDomains: [],

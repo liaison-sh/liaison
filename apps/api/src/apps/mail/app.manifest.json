@@ -1316,6 +1316,7 @@
       "searchKeywords": ["réinscrire", "resubscribe", "opt-in"],
       "requiredScopes": ["mail:suppressions:write"],
       "handler": "suppressionRemove",
+      "preflight": "suppressionRemovePreflight",
       "summarizer": "summarizeSuppressionRemove",
       "gated": true,
       "approvalImpact": "internal",

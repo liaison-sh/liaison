@@ -69,7 +69,15 @@ const READ_ONLY: Record<string, string[]> = {
     "deal_send_state",
   ],
   knowledge: ["search", "review_queue", "get", "find_by_title", "synced_sources.list"],
-  mail: ["listAccounts", "getAccount", "getSyncStatus", "search", "read", "providers.get"],
+  mail: [
+    "listAccounts",
+    "getAccount",
+    "getSyncStatus",
+    "search",
+    "read",
+    "providers.get",
+    "suppression_check", // two privileged reads of kernel.suppressions, by fingerprint
+  ],
   calendar: ["list_calendars", "list_events", "search_events", "list_accounts"],
   "mcp-manager": ["list_connections"],
   // items_list is one findMany; external_fetch is a fixed GET to the example API with no

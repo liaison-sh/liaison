@@ -140,6 +140,7 @@ const NONE = "no field a person outside the org sets"
 const LISTED = new Map<string, string>([
   ["mail:listAccounts", `the person's own mailboxes and their sync state: ${NONE}`],
   ["mail:getAccount", `one connected mailbox's settings: ${NONE}`],
+  ["mail:suppression_check", `whether addresses opted out, when and how: ${NONE}`],
   ["calendar:list_accounts", `the connected calendar accounts: ${NONE}`],
   ["api-connector:connector_adapter_reference", `a fixed reference document: ${NONE}`],
   ["api-connector:connector_adapter_get", `the adapter the org saved: ${NONE}`],

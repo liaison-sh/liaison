@@ -302,6 +302,19 @@ describe("opt-outs", () => {
     expect((await requestRow(staged)).status).toBe("pending")
   }, 90_000)
 
+  it("lifting an address that never opted out is answered at once and parks nothing", async () => {
+    const email = unique("never")
+    const before = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM kernel.approval_requests WHERE org_id = ${orgId}`
+    const refused = refusalOf(await call("mail:suppression_remove", { email }))
+    expect(refused.message).toBe(
+      `${email} has not opted out, so there is nothing to lift. Nothing was staged.`,
+    )
+    const after = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM kernel.approval_requests WHERE org_id = ${orgId}`
+    expect(after[0]?.n).toBe(before[0]?.n)
+  }, 90_000)
+
   it("the check answers 50 addresses and refuses 51", async () => {
     const fifty = Array.from({ length: 50 }, () => unique("many"))
     resultOf(await call("mail:suppression_add", { email: fifty[7] }))

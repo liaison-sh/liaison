@@ -18,7 +18,8 @@
 // `bridgeCall` (bridge-reply.ts, vendored byte for byte from the loader with
 // its vectors; bridge-reply.test.ts runs them). Every error answer carries a
 // kind, as the loader's do: `auth` / `loader_internal` (the loader's own),
-// `bundle_missing` / `bundle_fetch_failed` / `load` (the module), `limit` /
+// `bundle_missing` / `bundle_fetch_failed` / `load` (the module, including a
+// module that throws while it is evaluated), `limit` /
 // `handler` / `timeout` (the run). The module's `logs` / `logsDropped`
 // (worker-core.ts console capture) pass through unchanged. The run races `deadlineMs`; a timeout answers
 // `{ok:false, error:{kind:"timeout"}}` while the module keeps running (as an
@@ -367,8 +368,19 @@ export function startFakeLoader(opts: FakeLoaderOptions): FakeLoader {
     )
     let timer: ReturnType<typeof setTimeout> | undefined
     const TIMEOUT = Symbol("timeout")
+    // The module is evaluated before its entrypoint's run starts: a throw
+    // there is the module's (kind "load"), as on the loader, never the
+    // handler's. A failed evaluation is not kept: the next run loads again.
+    let mod: CoreModule
     try {
-      const mod = (await modules.get(id)) as CoreModule
+      mod = (await modules.get(id)) as CoreModule
+    } catch (e) {
+      modules.delete(id)
+      verified.delete(id)
+      const message = typeof (e as Error)?.message === "string" ? (e as Error).message : String(e)
+      return Response.json({ ok: false, error: { message, kind: "load" }, timings: timings() })
+    }
+    try {
       const outcome = await Promise.race([
         mod.run(workerReq, bridge),
         new Promise<typeof TIMEOUT>((r) => {

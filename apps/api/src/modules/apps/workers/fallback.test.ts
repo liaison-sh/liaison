@@ -23,6 +23,21 @@ describe("classifyLoaderAnswer", () => {
       expect(classifyLoaderAnswer(status, kind)).toEqual({ class: cls as "loader", kind: k })
     })
   }
+  it("a handler answer whose module lacks the export is the module's fault (app, load)", () => {
+    for (const code of ["export_missing", "invalid_export"]) {
+      expect(classifyLoaderAnswer(200, "handler", code)).toEqual({ class: "app", kind: "load" })
+    }
+    // Any other code of a handler answer stays the run's own outcome.
+    expect(classifyLoaderAnswer(200, "handler", "bad_input")).toEqual({
+      class: "final",
+      kind: "handler",
+    })
+    // The code only reads on a handler answer.
+    expect(classifyLoaderAnswer(401, "auth", "export_missing")).toEqual({
+      class: "loader",
+      kind: "auth",
+    })
+  })
 })
 
 describe("LoaderBreaker", () => {

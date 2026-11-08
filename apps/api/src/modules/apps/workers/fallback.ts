@@ -18,9 +18,15 @@
 //    version of that app runs on QuickJS (`fallback: "app"`) for 10 minutes.
 //    Another org, or another version, stays on Workers.
 //
-// The decision is taken once per run, before the dispatching site builds the
-// run's bridge (a Workers bridge is secret-free, a QuickJS one is not), by
-// `planWorkersRun` (sandbox/run-app.ts), and recorded in the run line.
+//  - The run itself, once: a run whose Workers attempts (the retry included,
+//    or skipped for budget) ended on a loader-level fault before any bridge
+//    call runs once more on QuickJS (`fallback: "loader_fault"`). Never after
+//    a bridge call: what the app did may have happened.
+//
+// runApp (sandbox/run-app.ts) decides where a run goes (`planWorkersRun`),
+// then builds the bridge for that executor (a Workers bridge is secret-free,
+// a QuickJS one is not), then runs; a loader-fault fallback builds the
+// QuickJS bridge before it runs again. The outcome is recorded in the run line.
 
 import { rootLogger } from "~/lib/logger"
 

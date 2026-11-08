@@ -514,4 +514,45 @@ describe("custom apps on Workers: fallback and console logs", () => {
     WorkersFallbackTestAccess.reset()
     workersOff()
   }, 240_000)
+
+  it("a module that throws while loading is the module's fault: kind load, then QuickJS", async () => {
+    workersOff()
+    // Throws on the loader's host only (the fake loader runs the module in this
+    // process); QuickJS has no such global, so the app's own build runs there.
+    const throwsOnLoad = await publish(
+      a,
+      "wk-loadthrow",
+      [
+        "",
+        "const loaderHost = globalThis as unknown as { Bun?: unknown }",
+        'if (loaderHost.Bun !== undefined) throw new Error("module init failed on this host")',
+        "",
+      ].join("\n"),
+      addLine("loadthrow"),
+    )
+    WorkersFallbackTestAccess.reset()
+    workers()
+
+    const first = await add(a, throwsOnLoad.appName, "lt-first").then(
+      () => null,
+      (e: Error) => e,
+    )
+    expect(first).toBeInstanceOf(Error)
+    expect(lastRun(throwsOnLoad.appName)).toMatchObject({
+      executor: "workers",
+      ok: false,
+      faultClass: "app",
+      errorKind: "load",
+    })
+
+    const second = await add(a, throwsOnLoad.appName, "lt-second")
+    expect(JSON.stringify(second)).not.toContain("error")
+    expect(lastRun(throwsOnLoad.appName)).toMatchObject({
+      executor: "quickjs",
+      ok: true,
+      fallback: "app",
+    })
+    WorkersFallbackTestAccess.reset()
+    workersOff()
+  }, 240_000)
 })

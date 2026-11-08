@@ -101,3 +101,7 @@ Workers console capture: 200 lines / 64 KiB per run, 4 KiB per line, shared line
 Process log 600 lines per minute, 512 bytes; custom app logs marked source console; shared lines not filed -> apps/api/src/modules/apps/workers/worker-logs.ts:38-39 ; apps/api/src/modules/apps/workers/worker-logs.ts:165 ; apps/api/src/modules/apps/workers/worker-logs.ts:185
 QuickJS console shim over log_* marked source console -> apps/api/src/modules/apps/sandbox/ctx-shim.ts:124 ; apps/api/src/modules/apps/sandbox/bridge/identity.ts:45
 Usage per org, app, day, executor; CPU pulled hourly from the loader; daily caps per entry point; apps.usage to Control -> apps/api/src/modules/apps/usage/app-usage.ts:1 ; apps/api/src/modules/apps/usage/loader-usage.ts:1 ; apps/api/src/modules/apps/usage/app-day-cap.ts:8 ; apps/api/src/modules/cloud/apps-usage-report.ts:1
+Loader fault before any ctx.* call after the retry: the run runs once on the local sandbox, fallback loader_fault; never after a bridge call -> apps/api/src/modules/apps/sandbox/run-app.ts:260 ; apps/api/src/modules/apps/sandbox/run-app.ts:334
+A Workers run gets a secret-free copy of the bridge, the local sandbox the original -> apps/api/src/modules/apps/sandbox/run-app.ts:343
+load also covers a module without the export the run named (worker-core codes) -> apps/api/src/modules/apps/workers/worker-core.ts:326 ; apps/api/src/modules/apps/workers/faults.ts:56
+A tool refused at an app day cap answers 429 with its code and {limit, used} in error.details -> apps/api/src/modules/apps/execute-tool.ts:5619

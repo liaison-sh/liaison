@@ -34,7 +34,6 @@ import { getInstallTrust } from "~/modules/apps/install-trust"
 import { APP_STATE_UNAVAILABLE_CODE, pathOrgAppState } from "~/modules/apps/org-apps"
 import { isBundleLoadError, isSandboxFault, loadBundle } from "~/modules/apps/sandbox/bundle-loader"
 import { createSandboxRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
-import { planWorkersRun } from "~/modules/apps/sandbox/run-app"
 import { appRunHoldMs } from "~/modules/apps/usage/app-day-cap"
 import { writeAuditLog } from "~/modules/audit/service"
 import { orgSuspendedOrClosed } from "~/modules/cloud/billing-status"
@@ -314,15 +313,16 @@ webhookRoutes.post("/:orgId/:appName/:endpointName", async (c) => {
         query: Object.fromEntries(new URL(c.req.url).searchParams.entries()),
       }
       const source = await loadBundle(handlerRef.bundlePath)
-      // A verifier on Workers gets a bridge that hands back no secret; the
-      // executor is decided once, here, and the run follows that decision.
-      const workersPlan = await planWorkersRun({
-        trusted: handlerRef.trusted === true,
+      // A verifier on Workers gets a bridge that hands back no secret (its
+      // declared keys refused), built only once runApp has decided on Workers.
+      const verifyBridgeInput = {
+        appOrgId,
         appName,
-        orgId: appOrgId,
-        bundlePath: handlerRef.bundlePath,
-      })
-      const workersRun = workersPlan.target !== null
+        appConfig: appRecord.config,
+        manifestConnections: registration._manifest?.connections as
+          | Record<string, ConnectionSecretKeySource>
+          | undefined,
+      }
       verificationResult = await executeManifestWebhook({
         appName,
         orgId: appOrgId,
@@ -332,16 +332,8 @@ webhookRoutes.post("/:orgId/:appName/:endpointName", async (c) => {
         bundleSource: source,
         params: requestData,
         entryKind: "webhook-verify",
-        workersPlan,
-        bridge: createWebhookVerifyBridge({
-          appOrgId,
-          appName,
-          appConfig: appRecord.config,
-          manifestConnections: registration._manifest?.connections as
-            | Record<string, ConnectionSecretKeySource>
-            | undefined,
-          ...(workersRun ? { workersRun: true } : {}),
-        }),
+        bridge: createWebhookVerifyBridge(verifyBridgeInput),
+        workersBridge: () => createWebhookVerifyBridge({ ...verifyBridgeInput, workersRun: true }),
       })
     } else {
       verificationResult = await (registration.verify as (request: Request) => Promise<unknown>)(

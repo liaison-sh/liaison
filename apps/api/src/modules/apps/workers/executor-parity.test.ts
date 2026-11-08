@@ -633,13 +633,18 @@ describe("Workers-only properties", () => {
     expect(lastRun("tool:list")?.executor).toBe("quickjs")
   })
 
-  it("a bad loader signature surfaces as an error and revokes the run's token", async () => {
+  it("a bad loader signature: retried once, then the run runs on QuickJS; the tokens are revoked", async () => {
     workersOn({ LIAISON_APP_LOADER_KEY: "not-the-cell-key-at-all-000000" })
     const live = runRegistry.size()
     const from = loader.runs.length
     const r = await callTool("list")
-    expect(r.status).toBeGreaterThanOrEqual(500)
-    expect(lastRun("tool:list")).toMatchObject({ executor: "workers", ok: false })
+    // A loader-level fault before any bridge call: the caller gets the QuickJS answer.
+    expect(r.status).toBe(200)
+    expect(lastRun("tool:list")).toMatchObject({
+      executor: "quickjs",
+      ok: true,
+      fallback: "loader_fault",
+    })
     expect(runRegistry.size()).toBe(live)
     const sent = JSON.parse(loader.runs[from]?.body ?? "{}") as { runId: string; runToken: string }
     const res = await fetch(`${cellOrigin}/api/app-bridge/${sent.runId}`, {
@@ -652,7 +657,7 @@ describe("Workers-only properties", () => {
       body: JSON.stringify({ callId: 1, method: "db_findMany", args: ["items", "{}"] }),
     })
     expect(res.status).toBe(410)
-    // A loader-level fault before any bridge call: retried once, then the run's error.
+    // Both Workers attempts are on the record of the run that fell back.
     expect(lastRun("tool:list")).toMatchObject({
       attempts: 2,
       faultClass: "loader",

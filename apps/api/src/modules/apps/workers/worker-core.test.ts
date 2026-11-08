@@ -84,7 +84,11 @@ describe("runHandler", () => {
     const missing = await runHandler(mod, req("nope"), async () => null)
     expect(missing).toMatchObject({
       ok: false,
-      error: { message: 'Export "nope" not found (got undefined)', kind: "handler" },
+      error: {
+        message: 'Export "nope" not found (got undefined)',
+        code: "export_missing",
+        kind: "handler",
+      },
     })
     const notFn = await runHandler(mod, req("notFn"), async () => null)
     expect(notFn).toMatchObject({
@@ -92,7 +96,10 @@ describe("runHandler", () => {
       error: { message: 'Export "notFn" not found (got number)' },
     })
     const bad = await runHandler(mod, req("a-b"), async () => null)
-    expect(bad).toMatchObject({ ok: false, error: { message: 'Invalid export name: "a-b"' } })
+    expect(bad).toMatchObject({
+      ok: false,
+      error: { message: 'Invalid export name: "a-b"', code: "invalid_export" },
+    })
     // A prototype member is not an export.
     const proto = await runHandler({}, req("toString"), async () => null)
     expect(proto).toMatchObject({

@@ -3,6 +3,7 @@ import { afterAll, afterEach, describe, expect, it, mock, spyOn } from "bun:test
 import { eq } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
+import { env } from "~/lib/env"
 import * as bundleLoader from "~/modules/apps/sandbox/bundle-loader"
 import * as executor from "~/modules/apps/sandbox/executor"
 import * as sandboxPool from "~/modules/apps/sandbox/pool"
@@ -13,6 +14,12 @@ import {
   selectExecutor,
 } from "~/modules/apps/sandbox/run-app"
 import * as workerPool from "~/modules/apps/sandbox/worker-pool"
+import * as workersExecutor from "~/modules/apps/workers/executor"
+import { WorkersRunError, type WorkersRunInfo } from "~/modules/apps/workers/executor"
+import { WorkersFallbackTestAccess } from "~/modules/apps/workers/fallback"
+import { NETWORK_FAULT } from "~/modules/apps/workers/faults"
+import { onRunSettled, type RunSettledInfo } from "~/modules/apps/workers/run-settled"
+import { isWorkersRunBridge } from "./bridge/secret-free"
 
 const fakeSandboxPool = { tag: "in-process" }
 
@@ -136,6 +143,128 @@ describe("runApp", () => {
     spyBoundaries()
     const { bundleSource: _drop, ...noSource } = base
     await expect(runApp({ ...noSource, trusted: false })).rejects.toThrow(/bundlePath/)
+  })
+})
+
+describe("runApp: a loader fault before any bridge call", () => {
+  const KEYS = [
+    "LIAISON_WORKERS_APPS",
+    "LIAISON_APP_LOADER_URL",
+    "LIAISON_APP_LOADER_CELL_ID",
+    "LIAISON_APP_LOADER_KEY",
+    "LIAISON_WORKERS_BUNDLES",
+    "LIAISON_WORKERS_CUSTOM_APPS",
+  ] as const
+  type Mutable = Record<string, string | undefined>
+  const saved = Object.fromEntries(KEYS.map((k) => [k, (env as unknown as Mutable)[k]]))
+  const savedRole = env.LIAISON_ROLE
+  const settled: RunSettledInfo[] = []
+  const unsubscribe = onRunSettled((i) => {
+    if (i.app === "lf") settled.push(i)
+  })
+
+  function workersOn() {
+    const e = env as unknown as Mutable
+    e.LIAISON_WORKERS_APPS = "lf"
+    e.LIAISON_APP_LOADER_URL = "http://loader.invalid"
+    e.LIAISON_APP_LOADER_CELL_ID = "cell-lf"
+    e.LIAISON_APP_LOADER_KEY = "lf-cell-key-0123456789abcdef"
+    e.LIAISON_WORKERS_BUNDLES = JSON.stringify({ "lf@1.0.0": "b".repeat(64) })
+    e.LIAISON_WORKERS_CUSTOM_APPS = undefined
+    ;(env as unknown as Mutable).LIAISON_ROLE = "all"
+  }
+
+  /** The Workers run fails as `info` says; what it was handed is kept. */
+  function failingWorkers(info: WorkersRunInfo) {
+    const seen: Array<Record<string, unknown>> = []
+    spyOn(workersExecutor, "executeOnWorkers").mockImplementation(async (opts, onInfo) => {
+      seen.push(opts.bridge)
+      onInfo?.(info)
+      throw new WorkersRunError("App loader unreachable: connection refused", NETWORK_FAULT)
+    })
+    return seen
+  }
+
+  // config_get decrypts `token` (a QuickJS bridge reads it; a Workers one must not).
+  const quickjsBridge = () => {
+    const b: Record<string, (...a: any[]) => any> = {
+      config_get: async (key: string) => `value-of-${key}`,
+      emit: async () => 1,
+    }
+    return b
+  }
+  const run = (bridge: Record<string, (...a: any[]) => any>) =>
+    runApp({
+      ...base,
+      appName: "lf",
+      trusted: false,
+      installed: { version: "1.0.0", sha256: "c".repeat(64) },
+      bridge,
+      timeoutMs: 4_000,
+    })
+
+  afterEach(() => {
+    mock.restore()
+    settled.length = 0
+    WorkersFallbackTestAccess.reset()
+    const e = env as unknown as Mutable
+    for (const k of KEYS) e[k] = saved[k]
+    ;(env as unknown as Mutable).LIAISON_ROLE = savedRole
+  })
+  afterAll(() => unsubscribe())
+
+  it("runs once more on QuickJS, on the untouched bridge, recorded loader_fault", async () => {
+    workersOn()
+    const { execute } = spyBoundaries()
+    const seen = failingWorkers({
+      runId: "r-1",
+      attempts: 2,
+      bridgeCalls: 0,
+      fault: NETWORK_FAULT,
+    })
+    const bridge = quickjsBridge()
+    const out = await run(bridge)
+    expect(out).toBe("from-pool")
+    // Workers got a secret-free copy; QuickJS the original, unchanged.
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).not.toBe(bridge)
+    expect(isWorkersRunBridge(seen[0])).toBe(true)
+    const workersConfigGet = seen[0]?.config_get as (k: string) => Promise<unknown>
+    await expect(workersConfigGet("token")).rejects.toThrow(/not available/)
+    const pooled = execute.mock.calls[0]?.[0] as { bridge: unknown; timeoutMs: number }
+    expect(pooled.bridge).toBe(bridge)
+    expect(isWorkersRunBridge(bridge)).toBe(false)
+    expect(await bridge.config_get?.("token")).toBe("value-of-token")
+    expect(pooled.timeoutMs).toBeGreaterThan(0)
+    expect(pooled.timeoutMs).toBeLessThanOrEqual(4_000)
+    expect(settled.at(-1)).toMatchObject({
+      executor: "quickjs",
+      ok: true,
+      fallback: "loader_fault",
+      attempts: 2,
+      faultClass: "loader",
+      errorKind: "network",
+    })
+  })
+
+  it("never falls back once a bridge call was made", async () => {
+    workersOn()
+    const { execute } = spyBoundaries()
+    failingWorkers({ runId: "r-2", attempts: 1, bridgeCalls: 1, fault: NETWORK_FAULT })
+    await expect(run(quickjsBridge())).rejects.toThrow("App loader unreachable")
+    expect(execute).not.toHaveBeenCalled()
+    expect(settled.at(-1)).toMatchObject({ executor: "workers", ok: false, faultClass: "loader" })
+    expect(settled.at(-1)?.fallback).toBeUndefined()
+  })
+
+  it("an app-level or final fault is the run's error (no fallback for that run)", async () => {
+    workersOn()
+    const { execute } = spyBoundaries()
+    failingWorkers({ attempts: 1, bridgeCalls: 0, fault: { class: "final", kind: "handler" } })
+    await expect(run(quickjsBridge())).rejects.toThrow()
+    failingWorkers({ attempts: 1, bridgeCalls: 0, fault: { class: "app", kind: "load" } })
+    await expect(run(quickjsBridge())).rejects.toThrow()
+    expect(execute).not.toHaveBeenCalled()
   })
 })
 

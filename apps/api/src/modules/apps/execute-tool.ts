@@ -252,6 +252,7 @@ import { ingestionCallerApp } from "~/modules/apps/cross-app-ingestions"
 import { ensureAppsForOrg, getDefaultApps } from "~/modules/apps/init"
 import { APP_STATE_UNAVAILABLE_CODE, isAppActiveForOrgAsync } from "~/modules/apps/org-apps"
 import { sealMailApprovalPayload } from "~/modules/mailbox-crypto/approval-payload"
+import { CapLimitError } from "~/modules/org/caps"
 import {
   bypassesDimensionConstraint,
   dimensionGrantCovers,
@@ -444,6 +445,8 @@ type ExecuteToolError = {
   retryable: boolean
   status?: number
   body?: unknown
+  /** A typed refusal's own fields (a cap's `{limit, used}`), passed on as `error.details`. */
+  details?: Record<string, unknown>
 }
 
 // BL-180: bounded side-effect-safe auto-retry for tools that opt in via the
@@ -5610,6 +5613,24 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   } catch (err) {
     if (idemKey) await invalidateIdempotency(opts.orgId, opts.toolName, idemKey)
     const message = err instanceof Error ? err.message : "Tool handler error"
+    // The org reached a cap (an app day cap refuses the run before its
+    // handler, modules/apps/usage/app-day-cap.ts): a host refusal, typed with
+    // its status, code and {limit, used}, for an untrusted app too.
+    if (err instanceof CapLimitError) {
+      log.warn(
+        { toolName: opts.toolName, orgId: opts.orgId, code: err.code, ...err.details },
+        "Tool refused at an organization cap",
+      )
+      return {
+        error: {
+          code: err.code,
+          message: err.message,
+          retryable: false,
+          status: err.status,
+          details: { ...err.details },
+        },
+      }
+    }
     // A connection with no stored credentials (a send from a mailbox added
     // without its password): the person reconnects it. Typed, whichever handler
     // (host or sandboxed, where only the message crossed back) hit it.
@@ -6141,12 +6162,12 @@ export async function executeTool<TData = unknown>(
       status: number
       code: string
       body?: unknown
-      details?: { retryable: boolean }
+      details?: Record<string, unknown> & { retryable: boolean }
     }
     err.status = status
     err.code = envelope.error.code
     if (envelope.error.body !== undefined) err.body = envelope.error.body
-    err.details = { retryable: envelope.error.retryable }
+    err.details = { ...envelope.error.details, retryable: envelope.error.retryable }
     // A tenant's sandbox share is full (worker-pool.ts): the client retries after one wait.
     if (envelope.error.code === SANDBOX_TENANT_BUSY_CODE) {
       ;(err as Error & { retryAfterSeconds?: number }).retryAfterSeconds =

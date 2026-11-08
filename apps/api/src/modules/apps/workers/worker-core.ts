@@ -24,7 +24,9 @@
 // error message (sandbox-worker.ts): `status`/`code` for a typed 4xx/5xx
 // throw, `name` of a non-ToolError throw, `safe`/`code`/`retryable` for an
 // app-sdk ToolError. A missing or invalid export is a handler error with the
-// subprocess's own message.
+// subprocess's own message and a `code` (WORKER_MODULE_ERROR_CODES): the
+// module did not provide what the run named, which the cell classes as the
+// module's fault (faults.ts, kind "load"), not the handler's.
 //
 // Bridge contract (`runWithBridge`, used by worker-entry.ts and the fake
 // loader): `bridge.call(method, args)` resolves with the cell's 200 reply
@@ -316,6 +318,13 @@ export interface WorkerRunTimings {
   sleepExact: boolean
 }
 
+/**
+ * The codes of a run whose module could not provide the export it named
+ * (never thrown by an app's handler): `invalid_export` (not an identifier),
+ * `export_missing` (absent, or not a function).
+ */
+export const WORKER_MODULE_ERROR_CODES = ["invalid_export", "export_missing"] as const
+
 export interface WorkerRunError {
   message: string
   status?: number
@@ -468,7 +477,11 @@ async function runHandlerInner(
   if (typeof exportName !== "string" || !SAFE_IDENTIFIER_RE.test(exportName)) {
     return {
       ok: false,
-      error: { message: `Invalid export name: "${String(exportName)}"`, kind: "handler" },
+      error: {
+        message: `Invalid export name: "${String(exportName)}"`,
+        code: "invalid_export",
+        kind: "handler",
+      },
       timings: timings(),
     }
   }
@@ -476,7 +489,11 @@ async function runHandlerInner(
   if (typeof fn !== "function") {
     return {
       ok: false,
-      error: { message: `Export "${exportName}" not found (got ${typeof fn})`, kind: "handler" },
+      error: {
+        message: `Export "${exportName}" not found (got ${typeof fn})`,
+        code: "export_missing",
+        kind: "handler",
+      },
       timings: timings(),
     }
   }

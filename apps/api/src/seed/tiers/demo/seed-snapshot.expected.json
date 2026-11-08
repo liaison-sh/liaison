@@ -21,7 +21,7 @@
   },
   "app_boxtal.pack": {
     "rows": 4,
-    "digest": "4e3b94c6a94addf6"
+    "digest": "bc32f6a61956d55f"
   },
   "app_boxtal.pack_component": {
     "rows": 6,
@@ -33,7 +33,7 @@
   },
   "app_boxtal.product_profile": {
     "rows": 11,
-    "digest": "ec59a20460e4899d"
+    "digest": "f28457c1e7f5050b"
   },
   "app_boxtal.product_profile_link": {
     "rows": 11,
@@ -45,7 +45,7 @@
   },
   "app_boxtal.shipping_profile": {
     "rows": 11,
-    "digest": "532987c4c8d96323"
+    "digest": "8bac5bf5d3cbf6f6"
   },
   "app_calendar.accounts": {
     "rows": 1,
@@ -141,11 +141,11 @@
   },
   "app_projects.project_statuses": {
     "rows": 20,
-    "digest": "cf3507c626ecae49"
+    "digest": "ffb278b25e200653"
   },
   "app_projects.projects": {
     "rows": 4,
-    "digest": "e250b121c2a524a0"
+    "digest": "eadc8f811fc889af"
   },
   "app_projects.task_dependencies": {
     "rows": 10,
@@ -249,7 +249,7 @@
   },
   "kernel.contacts": {
     "rows": 40,
-    "digest": "1ecc84a1efa14368"
+    "digest": "fd76c18fc3a4b070"
   },
   "kernel.credit_balances": {
     "rows": 1,
@@ -264,16 +264,16 @@
     "digest": "80cdbe01c0fdd51d"
   },
   "kernel.pending_events": {
-    "rows": 281,
-    "digest": "4092f485b4dc17d7"
+    "rows": 284,
+    "digest": "4f4cca77d23fd51d"
   },
   "kernel.resource_grants": {
     "rows": 7,
     "digest": "b1ae9ad68f7cda0f"
   },
   "kernel.roles": {
-    "rows": 32,
-    "digest": "1f27f989ee8c3cac"
+    "rows": 34,
+    "digest": "eaa461608abeffd9"
   },
   "kernel.routines": {
     "rows": 7,

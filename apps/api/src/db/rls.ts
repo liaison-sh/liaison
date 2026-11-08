@@ -4,6 +4,7 @@ import { sql as drizzleSql } from "drizzle-orm"
 import type { RlsClient } from "~/db"
 import { runUntilAborted } from "~/db/abortable-tx"
 import { withAcquireTimeout } from "~/db/acquire-timeout"
+import { openCommitScope, runCommitHooksAfter, withinCommitScope } from "~/db/commit-hooks"
 import {
   poolSlot,
   recordAcquireTimeout,
@@ -276,16 +277,18 @@ export async function withRlsContext<T>(
   // The pool's gauge (pool-diag.ts); a caller's own `db` is not counted.
   const slot = opts?.db ? null : poolSlot(pool)
   const queued: QueuedEventsMark = { queued: false }
+  const commitScope = openCommitScope()
   const txPromise = poolDb.transaction(async (tx) => {
     signalAcquired()
     slot?.acquired()
     try {
-      return await runRlsTransaction(tx)
+      return await withinCommitScope(commitScope, () => runRlsTransaction(tx))
     } finally {
       slot?.released()
     }
   })
   if (slot) void txPromise.then(slot.settled, slot.settled)
+  runCommitHooksAfter(txPromise, commitScope)
   wakeOutboxAfterCommit(txPromise, queued)
   async function runRlsTransaction(tx: Parameters<Parameters<typeof poolDb.transaction>[0]>[0]) {
     // U4.16 perf: collapse the five per-GUC `set_config` round-trips PLUS the

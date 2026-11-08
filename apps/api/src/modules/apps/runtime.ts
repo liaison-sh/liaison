@@ -121,6 +121,7 @@ import {
   namespaceSchemaFor,
 } from "~/modules/apps/settings-schema-from-manifest"
 import { reviewTriggerBody } from "~/modules/apps/trigger-review"
+import { invalidateAuthCache } from "~/modules/auth/auth-state"
 import { orgSuspendedOrClosed } from "~/modules/cloud/billing-status"
 import { BUILTIN_EXPORT_HANDLERS } from "~/modules/export/builtin-handlers"
 import { BUILTIN_IMPORT_KINDS } from "~/modules/imports/builtin-kinds"
@@ -1146,8 +1147,8 @@ export function rolesSeededByRegistration(appName: string, declared: unknown): s
  *    a separate concern).
  *  - Adopts an existing same-named role (flips it system-managed) so a hand-built
  *    "Full Member" is picked up and completed in place.
- *  - Bumps permission_version for assigned members when new scopes land, so live
- *    sessions pick up the new app within the auth-cache TTL.
+ *  - Bumps permission_version for assigned members when new scopes land and
+ *    drops their cached auth state, so live sessions pick up the new app at once.
  */
 export async function extendFullMemberRole(
   tx: any,
@@ -1179,13 +1180,19 @@ export async function extendFullMemberRole(
 
   // Only touch live sessions when the scope set actually changed.
   if (added > 0) {
-    await tx.execute(drizzleSql`
-      UPDATE ${usersTable}
-      SET permission_version = permission_version + 1
-      WHERE id IN (
-        SELECT user_id FROM ${userRolesTable} WHERE role_id = ${roleId} AND org_id = ${orgId}
-      )
-    `)
+    const bumped = extractRows<{ id: string }>(
+      await tx.execute(drizzleSql`
+        UPDATE ${usersTable}
+        SET permission_version = permission_version + 1
+        WHERE id IN (
+          SELECT user_id FROM ${userRolesTable} WHERE role_id = ${roleId} AND org_id = ${orgId}
+        )
+        RETURNING id
+      `),
+    )
+    // Drop each member's cached auth state (again once this transaction
+    // commits), so a token minted before the change stops matching at once.
+    for (const { id } of bumped) invalidateAuthCache(id)
     // Delivery carrier, same reasoning as seedManifestRoles: queue the
     // permission event in this same transaction so `resolveGrantInvalidations`
     // can deliver it on commit rather than waiting for the org's next
@@ -1235,13 +1242,17 @@ export async function grantMemberPresetScopes(
   const wanted = [...new Set(scopes.filter((s): s is string => typeof s === "string"))].sort()
   const addedScopes = await insertMissingScopeGrants(tx, roleId, wanted)
   if (addedScopes.length === 0) return
-  await tx.execute(drizzleSql`
-    UPDATE ${usersTable}
-    SET permission_version = permission_version + 1
-    WHERE id IN (
-      SELECT user_id FROM ${userRolesTable} WHERE role_id = ${roleId} AND org_id = ${orgId}
-    )
-  `)
+  const bumped = extractRows<{ id: string }>(
+    await tx.execute(drizzleSql`
+      UPDATE ${usersTable}
+      SET permission_version = permission_version + 1
+      WHERE id IN (
+        SELECT user_id FROM ${userRolesTable} WHERE role_id = ${roleId} AND org_id = ${orgId}
+      )
+      RETURNING id
+    `),
+  )
+  for (const { id } of bumped) invalidateAuthCache(id)
   // Same delivery carrier as extendFullMemberRole.
   await tx.queueEvent({
     app: "kernel",

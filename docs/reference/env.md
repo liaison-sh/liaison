@@ -298,7 +298,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:504`, `apps/api/src/modules/apps/app-frame.ts:35` |
 | `LIAISON_SANDBOX_FETCH_TIMEOUT_MS` | `apps/api/src/modules/apps/sandbox/bridge/egress.ts:63` |
-| `LIAISON_TRUSTED_SUMMARIZER_APPS` | `apps/api/src/modules/apps/runtime.ts:1307` |
+| `LIAISON_TRUSTED_SUMMARIZER_APPS` | `apps/api/src/modules/apps/runtime.ts:1318` |
 | `LIAISON_WEB_TOOLS_ALLOW_PRIVATE` | `apps/api/src/modules/agent/tools/web-tools.ts:160`, `apps/api/src/modules/agent/tools/web-tools.ts:253` |
 | `MAIL_INGEST_STALE_SEC` | `apps/api/src/modules/monitor/index.ts:306` |
 | `MAILBOX_DECRYPT_WAIT_BUDGET_MS` | `apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:101` |
@@ -312,7 +312,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `MEDIA_TRANSFER_HOST_WHITELIST` | `apps/api/src/modules/agent/media/media-analysis-constants.ts:121` |
 | `MIGRATION_DATABASE_URL` | `apps/api/src/cli/export-full.ts:74`, `apps/api/src/cli/org-transfer.ts:243`, `apps/api/src/db/migrate.ts:405` and 3 more |
 | `MIGRATION_DATABASE_URL_TEST` | `apps/api/src/cli/export-full.ts:74` |
-| `NESTED_PRIVILEGED_STRICT` | `apps/api/src/db/privileged.ts:203` |
+| `NESTED_PRIVILEGED_STRICT` | `apps/api/src/db/privileged.ts:208` |
 | `OPENROUTER_API_KEY` | `apps/api/src/modules/agent/credits/credit-meter.ts:375`, `apps/api/src/modules/agent/providers/openrouter.ts:168` |
 | `OPENROUTER_BASE_URL` | `apps/api/src/modules/agent/providers/openrouter.ts:30` |
 | `OPENROUTER_HOST_MAX_TTFT_MS` | `apps/api/src/modules/agent/providers/openrouter-host-speed.ts:66` |

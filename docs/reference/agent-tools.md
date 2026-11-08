@@ -643,6 +643,12 @@ Projects and tasks with owners, statuses, due dates and discussions.
 | `comments` | Read a task's discussion — the comments on its own thread, newest last. |  | `projects:tasks:read` |
 | `create` | Create a TASK inside an existing project (NOT a project — use `createProject` for that). |  | `projects:tasks:write` |
 | `createProject` | Create a PROJECT (the container/board) TOGETHER WITH ITS TASKS: pass the tasks you plan (up to 20, each with a title, and optionally a description and an assignee) in `tasks`, in this ONE call. |  | `projects:projects:write` |
+| `deal_send_state` | Whether a mail about a deal may still be sent: stops a closed or deleted deal. |  | `projects:projects:read` |
+| `deals_followup_candidates` | Open deals quiet for at least quietDays, each with skip: null means a follow-up may be drafted, otherwise the reason not to. |  | `projects:projects:read` |
+| `deals_pipeline_create` | Create a sales pipeline: a board whose tasks are deals, with stages Lead, Qualified, Demo, Proposal, then Won and Lost. |  | `projects:projects:write` |
+| `deals_rollup` | Deal counts and amounts per stage, owner or month, one sum per currency; weighted multiplies by probability. |  | `projects:deals:read` |
+| `deals_search` | Find deals by pipeline, company, contact, outcome or close date; taskId gives one deal. |  | `projects:projects:read` |
+| `deals_update` | Change a deal: company, contact, amount, probability, next step, or its outcome (won, lost, open moves it to that stage). |  | `projects:deals:write` |
 | `delete` | Delete a task and all of its subtasks. | yes | `projects:tasks:write` |
 | `get` | Get a project or task by id (id comes from a search result). |  | `projects:projects:read` |
 | `instantiate_template` | Create a new project from a stored project template, materializing the template's full task tree. |  | `projects:projects:write` |

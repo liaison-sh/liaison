@@ -39,6 +39,10 @@ interface MailCtx {
   mail_providersSet(paramsJson: string): Promise<string>
   /** Apply label operations to a conversation's stored labels as one delta. */
   mail_applyLabelDelta(paramsJson: string): Promise<string>
+  /** Opt-outs (modules/mail/suppressions.ts): check, record, lift. */
+  mail_suppressionCheck(paramsJson: string): Promise<string>
+  mail_suppressionAdd(paramsJson: string): Promise<string>
+  mail_suppressionRemove(paramsJson: string): Promise<string>
   executeTool(toolName: string, paramsJson: string): Promise<string>
   mail_conversion_readConversation(conversationId: string): Promise<string>
   mail_conversion_markConverted(
@@ -2227,6 +2231,17 @@ async function providersGet(_params: unknown, ctx: MailCtx): Promise<unknown> {
 }
 async function providersSet(params: unknown, ctx: MailCtx): Promise<unknown> {
   return JSON.parse(await ctx.mail_providersSet(JSON.stringify(params ?? {})))
+}
+
+// Opt-outs (tools suppression_check / suppression_add / suppression_remove), host-side.
+async function suppressionCheck(params: unknown, ctx: MailCtx): Promise<unknown> {
+  return JSON.parse(await ctx.mail_suppressionCheck(JSON.stringify(params ?? {})))
+}
+async function suppressionAdd(params: unknown, ctx: MailCtx): Promise<unknown> {
+  return JSON.parse(await ctx.mail_suppressionAdd(JSON.stringify(params ?? {})))
+}
+async function suppressionRemove(params: unknown, ctx: MailCtx): Promise<unknown> {
+  return JSON.parse(await ctx.mail_suppressionRemove(JSON.stringify(params ?? {})))
 }
 
 async function createFromTicket(params: unknown, ctx: MailCtx): Promise<unknown> {

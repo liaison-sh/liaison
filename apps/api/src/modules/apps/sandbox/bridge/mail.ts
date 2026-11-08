@@ -83,6 +83,7 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
     coerceNumericRowFields,
     inheritedActor,
     orgId,
+    refuseWriteOnReadOnlyRun,
     requireApp,
     schemaName,
     stampDeclaredEmit,
@@ -632,6 +633,63 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
         approved: approvalContext !== undefined,
         guard: { ...verdict, mode: guard.mode, classification: guard.classification },
       })
+    },
+
+    // Opt-outs (modules/mail/suppressions.ts). The tools' required scopes are checked again here,
+    // and row security on kernel.suppressions decides each write.
+    mail_suppressionCheck: async (paramsJson: string): Promise<string> => {
+      requireApp("mail", "mail_suppressionCheck")
+      const { hasScope } = await import("~/modules/permissions/permissions")
+      if (!hasScope("mail:conversations:read", callerScopes ?? [])) {
+        throw new Error("forbidden: missing scope mail:conversations:read")
+      }
+      const { emails } = JSON.parse(paramsJson) as { emails?: unknown }
+      const list = Array.isArray(emails)
+        ? emails.filter((e): e is string => typeof e === "string" && e.trim() !== "")
+        : []
+      return JSON.stringify(
+        await (await import("~/modules/mail/suppressions")).checkSuppressions({
+          orgId,
+          emails: list,
+          given: Array.isArray(emails) ? emails.length : 0,
+          db: txDb,
+          canReadDetails: hasScope("mail:suppressions:read", callerScopes ?? []),
+        }),
+      )
+    },
+    mail_suppressionAdd: async (paramsJson: string): Promise<string> => {
+      requireApp("mail", "mail_suppressionAdd")
+      refuseWriteOnReadOnlyRun("kernel.suppressions", "mail_suppressionAdd")
+      const { hasScope } = await import("~/modules/permissions/permissions")
+      if (!hasScope("mail:conversations:write", callerScopes ?? [])) {
+        throw new Error("forbidden: missing scope mail:conversations:write")
+      }
+      const params = JSON.parse(paramsJson) as Record<string, unknown>
+      return JSON.stringify(
+        await (await import("~/modules/mail/suppressions")).addSuppressionTool({
+          orgId,
+          db: txDb,
+          userId: actorType === "user" || actorType === "agent" ? userId : null,
+          actorType: actorType === "agent" ? "agent" : actorType === "user" ? "user" : "system",
+          params,
+        }),
+      )
+    },
+    mail_suppressionRemove: async (paramsJson: string): Promise<string> => {
+      requireApp("mail", "mail_suppressionRemove")
+      refuseWriteOnReadOnlyRun("kernel.suppressions", "mail_suppressionRemove")
+      const { hasScope } = await import("~/modules/permissions/permissions")
+      if (!hasScope("mail:suppressions:write", callerScopes ?? [])) {
+        throw new Error("forbidden: missing scope mail:suppressions:write")
+      }
+      const params = JSON.parse(paramsJson) as Record<string, unknown>
+      return JSON.stringify(
+        await (await import("~/modules/mail/suppressions")).removeSuppressionTool({
+          orgId,
+          db: txDb,
+          params,
+        }),
+      )
     },
 
     /** Mirror a Gmail write-back onto the stored labels, as a delta (modules/mail/gmail-write-back.ts). */

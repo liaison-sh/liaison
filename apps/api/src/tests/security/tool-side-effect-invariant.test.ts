@@ -47,6 +47,9 @@ const SELF_GUARDING = new Set([
   // Looks a contact up and returns it unchanged on a read-only run: no link, no enrichment,
   // no create, and `clear` refuses (bridge/db.ts resolveContact, contacts/service.ts lookupOnly).
   "resolveContact",
+  // Opt-outs: both refuse on a read-only run, naming kernel.suppressions (bridge/mail.ts).
+  "mail_suppressionAdd",
+  "mail_suppressionRemove",
 ])
 
 /**
@@ -61,6 +64,7 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   bulk_iterateJsonl_next: "read",
   calendar_findCalendarsForPollFallback: "read",
   mail_providersGet: "read",
+  mail_suppressionCheck: "read",
   calendar_findCalendarsForWatchRenewal: "read",
   calendar_findStalePendingPushes: "read",
   calendar_getAccount: "read",
@@ -522,6 +526,8 @@ const REVIEWED_UNGATED_OUTWARD: Record<string, string> = {
     "a read that never parks (outboundWebRead, scope-taint.ts rule 9): its URL is bounded inline by the web-read guardrails (length, query string, userinfo, opaque or personal data on a turn that read org data, per-turn and per-thread rate; web-read-guardrails.ts), plus the org allow/blocklist and the SSRF guard",
   "mail:disconnectAccount": "internal, the person's own account row",
   "mail:export_conversations": "file for the requester from rows they can read; nothing sent",
+  "mail:suppression_add":
+    "externalEffect: parks after outside text, so outside text cannot silence an address; it only stops commercial mail and sends nothing",
   "shopify:webhooks_repair":
     "re-registers the org's own Shopify webhooks; admin identity-map scope",
   "tickets:convertToMail": "internal conversion; sending is the gated mail compose",

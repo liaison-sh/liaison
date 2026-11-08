@@ -12,7 +12,7 @@ Personal ceiling recomputed from owner's grants -> apps/api/src/modules/scope-re
 Role agent ceiling set by admin capabilities grid -> apps/web/src/modules/agent/AgentSettingsTab.tsx:510
 Ceiling bounded by what creator may grant -> apps/api/src/modules/agent/directory/definition-routes.ts:1310
 System agent common base -> apps/api/src/modules/agent/directory/common-base-scopes.ts:8
-Organization-administration scopes list -> apps/api/src/modules/agent/directory/ceiling-guard.ts:69
+Organization-administration scopes list -> apps/api/src/modules/auth/admin-scopes.ts:9, apps/api/src/modules/auth/admin-scopes.ts:30
 Role agents get no admin scopes via config apply -> apps/api/src/cli/provisioners/agents.ts:102
 Approved access request never adds an admin scope to a role agent -> apps/api/src/modules/scope-requests/service.ts:539
 Dimension grants filter records server side -> apps/api/src/modules/permissions/response-filter.ts:8

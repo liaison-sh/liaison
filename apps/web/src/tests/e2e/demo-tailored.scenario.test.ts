@@ -29,7 +29,7 @@ import { grantTicketsScopes, seedTicket } from "./helpers/seed"
 import { pressTourMenu } from "./helpers/tour-menu"
 
 const test = createProfiledE2ETest({
-  workerIdOffset: 220,
+  workerIdOffset: 45,
   portCount: 2,
   before: async () => ({ env: {}, teardowns: [] }),
 })

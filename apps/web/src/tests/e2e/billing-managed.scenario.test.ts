@@ -10,7 +10,7 @@ import { seedBillingState } from "./helpers/billing-state-seed"
 import { MANAGED_VITE_ENV, managedEditionAfterWorld } from "./helpers/managed-edition"
 
 const test = createProfiledE2ETest({
-  workerIdOffset: 60,
+  workerIdOffset: 65,
   portCount: 3, // [0]=API, [1]=Vite, [2]=spare
   before: async () => ({
     env: {},

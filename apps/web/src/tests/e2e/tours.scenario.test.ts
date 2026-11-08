@@ -36,7 +36,7 @@ import { pressTourMenu } from "./helpers/tour-menu"
 let gmail: GmailHttpFixture
 
 const test = createProfiledE2ETest({
-  workerIdOffset: 180,
+  workerIdOffset: 75,
   portCount: 2,
   before: async () => {
     gmail = await startGmailHttpFixture()

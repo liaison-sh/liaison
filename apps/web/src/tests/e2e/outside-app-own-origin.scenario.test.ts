@@ -22,7 +22,7 @@ const APP = "metrics-fixture"
 const FIXTURE_DIR = resolve(__dirname, "outside-app", APP)
 
 const test = createProfiledE2ETest({
-  workerIdOffset: 280,
+  workerIdOffset: 85,
   portCount: 2,
   before: async (ports) => ({
     env: {

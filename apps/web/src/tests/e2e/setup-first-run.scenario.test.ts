@@ -17,7 +17,7 @@ import { seedFactory } from "./helpers/seed"
 import { SHOT_DIR } from "./helpers/shot-dir"
 
 const test = createProfiledE2ETest({
-  workerIdOffset: 230,
+  workerIdOffset: 50,
   portCount: 2,
   // No deployment model key either: a new workspace with no key of its own is
   // the case the embedded key card exists for.
@@ -97,7 +97,12 @@ test("a new workspace's first admin finds the setup card in their agent conversa
   await page.screenshot({ path: `${SHOT_DIR}/setup-first-run-1280.png` })
 })
 
-test("at 390px the setup card fits the phone", async ({ browser, env }) => {
+// `world` although the test signs in as its own workspace's admin: the world
+// bootstraps the instance, and a bootstrap is refused once any workspace
+// exists. Run first in a fresh worker (after a failure, or alone), this test
+// created that workspace before the world, and the next test's world failed
+// with "Invitation required".
+test("at 390px the setup card fits the phone", async ({ browser, env, world: _world }) => {
   test.setTimeout(180_000)
   const { email } = await newWorkspace(env)
   const context = await browser.newContext({

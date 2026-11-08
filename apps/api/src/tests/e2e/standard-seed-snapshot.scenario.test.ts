@@ -73,6 +73,8 @@ const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
 const ID_PREFIX_IN_ADDRESS = /\+[0-9a-f]{8}@/g
 /** The QA roles' names carry the instant they were made. */
 const QA_ROLE_NAME = /^e2e-role-\d+-[a-z0-9]+$/
+/** An epoch-milliseconds stamp inside a value (a burst's `notifyId`, `burst:<user>:<ms>`). */
+const EPOCH_MS = /\b\d{13}\b/g
 const ISO_TS = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}(:?\d{2})?)?$/
 
 interface TableSnapshot {
@@ -112,6 +114,10 @@ function normalise(value: unknown, column: string, clock: Clock, prefix = ""): u
     }
     if (QA_ROLE_NAME.test(value)) return "e2e-role-<n>"
     return stripLanePrefix(value, prefix)
+      .replace(EPOCH_MS, (ms) => {
+        const t = Number(ms)
+        return t >= clock.from && t <= clock.to ? "<written>" : ms
+      })
       .replace(UUID, "<uuid>")
       .replace(ID_PREFIX_IN_ADDRESS, "+<id>@")
   }

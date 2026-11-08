@@ -2244,6 +2244,36 @@ async function suppressionRemove(params: unknown, ctx: MailCtx): Promise<unknown
   return JSON.parse(await ctx.mail_suppressionRemove(JSON.stringify(params ?? {})))
 }
 
+/**
+ * Stage-time check of a lift: an address that never opted out has nothing to lift, so the
+ * call is answered now instead of reaching a mail admin. A check the caller may not run
+ * (no mail read scope) leaves the decision to the handler.
+ */
+async function suppressionRemovePreflight(params: unknown, ctx: MailCtx): Promise<unknown> {
+  const email = (params as { email?: unknown } | null)?.email
+  if (typeof email !== "string" || email.trim() === "") {
+    return {
+      error: { code: "invalid_params", message: "Nothing to lift: give email, the address." },
+    }
+  }
+  let optedOut: boolean | undefined
+  try {
+    const checked = JSON.parse(await ctx.mail_suppressionCheck(JSON.stringify({ emails: [email] })))
+    optedOut = checked?.results?.[0]?.optedOut
+  } catch {
+    return { ok: true }
+  }
+  if (optedOut === false) {
+    return {
+      error: {
+        code: "not_opted_out",
+        message: `${email.trim()} has not opted out, so there is nothing to lift. Nothing was staged.`,
+      },
+    }
+  }
+  return { ok: true }
+}
+
 async function createFromTicket(params: unknown, ctx: MailCtx): Promise<unknown> {
   return JSON.parse(await ctx.mail_createFromTicket(JSON.stringify(params ?? {})))
 }

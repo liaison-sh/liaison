@@ -649,6 +649,8 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "index source registered by the tickets app: called by the indexer with each item's own org",
   "apps/api/src/lib/server.ts#message":
     "websocket frame handler: conn.orgId was set from the ticket verified at upgrade",
+  "apps/api/src/apps/mail/summarizers.ts#summarizeSuppressionRemove":
+    "approval summarizer registered by name: the approval pipeline calls it inside the approval's org",
   "apps/api/src/apps/tickets/summarizers.ts#summarizeTicketReply":
     "approval summarizer registered by name: the approval pipeline calls it inside the approval's org",
   "apps/api/src/modules/mcp/connection-service.ts#mintAccessToken":

@@ -129,6 +129,13 @@ const KNOWN_LITERAL_USES: LiteralPin[] = [
   // payload — a kernel-declared special case until manifests can declare an
   // openTarget resolver (32b461c3 landed without a pin; re-pinned after the
   // authority-module refactor shifted the file).
+  // Opt-outs: the event that an address opted out is mail's (mail/suppression:added), and
+  // the drafts it withdraws are kernel approval rows; the kernel owns the opt-out list.
+  {
+    file: "modules/approvals/withdraw-on-events.ts",
+    branch:
+      'if (event.app !== "mail" || event.entity !== "suppression" || event.action !== "added") return',
+  },
   {
     file: "modules/approvals/attention.ts",
     branch: '...(appName === "tickets" && typeof r.current_payload?.ticketId === "string"',

@@ -647,8 +647,9 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
       const list = Array.isArray(emails)
         ? emails.filter((e): e is string => typeof e === "string" && e.trim() !== "")
         : []
+      const { checkSuppressions } = await import("~/modules/mail/suppressions")
       return JSON.stringify(
-        await (await import("~/modules/mail/suppressions")).checkSuppressions({
+        await checkSuppressions({
           orgId,
           emails: list,
           given: Array.isArray(emails) ? emails.length : 0,
@@ -665,8 +666,9 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
         throw new Error("forbidden: missing scope mail:conversations:write")
       }
       const params = JSON.parse(paramsJson) as Record<string, unknown>
+      const { addSuppressionTool } = await import("~/modules/mail/suppressions")
       return JSON.stringify(
-        await (await import("~/modules/mail/suppressions")).addSuppressionTool({
+        await addSuppressionTool({
           orgId,
           db: txDb,
           userId: actorType === "user" || actorType === "agent" ? userId : null,
@@ -683,8 +685,9 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
         throw new Error("forbidden: missing scope mail:suppressions:write")
       }
       const params = JSON.parse(paramsJson) as Record<string, unknown>
+      const { removeSuppressionTool } = await import("~/modules/mail/suppressions")
       return JSON.stringify(
-        await (await import("~/modules/mail/suppressions")).removeSuppressionTool({
+        await removeSuppressionTool({
           orgId,
           db: txDb,
           params,

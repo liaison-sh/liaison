@@ -2429,7 +2429,28 @@
     "typed": ["sales pipeline", "new pipeline", "create pipeline"],
     "any": ["projects__deals_pipeline_create"]
   },
-  {"id": "K05", "set": "seed", "lang": "fr", "say": "il ne veut plus recevoir nos mails, note-le", "typed": ["ne plus recevoir", "désinscrire", "unsubscribe"], "any": ["mail__suppression_add"]},
-  {"id": "K06", "set": "seed", "lang": "en", "say": "did any of these people unsubscribe", "typed": ["unsubscribed", "opted out", "check opt-out"], "any": ["mail__suppression_check"]},
-  {"id": "K07", "set": "seed", "lang": "en", "say": "she asked to get our offers again", "typed": ["resubscribe", "opt back in", "remove opt-out"], "any": ["mail__suppression_remove"]}
+  {
+    "id": "K05",
+    "set": "seed",
+    "lang": "fr",
+    "say": "il ne veut plus recevoir nos mails, note-le",
+    "typed": ["ne plus recevoir", "désinscrire", "unsubscribe"],
+    "any": ["mail__suppression_add"]
+  },
+  {
+    "id": "K06",
+    "set": "seed",
+    "lang": "en",
+    "say": "did any of these people unsubscribe",
+    "typed": ["unsubscribed", "opted out", "check opt-out"],
+    "any": ["mail__suppression_check"]
+  },
+  {
+    "id": "K07",
+    "set": "seed",
+    "lang": "en",
+    "say": "she asked to get our offers again",
+    "typed": ["resubscribe", "opt back in", "remove opt-out"],
+    "any": ["mail__suppression_remove"]
+  }
 ]

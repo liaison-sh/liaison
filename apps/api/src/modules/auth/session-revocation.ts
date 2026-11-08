@@ -50,6 +50,8 @@ const PUBLISH_WARN_MS = 2_000
 
 /** sid -> when it may be forgotten (epoch ms). */
 const revoked = new Map<string, number>()
+/** Redis writes of `revokeSessions` not yet answered. */
+const inflight = new Set<Promise<void>>()
 /** Open sockets per session, closed when the session ends (lib/server.ts). */
 const watchers = new Map<string, Set<() => void>>()
 
@@ -113,14 +115,18 @@ export function revokeSessions(sids: readonly string[], reason: string): void {
     )
   }, PUBLISH_WARN_MS)
   slow.unref?.()
-  void write
+  const settled = write
     .catch((err) => {
       log.error(
         { err, event: "session_revocation_publish_failed", reason, count: ids.length },
         "session revocation failed to reach Redis: other server processes may accept these sessions' access tokens until they expire",
       )
     })
-    .finally(() => clearTimeout(slow))
+    .finally(() => {
+      clearTimeout(slow)
+      inflight.delete(settled)
+    })
+  inflight.add(settled)
 }
 
 /**
@@ -166,16 +172,21 @@ function sweep(): void {
   for (const [sid, forgetAt] of revoked) if (forgetAt <= now) revoked.delete(sid)
 }
 
-let initialized = false
+let initializing: Promise<void> | null = null
 let timers: ReturnType<typeof setInterval>[] = []
 
 /**
  * Subscribes this process to session revocations and loads the current set.
  * Idempotent; called once at startup (app.ts).
  */
-export async function initSessionRevocation(): Promise<void> {
-  if (initialized) return
-  initialized = true
+export function initSessionRevocation(): Promise<void> {
+  // Every caller waits for the same subscription and first load, so a second
+  // caller never goes on while the first is still subscribing.
+  initializing ??= subscribeAndLoad()
+  return initializing
+}
+
+async function subscribeAndLoad(): Promise<void> {
   redisSub.on("message", onMessage)
   // ioredis re-subscribes on reconnect; what was published meanwhile is lost,
   // so reload the set every time the subscriber is back.
@@ -219,6 +230,16 @@ export function watchSession(sid: string, close: () => void): () => void {
  * Test access to this module's private state. Production code never calls it.
  */
 export const SessionRevocationTestAccess = {
+  /**
+   * Waits until this process's own revocations were written and their echo on
+   * the channel was applied: the write answered, then a PING on the subscriber
+   * connection, whose reply comes after every message published before it.
+   * Clearing the cache before this lets a late echo refill it.
+   */
+  async settle(): Promise<void> {
+    await Promise.allSettled([...inflight])
+    await redisSub.ping()
+  },
   reset(): void {
     revoked.clear()
     watchers.clear()

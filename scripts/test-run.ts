@@ -2217,7 +2217,10 @@ if (shardArg) {
       ]
       if (v !== undefined) seconds[f] = v
     }
-    const mine = pickShardByTime(named, shardArg, seconds)
+    // Files at once on this runner: the worker count Playwright is handed. The
+    // gate's runners are alike, so every shard of a run computes the same plan.
+    const workers = Number(process.env.PLAYWRIGHT_WORKERS) || MEM_BUDGET.playwrightWorkers
+    const mine = pickShardByTime(named, shardArg, seconds, workers)
     config.cmd = [...config.cmd.filter((a) => !named.includes(a)), ...mine]
     if (mine.length === 0) config.cmd = []
   } else if (suite === "playwright" || suite === "web-unit") {

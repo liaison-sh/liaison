@@ -68,12 +68,6 @@ const test = createProfiledE2ETest({
   },
 })
 
-// Each tour is its own test against the worker's world and counts only what
-// it asked for (`since`), so the tests spread over the run's workers instead
-// of one worker playing every tour in a row: about nine minutes, the
-// Playwright lane's longest file by far, which held a whole CI shard.
-test.describe.configure({ mode: "parallel" })
-
 const ADMIN_EMAIL = "admin@test.com"
 const ADMIN_PASSWORD = "12345678"
 const ks = (env: ProfiledWorkerEnv) => `"${env.schemaPrefix}kernel"`

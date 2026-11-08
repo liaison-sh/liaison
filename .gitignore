@@ -104,9 +104,11 @@ BLOCKED.md
 # Ad-hoc local validation scratch (screenshots, throwaway scripts, session state)
 /gestalt-validation-tmp/
 
-# Linux visual baselines: no pinned Linux render environment exists, so they are not tracked.
-# Regenerate locally with a Linux run; darwin baselines are the reference.
+# Linux visual baselines are tracked only for the Playwright scenarios: they are made
+# on the gate workflow's pinned runner image (docs/testing.md, Visual baselines).
+# Anywhere else a -linux.png is a local run's leftover.
 *-linux.png
+!apps/web/src/tests/e2e/**/*-linux.png
 
 # Test-only validator caches (compiled schematron SEFs, Rust build output)
 /tools/schematron/.sef/

@@ -19,6 +19,7 @@
 import type { Page } from "@playwright/test"
 import { forceDarkMode } from "../agent-bootstrap"
 import { expect, test } from "../fixtures/test"
+import { PIXEL_BASELINES } from "../helpers/pixel-baselines"
 import { forceCalendarReauth, seedCalendar } from "./helpers/seed-calendar"
 
 const SHOT = { maxDiffPixelRatio: 0.02 } as const
@@ -26,10 +27,9 @@ const SHOT = { maxDiffPixelRatio: 0.02 } as const
  *  is live worker state (how many conversations a sibling test left unread), so
  *  every crop that spans the main panel masks it or re-flakes on the count. */
 const maskDock = (page: Page) => [page.locator("[data-chat-dock]")]
-// Pixel baselines are darwin-only (font hinting/subpixel rendering differ on
-// CI's linux runners) — mirrors the convention in the shopify suite's visual
-// suite. Functional assertions (testids visible, content present) always run.
-const PIXEL_BASELINES = process.platform === "darwin"
+// Pixel baselines are per platform (darwin, and linux from the gate's pinned
+// runner image: helpers/pixel-baselines.ts). Functional assertions (testids
+// visible, content present) always run.
 
 test.describe("Calendar — UI journey + visual baselines", () => {
   test.beforeEach(async ({ page }) => {

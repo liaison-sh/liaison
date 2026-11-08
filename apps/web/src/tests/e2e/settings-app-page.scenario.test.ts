@@ -15,11 +15,11 @@ import { api } from "@liaison/test-helpers"
 import type { Page } from "@playwright/test"
 import { expect, loginAs, test } from "./fixtures/test"
 import { freshAccessToken } from "./helpers/fresh-token"
+import { PIXEL_BASELINES } from "./helpers/pixel-baselines"
 import { grantSupportAgent } from "./helpers/settings-roles"
 
 const QA_PASSWORD = "QaPass1!"
 const SHOT = { maxDiffPixelRatio: 0.02 } as const
-const PIXEL_BASELINES = process.platform === "darwin"
 
 function ts(env: { schemaPrefix?: string }) {
   return env.schemaPrefix ? `"${env.schemaPrefix}app_tickets"` : "app_tickets"

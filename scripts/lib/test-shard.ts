@@ -40,16 +40,20 @@ export function pickShard(files: string[], shard: Shard): string[] {
 
 /**
  * The files of shard `index` of `total`, dealt by measured duration rather than
- * by count: longest first, each to the shard with the least time so far (ties
- * to the lower shard), so every shard of a lane takes about the same time. A
- * file the table does not know counts as the table's median. Deterministic: the
- * same files and table give the same shards on every runner. The shard keeps
- * the order `files` gives.
+ * by count, for a runner that runs `workers` files at once and each file on
+ * one worker (Playwright without fullyParallel). Longest first, each file goes
+ * to the shard where it ends soonest: a shard ends at the larger of its time
+ * spread over its workers and its longest file, which no worker count shortens
+ * (ties: the shard with less time, then the lower one). A file the table does
+ * not know counts as the table's median. Deterministic: the same files and
+ * table give the same shards on every runner. The shard keeps the order
+ * `files` gives.
  */
 export function pickShardByTime(
   files: string[],
   shard: Shard,
   seconds: Record<string, number>,
+  workers = 1,
 ): string[] {
   const unique = [...new Set(files)]
   const known = Object.values(seconds)
@@ -61,13 +65,21 @@ export function pickShardByTime(
     return v !== undefined && Number.isFinite(v) && v > 0 ? v : fallback
   }
   const byCost = [...unique].sort((a, b) => cost(b) - cost(a) || (a < b ? -1 : a > b ? 1 : 0))
-  const load = Array.from({ length: shard.total }, () => 0)
+  const per = Math.max(1, Math.floor(workers))
+  const sum = Array.from({ length: shard.total }, () => 0)
+  const longest = Array.from({ length: shard.total }, () => 0)
+  const end = (i: number, add: number) =>
+    Math.max((sum[i] as number) / per + add / per, longest[i] as number, add)
   const mine = new Set<string>()
   for (const f of byCost) {
+    const c = cost(f)
     let target = 0
-    for (let i = 1; i < load.length; i++)
-      if ((load[i] as number) < (load[target] as number)) target = i
-    load[target] = (load[target] as number) + cost(f)
+    for (let i = 1; i < sum.length; i++) {
+      const d = end(i, c) - end(target, c)
+      if (d < 0 || (d === 0 && (sum[i] as number) < (sum[target] as number))) target = i
+    }
+    sum[target] = (sum[target] as number) + c
+    longest[target] = Math.max(longest[target] as number, c)
     if (target === shard.index - 1) mine.add(f)
   }
   const seen = new Set<string>()

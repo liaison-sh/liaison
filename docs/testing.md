@@ -223,7 +223,7 @@ The Playwright suite shares its stacks the same way (`apps/web/src/tests/e2e/pw-
 
 ### Visual baselines
 
-Screenshot baselines are per platform: `<spec>-snapshots/<name>-<platform>.png` (`snapshotPathTemplate` in `playwright.config.ts`). Two sets are committed: `darwin` (a Mac) and `linux` (the hosted CI runners, ubuntu-latest). Off CI, a screenshot assertion with no baseline for the current platform skips its test with the reason (`expect` in `fixtures/test.ts`), after every assertion before it has run. On CI (`CI` set) nothing is skipped and `updateSnapshots` is `none`: a missing baseline fails the test, so the gate never passes a screenshot it did not compare.
+Screenshot baselines are per platform: `<spec>-snapshots/<name>-<platform>.png` (`snapshotPathTemplate` in `playwright.config.ts`). Two sets are committed: `darwin` (a Mac) and `linux` (the gate workflow's runner image, ubuntu-24.04, pinned in `gate.yml`). Off CI, a screenshot assertion with no baseline for the current platform skips its test with the reason (`expect` in `fixtures/test.ts`), after every assertion before it has run. On CI (`CI` set) nothing is skipped and `updateSnapshots` is `none`: a missing baseline fails the test, so the gate never passes a screenshot it did not compare.
 
 The `linux` set is made on the CI runners themselves, by the gate workflow with `update_snapshots` on. It runs only the Playwright lane, with `PW_UPDATE_SNAPSHOTS=missing`, and keeps every new image as the `linux-goldens-<shard>` artifact of the run:
 

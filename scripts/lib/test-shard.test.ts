@@ -97,6 +97,15 @@ describe("pickShardByTime", () => {
     expect(Math.abs(time(two[0] as string[]) - time(two[1] as string[]))).toBeLessThanOrEqual(90)
   })
 
+  it("with several workers a shard ends no sooner than its longest file", () => {
+    // Four workers: a 560 s file alone ends at 560 whatever runs beside it, so
+    // the short files go where they end soonest, the other shard.
+    const two = [1, 2].map((index) =>
+      pickShardByTime(["a.ts", "b.ts", "c.ts", "d.ts"], { index, total: 2 }, seconds, 4),
+    )
+    expect(two).toEqual([["a.ts"], ["b.ts", "c.ts", "d.ts"]])
+  })
+
   it("is deterministic and keeps the given order", () => {
     const one = pickShardByTime(files, { index: 2, total: 3 }, seconds)
     expect(pickShardByTime(files, { index: 2, total: 3 }, seconds)).toEqual(one)

@@ -1294,14 +1294,9 @@ export const envSchema = z
       (v) => (v === "" ? undefined : v),
       z.enum(["on", "off"]).default("on"),
     ),
-    // The embedding model tool search runs (an ONNX model id, fetched once into
-    // LIAISON_MODEL_CACHE_DIR). Default: onnx-community/embeddinggemma-300m-ONNX.
-    LIAISON_TOOL_MEANING_MODEL: z.preprocess(
-      (v) => (v === "" ? undefined : v),
-      z.string().optional(),
-    ),
-    // Where local model files are kept. Unset: the package's own cache folder
-    // (the compose file sets /var/lib/liaison/models, on the data volume).
+    // Where tool search's model files are fetched, checked against their pinned
+    // hashes and read from. Unset: ~/.cache/liaison/models (the compose file
+    // sets /var/lib/liaison/models, on the data volume).
     // Point it at a persistent volume, or at files shipped with the image for an
     // install with no outside network.
     LIAISON_MODEL_CACHE_DIR: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),

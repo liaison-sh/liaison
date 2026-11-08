@@ -160,17 +160,17 @@ Agents search and fetch the web without an approval. These limits bound what one
 
 ### Tool search model
 
-When an agent looks for a tool, it ranks the tools it may use by meaning as well as by words, so "Marc left, cut his access" finds the tool that deactivates a user. A small embedding model runs inside each process that serves agents, on the CPU. No text leaves the server.
+When an agent looks for a tool, it ranks the tools it may use by meaning as well as by words, so "Marc left, cut his access" finds the tool that deactivates a user. A small embedding model, Snowflake arctic-embed-m-v2.0 (Apache-2.0), runs inside each process that serves agents, on the CPU. No text leaves the server.
 
-- The first search after a start fetches the model's files (about 200 MB) into `LIAISON_MODEL_CACHE_DIR` and computes one vector per tool in the background, about half a minute. Until then, and whenever the model cannot load, the search ranks by words alone.
-- Each such process uses about 300 to 450 MB more memory. Count it per `api` process when you size the host.
-- With no outside network, put the model's files in `LIAISON_MODEL_CACHE_DIR` yourself.
+- The first search after a start fetches the model's files (about 330 MB) into `LIAISON_MODEL_CACHE_DIR`, at one pinned revision, and checks each file against its pinned SHA-256 before using it. It then computes one vector per tool in the background, about 15 to 45 seconds. Until then, and whenever the model is missing, fails its check or answers slowly, the search ranks by words alone.
+- Each such process uses about 1.1 GB more memory. Count it per `api` process when you size the host.
+- On a small host (the 4 GB minimum, or several `api` processes on 8 GB), set `LIAISON_TOOL_MEANING=off`: tools then rank by words alone and no model is fetched or loaded.
+- With no outside network, copy the files of `Snowflake/snowflake-arctic-embed-m-v2.0` at the pinned revision into `LIAISON_MODEL_CACHE_DIR`; they are checked the same way.
 
 | Variable | Default | What it does |
 |---|---|---|
 | `LIAISON_TOOL_MEANING` | `on` | `off` ranks tools by words alone and loads no model |
-| `LIAISON_TOOL_MEANING_MODEL` | `onnx-community/embeddinggemma-300m-ONNX` | The embedding model |
-| `LIAISON_MODEL_CACHE_DIR` | `/var/lib/liaison/models` (host `./data/models`) | Where the model's files are kept |
+| `LIAISON_MODEL_CACHE_DIR` | `/var/lib/liaison/models` (host `./data/models`) | Where the model's files are fetched, checked and read |
 
 ### Model keys
 

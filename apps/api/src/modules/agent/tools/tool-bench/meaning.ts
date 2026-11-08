@@ -7,7 +7,7 @@
  *
  *   bun apps/api/src/modules/agent/tools/tool-bench/meaning.ts [--file <lines.json>]...
  *
- * The local model by default (LIAISON_TOOL_MEANING_MODEL, LIAISON_MODEL_CACHE_DIR).
+ * The local model (local-embedder.ts), its files in LIAISON_MODEL_CACHE_DIR.
  */
 import { readFileSync } from "node:fs"
 import { loadLocalEmbedder } from "../local-embedder"

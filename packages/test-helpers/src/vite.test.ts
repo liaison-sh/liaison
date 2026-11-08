@@ -9,7 +9,10 @@
 // returned, which it never did, so the supervisor was SIGKILLed 2 s later and
 // the child was orphaned to pid 1.
 import { afterEach, expect, it } from "bun:test"
-import { viteSupervisorScript } from "./vite"
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import path from "node:path"
+import { viteSupervisorScript, writeViteLogs } from "./vite"
 
 const MARKER = "liaison-vite-supervisor-test-child"
 
@@ -83,4 +86,26 @@ it("closing the death pipe kills the server child even with no signal sent", asy
   proc.stdin.end()
   expect(await waitForMarkerGone(3_000)).toBe(true)
   await proc.exited
+})
+
+it("writeViteLogs keeps a stopped Vite server's output beside the API server's logs", () => {
+  // Vite's proxy answers a request it could not forward with a bare 502 and prints why only on
+  // its own output: that output must outlive the process.
+  const dir = mkdtempSync(path.join(tmpdir(), "vite-logs-"))
+  try {
+    const logDir = path.join(dir, "run")
+    writeViteLogs(logDir, 4321, {
+      stdout: "  ➜  Local:   http://127.0.0.1:4321/\n",
+      stderr: "[vite] http proxy error: /api/auth/login\nError: socket hang up\n",
+    })
+    expect(readFileSync(path.join(logDir, "vite-4321-stderr.log"), "utf8")).toContain(
+      "http proxy error: /api/auth/login",
+    )
+    expect(readFileSync(path.join(logDir, "vite-4321-stdout.log"), "utf8")).toContain("4321")
+    // Nothing to keep, no file.
+    writeViteLogs(logDir, 4322, { stdout: "", stderr: "" })
+    expect(existsSync(path.join(logDir, "vite-4322-stderr.log"))).toBe(false)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })

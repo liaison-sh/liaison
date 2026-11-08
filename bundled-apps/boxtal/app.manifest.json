@@ -194,7 +194,7 @@
       }
     ]
   },
-  "version": "0.23.20",
+  "version": "0.23.21",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {
@@ -3624,7 +3624,8 @@
   },
   "network": {
     "allowedDomains": [
-      "document.boxtal.com"
+      "document.boxtal.com",
+      "document.boxtal.build"
     ]
   },
   "secrets": {

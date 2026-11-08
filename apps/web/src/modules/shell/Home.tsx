@@ -39,7 +39,7 @@ import { cn } from "~/lib/cn"
 import { isHeldKept } from "~/modules/approvals/held-kept"
 import { userFromToken } from "~/modules/auth/auth-store"
 import { setFocusedDate } from "~/modules/calendar/calendar-store"
-import { useI18n } from "~/modules/i18n/i18n-context"
+import { englishT, useI18n } from "~/modules/i18n/i18n-context"
 import NotificationBanner from "~/modules/notifications/NotificationBanner"
 import { pluralFormFor } from "~/modules/projects/plural"
 import AlertClusterRow from "~/modules/shell/AlertClusterRow"
@@ -246,8 +246,11 @@ const AttentionFeedView: Component<AttentionFeedViewProps> = (props) => {
   const uncountedRows = createMemo(() => sections().needs.uncounted)
 
   // --- Activity card: the viewer's queues, then what agents reported (a
-  // routine that failed or paused, then the FYIs). ---
-  const activityGroups = createMemo(() => homeActivityGroups(sections(), i18n.t))
+  // routine that failed or paused, then the FYIs). Built without the reader's
+  // language: `For` keys on the group object, so a group rebuilt on a language
+  // switch was a new group, mounted again (a folded group came back open). Its
+  // heading is translated where it renders (`groupLabel`), from `labelKey`. ---
+  const activityGroups = createMemo(() => homeActivityGroups(sections()))
   const activityCount = createMemo(() =>
     activityGroups().reduce((sum, g) => sum + g.items.length, 0),
   )
@@ -741,7 +744,10 @@ const BoundedRows: Component<{
 
 /** The Activity card's groups: the viewer's queues, then what agents
  *  reported (routines that failed or paused, then FYIs). */
-function homeActivityGroups(sections: HomeSections, t: (key: string) => string): AttentionGroup[] {
+function homeActivityGroups(sections: HomeSections): AttentionGroup[] {
+  // The stored label is the English fallback only; the reader's language is
+  // applied at render time from the labelKey.
+  const t = englishT
   const groups = [...sections.queues]
   if (sections.agents.failed.length > 0) {
     groups.push({

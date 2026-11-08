@@ -10,7 +10,7 @@
 
 import { type AttentionItem, NOW_URGENCY } from "@liaison/shared"
 import { getAttentionGroupLabel } from "~/framework/app-registry"
-import { tNow } from "~/modules/i18n/i18n-context"
+import { englishT } from "~/modules/i18n/i18n-context"
 import { pluralFormFor } from "~/modules/projects/plural"
 import type { RowLocale } from "~/modules/shell/attention-row-format"
 
@@ -252,7 +252,11 @@ export function splitFeed(items: AttentionItem[], opts: SplitFeedOptions = {}): 
     groups.push({
       app,
       key,
-      label: isNotifications ? tNow("kernel.shellUi.notifications") : groupLabelForApp(app),
+      // The stored label is the English fallback; `groupLabel` translates the
+      // labelKey where the group renders. Reading the reader's language here
+      // made every memo built on these groups (Home's sections) rebuild them
+      // as new objects on a language switch, and `For` mounted each one again.
+      label: isNotifications ? englishT("kernel.shellUi.notifications") : groupLabelForApp(app),
       labelKey: isNotifications ? "kernel.homeGroupNotifications" : groupLabelKeyForApp(app),
       items: groupItems,
       kindCounts,

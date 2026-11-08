@@ -13,6 +13,7 @@
 // parallelism on the shared worker schema.
 
 import { login } from "@liaison/test-helpers"
+import type { Page } from "@playwright/test"
 import { expect, loginAs, test } from "./fixtures/test"
 import { enableAppForOrg } from "./helpers/org-export"
 import { grantTicketsScopes, seedTicket } from "./helpers/seed"
@@ -23,6 +24,15 @@ import { grantTicketsScopes, seedTicket } from "./helpers/seed"
 // disables CSS animations and finalises transform/opacity to their end-state
 // when this flag is set.
 const DIFF = { maxDiffPixelRatio: 0.02, animations: "disabled" as const }
+
+async function switchLanguage(page: Page, language: "en" | "fr"): Promise<void> {
+  const saved = page.waitForResponse(
+    (r) => r.request().method() === "PUT" && r.url().endsWith("/api/user/preferences/language"),
+  )
+  await page.getByTestId("settings-language-select").selectOption(language)
+  expect((await saved).ok()).toBe(true)
+  await expect(page.locator("html")).toHaveAttribute("lang", language)
+}
 test("visual: Settings language EN vs FR (visual i18n end-to-end)", async ({ page, env }) => {
   await loginAs(page, env, "admin@test.com", "12345678")
   await page.goto(`http://localhost:${env.ports[1]}/settings`)
@@ -37,8 +47,10 @@ test("visual: Settings language EN vs FR (visual i18n end-to-end)", async ({ pag
     DIFF,
   )
 
-  // Switch to French — reactive, no remount. Functional: strings flipped.
-  await langSelect.selectOption("fr")
+  // Switch to French — reactive, no remount. Functional: strings flipped. The
+  // switch is done when it is saved and the document says French (the
+  // provider's effect sets <html lang>), not after some time.
+  await switchLanguage(page, "fr")
   await expect(page.getByTestId("settings-content").locator("h1").first()).toHaveText("Profil", {
     timeout: 10000,
   })
@@ -49,7 +61,7 @@ test("visual: Settings language EN vs FR (visual i18n end-to-end)", async ({ pag
   )
 
   // Reset persisted language so sibling tests in this worker aren't poisoned.
-  await page.getByTestId("settings-language-select").selectOption("en")
+  await switchLanguage(page, "en")
   await expect(page.getByTestId("settings-content").locator("h1").first()).toHaveText("Profile", {
     timeout: 10000,
   })

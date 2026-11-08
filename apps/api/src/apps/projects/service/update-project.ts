@@ -17,6 +17,7 @@ import {
   normalizeProjectGroup,
   type ProjectDetail,
 } from "./create-project"
+import { assertVisibleCompany } from "./deals"
 import { ProjectsServiceError } from "./statuses"
 
 export interface UpdateProjectPatch {
@@ -28,6 +29,8 @@ export interface UpdateProjectPatch {
   /** Sidebar group heading: trimmed, "" or null clears it. */
   group?: string | null
   checklistOnCards?: boolean
+  /** The project's client: a company the caller can read, or null to clear. */
+  companyId?: string | null
 }
 
 export interface UpdateProjectArgs {
@@ -89,6 +92,10 @@ export async function updateProject(args: UpdateProjectArgs): Promise<ProjectDet
     if (normalizedGroup !== undefined) sets.push(drizzleSql`"group" = ${normalizedGroup}`)
     if (patch.checklistOnCards !== undefined) {
       sets.push(drizzleSql`checklist_on_cards = ${patch.checklistOnCards}`)
+    }
+    if (patch.companyId !== undefined) {
+      if (patch.companyId !== null) await assertVisibleCompany(innerTx, orgId, patch.companyId)
+      sets.push(drizzleSql`company_id = ${patch.companyId}::uuid`)
     }
     let normalizedKey: string | undefined
     if (patch.key !== undefined) {

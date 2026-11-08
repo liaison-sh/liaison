@@ -24,6 +24,12 @@ interface ProjectsSandboxCtx {
   projects_tasksByAssignee: (paramsJson: string) => Promise<string>
   projects_tasksByProject: (paramsJson: string) => Promise<string>
   projects_portfolioRollup: (paramsJson: string) => Promise<string>
+  projects_dealsPipelineCreate: (paramsJson: string) => Promise<string>
+  projects_dealsUpdate: (paramsJson: string) => Promise<string>
+  projects_dealsSearch: (paramsJson: string) => Promise<string>
+  projects_dealsRollup: (paramsJson: string) => Promise<string>
+  projects_dealsFollowupCandidates: (paramsJson: string) => Promise<string>
+  projects_dealSendState: (paramsJson: string) => Promise<string>
   projects_deleteTask: (paramsJson: string) => Promise<string>
   projects_addComment: (paramsJson: string) => Promise<string>
   projects_listComments: (paramsJson: string) => Promise<string>
@@ -645,6 +651,49 @@ async function portfolioRollup(
   return JSON.parse(await ctx.projects_portfolioRollup(JSON.stringify(params ?? {})))
 }
 
+// Deals: a pipeline's top-level tasks with their company, contact and amount.
+async function dealsPipelineCreate(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsSandboxCtx,
+): Promise<unknown> {
+  return JSON.parse(await ctx.projects_dealsPipelineCreate(JSON.stringify(params ?? {})))
+}
+
+async function dealsUpdate(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsSandboxCtx,
+): Promise<unknown> {
+  return JSON.parse(await ctx.projects_dealsUpdate(JSON.stringify(params ?? {})))
+}
+
+async function dealsSearch(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsSandboxCtx,
+): Promise<unknown> {
+  return JSON.parse(await ctx.projects_dealsSearch(JSON.stringify(params ?? {})))
+}
+
+async function dealsRollup(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsSandboxCtx,
+): Promise<unknown> {
+  return JSON.parse(await ctx.projects_dealsRollup(JSON.stringify(params ?? {})))
+}
+
+async function dealsFollowupCandidates(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsSandboxCtx,
+): Promise<unknown> {
+  return JSON.parse(await ctx.projects_dealsFollowupCandidates(JSON.stringify(params ?? {})))
+}
+
+async function dealSendState(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsSandboxCtx,
+): Promise<unknown> {
+  return JSON.parse(await ctx.projects_dealSendState(JSON.stringify(params ?? {})))
+}
+
 // comment / comments — the task's own discussion thread. There was no comment
 // verb on a task at all, and its thread was unreachable: kernel threads are
 // participant-gated, so the threadId in a task listing answered "not a
@@ -1016,6 +1065,12 @@ void [
   tasksByAssignee,
   tasksByProject,
   portfolioRollup,
+  dealsPipelineCreate,
+  dealsUpdate,
+  dealsSearch,
+  dealsRollup,
+  dealsFollowupCandidates,
+  dealSendState,
   deleteTask,
   addComment,
   listComments,

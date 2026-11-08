@@ -2388,5 +2388,45 @@
     "say": "Arlon and Arlon Group are not the same company",
     "typed": ["not the same company", "not a duplicate", "different companies"],
     "any": ["kernel__companies_mark_not_same"]
+  },
+  {
+    "id": "C20",
+    "set": "seed",
+    "lang": "fr",
+    "say": "ouvre un deal pour Lumen à 12k",
+    "typed": ["create deal", "nouvelle opportunité", "affaire", "new deal"],
+    "any": ["projects__create"]
+  },
+  {
+    "id": "C21",
+    "set": "seed",
+    "lang": "en",
+    "say": "we won Lumen",
+    "typed": ["deal won", "close deal", "mark won"],
+    "any": ["projects__deals_update"]
+  },
+  {
+    "id": "C22",
+    "set": "seed",
+    "lang": "en",
+    "say": "how is the pipeline",
+    "typed": ["pipeline", "deals by stage", "sales forecast"],
+    "any": ["projects__deals_rollup", "projects__deals_search"]
+  },
+  {
+    "id": "C23",
+    "set": "seed",
+    "lang": "fr",
+    "say": "qui dois-je relancer",
+    "typed": ["relance", "follow up", "quiet deals", "relancer prospects"],
+    "any": ["projects__deals_followup_candidates"]
+  },
+  {
+    "id": "K04",
+    "set": "seed",
+    "lang": "en",
+    "say": "set up a sales pipeline for the new market",
+    "typed": ["sales pipeline", "new pipeline", "create pipeline"],
+    "any": ["projects__deals_pipeline_create"]
   }
 ]

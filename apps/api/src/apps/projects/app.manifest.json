@@ -122,7 +122,7 @@
       }
     ]
   },
-  "version": "1.10.9",
+  "version": "1.11.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -696,6 +696,13 @@
               "additionalProperties": false
             }
           },
+          "companyId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The client company."
+          },
           "name": {
             "type": "string",
             "description": "Project name (REQUIRED)."
@@ -870,6 +877,20 @@
               "null"
             ],
             "description": "Optional due date (ISO 8601, e.g. 2026-06-12) — resolve relative dates ('Friday') in the user's timezone. Set it on create; you do NOT need a separate update call."
+          },
+          "companyId": {
+            "type": "string",
+            "description": "Pipeline: deal company."
+          },
+          "contactId": {
+            "type": "string"
+          },
+          "amountMinor": {
+            "type": "integer",
+            "description": "Pipeline: cents, with currency."
+          },
+          "currency": {
+            "type": "string"
           }
         },
         "required": [
@@ -1161,6 +1182,343 @@
         }
       }
     },
+    "deals_pipeline_create": {
+      "deferLoading": true,
+      "description": "Create a sales pipeline: a board whose tasks are deals, with stages Lead, Qualified, Demo, Proposal, then Won and Lost. Add deals with create.",
+      "searchKeywords": [
+        "pipeline",
+        "ventes",
+        "sales",
+        "entonnoir",
+        "funnel"
+      ],
+      "requiredScopes": [
+        "projects:projects:write"
+      ],
+      "trustBoundary": "user",
+      "handler": "dealsPipelineCreate",
+      "writesToTable": "app_projects.projects",
+      "params": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Pipeline name."
+          },
+          "key": {
+            "type": "string",
+            "description": "Optional key, e.g. SALES."
+          },
+          "stages": {
+            "type": "array",
+            "maxItems": 18,
+            "items": {
+              "type": "string"
+            },
+            "description": "Open stages in order, replacing the four defaults."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    "deals_update": {
+      "deferLoading": true,
+      "description": "Change a deal: company, contact, amount, probability, next step, or its outcome (won, lost, open moves it to that stage).",
+      "searchKeywords": [
+        "affaire",
+        "deal",
+        "gagné",
+        "perdu",
+        "won",
+        "lost",
+        "montant"
+      ],
+      "requiredScopes": [
+        "projects:deals:write"
+      ],
+      "trustBoundary": "user",
+      "handler": "dealsUpdate",
+      "writesToTable": "app_projects.deals",
+      "params": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Deal task id or key."
+          },
+          "companyId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "contactId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "amountMinor": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Cents, with currency."
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "amountPeriod": {
+            "type": "string",
+            "enum": [
+              "once",
+              "month",
+              "year"
+            ]
+          },
+          "probability": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "nextStep": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "won",
+              "lost",
+              "open"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it was lost."
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      }
+    },
+    "deals_search": {
+      "deferLoading": true,
+      "readOnly": true,
+      "description": "Find deals by pipeline, company, contact, outcome or close date; taskId gives one deal. Amounts only with deal access.",
+      "searchKeywords": [
+        "affaires",
+        "deals",
+        "opportunités",
+        "pipeline",
+        "chercher"
+      ],
+      "requiredScopes": [
+        "projects:projects:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "dealsSearch",
+      "readsFromTable": "app_projects.deals",
+      "params": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "companyId": {
+            "type": "string"
+          },
+          "contactId": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "open",
+              "won",
+              "lost"
+            ]
+          },
+          "closedAfter": {
+            "type": "string",
+            "description": "ISO date."
+          },
+          "closedBefore": {
+            "type": "string",
+            "description": "ISO date."
+          },
+          "limit": {
+            "type": "integer",
+            "maximum": 100
+          }
+        }
+      },
+      "returns": {
+        "schema": {
+          "items": "object"
+        }
+      },
+      "resultCard": {
+        "kind": "list",
+        "pill": {
+          "label": "Deals"
+        },
+        "title": "Deals",
+        "items": {
+          "path": "result.items",
+          "label": "{{item.task.key}}",
+          "meta": "{{item.task.title}}",
+          "limit": 10
+        }
+      }
+    },
+    "deals_rollup": {
+      "deferLoading": true,
+      "readOnly": true,
+      "description": "Deal counts and amounts per stage, owner or month, one sum per currency; weighted multiplies by probability.",
+      "searchKeywords": [
+        "prévision",
+        "forecast",
+        "chiffre",
+        "total",
+        "rollup"
+      ],
+      "requiredScopes": [
+        "projects:deals:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "dealsRollup",
+      "readsFromTable": "app_projects.deal_values",
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string"
+          },
+          "groupBy": {
+            "type": "string",
+            "enum": [
+              "stage",
+              "owner",
+              "month"
+            ]
+          },
+          "weighted": {
+            "type": "boolean"
+          },
+          "closedAfter": {
+            "type": "string"
+          },
+          "closedBefore": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "groupBy"
+        ]
+      },
+      "returns": {
+        "schema": {
+          "groups": "object"
+        }
+      },
+      "resultCard": {
+        "kind": "list",
+        "pill": {
+          "label": "Deals"
+        },
+        "title": "Deal totals",
+        "items": {
+          "path": "result.groups",
+          "label": "{{item.label|item.key}}",
+          "meta": "{{item.count}}",
+          "limit": 10
+        }
+      }
+    },
+    "deals_followup_candidates": {
+      "deferLoading": true,
+      "readOnly": true,
+      "description": "Open deals quiet for at least quietDays, each with skip: null means a follow-up may be drafted, otherwise the reason not to.",
+      "searchKeywords": [
+        "relance",
+        "follow-up",
+        "silence",
+        "réponse"
+      ],
+      "requiredScopes": [
+        "projects:projects:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "dealsFollowupCandidates",
+      "readsFromTable": "app_projects.deals",
+      "params": {
+        "type": "object",
+        "properties": {
+          "quietDays": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "projectId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "quietDays"
+        ]
+      }
+    },
+    "deal_send_state": {
+      "description": "Whether a mail about a deal may still be sent: stops a closed or deleted deal. Read by the send check.",
+      "readOnly": true,
+      "agentVisible": false,
+      "requiredScopes": [
+        "projects:projects:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "dealSendState",
+      "readsFromTable": "app_projects.deals",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ]
+          }
+        },
+        "required": [
+          "ref"
+        ]
+      }
+    },
     "delete": {
       "description": "Delete a task and all of its subtasks. This is a soft delete (the task is archived, not erased) and it is destructive, so it requires human approval before it runs.",
       "searchKeywords": ["tâche", "task", "supprimer", "remove", "corbeille"],
@@ -1306,6 +1664,13 @@
               "null"
             ],
             "description": "Project id. Optional when projectName is given."
+          },
+          "companyId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Client; null clears."
           },
           "projectName": {
             "type": [
@@ -1959,6 +2324,14 @@
           "baseVersion",
           "nodes"
         ]
+      }
+    }
+  },
+  "sendGuardProviders": {
+    "projects:deal": {
+      "tool": "deal_send_state",
+      "pill": {
+        "label": "Deal follow-up"
       }
     }
   },

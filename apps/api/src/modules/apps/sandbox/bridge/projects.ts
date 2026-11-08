@@ -397,16 +397,23 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         validationLevels?: Array<{ name: string }> | null
         checklistOnCards?: boolean
         tasks?: unknown
+        companyId?: string | null
       }
       const { createProject, normalizeInitialTasks } = await import(
         "~/apps/projects/service/create-project"
       )
       const { setValidationLevels } = await import("~/apps/projects/service/checklist")
       const actor = await writeActor()
-      const { validationLevels, tasks: rawTasks, ...input } = params
+      const { validationLevels, tasks: rawTasks, companyId, ...input } = params
       const levels = Array.isArray(validationLevels) ? validationLevels : []
       // Checked before anything is written: a bad list creates no project.
       const initialTasks = normalizeInitialTasks(rawTasks)
+      // A client company the caller cannot read answers its code; nothing is created.
+      if (companyId) {
+        const { assertVisibleCompany } = await import("~/apps/projects/service/deals")
+        const refused = await typedCall(() => assertVisibleCompany(txDb as never, orgId, companyId))
+        if (refused.startsWith('{"error"')) return refused
+      }
       // One savepoint: an invalid level list, or a task that cannot be created
       // (an unknown assignee), leaves no half-configured project behind. One
       // approval of a held create is then the project and every task in it.
@@ -443,8 +450,20 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
             tasks.push({ id: row.id, key: row.key ?? null, title: row.title })
           }
         }
+        if (companyId) {
+          const { updateProject } = await import("~/apps/projects/service/update-project")
+          await updateProject({
+            tx: stepTx as never,
+            orgId,
+            projectId: project.id,
+            actor,
+            actorType: actorKind === "agent" ? "agent" : "user",
+            patch: { companyId },
+          })
+        }
         return {
           ...project,
+          ...(companyId ? { companyId } : {}),
           validationLevels: saved,
           ...(initialTasks.length > 0 ? { tasks, taskCount: tasks.length } : {}),
         }
@@ -475,9 +494,29 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         afterTaskId?: string | null
         /** Own label values: group name/id to value name/id. */
         labels?: Record<string, string | null>
+        /** A deal's company, contact and amount: only in a pipeline. */
+        companyId?: string | null
+        contactId?: string | null
+        amountMinor?: number | null
+        currency?: string | null
       }
       return typedServiceCall(async () => {
         const { createTask, appendSourceCitation } = await import("~/apps/projects/service/tasks")
+        const { assertPipelineForDealFields, hasDealFields, writeDealFields } = await import(
+          "~/apps/projects/service/deals"
+        )
+        const {
+          companyId: dealCompanyId,
+          contactId: dealContactId,
+          amountMinor: dealAmountMinor,
+          currency: dealCurrency,
+        } = params
+        const dealFields = {
+          ...(dealCompanyId !== undefined ? { companyId: dealCompanyId } : {}),
+          ...(dealContactId !== undefined ? { contactId: dealContactId } : {}),
+          ...(dealAmountMinor !== undefined ? { amountMinor: dealAmountMinor } : {}),
+          ...(dealCurrency !== undefined ? { currency: dealCurrency } : {}),
+        }
         const { resolveAssignee, resolveNewTaskProjectId, resolveTaskRef } = await import(
           "~/apps/projects/service/resolve"
         )
@@ -526,6 +565,10 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
           (await resolveNewTaskProjectId(txDb as never, orgId, params, {
             threadId: bridgeOptions?.threadId ?? null,
           }))
+        const wantsDeal = hasDealFields(dealFields)
+        if (wantsDeal) {
+          await assertPipelineForDealFields(txDb as never, orgId, projectId, !!resolvedParentTaskId)
+        }
         const assigneeId = await resolveAssignee(txDb as never, orgId, params)
         // A web-derived task must be self-contained AND cite its source in the BODY (a reviewer opens
         // the task, not the chat). The weak model reliably builds the body but drops the citation on
@@ -543,6 +586,10 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
           completedAt: _completedAt,
           allowInactiveAssignee: _allowInactiveAssignee,
           createdByAgentLabel: _createdByAgentLabel,
+          companyId: _companyId,
+          contactId: _contactId,
+          amountMinor: _amountMinor,
+          currency: _currency,
           ...appParams
         } = params as typeof params & {
           createdBy?: unknown
@@ -550,23 +597,24 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
           allowInactiveAssignee?: unknown
           createdByAgentLabel?: unknown
         }
-        return JSON.stringify(
-          await createTask({
-            tx: txDb as never,
-            orgId,
-            actor,
-            input: {
-              ...appParams,
-              description,
-              projectId,
-              assigneeId,
-              parentTaskId: resolvedParentTaskId,
-              beforeTaskId: resolvedBeforeTaskId,
-              afterTaskId: resolvedAfterTaskId,
-              createdByAgentLabel: await agentCreatorLabel(),
-            },
-          }),
-        )
+        const task = await createTask({
+          tx: txDb as never,
+          orgId,
+          actor,
+          input: {
+            ...appParams,
+            description,
+            projectId,
+            assigneeId,
+            parentTaskId: resolvedParentTaskId,
+            beforeTaskId: resolvedBeforeTaskId,
+            afterTaskId: resolvedAfterTaskId,
+            createdByAgentLabel: await agentCreatorLabel(),
+          },
+        })
+        if (!wantsDeal) return JSON.stringify(task)
+        await writeDealFields(txDb as never, orgId, callerScopes ?? [], task.id, dealFields)
+        return JSON.stringify({ ...task, deal: dealFields })
       })
     },
     projects_updateTask: async (paramsJson: string): Promise<string> => {
@@ -760,6 +808,7 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         color?: string | null
         key?: string
         group?: string | null
+        companyId?: string | null
       }
       return typedServiceCall(async () => {
         const { updateProject } = await import("~/apps/projects/service/update-project")
@@ -783,8 +832,11 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
               color: params.color,
               key: params.key,
               group: params.group,
+              ...(params.companyId !== undefined ? { companyId: params.companyId } : {}),
             },
-          }),
+          }).then((detail) =>
+            params.companyId === null ? { ...detail, companyId: null } : detail,
+          ),
         )
       })
     },
@@ -977,6 +1029,249 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
     },
     // BL-263: bounded PORTFOLIO ROLLUP across active projects — per-project
     // {done, remaining, overdue, %done, biggest-at-risk} in one aggregate read.
+    // --- Deals: a pipeline's root tasks with a company, a contact and an amount ---
+    projects_dealsPipelineCreate: async (paramsJson: string): Promise<string> => {
+      if (appName !== "projects") {
+        throw new Error("projects_dealsPipelineCreate is only available to the projects app")
+      }
+      const params = JSON.parse(paramsJson || "{}") as {
+        name: string
+        key?: string
+        stages?: string[]
+        companyId?: string | null
+      }
+      return typedServiceCall(async () => {
+        const { createPipeline } = await import("~/apps/projects/service/create-project")
+        const actor = await writeActor()
+        let pipeline: Awaited<ReturnType<typeof createPipeline>>
+        try {
+          pipeline = await createPipeline({
+            tx: txDb as never,
+            orgId,
+            actor,
+            input: {
+              name: params.name,
+              ...(params.key ? { key: params.key } : {}),
+              ...(params.stages ? { stages: params.stages } : {}),
+            },
+          })
+        } catch (err) {
+          const message = String((err as Error)?.message ?? err)
+          const code = /^([a-z_]+):/.exec(message)?.[1]
+          if (!code) throw err
+          return envelopeError(code, `${message}. Nothing was created.`)
+        }
+        const stages = pipeline.statuses.map((st) => st.label)
+        return JSON.stringify({
+          projectId: pipeline.id,
+          key: pipeline.key,
+          name: pipeline.name,
+          stages,
+          message: `Pipeline ${pipeline.name} (${pipeline.key}) created with stages ${stages.join(", ")}. Add deals with create and this projectId.`,
+        })
+      })
+    },
+    projects_dealsUpdate: async (paramsJson: string): Promise<string> => {
+      if (appName !== "projects") {
+        throw new Error("projects_dealsUpdate is only available to the projects app")
+      }
+      const params = JSON.parse(paramsJson || "{}") as {
+        taskId: string
+        companyId?: string | null
+        contactId?: string | null
+        amountMinor?: number | null
+        currency?: string | null
+        amountPeriod?: "once" | "month" | "year"
+        probability?: number | null
+        nextStep?: string | null
+        outcome?: "won" | "lost" | "open"
+        reason?: string | null
+      }
+      return typedServiceCall(async () => {
+        const { listDeals, setDealOutcome, writeDealFields } = await import(
+          "~/apps/projects/service/deals"
+        )
+        const { ProjectsServiceError } = await import("~/apps/projects/service/statuses")
+        const actor = await writeActor()
+        const taskId = await resolveTask(String(params.taskId ?? ""))
+        const before = (await listDeals(txDb as never, orgId, { taskId }))[0]
+        if (!before) {
+          throw new ProjectsServiceError(
+            404,
+            "deal_not_found",
+            "This task is not a live deal (a top-level task of a pipeline). Nothing was changed.",
+          )
+        }
+        const { taskId: _t, outcome, reason, ...fields } = params
+        await writeDealFields(txDb as never, orgId, callerScopes ?? [], taskId, fields)
+        let outcomeChanged = false
+        if (outcome) {
+          const r = await setDealOutcome({
+            tx: txDb as never,
+            orgId,
+            actor,
+            taskId,
+            outcome,
+            reason: reason ?? null,
+          })
+          outcomeChanged = r.changed
+        }
+        const after = (await listDeals(txDb as never, orgId, { taskId }))[0]!
+        const name = `${after.companyName ? `${after.companyName}, ` : ""}${after.title} (${after.key})`
+        const changed = Object.keys(fields)
+        const lines: string[] = []
+        if (outcome && outcomeChanged) lines.push(`${name} moved to ${after.statusLabel}.`)
+        else if (outcome)
+          lines.push(`${name} was already ${after.outcome}; its stage did not change.`)
+        if (changed.length > 0) lines.push(`Changed on ${name}: ${changed.join(", ")}.`)
+        if (reason && outcome !== "lost") {
+          lines.push("The reason was not saved: it is kept only with outcome lost.")
+        }
+        if (lines.length === 0) lines.push(`Nothing was given to change on ${name}.`)
+        return JSON.stringify({
+          taskId,
+          key: after.key,
+          outcome: after.outcome,
+          closedAt: after.closedAt,
+          statusId: after.statusId,
+          stage: after.statusLabel,
+          message: lines.join(" "),
+        })
+      })
+    },
+    projects_dealsSearch: async (paramsJson: string): Promise<string> => {
+      if (appName !== "projects") {
+        throw new Error("projects_dealsSearch is only available to the projects app")
+      }
+      const params = JSON.parse(paramsJson || "{}") as {
+        taskId?: string
+        projectId?: string
+        companyId?: string
+        contactId?: string
+        outcome?: "open" | "won" | "lost"
+        closedAfter?: string
+        closedBefore?: string
+        limit?: number
+      }
+      return typedServiceCall(async () => {
+        const { listDeals } = await import("~/apps/projects/service/deals")
+        const { hasScope: checkScope } = await import("~/modules/permissions/permissions")
+        const dealAccess = checkScope("projects:deals:read", callerScopes ?? [])
+        const taskId = params.taskId ? await resolveTask(params.taskId) : undefined
+        const rows = await listDeals(txDb as never, orgId, {
+          ...(taskId ? { taskId } : {}),
+          ...(params.projectId ? { projectId: params.projectId } : {}),
+          ...(params.companyId ? { companyId: params.companyId } : {}),
+          ...(params.contactId ? { contactId: params.contactId } : {}),
+          ...(params.outcome ? { outcome: params.outcome } : {}),
+          ...(params.closedAfter ? { closedAfter: params.closedAfter } : {}),
+          ...(params.closedBefore ? { closedBefore: params.closedBefore } : {}),
+          limit: Math.min(Math.max(Number(params.limit ?? 25), 1), 100),
+        })
+        const items = rows.map((d) => ({
+          task: {
+            id: d.taskId,
+            key: d.key,
+            title: d.title,
+            projectId: d.projectId,
+            stage: d.statusLabel,
+            ownerId: d.assigneeId,
+          },
+          deal: {
+            companyId: d.companyId,
+            companyName: d.companyName,
+            contactId: d.contactId,
+            outcome: d.outcome,
+            nextStep: d.nextStep,
+            lostReason: d.lostReason,
+            closedAt: d.closedAt,
+            closedBy: d.closedBy,
+          },
+          ...(dealAccess && d.value ? { values: d.value } : {}),
+        }))
+        const message =
+          items.length === 0
+            ? taskId
+              ? "This task is not a live deal you can see."
+              : "No deal you can see matches."
+            : `${items.length} deal${items.length === 1 ? "" : "s"}.${dealAccess ? "" : " Amounts need deal access and are not shown."}`
+        return JSON.stringify({ items, count: items.length, message })
+      })
+    },
+    projects_dealsRollup: async (paramsJson: string): Promise<string> => {
+      if (appName !== "projects") {
+        throw new Error("projects_dealsRollup is only available to the projects app")
+      }
+      const { hasScope: checkScope } = await import("~/modules/permissions/permissions")
+      if (!checkScope("projects:deals:read", callerScopes ?? [])) {
+        return envelopeError("forbidden", "Missing required scope: projects:deals:read")
+      }
+      const params = JSON.parse(paramsJson || "{}") as {
+        projectId?: string
+        groupBy?: "stage" | "owner" | "month"
+        weighted?: boolean
+        closedAfter?: string
+        closedBefore?: string
+      }
+      const groupBy = params.groupBy ?? "stage"
+      if (!["stage", "owner", "month"].includes(groupBy)) {
+        return envelopeError(
+          "invalid_params",
+          "groupBy is stage, owner or month. Nothing was read.",
+        )
+      }
+      return typedServiceCall(async () => {
+        const { dealsRollup } = await import("~/apps/projects/service/deals")
+        const r = await dealsRollup(txDb as never, orgId, {
+          groupBy,
+          ...(params.projectId ? { projectId: params.projectId } : {}),
+          ...(params.weighted ? { weighted: true } : {}),
+          ...(params.closedAfter ? { closedAfter: params.closedAfter } : {}),
+          ...(params.closedBefore ? { closedBefore: params.closedBefore } : {}),
+        })
+        return JSON.stringify({
+          ...r,
+          message: `${r.dealCount} deal${r.dealCount === 1 ? "" : "s"} in ${r.groups.length} group${r.groups.length === 1 ? "" : "s"} by ${groupBy}; sums are per currency, never converted.${r.truncated ? " Only the 500 most recently changed deals are counted." : ""}`,
+        })
+      })
+    },
+    projects_dealsFollowupCandidates: async (paramsJson: string): Promise<string> => {
+      if (appName !== "projects") {
+        throw new Error("projects_dealsFollowupCandidates is only available to the projects app")
+      }
+      const params = JSON.parse(paramsJson || "{}") as { quietDays?: number; projectId?: string }
+      const quietDays = Number(params.quietDays)
+      if (!Number.isInteger(quietDays) || quietDays < 1) {
+        return envelopeError("invalid_params", "quietDays is a whole number of days, 1 or more.")
+      }
+      return typedServiceCall(async () => {
+        const { followupCandidates } = await import("~/apps/projects/service/deals")
+        const items = await followupCandidates(txDb as never, orgId, callerScopes ?? [], {
+          quietDays,
+          ...(params.projectId ? { projectId: params.projectId } : {}),
+        })
+        const ready = items.filter((i) => i.skip === null).length
+        const bySkip = new Map<string, number>()
+        for (const i of items) if (i.skip) bySkip.set(i.skip, (bySkip.get(i.skip) ?? 0) + 1)
+        const skipped = [...bySkip.entries()].map(([k, n]) => `${n} ${k}`).join(", ")
+        return JSON.stringify({
+          items,
+          ready,
+          message: `${ready} of ${items.length} open deal${items.length === 1 ? "" : "s"} can get a follow-up now (skip null).${skipped ? ` Skipped: ${skipped}.` : ""}`,
+        })
+      })
+    },
+    projects_dealSendState: async (paramsJson: string): Promise<string> => {
+      if (appName !== "projects") {
+        throw new Error("projects_dealSendState is only available to the projects app")
+      }
+      const params = JSON.parse(paramsJson || "{}") as { ref?: { kind?: string; id?: string } }
+      if (params.ref?.kind !== "projects:deal" || typeof params.ref.id !== "string") {
+        return envelopeError("invalid_params", "ref is {kind: 'projects:deal', id: <task id>}.")
+      }
+      const { dealSendState } = await import("~/apps/projects/service/deals")
+      return JSON.stringify(await dealSendState(txDb as never, orgId, params.ref.id))
+    },
     projects_portfolioRollup: async (paramsJson: string): Promise<string> => {
       if (appName !== "projects") {
         throw new Error("projects_portfolioRollup is only available to the projects app")

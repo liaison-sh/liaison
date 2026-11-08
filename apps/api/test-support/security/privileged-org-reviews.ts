@@ -89,6 +89,8 @@ export const REVIEWED_DISPATCH: Record<string, string> = {
  * follow to a trusted source, could not be traced, or is a literal: `file#enclosing` → why.
  */
 export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
+  "apps/api/src/apps/projects/service/deals.ts#orgTimeZone":
+    "reads only the timezone column of the org it is given (organizations is closed to row-level readers); its callers, the deal board route and the projects bridge, pass the org of their own caller's RLS transaction",
   "apps/api/src/modules/contacts/companies.ts#companyIdsUnknownTo":
     "stage-time check of a gated company call: requester is the staging actor, its org from that actor's own context; it reads only that org's companies and answers existence, nothing else",
   "apps/api/src/modules/agent/runtime/tool-card-store.ts#clearToolCardsByKey":

@@ -31,6 +31,7 @@
 // shopDomain }` so the test can drive subsequent steps (webhook
 // dispatch via the H4 secret, etc.) without further harness round-trips.
 import { api } from "@liaison/test-helpers"
+import { laneGeneration } from "../../fixtures/test"
 
 export interface InstallShopifyAppOptions {
   /** Hono server URL — typically `env.serverUrl`. */
@@ -100,14 +101,16 @@ const installCache = new Map<string, Promise<InstalledShopifyApp>>()
  * `webhookSecret` off this handle).
  *
  * Idempotent at the worker level: if the same `(serverUrl, orgId)` was
- * already installed in this worker, the cached handle is returned without
- * re-hitting the route. This lets every scenario in a file call
+ * already installed in this worker since the lane was last reset, the cached
+ * handle is returned without re-hitting the route. This lets every scenario in a file call
  * `installShopifyApp` directly without coordinating via `beforeAll`.
  */
 export async function installShopifyApp(
   opts: InstallShopifyAppOptions,
 ): Promise<InstalledShopifyApp> {
-  const cacheKey = `${opts.serverUrl}:${opts.orgId}`
+  // A lane reset between spec files drops the install from the database: the
+  // next file installs again instead of trusting an install the reset undid.
+  const cacheKey = `${opts.serverUrl}:${opts.orgId}:${laneGeneration()}`
   const cached = installCache.get(cacheKey)
   if (cached) return cached
 

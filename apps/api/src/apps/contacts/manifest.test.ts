@@ -18,8 +18,12 @@ describe("contacts manifest", () => {
     )
   })
 
-  it("is version 0.1.1 (the list page carries the groups sidebar)", () => {
-    expect(contactsManifest.version).toBe("0.1.1")
+  it("is version 0.1.2 (the company page hosts other apps' sections)", () => {
+    expect(contactsManifest.version).toBe("0.1.2")
+  })
+
+  it("hosts the company page's slot, where other apps' panels sit as sections", () => {
+    expect(contactsManifest.slots).toEqual({ company_detail: { position: "sections" } })
   })
 
   it("gives the contact-list page the groups sidebar, the contact page its picker", () => {

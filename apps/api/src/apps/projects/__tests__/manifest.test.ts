@@ -86,7 +86,28 @@ describe("projects.manifest", () => {
     // 1.10.6: sentences shared by several tools, and the longest descriptions past 600 characters, read from guide sections.
     // 1.10.7: its core tools load on a hard focus of its entity, the others by name.
     // 1.10.8: search draws its result as a list card.
-    expect(projectsManifest.version).toBe("1.10.8")
+    // 1.10.9: the sales role, and deal amounts for sales and leads.
+    expect(projectsManifest.version).toBe("1.10.9")
+  })
+
+  it("the member role holds no deal scope and sales and lead do", () => {
+    const roles = (
+      projectsManifest as unknown as {
+        roles: Record<string, { extends?: string; scopes: string[] }>
+      }
+    ).roles
+    const held = (name: string): string[] => {
+      const role = roles[name]
+      if (!role) return []
+      return [...role.scopes, ...(role.extends ? held(role.extends) : [])]
+    }
+    const deals = ["projects:deals:read", "projects:deals:write"]
+    for (const scope of deals) expect(held("member")).not.toContain(scope)
+    for (const name of ["sales", "lead", "admin"]) {
+      for (const scope of deals) expect(held(name), `${name} ${scope}`).toContain(scope)
+    }
+    expect(roles.sales?.extends).toBe("member")
+    expect(held("sales")).not.toContain("projects:projects:write")
   })
 
   it("projects.manifest.search-draws-a-list-card-from-fields-the-tool-returns", () => {

@@ -467,6 +467,9 @@ function buildManifestForBridge(desc: AppDescriptor, declaredCapabilities: strin
     ...(Array.isArray((desc as any).contextProviders)
       ? { contextProviders: (desc as any).contextProviders }
       : {}),
+    ...(Array.isArray((desc as any).activitySources)
+      ? { activitySources: (desc as any).activitySources }
+      : {}),
     name: desc.name,
     schema: (desc as any).schema ?? {},
     events: (desc as any).events ?? {},

@@ -122,7 +122,7 @@
       }
     ]
   },
-  "version": "1.10.8",
+  "version": "1.10.9",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -2647,11 +2647,21 @@
         "projects:tasks:write"
       ]
     },
-    "lead": {
-      "description": "Project lead: create and edit projects in addition to member rights",
+    "sales": {
+      "description": "Sales: member rights plus reading and editing deal amounts",
       "extends": "member",
       "scopes": [
-        "projects:projects:write"
+        "projects:deals:read",
+        "projects:deals:write"
+      ]
+    },
+    "lead": {
+      "description": "Project lead: create and edit projects and deal amounts in addition to member rights",
+      "extends": "member",
+      "scopes": [
+        "projects:projects:write",
+        "projects:deals:read",
+        "projects:deals:write"
       ]
     },
     "admin": {

@@ -251,5 +251,6 @@
     "timeout": "The mail server did not answer in time. Liaison tries again on its own.",
     "tls": "The secure connection to the mail server failed. Check the port and the security setting."
   },
-  "personalMailboxTransparentNotice": "Mail from your personal mailbox is encrypted at rest. Only you and your agent can read it; your organization's admins cannot. There is no mailbox password to set."
+  "personalMailboxTransparentNotice": "Mail from your personal mailbox is encrypted at rest. Only you and your agent can read it; your organization's admins cannot. There is no mailbox password to set.",
+  "suppressions": {}
 }

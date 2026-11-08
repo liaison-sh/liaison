@@ -1,7 +1,7 @@
 {
   "name": "contacts",
   "agentInstructions": "Contacts is the people-and-companies directory. Reach for it to resolve who someone is, or to look up a customer or dealer before acting. Key handles: contact id, handle, email, company, external ids. Resolve is idempotent — the same email always maps to the same contact, so resolve rather than create duplicates. Silent-failure gotcha: an unknown contact returns empty, not an error — say you could not find them rather than inventing details.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Contact registry: kernel-owned, manifest-registered UI surface",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -117,5 +117,8 @@
     "wsHandlers": {
       "contact": { "key": "kernel:contact", "handler": "handleContactEvent" }
     }
+  },
+  "slots": {
+    "company_detail": { "position": "sections" }
   }
 }

@@ -826,6 +826,11 @@ export const KERNEL_DECLARED_EMITS: ReadonlySet<string> = new Set([
   "contact:delete",
   "contact:merge",
   "contact:share",
+  // A company was created, edited, merged into another or closed (the relationship ended).
+  "company:create",
+  "company:update",
+  "company:merge",
+  "company:closed",
   "presence:update",
   "org:update",
   // One field of an app's declarative settings page written (modules/apps/settings-routes.ts).

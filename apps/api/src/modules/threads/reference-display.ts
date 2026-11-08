@@ -38,6 +38,7 @@ interface ManifestMeta {
 const KERNEL_FALLBACK: Record<string, ManifestMeta> = {
   thread: { tabType: "kernel:thread", label: "Thread", icon: "MessageSquare" },
   contact: { tabType: "kernel:contact", label: "Contact", icon: "User" },
+  company: { tabType: "kernel:company", label: "Company", icon: "Building2" },
   approval_request: {
     tabType: "kernel:approval_request",
     label: "Approval",

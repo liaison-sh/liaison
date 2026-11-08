@@ -775,7 +775,7 @@ export function matchesKey(e: KeyboardEvent, keySpec: string): boolean {
 // ─── Slot & Contribution Registry ────────────────────────────────────
 
 export interface SlotDeclaration {
-  position: "tabs" | "toolbar" | "menu" | "sidebar"
+  position: "tabs" | "toolbar" | "menu" | "sidebar" | "sections"
 }
 
 export interface ContributionEntry {

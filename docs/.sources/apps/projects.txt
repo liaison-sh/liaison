@@ -68,9 +68,10 @@ CI connection fields -> apps/api/src/apps/projects/app.manifest.json:1390
 webhook_info reads the secret -> apps/api/src/apps/projects/app.manifest.json:953
 Webhook signing and header -> apps/api/src/apps/projects/app.manifest.json:1406
 Fresh ts, ciWebhookTtlSeconds, externalRef -> apps/api/src/apps/projects/app.manifest.json:1407
-Role member -> apps/api/src/apps/projects/app.manifest.json:1690
-Role lead -> apps/api/src/apps/projects/app.manifest.json:1698
-Role admin -> apps/api/src/apps/projects/app.manifest.json:1705
+Role member -> apps/api/src/apps/projects/app.manifest.json:2642
+Role sales, deal scopes -> apps/api/src/apps/projects/app.manifest.json:2650-2657
+Role lead, deal scopes -> apps/api/src/apps/projects/app.manifest.json:2658-2666
+Role admin -> apps/api/src/apps/projects/app.manifest.json:2667
 projects:approve -> docs/reference/scopes.md:266
 search -> apps/api/src/apps/projects/app.manifest.json:317
 get -> apps/api/src/apps/projects/app.manifest.json:338

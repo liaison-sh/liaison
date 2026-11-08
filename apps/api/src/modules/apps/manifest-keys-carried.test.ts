@@ -8,7 +8,11 @@
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db/connection"
-import { resetAppRegistries, toolRegistry } from "~/modules/apps/app-registries"
+import {
+  appBridgeManifestRegistry,
+  resetAppRegistries,
+  toolRegistry,
+} from "~/modules/apps/app-registries"
 import { validateAppManifest } from "~/modules/apps/contract"
 import { registerApps } from "~/modules/apps/runtime"
 import { insertSql } from "~/seed/factories/org/test-rows"
@@ -178,6 +182,52 @@ describe("manifest keys carried onto the registry", () => {
     await registerApps([manifest], TEST_ORG)
     const entry = toolRegistry.get([TEST_ORG, APP, "reads"]) as Record<string, unknown> | undefined
     expect(entry?.taintSourceWhenRow).toEqual({ ...WHEN, outsideFields: ["title"] })
+  })
+
+  it("activitySources reaches the registry entry", async () => {
+    const sources = [
+      {
+        tool: "timeline",
+        scope: `${APP}:items:read`,
+        label: "Items",
+        labelKey: "carried.items",
+        filterKey: "items",
+      },
+    ]
+    const manifest = appWith({ timeline: { readOnly: true } }, { activitySources: sources })
+    const { failedApps } = await registerApps([manifest], TEST_ORG)
+    expect(failedApps).toEqual([])
+    expect(appBridgeManifestRegistry.get([TEST_ORG, APP])?.activitySources).toEqual(sources)
+  })
+
+  it("a malformed activitySources entry is refused naming the app", async () => {
+    const source = {
+      tool: "timeline",
+      scope: `${APP}:items:read`,
+      label: "Items",
+      filterKey: "items",
+    }
+    // A tool that writes, a tool the app lacks, and a scope the tool does not check.
+    for (const [tools, entry, says] of [
+      [{ timeline: {} }, source, "activitySources[0].tool: 'timeline' must be declared readOnly"],
+      [{ visible: {} }, source, "activitySources[0].tool: 'timeline' is not a tool of this app"],
+      [
+        { timeline: { readOnly: true } },
+        { ...source, scope: `${APP}:items:write` },
+        "activitySources[0].scope",
+      ],
+      [{ timeline: { readOnly: true } }, { ...source, filterKey: undefined }, "filterKey"],
+    ] as Array<[Record<string, Record<string, unknown>>, Record<string, unknown>, string]>) {
+      const manifest = appWith(tools, { activitySources: [entry] })
+      const { _format, _bundlePath, ...declared } = manifest
+      const judged = validateAppManifest(JSON.parse(JSON.stringify(declared)))
+      expect(judged.success ? "" : judged.error).toContain(says)
+      const { failedApps } = await registerApps([manifest], TEST_ORG)
+      expect(failedApps).toEqual([APP])
+      expect(appBridgeManifestRegistry.get([TEST_ORG, APP])).toBeUndefined()
+      resetAppRegistries()
+      await cleanup()
+    }
   })
 
   it("a sink-reader declaration refuses an app nobody vouched for, so nothing is carried", async () => {

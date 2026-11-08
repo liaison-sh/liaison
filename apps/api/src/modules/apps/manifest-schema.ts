@@ -775,6 +775,22 @@ export const appManifestJsonSchema = {
         additionalProperties: false,
       },
     },
+    // Read-only tools that give a company's or a contact's timeline its rows, one per source.
+    activitySources: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          tool: { type: "string", minLength: 1 },
+          scope: { type: "string", minLength: 1 },
+          label: { type: "string", minLength: 1 },
+          labelKey: { type: "string", minLength: 1 },
+          filterKey: { type: "string", pattern: "^[a-z][a-z0-9_-]*$" },
+        },
+        required: ["tool", "scope", "label", "filterKey"],
+        additionalProperties: false,
+      },
+    },
     // Per-org switchable features; a tool, slot panel or tab type names one with `feature`.
     features: {
       type: "object",
@@ -1835,7 +1851,7 @@ export const appManifestJsonSchema = {
           type: "object",
           properties: {
             // A host declaring where its slot sits.
-            position: { type: "string", enum: ["tabs", "toolbar", "menu", "sidebar"] },
+            position: { type: "string", enum: ["tabs", "toolbar", "menu", "sidebar", "sections"] },
             // An app contributing to a slot.
             panels: { type: "array", items: SLOT_CONTRIBUTION_SCHEMA },
             actions: { type: "array", items: SLOT_CONTRIBUTION_SCHEMA },

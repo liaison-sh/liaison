@@ -146,7 +146,8 @@ Each file is matched to its task by `externalRef`, backdated, and kept under its
 | Role | Scopes |
 |---|---|
 | `member` | `projects:projects:read`, `projects:tasks:read`, `projects:tasks:write` |
-| `lead` | `member` plus `projects:projects:write` |
+| `sales` | `member` plus `projects:deals:read` and `projects:deals:write` (deal amounts) |
+| `lead` | `member` plus `projects:projects:write`, `projects:deals:read` and `projects:deals:write` |
 | `admin` | `lead` plus `projects:settings:admin` and `projects:labels:admin` |
 
 `projects:approve` decides the approvals gated project tools raise. See the [scope reference](../reference/scopes.md) and [roles](../admin/roles.md).

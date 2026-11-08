@@ -6,6 +6,7 @@ import { connectionErrorKey } from "~/lib/connection-errors"
 import { ComposerAssist } from "~/modules/assist/ComposerAssist"
 import { DictationMic, RecorderRow } from "~/modules/assist/RecorderBar"
 import { useDictation } from "~/modules/assist/useDictation"
+import { updateContact } from "~/modules/contacts/contact-detail-store"
 import { RichEditor, type RichEditorHandle } from "~/modules/editor"
 import { AttachmentUploadButton } from "~/modules/files/AttachmentUploadButton"
 import {
@@ -38,7 +39,11 @@ interface ComposeCheck {
   footerLines: string[] | null
   refusal: string | null
   line: string | null
+  /** A prospect with no recorded lawful basis: said calmly, and the person may still send. */
+  missingBasis?: { contactId: string | null; name: string } | null
 }
+
+type LawfulBasis = "consent" | "customer" | "professional_interest" | "generic_address"
 
 interface MailComposeProps {
   entityId: string
@@ -66,6 +71,21 @@ export const MailCompose: Component<MailComposeProps> = (props) => {
   // added at send), why it cannot go, or the opted-out line.
   const [commercial, setCommercial] = createSignal<ComposeCheck | null>(null)
   const [checkFailed, setCheckFailed] = createSignal(false)
+  // Bumped after a basis is recorded so the check runs again.
+  const [recheck, setRecheck] = createSignal(0)
+  const [basisFailed, setBasisFailed] = createSignal(false)
+
+  /** Records the chosen basis on the contact, through the contact's own edit path. */
+  async function recordBasis(contactId: string, basis: string) {
+    if (!basis) return
+    setBasisFailed(false)
+    try {
+      await updateContact(api, contactId, { lawfulBasis: basis as LawfulBasis })
+      setRecheck((n) => n + 1)
+    } catch {
+      setBasisFailed(true)
+    }
+  }
 
   createEffect(
     on(
@@ -116,7 +136,7 @@ export const MailCompose: Component<MailComposeProps> = (props) => {
   let checkSeq = 0
   let checkTimer: ReturnType<typeof setTimeout> | undefined
   createEffect(
-    on([to, cc, bcc], ([t, c, b]) => {
+    on([to, cc, bcc, recheck], ([t, c, b]) => {
       clearTimeout(checkTimer)
       const seq = ++checkSeq
       const recipients = {
@@ -343,6 +363,44 @@ export const MailCompose: Component<MailComposeProps> = (props) => {
             >
               <p class="mb-1">{i18n.t("mail.commercialFooter.composerNote")}</p>
               <For each={lines()}>{(line) => <p class="text-text">{line}</p>}</For>
+            </div>
+          )}
+        </Show>
+        <Show when={commercial()?.missingBasis}>
+          {(missing) => (
+            <div
+              data-testid="mail-compose-no-basis"
+              class="flex flex-wrap items-center gap-2 text-xs text-text-secondary"
+            >
+              <span>{i18n.t("mail.commercialFooter.noBasis", { name: missing().name })}</span>
+              <Show when={missing().contactId}>
+                {(contactId) => (
+                  <select
+                    data-testid="mail-compose-record-basis"
+                    aria-label={i18n.t("mail.commercialFooter.recordBasis")}
+                    class="rounded border border-border bg-surface px-1 py-0.5 text-xs text-text"
+                    value=""
+                    onChange={(event) => void recordBasis(contactId(), event.currentTarget.value)}
+                  >
+                    <option value="">{i18n.t("mail.commercialFooter.recordBasis")}</option>
+                    <option value="consent">{i18n.t("mail.commercialFooter.basisConsent")}</option>
+                    <option value="customer">
+                      {i18n.t("mail.commercialFooter.basisCustomer")}
+                    </option>
+                    <option value="professional_interest">
+                      {i18n.t("mail.commercialFooter.basisProfessionalInterest")}
+                    </option>
+                    <option value="generic_address">
+                      {i18n.t("mail.commercialFooter.basisGenericAddress")}
+                    </option>
+                  </select>
+                )}
+              </Show>
+              <Show when={basisFailed()}>
+                <span data-testid="mail-compose-record-basis-failed">
+                  {i18n.t("mail.commercialFooter.recordBasisFailed")}
+                </span>
+              </Show>
             </div>
           )}
         </Show>

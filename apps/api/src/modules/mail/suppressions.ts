@@ -504,6 +504,8 @@ export interface RecipientBasis {
   isConsumer: boolean | null
   /** Every recorded country, upper case; empty when none is recorded. */
   countries: string[]
+  /** The first contact's recorded name, for a person to read; null when none is recorded. */
+  name: string | null
 }
 
 /** The org's own domains: an address there is a colleague, never a recipient of the rules. */
@@ -542,12 +544,13 @@ export async function lawfulBasisFacts(
         : extractRows<{
             id: string
             email: string
+            name: string | null
             lawful_basis: LawfulBasis | null
             is_consumer: boolean | null
             recipient_country: string | null
           }>(
             await tx.execute(drizzleSql`
-              SELECT id::text AS id, lower(email) AS email, lawful_basis, is_consumer, recipient_country
+              SELECT id::text AS id, lower(email) AS email, name, lawful_basis, is_consumer, recipient_country
                 FROM ${K()}.contacts
                WHERE org_id = ${orgId}::uuid
                  AND lower(email) = ANY(ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(outside)}::jsonb)))
@@ -585,6 +588,7 @@ export async function lawfulBasisFacts(
           ),
         ),
       ].sort(),
+      name: mine.find((c) => c.name?.trim())?.name?.trim() ?? null,
     }
   })
   return { recipients, countryPolicy: countryPolicyOf(settings) }

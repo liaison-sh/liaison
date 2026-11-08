@@ -18,6 +18,7 @@ const at = (fields: Partial<RecipientBasis>): RecipientBasis => ({
   conflict: null,
   isConsumer: false,
   countries: ["FR"],
+  name: null,
   ...fields,
 })
 

@@ -4913,6 +4913,15 @@ export const FR: Record<string, string> = {
     "Si vous ne nous avez pas donné votre adresse vous-même, {{name}} l'a obtenue d'une autre source et ne l'utilise que pour des messages professionnels comme celui-ci. Vous pouvez vous y opposer à tout moment avec le lien ci-dessous.",
   "This mail goes to a prospect, so these lines are added when it is sent, in their language. They cannot be removed.":
     "Ce message va à un prospect : ces lignes y sont ajoutées à l'envoi, dans sa langue. Elles ne peuvent pas être retirées.",
+  "No recorded basis for writing to {{name}} commercially":
+    "Aucune base enregistrée pour écrire à {{name}} à des fins commerciales",
+  "Record a basis": "Enregistrer une base",
+  Consent: "Consentement",
+  "Existing customer": "Client existant",
+  "Professional interest": "Intérêt professionnel",
+  "Generic company address": "Adresse générique d'entreprise",
+  "The basis was not recorded. Try again, or record it on their contact.":
+    "La base n'a pas été enregistrée. Réessayez, ou enregistrez-la sur sa fiche contact.",
   "Could not check whether this mail is commercial. It is checked again when you send.":
     "Impossible de vérifier si ce message est commercial. La vérification est refaite à l'envoi.",
 }

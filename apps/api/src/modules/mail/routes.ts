@@ -502,6 +502,8 @@ const composeCheckBody = z.object({
  * What a new message to these recipients will carry, for the composer: the
  * commercial footer when the data marks a recipient as a prospect (fixed, added
  * at send), or why it cannot go, or the opted-out line of a person's own mail.
+ * `missingBasis` names the prospect with no recorded lawful basis: the person
+ * is told, and may still send.
  */
 mailRoutes.post(
   "/compose-check",
@@ -511,7 +513,13 @@ mailRoutes.post(
     const body = c.req.valid("json")
     const own = await checkPersonCompose(c.get("orgId"), recipientsOf(body.to, body.cc, body.bcc))
     if (!own.commercial) {
-      return success(c, { commercial: false, footerLines: null, refusal: null, line: own.line })
+      return success(c, {
+        commercial: false,
+        footerLines: null,
+        refusal: null,
+        line: own.line,
+        missingBasis: null,
+      })
     }
     if ("refused" in own) {
       return success(c, {
@@ -519,9 +527,16 @@ mailRoutes.post(
         footerLines: null,
         refusal: own.refused.message,
         line: null,
+        missingBasis: null,
       })
     }
-    return success(c, { commercial: true, footerLines: own.footerLines, refusal: null, line: null })
+    return success(c, {
+      commercial: true,
+      footerLines: own.footerLines,
+      refusal: null,
+      line: null,
+      missingBasis: own.missingBasis,
+    })
   },
 )
 

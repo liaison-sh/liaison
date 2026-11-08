@@ -9,7 +9,9 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { buildRefToken } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
+import { Hono } from "hono"
 import { z } from "zod"
+import type { AppEnv } from "~/app"
 import { sql } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import * as privileged from "~/db/privileged"
@@ -49,6 +51,7 @@ import {
 } from "~/modules/attention/translator"
 import * as footerModule from "~/modules/mail/commercial-footer"
 import { writeMailPage } from "~/modules/mail/page-write"
+import { mailRoutes } from "~/modules/mail/routes"
 import {
   checkPersonCompose,
   evaluateSendGuard,
@@ -2249,7 +2252,10 @@ describe("a new message is commercial by its recipient's data", () => {
     sql.unsafe(insertSql(table, row as never))
 
   /** A contact at `email` on an open deal of a pipeline. */
-  async function contactOnOpenDeal(email: string): Promise<string> {
+  async function contactOnOpenDeal(
+    email: string,
+    basis: string | null = "professional_interest",
+  ): Promise<string> {
     const contact = crypto.randomUUID()
     const project = crypto.randomUUID()
     const status = crypto.randomUUID()
@@ -2264,7 +2270,7 @@ describe("a new message is commercial by its recipient's data", () => {
       org_access: "editor",
       created_by: userId,
       // What a commercial mail to them needs: a recorded basis, a business, a country.
-      lawful_basis: "professional_interest",
+      lawful_basis: basis,
       is_consumer: false,
       recipient_country: "FR",
     })
@@ -2422,6 +2428,7 @@ describe("a new message is commercial by its recipient's data", () => {
     if (!("footerLines" in check)) throw new Error(`no footer: ${JSON.stringify(check)}`)
     expect(check.footerLines).toEqual([
       "Org Test SAS, 1 rue de Test, 75001 Paris",
+      "Si vous ne nous avez pas donné votre adresse vous-même, Org Test SAS l'a obtenue d'une autre source et ne l'utilise que pour des messages professionnels comme celui-ci. Vous pouvez vous y opposer à tout moment avec le lien ci-dessous.",
       "Pour ne plus recevoir de messages commerciaux de Org Test SAS : (lien de désinscription) ou répondez stop.",
     ])
     const before = sent.length
@@ -2456,6 +2463,54 @@ describe("a new message is commercial by its recipient's data", () => {
     const refusal = await checkPersonCompose(orgId, [french])
     expect("refused" in refusal && refusal.refused.message).toContain(`${french} opted out on `)
     await expect(sendFromComposer(french)).rejects.toThrow(`${french} opted out on `)
+    expect(sent.length).toBe(before + 1)
+  }, 60_000)
+
+  it("the composer is told a prospect has no recorded basis and the person can still send; an opted-out prospect stays refused", async () => {
+    const app = new Hono<AppEnv>()
+    app.use("*", async (c, next) => {
+      c.set("userId", userId)
+      c.set("orgId", orgId)
+      c.set("scopes", ["mail:conversations:write"] as never)
+      c.set("dimensionGrants", {})
+      await next()
+    })
+    app.route("/api/mail", mailRoutes)
+    const check = async (to: string) => {
+      const res = await app.request("/api/mail/compose-check", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ to: [to] }),
+      })
+      expect(res.status).toBe(200)
+      return ((await res.json()) as { data: Record<string, unknown> }).data
+    }
+
+    const to = unique("own-no-basis")
+    const contact = await contactOnOpenDeal(to, null)
+    const answer = await check(to)
+    expect(answer.refusal).toBeNull()
+    expect(answer.missingBasis).toEqual({ contactId: contact, name: "Prospect" })
+    // The first commercial mail to them carries where their address came from.
+    expect(answer.footerLines).toContain(
+      "If you did not give us your address yourself, Org Test SAS obtained it from another source and uses it only for professional messages like this one. You can object at any time with the link below.",
+    )
+    const before = sent.length
+    const result = await ownCompose(to)
+    expect("error" in result || "blocked" in result).toBe(false)
+    expect(sent.length).toBe(before + 1)
+
+    const recorded = unique("own-basis")
+    await contactOnOpenDeal(recorded)
+    expect((await check(recorded)).missingBasis).toBeNull()
+
+    await suppressionsModule.addSuppression(null, { orgId, email: to, reason: "person" })
+    const optedOut = await check(to)
+    expect(optedOut.missingBasis).toBeNull()
+    expect(String(optedOut.refusal)).toContain(`${to} opted out on `)
+    const refused = await ownCompose(to)
+    if (!("error" in refused)) throw new Error(`not refused: ${JSON.stringify(refused)}`)
+    expect(refused.error.code).toBe("suppressed_new_message")
     expect(sent.length).toBe(before + 1)
   }, 60_000)
 

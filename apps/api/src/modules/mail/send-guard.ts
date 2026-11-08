@@ -23,6 +23,8 @@ import {
 } from "~/modules/mail/classify-inbound"
 import {
   applyCommercialFooter,
+  art14NoticeDue,
+  art14NoticeLine,
   COMMERCIAL_IDENTITY_SETTING,
   commercialIdentityMissing,
   footerLines,
@@ -32,7 +34,12 @@ import {
   recipientLocale,
 } from "~/modules/mail/commercial-footer"
 import { parseReturnDate } from "~/modules/mail/parse-return-date"
-import { lawfulBasisProblem, listSuppressions, suppressedAmong } from "~/modules/mail/suppressions"
+import {
+  lawfulBasisFacts,
+  lawfulBasisProblem,
+  listSuppressions,
+  suppressedAmong,
+} from "~/modules/mail/suppressions"
 
 export interface GuardInbound {
   id: string
@@ -1242,7 +1249,17 @@ export async function commercialFooterFor(
 export type PersonComposeCheck =
   | { commercial: false; line: string | null }
   | { commercial: true; refused: { code: string; message: string } }
-  | { commercial: true; recipient: string; footerLines: string[] }
+  | {
+      commercial: true
+      recipient: string
+      footerLines: string[]
+      /**
+       * No lawful basis is recorded for the recipient: the person is told and
+       * may still send (they are the accountable sender); an agent's mail is
+       * refused for the same fact. `contactId` is the contact to record it on.
+       */
+      missingBasis: { contactId: string | null; name: string } | null
+    }
 
 /**
  * A person's own new message (the composer, or their own call): no approval and
@@ -1293,10 +1310,24 @@ export async function checkPersonCompose(
   }
   const recipient = outside[0] as string
   const locale = await recipientLocale(orgId, recipient)
+  const facts = (await lawfulBasisFacts(orgId, [recipient])).recipients[0]
+  const missingBasis =
+    facts && !facts.basis && !facts.conflict
+      ? { contactId: facts.contactIds[0] ?? null, name: facts.name ?? recipient }
+      : null
   return {
     commercial: true,
     recipient,
-    footerLines: footerLines(identity, serverT(locale, "mail.commercialFooter.linkLabel"), locale),
+    missingBasis,
+    // The composer shows the notice line too when this mail will carry it.
+    footerLines: footerLines(
+      identity,
+      serverT(locale, "mail.commercialFooter.linkLabel"),
+      locale,
+      await art14NoticeDue(orgId, recipient).then((due) =>
+        due ? art14NoticeLine(identity, due.source, locale) : undefined,
+      ),
+    ),
   }
 }
 

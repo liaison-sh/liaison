@@ -290,4 +290,5 @@ Model arctic-embed-m-v2.0 pinned revision and per-file sha256 -> apps/api/src/mo
 Files fetched at the revision, checked, renamed into the cache dir; read locally only -> apps/api/src/modules/agent/tools/local-embedder.ts:55-90
 About 330 MB of files, about 1.1 GB more resident memory, 15-45 s to embed the tools -> measured with apps/api/src/modules/agent/tools/tool-bench/meaning.ts:1
 LIAISON_TOOL_MEANING, LIAISON_MODEL_CACHE_DIR -> apps/api/src/lib/env.ts:1290-1302
+LIAISON_TOOL_MEANING unset: on when managed, off when self-hosted; off loads no model -> apps/api/src/lib/edition.ts:67 ; apps/api/src/modules/agent/tools/tool-meaning.ts:213
 Compose keeps model files on the data volume -> deploy/docker-compose.yml:495

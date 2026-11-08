@@ -57,6 +57,20 @@ export function customAppsEnabled(): boolean {
   return isManagedEdition()
 }
 
+/**
+ * Whether tool search ranks by meaning as well as by words, with a local
+ * embedding model of about 1.1 GB per API process. `LIAISON_TOOL_MEANING`
+ * (`on` | `off`) decides; unset, it follows the edition (on when managed, off
+ * when self-hosted), so a small self-hosted server never loads the model
+ * unless its operator turns it on. Keyword ranking is the fallback either way.
+ */
+export function toolMeaningEnabled(): boolean {
+  const v = env.LIAISON_TOOL_MEANING
+  if (v === "on") return true
+  if (v === "off") return false
+  return isManagedEdition()
+}
+
 /** Test helper — force the edition. Pass `null` to restore env detection. */
 export function _setEdition(mode: Edition | null): void {
   override = mode

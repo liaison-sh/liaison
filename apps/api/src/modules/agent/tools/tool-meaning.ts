@@ -21,6 +21,7 @@
  *   embedded per search. Without an embedder, or past the query's time budget,
  *   the search is the keyword search alone.
  */
+import { toolMeaningEnabled } from "~/lib/edition"
 
 /** Weight of one standard deviation of meaning above the floor, in keyword-score points. */
 export const MEANING_WEIGHT = 4
@@ -198,8 +199,9 @@ export class ToolMeaningIndex {
 let index: ToolMeaningIndex | null | undefined
 
 /**
- * The embedder tool search uses, chosen once per process:
- * `LIAISON_TOOL_MEANING=off` turns meaning off; otherwise the local model
+ * The embedder tool search uses, chosen once per process: with meaning off
+ * (lib/edition.ts toolMeaningEnabled: `LIAISON_TOOL_MEANING`, unset follows
+ * the edition) the search ranks by words; on, the local model
  * (local-embedder.ts) runs in this process when it can load, and the search
  * stays on keywords when it cannot. A test sets its own with setToolEmbedder.
  */
@@ -208,7 +210,7 @@ export function toolMeaningIndex(): ToolMeaningIndex | null {
   // A test process ranks by words unless its test sets an embedder: results stay
   // deterministic and no model is fetched.
   const testProcess = process.env.NODE_ENV === "test" || process.env.BUN_ENV === "test"
-  if (process.env.LIAISON_TOOL_MEANING === "off" || testProcess) {
+  if (testProcess || !toolMeaningEnabled()) {
     index = null
     return index
   }

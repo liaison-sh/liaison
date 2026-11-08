@@ -1288,12 +1288,12 @@ export const envSchema = z
     // How often the leader removes the entries of processes whose heartbeat is gone.
     LIVE_SWEEP_INTERVAL_MS: z.coerce.number().int().positive().default(10_000),
     // Tool search ranks by meaning as well as by words, with a small embedding
-    // model run in this process (modules/agent/tools/tool-meaning.ts). "off"
-    // ranks by words alone. When the model cannot load, the search ranks by words.
-    LIAISON_TOOL_MEANING: z.preprocess(
-      (v) => (v === "" ? undefined : v),
-      z.enum(["on", "off"]).default("on"),
-    ),
+    // model run in this process (modules/agent/tools/tool-meaning.ts), about
+    // 1.1 GB of memory per API process. "on" | "off"; unset, it follows the
+    // edition (on when managed, off when self-hosted; lib/edition.ts
+    // toolMeaningEnabled). Off, or when the model cannot load, the search ranks
+    // by words.
+    LIAISON_TOOL_MEANING: z.preprocess(unsetIfEmpty, z.enum(["on", "off"]).optional()),
     // Where tool search's model files are fetched, checked against their pinned
     // hashes and read from. Unset: ~/.cache/liaison/models (the compose file
     // sets /var/lib/liaison/models, on the data volume).

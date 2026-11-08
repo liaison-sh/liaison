@@ -351,4 +351,5 @@ dashboards_delete tool: gated for an org dashboard -> apps/api/src/modules/dashb
 build-dashboard kernel skill -> apps/api/src/modules/agent/prompts/kernel/build-dashboard.md:2
 The search reads other forms of a word, misspellings of 5+ letters, French words and plain synonyms of name words; a rare word counts more in a query of several words -> apps/api/src/modules/agent/tools/tool-rank.ts:104-235 ; apps/api/src/modules/agent/tools/tool-lexicon.ts:1-15
 Search ranks by meaning as well as words -> apps/api/src/modules/agent/tools/tool-rank.ts:523
+Meaning on by default when managed, off when self-hosted -> apps/api/src/lib/edition.ts:67
 Meaning ranks only the reachable catalog -> apps/api/src/modules/agent/tools/tool-search.ts:565

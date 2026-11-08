@@ -29,6 +29,7 @@ import { seedApprovalRequests } from "~/seed/factories/approvals/requests"
 import { resolveContacts } from "~/seed/factories/people/contacts"
 import * as minimal from "~/seed/tiers/minimal"
 import { bootstrapAdminCtx } from "~/tests/helpers/agent-ctx"
+import { setTestCommercialIdentity } from "~/tests/helpers/commercial-identity"
 import { drainOutbox } from "~/tests/helpers/outbox"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { ensureMailAccount } from "../../../test-support/seed/mail"
@@ -118,6 +119,7 @@ beforeAll(async () => {
   admin = a.actor
   threadId = await minimal.thread(orgId, userId)
   await ensureAppsForOrg(orgId)
+  await setTestCommercialIdentity(orgId)
   SandboxBridgeTestAccess.setSmtpSend(async (_connection, _identifier, message) => {
     sent.push(message as Record<string, unknown>)
     return { messageId: `<sent-${sent.length}@org.test>`, deliveryState: "delivered" }

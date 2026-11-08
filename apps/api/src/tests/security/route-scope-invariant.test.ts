@@ -65,6 +65,8 @@ const ANY_MEMBER: Record<string, string> = {
   "GET /api/user/preferences": "the caller's own notification settings and devices",
   "GET /api/user/preferences/away":
     "the caller's own away ranges and next in line, and who in the org is away (active ranges only, as the away_ranges select policy shows every member)",
+  "GET /api/user/preferences/away/standing-in":
+    "who names the caller as next in line today: the caller's own Home line",
   "POST /api/user/preferences/away/:id/end": "ends one of the caller's own away ranges only",
   "DELETE /api/user/preferences/away/:id": "undoes one of the caller's own away ranges only",
   "GET /api/apps/features":

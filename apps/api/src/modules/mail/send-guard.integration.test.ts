@@ -60,6 +60,7 @@ import { insertSql } from "~/seed/factories/org/test-rows"
 import { actorFor, asUser } from "~/seed/factories/people/actors"
 import * as minimal from "~/seed/tiers/minimal"
 import { bootstrapAdminCtx } from "~/tests/helpers/agent-ctx"
+import { setTestCommercialIdentity } from "~/tests/helpers/commercial-identity"
 import { createTestCompany } from "~/tests/helpers/company"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
@@ -403,6 +404,8 @@ beforeAll(async () => {
   }
   threadId = await minimal.thread(orgId, userId)
   await ensureAppsForOrg(orgId)
+  // A commercial mail needs the identity it states.
+  await setTestCommercialIdentity(orgId)
   SandboxBridgeTestAccess.setSmtpSend(async (_connection, _identifier, message) => {
     sent.push(message as Record<string, unknown>)
     return { messageId: `<sent-${sent.length}@org.test>`, deliveryState: "delivered" }
@@ -1096,19 +1099,28 @@ describe("classification and marketing", () => {
     }
   }, 60_000)
 
-  it("plain draft to a suppressed address stages with the line, not stopped", async () => {
+  it("an agent's new message to an opted-out address is refused; a reply in their thread is not", async () => {
     const to = unique("suppressed-plain")
-    const spy = spyOn(suppressionsModule, "suppressedAmong").mockImplementation(async () => [to])
-    try {
-      const id = await stageCompose(to)
-      const guard = (await requestRow(id)).current_payload.sendGuard as PinnedSendGuard
-      expect(guard.line).toBe(`${to} opted out. Send only if this is not commercial.`)
-      const before = sent.length
-      await approve(id)
-      expect(sent.length).toBe(before + 1)
-    } finally {
-      spy.mockRestore()
-    }
+    const { conversationId } = await seedInbound(to, { sentAt: ago(HOUR) })
+    await suppressionsModule.addSuppression(null, {
+      orgId,
+      email: to,
+      reason: "person",
+      createdBy: userId,
+    })
+    const before = sent.length
+    const staged = await agentCall("mail:compose", composeParams(to))
+    if (!("error" in staged)) throw new Error(`not refused: ${JSON.stringify(staged)}`)
+    expect(staged.error.code).toBe("suppressed_new_message")
+    expect(String(staged.error.message)).toContain(`${to} opted out on `)
+    expect(String(staged.error.message)).toContain("reply in their own thread")
+    const reply = blockedId(
+      await agentCall("mail:reply", { conversationId, textBody: "Here you go." }),
+    )
+    const guard = (await requestRow(reply)).current_payload.sendGuard as PinnedSendGuard
+    expect(guard.line).toBe(`${to} opted out. Send only if this is not commercial.`)
+    await approve(reply)
+    expect(sent.length).toBe(before + 1)
   }, 60_000)
 
   it("executions plus audit hold approver, final text, mode, classification, result", async () => {
@@ -2207,5 +2219,108 @@ describe("the card says what the check says, and Send now", () => {
     expect(lines).toHaveLength(1)
     expect(lines[0]?.user_id).toBe(userId)
     expect(lines[0]?.summary).toBe(`Not sent to ${to}: ${to} replied after it was drafted.`)
+  }, 60_000)
+})
+
+describe("a new message is commercial by its recipient's data", () => {
+  const AT = "2026-03-02T09:00:00.000Z"
+  const insert = (table: string, row: Record<string, unknown>) =>
+    sql.unsafe(insertSql(table, row as never))
+
+  /** A contact at `email` on an open deal of a pipeline. */
+  async function contactOnOpenDeal(email: string): Promise<string> {
+    const contact = crypto.randomUUID()
+    const project = crypto.randomUUID()
+    const status = crypto.randomUUID()
+    const task = crypto.randomUUID()
+    const thread = crypto.randomUUID()
+    await insert("kernel.contacts", {
+      id: contact,
+      org_id: orgId,
+      handle: `@deal-${contact.slice(0, 8)}`,
+      email,
+      name: "Prospect",
+      org_access: "editor",
+      created_by: userId,
+    })
+    await insert("kernel.threads", {
+      id: thread,
+      org_id: orgId,
+      handle: `deal-${thread.slice(0, 8)}`,
+      created_by: userId,
+    })
+    await insert("app_projects.projects", {
+      id: project,
+      org_id: orgId,
+      name: "Sales",
+      key: `D${project.slice(0, 3).toUpperCase()}`,
+      owner_id: userId,
+      kind: "pipeline",
+      created_at: AT,
+      updated_at: AT,
+    })
+    await insert("app_projects.project_statuses", {
+      id: status,
+      org_id: orgId,
+      project_id: project,
+      label: "Proposal",
+      '"order"': 1,
+      terminal: false,
+      created_at: AT,
+      updated_at: AT,
+    })
+    await insert("app_projects.tasks", {
+      id: task,
+      org_id: orgId,
+      project_id: project,
+      status_id: status,
+      title: "Studio fit-out",
+      number: 1,
+      thread_id: thread,
+      created_by: userId,
+      created_at: AT,
+      updated_at: AT,
+    })
+    await insert("app_projects.deals", { task_id: task, org_id: orgId, contact_id: contact })
+    return contact
+  }
+
+  it("a new message to a contact on an open deal gets the footer and opt-out link and is refused when they opted out, whoever staged it", async () => {
+    const to = unique("deal-prospect")
+    await contactOnOpenDeal(to)
+    const id = await stageCompose(to)
+    const guard = (await requestRow(id)).current_payload.sendGuard as PinnedSendGuard
+    expect(guard.classification).toBe("marketing")
+    const before = sent.length
+    await approve(id)
+    expect(sent.length).toBe(before + 1)
+    const text = String(sent.at(-1)?.textBody)
+    expect(text).toContain("Org Test SAS, 1 rue de Test, 75001 Paris")
+    expect(text).toMatch(/\/public\/opt-out\/[A-Za-z0-9_-]{43} or reply stop\./)
+    expect((sent.at(-1)?.headers as Record<string, string>)?.["List-Unsubscribe-Post"]).toBe(
+      "List-Unsubscribe=One-Click",
+    )
+
+    await suppressionsModule.addSuppression(null, { orgId, email: to, reason: "person" })
+    for (const origin of ["in-app-agent", "mcp"] as const) {
+      const staged = await executeToolCore({
+        toolName: "mail:compose",
+        orgId,
+        actor: admin,
+        params: composeParams(to),
+        threadId,
+        origin,
+      })
+      if (!("error" in staged)) throw new Error(`${origin}: not refused`)
+      expect(staged.error.code).toBe("SEND_GUARD_OPTED_OUT")
+    }
+    expect(sent.length).toBe(before + 1)
+  }, 60_000)
+
+  it("a new message to someone with no deal, basis or outside source stays plain", async () => {
+    const to = unique("no-deal")
+    const id = await stageCompose(to)
+    const guard = (await requestRow(id)).current_payload.sendGuard as PinnedSendGuard
+    expect(guard.classification).toBe("none")
   }, 60_000)
 })

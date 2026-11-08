@@ -251,5 +251,13 @@
     "timeout": "Le serveur de messagerie n'a pas répondu à temps. Liaison réessaie de lui-même.",
     "tls": "La connexion sécurisée au serveur de messagerie a échoué. Vérifiez le port et le réglage de sécurité."
   },
-  "personalMailboxTransparentNotice": "Les mails de votre boîte personnelle sont chiffrés au repos. Seuls vous et votre agent pouvez les lire ; les administrateurs de votre organisation ne le peuvent pas. Aucun mot de passe de boîte mail à définir."
+  "personalMailboxTransparentNotice": "Les mails de votre boîte personnelle sont chiffrés au repos. Seuls vous et votre agent pouvez les lire ; les administrateurs de votre organisation ne le peuvent pas. Aucun mot de passe de boîte mail à définir.",
+  "commercialIdentity": {
+    "title": "Identité commerciale",
+    "help": "Chaque message commercial (une relance ou une offre à un prospect) se termine par cette raison sociale et cette adresse postale, un lien de désinscription et « ou répondez stop ». Tant que les deux ne sont pas renseignées, Liaison n'envoie aucun message commercial.",
+    "legalName": "Raison sociale",
+    "postalAddress": "Adresse postale",
+    "saved": "Identité commerciale enregistrée.",
+    "saveFailed": "L'identité commerciale n'a pas pu être enregistrée."
+  }
 }

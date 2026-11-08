@@ -20,9 +20,16 @@ import {
   reportConcerns,
   reportText,
 } from "~/modules/mail/classify-inbound"
-import { applyCommercialFooter, commercialIdentityMissing } from "~/modules/mail/commercial-footer"
+import {
+  applyCommercialFooter,
+  COMMERCIAL_IDENTITY_SETTING,
+  commercialIdentityMissing,
+  mintOptOutLink,
+  optOutHeaders,
+  readCommercialIdentity,
+} from "~/modules/mail/commercial-footer"
 import { parseReturnDate } from "~/modules/mail/parse-return-date"
-import { lawfulBasisProblem, suppressedAmong } from "~/modules/mail/suppressions"
+import { lawfulBasisProblem, listSuppressions, suppressedAmong } from "~/modules/mail/suppressions"
 
 export interface GuardInbound {
   id: string
@@ -891,6 +898,8 @@ export interface BuildSendGuardInput {
   recipients: readonly string[]
   contactIds: readonly string[]
   conversationId?: string
+  /** Staged by an agent, a routine or a connected client, not by a person's own call. */
+  agentStaged?: boolean
   now?: Date
   locale?: string | null
   timeZone?: string | null
@@ -899,6 +908,7 @@ export interface BuildSendGuardInput {
 export type BuildSendGuardResult =
   | { sendGuard: PinnedSendGuard; guardKey?: string; verdict: SendGuardVerdict }
   | { commercialIdentityMissing: true }
+  | { refused: { code: string; message: string } }
 
 async function newestOutboundAt(
   orgId: string,
@@ -974,8 +984,69 @@ async function optedOutLine(orgId: string, recipients: readonly string[]): Promi
 }
 
 /**
+ * The recipients outside the organization: an address whose domain is not one
+ * of the org's own people's (portal accounts excluded).
+ */
+async function outsideRecipients(orgId: string, recipients: readonly string[]): Promise<string[]> {
+  if (recipients.length === 0) return []
+  const rows = await withPrivilegedDb(orgId, "send-guard-org-domains", async (tx) =>
+    extractRows<{ domain: string }>(
+      await tx.execute(drizzleSql`
+        SELECT DISTINCT lower(split_part(email, '@', 2)) AS domain FROM ${table("kernel", "users")}
+         WHERE org_id = ${orgId}::uuid AND user_type <> 'external' AND email LIKE '%@%'`),
+    ),
+  )
+  const own = new Set(rows.map((r) => r.domain))
+  return recipients.filter((address) => {
+    const domain = address.trim().toLowerCase().split("@")[1] ?? ""
+    return !own.has(domain)
+  })
+}
+
+/**
+ * A new message is commercial by what the data says of its recipients, never by
+ * the model: one of them is the contact of an open deal (directly or through
+ * its company), or was recorded under professional interest, or came from a
+ * third party or an enrichment. Read fresh, privileged, for whoever stages.
+ */
+async function commercialByData(orgId: string, recipients: readonly string[]): Promise<boolean> {
+  if (recipients.length === 0) return false
+  const addresses = textSet(recipients.map((r) => r.trim().toLowerCase()))
+  const rows = await withPrivilegedDb(orgId, "send-guard-commercial-by-data", async (tx) => {
+    const projects = extractRows<{ present: boolean }>(
+      await tx.execute(
+        drizzleSql`SELECT to_regclass(${`${schemaRef("app_projects")}.deals`}) IS NOT NULL AS present`,
+      ),
+    )[0]?.present
+    const onDeal = projects
+      ? drizzleSql`OR EXISTS (
+          SELECT 1 FROM ${table("app_projects", "deals")} d
+            JOIN ${table("app_projects", "tasks")} t ON t.id = d.task_id AND t.org_id = d.org_id
+           WHERE d.org_id = c.org_id AND d.outcome = 'open' AND t.archived_at IS NULL
+             AND (d.contact_id = c.id OR (c.company_id IS NOT NULL AND d.company_id = c.company_id)))`
+      : drizzleSql``
+    return extractRows<{ id: string }>(
+      await tx.execute(drizzleSql`
+        SELECT c.id::text AS id FROM ${table("kernel", "contacts")} c
+         WHERE c.org_id = ${orgId}::uuid AND lower(c.email) = ANY(${addresses})
+           AND (c.lawful_basis = 'professional_interest'
+                OR c.data_source IN ('third_party', 'enrichment')
+                ${onDeal})
+         LIMIT 1`),
+    )
+  })
+  return rows.length > 0
+}
+
+function day10(iso: string): string {
+  return iso.slice(0, 10)
+}
+
+/**
  * The value pinned on a staged send, and what the check answers about it now.
- * Only a follow-up can be refused here; a plain draft always stages.
+ * A follow-up, or a new message the data makes commercial, can be refused here;
+ * an agent's new message to someone who opted out is refused; a person's own
+ * plain draft always stages, with a line when someone opted out.
  */
 export async function buildSendGuard(input: BuildSendGuardInput): Promise<BuildSendGuardResult> {
   const now = input.now ?? new Date()
@@ -984,12 +1055,25 @@ export async function buildSendGuard(input: BuildSendGuardInput): Promise<BuildS
   const mode = input.followUpRun || input.followUp ? "followup" : "plain"
   const addresses = [...input.recipients]
   const contactIds = [...input.contactIds]
+  const outside = await outsideRecipients(input.orgId, addresses)
 
   let classification: PinnedSendGuard["classification"] = "none"
   if (mode === "followup") {
     const saidService = input.followUp?.classification === "service"
     const backed = refs.some((ref) => findProvider(input.orgId, ref.kind)?.serviceMessage === true)
     classification = saidService && backed ? "service" : "marketing"
+  } else if (input.toolName === "mail:compose" && (await commercialByData(input.orgId, outside))) {
+    classification = "marketing"
+  }
+
+  // Each commercial mail's opt-out link is its one outside recipient's.
+  if (classification === "marketing" && outside.length > 1) {
+    return {
+      refused: {
+        code: "commercial_one_recipient",
+        message: `Nothing was sent and no draft was staged. A commercial mail goes to one person outside the organization, and this one names ${outside.length}: ${outside.join(", ")}. Next: send one message per person; each gets their own opt-out link. Colleagues may stay on copy.`,
+      },
+    }
   }
 
   let since = stagedAt
@@ -1012,7 +1096,21 @@ export async function buildSendGuard(input: BuildSendGuardInput): Promise<BuildS
     classification,
   }
 
-  if (mode === "plain") {
+  if (mode === "plain" && classification !== "marketing") {
+    // An agent's new message never goes to someone who opted out; a reply in
+    // their own thread does, and a person's own draft stages with the line.
+    if (input.agentStaged && input.toolName === "mail:compose") {
+      const hits = await listSuppressions(input.orgId, addresses)
+      if (hits.length > 0) {
+        const who = hits.map((h) => `${h.email} opted out on ${day10(h.createdAt)}`).join("; ")
+        return {
+          refused: {
+            code: "suppressed_new_message",
+            message: `Nothing was sent and no draft was staged. ${who}. Next: reply in their own thread, or ask a person to write.`,
+          },
+        }
+      }
+    }
     const line = await optedOutLine(input.orgId, addresses)
     return { sendGuard: line ? { ...sendGuard, line } : sendGuard, verdict: CLEAR }
   }
@@ -1021,7 +1119,7 @@ export async function buildSendGuard(input: BuildSendGuardInput): Promise<BuildS
   }
   return {
     sendGuard,
-    guardKey: guardKeyOf(refs, addresses),
+    ...(mode === "followup" ? { guardKey: guardKeyOf(refs, addresses) } : {}),
     verdict: await evaluateSendGuard({
       orgId: input.orgId,
       guard: sendGuard,
@@ -1104,26 +1202,45 @@ export function isPinnedSendGuard(value: unknown): value is PinnedSendGuard {
   )
 }
 
-/** Everything a commercial mail carries when it leaves. Never reaches the payload an approver saw. */
+/** The refusal sentence when a commercial mail's identity is unset, at stage or at send. */
+export const COMMERCIAL_IDENTITY_MISSING_MESSAGE = `This organization has not set the legal name and postal address a commercial mail must state. Next: an admin sets them in ${COMMERCIAL_IDENTITY_SETTING}, then this can go.`
+
+/**
+ * Everything a commercial mail carries when it leaves: one opt-out link for its
+ * one outside recipient, in the text, the HTML and the unsubscribe headers
+ * alike. Never reaches the payload an approver saw. Null when the identity is
+ * unset: the mail must not leave.
+ */
 export async function commercialFooterFor(
   orgId: string,
   recipient: string,
   textBody: unknown,
   htmlBody: unknown,
-): Promise<{ textBody?: string; htmlBody?: string; headers: Record<string, string> }> {
-  let headers: Record<string, string> = {}
+): Promise<{ textBody?: string; htmlBody?: string; headers: Record<string, string> } | null> {
+  const identity = await readCommercialIdentity(orgId)
+  if (!identity) return null
+  const link = await mintOptOutLink(orgId, recipient)
   const out: { textBody?: string; htmlBody?: string } = {}
   if (typeof textBody === "string") {
-    const footed = await applyCommercialFooter(orgId, textBody, recipient)
-    out.textBody = footed.body
-    headers = footed.headers
+    out.textBody = (
+      await applyCommercialFooter(orgId, textBody, { kind: "text", link }, identity)
+    ).body
   }
   if (typeof htmlBody === "string" && htmlBody !== "") {
-    const footed = await applyCommercialFooter(orgId, htmlBody, recipient)
-    out.htmlBody = footed.body
-    headers = { ...headers, ...footed.headers }
+    out.htmlBody = (
+      await applyCommercialFooter(orgId, htmlBody, { kind: "html", link }, identity)
+    ).body
   }
-  return { ...out, headers }
+  return { ...out, headers: optOutHeaders(link) }
+}
+
+/** The one outside recipient a commercial mail's link is minted for (the first when none is outside). */
+export async function commercialRecipient(
+  orgId: string,
+  recipients: readonly string[],
+): Promise<string | null> {
+  const outside = await outsideRecipients(orgId, recipients)
+  return outside[0] ?? recipients[0] ?? null
 }
 
 // ── What the caller is told. Facts only, and never what a message said. ──────

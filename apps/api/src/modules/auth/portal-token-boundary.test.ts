@@ -219,6 +219,8 @@ const NO_SESSION_ROUTES = new Set([
   "HEAD /api/org-export-dl/:token",
   "GET /api/avatars/:key",
   "HEAD /api/avatars/:key",
+  "GET /public/opt-out/:token",
+  "POST /public/opt-out/:token",
   "POST /webhooks/:orgId/:appName/:endpointName",
   "GET /webhooks/:orgId/:appName/:endpointName",
   "POST /webhooks/:orgId/tickets/create",

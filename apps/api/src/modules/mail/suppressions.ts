@@ -107,6 +107,14 @@ export async function suppressedAmong(
   return toRecords(byHash, rows).map((r) => r.email)
 }
 
+/** Whether the address behind a fingerprint has opted out (privileged: the opt-out page has no person). */
+export async function isSuppressedHash(orgId: string, emailHash: string): Promise<boolean> {
+  const rows = await withPrivilegedDb(orgId, "suppressions-check-hash", (tx) =>
+    rowsFor(tx, orgId, [emailHash]),
+  )
+  return rows.length > 0
+}
+
 /**
  * The opt-outs of `emails`, with when and how. On `db` under the caller's row security (it then
  * needs `mail:suppressions:read`), or privileged when no client is given.
@@ -152,12 +160,13 @@ export interface AddSuppressionResult {
 
 /**
  * Record that `email` opted out, on `db`: a person's own transaction (row security checks they
- * may write to people) or a privileged one for the system (a link click, an inbound "stop").
+ * may write to people), a privileged one, or null for the system in its own transaction (a link
+ * click, an inbound "stop").
  * An address already on the list keeps its first record. The waiting commercial drafts to it are
  * withdrawn in the same transaction, and `mail/suppression:added` is announced once.
  */
 export async function addSuppression(
-  db: RlsClient | PrivilegedDb,
+  db: RlsClient | PrivilegedDb | null,
   args: {
     orgId: string
     email: string
@@ -167,48 +176,84 @@ export async function addSuppression(
     actorType?: "user" | "agent" | "system"
   },
 ): Promise<AddSuppressionResult> {
-  const { orgId, email } = args
-  const emailHash = hashEmail(orgId, email)
+  const { email, ...rest } = args
+  const emailHash = hashEmail(args.orgId, email)
+  const out = await addSuppressionHash(db, { ...rest, emailHash })
+  const [record] = out.before
+    ? toRecords(new Map([[emailHash, [email]]]), [out.before])
+    : [
+        {
+          email,
+          reason: args.reason,
+          source: args.source ?? null,
+          createdBy: args.createdBy ?? null,
+          createdAt: out.createdAt,
+        },
+      ]
+  return { added: out.added, record: record as SuppressionRecord, withdrawn: out.withdrawn }
+}
+
+/**
+ * `addSuppression` for a caller that holds only the address's fingerprint (an opt-out link keeps
+ * no address). Same rules: the first record stays, drafts are withdrawn, one event. With `db`
+ * null the system records it, in a privileged transaction of its own (a link click has no
+ * person and holds no transaction).
+ */
+export async function addSuppressionHash(
+  db: RlsClient | PrivilegedDb | null,
+  args: {
+    orgId: string
+    emailHash: string
+    reason: SuppressionReason
+    source?: string | null
+    createdBy?: string | null
+    actorType?: "user" | "agent" | "system"
+  },
+): Promise<{
+  added: boolean
+  before: Awaited<ReturnType<typeof rowsFor>>[number] | null
+  createdAt: string
+  withdrawn: string[]
+}> {
+  const { orgId, emailHash } = args
   const [before] = await withPrivilegedDb(orgId, "suppressions-add-read", (tx) =>
     rowsFor(tx, orgId, [emailHash]),
   )
   if (before) {
-    const [record] = toRecords(new Map([[emailHash, [email]]]), [before])
-    return { added: false, record: record as SuppressionRecord, withdrawn: [] }
+    return {
+      added: false,
+      before,
+      createdAt: new Date(before.created_at).toISOString(),
+      withdrawn: [],
+    }
   }
-  // Inserted on the caller's client, so its row security decides; no RETURNING, which would also
-  // ask for the read right.
-  await db.execute(drizzleSql`
-    INSERT INTO ${K()}.suppressions (org_id, email_hash, reason, source, created_by)
-    VALUES (${orgId}::uuid, ${emailHash}, ${args.reason}, ${args.source ?? null},
-            ${args.createdBy ?? null})
-    ON CONFLICT (org_id, email_hash) DO NOTHING`)
   const actor = {
     actorId: args.createdBy ?? null,
     actorType: args.actorType ?? (args.createdBy ? "user" : "system"),
   } as const
-  const withdrawn = await withdrawCommercialDraftsTo(orgId, emailHash, actor)
-  await db.queueEvent({
-    app: "mail",
-    entity: "suppression",
-    action: "added",
-    orgId,
-    actorId: actor.actorId,
-    actorType: actor.actorType,
-    entityId: emailHash,
-    data: { emailHash },
-  })
-  return {
-    added: true,
-    record: {
-      email,
-      reason: args.reason,
-      source: args.source ?? null,
-      createdBy: args.createdBy ?? null,
-      createdAt: new Date().toISOString(),
-    },
-    withdrawn,
+  const write = async (tx: RlsClient | PrivilegedDb) => {
+    // Inserted on the caller's client, so its row security decides; no RETURNING, which would
+    // also ask for the read right.
+    await tx.execute(drizzleSql`
+      INSERT INTO ${K()}.suppressions (org_id, email_hash, reason, source, created_by)
+      VALUES (${orgId}::uuid, ${emailHash}, ${args.reason}, ${args.source ?? null},
+              ${args.createdBy ?? null})
+      ON CONFLICT (org_id, email_hash) DO NOTHING`)
+    await tx.queueEvent({
+      app: "mail",
+      entity: "suppression",
+      action: "added",
+      orgId,
+      actorId: actor.actorId,
+      actorType: actor.actorType,
+      entityId: emailHash,
+      data: { emailHash },
+    })
   }
+  if (db) await write(db)
+  else await withPrivilegedDb(orgId, "suppressions-add-system", write)
+  const withdrawn = await withdrawCommercialDraftsTo(orgId, emailHash, actor)
+  return { added: true, before: null, createdAt: new Date().toISOString(), withdrawn }
 }
 
 /**

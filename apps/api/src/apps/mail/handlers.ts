@@ -626,6 +626,18 @@ function formatMailAddresses(values: unknown): string[] {
   return values.map(formatMailAddress).filter(Boolean)
 }
 
+/** The only extra headers a send may carry, cleaned of line breaks. */
+const EXTRA_SEND_HEADERS = ["List-Unsubscribe", "List-Unsubscribe-Post"]
+function extraSendHeaders(headers: unknown): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (!headers || typeof headers !== "object") return out
+  for (const name of EXTRA_SEND_HEADERS) {
+    const value = (headers as Record<string, unknown>)[name]
+    if (typeof value === "string" && value.trim() !== "") out[name] = sanitizeHeaderValue(value)
+  }
+  return out
+}
+
 function buildRfc2822Message(params: {
   from: string
   to: string[]
@@ -637,6 +649,8 @@ function buildRfc2822Message(params: {
   inReplyTo?: string | null
   references?: string[]
   attachments?: OutboundAttachmentPart[]
+  /** Extra headers the send check adds (a commercial mail's unsubscribe headers). */
+  headers?: Record<string, string>
 }) {
   const ts = Date.now()
   const altBoundary = `----=_Liaison_alt_${ts}`
@@ -663,6 +677,9 @@ function buildRfc2822Message(params: {
     lines.push(
       `References: ${params.references.map((value) => sanitizeHeaderValue(value)).join(" ")}`,
     )
+  }
+  for (const [name, value] of Object.entries(extraSendHeaders(params.headers))) {
+    lines.push(`${name}: ${value}`)
   }
 
   const hasText = params.textBody.length > 0
@@ -5215,6 +5232,7 @@ function buildSendMessage(
     htmlBody: params.htmlBody ?? "",
     textBody: params.textBody ?? "",
     attachments: params.attachments,
+    headers: extraSendHeaders(params.headers),
     ...extra,
   }
 }
@@ -6715,6 +6733,7 @@ async function agentMailReply(params: any, ctx: MailCtx): Promise<any> {
         subject,
         textBody: guardCheck.footer?.textBody ?? params.textBody,
         htmlBody: guardCheck.footer?.htmlBody ?? params.htmlBody,
+        headers: guardCheck.footer?.headers,
         externalThreadId: conversation.external_thread_id,
         inReplyTo: latest.external_message_id,
         references: latest.message_references ?? [],
@@ -6771,7 +6790,7 @@ async function agentMailReply(params: any, ctx: MailCtx): Promise<any> {
 type SendGuardCheck =
   | {
       stop: false
-      footer?: { textBody?: string; htmlBody?: string }
+      footer?: { textBody?: string; htmlBody?: string; headers?: Record<string, string> }
       /** The check's result, kept with the recorded send. Absent when no check applies. */
       record?: { guard: { state: string; mode: string; classification: string } }
     }
@@ -7032,7 +7051,9 @@ async function _doCompose(
       throw new Error(params.accountId ? COMPOSE_ACCOUNT_NOT_FOUND : COMPOSE_ACCOUNT_REQUIRED)
     }
     // Only the agent-facing tool. `composeForApp`'s caller gated at its own surface.
-    let guardFooter: { textBody?: string; htmlBody?: string } | undefined
+    let guardFooter:
+      | { textBody?: string; htmlBody?: string; headers?: Record<string, string> }
+      | undefined
     let guardRecord: Record<string, unknown> | undefined
     if (auditToolName === "mail:compose") {
       const guardCheck = await checkSendGuard(auditToolName, params, params, ctx)
@@ -7106,6 +7127,7 @@ async function _doCompose(
         subject: params.subject,
         textBody: guardFooter?.textBody ?? params.textBody,
         htmlBody: guardFooter?.htmlBody ?? params.htmlBody,
+        headers: guardFooter?.headers,
         attachments: attachmentParts,
       },
       ctx,

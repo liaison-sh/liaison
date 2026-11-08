@@ -116,6 +116,7 @@ import { serverT } from "~/modules/i18n/server-i18n"
 import { importRoutes } from "~/modules/imports/routes"
 import { importUploadRoutes } from "~/modules/imports/uploads/routes"
 import { liaisonTeamRoutes } from "~/modules/liaison-team/routes"
+import { OPT_OUT_PATH, optOutRefusalPage, optOutRoutes } from "~/modules/mail/opt-out-routes"
 import { mailRoutes } from "~/modules/mail/routes"
 import { mailboxJobsRoutes } from "~/modules/mailbox-jobs/routes"
 import { mailboxEncryptionRoutes } from "~/modules/mailbox-keys/encryption-mode-routes"
@@ -1618,6 +1619,15 @@ if (qaSeedRoutesEnabled) {
 // limiter, so the public MCP OAuth / device-grant / discovery routes and the MCP
 // transport get their own cap and per-IP budgets, applied before any parsing.
 app.use("/.well-known/*", publicSurfaceBodyLimit(), publicSurfaceRateLimit(redis))
+// A commercial mail's opt-out link: public, no session, no cookie. Its refusals
+// render the page's own states (modules/mail/opt-out-routes.ts).
+app.use(
+  `${OPT_OUT_PATH}/*`,
+  optOutRefusalPage,
+  publicSurfaceBodyLimit(),
+  publicSurfaceRateLimit(redis),
+)
+app.route(OPT_OUT_PATH, optOutRoutes)
 app.use("/mcp/oauth/*", publicSurfaceBodyLimit(), publicSurfaceRateLimit(redis))
 app.use("/mcp/device/*", publicSurfaceBodyLimit(), publicSurfaceRateLimit(redis))
 app.use("/mcp", publicSurfaceBodyLimit())

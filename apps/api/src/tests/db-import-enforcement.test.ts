@@ -606,6 +606,8 @@ describe("db import enforcement", () => {
     // A client company for the tests that create a portal account.
     "tests/helpers/company.ts",
     "tests/helpers/agent-ctx.ts",
+    // The identity a test org's commercial mail states (one settings key).
+    "tests/helpers/commercial-identity.ts",
     "tests/helpers/import-files.ts",
     // The relation suite's worlds: an admin's deactivation, a permission read, as the product does.
     "tests/relations/approval-world.ts",
@@ -1502,6 +1504,10 @@ describe("db import enforcement", () => {
     // The opt-out list is read for whoever sends (a fingerprint lookup, no address kept), and an
     // opt-out recorded by the system (a link, a reply) has no person to act as.
     "modules/mail/suppressions.ts",
+    // A commercial mail's opt-out link: minted on the send path and resolved by the public
+    // opt-out page, which has no person and learns the org from the link's row (a fingerprint,
+    // no address kept); the org's commercial identity is read for whoever sends.
+    "modules/mail/commercial-footer.ts",
     // Waiting drafts to an address that opted out are cancelled, whoever staged them.
     "modules/approvals/withdraw-on-events.ts",
     // The new-mail producer off the outbox (no actor): the account, the

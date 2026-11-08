@@ -12,6 +12,8 @@ import type { OrgTraceReviews } from "./enumerate"
  * caller trace can stop at them: name → why.
  */
 export const TRUSTED_SOURCES: Record<string, string> = {
+  resolveOptOutToken:
+    "the opt-out link's own row: kernel.suppression_links matched on the sha256 of the 32-byte random token the link carries, which only the send path writes for that org and recipient (mail/commercial-footer.ts); the page acts for that org and that address fingerprint alone",
   requireNodeCredential:
     "the node credential's row, refused unless node.orgId === c.get('orgId') and its owner is the caller (nodes/credentials.ts:51-59)",
   claimTeardowns:

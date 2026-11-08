@@ -2552,12 +2552,12 @@
       "redraft": "Rédiger une nouvelle réponse à son message",
       "redraftMessage": "Rédige une nouvelle réponse au message que {{who}} a envoyé après ce brouillon : {{title}}",
       "redraftFailed": "Impossible de joindre votre agent. Réessayez.",
-      "openConversation": "Ouvrir la conversation",
+      "openConversation": "Ouvrir la discussion",
       "openTicket": "Ouvrir le ticket",
-      "dismiss": "Retirer",
+      "dismiss": "Ignorer",
       "keepHolding": "Retenir jusqu'au {{until}}",
       "heldFolded": "Retenu jusqu'au {{until}}. Il revient sur l'accueil ce matin-là.",
-      "discard": "Supprimer"
+      "discard": "Abandonner"
     }
   },
   "agentUi": {
@@ -6550,9 +6550,9 @@
     "mineAsked": "Vous l'avez demandé",
     "mineOnItem": "Pour vous : attribué à vous",
     "mineManager": "Pour vous : vous gérez ce compte",
-    "recapApproved": "Approuvé par {{name}}, pour {{forName}} : {{title}}",
+    "recapApproved": "{{title}} : approuvé par {{name}}",
     "recapApprovedStandIn": "Approuvé par {{name}}, remplaçant de {{forName}} : {{title}}",
-    "recapDenied": "Refusé par {{name}}, pour {{forName}} : {{title}}",
+    "recapDenied": "{{title}} : refusé par {{name}}",
     "recapDeniedStandIn": "Refusé par {{name}}, remplaçant de {{forName}} : {{title}}",
     "you": "vous",
     "recapMore": "et {{count}} de plus",

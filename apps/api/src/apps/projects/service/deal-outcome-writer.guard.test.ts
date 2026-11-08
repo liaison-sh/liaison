@@ -102,28 +102,26 @@ describe("deal outcome writer", () => {
   })
 
   it("flags a status write that skips the writer and an outcome written elsewhere", () => {
-    const bad = [
-      "export async function sneakyMove(tx) {",
-      "  await tx.execute(drizzleSql`",
-      '    UPDATE ${projectsRel("tasks")}',
-      "    SET status_id = ${next}::uuid",
-      "    WHERE id = ${id}::uuid`)",
-      "}",
-      "export async function fine(tx) {",
-      '  await tx.execute(drizzleSql`UPDATE ${projectsRel("tasks")}',
-      "    SET status_id = ${next}::uuid WHERE id = ${id}::uuid`)",
-      "  await syncDealOutcome(tx, orgId, actor, [id])",
-      "}",
-    ].join("\n")
+    const bad = `export async function sneakyMove(tx) {
+  await tx.execute(drizzleSql\`
+    UPDATE \${projectsRel("tasks")}
+    SET status_id = \${next}::uuid
+    WHERE id = \${id}::uuid\`)
+}
+export async function fine(tx) {
+  await tx.execute(drizzleSql\`UPDATE \${projectsRel("tasks")}
+    SET status_id = \${next}::uuid WHERE id = \${id}::uuid\`)
+  await syncDealOutcome(tx, orgId, actor, [id])
+}`
     expect(unsyncedStatusWrites(bad)).toEqual(["sneakyMove"])
     expect(
       writesDealOutcome(
-        "await tx.execute(drizzleSql`UPDATE ${projectsRel(\"deals\")} SET outcome = 'won' WHERE task_id = ${id}`)",
+        `await tx.execute(drizzleSql\`UPDATE \${projectsRel("deals")} SET outcome = 'won' WHERE task_id = \${id}\`)`,
       ),
     ).toBe(true)
     expect(
       writesDealOutcome(
-        'await tx.execute(drizzleSql`UPDATE ${projectsRel("deals")} SET company_id = ${c} WHERE task_id = ${id}`)',
+        `await tx.execute(drizzleSql\`UPDATE \${projectsRel("deals")} SET company_id = \${c} WHERE task_id = \${id}\`)`,
       ),
     ).toBe(false)
   })

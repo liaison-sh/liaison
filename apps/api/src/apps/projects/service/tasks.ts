@@ -10,7 +10,7 @@ import {
 } from "~/modules/approvals/cancel"
 import { updateItemRoutePerson } from "~/modules/approvals/route-world"
 import { appendChecklistOnMerge, readItems, readProjectLevels } from "./checklist"
-import { type ChecklistStatus, checklistStatus } from "./checklist-status"
+import { checklistStatus } from "./checklist-status"
 import { explainClosingStages, mergeDealRows, syncDealOutcome } from "./deals"
 import { dueBucketSql } from "./due-status"
 import {
@@ -24,7 +24,6 @@ import { normalizeRelease, releaseFilterSql } from "./release-filter"
 import { assertTaskPriority, resolveAssignee, resolveStatusRef } from "./resolve"
 import { ProjectsServiceError } from "./statuses"
 import {
-  type AssigneeRef,
   type DbTaskRow,
   loadTaskDetails,
   type Task,

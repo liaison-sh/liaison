@@ -89,6 +89,8 @@ export const REVIEWED_DISPATCH: Record<string, string> = {
  * follow to a trusted source, could not be traced, or is a literal: `file#enclosing` → why.
  */
 export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
+  "apps/api/src/modules/contacts/companies.ts#companyIdsUnknownTo":
+    "stage-time check of a gated company call: requester is the staging actor, its org from that actor's own context; it reads only that org's companies and answers existence, nothing else",
   "apps/api/src/modules/agent/runtime/tool-card-store.ts#clearToolCardsByKey":
     "no product caller yet (an app's own retention will call it, tests only today): the org of the thread the caller names, matched again on every message row it reads and writes (messages.org_id = orgId)",
   "apps/api/src/modules/apps/org-features.ts#setOrgAppFeature":

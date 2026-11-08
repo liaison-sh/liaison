@@ -45,6 +45,7 @@ const READERS: Record<string, string> = {
   "modules/agent/scopes/replayed-outside-text.ts": AGENT,
   "modules/agent/scopes/scope-taint.ts": AGENT,
   "modules/agent/scopes/tool-identifier-redaction.ts": AGENT,
+  "modules/agent/tools/company-tools.ts": SETUP,
   "modules/agent/tools/config-tools.ts": AGENT,
   // Registers the kernel connection tools for an org while it is set up.
   "modules/agent/tools/connection-tools.ts": SETUP,

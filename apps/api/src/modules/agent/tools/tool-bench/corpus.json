@@ -2319,5 +2319,74 @@
     "say": "je suis en congés la semaine prochaine, Tom me remplace",
     "typed": ["congés semaine prochaine", "absent remplaçant"],
     "any": ["kernel__set_away"]
+  },
+  {
+    "id": "C02",
+    "set": "seed",
+    "lang": "en",
+    "say": "who looks after Arlon",
+    "typed": ["account manager", "company account manager", "who handles company", "company owner"],
+    "any": ["kernel__companies_read", "kernel__companies_search"]
+  },
+  {
+    "id": "C08",
+    "set": "seed",
+    "lang": "fr",
+    "say": "mets Élodie account manager de Maison Arlon",
+    "typed": ["account manager", "set account manager", "company owner", "modifier société"],
+    "any": ["kernel__companies_write"]
+  },
+  {
+    "id": "C09",
+    "set": "seed",
+    "lang": "en",
+    "say": "give Tom's accounts to Élodie",
+    "typed": [
+      "reassign accounts",
+      "hand over accounts",
+      "transfer companies",
+      "bulk change account manager"
+    ],
+    "any": ["kernel__companies_write"]
+  },
+  {
+    "id": "C60",
+    "set": "seed",
+    "lang": "en",
+    "say": "typo: compnay Arlon",
+    "typed": ["compnay", "comapny"],
+    "any": ["kernel__companies_search"]
+  },
+  {
+    "id": "C61",
+    "set": "seed",
+    "lang": "en",
+    "say": "merge Arlon and Maison Arlon",
+    "typed": ["merge companies", "duplicate companies", "company merge"],
+    "any": ["kernel__companies_find_duplicates"]
+  },
+  {
+    "id": "K01",
+    "set": "seed",
+    "lang": "en",
+    "say": "put these three people under Lumen",
+    "typed": ["link contacts to company", "add people to company", "contacts company"],
+    "any": ["kernel__companies_link_contacts", "kernel__companies_link_batch"]
+  },
+  {
+    "id": "K02",
+    "set": "seed",
+    "lang": "fr",
+    "say": "crée les sociétés de ces contacts",
+    "typed": ["créer sociétés", "sociétés depuis contacts", "regrouper contacts par société"],
+    "any": ["kernel__companies_propose_from_contacts", "kernel__companies_link_batch"]
+  },
+  {
+    "id": "K03",
+    "set": "seed",
+    "lang": "en",
+    "say": "Arlon and Arlon Group are not the same company",
+    "typed": ["not the same company", "not a duplicate", "different companies"],
+    "any": ["kernel__companies_mark_not_same"]
   }
 ]

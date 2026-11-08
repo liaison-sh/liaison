@@ -478,7 +478,7 @@ export async function handleContactsWrite(params: ContactsWriteParams, ctx: Cont
     },
     { audience: "owner", ownerUserId: ctx.userId },
   )
-  if (Object.keys(extra.fields).length > 0) {
+  if (contact && Object.keys(extra.fields).length > 0) {
     const withExtra = await updateContact(ctx.db, {
       orgId: ctx.orgId,
       userId: ctx.userId,

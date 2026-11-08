@@ -1280,7 +1280,7 @@ export async function proposeCompaniesFromContacts(
       unmatched += 1
       continue
     }
-    const acc = groups.get(groupKey) ?? { names: new Map(), domains: new Map(), ids: [] }
+    const acc: Acc = groups.get(groupKey) ?? { names: new Map(), domains: new Map(), ids: [] }
     bump(acc.names, p.company?.trim().replace(/\s+/g, " ") || null)
     bump(acc.domains, domain)
     acc.ids.push(p.id)

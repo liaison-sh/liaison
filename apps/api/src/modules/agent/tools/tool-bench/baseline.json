@@ -1214,7 +1214,7 @@
     },
     "kernel__contacts_merge": {
       "desc": 1669,
-      "schema": 83
+      "schema": 130
     },
     "kernel__contacts_read": {
       "desc": 144,
@@ -1229,8 +1229,8 @@
       "schema": 100
     },
     "kernel__contacts_write": {
-      "desc": 1123,
-      "schema": 97
+      "desc": 594,
+      "schema": 209
     },
     "kernel__create_pinned_thread": {
       "desc": 88,
@@ -2794,6 +2794,10 @@
     "C01|enlever facture du mois": "5t",
     "C01|recurring schedule": "",
     "C01|remove from month end run": "",
+    "C02|account manager": "15tl",
+    "C02|company account manager": "15tl",
+    "C02|company owner": "15tl",
+    "C02|who handles company": "5t",
     "C04|away": "15tl",
     "C04|holiday": "15tl",
     "C04|next in line": "15tl",
@@ -2804,6 +2808,14 @@
     "C05|congés": "15tl",
     "C05|remplaçant": "15tl",
     "C05|vacances": "15tl",
+    "C08|account manager": "",
+    "C08|company owner": "5t",
+    "C08|modifier société": "",
+    "C08|set account manager": "",
+    "C09|bulk change account manager": "",
+    "C09|hand over accounts": "",
+    "C09|reassign accounts": "",
+    "C09|transfer companies": "",
     "C15|refund order": "15tl",
     "C15|rembourser commande": "15tl",
     "C15|shopify refund": "15tl",
@@ -2871,6 +2883,11 @@
     "C56|schedule recurring task": "15tl",
     "C57|invoce search": "15tl",
     "C57|invocie": "",
+    "C60|comapny": "5tl",
+    "C60|compnay": "5tl",
+    "C61|company merge": "",
+    "C61|duplicate companies": "15tl",
+    "C61|merge companies": "",
     "H001|modifier un rôle": "15tl",
     "H002|créer un rôle": "15tl",
     "H003|supprimer un rôle": "15tl",
@@ -3050,6 +3067,15 @@
     "H177|suggest next steps": "15tl",
     "H178|absent remplaçant": "15tl",
     "H178|congés semaine prochaine": "15tl",
+    "K01|add people to company": "5",
+    "K01|contacts company": "15tl",
+    "K01|link contacts to company": "15tl",
+    "K02|créer sociétés": "",
+    "K02|regrouper contacts par société": "15t",
+    "K02|sociétés depuis contacts": "5",
+    "K03|different companies": "5",
+    "K03|not a duplicate": "5t",
+    "K03|not the same company": "15tl",
     "L036|Marquer comme payé": "15t",
     "L037|Programmer une relance": "15tl",
     "L038|Créer une tâche": "15tl",

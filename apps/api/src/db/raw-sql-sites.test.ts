@@ -263,6 +263,9 @@ const REVIEWED: Record<string, Record<string, string>> = {
     "target.table": MANIFEST_IDENT,
     "target.joinOn": MANIFEST_IDENT,
   },
+  "apps/api/src/modules/contacts/erasure.ts#clearContactSoftReferences": {
+    dealsTable: "rel() over code constants (erasure.ts:81)",
+  },
   "apps/api/src/modules/contacts/erasure.ts#release": {
     used: "OR-joined EXISTS predicates built in this function from the code reference table and the checked ids",
     orgId: "UUID-checked before splicing (erasure.ts:83-85)",

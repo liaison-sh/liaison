@@ -159,6 +159,10 @@ const TREATED: Record<string, [Treatment, string]> = {
   "modules/bug-reports/service.ts": ["one-row", "the reporter"],
   "modules/cloud/handoff.ts": ["member-filter", "the org's earliest active member admin"],
   "modules/cloud/lookup.ts": ["member-filter", "the workspaces an address is an active member of"],
+  "modules/contacts/companies.ts": [
+    "stored-ids",
+    "an account manager's name and status, by the id a company stores or a caller names",
+  ],
   "modules/contacts/erasure.ts": ["walks-org", "who to tell of an erasure, by role"],
   "modules/database/routes.ts": ["walks-org", "the people a domain may be opened to"],
   "modules/demo/demo-pool.ts": ["one-row", "a demo org's own owner"],

@@ -60,6 +60,14 @@ interface Requester {
 
 type ToolError = { error: { code: string; message: string; [k: string]: unknown } }
 
+/** A person's role as their metadata records it, or null. */
+function metadataRole(metadata: unknown): string | null {
+  if (metadata && typeof metadata === "object" && "role" in metadata) {
+    return typeof metadata.role === "string" ? metadata.role : null
+  }
+  return null
+}
+
 function fail(code: string, message: string, extra: Record<string, unknown> = {}): ToolError {
   return { error: { code, message, ...extra } }
 }
@@ -178,7 +186,7 @@ export async function handleCompaniesRead(params: { companyId: string }, ctx: Co
     people: people.map((p) => ({
       id: p.id,
       name: p.name,
-      role: typeof p.metadata?.role === "string" ? p.metadata.role : null,
+      role: metadataRole(p.metadata),
       email: p.email,
       isMain: p.id === row.mainContactId,
       lastInboundAt: lastInbound.get(p.id) ?? null,
@@ -697,6 +705,7 @@ export function registerCompanyTools(orgId: string): void {
       ownerUserId: z.union([z.literal("me"), z.string().uuid()]).optional(),
     }),
     handler: anyHandler(handleCompaniesSearch),
+    returns: { schema: { items: "object" } },
     resultCard: COMPANY_LIST_CARD,
   })
 
@@ -716,6 +725,7 @@ export function registerCompanyTools(orgId: string): void {
     readsFromTable: "kernel.companies",
     targetRowParam: "companyId",
     resultRowPath: "company.id",
+    returns: { schema: { company: "object", accountManager: "object" } },
     resultCard: COMPANY_CARD,
   })
 
@@ -816,6 +826,7 @@ export function registerCompanyTools(orgId: string): void {
     requiredScopes: ["kernel:companies:read"],
     params: z.object({ limit: z.number().min(1).max(200).optional() }),
     handler: anyHandler(handleCompaniesProposeFromContacts),
+    returns: { schema: { groups: "object" } },
     resultCard: PROPOSAL_CARD,
   })
 

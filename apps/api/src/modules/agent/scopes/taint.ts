@@ -474,7 +474,9 @@ const ROW_WALK_DEPTH = 6
  * taints the turn; rows that all carry another value leave it clean. Anything the condition
  * cannot judge taints (fail closed): a result with no row carrying the field (a projection that
  * dropped it), an entry of a list outside every row that does not carry it (a `related` list
- * beside the judged `items`), or a part nested deeper than the walk reads.
+ * beside the judged `items`), text outside every row (a `summary` beside them, or a `related`
+ * object holding a body), or a part nested deeper than the walk reads. Numbers, flags and nulls
+ * outside the rows (a `total`) leave it clean.
  */
 export function rowsMatchTaintCondition(result: unknown, cond: TaintSourceRowCondition): boolean {
   type Verdict = "match" | "unjudged" | "clean" | "none"
@@ -484,6 +486,8 @@ export function rowsMatchTaintCondition(result: unknown, cond: TaintSourceRowCon
   const judge = (value: unknown, depth: number, inList: boolean): Verdict => {
     if (value === null || value === undefined) return "none"
     if (depth > ROW_WALK_DEPTH) return "unjudged"
+    // Text outside every row says nothing of where it came from; a count or a flag is no text.
+    if (typeof value === "string") return "unjudged"
     if (typeof value !== "object") return inList ? "unjudged" : "none"
     if (Array.isArray(value)) return worst(value.map((item) => judge(item, depth + 1, true)))
     const row = value as Record<string, unknown>

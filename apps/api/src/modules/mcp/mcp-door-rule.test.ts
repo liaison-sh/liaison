@@ -275,6 +275,18 @@ describe("a taintSourceWhen row condition", () => {
     ).toBe(true)
   })
 
+  it("outside text beside the rows, as a string or in a plain object, taints", () => {
+    expect(
+      rowsMatchTaintCondition(
+        { items: [{ origin: "member" }], related: { body: "outside text" } },
+        cond,
+      ),
+    ).toBe(true)
+    expect(
+      rowsMatchTaintCondition({ items: [{ origin: "member" }], summary: "outside text" }, cond),
+    ).toBe(true)
+  })
+
   it("what sits inside a clean row, and counts beside the rows, leave it clean", () => {
     expect(
       rowsMatchTaintCondition(

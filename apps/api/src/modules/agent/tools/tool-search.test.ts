@@ -7,6 +7,7 @@
 // claimed it logged a note it never could). A visible locked match is the truthful "this exists
 // but I lack permission" signal — which flows to the chat UI / persona / judge via the agent reply.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { rankDeferredTools } from "~/modules/agent/tools/tool-rank"
 import {
   compactToolSearchResult,
   handleToolSearch,
@@ -313,6 +314,40 @@ describe("one ranker", () => {
         query,
       ).toEqual(ranked.map((s) => s.tool.sdkName))
     }
+  })
+})
+
+describe("rankDeferredTools -- whole names and several actions of one app", () => {
+  const R = (toolName: string, appName: string, description: string) => ({
+    toolName,
+    appName,
+    description,
+    sdkName: `${appName}__${toolName}`,
+  })
+  const CATALOG = [
+    R("search", "mail", "Search the synced mail database for conversations"),
+    R("read", "mail", "Read a mail conversation"),
+    R("reply", "mail", "Reply to a conversation"),
+    R("mail_attachment_read", "kernel", "Read an attachment of an email"),
+    R("internalCallback", "test-bridge", "Internal callback"),
+    R("categories_list", "tickets", "List ticket categories"),
+    R("templates_list", "tickets", "List reply templates"),
+    R("create", "tickets", "Create a ticket"),
+  ]
+  const appNames = ["mail", "test-bridge", "tickets"]
+  const strong = (q: string) => [...rankDeferredTools(CATALOG, q, { cap: 5, appNames }).strongNames]
+
+  it("a camelCase name typed as one word finds and loads the tool", () => {
+    expect(strong("internalcallback")).toEqual(["test-bridge__internalCallback"])
+    expect(strong("internalcall")).toEqual(["test-bridge__internalCallback"])
+  })
+
+  it("an app named with two of its tools' names loads both, not the kernel tool that outscores each", () => {
+    expect(strong("search and read mail").sort()).toEqual(["mail__read", "mail__search"])
+  })
+
+  it("a word that is only part of names keeps the every-word rule", () => {
+    expect(strong("list and create tickets")).not.toContain("tickets__categories_list")
   })
 })
 

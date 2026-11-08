@@ -47,6 +47,8 @@ const DESCRIPTION_SCORE = 2
 
 interface ScoringWords {
   nameParts: string[]
+  /** The name with its separators and case dropped: `internalCallback` is "internalcallback". */
+  nameJoined: string
   keywords: string[] | undefined
   appLower: string
   appParts: string[]
@@ -64,12 +66,14 @@ function scoringWords(t: ScorableDeferredTool): ScoringWords {
   const cached = scoringWordsCache.get(t)
   if (cached) return cached
   const appLower = t.appName.toLowerCase()
+  // camelCase splits too: `bulkDeactivateUsers` is bulk, deactivate, users.
+  const nameParts = t.toolName
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
   const words: ScoringWords = {
-    // camelCase splits too: `bulkDeactivateUsers` is bulk, deactivate, users.
-    nameParts: t.toolName
-      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
-      .toLowerCase()
-      .split(/[^a-z0-9]+/),
+    nameParts,
+    nameJoined: nameParts.join(""),
     keywords: t.keywords?.map(foldSearchText),
     appLower,
     appParts: appLower.split(/[^a-z0-9]+/),
@@ -120,19 +124,30 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
     let score = 0
     let termsMatched = 0
     let termCount = 0
-    const { nameParts, keywords, appLower, appParts, descWords } = scoringWords(t)
+    const { nameParts, nameJoined, keywords, appLower, appParts, descWords } = scoringWords(t)
     const isKernel = t.appName === "kernel"
 
     for (const term of terms) {
       const before = score
       // Exact name part match (high weight); a singular term also names its
       // plural part ("app" names `apps_set_enabled`).
-      if (nameParts.some((p) => p === term || p === `${term}s`)) score += 10
+      // The whole name typed as one word ("internalcallback") names it as well.
+      if (
+        nameParts.some((p) => p === term || p === `${term}s`) ||
+        nameJoined === term ||
+        nameJoined === `${term}s`
+      )
+        score += 10
       // A keyword the tool declares for this org (singular or plural either way)
       else if (keywords?.some((k) => k === term || k === `${term}s` || `${k}s` === term)) score += 8
       // Partial name match: the start of a name part ("invoice" in `invoices`),
-      // never the middle of one ("done" is not in `abandoned`).
-      else if (substringOk(term) && nameParts.some((p) => p.startsWith(term))) score += 5
+      // never the middle of one ("done" is not in `abandoned`). The whole name's
+      // start counts too ("internalcall" in `internalCallback`).
+      else if (
+        substringOk(term) &&
+        (nameParts.some((p) => p.startsWith(term)) || nameJoined.startsWith(term))
+      )
+        score += 5
       // App name match
       else if (appLower === term || (substringOk(term) && appParts.some((p) => p.startsWith(term))))
         score += 6
@@ -243,6 +258,41 @@ function creditOutsideSystemNames<T extends ScorableDeferredTool>(
 }
 
 /**
+ * A query that names one app and several of its actions ("search and read
+ * mail") asks for each of those tools. No single tool satisfies every word of
+ * it, so the every-word rule loaded none of them and the model called them
+ * blind. Here each action word picks the app's tool whose whole name it is
+ * (`mail__search`, `mail__read`), and those tools load together. Null unless
+ * every named word is the app's name or such a tool's name, with at least two
+ * tools named: a word that is only part of names ("list") keeps the usual rule.
+ */
+function appActionMatches<T extends ScorableDeferredTool>(
+  catalog: readonly T[],
+  terms: readonly string[],
+): T[] | null {
+  const named = terms.filter((term) => !FILLER_WORDS.has(term))
+  if (named.length < 3) return null
+  const apps = new Set(catalog.map((t) => t.appName).filter((a) => a !== "kernel"))
+  for (const app of apps) {
+    const appLower = app.toLowerCase()
+    const appParts = appLower.split(/[^a-z0-9]+/)
+    const isAppWord = (term: string) =>
+      appLower === term || appLower === `${term}s` || appParts.includes(term)
+    const actions = named.filter((term) => !isAppWord(term))
+    if (actions.length < 2 || actions.length === named.length) continue
+    const tools = catalog.filter((t) => t.appName === app)
+    const picked = actions.map((term) =>
+      tools.find((t) => {
+        const { nameJoined } = scoringWords(t)
+        return nameJoined === term || nameJoined === `${term}s`
+      }),
+    )
+    if (picked.every((t) => t !== undefined)) return [...new Set(picked as T[])]
+  }
+  return null
+}
+
+/**
  * One keyword search over a catalog: the tools to list, best first, and which of
  * them the search LOADS. A usable tool always ranks above a locked one. `appNames`
  * is the org's apps (On or Off, without the kernel); `cap` the hits to list.
@@ -298,11 +348,25 @@ export function rankDeferredTools<
       if (al !== bl) return al - bl
       return b.score - a.score
     })
-  const ranked = all.slice(0, effectiveCap)
-
   // Words that name no capability ("what can you do") load nothing, however many
   // descriptions happen to contain them. They still list.
   const namesNothing = terms.every((term) => FILLER_WORDS.has(term))
+  const actions = wholeAppQuery || namesNothing ? null : appActionMatches(catalog, terms)
+  if (actions) {
+    // The app's named actions are the answer: they lead the list and load.
+    const picked = all.filter((s) => actions.includes(s.tool))
+    const ranked = [...picked, ...all.filter((s) => !actions.includes(s.tool))].slice(
+      0,
+      Math.max(effectiveCap, picked.length),
+    )
+    return {
+      ranked,
+      all,
+      strongNames: new Set(picked.map((s) => s.tool.sdkName)),
+      wholeApp: null,
+    }
+  }
+  const ranked = all.slice(0, effectiveCap)
   const strongNames = new Set(
     namesNothing ? [] : strongMatches(ranked, wholeAppQuery).map((s) => s.tool.sdkName),
   )

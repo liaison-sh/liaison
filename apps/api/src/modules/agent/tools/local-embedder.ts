@@ -17,6 +17,7 @@ import { createReadStream, existsSync } from "node:fs"
 import { mkdir, rename, rm } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
+import { fetchWithRedirectValidation } from "~/lib/outbound-fetch"
 import type { TextEmbedder, Vector } from "./tool-meaning"
 
 export const LOCAL_MODEL = {
@@ -55,7 +56,8 @@ export class ModelFileMismatch extends Error {}
 export async function ensureModelFiles(
   dir: string,
   model: { repo: string; revision: string; files: Record<string, string> } = LOCAL_MODEL,
-  fetchFile: (url: string) => Promise<Response> = (url) => fetch(url),
+  // The model host redirects to its file CDN: every hop is checked and pinned.
+  fetchFile: (url: string) => Promise<Response> = (url) => fetchWithRedirectValidation(url),
 ): Promise<string> {
   const root = path.join(dir, model.repo)
   for (const [file, sha] of Object.entries(model.files)) {

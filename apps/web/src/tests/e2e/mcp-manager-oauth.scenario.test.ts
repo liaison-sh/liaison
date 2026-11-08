@@ -25,7 +25,7 @@
 // POST.
 
 import path from "node:path"
-import { api } from "@liaison/test-helpers"
+import { api, login } from "@liaison/test-helpers"
 import { expect, test } from "./fixtures/test"
 
 const SHOTS_DIR = path.resolve(__dirname, "../../../logs/playwright-diagnostics/mcp-oauth")
@@ -68,6 +68,11 @@ test("admin completes the OAuth (DCR) handshake for an MCP connection", async ({
   const createdBody = createRes.body as { id?: string; data?: { id?: string } }
   const connectionId = createdBody.id ?? createdBody.data?.id
   expect(connectionId).toBeTruthy()
+  // Creating the connection grants its owner the connection's tool namespace
+  // and moves their permission version (service/connections.ts), so a token
+  // minted before it is refused from here on, as a real client's would be
+  // until it refreshes. The rest of the test signs in again for a current one.
+  const { accessToken: adminToken } = await login(env.serverUrl, "admin@test.com", "12345678")
 
   // 3. Kick off the OAuth flow. The route returns the authorization URL
   //    constructed against the fixture issuer (per discovery in step 1).
@@ -76,7 +81,7 @@ test("admin completes the OAuth (DCR) handshake for an MCP connection", async ({
   //    browser that does not carry it (oauth-routes.ts, browser_mismatch).
   const startRes = await page.request.post(
     `${env.serverUrl}/api/apps/mcp-manager/connections/${connectionId}/oauth/start`,
-    { headers: { authorization: `Bearer ${qa.admin.token}` } },
+    { headers: { authorization: `Bearer ${adminToken}` } },
   )
   expect(startRes.status()).toBe(200)
   const startBody = (await startRes.json()) as {
@@ -117,7 +122,7 @@ test("admin completes the OAuth (DCR) handshake for an MCP connection", async ({
   // authorizationEndpoint / tokenEndpoint we resolved through discovery.
   const conn = await api(env.serverUrl, `/api/apps/mcp-manager/connections/${connectionId}`, {
     method: "GET",
-    token: qa.admin.token,
+    token: adminToken,
   })
   expect(conn.status).toBe(200)
   // The connection row exists and has metadata populated; the

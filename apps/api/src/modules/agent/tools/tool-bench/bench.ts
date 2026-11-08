@@ -8,6 +8,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
+import type { ToolMeaning } from "../tool-meaning"
 import { rankDeferredTools } from "../tool-rank"
 import { type BenchTool, REPO_ROOT, searchableTools } from "./catalog"
 
@@ -116,16 +117,24 @@ export function rankForm(
   appNames: Set<string>,
   form: string,
   want: readonly string[],
+  meaning?: ToolMeaning | null,
 ): FormResult {
   const { ranked, all, strongNames } = rankDeferredTools(searchable, form, {
     cap: TOP,
     appNames,
+    meaning,
   })
-  const hit = all.find((s) => want.includes(s.tool.sdkName))
+  const at = all.findIndex((s) => want.includes(s.tool.sdkName))
+  const hit = all[at]
   // A tool tied at the cut takes the last tied place, so registration order
-  // cannot rescue it.
+  // cannot rescue it. With meaning, what the keywords load leads whatever its
+  // score, so there a tool counts the tools listed before it and those tied after it.
   const above = hit
-    ? all.filter((s) => s !== hit && s.score >= hit.score).map((s) => s.tool.sdkName)
+    ? all
+        .filter((s, i) =>
+          meaning ? i < at || (i > at && s.score === hit.score) : s !== hit && s.score >= hit.score,
+        )
+        .map((s) => s.tool.sdkName)
     : ranked.map((s) => s.tool.sdkName)
   return {
     top1: want.includes(ranked[0]?.tool.sdkName ?? ""),

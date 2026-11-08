@@ -1287,6 +1287,24 @@ export const envSchema = z
     LIVE_INSTANCE_HEARTBEAT_MS: z.coerce.number().int().positive().default(10_000),
     // How often the leader removes the entries of processes whose heartbeat is gone.
     LIVE_SWEEP_INTERVAL_MS: z.coerce.number().int().positive().default(10_000),
+    // Tool search ranks by meaning as well as by words, with a small embedding
+    // model run in this process (modules/agent/tools/tool-meaning.ts). "off"
+    // ranks by words alone. When the model cannot load, the search ranks by words.
+    LIAISON_TOOL_MEANING: z.preprocess(
+      (v) => (v === "" ? undefined : v),
+      z.enum(["on", "off"]).default("on"),
+    ),
+    // The embedding model tool search runs (an ONNX model id, fetched once into
+    // LIAISON_MODEL_CACHE_DIR). Default: onnx-community/embeddinggemma-300m-ONNX.
+    LIAISON_TOOL_MEANING_MODEL: z.preprocess(
+      (v) => (v === "" ? undefined : v),
+      z.string().optional(),
+    ),
+    // Where local model files are kept. Unset: the package's own cache folder
+    // (the compose file sets /var/lib/liaison/models, on the data volume).
+    // Point it at a persistent volume, or at files shipped with the image for an
+    // install with no outside network.
+    LIAISON_MODEL_CACHE_DIR: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
     // The internal listener every process starts, separate from PORT and never
     // published: another process forwards a mailbox answer here when this one
     // minted the request. 0 (default) takes any free port. It must be reachable

@@ -158,6 +158,20 @@ Agents search and fetch the web without an approval. These limits bound what one
 | `LIAISON_WEB_FETCH_HOSTS_PER_TURN` | `10` | Different sites fetched in one turn |
 | `LIAISON_WEB_READS_PER_THREAD_HOUR` | `60` | Searches and fetches per conversation in any hour |
 
+### Tool search model
+
+When an agent looks for a tool, it ranks the tools it may use by meaning as well as by words, so "Marc left, cut his access" finds the tool that deactivates a user. A small embedding model runs inside each process that serves agents, on the CPU. No text leaves the server.
+
+- The first search after a start fetches the model's files (about 200 MB) into `LIAISON_MODEL_CACHE_DIR` and computes one vector per tool in the background, about half a minute. Until then, and whenever the model cannot load, the search ranks by words alone.
+- Each such process uses about 300 to 450 MB more memory. Count it per `api` process when you size the host.
+- With no outside network, put the model's files in `LIAISON_MODEL_CACHE_DIR` yourself.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `LIAISON_TOOL_MEANING` | `on` | `off` ranks tools by words alone and loads no model |
+| `LIAISON_TOOL_MEANING_MODEL` | `onnx-community/embeddinggemma-300m-ONNX` | The embedding model |
+| `LIAISON_MODEL_CACHE_DIR` | `/var/lib/liaison/models` (host `./data/models`) | Where the model's files are kept |
+
 ### Model keys
 
 These are platform fallbacks for organizations that have not added their own key. Leave them all empty if every organization brings its own.

@@ -7,6 +7,10 @@
  */
 
 import { NAME_WORD_SYNONYMS } from "./tool-lexicon"
+import { meaningPoints, type ToolMeaning } from "./tool-meaning"
+
+/** Meaning points a tool no word matched needs to join the list: past the floor, not the tie trace. */
+const MEANING_JOIN_POINTS = 0.01
 
 /** The app whose tools connect any outside system (see creditOutsideSystemNames). */
 export const CONNECTOR_APP = "api-connector"
@@ -511,6 +515,63 @@ function appActionMatches<T extends ScorableDeferredTool>(
 export function rankDeferredTools<
   T extends ScorableDeferredTool & { sdkName: string; locked?: boolean },
 >(
+  catalog: readonly T[],
+  query: string,
+  opts: { cap: number; appNames: Iterable<string>; meaning?: ToolMeaning | null },
+): RankedTools<T> {
+  const byWords = rankByKeywords(catalog, query, opts)
+  return opts.meaning ? addMeaning(catalog, byWords, opts.cap, opts.meaning) : byWords
+}
+
+interface RankedTools<T> {
+  ranked: Array<{ tool: T; score: number; termsMatched: number; termCount: number }>
+  /** Every tool that scored, best first: `ranked` is its head. */
+  all: Array<{ tool: T; score: number; termsMatched: number; termCount: number }>
+  strongNames: Set<string>
+  /** The app a bare app-name query asked for, or null. */
+  wholeApp: string | null
+}
+
+/**
+ * The keyword ranking with meaning added (tool-meaning.ts): each tool's score
+ * gains its meaning points, and a tool no word matched joins when it stands
+ * out by meaning. What the keywords load keeps its place ahead, a usable tool
+ * still ranks above a locked one, and a bare app name keeps its app listing.
+ * Only tools of `catalog` can rank.
+ */
+function addMeaning<T extends ScorableDeferredTool & { sdkName: string; locked?: boolean }>(
+  catalog: readonly T[],
+  byWords: RankedTools<T>,
+  cap: number,
+  meaning: ToolMeaning,
+): RankedTools<T> {
+  if (byWords.wholeApp) return byWords
+  const points = meaningPoints(catalog, meaning)
+  if (points.size === 0) return byWords
+  const scored = new Set(byWords.all.map((s) => s.tool))
+  const joined = catalog
+    .filter((t) => !scored.has(t) && (points.get(t.sdkName) ?? 0) >= MEANING_JOIN_POINTS)
+    .map((tool) => ({ tool, score: 0, termsMatched: 0, termCount: 0 }))
+  const fused = (s: { tool: T; score: number }) => s.score + (points.get(s.tool.sdkName) ?? 0)
+  const lead = (s: { tool: T }) => (byWords.strongNames.has(s.tool.sdkName) ? 0 : 1)
+  const all = [...byWords.all, ...joined]
+    .map((s) => ({ s, f: fused(s) }))
+    .sort((a, b) => {
+      const al = a.s.tool.locked ? 1 : 0
+      const bl = b.s.tool.locked ? 1 : 0
+      if (al !== bl) return al - bl
+      if (lead(a.s) !== lead(b.s)) return lead(a.s) - lead(b.s)
+      return b.f - a.f
+    })
+    .map(({ s, f }) => ({ ...s, score: f }))
+  const listed = Math.max(
+    cap,
+    byWords.ranked.filter((s) => byWords.strongNames.has(s.tool.sdkName)).length,
+  )
+  return { ...byWords, all, ranked: all.slice(0, listed) }
+}
+
+function rankByKeywords<T extends ScorableDeferredTool & { sdkName: string; locked?: boolean }>(
   catalog: readonly T[],
   query: string,
   opts: { cap: number; appNames: Iterable<string> },

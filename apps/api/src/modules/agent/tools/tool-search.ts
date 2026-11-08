@@ -7,6 +7,7 @@ import {
 import { currentRunContext } from "~/modules/agent/runtime/run-context"
 import { turnToolScopes } from "~/modules/agent/scopes/effective-scope"
 import { listDeferredTools } from "~/modules/agent/tools/tool-bridge"
+import { toolMeaningIndex } from "~/modules/agent/tools/tool-meaning"
 import {
   CONNECTOR_APP,
   rankDeferredTools,
@@ -561,6 +562,8 @@ export async function handleToolSearch(
   } = rankDeferredTools(allDeferred, query, {
     cap,
     appNames: orgAppNames(ctx.orgId),
+    // Meaning ranks over the same reachable catalog: a hidden tool has no place in it.
+    meaning: await toolMeaningIndex()?.meaningFor(query, allDeferred),
   })
   const matches = ranked.map((s) => toMatch(s.tool))
   const strongHits = matches.filter((m) => strong.has(m.name))

@@ -1459,7 +1459,6 @@
       "description": "Open deals quiet for at least quietDays, each with skip: null means a follow-up may be drafted, otherwise the reason not to.",
       "searchKeywords": [
         "relance",
-        "relancer",
         "follow-up",
         "silence",
         "réponse"

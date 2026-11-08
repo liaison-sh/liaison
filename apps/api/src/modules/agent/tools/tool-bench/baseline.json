@@ -2026,11 +2026,11 @@
     },
     "projects__create": {
       "desc": 1277,
-      "schema": 639
+      "schema": 691
     },
     "projects__createProject": {
       "desc": 523,
-      "schema": 796
+      "schema": 815
     },
     "projects__delete": {
       "desc": 164,
@@ -2110,7 +2110,7 @@
     },
     "projects__update_project": {
       "desc": 638,
-      "schema": 251
+      "schema": 270
     },
     "projects__webhook_info": {
       "desc": 285,
@@ -2826,6 +2826,20 @@
     "C17|factures impayées": "15tl",
     "C17|impayé": "15tl",
     "C17|relance paiement": "15tl",
+    "C20|affaire": "",
+    "C20|create deal": "5t",
+    "C20|new deal": "",
+    "C20|nouvelle opportunité": "5t",
+    "C21|close deal": "5t",
+    "C21|deal won": "15tl",
+    "C21|mark won": "15t",
+    "C22|deals by stage": "5t",
+    "C22|pipeline": "5t",
+    "C22|sales forecast": "15t",
+    "C23|follow up": "15t",
+    "C23|quiet deals": "15tl",
+    "C23|relance": "5tl",
+    "C23|relancer prospects": "15tl",
     "C39|answer customer": "15tl",
     "C39|reply ticket": "15tl",
     "C39|tickets reply": "15tl",
@@ -3076,6 +3090,9 @@
     "K03|different companies": "5",
     "K03|not a duplicate": "5t",
     "K03|not the same company": "15tl",
+    "K04|create pipeline": "15tl",
+    "K04|new pipeline": "15tl",
+    "K04|sales pipeline": "15tl",
     "L036|Marquer comme payé": "15t",
     "L037|Programmer une relance": "15tl",
     "L038|Créer une tâche": "15tl",

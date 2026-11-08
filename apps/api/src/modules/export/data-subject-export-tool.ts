@@ -558,7 +558,7 @@ export async function buildDataSubjectBundle(
         await ctx.db.execute(drizzleSql`
           SELECT d.task_id::text AS task_id, t.title, s.label AS stage, d.outcome, d.closed_at,
                  v.amount_minor::text AS amount_minor, v.currency
-          FROM ${drizzleSql.raw(dealsTable)} d
+          FROM ${drizzleSql.raw(schemaRef("app_projects"))}.deals d
           JOIN ${drizzleSql.raw(schemaRef("app_projects"))}.tasks t ON t.id = d.task_id AND t.org_id = d.org_id
           LEFT JOIN ${drizzleSql.raw(schemaRef("app_projects"))}.project_statuses s ON s.id = t.status_id
           LEFT JOIN ${drizzleSql.raw(schemaRef("app_projects"))}.deal_values v ON v.task_id = d.task_id

@@ -19,7 +19,7 @@ import { demoShopifyBook } from "~/modules/demo/shopify/fixtures"
 import { DEMO_WORLD } from "~/seed/world/fiction"
 import en from "../../../../../../packages/shared/src/i18n/locales/en/tours.json"
 import fr from "../../../../../../packages/shared/src/i18n/locales/fr/tours.json"
-import { demoBoxtalSender, demoShippingProfiles } from "./boxtal-catalog"
+import { DEMO_CONTENT_CATEGORY, demoBoxtalSender, demoShippingProfiles } from "./boxtal-catalog"
 import { DEMO_APPS, DEMO_BASELINE_APPS, demoSeedPlan } from "./demo-apps"
 import { SKILL_SPECS } from "./seed-agent-native"
 import { SEEDED_PROJECT_NAMES } from "./seed-support"
@@ -229,6 +229,15 @@ describe("the demo store's products ship from the seeded Boxtal catalog", () => 
       solo_width: 14,
       solo_height: 6,
     })
+  })
+
+  it("every seeded content category is one the Boxtal app accepts (content:v1:<code>)", () => {
+    // Boxtal refuses a free-text label (a cotation answers 400 "invalid value").
+    const accepted = /^content:v1:\d+$/
+    expect(DEMO_CONTENT_CATEGORY).toMatch(accepted)
+    for (const p of demoShippingProfiles(DEMO_WORLD.catalog)) {
+      expect(p.content_category, p.sku).toMatch(accepted)
+    }
   })
 
   it("the ship-from address is complete, so a quote and a label need nothing more", () => {

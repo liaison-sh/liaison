@@ -83,7 +83,7 @@ import {
 import { actorFor } from "~/seed/factories/people/actors"
 import { resolveContacts } from "~/seed/factories/people/contacts"
 import { DEMO_COMPANY, type DemoSku } from "~/seed/world/fiction"
-import { demoBoxtalSender, demoProductId, demoShippingProfiles } from "./boxtal-catalog"
+import { DEMO_CONTENT_CATEGORY, demoBoxtalSender, demoProductId, demoShippingProfiles } from "./boxtal-catalog"
 import { commerceDemoId } from "./commerce-ids"
 import type { SeedDemoOrgResult } from "./seed-org"
 
@@ -1864,7 +1864,7 @@ export async function seedDemoCommerce(
     products: shippingProducts(catalog),
     packs: PACKS.map((p) => ({
       ...p,
-      contentCategory: "AUDIO_EQUIPMENT",
+      contentCategory: DEMO_CONTENT_CATEGORY,
       components: p.components.map((c) => {
         const sku = catalog.find((s) => s.sku === c.sku)
         if (!sku) throw new Error(`seedDemoCommerce: pack ${p.key} names unknown sku ${c.sku}`)

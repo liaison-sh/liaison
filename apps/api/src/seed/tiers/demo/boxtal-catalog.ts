@@ -24,6 +24,14 @@ export interface DemoShippingProfile {
   accessory: boolean
 }
 
+/**
+ * The content category every seeded profile and pack carries, in the form the
+ * Boxtal app accepts and Boxtal's API answers to (`content:v1:<numeric code>`,
+ * as `list_content_categories` returns). A free-text label is refused by a
+ * cotation with a 400.
+ */
+export const DEMO_CONTENT_CATEGORY = "content:v1:10120"
+
 /** The shipping profile of each catalog entry, keyed as the store's orders name it. */
 export function demoShippingProfiles(catalog: readonly DemoSku[]): DemoShippingProfile[] {
   return catalog.map((s) => ({
@@ -34,7 +42,7 @@ export function demoShippingProfiles(catalog: readonly DemoSku[]): DemoShippingP
     solo_length: s.dimsCm?.length ?? null,
     solo_width: s.dimsCm?.width ?? null,
     solo_height: s.dimsCm?.height ?? null,
-    content_category: s.tier === "flagship" ? "AUDIO_EQUIPMENT" : "ACCESSORIES",
+    content_category: DEMO_CONTENT_CATEGORY,
     accessory: s.tier === "accessory",
   }))
 }

@@ -421,6 +421,48 @@ describe("executeTool — sandbox path", () => {
     expect(thrown.details?.retryable).toBe(true)
   }, 30_000)
 
+  it("untrusted-prod: an upstream request past its deadline surfaces as a typed, retryable 'upstream_timeout'", async () => {
+    // The egress bridge's own words when an app's fetch runs past its timeoutMs (a slow upstream:
+    // a carrier quote that took 5 s once and 0.9 s on the retry). Not handler internals.
+    const bundlePath = "/tmp/test-sandbox-fetch-timeout.js"
+    await Bun.write(
+      bundlePath,
+      `function slow(params, ctx) { throw new Error("Fetch timed out after 5000ms") }`,
+    )
+    expect(process.env.CHAOS_DEBUG).toBeFalsy()
+    toolRegistry.set([TEST_ORG, "slow-app", "slow"], {
+      appName: "slow-app",
+      name: "slow",
+      description: "Upstream too slow",
+      requiredScopes: ["slow-app:items:read"],
+      handler: { bundlePath, exportName: "slow", trusted: false },
+      _manifest: { name: "slow-app", schema: {}, events: {}, connections: {}, network: {} },
+    } as any)
+    let thrown: any
+    try {
+      await executeTool({
+        toolName: "slow-app:slow",
+        orgId: TEST_ORG,
+        actor: {
+          actorType: "user",
+          userId: TEST_USER,
+          orgId: TEST_ORG,
+          scopes: ["slow-app:items:read"],
+          dimensionGrants: {},
+        },
+        params: {},
+      })
+      expect(true).toBe(false)
+    } catch (err: any) {
+      thrown = err
+    }
+    expect(thrown.code).toBe("upstream_timeout")
+    expect(thrown.status).toBe(504)
+    expect(thrown.message).toContain("timed out after 5000 ms")
+    expect(thrown.message).not.toBe("Tool execution failed")
+    expect(thrown.details?.retryable).toBe(true)
+  }, 30_000)
+
   it("step 7 validates params via Ajv for manifest-format tools", async () => {
     const bundleSource = `function strict(params, ctx) { return params; }`
     const bundlePath = "/tmp/test-sandbox-strict.js"

@@ -594,8 +594,16 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.15: shipment_draft_create is declared a write (it stores the draft), still ungated.
     // 0.23.16: API keys and the webhook secret stay host-side (ctx.fetch auth, configSecrets, by-key HMAC).
     // 0.23.18: the webhook secret may go only into the subscription body's webhookSecret, on Boxtal's API hosts (secrets).
-    expect(m.version).toBe("0.23.19")
+    // 0.23.20: the sandbox's label documents (document.boxtal.build) may be imported, like production's.
+    expect(m.version).toBe("0.23.20")
     expect(m.packageFormat).toBe(1)
+  })
+
+  it("labels are importable from both environments' document hosts", () => {
+    // The sandbox serves its label PDFs from document.boxtal.build: without it every sandbox
+    // shipment's label import failed with "Domain not in allowlist".
+    const m = load() as { network: { allowedDomains: string[] } }
+    expect(m.network.allowedDomains).toEqual(expect.arrayContaining(["document.boxtal.com", "document.boxtal.build"]))
   })
 
   it("backfill-queue-facts reaches only workspaces with a shipment missing its snapshot", () => {

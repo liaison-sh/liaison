@@ -5860,6 +5860,26 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         },
       }
     }
+    // An app's own outbound request ran past its deadline (the egress bridge's "Fetch timed
+    // out after <n>ms", on QuickJS and on the Workers executor alike). Operational state, not
+    // handler internals: redacting it to "Tool execution failed", non-retryable, tells the agent
+    // that a slow upstream is a permanent failure. Surface it as a typed, retryable upstream
+    // timeout; for a write the upstream may have acted, so the message says to check first.
+    const fetchTimeout = isUntrustedProd ? /^Fetch timed out after (\d+)ms$/.exec(message) : null
+    if (fetchTimeout) {
+      log.warn(
+        { toolName: opts.toolName, timeoutMs: Number(fetchTimeout[1]) },
+        "Sandboxed tool's upstream request timed out",
+      )
+      return {
+        error: {
+          code: "upstream_timeout",
+          message: `${opts.toolName}: a request to the app's upstream service timed out after ${fetchTimeout[1]} ms (the service was slow). A read can be retried. For a change, the service may already have applied it: check its result before trying again.`,
+          retryable: true,
+          status: 504,
+        },
+      }
+    }
     // A failure that followed an upstream error answer: the app's own error
     // (Google's reason and the fix, say) reaches the caller sanitized and
     // bounded; a runtime crash names the connection and the host it called

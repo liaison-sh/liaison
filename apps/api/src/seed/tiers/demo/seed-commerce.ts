@@ -83,7 +83,12 @@ import {
 import { actorFor } from "~/seed/factories/people/actors"
 import { resolveContacts } from "~/seed/factories/people/contacts"
 import { DEMO_COMPANY, type DemoSku } from "~/seed/world/fiction"
-import { DEMO_CONTENT_CATEGORY, demoBoxtalSender, demoProductId, demoShippingProfiles } from "./boxtal-catalog"
+import {
+  DEMO_CONTENT_CATEGORY,
+  demoBoxtalSender,
+  demoProductId,
+  demoShippingProfiles,
+} from "./boxtal-catalog"
 import { commerceDemoId } from "./commerce-ids"
 import type { SeedDemoOrgResult } from "./seed-org"
 

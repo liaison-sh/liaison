@@ -51,14 +51,18 @@ const CATALOG_DEMO_APPS = ["invoicing", "social", "pennylane", "boxtal", "shopif
  * 2026-11-04 on main 51c8ce2a9: 5 327 round trips in 519 transactions, 281
  * outbox events, statement for statement the same on that main commit itself,
  * so the growth came with the main features merged since the last measure.
+ * Re-measured 2026-11-08 on the foundation branch: 5 452 round trips in 541
+ * transactions (cold 5 457 in 542), 281 outbox events: the org's switched-on
+ * features are read in a transaction of their own on each app-state reload, so
+ * a failed feature read cannot abort the app state read (about one per reload).
  */
 const BASELINE = {
   outboxEvents: 281,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 5_327,
-  transactions: 519,
+  statements: 5_452,
+  transactions: 541,
 }
 /**
  * Round trips are deterministic up to a few cache reads (5 251-5 262 across
